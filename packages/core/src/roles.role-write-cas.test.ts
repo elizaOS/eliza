@@ -7,8 +7,9 @@
  * Deterministic unit harness — real adapter, fake runtime object, no model
  * or network.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter.ts";
 import { WORLD_METADATA_REVISION_KEY } from "./database/world-metadata-cas.ts";
 import {
 	ROLE_WRITE_CAS_MAX_ATTEMPTS,

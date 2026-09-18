@@ -2,11 +2,7 @@
  * Fixtures for identity-merge tests: builds runtime and relationships-graph inputs that
  * drive the entity merge engine across channels.
  */
-import type {
-  RelationshipsGraphService,
-  RelationshipsPersonDetail,
-  RelationshipsPersonSummary,
-} from "@elizaos/core";
+
 import {
   type AgentRuntime,
   ChannelType,
@@ -14,6 +10,11 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import type {
+  RelationshipsGraphService,
+  RelationshipsPersonDetail,
+  RelationshipsPersonSummary,
+} from "@elizaos/plugin-assistant";
 
 type RelationshipsServiceLike = {
   addContact: (

@@ -10,7 +10,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
 	resolve: {
 		extensions: [".ts", ".tsx", ".mts", ".js", ".mjs", ".json"],
-		alias: {
+		alias: Object.entries({
 			// Pin every core subpath reachable through shared before the bare core
 			// alias; Vite treats string aliases as prefix matches and would otherwise
 			// rewrite them to `index.node.ts/<subpath>` and fail with ENOTDIR.
@@ -45,7 +45,7 @@ export default defineConfig({
 				new URL("../../packages/core/src/index.edge.ts", import.meta.url),
 			),
 			"@elizaos/core": fileURLToPath(
-				new URL("../../packages/core/src/index.node.ts", import.meta.url),
+				new URL("../../packages/core/src/index.ts", import.meta.url),
 			),
 			// Core's source entry re-exports the cloud-routing package. A clean
 			// workspace has not built that package's dist entry yet, so source-mode
@@ -53,9 +53,7 @@ export default defineConfig({
 			"@elizaos/cloud-routing": fileURLToPath(
 				new URL("../../packages/cloud/routing/src/index.ts", import.meta.url),
 			),
-			"@elizaos/logger": fileURLToPath(
-				new URL("../../packages/logger/src/index.ts", import.meta.url),
-			),
+
 			"@elizaos/agent": fileURLToPath(
 				new URL("../../packages/agent/src/index.ts", import.meta.url),
 			),
@@ -128,7 +126,10 @@ export default defineConfig({
 			"@elizaos/shared": fileURLToPath(
 				new URL("../../packages/shared/src/index.ts", import.meta.url),
 			),
-		},
+		}).map(([find, replacement]) => ({
+			find: find === "@elizaos/shared" ? /^@elizaos\/shared$/ : find,
+			replacement,
+		})),
 	},
 	test: {
 		globals: true,

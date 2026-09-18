@@ -4,7 +4,7 @@
  * deterministic and side-effect free.
  */
 import type http from "node:http";
-import type { AppPackageRouteDispatchContext } from "@elizaos/core";
+import type { AppPackageRouteDispatchContext } from "@elizaos/shared/api/route-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { importAppRouteModuleMock } = vi.hoisted(() => ({

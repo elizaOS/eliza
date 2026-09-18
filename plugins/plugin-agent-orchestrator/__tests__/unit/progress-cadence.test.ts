@@ -30,11 +30,9 @@
  * selects the progress mode the hook resolves at registration time.
  */
 
-import {
-  _resetBuildVariantForTests,
-  isLocalCodeExecutionAllowed,
-  ModelType,
-} from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
+import { _resetBuildVariantForTests } from "@elizaos/shared/platform/build-variant";
+import { isLocalCodeExecutionAllowed } from "@elizaos/shared/platform/sandbox-policy";
 import {
   afterEach,
   beforeEach,

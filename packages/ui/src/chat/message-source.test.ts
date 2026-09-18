@@ -5,7 +5,7 @@
 import {
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CODING_AGENT,
-} from "@elizaos/core";
+} from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import { isRoutineCodingAgentMessage } from "./index";
 

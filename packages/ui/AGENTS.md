@@ -198,8 +198,8 @@ utility axes, arbitrary px font sizes, dvh/vh, deprecated Tailwind classes,
 hover-only reveals, and similar problems:
 
 ```bash
-bun run audit:design                  # react-doctor design vs committed baseline; fails on any rule growing
-bun run audit:design:update-baseline  # ratchet the baseline down after a cleanup PR
+node packages/scripts/design-doctor-gate.mjs                  # react-doctor design vs committed baseline; fails on any rule growing
+node packages/scripts/design-doctor-gate.mjs --update-baseline  # ratchet the baseline down after a cleanup PR
 ```
 
 The baseline lives in `packages/scripts/design-doctor-baseline.json`; like the

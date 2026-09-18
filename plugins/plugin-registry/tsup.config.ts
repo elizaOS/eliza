@@ -15,6 +15,6 @@ export default defineConfig({
     "@elizaos/agent",
     "@elizaos/app-core",
     "@elizaos/shared",
-    "@elizaos/vault",
+    "@elizaos/credentials/vault",
   ],
 });

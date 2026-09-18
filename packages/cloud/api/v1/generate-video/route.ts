@@ -1,6 +1,6 @@
 /** Handles authenticated video generation, billing, and pending-job reconciliation. */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
 import { Hono } from "hono";
 import { z } from "zod";
 import {

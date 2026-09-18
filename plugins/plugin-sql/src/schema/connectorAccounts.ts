@@ -8,7 +8,7 @@
  *   role-scoped external identity allows intentionally separate owner and
  *   agent grants for the same provider subject; soft-delete allows reconnects.
  * - `connectorAccountCredentialsTable` — credentials for an account, stored
- *   only as a `vaultRef` pointer into `@elizaos/vault` or an external secret
+ *   only as a `vaultRef` pointer into `@elizaos/credentials/vault` or an external secret
  *   manager; never the raw secret. Unique per `(accountId, credentialType)`.
  * - `connectorAccountAuditEventsTable` — append-only audit trail of actions
  *   taken against an account; survives account deletion (`onDelete: "set null"`).
@@ -92,7 +92,7 @@ export const connectorAccountCredentialsTable = pgTable(
       .references(() => agentTable.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
     credentialType: text("credential_type").notNull(),
-    /** Pointer to @elizaos/vault or a password-manager-backed vault entry. */
+    /** Pointer to @elizaos/credentials/vault or a password-manager-backed vault entry. */
     vaultRef: text("vault_ref").notNull(),
     metadata: jsonb("metadata")
       .$type<Record<string, unknown>>()

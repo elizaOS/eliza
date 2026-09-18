@@ -448,37 +448,14 @@ describe("eliza.thinking='off' reasoning suppression (DeepSeek V4 Flash)", () =>
     ).toBe("none");
   });
 
-  it("maps thinking-off through a proxy that declares its OpenCode Go upstream", () => {
-    vi.stubGlobal("document", {});
-    try {
-      const runtime = buildRuntime({
-        OPENAI_API_KEY: "sk-test",
-        OPENAI_BROWSER_BASE_URL: "https://app.example.test/api/openai",
-        OPENAI_BROWSER_UPSTREAM_BASE_URL: "https://opencode.ai/zen/go/v1",
-      });
-      const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "deepseek-v4-flash");
-      expect(
-        (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
-      ).toBe("none");
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("does not infer the upstream behind an opaque browser proxy", () => {
-    vi.stubGlobal("document", {});
-    try {
-      const runtime = buildRuntime({
-        OPENAI_API_KEY: "sk-test",
-        OPENAI_BASE_URL: "https://opencode.ai/zen/go/v1",
-        OPENAI_BROWSER_BASE_URL: "https://app.example.test/api/openai",
-      });
-      const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "deepseek-v4-flash");
-      const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
-      expect(openai?.reasoningEffort).toBeUndefined();
-    } finally {
-      vi.unstubAllGlobals();
-    }
+  it("does not infer the upstream behind an opaque host proxy", () => {
+    const runtime = buildRuntime({
+      OPENAI_API_KEY: "sk-test",
+      OPENAI_BASE_URL: "https://app.example.test/api/openai",
+    });
+    const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "deepseek-v4-flash");
+    const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
+    expect(openai?.reasoningEffort).toBeUndefined();
   });
 
   it("does not send 'none' to a standard OpenAI-compatible endpoint", () => {

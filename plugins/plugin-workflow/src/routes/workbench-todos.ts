@@ -13,19 +13,13 @@
  */
 
 import type http from 'node:http';
-import {
-  type AgentRuntime,
-  logger,
-  sendJson,
-  sendJsonError,
-  type Task,
-  type UUID,
-} from '@elizaos/core';
+import { type AgentRuntime, logger, type Task, type UUID } from '@elizaos/core';
 import {
   PostWorkbenchTodoCompleteRequestSchema,
   PostWorkbenchTodoRequestSchema,
   PutWorkbenchTodoRequestSchema,
 } from '@elizaos/shared';
+import { sendJson, sendJsonError } from '@elizaos/shared/api/http-helpers';
 import {
   isObject,
   isWorkbenchTodoTask,

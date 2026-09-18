@@ -130,7 +130,9 @@ describe("projectLlmCallDiagnostics", () => {
         {
           id: "tool-call-1",
           name: "CANARY_TOOL",
-          args: { target: `https://user:${URI_CANARY}@synthetic.invalid/` },
+          arguments: {
+            target: `https://user:${URI_CANARY}@synthetic.invalid/`,
+          },
         },
       ],
       response: `failed with ${RUNTIME_SECRET}`,

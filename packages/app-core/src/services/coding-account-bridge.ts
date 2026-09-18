@@ -38,37 +38,35 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  type AccountStoragePolicy,
-  createRuntimeAccountStoragePolicy,
-  loadAccount,
-  withAccountStorageMutation,
-} from "@elizaos/auth/account-storage";
-import {
-  type AccessTokenOutcome,
-  getAccessToken,
-  saveCredentials,
-} from "@elizaos/auth/credentials";
-import { probeDirectApiKey } from "@elizaos/auth/direct-api-probe";
-import { accountRefreshMutex } from "@elizaos/auth/refresh-mutex";
-import type { DirectAccountProvider } from "@elizaos/auth/types";
-import {
-  DIRECT_ACCOUNT_PROVIDER_ENV,
-  isDirectAccountProvider,
-  isSubscriptionProvider,
-} from "@elizaos/auth/types";
+import { ElizaError } from "@elizaos/common";
 import {
   type CodingAgentSelectorBridge,
   type CodingProviderAvailability,
-  ElizaError,
   logger,
   resolveStateDir,
   setCodingAgentSelectorBridge,
 } from "@elizaos/core";
 import {
-  CODING_AGENT_BACKEND_PROVIDERS,
-  type LinkedAccountProviderId,
-} from "@elizaos/shared";
+  type AccountStoragePolicy,
+  createRuntimeAccountStoragePolicy,
+  loadAccount,
+  withAccountStorageMutation,
+} from "@elizaos/credentials/auth/account-storage";
+import {
+  type AccessTokenOutcome,
+  getAccessToken,
+  saveCredentials,
+} from "@elizaos/credentials/auth/credentials";
+import { probeDirectApiKey } from "@elizaos/credentials/auth/direct-api-probe";
+import { accountRefreshMutex } from "@elizaos/credentials/auth/refresh-mutex";
+import type { DirectAccountProvider } from "@elizaos/credentials/auth/types";
+import {
+  DIRECT_ACCOUNT_PROVIDER_ENV,
+  isDirectAccountProvider,
+  isSubscriptionProvider,
+} from "@elizaos/credentials/auth/types";
+import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/shared/contracts/coding-agent-capabilities";
+import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing-types";
 import {
   type AccountPool,
   configuredAccountStrategyForProvider,

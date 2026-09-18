@@ -146,7 +146,7 @@ if [[ "$(uname)" == "Darwin" && "$BUILD_SKIP_CODESIGN" != "1" && -z "$BUILD_DEVE
   )"
   if [[ -z "$BUILD_DEVELOPER_ID" && -z "${CI:-}" && -z "${GITHUB_ACTIONS:-}" ]]; then
     echo "ERROR: No Developer ID Application identity found."
-    echo "       \`bun run test:desktop:packaged\` is the strict signed-packaged gate."
+    echo "       \`bun run --cwd packages/app test:desktop:packaged\` is the strict signed-packaged gate."
     echo "       Use \`bun run test:desktop:packaged:unsigned\` for ad-hoc local smoke,"
     echo "       or set ELECTROBUN_DEVELOPER_ID / ELECTROBUN_SKIP_CODESIGN explicitly."
     exit 1

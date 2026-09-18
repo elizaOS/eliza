@@ -14,13 +14,15 @@
 
 import {
   ElizaError,
-  fetchRemoteMedia,
   isElizaError,
   logger,
   nodeLookupFn,
   nodePinnedFetch,
-  VISION_IMAGE_MAX_BYTES,
 } from "@elizaos/core";
+import {
+  fetchRemoteMedia,
+  VISION_IMAGE_MAX_BYTES,
+} from "@elizaos/shared/media";
 import type {
   AudioGenConfig,
   AudioGenProvider,

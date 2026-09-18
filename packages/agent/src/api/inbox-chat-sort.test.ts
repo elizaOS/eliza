@@ -9,7 +9,8 @@
  * that into a 500, so the whole inbox list failed to load.
  */
 import type http from "node:http";
-import type { AgentRuntime, RouteHelpers, UUID } from "@elizaos/core";
+import type { AgentRuntime, UUID } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/shared/api/route-helpers";
 import { describe, expect, it, vi } from "vitest";
 import { handleInboxRoute } from "./inbox-routes";
 

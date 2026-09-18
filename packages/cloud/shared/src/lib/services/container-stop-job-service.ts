@@ -22,7 +22,7 @@
  * load on workerd (the enqueue side never pulls `ssh2`).
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import Decimal from "decimal.js";
 import {
   and,

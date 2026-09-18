@@ -9,7 +9,7 @@
  * scheduler tick and the runner.
  */
 
-import { computeNextCronRunAtMs, stringToUuid } from "@elizaos/core/edge";
+import { computeNextCronRunAtMs, stringToUuid } from "@elizaos/core";
 
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
 import { InvalidLocalTimeError, resolveLocalHHMMToIso } from "./local-time.js";

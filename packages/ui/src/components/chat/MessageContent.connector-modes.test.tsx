@@ -13,7 +13,7 @@
  * shows.
  */
 
-import type { PluginParamDef } from "@elizaos/shared";
+import type { PluginParamDef } from "@elizaos/shared/api/agent-api-types";
 import {
   cleanup,
   fireEvent,

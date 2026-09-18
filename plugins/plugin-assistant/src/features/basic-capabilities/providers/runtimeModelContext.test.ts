@@ -1,0 +1,372 @@
+/**
+ * Tests the RUNTIME_MODEL_CONTEXT provider's slot resolution and gating: reading
+ * configured model slots, using the runtime resolver, provider-declared display
+ * settings, omitting unresolvable slots, and staying silent for non-model or
+ * sub-agent turns. Deterministic — a fake runtime (settings map + `models` map),
+ * toggling `process.env.CODEX_MODEL` to exercise the env fallback; no live model.
+ */
+
+import { describe, expect, it } from "vitest";
+import type { Memory } from "../../../../../../packages/core/src/types/memory.ts";
+import { ModelType } from "../../../../../../packages/core/src/types/model.ts";
+import type { IAgentRuntime } from "../../../../../../packages/core/src/types/runtime.ts";
+import { runtimeModelContextProvider } from "./runtimeModelContext.ts";
+
+function makeRuntime(
+  settings: Record<string, string | undefined>,
+  overrides: Partial<IAgentRuntime> = {},
+): IAgentRuntime {
+  return {
+    getSetting: (key: string) => settings[key] ?? null,
+    models: new Map([
+      [ModelType.RESPONSE_HANDLER, [{ provider: "openai" }]],
+      [ModelType.ACTION_PLANNER, [{ provider: "openai" }]],
+    ]),
+    ...overrides,
+  } as unknown as IAgentRuntime;
+}
+
+function makeMessage(
+  text: string,
+  content: Partial<Memory["content"]> = {},
+): Memory {
+  return {
+    content: { text, ...content },
+  } as Memory;
+}
+
+describe("runtimeModelContextProvider", () => {
+  it("exposes configured runtime model slots for self-model questions", async () => {
+    const runtime = makeRuntime({
+      OPENAI_SMALL_MODEL: "gpt-oss-120b",
+      OPENAI_MEDIUM_MODEL: "gpt-oss-120b",
+      OPENAI_LARGE_MODEL: "gpt-oss-120b",
+      OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
+      ELIZA_DEFAULT_AGENT_TYPE: "elizaos",
+      ELIZA_CODE_MODEL_POWERFUL: "gpt-oss-120b",
+      ELIZA_CODE_BASE_URL: "https://api.cerebras.ai/v1",
+    });
+
+    const result = await runtimeModelContextProvider.get(
+      runtime,
+      makeMessage("what model are you using?"),
+      {} as never,
+    );
+
+    expect(result.text).toContain("Response handler model: gpt-oss-120b");
+    expect(result.text).toContain("Action planner model: gpt-oss-120b");
+    expect(result.text).toContain("Response handler provider adapter: openai");
+    expect(result.text).toContain(
+      "Response handler endpoint host: api.cerebras.ai",
+    );
+    expect(result.text).toContain("Default coding sub-agent: elizaos");
+    expect(result.text).toContain("Eliza Code model: gpt-oss-120b");
+    expect(result.text).toContain("Eliza Code endpoint host: api.cerebras.ai");
+    expect(result.text).not.toContain("Claude 3.5");
+    expect(result.data?.responseHandlerModel).toBe("gpt-oss-120b");
+    expect(result.data?.responseHandlerEndpointHost).toBe("api.cerebras.ai");
+  });
+
+  it("uses the runtime resolver when available", async () => {
+    const runtime = makeRuntime({}, {
+      resolveProviderModelString: (modelType: string) =>
+        modelType === ModelType.RESPONSE_HANDLER
+          ? "resolved-response-model"
+          : `resolved-${modelType}`,
+    } as Partial<IAgentRuntime>);
+
+    const result = await runtimeModelContextProvider.get(
+      runtime,
+      makeMessage("which provider powers the agent right now?"),
+      {} as never,
+    );
+
+    expect(result.data?.responseHandlerModel).toBe("resolved-response-model");
+    expect(result.text).toContain(
+      "Action planner model: resolved-ACTION_PLANNER",
+    );
+  });
+
+  it("resolves provider-declared display model settings from env", async () => {
+    // Some providers register every slot against one underlying model setting
+    // rather than per-slot *_MODEL keys. Provider-owned metadata declares that
+    // setting so core does not branch on provider names.
+    const runtime = makeRuntime({}, {
+      models: new Map([
+        [
+          ModelType.RESPONSE_HANDLER,
+          [
+            {
+              metadata: { displayModelSetting: "CODEX_MODEL" },
+              provider: "subscription-provider",
+            },
+          ],
+        ],
+        [
+          ModelType.ACTION_PLANNER,
+          [
+            {
+              metadata: { displayModelSetting: "CODEX_MODEL" },
+              provider: "subscription-provider",
+            },
+          ],
+        ],
+      ]),
+    } as Partial<IAgentRuntime>);
+
+    const prev = process.env.CODEX_MODEL;
+    process.env.CODEX_MODEL = "gpt-5.5";
+    try {
+      const result = await runtimeModelContextProvider.get(
+        runtime,
+        makeMessage("what model are you using?"),
+        {} as never,
+      );
+      expect(result.text).toContain("Response handler model: gpt-5.5");
+      expect(result.data?.responseHandlerModel).toBe("gpt-5.5");
+      expect(result.text).not.toContain("RESPONSE_HANDLER");
+    } finally {
+      if (prev === undefined) delete process.env.CODEX_MODEL;
+      else process.env.CODEX_MODEL = prev;
+    }
+  });
+
+  it("resolves ordered provider settings from the per-agent runtime before defaults", async () => {
+    const runtime = makeRuntime(
+      {
+        ELIZA_CLI_CLAUDE_MODEL: "character-large",
+        ELIZA_CLI_CLAUDE_PLANNER_MODEL: "character-planner",
+      },
+      {
+        models: new Map([
+          [
+            ModelType.RESPONSE_HANDLER,
+            [
+              {
+                metadata: {
+                  displayModelSettings: ["ELIZA_CLI_CLAUDE_MODEL"],
+                  displayModelDefault: "claude-opus-4-8",
+                },
+                provider: "cli-inference",
+              },
+            ],
+          ],
+          [
+            ModelType.ACTION_PLANNER,
+            [
+              {
+                metadata: {
+                  displayModelSettings: [
+                    "ELIZA_CLI_CLAUDE_PLANNER_MODEL",
+                    "ELIZA_CLI_CLAUDE_MODEL",
+                  ],
+                  displayModelDefault: "claude-opus-4-8",
+                },
+                provider: "cli-inference",
+              },
+            ],
+          ],
+        ]),
+      } as Partial<IAgentRuntime>,
+    );
+
+    const previousLarge = process.env.ELIZA_CLI_CLAUDE_MODEL;
+    const previousPlanner = process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL;
+    process.env.ELIZA_CLI_CLAUDE_MODEL = "host-large";
+    process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL = "host-planner";
+    try {
+      const result = await runtimeModelContextProvider.get(
+        runtime,
+        makeMessage("what model are you using?"),
+        {} as never,
+      );
+      expect(result.data?.responseHandlerModel).toBe("character-large");
+      expect(result.data?.actionPlannerModel).toBe("character-planner");
+    } finally {
+      if (previousLarge === undefined)
+        delete process.env.ELIZA_CLI_CLAUDE_MODEL;
+      else process.env.ELIZA_CLI_CLAUDE_MODEL = previousLarge;
+      if (previousPlanner === undefined)
+        delete process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL;
+      else process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL = previousPlanner;
+    }
+  });
+
+  it("does not use provider-name branches for display model settings", async () => {
+    const runtime = makeRuntime({}, {
+      models: new Map([
+        [ModelType.RESPONSE_HANDLER, [{ provider: "codex-cli" }]],
+        [ModelType.ACTION_PLANNER, [{ provider: "codex-cli" }]],
+      ]),
+    } as Partial<IAgentRuntime>);
+
+    const prev = process.env.CODEX_MODEL;
+    process.env.CODEX_MODEL = "gpt-5.5";
+    try {
+      const result = await runtimeModelContextProvider.get(
+        runtime,
+        makeMessage("what model are you using?"),
+        {} as never,
+      );
+      expect(result.text).not.toContain("gpt-5.5");
+      expect(result.data?.responseHandlerModel).toBeUndefined();
+    } finally {
+      if (prev === undefined) delete process.env.CODEX_MODEL;
+      else process.env.CODEX_MODEL = prev;
+    }
+  });
+
+  it("omits an unresolvable slot instead of leaking its raw name", async () => {
+    // On a non-codex backend the resolver returns the raw slot name
+    // ("RESPONSE_HANDLER") for a slot it can't map. Resolve from the
+    // configured *_MODEL keys (ACTION_PLANNER here) and OMIT a slot that
+    // stays unresolvable, rather than rendering its raw name to the user.
+    const runtime = makeRuntime(
+      {
+        ANTHROPIC_ACTION_PLANNER_MODEL: "claude-opus-4-8",
+      },
+      {
+        resolveProviderModelString: (modelType: string) => modelType,
+        models: new Map([
+          [ModelType.RESPONSE_HANDLER, [{ provider: "anthropic" }]],
+          [ModelType.ACTION_PLANNER, [{ provider: "anthropic" }]],
+        ]),
+      } as unknown as Partial<IAgentRuntime>,
+    );
+    const result = await runtimeModelContextProvider.get(
+      runtime,
+      makeMessage("what model are you running on?"),
+      {} as never,
+    );
+    expect(result.text).not.toContain("RESPONSE_HANDLER");
+    expect(result.text).toContain("claude-opus-4-8");
+    expect(result.data?.responseHandlerModel).toBeUndefined();
+  });
+
+  it("reports the winning provider's declared model, not a losing provider's default", async () => {
+    // Live multi-provider scenario: elizaOSCloud (priority 50) wins every slot
+    // and declares the concrete model it resolves (ELIZAOS_CLOUD_*_MODEL) via
+    // `metadata.displayModel` at registration. plugin-anthropic (a losing,
+    // lower-priority registration) also has ANTHROPIC_*_MODEL set, so the fixed
+    // OLLAMA_/OPENAI_/ANTHROPIC_/'' resolver walk (mirrored below) leaks
+    // claude-opus-4-6 for TEXT_LARGE. The provider must report the winner's
+    // declared model, never the losing resolver leak. The provider name
+    // "elizaOSCloud" deliberately does NOT map to the env prefix ELIZAOS_CLOUD_
+    // by string transform — proving the fix keys off the registration metadata,
+    // not a derived prefix.
+    const settings: Record<string, string> = {
+      ANTHROPIC_LARGE_MODEL: "claude-opus-4-6",
+      ANTHROPIC_SMALL_MODEL: "claude-sonnet-4-6",
+    };
+    const suffixOf: Record<string, string> = {
+      [ModelType.TEXT_LARGE]: "LARGE_MODEL",
+      [ModelType.TEXT_SMALL]: "SMALL_MODEL",
+      [ModelType.RESPONSE_HANDLER]: "RESPONSE_HANDLER_MODEL",
+      [ModelType.ACTION_PLANNER]: "ACTION_PLANNER_MODEL",
+    };
+    const runtime = makeRuntime(settings, {
+      // mirror the real runtime resolver: fixed OLLAMA_/OPENAI_/ANTHROPIC_/''
+      // walk that would leak ANTHROPIC_LARGE_MODEL for TEXT_LARGE.
+      resolveProviderModelString: (modelType: string) => {
+        const suffix = suffixOf[modelType];
+        if (!suffix) return modelType;
+        for (const p of ["OLLAMA_", "OPENAI_", "ANTHROPIC_", ""]) {
+          const v = settings[`${p}${suffix}`];
+          if (v) return v;
+        }
+        return modelType;
+      },
+      // elizaOSCloud wins each slot (index 0) and declares its resolved model
+      // via metadata.displayModel — exactly as registerTextInferenceModels does.
+      models: new Map([
+        [
+          ModelType.TEXT_LARGE,
+          [
+            {
+              provider: "elizaOSCloud",
+              metadata: { displayModel: "cerebras:zai-glm-4.7" },
+            },
+            { provider: "anthropic" },
+          ],
+        ],
+        [
+          ModelType.TEXT_SMALL,
+          [
+            {
+              provider: "elizaOSCloud",
+              metadata: { displayModel: "gemma-4-31b" },
+            },
+            { provider: "anthropic" },
+          ],
+        ],
+        [
+          ModelType.RESPONSE_HANDLER,
+          [
+            {
+              provider: "elizaOSCloud",
+              metadata: { displayModel: "cerebras:zai-glm-4.7" },
+            },
+          ],
+        ],
+        [
+          ModelType.ACTION_PLANNER,
+          [
+            {
+              provider: "elizaOSCloud",
+              metadata: { displayModel: "cerebras:zai-glm-4.7" },
+            },
+          ],
+        ],
+      ]),
+    } as unknown as Partial<IAgentRuntime>);
+
+    const result = await runtimeModelContextProvider.get(
+      runtime,
+      makeMessage("what models are you using?"),
+      {} as never,
+    );
+    expect(result.data?.textLargeModel).toBe("cerebras:zai-glm-4.7");
+    expect(result.data?.textSmallModel).toBe("gemma-4-31b");
+    expect(result.text).not.toContain("claude-opus-4-6");
+    expect(result.text).not.toContain("claude-sonnet-4-6");
+    expect(result.data?.responseHandlerModel).toBe("cerebras:zai-glm-4.7");
+  });
+
+  it("stays silent for unrelated live-data questions", async () => {
+    const runtime = makeRuntime({
+      OPENAI_LARGE_MODEL: "gpt-oss-120b",
+      ELIZA_DEFAULT_AGENT_TYPE: "elizaos",
+    });
+
+    const result = await runtimeModelContextProvider.get(
+      runtime,
+      makeMessage("what is the current BTC price in USD?"),
+      {} as never,
+    );
+
+    expect(result.text).toBe("");
+    expect(result.data).toEqual({});
+  });
+
+  it("stays silent for sub-agent completion transcripts", async () => {
+    const runtime = makeRuntime({
+      OPENAI_LARGE_MODEL: "gpt-oss-120b",
+      ELIZA_DEFAULT_AGENT_TYPE: "elizaos",
+    });
+
+    const result = await runtimeModelContextProvider.get(
+      runtime,
+      makeMessage(
+        "[sub-agent: Build a static web app (elizaos) — task_complete]\nCreated files and verified https://example.test/apps/demo/",
+        {
+          source: "sub_agent",
+          metadata: { subAgent: true, subAgentEvent: "task_complete" },
+        },
+      ),
+      {} as never,
+    );
+
+    expect(result.text).toBe("");
+    expect(result.data).toEqual({});
+  });
+});

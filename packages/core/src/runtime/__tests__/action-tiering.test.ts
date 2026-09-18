@@ -3,13 +3,13 @@
  * deterministic retrieval results; no model or transport is involved.
  */
 import { describe, expect, it } from "vitest";
-import { buildActionCatalog } from "../action-catalog";
-import type { ActionRetrievalResult } from "../action-retrieval";
+import { buildActionCatalog } from "../../../../../plugins/plugin-assistant/src/runtime/action-catalog.ts";
+import type { ActionRetrievalResult } from "../../../../../plugins/plugin-assistant/src/runtime/action-retrieval.ts";
 import {
 	stableActionSurfaceHash,
 	TIER0_PROTOCOL_ACTIONS,
 	tierActionResults,
-} from "../action-tiering";
+} from "../../../../../plugins/plugin-assistant/src/runtime/action-tiering.ts";
 
 const actions = [
 	{
@@ -45,9 +45,7 @@ describe("complete action surface", () => {
 		});
 
 		expect(surface.protocolActions).toEqual(TIER0_PROTOCOL_ACTIONS);
-		expect(surface.tierBParents).toEqual([]);
-		expect(surface.tierCParents).toEqual([]);
-		expect(surface.omittedParentNames).toEqual([]);
+
 		expect(surface.exposedParentNames).toHaveLength(catalog.parents.length);
 		expect(surface.exposedActionNames).toEqual(
 			expect.arrayContaining([
@@ -102,7 +100,7 @@ describe("complete action surface", () => {
 		).toEqual(["EMAIL", "MUSIC"]);
 	});
 
-	it("ignores legacy parent, child, threshold, and candidate caps", () => {
+	it("exposes every parent and child in a large catalog", () => {
 		const manyChildren = Array.from({ length: 24 }, (_, index) => ({
 			name: `CHILD_${String(index).padStart(2, "0")}`,
 			description: `Child ${index}`,
@@ -123,12 +121,6 @@ describe("complete action surface", () => {
 		const surface = tierActionResults({
 			catalog,
 			results: [],
-			tierAThreshold: 1,
-			tierBThreshold: 1,
-			maxTierAParents: 1,
-			maxTierBParents: 1,
-			maxTierAChildrenPerParent: 1,
-			narrowToCandidateActions: ["PARENT_00"],
 		});
 		const large = surface.tierAParents.find(
 			(parent) => parent.name === "LARGE_PARENT",
@@ -136,7 +128,6 @@ describe("complete action surface", () => {
 
 		expect(surface.tierAParents).toHaveLength(catalog.parents.length);
 		expect(large?.childNames).toHaveLength(24);
-		expect(surface.omittedParentNames).toEqual([]);
 	});
 
 	it("assigns zero-score catalog entries deterministic ranks without omitting them", () => {

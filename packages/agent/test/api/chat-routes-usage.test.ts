@@ -98,6 +98,7 @@ describe("generateChatResponse usage reporting", () => {
       },
       messageService: {
         handleMessage: async () => ({
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: "Reply" },
           responseMessages: [],
@@ -147,6 +148,7 @@ describe("generateChatResponse usage reporting", () => {
       },
       messageService: {
         handleMessage: async () => ({
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: "Reply" },
           responseMessages: [],
@@ -178,6 +180,7 @@ describe("generateChatResponse usage reporting", () => {
             },
           });
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: { text: "provider reply" },
             responseMessages: [],
@@ -230,6 +233,7 @@ describe("generateChatResponse usage reporting", () => {
             },
           });
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: { text: isFirst ? "one" : "two" },
             responseMessages: [],
@@ -263,6 +267,7 @@ describe("generateChatResponse usage reporting", () => {
     const runtime = createRuntime({
       messageService: {
         handleMessage: vi.fn(async () => ({
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: "estimated reply" },
           responseMessages: [],
@@ -289,6 +294,7 @@ describe("generateChatResponse usage reporting", () => {
         handleMessage: vi.fn(async (_runtime, _message, callback) => {
           await callback?.({ text: "callback reply", actions: ["REPLY"] });
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: { actions: ["REPLY"], text: "callback reply" },
             responseMessages: [],
@@ -317,6 +323,7 @@ describe("generateChatResponse usage reporting", () => {
         handleMessage: vi.fn(async (_runtime, _message, callback) => {
           await callback?.({ text: "callback reply", actions: ["REPLY"] });
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: { actions: ["REPLY"], text: "callback reply" },
             responseMessages: [],
@@ -345,6 +352,7 @@ describe("generateChatResponse usage reporting", () => {
         handleMessage: vi.fn(async (_runtime, _message, callback) => {
           await callback?.({ text: "callback reply", actions: ["REPLY"] });
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: { actions: ["REPLY"], text: "callback reply" },
             responseMessages: [],
@@ -380,6 +388,7 @@ describe("generateChatResponse usage reporting", () => {
             "SEARCH",
           );
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: { text: "Search complete." },
             responseMessages: [],
@@ -416,6 +425,7 @@ describe("generateChatResponse usage reporting", () => {
             actions: ["REPLY"],
           });
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: {
               actions: ["REPLY"],
@@ -454,6 +464,7 @@ describe("generateChatResponse usage reporting", () => {
             actions: ["REPLY"],
           });
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: {
               actions: ["REPLY"],
@@ -489,6 +500,7 @@ describe("generateChatResponse usage reporting", () => {
             "SENSITIVE_ACTION",
           );
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             mode: "actions",
             responseContent: {
@@ -521,6 +533,7 @@ describe("generateChatResponse usage reporting", () => {
         handleMessage: vi.fn(async (_runtime, _message, callback) => {
           await callback?.({ actions: ["SEARCHING"] }, "SEARCHING");
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: { text: "final reply" },
             responseMessages: [],
@@ -551,6 +564,7 @@ describe("generateChatResponse usage reporting", () => {
           await callback?.({ text: "", attachments: [], source: "voice" });
           await callback?.({ text: "final reply", actions: ["REPLY"] });
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: { text: "final reply", actions: ["REPLY"] },
             responseMessages: [],
@@ -585,6 +599,7 @@ describe("generateChatResponse usage reporting", () => {
             "SEARCH",
           );
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: { text: "streamed final" },
             responseMessages: [],
@@ -621,6 +636,7 @@ describe("generateChatResponse usage reporting", () => {
             "SEARCH",
           );
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: { text: "Search complete." },
             responseMessages: [],
@@ -657,6 +673,7 @@ describe("generateChatResponse usage reporting", () => {
               "SENSITIVE_ACTION",
             );
             return {
+              outcome: { status: "completed" as const, effects: [] },
               didRespond: true,
               responseContent: { text: "claimed success" },
               responseMessages: [],
@@ -688,6 +705,7 @@ describe("generateChatResponse usage reporting", () => {
             transcriptVisibility: "internal",
           });
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: {
               text: inventory,
@@ -731,6 +749,7 @@ describe("generateChatResponse usage reporting", () => {
     const runtime = createRuntime({
       messageService: {
         handleMessage: vi.fn(async () => ({
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: summary },
           responseMessages: [],
@@ -764,6 +783,7 @@ describe("generateChatResponse usage reporting", () => {
     const runtime = createRuntime({
       messageService: {
         handleMessage: vi.fn(async () => ({
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: {
             text: inventory,
@@ -791,6 +811,7 @@ describe("generateChatResponse usage reporting", () => {
     const runtime = createRuntime({
       messageService: {
         handleMessage: vi.fn(async () => ({
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: {
             text: inventory,
@@ -838,6 +859,7 @@ describe("generateChatResponse usage reporting", () => {
       actions: [{ name: "SENSITIVE_ACTION" }],
       messageService: {
         handleMessage: vi.fn(async () => ({
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: {
             text: "Done, I sent the funds.",
@@ -876,6 +898,7 @@ describe("generateChatResponse usage reporting", () => {
             "SEARCHING",
           );
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: {
               text: "Done, I sent the funds.",
@@ -911,6 +934,7 @@ describe("generateChatResponse usage reporting", () => {
             "SENSITIVE_ACTION",
           );
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             mode: "actions",
             responseContent: {
@@ -941,6 +965,7 @@ describe("generateChatResponse usage reporting", () => {
       actions: [{ name: "SENSITIVE_ACTION" }],
       messageService: {
         handleMessage: vi.fn(async () => ({
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           mode: "actions",
           responseContent: {
@@ -977,6 +1002,7 @@ describe("generateChatResponse usage reporting", () => {
       actions: [{ name: "SENSITIVE_ACTION" }],
       messageService: {
         handleMessage: vi.fn(async () => ({
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           mode: "actions",
           responseContent: {
@@ -1013,6 +1039,7 @@ describe("generateChatResponse usage reporting", () => {
             "SENSITIVE_ACTION",
           );
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             mode: "actions",
             responseContent: {
@@ -1045,6 +1072,7 @@ describe("generateChatResponse usage reporting", () => {
       ]),
       messageService: {
         handleMessage: vi.fn(async () => ({
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: {
             text: "Action completed from recorded alias.",
@@ -1073,6 +1101,7 @@ describe("generateChatResponse usage reporting", () => {
       ]),
       messageService: {
         handleMessage: vi.fn(async () => ({
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: {
             text: "Action completed from recorded result.",
@@ -1099,6 +1128,7 @@ describe("generateChatResponse usage reporting", () => {
       actions: [{ name: "CHECK_BALANCE" }],
       messageService: {
         handleMessage: vi.fn(async () => ({
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           mode: "actions",
           responseContent: {

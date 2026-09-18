@@ -6,12 +6,12 @@
  * objects, no model.
  */
 import { describe, expect, it } from "vitest";
-import { HANDLE_RESPONSE_SCHEMA } from "../../actions/to-tool";
 import {
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
 	SIMPLE_CONTEXT_ID,
-} from "../message-handler";
+} from "../../../../../plugins/plugin-assistant/src/runtime/message-handler.ts";
+import { HANDLE_RESPONSE_SCHEMA } from "../../actions/to-tool";
 
 describe("v5 message handler routing", () => {
 	it("returns final reply when contexts is exactly ['simple']", () => {

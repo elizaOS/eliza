@@ -4,7 +4,7 @@
  * returned diagnostics, and response bodies are rejected above a fixed limit.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   canonicalizeRemoteControlValue,
   type EncryptedRemoteControlEnvelope,

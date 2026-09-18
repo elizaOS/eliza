@@ -1,6 +1,7 @@
 /** Exercise the real AI SDK serialization. Only the HTTP response is a fixture;
  * no request may leave the test. Live cache/latency acceptance is separate. */
-import { AgentRuntime, type GenerateTextParams, InMemoryDatabaseAdapter } from "@elizaos/core";
+import { AgentRuntime, type GenerateTextParams } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, expect, it, vi } from "vitest";
 import { buildProviderCachePlan } from "../../../packages/core/src/runtime/provider-cache-plan";
 import { handleTextSmall } from "../models/text";

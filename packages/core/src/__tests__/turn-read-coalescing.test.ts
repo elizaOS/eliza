@@ -9,14 +9,16 @@
  * the real adapter queries; real RECENT_MESSAGES/ATTACHMENTS/FACTS providers
  * for the compose-level proof; no model.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
-import { factsProvider } from "../features/advanced-capabilities/providers/facts";
-import { attachmentsProvider } from "../features/basic-capabilities/providers/attachments";
-import { recentMessagesProvider } from "../features/basic-capabilities/providers/recentMessages";
-import { AgentRuntime } from "../runtime";
+import { factsProvider } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/providers/facts.ts";
+import { attachmentsProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/attachments.ts";
+import { recentMessagesProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/recentMessages.ts";
+import type { AgentRuntime } from "../runtime";
 import type { Character, Memory, Room, UUID } from "../types";
 import { ChannelType } from "../types";
+import { createInitializedRuntime } from "./initialized-runtime";
 
 const WORLD_ID = "33333333-3333-3333-3333-333333333330" as UUID;
 const ROOM_ID = "33333333-3333-3333-3333-333333333331" as UUID;
@@ -56,7 +58,7 @@ async function makeRuntime(): Promise<{
 	counts: AdapterCallCounts;
 }> {
 	const adapter = new InMemoryDatabaseAdapter();
-	const runtime = new AgentRuntime({
+	const runtime = await createInitializedRuntime({
 		character: { name: "coalescing-test" } as Character,
 		adapter,
 		logLevel: "fatal",

@@ -11,7 +11,7 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { resolveSurfaceManifest } from "@elizaos/core";
+import { resolveSurfaceManifest } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import {
   BUILTIN_TAB_METADATA,

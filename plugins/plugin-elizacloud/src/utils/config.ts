@@ -1,10 +1,7 @@
 /** Resolves Cloud model and endpoint settings from runtime and environment state. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger, resolveSetting } from "@elizaos/core";
-import {
-  DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
-  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-} from "@elizaos/core";
+import { DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL, DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import {
   captureDevCloudEnvAuthoritySnapshot,
   type DevCloudEnvAuthority,

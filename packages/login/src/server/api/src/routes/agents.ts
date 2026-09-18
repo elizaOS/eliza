@@ -4,7 +4,7 @@
  * Mount: app.route("/agents", agentRoutes)
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { and, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import {

@@ -23,7 +23,7 @@
  */
 
 import { performance } from "node:perf_hooks";
-import { InMemoryDatabaseAdapter } from "../../core/src/database/inMemoryAdapter";
+import { InMemoryDatabaseAdapter } from "@elizaos/plugin-inmemorydb/runtime";
 import { AgentRuntime } from "../../core/src/runtime";
 import { runWithStreamingContext } from "../../core/src/streaming-context";
 import { ModelType } from "../../core/src/types";

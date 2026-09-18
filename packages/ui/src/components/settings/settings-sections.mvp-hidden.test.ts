@@ -9,7 +9,7 @@
  * consolidation promoted the cloud sections to `viewKind: "release"`, so it is
  * public. Its gating is pinned by `register-cloud-settings.test.ts`.
  */
-import { isViewVisible } from "@elizaos/core";
+import { isViewVisible } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import { getAllSettingsSections } from "./settings-sections";
 

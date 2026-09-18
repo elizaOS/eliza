@@ -1,7 +1,7 @@
 /** Attacks receipt fabrication, replay, tenant isolation, and denial at the real fake-upstream boundary. */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { normalizeEffectReceipt } from "@elizaos/core";
+import { normalizeEffectReceipt } from "@elizaos/common";
 import {
   type RunningFakeProvider,
   startFakeProvider,

@@ -6,7 +6,7 @@
 // regardless of the boot route; this drives the extracted hydration policy with
 // a fake client and asserts that guarantee directly (not via the overlay, which
 // only renders whatever messages already exist).
-import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/common";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../api";
 import {

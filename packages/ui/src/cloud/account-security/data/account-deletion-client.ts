@@ -14,7 +14,7 @@ import type {
   AccountDeletionAcceptedDto,
   AccountDeletionStatusDto,
 } from "@elizaos/cloud-shared/types/account-lifecycle";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { shellLocalStorage } from "../../../surface-realm-channel";
 import { api, apiFetch } from "../../lib/api-client";
 import { signOutFromSsoBridgedHost } from "../../sso-bridge/sso-bridge";

@@ -6,7 +6,7 @@
  * and a mocked `fetch` to assert payload shape, method call ordering, and bearer
  * auth without a live endpoint.
  */
-import { CAPABILITY_ROUTER_PROTOCOL_FIXTURE } from "@elizaos/core";
+import { CAPABILITY_ROUTER_PROTOCOL_FIXTURE } from "@elizaos/testing/capability-protocol-fixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildCapabilityRouterConnectPayload,

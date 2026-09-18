@@ -1,18 +1,17 @@
 // Wires hosted Eliza agent webSearch behavior for cloud runtime services.
+
+import { type Content, type ContentValue, type Memory } from "@elizaos/common";
 import {
   Action,
   type ActionResult,
-  type Content,
-  type ContentValue,
-  composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
-  type Memory,
   ModelType,
-  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
+import { composePromptFromState } from "@elizaos/prompts/rendering";
 import { defineActionParameters } from "../../../plugin-cloud-bootstrap/types";
 import { normalizeCloudActionArgs } from "../../../plugin-cloud-bootstrap/utils/native-planner-guards";
 import { WebSearchService } from "../services/searchService";

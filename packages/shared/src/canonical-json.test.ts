@@ -10,7 +10,7 @@
  *      for it, so compatibility is pinned differentially against a verbatim
  *      copy of the recursion this module replaces.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import {
   AGENT_BACKUP_CANONICAL_JSON,

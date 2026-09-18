@@ -4,9 +4,10 @@
  * room.metadata, hydration on restart, and missing-room handling. The suite
  * uses AgentRuntime and the real in-memory database adapter.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../character.ts";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../runtime.ts";
 import type { Room, UUID } from "../../types/index";
 import type { IAgentRuntime } from "../../types/runtime";

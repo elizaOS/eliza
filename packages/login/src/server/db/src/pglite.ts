@@ -16,7 +16,7 @@ import { chmod, lstat, mkdir, readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { drizzle } from "drizzle-orm/pglite";
 
 import * as schema from "./schema";

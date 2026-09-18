@@ -22,11 +22,12 @@
  */
 
 import { spawn } from "node:child_process";
-import { createConnection, createServer } from "node:net";
+import { createConnection } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { getFreePort } from "../../app/test/utils/get-free-port.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -111,18 +112,6 @@ export function resolveStartupSmokeTiming(env = process.env) {
         );
 
   return { budgetMs, hardKillMs };
-}
-
-function getFreePort() {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address();
-      server.close(() => resolve(port));
-    });
-  });
 }
 
 function waitForPort(port, deadline) {

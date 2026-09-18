@@ -3,7 +3,7 @@
  * across redirects without retaining stale authorization attempts.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing-types";
 import { shellLocalStorage } from "../../surface-realm-channel";
 
 const PREFIX = "eliza.subscription-oauth.v1";

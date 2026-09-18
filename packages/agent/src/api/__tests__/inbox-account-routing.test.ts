@@ -10,11 +10,11 @@ import {
   type Content,
   getConnectorAccountManager,
   InMemoryConnectorAccountStorage,
-  type RouteHelpers,
   type SendHandlerOutcome,
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/shared/api/route-helpers";
 import { describe, expect, it, vi } from "vitest";
 import {
   handleInboxRoute,

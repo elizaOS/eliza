@@ -7,12 +7,14 @@
  * are owned by @elizaos/shared — the React-free canonical home — so this shim
  * registers app surfaces without touching the React package.
  */
+
+export { registerDetailExtension } from "@elizaos/shared/apps/detail-extension-registry";
+export type { AppDetailExtensionProps } from "@elizaos/shared/apps/detail-extension-types";
 export type {
-  AppDetailExtensionProps,
   OverlayApp,
   OverlayAppContext,
-} from "@elizaos/shared";
-export { registerDetailExtension, registerOverlayApp } from "@elizaos/shared";
+} from "@elizaos/shared/apps/overlay-app-api";
+export { registerOverlayApp } from "@elizaos/shared/apps/overlay-app-registry";
 // Everything below re-exports from its narrow `@elizaos/ui` subpath rather than
 // the root barrel. The barrel (`@elizaos/ui`) eagerly evaluates the entire
 // frontend component graph, and this shim is reachable from the Node

@@ -3,7 +3,7 @@
  * and the canonical `TOAST_TTL_MS` timing values the shell surfaces rely on.
  * Pure functions, no harness.
  */
-import type { NotificationPriority } from "@elizaos/core";
+import type { NotificationPriority } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import { TOAST_TTL_MS, toastToneForPriority } from "./action-notice";
 

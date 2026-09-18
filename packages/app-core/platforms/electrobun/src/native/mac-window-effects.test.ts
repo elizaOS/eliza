@@ -1,7 +1,6 @@
 /** Exercises mac-window-effects fallbacks, string ownership, and fn-monitor mapping with deterministic app-core test fixtures. */
 
 import type { Pointer } from "bun:ffi";
-import { assertDlopenPathAllowed } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveNativeLibraryCandidate } from "../../../../src/platform/native-library-policy";
 
@@ -85,10 +84,6 @@ vi.mock("../../../../src/platform/native-library-policy", () => ({
   resolveNativeLibraryCandidate: vi.fn(() => ffi.dylibPath),
 }));
 
-vi.mock("@elizaos/core", () => ({
-  assertDlopenPathAllowed: vi.fn(),
-}));
-
 const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
 
 function stubPlatform(platform: NodeJS.Platform): void {
@@ -127,7 +122,6 @@ beforeEach(() => {
     fn.mockReset();
   }
   vi.mocked(resolveNativeLibraryCandidate).mockClear();
-  vi.mocked(assertDlopenPathAllowed).mockClear();
 });
 
 afterEach(() => {
@@ -181,7 +175,6 @@ describe("mac-window-effects unavailable fallbacks", () => {
     expect(effects.getFnSystemUsageType()).toBe(-1);
     expect(effects.checkNotificationPermission()).toBeNull();
     expect(ffi.dlopen).not.toHaveBeenCalled();
-    expect(assertDlopenPathAllowed).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("Dylib not found at"),
     );
@@ -233,7 +226,6 @@ describe("mac-window-effects loaded native mapping", () => {
         elizaFnMonitorPoll: expect.any(Object),
       }),
     );
-    expect(assertDlopenPathAllowed).toHaveBeenCalledWith(ffi.dylibPathDefault);
     expect(resolveNativeLibraryCandidate).toHaveBeenCalledWith(
       expect.objectContaining({
         label: "bundled Mac window effects library",

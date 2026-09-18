@@ -3,20 +3,20 @@
  * cached planning context cannot leak back into a later response decision.
  * Uses an in-memory runtime and counting providers; no model or network. */
 import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
-import { userPersonalityProvider } from "../features/advanced-capabilities/personality/providers/user-personality";
-import { PersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store";
-import { botAwarenessProvider } from "../features/basic-capabilities/providers/botAwareness";
-import { choiceProvider } from "../features/basic-capabilities/providers/choice";
-import { AgentRuntime } from "../runtime";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { userPersonalityProvider } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/providers/user-personality";
+import { PersonalityStore } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/services/personality-store";
+import { botAwarenessProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/botAwareness";
+import { choiceProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/choice";
+import { createInitializedRuntime } from "./initialized-runtime";
 import { renderContextObject } from "../runtime/context-renderer";
-import { stage1ResponseStateProviderNames } from "../services/message";
-import { createV5MessageContextObject } from "../services/message/context-assembly";
+import { stage1ResponseStateProviderNames } from "../../../../plugins/plugin-assistant/src/services/message";
+import { createV5MessageContextObject } from "../../../../plugins/plugin-assistant/src/services/message/context-assembly";
 import {
 	composeResponseState,
 	selectV5PlannerStateProviderNames,
-} from "../services/message/provider-state";
-import { renderMessageHandlerModelInput } from "../services/message/stage1-input";
+} from "../../../../plugins/plugin-assistant/src/services/message/provider-state";
+import { renderMessageHandlerModelInput } from "../../../../plugins/plugin-assistant/src/services/message/stage1-input";
 import type { Character, Content, Memory, Provider, UUID } from "../types";
 import { ChannelType } from "../types";
 
@@ -56,7 +56,7 @@ function countingProvider(name: string): {
 
 describe("stage1ResponseStateProviderNames", () => {
 	it("composes the actual user's saved style before context selection without exposing another user's slot", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createInitializedRuntime({
 			character: { name: "preference-stage1" } as Character,
 			adapter: new InMemoryDatabaseAdapter(),
 		});
@@ -93,7 +93,7 @@ describe("stage1ResponseStateProviderNames", () => {
 	it.each([ChannelType.DM, ChannelType.GROUP, ChannelType.VOICE_DM])(
 		"defers domain providers until planning on %s and preserves complete dialogue",
 		async (channelType) => {
-			const runtime = new AgentRuntime({
+			const runtime = await createInitializedRuntime({
 				character: { name: "context-test", system: "Be precise." } as Character,
 			});
 			const dialogue =
@@ -212,7 +212,7 @@ describe("stage1ResponseStateProviderNames", () => {
 	);
 
 	it("renders stored pending choices and incoming selected values before a reply decision", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createInitializedRuntime({
 			character: { name: "choices" } as Character,
 			adapter: new InMemoryDatabaseAdapter(),
 		});
@@ -261,7 +261,7 @@ describe("stage1ResponseStateProviderNames", () => {
 	it.each(["USER", "OWNER"] as const)(
 		"advertises standalone memory search only when its %s gate permits the caller",
 		async (minRole) => {
-			const runtime = new AgentRuntime({
+			const runtime = await createInitializedRuntime({
 				character: { name: "recall" } as Character,
 			});
 			runtime.registerAction({
@@ -292,7 +292,7 @@ describe("stage1ResponseStateProviderNames", () => {
 	);
 
 	it("renders bot-loop evidence before deciding on a group reply, but stays inert for humans", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createInitializedRuntime({
 			character: { name: "bot-awareness" } as Character,
 			adapter: new InMemoryDatabaseAdapter(),
 		});
@@ -342,7 +342,7 @@ describe("stage1ResponseStateProviderNames", () => {
 	});
 
 	it("does not render unattributed cached planning state as response context", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createInitializedRuntime({
 			character: { name: "context-test" } as Character,
 		});
 		const message = makeMessage(

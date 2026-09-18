@@ -8,12 +8,13 @@
  */
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import type { AgentRuntime } from "@elizaos/core";
 import type {
-  AgentRuntime,
   Route,
   RouteRequest,
   RouteResponse,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createConnectorHealthMonitor,
@@ -78,7 +79,9 @@ function publicGet(path: string): Route {
 }
 
 function runtimeWithRoutes(routes: Route[]): AgentRuntime {
-  return { routes } as AgentRuntime;
+  const runtime = {} as AgentRuntime;
+  getHttpRuntime(runtime).routes = routes;
+  return runtime;
 }
 
 describe("isPublicRuntimePluginRoute", () => {
@@ -656,17 +659,16 @@ describe("tryHandleRuntimePluginRoute forwards a matching plugin route", () => {
   });
 
   it("dispatches a legacy handler through the lazy wrapper", async () => {
-    const runtime = {
-      routes: [
-        {
-          type: "GET",
-          path: "/plugin/lazy-ping",
-          handler: async (_req: RouteRequest, res: RouteResponse) => {
-            res.json({ ping: true });
-          },
+    const runtime = {} as unknown as AgentRuntime;
+    getHttpRuntime(runtime).routes = [
+      {
+        type: "GET",
+        path: "/plugin/lazy-ping",
+        handler: async (_req: RouteRequest, res: RouteResponse) => {
+          res.json({ ping: true });
         },
-      ],
-    } as unknown as AgentRuntime;
+      },
+    ] as Route[];
 
     const server = http.createServer(async (req, res) => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");

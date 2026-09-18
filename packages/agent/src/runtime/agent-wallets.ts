@@ -19,13 +19,13 @@
  */
 
 import { logger } from "@elizaos/core";
-import type { WalletChain } from "@elizaos/shared";
 import {
   removeEntryMeta,
   setEntryMeta,
   type Vault,
   VaultDecryptionError,
-} from "@elizaos/vault";
+} from "@elizaos/credentials/vault";
+import type { WalletChain } from "@elizaos/shared";
 import { deriveEvmAddress, generateWalletForChain } from "../api/wallet.ts";
 import { teeBootGateBlocksSecrets } from "../services/tee-boot-gate-state.ts";
 

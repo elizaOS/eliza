@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { ElizaError, isElizaError } from "@elizaos/core";
+import { ElizaError, isElizaError } from "@elizaos/common";
 import {
   onboardingCoordinatorErrorResponse,
   readOnboardingCoordinatorResult,

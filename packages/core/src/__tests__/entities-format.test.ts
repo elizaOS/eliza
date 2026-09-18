@@ -3,7 +3,7 @@
  * membership. Pure deterministic function test.
  */
 import { describe, expect, it } from "vitest";
-import { formatEntities } from "../entities.ts";
+import { formatEntities } from "../../../../plugins/plugin-assistant/src/entities.ts";
 import type { Entity } from "../types/index.ts";
 
 describe("formatEntities", () => {

@@ -5,7 +5,7 @@
  * the one-shot banner `beforeAll` gate, and the root-only Examples/`afterAll`
  * block. Does not mock the module under test or commander.
  */
-import { theme } from "@elizaos/shared";
+import { theme } from "@elizaos/shared/terminal/theme";
 import { Command, CommanderError } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

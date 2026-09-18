@@ -6,7 +6,7 @@
  * rethrows any real failure — short-circuiting the remaining contributors.
  */
 import type { AgentRuntime } from "@elizaos/core";
-import { OptionalAppRoutePluginUnavailableError } from "@elizaos/core";
+import { OptionalAppRoutePluginUnavailableError } from "@elizaos/shared/api/app-route-plugin-registry";
 import { describe, expect, it, vi } from "vitest";
 
 import { drainRuntimeHookContributors } from "./startup/app-contributors.ts";

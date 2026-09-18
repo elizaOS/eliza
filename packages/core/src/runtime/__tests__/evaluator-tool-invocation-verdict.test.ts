@@ -7,7 +7,10 @@
  * coverage: no runtime, model, or database.
  */
 import { describe, expect, it, vi } from "vitest";
-import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
+import {
+	parseEvaluatorOutput,
+	runEvaluator,
+} from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
 
 describe("parseEvaluatorOutput: tool invocation instead of a verdict", () => {
 	it("treats native XML tool markup as CONTINUE without a protocol failure", () => {

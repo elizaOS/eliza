@@ -32,7 +32,7 @@ export default defineConfig({
         // PGlite instead of falling through to plugin-sql's absent dist entry.
         find: /^@elizaos\/plugin-sql$/,
         replacement: fileURLToPath(
-          new URL("../../../plugins/plugin-sql/src/index.node.ts", import.meta.url),
+          new URL("../../../plugins/plugin-sql/src/index.ts", import.meta.url),
         ),
       },
     ],

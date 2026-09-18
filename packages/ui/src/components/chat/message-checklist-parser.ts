@@ -18,7 +18,7 @@
  * same `PlanChecklist` component the live task pipeline uses.
  */
 
-import type { SwarmActivityPlanEntry } from "@elizaos/core";
+import type { SwarmActivityPlanEntry } from "@elizaos/common";
 
 /** Hard cap so a runaway agent can't render an unbounded checklist. */
 export const MAX_CHECKLIST_ITEMS = 40;

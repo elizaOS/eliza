@@ -10,7 +10,7 @@
  * below is the inverse: it rewrites literal name occurrences back into
  * `{{name}}` tokens so a later rename keeps propagating.
  */
-export { replaceIndexedNameTokens, replaceNameTokens } from "@elizaos/core";
+export { replaceIndexedNameTokens, replaceNameTokens } from "@elizaos/common";
 
 /**
  * Reverse of `replaceNameTokens` — rewrite whole-word occurrences of the

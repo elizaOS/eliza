@@ -3,7 +3,7 @@
  * routes and negative coverage for enrollments with no spawn implementation.
  */
 
-import { LINKED_ACCOUNT_PROVIDER_IDS } from "@elizaos/core";
+import { LINKED_ACCOUNT_PROVIDER_IDS } from "@elizaos/shared/contracts/service-routing";
 import { describe, expect, it } from "vitest";
 import {
   CODING_AGENT_BACKEND_PREFLIGHTS,

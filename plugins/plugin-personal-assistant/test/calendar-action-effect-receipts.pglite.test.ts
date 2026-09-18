@@ -12,9 +12,9 @@ import {
   executePlannedToolCall,
   type Memory,
   promoteSubactionsToActions,
-  SECRETS_SERVICE_TYPE,
   type UUID,
 } from "@elizaos/core";
+import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 import {
   type CalendarHostGate,
   CalendarRepository,

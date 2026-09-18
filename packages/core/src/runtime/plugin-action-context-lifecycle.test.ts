@@ -68,7 +68,7 @@ describe("plugin action context lifecycle", () => {
 		const ownerResult = await executePlannedToolCall(
 			runtime,
 			{
-				message: makeMessage(),
+				message: { ...makeMessage(), entityId: runtime.agentId },
 				activeContexts: ["owner_context_plugin"],
 				userRoles: ["OWNER"],
 			},

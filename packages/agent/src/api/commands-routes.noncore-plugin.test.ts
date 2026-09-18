@@ -23,8 +23,8 @@ import type {
   Memory,
   Plugin,
 } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/core/testing";
 import { initForRuntime } from "@elizaos/plugin-commands";
+import { createMockRuntime } from "@elizaos/testing";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   ORCHESTRATOR_STATUS_COMMAND_ACTION,

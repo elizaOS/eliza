@@ -5,14 +5,17 @@ import path from "node:path";
 import {
   AgentRuntime,
   createCharacter,
-  evaluatePlannedReplyEgress,
   executePlannedToolCall,
   type IAgentRuntime,
-  plannedReplyHasClaimGroundingReceipt,
   stringToUuid,
 } from "@elizaos/core";
+import {
+  evaluatePlannedReplyEgress,
+  plannedReplyHasClaimGroundingReceipt,
+} from "@elizaos/plugin-assistant";
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, expect, test } from "vitest";
-import { runPlannerLoop } from "../../../../packages/core/src/runtime/planner-loop.js";
+import { runPlannerLoop } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
 import { notesAction } from "../action.js";
 import { notesPlugin } from "../plugin.js";
 import { NotesService } from "../service.js";
@@ -36,12 +39,11 @@ async function setup() {
   const runtime = new AgentRuntime({
     agentId: stringToUuid(directory),
     character: createCharacter({ name: "Notes read proof" }),
-    disableBasicCapabilities: true,
     enableAutonomy: false,
     logLevel: "fatal",
   });
   runtimes.push(runtime);
-  await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+  await initializeTestRuntime(runtime, { skipMigrations: true });
   class PersistedNotes extends NotesService {
     static override async start(owner: IAgentRuntime) {
       const service = new NotesService(owner, {

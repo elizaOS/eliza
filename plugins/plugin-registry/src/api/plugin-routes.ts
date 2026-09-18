@@ -28,10 +28,8 @@ import {
   validatePluginConfig,
 } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
-import {
-  logger,
-  resolveNativeRuntimeFeatureFromPluginName,
-} from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { resolveNativeRuntimeFeatureFromPluginName } from "@elizaos/plugin-assistant";
 import type { PluginParamDef, ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   asRecord,

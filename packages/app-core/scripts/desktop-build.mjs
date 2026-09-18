@@ -228,7 +228,7 @@ const PLUGIN_NATIVE_ACTIVITY_TRACKER_PACKAGE_DIR = resolveWorkspacePluginDir(
 const PLUGIN_SQL_PACKAGE_DIR = resolveWorkspacePluginDir("plugin-sql");
 const SHARED_PACKAGE_DIR = resolveWorkspacePackageDir("shared");
 const UI_PACKAGE_DIR = resolveWorkspacePackageDir("ui");
-const VAULT_PACKAGE_DIR = resolveWorkspacePackageDir("vault");
+const CREDENTIALS_PACKAGE_DIR = resolveWorkspacePackageDir("credentials");
 const DESKTOP_BUILD_TMP_DIR = path.join(ELECTROBUN_DIR, "tmp");
 const DESKTOP_BUILD_BUN_CACHE_DIR = path.join(
   DESKTOP_BUILD_TMP_DIR,
@@ -994,9 +994,8 @@ function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
 function workspaceRuntimePackageMarkersPresent(packageName, distDir) {
   if (packageName === "@elizaos/core") {
     return (
-      fs.existsSync(path.join(distDir, "node", "index.node.js")) &&
-      fs.existsSync(path.join(distDir, "index.node.d.ts")) &&
-      fs.existsSync(path.join(distDir, "testing", "live-provider.d.ts"))
+      fs.existsSync(path.join(distDir, "index.js")) &&
+      fs.existsSync(path.join(distDir, "index.d.ts"))
     );
   }
 
@@ -1043,7 +1042,10 @@ function ensureWorkspaceRuntimePackagesBuilt() {
     "@elizaos/cloud-sdk",
     CLOUD_SDK_PACKAGE_DIR,
   );
-  ensureWorkspaceRuntimePackageBuilt("@elizaos/vault", VAULT_PACKAGE_DIR);
+  ensureWorkspaceRuntimePackageBuilt(
+    "@elizaos/credentials",
+    CREDENTIALS_PACKAGE_DIR,
+  );
   ensureWorkspaceRuntimePackageBuilt(
     "@elizaos/plugin-agent-orchestrator",
     PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR,

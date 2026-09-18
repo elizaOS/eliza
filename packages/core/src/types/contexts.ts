@@ -4,7 +4,6 @@
  * sensitivity/cache scopes, and the `RoleGate` / `ContextGate` shapes that decide
  * which contexts and providers apply to a given turn.
  */
-import type { Role } from "./environment";
 import type { JsonValue } from "./primitives";
 
 export type FirstPartyAgentContext =
@@ -78,20 +77,9 @@ export type CacheScope =
  * runtime. The previous `(string & {})` escape — which let a gate name ANY
  * string and silently rank it 0 — is removed: a gate must name a real tier.
  */
-export type RoleGateRole = Role | "USER";
+export type { RoleGate, RoleGateRole } from "@elizaos/common";
 
-export interface RoleGate {
-	/** Any one of these roles may pass. */
-	roles?: RoleGateRole[];
-	/** Alias for roles, useful for declarative gate objects. */
-	anyOf?: RoleGateRole[];
-	/** All listed roles must be present. */
-	allOf?: RoleGateRole[];
-	/** Any listed role denies access. */
-	noneOf?: RoleGateRole[];
-	/** Caller must have at least this role by rank. */
-	minRole?: RoleGateRole;
-}
+import type { RoleGate } from "@elizaos/common";
 
 export interface ContextGate {
 	/** Backward-compatible shorthand: any listed context may pass. */

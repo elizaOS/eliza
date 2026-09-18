@@ -9,6 +9,8 @@ import {
   collectKeywordTermMatches,
   collectPreparedKeywordTermMatches,
   findKeywordTermMatch,
+  getValidationKeywordLocaleTerms,
+  getValidationKeywordTerms,
   hasPreparedKeywordTermMatch,
   normalizeKeywordMatchText,
   prepareKeywordTerms,
@@ -152,5 +154,27 @@ describe("prepared keyword existence", () => {
     expect([...collectPreparedKeywordTermMatches(texts, prepared)]).toEqual([
       "contact",
     ]);
+  });
+});
+
+describe("application keyword locale boundary", () => {
+  it("normalizes locale aliases while preserving base and translated terms", () => {
+    const key = "action.muteRoom.request";
+    expect(getValidationKeywordTerms(key, { locale: "zh-Hans-CN" })).toEqual(
+      getValidationKeywordTerms(key, { locale: "zh-CN" }),
+    );
+    expect(getValidationKeywordTerms(key, { locale: "zh-Hans-CN" })).toContain(
+      "mute",
+    );
+    expect(getValidationKeywordLocaleTerms(key, "zh-Hans-CN")).toContain(
+      "静音",
+    );
+    expect(getValidationKeywordLocaleTerms(key, { invalid: true })).toEqual([]);
+    expect(
+      getValidationKeywordTerms(key, { includeAllLocales: true }),
+    ).toContain("음소거");
+    expect(() => getValidationKeywordTerms("missing.keyword")).toThrow(
+      "Unknown validation keyword key",
+    );
   });
 });

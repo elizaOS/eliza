@@ -1,18 +1,21 @@
 /**
  * Resolves the repo root from a script's import.meta.url across the two
- * supported layouts: the flat elizaOS monorepo and a consumer repo that vendors
- * it as an eliza/ subrepo (where the outer root wins).
+ * supported layouts: the flat monorepo and generated consumer projects using
+ * installed packages or an eliza/ source checkout (where the outer root wins).
  */
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-function looksLikeElizaSubrepoRoot(dir) {
+function looksLikeConsumerRoot(dir) {
   return (
     existsSync(path.join(dir, "package.json")) &&
     (existsSync(path.join(dir, "packages", "app", "package.json")) ||
       existsSync(path.join(dir, "apps", "app", "package.json"))) &&
-    existsSync(path.join(dir, "eliza", "packages", "app-core", "package.json"))
+    (existsSync(
+      path.join(dir, "eliza", "packages", "app-core", "package.json"),
+    ) ||
+      existsSync(path.join(dir, "scripts", "run-eliza-app-core-script.mjs")))
   );
 }
 
@@ -30,7 +33,7 @@ function looksLikeFlatMonorepoRoot(dir) {
   // Prefer the outer subrepo container in that case.
   if (path.basename(dir) === "eliza") {
     const parent = path.dirname(dir);
-    if (parent !== dir && looksLikeElizaSubrepoRoot(parent)) {
+    if (parent !== dir && looksLikeConsumerRoot(parent)) {
       return false;
     }
   }
@@ -38,7 +41,7 @@ function looksLikeFlatMonorepoRoot(dir) {
 }
 
 function looksLikeRepoRoot(dir) {
-  return looksLikeFlatMonorepoRoot(dir) || looksLikeElizaSubrepoRoot(dir);
+  return looksLikeFlatMonorepoRoot(dir) || looksLikeConsumerRoot(dir);
 }
 
 export function resolveRepoRoot(startDir = process.cwd()) {

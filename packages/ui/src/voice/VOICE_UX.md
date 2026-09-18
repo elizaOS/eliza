@@ -163,7 +163,7 @@ What runs the always-on Stage-A detector on each target, and therefore which pat
 the controller selects:
 
 The live verification surface for this table is
-[`VOICE_LIVE_MATRIX.md`](./VOICE_LIVE_MATRIX.md). `bun run voice:matrix` emits
+[`VOICE_LIVE_MATRIX.md`](./VOICE_LIVE_MATRIX.md). `node packages/app-core/scripts/voice/voice-matrix.mjs` emits
 the reviewer-facing JSON/Markdown/HTML report and records skipped hardware cells
 explicitly instead of treating Linux-only evidence as cross-platform coverage.
 

@@ -18,7 +18,7 @@
  * refresh clears the banner.
  */
 
-import type { MeetingSession } from "@elizaos/shared";
+import type { MeetingSession } from "@elizaos/shared/meetings";
 import type { TranscriptSummary } from "@elizaos/shared/transcripts";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

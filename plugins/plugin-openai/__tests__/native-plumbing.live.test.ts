@@ -77,14 +77,14 @@ describeLive(
       const toolCalls = (result as { toolCalls?: unknown[] }).toolCalls ?? [];
       expect(toolCalls.length).toBeGreaterThan(0);
       expect(toolCalls[0]).toMatchObject({
-        toolName: "SAVE_CONTACT",
-        input: {
+        name: "SAVE_CONTACT",
+        arguments: {
           customFields: expect.objectContaining({
             favoriteColor: "blue",
           }),
         },
       });
-      expect(JSON.stringify((toolCalls[0] as { input?: unknown }).input)).not.toContain(
+      expect(JSON.stringify((toolCalls[0] as { arguments?: unknown }).arguments)).not.toContain(
         "__eliza_record_entries"
       );
     }, 120_000);

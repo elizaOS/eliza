@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { subAgentCompletionRelayBody } from "./services/message.ts";
+import { subAgentCompletionRelayBody } from "../../../plugins/plugin-assistant/src/services/message.ts";
 
 function oldTrunc(s: string, max: number, suffix: string): string {
 	return s.length > max ? s.slice(0, max) + suffix : s;

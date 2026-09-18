@@ -21,6 +21,7 @@ import {
   type ScenarioTurnExecution,
   scenario,
 } from "@elizaos/scenario-runner/schema";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import type { AcpActionService } from "../../../../plugins/plugin-agent-orchestrator/src/actions/common";
 import {
   CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA,
@@ -131,22 +132,24 @@ function createScenarioAcpService(): AcpActionService {
 async function registerScenarioRoutes(
   runtime: RuntimeWithScenarioRoutes,
 ): Promise<void> {
-  runtime.routes ??= [];
-  const hasBridgeRoutes = runtime.routes.some(
+  getHttpRuntime(runtime).routes ??= [];
+  const hasBridgeRoutes = getHttpRuntime(runtime).routes.some(
     (route) =>
       route.path === "/api/coding-agents/:sessionId/credentials/request",
   );
   if (!hasBridgeRoutes && runtime.registerPlugin) {
     await runtime.registerPlugin(codingAgentRoutePlugin);
   } else if (!hasBridgeRoutes) {
-    runtime.routes.push(...(codingAgentRoutePlugin.routes ?? []));
+    getHttpRuntime(runtime).routes.push(
+      ...(codingAgentRoutePlugin.routes ?? []),
+    );
   }
 
-  const hasCredentialTunnelRoute = runtime.routes.some(
+  const hasCredentialTunnelRoute = getHttpRuntime(runtime).routes.some(
     (route) => route.path === "/api/credential-tunnel",
   );
   if (!hasCredentialTunnelRoute) {
-    runtime.routes.push({
+    getHttpRuntime(runtime).routes.push({
       type: "POST",
       path: "/api/credential-tunnel",
       rawPath: true,

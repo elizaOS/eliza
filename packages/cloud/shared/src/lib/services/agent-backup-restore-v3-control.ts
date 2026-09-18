@@ -6,7 +6,7 @@
  * Owned effects may instead join real settlement before cancellation wins.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   AGENT_BACKUP_CAPTURE_V2_LIMITS,
   type AgentBackupRestoreV3OperationControl as AgentBackupRestoreV3OperationControlContract,

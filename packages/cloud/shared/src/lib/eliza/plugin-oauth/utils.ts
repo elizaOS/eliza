@@ -2,7 +2,8 @@
  * Shared utilities for OAuth plugin actions.
  */
 
-import type { ActionResult, Memory, State } from "@elizaos/core";
+import type { Memory } from "@elizaos/common";
+import type { ActionResult, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { type UserWithOrganization, usersRepository } from "../../../db/repositories/users";
 import { getConfiguredOAuthProviders } from "../../services/oauth/provider-registry";

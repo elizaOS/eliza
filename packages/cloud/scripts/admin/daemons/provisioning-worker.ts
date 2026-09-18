@@ -608,7 +608,7 @@ export async function assertProvisioningWorkerPreflight(
   let createKmsClient = opts.createKmsClient;
   let resolveKmsBackend = opts.resolveKmsBackend;
   if (!createKmsClient || !resolveKmsBackend) {
-    const kmsModule = await import("@elizaos/core/security/kms");
+    const kmsModule = await import("@elizaos/credentials/kms");
     createKmsClient ??= kmsModule.createKmsClient;
     resolveKmsBackend ??= (backendOpts) =>
       kmsModule.resolveKmsBackend(backendOpts);
@@ -636,7 +636,7 @@ export async function assertProvisioningWorkerPreflight(
     // packages/core/src/security/kms/key-namespace.ts (`/v<digit>` suffix required).
     // Bare strings like "system:..." now throw `malformed key id` since the
     // strict namespace regex landed in 0330ba3d64.
-    const { systemKey } = await import("@elizaos/core/security/kms");
+    const { systemKey } = await import("@elizaos/credentials/kms");
     await kms.getOrCreateKey(systemKey("provisioning-worker-preflight"));
   } catch (error) {
     const message = formatErrorWithCause(error);

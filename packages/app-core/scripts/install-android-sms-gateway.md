@@ -106,6 +106,10 @@ ready:
 node packages/app-core/scripts/watch-sms-gateway-readiness.mjs
 ```
 
+Set `ADB=/absolute/path/to/adb` to select the Android executable for both the
+watcher and its optional install flow. Without an override the watcher retains
+its Homebrew Android SDK path.
+
 When BlueBubbles becomes ready, the watch command points at the strict
 BlueBubbles verifier rather than directly retrying the queue, so the send and
 pending-count decrease are both checked.

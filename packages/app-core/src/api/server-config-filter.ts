@@ -1,6 +1,6 @@
 /** Config/env filtering — strip sensitive keys from API responses. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 /**
  * Env keys that must never be returned in GET /api/config responses.

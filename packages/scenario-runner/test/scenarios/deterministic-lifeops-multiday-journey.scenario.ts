@@ -43,7 +43,7 @@ import {
 import type {
   RuntimeWithScenarioModelFixtures,
   StrictActionRouteFixture,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import type {
   CapturedAction,
   ScenarioContext,

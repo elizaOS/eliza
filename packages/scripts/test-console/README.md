@@ -3,7 +3,7 @@
 A one-command web console for running the repo's entire test surface locally:
 
 ```bash
-bun run test:console        # → http://127.0.0.1:31338
+node packages/scripts/test-console/server.mjs        # → http://127.0.0.1:31338
 ```
 
 It exists because most "needs-human" verification work is blocked on

@@ -1,242 +1,19 @@
 #!/usr/bin/env node
 /**
- * Guard against the root `package.json` scripts block becoming a dumping ground
- * again (issue #9942). Scans package.json scripts and fails CI when it finds:
- *
- *   (a) ORPHAN root scripts — a root-package.json script that nothing invokes
- *       (no reference in .github/workflows/** or .github/actions/**, in any
- *       other script body, or in the docs / scripts source) AND that is not a
- *       recognised human/CI entrypoint. New scripts dumped into an ad-hoc
- *       namespace, or left behind after the tool they wrapped was deleted, get
- *       caught here.
- *
- *   (b) FAKE-SUCCESS no-ops — a `lint` / `typecheck` / `test` / `build` script
- *       whose body is just `echo "...skip..."`. Those report success while
- *       running nothing, so real lint/type/test/build failures land green.
- *
- *   (c) BROKEN references — a root script whose `--cwd <dir>` does not exist, or
- *       that points `node`/`bun` at a repo file (`*.mjs/.ts/.js/...`) that is
- *       missing. Deleting a tool without deleting its root alias is caught here.
- *
- *   (e) UNJUSTIFIED 1:1 package wrappers — a root script whose entire body is
- *       exactly `bun run --cwd <dir> <script>`. These are allowed only when the
- *       root command is a deliberate cross-package product or CI entrypoint and
- *       is documented below with a reason.
- *
- * Scope:
- *   - (a) orphan: the root package.json scripts block (the dumping ground).
- *   - (b) no-op: first-party shipping packages — root + packages/, plugins/,
- *     apps/ — minus package-owned nested workspaces and
- *     packages/elizaos/templates/**,
- *     which legitimately ship `echo "no toolchain; skipping"` placeholders.
- *   - (c) broken refs: the root scripts block only. Sub-package script paths are
- *     out of scope — the tree holds scaffolding templates and optional nested
- *     local-mode `eliza/` clone paths that are intentionally absent here.
- *
- * Usage:
- *   node packages/scripts/audit-scripts.mjs            # audit the repo, exit 1 on failure
- *   node packages/scripts/audit-scripts.mjs --json     # machine-readable findings
- *   node packages/scripts/audit-scripts.mjs --root DIR # audit a fixture tree (self-test)
+ * Validates executable script targets and rejects fake-success package gates.
+ * Manual commands do not require callers; lexical references and namespaces
+ * cannot establish whether a tool is needed. Plugin-independent infrastructure
+ * must still discover capabilities through package metadata.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { isScriptTestPath } from "./lib/script-test-inventory.mjs";
+
+import { missingWorkflowRootScriptReferences } from "./audit-scripts-inventory.mjs";
+import { buildScriptTestInventory } from "./lib/script-test-inventory.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(SCRIPT_DIR, "..", "..");
-
-/**
- * Root-script namespaces (first `:`-segment) that are legitimate human / CI /
- * release entrypoints. Scripts in these namespaces never need an automated
- * caller. `audit` and `lint` are deliberately absent: those namespaces are the
- * historical dumping ground, so every `audit:*` / `lint:*` root script must be
- * either referenced or an explicit entrypoint below.
- */
-const ALLOWED_NAMESPACES = new Set([
-  "dev",
-  "build",
-  "test",
-  "bench",
-  "db",
-  "cloud",
-  "release",
-  "version",
-  "prepublish",
-  "postpublish",
-  "publish",
-  "format",
-  "clean",
-  "start",
-  "verify",
-  "knip",
-  "soc2",
-  "sync",
-  "cache",
-  "harness",
-  "migrate",
-  "generate",
-  "voice",
-  "voice-models",
-  "eliza1",
-  "local-inference",
-  "personality",
-  "lifeops",
-  "ai-qa",
-  "fix-deps",
-  "trajectory",
-  "ensure-plugin-test-conventions",
-  "capability-router",
-  "browser-bridge",
-]);
-
-/**
- * Bare day-to-day entrypoints (and this audit's own scripts) that are run by
- * hand and need no caller. Keep this list small.
- */
-const ALLOWED_EXACT = new Set([
-  "dev",
-  "build",
-  "verify",
-  "check",
-  "test",
-  "lint",
-  "lint:check",
-  "format",
-  "typecheck",
-  "start",
-  "clean",
-  "reset",
-  "knip",
-  "pre-commit",
-  "audit:scripts",
-  "audit:scripts:self-test",
-  "audit:tee-secret-leak",
-  "audit:scripts:inventory",
-  "audit:type-duplication:self-test",
-  "audit:tee-secret-leak:self-test",
-  "audit:alias-read-guard:self-test",
-  "audit:test-integrity:no-vi-mocks",
-  "audit:mock-module-exports",
-  "linux:bootstrap",
-  "mvp:closeout-audit",
-  "check:pr-evidence",
-  "evidence:pr",
-  "evidence:open",
-  "evidence:review:no-open",
-  "evidence:certify",
-  // Destructive operator-only reset used before validating a clean desktop install.
-  "desktop:clean-install-state",
-  "seed:messages",
-]);
-
-/**
- * (d) ORPHAN script files inside packages/scripts/ — a `.mjs` referenced by
- * nothing (no root alias, no CI workflow, no docs, no other reachable script).
- * This is the file-level twin of the root-script orphan check and stops the
- * report-builder slop cluster (issue #10194) from silently regrowing.
- *
- * Allowlist: standalone diagnostic / guard utilities that are intentionally run
- * by hand and need no automated caller. Each entry carries a written reason.
- */
-const ORPHAN_SCRIPT_FILE_ALLOWLIST = new Map([
-  [
-    "run-scenario-benchmark.mjs",
-    "scenario benchmark wrapper invoked by packages/training/scripts/collect_trajectories.py",
-  ],
-  [
-    "audit-bin-export-subpaths.mjs",
-    "static guard for the #8000 bin/exports bug class; run by hand during release review",
-  ],
-  [
-    "audit-turbo-build-deps.self-test.mjs",
-    "self-test fixture runner for the Turbo dependency audit; invoked manually when changing that audit",
-  ],
-  [
-    "check-secret-hygiene.mjs",
-    "standalone secret-hygiene scanner run by hand / in ad-hoc security sweeps",
-  ],
-  [
-    "ci-capacity-dashboard.mjs",
-    "operator dashboard for live self-hosted GitHub Actions capacity; requires gh credentials and is run by hand",
-  ],
-  [
-    "dev-health-check.mjs",
-    "interactive dev-stack smoke launcher run by hand during local debugging",
-  ],
-  [
-    "gh-check-run-triage.mjs",
-    "operator triage helper for current GitHub check runs; requires gh credentials and is run by hand",
-  ],
-  [
-    "ensure-native-plugins-linked.mjs",
-    "workspace repair helper called by .github/actions/setup-bun-workspace/action.yml after frozen CI installs",
-  ],
-  [
-    "run-turbo.self-test.mjs",
-    "self-test fixture runner for run-turbo lockfile compatibility checks; invoked manually when changing that wrapper",
-  ],
-  [
-    "run-live-test-with-artifacts.mjs",
-    "standalone live-test runner (writes gitignored reports/live-test-runs); the producer that check-live-test-artifact-coverage.mjs validates",
-  ],
-  [
-    "e2e-ports.mjs",
-    "shared library imported by cross-process e2e harnesses; consumers are package source files rather than directly invocable script roots",
-  ],
-]);
-
-const ROOT_CWD_WRAPPER_ALLOWLIST = new Map([
-  [
-    "audit:apple-store-sandbox",
-    "root audit entrypoint for the app-core Apple Store sandbox gate",
-  ],
-  ["start", "day-to-day root start entrypoint for the runnable agent"],
-  ["dev:agent", "day-to-day root agent dev entrypoint"],
-  ["dev:core", "day-to-day root core dev entrypoint"],
-  ["test:hmr", "root release/regression gate for app HMR behavior"],
-  [
-    "test:desktop:packaged",
-    "root release/regression gate for packaged desktop app startup behavior",
-  ],
-  [
-    "test:desktop:packaged:windows",
-    "root release/regression gate for the packaged Windows desktop smoke lane",
-  ],
-  [
-    "test:watch-human",
-    "root human-in-the-loop app E2E watch entrypoint used during manual review",
-  ],
-  [
-    "test:apple-entitlements",
-    "root release/regression gate for app entitlement checks",
-  ],
-  [
-    "test:remote-capabilities",
-    "remote-capabilities CI suite with root-level naming family",
-  ],
-  [
-    "test:remote-capabilities:ui",
-    "remote-capabilities CI suite with root-level naming family",
-  ],
-  [
-    "test:remote-capabilities:source-build",
-    "remote-capabilities CI suite with root-level naming family",
-  ],
-  [
-    "test:remote-capabilities:docker",
-    "remote-capabilities CI suite with root-level naming family",
-  ],
-  ["dev:cloud:api", "cloud API developer entrypoint"],
-  ["dev:cloud:web", "cloud web developer entrypoint"],
-  ["build:cloud", "cloud API build entrypoint"],
-  ["test:cloud:e2e", "cloud API E2E entrypoint"],
-  ["cloud:e2e", "cloud E2E package entrypoint"],
-  ["cloud:e2e:headed", "cloud E2E headed mode entrypoint"],
-  ["cloud:e2e:ui", "cloud E2E UI mode entrypoint"],
-  ["db:cloud:generate", "cloud shared database root entrypoint"],
-  ["db:cloud:studio", "cloud shared database root entrypoint"],
-]);
 
 const NOOP_GATE_KEYS = /^(lint|typecheck|test|build)(:|$)/;
 // Demo / vendored / scaffold subtrees that legitimately ship placeholder scripts
@@ -300,67 +77,6 @@ function collectPackageJsons(root) {
   return found.filter(existsSync);
 }
 
-/** GitHub Actions workflow and composite-action YAML under `.github`. */
-function collectGitHubYaml(root) {
-  const chunks = [];
-  for (const dir of ["workflows", "actions"]) {
-    walk(path.join(root, ".github", dir), (file) => {
-      if (/\.(ya?ml)$/.test(file)) chunks.push(readTextIfReadable(file));
-    });
-  }
-  return chunks;
-}
-
-/** Text corpus used to decide whether a root script name is referenced. */
-function buildReferenceCorpus(root) {
-  const chunks = collectGitHubYaml(root);
-  // Every package.json's script bodies (no exclusions — broad reference coverage).
-  const seenPkg = new Set([path.join(root, "package.json")]);
-  for (const base of ["packages", "plugins", "apps"]) {
-    walk(path.join(root, base), (file) => {
-      if (path.basename(file) === "package.json") seenPkg.add(file);
-    });
-  }
-  for (const file of seenPkg) {
-    if (!existsSync(file)) continue;
-    const scripts = readJson(file).scripts;
-    if (scripts) chunks.push(Object.values(scripts).join("\n"));
-  }
-  for (const base of ["docs", "packages", "plugins", "apps", ".github"]) {
-    walk(path.join(root, base), (file) => {
-      if (file.endsWith(".md")) chunks.push(readTextIfReadable(file));
-    });
-  }
-  walk(path.join(root, "scripts"), (file) => {
-    if (/\.(mjs|cjs|js|ts|mts|cts)$/.test(file))
-      chunks.push(readTextIfReadable(file));
-  });
-  walk(path.join(root, "packages", "scripts"), (file) => {
-    if (/\.(mjs|cjs|js|ts|mts|cts)$/.test(file))
-      chunks.push(readTextIfReadable(file));
-  });
-  // Root-level docs (README, AGENTS, CLAUDE, …) without recursing into packages.
-  for (const entry of readdirSync(root)) {
-    if (entry.endsWith(".md"))
-      chunks.push(readTextIfReadable(path.join(root, entry)));
-  }
-  return chunks.join("\n");
-}
-
-function namespaceOf(name) {
-  const idx = name.indexOf(":");
-  return idx === -1 ? name : name.slice(0, idx);
-}
-
-function exactCwdWrapper(body) {
-  const match = body.match(/^bun\s+run\s+--cwd\s+(\S+)\s+(\S+)$/);
-  if (!match) return null;
-  return {
-    cwd: match[1].replace(/^["']|["']$/g, ""),
-    script: match[2].replace(/^["']|["']$/g, ""),
-  };
-}
-
 function isNoopSkip(body) {
   if (!/skip/i.test(body) || !/\becho\b/i.test(body)) return false;
   const segments = body
@@ -394,67 +110,6 @@ function existsAsDirFrom(bases, token) {
     const resolved = path.resolve(base, token);
     return existsSync(resolved) && statSync(resolved).isDirectory();
   });
-}
-
-/**
- * Reference corpus for the packages/scripts file-orphan check (d). Unlike
- * buildReferenceCorpus it excludes the packages/scripts source itself; cross
- * references between script files are evaluated per-file (excluding a file's own
- * body) so a script naming itself in a usage comment does not look "referenced".
- */
-function buildNonScriptCorpus(root) {
-  const chunks = collectGitHubYaml(root);
-  const seenPkg = new Set([path.join(root, "package.json")]);
-  for (const base of ["packages", "plugins", "apps"]) {
-    walk(path.join(root, base), (file) => {
-      if (path.basename(file) === "package.json") seenPkg.add(file);
-    });
-  }
-  for (const file of seenPkg) {
-    if (!existsSync(file)) continue;
-    const scripts = readJson(file).scripts;
-    if (scripts) chunks.push(Object.values(scripts).join("\n"));
-  }
-  for (const base of ["docs", "packages", "plugins", "apps", ".github"]) {
-    walk(path.join(root, base), (file) => {
-      if (file.endsWith(".md")) chunks.push(readTextIfReadable(file));
-    });
-  }
-  walk(path.join(root, "scripts"), (file) => {
-    if (/\.(mjs|cjs|js|ts|mts|cts)$/.test(file))
-      chunks.push(readTextIfReadable(file));
-  });
-  return chunks.join("\n");
-}
-
-/** Flag packages/scripts/*.mjs that nothing references (issue #10194). */
-function auditScriptFiles(root) {
-  const dir = path.join(root, "packages", "scripts");
-  if (!existsSync(dir)) return [];
-  const files = readdirSync(dir).filter((name) => name.endsWith(".mjs"));
-  const bodies = new Map(
-    files.map((name) => [name, readTextIfReadable(path.join(dir, name))]),
-  );
-  const nonScriptCorpus = buildNonScriptCorpus(root);
-
-  const failures = [];
-  for (const name of files) {
-    if (isScriptTestPath(`packages/scripts/${name}`)) continue;
-    if (ORPHAN_SCRIPT_FILE_ALLOWLIST.has(name)) continue;
-    if (nonScriptCorpus.includes(name)) continue;
-    // Referenced by any OTHER script file (spawn/exec/import/string mention)?
-    const referencedBySibling = files.some(
-      (other) => other !== name && bodies.get(other).includes(name),
-    );
-    if (referencedBySibling) continue;
-    failures.push(
-      `[orphan-file] packages/scripts/${name} is referenced by nothing (no ` +
-        `root script, CI workflow, composite action, docs, or other reachable ` +
-        `script). Wire it to a caller, add it to ORPHAN_SCRIPT_FILE_ALLOWLIST ` +
-        `with a reason, or delete it.`,
-    );
-  }
-  return failures;
 }
 
 // Directories the plugin-coupling check scans for generic scripts. Both trees
@@ -602,20 +257,7 @@ function auditPluginCoupling(root) {
 
 function auditScripts(root) {
   const failures = [];
-  const corpus = buildReferenceCorpus(root);
   const rootScripts = readJson(path.join(root, "package.json")).scripts ?? {};
-
-  // (a) Orphan root scripts.
-  for (const name of Object.keys(rootScripts)) {
-    if (ALLOWED_EXACT.has(name)) continue;
-    if (ALLOWED_NAMESPACES.has(namespaceOf(name))) continue;
-    if (corpus.includes(name)) continue;
-    failures.push(
-      `[orphan] root script "${name}" is never referenced (workflows, other ` +
-        `script bodies, docs) and is not a recognised entrypoint. Wire it to a ` +
-        `caller, add it to the audit allowlist, or delete it.`,
-    );
-  }
 
   // (b) Fake-success no-op lint/typecheck/test/build across first-party packages.
   for (const file of collectPackageJsons(root)) {
@@ -638,15 +280,6 @@ function auditScripts(root) {
   // `eliza/` references that are absent here.)
   for (const [name, body] of Object.entries(rootScripts)) {
     if (typeof body !== "string") continue;
-
-    const wrapper = exactCwdWrapper(body);
-    if (wrapper && !ROOT_CWD_WRAPPER_ALLOWLIST.has(name)) {
-      failures.push(
-        `[cwd-wrapper] root script "${name}" is a 1:1 package wrapper ` +
-          `(${JSON.stringify(body)}). Call "bun run --cwd ${wrapper.cwd} ` +
-          `${wrapper.script}" directly, or add an explicit allowlist reason.`,
-      );
-    }
 
     const cwdMatch = body.match(/--cwd\s+(\S+)/);
     if (cwdMatch) {
@@ -673,8 +306,35 @@ function auditScripts(root) {
     }
   }
 
-  // (d) Orphan script files inside packages/scripts/.
-  failures.push(...auditScriptFiles(root));
+  const workflowSources = [];
+  walk(path.join(root, ".github"), (file) => {
+    if (/\.ya?ml$/i.test(file)) {
+      workflowSources.push({
+        file: path.relative(root, file),
+        source: readFileSync(file, "utf8"),
+      });
+    }
+  });
+  for (const { file, job, script } of missingWorkflowRootScriptReferences(
+    workflowSources,
+    rootScripts,
+  )) {
+    failures.push(
+      `[missing-workflow-script] ${file} (${job}) invokes missing root command ${script}`,
+    );
+  }
+  if (existsSync(path.join(root, "packages/scripts/run-script-tests.mjs"))) {
+    // The executable inventory checks discovery and required CI lane binding;
+    // informational reachability and LOC reporting stay out of this gate.
+    buildScriptTestInventory({
+      repoRoot: root,
+      packageScripts: rootScripts,
+      ciWorkflow: readFileSync(
+        path.join(root, ".github/workflows/ci.yml"),
+        "utf8",
+      ),
+    });
+  }
 
   // (f) Plugin coupling — generic scripts must discover plugins, not name them.
   failures.push(...auditPluginCoupling(root));
@@ -696,7 +356,7 @@ function main() {
     );
   } else if (failures.length === 0) {
     process.stdout.write(
-      "[audit-scripts] OK — no orphan/no-op/broken scripts.\n",
+      "[audit-scripts] OK — executable targets and package gates are valid.\n",
     );
   } else {
     process.stderr.write(

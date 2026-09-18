@@ -17,7 +17,8 @@ import type {
   JsonValue,
   UUID,
 } from "@elizaos/core";
-import { EvaluatorPriority, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { EvaluatorPriority } from "@elizaos/plugin-assistant";
 import {
   buildFormExtractorPromptSection,
   buildFormExtractorSchema,

@@ -1,13 +1,13 @@
 /** Exercises canonical provenance stamping on authenticated notification ingress. */
 import { describe, expect, mock, test } from "bun:test";
+import type { Memory } from "@elizaos/common";
+import { ChannelType } from "@elizaos/common";
 import type {
   HandlerCallback,
   IAgentRuntime,
   IMessageService,
-  Memory,
   MessageProcessingResult,
 } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
 import { dispatchEvent, EventBodySchema } from "../../src/handlers/event";
 
 const OK_RESULT = {

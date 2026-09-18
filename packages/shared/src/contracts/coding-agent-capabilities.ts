@@ -5,7 +5,7 @@
  * absent from this map must never be advertised as coding-agent spawnable.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/core";
+import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
 
 export const CODING_AGENT_BACKENDS = [
   "elizaos",

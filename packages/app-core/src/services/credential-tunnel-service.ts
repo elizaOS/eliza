@@ -33,12 +33,8 @@ import {
   createHash,
   randomBytes,
 } from "node:crypto";
+import { ChannelType } from "@elizaos/common";
 import {
-  ChannelType,
-  SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE as CORE_SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE,
-  SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE as CORE_SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
-  type SubAgentCredentialBridge as CoreSubAgentCredentialBridge,
-  type SubAgentCredentialRequestOrigin as CoreSubAgentCredentialRequestOrigin,
   type DeliveryTarget,
   type DispatchSensitiveRequest,
   type IAgentRuntime,
@@ -52,6 +48,12 @@ import {
   type SensitiveRequestSourceContext,
   TRACE_ENV,
 } from "@elizaos/core";
+import {
+  SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE as CORE_SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE,
+  SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE as CORE_SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
+  type SubAgentCredentialBridge as CoreSubAgentCredentialBridge,
+  type SubAgentCredentialRequestOrigin as CoreSubAgentCredentialRequestOrigin,
+} from "@elizaos/plugin-assistant";
 
 const TOKEN_BYTES = 32; // 256-bit
 const IV_BYTES = 12;

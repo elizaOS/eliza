@@ -6,16 +6,16 @@
  * deterministic.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { promoteSubactionsToActions } from "../../actions/promote-subactions";
-import type { Action, IAgentRuntime, Memory } from "../../types";
-import { _resetActionRolePolicyCacheForTests } from "../action-role-policy";
 import {
 	actionHasSubActions,
 	detectSubActionCycles,
 	resolveSubActions,
 	runSubPlanner,
 	subPlannerCallDigest,
-} from "../sub-planner";
+} from "../../../../../plugins/plugin-assistant/src/runtime/sub-planner.ts";
+import { promoteSubactionsToActions } from "../../actions/promote-subactions";
+import type { Action, IAgentRuntime, Memory } from "../../types";
+import { _resetActionRolePolicyCacheForTests } from "../action-role-policy";
 
 type SubPlannerTestRuntime = Pick<IAgentRuntime, "actions" | "useModel"> & {
 	logger: Pick<IAgentRuntime["logger"], "debug" | "warn" | "error">;
@@ -421,12 +421,15 @@ describe("sub-planner helpers", () => {
 			.fn()
 			.mockResolvedValueOnce({
 				text: "",
-				toolCalls: [{ name: "SECRET_ALIAS", arguments: {} }],
+				toolCalls: [
+					{ id: "native-call-424", name: "SECRET_ALIAS", arguments: {} },
+				],
 			})
 			.mockResolvedValue({
 				text: "No private read was performed.",
 				toolCalls: [
 					{
+						id: "native-call-429",
 						name: "REPLY",
 						arguments: { text: "No private read was performed." },
 					},
@@ -475,7 +478,9 @@ describe("sub-planner helpers", () => {
 				[parent, canonical, other],
 				vi.fn(async () => ({
 					text: "",
-					toolCalls: [{ name: "LEGACY_READ", arguments: {} }],
+					toolCalls: [
+						{ id: "native-call-478", name: "LEGACY_READ", arguments: {} },
+					],
 				})),
 			),
 			action: parent,

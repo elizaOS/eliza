@@ -1,5 +1,5 @@
 /** Exercises voice service behavior with deterministic app-core test fixtures. */
-import type { JsonValue } from "@elizaos/core";
+import type { JsonValue } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import { DynamicViewRegistry } from "../dynamic-views/registry";
 import { DynamicViewSessionManager } from "../dynamic-views/session-manager";

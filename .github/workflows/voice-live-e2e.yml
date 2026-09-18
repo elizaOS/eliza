@@ -150,7 +150,7 @@ jobs:
       - name: Emit matrix probe report
         run: |
           set -euo pipefail
-          bun run voice:matrix -- --out "$RUNNER_TEMP/voice-platform-matrix"
+          node packages/app-core/scripts/voice/voice-matrix.mjs --out "$RUNNER_TEMP/voice-platform-matrix"
 
       - name: Upload matrix probe report
         if: always()
@@ -275,9 +275,6 @@ jobs:
           pactl load-module module-null-sink sink_name=eliza_voice_evidence sink_properties=device.description=eliza_voice_evidence
           pactl set-default-sink eliza_voice_evidence
 
-      - name: Generate shared i18n assets
-        run: bun run --cwd packages/shared build:i18n
-
       - name: Build browser bundles
         run: |
           set -euo pipefail
@@ -289,7 +286,7 @@ jobs:
           ELIZA_VOICE_LIVE_RAILWAY: ""
         run: |
           set -euo pipefail
-          bun run voice:matrix -- \
+          node packages/app-core/scripts/voice/voice-matrix.mjs \
             --platform web.live.railway-roundtrip \
             --out "$RUNNER_TEMP/voice-web-live-ungated"
 
@@ -298,7 +295,7 @@ jobs:
           ELIZA_VOICE_LIVE_RAILWAY: ""
         run: |
           set -euo pipefail
-          bun run voice:matrix -- \
+          node packages/app-core/scripts/voice/voice-matrix.mjs \
             --run \
             --require-green \
             --platform web.failure-paths \
@@ -327,7 +324,7 @@ jobs:
           ELIZA_UI_SMOKE_BACKEND_LOG_PATH: ${{ runner.temp }}/voice-web-live/private-backend.log
         run: |
           set -euo pipefail
-          bun run voice:matrix -- \
+          node packages/app-core/scripts/voice/voice-matrix.mjs \
             --run \
             --require-green \
             --platform web.live.railway-roundtrip \
@@ -497,8 +494,8 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Prepare core generated sources
-        run: bun run --cwd packages/core prebuild
+      - name: Build runtime dependencies
+        run: bun run build:core
 
       - name: Download fused libelizainference artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -602,10 +599,8 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      # --ignore-scripts skips core's generated sources; the voice scripts
-      # import @elizaos/core straight from src, so generate them explicitly.
-      - name: Prepare core generated sources
-        run: bun run --cwd packages/core prebuild
+      - name: Build runtime dependencies
+        run: bun run build:core
 
       - name: Download fused libelizainference artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -791,7 +786,7 @@ jobs:
           if bun run --cwd packages/app voice:evidence:desktop:capture -- \
             --platform darwin \
             --out "$RUNNER_TEMP/voice-macos-hardware-capture" \
-            -- bun run voice:matrix -- --run --require-green --platform macos-electrobun --out "$RUNNER_TEMP/voice-macos-electrobun-matrix" \
+            -- node packages/app-core/scripts/voice/voice-matrix.mjs --run --require-green --platform macos-electrobun --out "$RUNNER_TEMP/voice-macos-electrobun-matrix" \
             > "$PRIVATE_LOG" 2>&1; then
             echo "phase=macos-capture status=passed code=DESKTOP_CAPTURE_PASSED"
           else
@@ -874,7 +869,7 @@ jobs:
           if bun run --cwd packages/app voice:evidence:desktop:capture -- \
             --platform win32 \
             --out "$RUNNER_TEMP/voice-windows-hardware-capture" \
-            -- bun run voice:matrix -- --run --require-green --platform windows-electrobun --out "$RUNNER_TEMP/voice-windows-electrobun-matrix" \
+            -- node packages/app-core/scripts/voice/voice-matrix.mjs --run --require-green --platform windows-electrobun --out "$RUNNER_TEMP/voice-windows-electrobun-matrix" \
             > "$PRIVATE_LOG" 2>&1; then
             echo "phase=windows-capture status=passed code=DESKTOP_CAPTURE_PASSED"
           else
@@ -945,7 +940,7 @@ jobs:
       - name: Run iOS matrix
         run: |
           set -euo pipefail
-          bun run voice:matrix -- --run --require-green --platform ios --out "$RUNNER_TEMP/voice-ios-matrix"
+          node packages/app-core/scripts/voice/voice-matrix.mjs --run --require-green --platform ios --out "$RUNNER_TEMP/voice-ios-matrix"
 
       - name: Upload iOS matrix
         if: always()
@@ -997,7 +992,7 @@ jobs:
       - name: Run Android matrix
         run: |
           set -euo pipefail
-          bun run voice:matrix -- --run --require-green --platform android --out "$RUNNER_TEMP/voice-android-matrix"
+          node packages/app-core/scripts/voice/voice-matrix.mjs --run --require-green --platform android --out "$RUNNER_TEMP/voice-android-matrix"
 
       - name: Upload Android matrix
         if: always()

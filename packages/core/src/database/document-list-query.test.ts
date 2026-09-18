@@ -2,6 +2,8 @@
  * Verifies strict document-list capability negotiation and integrity checks
  * without allowing legacy pagination behavior to fabricate exact results.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
 import type { DocumentListQueryParams, Memory, UUID } from "../types";
 import { MemoryType } from "../types";
@@ -17,7 +19,6 @@ import {
 	readDocumentMutationSnapshot,
 	validateDocumentDirectGrantEntityIds,
 } from "./document-list-query";
-import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";
 
 const AGENT_ID = "00000000-0000-0000-0000-00000000a9e7" as UUID;
 const REQUESTER_ID = "00000000-0000-0000-0000-00000000c0de" as UUID;

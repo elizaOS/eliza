@@ -2,14 +2,12 @@
  * Foundational parsing/identity utilities used throughout the runtime.
  * stringToUuid must be deterministic (same input → same id, so an external id
  * always maps to the same entity) and idempotent on an already-valid UUID;
- * parseJSONObjectFromText must recover an object from chatty model text or
- * return null; and the boolean/truncation helpers must degrade safely.
+ * boolean/truncation helpers must degrade safely.
  * Pure deterministic unit test — no model or database.
  */
 import { describe, expect, it } from "vitest";
 import {
 	parseBooleanFromText,
-	parseJSONObjectFromText,
 	parseToonKeyValue,
 	stringToUuid,
 	truncateToCompleteSentence,
@@ -43,27 +41,6 @@ describe("validateUuid", () => {
 		expect(validateUuid("not-a-uuid")).toBeNull();
 		expect(validateUuid(123)).toBeNull();
 		expect(validateUuid(null)).toBeNull();
-	});
-});
-
-describe("parseJSONObjectFromText", () => {
-	it("recovers an object from surrounding prose, null on failure or arrays", () => {
-		expect(parseJSONObjectFromText('{"a":1}')).toEqual({ a: 1 });
-		expect(parseJSONObjectFromText('```json\n{"ok": true}\n```')).toEqual({
-			ok: true,
-		});
-		expect(parseJSONObjectFromText("[1,2,3]")).toBeNull(); // arrays are not objects
-		expect(parseJSONObjectFromText("no json")).toBeNull();
-	});
-
-	it("returns null for scalars, which JSON5 parses as valid JSON", () => {
-		expect(parseJSONObjectFromText("42")).toBeNull();
-		expect(parseJSONObjectFromText("true")).toBeNull();
-		expect(parseJSONObjectFromText("null")).toBeNull();
-		// A model reply wrapped in quotes is a JSON string, not an object.
-		expect(
-			parseJSONObjectFromText('"Sure - I added milk to your shopping list."'),
-		).toBeNull();
 	});
 });
 

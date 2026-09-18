@@ -1,4 +1,4 @@
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { createMiddleware } from "hono/factory";
 import { redactedThrownDiagnostics } from "../../../shared/src/index.ts";
 import type { ApiResponse, AppVariables } from "../services/context";

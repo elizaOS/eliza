@@ -1,17 +1,7 @@
 /**
- * Self-test for the shared plugin build driver (`plugins/plugin-build.ts`),
- * issue #10200. 57 plugin `build.ts` files delegate to `buildPlugin`, but it had
- * no dedicated test — a regression in the clean / target / rename / flatten /
- * declaration-emit / shim / copy orchestration would only surface as a broken
- * plugin dist somewhere downstream. This drives the driver against throwaway
- * fixture packages and asserts the real emitted `dist/` tree.
- *
- * Lives in packages/scripts/__tests__ (not a workspace member), so a workflow
- * must invoke it explicitly via `bun test packages/scripts/__tests__/plugin-build.test.ts`.
- *
- * The driver resolves `tsc` to an absolute path (`TSC_BIN`, via node module
- * resolution) and runs it as `node ${TSC_BIN}`, so the declaration-emit cases run
- * without `node_modules/.bin` on PATH — exactly the bare `bun test` CI shape.
+ * Exercises the shared plugin build driver against disposable packages and
+ * captures real workspace compiler outputs to prevent source-tree emission.
+ * Declaration fixtures invoke the resolved compiler without relying on PATH.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
@@ -24,6 +14,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 import {
   type BuildPluginConfig,
@@ -46,6 +38,63 @@ const TS_CONFIG = {
   },
   include: ["src"],
 };
+
+describe("workspace production emit", () => {
+  test.each([
+    ["packages/agent", "index.js"],
+    ["plugins/plugin-computeruse", "index.d.ts"],
+    ["plugins/plugin-wallet", "index.d.ts"],
+  ])(
+    "keeps %s compiler outputs inside its distribution",
+    (workspace, entry) => {
+      const root = fileURLToPath(
+        new URL(`../../../${workspace}/`, import.meta.url),
+      );
+      const config = ts.getParsedCommandLineOfConfigFile(
+        path.join(root, "tsconfig.build.json"),
+        { noCheck: true, incremental: false },
+        {
+          ...ts.sys,
+          onUnRecoverableConfigFileDiagnostic(diagnostic) {
+            throw new Error(
+              ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+            );
+          },
+        },
+      );
+      if (!config)
+        throw new Error(`Cannot parse ${workspace} build configuration`);
+      expect(config.errors).toEqual([]);
+      const emitted: string[] = [];
+      const program = ts.createProgram(config.fileNames, config.options);
+      const result = program.emit(undefined, (file) =>
+        emitted.push(path.resolve(file)),
+      );
+      const outputRoot = path.join(root, "dist");
+      if (result.emitSkipped) {
+        // Declaration-only compilation deliberately skips imported JSON assets.
+        // A skipped TypeScript module would still leave a broken distribution.
+        expect(
+          program
+            .getSourceFiles()
+            .filter(
+              (source) =>
+                !source.isDeclarationFile &&
+                !source.fileName.endsWith(".json") &&
+                program.emit(source, () => {}).emitSkipped,
+            )
+            .map((source) => source.fileName),
+        ).toEqual([]);
+      }
+      expect(result.diagnostics).toEqual([]);
+      expect(emitted).toContain(path.join(outputRoot, entry));
+      expect(
+        emitted.filter((file) => !file.startsWith(`${outputRoot}${path.sep}`)),
+      ).toEqual([]);
+    },
+    30_000,
+  );
+});
 
 let originalCwd: string;
 let fixtureDir: string;

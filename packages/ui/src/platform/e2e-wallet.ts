@@ -20,7 +20,7 @@
  * a real injected wallet, and only when the harness key is present — absent all
  * four, this module is a no-op and the lazy viem import never loads.
  */
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { isStoreBuild } from "../build-variant";
 import { getBootConfig } from "../config/boot-config";
 import { getInjectedEthereumProvider } from "../state/cloud-siwe-login";

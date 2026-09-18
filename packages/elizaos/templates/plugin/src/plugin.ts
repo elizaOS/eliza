@@ -11,14 +11,16 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
-  Plugin,
   Provider,
   ProviderResult,
-  RouteRequest,
-  RouteResponse,
   State,
 } from "@elizaos/core";
 import { logger, ModelType, Service } from "@elizaos/core";
+import type {
+  HttpPlugin as Plugin,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/shared/api/http-plugin";
 import { z } from "zod";
 import { StarterPluginTestSuite } from "./e2e/plugin-starter.e2e";
 

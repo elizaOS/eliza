@@ -19,13 +19,13 @@ import path from "node:path";
 import process from "node:process";
 import { resolveConfigPath } from "@elizaos/agent";
 import { resolveStateDir } from "@elizaos/core";
+import { getCloudSecret } from "@elizaos/shared/elizacloud/cloud-secrets";
 import {
-  getCloudSecret,
   resolveApiSecurityConfig,
   resolveDesktopApiPort,
   resolveDesktopUiPort,
   resolveServerOnlyPort,
-} from "@elizaos/shared";
+} from "@elizaos/shared/runtime-env";
 
 export type CheckStatus = "pass" | "fail" | "warn" | "skip";
 export type CheckCategory = "system" | "config" | "network" | "storage";

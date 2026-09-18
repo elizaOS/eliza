@@ -1,8 +1,23 @@
-// Pins the bounded-SSRF contract of seoFetch: every SEO provider hop goes
-// through the file's SSRF-safe wrapper AND fails closed at the hop timeout
-// (a caller-provided abort signal wins). The health-check hop is included:
-// its URL is caller-supplied, so it is the one hop an untrusted input aims.
+/** Exercises SEO fetch boundaries and complete model output before artifact writes using controlled transport and repositories. */
 import { describe, expect, mock, test } from "bun:test";
+
+const admissionModule = await import("./organization-inference-admission");
+mock.module("./organization-inference-admission", () => ({
+  ...admissionModule,
+  admitOrganizationInference: async () => ({
+    markProviderDispatched: async () => undefined,
+    settle: async () => undefined,
+    settleUnknown: async () => undefined,
+  }),
+}));
+
+let modelFinishReason = "stop";
+const modelDraft = { title: "Complete title", description: "Complete description" };
+const createArtifact = mock(async (row: Record<string, unknown>) => ({ id: "artifact-1", ...row }));
+mock.module("ai", () => ({
+  generateText: async () => ({ text: JSON.stringify(modelDraft), finishReason: modelFinishReason }),
+}));
+mock.module("../providers/language-model", () => ({ getLanguageModel: () => ({}) }));
 
 let seenInit: RequestInit | undefined;
 let seenUrl: string | undefined;
@@ -27,7 +42,7 @@ mock.module("../../db/repositories/seo-requests", () => ({
 
 mock.module("../../db/repositories/seo-artifacts", () => ({
   seoArtifactsRepository: {
-    create: async (row: Record<string, unknown>) => ({ id: "artifact-1", ...row }),
+    create: createArtifact,
     listByRequest: async () => [],
   },
 }));
@@ -153,4 +168,42 @@ describe("health_check — the caller-supplied hop is bounded too", () => {
 
     expect(report.robots).toBe(false);
   });
+});
+
+describe("SEO model completion before artifact persistence", () => {
+  test.each(["stop", "length", "content_filter", "error"])(
+    "handles provider finish reason %s",
+    async (finishReason) => {
+      modelFinishReason = finishReason;
+      createArtifact.mockClear();
+      const request = {
+        id: "req-model",
+        organization_id: "org-1",
+        type: "meta_generate",
+        page_url: "https://example.com/page",
+        locale: "en",
+      };
+      const operation = seoService.processRequest(
+        request as Parameters<typeof seoService.processRequest>[0],
+        {
+          organizationId: "org-1",
+          type: "meta_generate",
+          operationContext: {
+            organizationId: "org-1",
+            userId: "user-1",
+            apiKeyId: null,
+            requestId: "req-model",
+          },
+        },
+      );
+      if (finishReason === "stop") {
+        const result = await operation;
+        expect(result.artifacts[0]?.data).toEqual(modelDraft);
+        expect(createArtifact).toHaveBeenCalledTimes(1);
+      } else {
+        await expect(operation).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
+        expect(createArtifact).not.toHaveBeenCalled();
+      }
+    },
+  );
 });

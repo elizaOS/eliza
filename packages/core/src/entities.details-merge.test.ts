@@ -5,7 +5,7 @@
  * object field. Adapter seams are stubbed; getEntityDetails is not replaced.
  */
 import { describe, expect, it } from "vitest";
-import { getEntityDetails } from "./entities";
+import { getEntityDetails } from "../../../plugins/plugin-assistant/src/entities.ts";
 import type { Entity, IAgentRuntime, UUID } from "./types";
 
 const AGENT = "00000000-0000-0000-0000-0000000000aa" as UUID;

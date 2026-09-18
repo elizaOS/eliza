@@ -26,7 +26,7 @@
  * and the caller gates it behind `isPlatform("android") && isNativePlatform()`.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import {
   EchoReferenceBuffer,
   NlmsEchoCanceller,

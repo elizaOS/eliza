@@ -1,7 +1,8 @@
-/** Exercises webhook gateway wake behavior through the real bounded PATCH helper. */
+/** Exercises both gateway wake entrypoints through the real bounded PATCH helper with controlled HTTP failures. */
 
 import { describe, expect, mock, test } from "bun:test";
-import { observeWakeServer, wakeServer } from "../src/server-router";
+import * as discord from "../../gateway-discord/src/server-router";
+import * as webhook from "../src/server-router";
 
 const serverUrl = "http://agent-server.agents.svc:3000";
 const dependencies = {
@@ -9,7 +10,18 @@ const dependencies = {
   getCaCert: () => "test-ca",
 };
 
-describe("gateway-webhook wakeServer", () => {
+describe.each([
+  {
+    name: "gateway-discord",
+    wakeServer: discord.wakeServer,
+    observeWakeServer: discord.observeWakeServer,
+  },
+  {
+    name: "gateway-webhook",
+    wakeServer: webhook.wakeServer,
+    observeWakeServer: webhook.observeWakeServer,
+  },
+])("$name wakeServer", ({ observeWakeServer, wakeServer }) => {
   test("preserves successful wake behavior", async () => {
     const logError = mock(() => undefined);
     const fetchFn = mock(async () => new Response(null, { status: 200 }));

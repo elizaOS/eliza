@@ -13,14 +13,14 @@
  *
  * **Exports:**
  * - loadCharacters(sources, options?) – JSON file paths (strings) and/or inline CharacterInput; optional `cwd` for relative paths.
- * - getBasicCapabilitiesSettings(character) – flatten character + env for adapter factories (basic-capabilities only).
+ * - flattenRuntimeSettings(character) – flatten character + env for adapter factories.
  * - mergeSettingsInto(character, agentRecord) – pure merge of DB agent into character (for custom pipelines).
  * - createRuntimes(characters, options?) – full pipeline; options carry adapter override, provision, logLevel, etc.
  *
- * **Settings divide:** Adapter factories receive only *basic-capabilities* settings (character + env).
+ * **Settings divide:** Adapter factories receive only adapter bootstrap settings (character + env).
  * Runtime settings from the DB are merged *after* the adapter is created and used when
  * constructing the runtime. WHY: You cannot load settings from the DB until the adapter
- * is connected; basic-capabilities settings (e.g. POSTGRES_URL, PGLITE_DATA_DIR) are what you
+ * is connected; adapter bootstrap settings (e.g. POSTGRES_URL, PGLITE_DATA_DIR) are what you
  * need to create the adapter in the first place.
  */
 
@@ -47,69 +47,9 @@ type PluginWithAdapter = Plugin & {
 	adapter: AdapterFactory;
 };
 
-/**
- * Flatten character.settings, character.secrets, and env into a single Record<string, string>.
- * Used when calling adapter factories (Plugin.adapter(agentId, settings)).
- *
- * **WHY basic-capabilities-only:** Adapter factories run *before* the database is connected. They
- * cannot read runtime settings from the DB. Only settings available from character config
- * and process.env (e.g. POSTGRES_URL, PGLITE_DATA_DIR, MONGODB_URI) are valid here. Runtime
- * settings (API keys, model prefs, etc.) are merged later from the DB via mergeSettingsInto.
- *
- * **Merge order:** env first, then character.settings (excluding nested secrets object),
- * then character.settings.secrets, then character.secrets. Later sources override earlier
- * (character overrides env). WHY: Allows env defaults while letting character config override.
- *
- * @param character - Character to read settings and secrets from
- * @param env - Environment record (defaults to process.env)
- * @returns String-only record suitable for adapter factories
- */
-export function getBasicCapabilitiesSettings(
-	character: Character,
-	env: NodeJS.ProcessEnv = process.env,
-): Record<string, string> {
-	const out: Record<string, string> = {};
+export { flattenRuntimeSettings } from "./runtime-settings.ts";
 
-	for (const [key, value] of Object.entries(env)) {
-		if (value !== undefined && value !== null && key) {
-			out[key] = String(value);
-		}
-	}
-
-	const settings =
-		character.settings && typeof character.settings === "object"
-			? character.settings
-			: {};
-	for (const [key, value] of Object.entries(settings)) {
-		if (value === undefined || value === null) continue;
-		if (key === "secrets" && typeof value === "object") continue;
-		out[key] = typeof value === "string" ? value : String(value);
-	}
-
-	const secrets = (
-		character.settings?.secrets &&
-		typeof character.settings.secrets === "object"
-			? character.settings.secrets
-			: {}
-	) as Record<string, unknown>;
-	for (const [key, value] of Object.entries(secrets)) {
-		if (value !== undefined && value !== null) {
-			out[key] = String(value);
-		}
-	}
-
-	const topSecrets =
-		character.secrets && typeof character.secrets === "object"
-			? character.secrets
-			: {};
-	for (const [key, value] of Object.entries(topSecrets)) {
-		if (value !== undefined && value !== null) {
-			out[key] = String(value);
-		}
-	}
-
-	return out;
-}
+import { flattenRuntimeSettings } from "./runtime-settings.ts";
 
 /**
  * Minimal shape of an agent record as returned from the database (e.g. getAgentsByIds).
@@ -361,7 +301,7 @@ export async function createRuntimes(
 		adapters = await Promise.all(
 			characters.map((c) => {
 				const agentId = (c.id ?? stringToUuid(c.name ?? "eliza")) as UUID;
-				const settings = getBasicCapabilitiesSettings(c);
+				const settings = flattenRuntimeSettings(c);
 				return Promise.resolve(adapterPlugin.adapter(agentId, settings));
 			}),
 		);

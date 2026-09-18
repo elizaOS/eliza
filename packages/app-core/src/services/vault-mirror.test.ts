@@ -4,7 +4,7 @@
  * while _resetSharedVaultForTesting() swaps the cached facade for a fresh one.
  * Exercises real createTestVault instances, disposed after each test.
  */
-import { createTestVault, type TestVault } from "@elizaos/vault";
+import { createTestVault, type TestVault } from "@elizaos/credentials/vault";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   _resetSharedVaultForTesting,

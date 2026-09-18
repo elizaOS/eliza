@@ -32,8 +32,7 @@ const APP_CATEGORIES = [
   "reachable-from-build",
   "reachable-from-ci-workflow",
   "reachable-from-operator-script",
-  "reachable-from-app-internal",
-  "orphan",
+  "unclassified",
 ];
 
 const FILE_CATEGORIES = [
@@ -43,8 +42,7 @@ const FILE_CATEGORIES = [
   "reachable-from-ci-workflow",
   "reachable-from-operator-script",
   "reachable-from-package-script",
-  "reachable-from-docs",
-  "orphan",
+  "unclassified",
 ];
 
 function appScriptNames() {
@@ -93,7 +91,7 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     const byCat = inv.summary.appScriptsByCategory;
     const sum = APP_CATEGORIES.reduce((n, c) => n + byCat[c], 0);
     expect(sum).toBe(inv.summary.totalAppScripts);
-    expect(byCat.orphan).toBe(inv.summary.orphanAppScripts);
+    expect(byCat.unclassified).toBe(inv.summary.unclassifiedAppScripts);
   });
 
   test("Turbo fan-out reaches the app build/lint/typecheck scripts (not orphan)", () => {
@@ -102,7 +100,9 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     const names = new Set(appScriptNames());
     for (const task of ["build", "lint", "typecheck"]) {
       if (names.has(task)) {
-        expect(cat(task), `app ${task} should be reachable`).not.toBe("orphan");
+        expect(cat(task), `app ${task} should be reachable`).not.toBe(
+          "unclassified",
+        );
       }
     }
   });
@@ -146,7 +146,7 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     expect(inv.summary.packageScriptFileReferences).toBeGreaterThan(0);
   });
 
-  test("named root operator scripts keep their entrypoint files out of the orphan bucket", () => {
+  test("named root operator scripts keep their entrypoint files classified as operator-reachable", () => {
     const byFile = (name: string) => inv.files.find((f) => f.file === name);
     const byRoot = (name: string) => inv.roots.find((r) => r.name === name);
 
@@ -158,42 +158,10 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
       packageJson: "package.json",
       script: "dev:all",
     });
-    expect(byRoot("audit:scripts:inventory")?.category).toBe(
-      "reachable-from-verify",
-    );
-    expect(byFile("audit-scripts-inventory.mjs")?.category).toBe(
-      "reachable-from-verify",
-    );
-    expect(
-      byFile("audit-scripts-inventory.mjs")?.operatorScriptCallers,
-    ).toContainEqual({
-      packageJson: "package.json",
-      script: "audit:scripts:inventory",
-    });
     expect(
       inv.summary.filesByCategory["reachable-from-operator-script"],
     ).toBeGreaterThan(0);
     expect(inv.summary.operatorScriptFileReferences).toBeGreaterThan(0);
-  });
-
-  test("documented standalone scripts are tracked separately from true orphans", () => {
-    const byFile = (name: string) => inv.files.find((f) => f.file === name);
-
-    // The live-smoke workflow now invokes this operator entrypoint directly,
-    // so CI is the strongest reachability color while the named root command
-    // remains recorded as an operator caller.
-    expect(byFile("run-scenarios-isolated.mjs")?.category).toBe(
-      "reachable-from-ci-workflow",
-    );
-    expect(
-      byFile("run-scenarios-isolated.mjs")?.operatorScriptCallers,
-    ).toContainEqual({
-      packageJson: "package.json",
-      script: "test:scenarios:isolated",
-    });
-    expect(inv.summary.filesByCategory.orphan).toBe(0);
-    expect(inv.summary.orphanFiles).toBe(0);
-    expect(inv.summary.documentationFileReferences).toBeGreaterThan(0);
   });
 
   test("repository candidate readers reject symlinked files and parents", () => {

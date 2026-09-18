@@ -7,7 +7,8 @@
  * and delegates to the Commander-based CLI.
  */
 import process from "node:process";
-import { formatErrorWithStack, getLogPrefix } from "@elizaos/shared";
+import { formatErrorWithStack } from "@elizaos/shared/format-error";
+import { getLogPrefix } from "@elizaos/shared/utils/log-prefix";
 import { bootLap } from "./boot-profile";
 import { applyCliProfileEnv, parseCliProfileArgs } from "./cli/profile";
 import { promoteLauncherScopedDevCloudApiKey } from "./entry-cloud-api-key";

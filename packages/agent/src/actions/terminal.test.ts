@@ -5,14 +5,15 @@
  * the loopback boundary; assertions inspect the action's resolved command,
  * headers, receipts, and typed failures.
  */
+
 import {
-  _resetBuildVariantForTests,
   type ActionParameters,
   ElizaError,
   type HandlerOptions,
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
+import { _resetBuildVariantForTests } from "@elizaos/shared/platform/build-variant";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   completeOutputBlock,

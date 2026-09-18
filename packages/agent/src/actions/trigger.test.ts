@@ -27,11 +27,11 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
-  AUTONOMY_SERVICE_TYPE,
   hasAppliedUserFacingEffectProof,
   stringToUuid,
   TRIGGER_SCHEMA_VERSION,
 } from "@elizaos/core";
+import { AUTONOMY_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TriggerTaskMetadata } from "../triggers/types.ts";

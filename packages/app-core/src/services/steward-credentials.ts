@@ -11,7 +11,7 @@ import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { readAliasedEnv } from "@elizaos/shared";
+import { readAliasedEnv } from "@elizaos/shared/utils/env";
 import type {
   PlatformSecureStore,
   SecureStoreSecretKind,

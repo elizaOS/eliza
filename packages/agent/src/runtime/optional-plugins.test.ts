@@ -1,102 +1,38 @@
-/**
- * Drift check for the optional-plugin literal-import codegen: the generated
- * importer map's keys/specifiers match OPTIONAL_STATIC_PLUGIN_PACKAGES, every
- * entry is a literal-specifier import(), the bundled and unbundled lists stay
- * disjoint, and every getOptionalPlugin(...) in eliza.ts's descriptor table has a
- * literal importer or an explicit unbundled exemption. Reads the generated module
- * and eliza.ts as TEXT so vitest never eagerly resolves the unbuilt optional
- * specifiers.
- */
+/** Verifies bundler-visible optional imports and runtime source-condition parsing with deterministic contracts. */
 import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { describe, expect, it } from "vitest";
-
 import {
   hasElizaSourceRuntimeCondition,
   OPTIONAL_STATIC_PLUGIN_PACKAGES,
-  OPTIONAL_STATIC_PLUGIN_REGISTRATIONS,
   optionalPluginImportSpecifier,
-  renderOptionalPluginImportsModule,
   UNBUNDLED_OPTIONAL_PLUGINS,
 } from "./optional-plugins.ts";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
+// The bundler requires literal imports. Compare parsed entries against the actual
+// map keys so a variable import cannot silently drop a plugin from the bundle.
+const source = readFileSync(
+  new URL("./optional-plugin-imports.ts", import.meta.url),
+  "utf8",
+);
+const entries = [
+  ...source.matchAll(
+    /"([^"]+)":\s*\(\)\s*=>\s*(?:\/\/[^\n]*\n\s*)*import\(\s*"([^"]+)"\s*\)/g,
+  ),
+].map((match) => ({ key: match[1], specifier: match[2] }));
 
-function readSource(file: string): string {
-  return readFileSync(path.join(here, file), "utf8");
-}
-
-/**
- * Parse the generated importer map as TEXT. Importing the module would make
- * Vite/vitest eagerly resolve every literal `import()` specifier (several
- * optional plugins are intentionally unbuilt in this workspace), so the drift
- * check reads the source and asserts on the literal `"pkg": () => import("pkg")`
- * entries instead.
- */
-function importerEntries(source: string): {
-  key: string;
-  specifier: string;
-}[] {
-  return [
-    ...source.matchAll(
-      /"([^"]+)":\s*\(\)\s*=>\s*(?:\/\/[^\n]*\n\s*)*import\(\s*"([^"]+)"\s*\)/g,
-    ),
-  ].map((m) => ({ key: m[1], specifier: m[2] }));
-}
-
-function generatedImporterEntries(): { key: string; specifier: string }[] {
-  return importerEntries(readSource("optional-plugin-imports.generated.ts"));
-}
-
-/**
- * Optional plugin packages the descriptor table (CORE_STATIC_PLUGIN_REGISTRATIONS
- * in eliza.ts) registers in the deferred phase. The descriptor table is now
- * DERIVED from OPTIONAL_STATIC_PLUGIN_REGISTRATIONS (the single source of truth)
- * rather than hand-listing `getOptionalPlugin("pkg")` literals (#12089 item 3),
- * so this reads that source directly. A dedicated grep guard in
- * core-static-plugin-registrations.test.ts proves eliza.ts no longer hand-mirrors
- * the list; here we assert the manifest/importer consistency built on top of it.
- */
-function descriptorTableOptionalPackages(): string[] {
-  return [...new Set(OPTIONAL_STATIC_PLUGIN_REGISTRATIONS)];
-}
-
-describe("optional-plugin literal-import codegen", () => {
-  it("generated importer keys match the source of truth exactly", () => {
-    // Fails if optional-plugin-imports.generated.ts is stale — regenerate with
-    // `bun run --cwd packages/agent gen:optional-plugin-imports`.
-    const keys = generatedImporterEntries().map((e) => e.key);
-    expect(keys).toEqual([...OPTIONAL_STATIC_PLUGIN_PACKAGES]);
-  });
-
-  it("every generated entry imports the package's declared runtime specifier", () => {
-    // The whole point: the bundler must see a string literal, never a
-    // variable. The specifier is the bare package name unless an
-    // importSubpath override points at a dedicated runtime entry (e.g.
-    // plugin-inbox's ./plugin — the root barrel exports React views).
-    for (const { key, specifier } of generatedImporterEntries()) {
+describe("optional plugin bundling contract", () => {
+  it("uses literal imports for every registered bundled plugin", () => {
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.map(({ key }) => key)).toEqual(
+      OPTIONAL_STATIC_PLUGIN_PACKAGES,
+    );
+    for (const { key, specifier } of entries) {
       expect(specifier, key).toBe(optionalPluginImportSpecifier(key));
     }
   });
-
-  it("renderer emits a literal import() for every source package", () => {
-    const rendered = renderOptionalPluginImportsModule(
-      OPTIONAL_STATIC_PLUGIN_PACKAGES,
-    );
-    expect(importerEntries(rendered)).toEqual(
-      OPTIONAL_STATIC_PLUGIN_PACKAGES.map((key) => ({
-        key,
-        specifier: optionalPluginImportSpecifier(key),
-      })),
-    );
-  });
-
-  it("bundled and unbundled optional lists are disjoint", () => {
-    const bundled = new Set(OPTIONAL_STATIC_PLUGIN_PACKAGES);
-    for (const pkg of UNBUNDLED_OPTIONAL_PLUGINS) {
-      expect(bundled.has(pkg), pkg).toBe(false);
+  it("does not bundle plugins declared desktop-only", () => {
+    for (const name of UNBUNDLED_OPTIONAL_PLUGINS) {
+      expect(OPTIONAL_STATIC_PLUGIN_PACKAGES).not.toContain(name);
     }
   });
 });
@@ -117,40 +53,5 @@ describe("workspace-source runtime condition", () => {
   it("does not treat unrelated or missing conditions as source mode", () => {
     expect(hasElizaSourceRuntimeCondition(["--conditions=node"])).toBe(false);
     expect(hasElizaSourceRuntimeCondition(["--no-install"])).toBe(false);
-  });
-});
-
-describe("descriptor table ↔ generated imports consistency", () => {
-  const declared = descriptorTableOptionalPackages();
-  const resolvable = new Set<string>([
-    ...OPTIONAL_STATIC_PLUGIN_PACKAGES,
-    ...UNBUNDLED_OPTIONAL_PLUGINS,
-  ]);
-
-  it("finds the descriptor table's getOptionalPlugin entries", () => {
-    // Guard against the scan silently matching nothing (e.g. a refactor renamed
-    // getOptionalPlugin) which would make the check below vacuously pass.
-    expect(declared.length).toBeGreaterThan(0);
-  });
-
-  it("every descriptor-table optional plugin has a literal importer or is explicitly unbundled", () => {
-    // Adding getOptionalPlugin("@elizaos/plugin-new") to the descriptor table
-    // must be paired with an entry in OPTIONAL_STATIC_PLUGIN_PACKAGES (then
-    // regenerate) or UNBUNDLED_OPTIONAL_PLUGINS — no hand-written import branch,
-    // and no plugin silently non-bundleable.
-    for (const pkg of declared) {
-      expect(resolvable.has(pkg), `${pkg} has no importer nor exemption`).toBe(
-        true,
-      );
-    }
-  });
-
-  it("every bundled literal importer is referenced by the descriptor table", () => {
-    // No orphan literal import bloating the mobile bundle for a plugin the
-    // runtime never loads.
-    const declaredSet = new Set(declared);
-    for (const pkg of OPTIONAL_STATIC_PLUGIN_PACKAGES) {
-      expect(declaredSet.has(pkg), `${pkg} is bundled but unused`).toBe(true);
-    }
   });
 });

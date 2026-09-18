@@ -2,8 +2,8 @@
  * The send-handler map is shared with existing plugin-lifecycle and host consumers.
  * Hooks receive the original runtime, including through the outbound voice and envelope gates. */
 import { guardOutboundEnvelopeText } from "../security/outbound-envelope-guard.js";
-import { sanitizeOutboundText } from "../services/message/outbound-sanitize";
-import { ensureAgentVoice } from "../services/message/voice-gate";
+import { sanitizeOutboundText } from "../security/outbound-sanitize.ts";
+import { ensureAgentVoice } from "../security/voice-gate.ts";
 import type {
 	ConnectorPostIdentity,
 	Content,

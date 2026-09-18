@@ -13,6 +13,7 @@ import type {
 	HandlerCallback,
 	StreamChunkCallback,
 } from "./components";
+import type { EffectReceipt } from "./effects";
 import type { Room } from "./environment";
 import type { Memory } from "./memory";
 import type { ModelType } from "./model";
@@ -88,7 +89,7 @@ export interface MessageProcessingOptions {
 /**
  * Result of message processing
  */
-export interface MessageTerminalFailure {
+export interface RuntimeFailure {
 	/** Stable machine-readable category for adapters and orchestration hosts. */
 	kind: string;
 	/** Action boundary code when the failing tool supplied typed provenance. */
@@ -115,16 +116,19 @@ export interface MessageReplyRecoveryContext {
 	ownerExclusiveDisclosureUsed: boolean;
 }
 
+/** Execution outcome is independent of whether a transport delivered a reply. */
+export type TurnOutcome = (
+	| { status: "completed"; reason?: string }
+	| { status: "denied"; reason: string }
+	| { status: "cancelled"; reason: string }
+	| { status: "failed"; error: RuntimeFailure }
+) & { effects: readonly EffectReceipt[] };
+
 export interface MessageProcessingResult {
+	outcome: TurnOutcome;
 	didRespond: boolean;
 	responseContent?: Content | null;
 	responseMessages: Memory[];
-	/**
-	 * Terminal failure independent of response delivery. Callback-delivered or
-	 * deduplicated text may leave `responseContent` null, but callers still need
-	 * an authoritative non-success result.
-	 */
-	terminalFailure?: MessageTerminalFailure;
 	/**
 	 * The returned delivery belongs to a live message-service run whose detached
 	 * task barrier will emit `RUN_ENDED`. Hosts must preserve this capability on
@@ -198,6 +202,7 @@ export type MessageProcessingMode = "simple" | "actions" | "none" | "blocked";
  *   async handleMessage(runtime, message, callback) {
  *     // Your custom message handling logic
  *     return {
+ *       outcome: { status: "completed", effects: [] },
  *       didRespond: true,
  *       responseContent: { text: "Custom response" },
  *       responseMessages: [],

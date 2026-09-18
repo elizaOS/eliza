@@ -13,13 +13,11 @@ import os from "node:os";
 import path from "node:path";
 import { createGzip } from "node:zlib";
 import {
-  composePrompt,
   logger as coreLogger,
   ElizaError,
   type IAgentRuntime,
   type JsonValue,
   ModelType,
-  observationExtractionTemplate,
   parseTrajectorySemanticStages,
   redactBasicEmails,
   resolveStateDir,
@@ -28,6 +26,8 @@ import {
   timeInferenceSpan,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import { observationExtractionTemplate } from "@elizaos/prompts";
+import { composePrompt } from "@elizaos/prompts/rendering";
 import { asRecord } from "@elizaos/shared";
 
 export { asRecord };

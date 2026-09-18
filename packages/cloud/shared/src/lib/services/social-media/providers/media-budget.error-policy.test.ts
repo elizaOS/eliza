@@ -24,7 +24,7 @@
  * `afterAll` (see the note in `slack.error-policy.test.ts`).
  */
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 import type { MediaAttachment, PostContent, SocialCredentials } from "../../../types/social-media";
 import { SOCIAL_MEDIA_MEDIA_MAX_BYTES } from "../../../types/social-media";

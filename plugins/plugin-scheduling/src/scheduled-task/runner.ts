@@ -18,7 +18,7 @@
  *    skip: pause suppresses proactive behavior, and chaining is proactive.
  */
 
-import { ElizaError, stableStringify } from "@elizaos/core/edge";
+import { ElizaError, stableStringify } from "@elizaos/core";
 import { decideDispatchPolicy } from "../dispatch-policy.js";
 import type { DispatchResult } from "../dispatch-types.js";
 import type { CompletionCheckRegistry } from "./completion-check-registry.js";

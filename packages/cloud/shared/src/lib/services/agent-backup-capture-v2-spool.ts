@@ -12,7 +12,7 @@ import path from "node:path";
 import {
   KMS_AEAD_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
   KMS_AEAD_OPERATION_KEY_BUNDLE_V1,
-} from "@elizaos/core/security/kms";
+} from "@elizaos/credentials/kms";
 import { AGENT_BACKUP_CHUNK_ENVELOPE_V1, AGENT_BACKUP_MANIFEST_V2_LIMITS } from "@elizaos/shared";
 import z from "zod";
 

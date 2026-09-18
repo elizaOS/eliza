@@ -18,9 +18,9 @@ Each subprocess streams stdout/stderr into `packages/cloud/e2e/.logs/`.
 ## Running
 
 ```bash
-bun run cloud:e2e        # headless
-bun run cloud:e2e:headed # show browser
-bun run cloud:e2e:ui     # Playwright UI mode
+bun run --cwd packages/cloud/e2e test        # headless
+bun run --cwd packages/cloud/e2e test:headed # show browser
+bun run --cwd packages/cloud/e2e test:ui     # Playwright UI mode
 ```
 
 Per-test the harness:
@@ -39,7 +39,7 @@ and returns a real API key for a free account. The stack runs the worker with
 `MOCK_REDIS=1` (shared in-process store), so the SIWE nonce survives between the
 two requests. `asSeededUser(login)` adapts the result to the `SeededUser` shape.
 
-The same flow is available as a dev/CI gate: `bun run cloud:login:test-wallet`
+The same flow is available as a dev/CI gate: `bun scripts/cloud/siwe-test-login.mjs`
 (defaults to `https://api.eliza.app`; pass `--base <url>` for a local stack).
 It exits non-zero if login or the authenticated probe fails.
 

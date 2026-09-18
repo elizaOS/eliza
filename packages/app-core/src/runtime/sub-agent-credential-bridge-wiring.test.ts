@@ -5,17 +5,16 @@
  * (idempotently), while a sandboxed child with no ACP service registers nothing
  * and degrades to the 503 path.
  */
+import type { AgentRuntime, Service } from "@elizaos/core";
 import type {
-  AgentRuntime,
-  Service,
   SubAgentCredentialBridge,
   SubAgentCredentialScope,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import {
   SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE,
   SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
   SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import { describe, expect, it, vi } from "vitest";
 import { registerSubAgentCredentialBridge } from "./sub-agent-credential-bridge-wiring.ts";
 

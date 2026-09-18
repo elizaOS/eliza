@@ -10,12 +10,14 @@
  * `live-only`: it needs a live model and is excluded from the pr-deterministic
  * lane.
  */
-import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import type {
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import workflowPlugin from "../../../../plugins/plugin-workflow/src/index.ts";
 import {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,
@@ -80,12 +82,15 @@ async function seedWorkflow(ctx: ScenarioContext): Promise<string | undefined> {
   if (!registered) await runtime.registerPlugin?.(workflowPlugin);
   // Mount the plugin's routes so the executions op resolves the same way the
   // running app does.
-  const existing = (runtime.routes ?? []).filter(
+  const existing = (getHttpRuntime(runtime).routes ?? []).filter(
     (route) => route.__scenarioWorkflowRoute !== true,
   );
-  runtime.routes = existing;
+  getHttpRuntime(runtime).routes = existing;
   for (const route of workflowPlugin.routes ?? []) {
-    runtime.routes.push({ ...route, __scenarioWorkflowRoute: true });
+    getHttpRuntime(runtime).routes.push({
+      ...route,
+      __scenarioWorkflowRoute: true,
+    });
   }
 
   // The ACTIVE_WORKFLOWS provider scopes by a per-user tag

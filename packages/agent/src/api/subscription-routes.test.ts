@@ -3,8 +3,8 @@
  * owns the live PKCE verifier; provider transport remains behind its injected seam.
  */
 import type http from "node:http";
-import type { AccountCredentialRecord } from "@elizaos/auth/account-storage";
-import type { OAuthFlowHandle } from "@elizaos/auth/oauth-flow";
+import type { AccountCredentialRecord } from "@elizaos/credentials/auth/account-storage";
+import type { OAuthFlowHandle } from "@elizaos/credentials/auth/oauth-flow";
 import { describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/types.eliza.ts";
 import {

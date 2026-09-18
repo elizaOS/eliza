@@ -5,7 +5,7 @@
  * and drives the hub through the local-inference API client.
  */
 
-import type { VoiceModelId } from "@elizaos/shared";
+import type { VoiceModelId } from "@elizaos/shared/local-inference/voice-models";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {

@@ -7,9 +7,9 @@
  * window; no live model, no database.
  */
 import { describe, expect, it, vi } from "vitest";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
+import { runV5MessageRuntimeStage1 } from "../../../../plugins/plugin-assistant/src/services/message.ts";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import { runV5MessageRuntimeStage1 } from "../services/message";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import type { UUID } from "../types/primitives";
@@ -138,7 +138,7 @@ describe("complete planner dispatch above the estimated window", () => {
 					{
 						id: "discover-calendar",
 						name: "DISCOVER_TOOLS",
-						args: {
+						arguments: {
 							names: ["CALENDAR_DELETE"],
 							eliza_turn_scope: "more_work_pending",
 						},
@@ -151,7 +151,7 @@ describe("complete planner dispatch above the estimated window", () => {
 					{
 						id: "calendar-1",
 						name: "CALENDAR_DELETE",
-						args: { title: "Gym session", eliza_turn_scope: "final" },
+						arguments: { title: "Gym session", eliza_turn_scope: "final" },
 					},
 				],
 			},

@@ -5,16 +5,17 @@
  * same runner-to-worker env channel as __E2E_SKIP__). A fixed port collides
  * when CI fan-out places concurrent jobs on one runner host (#18359).
  */
+
+import { randomUUID as uuidv4 } from "node:crypto";
 import http from "node:http";
-import { v4 as uuidv4 } from "uuid";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "../../src/contracts/service-routing";
-import { InMemoryDatabaseAdapter } from "../../src/database/inMemoryAdapter";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { detectInferenceProviders } from "@elizaos/testing/inference-provider";
+import { createOllamaModelHandlers } from "@elizaos/testing/ollama-provider";
 import { AgentRuntime } from "../../src/runtime";
-import { detectInferenceProviders } from "../../src/testing/inference-provider";
-import { createOllamaModelHandlers } from "../../src/testing/ollama-provider";
 import type { Character, Memory, Plugin, UUID } from "../../src/types";
 import { ChannelType } from "../../src/types";
-import { loadEnvFile } from "../../src/utils/environment";
+import { loadEnvFile } from "./env";
 
 const TEST_CHARACTER: Character = {
 	name: "E2ETestAgent",
@@ -121,13 +122,6 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 		req.on("data", (c: Buffer) => chunks.push(c));
 		req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
 		req.on("error", reject);
-	});
-}
-
-async function verifyInferenceProvider(runtime: AgentRuntime): Promise<void> {
-	await runtime.generateText("Reply with OK.", {
-		modelType: "TEXT_LARGE" as "TEXT_LARGE",
-		maxTokens: 8,
 	});
 }
 
@@ -296,18 +290,6 @@ export default async function globalSetup(): Promise<void> {
 	await runtime.initialize();
 	console.log("[e2e] Runtime initialized");
 
-	try {
-		await verifyInferenceProvider(runtime);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		console.error(
-			`\n[e2e] Provider preflight failed. Skipping E2E tests.\n${message}\n`,
-		);
-		process.env.__E2E_SKIP__ = "1";
-		await runtime.stop();
-		return;
-	}
-
 	// ── 4. Prepare a default room & entity for chat ────────────────────────
 	const worldId = uuidv4() as UUID;
 	await runtime.createWorld({ id: worldId, name: "e2e-world", agentId });
@@ -334,27 +316,6 @@ export default async function globalSetup(): Promise<void> {
 		res.setHeader("Content-Type", "application/json");
 
 		try {
-			// GET /health
-			if (req.method === "GET" && req.url === "/health") {
-				res.writeHead(200);
-				res.end(JSON.stringify({ ok: true }));
-				return;
-			}
-
-			// GET /status
-			if (req.method === "GET" && req.url === "/status") {
-				res.writeHead(200);
-				res.end(
-					JSON.stringify({
-						agentId,
-						name: TEST_CHARACTER.name,
-						provider: provider.name,
-						ready: true,
-					}),
-				);
-				return;
-			}
-
 			// POST /chat — drives the FULL agent message pipeline via
 			// runtime.messageService.handleMessage so providers, evaluators, and
 			// trajectory recording all run. No generateText shortcut here.

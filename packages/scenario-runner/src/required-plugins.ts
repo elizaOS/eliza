@@ -9,16 +9,12 @@
  * fixture names are verified by the executor after the scenario seed runs.
  */
 
-import {
-  type Action,
-  type AgentRuntime,
-  ElizaError,
-  type Plugin,
-} from "@elizaos/core";
+import { type Action, type AgentRuntime, ElizaError } from "@elizaos/core";
 import type {
   ScenarioDefinition,
   ScenarioExecutionProfile,
 } from "@elizaos/scenario-runner/schema";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 
 const MEETINGS_PLUGIN_PACKAGE = "@elizaos/plugin-meetings";
 const MEETINGS_TEST_SUPPORT_PACKAGE = "@elizaos/plugin-meetings/test-support";

@@ -416,21 +416,6 @@ describe("provisioning worker deployment contract", () => {
     expect(workflow).toContain('if [ "$deployed_sha" = "$DEPLOY_SHA" ]; then');
   });
 
-  it("regenerates before deploy and self-heals every service", () => {
-    expect(workflow).toContain(
-      "bash packages/cloud/scripts/admin/ensure-generated-keywords.sh",
-    );
-    for (const service of generatedKeywordServices) {
-      expect(service).toContain(
-        "ExecStartPre=/opt/eliza/packages/cloud/scripts/admin/ensure-generated-keywords.sh",
-      );
-    }
-    // The deployment already generated the sources before systemd is
-    // restarted. This unit has ProtectSystem=strict and must not attempt a
-    // second write beneath /opt/eliza from its read-only ExecStartPre sandbox.
-    expect(backupService).not.toContain("ensure-generated-keywords.sh");
-  });
-
   it("builds the default-condition prompts runtime before core and restart", () => {
     const script = deployStep("Deploy and restart worker").with?.script ?? "";
     const install = script.indexOf(

@@ -171,7 +171,6 @@ export class RuntimeEmbeddings {
 				modelType: ModelTypeName | string,
 				provider?: string,
 			): ResolvedModelRegistration[];
-			fetch(...args: Parameters<typeof fetch>): ReturnType<typeof fetch>;
 		},
 	) {}
 	getPinnedProvider(): string | undefined {
@@ -540,8 +539,8 @@ export class RuntimeEmbeddings {
 	}
 
 	/**
-	 * Queue a memory for embedding generation. If companionUrl is set, POSTs to companion
-	 * and returns without waiting (fire-and-forget). WHY: Thin runtime doesn't block on embedding.
+	 * Queue embedding work through the registered event handlers without blocking
+	 * the memory write that requested it.
 	 */
 	async queueEmbeddingGeneration(
 		memory: Memory,
@@ -560,31 +559,6 @@ export class RuntimeEmbeddings {
 			// so queueing would only produce per-item generation failures (or
 			// silently dropped vectors). Skip explicitly, warn once.
 			this.warnEmbeddingGenerationSkipped();
-			return;
-		}
-
-		if (this.runtime.companionUrl) {
-			const url = `${this.runtime.companionUrl.replace(/\/$/, "")}/embedding-generation`;
-			void this.host
-				.fetch(url, {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						agentId: this.runtime.agentId,
-						memory,
-						priority,
-						runId: this.runtime.getCurrentRunId(),
-					}),
-				})
-				.catch((err) =>
-					// error-policy:J7 diagnostics-must-not-kill-the-loop — offloading
-					// embedding generation to the companion is fire-and-forget, but a
-					// dead companion must surface (embeddings would silently stop).
-					this.runtime.reportError("AgentRuntime.companionEmbedding", err, {
-						url,
-						agentId: this.runtime.agentId,
-					}),
-				);
 			return;
 		}
 

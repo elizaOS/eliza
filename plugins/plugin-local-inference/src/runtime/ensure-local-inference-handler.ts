@@ -25,7 +25,6 @@ import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
 	canonicalPromptForModelCall,
-	fetchRemoteMedia,
 	type GenerateTextParams,
 	getInferencePriorityGate,
 	getInferenceTimer,
@@ -36,7 +35,6 @@ import {
 	logger,
 	type MobileDeviceBridgeService,
 	ModelType,
-	renderMessageHandlerStablePrefix,
 	resolveBackgroundInferenceBudget,
 	ServiceType,
 	type TextEmbeddingParams,
@@ -45,7 +43,9 @@ import {
 	timeInferenceSpan,
 	type UUID,
 } from "@elizaos/core";
+import { renderMessageHandlerStablePrefix } from "@elizaos/plugin-assistant";
 import { readAliasedEnv } from "@elizaos/shared";
+import { fetchRemoteMedia } from "@elizaos/shared/media";
 import { LocalInferenceUnavailableError } from "../provider";
 import {
 	type LocalInferenceLoader,

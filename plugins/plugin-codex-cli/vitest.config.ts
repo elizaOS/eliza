@@ -9,7 +9,7 @@ export default defineConfig({
     alias: [
       {
         find: /^@elizaos\/core$/,
-        replacement: path.join(elizaRoot, "packages", "core", "dist", "node", "index.node.js"),
+        replacement: path.join(elizaRoot, "packages", "core", "dist", "index.js"),
       },
     ],
   },

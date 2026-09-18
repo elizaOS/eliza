@@ -8,4 +8,4 @@ export type {
   BrowserTabKitDispatchOptions,
   BrowserTabKitMoveOptions,
   BrowserTabKitTypeOptions,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/browser-tab-kit-types";

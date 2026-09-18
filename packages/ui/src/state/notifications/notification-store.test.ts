@@ -6,7 +6,7 @@
  * policy. The persistent Home inbox remains the sole in-app surface. jsdom
  * with the API client and bridges mocked — deterministic, no real server.
  */
-import type { AgentNotification } from "@elizaos/core";
+import type { AgentNotification } from "@elizaos/common";
 import {
   clearStoredStewardToken,
   writeStoredStewardToken,

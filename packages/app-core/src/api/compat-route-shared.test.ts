@@ -9,7 +9,7 @@ import * as fs from "node:fs";
 import type http from "node:http";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ElizaConfig } from "@elizaos/shared";
+import type { ElizaConfig } from "@elizaos/shared/config/types.eliza";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   type CompatRouteChainEntry,

@@ -1,3 +1,8 @@
+import {
+  getHttpRuntime,
+  installHttpPluginLifecycle,
+} from "@elizaos/shared/api/http-plugin-runtime";
+
 /**
  * Shared utilities for plugin lifecycle tests.
  *
@@ -6,8 +11,8 @@
  * always present without any additional setup.
  */
 
-import type { Plugin } from "@elizaos/core";
 import { AgentRuntime } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 
 export type { Plugin };
 export { AgentRuntime };
@@ -37,7 +42,9 @@ export type TestRuntime = AgentRuntime & {
  * when unloaded without `allowAdapterUnload`.
  */
 export function createTestRuntime(): TestRuntime {
-  return new AgentRuntime({ logLevel: "fatal" }) as TestRuntime;
+  const runtime = new AgentRuntime({ logLevel: "fatal" });
+  installHttpPluginLifecycle(runtime);
+  return runtime as TestRuntime;
 }
 
 /**
@@ -91,7 +98,7 @@ export async function cyclePlugin(
     const actionCountBefore = runtime.actions.length;
     const providerCountBefore = runtime.providers.length;
     const evaluatorCountBefore = runtime.evaluators.length;
-    const routeCountBefore = runtime.routes.length;
+    const routeCountBefore = getHttpRuntime(runtime).routes.length;
 
     const unloadStart = performance.now();
     await runtime.unloadPlugin(plugin.name);
@@ -108,7 +115,7 @@ export async function cyclePlugin(
       evaluatorCountBefore,
       evaluatorCountAfter: runtime.evaluators.length,
       routeCountBefore,
-      routeCountAfter: runtime.routes.length,
+      routeCountAfter: getHttpRuntime(runtime).routes.length,
     });
   }
 

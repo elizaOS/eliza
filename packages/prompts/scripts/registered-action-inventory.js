@@ -1,17 +1,9 @@
 /**
  * Static scanner for the REAL registered action surface: every `Action`
  * definition in `packages/core/src`, `packages/agent/src`, and `plugins/*\/src`,
- * plus the view-scoped actions declared on `BUILTIN_VIEWS`. Unlike the
- * canonical spec pipeline (`generate-plugin-action-spec.js`, which deliberately
- * drops self-describing plugin actions so `action-docs.ts` stays a curated
- * prompt catalog), this collector drops NOTHING — it answers "which action ids
- * exist in code", not "which actions should the model be taught up front".
- *
- * `generate-action-docs.js` consumes this inventory to render the "Registered
- * runtime actions" section of `packages/docs/action-catalog.md`. Issues
- * #14365/#14366/#14367 were mis-filed as "action missing" because the catalog
- * omitted registered actions; this scanner keeps that source-derived section
- * complete without duplicating extraction rules.
+ * plus the view-scoped actions declared on `BUILTIN_VIEWS`. This read-only
+ * navigation aid lists source declarations, not the enabled or authorized
+ * actions of a running agent. Metadata remains in each typed implementation.
  *
  * Detection is lexical (no TS compiler dependency, usable from dependency-free
  * CI audits): an action is a `const X: Action = {...}` or

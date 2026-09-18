@@ -14,7 +14,7 @@ import {
 import {
 	createTestRuntime,
 	type TestRuntimeResult,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
 	completeClaim,

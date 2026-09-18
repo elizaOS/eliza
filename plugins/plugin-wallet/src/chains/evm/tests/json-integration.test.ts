@@ -8,7 +8,7 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
-import { parseJSONObjectFromText } from "@elizaos/core";
+import { parseJSONObjectFromText } from '@elizaos/prompts/parsing';
 import { config } from "dotenv";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

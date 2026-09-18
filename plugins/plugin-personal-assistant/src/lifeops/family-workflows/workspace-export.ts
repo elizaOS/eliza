@@ -6,7 +6,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createZipArchive } from "@elizaos/agent/api/zip-utils";
 import {
-  DocumentService,
   ElizaError,
   type IAgentRuntime,
   type IFileStorageService,
@@ -14,6 +13,7 @@ import {
   ServiceType,
   validateUuid,
 } from "@elizaos/core";
+import { DocumentService } from "@elizaos/plugin-assistant";
 import { z } from "zod";
 import { getAgreementKnowledgeService } from "../household/agreement-knowledge.js";
 import { executeRawSql, sqlQuote } from "../sql.js";

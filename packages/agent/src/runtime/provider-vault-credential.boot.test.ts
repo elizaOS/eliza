@@ -12,7 +12,7 @@ import {
   generateMasterKey,
   inMemoryMasterKey,
   PgliteVaultImpl,
-} from "@elizaos/vault";
+} from "@elizaos/credentials/vault";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startEliza } from "./eliza.ts";
 import {

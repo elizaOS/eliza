@@ -14,22 +14,12 @@
         "import": "./src/index.ts",
         "default": "./src/index.ts"
       },
-      "bun": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./plugin": {
       "types": "./dist/plugin.d.ts",
       "eliza-source": {
-        "types": "./src/plugin.ts",
-        "import": "./src/plugin.ts",
-        "default": "./src/plugin.ts"
-      },
-      "bun": {
         "types": "./src/plugin.ts",
         "import": "./src/plugin.ts",
         "default": "./src/plugin.ts"
@@ -67,7 +57,9 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",
-    "react": "^19.0.0"
+    "react": "^19.0.0",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/shared": "workspace:*"
   },
   "peerDependencies": {
     "react-dom": "^19.0.0"

@@ -2,7 +2,7 @@
  * Regression for complete, well-formed owner-name normalization.
  */
 
-import { toWellFormedUnicode } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import { normalizeOwnerName } from "./owner-name.ts";
 

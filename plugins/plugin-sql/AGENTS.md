@@ -4,19 +4,17 @@ SQL database adapter plugin for elizaOS — provides persistent storage via Post
 
 ## Purpose / role
 
-This plugin registers a `DatabaseAdapter` with the elizaOS agent runtime so that all core runtime persistence (memories, entities, rooms, tasks, cache, logs, relationships, etc.) works against a real SQL backend. It is the default database plugin; elizaOS agents load it automatically if no other adapter is already registered. On Node/Bun it selects PostgreSQL when `POSTGRES_URL` is set, otherwise falls back to embedded PGlite. In the browser build it always uses PGlite (WASM).
+This plugin registers a `DatabaseAdapter` with the elizaOS agent runtime so that all core runtime persistence (memories, entities, rooms, tasks, cache, logs, relationships, etc.) works against a real SQL backend. It is the default database plugin; elizaOS agents load it automatically if no other adapter is already registered. On Node/Bun it selects PostgreSQL when `POSTGRES_URL` is set, otherwise falls back to embedded PGlite. The plugin runs in Node; browser clients use their host transport.
 
 ## Plugin surface
 
-The exported `plugin` object (`src/index.ts` / `src/index.node.ts` / `src/index.browser.ts`) registers:
+The exported `plugin` object (`src/index.ts`) registers:
 
 | Kind | Name | Description |
 |------|------|-------------|
 | Service | `AdvancedMemoryStorageService` (`serviceType = "memoryStorage"`) | Implements `MemoryStorageProvider`; persists and completely retrieves long-term memories through the runtime memory API |
 | Service | `SqlPrincipalService` (`serviceType = "principal"`) | Canonical generation-fenced identity authority for claims, person-link attestations, reversible redirects, merge/split journals, and owner-binding reads |
 | Service | `SqlMembershipService` (`serviceType = "membership"`) | Canonical publisher-generation and cursor-fenced connector-room authority with atomic complete snapshots, bounded freshness, exact idempotency, and fail-closed authorization |
-| Route | `POST /api/identity/person-links/attest` | Private OWNER/ADMIN ingress; requires an authenticated `AccessContext`, derives actor authority from it, and records immutable same-person evidence without merging principals |
-| Route | `GET /api/identity/person-links/verify` | Private exact-generation verification; also requires OWNER/ADMIN `AccessContext` |
 | Schema | `schema` (all tables) | Passed as `plugin.schema` so `DatabaseMigrationService` can auto-migrate at startup |
 
 No actions, providers, evaluators, or event handlers are registered by this plugin. Identity mutation is never model-callable.
@@ -25,16 +23,15 @@ No actions, providers, evaluators, or event handlers are registered by this plug
 
 ```
 plugins/plugin-sql/
-  package.json                  npm manifest; scripts, deps
+  package.json                  Single npm manifest; scripts, deps
+  build.ts                      Node ESM and bundled declarations in dist/
   README.md                     human-facing docs
   src/
-    index.ts                    Default entry (same implementation as index.node.ts; uses ./utils)
-    index.node.ts               Node/Bun entry: PostgreSQL + PGlite; createDatabaseAdapter()
-    index.browser.ts            Browser entry: PGlite-only plugin
+    index.ts                    Node entry: PostgreSQL + PGlite; createDatabaseAdapter()
     base.ts                     BaseDrizzleAdapter — shared IDatabaseAdapter implementation
     types.ts                    DrizzleDatabase union type; getDb() helper
     agent-mapping.ts            Utilities for normalizing agent message examples from DB rows
-    utils.ts / utils.node.ts / utils.browser.ts  Platform-specific helpers (resolvePgliteDir)
+    utils.ts                    Node storage helpers (resolvePgliteDir)
     utils/
       string-to-uuid.ts         String-to-UUID conversion utility
     connector-credential-store.ts  ConnectorCredentialStore/Vault interfaces + factory
@@ -51,9 +48,6 @@ plugins/plugin-sql/
       adapter.ts                PgliteDatabaseAdapter (wraps BaseDrizzleAdapter for PGlite)
       manager.ts                PGliteClientManager — PGlite singleton, lifecycle
       errors.ts                 PGlite-specific error types
-    neon/
-      adapter.ts                NeonDatabaseAdapter — serverless adapter using @neondatabase/serverless
-      manager.ts                NeonConnectionManager — WebSocket-based connection for Neon/Vercel/Cloudflare
     schema/
       index.ts                  Re-exports all table definitions
       agent.ts / room.ts / memory.ts / entity.ts / ...  One file per table
@@ -68,25 +62,25 @@ plugins/plugin-sql/
       runtime-migrator.ts       Diff-based migration engine
       schema-transformer.ts     Drizzle schema → SQL diff
       extension-manager.ts      PGlite extension loading
-    write-back/
-      index.ts                  WriteBackService — forwards local PGlite writes to cloud API (Electric Pattern 1)
     drizzle/                    Drizzle ORM re-exports
 ```
+
+Identity HTTP ingress belongs to `packages/agent/src/api/identity-person-link-routes.ts`; this package registers storage and authority services only.
 
 ## Commands
 
 All scripts run from the plugin root via `bun run --cwd plugins/plugin-sql <script>`.
 
 ```bash
-bun run --cwd plugins/plugin-sql build          # Build (cd src && bun run build.ts)
-bun run --cwd plugins/plugin-sql dev            # Watch build (bun --hot build.ts)
+bun run --cwd plugins/plugin-sql build          # Node ESM + bundled declarations
+bun run --cwd plugins/plugin-sql dev            # Watch build
 bun run --cwd plugins/plugin-sql test           # vitest run
 bun run --cwd plugins/plugin-sql typecheck      # tsc --noEmit
 bun run --cwd plugins/plugin-sql lint           # biome lint
 bun run --cwd plugins/plugin-sql lint:check     # biome lint (no write)
 bun run --cwd plugins/plugin-sql format         # biome format (write)
 bun run --cwd plugins/plugin-sql format:check   # biome format (check only)
-bun run --cwd plugins/plugin-sql clean          # rm -rf src/dist .turbo
+bun run --cwd plugins/plugin-sql clean          # Remove generated dist and cache
 bun run --cwd plugins/plugin-sql test:e2e       # live smoke test (needs running stack)
 ```
 
@@ -95,15 +89,11 @@ bun run --cwd plugins/plugin-sql test:e2e       # live smoke test (needs running
 | Variable | Required | Default | Effect |
 |----------|----------|---------|--------|
 | `POSTGRES_URL` | No | — | PostgreSQL connection string. When absent, PGlite is used. |
-| `DATABASE_URL` | No | — | Alternative connection string used by the Neon serverless adapter. |
 | `PGLITE_DATA_DIR` | No | `.eliza/.elizadb` | Directory (or `idb://` URL) for PGlite data storage. |
 | `ENABLE_DATA_ISOLATION` | No | `false` | When `true`, enables PostgreSQL Row Level Security per-server isolation. |
 | `ELIZA_SERVER_ID` | Conditional | — | Required when `ENABLE_DATA_ISOLATION=true`; becomes the RLS server UUID. |
 | `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS` | No | `false` | Allow column drops and other destructive schema changes at startup. |
 | `ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS` | No | auto | Controls automatic install of the `message_search_document` generated column and message-search GIN indexes. Production Postgres adapters skip this DDL by default; set `true` after scheduling the generated-column/index migration. |
-| `ELIZA_ELECTRIC_SYNC_URL` | No | — | URL for the Electric sync service; enables PGlite cloud sync read path. |
-| `ELIZA_CLOUD_WRITE_BASE_URL` | No | — | Base URL of the cloud API for WriteBackService (e.g. `https://api.eliza.app`). If unset, write-back is a no-op. |
-| `ELIZA_CLOUD_SERVICE_KEY` | No | — | `X-Service-Key` header value sent by WriteBackService to the cloud API. |
 | `ELIZA_PGLITE_DISABLE_EXTENSIONS` | No | `false` | Disables PGlite extension loading when set. |
 | `ELIZA_IOS_LOCAL_BACKEND` | No | — | Overrides the local backend URL for iOS platform targets. |
 | `ELIZA_ANDROID_LOCAL_BACKEND` | No | — | Overrides the local backend URL for Android platform targets. |
@@ -129,13 +119,13 @@ Settings are read via `runtime.getSetting(key)` inside `plugin.init`.
 ### Add a new service
 
 1. Implement `Service` from `@elizaos/core` in `src/services/<name>.ts`.
-2. Add it to the `services` array in the `plugin` object in `src/index.ts` (and mirror in `src/index.node.ts` / `src/index.browser.ts` as appropriate).
+2. Add it to the `services` array in the `plugin` object in `src/index.ts`.
 
 ## Conventions / gotchas
 
 - **Global singleton managers.** Both `PostgresConnectionManager` and `PGliteClientManager` are stored under `Symbol.for("elizaos.plugin-sql.global-singletons")` on `globalThis`. This prevents multiple pools when the module is imported from multiple paths in the same process. Do not create manager instances directly — always go through `createDatabaseAdapter()`.
 - **Skips init if adapter already registered.** If another plugin already called `registerDatabaseAdapter` before this plugin's `init` runs, the plugin does nothing. This is intentional; use it to swap in a custom adapter by loading it first.
-- **Dual-runtime exports.** The `exports` field in `package.json` conditionally resolves `index.node.js` (Bun/Node) vs `index.browser.js` (browser). The node entry has PostgreSQL support; the browser entry is PGlite-only. Do not import the node adapter directly in browser-targeted code.
+- **One Node entry.** The root export uses `dist/index.js` and `dist/index.d.ts`. Schema and Drizzle have explicit entries; generated code stays in package-root `dist/`. Shared bundle chunks preserve schema object identity across the root and schema entries.
 - **Schema subpath export.** Consumers that only need schema types (e.g., for drizzle queries outside the plugin) can import from `@elizaos/plugin-sql/schema` without pulling in adapters.
 - **Drizzle subpath export.** Common Drizzle query helpers (`eq`, `sql`, `and`, etc.) are re-exported from `@elizaos/plugin-sql` and `@elizaos/plugin-sql/drizzle` to avoid direct drizzle-orm version coupling in consumer code.
 - **Vector dimensions are active-width scoped.** `ensureEmbeddingDimension(n)` selects the current vector column, and runtime boot calls `clearEmbeddingsOutsideActiveDimension()` to delete vectors in other dimension columns and queue those memories for re-embedding at the active width. Memory rows survive; stale vectors do not.
@@ -150,3 +140,5 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+The base plugin has no Electric sync, cloud write forwarding, or Neon serverless driver. Use ordinary PostgreSQL connections for hosted Postgres. PGlite local live queries are available only through explicitly supplied extensions.

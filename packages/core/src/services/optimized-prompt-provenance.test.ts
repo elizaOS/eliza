@@ -3,8 +3,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import { plannerTemplate } from "../prompts/planner";
-import { runPlannerLoop } from "../runtime/planner-loop";
+import { plannerTemplate } from "../../../../plugins/plugin-assistant/src/prompts/planner.ts";
+import { runPlannerLoop } from "../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import {
 	type OptimizedPromptArtifact,
 	OptimizedPromptService,

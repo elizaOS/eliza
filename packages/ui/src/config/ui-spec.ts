@@ -28,4 +28,4 @@ export type {
   UiSpecValidationConfig,
   UiSpecVisibilityCondition,
   VisibilityOperator,
-} from "@elizaos/shared";
+} from "@elizaos/shared/config/ui-spec";

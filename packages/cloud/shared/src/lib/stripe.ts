@@ -23,7 +23,7 @@
  * const customer = await stripe.customers.create({ email });
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import Stripe from "stripe";
 import {
   shouldBlockLiveStripeKeyOutsideProduction,

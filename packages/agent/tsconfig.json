@@ -14,13 +14,11 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
-      "@elizaos/core/testing": ["../core/src/testing/index.ts"],
-      "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/testing": ["../testing/src/index.ts"],
+      "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/edge": ["../core/src/index.edge.ts"],
       "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],
       "@elizaos/core/*": ["../core/src/*"],
-      "@elizaos/logger": ["../logger/src/index.ts"],
-      "@elizaos/logger/*": ["../logger/src/*"],
       "@elizaos/plugin-personal-assistant": [
         "../../plugins/plugin-personal-assistant/src/index.ts"
       ],
@@ -113,15 +111,15 @@
       ],
       "@elizaos/agent/api": ["./src/api/index.ts"],
       "@elizaos/agent/runtime": ["./src/runtime/index.ts"],
-      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
-      "@elizaos/auth": ["../auth/src/index.ts"],
-      "@elizaos/auth/*": ["../auth/src/*"],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
+      "@elizaos/credentials/auth": ["../credentials/src/auth/index.ts"],
+      "@elizaos/credentials/auth/*": ["../credentials/src/auth/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/local-inference": [
         "../shared/src/local-inference/index.ts"
       ],
       "@elizaos/shared/*": ["../shared/src/*"],
-      "@elizaos/vault": ["../vault/src/index.ts"],
+      "@elizaos/credentials/vault": ["../credentials/src/vault/index.ts"],
       "@elizaos/skills": ["../skills/src/index.ts"],
       "@elizaos/plugin-discord": ["../../plugins/plugin-discord/index.ts"],
       "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],

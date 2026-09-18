@@ -6,7 +6,7 @@
  */
 
 import type { AgentRuntime, Plugin } from "@elizaos/core";
-import type { SecretsManager } from "@elizaos/vault";
+import type { SecretsManager } from "@elizaos/credentials/vault";
 import { describe, expect, it } from "vitest";
 import { createHotStrategy } from "./reload-hot.ts";
 import type {

@@ -5,7 +5,7 @@ import { createServer, type Server } from "node:http";
 import net from "node:net";
 import path from "node:path";
 import type { AgentRuntime, RuntimeSettings } from "@elizaos/core";
-import { createTestRuntime } from "../../src/testing/pglite-runtime.ts";
+import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 
 const {
 	default: agentOrchestratorPlugin,

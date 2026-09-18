@@ -58,7 +58,8 @@
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "drizzle-orm": "0.45.2",
-    "lucide-react": "^1.0.0"
+    "lucide-react": "^1.0.0",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/plugin-sql": "workspace:*",

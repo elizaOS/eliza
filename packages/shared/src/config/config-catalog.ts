@@ -27,7 +27,7 @@
  * @module config-catalog
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import type { ReactNode } from "react";
 import z from "zod";
 import type {

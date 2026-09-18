@@ -5,20 +5,20 @@
  * service-resolution and domain failures into structured error responses.
  */
 import type http from "node:http";
-import {
-  ElizaError,
-  type IAgentRuntime,
-  type LegacyRouteHandler,
-  logger,
-  type Route,
-  readJsonBody,
-  sendJson,
-  sendJsonError,
-} from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
 } from "@elizaos/shared";
+import {
+  readJsonBody,
+  sendJson,
+  sendJsonError,
+} from "@elizaos/shared/api/http-helpers";
+import type {
+  LegacyRouteHandler,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
 import {
   GOOGLE_CALENDAR_WEBHOOK_PATH,
   type GoogleCalendarNotificationHeaders,

@@ -5,7 +5,7 @@ import type {
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletNftsResponse,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/wallet-types";
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

@@ -6,7 +6,8 @@
  * `--json` raw dump. Helpers flatten the nested config and infer group names.
  */
 import type { ElizaConfig } from "@elizaos/agent";
-import { getLogPrefix, theme } from "@elizaos/shared";
+import { theme } from "@elizaos/shared/terminal/theme";
+import { getLogPrefix } from "@elizaos/shared/utils/log-prefix";
 import type { Command } from "commander";
 
 export function registerConfigCli(program: Command) {

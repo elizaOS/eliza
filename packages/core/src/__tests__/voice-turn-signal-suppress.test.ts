@@ -7,8 +7,8 @@
  * no model.
  */
 import { describe, expect, it } from "vitest";
+import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../../../../plugins/plugin-assistant/src/services/message.ts";
 import type { ResponseHandlerEvaluatorContext } from "../runtime/response-handler-evaluators";
-import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../services/message";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
 

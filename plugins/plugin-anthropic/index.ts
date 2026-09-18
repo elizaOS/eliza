@@ -9,7 +9,7 @@
  * Also carries the built-in `TestSuite` that exercises key validation and a few
  * live `useModel()` calls, and the `config` block declaring every supported env
  * var. `initializeAnthropic` (init.ts) runs at plugin init to detect the auth
- * mode. The Node and browser build entrypoints re-export this module.
+ * mode. This module is the Node runtime entrypoint.
  */
 import type {
   GenerateTextParams,

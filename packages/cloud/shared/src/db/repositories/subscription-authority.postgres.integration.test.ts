@@ -49,8 +49,12 @@ async function connect(): Promise<Client> {
 }
 
 /** Observe actual database waiters so concurrency assertions do not depend on a sleep guess. */
-async function waitForFinalizerWaiters(count: number): Promise<number[]> {
-  for (let attempt = 0; attempt < 500; attempt += 1) {
+async function waitForOrganizationLockWaiters(
+  count: number,
+  attempts = 500,
+  intervalMs = 20,
+): Promise<number[]> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     const waiting = await setupClient!.query<{ pid: number }>(
       `SELECT pid FROM pg_stat_activity
        WHERE datname=current_database() AND application_name=$1
@@ -58,11 +62,9 @@ async function waitForFinalizerWaiters(count: number): Promise<number[]> {
       [schemaName],
     );
     if (waiting.rows.length >= count) return waiting.rows.map((row) => row.pid);
-    await Bun.sleep(20);
+    await Bun.sleep(intervalMs);
   }
-  throw new Error(
-    `Expected ${count} independent finalizer sessions to wait on the organization lock`,
-  );
+  throw new Error(`Expected ${count} independent sessions to wait on the organization lock`);
 }
 
 const copyLifecycleRevision = `INSERT INTO billing_subscription_revisions (
@@ -498,21 +500,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
           purchasedCreditReservationTransactionId: null,
         }),
       );
-      let reachedOrganizationLock = false;
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        const lockWait = await setupClient!.query<{ blocked: boolean }>(
-          `SELECT EXISTS (
-             SELECT 1 FROM pg_stat_activity
-             WHERE datname = current_database() AND wait_event_type = 'Lock'
-               AND application_name = $1 AND query ILIKE '%organizations%FOR UPDATE%'
-           ) AS blocked`,
-          [schemaName],
-        );
-        reachedOrganizationLock = lockWait.rows[0]?.blocked === true;
-        if (reachedOrganizationLock) break;
-        await Bun.sleep(10);
-      }
-      expect(reachedOrganizationLock).toBe(true);
+      expect(await waitForOrganizationLockWaiters(1, 100, 10)).not.toHaveLength(0);
       const liveBeforeRelease = await setupClient!.query<{ live: boolean }>(
         `SELECT expires_at > clock_timestamp() AS live
          FROM subscription_allowance_periods WHERE id=$1`,
@@ -691,21 +679,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
         actualAmount: microsToMoney(1_000_000n),
         occurredAt: new Date("2026-08-31T00:00:00.000Z"),
       });
-      let reachedOrganizationLock = false;
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        const lockWait = await setupClient!.query<{ blocked: boolean }>(
-          `SELECT EXISTS (
-             SELECT 1 FROM pg_stat_activity
-             WHERE datname = current_database() AND wait_event_type = 'Lock'
-               AND application_name = $1 AND query ILIKE '%organizations%FOR UPDATE%'
-           ) AS blocked`,
-          [schemaName],
-        );
-        reachedOrganizationLock = lockWait.rows[0]?.blocked === true;
-        if (reachedOrganizationLock) break;
-        await Bun.sleep(10);
-      }
-      expect(reachedOrganizationLock).toBe(true);
+      expect(await waitForOrganizationLockWaiters(1, 100, 10)).not.toHaveLength(0);
       await locker.query("COMMIT");
       await expect(settlementPromise).resolves.toMatchObject({
         replayed: false,
@@ -780,20 +754,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
         (result) => ({ result }),
         (error: unknown) => ({ error }),
       );
-      let reachedOrganizationLock = false;
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        const waiting = await setupClient!.query<{ blocked: boolean }>(
-          `SELECT EXISTS (
-          SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'
-          AND application_name=$1 AND query ILIKE '%organizations%FOR UPDATE%'
-        ) AS blocked`,
-          [schemaName],
-        );
-        reachedOrganizationLock = waiting.rows[0]?.blocked === true;
-        if (reachedOrganizationLock) break;
-        await Bun.sleep(10);
-      }
-      expect(reachedOrganizationLock).toBe(true);
+      expect(await waitForOrganizationLockWaiters(1, 100, 10)).not.toHaveLength(0);
       await locker.query("COMMIT");
       expect(await pending).toMatchObject({ error: { code: "SUBSCRIPTION_ENTITLEMENT_CONFLICT" } });
       const current = await entitlements.rebuild({
@@ -834,10 +795,10 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       // The newer provider retrieval returns first. Both captured the same original CAS.
       const newerResult = finalizationOutcome(newer);
       pending.push(newerResult);
-      const firstWaiters = await waitForFinalizerWaiters(1);
+      const firstWaiters = await waitForOrganizationLockWaiters(1);
       const olderResult = finalizationOutcome(older);
       pending.push(olderResult);
-      const bothWaiters = await waitForFinalizerWaiters(2);
+      const bothWaiters = await waitForOrganizationLockWaiters(2);
       expect(new Set(bothWaiters).size).toBe(2);
       expect(bothWaiters).toContain(firstWaiters[0]);
       await locker.query("COMMIT");
@@ -929,7 +890,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
         }),
       ]);
       finalizer = finalizationOutcome(input);
-      await waitForFinalizerWaiters(1);
+      await waitForOrganizationLockWaiters(1);
       expect((await authority.findById(source.organizationId, source.subscriptionId))?.status).toBe(
         "active",
       );
@@ -986,7 +947,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       );
       const result = finalizationOutcome(input);
       pending.push(result);
-      await waitForFinalizerWaiters(1);
+      await waitForOrganizationLockWaiters(1);
       const beforeExpiry = await setupClient!.query<{ live: boolean }>(
         "SELECT lease_expires_at > clock_timestamp() AS live FROM billing_subscription_event_receipts WHERE id=$1",
         [input.receiptId],
@@ -1079,7 +1040,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       ]);
       const replay = finalizationOutcome(input);
       pending.push(replay);
-      await waitForFinalizerWaiters(1);
+      await waitForOrganizationLockWaiters(1);
       expect(await isSubscriptionFundedOrganization(source.organizationId)).toBe(true);
       await locker.query("COMMIT");
       expect(await replay).toMatchObject({
@@ -1138,7 +1099,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
         source.organizationId,
       ]);
       pending.push(claimSubscriptionNotice(source.id), claimSubscriptionNotice(source.id));
-      await waitForFinalizerWaiters(2);
+      await waitForOrganizationLockWaiters(2);
       await locker.query("COMMIT");
       expect((await Promise.all(pending)).filter(Boolean)).toHaveLength(1);
       const readback = await setupClient!.query(
@@ -1173,7 +1134,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
         source.organizationId,
       ]);
       pending = dispatchSubscriptionNotice(claim);
-      await waitForFinalizerWaiters(1);
+      await waitForOrganizationLockWaiters(1);
       await setupClient!.query(
         "SELECT pg_sleep(GREATEST(0, EXTRACT(EPOCH FROM expires_at-clock_timestamp()))+0.05) FROM subscription_notice_attempts WHERE id=$1",
         [claim.attemptId],

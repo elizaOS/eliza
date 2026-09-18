@@ -11,7 +11,7 @@ import {
 	isAnalysisModeEnabledForRoom,
 	maybeHandleAnalysisActivation,
 	parseAnalysisToken,
-} from "../analysis-mode-handler.ts";
+} from "../../../../../plugins/plugin-assistant/src/services/analysis-mode-handler.ts";
 
 describe("parseAnalysisToken", () => {
 	it("detects enable/disable tokens with whitespace tolerance", () => {

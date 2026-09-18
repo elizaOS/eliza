@@ -11,7 +11,7 @@ import {
   type SetOptions,
   type TestVault,
   type Vault,
-} from "@elizaos/vault";
+} from "@elizaos/credentials/vault";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { _resetSharedVaultForTesting } from "../services/vault-mirror";
 import { deriveAgentVaultId } from "./agent-vault-id";

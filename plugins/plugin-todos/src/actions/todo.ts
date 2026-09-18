@@ -13,8 +13,8 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from "@elizaos/core/edge";
-import { validateUuid } from "@elizaos/core/edge";
+} from "@elizaos/core";
+import { validateUuid } from "@elizaos/core";
 
 import {
   type CreateTodoInput,

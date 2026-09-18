@@ -14,7 +14,7 @@ import type {
   MeetingSession,
   MeetingStatusEvent,
   MeetingTranscriptEvent,
-} from "@elizaos/shared";
+} from "@elizaos/shared/meetings";
 import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import { ElizaClient } from "./client-base";
 

@@ -10,10 +10,10 @@ import { vector } from "@electric-sql/pglite/vector";
 import {
   AgentRuntime,
   createCharacter,
-  InMemoryDatabaseAdapter,
   type JsonValue,
   stringToUuid,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { sql } from "drizzle-orm";
 import { pgSchema, text } from "drizzle-orm/pg-core";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";

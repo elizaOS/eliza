@@ -11,7 +11,7 @@
 
 import { createHash, createHmac } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   AGENT_BACKUP_RECORD_STREAM_V1_LIMITS,
   AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,

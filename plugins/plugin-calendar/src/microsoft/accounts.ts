@@ -9,8 +9,8 @@ import {
   ElizaError,
   getConnectorAccountManager,
   type IAgentRuntime,
-  SECRETS_SERVICE_TYPE,
 } from "@elizaos/core";
+import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 import type {
   LifeOpsConnectorGrant,
   LifeOpsConnectorSide,

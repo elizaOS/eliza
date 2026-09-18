@@ -15,25 +15,27 @@ import fs from "node:fs";
 import type { ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
+import type { Plugin } from "@elizaos/core";
 import {
   type Action,
   AgentRuntime,
   ChannelType,
-  DefaultMessageService,
   drainPostDeliveryTasks,
   executePlannedToolCall,
   getTrajectoryContext,
   type Memory,
   ModelType,
-  type Plugin,
   type Provider,
   runWithTrajectoryContext,
-  TrajectoriesService,
-  trajectoriesPlugin,
-  tryHandleTrajectoryReadRoutes,
   type UUID,
   withEvaluatorStep,
 } from "@elizaos/core";
+import {
+  DefaultMessageService,
+  TrajectoriesService,
+  trajectoriesPlugin,
+  tryHandleTrajectoryReadRoutes,
+} from "@elizaos/plugin-assistant";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { startApiServer } from "../api/server.ts";
 import {
@@ -532,7 +534,7 @@ const trajectoryActionPlugin: Plugin = {
 };
 
 beforeAll(async () => {
-  // Mirror @elizaos/core/testing createTestRuntime inline (the testing subpath
+  // Mirror @elizaos/testing createTestRuntime inline (the testing subpath
   // is not aliased in the agent's vitest config). Real PGLite-backed runtime;
   // trajectories load by default (enableTrajectories defaults on).
   pgliteDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-traj-e2e-"));

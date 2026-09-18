@@ -6,7 +6,9 @@
  * Pure grammar construction over synthetic actions and field evaluators — no
  * model, no runtime.
  */
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import { normalizeActionJsonSchema } from "../../actions/action-schema";
 import type { Action } from "../../types";
 import type { ResponseSkeleton } from "../../types/model";
@@ -26,7 +28,7 @@ function makeAction(name: string, overrides: Partial<Action> = {}): Action {
 	return {
 		name,
 		description: `Run ${name}`,
-		handler: async () => undefined,
+		handler: async () => ({ success: true }),
 		validate: async () => true,
 		...overrides,
 	};
@@ -67,10 +69,13 @@ afterEach(() => {
 });
 
 describe("buildResponseGrammar — Stage-1 envelope", () => {
-	it("defaults to the canonical response-handler field envelope", () => {
+	it("renders the explicitly registered assistant response-handler field envelope", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton, grammar } = buildResponseGrammar(
-			{ actions: [] },
+			{
+				actions: [],
+				responseHandlerFields: [...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS],
+			},
 			{ contexts: ["tasks", "calendar"] },
 		);
 		// The skeleton's literal-key glue spans, in order, recover the envelope.
@@ -118,7 +123,10 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 	it("keeps every registered field on direct channels", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton, grammar } = buildResponseGrammar(
-			{ actions: [] },
+			{
+				actions: [],
+				responseHandlerFields: [...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS],
+			},
 			{ contexts: ["general"], channelType: "DM" },
 		);
 		expect(responseSkeleton.spans.some((s) => s.key === "shouldRespond")).toBe(
@@ -145,7 +153,10 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 	it("keeps every registered field on one-to-one voice", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton, grammar } = buildResponseGrammar(
-			{ actions: [] },
+			{
+				actions: [],
+				responseHandlerFields: [...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS],
+			},
 			{ contexts: ["general"], channelType: "VOICE_DM" },
 		);
 		expect(responseSkeleton.spans.some((s) => s.key === "shouldRespond")).toBe(
@@ -163,7 +174,10 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 	it("keeps shouldRespond on multi-party voice channels", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton, grammar } = buildResponseGrammar(
-			{ actions: [] },
+			{
+				actions: [],
+				responseHandlerFields: [...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS],
+			},
 			{ contexts: ["general"], channelType: "VOICE_GROUP" },
 		);
 		expect(responseSkeleton.spans.some((s) => s.key === "shouldRespond")).toBe(
@@ -177,7 +191,10 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 	it("always merges `simple` and `general` into the contexts element enum", () => {
 		clearResponseGrammarCache();
 		const { grammar } = buildResponseGrammar(
-			{ actions: [] },
+			{
+				actions: [],
+				responseHandlerFields: [...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS],
+			},
 			{ contexts: ["onlythis"] },
 		);
 		expect(grammar).toContain('"\\"onlythis\\""');
@@ -260,23 +277,47 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 
 	it("is byte-stable / cached across calls for the same registry snapshot", () => {
 		clearResponseGrammarCache();
-		const a = buildResponseGrammar({ actions: [] }, { contexts: ["x", "y"] });
-		const b = buildResponseGrammar({ actions: [] }, { contexts: ["y", "x"] });
+		const a = buildResponseGrammar(
+			{
+				actions: [],
+				responseHandlerFields: [...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS],
+			},
+			{ contexts: ["x", "y"] },
+		);
+		const b = buildResponseGrammar(
+			{
+				actions: [],
+				responseHandlerFields: [...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS],
+			},
+			{ contexts: ["y", "x"] },
+		);
 		expect(b).toBe(a); // same object reference from the cache (order-insensitive key)
 		expect(b.grammar).toBe(a.grammar);
 		// A different context set yields a different result.
-		const c = buildResponseGrammar({ actions: [] }, { contexts: ["z"] });
+		const c = buildResponseGrammar(
+			{
+				actions: [],
+				responseHandlerFields: [...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS],
+			},
+			{ contexts: ["z"] },
+		);
 		expect(c).not.toBe(a);
 	});
 
 	it("shares the complete envelope across direct channel profiles", () => {
 		clearResponseGrammarCache();
 		const direct = buildResponseGrammar(
-			{ actions: [] },
+			{
+				actions: [],
+				responseHandlerFields: [...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS],
+			},
 			{ contexts: ["general"], channelType: "DM" },
 		);
 		const voice = buildResponseGrammar(
-			{ actions: [] },
+			{
+				actions: [],
+				responseHandlerFields: [...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS],
+			},
 			{ contexts: ["general"], channelType: "VOICE_DM" },
 		);
 		expect(direct).toBe(voice);
@@ -1431,7 +1472,10 @@ describe("buildSpanSamplerPlan — per-span argmax policy", () => {
 	it("covers the canonical Stage-1 envelope enum decisions", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton } = buildResponseGrammar(
-			{ actions: [] },
+			{
+				actions: [],
+				responseHandlerFields: [...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS],
+			},
 			{ contexts: ["general"] },
 		);
 		const plan = buildSpanSamplerPlan(responseSkeleton);

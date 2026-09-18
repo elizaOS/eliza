@@ -34,25 +34,10 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getFreePort } from "../test/utils/get-free-port.mjs";
 import { resolveRequiredFfmpeg } from "./lib/ffmpeg.mjs";
-
-/** Pick a free localhost TCP port. The repo runs many concurrent ui-smoke
- * stacks (agent worktrees); the default 2138/31337 collide and silently break a
- * mid-journey run, so the walkthrough binds its own isolated ports. */
-function freePort() {
-  return new Promise((res, rej) => {
-    const srv = createServer();
-    srv.unref();
-    srv.on("error", rej);
-    srv.listen(0, "127.0.0.1", () => {
-      const { port } = srv.address();
-      srv.close(() => res(port));
-    });
-  });
-}
 
 const APP_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = resolve(APP_DIR, "../..");
@@ -484,10 +469,11 @@ async function main() {
   // Isolate ports so a concurrent ui-smoke stack (agent worktrees) can't steal
   // 2138/31337 mid-journey. Honor an explicit override if the caller set one.
   if (!args.reuseServer) {
-    const uiPort = process.env.ELIZA_UI_SMOKE_PORT || String(await freePort());
+    const uiPort =
+      process.env.ELIZA_UI_SMOKE_PORT || String(await getFreePort());
     let apiPort =
-      process.env.ELIZA_UI_SMOKE_API_PORT || String(await freePort());
-    if (apiPort === uiPort) apiPort = String(await freePort());
+      process.env.ELIZA_UI_SMOKE_API_PORT || String(await getFreePort());
+    if (apiPort === uiPort) apiPort = String(await getFreePort());
     childEnv.ELIZA_UI_SMOKE_PORT = uiPort;
     childEnv.ELIZA_UI_SMOKE_API_PORT = apiPort;
     childEnv.ELIZA_API_PORT = apiPort;

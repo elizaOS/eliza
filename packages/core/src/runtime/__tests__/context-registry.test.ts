@@ -4,6 +4,7 @@
  * filtering, and parent/subcontext cycle detection. Pure, no model.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_CONTEXT_DEFINITIONS } from "../../../../../plugins/plugin-assistant/src/runtime/default-contexts.ts";
 import type { ContextDefinition } from "../../types/contexts";
 import {
 	type ContextGateCandidate,
@@ -26,9 +27,11 @@ describe("context registry", () => {
 		expect(normalizeContextId("SOCIAL POSTING")).toBe("social_posting");
 	});
 
-	it("registers first-party contexts", () => {
+	it("registers assistant contexts explicitly while the kernel starts empty", () => {
+		expect(defaultContextRegistry.list()).toEqual([]);
+		const registry = new ContextRegistry(DEFAULT_CONTEXT_DEFINITIONS);
 		for (const context of FIRST_PARTY_CONTEXT_IDS) {
-			expect(defaultContextRegistry.has(context)).toBe(true);
+			expect(registry.has(context)).toBe(true);
 		}
 		expect(defaultContextRegistry.has("lifeops")).toBe(false);
 	});

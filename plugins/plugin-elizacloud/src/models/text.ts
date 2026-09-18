@@ -10,11 +10,13 @@ import type {
   ModelTypeName,
   TextStreamResult,
   TokenUsage,
+  ToolCall,
+  JsonValue,
 } from "@elizaos/core";
 import {
 	assertModelOutputComplete,
   buildCanonicalSystemPrompt,
-  ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+  MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
   ElizaError,
   logger,
   ModelType,
@@ -260,20 +262,13 @@ type NativeTokenUsage = {
 
 type NativeGenerateTextResult = {
   text: string;
-  toolCalls: unknown[];
+  toolCalls: ToolCall[];
   finishReason?: string;
   usage?: NativeTokenUsage;
   providerMetadata?: unknown;
 };
 
 type NativeGenerateTextModelResult = NativeGenerateTextResult & string;
-
-type NativeToolCall = {
-  type: "tool-call";
-  toolCallId: string;
-  toolName: string;
-  input: unknown;
-};
 
 type ChatCompletionsResponse = Record<string, unknown> & {
   error?: {
@@ -504,7 +499,7 @@ export class ElizaCloudGatewayWarmingExhaustedError extends ElizaError {
 
   constructor(label: string, attempts: number) {
     super("elizaOS Cloud gateway remained unavailable after cache warming retries", {
-      code: ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+      code: MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
       context: { attempts, provider: "elizaOSCloud", route: label, status: 503 },
       severity: "ephemeral",
     });
@@ -651,7 +646,7 @@ function invalidNativeStream(reason: string, cause?: unknown): ElizaError {
   });
 }
 
-function parseNativeToolCallInput(value: unknown): Record<string, unknown> {
+function parseNativeToolCallInput(value: unknown): Record<string, JsonValue> {
   let parsed = value;
   if (typeof value === "string") {
     if (value.trim() === "") {
@@ -670,7 +665,7 @@ function parseNativeToolCallInput(value: unknown): Record<string, unknown> {
   if (!isRecord(parsed)) {
     throw invalidNativeToolCall("tool-call arguments must be a JSON object");
   }
-  return parsed;
+  return parsed as Record<string, JsonValue>;
 }
 
 function stringifyMessageContent(content: unknown): string {
@@ -1097,7 +1092,7 @@ function extractChatCompletionText(data: ChatCompletionsResponse): string {
   return firstString(firstChoice.text, extractTextFromContent(firstChoice.message?.content)) ?? "";
 }
 
-function extractNativeToolCalls(data: ChatCompletionsResponse): NativeToolCall[] {
+function extractNativeToolCalls(data: ChatCompletionsResponse): ToolCall[] {
   const rawCalls = data.choices?.[0]?.message?.tool_calls;
   if (rawCalls === undefined) {
     return [];
@@ -1142,10 +1137,9 @@ function extractNativeToolCalls(data: ChatCompletionsResponse): NativeToolCall[]
     }
 
     return {
-      type: "tool-call",
-      toolCallId,
-      toolName,
-      input: parseNativeToolCallInput(input),
+      id: toolCallId,
+      name: toolName,
+      arguments: parseNativeToolCallInput(input),
     };
   });
 }
@@ -1836,8 +1830,8 @@ export function lowestIndexToolCallArgs(acc: Map<number, StreamingToolCallAcc>):
 /** Materialize accumulated tool-call deltas into the buffered-path shape. */
 export function finalizeStreamedToolCalls(
   acc: Map<number, StreamingToolCallAcc>
-): NativeToolCall[] {
-  const out: NativeToolCall[] = [];
+): ToolCall[] {
+  const out: ToolCall[] = [];
   const ids = new Set<string>();
   for (const [index, c] of [...acc.entries()].sort((a, b) => a[0] - b[0])) {
     if (!Number.isInteger(index) || index < 0) {
@@ -1854,10 +1848,9 @@ export function finalizeStreamedToolCalls(
       throw invalidNativeToolCall(`tool-call index ${index} is missing a function name`);
     }
     out.push({
-      type: "tool-call",
-      toolCallId: c.id,
-      toolName: c.name,
-      input: parseNativeToolCallInput(c.args),
+      id: c.id,
+      name: c.name,
+      arguments: parseNativeToolCallInput(c.args),
     });
   }
   return out;
@@ -2067,7 +2060,7 @@ export async function streamNativeChatCompletion(
   const textD = deferred<string>();
   const usageD = deferred<TokenUsage | undefined>();
   const finishD = deferred<string | undefined>();
-  const toolCallsD = deferred<NativeToolCall[]>();
+  const toolCallsD = deferred<ToolCall[]>();
   const rejectDeferreds = (reason: unknown): void => {
     textD.reject(reason);
     usageD.reject(reason);

@@ -5,8 +5,9 @@
  * across stream chunks — and never leak in the output. Real runtime over the
  * in-memory adapter with a registered fake model handler; deterministic.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import {
 	MAX_SECRET_SWAP_WALK_NODES,

@@ -4,7 +4,7 @@
  */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,

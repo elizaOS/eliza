@@ -154,6 +154,8 @@ export async function runBenchmarkTask(
       },
     );
 
+    const terminalFailure =
+      result.outcome.status === "failed" ? result.outcome.error : undefined;
     const resultText = result.responseContent?.text ?? "";
     const messagesText = result.responseMessages
       .map((m) => m.content?.text ?? "")
@@ -166,7 +168,7 @@ export async function runBenchmarkTask(
     const responseText =
       resultText || messagesText || streamText || callbackText || "";
     const success =
-      result.terminalFailure === undefined &&
+      result.outcome.status === "completed" &&
       result.didRespond &&
       responseText.trim().length > 0;
 
@@ -180,16 +182,16 @@ export async function runBenchmarkTask(
       ...(!success
         ? {
             error:
-              result.terminalFailure?.message ??
+              terminalFailure?.message ??
               result.reason ??
               "Agent completed without a response",
-            ...(result.terminalFailure
+            ...(terminalFailure
               ? {
-                  failure_kind: result.terminalFailure.kind,
-                  ...(result.terminalFailure.code
-                    ? { failure_code: result.terminalFailure.code }
+                  failure_kind: terminalFailure.kind,
+                  ...(terminalFailure.code
+                    ? { failure_code: terminalFailure.code }
                     : {}),
-                  transient: result.terminalFailure.transient,
+                  transient: terminalFailure.transient,
                 }
               : {}),
           }

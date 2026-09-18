@@ -118,3 +118,7 @@ bun run --cwd plugins/plugin-web-search typecheck  # type-check only
 
 - [`@elizaos/core`](https://github.com/elizaOS/eliza) — elizaOS runtime interfaces
 - [`@tavily/core`](https://www.npmjs.com/package/@tavily/core) — Tavily search client
+
+The `./keyless-web-search` entry owns the bounded Parallel/Exa client shared by
+host and coding actions. Its transport and tests live here; core contains no
+concrete web-search endpoints.

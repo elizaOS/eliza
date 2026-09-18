@@ -3,10 +3,6 @@
  * pr-deterministic lane under the model provider.
  */
 import { ModelType, type Plugin } from "@elizaos/core";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
 import { generateMediaAction } from "@elizaos/plugin-local-inference/actions/generate-media";
 import type {
   CapturedAction,
@@ -14,6 +10,10 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+} from "@elizaos/testing";
 import { transientTurnEvaluationSeed } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
 
 const transparentPngDataUrl =

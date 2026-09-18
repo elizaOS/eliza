@@ -8,10 +8,10 @@
 import { resolveCloudRoute } from "@elizaos/cloud-routing";
 import {
   type IAgentRuntime,
-  type Plugin,
   parseBooleanFromText,
   type ServiceClass,
 } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { tradeRouterAction } from "./actions/trade-action.js";
 import { agentPortfolioProvider } from "./analytics/birdeye/providers/agent-portfolio-provider.js";
 import { marketProvider } from "./analytics/birdeye/providers/market.js";

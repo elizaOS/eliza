@@ -56,8 +56,7 @@ scripts bootstrap user machines.
 Historically verified on a Windows GitHub runner:
 
 - `bun install` — 3075 packages resolved, 462 workspace symlinks set up,
-  postinstall pipeline (patch-nested-core-dist, patch-llama-cpp-capacitor,
-  ensure-workspace-symlinks, build-private-workspace-packages) runs clean.
+  with the then-current postinstall pipeline completing successfully.
 - `bun run build` — full TypeScript build for `@elizaos/agent` and its
   cascade: **22 tasks succeed, ~2 minutes**.
 - `bun run typecheck` across @elizaos/core / @elizaos/shared /
@@ -73,7 +72,7 @@ Historically verified on a Windows GitHub runner:
 | `@elizaos/scenario-runner` | 108 | 0 fail |
 | `@elizaos/cloud-shared` | 720 | 2 mock-setup fails (cross-platform issue) |
 | `@elizaos/elizaos` (CLI) | 39 | 0 fail |
-| `@elizaos/vault` | 185 | 0 fail |
+| `@elizaos/credentials/vault` | 185 | 0 fail |
 | `@elizaos/registry` | 7 | 0 fail |
 | `@elizaos/logger` | 4 | 0 fail |
 | `plugin-elizacloud` | 147 | 0 fail |
@@ -131,7 +130,7 @@ Also working (manual verification):
 - `bun run lint`, `bun run verify`
 - `bun run test` and per-package `bun run --cwd <pkg> test`
 - `bun run dev` — API + dashboard dev server
-- `bun run dev:cloud`, `bun run build:cloud`
+- `bun run dev:cloud`, `bun run --cwd packages/cloud/api build`
 - All `packages/core` / `packages/agent` / `packages/app-core` /
   `packages/cloud/api` / `packages/cloud-frontend` / `packages/ui` /
   `packages/shared` workflows

@@ -6,11 +6,12 @@
  * either its `handleAppRoutes` export or a legacy `handleApps<Slug>Routes`
  * name, and calls it with a `readJsonBody` pre-bound to the current request.
  */
+
+import { isValidAppRouteSlug } from "@elizaos/shared";
 import type {
   AppPackageRouteContext,
   AppPackageRouteDispatchContext,
-} from "@elizaos/core";
-import { isValidAppRouteSlug } from "@elizaos/shared";
+} from "@elizaos/shared/api/route-helpers";
 import {
   type AppRouteModule,
   importAppRouteModule,

@@ -7,7 +7,7 @@ import {
 	selectConnectorCredential,
 	selectDefaultConnectorAccountId,
 	summarizeProviderError,
-} from "../index.node";
+} from "../index";
 
 describe("provider authoring", () => {
 	it("normalizes SDK aliases and rejects malformed counts", () => {

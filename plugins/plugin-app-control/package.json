@@ -1,7 +1,7 @@
 {
 	"name": "@elizaos/plugin-app-control",
 	"version": "2.0.3-beta.7",
-	"description": "App control plugin for Eliza agents — launch, close, and list running apps via the local dashboard API.",
+	"description": "App control plugin for Eliza agents \u2014 launch, close, and list running apps via the local dashboard API.",
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -13,11 +13,6 @@
 				"import": "./src/index.ts",
 				"default": "./src/index.ts"
 			},
-			"bun": {
-				"types": "./src/index.ts",
-				"import": "./src/index.ts",
-				"default": "./src/index.ts"
-			},
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
@@ -25,11 +20,6 @@
 		"./*": {
 			"types": "./dist/*.d.ts",
 			"eliza-source": {
-				"types": "./src/*.ts",
-				"import": "./src/*.ts",
-				"default": "./src/*.ts"
-			},
-			"bun": {
 				"types": "./src/*.ts",
 				"import": "./src/*.ts",
 				"default": "./src/*.ts"
@@ -57,12 +47,13 @@
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
-		"@elizaos/logger": "workspace:*",
 		"@elizaos/shared": "workspace:*",
 		"@elizaos/ui": "workspace:*",
 		"elizaos": "workspace:*",
 		"lucide-react": "^1.16.0",
-		"react": "^19.0.0"
+		"react": "^19.0.0",
+		"@elizaos/cloud-routing": "workspace:*",
+		"@elizaos/plugin-assistant": "workspace:*"
 	},
 	"peerDependencies": {
 		"@elizaos/core": "workspace:*",

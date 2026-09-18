@@ -6,7 +6,7 @@
  * with AppContext without pulling in React.
  */
 
-import type { StylePreset } from "@elizaos/shared";
+import type { StylePreset } from "@elizaos/shared/contracts/first-run-options";
 import type { CharacterRosterEntry } from "./CharacterRoster";
 
 export { replaceNameTokens } from "../../utils/name-tokens";

@@ -58,12 +58,13 @@ function findMacAppBundleRoot(value: string | undefined): string | null {
   return null;
 }
 
-function trustedBundleRoots(opts: NativeLibraryPolicyOptions): string[] {
-  const roots = [
-    findMacAppBundleRoot(opts.execPath ?? process.execPath),
-    findMacAppBundleRoot(opts.moduleDir),
-  ];
-  return [...new Set(roots.filter((root): root is string => root !== null))];
+function trustedBundleRoot(opts: NativeLibraryPolicyOptions): string | null {
+  // The running app is authoritative. A module in a different bundle must not
+  // authorize that other bundle when the executable already identifies ours.
+  return (
+    findMacAppBundleRoot(opts.execPath ?? process.execPath) ??
+    findMacAppBundleRoot(opts.moduleDir)
+  );
 }
 
 function candidateLabel(candidate: NativeLibraryCandidate): string {
@@ -128,18 +129,17 @@ export function resolveNativeLibraryCandidate(
     return null;
   }
 
-  const roots = trustedBundleRoots(opts)
-    .map((root) => realpath(root))
-    .filter((root): root is string => root !== null);
+  const bundleRoot = trustedBundleRoot(opts);
+  const root = bundleRoot ? realpath(bundleRoot) : null;
 
-  if (roots.length === 0) {
+  if (!root) {
     opts.warn?.(
       `Rejected native library candidate ${candidateLabel(candidate)} for store build: no trusted .app bundle root was found.`,
     );
     return null;
   }
 
-  if (!roots.some((root) => isWithinPath(root, candidateRealpath))) {
+  if (!isWithinPath(path.join(root, "Contents"), candidateRealpath)) {
     opts.warn?.(
       `Rejected native library candidate ${candidateLabel(candidate)} for store build: library is outside the signed app bundle.`,
     );

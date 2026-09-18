@@ -2,11 +2,11 @@
 import {
   type Action,
   type Character,
-  documentsPluginCore,
   type Plugin,
   type Provider,
   parseCharacter,
 } from "@elizaos/core";
+import { createDocumentsPlugin } from "@elizaos/plugin-assistant";
 import { memoriesRepository } from "../../db/repositories/agents/memories";
 import { charactersService } from "../services/characters/characters";
 import type { ElizaCharacter } from "../types/eliza-character";
@@ -92,7 +92,7 @@ async function resolveEffectiveMode(
 
 async function getDocumentsPlugin(): Promise<Plugin> {
   if (_documentsPlugin) return _documentsPlugin;
-  _documentsPlugin = asPlugin(documentsPluginCore);
+  _documentsPlugin = asPlugin(createDocumentsPlugin({ enableActions: false }));
   return _documentsPlugin;
 }
 

@@ -3,8 +3,9 @@
  * (`applyDatabaseConfigToEnv`) and the `getSetting` binding installed by
  * `installRuntimeMethodBindings`: POSTGRES_URL/DATABASE_URL promotion and the
  * local-state PGlite-vs-shared-Postgres locality boundary (#8771/#8783).
- * Deterministic — mutates `process.env` around a stub runtime object, no live DB.
+ * Deterministic: uses a real uninitialized runtime with isolated environment settings and no live database.
  */
+import { AgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";
@@ -95,20 +96,10 @@ describe("database runtime config", () => {
     process.env.POSTGRES_URL = "postgresql://elizaos@127.0.0.1:5432/elizaos";
     process.env.DATABASE_URL = "postgresql://fallback@127.0.0.1:5432/elizaos";
 
-    const runtime = {
-      character: { settings: {}, secrets: {} },
-      settings: {},
-      getCharacterEnvSetting: () => undefined,
-      getConversationLength: () => 0,
-      getSetting: () => null,
-      logger: {
-        debug: () => undefined,
-        info: () => undefined,
-        warn: () => undefined,
-        error: () => undefined,
-      },
-      registerPlugin: async () => undefined,
-    } as unknown as Parameters<typeof installRuntimeMethodBindings>[0];
+    const runtime = new AgentRuntime({
+      character: { name: "database-settings-fixture", bio: [], settings: {} },
+      logLevel: "fatal",
+    });
 
     installRuntimeMethodBindings(runtime);
 

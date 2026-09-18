@@ -5,12 +5,12 @@ import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
+import { logger } from "@elizaos/core";
 import {
-  logger,
   readJsonBody as parseJsonBody,
   readRequestBody,
   sendJson as sendJsonResponse,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-helpers";
 
 interface SandboxExecResult {
   exitCode: number;

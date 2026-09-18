@@ -17,23 +17,22 @@ import {
   setActiveViewContext,
   setActiveViewElements,
 } from "@elizaos/agent/runtime/view-action-affinity";
+import type { IAgentRuntime, ViewDeclaration } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
+import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import type {
-  IAgentRuntime,
-  Plugin,
+  HttpPlugin as Plugin,
   Route,
   RouteRequest,
   RouteResponse,
-  ViewDeclaration,
-} from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+} from "@elizaos/shared/api/http-plugin";
 import {
   type DeterministicModelCall,
   matchesScenarioInput,
   type RuntimeWithScenarioModelFixtures,
   stage1ResponseHandlerFixture,
-} from "@elizaos/core/testing";
-import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing";
 
 const VIEW_ID = "scenario-active-ledger";
 const VIEW_LABEL = "Scenario Active Ledger";

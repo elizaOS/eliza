@@ -35,11 +35,11 @@ import type { Server as HttpServer, IncomingMessage } from "node:http";
 import path from "node:path";
 import type { Duplex } from "node:stream";
 import type { AgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
 import {
   computeGenerationThroughput,
   type GenerationThroughput,
 } from "@elizaos/shared/local-inference";
+import { logger } from "@elizaos/shared/logger";
 import type {
   LocalInferenceLoadArgs,
   LocalInferenceLoader,

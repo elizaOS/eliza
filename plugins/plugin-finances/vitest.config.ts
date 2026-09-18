@@ -39,7 +39,7 @@ export default defineConfig({
         replacement: path.join(uiSrc, "$1"),
       },
       {
-        find: /^@elizaos\/vault$/,
+        find: /^@elizaos\/credentials\/vault$/,
         replacement: path.join(vaultSrc, "index.ts"),
       },
       ...baseAliases,

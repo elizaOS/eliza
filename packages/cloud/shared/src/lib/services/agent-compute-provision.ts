@@ -1,5 +1,5 @@
 /** Commits initial Dedicated funding before provider allocation and fences candidate start/refund by durable placement. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";

@@ -7,10 +7,6 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, test } from "vitest";
-import {
-  isDirectRun,
-  runKeywordGenerator,
-} from "../../app-core/scripts/ensure-shared-i18n-data.mjs";
 import { discoverTypeScriptFiles } from "../run-biome-typescript.mjs";
 
 const roots: string[] = [];
@@ -25,32 +21,6 @@ afterEach(() => {
   for (const root of roots.splice(0)) {
     fs.rmSync(root, { recursive: true, force: true });
   }
-});
-
-describe("shared i18n direct execution", () => {
-  test("matches encoded file URLs through Node path conversion", () => {
-    const entry = path.join(tempRoot(), "nested space", "generate.mjs");
-    expect(pathToFileURL(entry).href).toContain("%20");
-    expect(isDirectRun(pathToFileURL(entry).href, entry)).toBe(true);
-    expect(isDirectRun(pathToFileURL(`${entry}.other`).href, entry)).toBe(
-      false,
-    );
-  });
-
-  test("runs the configured generator as a real child process", () => {
-    const root = tempRoot();
-    const marker = path.join(root, "generated.txt");
-    const generator = path.join(root, "generator.mjs");
-    fs.writeFileSync(
-      generator,
-      `import fs from "node:fs"; fs.writeFileSync(${JSON.stringify(marker)}, "generated");\n`,
-    );
-
-    expect(
-      runKeywordGenerator({ generatorPath: generator, cwd: root }),
-    ).toEqual({ skipped: false });
-    expect(fs.readFileSync(marker, "utf8")).toBe("generated");
-  });
 });
 
 describe("TypeScript-only Biome discovery", () => {

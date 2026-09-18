@@ -1,5 +1,5 @@
 /** Adapts parameterized auth-store SQL and atomic transactions to the embedded database. */
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/common";
 import { sql } from "drizzle-orm";
 import {
   getDb,

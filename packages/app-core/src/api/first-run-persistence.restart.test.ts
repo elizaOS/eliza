@@ -35,7 +35,7 @@ import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
 import {
   normalizeDeploymentTargetConfig,
   normalizeServiceRoutingConfig,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/service-routing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { hasCompatPersistedFirstRunState } from "./compat-route-shared";
 

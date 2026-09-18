@@ -17,8 +17,8 @@ import { type Dirent, existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-
-import { ElizaError, logger, type Plugin } from "@elizaos/core";
+import type { Plugin } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { formatError, isMobilePlatform } from "@elizaos/shared";
 import {
   type AppManifestBlock,

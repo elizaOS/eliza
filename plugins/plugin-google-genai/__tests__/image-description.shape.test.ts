@@ -37,16 +37,8 @@ vi.mock("@elizaos/core", () => ({
   recordLlmCall: mocks.recordLlmCall,
 }));
 
-// The handler imports logger/recordLlmCall from `@elizaos/core`; the Node
-// URL fetcher (models/image-url.node.ts) loads `fetchRemoteMedia` lazily from
-// `@elizaos/core/node` so the browser bundle never pulls it in. Under Node
-// both specifiers resolve to the same module file, so both mocks must expose
-// the same full mocked surface.
-vi.mock("@elizaos/core/node", () => ({
-  ElizaError: mocks.ElizaError,
+vi.mock("@elizaos/shared/media", () => ({
   fetchRemoteMedia: mocks.fetchRemoteMedia,
-  logger: mocks.logger,
-  recordLlmCall: mocks.recordLlmCall,
 }));
 
 vi.mock("../utils/config", () => ({
@@ -60,11 +52,6 @@ vi.mock("../utils/tokenization", () => ({
 }));
 
 import { handleImageDescription } from "../models/image";
-import { installNodeImageUrlFetcher } from "../models/image-url.node";
-
-// The Node entrypoint installs this in production; tests import models
-// directly, so install the same guarded fetcher here.
-installNodeImageUrlFetcher();
 
 function createRuntime(): IAgentRuntime {
   return {

@@ -7,12 +7,12 @@
  * shows in stories/tests. Label copy and helpers live in
  * permission-card.helpers.
  */
-import {
-  type IPermissionsRegistry,
-  openPermissionSettings,
-  type PermissionId,
-  type PermissionState,
-} from "@elizaos/shared";
+import type {
+  IPermissionsRegistry,
+  PermissionId,
+  PermissionState,
+} from "@elizaos/shared/contracts/permissions";
+import { openPermissionSettings } from "@elizaos/shared/utils/permission-deep-links";
 import type * as React from "react";
 import { useCallback, useEffect, useState } from "react";
 

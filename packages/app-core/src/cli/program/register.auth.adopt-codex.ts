@@ -9,7 +9,7 @@
  * would happen and exits non-zero so scripts cannot adopt by accident.
  */
 
-import { theme } from "@elizaos/shared";
+import { theme } from "@elizaos/shared/terminal/theme";
 import type { Command } from "commander";
 
 export interface AdoptCodexCliParams {
@@ -34,7 +34,7 @@ export interface AdoptCodexCliResult {
 
 /**
  * Test-callable entry point; the commander action wraps it. Drives the real
- * adoption in @elizaos/auth — no simulation layer.
+ * adoption in @elizaos/credentials/auth — no simulation layer.
  */
 export async function runAuthAdoptCodex(
   params: AdoptCodexCliParams = {},
@@ -66,12 +66,12 @@ export async function runAuthAdoptCodex(
   }
 
   // Concrete subpath import — the documented consumption pattern for the
-  // @elizaos/auth leaf package (see its package guide).
+  // @elizaos/credentials/auth leaf package (see its package guide).
   const { adoptCodexCliLogin } = await import(
-    "@elizaos/auth/subscription-auth/adopt-codex-cli-login"
+    "@elizaos/credentials/auth/subscription-auth/adopt-codex-cli-login"
   );
   const { createRuntimeAccountStoragePolicy } = await import(
-    "@elizaos/auth/account-storage"
+    "@elizaos/credentials/auth/account-storage"
   );
   const { resolveStateDir } = await import("@elizaos/core");
   try {

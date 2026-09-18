@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Replays the headless pre-init/post-init bridge order against a real runtime,
  * proving the local boot hook reuses the canonical service without a dead loader.
@@ -38,7 +39,7 @@ describe("device bridge service ownership", () => {
 			).resolves.toBe(false);
 			expect(runtime.hasService(ServiceType.MOBILE_DEVICE_BRIDGE)).toBe(true);
 
-			await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+			await initializeTestRuntime(runtime, { skipMigrations: true });
 			await ensureLocalInferenceHandler(runtime);
 
 			expect(

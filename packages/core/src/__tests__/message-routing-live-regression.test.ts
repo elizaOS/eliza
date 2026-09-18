@@ -7,16 +7,10 @@
  * case drives the pure helpers directly, not a live model.
  */
 import { describe, expect, it, vi } from "vitest";
-import { parseActionParams } from "../actions";
-import type { Action, ActionResult, IAgentRuntime, Memory } from "../index";
 import {
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
-} from "../runtime/message-handler";
-import {
-	extractReplyTextFromTranscript,
-	looksLikeRawFieldTranscript,
-} from "../runtime/response-field-transcript";
+} from "../../../../plugins/plugin-assistant/src/runtime/message-handler.ts";
 import {
 	actionResultsSuppressPostActionContinuation,
 	applyDirectCurrentCandidateBackstopToMessageHandler,
@@ -31,7 +25,13 @@ import {
 	shouldPreferDirectCurrentCandidateActions,
 	shouldPromoteExplicitReplyToOwnedAction,
 	stripReplyWhenActionOwnsTurn,
-} from "../services/message";
+} from "../../../../plugins/plugin-assistant/src/services/message.ts";
+import { parseActionParams } from "../actions";
+import type { Action, ActionResult, IAgentRuntime, Memory } from "../index";
+import {
+	extractReplyTextFromTranscript,
+	looksLikeRawFieldTranscript,
+} from "../runtime/response-field-transcript";
 import type { UUID } from "../types/primitives";
 
 const logger = {

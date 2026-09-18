@@ -4,9 +4,9 @@
  * that the authorization URL never leaks into the chat `text`. Uses a `vi.fn`
  * `sendMessageToTarget` mock that captures each dispatched message.
  */
+
+import { ChannelType, type Content } from "@elizaos/common";
 import {
-  ChannelType,
-  type Content,
   type DispatchSensitiveRequest,
   defaultSensitiveRequestPolicy,
   resolveSensitiveRequestDelivery,

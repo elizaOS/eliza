@@ -2,9 +2,10 @@
  * Exercises vector persistence when a model becomes available after the embedding
  * service starts, using the real runtime registry, event bus, queue and adapter.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { expect, test } from "vitest";
 import { createCharacter } from "../character";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
 import { EventType } from "../types/events";
 import { ModelType } from "../types/model";

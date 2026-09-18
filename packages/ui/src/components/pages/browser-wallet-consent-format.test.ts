@@ -3,7 +3,7 @@
  * surrogate-safe truncation (stricter JSON wire safety).
  */
 
-import { toWellFormedUnicode } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import { truncateMessageForDisplay } from "./browser-wallet-consent-format";
 

@@ -5,7 +5,7 @@
  * the server so allowance can never be selected by caller-controlled prose.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 export const SUBSCRIPTION_FUNDING_CLASSES = ["allowance_eligible", "cash_only"] as const;
 

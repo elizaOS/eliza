@@ -4,16 +4,16 @@
  * idempotent resource shutdown without owning process signals or exit policy.
  */
 import process from "node:process";
+import { formatError } from "@elizaos/common";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
-  formatError,
-  readAliasedEnv,
   resolveApiExposePort,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
   syncResolvedApiPort,
-} from "@elizaos/shared";
+} from "@elizaos/shared/runtime-env";
+import { readAliasedEnv } from "@elizaos/shared/utils/env";
 import {
   isRuntimeBootDeferred,
   registerDeferredRuntimeBoot,

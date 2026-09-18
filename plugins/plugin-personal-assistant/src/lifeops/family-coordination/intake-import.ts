@@ -5,11 +5,11 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import {
-  DocumentService,
   ElizaError,
   type IAgentRuntime,
   resolveOwnerEntityIdOrDefault,
 } from "@elizaos/core";
+import { DocumentService } from "@elizaos/plugin-assistant";
 import { z } from "zod";
 import {
   type FamilyIntakeReview,

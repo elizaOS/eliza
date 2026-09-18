@@ -15,8 +15,7 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
-      "bun": "./index.ts",
-      "development": "./index.ts",
+      "eliza-source": "./index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
@@ -53,7 +52,8 @@
     "bun-types": "^1.2.25",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@elizaos/testing": "workspace:*"
   },
   "scripts": {
     "build": "bun run build.ts",

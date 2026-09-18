@@ -15,10 +15,8 @@ import {
   createPublicKey,
   verify as verifySignature,
 } from "node:crypto";
-
 import {
   type ActionResult,
-  type AppPackageRouteContext,
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
   type ElizaCapabilityRouter,
@@ -27,7 +25,6 @@ import {
   type JsonObject,
   type JsonValue,
   type ModelTypeName,
-  type Plugin,
   type PluginAppBridge,
   type PluginAppLaunchDiagnostic,
   type PluginAppLaunchPreparation,
@@ -43,14 +40,22 @@ import {
   type ResponseHandlerEvaluator,
   type ResponseHandlerFieldEffect,
   type ResponseHandlerFieldEvaluator,
-  type Route,
-  type RouteHandlerContext,
   type RuntimeEventStorage,
   Service,
   type ServiceClass,
   type ViewDeclaration,
 } from "@elizaos/core";
 import { packageNameToAppRouteSlug } from "@elizaos/shared";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+  RouteHandlerContext,
+} from "@elizaos/shared/api/http-plugin";
+import {
+  getHttpRuntime,
+  getPluginHttpRoutes,
+} from "@elizaos/shared/api/http-plugin-runtime";
+import type { AppPackageRouteContext } from "@elizaos/shared/api/route-helpers";
 import {
   type AppRouteModule,
   hasRuntimeAppRouteModule,
@@ -1932,7 +1937,7 @@ function validateRemotePluginRouteCollisions(
   for (const module of modules) {
     for (const route of module.routes ?? []) {
       const key = routeCollisionKey(route.method, route.path);
-      const existing = runtime.routes?.find(
+      const existing = getHttpRuntime(runtime).routes?.find(
         (runtimeRoute) =>
           routeCollisionKey(runtimeRoute.type, runtimeRoute.path) === key,
       );
@@ -2202,7 +2207,7 @@ function getRegisteredRemoteCapabilityRoutes(runtime: IAgentRuntime): Route[] {
       const config = item.plugin.config as Record<string, unknown> | undefined;
       return typeof config?.remoteCapabilityModuleId === "string";
     })
-    .flatMap((item) => item.routes);
+    .flatMap((item) => getPluginHttpRoutes(runtime, item.pluginName));
 }
 
 function getRegisteredRemoteCapabilityViews(

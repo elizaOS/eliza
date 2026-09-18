@@ -5,14 +5,10 @@
  * `TransferParams`, checking the target chain against the wallet's
  * configured chains before returning.
  */
-import {
-  composePromptFromState,
-  type IAgentRuntime,
-  type Memory,
-  ModelType,
-  parseJSONObjectFromText,
-  type State,
-} from "@elizaos/core";
+
+import { type IAgentRuntime, type Memory, ModelType, type State } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
+import { composePromptFromState } from "@elizaos/prompts/rendering";
 import { type Hex, parseEther } from "viem";
 import { runIntentModel } from "../../../utils/intent-trajectory";
 import type { WalletProvider } from "../providers/wallet";

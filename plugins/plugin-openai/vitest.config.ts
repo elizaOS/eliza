@@ -6,20 +6,22 @@
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 
-const elizaRoot = path.resolve(import.meta.dirname, "../../..");
+const elizaRoot = path.resolve(import.meta.dirname, "../..");
 const pluginSqlRoot = path.join(
 	elizaRoot,
 	"plugins",
 	"plugin-sql",
-	"typescript",
+	"src",
 );
 
 export default defineConfig({
 	resolve: {
+ conditions: ["eliza-source", "node"],
 		alias: [
+ {find: /^@elizaos\/core$/, replacement: path.join(elizaRoot, "packages/core/src/index.ts")},
 			{
 				find: /^@elizaos\/plugin-sql$/,
-				replacement: path.join(pluginSqlRoot, "index.node.ts"),
+				replacement: path.join(pluginSqlRoot, "index.ts"),
 			},
 			{
 				find: /^@elizaos\/plugin-sql\/schema$/,

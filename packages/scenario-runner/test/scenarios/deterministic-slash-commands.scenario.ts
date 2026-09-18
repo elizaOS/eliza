@@ -6,6 +6,7 @@ import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import {
   type ClientCommandAction,
   type ConnectorCommand,
@@ -97,11 +98,11 @@ async function scenarioCommandsRouteHandler(
 }
 
 function registerCommandsRoute(runtime: RuntimeWithCommandRoutes): void {
-  const routes = runtime.routes ?? [];
-  runtime.routes = routes.filter(
+  const routes = getHttpRuntime(runtime).routes ?? [];
+  getHttpRuntime(runtime).routes = routes.filter(
     (route) => route.__scenarioCommandsRoute !== true,
   );
-  runtime.routes.push({
+  getHttpRuntime(runtime).routes.push({
     type: "GET",
     path: "/api/commands",
     handler: scenarioCommandsRouteHandler,
@@ -220,7 +221,7 @@ function finalCommandsCheck(ctx: ScenarioContext): string | undefined {
     capturedRuntime ??
     undefined;
   if (!runtime) return "scenario runtime was not available in final check";
-  const route = (runtime.routes ?? []).find(
+  const route = (getHttpRuntime(runtime).routes ?? []).find(
     (candidate) => candidate.__scenarioCommandsRoute === true,
   );
   if (!route) return "commands route was not registered on the runtime";

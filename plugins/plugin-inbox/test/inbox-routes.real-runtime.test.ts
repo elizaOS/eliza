@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Route-level e2e for the inbox HTTP surface against a REAL runtime.
  *
@@ -18,9 +19,11 @@ import {
   type AgentRuntime,
   ModelType,
   type ModelTypeName,
-  type RouteHandlerContext,
-  type RouteHandlerResult,
 } from "@elizaos/core";
+import type {
+  RouteHandlerContext,
+  RouteHandlerResult,
+} from "@elizaos/shared/api/http-plugin";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
@@ -107,7 +110,7 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
     } = {},
   ): Promise<RouteHandlerResult> {
     // Match the registered route by method + path pattern (`:id` segment).
-    const route = runtime.routes.find((candidate) => {
+    const route = getHttpRuntime(runtime).routes.find((candidate) => {
       if (candidate.type !== method) return false;
       const pattern = new RegExp(
         `^${candidate.path.replace(/:[^/]+/g, "[^/]+")}$`,

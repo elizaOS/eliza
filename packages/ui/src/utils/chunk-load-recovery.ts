@@ -14,7 +14,7 @@
  * lapses).
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 
 const CHUNK_RELOAD_AT_KEY = "eliza:chunk-reload-attempted-at";
 const RELOAD_COOLDOWN_MS = 5 * 60 * 1000;

@@ -479,7 +479,6 @@
     "@capacitor/core": "8.4.0",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/logger": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@fontsource/poppins": "^5.2.7",
     "@json-render/core": "0.20.0",
@@ -547,7 +546,8 @@
     "ws": "^8.21.3",
     "@solana/wallet-adapter-coinbase": "^0.1.23",
     "@solana/wallet-adapter-trust": "^0.1.17",
-    "@solana/wallet-adapter-coin98": "^0.5.24"
+    "@solana/wallet-adapter-coin98": "^0.5.24",
+    "@elizaos/common": "workspace:*"
   },
   "devDependencies": {
     "@capacitor-community/bluetooth-le": "8.2.0",

@@ -123,9 +123,6 @@ jobs:
       - name: Install Playwright Chromium
         run: .github/scripts/install-playwright-browsers.sh chromium
 
-      - name: Generate shared i18n assets
-        run: bun run --cwd packages/shared build:i18n
-
       # Vite loads package exports before renderer aliases apply; fresh CI
       # checkouts need these dist bundles before packages/app can resolve
       # @elizaos/core and @elizaos/shared subpaths.
@@ -241,9 +238,6 @@ jobs:
 
       - name: Install ffmpeg (recording stitch)
         run: .github/scripts/install-apt-packages.sh ffmpeg
-
-      - name: Generate shared i18n assets
-        run: bun run --cwd packages/shared build:i18n
 
       # Vite resolves linked workspace package exports while loading the app
       # config, before renderer aliases can redirect to source files.
@@ -391,10 +385,6 @@ jobs:
         if: ${{ !inputs.production_credential_preflight_only }}
         run: .github/scripts/install-playwright-browsers.sh chromium
 
-      - name: Generate shared i18n assets
-        if: ${{ !inputs.production_credential_preflight_only }}
-        run: bun run --cwd packages/shared build:i18n
-
       # Cloud-live still builds the same renderer bundle, so it needs the same
       # workspace dists before Vite can load packages/app/vite.config.ts.
       - name: Build @elizaos/core + @elizaos/shared browser bundles
@@ -516,9 +506,6 @@ jobs:
 
       - name: Install Playwright Chromium
         run: .github/scripts/install-playwright-browsers.sh chromium
-
-      - name: Generate shared i18n assets
-        run: bun run --cwd packages/shared build:i18n
 
       - name: Build @elizaos/core + @elizaos/shared browser bundles
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared

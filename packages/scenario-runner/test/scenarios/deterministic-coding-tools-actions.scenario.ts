@@ -14,7 +14,7 @@ import {
   type RuntimeWithScenarioModelFixtures,
   type StrictActionRouteFixture,
   stage1ResponseHandlerFixture,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -22,7 +22,7 @@ import type {
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import codingToolsPlugin from "../../../../plugins/plugin-coding-tools/src/index.ts";
-import { postToolEvaluatorFixture } from "../../../core/src/testing/post-tool-evaluator-fixture.ts";
+import { postToolEvaluatorFixture } from "@elizaos/testing/post-tool-evaluator-fixture";
 
 const execFileAsync = promisify(execFile);
 

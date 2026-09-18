@@ -16,7 +16,7 @@
  * paths in handlers.ts.
  */
 
-import { resolveServerOnlyPort } from "@elizaos/core";
+import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
 import type { CommandResult, ParsedCommand } from "../types";
 
 /** Chat providers accepted by POST /api/models/config for small/large. */

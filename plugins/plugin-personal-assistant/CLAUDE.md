@@ -43,6 +43,8 @@ Inbox triage context is owned and registered by `@elizaos/plugin-inbox`.
 
 `src/plugin.ts` registers:
 
+- `PersonalAssistantStartupService` owns deferred initialization jobs: shutdown cancels pending admission and drains admitted work before storage closes.
+
 - `BrowserBridgePluginService`
 - `ActivityTrackerService` and `PresenceSignalBridgeService`
 - `HouseholdCoordinationRuntimeService`

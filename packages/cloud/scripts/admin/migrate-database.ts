@@ -28,7 +28,7 @@ import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import pg from "pg";
 import {
   phoneErrorDiagnostic,

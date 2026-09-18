@@ -13,7 +13,7 @@
  * mirrors the view catalog, so hidden developer/preview views never leak.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,

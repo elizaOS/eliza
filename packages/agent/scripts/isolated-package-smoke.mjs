@@ -12,6 +12,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,7 +21,9 @@ const packageRoot = path.resolve(
   "..",
 );
 const repositoryRoot = path.resolve(packageRoot, "../..");
-const smokeRoot = await mkdtemp(path.join(packageRoot, ".isolated-smoke-"));
+const smokeRoot = await realpath(
+  await mkdtemp(path.join(tmpdir(), "eliza-agent-consumer-")),
+);
 
 async function readManifest(directory) {
   return JSON.parse(
@@ -57,7 +60,16 @@ async function resolveWorkspaceDependencyClosure(rootManifest) {
         `Workspace dependency ${name} resolved to unexpected package ${String(manifest.name)}`,
       );
     }
-    resolved.set(name, `file:${workspacePath}`);
+    const tarball = path.join(
+      smokeRoot,
+      `${name.replaceAll(/[/@]/g, "_")}.tgz`,
+    );
+    run(
+      "bun",
+      ["pm", "pack", "--ignore-scripts", "--filename", tarball, "--quiet"],
+      workspacePath,
+    );
+    resolved.set(name, `file:${tarball}`);
     for (const dependency of Object.keys(manifest.dependencies ?? {})) {
       if (dependency.startsWith("@elizaos/") && !resolved.has(dependency)) {
         pending.push(dependency);
@@ -105,6 +117,10 @@ try {
         ...workspaceDependencies,
         "@elizaos/agent": `file:${path.join(smokeRoot, tarball)}`,
       },
+      overrides: {
+        ...workspaceDependencies,
+        "@elizaos/agent": `file:${path.join(smokeRoot, tarball)}`,
+      },
     }),
   );
   run(
@@ -112,6 +128,19 @@ try {
     ["install", "--ignore-scripts", "--omit=optional", "--legacy-peer-deps"],
     smokeRoot,
   );
+  for (const name of [
+    distManifest.name,
+    ...Object.keys(workspaceDependencies),
+  ]) {
+    const installed = await realpath(
+      path.join(smokeRoot, "node_modules", ...name.split("/")),
+    );
+    if (!installed.startsWith(`${smokeRoot}${path.sep}`)) {
+      throw new Error(
+        `Packed dependency ${name} escapes the isolated consumer: ${installed}`,
+      );
+    }
+  }
   await writeFile(
     path.join(smokeRoot, "smoke.mjs"),
     `import { startApiServer } from "@elizaos/agent/api/server";
@@ -123,6 +152,8 @@ console.log("isolated agent API startup passed");
   );
   run("node", [path.join(smokeRoot, "smoke.mjs")], smokeRoot, {
     ...process.env,
+    NODE_OPTIONS: "",
+    NODE_PATH: "",
     ELIZA_STATE_DIR: path.join(smokeRoot, "state"),
   });
   process.stdout.write("isolated package install/start smoke passed\n");

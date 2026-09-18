@@ -4,7 +4,7 @@
  * and scope reporting.
  */
 import { describe, expect, it, vi } from "vitest";
-import { channelTopicSearchAction } from "../features/basic-capabilities/actions/channel-topic-search.ts";
+import { channelTopicSearchAction } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/actions/channel-topic-search.ts";
 import type { IAgentRuntime, Memory } from "../types/index.ts";
 
 describe("channel-topic-search action", () => {

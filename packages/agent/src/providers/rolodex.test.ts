@@ -9,15 +9,12 @@
  * (getService → RelationshipsGraphService) is a typed in-memory fake so the
  * suite can drive getGraphSnapshot without a database.
  */
+import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type {
-  IAgentRuntime,
-  Memory,
   RelationshipsGraphSnapshot,
   RelationshipsPersonSummary,
-  State,
-  UUID,
-} from "@elizaos/core";
-import { logger } from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { rolodexProvider } from "./rolodex.ts";

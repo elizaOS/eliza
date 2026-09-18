@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
-import { createTestRuntime } from "../../src/testing/pglite-runtime.ts";
+import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 
 type CodexEvent =
 	| {

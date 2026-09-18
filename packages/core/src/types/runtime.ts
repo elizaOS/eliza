@@ -14,7 +14,6 @@ import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-
 import type { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import type { RoomHandlerQueue } from "../runtime/room-handler-queue";
 import type { TurnControllerRegistry } from "../runtime/turn-controller";
-import type { PromptBatcher } from "../utils/prompt-batcher";
 import type { Agent, Character } from "./agent";
 import type {
 	ChatPreHandler,
@@ -68,7 +67,6 @@ import type {
 	PluginOwnership,
 	RemotePluginInstallOptions,
 	RemotePluginInstanceHandle,
-	Route,
 	RuntimeEventStorage,
 	ServiceClass,
 } from "./plugin";
@@ -704,7 +702,6 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	services: Map<ServiceTypeName, Service[]>;
 	events: RuntimeEventStorage;
 	fetch?: typeof fetch | null;
-	routes: Route[];
 	logger: Logger;
 	stateCache: Map<string, State>;
 	/**
@@ -713,12 +710,9 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * `runtime.contexts.tryRegister(...)`.
 	 */
 	contexts: ContextRegistry;
-	promptBatcher?: PromptBatcher;
-	/** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. */
-	companionUrl?: string;
 
 	// Methods
-	registerPlugin(plugin: Plugin): Promise<void>;
+	registerPlugin<T extends Plugin>(plugin: T): Promise<void>;
 	unloadPlugin(pluginName: string): Promise<PluginOwnership | null>;
 	reloadPlugin(plugin: Plugin): Promise<void>;
 
@@ -751,15 +745,6 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	): Promise<boolean>;
 	getPluginOwnership(pluginName: string): PluginOwnership | null;
 	getAllPluginOwnership(): PluginOwnership[];
-	enableDocuments(): Promise<void>;
-	disableDocuments(): Promise<void>;
-	isDocumentsEnabled(): boolean;
-	enableRelationships(): Promise<void>;
-	disableRelationships(): Promise<void>;
-	isRelationshipsEnabled(): boolean;
-	enableTrajectories(): Promise<void>;
-	disableTrajectories(): Promise<void>;
-	isTrajectoriesEnabled(): boolean;
 
 	initialize(options?: { skipMigrations?: boolean }): Promise<void>;
 
@@ -1149,32 +1134,18 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 */
 	unregisterTaskWorker(name: string): boolean;
 
+	/** Plugin-supplied execution; an empty kernel has no prompt policy. */
+	structuredPromptExecutor?: IAgentRuntime["dynamicPromptExecFromState"];
+	/** Record generic model/provider trace data for later enrichment. */
+	recordPromptTrace(
+		trace: import("./prompt-optimization-trace").ExecutionTrace,
+	): void;
+	purgePromptTraces(): void;
+
 	/**
-	 * Dynamic prompt execution with state injection, schema-based parsing, and validation-aware streaming.
-	 *
-	 * WHY THIS EXISTS:
-	 * LLMs are powerful but unreliable for structured outputs. They can:
-	 * - Silently truncate output when hitting token limits
-	 * - Skip fields or produce malformed structures
-	 * - Hallucinate or ignore parts of the prompt
-	 *
-	 * This method addresses these issues by:
-	 * 1. Validation codes: Injects UUID codes the LLM must echo back. If codes match,
-	 *    we know the LLM actually read and followed the prompt.
-	 * 2. Streaming with safety: Enables streaming while detecting truncation.
-	 * 3. Performance tracking: Tracks success/failure rates per model+schema.
-	 *
-	 * VALIDATION LEVELS:
-	 * - Level 0 (Trusted): No codes. Maximum speed. Use for reliable models.
-	 * - Level 1 (Progressive): Per-field codes. Balance of safety + speed.
-	 * - Level 2: Buffered validation. Optional checkpoint codes can validate the prompt envelope.
-	 * - Level 3: Strict buffered validation. Optional checkpoint codes validate both ends.
-	 *
-	 * @param state - State object to inject into the prompt template
-	 * @param params - LLM parameters with a prompt template
-	 * @param schema - Array of field definitions for structured output
-	 * @param options - Configuration (modelSize/modelType, validation level, streaming callbacks, etc.)
-	 * @returns Parsed structured response object, or null on failure
+	 * Delegate structured parsing and streaming to the explicitly registered executor.
+	 * Rejects when no executor is installed. Schema validation and optional checkpoint
+	 * markers detect structural failures; they do not prove semantic correctness.
 	 */
 	dynamicPromptExecFromState(args: {
 		state?: State;

@@ -5,11 +5,8 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import {
-  getConnectorAccountManager,
-  type IAgentRuntime,
-  type UUID,
-} from "@elizaos/core";
+import type { UUID } from "@elizaos/common";
+import { getConnectorAccountManager, type IAgentRuntime } from "@elizaos/core";
 import {
   createGitHubConnectorAccountProviderForTest,
   GitHubOAuthHttpError,

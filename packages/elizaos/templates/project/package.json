@@ -11,16 +11,6 @@
   "workspaces": [
     "apps/*"
   ],
-  "overrides": {
-    "@elizaos/plugin-local-inference": "npm:empty-npm-package@1.0.0",
-    "@whiskeysockets/baileys": "npm:empty-npm-package@1.0.0",
-    "node-llama-cpp": "npm:empty-npm-package@1.0.0"
-  },
-  "resolutions": {
-    "@elizaos/plugin-local-inference": "npm:empty-npm-package@1.0.0",
-    "@whiskeysockets/baileys": "npm:empty-npm-package@1.0.0",
-    "node-llama-cpp": "npm:empty-npm-package@1.0.0"
-  },
   "scripts": {
     "build": "bun run --cwd apps/app build",
     "build:desktop": "ELIZA_APP_NAME=\"__APP_NAME__\" ELIZA_APP_ID=__BUNDLE_ID__ ELIZA_NAMESPACE=__PROJECT_SLUG__ node scripts/run-eliza-app-core-script.mjs desktop-build.mjs build --variant=base",
@@ -38,7 +28,6 @@
     "eliza:local": "node scripts/eliza-source-mode.mjs local --install",
     "eliza:eject": "node scripts/eliza-source-mode.mjs local --install",
     "eject:eliza": "node scripts/eliza-source-mode.mjs local --install",
-    "eliza:packages": "node scripts/eliza-source-mode.mjs packages --install",
-    "postinstall": "node scripts/ensure-elizaos-optional-app-stubs.mjs"
+    "eliza:packages": "node scripts/eliza-source-mode.mjs packages --install"
   }
 }

@@ -7,6 +7,7 @@
 import { EventEmitter } from "node:events";
 import type http from "node:http";
 import {
+  type ActionResult,
   type AgentRuntime,
   ChannelType,
   type Content,
@@ -53,6 +54,7 @@ import {
   persistInterruptedAssistantReceipt,
   persistUnpersistedChatReply,
   readChatRequestPayload,
+  recoverSettledMutatingActionTurn,
   releaseChatMessageId,
   renderChatSurfaceText,
   resolveChatAdminEntityId,
@@ -1503,4 +1505,70 @@ describe("persistUnpersistedChatReply", () => {
       expect(memories).toHaveLength(0);
     }
   });
+});
+
+describe("post-effect interruption outcome", () => {
+  const receipt = {
+    receiptId: "committed-note",
+    operation: "note.create",
+    resource: { kind: "note", id: "note-1" },
+    artifacts: [],
+    idempotency: { key: "request-1", replayed: false },
+    observedAt: "2026-09-16T12:00:00.000Z",
+    outcome: "applied" as const,
+    commit: {
+      kind: "durable" as const,
+      id: "txn-1",
+      committedAt: "2026-09-16T12:00:00.000Z",
+    },
+  };
+  it.each([
+    {
+      error: new Error("later planning failed"),
+      aborted: false,
+      status: "failed",
+    },
+    {
+      error: new DOMException("Stopped", "AbortError"),
+      aborted: false,
+      status: "cancelled",
+    },
+    {
+      error: new Error("transport closed"),
+      aborted: true,
+      status: "cancelled",
+    },
+    {
+      error: new Error("Chat generation timed out after 1000ms"),
+      aborted: true,
+      status: "failed",
+    },
+  ])(
+    "retains $status with committed effects independently of recovered text",
+    ({ error, aborted, status }) => {
+      const runtime = Object.assign(makeRuntime(), {
+        actions: [],
+        logger: { warn: vi.fn() },
+      });
+      const controller = new AbortController();
+      if (aborted) controller.abort(error);
+      const action: ActionResult = {
+        success: true,
+        effectReceipts: [receipt],
+        verifiedUserFacing: true,
+        userFacingText: "Created the note.",
+        userFacingEffectReceiptIds: [receipt.receiptId],
+      };
+      const recovery = recoverSettledMutatingActionTurn(runtime, [action], {
+        error,
+        signal: controller.signal,
+      });
+      expect(recovery?.outcome).toMatchObject({ status, effects: [receipt] });
+      expect(recovery?.text).toBe("Created the note.");
+      expect(recovery?.actionResults).toEqual([action]);
+      expect(recovery?.replyFailure).toBeUndefined();
+      if (recovery?.outcome.status === "failed")
+        expect(recovery.outcome.error.transient).toBe(false);
+    },
+  );
 });

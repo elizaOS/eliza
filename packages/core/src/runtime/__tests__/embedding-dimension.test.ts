@@ -20,8 +20,9 @@
  * 5. runtime.initialize() survives a total probe failure — boot stays alive in
  *    the degraded mode instead of crashing (#10702's original symptom).
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { ElizaError } from "../../errors";
 import {
 	AgentRuntime,

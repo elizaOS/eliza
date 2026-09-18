@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Proves My Apps semantic twins against a real AgentRuntime and TCP API host:
  * APP stop moves a real AppManager run out of inventory, and VIEWS show
@@ -202,10 +203,7 @@ describe("My Apps semantic route parity (#16944)", () => {
         logLevel: "fatal",
         plugins: [appControlPlugin],
       });
-      await runtime.initialize({
-        allowNoDatabase: true,
-        skipMigrations: true,
-      });
+      await initializeTestRuntime(runtime, { skipMigrations: true });
       await runtime.getServiceLoadPromise("app-registry");
       await runtime.getServiceLoadPromise("app-worker-host");
 

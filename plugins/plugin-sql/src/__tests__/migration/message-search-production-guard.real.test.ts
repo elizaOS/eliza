@@ -19,7 +19,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pglite";
 import { v4 } from "uuid";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { plugin as sqlPlugin } from "../../index";
 import { DatabaseMigrationService } from "../../migration-service";
 import type { DrizzleDatabase } from "../../types";
@@ -34,6 +34,7 @@ describe("message-search production DDL guard", () => {
   let originalApplyMessageSearchObjects: string | undefined;
 
   beforeEach(async () => {
+    vi.stubEnv("SECRET_SALT", "sql-production-ddl-fixture-salt");
     originalNodeEnv = process.env.NODE_ENV;
     originalSecretSalt = process.env.SECRET_SALT;
     process.env.SECRET_SALT = `message-search-test-${v4()}`;
@@ -63,6 +64,7 @@ describe("message-search production DDL guard", () => {
     }
 
     await pgClient.close();
+    vi.unstubAllEnvs();
   });
 
   const runSqlPluginMigration = async (databaseBackend: "postgres" | "pglite", targetDb = db) => {

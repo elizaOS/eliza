@@ -3,6 +3,8 @@
  * trading profile, registry (ERC-8004), drop/mint, whitelist, twitter verify.
  */
 
+import type { DropStatus, MintResult } from "@elizaos/shared/contracts/drop";
+import type { VerificationResult } from "@elizaos/shared/contracts/verification";
 import type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
@@ -12,9 +14,6 @@ import type {
   BscTradeTxStatusResponse,
   BscTransferExecuteRequest,
   BscTransferExecuteResponse,
-  DropStatus,
-  MintResult,
-  VerificationResult,
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
@@ -24,7 +23,7 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/wallet-types";
 import { ElizaClient } from "./client-base";
 import type {
   ApplyProductionWalletDefaultsResponse,

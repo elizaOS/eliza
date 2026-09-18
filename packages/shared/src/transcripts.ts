@@ -17,7 +17,7 @@ import {
   ElizaError,
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/core";
+} from "@elizaos/common";
 import type { SpeakerNameAttribution } from "./speaker-name-inference.js";
 
 /** A single transcribed word with playback-synced timing (ms from audio start). */

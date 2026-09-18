@@ -3,8 +3,8 @@
  * queued deterministic model delegate; no provider or database is involved.
  */
 import { describe, expect, it, vi } from "vitest";
-import { DefaultMessageService } from "../services/message";
-import { ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED } from "../services/message/fallback-reply";
+import { DefaultMessageService } from "../../../../plugins/plugin-assistant/src/services/message.ts";
+import { MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED } from "../security/model-failure.ts";
 import type { Memory } from "../types/memory";
 import type { Content, UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
@@ -43,7 +43,7 @@ function cloudWarmingExhaustedError(): Error & {
 	status: number;
 } {
 	return Object.assign(new Error("Cloud gateway warming budget exhausted"), {
-		code: ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+		code: MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
 		status: 503,
 	});
 }

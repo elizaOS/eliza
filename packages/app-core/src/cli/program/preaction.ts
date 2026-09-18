@@ -6,7 +6,7 @@
  * schedules the update-notification check. It also resolves the verbose/debug
  * flag and silences Node warnings when not verbose.
  */
-import { isTruthyEnvValue } from "@elizaos/shared";
+import { isTruthyEnvValue } from "@elizaos/common";
 import type { Command } from "commander";
 import { setVerbose } from "../../utils/globals";
 import { getCommandPath, getVerboseFlag, hasHelpOrVersion } from "../argv";

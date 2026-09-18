@@ -5,7 +5,7 @@
  * Handles CRUD, revenue distribution, and discovery.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import crypto from "crypto";
 import {
   formatOrganizationCreditUsd,

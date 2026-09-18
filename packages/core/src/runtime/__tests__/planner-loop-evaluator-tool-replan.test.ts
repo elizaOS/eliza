@@ -3,8 +3,8 @@
  * and stateful tool fixture. This does not substitute for live Calendar QA.
  */
 import { expect, it, vi } from "vitest";
-import { parseEvaluatorOutput } from "../evaluator";
-import { runPlannerLoop } from "../planner-loop";
+import { parseEvaluatorOutput } from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { PlannerToolCall, PlannerTrajectory } from "../planner-types";
 
 it("replans an evaluator tool invocation after lookup and mutates only the planner-selected record once", async () => {

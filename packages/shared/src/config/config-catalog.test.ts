@@ -3,7 +3,7 @@
  * validation. The deterministic harness exercises the exported helpers and
  * validation runner directly without UI or network dependencies.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import {
   builtInValidators,

@@ -4,7 +4,7 @@
  */
 
 import { afterAll, afterEach, beforeEach, describe, expect, jest, mock, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 import * as realSafeFetchModule from "../../security/safe-fetch";
 

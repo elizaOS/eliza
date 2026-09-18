@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Plugin } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
 import type { PluginInstallRecord } from "../config/types.eliza.ts";

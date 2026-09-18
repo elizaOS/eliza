@@ -15,20 +15,25 @@ import {
   saveElizaConfig,
 } from "@elizaos/agent";
 import type { FirstRunDirectAccountAdoption } from "@elizaos/agent/api/first-run-direct-account";
-import { ElizaError, logger, readRequestBody } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
+import { readRequestBody } from "@elizaos/shared/api/http-helpers";
+import type { DeploymentTargetRuntime } from "@elizaos/shared/contracts/deployment-types";
 import {
-  type DeploymentTargetRuntime,
-  getCloudSecret,
   getDirectAccountProviderForFirstRunProvider,
-  migrateLegacyRuntimeConfig,
-  normalizeDeploymentTargetConfig,
   normalizeFirstRunCredentialInputs,
+  migrateLegacyRuntimeConfig,
   normalizeFirstRunProviderId,
+} from "@elizaos/shared/contracts/first-run-options";
+import {
+  normalizeDeploymentTargetConfig,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
+} from "@elizaos/shared/contracts/service-routing";
+import { getCloudSecret } from "@elizaos/shared/elizacloud/cloud-secrets";
+import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+} from "@elizaos/shared/elizacloud/dev-cloud-env-authority";
 import { prepareFirstRunConnectors } from "@elizaos/shared/first-run-config";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {

@@ -5,8 +5,9 @@
  * suppression of hidden image-description calls from ambient chat streams. Real
  * runtime over the in-memory adapter with registered fake handlers; deterministic.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import { runWithStreamingContext } from "../../streaming-context";
 import { type Character, ModelType, type ResponseSkeleton } from "../../types";
@@ -359,7 +360,7 @@ describe("AgentRuntime structured streaming", () => {
 
 	it("stops emitting non-local stream chunks once the abort signal fires mid-stream", async () => {
 		// runtime.ts: the non-local textStream loop checks `abortSignal?.aborted`
-		// at the top of each iteration. Aborting after the first chunk must break
+		// at the top of each iteration. Aborting after the first chunk must reject
 		// the loop so no further chunks reach the chat SSE callback, and the
 		// trailing flush must not emit a partial/garbled tail.
 		const runtime = makeRuntime();
@@ -377,21 +378,23 @@ describe("AgentRuntime structured streaming", () => {
 		}));
 		runtime.registerModel(ModelType.ACTION_PLANNER, handler, "openai");
 
-		await runWithStreamingContext(
-			{
-				messageId: "message-1",
-				abortSignal: controller.signal,
-				onStreamChunk: (chunk) => {
-					streamed.push(chunk);
-					// Abort right after the first chunk is delivered.
-					controller.abort();
+		await expect(
+			runWithStreamingContext(
+				{
+					messageId: "message-1",
+					abortSignal: controller.signal,
+					onStreamChunk: (chunk) => {
+						streamed.push(chunk);
+						// Abort right after the first chunk is delivered.
+						controller.abort();
+					},
 				},
-			},
-			() =>
-				runtime.useModel(ModelType.ACTION_PLANNER, {
-					messages: [],
-				}),
-		);
+				() =>
+					runtime.useModel(ModelType.ACTION_PLANNER, {
+						messages: [],
+					}),
+			),
+		).rejects.toMatchObject({ name: "AbortError" });
 
 		// Only the first chunk was delivered; "b"/"c" were suppressed by the abort.
 		expect(streamed).toEqual(["a"]);

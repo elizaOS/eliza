@@ -19,10 +19,10 @@ import {
 import {
   type AgentRuntime,
   type Memory,
-  relationshipsPlugin as nativeRelationshipsPlugin,
   type Plugin,
   stringToUuid,
 } from "@elizaos/core";
+import { relationshipsPlugin as nativeRelationshipsPlugin } from "@elizaos/plugin-assistant";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,

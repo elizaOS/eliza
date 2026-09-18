@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 
 const { extractPlugin, resolveTelegramPluginImportSpecifier } = await import(
-  "../../src/test-support/test-helpers.ts"
+  "../helpers/connector-imports.ts"
 );
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));

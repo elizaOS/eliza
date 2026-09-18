@@ -205,10 +205,10 @@ const rmPathRecursiveScript = path.join(
 );
 const sharedSourceDir = path.join(workspacePackagesRoot, "shared", "src");
 const coreNodeEntry = fs.existsSync(
-  path.join(workspacePackagesRoot, "core", "dist", "node", "index.node.js"),
+  path.join(workspacePackagesRoot, "core", "dist", "index.js"),
 )
-  ? path.join(workspacePackagesRoot, "core", "dist", "node", "index.node.js")
-  : path.join(workspacePackagesRoot, "core", "src", "index.node.ts");
+  ? path.join(workspacePackagesRoot, "core", "dist", "index.js")
+  : path.join(workspacePackagesRoot, "core", "src", "index.ts");
 const rendererDistDir = path.relative(
   electrobunDir,
   fs.existsSync(path.join(repoRoot, "packages/app/package.json"))

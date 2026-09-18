@@ -13,17 +13,11 @@
 		"outDir": "./dist",
 		"rootDir": "../..",
 		"lib": ["ES2022", "DOM"],
-		"types": ["node"],
-		"typeRoots": [
-			"./node_modules/@types",
-			"../../node_modules/@types",
-			"../../node_modules/.bun/node_modules/@types"
-		],
+		"types": ["node", "vite/client"],
 		"allowImportingTsExtensions": true,
 		"rewriteRelativeImportExtensions": true,
 		"paths": {
-			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
-			"@elizaos/logger": ["../../packages/logger/src/index.ts"],
+			"@elizaos/core": ["../../packages/core/src/index.ts"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
 			"@elizaos/shared/*": ["../../packages/shared/src/*"],
 			"@elizaos/capacitor-bun-runtime": [

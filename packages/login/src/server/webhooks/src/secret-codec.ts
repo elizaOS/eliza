@@ -4,7 +4,7 @@ import {
   randomBytes,
   scryptSync,
 } from "node:crypto";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 
 const PREFIX = "stwd_whsec_v1:";
 const DEFAULT_KDF_SALT = "steward-webhook-secret-v1";

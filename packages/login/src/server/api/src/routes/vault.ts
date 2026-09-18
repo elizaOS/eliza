@@ -16,7 +16,7 @@ import {
   type KeyObject,
   randomBytes,
 } from "node:crypto";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { and, desc, eq, type SQL, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import {

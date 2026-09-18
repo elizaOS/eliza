@@ -5,11 +5,11 @@
  */
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import type { ExperienceService } from "../../../core/src/features/advanced-capabilities/experience/service";
+import type { ExperienceService } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/experience/service.ts";
 import {
   ExperienceType,
   OutcomeType,
-} from "../../../core/src/features/advanced-capabilities/experience/types";
+} from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/experience/types.ts";
 import type { UUID } from "../../../core/src/types/primitives";
 
 const EXPERIENCE_TOPIC = "docker buildkit cache eviction";

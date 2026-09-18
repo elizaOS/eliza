@@ -1,6 +1,6 @@
 /** Lossless helpers for copying legacy phone JSON fields into PostgreSQL JSONB. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 export type PhoneJsonShape = "object" | "string_array";
 

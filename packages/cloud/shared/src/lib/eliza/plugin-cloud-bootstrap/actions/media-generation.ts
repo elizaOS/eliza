@@ -1,13 +1,13 @@
 // Wires hosted Eliza agent media generation behavior for cloud runtime services.
+
+import { ContentType, type Memory } from "@elizaos/common";
 import {
   type ActionExample,
   type ActionResult,
-  ContentType,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
   type MediaGenerationMediaType,
-  type Memory,
   ServiceType,
   type State,
 } from "@elizaos/core";

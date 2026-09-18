@@ -7,7 +7,7 @@
  */
 // @vitest-environment jsdom
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   dispatchNavigateViewRequest,

@@ -28,8 +28,8 @@
 
 import { randomUUID } from "node:crypto";
 import net from "node:net";
-
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
+import { logger } from "@elizaos/core";
 
 /** Hard cap on a single TCP register/refresh round-trip. */
 const REGISTRY_TCP_TIMEOUT_MS = 10_000;

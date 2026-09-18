@@ -9,7 +9,10 @@
  * `MYAPP_API_TOKEN ↔ ELIZA_API_TOKEN`, etc. The prefix is sourced from
  * `APP_CONFIG.envPrefix` (or `cliName` as fallback).
  */
-import { buildBrandEnvAliases, normalizeBrandEnvPrefix } from "@elizaos/shared";
+import {
+  buildBrandEnvAliases,
+  normalizeBrandEnvPrefix,
+} from "@elizaos/shared/config/brand-env-aliases";
 import { APP_CONFIG } from "./app-config";
 
 export { buildBrandEnvAliases };

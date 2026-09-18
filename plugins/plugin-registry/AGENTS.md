@@ -4,11 +4,11 @@ Plugin discovery, manifest reading, install/uninstall lifecycle, and HTTP route 
 
 ## Purpose / role
 
-This package consolidates all plugin-management HTTP surfaces that were previously split across `@elizaos/agent` and `@elizaos/app-core`. It exposes two route-handler entry points plus thin forwarder functions for install/uninstall operations. It is a library package — not a runtime-loaded `Plugin` object — consumed by the agent HTTP server and by app-core's compat layer. Its `package.json` `agentConfig.pluginParameters` is empty (`{}`) because no runtime env vars are read directly by this package.
+This package consolidates all plugin-management HTTP surfaces that were previously split across `@elizaos/agent` and `@elizaos/app-core`. It exposes two route-handler entry points plus thin forwarder functions for install/uninstall operations. The root entry is a host library consumed by the agent HTTP server and app-core. The separate `@elizaos/plugin-registry/runtime` entry exports `pluginManagerPlugin`, explicitly composed by the agent when plugin management is enabled. Its `package.json` `agentConfig.pluginParameters` is empty (`{}`) because no runtime env vars are read directly by this package.
 
 ## Plugin surface
 
-This package exports functions; it does not export a `Plugin` object with actions/providers/evaluators. Instead it exposes:
+The root entry exports host functions. The `./runtime` entry exports the optional plugin and its services, actions and providers.
 
 ### Route handlers
 
@@ -101,7 +101,7 @@ Env vars consumed indirectly at route-handler call time:
 
 ## Conventions / gotchas
 
-- **No `Plugin` object.** This package is a library, not a loaded elizaOS plugin. Do not add an `export const plugin: Plugin = { ... }` unless elizaOS adds a plugin-registry loading hook.
+- **Keep runtime and HTTP entry points separate.** `./runtime` owns discovery, installation, actions and providers; it must not import host route handlers or agent. Core must never import this package. Role enforcement comes from core.
 - **Lazy load in `plugin-installer.ts`.** The `import("@elizaos/agent")` is intentionally deferred to break the `app-core ↔ agent` circular module dependency. Do not convert it to a static import.
 - **`PluginRouteContext` is injected by the caller.** All route helpers (masking, broadcast, restart scheduling) come from the agent's `server.ts`; this file never reaches across into agent internals directly.
 - **`buildPluginListResponse` reconciles drift once per process.** The `_enabledStateReconciled` flag means `reconcilePluginEnabledStates()` runs only on the first call. In tests, reset it if you need a clean state.

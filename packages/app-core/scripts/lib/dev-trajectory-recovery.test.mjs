@@ -7,7 +7,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createDevTrajectoryRecoveryCoordinator } from "./dev-trajectory-recovery.mjs";
 
 const fixture = fileURLToPath(
-  new URL("./fixtures/trajectory-recovery-child.mjs", import.meta.url),
+  new URL(
+    "./__tests__/fixtures/trajectory-recovery-child.mjs",
+    import.meta.url,
+  ),
 );
 const children = new Set();
 const scope = {

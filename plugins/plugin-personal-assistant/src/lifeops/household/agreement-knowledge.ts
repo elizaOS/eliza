@@ -14,7 +14,6 @@ import {
 import { createZipArchive } from "@elizaos/agent/api/zip-utils";
 import {
   ChannelType,
-  DocumentService,
   ElizaError,
   type IAgentRuntime,
   type IFileStorageService,
@@ -23,6 +22,7 @@ import {
   type UUID,
   withStandaloneTrajectory,
 } from "@elizaos/core";
+import { DocumentService } from "@elizaos/plugin-assistant";
 import type { PdfCompleteDocument, PdfService } from "@elizaos/plugin-pdf";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { z } from "zod";

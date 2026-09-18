@@ -10,7 +10,7 @@
  */
 
 import type http from "node:http";
-import type { Route } from "@elizaos/core";
+import type { Route } from "@elizaos/shared/api/http-plugin";
 import { describe, expect, it, vi } from "vitest";
 import { browserPlugin } from "../../plugin.js";
 import {

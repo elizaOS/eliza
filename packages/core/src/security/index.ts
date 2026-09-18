@@ -3,18 +3,6 @@
 export { userRequestFromAugmentedText } from "./augmented-request.js";
 export { mnemonicValid } from "./bip39-wordlist.js";
 export {
-	applyCapabilityManifest,
-	assertHostAllowed,
-	assertPathAllowed,
-	CapabilityDeadlineError,
-	type CapabilityManifest,
-	CapabilityViolationError,
-	frozenEnv,
-	isHostAllowed,
-	isPathAllowed,
-	withCapabilityGovernance,
-} from "./capability-manifest.js";
-export {
 	CompositeEntityRecognizer,
 	canonicalKind,
 	type EntitySpan,

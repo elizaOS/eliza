@@ -51,7 +51,7 @@ bun run verify:cloud          # cloud lint and typecheck lanes
 bun run test:cloud            # cloud unit/integration package sweep
 bun run test:cloud:integration # isolated local Worker + PGlite integration lane
 bun run test:cloud:e2e        # cloud API end-to-end lane
-bun run cloud:e2e             # full local Playwright stack
+bun run --cwd packages/cloud/e2e test             # full local Playwright stack
 bun run cloud:mock            # local mock stack for manual verification
 ```
 

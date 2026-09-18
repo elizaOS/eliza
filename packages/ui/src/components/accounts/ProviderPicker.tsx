@@ -11,10 +11,8 @@
  * keyboard never gets trapped in a group.
  */
 
-import {
-  codingProviderDescriptorForProvider,
-  type LinkedAccountProviderId,
-} from "@elizaos/shared";
+import { codingProviderDescriptorForProvider } from "@elizaos/shared/contracts/coding-agent-capabilities";
+import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing-types";
 import { Search } from "lucide-react";
 import {
   type KeyboardEvent,

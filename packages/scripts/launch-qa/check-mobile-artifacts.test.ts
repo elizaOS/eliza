@@ -99,16 +99,6 @@ async function makeRepo() {
 
   await writeFile(
     repoRoot,
-    "package.json",
-    JSON.stringify({
-      scripts: {
-        "build:android:system":
-          "node packages/app-core/scripts/run-mobile-build.mjs android-system",
-      },
-    }),
-  );
-  await writeFile(
-    repoRoot,
     "packages/app/package.json",
     JSON.stringify({
       scripts: {

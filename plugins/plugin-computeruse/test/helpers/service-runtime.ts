@@ -4,12 +4,8 @@
  * chooses whether it exercises deterministic validation or opted-in hardware.
  */
 
-import {
-  AgentRuntime,
-  createCharacter,
-  InMemoryDatabaseAdapter,
-  stringToUuid,
-} from "@elizaos/core";
+import { AgentRuntime, createCharacter, stringToUuid } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { ComputerUseService } from "../../src/services/computer-use-service.js";
 
 /** Starts the service through the same AgentRuntime registration path used in production. */
@@ -23,7 +19,6 @@ export async function startComputerUseRuntime(
       settings,
     }),
     adapter: new InMemoryDatabaseAdapter(),
-    disableBasicCapabilities: true,
     enableAutonomy: false,
     enableDocuments: false,
     enableRelationships: false,

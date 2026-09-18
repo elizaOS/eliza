@@ -13,7 +13,7 @@ import {
   type Vault,
   VaultDecryptionError,
   writeSensitiveValueVerified,
-} from "@elizaos/vault";
+} from "@elizaos/credentials/vault";
 import type { OperationErrorCode } from "./types.ts";
 
 export class VaultResolveError extends Error {

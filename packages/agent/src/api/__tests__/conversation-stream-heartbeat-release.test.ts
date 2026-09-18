@@ -222,6 +222,7 @@ function createRespondingMessageService(): NonNullable<
   return {
     async handleMessage() {
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text: FINAL_TEXT, thought: "done" },
         responseMessages: [],

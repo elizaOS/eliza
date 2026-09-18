@@ -90,7 +90,9 @@
     "@elizaos/ui": "workspace:*",
     "drizzle-orm": "0.45.2",
     "lucide-react": "^1.0.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/prompts": "workspace:*"
   },
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",

@@ -5,7 +5,7 @@
  * Deterministic: synthetic Action stubs, no model or database.
  */
 import { describe, expect, it } from "vitest";
-import { buildActionCatalog } from "../runtime/action-catalog";
+import { buildActionCatalog } from "../../../../plugins/plugin-assistant/src/runtime/action-catalog.ts";
 import type { Action } from "../types/components";
 
 // Minimal valid Action for catalog construction. The catalog is built from the

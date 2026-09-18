@@ -20,7 +20,7 @@ test("staging deploy reconciles Steward immediately before publication", async (
     deployStep.indexOf("bunx wrangler deploy"),
   );
   const reconcileIndex = deployStep.indexOf(
-    "cloud:reconcile-steward-email-callback",
+    "packages/cloud/scripts/reconcile-steward-email-callback-config.mjs",
   );
   const publishIndex = deployStep.indexOf("bunx wrangler deploy");
 

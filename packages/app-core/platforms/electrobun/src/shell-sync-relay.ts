@@ -6,7 +6,7 @@
  * idempotent redelivery. Renderer heartbeats are driven by native pings so a
  * hidden/throttled webview cannot accidentally create split-brain ownership.
  */
-import { toWellFormedUnicode } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/common";
 import { logger } from "./logger";
 
 import type { SendToWebview } from "./types";

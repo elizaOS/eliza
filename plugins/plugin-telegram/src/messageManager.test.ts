@@ -34,9 +34,13 @@ vi.mock("@elizaos/core", async (importOriginal) => {
       error: loggerErrorMock,
       warn: loggerWarnMock,
     },
-    resolveAttachmentBytes: resolveAttachmentBytesMock,
   };
 });
+
+vi.mock("@elizaos/shared/media", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/shared/media")>()),
+  resolveAttachmentBytes: resolveAttachmentBytesMock,
+}));
 
 function createManager() {
   let messageId = 0;

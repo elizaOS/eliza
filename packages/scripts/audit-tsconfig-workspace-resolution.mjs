@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 
-import { resolveWorkspacePackageDirs } from "./lib/workspace-package-dirs.mjs";
+import { listWorkspaceDirs } from "./lib/workspaces.mjs";
 
 const defaultRepoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -551,7 +551,9 @@ export function auditTsconfigWorkspaceResolution(options = {}) {
   );
   const packageDirs =
     options.packageDirs ??
-    resolveWorkspacePackageDirs(repoRoot, rootManifest.workspaces);
+    listWorkspaceDirs({ repoRoot, patterns: rootManifest.workspaces }).map(
+      (dir) => path.resolve(repoRoot, dir),
+    );
   const configOverrides = new Map(
     [...(options.configOverrides ?? new Map())].map(([filePath, contents]) => [
       path.resolve(filePath),

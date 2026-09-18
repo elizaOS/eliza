@@ -4,7 +4,7 @@
  * newlines untouched. Pure deterministic function test.
  */
 import { describe, expect, it } from "vitest";
-import { sanitizeReplyTextAfterMediaDelivery } from "../services/message.ts";
+import { sanitizeReplyTextAfterMediaDelivery } from "../../../../plugins/plugin-assistant/src/services/message.ts";
 
 describe("sanitizeReplyTextAfterMediaDelivery", () => {
 	it("scans a 100k-character failed URL candidate without backtracking", () => {

@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import { test } from "vitest";
 
 // Load `.env` from the repo root when `dotenv` is available.
@@ -92,7 +92,7 @@ async function resolveMaybeVaultRef(
     close?: () => Promise<void>;
   } | null = null;
   try {
-    const { createVault } = await import("@elizaos/vault");
+    const { createVault } = await import("@elizaos/credentials/vault");
     vault = createVault(opts.stateDir ? { workDir: opts.stateDir } : {}) as {
       get(key: string): Promise<string>;
       close?: () => Promise<void>;
@@ -419,7 +419,7 @@ function buildLiveProviderConfig(
 // inference by spawning the sanctioned local CLI: ELIZA_CHAT_VIA_CLI selects the
 // backend and the CLI reads its own on-disk credentials — eliza never sees the
 // token, so there is no real apiKey. Mirrors core's selectCliProvider
-// (packages/core/src/testing/live-provider.ts). Selected FIRST when
+// (packages/testing/src/live-provider.ts). Selected FIRST when
 // ELIZA_CHAT_VIA_CLI names a supported backend: setting it is an explicit opt-in
 // to the subscription route, so it wins over an ambient API key. Existing CI
 // never sets ELIZA_CHAT_VIA_CLI, so this path is inert there.

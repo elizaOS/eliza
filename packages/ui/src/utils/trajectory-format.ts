@@ -6,4 +6,4 @@ export {
   formatTrajectoryDuration,
   formatTrajectoryTimestamp,
   formatTrajectoryTokenCount,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/trajectory-format";

@@ -26,13 +26,13 @@ const {
   createMessageMemory,
   stringToUuid,
 } = await import("@elizaos/core");
-const { createTestRuntime } = await import("@elizaos/core/testing");
+const { createTestRuntime } = await import("@elizaos/testing");
 const { relevantConversationsProvider } = await import(
   "./relevant-conversations.ts"
 );
 
 import type { Memory, State, UUID } from "@elizaos/core";
-import type { TestRuntimeResult } from "@elizaos/core/testing";
+import type { TestRuntimeResult } from "@elizaos/testing";
 
 const OWNER = "11111111-1111-1111-1111-111111111111" as UUID;
 const GUEST = "33333333-3333-3333-3333-333333333333" as UUID;

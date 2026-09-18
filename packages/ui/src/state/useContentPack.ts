@@ -10,7 +10,7 @@
  * - The color-scheme cleanup callback that pack activation registers.
  */
 
-import type { ResolvedContentPack } from "@elizaos/shared";
+import type { ResolvedContentPack } from "@elizaos/shared/contracts/content-pack";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyColorScheme,

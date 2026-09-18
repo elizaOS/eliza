@@ -1,21 +1,11 @@
 /**
- * Verifies prompt rendering, public compatibility aliases, generated specs,
+ * Verifies prompt rendering, public compatibility aliases,
  * lossless model context, and the injection boundary around contact input.
  */
 import assert from "node:assert";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
-import { composePrompt } from "../../core/src/utils.ts";
+import { composePrompt } from "@elizaos/prompts/rendering";
 import * as prompts from "../src/index.ts";
-
-const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const specsDir = join(packageRoot, "specs");
-
-function readJsonFile(filePath) {
-  return JSON.parse(readFileSync(filePath, "utf-8"));
-}
 
 function occurrences(haystack, needle) {
   return haystack.split(needle).length - 1;
@@ -88,46 +78,6 @@ describe("prompt template exports", () => {
     });
 
     assert.strictEqual(occurrences(rendered, request), 1);
-  });
-});
-
-describe("specs directory", () => {
-  it("ships non-empty action and provider specs with unique names", () => {
-    const specs = [
-      { path: join(specsDir, "actions", "core.json"), key: "actions" },
-      { path: join(specsDir, "providers", "core.json"), key: "providers" },
-    ];
-
-    for (const spec of specs) {
-      const parsed = readJsonFile(spec.path);
-      assert.ok(Array.isArray(parsed[spec.key]));
-      assert.ok(parsed[spec.key].length > 0);
-      const names = new Set();
-      for (const item of parsed[spec.key]) {
-        assert.ok(item.name.trim().length > 0);
-        assert.strictEqual(names.has(item.name), false);
-        names.add(item.name);
-        assert.ok(item.description.trim().length > 0);
-      }
-    }
-  });
-
-  it("keeps generated description aliases aligned", () => {
-    const generated = readJsonFile(
-      join(specsDir, "actions", "plugins.generated.json"),
-    );
-    assert.ok(Array.isArray(generated.actions));
-    for (const action of generated.actions) {
-      if (
-        action.compressedDescription !== undefined &&
-        action.descriptionCompressed !== undefined
-      ) {
-        assert.strictEqual(
-          action.compressedDescription,
-          action.descriptionCompressed,
-        );
-      }
-    }
   });
 });
 

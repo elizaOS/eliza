@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Tests that `ensureLocalInferenceHandler` registers the TEXT_SMALL/TEXT_LARGE/
  * TEXT_EMBEDDING handlers and wires the router at boot. Routing mode,
@@ -297,7 +298,7 @@ describe("ensureLocalInferenceHandler", () => {
 		const stop = vi.spyOn(TimedAsrService.prototype, "stop");
 
 		try {
-			await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+			await initializeTestRuntime(runtime, { skipMigrations: true });
 			await registerLocalInferenceBoot(runtime);
 
 			const timedAsr = runtime.getService<TimedAsrService>("timedAsr");

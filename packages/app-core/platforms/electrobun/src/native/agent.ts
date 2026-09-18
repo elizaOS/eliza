@@ -31,11 +31,13 @@ import {
   applyDevCloudAuthoritySnapshotToEnv,
   captureDevCloudEnvAuthoritySnapshot,
   type DevCloudEnvAuthoritySnapshot,
+} from "@elizaos/shared/elizacloud/dev-cloud-env-authority";
+import {
   resolveApiToken,
   resolveDesktopApiPort,
   resolveDisableAutoApiToken,
   setApiToken,
-} from "@elizaos/shared";
+} from "@elizaos/shared/runtime-env";
 import { Utils } from "electrobun/bun";
 import { resolveDesktopRuntimeMode } from "../api-base";
 import { getBrandConfig } from "../brand-config";

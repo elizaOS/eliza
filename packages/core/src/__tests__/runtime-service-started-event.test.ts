@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../runtime";
 import { EventType } from "../types/events";
@@ -7,7 +8,7 @@ import { Service } from "../types/service";
 describe("service startup observers", () => {
 	it("binds a late-registered service before its startup promise resolves", async () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
-		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		await initializeTestRuntime(runtime, { skipMigrations: true });
 		class LateService extends Service {
 			static override serviceType = "late-transport-test";
 			capabilityDescription = "late transport test";
@@ -47,7 +48,7 @@ describe("service startup observers", () => {
 
 	it("reports observer failure without failing an already started service", async () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
-		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		await initializeTestRuntime(runtime, { skipMigrations: true });
 		class ObservedService extends Service {
 			static override serviceType = "failed-observer-test";
 			capabilityDescription = "observer failure test";

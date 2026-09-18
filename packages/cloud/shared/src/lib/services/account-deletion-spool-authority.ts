@@ -6,7 +6,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { inArray } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import { agentSandboxBackups } from "../../db/schemas/agent-sandboxes";

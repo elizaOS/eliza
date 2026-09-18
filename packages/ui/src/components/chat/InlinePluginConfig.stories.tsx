@@ -11,7 +11,7 @@
  * window.fetch answering that route with a Telegram-shaped connector fixture.
  */
 
-import type { PluginParamDef } from "@elizaos/shared";
+import type { PluginParamDef } from "@elizaos/shared/api/agent-api-types";
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import type { PluginInfo } from "../../api/client-types-config";
 import { assert, waitForTestId } from "../../storybook/home-widget-decorator";

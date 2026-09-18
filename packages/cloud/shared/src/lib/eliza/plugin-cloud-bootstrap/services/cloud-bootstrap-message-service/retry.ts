@@ -6,7 +6,8 @@
  * surface as a "successful" empty response upstream.
  */
 
-import { logger, parseJSONObjectFromText } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 
 export const RETRY_CONFIG = {
   baseDelayMs: 200,

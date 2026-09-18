@@ -1,0 +1,16 @@
+{
+  "extends": "./src/tsconfig.typecheck.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false,
+    "composite": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "src/__tests__",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "dist",
+    "src/dist"
+  ]
+}

@@ -129,11 +129,14 @@ runtime falls back to a path that fails on hardened-runtime targets.
 - **Unsigned executable memory stays OFF.** We do not set
   `com.apple.security.cs.allow-unsigned-executable-memory`. JIT pages must
   still go through the proper `MAP_JIT` write-protection APIs.
-- **The runtime gate blocks out-of-bundle dlopen.** The JavaScript layer
-  enforces (`@elizaos/core/sandbox#assertDlopenPathAllowed`) that every native
-  module loaded by `process.dlopen` resolves to a path inside the app bundle.
-  This blocks even a malicious in-process script from reaching for a system
-  library through Node's dynamic loader.
+- **Host library resolution blocks out-of-bundle FFI loads.** The shared
+  `resolveNativeLibraryCandidate` policy checks the expected filename and
+  canonical filesystem path inside the running app's `Contents` before the
+  window-effects bridge calls `bun:ffi.dlopen`. Symlinks cannot authorize an
+  outside file. This is a guard for participating host loaders, not an
+  interception of arbitrary `process.dlopen` calls; OS signing and library
+  validation remain the enforcement boundary for native code.
+
 
 The combination of these four constraints means a JIT-capable Bun process
 inside the bundle still cannot load arbitrary libraries, cannot allocate

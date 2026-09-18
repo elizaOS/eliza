@@ -18,12 +18,8 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import {
-  aliasRecallQuery,
-  buildAccessContext,
-  embedRecallQuery,
-  toWellFormedUnicode,
-} from "@elizaos/core";
+import { buildAccessContext, toWellFormedUnicode } from "@elizaos/core";
+import { aliasRecallQuery, embedRecallQuery } from "@elizaos/plugin-assistant";
 import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { extractCompatTextContent } from "./compat-utils.ts";
 import {

@@ -319,7 +319,7 @@ async function main(argv = process.argv.slice(2)) {
 
   if (!(await exists(APP_ANDROID_DIR))) {
     throw new Error(
-      `apps/app/android/ not found at ${APP_ANDROID_DIR}; run \`bun run build:android:system\` first to regenerate the Capacitor tree.`,
+      `apps/app/android/ not found at ${APP_ANDROID_DIR}; run \`bun run --cwd packages/app build:android:system\` first to regenerate the Capacitor tree.`,
     );
   }
 

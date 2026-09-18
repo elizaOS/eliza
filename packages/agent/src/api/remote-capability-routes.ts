@@ -21,10 +21,12 @@ import {
   isPrivateIpAddress,
   type JsonObject,
   normalizeHostLike,
-  type RouteHelpers,
-  type RouteRequestMeta,
 } from "@elizaos/core";
 import { decodeUrlPathComponent } from "@elizaos/shared";
+import type {
+  RouteHelpers,
+  RouteRequestMeta,
+} from "@elizaos/shared/api/route-helpers";
 import {
   type ConnectCloudCapabilitySandboxOptions,
   type ConnectCloudCapabilitySandboxResult,

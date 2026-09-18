@@ -8,7 +8,7 @@
  * runtime, account, and character configuration.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import type { UiLanguage } from "../i18n";
 import { releasePendingFirstRunText } from "./first-run-pending-text";
 

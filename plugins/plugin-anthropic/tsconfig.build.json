@@ -2,7 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "rootDir": ".",
-    "outDir": "../dist",
+    "outDir": "./dist",
     "sourceMap": true,
     "inlineSources": true,
     "declaration": true,
@@ -11,7 +11,6 @@
     "noEmit": false,
     "paths": {
       "@elizaos/core": [
-        "../../../packages/core/dist",
         "../../packages/core/dist"
       ]
     },
@@ -29,6 +28,8 @@
     "**/__tests__/**",
     "**/*.test.ts",
     "**/*.spec.ts",
-    "vitest.real-runtime.config.ts"
+    "vitest.real-runtime.config.ts",
+    "dist",
+    "node_modules"
   ]
 }

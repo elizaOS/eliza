@@ -8,7 +8,7 @@
 
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   type AgentBackupRestoreSourceV3Input,
   loadAgentBackupRestoreSourceV3,

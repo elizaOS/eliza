@@ -1,6 +1,6 @@
 /** Claims fair primary-database recovery work and atomically publishes terminal observations with immutable attempt provenance. Provider reads happen outside these transactions. */
 import { createHash, randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";

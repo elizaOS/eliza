@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Required-service preflight regressions over real AgentRuntime instances.
  * Service classes are deterministic; registration, startup, retry, and stop
@@ -47,7 +48,7 @@ function scenarioWithServices(
 
 async function createRuntime(): Promise<AgentRuntime> {
   const runtime = new AgentRuntime({ logLevel: "fatal" });
-  await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+  await initializeTestRuntime(runtime, { skipMigrations: true });
   return runtime;
 }
 

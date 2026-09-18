@@ -24,12 +24,12 @@ import fsp from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import {
   _resetCloudSecretsForTesting,
   getCloudSecret,
   scrubCloudSecretsFromEnv,
 } from "@elizaos/shared/elizacloud/cloud-secrets";
+import { createDeterministicModelPlugin } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startApiServer } from "../../src/api/server.ts";
 import { req } from "../helpers/http.ts";

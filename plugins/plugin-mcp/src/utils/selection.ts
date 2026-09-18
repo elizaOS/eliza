@@ -4,14 +4,15 @@
  * input schema. Both run through withModelRetry, re-prompting with feedback until
  * the output validates or retries are exhausted.
  */
+
 import {
-  composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   ModelType,
   type State,
 } from "@elizaos/core";
+import { composePromptFromState } from "@elizaos/prompts/rendering";
 import {
   toolSelectionArgumentTemplate,
   toolSelectionNameTemplate,

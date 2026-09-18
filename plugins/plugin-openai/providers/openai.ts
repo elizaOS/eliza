@@ -14,9 +14,8 @@ import {
   type InferenceTimingMeta,
   logger,
 } from "@elizaos/core";
-import { getApiKey, getBaseURL, isProxyMode } from "../utils/config";
+import { getApiKey, getBaseURL } from "../utils/config";
 
-const PROXY_API_KEY = "sk-proxy";
 const SAFE_RESPONSE_HEADERS = [
   "x-request-id",
   "request-id",
@@ -57,8 +56,7 @@ export function createOpenAIClient(
   endpoint?: { baseURL: string; apiKey: string; provider: "openrouter" }
 ): OpenAIProvider {
   const baseURL = endpoint?.baseURL ?? getBaseURL(runtime);
-  const apiKey =
-    endpoint?.apiKey ?? (getApiKey(runtime) || (isProxyMode(runtime) ? PROXY_API_KEY : undefined));
+  const apiKey = endpoint?.apiKey ?? getApiKey(runtime);
 
   if (!apiKey) {
     throw new Error(

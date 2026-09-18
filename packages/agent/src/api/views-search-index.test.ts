@@ -2,7 +2,7 @@
  * Exercises the view search index's result-count contract with deterministic
  * embedding responses, including invalid caller-supplied limits.
  */
-import { createMockRuntime } from "@elizaos/core/testing";
+import { createMockRuntime } from "@elizaos/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { viewSearchIndex } from "./views-search-index.ts";
 

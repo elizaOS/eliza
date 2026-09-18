@@ -30,7 +30,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   DocumentService,
   documentsPlugin,
-} from "../../../core/src/features/documents/index";
+} from "../../../../plugins/plugin-assistant/src/features/documents/index.ts";
 
 const SCENARIO_ID = "deterministic-document-actions";
 const DOCUMENT_TITLE = "Quarterly Onboarding Guide";

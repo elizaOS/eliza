@@ -34,13 +34,13 @@
  */
 
 import {
-  createJsonFileTrajectoryRecorder,
   type IAgentRuntime,
   isTrajectoryRecordingEnabled,
   ModelType,
   type RecordedStage,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import { createJsonFileTrajectoryRecorder } from "@elizaos/plugin-assistant";
 import type { EvidenceCapabilities } from "./producible-evidence.js";
 
 /** Stable identifier the verifier stamps onto the `validateTask` payload so

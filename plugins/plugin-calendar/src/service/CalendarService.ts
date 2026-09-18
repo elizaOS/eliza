@@ -13,15 +13,17 @@ import { createHash } from "node:crypto";
 import {
   ElizaError,
   type IAgentRuntime,
-  isSerializedSecretHandle,
   logger,
-  SECRETS_SERVICE_TYPE,
   Service,
   SsrfBlockedError,
   stableStringify,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import {
+  isSerializedSecretHandle,
+  SECRETS_SERVICE_TYPE,
+} from "@elizaos/plugin-assistant";
 import type {
   GoogleCalendarEvent,
   IGoogleWorkspaceService,

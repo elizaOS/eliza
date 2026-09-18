@@ -13,13 +13,14 @@
  * `/api/permissions/native-projection` route and native app shells, which call
  * the pure projection directly with their live permission and app state.
  */
+
+import { ElizaError } from "@elizaos/common";
 import type {
   CapabilityRiskLevel,
   ConnectedAccount,
   ConnectedAccountCapability,
   ConnectedAccountStatus,
 } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
 import type {
   PermissionId,
   PermissionRestrictedReason,

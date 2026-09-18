@@ -1,7 +1,13 @@
 /** Verifies the development Vite subprocess resolves source TypeScript config imports. */
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -130,5 +136,43 @@ test("Vite resolution succeeds with a PATH that contains Bun and no Node executa
     expect(nodeProbe.status).not.toBe(0);
   } finally {
     rmSync(binDir, { recursive: true, force: true });
+  }
+});
+
+test("a hoisted installed Vite CLI runs from the generated app workspace", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "eliza-hoisted-vite-"));
+  try {
+    const nestedApp = path.join(root, "apps/app");
+    const viteRoot = path.join(root, "node_modules/vite");
+    mkdirSync(nestedApp, { recursive: true });
+    mkdirSync(path.join(viteRoot, "bin"), { recursive: true });
+    writeFileSync(
+      path.join(viteRoot, "package.json"),
+      JSON.stringify({ name: "vite", type: "module" }),
+    );
+    writeFileSync(
+      path.join(viteRoot, "bin/vite.js"),
+      "if (process.execArgv.some(arg => arg.includes('eliza-source') || arg === 'tsx')) throw new Error('source loader used for installed package'); process.stdout.write(JSON.stringify(process.argv.slice(2)));\n",
+    );
+    const resolved = resolveViteCommand({
+      appDir: nestedApp,
+      runtime: "node",
+      sourceCheckout: false,
+      runtimePath: process.execPath,
+      port: 3210,
+    });
+    const child = spawnSync(resolved.command, resolved.args, {
+      cwd: nestedApp,
+      encoding: "utf8",
+    });
+    expect(child.status, child.stderr).toBe(0);
+    expect(JSON.parse(child.stdout)).toEqual([
+      "--configLoader",
+      "bundle",
+      "--port",
+      "3210",
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });

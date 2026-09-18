@@ -25,6 +25,7 @@
 
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 import {
   CREDENTIAL_PROXY_RAW_PAT_VARS,
   CREDENTIAL_PROXY_SIGNING_KEY_KEY,
@@ -33,8 +34,7 @@ import {
   type CredentialProxyConfig,
   CredentialProxyStrictError,
   resolveCredentialProxyConfig,
-  resolveStateDir,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import { readConfigEnvKey } from "./config-env.js";
 
 /** Comma-separated git hosts the helper will broker credentials for. */

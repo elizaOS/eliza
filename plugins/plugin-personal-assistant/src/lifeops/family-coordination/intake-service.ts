@@ -7,13 +7,13 @@
 import { createHash } from "node:crypto";
 import {
   type AccessContext,
-  DocumentService,
   ElizaError,
   type IAgentRuntime,
   resolveOwnerEntityIdOrDefault,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
+import { DocumentService } from "@elizaos/plugin-assistant";
 import { z } from "zod";
 import {
   type FamilyIntakeFact,

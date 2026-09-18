@@ -1,6 +1,6 @@
 # @elizaos/prompts
 
-Shared prompt templates and action specs for elizaOS.
+Shared prompt templates for elizaOS.
 
 The Stage-1 message-handler template uses the registered flat response schema:
 `contexts`, `intents`, `candidateActionNames`, `facts`, `relationships`, and
@@ -20,14 +20,10 @@ This package is the single source of truth for prompt templates used by the runt
 packages/prompts/
 ├── src/
 │   ├── index.ts      # TypeScript prompt template exports
-│   └── prompt-compression.ts # lossless compatibility helper
+│   └── keywords.ts   # Authored multilingual keyword metadata
 ├── dist/             # generated JavaScript, declarations, and publish manifest
 ├── tsconfig.json     # package-owned source typecheck
-├── specs/            # Merged action/provider specs (JSON) + generated plugins.generated.json
-└── scripts/          # Spec + docs generators
-    ├── generate-action-docs.js
-    ├── generate-plugin-action-spec.js
-    └── check-secrets.js
+└── scripts/          # Read-only inventory and secret checks
 ```
 
 ## Template Syntax
@@ -40,40 +36,32 @@ Prompts use Handlebars-style variables:
 
 Use camelCase for variables (`{{agentName}}`, `{{providers}}`, `{{recentMessages}}`).
 
-## Plugin-local `prompts/*.json` (under `plugins/**`)
-
-Some plugins keep **hand-edited** `actions.json` / `evaluators.json` / `providers.json` next to their source. Those files feed **per-plugin codegen** (for example `generated/specs/spec-helpers.ts` via each plugin’s own workflow). They are **not** inputs to `scripts/generate-plugin-action-spec.js`, which instead scans `plugins/**/*.ts` for `export const …: Action` blocks and writes `specs/actions/plugins.generated.json`.
+Action and provider metadata lives in the owning typed implementation. This package does not generate application source or alter another package during its build.
 
 ## Building
 
 ```bash
-# Compile the publishable package, generate the plugin action spec, and action docs
+# Compile the publishable package
 bun run build
 
 # Compile only the native-Node package artifact
 bun run build:package
 ```
 
-Bun workspace tooling resolves the maintained TypeScript source through the
-`bun` export condition, and Vite resolves it through `module`. Vitest removes
-that condition in Node mode, so clean-workspace Vitest configs must use the
-explicit `eliza-source` condition or a targeted source alias. Workspace
-TypeScript consumers resolve source types before `dist/` exists, while normal
-native Node workspace consumers continue to use the compiled `dist/` entry.
-The generated publish manifest rewrites every source-facing condition to
-compiled JavaScript and declarations in `dist/`, so the release tarball never
-publishes TypeScript source as runtime code.
+Normal Node and Bun consumers load compiled JavaScript and declarations from
+`dist`. Explicit `eliza-source` consumers and targeted test aliases can load the
+maintained TypeScript source. Published runtime artifacts contain no source-only
+entrypoints.
 
-The repository runs this package's tests serially because they rebuild and
-temporarily remove `dist/` while checking consumer resolution. Concurrent
-workspace tests may still be importing that compiled package.
+Package tests build distribution artifacts before exercising consumers.
 
 ## Usage
 
-Runtime code imports the templates through `@elizaos/core`, which re-exports them and provides `composePrompt` to fill the `{{...}}` placeholders:
+Plugins import authored templates directly and render their placeholders:
 
 ```typescript
-import { REPLY_TEMPLATE, composePrompt } from "@elizaos/core";
+import { REPLY_TEMPLATE } from "@elizaos/prompts";
+import { composePrompt } from "@elizaos/prompts/rendering";
 
 const prompt = composePrompt({
   state: { agentName: "Alice" },
@@ -81,7 +69,7 @@ const prompt = composePrompt({
 });
 ```
 
-Import directly from `@elizaos/prompts` only inside this package's tooling and tests.
+Core does not re-export the template catalog.
 
 ## Adding New Prompts
 
@@ -111,3 +99,12 @@ bun run check:secrets
 Scans `packages/prompts/src/**/*.ts`, plugin prompt TS modules (paths matching `prompts/**/*.ts`, `workflow-prompts/**/*.ts`, etc.), and a few explicit files — see `scripts/check-secrets.js`.
 
 The default handler groups routing, reply, crisis and authority rules without repeating the same constraints. Literal recall from supplied evidence can answer directly; live records and effects still plan. Registered field contracts and source selection remain complete.
+
+Model-output JSON helpers are available from `@elizaos/prompts/parsing`.
+`extractAndParseJSONObjectFromText` accepts objects and arrays and throws on
+invalid input; `parseJSONObjectFromText` returns an object or null. Both retain
+JSON5 tolerance and fenced-block extraction without shortening payloads.
+
+`@elizaos/prompts/rendering` owns Handlebars composition, callback templates
+and deterministic example-name substitution. Rendering preserves complete
+values without HTML escaping or recursive expansion.

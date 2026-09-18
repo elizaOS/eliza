@@ -9,4 +9,4 @@ export {
   mergeStreamingText,
   resolveStreamingUpdate,
   type StreamingUpdateResult,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/streaming-text";

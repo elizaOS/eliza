@@ -47,6 +47,12 @@ const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
 const corePackageRequire = createRequire(
   path.join(elizaRoot, "packages", "core", "package.json"),
 );
+const assistantPackageRequire = createRequire(
+  path.join(elizaRoot, "plugins", "plugin-assistant", "package.json"),
+);
+const sharedPackageRequire = createRequire(
+  path.join(elizaRoot, "packages", "shared", "package.json"),
+);
 const lifeopsPackageRequire = createRequire(path.join(here, "package.json"));
 const escapedAgentSourceRoot = agentSourceRoot.replace(
   /[.*+?^${}()|[\]\\]/g,
@@ -169,16 +175,6 @@ function resolveNodePackageRoot(packageName: string): string {
   return path.join(here, "node_modules", packageName);
 }
 
-function resolveCorePackageEntry(packageName: string): string {
-  return corePackageRequire.resolve(packageName);
-}
-
-function resolveCorePackageRoot(packageName: string): string {
-  return path.dirname(
-    corePackageRequire.resolve(path.join(packageName, "package.json")),
-  );
-}
-
 const reactRoot = resolveNodePackageRoot("react");
 const reactDomRoot = resolveNodePackageRoot("react-dom");
 // Bun's isolated install puts the logger's transitive deps deep under
@@ -190,11 +186,13 @@ const reactDomRoot = resolveNodePackageRoot("react-dom");
 // real install dirs so resolution is one hop on every platform.
 const adzeRoot = resolveNodePackageRoot("adze");
 const fastRedactRoot = resolveNodePackageRoot("fast-redact");
-const aiEntry = resolveCorePackageEntry("ai");
+const aiEntry = assistantPackageRequire.resolve("ai");
 const fsExtraEntry = lifeopsPackageRequire.resolve("fs-extra");
-const handlebarsEntry = resolveCorePackageEntry("handlebars");
-const mammothEntry = resolveCorePackageEntry("mammoth");
-const markdownItRoot = resolveCorePackageRoot("markdown-it");
+const handlebarsEntry = corePackageRequire.resolve("handlebars");
+const mammothEntry = assistantPackageRequire.resolve("mammoth");
+const markdownItRoot = path.dirname(
+  sharedPackageRequire.resolve("markdown-it/package.json"),
+);
 const telegramSessionsEntry = path.join(
   elizaRoot,
   "plugins",
@@ -383,12 +381,13 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/vault$/,
+        find: /^@elizaos\/credentials\/vault$/,
         replacement: path.join(
           elizaRoot,
           "packages",
-          "vault",
+          "credentials",
           "src",
+          "vault",
           "index.ts",
         ),
       },
@@ -519,6 +518,10 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent\/api\/client-chat-admin$/,
         replacement: path.join(agentSourceRoot, "api", "client-chat-admin.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/runtime\/eliza$/,
+        replacement: path.join(agentSourceRoot, "runtime", "eliza.ts"),
       },
       {
         find: /^@elizaos\/agent\/runtime\/owner-entity$/,
@@ -759,6 +762,10 @@ export default defineConfig({
       // never gets built. Anchor PA self-subpaths to source (the base workspace-app
       // config only source-aliases the barrel, and the exports-alias builder skips
       // the wildcard entry).
+      {
+        find: /^@elizaos\/plugin-personal-assistant$/,
+        replacement: path.join(here, "src", "index.ts"),
+      },
       {
         find: /^@elizaos\/plugin-personal-assistant\/(.+)$/,
         replacement: path.join(

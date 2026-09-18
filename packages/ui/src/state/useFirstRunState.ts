@@ -10,7 +10,7 @@
  * The deleted wizard's 35+ step/connector/feature fields died with it (#12178).
  */
 
-import { getDefaultStylePreset } from "@elizaos/shared";
+import { getDefaultStylePreset } from "@elizaos/shared/character-presets";
 import { useReducer, useRef } from "react";
 import type { FirstRunOptions } from "../api";
 import { readPersistedMobileRuntimeMode } from "../first-run/mobile-runtime-mode";

@@ -2,6 +2,8 @@
  * Integration coverage for NotificationService over a real AgentRuntime,
  * in-memory database adapter, and AgentEventService. External systems are not involved.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import {
 	afterAll,
 	beforeAll,
@@ -12,7 +14,6 @@ import {
 	vi,
 } from "vitest";
 import { createCharacter } from "../character.ts";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../runtime.ts";
 import type { AgentEventPayload } from "../types/agentEvent.ts";
 import {

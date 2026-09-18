@@ -9,7 +9,8 @@
 import fs, { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { logger, type Plugin } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
 import {

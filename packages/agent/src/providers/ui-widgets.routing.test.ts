@@ -8,12 +8,12 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { createV5MessageContextObject } from "../../../core/src/services/message/context-assembly.ts";
+import { createV5MessageContextObject } from "../../../../plugins/plugin-assistant/src/services/message/context-assembly.ts";
 import {
   selectV5PlannerStateProviderNames,
   stage1ResponseStateProviderNames,
-} from "../../../core/src/services/message/provider-state.ts";
-import { renderMessageHandlerModelInput } from "../../../core/src/services/message/stage1-input.ts";
+} from "../../../../plugins/plugin-assistant/src/services/message/provider-state.ts";
+import { renderMessageHandlerModelInput } from "../../../../plugins/plugin-assistant/src/services/message/stage1-input.ts";
 import {
   uiGenerativeProvider,
   uiWidgetCapabilitiesProvider,

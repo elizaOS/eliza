@@ -345,12 +345,6 @@ function packageDistReady(packageDir, requiredFiles) {
 function buildDefaultPrepareCommands() {
   const generateCommands = [
     {
-      label: "shared i18n keywords",
-      cwd: "packages/shared",
-      command: [bunBin, "run", "build:i18n"],
-      env: commonEnv,
-    },
-    {
       label: "cloud dev vars",
       cwd: ".",
       command: cloudDevVarsCommand,

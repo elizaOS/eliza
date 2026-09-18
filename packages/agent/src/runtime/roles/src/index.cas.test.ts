@@ -6,11 +6,11 @@ import {
   AgentRuntime,
   ChannelType,
   type Character,
-  InMemoryDatabaseAdapter,
   ROLE_WRITE_AUDIT_LOG_TYPE,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
 import rolesPlugin from "./index";
 

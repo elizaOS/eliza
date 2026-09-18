@@ -1,5 +1,5 @@
 /** Exercises subscription rpc behavior with deterministic app-core test fixtures. */
-import type { SubscriptionStatusResponse } from "@elizaos/shared";
+import type { SubscriptionStatusResponse } from "@elizaos/shared/contracts/first-run-options";
 import { describe, expect, it, vi } from "vitest";
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import {

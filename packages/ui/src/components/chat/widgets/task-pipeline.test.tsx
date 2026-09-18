@@ -6,7 +6,7 @@
 // indent, tool steps reusing ToolCallEventLog), and the tool-event mapping.
 // jsdom render, no backend.
 
-import type { SwarmActivityPlanEntry } from "@elizaos/core";
+import type { SwarmActivityPlanEntry } from "@elizaos/common";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SubagentActivity } from "../../../state/task-activity-store";

@@ -27,20 +27,15 @@ const mocks = vi.hoisted(() => ({
   getTranscriptionModel: vi.fn(() => "gpt-4o-mini-transcribe"),
 }));
 
-const coreMockFactory = vi.hoisted(
-  () => async (importActual: () => Promise<Record<string, unknown>>) => {
-    const actual = await importActual();
-    return {
-      ...actual,
-      logger: { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() },
-      recordLlmCall: mocks.recordLlmCall,
-      fetchRemoteMedia: (...args: unknown[]) => mocks.fetchRemoteMedia(...args),
-    };
-  }
-);
+vi.mock("@elizaos/core", async (importActual) => ({
+  ...(await importActual<typeof import("@elizaos/core")>()),
+  recordLlmCall: mocks.recordLlmCall,
+}));
+vi.mock("@elizaos/shared/media", async (importActual) => {
+  const actual = await importActual<typeof import("@elizaos/shared/media")>();
 
-vi.mock("@elizaos/core", coreMockFactory);
-vi.mock("@elizaos/core/node", coreMockFactory);
+  return { ...actual, fetchRemoteMedia: (...args: unknown[]) => mocks.fetchRemoteMedia(...args) };
+});
 
 vi.mock("../utils/config", () => ({
   getAuthHeader: mocks.getAuthHeader,
@@ -52,9 +47,6 @@ vi.mock("../utils/config", () => ({
 }));
 
 import { handleTranscription } from "../models/audio";
-import { installNodeTranscriptionUrlFetcher } from "../models/transcription-url.node";
-
-installNodeTranscriptionUrlFetcher();
 
 // OpenAI /audio/transcriptions determines the audio format from the filename
 // extension and 400s on anything outside this set; the derived name must land

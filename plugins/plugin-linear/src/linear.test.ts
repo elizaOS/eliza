@@ -7,10 +7,10 @@ import {
   type ActionParameters,
   AgentRuntime,
   createCharacter,
-  InMemoryDatabaseAdapter,
   type Memory,
   type UUID,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { linearAction } from "./action.js";
 import { LinearClient } from "./client.js";
@@ -95,7 +95,6 @@ function runtimeWith(service: LinearService): AgentRuntime {
     agentId: AGENT_ID,
     character: createCharacter({ name: "Linear Test" }),
     adapter: new InMemoryDatabaseAdapter(),
-    disableBasicCapabilities: true,
     logLevel: "fatal",
   });
   vi.spyOn(runtime, "getService").mockImplementation((serviceType) =>
@@ -138,7 +137,6 @@ describe("LinearService credential resolution", () => {
       agentId: AGENT_ID,
       character: createCharacter({ name: "Linear Unconfigured" }),
       adapter: new InMemoryDatabaseAdapter(),
-      disableBasicCapabilities: true,
       logLevel: "fatal",
     });
     const service = new LinearService(runtime);
@@ -344,7 +342,6 @@ describe("LINEAR action", () => {
       agentId: AGENT_ID,
       character: createCharacter({ name: "Linear Bare" }),
       adapter: new InMemoryDatabaseAdapter(),
-      disableBasicCapabilities: true,
       logLevel: "fatal",
     });
     const result = await invoke(bare, {});

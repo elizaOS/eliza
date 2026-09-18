@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Eager service startup retries a failed boot-time start with a bounded
  * backoff instead of leaving the service type failed for the process lifetime.
@@ -18,7 +19,7 @@ describe("eager service start retry", () => {
 		// failed their schema DDL on a saturated pool at boot and stayed failed.
 		vi.useFakeTimers();
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
-		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		await initializeTestRuntime(runtime, { skipMigrations: true });
 		let attempts = 0;
 		class FlakyService extends Service {
 			static override serviceType = "retry-flaky-service";
@@ -57,7 +58,7 @@ describe("eager service start retry", () => {
 	it("stops retrying once the runtime is stopping", async () => {
 		vi.useFakeTimers();
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
-		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		await initializeTestRuntime(runtime, { skipMigrations: true });
 		let attempts = 0;
 		class AlwaysFailingService extends Service {
 			static override serviceType = "retry-always-failing";

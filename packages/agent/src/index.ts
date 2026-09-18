@@ -21,7 +21,7 @@ export {
   readRequestBodyBuffer,
   sendJson,
   sendJsonError,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-helpers";
 
 export interface CloudConfigLike {
   apiKey?: string | null;
@@ -68,7 +68,7 @@ export async function validateCloudBaseUrl(
   const { validateCloudBaseUrl } = await loadElizaCloudRoutes();
   return validateCloudBaseUrl(value);
 }
-export * from "@elizaos/auth";
+export * from "@elizaos/credentials/auth";
 export type { ElizaConfig, ReleaseChannel, RolesConfig } from "@elizaos/shared";
 export {
   CONNECTOR_PLUGINS,

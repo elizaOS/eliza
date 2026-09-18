@@ -9,7 +9,7 @@ import {
   type ResolvedSurfaceManifest,
   resolveSurfaceBackgroundPolicy,
   resolveSurfaceManifest,
-} from "@elizaos/core";
+} from "@elizaos/common";
 import {
   BUILTIN_ROUTE_IDS,
   type BuiltinRouteSurfaceDeclaration,

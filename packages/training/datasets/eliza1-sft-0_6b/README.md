@@ -97,13 +97,23 @@ concatenated ahead of the broader corpus.
   the same filter `format_for_training.format_record` applies) as
   defense-in-depth (API keys / bearer tokens / emails / phones / geo).
 
-## Reproduce
+## Historical reproduction and current builder
+
+This is the historical 0.6B dataset. Reproducing these exact artifacts requires
+the original source revision and inputs recorded with the dataset. Its retired
+builder aliases were later redirected to the 2B builder and are now removed;
+they cannot reproduce the original 0.6B files.
+
+For a new dataset for the supported 2B model, run the commands below. They write
+`datasets/eliza1-sft-2b/`, not this historical dataset. Existing manifests and
+hashes remain records of the original build.
+
 
 ```bash
 cd packages/training
-CEREBRAS_API_KEY=<key> uv run python scripts/build_eliza1_sft_0_6b.py
+CEREBRAS_API_KEY=<key> uv run python scripts/build_eliza1_sft_2b.py
 # converted-only (no API key):
-uv run python scripts/build_eliza1_sft_0_6b.py --no-augment
+uv run python scripts/build_eliza1_sft_2b.py --no-augment
 ```
 
 Counts, per-task breakdown, token histogram, and the privacy-filter pass are

@@ -41,13 +41,23 @@ windowed SWA KV layout makes those optional rather than default release
 gates, and a sidecar is not publish provenance unless the recipe actually
 ran for that tier.
 
-A unified pipeline runner (`scripts/run_pipeline.py`) chains:
+The checkpoint runner (`scripts/run_pipeline.py`) chains:
 
-  base bench → APOLLO SFT → fine-tuned bench → GGUF q4/q6/q8 + MTP manifest → quantized bench
+  base bench → APOLLO SFT → fine-tuned bench → selected experimental recipes → checkpoint bench
+
+Its current default recipes are PolarQuant, TurboQuant and QJL. Select recipes
+explicitly with `--quantizers`, or use `--skip-quantize` for checkpoint-only
+training. `finetune_all_tiers.py` runs the registry-approved subset of those
+experimental recipes. Neither runner automatically stages the GGUF release
+ladder or an MTP bundle. Use the GGUF recipe, manifest staging and publish
+orchestrator documented in [CLAUDE.md](CLAUDE.md) for that path.
 
 Per-task benchmarks live in `scripts/benchmark/native_tool_call_bench.py` and
 score native tool-call structure, tool names, argument keys, and JSON routing
-shape on the held-out trajectory split.
+shape on the held-out trajectory split. This benchmark loads Transformers
+checkpoints; do not pass a GGUF output directory to it. Staged GGUF bundles use
+`scripts/eval/eliza1_eval_suite.py`, whose release measurements are distinct
+from the checkpoint tool-call structure score.
 
 ## Cloning the pipeline on a fresh machine
 
@@ -86,8 +96,7 @@ data/raw/* ──▶ normalize.py ──▶ data/normalized/<slug>.jsonl
        GGUF release K-quant  MTP drafter verify  optional recipe experiments
                                   │
                                   ▼
-                          native_tool_call_bench.py
-                  (native tool-call + JSON structure correctness)
+                    staged bundle evaluation and publishing
 ```
 
 ## Native Tool-Calling Data
@@ -219,7 +228,8 @@ extend the Nebius path.
   more than 10 %.
 - **Benchmark** — `scripts/benchmark/native_tool_call_bench.py`. It scores
   expected native tool names, argument keys, and JSON routing/planner shape.
-  Run on base + fine-tuned + each quantized variant for direct A/B numbers.
+  Run on base, fine-tuned and compatible Transformers recipe outputs for
+  direct A/B numbers. GGUF bundle evaluation uses its separate release suite.
 
 ## Uniform chat format
 

@@ -6,7 +6,7 @@
  * A too-loose route means a tenant credential can be attached to a call the
  * agent should not be able to make. Every rule here is fail-closed: stricter
  * wins, and nothing is relaxed relative to the two former call-path copies
- * (packages/vault/src/secret-vault.ts and packages/api/src/routes/secrets.ts)
+ * (packages/credentials/src/vault/secret-vault.ts and packages/api/src/routes/secrets.ts)
  * that this module replaces.
  *
  * injectAs is header-only. Query and body injection are NOT supported here:

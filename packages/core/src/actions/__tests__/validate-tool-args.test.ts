@@ -2,11 +2,12 @@
  * Unit tests for `actions/validate-tool-args`: validating planner-supplied tool
  * arguments against an action's parameter schema — types, required fields,
  * nested objects/arrays, enums, unexpected keys, default application — plus
- * `testSchemaPattern`, the ReDoS-hardened pattern tester. Runs on hand-built
+ * numeric bounds and explicit omission sentinels. Pattern checks reject invalid
+ * regexes and oversized inputs. Runs on hand-built
  * actions and the real `messageAction`; no live model.
  */
 import { describe, expect, it } from "vitest";
-import { messageAction } from "../../features/advanced-capabilities/actions/message.ts";
+import { messageAction } from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/message.ts";
 import type { Action, ActionParameterSchema } from "../../types";
 import {
 	testSchemaPattern,
@@ -70,6 +71,28 @@ const nestedAction = makeAction({
 });
 
 describe("validateToolArgs", () => {
+	it("validates numbers, integers, and bounds", () => {
+		const errors: string[] = [];
+		const numSchema = {
+			type: "number" as const,
+			minimum: 10,
+			maximum: 100,
+		};
+
+		validateSchema(numSchema, 50, "score", errors);
+		expect(errors).toHaveLength(0);
+
+		validateSchema(numSchema, 5, "score", errors);
+		expect(errors).toContain("Argument 'score' value 5 is below minimum 10");
+
+		validateSchema(numSchema, 150, "score", errors);
+		expect(errors).toContain("Argument 'score' value 150 is above maximum 100");
+
+		const intSchema = { type: "integer" as const };
+		validateSchema(intSchema, 3.14, "count", errors);
+		expect(errors).toContain("Argument 'count' expected integer, got number");
+	});
+
 	it("validates flat and nested native tool args and applies optional defaults", () => {
 		const result = validateToolArgs(nestedAction, {
 			title: "Follow up",
@@ -249,11 +272,178 @@ describe("testSchemaPattern (untrusted-pattern hardening)", () => {
 	});
 
 	it("refuses to test an over-long value without running the pattern", () => {
-		const long = "a".repeat(60_000); // > MAX_PATTERN_INPUT_LENGTH
+		const long = "a".repeat(50_001); // First rejected length above MAX_PATTERN_INPUT_LENGTH
 		const start = Date.now();
 		const r = testSchemaPattern("(a+)+$", long);
 		expect(Date.now() - start).toBeLessThan(500);
 		expect(r.ok).toBe(false);
 		if (!r.ok) expect(r.reason).toMatch(/too long/);
+	});
+});
+
+describe("unused-optional sentinel strings", () => {
+	const action = {
+		name: "MEM",
+		description: "d",
+		parameters: [
+			{
+				name: "content",
+				description: "d",
+				required: true,
+				modelOmissionSentinels: ["null"],
+				schema: { type: "string" as const },
+			},
+			{
+				name: "memoryId",
+				description: "d",
+				required: false,
+				modelOmissionSentinels: ["", "null", "undefined"],
+				schema: {
+					type: "string" as const,
+					pattern:
+						"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+				},
+			},
+		],
+		handler: async () => ({}),
+		validate: async () => true,
+	} as never;
+
+	it("omits only declared sentinel spellings on an optional parameter", () => {
+		for (const sentinel of ["null", "undefined", "", " NULL "]) {
+			const result = validateToolArgs(action, {
+				content: "remember this",
+				memoryId: sentinel,
+			});
+			expect(result.valid).toBe(true);
+			expect(result.args).not.toHaveProperty("memoryId");
+		}
+	});
+
+	it("preserves ordinary optional strings and recursive JSON Schema semantics", () => {
+		const ordinaryAction = {
+			...action,
+			parameters: [
+				...(action.parameters ?? []),
+				{
+					name: "freeText",
+					description: "d",
+					required: false,
+					schema: { type: "string" as const, minLength: 0 },
+				},
+				{
+					name: "enumValue",
+					description: "d",
+					required: false,
+					schema: { type: "string" as const, enum: ["null"] },
+				},
+				{
+					name: "withDefault",
+					description: "d",
+					required: false,
+					schema: { type: "string" as const, default: "fallback" },
+				},
+				{
+					name: "nested",
+					description: "d",
+					required: false,
+					schema: {
+						type: "object" as const,
+						properties: { value: { type: "string" as const } },
+					},
+				},
+			],
+		} as never;
+		const result = validateToolArgs(ordinaryAction, {
+			content: "remember this",
+			freeText: "",
+			enumValue: "null",
+			withDefault: "undefined",
+			nested: { value: "null" },
+		});
+
+		expect(result.valid).toBe(true);
+		expect(result.args).toMatchObject({
+			freeText: "",
+			enumValue: "null",
+			withDefault: "undefined",
+			nested: { value: "null" },
+		});
+	});
+
+	it("does not change exported recursive schema validation", () => {
+		const errors: string[] = [];
+		const result = validateSchema(
+			{
+				type: "object",
+				properties: {
+					literal: { type: "string", default: "fallback" },
+				},
+			},
+			{ literal: "null" },
+			"structured",
+			errors,
+		);
+		expect(errors).toEqual([]);
+		expect(result).toEqual({ literal: "null" });
+	});
+
+	it("a required parameter keeps a sentinel-looking value verbatim", () => {
+		const result = validateToolArgs(action, { content: "null" });
+		// required "content" keeps whatever string was supplied — sentinels
+		// only ever mean absent for optional properties.
+		expect(result.valid).toBe(true);
+		expect(result.args?.content).toBe("null");
+	});
+
+	it("a real value on the optional param still validates against its pattern", () => {
+		const bad = validateToolArgs(action, {
+			content: "x",
+			memoryId: "not-a-uuid",
+		});
+		expect(bad.valid).toBe(false);
+		const good = validateToolArgs(action, {
+			content: "x",
+			memoryId: "12345678-1234-1234-1234-123456789abc",
+		});
+		expect(good.valid).toBe(true);
+	});
+});
+
+describe("optional sentinels are only absent when the schema rejects them", () => {
+	const freeText = {
+		name: "NOTE",
+		description: "Write a note",
+		parameters: [
+			{
+				name: "body",
+				description: "Note body",
+				required: true,
+				schema: { type: "string" as const },
+			},
+			{
+				name: "tag",
+				description: "Optional free-text tag",
+				required: false,
+				schema: { type: "string" as const },
+			},
+		],
+		handler: async () => undefined,
+		validate: async () => true,
+		examples: [],
+	} as unknown as Parameters<typeof validateToolArgs>[0];
+
+	it("keeps an optional free-text value that happens to read like a sentinel", () => {
+		// "null" is a legitimate thing to write in a note. The schema accepts it,
+		// so dropping it would be silent data loss on the model -> action path.
+		const result = validateToolArgs(freeText, { body: "x", tag: "null" });
+		expect(result.valid).toBe(true);
+		expect(result.args?.tag).toBe("null");
+	});
+
+	it("keeps an optional empty string when the schema accepts it", () => {
+		const result = validateToolArgs(freeText, { body: "x", tag: "" });
+		expect(result.valid).toBe(true);
+		expect(result.args?.tag).toBe("");
 	});
 });

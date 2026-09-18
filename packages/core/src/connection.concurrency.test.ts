@@ -10,9 +10,10 @@
  * cycles. The runtime serializes handler work per room, so two rooms sharing an
  * entity or a world overlap freely.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureConnection, ensureConnections } from "./connection";
-import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { logger } from "./logger";
 import type { Entity } from "./types";
 import { stringToUuid } from "./utils";

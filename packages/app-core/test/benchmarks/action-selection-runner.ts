@@ -10,15 +10,13 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { ChannelType, type Memory, type UUID } from "@elizaos/common";
 import {
   type AgentRuntime,
-  ChannelType,
   deterministicOwnerEntityId,
-  type Memory,
-  parseJSONObjectFromText,
   stringToUuid,
-  type UUID,
 } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 import {
   isTrajectoryCaptureEnabled,
   RecordingHarness,

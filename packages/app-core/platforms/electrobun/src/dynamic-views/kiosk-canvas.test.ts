@@ -1,5 +1,5 @@
 /** Exercises kiosk canvas behavior with deterministic app-core test fixtures. */
-import type { JsonValue } from "@elizaos/core";
+import type { JsonValue } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import type { SendToWebview } from "../types";
 import {

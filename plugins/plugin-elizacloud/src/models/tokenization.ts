@@ -7,7 +7,7 @@ import type {
 
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core";
+import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import { encodingForModel, type TiktokenModel } from "js-tiktoken";
 
 function getProcessEnv(): ProcessEnvLike {

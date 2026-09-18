@@ -498,7 +498,7 @@ describe("Cerebras chat-flow latency helpers", () => {
       promptSegments: [{ content: "hello", stable: false }],
       providerOptions: {
         cerebras: {
-          prompt_cache_key: "cache-key",
+          prompt_cache_key: "[REDACTED]",
           apiKey: "[REDACTED]",
           headers: { Authorization: "[REDACTED]" },
         },

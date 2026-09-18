@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Exercises `AgentRuntime.stop` fast-shutdown paths: not hanging on an
  * unresolved service start, capping already-started stop waits, and surviving a
@@ -50,7 +51,7 @@ describe("AgentRuntime.stop", () => {
 
 	it("fast shutdown does not hang on an unresolved service start and cleans up late starts", async () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
-		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		await initializeTestRuntime(runtime, { skipMigrations: true });
 
 		let startRuntime: IAgentRuntime | null = null;
 		let stopCalls = 0;
@@ -99,7 +100,7 @@ describe("AgentRuntime.stop", () => {
 
 	it("rejects a service whose start settles after the shutdown cordon", async () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
-		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		await initializeTestRuntime(runtime, { skipMigrations: true });
 		const start = createDeferred<LateService>();
 		let stopCalls = 0;
 
@@ -133,7 +134,7 @@ describe("AgentRuntime.stop", () => {
 	it("fast shutdown caps already-started service stop waits", async () => {
 		process.env.ELIZA_SHUTDOWN_SERVICE_STOP_TIMEOUT_MS = "500";
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
-		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		await initializeTestRuntime(runtime, { skipMigrations: true });
 		let stopCalls = 0;
 
 		class HangingStopService extends Service {
@@ -168,7 +169,7 @@ describe("AgentRuntime.stop", () => {
 	it("cordons service admissions before waiting for the room drain", async () => {
 		process.env.ELIZA_FAST_ROOM_DRAIN_TIMEOUT_MS = "50";
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
-		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		await initializeTestRuntime(runtime, { skipMigrations: true });
 		const events: string[] = [];
 
 		class AdmissionAwareService extends Service {
@@ -206,7 +207,7 @@ describe("AgentRuntime.stop", () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
 		expect(runtime.getLifecycleState()).toBe("initializing");
 		expect(runtime.getStopSignal().aborted).toBe(false);
-		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		await initializeTestRuntime(runtime, { skipMigrations: true });
 		expect(runtime.getLifecycleState()).toBe("running");
 		const stopStarted = createDeferred<void>();
 		const finishStop = createDeferred<void>();
@@ -267,7 +268,7 @@ describe("AgentRuntime.stop", () => {
 	it("fails fast without stopping resources beneath a noncooperative room owner", async () => {
 		process.env.ELIZA_FAST_ROOM_DRAIN_TIMEOUT_MS = "5";
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
-		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		await initializeTestRuntime(runtime, { skipMigrations: true });
 		let stopCalls = 0;
 
 		class ObservedService extends Service {
@@ -309,7 +310,7 @@ describe("AgentRuntime.stop", () => {
 
 	it("preserves service startup failures instead of resolving them as absence", async () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
-		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		await initializeTestRuntime(runtime, { skipMigrations: true });
 
 		class FailingStartService extends Service {
 			static override serviceType = "shutdown-failing-start-service";
@@ -345,7 +346,7 @@ describe("AgentRuntime.stop", () => {
 
 	it("continues when a service stop throws synchronously", async () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
-		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		await initializeTestRuntime(runtime, { skipMigrations: true });
 
 		class ThrowingStopService extends Service {
 			static override serviceType = "shutdown-throwing-stop-service";

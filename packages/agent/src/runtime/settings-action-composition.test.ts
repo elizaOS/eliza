@@ -10,9 +10,9 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
-  Plugin,
 } from "@elizaos/core";
 import { appControlPlugin } from "@elizaos/plugin-app-control";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { describe, expect, it } from "vitest";
 import { createElizaPlugin } from "./eliza-plugin.ts";
 import { deduplicatePluginActions } from "./plugin-action-dedupe.ts";

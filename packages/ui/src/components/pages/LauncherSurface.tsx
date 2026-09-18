@@ -5,7 +5,7 @@
  * view navigation. `Launcher` itself is pure presentation — one flat grid, no
  * favorites, recents, or section zones.
  */
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import * as React from "react";
 import { useSessionAuth } from "../../cloud/lib/use-session-auth";
 import { dispatchChatOpen } from "../../events";

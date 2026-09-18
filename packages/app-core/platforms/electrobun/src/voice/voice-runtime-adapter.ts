@@ -1,5 +1,5 @@
 /** Implements Electrobun desktop voice runtime adapter ts behavior for app-core shell integration. */
-import type { JsonValue } from "@elizaos/core";
+import type { JsonValue } from "@elizaos/common";
 import { VoiceError } from "./errors";
 import type {
   VoiceAsrFinalEvent,

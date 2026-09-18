@@ -1,7 +1,7 @@
 /** Exercises typed Twilio REST outcomes with a deterministic fetch boundary. */
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { twilioApiRequest } from "./twilio-api";
 
 const originalFetch = globalThis.fetch;

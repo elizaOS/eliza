@@ -11,18 +11,19 @@
 import {
   type EventPayload,
   EventType,
-  getDefaultTriageService,
   type IAgentRuntime,
   logger,
   type MessagePayload,
-  messagingTriageActions,
-  type Plugin,
   promoteSubactionsToActions,
   registerCandidateActionBackstopRule,
   registerDirectActionRoutingRule,
   registerLocalizedExamplesProvider,
-  registerSendPolicy,
 } from "@elizaos/core";
+import {
+  getDefaultTriageService,
+  messagingTriageActions,
+  registerSendPolicy,
+} from "@elizaos/plugin-assistant";
 import {
   getSelfControlPermissionState,
   openSelfControlPermissionLocation,
@@ -62,6 +63,7 @@ import type {
   Prober,
 } from "@elizaos/shared";
 import { MEETING_TRANSCRIPT_FINALIZED_EVENT } from "@elizaos/shared";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { ownerAgreementKnowledgeAction } from "./actions/agreement-knowledge.js";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
@@ -276,6 +278,7 @@ import { roomPolicyProvider } from "./providers/room-policy.js";
 import { workThreadsProvider } from "./providers/work-threads.js";
 import { personalAssistantRoutesPlugin } from "./routes/plugin.js";
 import { BrowserBridgePluginService } from "./service.js";
+import { PersonalAssistantStartupService } from "./startup-work.js";
 import {
   BLOCK_RULE_RECONCILE_TASK_NAME,
   ensureBlockRuleReconcileTask,
@@ -385,8 +388,8 @@ async function ensureTaskWithRetries(args: {
   ensure: () => Promise<unknown>;
   delays?: readonly number[];
 }): Promise<void> {
-  const isRuntimeStopped = () =>
-    (args.runtime as IAgentRuntime & { stopped?: boolean }).stopped === true;
+  const startup = PersonalAssistantStartupService.forRuntime(args.runtime);
+  const isRuntimeStopped = () => startup.stopping;
   const delays = args.delays ?? [2_000, 5_000, 10_000];
   for (let attempt = 0; attempt <= delays.length; attempt += 1) {
     if (isRuntimeStopped()) {
@@ -404,7 +407,7 @@ async function ensureTaskWithRetries(args: {
         args.runtime.logger.warn(
           `${args.prefix} ${args.label} init failed (attempt ${attempt + 1}/${delays.length + 1}), retrying in ${delays[attempt]}ms: ${message}`,
         );
-        await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+        await startup.wait(delays[attempt]);
         continue;
       }
       args.runtime.logger.error(
@@ -688,27 +691,16 @@ function scheduleTaskEnsureAfterRuntimeInit(args: {
   ensure: () => Promise<unknown>;
   delays?: readonly number[];
 }): void {
-  void args.runtime.initPromise
-    .then(async () => {
-      if (
-        (args.runtime as IAgentRuntime & { stopped?: boolean }).stopped === true
-      ) {
-        return;
-      }
-      await ensureTaskWithRetries(args);
-    })
-    .catch((error) => {
-      if (
-        (args.runtime as IAgentRuntime & { stopped?: boolean }).stopped === true
-      ) {
-        return;
-      }
+  PersonalAssistantStartupService.forRuntime(args.runtime).runAfterInit(
+    () => ensureTaskWithRetries(args),
+    async (error) => {
       const message = error instanceof Error ? error.message : String(error);
       args.runtime.logger.error(
         `${args.prefix} ${args.label} init failed after runtime initialization (plugin stays loaded, this subsystem is degraded): ${message}`,
       );
-      void recordTaskInitFailure(args.runtime, args.label, message);
-    });
+      await recordTaskInitFailure(args.runtime, args.label, message);
+    },
+  );
 }
 
 const rawPersonalAssistantPlugin: Plugin = {
@@ -815,6 +807,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     activityProfileProvider,
   ].map(ownerPrivateProvider),
   services: [
+    PersonalAssistantStartupService,
     BrowserBridgePluginService,
     ActivityTrackerService,
     PresenceSignalBridgeService,
@@ -1003,48 +996,30 @@ const rawPersonalAssistantPlugin: Plugin = {
     // writing audit rows through the LifeOps repository. Non-fatal on failure:
     // the calendar service falls back to its default gate (Google-only, no
     // reminder/audit side effects).
-    void runtime.initPromise
-      .then(() => {
-        if (
-          (runtime as IAgentRuntime & { stopped?: boolean }).stopped === true
-        ) {
-          return;
-        }
-        registerLifeOpsCalendarGate(runtime);
-      })
-      .catch((error) => {
+    const startup = PersonalAssistantStartupService.forRuntime(runtime);
+    startup.runAfterInit(
+      () => registerLifeOpsCalendarGate(runtime),
+      (error) => {
         logger.error(
-          `[lifeops] failed to register calendar host gate (calendar degraded to default gate): ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `[lifeops] failed to register calendar host gate: ${error instanceof Error ? error.message : String(error)}`,
         );
-      });
+      },
+    );
 
     // Expired, revoked, and already-consumed private card files are a separate
     // lifecycle concern from calendar-gate registration. Keep their failures
     // independently observable so cleanup trouble cannot masquerade as a
     // disabled calendar host gate.
-    void runtime.initPromise
-      .then(async () => {
-        if (
-          (runtime as IAgentRuntime & { stopped?: boolean }).stopped === true
-        ) {
-          return;
-        }
+    startup.runAfterInit(
+      async () => {
         await new CalendarCardAccessStore(runtime).cleanup();
-      })
-      .catch((error) => {
-        // error-policy:J7 startup cleanup is diagnostic maintenance; report it
-        // without preventing the rest of the assistant from initializing.
-        logger.error(
-          `[lifeops] failed to clean private calendar cards: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
+      },
+      (error) => {
         runtime.reportError("LifeOps.calendarCardCleanup", error, {
           recovery: "next_monthly_workflow_or_restart",
         });
-      });
+      },
+    );
 
     const connectorRegistry = createConnectorRegistry();
     registerDefaultConnectorPack(connectorRegistry, runtime);
@@ -1342,6 +1317,7 @@ const rawPersonalAssistantPlugin: Plugin = {
    * to touch those here.
    */
   dispose: async (runtime: IAgentRuntime) => {
+    await PersonalAssistantStartupService.forRuntime(runtime).stop();
     deactivateLifeOpsActivitySignals(runtime);
     setRuntimeChannelInspector(runtime, null);
     unregisterMessageDraftScheduledTaskBridge(runtime);

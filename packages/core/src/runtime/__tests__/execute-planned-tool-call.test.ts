@@ -1,12 +1,16 @@
 /**
  * Drives executePlannedToolCall end to end: exact action-name matching, strict
- * argument validation and planner-wrapper canonicalization, role/context/
+ * argument validation and rejection of legacy planner wrappers, role/context/
  * connector/private gating (including the ACTION_ROLE_POLICY override),
  * ACTION_STARTED/ACTION_COMPLETED emission with sensitive-result suppression, and
  * trajectory-step wiring; also unit-tests dropEmptyOptionalArgs. Deterministic —
- * stub runtime with vi.fn handlers and in-memory connector storage, no live model.
+ * stub runtime with controlled handlers, in-memory connectors and a file-backed
+ * effect for delivery-failure replay detection; no live model.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
 	getConnectorAccountManager,
 	InMemoryConnectorAccountStorage,
@@ -298,7 +302,7 @@ describe("executePlannedToolCall", () => {
 		expect(onSettledResult).not.toHaveBeenCalled();
 	});
 
-	it("drops undeclared planner wrapper args without weakening strict validation", async () => {
+	it("rejects undeclared planner wrapper args", async () => {
 		const handler = vi.fn(async () => ({ success: true }));
 		const action = makeAction({
 			name: "TASKS",
@@ -329,20 +333,12 @@ describe("executePlannedToolCall", () => {
 			},
 		);
 
-		expect(result.success).toBe(true);
-		expect(handler).toHaveBeenCalledWith(
-			expect.any(Object),
-			expect.any(Object),
-			undefined,
-			expect.objectContaining({
-				parameters: { op: "provision_workspace" },
-			}),
-			undefined,
-			undefined,
-		);
+		expect(result.success).toBe(false);
+		expect(String(result.error)).toContain("Unexpected argument 'subaction'");
+		expect(handler).not.toHaveBeenCalled();
 	});
 
-	it("flattens a schema-safe parameters envelope inside native tool args", async () => {
+	it("rejects an undeclared nested parameters envelope", async () => {
 		const handler = vi.fn(async () => ({ success: true }));
 		const action = makeAction({
 			name: "WORKFLOW",
@@ -391,22 +387,9 @@ describe("executePlannedToolCall", () => {
 			},
 		);
 
-		expect(result.success).toBe(true);
-		expect(handler).toHaveBeenCalledWith(
-			expect.any(Object),
-			expect.any(Object),
-			undefined,
-			expect.objectContaining({
-				parameters: {
-					action: "create",
-					name: "Smithers acceptance",
-					seedPrompt: "Manual Trigger followed by Set Message",
-					active: false,
-				},
-			}),
-			undefined,
-			undefined,
-		);
+		expect(result.success).toBe(false);
+		expect(String(result.error)).toContain("Unexpected argument 'parameters'");
+		expect(handler).not.toHaveBeenCalled();
 	});
 
 	it("does not flatten a parameters envelope containing an unknown key", async () => {
@@ -523,7 +506,7 @@ describe("executePlannedToolCall", () => {
 		);
 	});
 
-	it("canonicalizes undeclared subaction into the declared discriminator", async () => {
+	it("rejects an undeclared subaction instead of guessing a discriminator", async () => {
 		const handler = vi.fn(async () => ({ success: true }));
 		const action = makeAction({
 			name: "TASKS",
@@ -553,17 +536,9 @@ describe("executePlannedToolCall", () => {
 			},
 		);
 
-		expect(result.success).toBe(true);
-		expect(handler).toHaveBeenCalledWith(
-			expect.any(Object),
-			expect.any(Object),
-			undefined,
-			expect.objectContaining({
-				parameters: { action: "provision_workspace" },
-			}),
-			undefined,
-			undefined,
-		);
+		expect(result.success).toBe(false);
+		expect(String(result.error)).toContain("Unexpected argument 'subaction'");
+		expect(handler).not.toHaveBeenCalled();
 	});
 
 	it("rejects conflicting planner subaction aliases", async () => {
@@ -916,6 +891,9 @@ describe("executePlannedToolCall", () => {
 	});
 
 	it("preserves an applied receipt when downstream callback delivery fails", async () => {
+		const directory = mkdtempSync(join(tmpdir(), "settled-effect-"));
+		onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
+		const ledger = join(directory, "committed-effects.txt");
 		const receipt = appliedEffectReceipt();
 		const canonicalText = "Done — the task is created.";
 		const callback: HandlerCallback = vi.fn(async () => {
@@ -927,6 +905,7 @@ describe("executePlannedToolCall", () => {
 			name: "CREATE_TASK",
 			tags: ["capability:write"],
 			handler: async (_runtime, _message, _state, _options, actionCallback) => {
+				appendFileSync(ledger, "created-task\n");
 				await actionCallback?.({ text: canonicalText });
 				return {
 					success: true,
@@ -944,6 +923,7 @@ describe("executePlannedToolCall", () => {
 			{ name: "CREATE_TASK", params: {} },
 		);
 
+		expect(readFileSync(ledger, "utf8")).toBe("created-task\n");
 		expect(result.success).toBe(true);
 		expect(result.effectReceipts).toEqual([receipt]);
 		expect(result.data?.callbackDeliveryFailures).toEqual([
@@ -2573,93 +2553,5 @@ describe("dropEmptyOptionalArgs", () => {
 		expect(
 			dropEmptyOptionalArgs(action, { op: "set", stray: "", count: 0 }),
 		).toEqual({ op: "set", stray: "", count: 0 });
-	});
-});
-
-import { normalizeParamAliases } from "../execute-planned-tool-call";
-
-describe("normalizeParamAliases", () => {
-	const action = {
-		name: "TRIGGER",
-		description: "",
-		parameters: [
-			{
-				name: "instructions",
-				required: false,
-				aliases: ["description", "message", "prompt"],
-				schema: { type: "string" },
-			},
-			{
-				name: "scheduledAtIso",
-				required: false,
-				aliases: ["scheduledFor", "when", "at"],
-				schema: { type: "string" },
-			},
-			{
-				name: "target",
-				required: false,
-				aliases: ["to", "recipient"],
-				schema: { type: "string" },
-			},
-			{
-				name: "shared",
-				required: false,
-				aliases: ["dup"],
-				schema: { type: "string" },
-			},
-			{
-				name: "shared2",
-				required: false,
-				aliases: ["dup"],
-				schema: { type: "string" },
-			},
-		],
-		validate: async () => true,
-		handler: async () => ({}),
-	} as unknown as import("@elizaos/core").Action;
-
-	it("renames an alias key to its canonical param", () => {
-		expect(
-			normalizeParamAliases(action, {
-				description: "drink water",
-				scheduledFor: "2026-01-01T00:00:00Z",
-			}),
-		).toEqual({
-			instructions: "drink water",
-			scheduledAtIso: "2026-01-01T00:00:00Z",
-		});
-	});
-
-	it("leaves a declared canonical key untouched", () => {
-		expect(normalizeParamAliases(action, { instructions: "x" })).toEqual({
-			instructions: "x",
-		});
-	});
-
-	it("never clobbers an explicitly-provided canonical value", () => {
-		expect(
-			normalizeParamAliases(action, {
-				instructions: "canon",
-				description: "alias",
-			}),
-		).toEqual({ instructions: "canon", description: "alias" });
-	});
-
-	it("leaves an unknown key to reject (not claimed by any alias)", () => {
-		expect(normalizeParamAliases(action, { totally_unknown: "x" })).toEqual({
-			totally_unknown: "x",
-		});
-	});
-
-	it("leaves an ambiguous alias (two params claim it) to reject", () => {
-		expect(normalizeParamAliases(action, { dup: "x" })).toEqual({ dup: "x" });
-	});
-
-	it("is a no-op when the action declares no aliases", () => {
-		const noAlias = {
-			...action,
-			parameters: [{ name: "x", required: false, schema: { type: "string" } }],
-		} as unknown as import("@elizaos/core").Action;
-		expect(normalizeParamAliases(noAlias, { y: "1" })).toEqual({ y: "1" });
 	});
 });

@@ -7,12 +7,12 @@
  * stands in for the multilingual prompt store; no model or I/O.
  */
 import { describe, expect, it } from "vitest";
+import { buildActionCatalog } from "../../../../../plugins/plugin-assistant/src/runtime/action-catalog.ts";
 import type { ActionExample } from "../../types/components";
-import {
-	buildActionCatalog,
-	type LocalizedActionExamplePair,
-	type LocalizedActionExampleResolver,
-} from "../action-catalog";
+import type {
+	LocalizedActionExamplePair,
+	LocalizedActionExampleResolver,
+} from "../localized-examples-provider";
 
 /**
  * `MultilingualPromptRegistry`-style fixture: maps composite keys to

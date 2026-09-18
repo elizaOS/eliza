@@ -16,7 +16,7 @@ import type {
 
 export type TriggerKind = "text" | "workflow";
 
-import { parsePositiveInteger } from "@elizaos/shared";
+import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
 import { CronExpressionParser } from "cron-parser";
 import { shellLocalStorage } from "../../surface-realm-channel";
 import type { TranslateFn as AppTranslateFn } from "../../types";

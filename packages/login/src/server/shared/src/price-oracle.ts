@@ -6,7 +6,7 @@
  * - Graceful degradation: returns null on failure so callers can fall back to wei comparison
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { requireLoginValue } from "../../../required";
 import { redactedThrownDiagnostics } from "./safe-error.js";
 import {

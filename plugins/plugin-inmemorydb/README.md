@@ -63,9 +63,16 @@ The plugin uses JavaScript `Map` data structures to store all data, organized in
 
 When the process ends or `close()` is called, all collections are cleared and data is gone.
 
-## Cross-Platform
+## Node runtime and isolated storage
 
-Works in Node.js and browsers. The package `exports` map selects the correct build automatically (`dist/node/` for Node/Bun, `dist/browser/` for browsers).
+This package runs in Node.js. Its root export retains the custom `IStorage` adapter and HNSW index. For the isolated, per-instance adapter formerly exported by core, use:
+
+```typescript
+import { InMemoryDatabaseAdapter } from "@elizaos/plugin-inmemorydb/runtime";
+const adapter = new InMemoryDatabaseAdapter(agentId);
+```
+
+Supply this adapter to `AgentRuntime` explicitly. Core has no automatic in-memory fallback. The isolated adapter and the root shared-storage adapter have different constructors and storage contracts.
 
 ## Conditional embedding persistence
 

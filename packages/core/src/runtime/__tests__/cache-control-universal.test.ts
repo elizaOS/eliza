@@ -5,7 +5,7 @@
  * assertions — no model or network.
  */
 import { describe, expect, it } from "vitest";
-import { cacheProviderOptions } from "../planner-loop";
+import { cacheProviderOptions } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 describe("cacheProviderOptions — universal cache directives", () => {
 	const HASH = "abc123def456";

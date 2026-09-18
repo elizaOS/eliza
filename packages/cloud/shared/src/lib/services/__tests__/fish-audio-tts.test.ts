@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { decode, encode } from "@msgpack/msgpack";
 import {
   FISH_AUDIO_MODEL_S21_PRO,

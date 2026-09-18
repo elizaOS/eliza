@@ -4,7 +4,7 @@
  * install jobs, and vendor sign-in/out) and `/api/secrets/logins/*` (in-app
  * browser saved-login list/reveal/CRUD plus per-domain autofill toggles). Every
  * route is OWNER-gated in the handler itself, not only by the dispatch prefix,
- * and wraps `@elizaos/vault`'s SecretsManager, which routes sensitive writes to
+ * and wraps `@elizaos/credentials/vault`'s SecretsManager, which routes sensitive writes to
  * the user's chosen password manager with `in-house` as the always-available
  * fallback. See the block above `getManager` for the per-process-singleton and
  * shared-vault-mutex rationale.
@@ -23,7 +23,7 @@ import {
   type SecretsManager,
   setAutofillAllowed,
   setSavedLogin,
-} from "@elizaos/vault";
+} from "@elizaos/credentials/vault";
 import {
   createNodePlatformSecureStore,
   describeNodePlatformSecureStore,
@@ -77,7 +77,7 @@ type LoginReveal = Awaited<ReturnType<SecretsManager["revealSavedLogin"]>>;
  * a generic POST can't safely synthesize for the user. External-manager
  * creates must go through vendor-specific UI that can collect those fields.
  *
- * The manager wraps `@elizaos/vault` and routes sensitive writes to
+ * The manager wraps `@elizaos/credentials/vault` and routes sensitive writes to
  * the user's chosen password manager (1Password / Proton / Bitwarden)
  * with `in-house` always available as the fallback.
  *

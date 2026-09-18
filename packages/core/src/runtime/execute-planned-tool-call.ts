@@ -1,6 +1,6 @@
 /**
  * Executes one planner-selected tool call against its Action: resolves the
- * action, applies role and connector-account gates, normalizes and validates
+ * action, applies role and connector-account gates, validates
  * the args, restores real secrets/PII at the egress boundary, runs the handler
  * inside the trajectory / action-routing context, and emits ACTION_STARTED /
  * ACTION_COMPLETED around a normalized ActionResult.
@@ -50,23 +50,19 @@ import {
 	settleActionHandler,
 	stringifyActionError as stringifyError,
 } from "./action-handler-settlement";
-import { _resetActionRolePolicyCacheForTests as _resetCacheForTests } from "./action-role-policy";
+import {
+	_resetActionRolePolicyCacheForTests as _resetCacheForTests,
+	resolveActionRolePolicyRole,
+} from "./action-role-policy";
 import { runWithActionRoutingContext } from "./action-routing-context";
-import { parseJsonObject } from "./json-output";
-import type { PlannerToolCall } from "./planner-loop";
+import type { PlannerToolCall } from "./planner-types.ts";
 import {
 	buildTurnEntityAliases,
 	type EntityAliasCapabilityMap,
 	resolveEntityAliasRefs,
 } from "./tool-arg-aliases";
 
-export interface PlannedToolCall {
-	id?: string;
-	name: string;
-	params?: Record<string, unknown>;
-	args?: unknown;
-	arguments?: unknown;
-}
+export type PlannedToolCall = PlannerToolCall;
 
 export interface ExecutePlannedToolCallContext {
 	message: Memory;
@@ -642,16 +638,25 @@ export async function executePlannedToolCall(
 		}
 	}
 
-	const normalizedArgs = expandEnumShortForm(
+	// Provider adapters own wire-format parsing. The executor accepts only the
+	// declared argument object; guessing legacy envelopes can change an effect.
+	if (
+		"args" in toolCall ||
+		"arguments" in toolCall ||
+		(toolCall.params !== undefined && !isPlainRecord(toolCall.params))
+	) {
+		return emitToolResult(
+			toolCall,
+			redactDiagnosticText,
+			failureResult(
+				action.name,
+				"Tool arguments must be a plain object in params",
+			),
+		);
+	}
+	const argsForValidation = dropEmptyOptionalArgs(
 		action,
-		flattenUndeclaredParametersEnvelope(action, normalizeToolArgs(toolCall)),
-	);
-	const argsForValidation = normalizeParamAliases(
-		action,
-		dropEmptyOptionalArgs(
-			action,
-			dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
-		),
+		toolCall.params ?? {},
 	);
 	// Prompt-side redaction placeholders (matrix F16) resolve ONLY through the
 	// per-turn alias capability map (#20091): aliases the composed state proves
@@ -884,6 +889,22 @@ export async function executePlannedToolCall(
 						beforeCallbacks: (result) =>
 							publishSettledResult(runtime, action, result, onBeforeCallbacks),
 						invoke: async (actionCallback) => {
+							// Admission can precede asynchronous validation and approval. Resolve
+							// stored authority again at the effect boundary, never caller snapshots.
+							const currentGateFailure = actionGateFailure(action, {
+								...executorCtx,
+								userRoles:
+									action.roleGate ||
+									action.contextGate?.roleGate ||
+									resolveActionRolePolicyRole(action)
+										? await resolveToolCallUserRoles(
+												runtime,
+												executorCtx.message,
+											)
+										: executorCtx.userRoles,
+							});
+							if (currentGateFailure)
+								return failureResult(action.name, currentGateFailure);
 							options.abortSignal?.throwIfAborted();
 							// Egress (#10469): this is the true execution boundary. Restore real
 							// secrets into the handler args ONLY here — the model, transcripts, logs,
@@ -1137,7 +1158,7 @@ function plannedToolCallToStreamingToolCall(
 		id: toolCall.id ?? toolCall.name,
 		name: toolCall.name,
 		arguments: (projectToolDiagnosticArgs(
-			normalizeToolArgs(toolCall),
+			toolCall.params,
 			redactDiagnosticText,
 		) ?? {}) as ToolCall["arguments"],
 		status,
@@ -1184,114 +1205,6 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Recover the hybrid native-call shape weak models produce after copying the
- * plain-JSON planner envelope into a tool's argument object. The unwrap is
- * intentionally schema-bounded: a real `parameters` field, an unknown nested
- * key, or a conflicting duplicate stays untouched so strict validation still
- * surfaces the malformed call instead of guessing at intent.
- */
-function flattenUndeclaredParametersEnvelope(
-	action: Action,
-	args: Record<string, unknown>,
-): Record<string, unknown> {
-	const declaredParameters = action.parameters ?? [];
-	if (declaredParameters.some((parameter) => parameter.name === "parameters")) {
-		return args;
-	}
-
-	const nested = args.parameters;
-	if (!isPlainRecord(nested)) return args;
-
-	const declaredNames = new Set(
-		declaredParameters.map((parameter) => parameter.name),
-	);
-	const nestedEntries = Object.entries(nested);
-	if (nestedEntries.some(([key]) => !declaredNames.has(key))) return args;
-	if (
-		nestedEntries.some(
-			([key, value]) =>
-				Object.hasOwn(args, key) && !Object.is(args[key], value),
-		)
-	) {
-		return args;
-	}
-
-	const { parameters: _parameters, ...outerArgs } = args;
-	return { ...nested, ...outerArgs };
-}
-
-/**
- * Short-form enum completion. When the action has a single closed-enum
- * parameter, accept three input shapes from the planner:
- *
- *   1. canonical:        `{ <paramName>: "<enum_value>" }`
- *   2. bare-string:      `"<enum_value>"`  (the entire args is the string)
- *   3. dispatch-shape:   `{ action: <name>, parameters: "<enum_value>" }`
- *
- * Shapes 2 and 3 are expanded into shape 1 here so `validateToolArgs` sees
- * the full JSON-schema shape and strict validation is unchanged. Anything
- * else flows through untouched — including planner emissions that don't
- * match an enum value, which are then caught by `validateToolArgs` and
- * surfaced as a normal failure.
- *
- * No-op when the action doesn't fit the single-enum-parameter pattern or when
- * the input doesn't look like a short-form emission.
- */
-export function expandEnumShortForm(
-	action: Action,
-	args: Record<string, unknown>,
-): Record<string, unknown> {
-	const parameters = action.parameters ?? [];
-	if (parameters.length !== 1) return args;
-	const param = parameters[0];
-	if (!param) return args;
-	const schema = param.schema as {
-		enumValues?: unknown[];
-		enum?: unknown[];
-	};
-	const enumValues = schema.enumValues ?? schema.enum;
-	if (!Array.isArray(enumValues) || enumValues.length === 0) return args;
-	const validValues = new Set(
-		enumValues
-			.filter(
-				(value): value is string | number | boolean =>
-					typeof value === "string" ||
-					typeof value === "number" ||
-					typeof value === "boolean",
-			)
-			.map((value) => String(value)),
-	);
-	if (validValues.size === 0) return args;
-
-	// Shape 1: already the canonical shape — nothing to do.
-	if (
-		typeof args[param.name] === "string" ||
-		typeof args[param.name] === "number" ||
-		typeof args[param.name] === "boolean"
-	) {
-		return args;
-	}
-
-	// Shape 3: `{ parameters: "<enum_value>" }` — the planner used the
-	// PLAN_ACTIONS dispatch envelope with a bare string in `parameters`.
-	// Drop the original `parameters` key after expansion so strict
-	// validation (which forbids unknown fields when `additionalProperties`
-	// is false) doesn't reject the now-canonical args.
-	if (
-		"parameters" in args &&
-		(typeof args.parameters === "string" ||
-			typeof args.parameters === "number" ||
-			typeof args.parameters === "boolean") &&
-		validValues.has(String(args.parameters))
-	) {
-		const { parameters: shortFormValue, ...rest } = args;
-		return { ...rest, [param.name]: shortFormValue };
-	}
-
-	return args;
-}
-
-/**
  * Treat an empty-string value as omitted only when an OPTIONAL parameter
  * explicitly declares that model omission sentinel.
  *
@@ -1322,121 +1235,4 @@ export function dropEmptyOptionalArgs(
 		}
 	}
 	return filtered ?? args;
-}
-
-const PLANNER_WRAPPER_ONLY_ARG_KEYS = new Set(["subaction", "thought"]);
-const PLANNER_DISCRIMINATOR_ALIASES = ["action", "op", "operation"] as const;
-
-function dropUndeclaredPlannerWrapperArgs(
-	action: Action,
-	args: Record<string, unknown>,
-): Record<string, unknown> {
-	let filtered: Record<string, unknown> | undefined;
-	const declaredParameters = action.parameters ?? [];
-
-	for (const key of Object.keys(args)) {
-		if (
-			PLANNER_WRAPPER_ONLY_ARG_KEYS.has(key) &&
-			!declaredParameters.some((parameter) => parameter.name === key)
-		) {
-			filtered ??= { ...args };
-			if (key === "subaction" && typeof args.subaction === "string") {
-				const target = declaredParameters.find((parameter) => {
-					if (
-						!PLANNER_DISCRIMINATOR_ALIASES.includes(
-							parameter.name as (typeof PLANNER_DISCRIMINATOR_ALIASES)[number],
-						)
-					) {
-						return false;
-					}
-					const schema = parameter.schema as {
-						enumValues?: unknown[];
-						enum?: unknown[];
-					};
-					const enumValues = schema.enumValues ?? schema.enum;
-					return (
-						!Array.isArray(enumValues) || enumValues.includes(args.subaction)
-					);
-				});
-				if (target && filtered[target.name] === undefined) {
-					filtered[target.name] = args.subaction;
-					delete filtered[key];
-					continue;
-				}
-				if (
-					target &&
-					filtered[target.name] !== undefined &&
-					filtered[target.name] !== args.subaction
-				) {
-					continue;
-				}
-			}
-			delete filtered[key];
-		}
-	}
-
-	return filtered ?? args;
-}
-
-/**
- * Rename an incoming arg key to the declared parameter that claims it via its
- * `aliases` list, so the planner isn't punished for a natural name variant
- * (`to`/`recipient` for `target`, `description`/`prompt` for `instructions`,
- * `scheduledFor` for `scheduledAtIso`). This is the same curated,
- * structurally-gated remap the sibling `dropUndeclaredPlannerWrapperArgs`
- * already performs for the `subaction`→discriminator shape.
- *
- * SAFETY: only renames a key to a declared param that explicitly claims it, and
- * only when (a) that param is absent from args, (b) the key is not itself a
- * declared param, and (c) exactly one declared param claims the key. Any arg no
- * param's `aliases` claims flows through untouched and still hits
- * `Unexpected argument` in `validateToolArgs` — the runaway-arg bound and its
- * tests are unaffected. Never clobbers an explicitly-provided canonical value.
- */
-export function normalizeParamAliases(
-	action: Action,
-	args: Record<string, unknown>,
-): Record<string, unknown> {
-	const parameters = action.parameters ?? [];
-	const hasAliases = parameters.some((p) => p.aliases && p.aliases.length > 0);
-	if (!hasAliases) return args;
-
-	const declaredNames = new Set(parameters.map((p) => p.name));
-	let renamed: Record<string, unknown> | undefined;
-
-	for (const key of Object.keys(args)) {
-		if (declaredNames.has(key)) continue; // key is itself a real param
-		const claimants = parameters.filter((p) => p.aliases?.includes(key));
-		if (claimants.length !== 1) continue; // unknown, or ambiguous → let it reject
-		const target = claimants[0].name;
-		// Don't overwrite a canonical value the planner already provided.
-		const current = (renamed ?? args)[target];
-		if (current !== undefined && current !== null) continue;
-		renamed ??= { ...args };
-		renamed[target] = renamed[key];
-		delete renamed[key];
-	}
-
-	return renamed ?? args;
-}
-
-function normalizeToolArgs(
-	toolCall: PlannerToolCall | PlannedToolCall,
-): Record<string, unknown> {
-	const raw =
-		"params" in toolCall && toolCall.params !== undefined
-			? toolCall.params
-			: "args" in toolCall && toolCall.args !== undefined
-				? toolCall.args
-				: "arguments" in toolCall
-					? toolCall.arguments
-					: undefined;
-
-	if (typeof raw === "string") {
-		return parseJsonObject<Record<string, unknown>>(raw) ?? {};
-	}
-	if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-		return raw as Record<string, unknown>;
-	}
-	return {};
 }

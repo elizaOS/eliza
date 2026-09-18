@@ -7,7 +7,7 @@
 // user via `setActionNotice` — never silently reverting on the next hydration.
 // Deterministic client + persistence mocks; logger spied to assert surfacing.
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

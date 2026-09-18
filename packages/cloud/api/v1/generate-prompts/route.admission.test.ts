@@ -1,10 +1,12 @@
-/** Proves prompt suggestions complete standing and credit admission before OpenAI dispatch. */
+/** Exercises prompt-suggestion admission, settlement, and the real output-completeness callback with controlled provider transport. */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
 import * as organizationInferenceAdmissionActual from "@/lib/services/organization-inference-admission";
 
 const order: string[] = [];
+const completionCallbacks: Array<(event: { finishReason: string }) => void> =
+  [];
 const waitUntilTasks: Promise<unknown>[] = [];
 const requireGenerativeRouteCaller = mock(async () => {
   order.push("standing");
@@ -29,13 +31,16 @@ const admitOrganizationInference = mock(async () => {
     settleUnknown,
   };
 });
-const streamText = mock(() => {
-  order.push("provider");
-  return {
-    usage: Promise.resolve({ inputTokens: 40, outputTokens: 20 }),
-    toTextStreamResponse: () => new Response("[]", { status: 200 }),
-  };
-});
+const streamText = mock(
+  (options: { onFinish: (event: { finishReason: string }) => void }) => {
+    order.push("provider");
+    completionCallbacks.push(options.onFinish);
+    return {
+      usage: Promise.resolve({ inputTokens: 40, outputTokens: 20 }),
+      toTextStreamResponse: () => new Response("[]", { status: 200 }),
+    };
+  },
+);
 const billUsage = mock(async () => ({ totalCost: 0.002 }));
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
@@ -53,9 +58,6 @@ mock.module("@/lib/services/ai-billing", () => ({ billUsage }));
 mock.module("@/lib/pricing", () => ({ estimateTokens: () => 100 }));
 mock.module("@ai-sdk/openai", () => ({ openai: () => ({}) }));
 mock.module("ai", () => ({ streamText }));
-mock.module("@elizaos/core", () => ({
-  assertModelOutputComplete: () => undefined,
-}));
 mock.module("@/lib/utils/logger", () => ({
   logger: {
     info: () => undefined,
@@ -70,6 +72,7 @@ const { default: app } = await import("./route");
 describe("POST /api/v1/generate-prompts admission ordering", () => {
   beforeEach(() => {
     order.length = 0;
+    completionCallbacks.length = 0;
     waitUntilTasks.length = 0;
     requireGenerativeRouteCaller.mockClear();
     admitOrganizationInference.mockClear();
@@ -99,7 +102,31 @@ describe("POST /api/v1/generate-prompts admission ordering", () => {
     expect(billUsage).toHaveBeenCalledTimes(1);
     expect(settle).toHaveBeenCalledWith(0.002);
     expect(settleUnknown).not.toHaveBeenCalled();
+    expect(completionCallbacks).toHaveLength(1);
+    expect(() =>
+      completionCallbacks[0]({ finishReason: "stop" }),
+    ).not.toThrow();
   });
+
+  test.each(["length", "content_filter", "error"])(
+    "rejects incomplete provider completion %s through the route callback",
+    async (finishReason) => {
+      const response = await app.request("/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      expect(response.status).toBe(200);
+      await Promise.all(waitUntilTasks);
+      expect(completionCallbacks).toHaveLength(1);
+      expect(() => completionCallbacks[0]({ finishReason })).toThrow(
+        expect.objectContaining({
+          code: "MODEL_OUTPUT_INCOMPLETE",
+          context: { provider: "openai", model: "gpt-4o", finishReason },
+        }),
+      );
+    },
+  );
 
   test("standing denial stops before admission and provider dispatch", async () => {
     requireGenerativeRouteCaller.mockImplementationOnce(async () => {

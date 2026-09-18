@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import {
   createDeterministicModelPlugin,
   strictTerminalReplyFixture,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import { startApiServer } from "../src/api/server.ts";
 import {
   createConversation,

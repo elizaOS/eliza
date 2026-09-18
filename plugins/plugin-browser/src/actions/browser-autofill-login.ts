@@ -49,7 +49,7 @@ import {
   getSavedLogin,
   listSavedLogins,
   type Vault,
-} from "@elizaos/vault";
+} from "@elizaos/credentials/vault";
 import {
   evaluateBrowserWorkspaceTab,
   isBrowserWorkspaceBridgeConfigured,

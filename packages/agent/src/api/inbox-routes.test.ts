@@ -12,7 +12,6 @@ import type {
   Memory,
   RoleGateRole,
   Room,
-  RouteHelpers,
   UUID,
   World,
 } from "@elizaos/core";
@@ -20,6 +19,7 @@ import {
   getConnectorAccountManager,
   InMemoryConnectorAccountStorage,
 } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/shared/api/route-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   handleInboxRoute,

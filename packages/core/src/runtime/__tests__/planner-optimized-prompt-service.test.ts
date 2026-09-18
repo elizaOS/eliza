@@ -3,9 +3,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import { plannerTemplate } from "../../prompts/planner";
+import { plannerTemplate } from "../../../../../plugins/plugin-assistant/src/prompts/planner.ts";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import { OptimizedPromptService } from "../../services/optimized-prompt";
-import { runPlannerLoop } from "../planner-loop";
 
 const roots: string[] = [];
 afterEach(async () => {

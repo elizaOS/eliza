@@ -19,12 +19,10 @@ import {
   createIntegrationTelemetrySpan,
   type RateLimitConfig,
 } from "@elizaos/agent";
-import type { ReadJsonBodyOptions } from "@elizaos/core";
 import {
   type AgentRuntime,
   logger,
   type Memory,
-  readRequestBodyBuffer,
   requireConfirmation,
   type UUID,
 } from "@elizaos/core";
@@ -50,6 +48,8 @@ import {
 import type { AddPaymentSourceRequest } from "@elizaos/plugin-finances/payment-types";
 import { PLAID_WEBHOOK_MAX_BODY_BYTES } from "@elizaos/plugin-finances/plaid-webhook";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
+import type { ReadJsonBodyOptions } from "@elizaos/shared/api/http-helpers";
+import { readRequestBodyBuffer } from "@elizaos/shared/api/http-helpers";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,

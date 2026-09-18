@@ -24,8 +24,8 @@
 // useDataLoaders.loadConversationMessages, against a mocked client whose
 // getConversationMessages resolves on command — reproducing the exact race.
 
-import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/common";
+import { logger } from "@elizaos/shared/logger";
 import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";

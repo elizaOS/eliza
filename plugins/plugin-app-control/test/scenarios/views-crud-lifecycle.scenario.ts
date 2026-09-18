@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Live-only scenario for VIEWS create, show, search, and delete lifecycle.
  */
@@ -222,15 +223,15 @@ async function ensureScenarioRepoRoot(): Promise<string> {
 }
 
 function installSyntheticCatalogApi(runtime: ScenarioRuntimeHarness) {
-	runtime.routes ??= [];
+	getHttpRuntime(runtime).routes ??= [];
 	if (
-		runtime.routes.some(
+		getHttpRuntime(runtime).routes.some(
 			(route) => route.type === "GET" && route.path === "/api/views",
 		)
 	) {
 		return;
 	}
-	runtime.routes.push({
+	getHttpRuntime(runtime).routes.push({
 		type: "GET",
 		path: "/api/views",
 		handler: (_req: unknown, res: unknown) => {

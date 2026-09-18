@@ -3,11 +3,11 @@
  * runtime config first then `process.env`, and the typed getters here resolve
  * every model slot, base URL, auth header, embedding dimension, and timeout with
  * their documented fallback chains. Also home to provider-mode detection
- * (Cerebras / EvoLink / proxy) and the browser-vs-node branch that decides
- * whether an `Authorization` header is sent.
+ * (Cerebras / EvoLink / authenticated host proxy).
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { DEFAULT_CEREBRAS_TEXT_MODEL, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 
 function getEnvValue(key: string): string | undefined {
   if (typeof process === "undefined" || !process.env) {
@@ -69,17 +69,6 @@ export function getBooleanSetting(
   }
   const normalized = value.toLowerCase();
   return normalized === "true" || normalized === "1" || normalized === "yes";
-}
-
-export function isBrowser(): boolean {
-  return (
-    typeof globalThis !== "undefined" &&
-    typeof (globalThis as { document?: Document }).document !== "undefined"
-  );
-}
-
-export function isProxyMode(runtime: IAgentRuntime): boolean {
-  return isBrowser() && !!getSetting(runtime, "OPENAI_BROWSER_BASE_URL");
 }
 
 /**
@@ -184,20 +173,11 @@ export function getAuthHeader(
   runtime: IAgentRuntime,
   forEmbedding = false
 ): Record<string, string> {
-  // By default this plugin does NOT send auth headers in the browser. This is safer because
-  // frontend builds would otherwise expose secrets. For local demos, you can explicitly
-  // opt-in to sending the Authorization header by setting OPENAI_ALLOW_BROWSER_API_KEY=true.
-  if (isBrowser() && !getBooleanSetting(runtime, "OPENAI_ALLOW_BROWSER_API_KEY", false)) {
-    return {};
-  }
   const key = forEmbedding ? getEmbeddingApiKey(runtime) : getApiKey(runtime);
   return key ? { Authorization: `Bearer ${key}` } : {};
 }
 
 function authHeaderForKey(runtime: IAgentRuntime, key: string | undefined): Record<string, string> {
-  if (isBrowser() && !getBooleanSetting(runtime, "OPENAI_ALLOW_BROWSER_API_KEY", false)) {
-    return {};
-  }
   return key ? { Authorization: `Bearer ${key}` } : {};
 }
 
@@ -217,7 +197,7 @@ function normalizeEndpointSetting(value: string | undefined): string | undefined
  */
 export function resolveOpenAIBaseURL(
   readSetting: EndpointSettingReader,
-  options: { browser?: boolean; mockBaseURL?: string } = {}
+  options: { mockBaseURL?: string } = {}
 ): string {
   const read = (key: string): string | undefined => normalizeEndpointSetting(readSetting(key));
   const explicitProvider = read("ELIZA_PROVIDER")?.toLowerCase();
@@ -235,10 +215,6 @@ export function resolveOpenAIBaseURL(
       read("OPENAI_API_KEY") === undefined &&
       openAIBaseURL === undefined);
 
-  if (options.browser) {
-    const browserURL = read("OPENAI_BROWSER_BASE_URL");
-    if (browserURL) return browserURL;
-  }
   return (
     normalizeEndpointSetting(options.mockBaseURL) ??
     openAIBaseURL ??
@@ -258,7 +234,6 @@ export function getBaseURL(runtime: IAgentRuntime): string {
       return normalizedRuntime ?? getEnvValue(key);
     },
     {
-      browser: isBrowser(),
       mockBaseURL: getEnvValue("ELIZA_MOCK_OPENAI_BASE"),
     }
   );
@@ -266,10 +241,7 @@ export function getBaseURL(runtime: IAgentRuntime): string {
 }
 
 export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
-  const embeddingURL = isBrowser()
-    ? (getSetting(runtime, "OPENAI_BROWSER_EMBEDDING_URL") ??
-      getSetting(runtime, "OPENAI_BROWSER_BASE_URL"))
-    : getSetting(runtime, "OPENAI_EMBEDDING_URL");
+  const embeddingURL = getSetting(runtime, "OPENAI_EMBEDDING_URL");
 
   if (embeddingURL) {
     return embeddingURL;

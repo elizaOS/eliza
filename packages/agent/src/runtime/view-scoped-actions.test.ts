@@ -529,7 +529,7 @@ describe("view-scoped action registration reconciliation", () => {
       name: "VIEW_SETTINGS_SET_PROVIDER",
       description: "global incumbent",
       validate: async () => true,
-      handler: async () => undefined,
+      handler: async () => ({ success: true }),
     };
     runtime.registerAction(incumbent);
     const settings = makeInteractiveView("settings", new Set());

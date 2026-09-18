@@ -5,7 +5,7 @@
 // same way the Worker sets it.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { runWithCloudBindings } from "../../lib/runtime/cloud-bindings";
 import { getKmsClient, isEphemeralKmsAllowed, resetKmsClientForTests } from "./kms-client";
 

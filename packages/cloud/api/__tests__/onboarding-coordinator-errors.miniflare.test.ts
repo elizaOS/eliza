@@ -52,8 +52,8 @@ describe("onboarding coordinator error integration", () => {
         ),
       ],
       format: "esm",
-      target: "browser",
-      conditions: ["worker", "browser"],
+      target: "node",
+      conditions: ["node", "import"],
       plugins: [
         {
           name: "onboarding-route-boundaries",
@@ -76,7 +76,7 @@ describe("onboarding coordinator error integration", () => {
             );
             build.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
               path: fileURLToPath(
-                new URL("../src/stubs/elizaos-core.ts", import.meta.url),
+                new URL("../../../core/src/index.ts", import.meta.url),
               ),
             }));
             build.onLoad({ filter: ROUTE_BOUNDARIES.users }, () => ({

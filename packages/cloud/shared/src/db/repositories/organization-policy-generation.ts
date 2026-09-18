@@ -1,5 +1,5 @@
 /** Advances organization policy generations under the shared organization lock and records the same committed mutation. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { eq, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { organizationSubscriptionAuthorities } from "../schemas/billing-subscriptions";

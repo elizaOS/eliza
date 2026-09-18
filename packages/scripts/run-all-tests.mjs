@@ -98,7 +98,10 @@ import {
   discoverGuardedRealLiveFiles,
   formatRealLiveSummaryLines,
 } from "./lib/real-live-suites.mjs";
-import { resolveTestLaneDirs } from "./lib/script-metadata.mjs";
+import {
+  EXTRA_SCRIPT_NAMES,
+  resolveTestLaneDirs,
+} from "./lib/script-metadata.mjs";
 import {
   isParallelSafeTask,
   parseShardSpec,
@@ -379,7 +382,7 @@ if (TEST_LANE === "pr") {
   for (const line of formatRealLiveSummaryLines(
     computeRealLiveAccounting(process.env),
   )) {
-    console.log(line);
+    process.stderr.write(`${line}\n`);
   }
 }
 
@@ -387,13 +390,6 @@ if (TEST_LANE === "pr") {
 // Constants (from original)
 // ---------------------------------------------------------------------------
 
-const EXTRA_SCRIPT_NAMES = [
-  "test:integration",
-  "test:e2e",
-  "test:playwright",
-  "test:ui",
-  "test:live",
-];
 const NO_TEST_OUTPUT_PATTERNS = [
   /No test files found/i,
   /No tests found/i,
@@ -1102,12 +1098,39 @@ function nextEvidencePath() {
 // the resolved plan (duplicate labels would collide here and fail closed).
 const resultLedger = new Map();
 
+function readTestEvidence(evidence) {
+  const size = fs.statSync(evidence.path).size;
+  if (size > MAX_JUNIT_BYTES) {
+    throw new Error(
+      `JUnit artifact is ${size} bytes; limit is ${MAX_JUNIT_BYTES}`,
+    );
+  }
+  return parseJunitSummary(fs.readFileSync(evidence.path, "utf8"));
+}
+
+function evidenceFields(summary) {
+  return {
+    observed: Boolean(summary),
+    counts: summary
+      ? {
+          tests: summary.tests,
+          executed: summary.executedTests,
+          failures: summary.failures,
+          errors: summary.errors,
+          skipped: summary.skipped,
+        }
+      : null,
+    files: summary ? summary.files : null,
+  };
+}
+
 function recordTaskResult(task, record) {
   const full = {
     label: task.label,
     packageName: task.packageName,
     relativeDir: normalizeRepoPath(path.relative(repoRoot, task.cwd) || "."),
     scriptName: task.scriptName,
+    files: null,
     ...record,
   };
   if (resultLedger.has(task.label) || faultInject === "duplicate-record") {
@@ -1120,6 +1143,12 @@ function recordTaskResult(task, record) {
     return;
   }
   resultLedger.set(task.label, full);
+  if (record.observed) {
+    outcomeTally.reportedTasks += 1;
+    outcomeTally.tests += record.counts.tests;
+    outcomeTally.executedTests += record.counts.executed;
+    outcomeTally.skippedTests += record.counts.skipped;
+  }
   console.log(`[eliza-test] RESULT ${JSON.stringify(full)}`);
 }
 
@@ -1287,6 +1316,14 @@ function runScript(
       error.exitCode = code ?? null;
       error.exitSignal = signal ?? null;
       error.timedOut = timedOut;
+      if (evidence) {
+        try {
+          error.evidence = readTestEvidence(evidence);
+        } catch (evidenceError) {
+          // error-policy:J1 preserve the child failure and expose unavailable evidence.
+          error.evidenceError = evidenceError.message;
+        }
+      }
       reject(error);
     };
 
@@ -1312,15 +1349,7 @@ function runScript(
           return;
         }
         try {
-          const size = fs.statSync(evidence.path).size;
-          if (size > MAX_JUNIT_BYTES) {
-            throw new Error(
-              `JUnit artifact is ${size} bytes; limit is ${MAX_JUNIT_BYTES}`,
-            );
-          }
-          const summary = parseJunitSummary(
-            fs.readFileSync(evidence.path, "utf8"),
-          );
+          const summary = readTestEvidence(evidence);
           if (summary.failures > 0 || summary.errors > 0) {
             throw new Error(
               `report contains ${summary.failures} failure(s) and ${summary.errors} error(s) despite a successful child exit`,
@@ -1604,30 +1633,16 @@ async function runTask(task, { stream }) {
       { stream },
     );
     const durationMs = Date.now() - startedAt;
-    if (result.evidence) {
-      outcomeTally.reportedTasks += 1;
-      outcomeTally.tests += result.evidence.tests;
-      outcomeTally.executedTests += result.evidence.executedTests;
-      outcomeTally.skippedTests += result.evidence.skipped;
-    } else if (!result.skipped) {
+    if (!result.evidence && !result.skipped) {
       outcomeTally.unobserved += 1;
     }
     recordTaskResult(task, {
       status: result.skipped ? "skip" : "pass",
-      observed: Boolean(result.evidence),
+      ...evidenceFields(result.evidence),
       exitCode: result.exitCode ?? null,
       signal: null,
       timedOut: false,
       durationMs,
-      counts: result.evidence
-        ? {
-            tests: result.evidence.tests,
-            executed: result.evidence.executedTests,
-            failures: result.evidence.failures,
-            errors: result.evidence.errors,
-            skipped: result.evidence.skipped,
-          }
-        : null,
       skipReason: result.skipped ? result.skipReason : undefined,
     });
     if (result.skipped) {
@@ -1644,12 +1659,12 @@ async function runTask(task, { stream }) {
     const durationMs = Date.now() - startedAt;
     recordTaskResult(task, {
       status: "fail",
-      observed: false,
+      ...evidenceFields(error.evidence),
+      evidenceError: error.evidenceError,
       exitCode: error?.exitCode ?? null,
       signal: error?.exitSignal ?? null,
       timedOut: Boolean(error?.timedOut),
       durationMs,
-      counts: null,
       failReason: error instanceof Error ? error.message : String(error),
     });
     console.error(`[eliza-test] FAIL ${task.label} (${durationMs}ms)`);

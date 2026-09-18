@@ -1,11 +1,11 @@
 /** Proves the UI facade executes the shared recommendation policy unchanged. */
 
-import type { HardwareProbe } from "@elizaos/shared";
 import {
   MODEL_CATALOG,
   selectRecommendedModels as selectSharedRecommendedModels,
   UI_LOCAL_INFERENCE_RECOMMENDATION_POLICY,
 } from "@elizaos/shared/local-inference";
+import type { HardwareProbe } from "@elizaos/shared/local-inference/types";
 import { describe, expect, it } from "vitest";
 import {
   assessCatalogModelFit,

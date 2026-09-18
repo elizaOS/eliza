@@ -10,11 +10,7 @@
 
 export { logger } from "../logger";
 // Utilities that are part of the public API.
-export {
-	addHeader,
-	composePromptFromState,
-	parseKeyValueXml, // audit:allowlist - retained for cloud/ XML evaluators; new prompts must use JSON
-} from "../utils";
+export { addHeader, parseKeyValueXml } from "../utils";
 export * from "./access-context";
 export * from "./action-failure";
 export * from "./action-reply";
@@ -66,20 +62,16 @@ export * from "./plugin";
 export * from "./plugin-store";
 export type { JsonPrimitive } from "./primitives";
 export * from "./primitives";
-export * from "./prompt-batcher";
 export * from "./prompt-optimization-hooks";
 export * from "./prompt-optimization-score-card";
 export * from "./prompt-optimization-trace";
 export * from "./prompts";
 export * from "./provider-integrations";
 export * from "./runtime";
-export * from "./schema";
-export * from "./schema-builder";
 export * from "./service";
 export * from "./service-interfaces";
 export * from "./settings";
 // Setup types
-export * from "./setup";
 export * from "./shortcut";
 export * from "./state";
 export * from "./streaming";

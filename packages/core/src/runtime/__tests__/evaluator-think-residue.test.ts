@@ -8,7 +8,7 @@
  * suite via isUnsafeUserVisibleText's exported behavior.)
  */
 import { describe, expect, it } from "vitest";
-import { parseEvaluatorOutput } from "../evaluator";
+import { parseEvaluatorOutput } from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
 
 const F18_RAW =
 	'None</think>```json\n{ "success": true, "decision": "FINISH", "thought": "Documents store is empty.", "messageToUser": "Your documents store is empty." }\n```';
@@ -30,7 +30,7 @@ describe("evaluator think-residue stripping (F18)", () => {
 	});
 });
 
-import { isUnsafeUserVisibleText } from "../planner-loop";
+import { isUnsafeUserVisibleText } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 describe("egress rejection of internals (F18 seam 2)", () => {
 	it("rejects think residue and evaluator envelopes at the last line", () => {

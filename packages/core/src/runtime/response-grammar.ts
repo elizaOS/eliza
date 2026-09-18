@@ -47,7 +47,6 @@ import type {
 	SpanSamplerOverride,
 	SpanSamplerPlan,
 } from "../types/model.js";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./builtin-field-evaluators.js";
 
 // ---------------------------------------------------------------------------
 // Inputs
@@ -954,11 +953,7 @@ export function buildResponseGrammar(
 	options: BuildResponseGrammarOptions,
 ): ResponseGrammarResult {
 	const suppliedFields = runtime.responseHandlerFields ?? [];
-	const baseFields = sortFields(
-		suppliedFields.length > 0
-			? suppliedFields
-			: BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
-	);
+	const baseFields = sortFields(suppliedFields);
 	const fields = baseFields;
 	const contextIds = normalizeContextIds(options.contexts);
 	const actionNames = Array.from(

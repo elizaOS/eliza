@@ -6,7 +6,7 @@
  * runtime — no model.
  */
 import { describe, expect, it } from "vitest";
-import { messageHandlerFromFieldResult } from "../../services/message";
+import { messageHandlerFromFieldResult } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 import type { IAgentRuntime } from "../../types/runtime";
 import {
 	__resetCandidateActionBackstopRulesForTests,

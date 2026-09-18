@@ -8,8 +8,6 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "bun": "./src/index.ts",
-      "development": "./src/index.ts",
       "eliza-source": {
         "types": "./src/index.ts",
         "import": "./src/index.ts",
@@ -67,7 +65,8 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "yaml": "^2.8.2"
+    "yaml": "^2.8.2",
+    "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",

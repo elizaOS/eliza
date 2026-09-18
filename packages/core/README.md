@@ -2,7 +2,15 @@
 
 ## Overview
 
-`@elizaos/core` is the runtime and contract layer of elizaOS. It defines the `AgentRuntime` and the plugin abstractions (actions, providers, evaluators, services, models, routes, events), the canonical type system, and the supporting subsystems (memory, search, settings, scheduling, prompts). It is consumed by `@elizaos/agent` (which also hosts the HTTP API server), `@elizaos/app-core` (the API + dashboard host), and every `@elizaos/*` plugin.
+`@elizaos/core` is the Node runtime kernel: explicit plugin registration,
+authorized execution, state composition, model dispatch, database interfaces,
+logging and lifecycle management. Hosts register an assistant, database adapter
+and model provider explicitly. The public package has one barrel and bundled
+declaration; it exports no HTTP routes or browser runtime.
+
+The [flow atlas](../../docs/design/runtime-consolidation/FLOWS.md) maps inputs,
+outputs and current file owners. The [implementation status](../../docs/design/runtime-consolidation/STATUS.md)
+records remaining acceptance work.
 
 Document authorization treats a document's `roomId` as its single room
 entitlement and evaluates it against current requester membership inside the
@@ -30,7 +38,7 @@ These controls do not publish documents to the internet.
 - **Providers:** Supply data and context to the runtime and its components.
 - **Evaluators:** Process conversation data to extract facts, build memory, and reflect.
 - **Plugin system:** `Plugin` objects contribute actions/providers/evaluators/services to the runtime.
-- **Built-in bundle:** Foundational capabilities ship as `basicCapabilities` (and `basicActions` / `basicProviders` / `basicEvaluators` / `basicServices`); there is no `corePlugin` singleton.
+- **Explicit behavior:** `@elizaos/plugin-assistant` provides `createAssistantPlugin()`. An empty core has no default conversation service. SQL and inference are separate plugins.
 
 For the default direct-text message handler, routing context discovery can show
 every authorized context name while deferring its complete description. The
@@ -116,7 +124,7 @@ and any correlation token is an opaque host-keyed token rather than a raw hash
 of personal data or credentials.
 
 Package-owned adapter tests can import
-`runInteractionAdapterConformance` from `@elizaos/core/testing`. The runner
+`runInteractionAdapterConformance` from `@elizaos/testing`. The runner
 requires fixtures for success, no-effect failure, uncertain effect, policy
 block, confirmation, unsupported capability, and a genuinely stale observation;
 it separately exercises coordinator lease contention and expiry. These are
@@ -210,11 +218,11 @@ fields remain compatible through a service-level bounded fallback.
 
 `@elizaos/core` builds to three targets via conditional exports:
 
-- **Node.js Build**: Full API surface with all features including server utilities (`index.node.ts`)
+- **Node.js Build**: Full API surface with all features including server utilities (`index.ts`)
 - **Browser Build**: Browser-safe subset, no fs/process-bound modules (`index.browser.ts`)
 - **Edge Build**: Edge-runtime subset (`index.edge.ts`)
 
-The correct build is automatically selected based on your environment through package.json conditional exports. For browser usage, ensure your app provides the standard platform primitives it depends on, such as `Buffer` where needed.
+Core runs in Node.js and exposes one root barrel. Hosts supply a database adapter or a persistence plugin explicitly; ephemeral hosts can use `@elizaos/plugin-inmemorydb/runtime`. There is no environment-controlled storage fallback.
 
 ## Configuration
 
@@ -223,7 +231,6 @@ The following environment variables are used by `@elizaos/core`. Configure them 
 - `LOG_LEVEL`: Logging verbosity (e.g., 'debug', 'info', 'error').
 - `LOG_JSON_FORMAT`: Output logs in JSON format (`true`/`false`).
 - `SECRET_SALT`: Encryption salt, read by `getSalt()` in `src/settings.ts`. In production it must be set to a non-default value unless `ELIZA_ALLOW_DEFAULT_SECRET_SALT=true`.
-- `ALLOW_NO_DATABASE`: Allow running without a persistent database adapter. When `true`, `AgentRuntime.initialize()` will fall back to an in-memory adapter (useful for benchmarks/tests).
 - `LOG_FILE`: When set to `true`/`1` or a path, enables file logging: `output.log`, `prompts.log`, and `chat.log` (in cwd or at the given path). **Why:** Lets you inspect full prompts and chat flow without scraping console; ANSI is stripped so files stay grep-friendly.
 - `BASIC_CAPABILITIES_KEEP_RESP`: When `true`, the message service does not discard a response when a newer message is being processed (avoids "stale reply" race). **Why:** Some deployments want to keep or display every response; this is the config equivalent of passing `keepExistingResponses: true` in options.
 - `SHOULD_RESPOND_MODEL`: Which model size to use for the "should I respond?" decision (`small` or `large`, read in `src/services/message.ts`). Defaults from runtime settings if not set in options.
@@ -239,7 +246,6 @@ The following environment variables are used by `@elizaos/core`. Configure them 
 LOG_LEVEL=debug
 LOG_JSON_FORMAT=false
 SECRET_SALT=yourSecretSaltHere
-ALLOW_NO_DATABASE=true
 LOG_FILE=true
 ```
 
@@ -710,3 +716,25 @@ startup setting in place when deliberately downgrading such a deployment.
 History retention also preserves recorded request/reply links. A selected original brings its linked outcome into the same review and retained set; completed exchanges can still be deferred together. These links come from stored agent replies, not inferred adjacency or prose. Existing checkpoints keep their source binding; no originals are rewritten.
 
 Progressive direct-text planning can defer the tool-name index when Stage 1 already selected domain schemas, every candidate resolves to a selected action or declared alias, and discovery was not requested. The shorter notice points to the same complete, freshly authorized `DISCOVER_TOOLS names=[]` catalog read; exact known names can still load schemas or read descriptions directly. Selected tools, custom action names, permission checks and result payloads are unchanged. Voice, group, coding, discovery-only and unresolved selections keep the inline index. Unfamiliar capabilities can add a catalog-read round, so compare total calls and tokens before treating this as a performance improvement.
+
+Concrete database table definitions and migrations are owned by `@elizaos/plugin-sql/schema`. The unused abstract table catalog and `buildBaseTables` conversion API have been removed. Core retains character input validation and database adapter contracts.
+
+File-backed trajectory recording and provider pricing are exported by
+`@elizaos/plugin-assistant`. Core keeps generic recording contracts and value
+projection. Model context windows come from registration metadata or explicit
+caller configuration, not model-name matching or `MODEL_CONTEXT_WINDOWS_JSON`.
+
+Media fetching, MIME detection and connector attachment helpers are exported
+from `@elizaos/shared/media`; core has no file-type dependency.
+
+Action-catalog construction and search policy belong to assistant. Prompt
+keyword data and matching belong to prompts; neither is a core dependency.
+The kernel retains the localized-example provider contract for registration.
+
+Tolerant model-output JSON parsing belongs to `@elizaos/prompts/parsing`.
+Core does not export those helpers or depend on JSON5.
+
+Handlebars rendering is owned by `@elizaos/prompts/rendering`; conversational
+entity resolution and formatting are assistant-owned. Core retains current-role
+component visibility and stable agent-scoped identity. Its external production
+dependencies are Zod and Adze; common supplies shared pure primitives.

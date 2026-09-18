@@ -2,14 +2,14 @@
  * Exercises failure-template propagation through localized preset resolution
  * and verifies callers receive an independently mutable template object.
  */
-import { describe, expect, it } from "vitest";
 
+import { CHARACTER_LANGUAGES } from "@elizaos/shared/contracts/first-run-options";
+import { describe, expect, it } from "vitest";
 import { CHARACTER_DEFINITIONS } from "./character-presets.characters.js";
 import {
   getStylePresets,
   resolveStylePresetById,
 } from "./character-presets.js";
-import { CHARACTER_LANGUAGES } from "./contracts/first-run-options.js";
 
 const elizaDefinition = CHARACTER_DEFINITIONS.find(
   (definition) => definition.id === "eliza",

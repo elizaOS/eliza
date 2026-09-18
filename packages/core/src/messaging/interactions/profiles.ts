@@ -4,13 +4,13 @@
  * connector names are deliberately absent from the runtime decision path.
  */
 
+import { stableStringify } from "@elizaos/common";
 import { ElizaError } from "../../errors";
 import type {
 	InteractionBlock,
 	InteractionKind,
 } from "../../types/interactions";
 import { stringToUuid } from "../../utils";
-import { stableStringify } from "../../utils/deterministic";
 
 export const INTERACTION_PROFILE_VERSION = 1 as const;
 export const INTERACTION_BLOCK_KINDS = [

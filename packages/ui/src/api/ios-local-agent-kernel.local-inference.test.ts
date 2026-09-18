@@ -436,7 +436,7 @@ describe("iOS local-agent local inference flow", () => {
   });
 
   it("does not persist native download exception text", async () => {
-    const { logger } = await import("@elizaos/logger");
+    const { logger } = await import("@elizaos/shared/logger");
     vi.spyOn(logger, "error").mockImplementation(() => undefined);
     const marker = "password=secret /private/native/downloader.mm:42";
     const kernel = await loadKernel({
@@ -530,7 +530,7 @@ describe("iOS local-agent local inference flow", () => {
   });
 
   it("persists a generic activation failure instead of native exception text", async () => {
-    const { logger } = await import("@elizaos/logger");
+    const { logger } = await import("@elizaos/shared/logger");
     vi.spyOn(logger, "error").mockImplementation(() => undefined);
     const marker = "secret /private/native/model.mm:42";
     const kernel = await loadKernel({

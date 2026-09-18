@@ -9,12 +9,14 @@
  */
 
 import {
-  type ContentPackManifest,
   getDefaultStylePreset,
   getStylePresets,
-  type ResolvedContentPack,
-  type StylePreset,
-} from "@elizaos/shared";
+} from "@elizaos/shared/character-presets";
+import type {
+  ContentPackManifest,
+  ResolvedContentPack,
+} from "@elizaos/shared/contracts/content-pack";
+import type { StylePreset } from "@elizaos/shared/contracts/first-run-options";
 
 const PACK_VERSION = "1.0.0";
 

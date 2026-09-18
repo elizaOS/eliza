@@ -27,11 +27,13 @@ import {
   SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE,
   type SensitiveRequestDispatchRegistry,
   Service,
+} from "@elizaos/core";
+import {
   SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE,
   SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
   SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE,
   subAgentCredentialsPlugin,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import {
   createCredentialTunnelService,
   createSubAgentCredentialBridgeAdapter,

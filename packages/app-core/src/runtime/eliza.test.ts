@@ -17,7 +17,7 @@ import {
 } from "@elizaos/agent/runtime/host-bridge";
 import type { AgentRuntime } from "@elizaos/core";
 import { PGLITE_ERROR_CODES } from "@elizaos/plugin-sql";
-import type { ElizaConfig } from "@elizaos/shared";
+import type { ElizaConfig } from "@elizaos/shared/config/types.eliza";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CHANNEL_PLUGIN_MAP as sourceChannelPluginMap } from "./channel-plugin-map";
 

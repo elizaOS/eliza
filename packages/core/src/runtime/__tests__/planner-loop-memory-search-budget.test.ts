@@ -13,7 +13,7 @@ import {
 	normalizedRecallQueryKey,
 	partitionMemorySearchBudget,
 	runPlannerLoop,
-} from "../planner-loop";
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 const emptyTrajectory = () => ({
 	context: { id: "ctx" },

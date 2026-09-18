@@ -330,15 +330,6 @@ export interface ToolCall {
 	id: string;
 	name: string;
 	arguments: Record<string, JsonValue> | string;
-	/** Alternate keys used by some model adapters before normalization */
-	toolName?: string;
-	tool?: string;
-	action?: string;
-	args?: Record<string, JsonValue> | string;
-	input?: Record<string, JsonValue> | string;
-	params?: Record<string, JsonValue> | string;
-	toolCallId?: string;
-	type?: "function" | "tool" | (string & {});
 	result?: ContentValue;
 	status?: "pending" | "completed" | "failed" | (string & {});
 }
@@ -1684,8 +1675,8 @@ export interface ModelHandler<
 export interface ModelRegistrationMetadata {
 	/**
 	 * Provider-declared hard input-context ceiling. When present, the runtime
-	 * uses it for the final prepared-request rejection gate instead of inferring
-	 * a limit from the display model id.
+	 * uses it for complete-request diagnostics instead of inferring a limit from
+	 * the display model id. Estimates never truncate input or authorize rejection.
 	 */
 	contextWindowTokens?: number;
 	/**

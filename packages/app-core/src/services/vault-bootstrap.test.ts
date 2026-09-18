@@ -5,7 +5,7 @@
  * @elizaos/agent, @elizaos/core, and the registry are mocked, and the vault is
  * a hand-rolled stub whose set() always throws.
  */
-import type { Vault } from "@elizaos/vault";
+import type { Vault } from "@elizaos/credentials/vault";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", async (importOriginal) => {

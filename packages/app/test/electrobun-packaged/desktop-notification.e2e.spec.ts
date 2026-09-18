@@ -9,7 +9,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { AgentNotification } from "@elizaos/core";
+import type { AgentNotification } from "@elizaos/common";
 import { expect, test } from "@playwright/test";
 import { type MockApiServer, startMockApiServer } from "./mock-api";
 import {

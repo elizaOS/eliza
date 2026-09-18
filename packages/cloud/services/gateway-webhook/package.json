@@ -26,7 +26,8 @@
     "hashring": "^3.2.0",
     "hono": "4.13.1",
     "ioredis": "^5.10.1",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/common": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

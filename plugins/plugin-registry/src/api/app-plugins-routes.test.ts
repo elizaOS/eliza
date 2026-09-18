@@ -91,7 +91,7 @@ vi.mock("@elizaos/shared", () => ({
   resolveDevCloudEnvAuthority: vi.fn(() => mocks.devCloudAuthority),
 }));
 
-vi.mock("@elizaos/vault", () => ({
+vi.mock("@elizaos/credentials/vault", () => ({
   VaultMissError: class VaultMissError extends Error {},
 }));
 

@@ -8,7 +8,7 @@ import {
 	runPlannerLoop,
 	TURN_SCOPE_ARG,
 	TURN_SCOPE_FINAL,
-} from "../planner-loop";
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 async function deliver(reply: string) {
 	let calls = 0;

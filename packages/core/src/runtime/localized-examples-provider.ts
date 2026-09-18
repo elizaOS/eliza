@@ -15,8 +15,31 @@
  * the runtime and we don't leak across tests — same shape as `SendPolicy`.
  */
 
+import type { ActionExample } from "../types/components";
 import type { IAgentRuntime } from "../types/runtime";
-import type { LocalizedActionExampleResolver } from "./action-catalog";
+/**
+ * Localized `[user, agent]` pair returned by a
+ * {@link LocalizedActionExampleResolver}. The shape mirrors a single entry of
+ * an action's `examples: ActionExample[][]` array — `[user, agent]`.
+ */
+export type LocalizedActionExamplePair = readonly [
+	ActionExample,
+	ActionExample,
+];
+
+/**
+ * Callback the catalog uses to swap English `ActionExample` pairs for a
+ * localized version when a translation is registered (typically by a
+ * `MultilingualPromptRegistry`). Returning `null` keeps the English original.
+ *
+ * The resolver is index-based so callers (the planner, app-lifeops) can map
+ * the pair back to its source row in `action.examples` without re-parsing the
+ * registry's composite key shape (`<actionName>.example.<index>`).
+ */
+export type LocalizedActionExampleResolver = (params: {
+	actionName: string;
+	exampleIndex: number;
+}) => LocalizedActionExamplePair | null;
 
 export interface LocalizedExamplesProviderInput {
 	/**

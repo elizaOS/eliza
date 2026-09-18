@@ -1,11 +1,11 @@
 import {
   AgentRuntime,
   createCharacter,
-  InMemoryDatabaseAdapter,
   type Memory,
   ModelType,
   stringToUuid,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { expect, test, vi } from "vitest";
 import {
   registerImportedConversationEmbeddingWorker,

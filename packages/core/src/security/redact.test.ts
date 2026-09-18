@@ -7,7 +7,6 @@
  * value must never survive in the output.
  */
 
-import { __loggerTestHooks } from "@elizaos/logger";
 import { describe, expect, it } from "vitest";
 import {
 	createSecretsRedactor,
@@ -46,12 +45,6 @@ describe("redactSecrets (known values)", () => {
 });
 
 describe("redactSensitiveText (pattern detection)", () => {
-	it("keeps the core and leaf logger credential-shape policies synchronized", () => {
-		expect(__loggerTestHooks.getSensitiveTextPatternsForTests()).toEqual(
-			getDefaultRedactPatterns(),
-		);
-	});
-
 	it("masks the common JSON credential spellings (W10 pattern-library sync)", () => {
 		// Both implementations compile this same JSON-fields alternation; the
 		// snake_case forms are separate alternatives because case-insensitive

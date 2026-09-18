@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@elizaos/shared", () => ({
+vi.mock("@elizaos/shared/contracts/content-pack", () => ({
   CONTENT_PACK_MANIFEST_FILENAME: "pack.json",
   validateContentPackManifest: () => [],
 }));

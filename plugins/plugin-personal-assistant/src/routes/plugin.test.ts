@@ -7,11 +7,12 @@
 
 import type http from "node:http";
 import { _resetAuthRateLimiter } from "@elizaos/app-core/api/auth";
-import type { AgentRuntime, Route } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
 import {
   captureDevCloudEnvAuthoritySnapshot,
   resetDevCloudEnvAuthorityForTests,
 } from "@elizaos/shared";
+import type { Route } from "@elizaos/shared/api/http-plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const cloudRouteMocks = vi.hoisted(() => ({

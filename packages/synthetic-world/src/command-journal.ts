@@ -4,7 +4,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core";
 import type {
   SyntheticEnvironmentLeaseAuthority,
   SyntheticEnvironmentLeaseStore,

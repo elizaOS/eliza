@@ -63,6 +63,7 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
+    "@elizaos/plugin-web-search": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@vscode/ripgrep": "^1.15.9",

@@ -18,10 +18,10 @@ import {
 	type UUID,
 } from "@elizaos/core";
 import { createCharacter } from "@elizaos/core/character.js";
-import { InMemoryDatabaseAdapter } from "@elizaos/core/database/inMemoryAdapter.js";
 import { runResponseHandlerEvaluators } from "@elizaos/core/runtime/response-handler-evaluators.js";
 import { AgentRuntime } from "@elizaos/core/runtime.js";
 import { DefaultMessageService } from "@elizaos/core/services/message.js";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { appControlPlugin } from "../index.js";
 

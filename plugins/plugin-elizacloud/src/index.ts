@@ -3,7 +3,8 @@
  * account providers, services, lifecycle hooks, and its app-shell view manifest.
  */
 
-import type { IAgentRuntime, Plugin, ProcessEnvLike } from "@elizaos/core";
+import type { IAgentRuntime, ProcessEnvLike } from "@elizaos/core";
+import type { Plugin } from "@elizaos/core";
 import { logger, ModelType, registerProviderModels } from "@elizaos/core";
 // Cloud account actions
 import { cloudAccountStatusAction } from "./actions/cloud-account-status";

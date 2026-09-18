@@ -14,6 +14,7 @@ import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import type { IAgentRuntime } from "@elizaos/core";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   resetHonoMountCache,
@@ -21,18 +22,18 @@ import {
 } from "./hono-mount.ts";
 
 function makeRuntime(): IAgentRuntime {
-  return {
-    routes: [
-      {
-        type: "GET",
-        path: "/api/test-plugin/data",
-        public: true,
-        name: "test-data",
-        publicReason: "Hono mount path normalization fixture route.",
-        routeHandler: async () => ({ status: 200, body: { ok: true } }),
-      },
-    ],
-  } as unknown as IAgentRuntime;
+  const runtime = {} as IAgentRuntime;
+  getHttpRuntime(runtime).routes = [
+    {
+      type: "GET",
+      path: "/api/test-plugin/data",
+      public: true,
+      name: "test-data",
+      publicReason: "Hono mount path normalization fixture route.",
+      routeHandler: async () => ({ status: 200, body: { ok: true } }),
+    },
+  ];
+  return runtime;
 }
 
 interface FakeRes {

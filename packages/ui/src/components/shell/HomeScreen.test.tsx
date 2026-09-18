@@ -51,7 +51,7 @@ vi.mock("../../widgets/WidgetHost", () => ({
   ),
 }));
 
-import type { AgentNotification } from "@elizaos/core";
+import type { AgentNotification } from "@elizaos/common";
 import {
   __ingestNotificationForTests,
   __resetNotificationStoreForTests,

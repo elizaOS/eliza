@@ -21,13 +21,13 @@
  * orthogonal to the substrate.
  */
 
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "../../contracts/service-routing";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import { logger } from "../../logger";
 import type { Memory } from "../../types/memory";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { State } from "../../types/state";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../builtin-field-evaluators";
 import type {
 	ResponseHandlerFieldContext,
 	ResponseHandlerFieldEffect,

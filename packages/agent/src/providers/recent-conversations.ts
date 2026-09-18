@@ -20,13 +20,13 @@ import type {
 import {
   actionGateRejection,
   buildCrossWorldConversationAccessContext,
-  dedupeHygienicDialogueMessages,
   markOwnerExclusiveDisclosureUsed,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
   recordOwnerExclusiveSuppression,
   revalidateOwnerExclusiveDisclosure,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import { dedupeHygienicDialogueMessages } from "@elizaos/plugin-assistant";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,

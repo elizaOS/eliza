@@ -26,7 +26,7 @@
  * Nonce and verify hops honor `SIWE_FETCH_TIMEOUT_MS` so a hung Cloud auth
  * API cannot stall app SIWE login.
  */
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
 
 /** Minimal EIP-1193 surface the login needs. */

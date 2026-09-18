@@ -549,7 +549,6 @@ jobs:
             echo "::error::Protected DATABASE_URL is required before provisioning-worker deploy"
             exit 1
           }
-          node packages/shared/scripts/generate-keywords.mjs
           if [ "$DEPLOY_BRANCH" = main ]; then
             node packages/cloud/scripts/production-effect-certification.mjs "$DEPLOY_SHA"
           fi
@@ -942,7 +941,6 @@ jobs:
             # git clean removes these intentionally ignored modules. Generate
             # and assert them before install/build, while the healthy daemons
             # are still running, so generator failure cannot cause downtime.
-            bash packages/cloud/scripts/admin/ensure-generated-keywords.sh
 
             # Install the canary (Rust) Bun on first install.
             if ! command -v bun >/dev/null 2>&1 || [ "$(bun --version)" != "1.3.14" ]; then

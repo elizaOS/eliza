@@ -8,7 +8,7 @@ credential-free `./edge` action on Workers.
 The default export registers a Tavily-backed `WebSearchService` for full Node
 runtimes. `@elizaos/plugin-web-search/edge` is a separate genuine plugin export
 containing only the public, read-only `WEB_SEARCH` action. It uses fixed keyless
-Parallel/Exa MCP endpoints through the bounded transport in `@elizaos/core`, so
+Parallel/Exa MCP endpoints through the plugin-owned `./keyless-web-search` transport, so
 it imports no Tavily client, Node service, credential, browser control, or
 private account state. Loading an export remains a host policy decision; edge
 compatibility does not imply automatic approval for every Shared deployment.
@@ -86,7 +86,7 @@ Edit `WEB_SEARCH_CATEGORY.filters` in `src/index.ts`. Filter names must match ke
 - **Tavily client is stateless.** `stop()` returns immediately because there is nothing to tear down.
 - **Tavily is the only search provider.** `searchVideos` uses Tavily web search with a video-oriented query and image inclusion because Tavily has no dedicated video endpoint. `getSuggestions` and `getTrendingSearches` derive distinct result titles from Tavily general/news searches.
 - **Tavily is only in the default Node export.** The `./edge` export uses the
-  keyless core transport and must stay free of Node imports, secrets, private
+  keyless plugin transport and must stay free of Node imports, secrets, private
   account access, writes, and arbitrary provider URLs.
 - **`getPageInfo` uses a raw `fetch` + regex.** It is not Tavily-backed — it downloads the HTML directly and extracts `<title>` and `<meta name="description">`. `metadata`, `images`, and `links` fields are always empty.
 - **`@tavily/core` is the only external runtime dep** (`^0.7.0`). Keep it pinned close to avoid API contract drift.

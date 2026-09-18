@@ -3,13 +3,9 @@
  * action (widened with the connector/automation/knowledge contexts), and the MCP
  * provider. Also re-exports handleMcpRoutes for host servers wiring /api/mcp/*.
  */
-import {
-  type Action,
-  type IAgentRuntime,
-  logger,
-  type Plugin,
-  promoteSubactionsToActions,
-} from "@elizaos/core";
+
+import type { Plugin } from "@elizaos/core";
+import { type Action, type IAgentRuntime, logger, promoteSubactionsToActions } from "@elizaos/core";
 import { MCP_ACTION_CONTEXT, mcpAction } from "./actions/mcp";
 import { provider } from "./provider";
 import { McpService } from "./service";

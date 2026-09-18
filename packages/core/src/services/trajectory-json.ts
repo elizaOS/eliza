@@ -4,8 +4,8 @@
  * JavaScript values and cycles are normalized.
  */
 
-import type { JsonValue } from "../types/primitives";
-import { toWellFormedUnicode } from "../utils/well-formed";
+import type { JsonValue } from "../types/primitives.ts";
+import { toWellFormedUnicode } from "../utils/well-formed.ts";
 
 const utf8Encoder = new TextEncoder();
 

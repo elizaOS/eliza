@@ -7,39 +7,11 @@ const mocks = vi.hoisted(() => ({
   executeRawSql: vi.fn(),
 }));
 
-vi.mock("@elizaos/core", () => ({
-  ElizaError: class ElizaError extends Error {
-    readonly code: string;
-    readonly context?: Record<string, unknown>;
-    readonly severity?: string;
-
-    constructor(
-      message: string,
-      options: {
-        code: string;
-        context?: Record<string, unknown>;
-        severity?: string;
-      },
-    ) {
-      super(message);
-      this.name = "ElizaError";
-      this.code = options.code;
-      this.context = options.context;
-      this.severity = options.severity;
-    }
-  },
-  logger: { warn() {}, debug() {}, info() {}, error() {} },
-}));
-
-vi.mock("@elizaos/shared", () => ({
+vi.mock("@elizaos/shared/utils/sql-compat", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@elizaos/shared/utils/sql-compat")
+  >()),
   executeRawSql: mocks.executeRawSql,
-  quoteIdent: (value: string) => `"${String(value).replace(/"/g, '""')}"`,
-  sanitizeIdentifier: (value: string | null | undefined) => {
-    if (value == null) return null;
-    const trimmed = String(value).trim();
-    return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmed) ? trimmed : null;
-  },
-  sqlLiteral: (value: unknown) => `'${String(value).replace(/'/g, "''")}'`,
 }));
 
 vi.mock("./auth.ts", () => ({

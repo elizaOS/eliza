@@ -7,8 +7,8 @@
  * returns; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { GenerateTextResult, ToolDefinition } from "../../types/model";
-import { runPlannerLoop } from "../planner-loop";
 
 /**
  * Regression for #8007 — "v5 planner loops on `decision: CONTINUE` without
@@ -59,9 +59,9 @@ function tasksToolCall(subaction: string, id: string): GenerateTextResult {
 		toolCalls: [
 			{
 				id,
-				toolName: "TASKS",
-				input: { subaction, repo: "org/hello-world" },
-			} as never,
+				name: "TASKS",
+				arguments: { subaction, repo: "org/hello-world" },
+			},
 		],
 		usage: { promptTokens: 100, completionTokens: 10, totalTokens: 110 },
 	} as GenerateTextResult;

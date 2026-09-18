@@ -10,13 +10,12 @@
  * request body — it can carry an Eliza Cloud API key.
  */
 import { timingSafeEqual } from "node:crypto";
-import {
-  type IAgentRuntime,
-  logger,
-  type Route,
-  type RouteHandlerContext,
-  type RouteHandlerResult,
-} from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import type {
+  Route,
+  RouteHandlerContext,
+  RouteHandlerResult,
+} from "@elizaos/shared/api/http-plugin";
 import {
   buildElizaCodeCerebrasSpec,
   ELIZA_CLOUD_DEFAULT_BASE_URL,

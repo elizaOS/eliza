@@ -1,12 +1,14 @@
 /** Implements Electrobun desktop print electrobun dev settings banner ts behavior for app-core shell integration. */
+import { colorizeDevSettingsStartupBanner } from "@elizaos/shared/dev-settings-banner-style";
+import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
 import {
-  colorizeDevSettingsStartupBanner,
   type DevSettingsRow,
-  firstWinningEnvString,
   formatDevSettingsTable,
-  prependDevSubsystemFigletHeading,
+} from "@elizaos/shared/dev-settings-table";
+import {
+  firstWinningEnvString,
   resolveDesktopApiPortPreference,
-} from "@elizaos/shared";
+} from "@elizaos/shared/runtime-env";
 import { resolveDesktopRuntimeMode } from "./api-base";
 import { resolveMainWindowPartition } from "./main-window-session";
 

@@ -1,7 +1,7 @@
 /** Applies the owned identity migration history under a PostgreSQL session lock. */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 
 import { createDb } from "./client";

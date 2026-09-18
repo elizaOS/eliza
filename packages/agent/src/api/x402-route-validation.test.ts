@@ -4,7 +4,7 @@
  * value — enabled, malformed, or even `false` — forces the route set through
  * x402 validation.
  */
-import type { Route } from "@elizaos/core";
+import type { Route } from "@elizaos/shared/api/http-plugin";
 import { describe, expect, it } from "vitest";
 import {
   routeNeedsX402Validation,

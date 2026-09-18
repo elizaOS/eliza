@@ -7,7 +7,8 @@
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { formatDocsLink, theme } from "@elizaos/shared";
+import { formatDocsLink } from "@elizaos/shared/terminal/links";
+import { theme } from "@elizaos/shared/terminal/theme";
 import { Command, CommanderError } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerConfigureCommand } from "./register.configure";

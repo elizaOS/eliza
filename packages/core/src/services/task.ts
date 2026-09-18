@@ -104,7 +104,7 @@ export class TaskService extends Service {
 	 * owner's chat view on every boot.
 	 */
 	private readonly startedAt: number;
-	/** Set true in stop(). runTick returns immediately when true (daemon may call runTick after unregister). */
+	/** Closes admission synchronously before runtime teardown; active work still drains. */
 	private stopped = false;
 	/**
 	 * Boot grace window (ms) during which a missing worker is skipped silently
@@ -132,16 +132,6 @@ export class TaskService extends Service {
 	 */
 	static async start(runtime: IAgentRuntime): Promise<Service> {
 		const service = new TaskService(runtime);
-		// WHY: batcher owns HOW (sections, packing, cache); task system owns WHEN. One scheduler for all periodic drains.
-		runtime.registerTaskWorker({
-			name: "BATCHER_DRAIN",
-			execute: async (rt, options) => {
-				const affinityKey = options.affinityKey as string;
-				if (!rt.promptBatcher || !affinityKey) return undefined;
-				await rt.promptBatcher.drainAffinityGroup(affinityKey);
-				return undefined;
-			},
-		});
 		await service.startTimer();
 		return service;
 	}
@@ -624,10 +614,12 @@ export class TaskService extends Service {
 	async runTick(tasks: Task[]): Promise<void> {
 		if (this.stopped) return;
 		const validation = await this.validateTasks(tasks);
+		if (this.stopped) return;
 		const failures: ElizaError[] = [...validation.errors];
 		const now = this.clock.now();
 
 		for (const task of validation.tasks) {
+			if (this.stopped) break;
 			// Non-repeat tasks: run when due (or immediately if no dueAt/scheduledAt). WHY: one-shot "run at time X" (e.g. follow-up) uses dueAt or metadata.scheduledAt.
 			if (!task.tags?.includes("repeat")) {
 				// A paused one-shot must not run and must not reach the
@@ -1132,17 +1124,18 @@ export class TaskService extends Service {
 		}
 	}
 
-	/**
-	 * Stops the timer if it is currently running.
-	 */
-
-	async stop() {
+	/** Stop new ticks before the runtime closes room admissions. */
+	prepareStop() {
 		this.stopped = true;
 		unregisterTaskSchedulerRuntime(this.runtime.agentId);
 		if (this.hasTimer) {
 			this.hasTimer = false;
 			this.clock.clearInterval(this.timer);
 		}
+	}
+
+	async stop() {
+		this.prepareStop();
 		if (this.activeTick) {
 			await this.activeTick;
 		}

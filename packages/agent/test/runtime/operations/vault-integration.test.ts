@@ -4,7 +4,7 @@
  * Exercises the full chain that ships in production:
  *
  *   1. A request arrives at `handleProviderSwitchRoutes` carrying an apiKey.
- *   2. The route persists the key in `@elizaos/vault` BEFORE constructing
+ *   2. The route persists the key in `@elizaos/credentials/vault` BEFORE constructing
  *      the operation intent.
  *   3. The intent (`apiKeyRef` only, no plaintext) flows through the
  *      manager into the filesystem repository.
@@ -39,7 +39,7 @@ import {
   type TestVault,
   type Vault,
   VaultWriteVerificationError,
-} from "@elizaos/vault";
+} from "@elizaos/credentials/vault";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { defaultClassifier } from "../../../src/runtime/operations/classifier.js";
 import { HealthChecker } from "../../../src/runtime/operations/health.js";

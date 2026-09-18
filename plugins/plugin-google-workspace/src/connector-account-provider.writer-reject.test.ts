@@ -13,8 +13,8 @@ import {
   ElizaError,
   getConnectorAccountManager,
   type IAgentRuntime,
-  InMemoryDatabaseAdapter,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { OAuth2Client } from "google-auth-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

@@ -6,7 +6,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   canonicalizeRemoteControlValue,
   isRemoteControllerGrant,
@@ -17,7 +17,7 @@ import {
   type RemoteControllerGrant,
   type RemoteJsonValue,
   type SignedRemoteCommand,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/remote-control";
 
 export type RemoteCommandJournalStatus =
   | "reserved"

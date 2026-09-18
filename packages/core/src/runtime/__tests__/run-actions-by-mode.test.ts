@@ -4,8 +4,9 @@
  * gating, error isolation, and callback attribution. Real runtime over the
  * in-memory adapter with a stubbed `composeState` — deterministic, no model.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import { attestDeliveryAudienceFromCanonicalRoom } from "../../security";
 import {

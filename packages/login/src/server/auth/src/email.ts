@@ -5,7 +5,7 @@ import {
   randomInt,
   timingSafeEqual,
 } from "node:crypto";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { redactedThrownDiagnostics } from "../../shared/src/index.ts";
 
 import { hashSha256Hex } from "./crypto";

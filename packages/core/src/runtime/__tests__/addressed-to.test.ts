@@ -7,13 +7,13 @@
  * entity lookup are vi-mocked; no model or database.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { Entity, IAgentRuntime, Memory, UUID } from "../../types/index.ts";
 import {
 	applyAddressedTo,
 	messageAddressedToOtherParticipant,
 	messageVocativelyAddressesOtherParticipant,
 	resolveAddressedTargets,
-} from "../addressed-to.ts";
+} from "../../../../../plugins/plugin-assistant/src/runtime/addressed-to.ts";
+import type { Entity, IAgentRuntime, Memory, UUID } from "../../types/index.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000aa" as UUID;
 const OTHER_BOT = "00000000-0000-0000-0000-0000000000bb" as UUID;

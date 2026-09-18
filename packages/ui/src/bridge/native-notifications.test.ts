@@ -14,7 +14,7 @@ const { loggerInfo, platform, plugins } = vi.hoisted(() => ({
   plugins: {} as Record<string, unknown>,
 }));
 
-vi.mock("@elizaos/logger", () => ({
+vi.mock("@elizaos/shared/logger", () => ({
   logger: { info: loggerInfo },
 }));
 

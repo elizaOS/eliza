@@ -6,7 +6,7 @@ import { type IAgentRuntime, stringToUuid } from "@elizaos/core";
 import {
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import type {
   CapturedAction,
   ScenarioContext,

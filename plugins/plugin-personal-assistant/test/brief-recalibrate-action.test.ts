@@ -14,12 +14,13 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
+import { EventType, runWithTrajectoryContext } from "@elizaos/core";
 import {
   __resetDefaultTriageServiceForTests,
-  EventType,
   getDefaultTriageService,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
+  manageMessageAction,
+  respondToMessageAction,
+} from "@elizaos/plugin-assistant";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import {
   afterAll,
@@ -30,9 +31,7 @@ import {
   it,
   vi,
 } from "vitest";
-import { manageMessageAction } from "../../../packages/core/src/features/messaging/triage/actions/manageMessage.ts";
-import { respondToMessageAction } from "../../../packages/core/src/features/messaging/triage/actions/respondToMessage.ts";
-import { TrajectoriesService } from "../../../packages/core/src/features/trajectories/TrajectoriesService.ts";
+import { TrajectoriesService } from "../../plugin-assistant/src/features/trajectories/TrajectoriesService.ts";
 import { GoogleGmailAdapter } from "../../plugin-google-workspace/src/lifeops-message-adapter.ts";
 
 const mocks = vi.hoisted(() => ({

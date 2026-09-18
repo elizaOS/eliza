@@ -18,7 +18,7 @@
  * name reaches tar — option-like, absolute, drive-letter, `..`, or
  * control-character members abort the run without extracting anything.
  *
- *   bun run fetch:archive-artifacts        # deliberate operator invocation
+ *   bun packages/scripts/fetch-archive-artifacts.mjs        # deliberate operator invocation
  *
  * Test seams (integration tests only): ELIZA_ARCHIVE_URL,
  * ELIZA_ARCHIVE_SHA256, ELIZA_ARCHIVE_ROOT, ELIZA_ARCHIVE_MAX_ATTEMPTS.
@@ -298,7 +298,7 @@ async function main() {
     fail([
       `refusing to run from package lifecycle hook "${lifecycleEvent}".`,
       "The archive bundle is a stale snapshot and must never be pulled implicitly on install.",
-      "Run it deliberately instead:  bun run fetch:archive-artifacts",
+      "Run it deliberately instead:  bun packages/scripts/fetch-archive-artifacts.mjs",
     ]);
   }
 
@@ -318,7 +318,7 @@ async function main() {
   if (digest === null) {
     fail([
       `could not download the artifact bundle after ${MAX_ATTEMPTS} attempt(s): ${ARCHIVE.url}`,
-      "Check network access to github.com and re-run:  bun run fetch:archive-artifacts",
+      "Check network access to github.com and re-run:  bun packages/scripts/fetch-archive-artifacts.mjs",
     ]);
   }
 
@@ -394,7 +394,7 @@ async function main() {
     // error-policy:J2 context-adding rethrow: extraction errors become the operator-facing failure.
     fail([
       `extraction failed: ${err.message}`,
-      "The checkout was not marked as synced; fix the underlying problem and re-run:  bun run fetch:archive-artifacts",
+      "The checkout was not marked as synced; fix the underlying problem and re-run:  bun packages/scripts/fetch-archive-artifacts.mjs",
     ]);
   }
 }

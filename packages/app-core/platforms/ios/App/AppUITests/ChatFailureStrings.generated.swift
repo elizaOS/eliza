@@ -1,5 +1,5 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
-// Source of truth: packages/app/scripts/lib/chat-failure-strings.mjs
+// Source of truth: packages/app-core/src/platform/chat-failure-strings.ts
 // Regenerate: node packages/app/scripts/lib/chat-failure-strings.mjs --emit-swift
 // Parity guard: packages/app/scripts/lib/chat-failure-strings.test.mjs
 //
