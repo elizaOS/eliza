@@ -165,6 +165,79 @@ describe("TaskService injected clock", () => {
 		expect(getTasks).not.toHaveBeenCalled();
 	});
 
+	it.each(["stop", "prepareStop"] as const)(
+		"preserves a pending task when %s closes admission during validation",
+		async (method) => {
+			const { runtime, tasks, workers } = makeTaskRuntime();
+			const entered = Promise.withResolvers<void>();
+			const release = Promise.withResolvers<void>();
+			const execute = vi.fn(async () => undefined);
+			workers.set("PENDING", {
+				name: "PENDING",
+				shouldRun: async () => {
+					entered.resolve();
+					await release.promise;
+					return true;
+				},
+				execute,
+			});
+			const task: Task = {
+				id: "pending-task" as UUID,
+				name: "PENDING",
+				agentId: AGENT_ID,
+				tags: ["queue", "repeat"],
+				metadata: { updateInterval: 1 },
+			};
+			tasks.set(task.id as UUID, task);
+			const service = new TaskService(runtime, new DeterministicTaskClock(T0));
+			const tick = service.runTick([task]);
+			await entered.promise;
+			await service[method]();
+			release.resolve();
+			await tick;
+			expect(execute).not.toHaveBeenCalled();
+			expect(tasks.get(task.id as UUID)).toEqual(task);
+			await service.stop();
+		},
+	);
+
+	it("drains an executing task while preserving the next task for restart", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const entered = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<void>();
+		const second = vi.fn(async () => undefined);
+		workers.set("FIRST", {
+			name: "FIRST",
+			execute: async () => {
+				entered.resolve();
+				await release.promise;
+			},
+		});
+		workers.set("SECOND", { name: "SECOND", execute: second });
+		for (const name of ["FIRST", "SECOND"]) {
+			tasks.set(name, {
+				id: name as UUID,
+				name,
+				agentId: AGENT_ID,
+				tags: ["queue"],
+			});
+		}
+		const service = new TaskService(runtime, new DeterministicTaskClock(T0));
+		const tick = service.runTick(Array.from(tasks.values()));
+		await entered.promise;
+		let stopped = false;
+		const stopping = service.stop().then(() => {
+			stopped = true;
+		});
+		await Promise.resolve();
+		expect(stopped).toBe(false);
+		release.resolve();
+		await Promise.all([tick, stopping]);
+		expect(tasks.has("FIRST")).toBe(false);
+		expect(tasks.has("SECOND")).toBe(true);
+		expect(second).not.toHaveBeenCalled();
+	});
+
 	it.each([
 		["null", null],
 		["zero", 0],
