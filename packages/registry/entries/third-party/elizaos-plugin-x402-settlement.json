@@ -1,0 +1,9 @@
+{
+  "package": "elizaos-plugin-x402-settlement",
+  "repository": "github:Synaptics-Lab/elizaos-plugin-x402-settlement",
+  "kind": "plugin",
+  "description": "Pay-per-call cross-border settlement via x402 + ISO 20022. INITIATE_SETTLEMENT mints a corridor payment (fresh UETR) on XRPL TESTNET (altnet) and tracks the pacs.002 receipt; GET_SETTLEMENT fetches the settlement record. Every gateway call pays a real onchain-verified fee.",
+  "homepage": "https://github.com/Synaptics-Lab/elizaos-plugin-x402-settlement",
+  "version": "1.0.0",
+  "tags": ["payments", "x402", "iso20022", "xrpl", "cross-border", "settlement"]
+}
