@@ -4125,7 +4125,7 @@ async function inferUpdateEventDetails(
     "For a rename-only request, use null for startAt, endAt, location, description and timeZone.",
     "When the current event is part of a recurring series, set recurrenceScope to instance for only this occurrence, this_and_following for this occurrence and every later one, series for every occurrence including earlier ones, and use null when the user does not say.",
     "Only set recurrence when the user changes how the event repeats (e.g. switch to weekly, stop after 5 times).",
-    "If a requested change lacks a necessary detail (for example morning or afternoon without a clock time), return requiresInput:true and clarification describing what to ask. Do not guess a time unless the user explicitly delegates choosing it.",
+    "If a requested change lacks a necessary detail (for example morning or afternoon without a clock time), return requiresInput:true and clarification asking only for the missing detail. Do not claim free or busy times from earlier dialogue; only a fresh availability read can establish openings. Do not guess a time unless the user explicitly delegates choosing it.",
     "Return JSON only as a single object. No prose.",
     "",
     "title: new event title if changed",

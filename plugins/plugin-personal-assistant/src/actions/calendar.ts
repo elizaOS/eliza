@@ -2177,7 +2177,7 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
         },
       ],
       description:
-        "Reschedule or edit an existing event, including requests with an unspecified clock time: this tool resolves the current event and asks for missing timing before any write. Supply targetKind and target in this call, including follow-ups accepting a suggested time. No separate search is needed when the event is uniquely identified by query. Time changes check the proposed slot for conflicts before writing, excluding the event itself; conflicts or unknown availability pause the move. Use this tool directly for an authorized move conditional on the slot being free. title/details.newTitle are replacement names, not the target.",
+        "Apply a specified edit to an existing event. For a morning/afternoon window without an accepted clock time, use CALENDAR_PROPOSE_TIMES first to read current openings; this write tool is for the accepted time or another specified field change. Supply targetKind and target in this call, including follow-ups accepting a suggested time. No separate search is needed when the event is uniquely identified by query. Time changes check the proposed slot for conflicts before writing, excluding the event itself; conflicts or unknown availability pause the move. Use this tool directly for an authorized move conditional on the slot being free. title/details.newTitle are replacement names, not the target.",
     },
     propose_times: {
       description:
