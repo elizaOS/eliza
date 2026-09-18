@@ -217,12 +217,28 @@ function shouldLog(messageLevel: string, currentLevel: string): boolean {
  */
 function safeStringify(obj: unknown): string {
   try {
-    const seen = new WeakSet();
-    return JSON.stringify(obj, (_, value) => {
-      if (typeof value === "object" && value !== null) {
-        if (seen.has(value)) return "[Circular]";
-        seen.add(value);
+    // The replacer receives the holder as `this`, so the ancestor path can be
+    // rebuilt by popping until the holder is on top: only a value already on
+    // that path is circular. A value rendered before but not on the path is a
+    // shared reference; it is expanded again while the repeat budget lasts
+    // and marked `[Shared]` afterwards, so a wide graph of a few objects
+    // cannot expand into a multi-megabyte line (see MAX_SHARED_EXPANSIONS).
+    const ancestors: object[] = [];
+    const rendered = new WeakSet<object>();
+    let repeatBudget = MAX_SHARED_EXPANSIONS;
+    return JSON.stringify(obj, function replacer(this: unknown, _, value) {
+      if (typeof value !== "object" || value === null) return value;
+      while (ancestors.length > 0 && ancestors[ancestors.length - 1] !== this) {
+        ancestors.pop();
       }
+      if (ancestors.includes(value)) return CIRCULAR_VALUE;
+      if (rendered.has(value)) {
+        if (repeatBudget <= 0) return SHARED_VALUE;
+        repeatBudget -= 1;
+      } else {
+        rendered.add(value);
+      }
+      ancestors.push(value);
       return value;
     });
   } catch {
@@ -346,6 +362,18 @@ const REDACTED_VALUE = "[REDACTED]";
 const REDACTION_FAILED_VALUE = "[REDACTED: redaction failed]";
 /** Bound on recursion so a pathological payload cannot hang the process. */
 const MAX_REDACT_DEPTH = 8;
+const CIRCULAR_VALUE = "[Circular]";
+const SHARED_VALUE = "[Shared]";
+/**
+ * How many times a walk may expand an object it has already rendered once.
+ * Cycle detection tracks only the active ancestor path, so a shared subobject
+ * renders in full at each reference the way JSON.stringify renders a DAG; but
+ * the depth cap bounds depth, not fan-out, and a graph of nine objects where
+ * every key at every level points at the same next object has 8^8 reference
+ * paths. The budget keeps the walk and its rendered size proportional to the
+ * payload a caller can see; references past it render as `[Shared]`.
+ */
+const MAX_SHARED_EXPANSIONS = 256;
 
 /**
  * Separator-free substrings that mark an object key as holding a credential.
@@ -592,6 +620,24 @@ function redactSensitiveLogText(text: string): string {
   return next;
 }
 
+/** Per-walk bookkeeping for one top-level redaction. */
+interface RedactWalk {
+  /** Containers currently being walked; re-entering one is a cycle. */
+  ancestors: WeakSet<object>;
+  /** Containers already rendered once; a second reference is shared, not circular. */
+  rendered: WeakSet<object>;
+  /** Remaining expansions of already-rendered containers. */
+  repeatBudget: number;
+}
+
+function createRedactWalk(): RedactWalk {
+  return {
+    ancestors: new WeakSet<object>(),
+    rendered: new WeakSet<object>(),
+    repeatBudget: MAX_SHARED_EXPANSIONS,
+  };
+}
+
 /**
  * Deep-clone a log argument, masking every value under a credential-named key
  * at any depth. The clone is what gets logged, so redaction never mutates the
@@ -614,7 +660,7 @@ function redactSensitiveLogText(text: string): string {
  */
 function redactLogValue(
   value: unknown,
-  seen: WeakSet<object>,
+  walk: RedactWalk,
   depth: number,
 ): unknown {
   if (typeof value === "string") return redactSensitiveLogText(value);
@@ -623,19 +669,42 @@ function redactLogValue(
   // survive into a sink.
   if (typeof value === "function") return null;
   if (value === null || typeof value !== "object") return value;
-  if (seen.has(value)) return "[Circular]";
+  if (walk.ancestors.has(value)) return CIRCULAR_VALUE;
   if (depth >= MAX_REDACT_DEPTH) return REDACTED_VALUE;
-  seen.add(value);
+  // A reference is circular only when it re-enters a container still being
+  // walked. A container rendered earlier in this walk is a shared reference:
+  // it renders in full again while the repeat budget lasts, so an ordinary
+  // diamond reads correctly at both references, and as `[Shared]` afterwards,
+  // so a wide graph cannot expand exponentially. Self, mutual, array, and Map
+  // cycles still collapse to one marker per back-edge.
+  if (walk.rendered.has(value)) {
+    if (walk.repeatBudget <= 0) return SHARED_VALUE;
+    walk.repeatBudget -= 1;
+  }
+  walk.ancestors.add(value);
+  try {
+    return redactContainer(value, walk, depth);
+  } finally {
+    walk.ancestors.delete(value);
+    walk.rendered.add(value);
+  }
+}
 
+/** Clone one container `value` already on the ancestor path in `seen`. */
+function redactContainer(
+  value: object,
+  walk: RedactWalk,
+  depth: number,
+): unknown {
   if (value instanceof Error) {
     const clone = new Error(redactSensitiveLogText(value.message));
     clone.name = redactSensitiveLogText(value.name);
     if (value.stack) clone.stack = redactSensitiveLogText(value.stack);
     if (value.cause !== undefined) {
-      clone.cause = redactLogValue(value.cause, seen, depth + 1);
+      clone.cause = redactLogValue(value.cause, walk, depth + 1);
     }
     const target = clone as unknown as Record<string, unknown>;
-    redactOwnPropertiesInto(value, target, seen, depth + 1);
+    redactOwnPropertiesInto(value, target, walk, depth + 1);
     return clone;
   }
 
@@ -643,7 +712,7 @@ function redactLogValue(
     // Avoid the caller's potentially overridden `map` and species constructor.
     const result = new Array<unknown>(value.length);
     for (let index = 0; index < value.length; index += 1) {
-      result[index] = redactLogValue(value[index], seen, depth + 1);
+      result[index] = redactLogValue(value[index], walk, depth + 1);
     }
     return result;
   }
@@ -674,11 +743,11 @@ function redactLogValue(
     Map.prototype.forEach.call(
       value,
       (entryValue: unknown, entryKey: unknown) => {
-        const safeKey = redactLogValue(entryKey, seen, depth + 1);
+        const safeKey = redactLogValue(entryKey, walk, depth + 1);
         const safeValue =
           typeof entryKey === "string" && isSensitiveLogKey(entryKey)
             ? REDACTED_VALUE
-            : redactLogValue(entryValue, seen, depth + 1);
+            : redactLogValue(entryValue, walk, depth + 1);
         entries.push([safeKey, safeValue]);
       },
     );
@@ -690,7 +759,7 @@ function redactLogValue(
   if (value instanceof Set) {
     const values: unknown[] = [];
     Set.prototype.forEach.call(value, (entryValue: unknown) => {
-      values.push(redactLogValue(entryValue, seen, depth + 1));
+      values.push(redactLogValue(entryValue, walk, depth + 1));
     });
     const result = Object.create(null) as Record<string, unknown>;
     defineSafeProperty(result, "type", "Set");
@@ -705,7 +774,7 @@ function redactLogValue(
   // ever emits own enumerable properties anyway, and walking them here masks
   // credentials stashed on config/response wrappers (axios-style).
   const result = Object.create(null) as Record<string, unknown>;
-  redactOwnPropertiesInto(value, result, seen, depth + 1);
+  redactOwnPropertiesInto(value, result, walk, depth + 1);
   return result;
 }
 
@@ -734,7 +803,7 @@ function defineSafeProperty(
 function redactOwnPropertiesInto(
   source: object,
   target: Record<string, unknown>,
-  seen: WeakSet<object>,
+  walk: RedactWalk,
   depth: number,
 ): void {
   for (const key of Object.keys(source)) {
@@ -749,7 +818,7 @@ function redactOwnPropertiesInto(
       // can reconstitute the very secrets the walk just masked. JSON.stringify
       // omits function props anyway, so the clone drops them outright.
       if (typeof entry === "function") continue;
-      defineSafeProperty(target, key, redactLogValue(entry, seen, depth));
+      defineSafeProperty(target, key, redactLogValue(entry, walk, depth));
     } catch {
       // error-policy:J7 logging must never break the runtime; a throwing
       // getter fails closed on this one key, never emits the raw value.
@@ -769,7 +838,7 @@ function redactTrailingArgs(args: readonly unknown[]): unknown[] {
     if (arg === null || (typeof arg !== "object" && typeof arg !== "function"))
       return arg;
     try {
-      return redactLogValue(arg, new WeakSet<object>(), 0);
+      return redactLogValue(arg, createRedactWalk(), 0);
     } catch {
       // error-policy:J7 logging must never break the runtime; fail closed so
       // an unwalkable payload is marked, never emitted unredacted (W5-028).
@@ -1433,7 +1502,7 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
   // logger.child({ apiKey }) must not print the key on each subsequent line.
   let safeMeta: Record<string, unknown>;
   try {
-    safeMeta = redactLogValue(metaBase, new WeakSet<object>(), 0) as Record<
+    safeMeta = redactLogValue(metaBase, createRedactWalk(), 0) as Record<
       string,
       unknown
     >;
@@ -1565,7 +1634,7 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
       obj: Record<string, unknown>,
     ): Record<string, unknown> => {
       try {
-        return redactLogValue(obj, new WeakSet<object>(), 0) as Record<
+        return redactLogValue(obj, createRedactWalk(), 0) as Record<
           string,
           unknown
         >;
@@ -1736,7 +1805,7 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     obj: Record<string, unknown>,
   ): Record<string, unknown> => {
     try {
-      return redactLogValue(obj, new WeakSet<object>(), 0) as Record<
+      return redactLogValue(obj, createRedactWalk(), 0) as Record<
         string,
         unknown
       >;
