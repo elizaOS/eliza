@@ -2,7 +2,9 @@
  * Deterministic unit tests for the trigger-schedule humanizers: cron
  * recurrence phrasing, one-shot sender-local times, and interval descriptions.
  * Absolute instants and explicit IANA zones keep the assertions independent
- * of the test runner's host timezone.
+ * of the test runner's host timezone. The cron cases additionally drive the
+ * real scheduler (`computeNextCronRunAtMs`) so a claimed cadence is checked
+ * against the fire times it produces, not against a list of literal strings.
  */
 import { describe, expect, it } from "vitest";
 
@@ -11,8 +13,79 @@ import {
   describeIntervalMs,
   describeOnceAt,
 } from "./humanize.ts";
+import { computeNextCronRunAtMs } from "./scheduling.ts";
+
+/**
+ * Walk the real scheduler forward and return the gaps between consecutive
+ * fires, in minutes. The base is 23:00Z so the window crosses an hour
+ * boundary (and a day boundary) — that is where a minute-field step restarts
+ * and a literal "every N minutes" phrase stops being true.
+ */
+function measuredGapMinutes(expression: string, fires: number): number[] {
+  let cursor = Date.parse("2026-01-01T23:00:00Z");
+  const gaps: number[] = [];
+  for (let i = 0; i < fires; i++) {
+    const next = computeNextCronRunAtMs(expression, cursor, "UTC");
+    if (next === null) throw new Error(`no next run for ${expression}`);
+    gaps.push((next - cursor) / 60_000);
+    cursor = next;
+  }
+  return gaps;
+}
 
 describe("describeCronSchedule", () => {
+  it("only claims an every-N-minutes cadence when N divides 60", () => {
+    // A minute-field step restarts each hour, so the literal phrasing is only
+    // true for divisors of 60. The measured gaps behind each case are pinned
+    // by the next-run test below.
+    expect(describeCronSchedule("*/5 * * * *")).toBe("every 5 minutes");
+    expect(describeCronSchedule("*/15 * * * *")).toBe("every 15 minutes");
+    expect(describeCronSchedule("*/30 * * * *")).toBe("every 30 minutes");
+    expect(describeCronSchedule("*/1 * * * *")).toBe("every minute");
+
+    expect(describeCronSchedule("*/7 * * * *")).toBeNull();
+    expect(describeCronSchedule("*/25 * * * *")).toBeNull();
+    expect(describeCronSchedule("*/45 * * * *")).toBeNull();
+    expect(describeCronSchedule("*/59 * * * *")).toBeNull();
+    expect(describeCronSchedule("*/90 * * * *")).toBeNull();
+  });
+
+  it("matches the gaps computeNextCronRunAtMs actually produces", () => {
+    // The phrase is checked against the scheduler, not against a list of
+    // literal strings: a cadence may be claimed only when the measured gaps
+    // across the hour boundary are uniformly N minutes.
+    for (const n of [1, 5, 15, 30, 60, 7, 25, 45, 59, 61, 90]) {
+      const expression = `*/${n} * * * *`;
+      const gaps = measuredGapMinutes(expression, 12);
+      const uniform = gaps.every((gap) => gap === n);
+      const description = describeCronSchedule(expression);
+      if (uniform) {
+        expect(description).toBe(
+          n === 1 ? "every minute" : `every ${n} minutes`,
+        );
+      } else {
+        expect(description).toBeNull();
+      }
+    }
+
+    // The specific sequences, so a parser change that moves them fails here
+    // rather than silently re-validating the phrase against new behaviour.
+    // `*/59` expands to minutes 0 and 59 — it alternates 59 and 1, it is not
+    // hourly. Only steps above 59 collapse to minute 0 and fire hourly.
+    expect(measuredGapMinutes("*/59 * * * *", 6)).toEqual([
+      59, 1, 59, 1, 59, 1,
+    ]);
+    expect(measuredGapMinutes("*/45 * * * *", 4)).toEqual([45, 15, 45, 15]);
+    expect(measuredGapMinutes("*/25 * * * *", 6)).toEqual([
+      25, 25, 10, 25, 25, 10,
+    ]);
+    expect(measuredGapMinutes("*/7 * * * *", 9)).toEqual([
+      7, 7, 7, 7, 7, 7, 7, 7, 4,
+    ]);
+    expect(measuredGapMinutes("*/90 * * * *", 3)).toEqual([60, 60, 60]);
+    expect(measuredGapMinutes("*/30 * * * *", 4)).toEqual([30, 30, 30, 30]);
+  });
+
   it("maps daily crons onto time-of-day nouns", () => {
     expect(describeCronSchedule("0 8 * * *")).toBe("every morning at 8am");
     expect(describeCronSchedule("30 14 * * *")).toBe(
