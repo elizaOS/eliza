@@ -13,6 +13,8 @@ import type {
 	Component,
 	IAgentRuntime,
 	Memory,
+	Room,
+	World,
 } from "../../../types/index.ts";
 import { ServiceType } from "../../../types/index.ts";
 import { messageAction } from "./message.ts";
@@ -31,6 +33,11 @@ const baseMessage = {
 	agentId: AGENT_ID,
 	content: { text: "tell shadow to stop smoking", source: "discord" },
 	createdAt: 1,
+	// #25284: the umbrella resolves the caller's principal role before
+	// dispatching; the harness world that grants this sender ADMIN is
+	// resolved from the discord world-id metadata key (getRoom stays null in
+	// most harnesses so the entity-search path stays relationship-free).
+	metadata: { discordServerId: "00000000-0000-0000-0000-0000000000dd" },
 } as unknown as Memory;
 
 type SentMessage = {
@@ -73,7 +80,14 @@ describe("MESSAGE op=send exact-beats-prefix tier (ambiguity over-fire fix)", ()
 					resolveTargets,
 				},
 			],
+			// #25284: getRoom stays null (entity-search path must stay
+			// relationship-free); the granted harness world resolves via the
+			// baseMessage discordServerId metadata.
 			getRoom: async () => null,
+			getWorld: (async () => ({
+				id: "00000000-0000-0000-0000-0000000000dd",
+				metadata: { roles: { [SENDER_ID]: "ADMIN" } },
+			})) as IAgentRuntime["getWorld"],
 			getEntitiesForRoom: async () => [],
 			getEntityById: (async () => null) as IAgentRuntime["getEntityById"],
 			getRelationships: (async () => []) as IAgentRuntime["getRelationships"],
@@ -184,7 +198,14 @@ describe("MESSAGE op=send unresolved recipient asks upfront (no doomed send)", (
 					resolveTargets: async () => [],
 				},
 			],
+			// #25284: getRoom stays null (entity-search path must stay
+			// relationship-free); the granted harness world resolves via the
+			// baseMessage discordServerId metadata.
 			getRoom: async () => null,
+			getWorld: (async () => ({
+				id: "00000000-0000-0000-0000-0000000000dd",
+				metadata: { roles: { [SENDER_ID]: "ADMIN" } },
+			})) as IAgentRuntime["getWorld"],
 			getEntitiesForRoom: async () =>
 				matchingLiteralEntity ? [literalEntity] : [],
 			getEntityById: (async (id: string) =>
@@ -378,9 +399,26 @@ describe("MESSAGE op=send last-delivered-channel preference", () => {
 			}) as IAgentRuntime["getService"],
 			// The room's source has no registered connector, so the room-first
 			// member path stays out of the way and the entity path is exercised.
-			getRoom: async () => ({ id: ROOM_ID, name: "app", source: "app" }),
+			// #25284: the room carries the granted world so the caller resolves
+			// ADMIN (not the local-sender GUEST floor for source "app") before
+			// the entity-path op under test runs.
+			getRoom: (async () =>
+				({
+					id: ROOM_ID,
+					name: "app",
+					source: "app",
+					worldId: "00000000-0000-0000-0000-0000000000dd",
+				}) as Room) as IAgentRuntime["getRoom"],
 			getEntitiesForRoom: async () => [entity],
-			getWorld: (async () => null) as IAgentRuntime["getWorld"],
+			// #25284: this block exercises the channel-preference entity path,
+			// not the role floor; grant the harness sender ADMIN via the
+			// room's world so the USER floor admits the op under test.
+			getWorld: (async () =>
+				({
+					id: "00000000-0000-0000-0000-0000000000dd",
+					agentId: AGENT_ID,
+					metadata: { roles: { [SENDER_ID]: "ADMIN" } },
+				}) as World) as IAgentRuntime["getWorld"],
 			getEntityById: (async (id: string) =>
 				id === SHADOW_ID ? entity : null) as IAgentRuntime["getEntityById"],
 			getRelationships: (async () => []) as IAgentRuntime["getRelationships"],
@@ -490,7 +528,20 @@ describe("MESSAGE op=send admin/owner target (app + connector transports)", () =
 			agentId: AGENT_ID,
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
 			getMessageConnectors: () => [],
-			getRoom: async () => null,
+			// The harness world grants this sender ADMIN.
+			// #27932 review §2: send is no longer USER-admissible; the client_chat
+			// source registers no connector world-id metadata key, so the
+			// caller's ADMIN world resolves via the room's worldId here —
+			// getRoom returning a world-bearing room is deliberate in this
+			// harness; entity search itself stays relationship-free.
+			getRoom: async () => ({
+				id: ROOM_ID,
+				worldId: "00000000-0000-0000-0000-0000000000dd",
+			}),
+			getWorld: (async () => ({
+				id: "00000000-0000-0000-0000-0000000000dd",
+				metadata: { roles: { [SENDER_ID]: "ADMIN" } },
+			})) as IAgentRuntime["getWorld"],
 			getSetting: (() => undefined) as IAgentRuntime["getSetting"],
 			sendMessageToTarget: async (target, content) => {
 				sends.push({
@@ -553,7 +604,14 @@ describe("MESSAGE op=send admin/owner target (app + connector transports)", () =
 					resolveTargets,
 				},
 			],
+			// #25284: getRoom stays null (entity-search path must stay
+			// relationship-free); the granted harness world resolves via the
+			// baseMessage discordServerId metadata.
 			getRoom: async () => null,
+			getWorld: (async () => ({
+				id: "00000000-0000-0000-0000-0000000000dd",
+				metadata: { roles: { [SENDER_ID]: "ADMIN" } },
+			})) as IAgentRuntime["getWorld"],
 			getSetting: (() => undefined) as IAgentRuntime["getSetting"],
 			sendMessageToTarget: async (target, content) => {
 				sends.push({
@@ -665,9 +723,20 @@ describe("MESSAGE op=send delivery-claim ambiguity is judged on distinct destina
 					},
 				};
 			}) as IAgentRuntime["getService"],
-			getRoom: async () => ({ id: ROOM_ID, name: "app", source: "app" }),
+			// #27932 review §2: send is no longer USER-admissible; resolve the
+			// caller's ADMIN world via the room's worldId (getWorld returns the
+			// ADMIN world; entity search is otherwise relationship-free).
+			getRoom: async () => ({
+				id: ROOM_ID,
+				name: "app",
+				source: "app",
+				worldId: "00000000-0000-0000-0000-0000000000dd",
+			}),
 			getEntitiesForRoom: async () => [entity],
-			getWorld: (async () => null) as IAgentRuntime["getWorld"],
+			getWorld: (async () => ({
+				id: "00000000-0000-0000-0000-0000000000dd",
+				metadata: { roles: { [SENDER_ID]: "ADMIN" } },
+			})) as IAgentRuntime["getWorld"],
 			getEntityById: (async (id: string) =>
 				id === SHADOW_ID ? entity : null) as IAgentRuntime["getEntityById"],
 			getRelationships: (async () => []) as IAgentRuntime["getRelationships"],

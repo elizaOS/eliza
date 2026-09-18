@@ -423,15 +423,6 @@
           "descriptionCompressed": "draft id"
         },
         {
-          "name": "confirmed",
-          "description": "Whether the user explicitly confirmed sending for action=send_draft.",
-          "required": false,
-          "schema": {
-            "type": "boolean"
-          },
-          "descriptionCompressed": "send confirmed"
-        },
-        {
           "name": "sendAt",
           "description": "Scheduled send time for action=schedule_draft_send.",
           "required": false,
