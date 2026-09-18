@@ -107,7 +107,7 @@ describe("managed dedicated live-smoke workflow contract", () => {
     });
     expect(workflow.jobs.smoke.if).toBe(
       githubExpression(
-        "inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated' && inputs.suite != 'pi-linked-account'",
+        "inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated' && inputs.suite != 'pi-linked-account' && inputs.suite != 'remote-capabilities'",
       ),
     );
     expect(dedicated.if).toBe(

@@ -112,6 +112,65 @@ describe("direct provider authority", () => {
     },
   );
 
+  it.each(["openrouter-api", "xai-api"] as const)(
+    "keeps %s authenticated but rejects model IDs decoded from invalid UTF-8",
+    async (provider) => {
+      const bytes = new TextEncoder().encode(
+        JSON.stringify({ data: [{ id: "vendor/é" }] }),
+      );
+      const invalidAt = bytes.indexOf(0xc3);
+      expect(invalidAt).toBeGreaterThan(0);
+      bytes[invalidAt + 1] = 0x28;
+      vi.stubGlobal("fetch", async (url: string) => {
+        if (url.endsWith("/key")) return new Response("{}", { status: 200 });
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(bytes);
+              controller.close();
+            },
+          }),
+          { status: 200 },
+        );
+      });
+
+      const result = await probeDirectApiKey(provider, "synthetic-review-key");
+      expect(result).toEqual(
+        expect.objectContaining({
+          ok: true,
+          status: 200,
+          modelCatalogUnavailable: true,
+        }),
+      );
+      expect(result.modelIds).toBeUndefined();
+    },
+  );
+
+  it("decodes a valid multibyte model ID split across response chunks", async () => {
+    const id = "vendor/café/模型";
+    const bytes = new TextEncoder().encode(JSON.stringify({ data: [{ id }] }));
+    const splitAt = bytes.indexOf(0xc3) + 1;
+    expect(splitAt).toBeGreaterThan(1);
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(bytes.subarray(0, splitAt));
+              controller.enqueue(bytes.subarray(splitAt));
+              controller.close();
+            },
+          }),
+          { status: 200 },
+        ),
+    );
+
+    const result = await probeDirectApiKey("xai-api", "synthetic-review-key");
+    expect(result.modelIds).toEqual([id]);
+    expect(result.modelCatalogUnavailable).toBeUndefined();
+  });
+
   it("preserves complete model identifiers within the catalog byte boundary", async () => {
     const id = `vendor/${"long-model-name-".repeat(24)}`;
     vi.stubGlobal(

@@ -252,6 +252,11 @@ function hydrateWalletOsStoreFlagFromConfig(): void {
     return;
   }
 
+  if (process.env.ELIZA_WALLET_OS_STORE_DEV_DEFAULT?.trim() === "0") {
+    process.env.ELIZA_WALLET_OS_STORE = "0";
+    return;
+  }
+
   if (isNodePlatformSecureStoreDefaultAvailable()) {
     process.env.ELIZA_WALLET_OS_STORE = "1";
   }
@@ -1132,6 +1137,11 @@ export async function startApiServer(
   const upstreamStart = Date.now();
   const server = await upstreamStartApiServer({
     ...callerOptions,
+    onRuntimeActivated: async (previousRuntime, activeRuntime) => {
+      compatState.current = activeRuntime;
+      clearCompatRuntimeRestart(compatState);
+      await callerOptions?.onRuntimeActivated?.(previousRuntime, activeRuntime);
+    },
     requestMiddleware: async (req, res, next) => {
       await runCompatRequestPipeline(req, res, compatState, async () => {
         if (callerOptions?.requestMiddleware) {
@@ -1198,6 +1208,9 @@ export async function startApiServer(
   logger.info(
     `[eliza-api] upstreamStartApiServer took ${Date.now() - upstreamStart}ms`,
   );
+
+  compatState.runtimeOperations = server.runtimeOperations;
+  compatState.reloadConfigFromDisk = server.reloadConfigFromDisk;
 
   const originalUpdateRuntime = server.updateRuntime as (
     runtime: AgentRuntime,

@@ -3,9 +3,11 @@
  * documents into the prompt for the `documents` context. It pulls the
  * relevant fragments (via `DocumentService.searchDocuments`) plus the list
  * of available/recent documents (via `listDocuments`), rendering snippets and
- * document IDs the agent can cite or follow up to read. Returns an
+ * document IDs the agent can cite or follow up to read. Discovery-capable turns
+ * keep the complete index and pinned knowledge inline and read snippets on demand.
+ * The full provider result remains available for restoration and traces. Returns an
  * empty/unavailable payload when no `DocumentService` is registered. Gated to the
- * exact `documents` and `knowledge` contexts and a minimum `USER` role, with
+ * exact `documents` and `knowledge` contexts for resolved roles, with
  * per-turn cache scope.
  */
 
@@ -16,6 +18,7 @@ import {
 	type Provider,
 } from "../../types";
 import { addHeader } from "../../utils";
+import { isDocumentPinnedForRoom } from "./pinning.ts";
 import { DocumentService } from "./service.ts";
 import type { DocumentMetadataExtended } from "./types.ts";
 import { normalizeDocumentSourceValue } from "./utils.ts";
@@ -29,7 +32,10 @@ function getDocumentTitle(memory: Memory, index: number): string {
 		: `Document ${index + 1}`;
 }
 
-export function renderPinnedDocuments(documents: Memory[]): {
+export function renderPinnedDocuments(
+	documents: Memory[],
+	roomId?: Memory["roomId"],
+): {
 	text: string;
 	truncated: boolean;
 	includedIds: Array<Memory["id"]>;
@@ -39,7 +45,10 @@ export function renderPinnedDocuments(documents: Memory[]): {
 			const metadata = document.metadata as
 				| DocumentMetadataExtended
 				| undefined;
-			return metadata?.type === MemoryType.DOCUMENT && metadata.pinned === true;
+			return (
+				metadata?.type === MemoryType.DOCUMENT &&
+				isDocumentPinnedForRoom(document, roomId)
+			);
 		})
 		.sort((a, b) => {
 			const titleOrder = getDocumentTitle(a, 0).localeCompare(
@@ -89,7 +98,7 @@ export const documentsProvider: Provider = {
 	contextGate: { anyOf: ["documents", "knowledge"] },
 	cacheStable: false,
 	cacheScope: "turn",
-	roleGate: { minRole: "USER" },
+	roleGate: { minRole: "GUEST" },
 
 	get: async (runtime: IAgentRuntime, message: Memory) => {
 		const service = runtime.getService<DocumentService>(
@@ -109,7 +118,7 @@ export const documentsProvider: Provider = {
 
 		const { relevantFragments, documents, pinnedDocuments } =
 			await service.composeProviderDocuments(message);
-		const pinned = renderPinnedDocuments(pinnedDocuments);
+		const pinned = renderPinnedDocuments(pinnedDocuments, message.roomId);
 		const relevantSnippets = relevantFragments.map((fragment, index) => {
 			const metadata = fragment.metadata as
 				| DocumentMetadataExtended
@@ -164,8 +173,21 @@ export const documentsProvider: Provider = {
 			pinnedDocumentsTruncated: pinned.truncated,
 		};
 
+		// Pins are standing context, not optional retrieval. Only ordinary
+		// snippets participate in the existing authorized provider-read protocol.
+		const discoveryText = [
+			'context_discovery: DOCUMENTS\nDocument reference snippets are available in full. Read DOCUMENTS before answering from their contents: Stage 1 uses contextRequests=["DOCUMENTS"]; planning/completion use the existing provider-context restoration. Opening an app view or operating on Notes does not require document help snippets. Titles alone do not prove document contents.',
+			pinned.text
+				? `Pinned knowledge (always applicable):\n${pinned.text}`
+				: "",
+			recentText ? `Available documents (complete index):\n${recentText}` : "",
+		]
+			.filter(Boolean)
+			.join("\n\n");
+
 		return {
 			text,
+			...(relevantSnippets.length > 0 ? { discoveryText } : {}),
 			values: payload,
 			data: {
 				...payload,

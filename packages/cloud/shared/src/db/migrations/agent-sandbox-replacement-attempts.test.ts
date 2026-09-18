@@ -949,7 +949,9 @@ describe("0321-0328 and 0370-0371 agent sandbox replacement attempts", () => {
       provider_receipt_digest: DIGEST,
       cleanup_receipt_digest: CLEANUP_DIGEST,
     });
+  }, 15_000);
 
+  test("rejects Docker enrichment without the provider-start marker", async () => {
     const missingMarker = await database();
     await insertRestoreAttempt(missingMarker);
     await recordIntentLocator(missingMarker, `agent-restore-${AGENT_ID}-${RESTORE_ATTEMPT_ID}`);
@@ -962,7 +964,9 @@ describe("0321-0328 and 0370-0371 agent sandbox replacement attempts", () => {
         [DIGEST, ATTEMPT_ID],
       ),
     ).rejects.toThrow(/provider_start_shape_check/);
+  }, 15_000);
 
+  test("rejects a provider-start marker for legacy authority", async () => {
     const legacy = await database();
     await insertAttempt(legacy);
     await recordIntentLocator(legacy, `agent-${AGENT_ID}`);

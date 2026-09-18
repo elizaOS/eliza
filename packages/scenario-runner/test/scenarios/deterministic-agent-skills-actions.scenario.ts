@@ -3,12 +3,13 @@
  * deterministic routing fixtures; no network service participates.
  */
 
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
 } from "@elizaos/core/testing";
+import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { transientTurnEvaluationSeed } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
 
 const guidanceSlug = "scenario-guidance";
 const removableSlug = "scenario-removable";
@@ -133,6 +134,18 @@ export default scenario({
   isolation: "shared-runtime",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
   seed: [
+    transientTurnEvaluationSeed(
+      strictRoutes.map((route) => ({
+        input: route.input,
+        action: route.actionName,
+        completed: route.input !== uninstallText,
+        reason:
+          route.input === uninstallText
+            ? "Skill removal still requires owner confirmation."
+            : "The requested skill operation completed.",
+      })),
+      "Synthetic skill administration changes plugin state without asserting personal facts.",
+    ),
     {
       type: "custom",
       name: "seed local managed skills",

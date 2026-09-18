@@ -413,10 +413,10 @@ test("Dedicated funding rolls back with rejected lifecycle admission and binds r
     helpers.writeTransaction((tx) => compute.reserveInTransaction(tx, identity)),
   ]);
   expect(first.window.id).toBe(retry.window.id);
-  expect(first.window.hourly_rate).toBe("0.150000");
+  expect(first.window.hourly_rate).toBe("0.010000");
   expect([first.replayed, retry.replayed].sort()).toEqual([false, true]);
   const fundedState = await state();
-  expect(fundedState).toEqual({ balance: "2.950001", reservations: 3, debits: 4 });
+  expect(fundedState).toEqual({ balance: "3.230001", reservations: 3, debits: 4 });
   const provider = {
     ...identity,
     fundingId: first.window.id,
@@ -591,7 +591,7 @@ test("concurrent renewals exchange one hold, preserve source accounting, and req
     ...identity,
     fundingId: reserved.window.id,
     settledThrough: new Date(),
-    actualAmount: "0.150000",
+    actualAmount: "0.010000",
   };
   const [first, replay] = await Promise.all([
     helpers.writeTransaction((tx) => compute.renewInTransaction(tx, request)),
@@ -603,7 +603,7 @@ test("concurrent renewals exchange one hold, preserve source accounting, and req
   expect(first.window.provider_container_id).toBe(provider.containerId);
   expect(first.window.host_lease_confirmed_at).toBeNull();
   const after = await renewalState(org);
-  expect(after.balance).toEqual([{ credit_balance: "0.550000" }]);
+  expect(after.balance).toEqual([{ credit_balance: "0.970000" }]);
   expect(after.windows).toHaveLength(2);
   expect(after.reservations).toHaveLength(2);
   expect(after.ledger).toHaveLength(3);
@@ -616,8 +616,8 @@ test("concurrent renewals exchange one hold, preserve source accounting, and req
       }))
       .sort((a, b) => String(a.finalized).localeCompare(String(b.finalized))),
   ).toEqual([
-    { reserved: "0.300000", finalized: "0.000000", released: "0.000000" },
-    { reserved: "0.300000", finalized: "0.150000", released: "0.150000" },
+    { reserved: "0.020000", finalized: "0.000000", released: "0.000000" },
+    { reserved: "0.020000", finalized: "0.010000", released: "0.010000" },
   ]);
   await helpers.writeTransaction(async (tx) => {
     await expect(
@@ -647,14 +647,14 @@ test("concurrent renewals exchange one hold, preserve source accounting, and req
 });
 
 test("a caught failed renewal rolls back its allowance settlement, cash refund, and successor before the outer transaction commits", async () => {
-  // Leave half a cent of paid allowance and 29.5 cents of cash for the 30-cent hold.
+  // Leave half a cent of paid allowance and 1.5 cents of cash for the two-cent hold.
   await helpers.writeTransaction(async (tx) => {
     await funding.subscriptionFundingService.reserveInTransaction(tx, {
       ...input("compute:renewal-allowance-buffer", "24.995001"),
       organizationId: allowanceOrganizationId,
     });
     await funding.subscriptionFundingService.reserveInTransaction(tx, {
-      ...input("compute:renewal-cash-buffer", "9.705001"),
+      ...input("compute:renewal-cash-buffer", "9.985001"),
       organizationId: allowanceOrganizationId,
       operation: "unclassified",
     });
@@ -676,7 +676,7 @@ test("a caught failed renewal rolls back its allowance settlement, cash refund, 
         ...identity,
         fundingId: reserved.window.id,
         settledThrough: new Date(),
-        actualAmount: "0.150000",
+        actualAmount: "0.010000",
       }),
     ).rejects.toMatchObject({ code: funding.SUBSCRIPTION_FUNDING_INSUFFICIENT });
     // Prove the outer transaction remains usable after the rejected exchange.
@@ -799,15 +799,15 @@ test("a usage receipt must match one finalized funding source, its exact amount,
       [receiptOrg, agentId, amount, fundingId],
     );
   const before = await renewalState(org);
-  await expect(insert(open.id, "0.150000")).rejects.toThrow("agent billing receipt must match");
+  await expect(insert(open.id, "0.010000")).rejects.toThrow("agent billing receipt must match");
   await expect(insert(settled.id, "0.009000")).rejects.toThrow("agent billing receipt must match");
-  await expect(insert(settled.id, "0.150000", organizationId)).rejects.toThrow(
+  await expect(insert(settled.id, "0.010000", organizationId)).rejects.toThrow(
     "agent billing receipt must match",
   );
   await expect(
     fixture.query(
       `INSERT INTO agent_billing_records(organization_id,sandbox_id,sandbox_status,billing_period_start,billing_period_end,hourly_rate,amount,compute_funding_id)
-      SELECT organization_id,agent_id,'running',date_trunc('milliseconds',period_start),settled_through+interval '1 second',hourly_rate,'0.150000',id
+      SELECT organization_id,agent_id,'running',date_trunc('milliseconds',period_start),settled_through+interval '1 second',hourly_rate,'0.010000',id
       FROM agent_compute_funding WHERE id=$1`,
       [settled.id],
     ),
@@ -815,14 +815,14 @@ test("a usage receipt must match one finalized funding source, its exact amount,
   await expect(
     fixture.query(
       `INSERT INTO agent_billing_records(organization_id,sandbox_id,sandbox_status,billing_period_start,billing_period_end,hourly_rate,amount,compute_funding_id,credit_transaction_id)
-      SELECT organization_id,agent_id,'running',date_trunc('milliseconds',period_start),settled_through,hourly_rate,'0.150000',id,
+      SELECT organization_id,agent_id,'running',date_trunc('milliseconds',period_start),settled_through,hourly_rate,'0.010000',id,
         (SELECT id FROM credit_transactions WHERE organization_id=$2 LIMIT 1)
       FROM agent_compute_funding WHERE id=$1`,
       [settled.id, org],
     ),
   ).rejects.toThrow("agent_billing_records_funding_source_check");
-  await insert(settled.id, "0.150000");
-  await expect(insert(settled.id, "0.150000")).rejects.toThrow(
+  await insert(settled.id, "0.010000");
+  await expect(insert(settled.id, "0.010000")).rejects.toThrow(
     "agent_billing_records_compute_funding_idx",
   );
   expect(
@@ -832,7 +832,7 @@ test("a usage receipt must match one finalized funding source, its exact amount,
         [org],
       )
     ).rows,
-  ).toEqual([{ amount: "0.150000", credit_transaction_id: null, compute_funding_id: settled.id }]);
+  ).toEqual([{ amount: "0.010000", credit_transaction_id: null, compute_funding_id: settled.id }]);
   expect(await renewalState(org)).toEqual(before);
 });
 
@@ -914,8 +914,8 @@ test("the real hourly biller settles a funded hour once and commits its receipt 
   ]);
   const billed = outcomes.find((value) => value.status === "billed");
   expect(billed).toMatchObject({
-    amountDecimal: "0.150000",
-    newBalance: 0.55,
+    amountDecimal: "0.010000",
+    newBalance: 0.97,
     transactionId: `compute-funding:${provider.fundingId}`,
   });
   const after = await renewalState(org);
@@ -926,7 +926,7 @@ test("the real hourly biller settles a funded hour once and commits its receipt 
     [agentId],
   );
   expect(receipts.rows).toEqual([
-    { compute_funding_id: provider.fundingId, credit_transaction_id: null, amount: "0.150000" },
+    { compute_funding_id: provider.fundingId, credit_transaction_id: null, amount: "0.010000" },
   ]);
   const jobs = await fixture.query("SELECT * FROM jobs WHERE agent_id=$1", [agentId]);
   expect(jobs.rows).toHaveLength(1);
@@ -950,8 +950,8 @@ test("the real hourly biller settles a funded hour once and commits its receipt 
   expect(runItems.rows).toEqual([
     {
       action: "billed",
-      amount: "0.150000",
-      new_balance: "0.550000",
+      amount: "0.010000",
+      new_balance: "0.970000",
       transaction_id: `compute-funding:${provider.fundingId}`,
     },
   ]);
@@ -997,14 +997,14 @@ test("failed durable job delivery rolls back the hourly funding exchange, receip
   }
   expect(await agentBillingRepository.recordHourlyBilling(input)).toMatchObject({
     status: "billed",
-    amountDecimal: "0.150000",
+    amountDecimal: "0.010000",
   });
 });
 
 test("an unfundable hourly renewal preserves its confirmed paid time and existing hold", async () => {
   const { org, agentId, input, agentBillingRepository } = await billableFundedAgent(
     "000000000012",
-    "0.300000",
+    "0.020000",
   );
   const before = await renewalState(org);
   const outcome = await agentBillingRepository.recordHourlyBilling(input);
@@ -1027,7 +1027,7 @@ test("an unfundable hourly renewal preserves its confirmed paid time and existin
 });
 
 test("a paid-window stop is scheduled once and an explicit user stop makes it immediate", async () => {
-  const { org, agentId, input } = await billableFundedAgent("000000000063", "0.300000");
+  const { org, agentId, input } = await billableFundedAgent("000000000063", "0.020000");
   const migration = (name: string) =>
     readFile(new URL(`../../db/migrations/${name}`, import.meta.url), "utf8");
   const intentDDL = (await migration("0265_compute_billing_recovery.sql")).match(
@@ -1035,6 +1035,7 @@ test("a paid-window stop is scheduled once and an explicit user stop makes it im
   );
   if (!intentDDL) throw new Error("Missing canonical stop intent DDL");
   await fixture.exec(intentDDL[0]);
+  await fixture.exec(await migration("0397_prepared_stop_backup.sql"));
   try {
     for (const statement of (await migration("0334_billing_cancel_intent_authority.sql")).split(
       "--> statement-breakpoint",
@@ -1137,7 +1138,7 @@ test("a successful short activation collects its minimum once and records the us
     replayed: false,
     purchasedCreditRefunded: false,
   });
-  expect((await renewalState(org)).balance).toEqual([{ credit_balance: "0.700000" }]);
+  expect((await renewalState(org)).balance).toEqual([{ credit_balance: "0.980000" }]);
   expect(
     (
       await fixture.query(
@@ -1145,7 +1146,7 @@ test("a successful short activation collects its minimum once and records the us
         [agentId],
       )
     ).rows,
-  ).toEqual([{ amount: "0.300000", minimum_charge_amount: "0.297500", total_billed: "0.300000" }]);
+  ).toEqual([{ amount: "0.020000", minimum_charge_amount: "0.019833", total_billed: "0.020000" }]);
   const before = await renewalState(org);
   expect(await helpers.writeTransaction((tx) => settle(tx, request, receipt))).toMatchObject({
     replayed: true,
@@ -1153,30 +1154,30 @@ test("a successful short activation collects its minimum once and records the us
   expect(await renewalState(org)).toEqual(before);
 });
 
-test("hourly renewal carries only the unpaid activation minimum into the stop receipt", async () => {
+test("hourly renewal retains the unpaid activation minimum even when brief runtime rounds below one microdollar", async () => {
   const { org, agentId, identity, input, agentBillingRepository } = await billableFundedAgent(
     "000000000061",
     "1.000000",
   );
   expect(await agentBillingRepository.recordHourlyBilling(input)).toMatchObject({
     status: "billed",
-    amountDecimal: "0.150000",
+    amountDecimal: "0.010000",
   });
   const { rows } = await fixture.query<{ id: string; minimum_charge_remaining: string }>(
     "SELECT id,minimum_charge_remaining::text FROM agent_compute_funding WHERE agent_id=$1 AND settled_at IS NULL",
     [agentId],
   );
-  expect(rows[0]!.minimum_charge_remaining).toBe("0.150000");
-  const receipt = await stopReceiptFor(rows[0]!.id, new Date(input.now.getTime() + 1_000));
+  expect(rows[0]!.minimum_charge_remaining).toBe("0.010000");
+  const receipt = await stopReceiptFor(rows[0]!.id, new Date(input.now.getTime() + 1));
   const { settleStoppedAgentComputeInTransaction: settle } = await import("./agent-compute-stop");
   await helpers.writeTransaction((tx) =>
     settle(tx, { ...identity, fundingId: rows[0]!.id }, receipt),
   );
-  expect((await renewalState(org)).balance).toEqual([{ credit_balance: "0.700000" }]);
+  expect((await renewalState(org)).balance).toEqual([{ credit_balance: "0.980000" }]);
   expect(
     (await fixture.query("SELECT total_billed::text FROM agent_sandboxes WHERE id=$1", [agentId]))
       .rows,
-  ).toEqual([{ total_billed: "0.300000" }]);
+  ).toEqual([{ total_billed: "0.020000" }]);
   expect(
     (
       await fixture.query(
@@ -1184,7 +1185,7 @@ test("hourly renewal carries only the unpaid activation minimum into the stop re
         [agentId],
       )
     ).rows,
-  ).toEqual([{ charged: "0.300000" }]);
+  ).toEqual([{ charged: "0.020000" }]);
 });
 
 test("retained restarts use the current tariff while uninterrupted renewals keep the prior rate", async () => {
@@ -1194,11 +1195,11 @@ test("retained restarts use the current tariff while uninterrupted renewals keep
       "1.000000",
     );
     await fixture.query(
-      "UPDATE agent_compute_funding SET hourly_rate='0.010000',minimum_charge_remaining='0.020000' WHERE id=$1",
+      "UPDATE agent_compute_funding SET hourly_rate='0.005000',minimum_charge_remaining='0.010000' WHERE id=$1",
       [provider.fundingId],
     );
     await fixture.query(
-      "UPDATE compute_billing_rate_segments SET rate_per_hour='0.010000' WHERE workload_id=$1 AND billing_state='running'",
+      "UPDATE compute_billing_rate_segments SET rate_per_hour='0.005000' WHERE workload_id=$1 AND billing_state='running'",
       [agentId],
     );
     if (restart) {
@@ -1213,19 +1214,19 @@ test("retained restarts use the current tariff while uninterrupted renewals keep
       const resumed = await helpers.writeTransaction((tx) =>
         compute.reserveRetainedResumeInTransaction(tx, identity),
       );
-      expect(resumed?.window.hourly_rate).toBe("0.150000");
-      expect(resumed?.window.minimum_charge_remaining).toBe("0.300000");
+      expect(resumed?.window.hourly_rate).toBe("0.010000");
+      expect(resumed?.window.minimum_charge_remaining).toBe("0.020000");
     } else {
       const renewed = await helpers.writeTransaction((tx) =>
         compute.renewInTransaction(tx, {
           ...identity,
           fundingId: provider.fundingId,
           settledThrough: input.now,
-          actualAmount: "0.010000",
+          actualAmount: "0.005000",
         }),
       );
-      expect(renewed.window.hourly_rate).toBe("0.010000");
-      expect(renewed.window.minimum_charge_remaining).toBe("0.010000");
+      expect(renewed.window.hourly_rate).toBe("0.005000");
+      expect(renewed.window.minimum_charge_remaining).toBe("0.005000");
     }
     expect(
       (
@@ -1233,7 +1234,7 @@ test("retained restarts use the current tariff while uninterrupted renewals keep
           provider.fundingId,
         ])
       ).rows,
-    ).toEqual([{ hourly_rate: "0.010000" }]);
+    ).toEqual([{ hourly_rate: "0.005000" }]);
     expect(Number((await renewalState(org)).balance[0]!.credit_balance)).toBeGreaterThanOrEqual(0);
   }
 });
@@ -1251,7 +1252,7 @@ test("an activation that never becomes ready does not collect the minimum charge
   await helpers.writeTransaction((tx) =>
     settle(tx, { ...identity, fundingId: provider.fundingId }, receipt),
   );
-  expect((await renewalState(org)).balance).toEqual([{ credit_balance: "0.850000" }]);
+  expect((await renewalState(org)).balance).toEqual([{ credit_balance: "0.990000" }]);
   expect(
     (
       await fixture.query(
@@ -1259,7 +1260,7 @@ test("an activation that never becomes ready does not collect the minimum charge
         [agentId],
       )
     ).rows,
-  ).toEqual([{ amount: "0.150000", minimum_charge_amount: "0.000000" }]);
+  ).toEqual([{ amount: "0.010000", minimum_charge_amount: "0.000000" }]);
 });
 
 test("legacy stopped runtime refunds its unused hold atomically, including for an inactive account, without replaying the refund", async () => {
@@ -1307,7 +1308,7 @@ test("legacy stopped runtime refunds its unused hold atomically, including for a
     purchasedCreditRefunded: true,
   });
   const after = await renewalState(org);
-  expect(after.balance).toEqual([{ credit_balance: "0.850000" }]);
+  expect(after.balance).toEqual([{ credit_balance: "0.990000" }]);
   expect(after.ledger).toHaveLength(2);
   expect(
     (
@@ -1317,7 +1318,7 @@ test("legacy stopped runtime refunds its unused hold atomically, including for a
       )
     ).rows,
   ).toEqual([
-    { amount: "0.150000", compute_funding_id: provider.fundingId, credit_transaction_id: null },
+    { amount: "0.010000", compute_funding_id: provider.fundingId, credit_transaction_id: null },
   ]);
   expect(await helpers.writeTransaction((tx) => settle(tx, request, receipt))).toMatchObject({
     replayed: true,
@@ -1589,7 +1590,7 @@ test("delayed expiry separates the activation minimum from runtime ending at the
   await helpers.writeTransaction((tx) =>
     settle(tx, { ...identity, fundingId: provider.fundingId }, receipt),
   );
-  expect((await renewalState(org)).balance).toEqual([{ credit_balance: "0.700000" }]);
+  expect((await renewalState(org)).balance).toEqual([{ credit_balance: "0.980000" }]);
   expect(
     (
       await fixture.query(
@@ -1599,8 +1600,8 @@ test("delayed expiry separates the activation minimum from runtime ending at the
     ).rows,
   ).toEqual([
     {
-      amount: "0.300000",
-      minimum_charge_amount: "0.227500",
+      amount: "0.020000",
+      minimum_charge_amount: "0.015167",
       billing_period_end: rows[0]!.stopped_at,
     },
   ]);
@@ -1622,7 +1623,7 @@ test("revoking an undelivered successor after its predecessor stopped releases t
   await helpers.writeTransaction((tx) =>
     settle(tx, { ...identity, fundingId: current.id }, receipt),
   );
-  expect((await renewalState(org)).balance).toEqual([{ credit_balance: "0.850000" }]);
+  expect((await renewalState(org)).balance).toEqual([{ credit_balance: "0.990000" }]);
   expect(
     (
       await fixture.query("SELECT id FROM agent_billing_records WHERE compute_funding_id=$1", [
@@ -1669,7 +1670,7 @@ test("paid lease recovery cannot authorize an unreconciled legacy lifecycle tran
     ),
   ).toMatchObject({ status: "billed" });
   const after = await renewalState(org);
-  expect(after.balance).toEqual([{ credit_balance: "0.550000" }]);
+  expect(after.balance).toEqual([{ credit_balance: "0.970000" }]);
   expect(after.windows).toHaveLength(2);
   expect(after.reservations).toHaveLength(2);
 });
@@ -1717,7 +1718,7 @@ test("real provision rejects zero funds before provider allocation and cancels a
   expect(
     (await fixture.query("SELECT credit_balance::text FROM organizations WHERE id=$1", [org]))
       .rows[0],
-  ).toEqual({ credit_balance: "0.700000" });
+  ).toEqual({ credit_balance: "0.980000" });
   const { cancelUnboundAgentComputeInTransaction } = await import("./agent-compute-stop");
   const identity = {
     agentId,
@@ -1734,7 +1735,7 @@ test("real provision rejects zero funds before provider allocation and cancels a
   expect(
     (await fixture.query("SELECT credit_balance::text FROM organizations WHERE id=$1", [org]))
       .rows[0],
-  ).toEqual({ credit_balance: "0.700000" });
+  ).toEqual({ credit_balance: "0.980000" });
   expect(await reconcileFailedProvisionCompute(agentId, org, paid.window.id)).toMatchObject({
     replayed: false,
     purchasedCreditRefunded: true,
@@ -1804,7 +1805,7 @@ test("expired provisioning survives a lost worker, rolls back refunds atomically
   expect(
     (await fixture.query("SELECT credit_balance::text FROM organizations WHERE id=$1", [org]))
       .rows[0],
-  ).toEqual({ credit_balance: "0.700000" });
+  ).toEqual({ credit_balance: "0.980000" });
   expect(
     (
       await fixture.query("SELECT settled_at FROM agent_compute_funding WHERE id=$1", [
@@ -1847,7 +1848,7 @@ test("expired provisioning survives a lost worker, rolls back refunds atomically
   expect(
     (await fixture.query("SELECT credit_balance::text FROM organizations WHERE id=$1", [org]))
       .rows[0],
-  ).toEqual({ credit_balance: "0.700000" });
+  ).toEqual({ credit_balance: "0.980000" });
   expect(
     (
       await fixture.query(
@@ -2507,7 +2508,7 @@ if (sshFixturePath) {
       );
       const { compute, provider } = await billableFundedAgent(
         suffix,
-        billingScenario ? "0.300000" : "1.000000",
+        billingScenario ? "0.020000" : "1.000000",
         {
           nodeId,
           containerId,
@@ -2704,6 +2705,7 @@ if (sshFixturePath) {
           );
           if (!intentDDL) throw new Error("Missing canonical stop intent DDL");
           await fixture.exec(intentDDL[0]);
+          await fixture.exec(await migration("0397_prepared_stop_backup.sql"));
           ownsBillingIntentTable = true;
           for (const statement of (
             await migration("0334_billing_cancel_intent_authority.sql")
@@ -3028,7 +3030,7 @@ if (sshFixturePath) {
             (
               await fixture.query(
                 "SELECT o.credit_balance+a.total_billed=$2::numeric AS reconciled FROM organizations o JOIN agent_sandboxes a ON a.organization_id=o.id WHERE a.id=$1",
-                [agentId, billingScenario ? "0.300000" : "1.000000"],
+                [agentId, billingScenario ? "0.020000" : "1.000000"],
               )
             ).rows[0]?.reconciled,
           ).toBe(true);
@@ -4081,7 +4083,7 @@ for (const upgrade of [false, true]) {
     );
     const migration = await readFile(
       new URL(
-        "../../db/migrations/0395_provider_unconfirmed_deletion_billing.sql",
+        "../../db/migrations/0396_provider_unconfirmed_deletion_billing.sql",
         import.meta.url,
       ),
       "utf8",
@@ -4107,6 +4109,11 @@ for (const upgrade of [false, true]) {
         settle(tx, { ...identity, fundingId: provider.fundingId }, receipt),
       );
       const stopped = await renewalState(org);
+      const stoppedBilling = await fixture.query<{ total_billed: string }>(
+        "SELECT total_billed::text FROM agent_sandboxes WHERE id=$1",
+        [agentId],
+      );
+      expect(stoppedBilling.rows).toHaveLength(1);
       expect(stopped.windows[0]).toMatchObject({
         provider_stopped_at: expect.any(Date),
         settled_through: expect.any(Date),
@@ -4165,7 +4172,7 @@ for (const upgrade of [false, true]) {
           status: "deletion_pending",
           deletion_previous_status: null,
           deletion_owned: true,
-          total_billed: "0.300000",
+          total_billed: stoppedBilling.rows[0]!.total_billed,
         },
       ]);
       const latest = await fixture.query(
@@ -4260,10 +4267,17 @@ test("funded readiness preserves the contracted rate through lifecycle publicati
     "ALTER TABLE compute_billing_rate_segments ALTER COLUMN id SET DEFAULT gen_random_uuid()",
   );
   const migration = await readFile(
-    new URL("../../db/migrations/0395_provider_unconfirmed_deletion_billing.sql", import.meta.url),
+    new URL("../../db/migrations/0396_provider_unconfirmed_deletion_billing.sql", import.meta.url),
     "utf8",
   );
   const { org, agentId, provider } = await billableFundedAgent("000000000095", "1.000000");
+  const funding = await fixture.query<{ hourly_rate: string }>(
+    "SELECT hourly_rate::text FROM agent_compute_funding WHERE id=$1",
+    [provider.fundingId],
+  );
+  expect(funding.rows).toHaveLength(1);
+  const contractedRate = funding.rows[0]!.hourly_rate;
+  expect(Number(contractedRate)).toBeGreaterThan(0);
   const { recordFundedComputeStartInTransaction } = await import("./agent-compute-start");
   const { settleComputeRateSegments } = await import(
     "../../db/repositories/compute-billing-segments"
@@ -4298,14 +4312,14 @@ test("funded readiness preserves the contracted rate through lifecycle publicati
       }),
     );
     // A one-hour interval at the committed tariff must not inherit the old legacy trigger price.
-    expect(meter.amount.toFixed(6)).toBe("0.150000");
+    expect(meter.amount.toFixed(6)).toBe(contractedRate);
     expect(meter.segments.every((segment) => segment.state === "running")).toBe(true);
     // Upgrade a live legacy-priced tail without rewriting previously recorded usage.
     await fixture.query(
       `INSERT INTO compute_billing_rate_segments
       (organization_id,workload_kind,workload_id,lifecycle_revision,billing_state,rate_per_hour,effective_at)
-      VALUES ($1,'agent',$2,1,'running',0.01,clock_timestamp()+interval '2 milliseconds')`,
-      [org, agentId],
+      VALUES ($1,'agent',$2,1,'running',$3::numeric / 2,clock_timestamp()+interval '2 milliseconds')`,
+      [org, agentId, contractedRate],
     );
     const before = (
       await fixture.query(
@@ -4313,6 +4327,7 @@ test("funded readiness preserves the contracted rate through lifecycle publicati
         [agentId],
       )
     ).rows;
+    expect(before.at(-1)?.rate_per_hour).not.toBe(contractedRate);
     await fixture.exec(migration);
     const corrected = (
       await fixture.query(
@@ -4321,7 +4336,10 @@ test("funded readiness preserves the contracted rate through lifecycle publicati
       )
     ).rows;
     expect(corrected.slice(0, before.length)).toEqual(before);
-    expect(corrected.at(-1)).toMatchObject({ billing_state: "running", rate_per_hour: "0.150000" });
+    expect(corrected.at(-1)).toMatchObject({
+      billing_state: "running",
+      rate_per_hour: contractedRate,
+    });
     await fixture.exec(migration);
     expect(
       (

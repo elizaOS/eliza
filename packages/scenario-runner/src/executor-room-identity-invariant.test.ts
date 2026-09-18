@@ -65,6 +65,7 @@ function createIdentityRuntime(
     createEntity: vi.fn(async () => true),
     getRelationships: vi.fn(async () => []),
     createRelationship: vi.fn(async () => true),
+    getTasksByName: async () => [],
     getService: vi.fn(() => null),
     reportError: vi.fn(),
     setSetting: vi.fn((key: string, value: unknown) => {

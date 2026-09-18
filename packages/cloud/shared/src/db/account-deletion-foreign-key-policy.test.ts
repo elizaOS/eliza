@@ -169,6 +169,20 @@ describe("account deletion full-schema foreign-key policy", () => {
     ]);
   });
 
+  test("retains the billing identity obligation after an operational agent is deleted", () => {
+    const subject = listAccountDeletionForeignKeys().find(
+      ({ sourceTable }) => sourceTable === "agent_compute_subjects",
+    );
+    expect(subject).toEqual({
+      sourceTable: "agent_compute_subjects",
+      sourceColumns: "organization_id",
+      targetTable: "organizations",
+      targetColumns: "id",
+      onDelete: "restrict",
+    });
+    expect(classifyAccountDeletionForeignKey(subject!)).toBe("anonymize_retained_record");
+  });
+
   test("rejects an unknown restrictive relationship", () => {
     let failure: unknown;
     try {

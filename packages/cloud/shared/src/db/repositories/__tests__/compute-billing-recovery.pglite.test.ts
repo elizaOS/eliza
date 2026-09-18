@@ -56,7 +56,7 @@ import { installOrganizationPolicyTestSchema } from "../organization-policy-test
 
 const PGLITE_TIMEOUT = 60_000;
 const deletionBillingMigration = readFileSync(
-  new URL("../../migrations/0395_provider_unconfirmed_deletion_billing.sql", import.meta.url),
+  new URL("../../migrations/0396_provider_unconfirmed_deletion_billing.sql", import.meta.url),
   "utf8",
 ).replaceAll("--> statement-breakpoint", "");
 let ready = true;

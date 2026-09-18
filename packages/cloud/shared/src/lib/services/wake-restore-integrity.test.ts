@@ -31,6 +31,7 @@ import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { agentBackupObjects } from "../../db/schemas/agent-backup-catalog";
 import { agentComputeFunding } from "../../db/schemas/agent-compute-funding";
+import { agentComputeSubjects } from "../../db/schemas/agent-compute-subjects";
 import { agentNodeIncarnationHistories } from "../../db/schemas/agent-node-incarnation-histories";
 import {
   type AgentBackupStateData,
@@ -197,6 +198,7 @@ beforeAll(async () => {
       agentBackupObjects,
       billingFundingReservations,
       agentComputeFunding,
+      agentComputeSubjects,
     };
     const { statementsToExecute } = await pushSchema(schema as never, dbWrite as never);
     // Drizzle push emits cross-table FKs before unique indexes on newly

@@ -187,7 +187,7 @@ async function postProvision() {
         method: "POST",
         headers: {
           "X-Eliza-Dedicated-Price":
-            "dedicated-compute-v1:USD:0.150000:0.300000",
+            "dedicated-compute-v1:USD:0.010000:0.020000",
         },
       },
     ),

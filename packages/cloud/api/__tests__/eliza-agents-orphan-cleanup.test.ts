@@ -1,5 +1,10 @@
-// Exercises cloud API agent orphan deletion behavior with deterministic Worker route fixtures.
+/** Exercises cloud API agent orphan deletion behavior with deterministic Worker route fixtures. */
+
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  DEDICATED_COMPUTE_PRICE_HEADER,
+  getDedicatedComputePriceAcceptance,
+} from "@elizaos/cloud-sdk/browser-contracts";
 import {
   AgentImageNotAllowedError,
   AgentQuotaExceededError,
@@ -138,7 +143,7 @@ function postAgent() {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "X-Eliza-Dedicated-Price": "dedicated-compute-v1:USD:0.150000:0.300000",
+        [DEDICATED_COMPUTE_PRICE_HEADER]: getDedicatedComputePriceAcceptance(),
         "X-API-Key": "test-key",
       },
       body: JSON.stringify({

@@ -129,6 +129,8 @@ jobs:
       - name: Setup Bun release tooling
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
@@ -252,6 +254,8 @@ jobs:
       - name: Setup Bun workspace
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "true"

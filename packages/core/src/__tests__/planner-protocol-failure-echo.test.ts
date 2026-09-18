@@ -260,6 +260,15 @@ describe("protocol-failure recovery never promotes raw result.text", () => {
 						effectReceiptIds: [],
 					}),
 				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"The supplied task-history read supports the count and active states.",
+					}),
+				},
 			],
 		});
 
@@ -296,6 +305,7 @@ describe("protocol-failure recovery never promotes raw result.text", () => {
 			String(ModelType.ACTION_PLANNER),
 			String(ModelType.ACTION_PLANNER),
 			String(ModelType.TEXT_LARGE),
+			String(ModelType.TEXT_SMALL),
 			String(ModelType.TEXT_SMALL),
 		]);
 

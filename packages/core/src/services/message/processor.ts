@@ -20,13 +20,18 @@ import { TurnAbortedError } from "../../runtime/turn-controller";
 import { getStreamingContext } from "../../streaming-context";
 import { getTrajectoryContext } from "../../trajectory-context";
 import { withEvaluatorStep } from "../../trajectory-utils";
-import type { ActionResult, HandlerCallback } from "../../types/components";
+import type {
+	ActionResult,
+	HandlerCallback,
+	MessageHandlerExtract,
+} from "../../types/components";
 import type { Room } from "../../types/environment";
 import { EventType } from "../../types/events";
 import type { Memory } from "../../types/memory";
 import type {
 	ContextRoutedResponseDecision,
 	MessageProcessingResult,
+	MessageReplyRecoveryContext,
 	MessageTerminalFailure,
 } from "../../types/message-service";
 import { ModelType } from "../../types/model";
@@ -65,6 +70,7 @@ import { sanitizeAttachmentsForStorage } from "./attachment-input.js";
 import type { MessageAttachments } from "./attachments.js";
 import { runBotGroupAddressGate, runBotLoopGate } from "./bot-loop-gate";
 import { runBotNoiseTriage } from "./bot-noise-triage";
+import { createV5MessageContextObject } from "./context-assembly.js";
 import type {
 	ResolvedMessageOptions,
 	ResponseHandlerEarlyReplyEvent,
@@ -72,6 +78,7 @@ import type {
 	StrategyResult,
 } from "./contracts.js";
 import {
+	captureMessageReplyRecovery,
 	enforceEffectGroundedVisibleContent,
 	enforceTrustedDeliveryAudienceAtEgress,
 	enforceTrustedDeliveryAudienceOnResult,
@@ -567,6 +574,21 @@ export class MessageProcessor {
 		// Compose initial state (after incoming hooks so providers/actions text matches this turn)
 		let state = await composeResponseState(runtime, message);
 		state = attachAvailableContexts(state, runtime);
+		const responseRole =
+			getTrajectoryContext()?.userRole ??
+			(await resolveStage1SenderRole(runtime, message));
+		const originalReplyRecovery = captureMessageReplyRecovery(
+			runtime,
+			message,
+			await createV5MessageContextObject({
+				runtime,
+				message,
+				state,
+				userRoles: [responseRole],
+				includeTools: false,
+			}),
+		);
+		opts.prepareReplyRecovery = async () => originalReplyRecovery;
 
 		const metadata =
 			typeof message.content.metadata === "object" &&
@@ -597,6 +619,7 @@ export class MessageProcessor {
 		let _usedV5Runtime = false;
 		let stage1DecidedRespond = false;
 		let stage1RiskGateApplied = false;
+		let stage1Extract: MessageHandlerExtract | undefined;
 		const earlyReplyMessages: Memory[] = [];
 		const persistedEarlyReplyIds = new Set<string>();
 		const voiceResponseHandlerFastPath = isVoiceChannelMessage(message);
@@ -698,6 +721,8 @@ export class MessageProcessor {
 						runtime,
 						message,
 						earlyContent,
+						undefined,
+						async () => opts.prepareReplyRecovery?.(),
 					);
 					earlyContent = await enforceTrustedDeliveryAudienceAtEgress(
 						runtime,
@@ -773,6 +798,17 @@ export class MessageProcessor {
 		}
 
 		if (!strategyResult && hasTextGenerationHandler(runtime)) {
+			let hasSettledEffectEvidence = false;
+			const onSettledActionResult = (result: ActionResult) => {
+				// Any recorded mutation outcome (including a rollback or uncertain
+				// commit) makes the pre-action state unsuitable for failure prose.
+				// The caller retains the complete results and resolves their status;
+				// this boundary must not reinterpret them as a successful commit.
+				hasSettledEffectEvidence ||=
+					(result.effectReceipts?.length ?? 0) > 0 ||
+					result.data?.reconciliationRequired === true;
+				opts.onSettledActionResult?.(result);
+			};
 			if (isAutonomous) {
 				runtime.logger.debug(
 					{ src: "service:message", autonomyMode },
@@ -797,12 +833,11 @@ export class MessageProcessor {
 								? { roomHandlerLease: opts.roomHandlerLease }
 								: {}),
 							runTerminalOwner,
-							...(opts.onSettledActionResult
-								? {
-										onSettledActionResult: opts.onSettledActionResult,
-									}
-								: {}),
+							onSettledActionResult,
 							onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
+							onReplyRecoveryPrepared: (prepare) => {
+								opts.prepareReplyRecovery = prepare;
+							},
 							onStage1RespondDecision: () => {
 								stage1DecidedRespond = true;
 							},
@@ -816,6 +851,7 @@ export class MessageProcessor {
 					),
 				]);
 				stage1RiskGateApplied = outcome.kind !== "terminal";
+				stage1Extract = outcome.messageHandler.extract;
 				const routedContexts = outcome.messageHandler.plan.contexts;
 				routedDecision =
 					routedContexts.length > 0
@@ -861,6 +897,12 @@ export class MessageProcessor {
 					// Effects may be committed: preserve the typed delivery failure for
 					// the caller's settled-result handling, never synthesize an apology
 					// from the pre-action state or invite a duplicate mutation.
+					throw error;
+				}
+				if (hasSettledEffectEvidence) {
+					// Preserve the original unexpected failure for the caller's
+					// settled-result boundary. Do not make another model call from
+					// pre-action state or invite replay of a completed mutation.
 					throw error;
 				}
 				const errMsg = error instanceof Error ? error.message : String(error);
@@ -1088,6 +1130,7 @@ export class MessageProcessor {
 			Array.from(persistedEarlyReplyIds, (id) => id as UUID),
 		);
 		let actionResults: ActionResult[] | undefined;
+		let replyRecovery: MessageReplyRecoveryContext | undefined;
 		let terminalFailure: MessageTerminalFailure | undefined;
 		let mode: StrategyMode = "none";
 
@@ -1116,6 +1159,11 @@ export class MessageProcessor {
 					: result.responseMessages;
 			state = result.state;
 			actionResults = result.actionResults;
+			replyRecovery = result.replyRecovery;
+			if (replyRecovery) {
+				const savedRecovery = replyRecovery;
+				opts.prepareReplyRecovery = async () => savedRecovery;
+			}
 			terminalFailure = result.terminalFailure;
 			mode = result.mode;
 
@@ -1267,6 +1315,8 @@ export class MessageProcessor {
 							runtime,
 							message,
 							deliverableResponseContent,
+							undefined,
+							async () => opts.prepareReplyRecovery?.(),
 						);
 					deliverableResponseContent =
 						await enforceTrustedDeliveryAudienceAtEgress(
@@ -1503,24 +1553,20 @@ export class MessageProcessor {
 				responseMessages,
 			));
 
-		// Post-turn evaluation runs first as one structured call over registered
-		// evaluator items. ALWAYS_AFTER actions remain available for plugin hooks
-		// that are not part of the unified evaluator service.
+		// Post-turn evaluation durably queues replay-safe memory extraction. Legacy
+		// evaluators and ALWAYS_AFTER plugin hooks retain their ordered boundary.
 		const didRespondGate =
 			shouldRespondToMessage && !isStopResponse(responseContent);
 		const semanticSignal = hasPostTurnSemanticSignal(
 			message,
 			state,
 			responseContent,
+			stage1Extract,
 		);
-		// Post-turn work is never part of connector completion. It owns one real
-		// evaluator child step, and the run terminal follows in the same detached
-		// barrier so the parent cannot close while that child's telemetry is still
-		// being written. Child failure is reported at that barrier, which still
-		// releases the trajectory exactly once after the child settles. Fact,
-		// preference and ALWAYS_AFTER writes are room state, not diagnostics;
-		// retain ordering until their processors support conflict-safe commits.
-		runTerminalOwner.track("post_turn", async () => {
+		// Delivery settlement precedes the durable enqueue. The foreground trajectory
+		// waits for enqueueing and ordered legacy/hooks; TaskService owns subsequent
+		// memory inference in a separate trajectory and reacquires the room to write.
+		runTerminalOwner.trackAfterDelivery("post_turn", async () => {
 			if (actionResults?.some((result) => result.replyFailure !== undefined)) {
 				// The action already settled and response generation is unavailable.
 				// Close the run without another evaluation/model or action hook.
@@ -1623,6 +1669,7 @@ export class MessageProcessor {
 					}
 				: {}),
 			...(actionResults ? { actionResults } : {}),
+			...(replyRecovery ? { replyRecovery } : {}),
 			...(terminalFailure ? { terminalFailure } : {}),
 			state,
 			mode,

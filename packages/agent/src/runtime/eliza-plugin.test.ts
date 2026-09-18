@@ -69,6 +69,15 @@ describe("createElizaPlugin — structure & service wiring", () => {
     expect((plugin.actions ?? []).length).toBeGreaterThan(0);
   });
 
+  it("does not advertise model-authored chat widgets or generative UI", () => {
+    const names = createElizaPlugin().providers?.map(
+      (provider) => provider.name,
+    );
+    for (const name of ["uiWidgetCapabilities", "uiWidgets", "uiGenerative"]) {
+      expect(names).not.toContain(name);
+    }
+  });
+
   it("registers MemoryRetentionService (the append-only-store bound)", () => {
     const plugin = createElizaPlugin({ workspaceDir: "/tmp/ws", agentId: "u" });
     expect(plugin.services).toContain(MemoryRetentionService);
@@ -224,12 +233,59 @@ describe("promoted MEMORY tool contracts", () => {
       validateToolArgs(actionNamed("MEMORY_DELETE"), { memoryId }).valid,
     ).toBe(false);
     expect(
-      validateToolArgs(actionNamed("MEMORY_SEARCH"), { query: "Silver Heron" })
-        .valid,
+      validateToolArgs(actionNamed("MEMORY_SEARCH"), {
+        query: "Silver Heron",
+        author: "any",
+      }).valid,
     ).toBe(true);
     expect(
       actionNamed("MEMORY").parameters?.find((p) => p.name === "text")
         ?.required,
+    ).toBe(false);
+  });
+
+  it("requires explicit authorship on the registered search tool", () => {
+    const search = actionNamed("MEMORY_SEARCH");
+    // An omitted scope must not execute a broad search when the user asked
+    // for their original statements rather than assistant restatements.
+    expect(
+      validateToolArgs(search, { query: "Mira", limit: 10 }).errors,
+    ).toContain("Missing required argument 'author'");
+    for (const author of ["requester", "assistant", "any"]) {
+      expect(validateToolArgs(search, { author, query: "Mira" }).valid).toBe(
+        true,
+      );
+    }
+    expect(
+      validateToolArgs(actionNamed("MEMORY"), {
+        action: "search",
+        query: "Mira",
+      }).valid,
+    ).toBe(true);
+    expect(
+      validateToolArgs(search, { author: "everyone", query: "Mira" }).valid,
+    ).toBe(false);
+    expect(
+      validateToolArgs(search, {
+        author: "requester",
+        query: "Mira",
+        queryMode: "literal",
+      }).valid,
+    ).toBe(true);
+    expect(
+      validateToolArgs(search, {
+        author: "requester",
+        query: "Mira",
+        queryMode: "regex",
+      }).valid,
+    ).toBe(false);
+    expect(
+      actionNamed("MEMORY_DELETE").parameters?.some((p) => p.name === "author"),
+    ).toBe(false);
+    expect(
+      actionNamed("MEMORY_DELETE").parameters?.some(
+        (p) => p.name === "queryMode",
+      ),
     ).toBe(false);
   });
 

@@ -189,7 +189,9 @@ export function stripAssistantStageDirections(input: string): string {
   let normalized = input;
   normalized = stripWrappedStageDirections(normalized, /\*([^*\n]+)\*/g);
   normalized = stripWrappedStageDirections(normalized, /_([^_\n]+)_/g);
-  return tidyAssistantTextSpacing(normalized);
+  // Ordinary replies may contain exact quotes or code indentation. Only tidy
+  // spacing introduced when a stage direction was actually removed.
+  return normalized === input ? input : tidyAssistantTextSpacing(normalized);
 }
 
 export function isClientVisibleNoResponse(text: string): boolean {

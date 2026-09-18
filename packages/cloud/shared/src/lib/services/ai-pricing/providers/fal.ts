@@ -18,7 +18,7 @@ import { buildMusicSnapshotEntries } from "./suno";
 
 function extractFalPricingParagraph(html: string): string {
   const match = html.match(
-    /(?:For every second of video.*?<\/p>|Your request will cost.*?<\/p>|For a 5s video without audio.*?<\/p>)/is,
+    /(?:For every second of video.*?<\/p>|Your request will cost.*?<\/p>|For a 5s video without audio.*?<\/p>|Video costs.*?<\/p>)/is,
   );
 
   if (!match) {
@@ -181,6 +181,26 @@ export function parseFalPricingEntries(
         buildFalEntry(model, "second", Number(match[4]), {
           resolution: "1080p",
           audio: false,
+        }),
+      );
+      break;
+    }
+    case "h3_max": {
+      const match = paragraph.match(
+        /Video costs\s+\$([\d.]+)\s+per second at 480p,\s+\$([\d.]+)\s+per second at 768p/i,
+      );
+      if (!match) {
+        throw new Error(`Unable to parse MiniMax H3 Max pricing paragraph: ${paragraph}`);
+      }
+
+      entries.push(
+        buildFalEntry(model, "second", Number(match[1]), {
+          resolution: "480P",
+        }),
+      );
+      entries.push(
+        buildFalEntry(model, "second", Number(match[2]), {
+          resolution: "768P",
         }),
       );
       break;

@@ -2652,14 +2652,21 @@
       "idx": 378,
       "version": "7",
       "when": 1796083200022,
-      "tag": "0395_provider_unconfirmed_deletion_billing",
+      "tag": "0395_app_creator_settlement_endpoints",
       "breakpoints": true
     },
     {
       "idx": 379,
       "version": "7",
       "when": 1796083200023,
-      "tag": "0396_prepared_stop_backup",
+      "tag": "0396_provider_unconfirmed_deletion_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 380,
+      "version": "7",
+      "when": 1796083200024,
+      "tag": "0397_prepared_stop_backup",
       "breakpoints": true
     }
   ]

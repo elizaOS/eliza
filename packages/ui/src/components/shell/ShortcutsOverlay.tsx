@@ -107,7 +107,7 @@ export function ShortcutsOverlay() {
                       style={{
                         background: "var(--bg-hover)",
                         border: "1px solid var(--border)",
-                        color: "var(--muted)",
+                        color: "var(--muted-strong)",
                       }}
                     >
                       {formatKey(shortcut)}

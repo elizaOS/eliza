@@ -34,6 +34,7 @@ let containerRows: Array<Record<string, unknown>> = [];
 let agentRows: Array<Record<string, unknown>> = [];
 let ledgerRows: Array<Record<string, unknown>> = [];
 let dbWriteUpdateCalls = 0;
+let cancellationAuthorityLost = false;
 let dbWriteUpdateRows: Array<Record<string, unknown>> | null = null;
 let containerInfrastructureCalls = 0;
 let agentInfrastructureCalls = 0;
@@ -90,7 +91,27 @@ mock.module("../../db/client", () => ({
     select: () => makeBuilder(),
   },
   dbWrite: {
-    select: () => makeBuilder(),
+    // The real predicate and concurrent deletion are exercised by the PGlite
+    // pool-authority suite; this numeric boundary supplies its query result.
+    select: (selection?: Record<string, unknown>) =>
+      selection
+        ? {
+            from: () => ({
+              where: () => ({
+                limit: async () =>
+                  cancellationAuthorityLost
+                    ? []
+                    : agentRows.map((agent) => ({
+                        id: agent.id,
+                        lifecycleRevision: agent.lifecycle_revision,
+                        status: agent.status,
+                        billingStatus: agent.billing_status,
+                        deletionAttemptId: agent.deletion_attempt_id,
+                      })),
+              }),
+            }),
+          }
+        : makeBuilder(),
     update() {
       dbWriteUpdateCalls += 1;
       const builder = {
@@ -127,11 +148,10 @@ mock.module("./provisioning-jobs", () => ({
       agentInfrastructureCalls += 1;
       lastAgentSuspendParams = params;
       await agentInfrastructureMutation?.();
-      return { job: { id: "agent-stop-job" }, created: true };
+      return { job: { id: "cancel-job-1" }, created: true };
     },
     enqueueAgentDeleteOnce: async () => {
       agentInfrastructureCalls += 1;
-      return { job: { id: "agent-delete-job" }, created: true };
     },
     triggerImmediate: async () => {},
   },
@@ -173,7 +193,6 @@ const baseAgent = (overrides: Record<string, unknown> = {}) => ({
   user_id: "agent-user",
   status: "running",
   billing_status: "active",
-  billingStatus: "active",
   total_billed: "3.00",
   hourly_rate: "0.0100",
   character_id: "char-1",
@@ -186,7 +205,6 @@ const baseAgent = (overrides: Record<string, unknown> = {}) => ({
   lifecycle_revision: 1,
   pool_status: null,
   deletion_attempt_id: null,
-  deletionAttemptId: null,
   deleted_at: null,
   ...overrides,
 });
@@ -206,6 +224,7 @@ beforeEach(() => {
   agentRows = [];
   ledgerRows = [];
   dbWriteUpdateCalls = 0;
+  cancellationAuthorityLost = false;
   dbWriteUpdateRows = null;
   containerInfrastructureCalls = 0;
   agentInfrastructureCalls = 0;
@@ -301,12 +320,16 @@ describe("listActiveResources fail-closed", () => {
     expect(out[0].totalBilled).toBe(0);
   });
 
-  test("null hourly_rate falls back to computed unitPrice (no throw)", async () => {
-    agentRows = [baseAgent({ hourly_rate: null })];
-    const out = await activeBillingService.listActiveResources(ORG);
-    expect(out[0].metadata.hourlyRate).toBe(out[0].unitPrice);
-    expect(out[0].unitPrice).toBeGreaterThan(0);
-  });
+  test.each(["running", "stopped"])(
+    "null hourly_rate uses the computed %s resource price",
+    async (status) => {
+      agentRows = [baseAgent({ status, hourly_rate: null })];
+      const [resource] = await activeBillingService.listActiveResources(ORG);
+      expect(Number.isFinite(resource.unitPrice)).toBe(true);
+      expect(resource.unitPrice).toBeGreaterThan(0);
+      expect(resource.metadata.hourlyRate).toBe(resource.unitPrice);
+    },
+  );
 
   test("corrupt container.total_billed THROWS instead of fabricating $NaN", async () => {
     containerRows = [baseContainer({ total_billed: "NaN" })];
@@ -383,11 +406,11 @@ describe("cancelResource fail-closed before side effects", () => {
       authorizeInfrastructureMutation: async () => undefined,
     });
 
-    expect(result).toMatchObject({
-      stoppedBilling: false,
-      infrastructureAction: { status: "queued", attempted: false },
-      resource: { billingStatus: "active", metadata: { cancellationId: "agent-stop-job" } },
-    });
+    expect(result.stoppedBilling).toBe(false);
+    expect(result.infrastructureAction.status).toBe("queued");
+    expect(result.resource.billingStatus).toBe("active");
+    expect(result.resource.metadata).toMatchObject({ cancellationId: "cancel-job-1" });
+    expect(dbWriteUpdateCalls).toBe(0);
     expect(lastAgentSuspendParams).toMatchObject({
       agentId: "agent-100000",
       organizationId: ORG,
@@ -430,12 +453,11 @@ describe("cancelResource fail-closed before side effects", () => {
     expect(dbWriteUpdateCalls).toBe(0);
   });
 
-  test("deletion winning the billing CAS returns an explicit conflict instead of fake suspension", async () => {
+  test("lost cancellation authority returns an explicit conflict instead of fake suspension", async () => {
     agentRows = [baseAgent()];
     agentInfrastructureMutation = async () => {
-      agentRows = [];
+      cancellationAuthorityLost = true;
     };
-    dbWriteUpdateRows = [];
 
     try {
       await activeBillingService.cancelResource({

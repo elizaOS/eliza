@@ -26,6 +26,9 @@
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/dist/index.node.d.ts"
       ],
+      "@elizaos/plugin-elizacloud/*": [
+        "../../plugins/plugin-elizacloud/dist/*"
+      ],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/plugin-wechat": ["../../plugins/plugin-wechat/dist/index.d.ts"],
       "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],

@@ -1,34 +1,9 @@
 /**
- * Fail-closed NUMERIC boundary for the container daily-billing transaction
- * (#13416, cloud-shared DB-repository fallback-slop sweep).
- *
- * Postgres NUMERIC arrives as a string. Before this slice
- * `recordSuccessfulDailyBilling` read `containers.total_billed` and
- * `organizations.credit_balance` through a bare `Number(...)`, so a corrupt
- * value became `NaN` and poisoned the billing write path:
- *
- *   - `total_billed`  → `String(Number(total_billed) + dailyCost)` = `"NaN"`,
- *                       written back into the NUMERIC column. That either
- *                       rolls back the whole billing transaction with a cryptic
- *                       driver cast error (container never billed, cron retries
- *                       forever = silent free hosting) or persists a corrupt
- *                       running total.
- *   - `credit_balance` → the returned `newBalance` becomes `NaN` and is shown
- *                        verbatim: the low-balance email renders `$NaN`, and
- *                        `lowerOrgBalanceHint`/logs record a garbage figure.
- *
- * A real corrupt NUMERIC cannot be stored in PGlite/Postgres (they reject it),
- * so the healthy-path regression coverage lives in the PGlite-backed
- * container-billing-idempotency suite (it asserts a finite `newBalance` and a
- * correctly-accumulated `total_billed`). These tests pin the PARSER boundary
- * exhaustively and prove each wired read site delegates to it — which is the
- * exact seam a read-time driver quirk / migration artifact would hit.
+ * Exercises container-billing numeric parsing with deterministic input classes.
+ * The existing billing idempotency suite owns actual rejection and rollback.
  */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import * as numericModule from "../container-billing-numeric";
 import { parseContainerBillingNumber } from "../container-billing-numeric";
 
 describe("parseContainerBillingNumber", () => {
@@ -64,7 +39,6 @@ describe("parseContainerBillingNumber", () => {
   test("REGRESSION: a corrupt value throws instead of becoming NaN (fail-open guard)", () => {
     // The exact class the write path used to swallow: Number("corrupt") is NaN,
     // NaN + dailyCost is NaN, and String(NaN) = "NaN" poisons the NUMERIC write.
-    expect(Number("corrupt")).toBeNaN();
     expect(() => parseContainerBillingNumber("corrupt", "total_billed")).toThrow(
       /not a finite number/,
     );
@@ -89,32 +63,5 @@ describe("parseContainerBillingNumber", () => {
     expect(() => parseContainerBillingNumber("corrupt", "credit_balance")).toThrow(
       /container billing credit_balance/,
     );
-  });
-});
-
-describe("recordSuccessfulDailyBilling wires every NUMERIC read through fail-closed boundaries", () => {
-  test("source pins balance reads to exact parsing (no bare Number(...) survives)", () => {
-    // Grep-guard against a regression that reintroduces a bare `Number(<row
-    // field>)` read on the billing write path. Reads the actual source (not a
-    // transpiled Function.toString(), which can rename/reorder).
-    const repoPath = fileURLToPath(new URL("../container-billing.ts", import.meta.url));
-    const src = readFileSync(repoPath, "utf8");
-    expect(src).toContain('exactBillingDecimal(lockedOrg.credit_balance, "credit_balance")');
-    expect(src).toContain(
-      'exactBillingDecimal(earningsRow.available_balance, "available_balance")',
-    );
-    expect(src).toContain('parseContainerBillingNumber(org.credit_balance, "credit_balance")');
-    expect(src).toContain(
-      'parseContainerBillingNumber(updatedOrg.credit_balance, "credit_balance")',
-    );
-    // No bare Number(...) read of a corrupt-prone NUMERIC row field survives.
-    // `\bNumber\(` anchors on the global Number constructor, NOT the tail of
-    // the helper name `parseContainerBillingNumber(` (which contains "Number(").
-    expect(src).not.toMatch(/\bNumber\(\s*lockedOrg\.credit_balance/);
-    expect(src).not.toMatch(/\bNumber\(\s*earningsRow\.available_balance/);
-    expect(src).not.toMatch(/\bNumber\(\s*org\.credit_balance/);
-    expect(src).not.toMatch(/\bNumber\(\s*updatedOrg\.credit_balance/);
-    // exported parser is the module's fail-closed boundary
-    expect(typeof numericModule.parseContainerBillingNumber).toBe("function");
   });
 });

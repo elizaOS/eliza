@@ -122,7 +122,13 @@ it.each([
         vi.stubEnv("OPENAI_SMALL_MODEL", "gpt-4o-mini");
       }
       const runtime = new AgentRuntime({
-        character: { name: "EvaluatorWire", bio: "test", settings: {} },
+        // The 140K-char message and the repeated schema are the point of this
+        // wire test; keep them above the post-turn input budget's default.
+        character: {
+          name: "EvaluatorWire",
+          bio: "test",
+          settings: { POST_TURN_EVALUATOR_MAX_PROMPT_TOKENS: "1000000" },
+        },
         adapter: new InMemoryDatabaseAdapter(),
         logLevel: "fatal",
       });
@@ -200,23 +206,35 @@ it.each([
         const wire = bodies.at(-1);
         const user = wire?.messages.find((item) => item.role === "user")?.content;
         expect(user).toContain(text);
-        const schemaMatch =
-          user && /## Output JSON Schema\n([\s\S]*?)\n\nEvaluate just-finished turn/.exec(user);
-        expect(schemaMatch).toBeTruthy();
-        const visibleSchema = JSON.parse(schemaMatch?.[1] ?? "null");
-        expect(visibleSchema).toEqual({
+        const mergedSchema = {
           type: "object",
           properties: { store: evaluator.schema },
           required: ["store"],
           additionalProperties: false,
-        });
-        expect(visibleSchema.properties.store.properties.text.description).toBe(schemaDescription);
-        expect(user?.indexOf("## Output JSON Schema")).toBeLessThan(
-          user?.indexOf("Latest message:") ?? -1
-        );
-        expect(wire?.response_format?.type).toBe(!rejectSchema ? "json_schema" : "json_object");
-        if (!nativeSchema) {
-          expect(wire?.response_format?.json_schema?.schema).toEqual(visibleSchema);
+        };
+        // Native output carries the complete schema structurally; fallback
+        // includes it in the prompt while preserving the entire turn context.
+        const schemaMatch =
+          user && /## Output JSON Schema\n([\s\S]*?)\n\nEvaluate just-finished turn/.exec(user);
+        if (wire?.response_format?.type === "json_schema") {
+          expect(schemaMatch).toBeNull();
+          const schema = wire.response_format.json_schema?.schema as typeof mergedSchema;
+          expect(schema.properties.store.properties.text.description).toBe(schemaDescription);
+        } else {
+          expect(schemaMatch).toBeTruthy();
+          expect(schemaMatch?.[1]).toBe(JSON.stringify(mergedSchema));
+          expect(JSON.parse(schemaMatch?.[1] ?? "null")).toEqual(mergedSchema);
+          expect(user?.indexOf("## Output JSON Schema")).toBeLessThan(
+            user?.indexOf("Latest message:") ?? -1
+          );
+        }
+        if (!rejectSchema) {
+          expect(wire?.response_format?.type).toBe("json_schema");
+          if (!nativeSchema) {
+            expect(wire?.response_format?.json_schema?.schema).toEqual(mergedSchema);
+          }
+        } else {
+          expect(wire?.response_format?.type).toBe("json_object");
         }
         expect(user?.indexOf(stable)).toBeLessThan(user?.indexOf("Latest message:") ?? -1);
         expect(wire?.prompt_cache_key).toBeUndefined();
@@ -226,7 +244,17 @@ it.each([
       if (rejectSchema) {
         expect(bodies[0]?.response_format?.type).toBe("json_schema");
         expect(bodies[1]?.response_format?.type).toBe("json_object");
-        expect(bodies[1]?.messages).toEqual(bodies[0]?.messages);
+        // The fallback adds the schema text; original turn context stays complete.
+        const userOf = (body: (typeof bodies)[number] | undefined) =>
+          body?.messages.find((item) => item.role === "user")?.content ?? "";
+        const turnContext = (prompt: string) =>
+          prompt.slice(prompt.indexOf("Evaluate just-finished turn"));
+        expect(userOf(bodies[0])).not.toContain("## Output JSON Schema\n");
+        expect(userOf(bodies[1])).toContain("## Output JSON Schema\n");
+        expect(turnContext(userOf(bodies[1]))).toBe(turnContext(userOf(bodies[0])));
+        expect(bodies[1]?.messages.filter((item) => item.role !== "user")).toEqual(
+          bodies[0]?.messages.filter((item) => item.role !== "user")
+        );
       }
     } finally {
       server.closeAllConnections();

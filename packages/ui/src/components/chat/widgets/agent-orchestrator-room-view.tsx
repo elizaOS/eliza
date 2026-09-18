@@ -330,7 +330,7 @@ export function OrchestratorRoomView({
       icon={<Users className="size-4" />}
       action={
         <span
-          className="shrink-0 rounded-full bg-muted/15 px-1.5 py-0.5 text-3xs font-medium text-muted"
+          className="shrink-0 rounded-full bg-muted/15 px-1.5 py-0.5 text-3xs font-medium text-muted-strong"
           title={t("agentorchestrator.activeAgentsTotal", {
             defaultValue: "{{count}} active across {{rooms}} rooms",
             count: totalActive,

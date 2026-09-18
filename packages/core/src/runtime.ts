@@ -5882,6 +5882,12 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.dataMutations.updateMemory(memory);
 	}
 
+	updateMemoryEmbedding(
+		update: import("./types/database").MemoryEmbeddingUpdate,
+	): Promise<boolean> {
+		return this.dataMutations.updateMemoryEmbedding(update);
+	}
+
 	deleteMemory(memoryId: UUID): Promise<void> {
 		return this.dataMutations.deleteMemory(memoryId);
 	}

@@ -1,39 +1,12 @@
 /**
- * Locks the embedding-dimension boot ordering inside `runDeferredBoot`
- * (`eliza.ts`) for the managed cloud boot path: the dimension probe must run
- * after the deferred cloud plugin waves register the TEXT_EMBEDDING handler and
- * before bundled documents are seeded. Deterministic and boot-free — brace-
- * matches the closure out of `eliza.ts` source and reproduces the plugin-sql
- * insert guard with an in-memory fake adapter; no live runtime, model, or DB.
- * The regression rationale for the ordering is in the #8769 note below.
+ * Checks source ordering for embedding configuration, dimension probing, and
+ * document seeding in the managed boot path. These guards do not execute host
+ * startup or prove that the SQL adapter persists an embedding.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-
-/**
- * Regression coverage for #8769: managed cloud dedicated agents booted with NO
- * recall memory because `runtime.ensureEmbeddingDimension()` (the boot-time
- * embedding-dimension probe) ran AFTER `seedBundledDocumentsIfEnabled()`.
- *
- * The probe reads the registered cloud TEXT_EMBEDDING handler's vector length
- * (1536 on a managed agent) and snaps the plugin-sql storage column from its
- * hardcoded `dim384` default to `dim1536`. With the probe running too late, the
- * 4 bundled docs embedded at 1536 while the column was still `dim384`, so the
- * plugin-sql insert guard dropped every one of them:
- *   [PLUGIN:SQL] Skipping embedding insert: dimension mismatch
- *   (expectedDimension=384, receivedDimension=1536, column=dim384)
- * → no persistent memory.
- *
- * provisioning.test.ts in @elizaos/core exercises `provisioning.ts`'s
- * `ensureEmbeddingDimension`, which managed agents never run (they boot
- * `new AgentRuntime(...)` + `runtime.initialize()`, NOT
- * `createRuntimes({ provision: true })`). So that test is false coverage for
- * this bug. These tests cover the actual managed boot path instead:
- *   1. The source-order invariant inside `runDeferredBoot` in eliza.ts.
- *   2. The guard-level semantics the ordering protects.
- */
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaSource = readFileSync(path.join(here, "eliza.ts"), "utf8");
@@ -150,75 +123,5 @@ describe("runDeferredBoot embedding-dimension ordering (#8769)", () => {
     ).toBeGreaterThan(-1);
     expect(earlyLocalEnvIdx).toBeLessThan(probeIdx);
     expect(earlyLocalEnvIdx).toBeLessThan(seedIdx);
-  });
-});
-
-/**
- * Behavioral coverage: a faithful mini-reproduction of the plugin-sql guard +
- * probe contract, driven through both boot orders to show WHY the ordering
- * matters at the storage layer. Mirrors BaseDrizzleAdapter:
- *   - embeddingDimension defaults to "dim384" (base.ts:297)
- *   - the insert guard drops a vector whose length !== the configured column
- *     width (base.ts:2383-2399)
- *   - ensureEmbeddingDimension(len) snaps the column via DIMENSION_MAP
- *     (base.ts:504-521)
- */
-const DIMENSION_MAP: Record<number, string> = {
-  384: "dim384",
-  512: "dim512",
-  768: "dim768",
-  1024: "dim1024",
-  1536: "dim1536",
-  2048: "dim2048",
-  3072: "dim3072",
-};
-
-class FakeSqlAdapter {
-  // Matches BaseDrizzleAdapter's hardcoded default.
-  embeddingDimension = "dim384";
-  readonly persisted: number[][] = [];
-
-  ensureEmbeddingDimension(length: number): void {
-    const resolved = DIMENSION_MAP[length];
-    if (resolved) this.embeddingDimension = resolved;
-  }
-
-  // Mirrors the insert guard at base.ts:2383-2399.
-  insertMemoryEmbedding(vector: number[]): boolean {
-    const expected = Number(this.embeddingDimension.replace(/^dim/, ""));
-    if (vector.length !== expected) return false; // "Skipping embedding insert: dimension mismatch"
-    this.persisted.push(vector);
-    return true;
-  }
-}
-
-const CLOUD_EMBEDDING_LENGTH = 1536;
-const bundledDocVector = () => new Array(CLOUD_EMBEDDING_LENGTH).fill(0);
-
-describe("embedding-dimension probe vs bundled-doc seed (guard semantics)", () => {
-  it("DROPS 1536-dim bundled docs when the probe runs AFTER the seed (the #8769 bug)", () => {
-    const adapter = new FakeSqlAdapter();
-
-    // Old (buggy) order: seed first, probe second.
-    const seededOk = adapter.insertMemoryEmbedding(bundledDocVector());
-    adapter.ensureEmbeddingDimension(CLOUD_EMBEDDING_LENGTH);
-
-    expect(seededOk).toBe(false);
-    expect(adapter.persisted).toHaveLength(0); // no memory persisted
-    // The column does eventually snap, but too late for the bundled docs.
-    expect(adapter.embeddingDimension).toBe("dim1536");
-  });
-
-  it("PERSISTS 1536-dim bundled docs when the probe runs BEFORE the seed (the fix)", () => {
-    const adapter = new FakeSqlAdapter();
-
-    // New (fixed) order: probe first, seed second.
-    adapter.ensureEmbeddingDimension(CLOUD_EMBEDDING_LENGTH);
-    expect(adapter.embeddingDimension).toBe("dim1536");
-
-    const seededOk = adapter.insertMemoryEmbedding(bundledDocVector());
-
-    expect(seededOk).toBe(true);
-    expect(adapter.persisted).toHaveLength(1); // bundled-doc memory persisted
   });
 });

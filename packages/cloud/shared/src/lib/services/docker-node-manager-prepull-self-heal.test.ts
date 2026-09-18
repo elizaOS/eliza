@@ -1,11 +1,12 @@
 /**
  * Pre-pull self-heal tests cover the SSH commands that run on Docker nodes
- * after a timed-out image pre-pull. The harness uses a fake SSH client so the
- * production safety rules are asserted without killing local processes.
+ * after a timed-out image pre-pull. A fake SSH client checks production policy;
+ * real shell children execute generated commands against isolated tool fixtures.
+ * The harness waits for child closure and rejects deadline expiration.
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,6 +18,48 @@ import {
   DockerNodeManager,
   isDockerSshCommandTimeoutError,
 } from "./docker-node-manager";
+
+class ShellDeadlineError extends Error {
+  constructor(readonly pid: number | undefined) {
+    super("Recovery shell exceeded its deadline");
+  }
+}
+
+function runRecoveryShell(
+  command: string,
+  env: NodeJS.ProcessEnv,
+  timeoutMs = 60_000,
+): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("/bin/sh", ["-c", command], { env, stdio: "ignore", detached: true });
+    let timedOut = false;
+    let spawnError: Error | undefined;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      if (child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, "SIGKILL");
+        } catch (error) {
+          // error-policy:J6 an already-exited process group needs no further teardown.
+          if (!(error instanceof Error) || !("code" in error) || error.code !== "ESRCH") {
+            spawnError = new Error("Unable to stop recovery shell process group", { cause: error });
+            child.kill("SIGKILL");
+          }
+        }
+      }
+    }, timeoutMs);
+    child.once("error", (error) => {
+      spawnError = error;
+    });
+    child.once("close", (code, signal) => {
+      clearTimeout(timer);
+      if (spawnError) reject(spawnError);
+      else if (timedOut) reject(new ShellDeadlineError(child.pid));
+      else if (code === null) reject(new Error(`Recovery shell terminated by ${signal}`));
+      else resolve(code);
+    });
+  });
+}
 
 const IMAGE = "ghcr.io/elizaos/eliza:test-prepull";
 const PID_FILE = "/tmp/eliza-prepull-test.pid";
@@ -94,6 +137,24 @@ describe("pre-pull timeout classification", () => {
 });
 
 describe("tracked pre-pull commands", () => {
+  test("reaps the shell before rejecting a command deadline", async () => {
+    let failure: Error | undefined;
+    try {
+      await runRecoveryShell("exec /bin/sleep 30", process.env, 100);
+    } catch (error) {
+      // error-policy:J1 inspect the real timed-out child after the harness closes it.
+      if (!(error instanceof Error)) throw error;
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(ShellDeadlineError);
+    if (!(failure instanceof ShellDeadlineError) || failure.pid === undefined) {
+      throw new Error("Expected a spawned shell to hit its deadline");
+    }
+    const pid = failure.pid;
+    expect(() => process.kill(pid, 0)).toThrow(/ESRCH|No such process/);
+    expect(() => process.kill(-pid, 0)).toThrow(/ESRCH|No such process/);
+  });
+
   test("wraps docker pull with a per-attempt PID file", () => {
     const tracked = buildTrackedPrePullCommand(IMAGE, "linux/amd64", "test-marker");
 
@@ -165,34 +226,18 @@ describe("tracked pre-pull commands", () => {
       for (const [name, source] of Object.entries(executables)) {
         writeFileSync(join(directory, name), source, { mode: 0o700 });
       }
-      const result = await new Promise<{ status: number }>((resolve, reject) => {
-        execFile(
-          "/bin/sh",
-          ["-c", buildPrePullSelfHealRecoverCommand()],
-          {
-            env: {
-              ...process.env,
-              PATH: `${directory}:${process.env.PATH}`,
-              PROBE_VALUE: probe.runtimeValue,
-              PROBE_STATUS: String(probe.status),
-              MUTATION_JOURNAL: journal,
-            },
-            timeout: 10_000,
-          },
-          (error) => {
-            if (error && (error.killed || typeof error.code !== "number")) {
-              reject(error);
-              return;
-            }
-            resolve({ status: error ? Number(error.code) : 0 });
-          },
-        );
+      const status = await runRecoveryShell(buildPrePullSelfHealRecoverCommand(), {
+        ...process.env,
+        PATH: `${directory}:${process.env.PATH}`,
+        PROBE_VALUE: probe.runtimeValue,
+        PROBE_STATUS: String(probe.status),
+        MUTATION_JOURNAL: journal,
       });
       if (probe.recovers) {
-        expect(result.status).toBe(0);
+        expect(status).toBe(0);
         expect(readFileSync(journal, "utf8")).toContain("start docker.service");
       } else {
-        expect(result.status).not.toBe(0);
+        expect(status).not.toBe(0);
         expect(readFileSync(journal, "utf8")).toBe("");
       }
     } finally {

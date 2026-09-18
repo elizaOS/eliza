@@ -124,7 +124,7 @@ beforeAll(async () => {
     sql.raw("ALTER TABLE agent_compute_stop_intents DROP COLUMN prepared_backup CASCADE"),
   );
   const preparationMigration = await readFile(
-    join(import.meta.dir, "../../../db/migrations/0396_prepared_stop_backup.sql"),
+    join(import.meta.dir, "../../../db/migrations/0397_prepared_stop_backup.sql"),
     "utf8",
   );
   for (let replay = 0; replay < 2; replay++) {

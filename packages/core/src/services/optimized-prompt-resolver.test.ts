@@ -122,7 +122,10 @@ describe("resolveOptimizedPrompt (pure)", () => {
 		expect(out).toBe(BASELINE);
 	});
 
-	test("inlines few-shot demonstrations under a Demonstrations block", () => {
+	test.each([
+		"OPTIMIZED_BODY  \n",
+		"Discuss the label Demonstrations: literally.  \n",
+	])("preserves every demonstration field with prompt %s", (prompt) => {
 		const service = new OptimizedPromptService();
 		service.setDisabledTasksFromEnv(undefined);
 		const direct = service as unknown as {
@@ -135,18 +138,26 @@ describe("resolveOptimizedPrompt (pure)", () => {
 		};
 		direct.cache.action_planner = {
 			artifact: {
-				...makeArtifact("action_planner", "OPTIMIZED_BODY"),
+				...makeArtifact("action_planner", prompt),
 				fewShotExamples: [
 					{
-						input: { user: "hello" },
-						expectedOutput: "world",
+						input: {
+							system: "  Standing instruction\n",
+							user: "system: original context\nuser: hello\ntool: complete receipt  \n",
+						},
+						expectedOutput: "world  \n",
 					},
 				],
 			},
 			loadedAt: Date.now(),
 		};
 		const out = resolveOptimizedPrompt(service, "action_planner", BASELINE);
-		expect(out).toContain("OPTIMIZED_BODY");
+		expect(out.startsWith(prompt)).toBe(true);
+		expect(out).toContain("  Standing instruction\n");
+		expect(out).toContain(
+			"system: original context\nuser: hello\ntool: complete receipt  \n",
+		);
+		expect(out).toContain("world  \n");
 		expect(out).toContain("Demonstrations:");
 		expect(out).toContain("Example 1:");
 		expect(out).toContain("hello");
@@ -291,7 +302,7 @@ describe("trimDemonstrationInput surrogate handling", () => {
 		const candidate = `${"a".repeat(599)}${emoji}${"b".repeat(50)}`;
 		const rawInput = `user: ${candidate}`;
 		const out = trimDemonstrationInput(rawInput);
-		expect(out).toBe(candidate);
+		expect(out).toBe(`user: ${candidate}`);
 		expect(out).toContain(emoji);
 		expect(out.endsWith("b")).toBe(true);
 		expect(out.isWellFormed()).toBe(true);
@@ -303,23 +314,20 @@ describe("trimDemonstrationInput surrogate handling", () => {
 		const candidate = `${"a".repeat(598)}${emoji}`;
 		expect(candidate.length).toBe(600);
 		const out = trimDemonstrationInput(`user: ${candidate}`);
-		expect(out).toBe(candidate);
+		expect(out).toBe(`user: ${candidate}`);
 		expect(out.isWellFormed()).toBe(true);
 		expect(isWellFormed(out)).toBe(true);
 	});
 
-	test("sanitizes lone surrogates in candidate and raw fallback", () => {
-		const lone = `a${String.fromCharCode(0xd800)}${"b".repeat(10)}`;
-		const out1 = trimDemonstrationInput(`user: ${lone}`);
-		expect(out1).toContain("�");
-		expect(out1.isWellFormed()).toBe(true);
-		expect(isWellFormed(out1)).toBe(true);
-
-		const rawLone = `ok ${String.fromCharCode(0xd800)} end`;
-		const out2 = trimDemonstrationInput(rawLone);
-		expect(out2).toBe("ok � end");
-		expect(isWellFormed(out2)).toBe(true);
-	});
+	test.each(["user: ", ""])(
+		"rejects malformed Unicode without rewriting source bytes (%s)",
+		(prefix) => {
+			const raw = `${prefix}a${String.fromCharCode(0xd800)}b`;
+			expect(() => trimDemonstrationInput(raw)).toThrow(
+				expect.objectContaining({ code: "OPTIMIZED_PROMPT_INVALID_UNICODE" }),
+			);
+		},
+	);
 
 	// The untagged fallback used to become a 400-char head + "\n…\n" + 200-char
 	// tail. #24134 removed that elision; the complete recorded input is kept.

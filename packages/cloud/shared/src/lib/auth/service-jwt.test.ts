@@ -7,7 +7,7 @@
  * staging-session token-class guard names dbRead at module scope).
  */
 
-import { afterEach, beforeEach, describe, expect, mock, setSystemTime, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { SignJWT } from "jose";
 
 const SECRET = "service-jwt-test-secret-0123456789abcdef";
@@ -104,10 +104,10 @@ describe("verifyServiceJwt — token lifecycle claims", () => {
   });
 
   test("rejects exp without iat and malformed NumericDate relationships", async () => {
-    // Hold the one-second-outside-skew boundary fixed while real signing awaits.
-    setSystemTime(new Date("2026-09-14T12:00:00.000Z"));
+    const now = Math.floor(Date.now() / 1000);
+    // Keep the one-second rejection boundary fixed while real signatures are computed.
+    const clock = spyOn(Date, "now").mockReturnValue(now * 1000);
     try {
-      const now = Math.floor(Date.now() / 1000);
       const invalidClaims = [
         ["missing iat", { exp: now + 60 }],
         ["inverted", { iat: now, exp: now }],
@@ -122,7 +122,7 @@ describe("verifyServiceJwt — token lifecycle claims", () => {
         expect(await verify(token), label).toBeNull();
       }
     } finally {
-      setSystemTime();
+      clock.mockRestore();
     }
   });
 

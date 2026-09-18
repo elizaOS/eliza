@@ -59,6 +59,16 @@ mock.module("../../../db/repositories/docker-nodes", () => ({
     findByNodeId: mocks.findByNodeId,
     create: mocks.createNode,
     update: mocks.updateNode,
+    requestAutoscaleDeprovision: async (id: string) => {
+      const nodes: DockerNode[] = await mocks.findAllNodes();
+      const node = nodes.find((candidate) => candidate.id === id);
+      if (!node) return null;
+      await mocks.updateNode(id, {
+        enabled: false,
+        metadata: { ...node.metadata, autoscaleDeprovisionRequested: true },
+      });
+      return node;
+    },
     delete: mocks.deleteNode,
   },
 }));

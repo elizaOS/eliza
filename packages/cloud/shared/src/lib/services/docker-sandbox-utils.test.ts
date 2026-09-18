@@ -528,332 +528,378 @@ describe("secret container environment transport (#22060)", () => {
     }
   });
 
-  test.each([
-    "legacy cleanup",
-    "hardlinked legacy rejection",
-    "symlink input protection",
-    "malformed input rejection",
-    "definitive Docker refusal",
-    "ambiguous failure and replay",
-    "successful creation cleanup",
-    "failed removal rejection",
-  ])(
-    "exact Docker-create secret lifecycle: %s",
-    async (scenario) => {
-      const { spawn } = await import("node:child_process");
-      const fs = await import("node:fs");
-      const os = await import("node:os");
-      const path = await import("node:path");
-      const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-exact-fence-"));
-      const bin = path.join(root, "bin");
-      const volume = path.join(root, "volume");
-      const attempts = path.join(root, "attempts");
-      const agentId = "11111111-1111-4111-8111-111111111111";
-      const containerName = getContainerName(agentId);
-      const productionVolume = getVolumePath(agentId);
-      const productionAttempts = "/var/lib/eliza/replacement-attempts";
-      const attemptId = "33333333-3333-4333-8333-333333333333";
-      const marker = path.join(root, "docker-invoked");
-      fs.mkdirSync(bin, { recursive: true });
-      fs.mkdirSync(volume, { recursive: true });
-      fs.writeFileSync(path.join(bin, "flock"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
-      fs.writeFileSync(
-        path.join(bin, "stat"),
-        '#!/bin/sh\ncase "$2" in "%u") printf 0 ;; "%a") if test -d "$4"; then printf 700; else printf 600; fi ;; "%h") if test -n "$ELIZA_TEST_HARDLINK_PATH" && test "$4" = "$ELIZA_TEST_HARDLINK_PATH"; then printf 2; else printf 1; fi ;; "%d:%i") printf "1:1" ;; *) exit 64 ;; esac\n',
-        { mode: 0o755 },
-      );
-      fs.writeFileSync(path.join(volume, ".vault-passphrase"), "persisted-vault-value", {
+  async function createExactCreateHarness() {
+    const { spawn } = await import("node:child_process");
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-exact-fence-"));
+    const bin = path.join(root, "bin");
+    const volume = path.join(root, "volume");
+    const attempts = path.join(root, "attempts");
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    const containerName = getContainerName(agentId);
+    const productionVolume = getVolumePath(agentId);
+    const productionAttempts = "/var/lib/eliza/replacement-attempts";
+    const attemptId = "33333333-3333-4333-8333-333333333333";
+    const marker = path.join(root, "docker-invoked");
+    fs.mkdirSync(bin, { recursive: true });
+    fs.mkdirSync(volume, { recursive: true });
+    fs.writeFileSync(path.join(bin, "flock"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(
+      path.join(bin, "stat"),
+      '#!/bin/sh\ncase "$2" in "%u") printf 0 ;; "%a") if test -d "$4"; then printf 700; else printf 600; fi ;; "%h") if test -n "$ELIZA_TEST_HARDLINK_PATH" && test "$4" = "$ELIZA_TEST_HARDLINK_PATH"; then printf 2; else printf 1; fi ;; "%d:%i") printf "1:1" ;; *) exit 64 ;; esac\n',
+      { mode: 0o755 },
+    );
+    fs.writeFileSync(path.join(volume, ".vault-passphrase"), "persisted-vault-value", {
+      mode: 0o600,
+    });
+
+    const remap = (command: string) =>
+      command
+        .replaceAll(productionVolume, volume)
+        .replaceAll(productionAttempts, attempts)
+        // macOS test runners use BSD chmod/cat/mv, which do not all accept the
+        // GNU `--` operand separator used on the Linux Docker nodes.
+        .replaceAll("chmod 700 --", "chmod 700")
+        .replaceAll("chmod 600 --", "chmod 600")
+        .replaceAll("cat -- ", "cat ")
+        .replaceAll("mv -- ", "mv ");
+    const seedControlVaultSnapshot = (replacementAttemptId: string): void => {
+      const attemptDirectory = path.join(attempts, replacementAttemptId);
+      fs.mkdirSync(attemptDirectory, { recursive: true, mode: 0o700 });
+      fs.writeFileSync(path.join(attemptDirectory, "vault-passphrase"), "persisted-vault-value", {
         mode: 0o600,
       });
-
-      const remap = (command: string) =>
-        command
-          .replaceAll(productionVolume, volume)
-          .replaceAll(productionAttempts, attempts)
-          // macOS test runners use BSD chmod/cat/mv, which do not all accept the
-          // GNU `--` operand separator used on the Linux Docker nodes.
-          .replaceAll("chmod 700 --", "chmod 700")
-          .replaceAll("chmod 600 --", "chmod 600")
-          .replaceAll("cat -- ", "cat ")
-          .replaceAll("mv -- ", "mv ");
-      const seedControlVaultSnapshot = (replacementAttemptId: string): void => {
-        const attemptDirectory = path.join(attempts, replacementAttemptId);
-        fs.mkdirSync(attemptDirectory, { recursive: true, mode: 0o700 });
-        fs.writeFileSync(path.join(attemptDirectory, "vault-passphrase"), "persisted-vault-value", {
-          mode: 0o600,
+    };
+    const run = (
+      command: string,
+      input = "",
+      extraPath?: string,
+      extraEnv: NodeJS.ProcessEnv = {},
+    ): Promise<{ code: number | null; output: string }> =>
+      new Promise((resolve) => {
+        const child = spawn("/bin/sh", ["-c", remap(command)], {
+          env: {
+            ...process.env,
+            ...extraEnv,
+            PATH: `${extraPath ? `${extraPath}:` : ""}${bin}:${process.env.PATH}`,
+          },
         });
-      };
-      const run = (
-        command: string,
-        input = "",
-        extraPath?: string,
-        extraEnv: NodeJS.ProcessEnv = {},
-      ): Promise<{ code: number | null; output: string }> =>
-        new Promise((resolve) => {
-          const child = spawn("/bin/sh", ["-c", remap(command)], {
-            env: {
-              ...process.env,
-              ...extraEnv,
-              PATH: `${extraPath ? `${extraPath}:` : ""}${bin}:${process.env.PATH}`,
-            },
-          });
-          let output = "";
-          child.stdout.on("data", (chunk) => (output += chunk.toString()));
-          child.stderr.on("data", (chunk) => (output += chunk.toString()));
-          child.on("close", (code) => resolve({ code, output }));
-          child.stdin.end(input);
-        });
+        let output = "";
+        child.stdout.on("data", (chunk) => (output += chunk.toString()));
+        child.stderr.on("data", (chunk) => (output += chunk.toString()));
+        child.on("close", (code) => resolve({ code, output }));
+        child.stdin.end(input);
+      });
+    const secretInput = buildDockerContainerEnvTransport({
+      API_KEY: "one-shot-secret-sentinel",
+    }).secretInput;
+    return {
+      fs,
+      path,
+      root,
+      volume,
+      attempts,
+      agentId,
+      containerName,
+      attemptId,
+      marker,
+      run,
+      seedControlVaultSnapshot,
+      secretInput,
+      dispose: () => fs.rmSync(root, { recursive: true, force: true }),
+    };
+  }
 
-      try {
-        const secretInput = buildDockerContainerEnvTransport({
-          API_KEY: "one-shot-secret-sentinel",
-        }).secretInput;
+  async function withExactCreateHarness(
+    scenario: (harness: Awaited<ReturnType<typeof createExactCreateHarness>>) => Promise<void>,
+  ): Promise<void> {
+    const harness = await createExactCreateHarness();
+    try {
+      await scenario(harness);
+    } finally {
+      harness.dispose();
+    }
+  }
 
-        if (scenario === "legacy cleanup") {
-          const legacyAttemptId = "22222222-2222-4222-8222-222222222223";
-          const legacyVaultPath = path.join(volume, ".vault-passphrase");
-          const legacyArtifactPaths = [
-            path.join(volume, `.container-env-${legacyAttemptId}`),
-            path.join(volume, `.container-env-${legacyAttemptId}.body`),
-            ...["stdin", "override", "generated", "normalized"].map(
-              (kind) => `${legacyVaultPath}.${kind}.${legacyAttemptId}`,
-            ),
-          ];
-          for (const artifactPath of legacyArtifactPaths) {
-            fs.writeFileSync(artifactPath, "legacy-plaintext", { mode: 0o600 });
-          }
-          const legacyCleanup = await run(
-            buildReplacementSecretArtifactsCleanupCommand(containerName, legacyAttemptId),
-          );
-          expect(legacyCleanup).toEqual({
-            code: 0,
-            output: `${getReplacementSecretArtifactsCleanupReceipt(legacyAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(legacyAttemptId)}\n`,
-          });
-          for (const artifactPath of legacyArtifactPaths) {
-            expect(fs.existsSync(artifactPath)).toBe(false);
-          }
-        }
-
-        if (scenario === "hardlinked legacy rejection") {
-          const hardlinkAttemptId = "22222222-2222-4222-8222-222222222224";
-          const hardlinkedLegacyEnv = path.join(volume, `.container-env-${hardlinkAttemptId}`);
-          const retainedHardlink = path.join(root, "retained-legacy-env-hardlink");
-          fs.writeFileSync(hardlinkedLegacyEnv, "hardlinked-plaintext", { mode: 0o600 });
-          fs.linkSync(hardlinkedLegacyEnv, retainedHardlink);
-          const hardlinkCleanup = await run(
-            buildReplacementSecretArtifactsCleanupCommand(containerName, hardlinkAttemptId),
-            "",
-            undefined,
-            { ELIZA_TEST_HARDLINK_PATH: hardlinkedLegacyEnv },
-          );
-          expect(hardlinkCleanup.code).toBe(70);
-          expect(hardlinkCleanup.output).not.toContain(
-            getReplacementSecretArtifactsCleanupReceipt(hardlinkAttemptId),
-          );
-          expect(fs.readFileSync(hardlinkedLegacyEnv, "utf8")).toBe("hardlinked-plaintext");
-          expect(fs.readFileSync(retainedHardlink, "utf8")).toBe("hardlinked-plaintext");
-        }
-
-        if (scenario === "symlink input protection") {
-          const symlinkAttemptId = "99999999-9999-4999-8999-999999999999";
-          const symlinkSecretPath = getReplacementControlSecretEnvPath(symlinkAttemptId);
-          const symlinkAttemptDirectory = path.join(attempts, symlinkAttemptId);
-          const externalEnvTarget = path.join(root, "external-env-target");
-          const externalBodyTarget = path.join(root, "external-env-body-target");
-          seedControlVaultSnapshot(symlinkAttemptId);
-          fs.writeFileSync(externalEnvTarget, "external-env-must-not-change", { mode: 0o640 });
-          fs.writeFileSync(externalBodyTarget, "external-body-must-not-change", { mode: 0o640 });
-          fs.symlinkSync(externalEnvTarget, path.join(symlinkAttemptDirectory, "container-env"));
-          fs.symlinkSync(
-            externalBodyTarget,
-            path.join(symlinkAttemptDirectory, "container-env.body"),
-          );
-          const symlinkProducer = buildDockerCreateWithSecretEnvCommand({
-            dockerCreateCommand: "true",
-            secretEnvPath: symlinkSecretPath,
-            vaultPassphrasePath: getReplacementControlVaultPassphrasePath(symlinkAttemptId),
-            exactReplacement: { containerName, replacementAttemptId: symlinkAttemptId },
-          });
-          expect(await run(symlinkProducer, secretInput)).toEqual({ code: 0, output: "" });
-          expect(fs.readFileSync(externalEnvTarget, "utf8")).toBe("external-env-must-not-change");
-          expect(fs.readFileSync(externalBodyTarget, "utf8")).toBe("external-body-must-not-change");
-          expect(fs.statSync(externalEnvTarget).mode & 0o777).toBe(0o640);
-          expect(fs.statSync(externalBodyTarget).mode & 0o777).toBe(0o640);
-          expect(fs.existsSync(path.join(symlinkAttemptDirectory, "container-env"))).toBe(false);
-          expect(fs.existsSync(path.join(symlinkAttemptDirectory, "container-env.body"))).toBe(
-            false,
-          );
-        }
-
-        if (scenario === "malformed input rejection") {
-          const malformedAttemptId = "77777777-7777-4777-8777-777777777777";
-          const malformedSecretPath = getReplacementControlSecretEnvPath(malformedAttemptId);
-          seedControlVaultSnapshot(malformedAttemptId);
-          const malformedProducer = buildDockerCreateWithSecretEnvCommand({
-            dockerCreateCommand: `: > ${shellQuote(marker)}`,
-            secretEnvPath: malformedSecretPath,
-            vaultPassphrasePath: getReplacementControlVaultPassphrasePath(malformedAttemptId),
-            exactReplacement: { containerName, replacementAttemptId: malformedAttemptId },
-          });
-          const malformed = await run(malformedProducer, "API_KEY=truncated-without-sentinel\n");
-          expect(malformed.code).not.toBe(0);
-          expect(fs.existsSync(marker)).toBe(false);
-          expect(fs.existsSync(path.join(attempts, malformedAttemptId, "active"))).toBe(false);
-          expect(fs.existsSync(path.join(attempts, malformedAttemptId, "container-env"))).toBe(
-            false,
-          );
-          const malformedCleanup = await run(
-            buildReplacementSecretArtifactsCleanupCommand(containerName, malformedAttemptId),
-          );
-          expect(malformedCleanup).toEqual({
-            code: 0,
-            output: `${getReplacementSecretArtifactsCleanupReceipt(malformedAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(malformedAttemptId)}\n`,
-          });
-        }
-
-        if (scenario === "definitive Docker refusal") {
-          const definitiveAttemptId = "88888888-8888-4888-8888-888888888888";
-          const definitiveSecretPath = getReplacementControlSecretEnvPath(definitiveAttemptId);
-          seedControlVaultSnapshot(definitiveAttemptId);
-          const definitiveProducer = buildDockerCreateWithSecretEnvCommand({
-            dockerCreateCommand: `sh -c ${shellQuote(
-              "printf '%s\\n' 'docker: Error response from daemon: Conflict. The container name is already in use by container' >&2; exit 125",
-            )}`,
-            secretEnvPath: definitiveSecretPath,
-            vaultPassphrasePath: getReplacementControlVaultPassphrasePath(definitiveAttemptId),
-            exactReplacement: { containerName, replacementAttemptId: definitiveAttemptId },
-          });
-          const definitive = await run(definitiveProducer, secretInput);
-          expect(definitive.code).toBe(125);
-          expect(definitive.output).not.toContain("Conflict. The container name");
-          expect(fs.existsSync(path.join(attempts, definitiveAttemptId, "active"))).toBe(false);
-          expect(fs.existsSync(path.join(attempts, definitiveAttemptId, "docker-error"))).toBe(
-            false,
-          );
-          const definitiveCleanup = await run(
-            buildReplacementSecretArtifactsCleanupCommand(containerName, definitiveAttemptId),
-          );
-          expect(definitiveCleanup).toEqual({
-            code: 0,
-            output: `${getReplacementSecretArtifactsCleanupReceipt(definitiveAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(definitiveAttemptId)}\n`,
-          });
-        }
-
-        if (scenario === "ambiguous failure and replay") {
-          const secretEnvPath = getReplacementControlSecretEnvPath(attemptId);
-          seedControlVaultSnapshot(attemptId);
-          const failedProducer = buildDockerCreateWithSecretEnvCommand({
-            dockerCreateCommand: "false",
-            secretEnvPath,
-            vaultPassphrasePath: getReplacementControlVaultPassphrasePath(attemptId),
-            exactReplacement: { containerName, replacementAttemptId: attemptId },
-          });
-          const failed = await run(failedProducer, secretInput);
-          expect(failed.code).not.toBe(0);
-          expect(failed.output).not.toContain("one-shot-secret-sentinel");
-          expect(fs.existsSync(path.join(attempts, attemptId, "active"))).toBe(true);
-          expect(fs.existsSync(path.join(attempts, attemptId, "container-env"))).toBe(false);
-
-          const cleanup = await run(
-            buildReplacementSecretArtifactsCleanupCommand(containerName, attemptId),
-          );
-          expect(cleanup).toEqual({
-            code: 0,
-            output: `${getReplacementSecretArtifactsCleanupReceipt(attemptId)}\n`,
-          });
-          expect(fs.existsSync(path.join(attempts, attemptId, "active"))).toBe(true);
-          const observedContainerId = "b".repeat(64);
-          const observed = await run(
-            buildReplacementCandidateObservedCommand(attemptId, observedContainerId),
-          );
-          expect(observed).toEqual({
-            code: 0,
-            output: `${getReplacementCandidateObservedReceipt(attemptId, observedContainerId)}\n`,
-          });
-          const cleanupWithObservation = await run(
-            buildReplacementSecretArtifactsCleanupCommand(containerName, attemptId),
-          );
-          expect(cleanupWithObservation).toEqual({
-            code: 0,
-            output: `${getReplacementSecretArtifactsCleanupReceipt(attemptId)}\n${getReplacementCandidateObservedReceipt(attemptId, observedContainerId)}\n`,
-          });
-
-          const replay = buildDockerCreateWithSecretEnvCommand({
-            dockerCreateCommand: `: > ${shellQuote(marker)}`,
-            secretEnvPath,
-            vaultPassphrasePath: getReplacementControlVaultPassphrasePath(attemptId),
-            exactReplacement: { containerName, replacementAttemptId: attemptId },
-          });
-          const rejectedReplay = await run(replay, secretInput);
-          expect(rejectedReplay.code).toBe(75);
-          expect(rejectedReplay.output).not.toContain("one-shot-secret-sentinel");
-          expect(fs.existsSync(marker)).toBe(false);
-        }
-
-        if (scenario === "successful creation cleanup") {
-          const successfulAttemptId = "66666666-6666-4666-8666-666666666666";
-          const successfulSecretPath = getReplacementControlSecretEnvPath(successfulAttemptId);
-          seedControlVaultSnapshot(successfulAttemptId);
-          const successfulProducer = buildDockerCreateWithSecretEnvCommand({
-            dockerCreateCommand: `printf '%s\\n' ${shellQuote("a".repeat(64))}`,
-            secretEnvPath: successfulSecretPath,
-            vaultPassphrasePath: getReplacementControlVaultPassphrasePath(successfulAttemptId),
-            exactReplacement: {
-              containerName,
-              replacementAttemptId: successfulAttemptId,
-            },
-          });
-          const succeeded = await run(successfulProducer, secretInput);
-          expect(succeeded).toEqual({ code: 0, output: `${"a".repeat(64)}\n` });
-          expect(fs.existsSync(path.join(attempts, successfulAttemptId, "active"))).toBe(false);
-          const quiescentCleanup = await run(
-            buildReplacementSecretArtifactsCleanupCommand(containerName, successfulAttemptId),
-          );
-          expect(quiescentCleanup).toEqual({
-            code: 0,
-            output: `${getReplacementSecretArtifactsCleanupReceipt(successfulAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(successfulAttemptId)}\n`,
-          });
-        }
-
-        if (scenario === "failed removal rejection") {
-          for (const [suffix, kind] of [
-            ["44444444-4444-4444-8444-444444444444", "file"],
-            ["55555555-5555-4555-8555-555555555555", "symlink"],
-          ] as const) {
-            const attemptDirectory = path.join(attempts, suffix);
-            fs.mkdirSync(attemptDirectory, { recursive: true, mode: 0o700 });
-            const survivingPath = path.join(attemptDirectory, "container-env");
-            const externalTarget = path.join(root, `external-cleanup-target-${suffix}`);
-            if (kind === "file") {
-              fs.writeFileSync(survivingPath, "must-survive-fake-rm", { mode: 0o600 });
-            } else {
-              fs.writeFileSync(externalTarget, "external-target-must-survive", { mode: 0o640 });
-              fs.symlinkSync(externalTarget, survivingPath);
-            }
-            const fakeRmBin = path.join(root, `fake-rm-${kind}`);
-            fs.mkdirSync(fakeRmBin);
-            fs.writeFileSync(path.join(fakeRmBin, "rm"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
-            const refused = await run(
-              buildReplacementSecretArtifactsCleanupCommand(containerName, suffix),
-              "",
-              fakeRmBin,
-            );
-            expect(refused.code).toBe(70);
-            expect(refused.output).not.toContain(
-              getReplacementSecretArtifactsCleanupReceipt(suffix),
-            );
-            if (kind === "symlink") {
-              expect(fs.readFileSync(externalTarget, "utf8")).toBe("external-target-must-survive");
-              expect(fs.statSync(externalTarget).mode & 0o777).toBe(0o640);
-            }
-          }
-        }
-      } finally {
-        fs.rmSync(root, { recursive: true, force: true });
+  test("exact Docker creation cleans legacy artifacts with a quiescent receipt", async () => {
+    await withExactCreateHarness(async ({ fs, path, volume, containerName, run }) => {
+      const legacyAttemptId = "22222222-2222-4222-8222-222222222223";
+      const legacyVaultPath = path.join(volume, ".vault-passphrase");
+      const legacyArtifactPaths = [
+        path.join(volume, `.container-env-${legacyAttemptId}`),
+        path.join(volume, `.container-env-${legacyAttemptId}.body`),
+        ...["stdin", "override", "generated", "normalized"].map(
+          (kind) => `${legacyVaultPath}.${kind}.${legacyAttemptId}`,
+        ),
+      ];
+      for (const artifactPath of legacyArtifactPaths) {
+        fs.writeFileSync(artifactPath, "legacy-plaintext", { mode: 0o600 });
       }
-    },
-    10_000,
-  );
+      const legacyCleanup = await run(
+        buildReplacementSecretArtifactsCleanupCommand(containerName, legacyAttemptId),
+      );
+      expect(legacyCleanup).toEqual({
+        code: 0,
+        output: `${getReplacementSecretArtifactsCleanupReceipt(legacyAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(legacyAttemptId)}\n`,
+      });
+      for (const artifactPath of legacyArtifactPaths) {
+        expect(fs.existsSync(artifactPath)).toBe(false);
+      }
+    });
+  }, 10_000);
+
+  test("exact Docker creation refuses cleanup of a retained hardlink", async () => {
+    await withExactCreateHarness(async ({ fs, path, root, volume, containerName, run }) => {
+      const hardlinkAttemptId = "22222222-2222-4222-8222-222222222224";
+      const hardlinkedLegacyEnv = path.join(volume, `.container-env-${hardlinkAttemptId}`);
+      const retainedHardlink = path.join(root, "retained-legacy-env-hardlink");
+      fs.writeFileSync(hardlinkedLegacyEnv, "hardlinked-plaintext", { mode: 0o600 });
+      fs.linkSync(hardlinkedLegacyEnv, retainedHardlink);
+      const hardlinkCleanup = await run(
+        buildReplacementSecretArtifactsCleanupCommand(containerName, hardlinkAttemptId),
+        "",
+        undefined,
+        { ELIZA_TEST_HARDLINK_PATH: hardlinkedLegacyEnv },
+      );
+      expect(hardlinkCleanup.code).toBe(70);
+      expect(hardlinkCleanup.output).not.toContain(
+        getReplacementSecretArtifactsCleanupReceipt(hardlinkAttemptId),
+      );
+      expect(fs.readFileSync(hardlinkedLegacyEnv, "utf8")).toBe("hardlinked-plaintext");
+      expect(fs.readFileSync(retainedHardlink, "utf8")).toBe("hardlinked-plaintext");
+    });
+  }, 10_000);
+
+  test("exact Docker creation replaces control symlinks without changing external files", async () => {
+    await withExactCreateHarness(
+      async ({
+        fs,
+        path,
+        root,
+        attempts,
+        containerName,
+        run,
+        seedControlVaultSnapshot,
+        secretInput,
+      }) => {
+        const symlinkAttemptId = "99999999-9999-4999-8999-999999999999";
+        const symlinkSecretPath = getReplacementControlSecretEnvPath(symlinkAttemptId);
+        const symlinkAttemptDirectory = path.join(attempts, symlinkAttemptId);
+        const externalEnvTarget = path.join(root, "external-env-target");
+        const externalBodyTarget = path.join(root, "external-env-body-target");
+        seedControlVaultSnapshot(symlinkAttemptId);
+        fs.writeFileSync(externalEnvTarget, "external-env-must-not-change", { mode: 0o640 });
+        fs.writeFileSync(externalBodyTarget, "external-body-must-not-change", { mode: 0o640 });
+        fs.symlinkSync(externalEnvTarget, path.join(symlinkAttemptDirectory, "container-env"));
+        fs.symlinkSync(
+          externalBodyTarget,
+          path.join(symlinkAttemptDirectory, "container-env.body"),
+        );
+        const symlinkProducer = buildDockerCreateWithSecretEnvCommand({
+          dockerCreateCommand: "true",
+          secretEnvPath: symlinkSecretPath,
+          vaultPassphrasePath: getReplacementControlVaultPassphrasePath(symlinkAttemptId),
+          exactReplacement: { containerName, replacementAttemptId: symlinkAttemptId },
+        });
+        expect(await run(symlinkProducer, secretInput)).toEqual({ code: 0, output: "" });
+        expect(fs.readFileSync(externalEnvTarget, "utf8")).toBe("external-env-must-not-change");
+        expect(fs.readFileSync(externalBodyTarget, "utf8")).toBe("external-body-must-not-change");
+        expect(fs.statSync(externalEnvTarget).mode & 0o777).toBe(0o640);
+        expect(fs.statSync(externalBodyTarget).mode & 0o777).toBe(0o640);
+        expect(fs.existsSync(path.join(symlinkAttemptDirectory, "container-env"))).toBe(false);
+        expect(fs.existsSync(path.join(symlinkAttemptDirectory, "container-env.body"))).toBe(false);
+      },
+    );
+  }, 10_000);
+
+  test("exact Docker creation rejects malformed stdin before Docker creation", async () => {
+    await withExactCreateHarness(
+      async ({ fs, path, attempts, containerName, marker, run, seedControlVaultSnapshot }) => {
+        const malformedAttemptId = "77777777-7777-4777-8777-777777777777";
+        const malformedSecretPath = getReplacementControlSecretEnvPath(malformedAttemptId);
+        seedControlVaultSnapshot(malformedAttemptId);
+        const malformedProducer = buildDockerCreateWithSecretEnvCommand({
+          dockerCreateCommand: `: > ${shellQuote(marker)}`,
+          secretEnvPath: malformedSecretPath,
+          vaultPassphrasePath: getReplacementControlVaultPassphrasePath(malformedAttemptId),
+          exactReplacement: { containerName, replacementAttemptId: malformedAttemptId },
+        });
+        const malformed = await run(malformedProducer, "API_KEY=truncated-without-sentinel\n");
+        expect(malformed.code).not.toBe(0);
+        expect(fs.existsSync(marker)).toBe(false);
+        expect(fs.existsSync(path.join(attempts, malformedAttemptId, "active"))).toBe(false);
+        expect(fs.existsSync(path.join(attempts, malformedAttemptId, "container-env"))).toBe(false);
+        const malformedCleanup = await run(
+          buildReplacementSecretArtifactsCleanupCommand(containerName, malformedAttemptId),
+        );
+        expect(malformedCleanup).toEqual({
+          code: 0,
+          output: `${getReplacementSecretArtifactsCleanupReceipt(malformedAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(malformedAttemptId)}\n`,
+        });
+      },
+    );
+  }, 10_000);
+
+  test("exact Docker creation preserves definitive Docker-create failure and quiescence", async () => {
+    await withExactCreateHarness(
+      async ({ fs, path, attempts, containerName, run, seedControlVaultSnapshot, secretInput }) => {
+        const definitiveAttemptId = "88888888-8888-4888-8888-888888888888";
+        const definitiveSecretPath = getReplacementControlSecretEnvPath(definitiveAttemptId);
+        seedControlVaultSnapshot(definitiveAttemptId);
+        const definitiveProducer = buildDockerCreateWithSecretEnvCommand({
+          dockerCreateCommand: `sh -c ${shellQuote(
+            "printf '%s\\n' 'docker: Error response from daemon: Conflict. The container name is already in use by container' >&2; exit 125",
+          )}`,
+          secretEnvPath: definitiveSecretPath,
+          vaultPassphrasePath: getReplacementControlVaultPassphrasePath(definitiveAttemptId),
+          exactReplacement: { containerName, replacementAttemptId: definitiveAttemptId },
+        });
+        const definitive = await run(definitiveProducer, secretInput);
+        expect(definitive.code).toBe(125);
+        expect(definitive.output).not.toContain("Conflict. The container name");
+        expect(fs.existsSync(path.join(attempts, definitiveAttemptId, "active"))).toBe(false);
+        expect(fs.existsSync(path.join(attempts, definitiveAttemptId, "docker-error"))).toBe(false);
+        const definitiveCleanup = await run(
+          buildReplacementSecretArtifactsCleanupCommand(containerName, definitiveAttemptId),
+        );
+        expect(definitiveCleanup).toEqual({
+          code: 0,
+          output: `${getReplacementSecretArtifactsCleanupReceipt(definitiveAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(definitiveAttemptId)}\n`,
+        });
+      },
+    );
+  }, 10_000);
+
+  test("exact Docker creation keeps ambiguous creation fenced through cleanup and rejects replay", async () => {
+    await withExactCreateHarness(
+      async ({
+        fs,
+        path,
+        attempts,
+        containerName,
+        attemptId,
+        marker,
+        run,
+        seedControlVaultSnapshot,
+        secretInput,
+      }) => {
+        const secretEnvPath = getReplacementControlSecretEnvPath(attemptId);
+        seedControlVaultSnapshot(attemptId);
+        const failedProducer = buildDockerCreateWithSecretEnvCommand({
+          dockerCreateCommand: "false",
+          secretEnvPath,
+          vaultPassphrasePath: getReplacementControlVaultPassphrasePath(attemptId),
+          exactReplacement: { containerName, replacementAttemptId: attemptId },
+        });
+        const failed = await run(failedProducer, secretInput);
+        expect(failed.code).not.toBe(0);
+        expect(failed.output).not.toContain("one-shot-secret-sentinel");
+        expect(fs.existsSync(path.join(attempts, attemptId, "active"))).toBe(true);
+        expect(fs.existsSync(path.join(attempts, attemptId, "container-env"))).toBe(false);
+
+        const cleanup = await run(
+          buildReplacementSecretArtifactsCleanupCommand(containerName, attemptId),
+        );
+        expect(cleanup).toEqual({
+          code: 0,
+          output: `${getReplacementSecretArtifactsCleanupReceipt(attemptId)}\n`,
+        });
+        expect(fs.existsSync(path.join(attempts, attemptId, "active"))).toBe(true);
+        const observedContainerId = "b".repeat(64);
+        const observed = await run(
+          buildReplacementCandidateObservedCommand(attemptId, observedContainerId),
+        );
+        expect(observed).toEqual({
+          code: 0,
+          output: `${getReplacementCandidateObservedReceipt(attemptId, observedContainerId)}\n`,
+        });
+        const cleanupWithObservation = await run(
+          buildReplacementSecretArtifactsCleanupCommand(containerName, attemptId),
+        );
+        expect(cleanupWithObservation).toEqual({
+          code: 0,
+          output: `${getReplacementSecretArtifactsCleanupReceipt(attemptId)}\n${getReplacementCandidateObservedReceipt(attemptId, observedContainerId)}\n`,
+        });
+
+        const replay = buildDockerCreateWithSecretEnvCommand({
+          dockerCreateCommand: `: > ${shellQuote(marker)}`,
+          secretEnvPath,
+          vaultPassphrasePath: getReplacementControlVaultPassphrasePath(attemptId),
+          exactReplacement: { containerName, replacementAttemptId: attemptId },
+        });
+        const rejectedReplay = await run(replay, secretInput);
+        expect(rejectedReplay.code).toBe(75);
+        expect(rejectedReplay.output).not.toContain("one-shot-secret-sentinel");
+        expect(fs.existsSync(marker)).toBe(false);
+      },
+    );
+    // Five sequential shell transactions preserve the same fence through replay.
+  }, 30_000);
+
+  test("exact Docker creation clears the creation fence only after successful creation", async () => {
+    await withExactCreateHarness(
+      async ({ fs, path, attempts, containerName, run, seedControlVaultSnapshot, secretInput }) => {
+        const successfulAttemptId = "66666666-6666-4666-8666-666666666666";
+        const successfulSecretPath = getReplacementControlSecretEnvPath(successfulAttemptId);
+        seedControlVaultSnapshot(successfulAttemptId);
+        const successfulProducer = buildDockerCreateWithSecretEnvCommand({
+          dockerCreateCommand: `printf '%s\\n' ${shellQuote("a".repeat(64))}`,
+          secretEnvPath: successfulSecretPath,
+          vaultPassphrasePath: getReplacementControlVaultPassphrasePath(successfulAttemptId),
+          exactReplacement: {
+            containerName,
+            replacementAttemptId: successfulAttemptId,
+          },
+        });
+        const succeeded = await run(successfulProducer, secretInput);
+        expect(succeeded).toEqual({ code: 0, output: `${"a".repeat(64)}\n` });
+        expect(fs.existsSync(path.join(attempts, successfulAttemptId, "active"))).toBe(false);
+        const quiescentCleanup = await run(
+          buildReplacementSecretArtifactsCleanupCommand(containerName, successfulAttemptId),
+        );
+        expect(quiescentCleanup).toEqual({
+          code: 0,
+          output: `${getReplacementSecretArtifactsCleanupReceipt(successfulAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(successfulAttemptId)}\n`,
+        });
+      },
+    );
+  }, 10_000);
+
+  test("exact Docker creation refuses cleanup receipts when file or symlink artifacts survive", async () => {
+    await withExactCreateHarness(async ({ fs, path, root, attempts, containerName, run }) => {
+      for (const [suffix, kind] of [
+        ["44444444-4444-4444-8444-444444444444", "file"],
+        ["55555555-5555-4555-8555-555555555555", "symlink"],
+      ] as const) {
+        const attemptDirectory = path.join(attempts, suffix);
+        fs.mkdirSync(attemptDirectory, { recursive: true, mode: 0o700 });
+        const survivingPath = path.join(attemptDirectory, "container-env");
+        const externalTarget = path.join(root, `external-cleanup-target-${suffix}`);
+        if (kind === "file") {
+          fs.writeFileSync(survivingPath, "must-survive-fake-rm", { mode: 0o600 });
+        } else {
+          fs.writeFileSync(externalTarget, "external-target-must-survive", { mode: 0o640 });
+          fs.symlinkSync(externalTarget, survivingPath);
+        }
+        const fakeRmBin = path.join(root, `fake-rm-${kind}`);
+        fs.mkdirSync(fakeRmBin);
+        fs.writeFileSync(path.join(fakeRmBin, "rm"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+        const refused = await run(
+          buildReplacementSecretArtifactsCleanupCommand(containerName, suffix),
+          "",
+          fakeRmBin,
+        );
+        expect(refused.code).toBe(70);
+        expect(refused.output).not.toContain(getReplacementSecretArtifactsCleanupReceipt(suffix));
+        if (kind === "symlink") {
+          expect(fs.readFileSync(externalTarget, "utf8")).toBe("external-target-must-survive");
+          expect(fs.statSync(externalTarget).mode & 0o777).toBe(0o640);
+        }
+      }
+    });
+  }, 10_000);
 
   test("derives exact cleanup paths from the canonical container name only", () => {
     const attemptId = "33333333-3333-4333-8333-333333333333";

@@ -19,7 +19,9 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
 import { agentBackupObjects } from "../../../db/schemas/agent-backup-catalog";
+import { agentComputeFunding } from "../../../db/schemas/agent-compute-funding";
 import { agentComputeStopIntents } from "../../../db/schemas/agent-compute-stop-intents";
+import { agentComputeSubjects } from "../../../db/schemas/agent-compute-subjects";
 import { agentNodeIncarnationHistories } from "../../../db/schemas/agent-node-incarnation-histories";
 import {
   type AgentSandbox,
@@ -28,6 +30,7 @@ import {
   agentSandboxes,
 } from "../../../db/schemas/agent-sandboxes";
 import { apiKeys } from "../../../db/schemas/api-keys";
+import { billingFundingReservations } from "../../../db/schemas/billing-funding-reservations";
 import { generations } from "../../../db/schemas/generations";
 import { jobs } from "../../../db/schemas/jobs";
 import { organizations } from "../../../db/schemas/organizations";
@@ -115,12 +118,20 @@ beforeAll(async () => {
     agentBackupCatalogAuthorities,
     agentBackupObjects,
     agentComputeStopIntents,
+    agentComputeSubjects,
+    billingFundingReservations,
     apiKeys,
     generations,
     usageRecords,
     jobs,
   };
-  const { apply } = await pushSchema(schema as never, dbWrite as never);
+  // Create the reservation composite index before installing the funding foreign key.
+  const prerequisites = await pushSchema(
+    { organizations, agentComputeSubjects, billingFundingReservations } as never,
+    dbWrite as never,
+  );
+  await prerequisites.apply();
+  const { apply } = await pushSchema({ ...schema, agentComputeFunding } as never, dbWrite as never);
   await apply();
   await applyLifecycleRevisionMigration();
 }, TEST_TIMEOUT);

@@ -11,8 +11,9 @@
  * and returns `requiresRestart`.
  */
 import crypto from "node:crypto";
-import { constants } from "node:fs";
+import { type BigIntStats, constants, type Dirent } from "node:fs";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger, timeInferenceSpan } from "@elizaos/core";
@@ -1525,25 +1526,56 @@ async function pruneLocalBackups(
   }
 }
 
+// Cache only public listing metadata, never encrypted bodies or restore data.
+// Every listing still enumerates the directory and stats each file. The bound
+// limits retained process memory, not the number of backups returned.
+const LOCAL_BACKUP_METADATA_CACHE_SIZE = 128;
+const localBackupMetadataCache = new Map<
+  string,
+  { version: string; metadata: LocalAgentBackupMetadata }
+>();
+
+function localBackupFileVersion(stat: BigIntStats): string {
+  return [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
+}
+
 export async function listLocalAgentBackups(
   agentId?: string,
 ): Promise<LocalAgentBackupMetadata[]> {
   const root = localBackupsDir();
-  if (
-    !(await timeInferenceSpan("local-backups:directory-stat", () =>
-      pathExists(root),
-    ))
-  )
-    return [];
-  const entries = await timeInferenceSpan("local-backups:directory-list", () =>
-    fs.readdir(root, { withFileTypes: true }),
-  );
+  let entries: Dirent[];
+  try {
+    entries = await timeInferenceSpan("local-backups:directory-list", () =>
+      fs.readdir(root, { withFileTypes: true }),
+    );
+  } catch (error) {
+    // error-policy:J3 A missing backup directory is an empty listing. Check
+    // existence only after ENOENT so a dangling symlink remains an error,
+    // while ordinary listings need no redundant directory stat.
+    if (
+      (error as NodeJS.ErrnoException).code === "ENOENT" &&
+      !(await timeInferenceSpan("local-backups:directory-stat", () =>
+        pathExists(root),
+      ))
+    )
+      return [];
+    throw error;
+  }
   const backups: LocalAgentBackupMetadata[] = [];
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(LOCAL_BACKUP_EXTENSION))
       continue;
     try {
       const filePath = resolveLocalBackupPath(entry.name);
+      const stat = await fs.stat(filePath, { bigint: true });
+      const version = localBackupFileVersion(stat);
+      const cached = localBackupMetadataCache.get(filePath);
+      if (cached?.version === version) {
+        if (!agentId || cached.metadata.agentId === agentId)
+          backups.push({ ...cached.metadata });
+        continue;
+      }
+      localBackupMetadataCache.delete(filePath);
       const envelope = JSON.parse(
         await fs.readFile(filePath, "utf8"),
       ) as AgentBackupFileEnvelope;
@@ -1552,17 +1584,30 @@ export async function listLocalAgentBackups(
         envelope.schemaVersion !== 1
       )
         continue;
-      if (agentId && envelope.agentId !== agentId) continue;
-      const stat = await fs.stat(filePath);
-      backups.push({
+      // Do not associate bytes read during a concurrent write with the older
+      // stat identity. A later listing can retry the changed file.
+      if (
+        localBackupFileVersion(await fs.stat(filePath, { bigint: true })) !==
+        version
+      )
+        continue;
+      const metadata: LocalAgentBackupMetadata = {
         fileName: entry.name,
         path: filePath,
         createdAt: envelope.createdAt,
         agentId: envelope.agentId,
         stateSha256: envelope.stateSha256,
-        sizeBytes: stat.size,
-      });
+        sizeBytes: Number(stat.size),
+      };
+      if (localBackupMetadataCache.size >= LOCAL_BACKUP_METADATA_CACHE_SIZE) {
+        const oldest = localBackupMetadataCache.keys().next().value;
+        if (oldest !== undefined) localBackupMetadataCache.delete(oldest);
+      }
+      localBackupMetadataCache.set(filePath, { version, metadata });
+      if (!agentId || metadata.agentId === agentId)
+        backups.push({ ...metadata });
     } catch (error) {
+      localBackupMetadataCache.delete(path.resolve(root, entry.name));
       logger.warn(
         {
           fileName: entry.name,
@@ -1933,6 +1978,68 @@ async function pruneExtraFiles(
   await visit(root);
 }
 
+/** Derives empty PostgreSQL directories from this PGlite version for legacy file-only vault archives. */
+async function prepareVaultRestoreDirectories(
+  vault: AgentBackupFileSet,
+): Promise<string[]> {
+  const version = vault.files.find(
+    (file) => file.path === `${VAULT_PGLITE_DIR_NAME}/PG_VERSION`,
+  );
+  if (!version) return [];
+  const { PGlite } = await import("@electric-sql/pglite");
+  const template = await fs.mkdtemp(
+    path.join(os.tmpdir(), "eliza-vault-restore-layout-"),
+  );
+  try {
+    const database = await PGlite.create(template);
+    await database.close();
+    if (
+      !(await fs.readFile(path.join(template, "PG_VERSION"))).equals(
+        verifyFileEntry(version),
+      )
+    ) {
+      throw new ElizaError(
+        "[AgentBackup] Vault database version does not match the installed PGlite version",
+        {
+          code: "AGENT_BACKUP_VAULT_VERSION_MISMATCH",
+        },
+      );
+    }
+    const directories = [VAULT_PGLITE_DIR_NAME];
+    const visit = async (directory: string): Promise<void> => {
+      for (const entry of await fs.readdir(directory, {
+        withFileTypes: true,
+      })) {
+        if (!entry.isDirectory()) continue;
+        const absolute = path.join(directory, entry.name);
+        const relative = normalizeRelativePath(
+          path.relative(template, absolute),
+        );
+        directories.push(`${VAULT_PGLITE_DIR_NAME}/${relative}`);
+        await visit(absolute);
+      }
+    };
+    await visit(template);
+    const files = new Set(
+      vault.files.map((file) => normalizeRelativePath(file.path)),
+    );
+    for (const directory of directories) {
+      if (files.has(directory)) {
+        throw new ElizaError(
+          "[AgentBackup] Vault archive replaces a required database directory with a file",
+          {
+            code: "AGENT_BACKUP_VAULT_DIRECTORY_CONFLICT",
+            context: { directory },
+          },
+        );
+      }
+    }
+    return directories.sort();
+  } finally {
+    await fs.rm(template, { recursive: true, force: true });
+  }
+}
+
 async function restoreFileSet(
   root: string,
   fileSet: AgentBackupFileSet,
@@ -1940,6 +2047,7 @@ async function restoreFileSet(
     replaceRoot?: boolean;
     include?: (relativePath: string) => boolean;
     pruneExtra?: (relativePath: string) => boolean;
+    directories?: readonly string[];
   } = {},
 ): Promise<void> {
   verifyFileSet(fileSet);
@@ -1958,6 +2066,13 @@ async function restoreFileSet(
   );
   if (options.pruneExtra) {
     await pruneExtraFiles(resolvedRoot, options.pruneExtra, keepPaths);
+  }
+  for (const directory of options.directories ?? []) {
+    const relative = normalizeRelativePath(directory);
+    await fs.mkdir(path.join(resolvedRoot, relative), {
+      recursive: true,
+      mode: 0o700,
+    });
   }
   for (const entry of filesToRestore) {
     const relative = normalizeRelativePath(entry.path);
@@ -2200,6 +2315,11 @@ async function restoreAuthorizedAgentSnapshot(
   if (manifest.components.character.configFile) {
     verifyFileEntry(manifest.components.character.configFile);
   }
+  // A file-only archive omits empty database directories. Resolve and validate
+  // their layout before shutting down the runtime or replacing any data.
+  const vaultDirectories = await prepareVaultRestoreDirectories(
+    manifest.components.vault,
+  );
   let pgliteDirForStateFiles: string | null = null;
   if (database.kind === "postgres-rows") {
     const postgresUrl = hasPostgresUrl(runtime);
@@ -2273,6 +2393,7 @@ async function restoreAuthorizedAgentSnapshot(
   );
   await restoreFileSet(stateDir, manifest.components.vault, {
     pruneExtra: vaultFileInclude,
+    directories: vaultDirectories,
   });
   await restoreFileSet(stateDir, manifest.components.stateFiles, {
     pruneExtra: makeStateFileInclude(stateDir, pgliteDirForStateFiles),

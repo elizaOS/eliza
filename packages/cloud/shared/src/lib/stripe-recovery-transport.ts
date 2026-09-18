@@ -19,8 +19,11 @@ export function createStripeRecoveryFetch(deadline: number) {
       const signal = upstream ? AbortSignal.any([upstream, controller.signal]) : controller.signal;
       const timer = setTimeout(() => controller.abort(), remaining);
       try {
+        signal.throwIfAborted();
         const response = await fetch(input, { ...init, signal });
+        signal.throwIfAborted();
         const bytes = await response.arrayBuffer();
+        signal.throwIfAborted();
         return new Response(
           response.status === 204 || response.status === 205 || response.status === 304
             ? null

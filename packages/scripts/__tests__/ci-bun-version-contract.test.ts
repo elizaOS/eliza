@@ -58,7 +58,7 @@ const CANONICAL = "1.3.14";
 const SHA = "0c5077e51419868618aeaa5fe8019c62421857d6";
 
 const GATE_WORKFLOWS = [
-  "test.yml",
+  "ci.yml",
   "pr-static-smoke.yml",
   "cloud-cf-release.yml",
 ];
@@ -208,7 +208,7 @@ describe("ci-bun-version-contract", () => {
 
   test("fails when a gate workflow floats back to canary", () => {
     expectViolation(
-      buildRepo({ overrides: { "test.yml": GATE_FLOATING } }),
+      buildRepo({ overrides: { "ci.yml": GATE_FLOATING } }),
       /wires floating Bun/,
     );
   });
