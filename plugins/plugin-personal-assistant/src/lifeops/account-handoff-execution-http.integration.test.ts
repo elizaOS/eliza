@@ -1,22 +1,20 @@
 /** Real loopback HTTP and PGlite execute the saved Google account switch; provider probes are deterministic and no external message or account mutation occurs. */
 
-import { once } from "node:events";
 import { ElizaClient } from "@elizaos/ui/api/client-base";
 import "../api/client-lifeops.js";
-import { createServer, type Server } from "node:http";
-import {
-  ApprovalDispatchControlStore,
-  resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import { getConnectorAccountManager, stringToUuid } from "@elizaos/core";
+import { ApprovalDispatchControlStore } from "@elizaos/agent";
+import { getConnectorAccountManager } from "@elizaos/core";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
-import { googleHandoffFixture } from "../../test/helpers/handoff-google.js";
+import {
+  createHandoffHttpFixture,
+  otherOwner,
+  owner,
+  token,
+} from "../../test/helpers/handoff-http.js";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../test/helpers/runtime.js";
-import { GoogleWorkspaceTestService } from "../../test/stubs/plugin-google-workspace.js";
-import { personalAssistantRoutesPlugin } from "../routes/plugin.js";
 import { AccountHandoffStore } from "./account-handoff-store.js";
 import { LifeOpsService } from "./service.js";
 
@@ -29,140 +27,33 @@ vi.mock("@elizaos/ui/api/client-base", async () => ({
   ...(await import("../../../../packages/ui/src/api/client-base.js")),
 }));
 
-let host: RealTestRuntimeResult;
-let server: Server;
-let baseUrl: string;
-const owner = stringToUuid("handoff-http-owner");
-const otherOwner = stringToUuid("handoff-http-other-owner");
-const token = "synthetic-handoff-http-owner-token";
-const serverErrors: Error[] = [];
-const choices = {
-  operationId: "http-review",
-  previousGrantId: "connector-account:http-old",
-  replacementGrantId: "connector-account:http-new",
-  readCalendarIds: ["reviewed-calendar"],
-  writeCalendarId: null,
-  calendarLinks: [],
-  messageDestinations: [
-    {
-      channel: "email" as const,
-      connectorAccountId: "http-new",
-      recipientId: "recipient@example.test",
-      recipientEntityId: owner,
-    },
-  ],
-  importedData: "retain" as const,
-  retireApprovalIds: [],
-};
-
+let host: RealTestRuntimeResult | undefined;
+let fixture: Awaited<ReturnType<typeof createHandoffHttpFixture>>;
 beforeAll(async () => {
+  host = undefined;
   vi.stubEnv("ELIZA_API_TOKEN", token);
   vi.stubEnv("ELIZA_REQUIRE_LOCAL_AUTH", "1");
   host = await createLifeOpsTestRuntime();
-  host.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", owner);
-  await host.runtime.registerService(GoogleWorkspaceTestService);
-  const provider = await host.runtime.getServiceLoadPromise("google");
-  Object.assign(provider, {
-    listCalendars: async () => [googleHandoffFixture().entry],
-  });
-  const manager = getConnectorAccountManager(host.runtime);
-  manager.registerProvider({ provider: "google" });
-  for (const id of ["http-old", "http-new"]) {
-    const saved = await manager.upsertAccount("google", {
-      id,
-      provider: "google",
-      role: "OWNER",
-      purpose: ["reading"],
-      accessGate: "owner_binding",
-      status: "connected",
-      displayHandle: `${id}@example.test`,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      metadata: {
-        grantedScopes: [
-          "https://www.googleapis.com/auth/calendar.readonly",
-          "https://www.googleapis.com/auth/gmail.send",
-          "https://www.googleapis.com/auth/gmail.readonly",
-        ],
-      },
-    });
-    if (id === "http-old")
-      choices.previousGrantId = `connector-account:${saved.id}`;
-    else {
-      choices.replacementGrantId = `connector-account:${saved.id}`;
-      const destination = choices.messageDestinations[0];
-      if (!destination) throw new Error("Fixture recipient missing");
-      destination.connectorAccountId = saved.id;
-    }
-  }
-  const graph = resolveKnowledgeGraphService(host.runtime);
-  if (!graph) throw new Error("Fixture graph missing");
-  await graph.getEntityStore(host.runtime.agentId).upsert({
-    entityId: owner,
-    type: "person",
-    preferredName: "Synthetic recipient",
-    identities: [
-      {
-        platform: "email",
-        handle: "recipient@example.test",
-        connectorAccountId: "default",
-        verified: true,
-        confidence: 1,
-        addedAt: "2026-09-01T00:00:00Z",
-        addedVia: "user_chat",
-        evidence: ["Synthetic confirmation"],
-      },
-    ],
-    tags: [],
-    visibility: "owner_only",
-    state: {},
-  });
-  server = createServer((req, res) => {
-    const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-    const path =
-      pathname === "/api/lifeops/account-handoffs" ||
-      pathname.endsWith("/active") ||
-      pathname.endsWith("/retirement-candidates")
-        ? pathname
-        : pathname.endsWith("/cancel")
-          ? "/api/lifeops/account-handoffs/:operationId/cancel"
-          : pathname.endsWith("/advance")
-            ? "/api/lifeops/account-handoffs/:operationId/advance"
-            : "/api/lifeops/account-handoffs/:operationId";
-    const route = personalAssistantRoutesPlugin.routes?.find(
-      (item) => item.type === req.method && item.path === path,
-    );
-    if (!route?.handler) {
-      res.writeHead(404).end();
-      return;
-    }
-    Promise.resolve(
-      route.handler(req as never, res as never, host.runtime as never),
-    ).catch((error) => {
-      // error-policy:J1 Test HTTP boundary records unexpected failures before closing the response.
-      serverErrors.push(
-        error instanceof Error ? error : new Error(String(error)),
-      );
-      res.writeHead(500).end("Unexpected test server failure");
-    });
-  });
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
-  const address = server.address();
-  if (!address || typeof address === "string")
-    throw new Error("Fixture server address missing");
-  baseUrl = `http://127.0.0.1:${address.port}/api/lifeops/account-handoffs`;
+  fixture = await createHandoffHttpFixture(host, [
+    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.readonly",
+  ]);
 }, 60_000);
 afterAll(async () => {
-  if (server)
-    await new Promise<void>((resolve, reject) =>
-      server.close((error) => (error ? reject(error) : resolve())),
-    );
-  if (host) await host.cleanup();
-  vi.unstubAllEnvs();
+  try {
+    if (host && fixture?.host === host) await fixture.cleanup();
+  } finally {
+    try {
+      if (host) await host.cleanup();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  }
 });
 
 it("advances the saved Google review over authenticated HTTP and recovers provider failure without dropping the old account", async () => {
+  const { host, baseUrl, choices, serverErrors } = fixture;
   host.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", otherOwner);
   const service = new LifeOpsService(host.runtime, {
     ownerEntityId: otherOwner,
@@ -369,9 +260,6 @@ it("advances the saved Google review over authenticated HTTP and recovers provid
   } finally {
     host.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", owner);
   }
-}, 60_000);
-
-it("does not pause or disconnect when a saved switch includes an unverified messaging channel", async () => {
   const prior = await new AccountHandoffStore(host.runtime, otherOwner).read(
     "http-execution",
   );
@@ -411,4 +299,4 @@ it("does not pause or disconnect when a saved switch includes an unverified mess
   expect(
     await accounts.getGoogleConnectorAccounts(new URL(baseUrl), "owner"),
   ).toEqual(beforeAccounts);
-});
+}, 60_000);

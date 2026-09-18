@@ -1,24 +1,21 @@
 /** Real loopback HTTP, owner gate and PGlite review round-trip; Google discovery is deterministic and no provider mutation or message occurs. */
 
-import { once } from "node:events";
 import { ElizaClient } from "@elizaos/ui/api/client-base";
 import "../api/client-lifeops.js";
-import { createServer, type Server } from "node:http";
-import {
-  createApprovalQueue,
-  resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import { getConnectorAccountManager, stringToUuid } from "@elizaos/core";
+import { createApprovalQueue } from "@elizaos/agent";
 import { CalendarService } from "@elizaos/plugin-calendar";
 import { LinkedCalendarRepository } from "@elizaos/plugin-calendar/service/linked-calendar-sync";
-import { afterAll, beforeAll, expect, it, vi } from "vitest";
-import { googleHandoffFixture } from "../../test/helpers/handoff-google.js";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import {
+  createHandoffHttpFixture,
+  otherOwner,
+  owner,
+  token,
+} from "../../test/helpers/handoff-http.js";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../test/helpers/runtime.js";
-import { GoogleWorkspaceTestService } from "../../test/stubs/plugin-google-workspace.js";
-import { personalAssistantRoutesPlugin } from "../routes/plugin.js";
 import { AccountHandoffStore } from "./account-handoff-store.js";
 import { LifeOpsService } from "./service.js";
 
@@ -31,138 +28,32 @@ vi.mock("@elizaos/ui/api/client-base", async () => ({
   ...(await import("../../../../packages/ui/src/api/client-base.js")),
 }));
 
-let host: RealTestRuntimeResult;
-let server: Server;
-let baseUrl: string;
-const owner = stringToUuid("handoff-http-owner");
-const otherOwner = stringToUuid("handoff-http-other-owner");
-const token = "synthetic-handoff-http-owner-token";
-const serverErrors: Error[] = [];
-const choices = {
-  operationId: "http-review",
-  previousGrantId: "connector-account:http-old",
-  replacementGrantId: "connector-account:http-new",
-  readCalendarIds: ["reviewed-calendar"],
-  writeCalendarId: null,
-  calendarLinks: [],
-  messageDestinations: [
-    {
-      channel: "email" as const,
-      connectorAccountId: "http-new",
-      recipientId: "recipient@example.test",
-      recipientEntityId: owner,
-    },
-  ],
-  importedData: "retain" as const,
-  retireApprovalIds: [],
-};
-
-beforeAll(async () => {
+let host: RealTestRuntimeResult | undefined;
+let fixture: Awaited<ReturnType<typeof createHandoffHttpFixture>>;
+beforeEach(async () => {
+  host = undefined;
   vi.stubEnv("ELIZA_API_TOKEN", token);
   vi.stubEnv("ELIZA_REQUIRE_LOCAL_AUTH", "1");
   host = await createLifeOpsTestRuntime();
-  host.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", owner);
-  await host.runtime.registerService(GoogleWorkspaceTestService);
-  const provider = await host.runtime.getServiceLoadPromise("google");
-  Object.assign(provider, {
-    listCalendars: async () => [googleHandoffFixture().entry],
-  });
-  const manager = getConnectorAccountManager(host.runtime);
-  manager.registerProvider({ provider: "google" });
-  for (const id of ["http-old", "http-new"]) {
-    const saved = await manager.upsertAccount("google", {
-      id,
-      provider: "google",
-      role: "OWNER",
-      purpose: ["reading"],
-      accessGate: "owner_binding",
-      status: "connected",
-      displayHandle: `${id}@example.test`,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      metadata: {
-        grantedScopes: [
-          "https://www.googleapis.com/auth/calendar.readonly",
-          "https://www.googleapis.com/auth/gmail.send",
-        ],
-      },
-    });
-    if (id === "http-old")
-      choices.previousGrantId = `connector-account:${saved.id}`;
-    else {
-      choices.replacementGrantId = `connector-account:${saved.id}`;
-      const destination = choices.messageDestinations[0];
-      if (!destination) throw new Error("Fixture recipient missing");
-      destination.connectorAccountId = saved.id;
+  fixture = await createHandoffHttpFixture(host, [
+    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+  ]);
+}, 60_000);
+afterEach(async () => {
+  try {
+    if (host && fixture?.host === host) await fixture.cleanup();
+  } finally {
+    try {
+      if (host) await host.cleanup();
+    } finally {
+      vi.unstubAllEnvs();
     }
   }
-  const graph = resolveKnowledgeGraphService(host.runtime);
-  if (!graph) throw new Error("Fixture graph missing");
-  await graph.getEntityStore(host.runtime.agentId).upsert({
-    entityId: owner,
-    type: "person",
-    preferredName: "Synthetic recipient",
-    identities: [
-      {
-        platform: "email",
-        handle: "recipient@example.test",
-        connectorAccountId: "default",
-        verified: true,
-        confidence: 1,
-        addedAt: "2026-09-01T00:00:00Z",
-        addedVia: "user_chat",
-        evidence: ["Synthetic confirmation"],
-      },
-    ],
-    tags: [],
-    visibility: "owner_only",
-    state: {},
-  });
-  server = createServer((req, res) => {
-    const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-    const path =
-      pathname === "/api/lifeops/account-handoffs" ||
-      pathname.endsWith("/active") ||
-      pathname.endsWith("/retirement-candidates") ||
-      pathname.endsWith("/calendar-entries")
-        ? pathname
-        : pathname.endsWith("/cancel")
-          ? "/api/lifeops/account-handoffs/:operationId/cancel"
-          : "/api/lifeops/account-handoffs/:operationId";
-    const route = personalAssistantRoutesPlugin.routes?.find(
-      (item) => item.type === req.method && item.path === path,
-    );
-    if (!route?.handler) {
-      res.writeHead(404).end();
-      return;
-    }
-    Promise.resolve(
-      route.handler(req as never, res as never, host.runtime as never),
-    ).catch((error) => {
-      // error-policy:J1 Test HTTP boundary records unexpected failures before closing the response.
-      serverErrors.push(
-        error instanceof Error ? error : new Error(String(error)),
-      );
-      res.writeHead(500).end("Unexpected test server failure");
-    });
-  });
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
-  const address = server.address();
-  if (!address || typeof address === "string")
-    throw new Error("Fixture server address missing");
-  baseUrl = `http://127.0.0.1:${address.port}/api/lifeops/account-handoffs`;
-}, 60_000);
-afterAll(async () => {
-  if (server)
-    await new Promise<void>((resolve, reject) =>
-      server.close((error) => (error ? reject(error) : resolve())),
-    );
-  if (host) await host.cleanup();
-  vi.unstubAllEnvs();
 });
 
 it("rejects unauthenticated requests and malformed approval IDs before a saved review exists", async () => {
+  const { host, baseUrl, choices } = fixture;
   const denied = await fetch(`${baseUrl}/active`, {
     headers: { "x-eliza-entity-id": owner },
   });
@@ -184,7 +75,8 @@ it("rejects unauthenticated requests and malformed approval IDs before a saved r
   ).toBeNull();
 });
 
-it("creates and replays a review through canonical services and ignores forged owner headers during readback", async () => {
+it("creates, replays and cancels an owner review while rejecting forged ownership and stale revisions", async () => {
+  const { host, baseUrl, choices, serverErrors } = fixture;
   const client = new ElizaClient(new URL(baseUrl).origin, token);
   const payload = await client.createLifeOpsAccountHandoff(choices);
   expect(payload.handoff.review.replacement.email).toBe(
@@ -212,9 +104,6 @@ it("creates and replays a review through canonical services and ignores forged o
     await new AccountHandoffStore(host.runtime, otherOwner).read("http-review"),
   ).toBeNull();
   expect(serverErrors).toEqual([]);
-});
-
-it("cancels only an unchanged unstarted review and permits replay without another transition", async () => {
   const store = new AccountHandoffStore(host.runtime, owner);
   const review = await store.read("http-review");
   if (!review) throw new Error("Fixture review missing");
@@ -229,7 +118,6 @@ it("cancels only an unchanged unstarted review and permits replay without anothe
     });
   expect((await cancel(review.revision - 1)).status).toBe(409);
   expect(await store.read(review.operationId)).toEqual(review);
-  const client = new ElizaClient(new URL(baseUrl).origin, token);
   const cancelled = await client.cancelLifeOpsAccountHandoff(
     review.operationId,
     review.revision,
@@ -259,6 +147,7 @@ it("cancels only an unchanged unstarted review and permits replay without anothe
 });
 
 it("returns exact owner retirement candidates through the app client and denies foreign, unknown-account and unauthenticated reads", async () => {
+  const { host, baseUrl, choices, serverErrors } = fixture;
   const queue = createApprovalQueue(host.runtime, {
     agentId: host.runtime.agentId,
   });
@@ -316,6 +205,7 @@ it("returns exact owner retirement candidates through the app client and denies 
 });
 
 it("returns the selected account's real event details and explicit missing-event state through the client", async () => {
+  const { host, baseUrl, choices } = fixture;
   const calendar = await host.runtime.getServiceLoadPromise(
     CalendarService.serviceType,
   );
