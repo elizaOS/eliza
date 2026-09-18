@@ -178,4 +178,24 @@ describe("action-search-keywords resolution edge cases", () => {
 			countActionSearchKeywordMatches(["forwarding this along"], ["forward"]),
 		).toBe(0);
 	});
+
+	it("supplies keyword terms for the goals context", () => {
+		const sources = getActionSearchKeywordSources({
+			name: "",
+			contexts: ["goals"],
+		});
+		expect(sources.map((source) => source.key)).toEqual([
+			"contextSignal.lifeops_goal.strong",
+			"action.ownerGoals.request",
+		]);
+		expect(
+			getActionSearchKeywordTerms({ name: "", contexts: ["goals"] }),
+		).toContain("goal");
+	});
+
+	it("returns no context terms for names outside the taxonomy", () => {
+		expect(
+			getActionSearchKeywordTerms({ name: "", contexts: ["not_a_context"] }),
+		).toEqual([]);
+	});
 });

@@ -6,6 +6,7 @@
  * used as hard action availability checks.
  */
 
+import type { FirstPartyAgentContext } from "../types/contexts.ts";
 import { VALIDATION_KEYWORD_DOCS } from "./generated/validation-keyword-data.ts";
 import {
 	collectKeywordTermMatches,
@@ -26,7 +27,16 @@ export type ActionSearchKeywordSource = {
 	terms: string[];
 };
 
-const CONTEXT_KEYWORD_STEMS: Record<string, readonly string[]> = {
+/**
+ * Keyword stems consulted for each first-party agent context.
+ *
+ * Total over `FirstPartyAgentContext` on purpose: a context added to the
+ * taxonomy without stems here contributes no keywords at all, which is silent
+ * at runtime. Keeping the record total turns that into a build error.
+ */
+type ContextKeywordStems = Record<FirstPartyAgentContext, readonly string[]>;
+
+const CONTEXT_KEYWORD_STEMS: ContextKeywordStems = {
 	admin: ["contextSignal.admin"],
 	agent_internal: ["contextSignal.agent_internal"],
 	automation: [
@@ -51,6 +61,7 @@ const CONTEXT_KEYWORD_STEMS: Record<string, readonly string[]> = {
 	finance: ["contextSignal.finance"],
 	game: ["contextSignal.game"],
 	general: ["contextSignal.general"],
+	goals: ["contextSignal.lifeops_goal", "action.ownerGoals"],
 	health: ["contextSignal.health"],
 	knowledge: ["contextSignal.knowledge"],
 	messaging: [
@@ -107,6 +118,19 @@ export function actionNameToKeywordStem(actionName: string): string {
 	return [words[0], ...words.slice(1).map(capitalizeAscii)].join("");
 }
 
+/**
+ * Stems for a context name. Contexts are an open union (`AgentContext`), so a
+ * name outside the first-party taxonomy can reach this lookup even though the
+ * record above is total over the first-party ones.
+ */
+function stemsForContext(context: string): readonly string[] {
+	return (
+		(CONTEXT_KEYWORD_STEMS as Record<string, readonly string[] | undefined>)[
+			context
+		] ?? []
+	);
+}
+
 export function getActionSearchKeywordSources(input: {
 	name: string;
 	contexts?: unknown;
@@ -119,7 +143,7 @@ export function getActionSearchKeywordSources(input: {
 	}
 
 	for (const context of normalizeStringArray(input.contexts)) {
-		for (const stem of CONTEXT_KEYWORD_STEMS[context] ?? []) {
+		for (const stem of stemsForContext(context)) {
 			stems.add(stem);
 		}
 	}
