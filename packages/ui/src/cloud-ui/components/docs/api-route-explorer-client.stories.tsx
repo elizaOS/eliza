@@ -2,6 +2,7 @@
  * Storybook stories for the API route explorer.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { expect, userEvent, within } from "storybook/test";
 import type { DiscoveredApiRouteDto } from "../../types/cloud-api";
 import { ApiRouteExplorerClient } from "./api-route-explorer-client";
 
@@ -118,4 +119,56 @@ export const Empty: Story = {
 
 export const SingleRoute: Story = {
   args: { routes: [routes[2]] },
+};
+
+export const SelectedDetailLight: Story = {
+  args: { routes },
+  globals: { theme: "light" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /Agent Detail/ }));
+    await expect(
+      canvas.getByRole("heading", { name: "Agent Detail" }),
+    ).toBeVisible();
+    await expect(canvas.getByText("Required", { exact: true })).toBeVisible();
+    await expect(
+      canvas.getByRole("button", { name: "Copy cURL example" }),
+    ).toBeVisible();
+  },
+};
+
+export const SelectedPostLight: Story = {
+  args: { routes },
+  globals: { theme: "light" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      canvas.getByRole("button", { name: /Chat Completions/ }),
+    );
+    await expect(
+      canvas.getByRole("heading", { name: "Chat Completions" }),
+    ).toBeVisible();
+    await expect(canvas.getByText("Required", { exact: true })).toBeVisible();
+    await expect(
+      canvas.getByRole("button", { name: "Copy cURL example" }),
+    ).toBeVisible();
+  },
+};
+
+export const SelectedPublicLight: Story = {
+  args: { routes },
+  globals: { theme: "light" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      canvas.getByRole("button", { name: /Route Discovery/ }),
+    );
+    await expect(
+      canvas.getByRole("heading", { name: "Route Discovery" }),
+    ).toBeVisible();
+    await expect(canvas.getByText("Public", { exact: true })).toBeVisible();
+    await expect(
+      canvas.getByRole("button", { name: "Copy cURL example" }),
+    ).toBeVisible();
+  },
 };
