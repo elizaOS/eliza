@@ -4,7 +4,7 @@
   "kind": "plugin",
   "description": "Orkid gasless swap engine integration — quote, execute, dry-run, confirm, and track swaps via @orkid-labs/sdk",
   "homepage": "https://github.com/orkid-labs/plugin-orkid",
-  "version": "2.0.5",
+  "version": "2.1.0",
   "tags": [
     "orkid",
     "swap",
