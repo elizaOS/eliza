@@ -115,6 +115,21 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	// folding unrelated prose.
 	String.raw`/(1\/\/[A-Za-z0-9_\-]{10,})/g`,
 	String.raw`/\b(ya29\.[A-Za-z0-9_\-.]{10,})/g`,
+	// JWTs. A compact JWS always opens `eyJ` — base64url for `{"` — and carries
+	// three base64url segments. Anchoring on that literal prefix plus a floor on
+	// every segment keeps ordinary dotted identifiers and base64 blobs out while
+	// masking the one shape that is always a bearer credential when logged. The
+	// name-based net cannot help here: a session JWT is routinely echoed under a
+	// neutral key such as `value` or inside a serialized provider error body.
+	String.raw`/\b(eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})/g`,
+	// Discord and Slack incoming-webhook URLs are complete post credentials:
+	// anyone holding the URL can write to the channel, and there is no second
+	// factor. They carry no userinfo component, so the `://user@host` rule above
+	// does not reach them, and they are frequently logged whole as the failing
+	// request target. The leaf logger already treats `webhook` as a credential
+	// name for exactly this reason; this covers the value under any name.
+	String.raw`/(https:\/\/(?:canary\.|ptb\.)?discord(?:app)?\.com\/api\/webhooks\/[0-9]{5,}\/[A-Za-z0-9_-]{10,})/g`,
+	String.raw`/(https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9]{5,}\/[A-Za-z0-9]{5,}\/[A-Za-z0-9]{10,})/g`,
 ];
 
 /**
