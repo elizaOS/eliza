@@ -4,6 +4,31 @@ import type { IStorage } from "./types";
 export class MemoryStorage implements IStorage {
   private collections: Map<string, Map<string, unknown>> = new Map();
   private ready = false;
+  /**
+   * Serialized conditional-write lane, shared by every adapter that wraps this
+   * storage instance. `IStorage` is an async interface over synchronous Maps,
+   * so the storage itself cannot make a compare-then-write atomic; this tail
+   * restores atomicity for conditional writes ACROSS all adapters sharing the
+   * storage (two agents in one process share a `MemoryStorage` singleton —
+   * see the plugin init hook), not just within one adapter.
+   */
+  private conditionalWriteTail: Promise<unknown> = Promise.resolve();
+
+  /**
+   * Run `operation` strictly after every earlier conditional write on this
+   * storage instance settles, so a compare-and-set's read and write phases
+   * cannot interleave with another conditional write between them.
+   */
+  runSerialized<T>(operation: () => Promise<T>): Promise<T> {
+    const attempt = this.conditionalWriteTail.then(operation, operation);
+    // Keep the tail recoverable: a rejected conditional write must not poison
+    // later ones. The caller still observes `attempt`'s rejection.
+    this.conditionalWriteTail = attempt.then(
+      () => undefined,
+      () => undefined
+    );
+    return attempt;
+  }
 
   async init(): Promise<void> {
     this.ready = true;
