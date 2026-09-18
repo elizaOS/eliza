@@ -218,3 +218,5 @@ Promoted availability checks require an interval object containing startAt and e
 Calendar create/update field extraction explicitly requests temperature zero through both standalone and host model runners. Other model calls retain their existing sampling defaults. Empty extraction still cannot authorize an empty write; missing timing and write-time conflict checks remain mandatory.
 
 Calendar model runners must preserve both bare-string and native `{ text, ... }` model results. Passing responseSchema can select native result envelopes; discarding their text turns valid extracted changes into empty updates. Host wiring must forward the entire model-call contract.
+
+Calendar time proposals may supply duration.existingEventQuery to preserve a uniquely resolved existing event duration. Reuse Calendar-owned target matching and lookup range, retain complete/fresh source checks and meeting preferences, and exclude only the selected event from busy intervals. Missing or ambiguous targets pause without slots or writes; explicit durations remain supported and every eventual move rechecks availability.

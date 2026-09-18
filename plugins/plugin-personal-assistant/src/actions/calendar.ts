@@ -660,6 +660,11 @@ type OwnerCalendarSubaction =
 
 const ACTION_NAME = "CALENDAR";
 
+const proposalDurationProperties: Record<string, ActionParameterSchema> = {
+  minutes: { type: "number", minimum: 5, maximum: 480 },
+  existingEventQuery: { type: "string", minLength: 1 },
+};
+
 const availabilityIntervalProperties = {
   startAt: {
     type: "string",
@@ -1248,6 +1253,7 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
     required: [],
     optional: [
       "durationMinutes",
+      "duration",
       "daysAhead",
       "slotCount",
       "windowStart",
@@ -1852,10 +1858,36 @@ export const calendarAction: Action & {
     {
       name: "durationMinutes",
       description:
-        "Requested length in minutes. For check_availability, supply the user's duration directly with startAt and omit endAt; code calculates the end. For propose_times, this is each suggested slot's length. Top-level field, not inside details.",
+        "Requested length in minutes. For check_availability, supply the user's duration directly with startAt and omit endAt; code calculates the end. For propose_times, this is each suggested slot's length for legacy callers. Top-level field, not inside details.",
       required: false,
       subactions: ["propose_times", "check_availability"],
-      schema: { type: "number" as const },
+      schema: { type: "number" },
+    },
+    {
+      name: "duration",
+      description:
+        "Slot length: supply minutes, or existingEventQuery to resolve an existing event and preserve its duration without a preliminary search. Both fields mean use the explicit new duration for that existing event. Ambiguous event matches ask for selection; no event is changed.",
+      required: false,
+      subactions: ["propose_times"],
+      schema: {
+        type: "object",
+        properties: proposalDurationProperties,
+        anyOf: [
+          {
+            type: "object",
+            properties: proposalDurationProperties,
+            required: ["minutes"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: proposalDurationProperties,
+            required: ["existingEventQuery"],
+            additionalProperties: false,
+          },
+        ],
+        additionalProperties: false,
+      },
     },
     {
       name: "daysAhead",
@@ -2149,9 +2181,9 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
     },
     propose_times: {
       description:
-        "Read free slots without booking. Supply the requested date/window with explicit ISO offsets and the known duration; for a move preserve the existing duration. Return choices for the user to accept before any write.",
+        "Read free slots without booking. Supply the requested date/window with explicit ISO offsets. For a move, supply duration.existingEventQuery to resolve the event and preserve its duration in this operation; no separate search is needed. An explicit new duration remains supported. Return choices for the user to accept before any write.",
       parameters: calendarAction.parameters?.map((parameter) =>
-        ["durationMinutes", "windowStart", "windowEnd"].includes(parameter.name)
+        ["duration", "windowStart", "windowEnd"].includes(parameter.name)
           ? { ...parameter, required: true }
           : parameter,
       ),

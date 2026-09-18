@@ -518,6 +518,107 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     },
   );
 
+  it("proposes a new window using the existing event duration without changing it", async () => {
+    const { result } = await invoke(
+      message(
+        "00000000-0000-0000-0000-000000009971",
+        "Move School planning meeting to January 18, 2027 in the morning.",
+      ),
+      {
+        duration: { existingEventQuery: "School planning meeting" },
+        windowStart: "2027-01-18T09:00:00Z",
+        windowEnd: "2027-01-18T12:00:00Z",
+        timeZone: "UTC",
+      },
+      true,
+      "CALENDAR_PROPOSE_TIMES",
+    );
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      durationMinutes: 60,
+      existingEvent: {
+        title: "School planning meeting",
+        startAt: EVENT_START,
+        endAt: EVENT_END,
+      },
+      slots: expect.arrayContaining([
+        expect.objectContaining({ durationMinutes: 60 }),
+      ]),
+      targetSnapshot: expect.any(Object),
+    });
+    const feed = await calendar.getCalendarFeed(
+      new URL("http://internal.local"),
+      {
+        timeMin: WINDOW_START,
+        timeMax: WINDOW_END,
+        includeHiddenCalendars: true,
+      },
+    );
+    expect(
+      feed.events.filter((event) => event.title === "School planning meeting"),
+    ).toEqual([
+      expect.objectContaining({ startAt: EVENT_START, endAt: EVENT_END }),
+    ]);
+  });
+
+  it("does not substitute a default duration for an unresolved existing event", async () => {
+    const { result } = await invoke(
+      message(
+        "00000000-0000-0000-0000-000000009970",
+        "Move the nonexistent rehearsal to tomorrow morning.",
+      ),
+      {
+        duration: { existingEventQuery: "nonexistent rehearsal" },
+        windowStart: "2027-01-18T09:00:00Z",
+        windowEnd: "2027-01-18T12:00:00Z",
+        timeZone: "UTC",
+      },
+      true,
+      "CALENDAR_PROPOSE_TIMES",
+    );
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      awaitingUserInput: true,
+      candidates: [],
+    });
+    expect(result.data).not.toHaveProperty("slots");
+  });
+
+  it("asks which existing event before proposing slots for duplicate titles", async () => {
+    for (const hour of [14, 16]) {
+      await calendar.createCalendarEventMutation(
+        new URL("http://internal.local"),
+        {
+          title: "Duplicate proposal target",
+          startAt: `2027-01-18T${hour}:00:00Z`,
+          endAt: `2027-01-18T${hour}:30:00Z`,
+          timeZone: "UTC",
+          grantId: ELIZA_CALENDAR_GRANT_ID,
+          calendarId: ELIZA_CALENDAR_ID,
+          idempotencyKey: `duplicate-proposal-target-${hour}`,
+        },
+      );
+    }
+    const { result } = await invoke(
+      message(
+        "00000000-0000-0000-0000-000000009969",
+        "Move Duplicate proposal target to the morning.",
+      ),
+      {
+        duration: { existingEventQuery: "Duplicate proposal target" },
+        windowStart: "2027-01-18T09:00:00Z",
+        windowEnd: "2027-01-18T12:00:00Z",
+        timeZone: "UTC",
+      },
+      true,
+      "CALENDAR_PROPOSE_TIMES",
+    );
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ awaitingUserInput: true });
+    expect(result.data?.candidates).toHaveLength(2);
+    expect(result.data).not.toHaveProperty("slots");
+  });
+
   it("persists meeting preferences and binds the receipt to the read-back task", async () => {
     const { result } = await invoke(
       message(

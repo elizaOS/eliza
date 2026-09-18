@@ -37,6 +37,10 @@ import {
   runWithTrajectoryPurpose,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import {
+  buildWideLookupRange,
+  resolveCalendarMutationCandidates,
+} from "@elizaos/plugin-calendar/actions/calendar-handler";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -149,6 +153,7 @@ export type ProposedMeetingSlot = {
 
 export type ProposeMeetingTimesParameters = {
   durationMinutes?: number;
+  duration?: { minutes?: number; existingEventQuery?: string };
   daysAhead?: number;
   slotCount?: number;
   windowStart?: string;
@@ -594,11 +599,12 @@ export async function runProposeMeetingTimesHandler(
       ? params.counterparties
       : extractBundledMeetingCounterparties(messageBody);
   const bundleLocationLabel = deriveBundleLocationLabel(messageBody);
-  const durationMinutes =
-    typeof params.durationMinutes === "number" &&
-    params.durationMinutes >= 5 &&
-    params.durationMinutes <= 480
-      ? Math.floor(params.durationMinutes)
+  const requestedDuration = params.duration?.minutes ?? params.durationMinutes;
+  let durationMinutes =
+    typeof requestedDuration === "number" &&
+    requestedDuration >= 5 &&
+    requestedDuration <= 480
+      ? Math.floor(requestedDuration)
       : effectivePreferences.defaultDurationMinutes;
   const slotCount =
     typeof params.slotCount === "number" &&
@@ -624,6 +630,86 @@ export async function runProposeMeetingTimesHandler(
   const { LifeOpsService, LifeOpsServiceError } =
     await loadLifeOpsServiceModule();
   const service = new LifeOpsService(runtime);
+  let existingEvent: LifeOpsCalendarEvent | undefined;
+  let targetSnapshot:
+    | ReturnType<typeof calendarSnapshotEffectProof>
+    | undefined;
+  const existingEventQuery = params.duration?.existingEventQuery?.trim();
+  if (
+    params.duration &&
+    requestedDuration === undefined &&
+    !existingEventQuery
+  ) {
+    return respond({
+      success: false,
+      scenario: "scheduling_duration_missing",
+      fallback:
+        "How long should this meeting be, or which existing event should I use?",
+      data: { awaitingUserInput: true, error: "DURATION_REQUIRED" },
+    });
+  }
+  if (existingEventQuery) {
+    const targetFeed = await service.getCalendarFeed(INTERNAL_URL, {
+      includeHiddenCalendars: true,
+      ...buildWideLookupRange(effectivePreferences.timeZone),
+      timeZone: effectivePreferences.timeZone,
+    });
+    if (targetFeed.state !== "complete") {
+      return incompleteCalendarResponse({
+        feed: targetFeed,
+        respond,
+        scenario: "scheduling_calendar_incomplete",
+      });
+    }
+    targetSnapshot = calendarSnapshotEffectProof(targetFeed);
+    const candidates = resolveCalendarMutationCandidates({
+      action: "update",
+      events: targetFeed.events,
+      titleHint: existingEventQuery,
+      texts: [getMessageText(message)],
+      timeZone: effectivePreferences.timeZone,
+    });
+    if (candidates.length !== 1) {
+      return respond({
+        success: false,
+        scenario: "scheduling_event_target_unresolved",
+        fallback:
+          candidates.length === 0
+            ? "I couldn't find that event. Which event should I find a new time for?"
+            : "More than one event matches. Which one should I find a new time for?",
+        context: { candidates },
+        data: {
+          awaitingUserInput: true,
+          candidates,
+          calendarSnapshot: targetSnapshot,
+        },
+      });
+    }
+    existingEvent = candidates[0];
+    if (requestedDuration === undefined) {
+      durationMinutes =
+        (Date.parse(existingEvent.endAt) - Date.parse(existingEvent.startAt)) /
+        MS_PER_MINUTE;
+      if (
+        !Number.isFinite(durationMinutes) ||
+        durationMinutes < 5 ||
+        durationMinutes > 480
+      ) {
+        return respond({
+          success: false,
+          scenario: "scheduling_event_duration_invalid",
+          fallback:
+            "The existing event needs an explicit meeting duration before I can suggest times.",
+          context: { existingEvent },
+          data: {
+            awaitingUserInput: true,
+            error: "INVALID_EVENT_DURATION",
+            calendarSnapshot: targetSnapshot,
+          },
+        });
+      }
+    }
+  }
   let feed: LifeOpsCalendarFeed;
   try {
     feed = await service.getCalendarFeed(INTERNAL_URL, {
@@ -667,7 +753,9 @@ export async function runProposeMeetingTimesHandler(
     durationMinutes,
     slotCount,
     preferences: effectivePreferences,
-    events: feed.events,
+    events: existingEvent
+      ? feed.events.filter((event) => event.id !== existingEvent.id)
+      : feed.events,
   });
 
   const fallback = formatProposedSlotsReply({
@@ -699,6 +787,7 @@ export async function runProposeMeetingTimesHandler(
       counterparties,
       bundleLocationLabel,
       calendarSnapshot: calendarSnapshotEffectProof(feed),
+      ...(existingEvent ? { existingEvent, targetSnapshot } : {}),
     },
   });
 }

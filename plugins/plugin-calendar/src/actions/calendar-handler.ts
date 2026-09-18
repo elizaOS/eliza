@@ -3245,7 +3245,7 @@ function resolveCalendarLlmWindow(
 // gave no time hint. Reaches 1 year back and 5 years forward — far enough
 // to find an upcoming birthday or a recent past meeting without scanning the
 // entire account.
-function buildWideLookupRange(timeZone: string): {
+export function buildWideLookupRange(timeZone: string): {
   timeMin: string;
   timeMax: string;
 } {

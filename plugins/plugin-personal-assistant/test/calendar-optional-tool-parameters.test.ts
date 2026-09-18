@@ -296,25 +296,62 @@ it.each(["feed", "search_events"])(
   },
 );
 
-it("requires an explicit proposal window and duration at the native tool boundary", () => {
-  const action = promoteSubactionsToActions(
-    calendarAction,
-    calendarActionPromotionOptions,
-  ).find((entry) => entry.name === "CALENDAR_PROPOSE_TIMES");
-  if (!action) throw new Error("Missing proposal action");
-  expect(validateToolArgs(action, {}).valid).toBe(false);
-  const args = {
-    durationMinutes: 15,
-    windowStart: "2026-09-18T08:00:00-04:00",
-    windowEnd: "2026-09-18T12:00:00-04:00",
-  };
-  expect(validateToolArgs(action, args).valid).toBe(true);
-  for (const key of Object.keys(args)) {
-    const missing = { ...args } as Record<string, unknown>;
-    delete missing[key];
-    expect(validateToolArgs(action, missing).valid).toBe(false);
-  }
-});
+it.each([false, true])(
+  "requires an explicit proposal window and duration at the native tool boundary (Cerebras %s)",
+  (cerebrasMode) => {
+    const action = promoteSubactionsToActions(
+      calendarAction,
+      calendarActionPromotionOptions,
+    ).find((entry) => entry.name === "CALENDAR_PROPOSE_TIMES");
+    if (!action) throw new Error("Missing proposal action");
+    const tools = normalizeNativeToolsForCall(
+      buildPlannerToolsFromActions([action]),
+      { cerebrasMode },
+    ).tools;
+    if (!tools) throw new Error("Missing native proposal tool");
+    const tool = tools[action.name] as {
+      inputSchema: { jsonSchema: ActionParameterSchema };
+    };
+    expect(validateToolArgs(action, {}).valid).toBe(false);
+    const args = {
+      duration: { minutes: 15 },
+      windowStart: "2026-09-18T08:00:00-04:00",
+      windowEnd: "2026-09-18T12:00:00-04:00",
+    };
+    expect(validateToolArgs(action, args).valid).toBe(true);
+    for (const duration of [
+      { minutes: 15 },
+      { existingEventQuery: "Team meeting" },
+      { minutes: 30, existingEventQuery: "Team meeting" },
+    ]) {
+      const errors: string[] = [];
+      validateSchema(
+        tool.inputSchema.jsonSchema,
+        { ...args, duration },
+        "",
+        errors,
+      );
+      expect(errors).toEqual([]);
+    }
+    expect(
+      validateToolArgs(action, {
+        ...args,
+        duration: { existingEventQuery: "Team meeting" },
+      }).valid,
+    ).toBe(true);
+    expect(validateToolArgs(action, { ...args, duration: {} }).valid).toBe(
+      false,
+    );
+    expect(
+      validateToolArgs(action, { ...args, duration: { minutes: 0 } }).valid,
+    ).toBe(false);
+    for (const key of Object.keys(args)) {
+      const missing = { ...args } as Record<string, unknown>;
+      delete missing[key];
+      expect(validateToolArgs(action, missing).valid).toBe(false);
+    }
+  },
+);
 
 describe("promoted update target contract", () => {
   it.each([false, true])(

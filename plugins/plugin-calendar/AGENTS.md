@@ -112,3 +112,5 @@ Update extraction uses a native response schema with required nullable fields, a
 Calendar model runners must preserve both bare-string and native `{ text, ... }` model results. Passing responseSchema can select native result envelopes; discarding their text turns valid extracted changes into empty updates. Host wiring must forward the entire model-call contract.
 
 Write-availability evidence includes localTimes derived from the same conflict and alternative instants in the requested IANA timezone. Replies use these labeled local values; original UTC ranges, privacy-filtered conflict details and effect receipts remain intact. Formatting never changes availability or authorizes a suggested slot.
+
+The shared buildWideLookupRange and resolveCalendarMutationCandidates helpers also support owner-authorized rescheduling proposals in the personal-assistant host. Keep source-event identity separate from the destination window; proposal lookup cannot mutate the selected event or silently choose among duplicate targets.
