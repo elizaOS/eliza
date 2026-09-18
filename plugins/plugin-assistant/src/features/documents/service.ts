@@ -49,11 +49,11 @@ import {
   Semaphore,
   Service,
   splitChunks,
+  toWellFormedUnicode,
   type UUID,
   validateDocumentDirectGrantEntityIds,
   validateUuid,
 } from "@elizaos/core";
-import { toWellFormedUnicode } from "../../../../../packages/core/src/utils/well-formed.ts";
 import { bm25Scores, normalizeBm25Scores } from "./bm25.ts";
 import { validateModelConfig } from "./config";
 import { addDocumentFromFilePath, loadDocumentsFromPath } from "./docs-loader";
