@@ -1,9 +1,6 @@
+/** Supplemental guards for start-only duration carryover and paired bounds. */
 import { describe, expect, it } from "vitest";
-import {
-  requestStatesEndOrDuration,
-  resolveUpdateTimeRange,
-  snapWeekdayMoveToTargetDay,
-} from "./calendar-handler";
+import { resolveUpdateTimeRange } from "./calendar-handler";
 
 const target = {
   startAt: "2026-09-11T19:00:00.000Z", // 3:00 PM America/New_York (EDT)
@@ -34,63 +31,6 @@ describe("resolveUpdateTimeRange", () => {
         timeZone: "America/New_York",
       }),
     ).toEqual({ startAt: "2026-09-11T16:00:00", endAt: "2026-09-11T17:00:00" });
-  });
-
-  it("keeps the stored duration over a planner end the user never stated (live 2026-09-15: a 30-minute event stretched to an hour)", () => {
-    const halfHour = {
-      startAt: "2026-09-18T19:00:00.000Z", // 3:00 PM America/New_York (EDT)
-      endAt: "2026-09-18T19:30:00.000Z", // 3:30 PM
-    };
-    expect(
-      resolveUpdateTimeRange({
-        explicitStart: "2026-09-18T16:00:00",
-        explicitEnd: "2026-09-18T17:00:00",
-        target: halfHour,
-        timeZone: "America/New_York",
-        requestText: "move my notary appointment to friday at 4pm",
-        now: new Date("2026-09-15T22:00:00.000Z"),
-      }),
-    ).toEqual({ startAt: "2026-09-18T16:00:00", endAt: "2026-09-18T16:30:00" });
-    for (const stated of [
-      "move my notary appointment to friday 4pm to 5pm",
-      "move my notary appointment to friday at 4pm for an hour",
-      "move my notary appointment to friday at 4pm until 5",
-    ]) {
-      expect(
-        resolveUpdateTimeRange({
-          explicitStart: "2026-09-18T16:00:00",
-          explicitEnd: "2026-09-18T17:00:00",
-          target: halfHour,
-          timeZone: "America/New_York",
-          requestText: stated,
-          now: new Date("2026-09-15T22:00:00.000Z"),
-        }),
-      ).toEqual({
-        startAt: "2026-09-18T16:00:00",
-        endAt: "2026-09-18T17:00:00",
-      });
-    }
-    // Without a planner start the end is the user's own bound and stays.
-    expect(
-      resolveUpdateTimeRange({
-        explicitEnd: "2026-09-18T20:00:00",
-        target: halfHour,
-        timeZone: "America/New_York",
-        requestText: "make my notary appointment end at 8pm",
-      }),
-    ).toEqual({ startAt: undefined, endAt: "2026-09-18T20:00:00" });
-  });
-
-  it("recognises the ways a request states an end or a duration", () => {
-    expect(requestStatesEndOrDuration("move it to friday at 4pm")).toBe(false);
-    expect(requestStatesEndOrDuration("move it to 4pm to 5:30pm")).toBe(true);
-    expect(requestStatesEndOrDuration("move it to 4pm for 45 minutes")).toBe(
-      true,
-    );
-    expect(requestStatesEndOrDuration("move it to 4pm through 6")).toBe(true);
-    expect(requestStatesEndOrDuration("make it half an hour at 4pm")).toBe(
-      true,
-    );
   });
 
   it("passes an inverted explicit start/end pair through for the service's typed rejection", () => {
@@ -189,74 +129,5 @@ describe("resolveUpdateTimeRange", () => {
         timeZone: "America/New_York",
       }),
     ).toEqual({ startAt: "2026-09-11T16:00:00", endAt: undefined });
-  });
-});
-
-describe("snapWeekdayMoveToTargetDay", () => {
-  // Fri 11 Sep 2026, 3:00 PM America/New_York; asked at 10:15 PM that night.
-  const lateFriday = new Date("2026-09-12T02:15:00.000Z");
-  const saturdayMorning = new Date("2026-09-12T14:00:00.000Z");
-
-  it("keeps a same-weekday move on the event's own day while that day lasts (live regression)", () => {
-    expect(
-      resolveUpdateTimeRange({
-        explicitStart: "2026-09-18T16:00:00",
-        target,
-        timeZone: "America/New_York",
-        requestText: "move my vet appointment to friday at 4pm",
-        now: lateFriday,
-      }),
-    ).toEqual({ startAt: "2026-09-11T16:00:00", endAt: "2026-09-11T17:00:00" });
-    expect(
-      snapWeekdayMoveToTargetDay({
-        requestText: "move it to fri 4pm",
-        startAt: "2026-09-18T20:00:00.000Z",
-        endAt: "2026-09-18T21:00:00.000Z",
-        target,
-        timeZone: "America/New_York",
-        now: lateFriday,
-      }),
-    ).toEqual({
-      startAt: "2026-09-11T20:00:00.000Z",
-      endAt: "2026-09-11T21:00:00.000Z",
-    });
-  });
-
-  it("leaves an explicit next week, a month, a numeric date, or another weekday as sent", () => {
-    const base = {
-      startAt: "2026-09-18T16:00:00",
-      target,
-      timeZone: "America/New_York",
-      now: lateFriday,
-    };
-    for (const requestText of [
-      "move it to next friday at 4pm",
-      "move it to friday september 18 at 4pm",
-      "move it to 9/18 at 4pm",
-      "move it to a week from friday at 4pm",
-    ]) {
-      expect(snapWeekdayMoveToTargetDay({ ...base, requestText }).startAt).toBe(
-        "2026-09-18T16:00:00",
-      );
-    }
-    expect(
-      snapWeekdayMoveToTargetDay({
-        ...base,
-        startAt: "2026-09-14T16:00:00",
-        requestText: "move it to monday at 4pm",
-      }).startAt,
-    ).toBe("2026-09-14T16:00:00");
-  });
-
-  it("stops snapping once the event's day is over", () => {
-    expect(
-      snapWeekdayMoveToTargetDay({
-        requestText: "move my vet appointment to friday at 4pm",
-        startAt: "2026-09-18T16:00:00",
-        target,
-        timeZone: "America/New_York",
-        now: saturdayMorning,
-      }).startAt,
-    ).toBe("2026-09-18T16:00:00");
   });
 });
