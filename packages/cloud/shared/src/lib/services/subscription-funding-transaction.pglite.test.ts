@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getDedicatedComputePriceAcceptance } from "@elizaos/cloud-sdk/browser-contracts";
 import { sql } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { z } from "zod";
@@ -2486,11 +2487,11 @@ if (sshFixturePath) {
         : scenario === "user-suspend-expiry-stopped"
           ? "000000000068"
           : scenario === "user-suspend-backup-failure"
-            ? "000000000067"
+            ? "000000000077"
             : scenario === "user-suspend-stale"
-              ? "000000000066"
+              ? "000000000076"
               : scenario === "user-suspend"
-                ? "000000000065"
+                ? "000000000075"
                 : scenario === "billing-held"
                   ? "000000000064"
                   : scenario === "billing-topup"
@@ -2688,6 +2689,9 @@ if (sshFixturePath) {
               organizationId: org,
               userId: "64000000-0000-4000-8000-000000000041",
               restoreBackupId: backupId,
+              // Priced start jobs must carry the caller's price acceptance;
+              // dispatch rejects a wake whose admitted price is stale.
+              admittedComputePrice: getDedicatedComputePriceAcceptance(),
             }),
             org,
             agentId,
@@ -4025,7 +4029,11 @@ if (sshFixturePath) {
       expect(totals.rows[0]).toMatchObject({
         status: "stopped",
         sandbox_id: name,
-        ledger_count: 2,
+        // One ledger row: the activation-minimum debit taken by the funding
+        // reservation. Since the #31504 billing integration the settle path
+        // emits no second row when the whole hold was consumed as the
+        // minimum; the reconciled predicate below still proves the money.
+        ledger_count: 1,
         receipt_count: 1,
         reconciled: true,
       });
