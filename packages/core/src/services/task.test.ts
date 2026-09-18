@@ -189,14 +189,23 @@ describe("TaskService injected clock", () => {
 				metadata: { updateInterval: 1 },
 			};
 			tasks.set(task.id as UUID, task);
+			const paused: Task = {
+				id: "paused-after-pending" as UUID,
+				name: "PENDING",
+				agentId: AGENT_ID,
+				tags: ["queue", "repeat"],
+				metadata: { paused: true, orphanedNoWorker: true, updateInterval: 1 },
+			};
+			tasks.set(paused.id as UUID, paused);
 			const service = new TaskService(runtime, new DeterministicTaskClock(T0));
-			const tick = service.runTick([task]);
+			const tick = service.runTick([task, paused]);
 			await entered.promise;
 			await service[method]();
 			release.resolve();
 			await tick;
 			expect(execute).not.toHaveBeenCalled();
 			expect(tasks.get(task.id as UUID)).toEqual(task);
+			expect(tasks.get(paused.id as UUID)).toEqual(paused);
 			await service.stop();
 		},
 	);
