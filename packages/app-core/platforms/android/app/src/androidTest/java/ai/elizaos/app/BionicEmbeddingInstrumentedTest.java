@@ -20,6 +20,7 @@ import org.junit.runner.RunWith;
 
 @RunWith(AndroidJUnit4.class)
 public class BionicEmbeddingInstrumentedTest {
+    private static final java.util.Map<String, JSONArray> expectedTokens = new java.util.HashMap<>();
     @Test public void actualHostEmbedsWithPackagedBgeAndRejectsCompleteOversizeInput() throws Exception {
         var app = InstrumentationRegistry.getInstrumentation().getTargetContext();
         assertTrue(ElizaVoiceNative.ensureLoaded());
@@ -35,11 +36,22 @@ public class BionicEmbeddingInstrumentedTest {
             "/intentionally-unavailable-chat-bundle", InferenceMemoryPolicy.RamClass.CONSTRAINED,
             0L, null);
         host.start();
+        expectedTokens.clear();
         try {
             String input = "before\u0000after \uD83D\uDE00 café 漢字";
             JSONObject first = request(name, root.toString(), input);
             assertCanonical(first);
             JSONArray reference = first.getJSONArray("embedding");
+            JSONObject missing = requestWithAdmission(name, root.toString(), input, null, BgeEmbeddingSession.SPACE);
+            assertEquals("EMBEDDING_TOKENIZER_MISMATCH", missing.getString("code"));
+            JSONArray wrong = new JSONArray(first.getJSONArray("tokenIds").toString());
+            wrong.put(1, wrong.getInt(1) == 100 ? 101 : 100);
+            JSONObject mismatch = requestWithAdmission(name, root.toString(), input, wrong, BgeEmbeddingSession.SPACE);
+            assertEquals("EMBEDDING_TOKENIZER_MISMATCH", mismatch.getString("code"));
+            assertFalse(mismatch.has("embedding"));
+            JSONObject stale = requestWithAdmission(name, root.toString(), input,
+                first.getJSONArray("tokenIds"), "BAAI/bge-small-en-v1.5:cls:l2:384");
+            assertEquals("EMBEDDING_TOKENIZER_MISMATCH", stale.getString("code"));
             JSONObject prefix = request(name, root.toString(), "before");
             assertCanonical(prefix);
             assertTrue("the suffix after NUL must reach the tokenizer", first.getInt("tokens") > prefix.getInt("tokens"));
@@ -116,8 +128,26 @@ public class BionicEmbeddingInstrumentedTest {
         }
     }
     private static JSONObject request(String name, String bundle, String text) throws Exception {
+        JSONArray ids = expectedTokens.get(text);
+        if (ids == null) {
+            // This tests the host admission protocol; shared-tokenizer parity has a separate corpus.
+            long tokenizer = ElizaVoiceNative.nativeContextCreateUtf8(BgeEmbeddingSession.completeUtf8(bundle));
+            assertNotEquals(0L, tokenizer);
+            try {
+                ids = new JSONArray(ElizaVoiceNative.nativeTokenizeWithOptionsUtf8(tokenizer,
+                    BgeEmbeddingSession.completeUtf8(text), true));
+                expectedTokens.put(text, ids);
+            } finally {
+                ElizaVoiceNative.nativeContextDestroy(tokenizer);
+            }
+        }
+        return requestWithAdmission(name, bundle, text, ids, BgeEmbeddingSession.SPACE);
+    }
+    private static JSONObject requestWithAdmission(String name, String bundle, String text,
+            JSONArray ids, String space) throws Exception {
         byte[] payload = new JSONObject().put("op", "embed").put("bundleDir", bundle)
-            .put("text", text).toString().getBytes(StandardCharsets.UTF_8);
+            .put("text", text).put("expectedTokenIds", ids).put("embeddingSpace", space)
+            .toString().getBytes(StandardCharsets.UTF_8);
         try (LocalSocket socket = new LocalSocket()) {
             socket.connect(new LocalSocketAddress(name, LocalSocketAddress.Namespace.ABSTRACT));
             socket.setSoTimeout(120000);
@@ -146,6 +176,7 @@ public class BionicEmbeddingInstrumentedTest {
             double value = vector.getDouble(i); assertTrue(Double.isFinite(value)); norm += value * value;
         }
         assertEquals(1.0, norm, 1e-5);
+        assertEquals(response.getInt("tokens"), response.getJSONArray("tokenIds").length());
         assertTrue(response.getInt("tokens") > 0 && response.getInt("tokens") <= 512);
     }
 }

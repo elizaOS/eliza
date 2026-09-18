@@ -40,7 +40,10 @@ import {
 	identifyEmbeddingVector,
 	logger,
 } from "@elizaos/core";
-import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
+import {
+	assertBgeTokenAgreement,
+	prepareBgeEmbeddingInput,
+} from "@elizaos/shared/local-inference/bge-input";
 import { BGE_EMBEDDING_MODEL } from "../runtime/bge-embedding-model";
 import {
 	normalizeEmbeddingVector,
@@ -221,6 +224,8 @@ export class BionicHostLoader implements LocalInferenceLoader {
 			op: "embed",
 			bundleDir: this.embeddingBundleDir,
 			text: prepared.text,
+			expectedTokenIds: prepared.tokenIds,
+			embeddingSpace: BGE_SMALL_VECTOR_SPACE,
 		};
 		const byteLength = Buffer.byteLength(JSON.stringify(request), "utf8");
 		if (byteLength > 1 << 20) {
@@ -259,6 +264,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		}
 		const vector = response.embedding;
 		const tokens = response.tokens;
+		const tokenIds = response.tokenIds;
 		if (
 			response.embeddingSpace !== BGE_SMALL_VECTOR_SPACE ||
 			!Array.isArray(vector) ||
@@ -269,6 +275,12 @@ export class BionicHostLoader implements LocalInferenceLoader {
 			) ||
 			typeof tokens !== "number" ||
 			!Number.isInteger(tokens) ||
+			tokens !== prepared.tokenIds.length ||
+			!Array.isArray(tokenIds) ||
+			!tokenIds.every(
+				(id): id is number =>
+					typeof id === "number" && Number.isInteger(id) && id >= 0,
+			) ||
 			tokens < 1 ||
 			tokens > BGE_EMBEDDING_MODEL.contextSize
 		) {
@@ -277,6 +289,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 				{ code: "EMBEDDING_VECTOR_INVALID" },
 			);
 		}
+		assertBgeTokenAgreement(prepared, tokenIds);
 		return {
 			embedding: identifyEmbeddingVector(
 				normalizeEmbeddingVector(vector),

@@ -4,6 +4,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { BGE_SMALL_VECTOR_SPACE, getEmbeddingVectorSpace } from "@elizaos/core";
+import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
 import { afterEach, describe, expect, it } from "vitest";
 import { BionicHostLoader, deriveBundleDir } from "./bionic-host-loader";
 
@@ -567,11 +568,12 @@ describeEncoderTransport(
 			await loader.prepareEmbeddingModel(model);
 			return loader;
 		}
-		const valid = () => ({
+		const valid = (input = "complete source") => ({
 			ok: true,
 			embedding: Array.from({ length: 384 }, (_, i) => (i === 0 ? 1 : 0)),
 			embeddingSpace: BGE_SMALL_VECTOR_SPACE,
-			tokens: 8,
+			tokens: prepareBgeEmbeddingInput(input).tokenIds.length,
+			tokenIds: prepareBgeEmbeddingInput(input).tokenIds,
 		});
 		it("preserves complete Unicode/NUL input and identifies the validated returned representation", async () => {
 			const loader = await loaderWithEncoder();
@@ -580,10 +582,16 @@ describeEncoderTransport(
 				expect(request.op).toBe("embed");
 				expect(request.text).toBe(input);
 				expect(String(request.bundleDir)).toContain(".embedding.bundle");
-				return JSON.stringify(valid());
+				expect(request.expectedTokenIds).toEqual(
+					prepareBgeEmbeddingInput(input).tokenIds,
+				);
+				expect(request.embeddingSpace).toBe(BGE_SMALL_VECTOR_SPACE);
+				return JSON.stringify(valid(input));
 			});
 			const result = await loader.embed({ input });
-			expect(result.tokens).toBe(8);
+			expect(result.tokens).toBe(
+				prepareBgeEmbeddingInput(input).tokenIds.length,
+			);
 			expect(getEmbeddingVectorSpace(result.embedding)).toBe(
 				BGE_SMALL_VECTOR_SPACE,
 			);
@@ -595,6 +603,8 @@ describeEncoderTransport(
 			{ ...valid(), embedding: Array(384).fill(0) },
 			{ ...valid(), tokens: undefined },
 			{ ...valid(), tokens: 513 },
+			{ ...valid(), tokenIds: undefined },
+			{ ...valid(), tokenIds: [101, "invalid", 102] },
 			null,
 		])("rejects malformed or incompatible host output %#", async (response) => {
 			const loader = await loaderWithEncoder();
@@ -602,6 +612,17 @@ describeEncoderTransport(
 			await expect(
 				loader.embed({ input: "complete source" }),
 			).rejects.toMatchObject({ code: "EMBEDDING_VECTOR_INVALID" });
+		});
+		it("rejects same-length token substitutions in a canonical response", async () => {
+			const loader = await loaderWithEncoder();
+			const response = valid();
+			response.tokenIds[1] = 100;
+			host = startHost(SOCK, () => JSON.stringify(response));
+			await expect(
+				loader.embed({ input: "complete source" }),
+			).rejects.toMatchObject({
+				code: "EMBEDDING_TOKENIZER_MISMATCH",
+			});
 		});
 		it("returns a typed size failure before sending an over-limit frame", async () => {
 			const loader = await loaderWithEncoder();

@@ -405,7 +405,8 @@ final class ElizaBionicInferenceServer {
                 bundleDir = defaultBundleDir;
             }
             if ("embed".equals(op)) {
-                return embed(req.getString("bundleDir"), req.getString("text"));
+                return embed(req.getString("bundleDir"), req.getString("text"),
+                    req.optJSONArray("expectedTokenIds"), req.optString("embeddingSpace", ""));
             }
             if ("tts".equals(op)) {
                 return tts(bundleDir, req.optString("ipa", ""), req.optString("language", ""),
@@ -816,11 +817,11 @@ final class ElizaBionicInferenceServer {
     }
 
     /** Uses the isolated canonical encoder; failures never route to chat weights. */
-    private String embed(String bundleDir, String text) throws org.json.JSONException {
+    private String embed(String bundleDir, String text, org.json.JSONArray expectedIds, String expectedSpace) throws org.json.JSONException {
         synchronized (residentLock) {
             lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
             try {
-                return embeddings.embed(bundleDir, text).toString();
+                return embeddings.embed(bundleDir, text, expectedIds, expectedSpace).toString();
             } catch (BgeEmbeddingSession.Failure error) {
                 // error-policy:J1 Preserve actionable embedding failures on the wire.
                 return new JSONObject().put("ok", false).put("code", error.code)

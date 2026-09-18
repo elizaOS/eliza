@@ -89,7 +89,10 @@ final class BgeEmbeddingSession {
         }
     }
 
-    JSONObject embed(String requestedBundle, String text) throws JSONException {
+    JSONObject embed(String requestedBundle, String text, JSONArray expectedIds, String expectedSpace) throws JSONException {
+        if (!SPACE.equals(expectedSpace) || expectedIds == null || expectedIds.length() == 0) {
+            throw new Failure("EMBEDDING_TOKENIZER_MISMATCH", "Canonical embedding space and expected token IDs are required");
+        }
         byte[] input = completeUtf8(text);
         int limit = configuredContextLimit();
         if (context == 0L || !requestedBundle.equals(bundle)) {
@@ -110,6 +113,16 @@ final class BgeEmbeddingSession {
             throw new Failure("EMBEDDING_INPUT_TOO_LARGE", "Complete embedding input has " + tokens.length
                 + " tokens; limit is " + contextLimit + ". Split the source into explicit lossless chunks.");
         }
+        if (tokens.length != expectedIds.length()) {
+            throw new Failure("EMBEDDING_TOKENIZER_MISMATCH", "Native BGE token count differs from the admitted source suffix");
+        }
+        for (int i = 0; i < tokens.length; i++) {
+            Object expected = expectedIds.get(i);
+            if (!(expected instanceof Number) || !Double.isFinite(((Number) expected).doubleValue())
+                || ((Number) expected).doubleValue() != tokens[i]) {
+                throw new Failure("EMBEDDING_TOKENIZER_MISMATCH", "Native BGE token differs from the admitted source suffix at index " + i);
+            }
+        }
         float[] vector = ElizaVoiceNative.nativeEmbedWithOptionsUtf8(context, input, 2, true);
         if (vector == null || vector.length != 384) {
             throw new Failure("EMBEDDING_VECTOR_INVALID", "BGE encoder must return 384 dimensions");
@@ -126,7 +139,7 @@ final class BgeEmbeddingSession {
         JSONArray values = new JSONArray();
         for (float value : vector) values.put(value / norm);
         return new JSONObject().put("ok", true).put("embedding", values).put("dim", vector.length)
-            .put("tokens", tokens.length).put("embeddingSpace", SPACE);
+            .put("tokens", tokens.length).put("tokenIds", new JSONArray(tokens)).put("embeddingSpace", SPACE);
     }
 
     void close() {
