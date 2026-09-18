@@ -5285,12 +5285,16 @@ describe("v5 planner loop skeleton", () => {
 		];
 		const injected = withTurnScopeToolArg(tools);
 
-		// Without a shared planner prompt, each tool carries the full contract.
+		// Without a shared planner prompt, each tool carries the full contract:
+		// a standalone caller keeps the complete batch-scope description on the
+		// arg, while the planner path passes its template and receives the
+		// short pointer to the shared instruction instead.
 		expect(
 			injected?.[0]?.parameters?.properties?.[TURN_SCOPE_ARG],
 		).toMatchObject({
 			type: "string",
 			enum: [TURN_SCOPE_FINAL, TURN_SCOPE_MORE_WORK_PENDING],
+			description: expect.stringContaining(plannerBatchScopeDescription),
 		});
 		expect(plannerTemplate).toContain(
 			"every tool requires the reserved arg `eliza_turn_scope`",
