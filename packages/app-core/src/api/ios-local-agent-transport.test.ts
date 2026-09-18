@@ -141,7 +141,6 @@ describe("iOS local agent transport bridge", () => {
     Reflect.deleteProperty(globalThis, BOOT_CONFIG_STORE_KEY);
   });
 
-
   it("ignores native watchdog restart requests in pure cloud runtime mode", async () => {
     capacitorState.pluginAvailable = true;
     vi.stubGlobal("localStorage", {
