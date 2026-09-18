@@ -3,7 +3,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import type {
   DeterministicModelFixture,
   DeterministicModelFixtureRegistry,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import echoScenario from "../../test/scenarios/convo/echo-self-test.scenario";
 import greetingScenario from "../../test/scenarios/convo/greeting-dynamic.scenario";

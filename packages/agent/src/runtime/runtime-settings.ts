@@ -3,11 +3,12 @@
  * `runtime.getSetting()`. The projection is intentionally pure so cold boot and
  * hot reload can share it without reintroducing drift between startup paths.
  */
+
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   isDirectAccountProvider,
   OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER,
-} from "@elizaos/auth/types";
-import type { IAgentRuntime } from "@elizaos/core";
+} from "@elizaos/credentials/auth/types";
 import {
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderOption,
