@@ -670,6 +670,13 @@ describe("ElizaClient websocket connection policy", () => {
 
   it("derives realtime from an explicitly selected remote base when the injected WS base is just the dev origin", () => {
     const createdUrls = stubWebSocket();
+    // A deterministic client id containing the dev port digits: asserting the
+    // whole URL does not contain "2653" is flaky because the random clientId
+    // can contain those digits. Parse the endpoint instead and still verify the
+    // query identity/token, which legitimately carries the digits.
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
+      "2653abcd-2653-4653-8653-265326532653",
+    );
     // Page served by Vite at 127.0.0.1:2653; injected WS base mirrors it.
     stubWindowOrigin("http:", "127.0.0.1:2653");
     stubInjectedWsBase("ws://127.0.0.1:2653");
@@ -679,8 +686,14 @@ describe("ElizaClient websocket connection policy", () => {
     client.connectWs();
 
     expect(createdUrls).toHaveLength(1);
-    expect(createdUrls[0]).toContain("ws://127.0.0.1:31337/ws?");
-    expect(createdUrls[0]).not.toContain("2653");
+    const url = new URL(createdUrls[0]);
+    expect(url.protocol).toBe("ws:");
+    expect(url.host).toBe("127.0.0.1:31337");
+    expect(url.pathname).toBe("/ws");
+    expect(url.searchParams.get("clientId")).toBe(
+      "ui-2653abcd-2653-4653-8653-265326532653",
+    );
+    expect(url.searchParams.get("token")).toBe("agent-token");
     stubInjectedWsBase(undefined);
   });
 
