@@ -325,6 +325,78 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     });
   });
 
+  it("stamps a plain move as verified even when the planner fills every optional key", async () => {
+    // With the complete planner surface a small planner sends end, date,
+    // durationMinutes, notifyAttendees, allowPast, includeHiddenCalendars and
+    // recurrence "none" on a plain move (live 2026-09-15); none of them is an
+    // unshown detail, so the receipt sentence stays self-verified.
+    // The target is a 30-minute event; the planner's end (17:00) beside its
+    // start (16:00) is not the user's range, so the move keeps 30 minutes.
+    await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "Notary appointment",
+      startAt: "2026-09-18T19:00:00.000Z",
+      endAt: "2026-09-18T19:30:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "notary-gate-180",
+    });
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      // The re-extraction answers with empty strings for the fields the user
+      // never mentioned; an empty string is an omission, not a clear.
+      runJsonModel: vi.fn(async ({ actionType }) =>
+        actionType === "lifeops.calendar.extract_update_event"
+          ? {
+              rawResponse: JSON.stringify({ location: "", description: "" }),
+              parsed: { location: "", description: "", recurrenceScope: null },
+            }
+          : null,
+      ),
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const result = await action.handler(
+      runtime,
+      {
+        id: "00000000-0000-0000-0000-000000000201",
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse("2026-09-15T22:00:00.000Z"),
+        content: { text: "move my notary appointment to friday at 4pm" },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          subaction: "update_event",
+          query: "notary appointment",
+          details: {
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            timeZone: "America/New_York",
+            start: "2026-09-18T16:00:00",
+            end: "2026-09-18T17:00:00",
+            date: "2026-09-18",
+            durationMinutes: 60,
+            notifyAttendees: true,
+            allowPast: true,
+            includeHiddenCalendars: true,
+            recurrence: "none",
+          },
+        },
+      },
+    );
+    expect(result?.success, JSON.stringify(result)).toBe(true);
+    expect(result?.verifiedUserFacing, JSON.stringify(result)).toBe(true);
+    expect(result?.userFacingText).toBe(
+      "Moved “Notary appointment” to Friday, Sep 18 at 4pm EDT.",
+    );
+    const moved = (
+      result?.data as { event?: { startAt: string; endAt: string } } | undefined
+    )?.event;
+    expect(moved).toMatchObject({
+      startAt: "2026-09-18T20:00:00.000Z",
+      endAt: "2026-09-18T20:30:00.000Z",
+    });
+  });
+
   it("does not mutate an event when the same update both replaces and clears a field", async () => {
     const created = await service.createCalendarEventMutation(
       INTERNAL_URL,
