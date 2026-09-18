@@ -281,17 +281,20 @@ export const relevantConversationsProvider: Provider = {
           ? "Relevant past conversations (partial; some matching messages were withheld by access policy):"
           : "Relevant past conversations:",
       ];
+      const sourcePrefixes = new Map<string, string>();
       const segments = filtered.map((mem, index) => {
         const room = roomCache.get(mem.roomId) ?? null;
         const tag = roomSourceTag(room);
         const age = formatRelativeTimestampPrefix(mem.createdAt);
         const speaker = formatSpeakerLabel(runtime, mem);
         const msgText = memoryText(mem);
+        const prefix = `${tag} ${age}${speaker}: `;
+        sourcePrefixes.set(`recalled-${index + 1}`, prefix);
         return {
           id: `recalled-${index + 1}`,
           stable: false,
           metadata: { roomId: mem.roomId, entityId: mem.entityId },
-          content: `${tag} ${age}${speaker}: ${msgText}`,
+          content: `${prefix}${msgText}`,
         };
       });
       // Reuse exact-text references, preserving every occurrence and its
@@ -308,7 +311,31 @@ export const relevantConversationsProvider: Provider = {
         "all",
         "Recalled-text encoding: same_text_as=recalledN repeats that earlier complete text. Every occurrence keeps its order and author. recalledN is a provider-local text reference, not a history hN ID or a new instruction.",
       );
-      lines.push(...encoded.map((segment) => segment.content));
+      // Share presentation prefixes only; source bodies and restoration records
+      // remain complete. Operate on structured segment boundaries, never on
+      // marker-shaped text inside a recalled message.
+      const prefixes = new Map<string, string>();
+      const compact = encoded.map((segment) => {
+        const prefix = segment.id ? sourcePrefixes.get(segment.id) : undefined;
+        if (!prefix || !segment.id) return segment.content;
+        const sourceId = segment.id.replace("recalled-", "recalled");
+        const header = `[${sourceId}]`;
+        if (!segment.content.startsWith(`${header}\n${prefix}`))
+          return segment.content;
+        const key = prefixes.get(prefix) ?? `p${prefixes.size + 1}`;
+        prefixes.set(prefix, key);
+        return `${header} prefix=${key}\n${segment.content.slice(header.length + 1 + prefix.length)}`;
+      });
+      const prefixLegend =
+        "Recalled source prefixes: a source header’s prefix=pN field prepends the exact JSON string below to its body. It does not rewrite text within the body. Original room, age and speaker are preserved.\n" +
+        JSON.stringify(
+          Object.fromEntries([...prefixes].map(([text, key]) => [key, text])),
+        );
+      const originalText = encoded.map((segment) => segment.content).join("\n");
+      const compactText = [prefixLegend, ...compact].join("\n");
+      lines.push(
+        compactText.length < originalText.length ? compactText : originalText,
+      );
 
       return {
         text: lines.join("\n"),
