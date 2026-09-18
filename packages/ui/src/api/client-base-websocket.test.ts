@@ -674,13 +674,19 @@ describe("ElizaClient websocket connection policy", () => {
     stubWindowOrigin("http:", "127.0.0.1:2653");
     stubInjectedWsBase("ws://127.0.0.1:2653");
 
+    vi.spyOn(ElizaClient, "generateClientId").mockReturnValue(
+      "ui-4f72e3a3-eb19-4e5b-9178-4a265387f978",
+    );
     const client = new ElizaClient("", "agent-token");
     client.setBaseUrl("http://127.0.0.1:31337", { persist: false });
     client.connectWs();
 
     expect(createdUrls).toHaveLength(1);
-    expect(createdUrls[0]).toContain("ws://127.0.0.1:31337/ws?");
-    expect(createdUrls[0]).not.toContain("2653");
+    const url = new URL(createdUrls[0]);
+    expect(url.origin).toBe("ws://127.0.0.1:31337");
+    expect(url.pathname).toBe("/ws");
+    expect(url.searchParams.get("clientId")).toBe(client.clientId);
+    expect(url.searchParams.get("token")).toBe("agent-token");
     stubInjectedWsBase(undefined);
   });
 
