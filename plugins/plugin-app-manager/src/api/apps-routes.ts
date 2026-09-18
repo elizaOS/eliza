@@ -1440,6 +1440,13 @@ export async function handleAppsRoutes(
   // -------------------------------------------------------------------------
 
   if (method === "POST" && pathname === "/api/apps/relaunch") {
+    // Relaunch stops then launches, so it performs the same privileged
+    // operation as /api/apps/launch and carries the same role gate. Without
+    // this, a USER/GUEST/undefined actor could launch (and stop) apps here.
+    if (!canLaunchApps(actorRole)) {
+      error(res, "App relaunch requires OWNER or ADMIN role", 403);
+      return true;
+    }
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawBody === null) return true;
     const parsed = PostRelaunchAppRequestSchema.safeParse(rawBody);
