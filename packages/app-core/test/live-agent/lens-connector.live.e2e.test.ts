@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 
 const { extractPlugin, resolveLensPluginImportSpecifier } = await import(
-  "../helpers/connector-imports.ts"
+  "./helpers/connector-imports.ts"
 );
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
