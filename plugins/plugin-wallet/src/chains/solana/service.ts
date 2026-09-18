@@ -2102,8 +2102,15 @@ export class SolanaService extends Service {
       });
       return haveAllTokens;
     } catch (error) {
-      logger.error(`Error fetching token accounts: ${error}`);
-      return [];
+      // error-policy:J2 context-adding rethrow. Returning [] here was cached by
+      // updateWalletData as an empty portfolio and told the planner "no tokens
+      // found" while the RPC was merely down (#31110).
+      throw new ElizaError("Solana token account read failed", {
+        code: "SOLANA_RPC_UNAVAILABLE",
+        cause: error,
+        context: { walletAddress: walletAddress.toString() },
+        severity: "ephemeral",
+      });
     }
   }
 
@@ -2125,32 +2132,65 @@ export class SolanaService extends Service {
     return out;
   }
 
-  public async getBalancesByAddrs(walletAddressArr: string[]): Promise<Record<string, number>> {
-    try {
-      const publicKeyObjs = walletAddressArr.map((k) => new PublicKey(k));
-      const accounts = await this.batchGetMultipleAccountsInfo(publicKeyObjs, "getBalancesByAddrs");
+  /** Attempts made for one balance read while the RPC answers 429; the last failure is thrown. */
+  static readonly BALANCE_READ_MAX_ATTEMPTS = 3;
+  static readonly BALANCE_READ_RETRY_DELAY_MS = 1000;
 
-      const out: Record<string, number> = {};
-      for (let i = 0; i < accounts.length; i++) {
-        const a = accounts[i];
-        const pk = walletAddressArr[i];
-        if (pk === undefined) continue;
-        if (a?.lamports) {
-          out[pk] = a.lamports * SolanaService.LAMPORTS2SOL;
-        } else {
-          out[pk] = 0;
+  /**
+   * SOL balance per address. A missing address is a genuine zero (the account
+   * does not exist on chain); an RPC failure throws `ElizaError` with code
+   * `SOLANA_RPC_RATE_LIMITED` or `SOLANA_RPC_UNAVAILABLE` so callers do not
+   * serve a fabricated 0 (#31110). A 429 is retried a bounded number of times.
+   */
+  public async getBalancesByAddrs(walletAddressArr: string[]): Promise<Record<string, number>> {
+    const publicKeyObjs = walletAddressArr.map((k) => new PublicKey(k));
+    const accounts = await this.readAccountsWithRateLimitRetry(publicKeyObjs);
+
+    const out: Record<string, number> = {};
+    for (let i = 0; i < accounts.length; i++) {
+      const a = accounts[i];
+      const pk = walletAddressArr[i];
+      if (pk === undefined) continue;
+      if (a?.lamports) {
+        out[pk] = a.lamports * SolanaService.LAMPORTS2SOL;
+      } else {
+        out[pk] = 0;
+      }
+    }
+    return out;
+  }
+
+  private async readAccountsWithRateLimitRetry(
+    publicKeyObjs: PublicKey[]
+  ): Promise<Awaited<ReturnType<SolanaService["batchGetMultipleAccountsInfo"]>>> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await this.batchGetMultipleAccountsInfo(publicKeyObjs, "getBalancesByAddrs");
+      } catch (error) {
+        // error-policy:J2 context-adding rethrow after a bounded 429 retry.
+        const msg = error instanceof Error ? error.message : String(error);
+        const rateLimited = msg.includes("429");
+        if (rateLimited && attempt < SolanaService.BALANCE_READ_MAX_ATTEMPTS) {
+          this.runtime.logger.warn(
+            `SolanaService: RPC rate limit hit, retrying balance read (${attempt}/${SolanaService.BALANCE_READ_MAX_ATTEMPTS})`
+          );
+          await new Promise((waitResolve) =>
+            setTimeout(waitResolve, SolanaService.BALANCE_READ_RETRY_DELAY_MS * attempt)
+          );
+          continue;
         }
+        throw new ElizaError(
+          rateLimited
+            ? `Solana RPC rate limit persisted across ${attempt} balance read attempts`
+            : "Solana balance read failed",
+          {
+            code: rateLimited ? "SOLANA_RPC_RATE_LIMITED" : "SOLANA_RPC_UNAVAILABLE",
+            cause: error,
+            context: { addresses: publicKeyObjs.length, attempt },
+            severity: "ephemeral",
+          }
+        );
       }
-      return out;
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      if (msg.includes("429")) {
-        this.runtime.logger.warn("RPC rate limit hit, pausing before retry");
-        await new Promise((waitResolve) => setTimeout(waitResolve, 1000));
-        return this.getBalancesByAddrs(walletAddressArr);
-      }
-      this.runtime.logger.error(`solSrv:getBalancesByAddrs - unexpected error: ${error}`);
-      return {};
     }
   }
 

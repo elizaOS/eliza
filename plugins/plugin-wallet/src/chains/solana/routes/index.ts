@@ -70,7 +70,12 @@ const getWalletBalanceHandler: LegacyRouteHandler = async (_req, res, runtime) =
 
     const publicKeyStr = publicKey.toBase58();
     const balances = await solanaService.getBalancesByAddrs([publicKeyStr]);
-    const balance = balances[publicKeyStr] ?? 0;
+    const balance = balances[publicKeyStr];
+    if (balance === undefined) {
+      // The service reports every requested address or throws; a missing
+      // entry is a contract violation, not a zero balance.
+      throw new Error(`Balance read returned no entry for ${publicKeyStr}`);
+    }
 
     sendSuccess(res, {
       publicKey: publicKeyStr,
