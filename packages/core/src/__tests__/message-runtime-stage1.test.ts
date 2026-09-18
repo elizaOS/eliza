@@ -13959,6 +13959,103 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 // The protocol action is registered after candidate admission. A sole explicit
 // discovery hint must not look unresolved and fall back to broad domain tools.
 describe("explicit discovery survives planner surface construction", () => {
+	it("resolves an unknown search hint instead of finishing with the Stage-1 acknowledgment", async () => {
+		const acknowledgment = "Searching your stored messages now, read-only.";
+		const answer = 'The original message says "green mug".';
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["memory"],
+				intents: ["Search stored messages for the original mug color"],
+				candidateActionNames: ["MEMORY_SEARCH_MESSAGES"],
+				replyText: acknowledgment,
+				extra: { replyEffectStatus: "none" },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "discover-memory",
+						name: "DISCOVER_TOOLS",
+						arguments: {
+							names: ["MEMORY_SEARCH"],
+							eliza_turn_scope: "more_work_pending",
+						},
+					},
+				],
+			},
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "search-memory",
+						name: "MEMORY_SEARCH",
+						arguments: {
+							query: "original mug color",
+							eliza_turn_scope: "final",
+						},
+					},
+				],
+			},
+			JSON.stringify({
+				decision: "FINISH",
+				success: true,
+				thought: "Original stored message retrieved.",
+				messageToUser: answer,
+			}),
+		]);
+		const search = vi.fn(async () => ({
+			success: true,
+			text: 'Original message: "green mug".',
+		}));
+		runtime.actions = [
+			{
+				name: "MEMORY_SEARCH",
+				similes: [],
+				description: "Search stored messages.",
+				contexts: ["memory"],
+				parameters: [
+					{
+						name: "query",
+						description: "Search query",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				validate: async () => true,
+				handler: search,
+			},
+		] as never;
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "Search my stored messages for the original mug color. Quote the source. Keep my records and page unchanged.",
+			}),
+			state: {
+				...makeState(),
+				values: { availableContexts: "general, memory" },
+			},
+			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+		});
+		expect(search).toHaveBeenCalledTimes(1);
+		const calls = useModelCalls(runtime);
+		expect(calls.map(([type]) => type)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		const firstPlanner = calls[1][1] as { tools: Array<{ name: string }> };
+		expect(firstPlanner.tools.map(({ name }) => name)).toContain(
+			"DISCOVER_TOOLS",
+		);
+		expect(firstPlanner.tools.map(({ name }) => name)).not.toContain(
+			"MEMORY_SEARCH",
+		);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply")
+			expect(result.result.responseContent?.text).toBe(answer);
+	});
+
 	it("keeps a general-context greeting discoverable without loading domain schemas", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
