@@ -285,9 +285,11 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       const { result } = await invoke(
         actor,
         {
-          startAt: "2026-07-29T16:50:00.000Z",
-          durationMinutes: 15,
-          ...(endAt === undefined ? {} : { endAt }),
+          interval: {
+            startAt: "2026-07-29T16:50:00.000Z",
+            durationMinutes: 15,
+            ...(endAt === undefined ? {} : { endAt }),
+          },
         },
         true,
         "CALENDAR_CHECK_AVAILABILITY",
@@ -331,7 +333,9 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         },
         {
           name: "CALENDAR_CHECK_AVAILABILITY",
-          params: { startAt: "2026-07-29T16:50:00.000Z", ...range },
+          params: {
+            interval: { startAt: "2026-07-29T16:50:00.000Z", ...range },
+          },
         },
         {
           actions: promoteSubactionsToActions(
@@ -361,14 +365,17 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         activeContexts: ["calendar"],
       },
       {
-        name: "CALENDAR_CHECK_AVAILABILITY",
-        params: { startAt: "2026-07-29T16:50:00.000Z" },
+        name: "CALENDAR",
+        params: {
+          action: "check_availability",
+          startAt: "2026-07-29T16:50:00.000Z",
+        },
       },
       {
         actions: promoteSubactionsToActions(
           calendarAction,
           calendarActionPromotionOptions,
-        ).filter((action) => action.name === "CALENDAR_CHECK_AVAILABILITY"),
+        ).filter((action) => action.name === "CALENDAR"),
       },
     );
     expect(result.success).toBe(false);

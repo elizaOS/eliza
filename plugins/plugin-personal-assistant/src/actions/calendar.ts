@@ -16,6 +16,7 @@ import { renderGroundedActionReply } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
+  ActionParameterSchema,
   ActionResult,
   EffectReceipt,
   HandlerCallback,
@@ -659,6 +660,42 @@ type OwnerCalendarSubaction =
 
 const ACTION_NAME = "CALENDAR";
 
+const availabilityIntervalProperties = {
+  startAt: {
+    type: "string",
+    minLength: 1,
+    description: "ISO start with the requested local clock and its offset.",
+  },
+  endAt: {
+    type: "string",
+    minLength: 1,
+    description:
+      "Explicit ISO end, if the user supplied an end rather than a duration.",
+  },
+  durationMinutes: {
+    type: "number",
+    minimum: 0,
+    description: "Requested duration in minutes; code calculates the end.",
+  },
+} satisfies Record<string, ActionParameterSchema>;
+
+const availabilityIntervalSchema: ActionParameterSchema = {
+  anyOf: [
+    {
+      type: "object",
+      properties: availabilityIntervalProperties,
+      required: ["startAt", "durationMinutes"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: availabilityIntervalProperties,
+      required: ["startAt", "endAt"],
+      additionalProperties: false,
+    },
+  ],
+};
+
 interface OwnerCalendarParameters {
   subaction?: OwnerCalendarSubaction | string;
   // Calendar reads/writes (calendar.ts)
@@ -1191,8 +1228,15 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
     description:
       "Check owner free/busy from an ISO start plus the requested durationMinutes (end calculated by code), or an explicit start/end interval. If both end and duration are supplied they must agree.",
     descriptionCompressed: "check free|busy start plus duration or end",
-    required: ["startAt"],
-    optional: ["endAt", "durationMinutes", "intent", "timeZone"],
+    required: [],
+    optional: [
+      "interval",
+      "startAt",
+      "endAt",
+      "durationMinutes",
+      "intent",
+      "timeZone",
+    ],
   },
   propose_times: {
     description: "Propose meeting slots. Window.",
@@ -1839,6 +1883,14 @@ export const calendarAction: Action & {
       schema: { type: "string" as const },
     },
     {
+      name: "interval",
+      description:
+        "The complete availability interval: startAt with durationMinutes or endAt. Do not convert a local clock to UTC and also keep the local offset.",
+      required: false,
+      subactions: ["check_availability"],
+      schema: availabilityIntervalSchema,
+    },
+    {
       name: "startAt",
       description:
         "TOP-LEVEL flat. check_availability start. ISO-8601. " +
@@ -2057,8 +2109,18 @@ export const calendarAction: Action & {
 export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
   overrides: {
     check_availability: {
+      parameters: calendarAction.parameters
+        ?.filter(
+          (parameter) =>
+            !["startAt", "endAt", "durationMinutes"].includes(parameter.name),
+        )
+        .map((parameter) =>
+          parameter.name === "interval"
+            ? { ...parameter, required: true }
+            : parameter,
+        ),
       description:
-        "Read free/busy for one interval; never moves or creates events. Required: startAt plus either durationMinutes or endAt. When the user gives a duration, pass it directly in durationMinutes and omit endAt; code calculates the end. Use the requested local clock with its ISO offset, without also converting the clock to UTC. If inputs are rejected, correct the call from the original request; invalid arguments say nothing about calendar availability or working hours.",
+        "Read free/busy for one interval; never moves or creates events. Supply the required interval object with startAt plus either durationMinutes or endAt. When the user gives a duration, pass it directly in durationMinutes and omit endAt; code calculates the end. Use the requested local clock with its ISO offset, without also converting the clock to UTC. If inputs are rejected, correct the call from the original request; invalid arguments say nothing about calendar availability or working hours.",
     },
     update_event: {
       parameters: [

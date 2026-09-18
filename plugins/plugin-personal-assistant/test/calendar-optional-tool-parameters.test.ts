@@ -360,7 +360,7 @@ describe("promoted update target contract", () => {
 
 describe("promoted availability interval contract", () => {
   it.each([false, true])(
-    "requires a start and accepts explicit end or duration in the provider schema (Cerebras %s)",
+    "requires a complete interval in the provider schema (Cerebras %s)",
     (cerebrasMode) => {
       const action = promoteSubactionsToActions(
         calendarAction,
@@ -381,26 +381,38 @@ describe("promoted availability interval contract", () => {
         startAt: "2026-09-18T09:15:00-04:00",
         endAt: "2026-09-18T09:30:00-04:00",
       };
-      for (const args of [{}, { endAt: interval.endAt }]) {
+      for (const args of [
+        {},
+        { interval: {} },
+        { interval: { startAt: interval.startAt } },
+        { interval: { endAt: interval.endAt } },
+        { interval: { startAt: interval.startAt, durationMinutes: null } },
+        interval,
+      ]) {
         const errors: string[] = [];
         validateSchema(schema, args, "", errors);
         expect(errors, JSON.stringify(args)).not.toEqual([]);
         expect(validateToolArgs(action, args).valid).toBe(false);
       }
-      expect(validateToolArgs(action, { ...interval, startAt: "" }).valid).toBe(
-        false,
-      );
+      expect(
+        validateToolArgs(action, { interval: { ...interval, startAt: "" } })
+          .valid,
+      ).toBe(false);
       for (const args of [
-        interval,
-        { startAt: interval.startAt, durationMinutes: 15 },
+        { interval },
+        { interval: { startAt: interval.startAt, durationMinutes: 15 } },
       ]) {
         const errors: string[] = [];
         validateSchema(schema, args, "", errors);
-        expect(errors).toEqual([]);
+        expect(errors, JSON.stringify(args)).toEqual([]);
         expect(validateToolArgs(action, args).valid).toBe(true);
       }
-      // The handler validates the alternative end/duration requirement and agreement.
-
+      expect(
+        validateToolArgs(calendarAction, {
+          action: "check_availability",
+          ...interval,
+        }).valid,
+      ).toBe(true);
       // The umbrella is a mixed-operation surface; reads do not impose bounds on unrelated operations.
       expect(
         validateToolArgs(calendarAction, {

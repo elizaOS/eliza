@@ -157,10 +157,14 @@ export type ProposeMeetingTimesParameters = {
   counterparties?: string[];
 };
 
-export type CheckAvailabilityParameters = {
+type AvailabilityInterval = {
   startAt?: string;
   endAt?: string;
   durationMinutes?: number;
+};
+
+export type CheckAvailabilityParameters = AvailabilityInterval & {
+  interval?: AvailabilityInterval;
 };
 
 function parseTimeOfDayToMinutes(value: string): number {
@@ -726,7 +730,13 @@ export async function runCheckAvailabilityHandler(
     });
   }
 
-  const params = getParams<CheckAvailabilityParameters>(options);
+  const supplied = getParams<CheckAvailabilityParameters>(options);
+  const params = supplied.interval ?? supplied;
+  const mixedInterval =
+    supplied.interval !== undefined &&
+    (supplied.startAt !== undefined ||
+      supplied.endAt !== undefined ||
+      supplied.durationMinutes !== undefined);
   const windowStart = parseOptionalIso(params.startAt);
   const explicitEnd = parseOptionalIso(params.endAt);
   const hasDuration = params.durationMinutes !== undefined;
@@ -740,6 +750,7 @@ export async function runCheckAvailabilityHandler(
       : undefined;
   const windowEnd = hasDuration ? durationEnd : explicitEnd;
   if (
+    mixedInterval ||
     !windowStart ||
     !windowEnd ||
     !Number.isFinite(windowEnd.getTime()) ||
