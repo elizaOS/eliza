@@ -2200,7 +2200,7 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
           ...(name === "search_events"
             ? {
                 description:
-                  "Search existing events by content and their CURRENT time window. For rescheduling, call CALENDAR_UPDATE_EVENT with the existing title or ID; do not search the destination window to locate an event currently scheduled elsewhere. Empty results establish only this search scope, never permission to create a replacement.",
+                  "Find existing events matching a required content filter in query/queries or details.query/details.queries, within their CURRENT time window. A date alone is not a content filter; use CALENDAR_FEED for an unfiltered agenda. Filtered results cannot establish free time: use CALENDAR_CHECK_AVAILABILITY or CALENDAR_PROPOSE_TIMES. For rescheduling, use CALENDAR_UPDATE_EVENT with the existing title or ID, not a search of the destination window. Empty results never authorize a replacement event.",
               }
             : {}),
           parameters: calendarAction.parameters?.map((parameter) =>
