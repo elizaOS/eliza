@@ -70,7 +70,7 @@ jobs:
           PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ github.workspace }}/packages/app/test-results/dev-smoke-local/report.json
         run: |
           rm -f "$PLAYWRIGHT_JSON_OUTPUT_NAME"
-          bun run --cwd packages/app test:dev-smoke:local --reporter=list,json
+          bun run --cwd packages/app test:dev-smoke:local --reporter=list,json --trace=${{ github.event_name == 'workflow_dispatch' && 'on' || 'retain-on-failure' }}
           node packages/scripts/check-required-playwright-results.mjs "$PLAYWRIGHT_JSON_OUTPUT_NAME" runtime-chooser-default.spec.ts bun-dev-onboarding-chat.spec.ts
       - name: Upload dev-smoke artifacts
         if: always()
