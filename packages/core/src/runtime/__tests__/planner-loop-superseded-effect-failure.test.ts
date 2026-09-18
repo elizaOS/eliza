@@ -48,6 +48,7 @@ function appliedReceipt(operation: string): EffectReceipt {
 async function runMoveTurn(
 	failedOperation: string,
 	failedResourceId = "evt-1",
+	failedResourceKind = "calendar.event",
 ): Promise<string> {
 	const useModel = vi
 		.fn()
@@ -87,7 +88,7 @@ async function runMoveTurn(
 			effectReceipts: [
 				{
 					...failedReceipt(failedOperation),
-					resource: { kind: "calendar.event", id: failedResourceId },
+					resource: { kind: failedResourceKind, id: failedResourceId },
 				},
 			],
 			data: { error: "CALENDAR_SERVICE_409" },
@@ -135,10 +136,22 @@ describe("failure authority superseded by a later applied effect", () => {
 		);
 	});
 
+	it("lets a message-scoped failed receipt yield to the applied retry (live 2026-09-14: the wrapper bound the failure to the source message, the handler bound the applied move to the event)", async () => {
+		await expect(
+			runMoveTurn("calendar.update_event", "msg-1", "runtime.message"),
+		).resolves.toBe("Moved your barber appointment to Friday at 4pm.");
+	});
+
 	it("keeps failure authority when the applied receipt is a different operation", async () => {
 		await expect(runMoveTurn("calendar.event.delete")).resolves.not.toBe(
 			"Moved your barber appointment to Friday at 4pm.",
 		);
+	});
+
+	it("preserves a failed mutation of another resource", async () => {
+		await expect(
+			runMoveTurn("calendar.event.update", "unrelated-event"),
+		).resolves.not.toBe("Moved your barber appointment to Friday at 4pm.");
 	});
 
 	it("canonicalizes only known calendar wrapper aliases", () => {
@@ -221,10 +234,4 @@ describe("failure authority superseded by a later applied effect", () => {
 			"Reminder set for tomorrow at 9am to email the landlord.",
 		);
 	});
-});
-
-it("preserves a failed mutation of another resource", async () => {
-	await expect(
-		runMoveTurn("calendar.event.update", "unrelated-event"),
-	).resolves.not.toBe("Moved your barber appointment to Friday at 4pm.");
 });
