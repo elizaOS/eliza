@@ -29,3 +29,12 @@ errors propagate; the router does not substitute another embedding model.
 
 The tokenizer JSON files retain their upstream bytes and are excluded only
 from automatic formatting. Input-limit tests exercise the loaded tokenizer.
+
+The representation revision `hf-bert-v1:tail-v1` records BERT's per-scalar
+lowercase after NFD nonspacing-mark removal, plus verified source-tail
+selection. JavaScript whole-string lowercase has different Greek final-sigma
+semantics and must not define encoder admission. The shared adapter overrides
+that behavior without modifying the pinned assets or the dispatched source.
+Activating this revision excludes earlier representation IDs through the
+existing embedding-space predicate and queues their source memories for
+re-embedding. Never relabel earlier vectors as this revision.

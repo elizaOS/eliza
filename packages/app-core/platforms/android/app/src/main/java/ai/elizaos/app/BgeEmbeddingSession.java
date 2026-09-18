@@ -16,7 +16,7 @@ import org.json.JSONException;
 final class BgeEmbeddingSession {
     static final String MODEL = "bge-small-en-v1.5-f16.gguf";
     static final String SHA256 = "f0b2fef971e8366438bfd2d9aefea1b0115919389448806d290237f638bae999";
-    static final String SPACE = "BAAI/bge-small-en-v1.5:cls:l2:384";
+    static final String SPACE = "BAAI/bge-small-en-v1.5:cls:l2:384:hf-bert-v1:tail-v1";
     private long context;
     private String bundle;
     private int contextLimit;

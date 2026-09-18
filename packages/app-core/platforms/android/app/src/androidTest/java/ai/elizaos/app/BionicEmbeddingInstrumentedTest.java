@@ -52,7 +52,7 @@ public class BionicEmbeddingInstrumentedTest {
             assertDifferent(unicode.getJSONArray("embedding"), ascii.getJSONArray("embedding"));
 
             assertEquals(4, request(name, root.toString(), "ΟΣ").getInt("tokens"));
-            assertEquals(5, request(name, root.toString(), "ΟΔΟΣ").getInt("tokens"));
+            assertEquals(6, request(name, root.toString(), "ΟΔΟΣ").getInt("tokens"));
             assertEquals(3, request(name, root.toString(), "z".repeat(200)).getInt("tokens"));
             String specialText = "[CLS] [MASK] [SEP]";
             JSONObject special = request(name, root.toString(), specialText);

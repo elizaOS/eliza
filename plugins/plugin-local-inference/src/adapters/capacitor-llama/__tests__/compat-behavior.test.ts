@@ -18,7 +18,7 @@ import type {
 
 const mocks = vi.hoisted(() => ({
 	initCapacitorLlama: vi.fn(),
-	verifyBgeEmbeddingFile: vi.fn(() => "BAAI/bge-small-en-v1.5:cls:l2:384"),
+	verifyBgeEmbeddingFile: vi.fn(() => "BAAI/bge-small-en-v1.5:cls:l2:384:hf-bert-v1:tail-v1"),
 }));
 
 vi.mock("../..", () => ({
@@ -195,7 +195,7 @@ describe("local-ai compat adapter behavior", () => {
 
 		expect(result).toEqual([0.6, 0.8, ...Array.from({ length: 382 }, () => 0)]);
 		expect(getEmbeddingVectorSpace(result)).toBe(
-			"BAAI/bge-small-en-v1.5:cls:l2:384",
+			"BAAI/bge-small-en-v1.5:cls:l2:384:hf-bert-v1:tail-v1",
 		);
 		expect(mocks.verifyBgeEmbeddingFile).toHaveBeenCalledWith(
 			expect.stringContaining("bge-small-en-v1.5-f16.gguf"),

@@ -7,7 +7,7 @@ import { getBootConfig, setBootConfig } from "@elizaos/shared";
 import { afterEach, expect, it, vi } from "vitest";
 
 const native = vi.hoisted(() => ({
-	space: "BAAI/bge-small-en-v1.5:cls:l2:384",
+	space: "BAAI/bge-small-en-v1.5:cls:l2:384:hf-bert-v1:tail-v1",
 	initIosBgeEmbedding: vi.fn(),
 	initCapacitorLlama: vi.fn(),
 }));

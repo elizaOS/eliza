@@ -6,7 +6,8 @@
  */
 import { ElizaError } from "./errors";
 
-export const BGE_SMALL_VECTOR_SPACE = "BAAI/bge-small-en-v1.5:cls:l2:384";
+export const BGE_SMALL_VECTOR_SPACE =
+	"BAAI/bge-small-en-v1.5:cls:l2:384:hf-bert-v1:tail-v1";
 const representation = Symbol.for("@elizaos/core/embedding-vector-space");
 
 export function getEmbeddingVectorSpace(vector: unknown): string | undefined {

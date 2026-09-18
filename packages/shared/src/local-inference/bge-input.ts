@@ -4,11 +4,29 @@
  * into a different token when Cloudflare retokenizes its string input.
  */
 import { ElizaError } from "@elizaos/core";
-import { Tokenizer } from "@huggingface/tokenizers";
+import { BertNormalizer, Tokenizer } from "@huggingface/tokenizers";
 import tokenizerJson from "./bge/tokenizer.json" with { type: "json" };
 import tokenizerConfig from "./bge/tokenizer_config.json" with { type: "json" };
 
 const tokenizer = new Tokenizer(tokenizerJson, tokenizerConfig);
+
+/** Matches Rust BERT's accent removal followed by per-scalar lowercase. */
+class BgeBertNormalizer extends BertNormalizer {
+  override normalize(text: string): string {
+    // JS whole-string lowercasing introduces contextual final sigma, unlike
+    // Hugging Face NormalizedString::lowercase used by the hosted encoder.
+    return Array.from(super.normalize(text), (scalar) =>
+      scalar.toLowerCase(),
+    ).join("");
+  }
+}
+
+tokenizer.normalizer = new BgeBertNormalizer({
+  ...tokenizerJson.normalizer,
+  type: "BertNormalizer",
+  lowercase: false,
+  strip_accents: true,
+});
 
 export interface BgeEmbeddingInput {
   text: string;

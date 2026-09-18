@@ -1,5 +1,12 @@
 /** Exercises same-width vector migration and stale-writer rejection against a real isolated SQL adapter. */
-import { ChannelType, type Entity, type Memory, type Room, type UUID } from "@elizaos/core";
+import {
+  BGE_SMALL_VECTOR_SPACE,
+  ChannelType,
+  type Entity,
+  type Memory,
+  type Room,
+  type UUID,
+} from "@elizaos/core";
 import { eq, sql } from "drizzle-orm";
 import {
   check,
@@ -135,12 +142,12 @@ test("retains source memories while replacing only explicitly identified embeddi
       store.getByRoomIds({ roomIds: [roomId], tableName: "embedding_migration" });
     expect((await roomMemories()).map((row) => row.id)).toEqual([memoryId]);
 
-    const activation = adapter.ensureEmbeddingSpace("bge-small-en-v1.5:cls:l2:384");
+    const activation = adapter.ensureEmbeddingSpace(BGE_SMALL_VECTOR_SPACE);
     await expect(adapter.ensureEmbeddingSpace("other-model:cls:l2:384")).rejects.toMatchObject({
       code: "EMBEDDING_SPACE_CHANGED",
     });
     expect(await activation).toEqual([memoryId]);
-    activeSpace = "bge-small-en-v1.5:cls:l2:384";
+    activeSpace = BGE_SMALL_VECTOR_SPACE;
     expect((await roomMemories()).map((row) => row.content.text)).toEqual([source]);
     expect(
       await store.searchByEmbedding(vector(0), {
@@ -177,7 +184,7 @@ test("retains source memories while replacing only explicitly identified embeddi
       })
     ).toBe(true);
     expect((await adapter.getMemoryById(memoryId))?.embedding).toEqual(vector(1));
-    expect(await adapter.ensureEmbeddingSpace("bge-small-en-v1.5:cls:l2:384")).toEqual([]);
+    expect(await adapter.ensureEmbeddingSpace(BGE_SMALL_VECTOR_SPACE)).toEqual([]);
     expect(
       (
         await adapter.searchMemories({
@@ -253,6 +260,59 @@ test("retains source memories while replacing only explicitly identified embeddi
     ).toBe(true);
     expect((await adapter.getMemoryById(memoryId))?.embedding).toEqual(vector(2));
     expect((await adapter.getMemoryById(memoryId))?.content.text).toBe(source);
+    // Previously named BGE vectors can have the same width but incompatible
+    // normalization or input selection. They require actual re-embedding.
+    const previousBgeMemory = v4() as UUID;
+    const previousSource = "ΟΣ complete source retained for the new embedding representation";
+    await adapter.createMemory(
+      { ...memory, id: previousBgeMemory, content: { text: previousSource } },
+      "embedding_migration"
+    );
+    await db.insert(embeddingTable).values({
+      memoryId: previousBgeMemory,
+      dim384: vector(3),
+      spaceId: "BAAI/bge-small-en-v1.5:cls:l2:384",
+      writeNonce: v4(),
+    });
+    const previousCache = () =>
+      adapter.getCachedEmbeddings({
+        query_table_name: "embedding_migration",
+        query_threshold: 0,
+        query_input: previousSource,
+        query_field_name: "content",
+        query_field_sub_name: "text",
+        query_match_count: 10,
+      });
+    expect(await previousCache()).toEqual([]);
+    expect((await adapter.getMemoryById(previousBgeMemory))?.embedding).toBeUndefined();
+    expect((await adapter.getMemoryById(previousBgeMemory))?.content.text).toBe(previousSource);
+    expect(
+      (
+        await store.searchByEmbedding(vector(3), {
+          tableName: "embedding_migration",
+          match_threshold: 0.9,
+        })
+      ).map((row) => row.id)
+    ).not.toContain(previousBgeMemory);
+    expect(await adapter.ensureEmbeddingSpace(BGE_SMALL_VECTOR_SPACE)).toContain(previousBgeMemory);
+    expect(
+      await adapter.updateMemoryEmbedding({
+        id: previousBgeMemory,
+        expected: { agentId: testAgentId, entityId, roomId, text: previousSource },
+        embedding: vector(4),
+      })
+    ).toBe(true);
+    expect((await previousCache()).map((row) => row.embedding)).toEqual([vector(4)]);
+    expect(
+      (
+        await store.searchByEmbedding(vector(4), {
+          tableName: "embedding_migration",
+          match_threshold: 0.9,
+        })
+      ).map((row) => row.id)
+    ).toEqual([previousBgeMemory]);
+    expect((await adapter.getMemoryById(previousBgeMemory))?.content.text).toBe(previousSource);
+
     await expect(adapter.ensureEmbeddingSpace("other-model:cls:l2:384")).rejects.toMatchObject({
       code: "EMBEDDING_SPACE_CHANGED",
     });

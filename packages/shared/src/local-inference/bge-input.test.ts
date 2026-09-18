@@ -8,6 +8,30 @@ import { assertBgeTokenAgreement, prepareBgeEmbeddingInput } from "./bge-input";
 const tokenizer = new Tokenizer(tokenizerJson, tokenizerConfig);
 
 describe("BGE input tail", () => {
+  it("keeps Rust BERT scalar casing distinct from JavaScript contextual sigma", () => {
+    const uppercase = prepareBgeEmbeddingInput("ΟΣ");
+    expect(uppercase.text).toBe("ΟΣ");
+    expect(uppercase.tokenIds).toEqual([101, 1169, 29733, 102]);
+    expect(uppercase.tokenIds).toEqual(prepareBgeEmbeddingInput("οσ").tokenIds);
+    expect(uppercase.tokenIds).not.toEqual(
+      prepareBgeEmbeddingInput("ος").tokenIds,
+    );
+    expect(uppercase.tokenIds).not.toEqual(tokenizer.encode("ΟΣ").ids);
+    expect(prepareBgeEmbeddingInput("ΟΔΟΣ").tokenIds).toEqual([
+      101, 1169, 29722, 29730, 29733, 102,
+    ]);
+  });
+
+  it("retains an unchanged Greek ending with the encoder's scalar token IDs", () => {
+    const tail = `${"word ".repeat(506)}ΟΔΟΣ`;
+    const prepared = prepareBgeEmbeddingInput(`obsolete ${tail}`);
+    expect(prepared.text).toBe(tail);
+    expect(prepared.originalTokenCount).toBe(513);
+    expect(prepared.tokenIds).toHaveLength(512);
+    expect(prepared.tokenIds.slice(-5)).toEqual([
+      1169, 29722, 29730, 29733, 102,
+    ]);
+  });
   it.each([
     "",
     " \n\t",

@@ -78,7 +78,7 @@
         XCTAssertNotNil(result, @"%@", error);
         NSArray<NSNumber *> *actual = result[@"embedding"], *reference = row[@"vector"];
         XCTAssertEqual(actual.count, reference.count);
-        XCTAssertEqualObjects(result[@"embeddingSpace"], @"BAAI/bge-small-en-v1.5:cls:l2:384");
+        XCTAssertEqualObjects(result[@"embeddingSpace"], @"BAAI/bge-small-en-v1.5:cls:l2:384:hf-bert-v1:tail-v1");
         double dot = 0, an = 0, rn = 0;
         for (NSUInteger i = 0; i < actual.count; i++) {
             dot += actual[i].doubleValue * reference[i].doubleValue;

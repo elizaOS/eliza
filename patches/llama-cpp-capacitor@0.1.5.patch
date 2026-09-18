@@ -536,7 +536,7 @@ index 0000000000000..acc9136e1f51e
 +
 +static NSString *const ModelName = @"bge-small-en-v1.5-f16.gguf";
 +static NSString *const ModelSha = @"f0b2fef971e8366438bfd2d9aefea1b0115919389448806d290237f638bae999";
-+static NSString *const VectorSpace = @"BAAI/bge-small-en-v1.5:cls:l2:384";
++static NSString *const VectorSpace = @"BAAI/bge-small-en-v1.5:cls:l2:384:hf-bert-v1:tail-v1";
 +
 +static void Fail(NSError **error, NSString *code, NSString *message) {
 +    if (error) *error = [NSError errorWithDomain:code code:1 userInfo:@{NSLocalizedDescriptionKey: message}];
