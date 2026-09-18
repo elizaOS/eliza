@@ -6,6 +6,7 @@ import type {
 import {
 	projectDeferredProviders,
 	providerReviewSources,
+	withProviderReviewSchema,
 } from "../provider-context";
 
 function fixture(): ContextObject {
@@ -56,6 +57,22 @@ function select(context: ContextObject, keep = ["recalled1"]) {
 	};
 }
 describe("reviewed provider sources", () => {
+	it("keeps the model schema stable while source bindings change", () => {
+		const first = fixture();
+		const second = structuredClone(first);
+		second.metadata!.messageId = "next-request";
+		const provider = second.events[0] as ContextProviderEvent;
+		provider.reviewableSources!.sources[0].text += "A new correction.";
+		provider.text += "A new correction.";
+		expect(providerReviewSources(first)!.sourceSetId).not.toBe(
+			providerReviewSources(second)!.sourceSetId,
+		);
+		const schema = { type: "object" as const, properties: {} };
+		expect(withProviderReviewSchema(schema, first)).toEqual(
+			withProviderReviewSchema(schema, second),
+		);
+	});
+
 	it("projects exact selected text and access notice without mutating originals", () => {
 		const context = fixture();
 		select(context);

@@ -1,4 +1,7 @@
-import { withProviderReviewSchema } from "../../runtime/provider-context";
+import {
+	providerReviewSources,
+	withProviderReviewSchema,
+} from "../../runtime/provider-context";
 import type { JsonValue } from "../../types/primitives";
 /** Builds the complete Stage 1 request, performs bounded empty-output retries, and validates the response decision. Registers diagnostic persistence with the outer turn before handing control to routing and planning. */
 
@@ -290,7 +293,13 @@ export async function generateStage1Decision(
 	let repairHistorySourceIds: string[] | undefined;
 	let nativeHistoryRead = false;
 	let sourceReplySnapshot: SourceReplySnapshot | undefined;
+	let providerReviewSourceSetId: string | undefined;
 	const createMessageHandlerTools = () => {
+		// Bind to the exact sources offered by this inference, not a model-echoed nonce.
+		providerReviewSourceSetId =
+			discoveryEnabled && !voiceDirectMessageChannel
+				? providerReviewSources(context)?.sourceSetId
+				: undefined;
 		const fieldSchema = compactInactiveFields
 			? withInactiveArrayFields(
 					responseHandlerSchema,
@@ -1217,14 +1226,23 @@ export async function generateStage1Decision(
 		);
 	}
 
+	const rawProviderReview = rawFieldParsed?.providerReview;
 	return {
 		messageHandler,
 		providerReview:
-			discoveryEnabled &&
-			!voiceDirectMessageChannel &&
+			providerReviewSourceSetId &&
 			typeof rawMessageHandler !== "string" &&
-			hasHandleResponseToolCall(rawMessageHandler)
-				? (rawFieldParsed?.providerReview as JsonValue | undefined)
+			hasHandleResponseToolCall(rawMessageHandler) &&
+			rawProviderReview &&
+			typeof rawProviderReview === "object" &&
+			!Array.isArray(rawProviderReview) &&
+			Object.keys(rawProviderReview).every(
+				(key) => key === "complete" || key === "keep",
+			)
+				? ({
+						...rawProviderReview,
+						sourceSetId: providerReviewSourceSetId,
+					} as JsonValue)
 				: undefined,
 		providerDiscoveryEnabled: discoveryEnabled,
 		loadedContextProviders: [...loadedContext],

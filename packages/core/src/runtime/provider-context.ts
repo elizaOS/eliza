@@ -82,11 +82,10 @@ export function withProviderReviewSchema(
 				type: "object",
 				additionalProperties: false,
 				properties: {
-					sourceSetId: { type: "string", enum: [review.sourceSetId] },
 					complete: { type: "boolean" },
 					keep: { type: "array", items: { type: "string" } },
 				},
-				required: ["sourceSetId", "complete", "keep"],
+				required: ["complete", "keep"],
 				description:
 					"Review every recalledN source in provider context. Keep IDs needed for later planning/completion: applicable constraints, permissions, corrections, referents, pending work and original-source evidence. Keep uncertain sources. complete=true certifies review of all supplied sources, not unseen originals. Empty keep means all are irrelevant. Repeated sources retain their full original bodies when selected. These IDs are not history hN IDs. Missing evidence remains retrievable.",
 			},

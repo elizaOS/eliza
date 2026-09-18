@@ -519,10 +519,10 @@ describe("runV5MessageRuntimeStage1", () => {
 						tools: Array<{ name: string; parameters: JSONSchema }>;
 					};
 					expect(JSON.stringify(input.messages)).toContain(body.trim());
-					const choices = input.tools.find(
+					const reviewSchema = input.tools.find(
 						(tool) => tool.name === "HANDLE_RESPONSE",
-					)?.parameters.properties?.providerReview.properties?.sourceSetId.enum;
-					expect(choices).toHaveLength(1);
+					)?.parameters.properties?.providerReview;
+					expect(reviewSchema.properties).not.toHaveProperty("sourceSetId");
 					return stage1Response({
 						contexts: ["general"],
 						candidateActionNames: ["LOOKUP"],
@@ -531,7 +531,7 @@ describe("runV5MessageRuntimeStage1", () => {
 							replyEffectStatus: "pending",
 							providerReview: {
 								complete: true,
-								sourceSetId: mode === "stale" ? "wrong" : choices?.[0],
+								...(mode === "stale" ? { sourceSetId: "wrong" } : {}),
 								keep: mode === "keep" ? ["recalled1"] : [],
 							},
 						},
