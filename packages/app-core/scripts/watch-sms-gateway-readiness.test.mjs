@@ -127,7 +127,7 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
       {
         encoding: "utf8",
         timeout: 8_000,
-        env: { ...process.env, PATH: "/nonexistent" },
+        env: { ...process.env, PATH: "/nonexistent", ADB: "/nonexistent/adb" },
       },
     );
     const elapsedMs = Date.now() - startedAt;
@@ -153,6 +153,12 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
     );
     const fakeCurl = path.join(fakeDir, "curl");
     const fakeIoreg = path.join(fakeDir, "ioreg");
+    const fakeAdb = path.join(fakeDir, "adb");
+    fs.writeFileSync(
+      fakeAdb,
+      `#!/bin/sh\necho "$*" >> "${markerDir}/adb.calls"\nexit 0\n`,
+      { mode: 0o755 },
+    );
     fs.writeFileSync(fakeIoreg, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     fs.writeFileSync(
       fakeCurl,
@@ -169,7 +175,11 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
         {
           encoding: "utf8",
           timeout: 15_000,
-          env: { ...process.env, PATH: `${fakeDir}:/usr/bin:/bin` },
+          env: {
+            ...process.env,
+            PATH: `${fakeDir}:/usr/bin:/bin`,
+            ADB: fakeAdb,
+          },
         },
       );
       const elapsedMs = Date.now() - startedAt;
@@ -181,6 +191,11 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
       expect(elapsedMs).toBeLessThan(4_500);
 
       // The fake probe really ran, and its process did not survive SIGKILL.
+      const adbCalls = fs
+        .readFileSync(path.join(markerDir, "adb.calls"), "utf8")
+        .trim()
+        .split("\n");
+      expect(adbCalls.filter((call) => call === "devices -l")).toHaveLength(1);
       const pidFile = path.join(markerDir, "curl.pid");
       expect(fs.existsSync(pidFile)).toBe(true);
       const pid = Number(fs.readFileSync(pidFile, "utf8").trim());
