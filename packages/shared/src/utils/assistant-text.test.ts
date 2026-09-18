@@ -247,8 +247,7 @@ Hope that helps!`;
   it("terminates blockquoted code blocks when blockquote container ends", () => {
     const unclosedBlockquote =
       "> ```python\n> def f():\n>     return 1\n\n*smiles* done";
-    const expectedUnclosed =
-      "> ```python\n> def f():\n>     return 1\n\ndone";
+    const expectedUnclosed = "> ```python\n> def f():\n>     return 1\n\ndone";
     expect(stripAssistantStageDirections(unclosedBlockquote)).toBe(
       expectedUnclosed,
     );
