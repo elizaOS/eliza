@@ -64,11 +64,31 @@ export function estimateActionResultTokens(text: string): number {
 	return Math.ceil(text.length / ACTION_RESULT_TOKEN_ESTIMATE_CHARS);
 }
 
+/**
+ * The action name for an executed result, resolved from the fields producers
+ * actually set. `data.actionName` is canonical; `data.action` is its documented
+ * sibling on multi-op actions (LINEAR, BROWSER, MANAGE_PLUGINS), and executors
+ * also attach the name at the top level. Falling back to "Unknown Action" while
+ * a real name is present loses the action from chain summaries and prompt
+ * formatting, so every carrier is consulted before that default.
+ */
 export function getActionResultActionName(result: ActionResult): string {
-	const actionNameValue = result.data?.actionName;
-	return typeof actionNameValue === "string" && actionNameValue.trim()
-		? actionNameValue.trim()
-		: "Unknown Action";
+	const record = result as ActionResult & {
+		actionName?: unknown;
+		action?: unknown;
+	};
+	const candidates = [
+		result.data?.actionName,
+		result.data?.action,
+		record.actionName,
+		record.action,
+	];
+	for (const candidate of candidates) {
+		if (typeof candidate === "string" && candidate.trim()) {
+			return candidate.trim();
+		}
+	}
+	return "Unknown Action";
 }
 
 export function stringifyActionResultError(
