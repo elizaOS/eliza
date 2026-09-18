@@ -236,7 +236,7 @@ describe("FormService form schema hardening", () => {
 
       service.registerForm(validForm({ controls: [control] }));
       const session = await service.startSession("signup", entityId, roomId, {
-        initialValues: { dueDate: parseValue("September 15, 2026", control) },
+        initialValues: { dueDate: "September 15, 2026" },
       });
       expect(session.fields.dueDate).toMatchObject({
         status: "filled",
@@ -245,10 +245,53 @@ describe("FormService form schema hardening", () => {
       expect(
         service.getSessionContext(session).filledFields[0]?.displayValue,
       ).toContain("15");
+      await service.updateField(
+        session.id,
+        entityId,
+        "dueDate",
+        "September 16, 2026",
+        1,
+        "manual",
+      );
+      expect(
+        (await service.getActiveSession(entityId, roomId))?.fields.dueDate,
+      ).toMatchObject({ status: "filled", value: "2026-09-16" });
+
+      service.registerForm(
+        validForm({
+          id: "default-date",
+          controls: [{ ...control, defaultValue: "September 15, 2026" }],
+        }),
+      );
+      const defaultSession = await service.startSession(
+        "default-date",
+        entityId,
+        crypto.randomUUID() as UUID,
+      );
+      expect(defaultSession.fields.dueDate).toMatchObject({
+        status: "filled",
+        value: "2026-09-15",
+        source: "default",
+      });
     } finally {
       if (priorTimezone === undefined) delete process.env.TZ;
       else process.env.TZ = priorTimezone;
     }
+  });
+
+  it("rejects malformed numeric extraction with the registered builtin parser", () => {
+    const control = { key: "amount", label: "Amount", type: "number" };
+    const results = coerceExtractionsAgainstControls(
+      [
+        { field: "amount", value: "50abc", confidence: 1 },
+        { field: "amount", value: "$1,234", confidence: 1 },
+      ],
+      [control],
+      undefined,
+      (id) => service.getControlType(id),
+    );
+    expect(results[0]).toMatchObject({ value: "50abc", confidence: 0.3 });
+    expect(results[1]).toMatchObject({ value: 1234, confidence: 1 });
   });
 
   it("keeps control-type behavior scoped to its FormService and sends the hint to single-field extraction", async () => {

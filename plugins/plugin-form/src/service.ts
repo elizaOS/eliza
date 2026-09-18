@@ -134,7 +134,12 @@ import type {
   UncertainFieldSummary,
 } from "./types";
 import { FORM_CONTROL_DEFAULTS, FORM_DEFINITION_DEFAULTS } from "./types";
-import { formatValue, validateField } from "./validation";
+import {
+  formatValue,
+  getTypeHandler,
+  parseValue,
+  validateField,
+} from "./validation";
 
 const UNSAFE_OBJECT_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 
@@ -395,6 +400,22 @@ export class FormService extends Service {
   // SESSION MANAGEMENT
   // ============================================================================
 
+  private normalizeBuiltinDateValue(
+    value: JsonValue,
+    control: FormControl,
+  ): JsonValue {
+    const type = this.getControlType(control.type);
+    if (
+      control.type === "date" &&
+      typeof value === "string" &&
+      type?.builtin &&
+      getTypeHandler(control.type, type) === type
+    ) {
+      return parseValue(value, control, type);
+    }
+    return value;
+  }
+
   /**
    * Start a new form session
    */
@@ -431,27 +452,35 @@ export class FormService extends Service {
     const fields = createValueMap<FieldState>();
     for (const control of form.controls) {
       if (options?.initialValues?.[control.key] !== undefined) {
-        const validation = validateField(
+        const value = this.normalizeBuiltinDateValue(
           options.initialValues[control.key],
+          control,
+        );
+        const validation = validateField(
+          value,
           control,
           this.getControlType(control.type),
         );
         fields[control.key] = {
           status: validation.valid ? "filled" : "invalid",
-          value: options.initialValues[control.key],
+          value,
           source: "manual",
           updatedAt: now,
           error: validation.error,
         };
       } else if (control.defaultValue !== undefined) {
-        const validation = validateField(
+        const value = this.normalizeBuiltinDateValue(
           control.defaultValue,
+          control,
+        );
+        const validation = validateField(
+          value,
           control,
           this.getControlType(control.type),
         );
         fields[control.key] = {
           status: validation.valid ? "filled" : "invalid",
-          value: control.defaultValue,
+          value,
           source: "default",
           updatedAt: now,
           error: validation.error,
@@ -565,6 +594,8 @@ export class FormService extends Service {
 
     // Get old value for history
     const oldValue = session.fields[field]?.value;
+
+    value = this.normalizeBuiltinDateValue(value, control);
 
     // Validate the value
     const validation = validateField(
