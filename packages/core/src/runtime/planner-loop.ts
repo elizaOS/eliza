@@ -101,6 +101,7 @@ import {
 import {
 	declaredIntentsFromContext,
 	repairFinishWithProgressPromise,
+	restoreEvaluatorProviders,
 	runEvaluator,
 } from "./evaluator";
 import {
@@ -451,9 +452,15 @@ async function runPlannerLoopIterations(
 	const trajectoryContext = postToolReplyEvent
 		? appendContextEvent(plannerContext, postToolReplyEvent)
 		: plannerContext;
+	const evaluatorBaseContext = params.evaluatorContext
+		? postToolReplyEvent
+			? appendContextEvent(params.evaluatorContext, postToolReplyEvent)
+			: params.evaluatorContext
+		: undefined;
 	const trajectory: PlannerTrajectory = {
 		context: trajectoryContext,
 		modelBaseContext: trajectoryContext,
+		...(evaluatorBaseContext ? { evaluatorBaseContext } : {}),
 		codingMode,
 		steps: postToolReplySeed
 			? [
@@ -4015,16 +4022,27 @@ async function callPlanner(
 		// Record the original request above, but execute none of its proposed
 		// actions. Removing the selector makes restoration one-shot and preserves
 		// complete sources for subsequent rounds and the completion evaluator.
+		const restoredMetadata = (source: ContextObject) => ({
+			...source.metadata,
+			...(readHistory
+				? { completionContext: undefined, plannerQueryTokensRestored: true }
+				: {}),
+			...(readProviders ? { providerDiscoveryEnabled: false } : {}),
+		});
+		// The evaluator renders its own composition (pipeline.ts); a restore the
+		// planner requested must reach it too, or the completion evaluator keeps
+		// reading the references and provider bodies this restore replaced.
+		if (params.trajectory.evaluatorBaseContext) {
+			const evaluatorOriginal = params.trajectory.evaluatorBaseContext;
+			params.trajectory.evaluatorBaseContext = {
+				...restoreEvaluatorProviders(evaluatorOriginal, original, restored),
+				metadata: restoredMetadata(evaluatorOriginal),
+			};
+		}
 		params.trajectory.modelBaseContext = appendContextEvent(
 			{
 				...restored,
-				metadata: {
-					...original.metadata,
-					...(readHistory
-						? { completionContext: undefined, plannerQueryTokensRestored: true }
-						: {}),
-					...(readProviders ? { providerDiscoveryEnabled: false } : {}),
-				},
+				metadata: restoredMetadata(original),
 			},
 			{
 				id: "planner-context-restored",
