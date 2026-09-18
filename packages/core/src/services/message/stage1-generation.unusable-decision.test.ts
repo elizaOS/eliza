@@ -28,6 +28,32 @@ describe("getStage1UnusableDecisionRepair", () => {
 		},
 	);
 
+	it.each(["STOP", "IGNORE"])(
+		"re-asks a terminal %s once only when the small-model opt-in is set",
+		(shouldRespond) => {
+			const repair = getStage1UnusableDecisionRepair(
+				decision({ shouldRespond, contexts: [] }),
+				{ reaskTerminal: true },
+			);
+			expect(repair).toContain("response_contract_repair:");
+			expect(repair).toContain(
+				`ended a directly addressed turn with ${shouldRespond}`,
+			);
+			expect(repair).toContain("use STOP or IGNORE without a reply or actions");
+			expect(
+				getStage1UnusableDecisionRepair(
+					decision({ shouldRespond, contexts: [] }),
+					{ reaskTerminal: false },
+				),
+			).toBeUndefined();
+			expect(
+				getStage1UnusableDecisionRepair(decision({ replyText: "Santiago." }), {
+					reaskTerminal: true,
+				}),
+			).toBeUndefined();
+		},
+	);
+
 	it("repairs an empty simple RESPOND", () => {
 		expect(
 			getStage1UnusableDecisionRepair(decision({ replyText: "   " })),
