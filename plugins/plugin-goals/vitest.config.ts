@@ -46,8 +46,14 @@ export default defineConfig({
         replacement: sourceOf("../plugin-app-control/src/index.ts"),
       },
       {
-        find: /^@elizaos\/plugin-calendar\/service\/schema$/,
-        replacement: sourceOf("../plugin-calendar/src/service/schema.ts"),
+        find: /^@elizaos\/plugin-goals\/db\/schema$/,
+        replacement: sourceOf("src/db/schema.ts"),
+      },
+      {
+        // PA's lifeops repository imports this package's own repository leaf;
+        // the plugin lane never builds dist, so it must resolve to source too.
+        find: /^@elizaos\/plugin-goals\/db\/goals-repository$/,
+        replacement: sourceOf("src/db/goals-repository.ts"),
       },
       {
         find: /^@elizaos\/plugin-calendar\/service\/CalendarRepository$/,
@@ -56,12 +62,8 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/plugin-goals\/db\/goals-repository$/,
-        replacement: sourceOf("src/db/goals-repository.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-goals\/db\/schema$/,
-        replacement: sourceOf("src/db/schema.ts"),
+        find: /^@elizaos\/plugin-calendar\/service\/schema$/,
+        replacement: sourceOf("../plugin-calendar/src/service/schema.ts"),
       },
       {
         find: /^@elizaos\/plugin-reminders\/db\/schema$/,

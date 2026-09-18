@@ -34,7 +34,12 @@
  *     Thursday turn fails.
  */
 
-import { type IAgentRuntime, Service, ServiceType } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  type IAgentRuntime,
+  Service,
+  ServiceType,
+} from "@elizaos/core";
 import type {
   RuntimeWithScenarioModelFixtures,
   StrictActionRouteFixture,
@@ -45,6 +50,8 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+
+import { typedTurnEvaluationFixtures } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
 
 import { registerLifeOpsActionFixtures } from "./_lifeops-action-fixtures";
 
@@ -291,6 +298,36 @@ async function seedJourney(ctx: ScenarioContext): Promise<string | undefined> {
 
   scenarioRuntime = ctx.runtime as RuntimeWithScenarioModelFixtures;
   registerLifeOpsActionFixtures(scenarioRuntime, initialStrictRoutes);
+  // Reminder CRUD is task state, not evidence of a standing personal goal,
+  // identity, relationship, health condition, or enduring preference.
+  for (const input of [
+    createText,
+    snoozeText,
+    getText,
+    completeText,
+    historyText,
+  ]) {
+    scenarioRuntime.scenarioModelFixtures?.register(
+      ...typedTurnEvaluationFixtures(ctx.runtime as AgentRuntime, ctx, {
+        name: `multiday-journey-${input}`,
+        input,
+        action: "SCHEDULED_TASKS",
+        goal: { goalFound: false, goal: "", confidence: 0 },
+        memory: {
+          factMemory: { ops: [] },
+          relationships: { relationships: [] },
+          identities: { identities: [] },
+          preferences: { ops: [] },
+          experiencePatterns: { experiences: [] },
+          success: {
+            completed: true,
+            reason:
+              "The requested pharmacy reminder operation succeeded; this does not assert a medical condition or complete the recurring schedule forever.",
+          },
+        },
+      }),
+    );
+  }
   return undefined;
 }
 

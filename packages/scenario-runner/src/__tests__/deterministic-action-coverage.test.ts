@@ -1,8 +1,7 @@
 /**
  * Baseline-free integrity checks for the deterministic scenario PR lane.
  *
- * This file is named explicitly by `.github/workflows/scenario-pr.yml`. Keep
- * these assertions derived from the real scenario corpus: historical counts,
+ * Keep these assertions derived from the real scenario corpus: historical counts,
  * allowlists, and coverage floors turn repository debt into false confidence.
  */
 import { readFileSync } from "node:fs";

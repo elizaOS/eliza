@@ -23,6 +23,9 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpLoopback,
 } from "./_helpers/app-control-http-loopback";
+import { snapshotRuntimeMethods } from "./_helpers/runtime-method-snapshot";
+
+let restoreRuntimeMethods: (() => void) | undefined;
 
 type RuntimeWithScenarioModelFixtures = {
   actions?: Array<{
@@ -522,6 +525,7 @@ export default scenario({
         resetAppControlHttpLoopback();
         const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
         scenarioRuntime = runtime;
+        restoreRuntimeMethods = snapshotRuntimeMethods(runtime);
         previousEvaluators = runtime.evaluators;
         runtime.evaluators = [];
 
@@ -909,6 +913,8 @@ export default scenario({
       type: "custom",
       name: "remove app-control source fixtures",
       apply: async () => {
+        restoreRuntimeMethods?.();
+        restoreRuntimeMethods = undefined;
         if (scenarioRuntime && previousEvaluators !== null) {
           scenarioRuntime.evaluators = previousEvaluators;
           previousEvaluators = null;

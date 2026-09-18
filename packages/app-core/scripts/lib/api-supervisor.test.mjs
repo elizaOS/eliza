@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createApiSupervisor } from "./api-supervisor.mjs";
+import { createApiHealthWatchdog } from "./dev-process-lifecycle.mjs";
 
 function makeChild() {
   const child = new EventEmitter();
@@ -44,6 +45,44 @@ function setup(overrides = {}) {
 describe("createApiSupervisor", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
+
+  it("gives an admitted runtime restart bounded boot grace", async () => {
+    let watchdog;
+    const { sup, last, terminate } = setup({
+      onRuntimeRestart: () => watchdog.beginRecovery(),
+    });
+    watchdog = createApiHealthWatchdog({
+      check: async () => false,
+      restart: () => sup.restart(),
+      recoveryGraceMs: 180_000,
+    });
+    sup.start();
+    last().emit("message", { type: "eliza:runtime-restart" });
+    for (let attempt = 0; attempt < 3; attempt++) await watchdog.checkNow();
+    expect(terminate).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(180_001);
+    for (let attempt = 0; attempt < 3; attempt++) await watchdog.checkNow();
+    expect(terminate).toHaveBeenCalledOnce();
+    watchdog.stop();
+  });
+
+  it("ignores unrelated, stale-child and shutdown restart signals", () => {
+    const onRuntimeRestart = vi.fn();
+    const { sup, last, setShutdown } = setup({ onRuntimeRestart });
+    sup.start();
+    const stale = last();
+    stale.emit("message", { type: "unrelated" });
+    stale.emit("message", null);
+    stale.emit("exit", 0);
+    vi.advanceTimersByTime(20);
+    stale.emit("message", { type: "eliza:runtime-restart" });
+    expect(onRuntimeRestart).not.toHaveBeenCalled();
+    last().emit("message", { type: "eliza:runtime-restart" });
+    expect(onRuntimeRestart).toHaveBeenCalledOnce();
+    setShutdown(true);
+    last().emit("message", { type: "eliza:runtime-restart" });
+    expect(onRuntimeRestart).toHaveBeenCalledOnce();
+  });
 
   it("relaunches after an unintentional exit", () => {
     const { sup, spawned } = setup();

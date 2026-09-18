@@ -119,7 +119,11 @@ function PipelineNodeButton({
       <Badge
         asChild
         variant={
-          node.status === "error" && selected ? "destructive" : "secondary"
+          selected
+            ? node.status === "error"
+              ? "destructive"
+              : "metaStrong"
+            : "secondary"
         }
         size="compact"
         tone={selected ? "default" : countTone[node.status]}

@@ -32,6 +32,7 @@ function createJudgedRuntime(scoreByRubricMarker: Record<string, number>) {
     plugins: [],
     routes: [],
     ensureConnection: vi.fn(async () => undefined),
+    getTasksByName: async () => [],
     getService: vi.fn(() => null),
     setSetting: vi.fn(),
     useModel,

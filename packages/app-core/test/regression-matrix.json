@@ -2,37 +2,6 @@
   "version": 1,
   "manualChecklistDoc": "packages/app-core/test/release-regression-checklist.md",
   "workflowContracts": {
-    "pr": {
-      "files": [".github/workflows/test.yml"],
-      "scheduledSuites": [
-        "vitest-real",
-        "db-check",
-        "desktop-contract",
-        "validation-e2e",
-        "live-surface-audit",
-        "ui-playwright-smoke",
-        "live-cloud",
-        "regression-matrix-pr"
-      ],
-      "bannedSnippets": [
-        "--exclude eliza/packages/agent/test/apps-e2e.e2e.test.ts"
-      ]
-    },
-    "nightly": {
-      "files": [".github/workflows/nightly.yml"],
-      "scheduledSuites": [
-        "coverage",
-        "db-check",
-        "integration-deterministic",
-        "e2e-deterministic",
-        "desktop-contract",
-        "validation-e2e",
-        "live-surface-audit",
-        "ui-playwright-smoke",
-        "regression-matrix-nightly",
-        "desktop-heavy-matrix"
-      ]
-    },
     "release": {
       "files": [".github/workflows/release-electrobun.yml"],
       "scheduledSuites": [
@@ -51,45 +20,9 @@
     }
   },
   "suites": {
-    "vitest-real": {
-      "tier": "required",
-      "command": "bun run test:ci:real"
-    },
-    "coverage": {
-      "tier": "required",
-      "command": "bun run test:coverage"
-    },
-    "db-check": {
-      "tier": "required",
-      "command": "bun run db:check"
-    },
-    "integration-deterministic": {
-      "tier": "required",
-      "command": "bun run test:integration"
-    },
-    "e2e-deterministic": {
-      "tier": "required",
-      "command": "bun run test:e2e"
-    },
     "e2e-heavy": {
       "tier": "heavy",
       "command": "bun run test:e2e:heavy"
-    },
-    "desktop-contract": {
-      "tier": "required",
-      "command": "bun run test:desktop:contract"
-    },
-    "validation-e2e": {
-      "tier": "required",
-      "command": "bun run test:e2e:validation"
-    },
-    "live-surface-audit": {
-      "tier": "required",
-      "command": "bun run test:audit:live:strict"
-    },
-    "ui-playwright-smoke": {
-      "tier": "required",
-      "command": "bun run --cwd packages/app test:e2e"
     },
     "live-cloud": {
       "tier": "heavy",
@@ -107,33 +40,9 @@
       "tier": "heavy",
       "command": "bun run test:desktop:playwright"
     },
-    "desktop-heavy-matrix": {
-      "tier": "heavy",
-      "workflowCall": "./.github/workflows/release-electrobun.yml",
-      "requiredSnippets": [
-        "publish_release: false",
-        "draft: false",
-        "secrets: inherit"
-      ],
-      "provides": [
-        "live-cloud",
-        "e2e-heavy",
-        "desktop-packaged-macos",
-        "desktop-packaged-windows",
-        "desktop-playwright"
-      ]
-    },
     "release-contract": {
       "tier": "required",
       "command": "bun run test:release:contract"
-    },
-    "regression-matrix-pr": {
-      "tier": "required",
-      "command": "bun run test:regression-matrix:pr"
-    },
-    "regression-matrix-nightly": {
-      "tier": "required",
-      "command": "bun run test:regression-matrix:nightly"
     },
     "regression-matrix-release": {
       "tier": "required",
@@ -146,64 +55,10 @@
   },
   "surfaces": [
     {
-      "name": "packages-shared",
-      "globs": ["eliza/packages/shared/**"],
-      "workflowSuites": {
-        "pr": ["vitest-real", "validation-e2e"],
-        "nightly": [
-          "coverage",
-          "integration-deterministic",
-          "e2e-deterministic",
-          "validation-e2e",
-          "e2e-heavy",
-          "live-cloud"
-        ]
-      }
-    },
-    {
       "name": "packages-agent",
       "globs": ["eliza/packages/agent/**"],
       "workflowSuites": {
-        "pr": ["vitest-real", "db-check"],
-        "nightly": [
-          "coverage",
-          "db-check",
-          "integration-deterministic",
-          "e2e-deterministic",
-          "e2e-heavy",
-          "live-cloud"
-        ],
         "release": ["e2e-heavy", "live-cloud"]
-      }
-    },
-    {
-      "name": "packages-app-core",
-      "globs": ["eliza/packages/app-core/**"],
-      "workflowSuites": {
-        "pr": ["vitest-real", "db-check", "validation-e2e"],
-        "nightly": [
-          "coverage",
-          "db-check",
-          "integration-deterministic",
-          "e2e-deterministic",
-          "validation-e2e",
-          "e2e-heavy",
-          "live-cloud"
-        ]
-      }
-    },
-    {
-      "name": "app-ui-smoke",
-      "globs": [
-        "packages/app/test/ui-smoke/**",
-        "packages/app/playwright.ui-smoke.config.ts",
-        "packages/app/scripts/run-ui-playwright.mjs",
-        "eliza/packages/app-core/scripts/run-ui-smoke-playwright-suite.mjs",
-        "eliza/packages/app-core/scripts/playwright-ui-live-stack.ts"
-      ],
-      "workflowSuites": {
-        "pr": ["ui-playwright-smoke"],
-        "nightly": ["ui-playwright-smoke"]
       }
     },
     {
@@ -214,15 +69,6 @@
         "packages/app/test/electrobun-packaged/**"
       ],
       "workflowSuites": {
-        "pr": ["vitest-real", "desktop-contract"],
-        "nightly": [
-          "coverage",
-          "desktop-contract",
-          "live-cloud",
-          "desktop-packaged-macos",
-          "desktop-packaged-windows",
-          "desktop-playwright"
-        ],
         "release": [
           "live-cloud",
           "desktop-packaged-macos",
@@ -252,8 +98,6 @@
         "eliza/packages/scripts/vitest/*.ts"
       ],
       "workflowSuites": {
-        "pr": ["vitest-real"],
-        "nightly": ["coverage"],
         "release": ["regression-matrix-release"],
         "release-contract": ["release-contract"]
       }
@@ -268,14 +112,6 @@
         "eliza/packages/scripts/vitest/e2e.config.ts"
       ],
       "workflowSuites": {
-        "pr": ["vitest-real", "validation-e2e"],
-        "nightly": [
-          "integration-deterministic",
-          "e2e-deterministic",
-          "validation-e2e",
-          "e2e-heavy",
-          "live-cloud"
-        ],
         "release": ["e2e-heavy", "live-cloud"]
       }
     }

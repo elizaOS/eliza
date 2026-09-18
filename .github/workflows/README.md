@@ -136,6 +136,15 @@ force-push/deletion bans remain active here.
 Android and iOS bundle producers; a manual dispatch can select either platform
 or both. Ordinary PR and develop validation do not invoke device qualification.
 
+Manual `platform=windows-runtime` selects only the Windows identity and plugin
+staging job. The staging proof creates a temporary standard user on the
+disposable hosted runner, requires ordinary directory symlinks to fail with
+`EPERM`, and runs real dependency-graph and junction-publication consumers.
+Its temporary account, profile, process job, and fixture are cleaned even on
+failure; Developer Mode is unchanged. The `windows-normal-user-plugin-staging`
+artifact retains child logs. A failed privilege prerequisite is an incomplete
+proof, not a Windows compatibility pass.
+
 ## On-demand security analysis
 
 `codeql.yml` runs JavaScript/TypeScript CodeQL analysis only by explicit manual

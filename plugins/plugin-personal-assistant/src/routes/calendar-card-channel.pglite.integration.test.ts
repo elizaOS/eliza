@@ -184,31 +184,49 @@ it("queues the selected channel and rejects transport or recipient changes befor
     const senderStatus = await new LifeOpsService(
       runtime,
     ).getTelegramConnectorStatus("agent");
-    vi.mocked(
+    const telegramStatus = vi.mocked(
       LifeOpsService.prototype.getTelegramConnectorStatus,
-    ).mockResolvedValueOnce({ ...senderStatus, identity: null });
-    const unidentified = await fetch(
-      `http://127.0.0.1:${address.port}/api/lifeops/calendar/cards`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          channel: "telegram",
-          date: "2026-09-15",
-          timeZone: "UTC",
-          privacyMode: "full",
-          recipient: "self",
-          events: [],
-        }),
-      },
     );
-    expect(unidentified.status).toBe(503);
-    expect(await unidentified.json()).toMatchObject({
-      code: "CALENDAR_CARD_SENDER_UNAVAILABLE",
+    const configuredTelegramStatus = telegramStatus.getMockImplementation();
+    if (!configuredTelegramStatus) throw new Error("Missing connector fixture");
+    telegramStatus.mockImplementation(async function (
+      this: LifeOpsService,
+      side,
+    ) {
+      if (side === "agent") return { ...senderStatus, identity: null };
+      return configuredTelegramStatus.call(this, side);
     });
-    expect(
-      await queue.list({ subjectUserId: null, state: null, action: null }),
-    ).toEqual(before);
+    try {
+      // Background owner reads must not consume the missing agent identity.
+      const ownerStatus = await new LifeOpsService(
+        runtime,
+      ).getTelegramConnectorStatus("owner");
+      expect(ownerStatus.identity).not.toBeNull();
+      const unidentified = await fetch(
+        `http://127.0.0.1:${address.port}/api/lifeops/calendar/cards`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            channel: "telegram",
+            date: "2026-09-15",
+            timeZone: "UTC",
+            privacyMode: "full",
+            recipient: "self",
+            events: [],
+          }),
+        },
+      );
+      expect(unidentified.status).toBe(503);
+      expect(await unidentified.json()).toMatchObject({
+        code: "CALENDAR_CARD_SENDER_UNAVAILABLE",
+      });
+      expect(
+        await queue.list({ subjectUserId: null, state: null, action: null }),
+      ).toEqual(before);
+    } finally {
+      telegramStatus.mockImplementation(configuredTelegramStatus);
+    }
     for (const configured of [
       "",
       "http://calendar.example.org",

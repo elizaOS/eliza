@@ -2,6 +2,7 @@
  * Keyless catalog coverage for the plugin-github action and route surface against
  * a mocked GitHub API. Runs on the pr-deterministic lane under the model provider.
  */
+
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,6 +25,7 @@ import { buildReviewPreview } from "../../../../plugins/plugin-github/src/action
 import githubPlugin, {
   GitHubService,
 } from "../../../../plugins/plugin-github/src/index.ts";
+import { transientTurnEvaluationSeed } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
 
 const REPO = "octo/repo";
 const ISSUE_TITLE = "Deterministic issue";
@@ -946,6 +948,20 @@ export default scenario({
     plugins: ["@elizaos/plugin-github"],
   },
   seed: [
+    transientTurnEvaluationSeed(
+      strictGithubRoutes.map((route) => ({
+        input: route.input,
+        action: route.actionName,
+        completed: route.input !== "create deterministic GitHub issue preview",
+        actionSuccess:
+          route.input !== "create deterministic GitHub issue preview",
+        reason:
+          route.input === "create deterministic GitHub issue preview"
+            ? "Issue creation awaits confirmation."
+            : "The requested GitHub operation completed.",
+      })),
+      "Synthetic issue and pull-request operations are tool records, not owner identity or lasting preferences.",
+    ),
     {
       type: "custom",
       name: "register real GitHub plugin with fake Octokit client and isolated state dir",

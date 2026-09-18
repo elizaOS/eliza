@@ -115,6 +115,48 @@ async function createFixture(
 }
 
 describe("importPluginModuleFromPath cold-import-in-place fast-path (F4)", () => {
+  it("retains the source fallback on restart when only a view bundle is built", async () => {
+    const name = "partial-dist-restart-fixture";
+    const installPath = path.join(tmpDir, name);
+    await fsp.mkdir(path.join(installPath, "src"), { recursive: true });
+    await fsp.mkdir(path.join(installPath, "dist", "views"), {
+      recursive: true,
+    });
+    await fsp.writeFile(
+      path.join(installPath, "package.json"),
+      JSON.stringify({
+        name,
+        type: "module",
+        main: "./dist/index.js",
+      }),
+    );
+    await fsp.writeFile(
+      path.join(installPath, "dist/views/bundle.js"),
+      "export const view = {};\n",
+    );
+    await fsp.writeFile(
+      path.join(installPath, "src/index.ts"),
+      "export { marker } from './marker.ts';\n",
+    );
+    await fsp.writeFile(
+      path.join(installPath, "src/marker.ts"),
+      "export const marker = 'before-restart';\n",
+    );
+    const first = (await importPluginModuleFromPath(installPath, name)) as {
+      marker: string;
+    };
+    expect(first.marker).toBe("before-restart");
+    await fsp.writeFile(
+      path.join(installPath, "src/marker.ts"),
+      "export const marker = 'after-restart';\n",
+    );
+    const second = (await importPluginModuleFromPath(installPath, name)) as {
+      marker: string;
+    };
+    expect(second.marker).toBe("after-restart");
+    expect(await stagingHappened(name)).toBe(true);
+  });
+
   it("prefers eliza-source exports over stale dist on workspace packages", async () => {
     const name = "cold-eliza-source-fixture";
     const installPath = path.join(tmpDir, sanitize(name));
@@ -158,6 +200,16 @@ describe("importPluginModuleFromPath cold-import-in-place fast-path (F4)", () =>
 
     expect(mod.marker).toBe("source-plugin");
     expect(await stagingHappened(name)).toBe(false);
+    await fsp.writeFile(
+      path.join(installPath, "src", "plugin.ts"),
+      "export const marker = 'source-plugin-restarted';\n",
+    );
+    const restarted = (await importPluginModuleFromPath(
+      installPath,
+      name,
+      "./plugin",
+    )) as { marker: string };
+    expect(restarted.marker).toBe("source-plugin-restarted");
   });
 
   it("cold fast-path: dist + first import loads in place WITHOUT staging", async () => {
@@ -176,6 +228,11 @@ describe("importPluginModuleFromPath cold-import-in-place fast-path (F4)", () =>
   it("re-import stages: same name imported twice → 2nd import goes through staging", async () => {
     const name = "cold-reimport-fixture-b";
     const installPath = await createFixture(name, "reimport-b", true);
+    await fsp.mkdir(path.join(installPath, "src"));
+    await fsp.writeFile(
+      path.join(installPath, "src/index.ts"),
+      "export const marker = 'unbuilt-source';\n",
+    );
 
     // First import: cold fast-path, no staging.
     const first = (await importPluginModuleFromPath(installPath, name)) as {
@@ -190,6 +247,10 @@ describe("importPluginModuleFromPath cold-import-in-place fast-path (F4)", () =>
     };
     expect(second.marker).toBe("reimport-b");
     expect(await stagingHappened(name)).toBe(true);
+    const [generation] = await fsp.readdir(stagingDirFor(name));
+    await expect(
+      fsp.stat(path.join(stagingDirFor(name), generation, "root", "src")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("no dist → stages: package has no dist/ → falls back to staging", async () => {

@@ -3,7 +3,17 @@
  * `runtime.getSetting()`. The projection is intentionally pure so cold boot and
  * hot reload can share it without reintroducing drift between startup paths.
  */
-import { resolveServiceRoutingInConfig } from "@elizaos/shared";
+import {
+  isDirectAccountProvider,
+  OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER,
+} from "@elizaos/auth/types";
+import type { IAgentRuntime } from "@elizaos/core";
+import {
+  getDirectAccountProviderForFirstRunProvider,
+  getFirstRunProviderOption,
+  resolveServiceRoutingInConfig,
+  type ServiceRouteConfig,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   isDevCloudEnvOwnedKey,
@@ -114,6 +124,90 @@ export function hydrateConfigEnvForBoot(
   }
 }
 
+/** Explicit direct text pins override legacy provider settings for this runtime only. */
+function directTextModelSettings(
+  route: ServiceRouteConfig | undefined,
+  brainProviderName: string | undefined,
+): Record<string, string> {
+  if (
+    route?.transport !== "direct" ||
+    (brainProviderName !== undefined && brainProviderName !== "openai")
+  ) {
+    return {};
+  }
+
+  const accountProvider = getDirectAccountProviderForFirstRunProvider(
+    route.backend,
+  );
+  const usesOpenAi =
+    brainProviderName === "openai" ||
+    getFirstRunProviderOption(route.backend)?.pluginName ===
+      "@elizaos/plugin-openai" ||
+    Boolean(
+      isDirectAccountProvider(accountProvider) &&
+        OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[accountProvider],
+    );
+  if (!usesOpenAi) return {};
+
+  // Reuse provider metadata and the account pool's compatibility bridge rather
+  // than maintaining a second backend allowlist. Keep the mapping
+  // runtime-scoped: switching routes must not leave generated process-env or
+  // durable config aliases behind. Response/media Cloud fields have no direct
+  // text-handler counterpart and retain their existing semantics.
+  const pins = {
+    OPENAI_NANO_MODEL: route.nanoModel,
+    OPENAI_SMALL_MODEL: route.smallModel,
+    OPENAI_MEDIUM_MODEL: route.mediumModel,
+    OPENAI_LARGE_MODEL: route.largeModel,
+    OPENAI_MEGA_MODEL: route.megaModel,
+    OPENAI_RESPONSE_HANDLER_MODEL:
+      route.responseHandlerModel ?? route.shouldRespondModel,
+    OPENAI_ACTION_PLANNER_MODEL: route.actionPlannerModel ?? route.plannerModel,
+  };
+  return Object.fromEntries(
+    Object.entries(pins).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
+}
+
+/** Reconcile only runtime model pins owned by the prior canonical route. */
+export function reconcileDirectTextModelSettings(
+  runtime: Pick<IAgentRuntime, "character" | "getSetting" | "setSetting">,
+  previous: ElizaConfig,
+  current: ElizaConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const brain = env.ELIZA_BRAIN_PROVIDER?.trim() || undefined;
+  const before = directTextModelSettings(
+    resolveServiceRoutingInConfig(previous)?.llmText,
+    brain,
+  );
+  const after = directTextModelSettings(
+    resolveServiceRoutingInConfig(current)?.llmText,
+    brain,
+  );
+  const explicit = collectConfigEnvVars(current);
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    const ownsPrevious =
+      before[key] !== undefined && runtime.getSetting(key) === before[key];
+    if (ownsPrevious) {
+      // initialize() can mirror constructor pins into both secret locations.
+      // Remove only matching copies; setSetting(secret=true) would also erase
+      // a distinct lower-priority secret written after initialization.
+      const secrets = runtime.character.secrets;
+      if (secrets?.[key] === before[key]) delete secrets[key];
+      const nestedSecrets = runtime.character.settings?.secrets;
+      if (nestedSecrets?.[key] === before[key]) delete nestedSecrets[key];
+    }
+    if (after[key] !== undefined) {
+      runtime.setSetting(key, after[key]);
+    } else if (ownsPrevious) {
+      runtime.setSetting(key, explicit[key] ?? env[key] ?? null);
+    }
+  }
+}
+
 export function buildRuntimeSettingsProjection(
   config: ElizaConfig,
   options: RuntimeSettingsProjectionOptions = {},
@@ -169,6 +263,7 @@ export function buildRuntimeSettingsProjection(
       ? { VISION_MODE: options.visionModeSetting }
       : {}),
     ...(options.walletSettings ?? {}),
+    ...directTextModelSettings(canonicalRouting?.llmText, brainProviderName),
     ...(typeof config.agents?.defaults?.adminEntityId === "string" &&
     config.agents.defaults.adminEntityId.trim().length > 0
       ? { ELIZA_ADMIN_ENTITY_ID: config.agents.defaults.adminEntityId.trim() }

@@ -889,8 +889,8 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: scenario-pr-app-accounts-ui
-          path: ${{ runner.temp }}/evidence/10722-accounts-ui-e2e/
-          if-no-files-found: ignore
+          path: test-results/evidence/10722-accounts-ui-e2e/
+          if-no-files-found: warn
           retention-days: 3
     env:
       CI: "true"
