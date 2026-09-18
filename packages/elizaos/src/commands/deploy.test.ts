@@ -28,6 +28,14 @@ function jsonResponse(body: unknown, status = 200): Response {
   } as unknown as Response;
 }
 
+function textResponse(body: string, status = 200): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    text: vi.fn().mockResolvedValue(body),
+  } as unknown as Response;
+}
+
 describe("runDeploy", () => {
   it("keeps dry-run mode network-free", async () => {
     const fetchMock = vi.fn();
@@ -86,10 +94,45 @@ describe("runDeploy", () => {
     );
   });
 
+  it("reports a non-JSON error body with its HTTP status instead of a JSON SyntaxError", async () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
+    process.env.ELIZA_CLOUD_API_BASE_URL = "https://cloud.example.test/api/v1";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(textResponse("<html>502 Bad Gateway</html>", 502));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const code = await runDeploy({ appId: "app-1" });
+
+    expect(code).toBe(1);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "POST /apps/app-1/deploy failed (502): response body was not JSON",
+      ),
+    );
+  });
+
+  it("fails a success response whose body is not JSON instead of returning garbage", async () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
+    process.env.ELIZA_CLOUD_API_BASE_URL = "https://cloud.example.test/api/v1";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(textResponse("<html>maintenance</html>", 200));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const code = await runDeploy({ appId: "app-1" });
+
+    expect(code).toBe(1);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("POST /apps/app-1/deploy returned invalid JSON"),
+    );
+  });
+
   it.each(["-1", "1.5", "2147483648"])(
     "rejects malformed poll interval %s before any network call",
     async (interval) => {
-      process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
       process.env.ELIZAOS_DEPLOY_POLL_INTERVAL_MS = interval;
       const fetchMock = vi.fn();
       globalThis.fetch = fetchMock as unknown as typeof fetch;
