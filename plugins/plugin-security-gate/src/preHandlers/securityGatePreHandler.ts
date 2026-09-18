@@ -8,6 +8,32 @@ import { inspectPayloadLocally, isCodePayload } from "../localSecurityGate.js";
 declare const process: { env?: Record<string, string | undefined> } | undefined;
 
 /**
+ * Composes the caller's cancellation signal (if any) with an independent timeout signal.
+ * Ensures the operation aborts if either the caller cancels or the timeout expires.
+ */
+export function composeBoundedSignal(
+  callerSignal?: AbortSignal,
+  timeoutMs = 3000,
+): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  if (!callerSignal) {
+    return timeoutSignal;
+  }
+  if (callerSignal.aborted) {
+    return callerSignal;
+  }
+  if (typeof AbortSignal.any === "function") {
+    return AbortSignal.any([callerSignal, timeoutSignal]);
+  }
+  const controller = new AbortController();
+  const onCallerAbort = () => controller.abort(callerSignal.reason);
+  const onTimeout = () => controller.abort(timeoutSignal.reason);
+  callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+  timeoutSignal.addEventListener("abort", onTimeout, { once: true });
+  return controller.signal;
+}
+
+/**
  * Inbound fail-closed security pre-handler.
  * Drained before the chat generation loop, response models, and action processing.
  * Returns a terminal responseText to short-circuit upon attack detection, or null to pass through.
@@ -53,7 +79,7 @@ export const securityGatePreHandler: ChatPreHandler = {
             is_code: isCode,
             raise_on_block: false,
           }),
-          signal: ctx.abortSignal || AbortSignal.timeout(3000),
+          signal: composeBoundedSignal(ctx.abortSignal, 3000),
         });
 
         if (resp.ok) {

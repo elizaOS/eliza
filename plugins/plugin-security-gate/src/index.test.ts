@@ -17,7 +17,10 @@ import { inspectSafetyAction } from "./actions/inspectSafety.js";
 import { securityGateEvaluator } from "./evaluators/securityGateEvaluator.js";
 import securityGatePlugin from "./index.js";
 import { inspectPayloadLocally, isCodePayload } from "./localSecurityGate.js";
-import { securityGatePreHandler } from "./preHandlers/securityGatePreHandler.js";
+import {
+  composeBoundedSignal,
+  securityGatePreHandler,
+} from "./preHandlers/securityGatePreHandler.js";
 import { securityStatusProvider } from "./providers/securityStatusProvider.js";
 
 /**
@@ -159,6 +162,153 @@ describe("securityGatePreHandler (inbound fail-closed boundary)", () => {
 
     const result = await securityGatePreHandler.tryHandle(ctx);
     expect(result).toBeNull();
+  });
+
+  it("bounds remote oracle fetch to 3 seconds when host supplies a non-expiring abort signal", async () => {
+    const originalFetch = globalThis.fetch;
+    const hostController = new AbortController();
+    let capturedSignal: AbortSignal | undefined;
+
+    globalThis.fetch = vi.fn().mockImplementation((_url, init) => {
+      capturedSignal = init?.signal;
+      return new Promise((_resolve, reject) => {
+        if (init?.signal?.aborted) {
+          reject(
+            new DOMException(
+              "The operation was aborted due to timeout",
+              "TimeoutError",
+            ),
+          );
+          return;
+        }
+        init?.signal?.addEventListener("abort", () => {
+          reject(
+            new DOMException(
+              "The operation was aborted due to timeout",
+              "TimeoutError",
+            ),
+          );
+        });
+      });
+    }) as unknown as typeof fetch;
+
+    const runtimeWithOracle = {
+      ...runtime,
+      getSetting: (key: string) =>
+        key === "SECURITY_GATE_URL" ? "https://mock-oracle.local" : undefined,
+    } as unknown as IAgentRuntime;
+
+    const safeMessage: Memory = {
+      id: "msg-safe-non-expiring",
+      roomId: "room-1",
+      entityId: "user-1",
+      agentId: runtime.agentId,
+      content: { text: "What is the status of the staking pool?" },
+      createdAt: Date.now(),
+    };
+
+    const ctx: ChatPreHandlerContext = {
+      runtime: runtimeWithOracle,
+      message: safeMessage,
+      abortSignal: hostController.signal,
+      appendText: vi.fn(),
+      replaceText: vi.fn(),
+    };
+
+    const startTime = Date.now();
+    try {
+      const result = await securityGatePreHandler.tryHandle(ctx);
+      const duration = Date.now() - startTime;
+
+      // 1. Proves host supplied caller signal was non-expiring and never aborted by caller
+      expect(hostController.signal.aborted).toBe(false);
+      // 2. Proves the composed signal passed to fetch aborted due to independent 3s timeout
+      expect(capturedSignal?.aborted).toBe(true);
+      // 3. Proves the handler returned safely within the 3s bound instead of hanging indefinitely
+      expect(duration).toBeGreaterThanOrEqual(2900);
+      expect(duration).toBeLessThan(4500);
+      // 4. Safe payload falls back cleanly to local audit verdict (null = pass through)
+      expect(result).toBeNull();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }, 10000);
+
+  it("aborts remote oracle fetch immediately when caller aborts before timeout", async () => {
+    const originalFetch = globalThis.fetch;
+    const hostController = new AbortController();
+    let capturedSignal: AbortSignal | undefined;
+
+    globalThis.fetch = vi.fn().mockImplementation((_url, init) => {
+      capturedSignal = init?.signal;
+      return new Promise((_resolve, reject) => {
+        if (init?.signal?.aborted) {
+          reject(new DOMException("Caller cancelled", "AbortError"));
+          return;
+        }
+        init?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("Caller cancelled", "AbortError"));
+        });
+      });
+    }) as unknown as typeof fetch;
+
+    const runtimeWithOracle = {
+      ...runtime,
+      getSetting: (key: string) =>
+        key === "SECURITY_GATE_URL" ? "https://mock-oracle.local" : undefined,
+    } as unknown as IAgentRuntime;
+
+    const safeMessage: Memory = {
+      id: "msg-safe-caller-abort",
+      roomId: "room-1",
+      entityId: "user-1",
+      agentId: runtime.agentId,
+      content: { text: "Check balance" },
+      createdAt: Date.now(),
+    };
+
+    const ctx: ChatPreHandlerContext = {
+      runtime: runtimeWithOracle,
+      message: safeMessage,
+      abortSignal: hostController.signal,
+      appendText: vi.fn(),
+      replaceText: vi.fn(),
+    };
+
+    // Caller cancels after 50ms
+    setTimeout(() => {
+      hostController.abort("user_cancelled");
+    }, 50);
+
+    const startTime = Date.now();
+    try {
+      const result = await securityGatePreHandler.tryHandle(ctx);
+      const duration = Date.now() - startTime;
+
+      expect(hostController.signal.aborted).toBe(true);
+      expect(capturedSignal?.aborted).toBe(true);
+      expect(duration).toBeLessThan(1000);
+      expect(result).toBeNull();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("composeBoundedSignal unit contract", () => {
+  it("returns an independent timeout signal when no caller signal is provided", async () => {
+    const signal = composeBoundedSignal(undefined, 50);
+    expect(signal.aborted).toBe(false);
+    await new Promise((r) => setTimeout(r, 70));
+    expect(signal.aborted).toBe(true);
+  });
+
+  it("aborts immediately when caller signal aborts before timeout", () => {
+    const controller = new AbortController();
+    const signal = composeBoundedSignal(controller.signal, 1000);
+    expect(signal.aborted).toBe(false);
+    controller.abort("explicit_abort");
+    expect(signal.aborted).toBe(true);
   });
 });
 
