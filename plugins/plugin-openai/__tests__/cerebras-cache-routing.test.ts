@@ -38,6 +38,21 @@ async function captureRequest(
     expect(url.pathname).toBe("/v1/chat/completions");
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     bodies.push(body);
+    if (
+      !cerebras &&
+      typeof body.prompt_cache_key === "string" &&
+      body.prompt_cache_key.length > 64
+    ) {
+      return Response.json(
+        {
+          error: {
+            message: "prompt_cache_key exceeds 64 characters",
+            type: "invalid_request_error",
+          },
+        },
+        { status: 400 }
+      );
+    }
     return Response.json({
       id: "cache-routing-fixture",
       object: "chat.completion",
@@ -101,4 +116,18 @@ it.each([
 
 it("does not invent a routing hint when the caller supplies no key", async () => {
   expect(await captureRequest(true, {})).not.toHaveProperty("prompt_cache_key");
+});
+
+it("sends complete, distinct prefix identities within the OpenAI wire limit", async () => {
+  const hashes = ["a".repeat(64), "a".repeat(64), `${"a".repeat(63)}b`];
+  const requests = [];
+  for (const prefixHash of hashes) {
+    const plan = buildProviderCachePlan({ prefixHash });
+    const request = await captureRequest(false, plan.providerOptions);
+    expect(String(request.prompt_cache_key).length).toBeLessThanOrEqual(64);
+    requests.push(request);
+  }
+  expect(requests[0].prompt_cache_key).toBe(requests[1].prompt_cache_key);
+  expect(requests[0].prompt_cache_key).not.toBe(requests[2].prompt_cache_key);
+  expect(requests[0].messages).toEqual(requests[2].messages);
 });
