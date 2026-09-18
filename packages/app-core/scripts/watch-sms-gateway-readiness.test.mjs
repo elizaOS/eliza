@@ -127,7 +127,9 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
       {
         encoding: "utf8",
         timeout: 8_000,
-        env: { ...process.env, PATH: "/nonexistent" },
+        // PATH=/nonexistent keeps every probe a fast failure; ADB points adb at
+        // the same missing path so the host device probe is never reached.
+        env: { ...process.env, PATH: "/nonexistent", ADB: "/nonexistent/adb" },
       },
     );
     const elapsedMs = Date.now() - startedAt;
@@ -153,7 +155,15 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
     );
     const fakeCurl = path.join(fakeDir, "curl");
     const fakeIoreg = path.join(fakeDir, "ioreg");
+    const fakeAdb = path.join(fakeDir, "adb");
     fs.writeFileSync(fakeIoreg, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(
+      fakeAdb,
+      // ADB env override controls the device probe; record invocation and
+      // return only the `devices -l` header so no bogus device/service parses.
+      `#!/bin/sh\necho $$ > "${markerDir}/adb.pid"\n[ "$1" = "devices" ] && echo "List of devices attached"\nexit 0\n`,
+      { mode: 0o755 },
+    );
     fs.writeFileSync(
       fakeCurl,
       // Busy-wait in the shell itself (no sleep child to orphan): SIGKILL on
@@ -169,7 +179,11 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
         {
           encoding: "utf8",
           timeout: 15_000,
-          env: { ...process.env, PATH: `${fakeDir}:/usr/bin:/bin` },
+          env: {
+            ...process.env,
+            PATH: `${fakeDir}:/usr/bin:/bin`,
+            ADB: fakeAdb,
+          },
         },
       );
       const elapsedMs = Date.now() - startedAt;
@@ -180,7 +194,10 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
       );
       expect(elapsedMs).toBeLessThan(4_500);
 
-      // The fake probe really ran, and its process did not survive SIGKILL.
+      // Every external probe was the fake: the adb override ran and the
+      // TERM-ignoring curl really ran and did not survive SIGKILL.
+      const adbPidFile = path.join(markerDir, "adb.pid");
+      expect(fs.existsSync(adbPidFile)).toBe(true);
       const pidFile = path.join(markerDir, "curl.pid");
       expect(fs.existsSync(pidFile)).toBe(true);
       const pid = Number(fs.readFileSync(pidFile, "utf8").trim());

@@ -16,8 +16,25 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const installScript = path.join(scriptDir, "install-android-sms-gateway.mjs");
-const adbPath =
+const DEFAULT_ADB_PATH =
   "/opt/homebrew/share/android-commandlinetools/platform-tools/adb";
+
+/**
+ * Resolve the adb binary the same way the installer does: an explicit `ADB`
+ * override wins, then an Android SDK root, then the documented default. The
+ * watcher must not pin the Homebrew path when a caller (or a timing fixture)
+ * points adb elsewhere.
+ */
+function resolveAdbPath() {
+  const explicit = process.env.ADB?.trim();
+  if (explicit) return explicit;
+  const sdkRoot =
+    process.env.ANDROID_HOME?.trim() || process.env.ANDROID_SDK_ROOT?.trim();
+  if (sdkRoot) return path.join(sdkRoot, "platform-tools", "adb");
+  return DEFAULT_ADB_PATH;
+}
+
+const adbPath = resolveAdbPath();
 
 function usage() {
   return [
@@ -255,7 +272,10 @@ async function main() {
     // bounded, but a sequence of near-budget probes must not stack.
     const adbDeviceRows = listAdbDeviceRows();
     if (expired()) break;
-    const devices = listAdbDevices();
+    // Reuse this pass's single device snapshot instead of asking adb twice.
+    const devices = adbDeviceRows
+      .filter((device) => device.state === "device")
+      .map((device) => device.serial);
     if (expired()) break;
     const wirelessAdb = listWirelessAdbServices();
     if (expired()) break;
