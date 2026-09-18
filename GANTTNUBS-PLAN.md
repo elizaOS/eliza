@@ -60,7 +60,7 @@ These runs are different checkpoints/conditions, not a controlled benchmark or a
 | Calendar follow-up after fix, with context recovery | 5 | 6.936 s | 78,115 | 11,264 |
 | Calendar restoration without recovery | 4 | 3.262 s | 30,844 | 17,408 |
 
-Calendar restoration used routing 691 ms, planner 570 ms, field extraction 344 ms and completion 610 ms. The 1,047 ms outside those call timers is not yet fully attributed. First investigate measured spans before assigning it to the network or code. Cache-read tokens are included in input counts; they do not establish billing cost.
+Calendar restoration used routing 691 ms, planner 570 ms, field extraction 344 ms and completion 610 ms. The 1,047 ms outside those call timers is partitioned below; source-level attribution remains open. Do not assign it all to the network or assume it is removable. Cache-read tokens are included in input counts; they do not establish billing cost.
 
 Three architecture stages do not mean three model calls: a tool can invoke extraction, and context restoration or pending-work recovery can add rounds. Current Calendar extraction prevents demonstrated planner-time guesses; removing it requires an equivalent validated write contract, not merely one fewer call.
 
@@ -86,3 +86,27 @@ Report text correctness, speed, voice, local versus merged/deployed status separ
 - Resolve semantic overlaps in history/source binding, reply ownership, tool discovery, Calendar/Notes and preferences.
 - Run combined owning tests and actual visible scenarios before recommending merge.
 - Present the candidate and unresolved differences to the user; do not push to protected develop or contact Shaw automatically.
+
+## First offline timing audit
+
+Verified from the saved restoration trace without additional model calls. The following intervals are disjoint and total the recorded 3,262 ms turn:
+
+| Interval | Duration |
+|---|---:|
+| Before response handler | 253 ms |
+| Response handler, including 691 ms model call | 830 ms |
+| Between handler and tool discovery | 298 ms |
+| Tool discovery | 3 ms |
+| Before planner | 8 ms |
+| Planner, including 570 ms model call | 648 ms |
+| Before tool | 2 ms |
+| Calendar tool, including 344 ms extraction call | 442 ms |
+| Before completion | 2 ms |
+| Completion, including 610 ms model call | 687 ms |
+| After completion | 89 ms |
+
+The 1,047 ms outside model timers comprises 395 ms within stage envelopes and 652 ms between them. Provider preparation overlaps internally: its initial envelope is about 190 ms and its second envelope about 197 ms, already contained in the gaps above. Adding all provider durations would double-count concurrent work. Initial slow providers include first-run and relevant-conversation context; the second preparation is dominated by the lifeops provider. These observations identify where to inspect; they do not yet prove redundant work.
+
+This run reports 17,408 cached input tokens out of 30,844 total inputs (56.4%). These are provider-reported cache reads, not local provider-cache hits, and do not by themselves establish a dollar saving. Model timer durations include the request/response boundary and cannot distinguish network from server inference without additional telemetry.
+
+Decision: retain the tested runtime while inspecting these paths. No extraction removal, prompt clipping or speculative performance patch follows from this single trace.
