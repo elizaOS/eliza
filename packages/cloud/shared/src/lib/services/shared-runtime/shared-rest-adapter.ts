@@ -583,6 +583,7 @@ export async function sharedRestMessageSend(
 ): Promise<{
   text: string;
   agentName: string;
+  degraded?: boolean;
   timing?: SharedProviderTimingReceipt;
   mediaUrls?: string[];
 }> {
@@ -622,6 +623,7 @@ export async function sharedRestMessageSend(
   }
   const result = (response.result ?? {}) as {
     text?: unknown;
+    degraded?: unknown;
     timing?: unknown;
     actionResults?: unknown;
   };
@@ -645,6 +647,10 @@ export async function sharedRestMessageSend(
   return {
     text: replyText,
     agentName: agentName || "Eliza",
+    // The bridge always sends a boolean (`degraded` is required on the shared
+    // turn result), so absence means the bridge shape changed rather than that
+    // the turn was healthy — forward only what it actually reported.
+    ...(typeof result.degraded === "boolean" ? { degraded: result.degraded } : {}),
     ...(mediaUrls.length > 0 ? { mediaUrls } : {}),
     ...(timing ? { timing } : {}),
   };
