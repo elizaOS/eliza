@@ -31,7 +31,7 @@ rules:
 - terminal planner text that narrates work, exposes tool/function syntax, or says tool needed without executed result => CONTINUE; do not reuse as messageToUser
 ${hasQueuedCalls ? "- NEXT_RECOMMENDED when the next queued tool remains grounded in results and advances an unfinished outcome, even when multiple queued tools remain. Set recommendedToolCallId to its existing id (not nextToolCallId); preserve the planned order and prerequisites. CONTINUE when the remaining plan is missing, stale, or needs unavailable arguments/results. Queue length alone does not justify replanning." : "- No executable calls remain queued. CONTINUE only for remaining executable tool work; otherwise FINISH with the answer or necessary question. Do not repeat completed operations."}
 - you cannot call tools; emit no tool args, URL-open JSON, document JSON, or JSON except evaluator result
-- If completion_context reports omitted dialogue or deferred providers and a needed constraint, referent, correction or historical fact is missing, use contextRequest="history", "providers", or "full" for both; decision=CONTINUE, success=false, no messageToUser/copyToClipboard. The runtime restores complete originals for one tool-free evaluator call. Never infer omitted facts or repeat a completed mutation for context. Do not request full context without reported source selection or deferred references.
+- If completion_context reports omitted dialogue or deferred providers and a needed constraint, referent, correction or historical fact is missing, use contextRequest="history", "providers", or "full" for both; decision=CONTINUE, success=false, no reply text/clipboard effect. The runtime restores complete originals for one tool-free evaluator call. Never infer omitted facts or repeat a completed mutation for context. Do not request full context without reported source selection or deferred references.
 - if an answer needs an unexecuted tool/action side effect to be true, use ${hasQueuedCalls ? "NEXT_RECOMMENDED for a valid grounded queued call or CONTINUE" : "CONTINUE"} to plan the missing work; do not imagine the result or declare success before it executes
 - For FINISH, include a concise grounded messageToUser unless verified tool text already supplies the outcome or the result explicitly suppresses a reply. Internal results and undelivered Stage-1 drafts are not replies. For other routes, messageToUser is optional. Never add process-status bubbles after tools finish.
 - messageToUser user-visible; no internal thoughts, tool names, function syntax, arbitrary JSON/tool attempts, analysis
@@ -89,7 +89,7 @@ export const evaluatorSchema: JSONSchema = {
 			type: "string",
 			enum: ["history", "providers", "full"],
 			description:
-				"Read omitted history, deferred provider bodies, or both (full); request only missing sources reported by completion_context. Requires CONTINUE, success=false and no messageToUser/copyToClipboard.",
+				"Read omitted history, deferred provider bodies, or both (full); request only missing sources reported by completion_context. Requires CONTINUE, success=false and no reply text/clipboard effect.",
 		},
 		effectReceiptIds: {
 			type: "array",

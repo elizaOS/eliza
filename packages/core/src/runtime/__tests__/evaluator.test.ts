@@ -50,6 +50,77 @@ describe("v5 evaluator skeleton", () => {
 		]);
 	});
 
+	it.each([
+		["internal required", false, false, "internal", true, undefined, true],
+		["internal optional", false, false, "internal", false, undefined, false],
+		["visible result", false, false, "visible", true, "Already shown", false],
+		["terminal reply", false, true, "internal", true, undefined, false],
+		["coding", true, false, "internal", true, undefined, false],
+	] as const)(
+		"requires reply field only for unpublished model-owned outcomes: %s",
+		async (_label, codingMode, terminalOnly, transcriptVisibility, modelReplyRequired, userFacingText, required) => {
+			const useModel = vi.fn(async () =>
+				JSON.stringify({
+					success: false,
+					decision: "CONTINUE",
+					messageToUser: "",
+					replyEffectStatus: "none",
+				}),
+			);
+			const result = await runEvaluator({
+				runtime: { useModel },
+				context: { id: "reply-contract", events: [] },
+				trajectory: {
+					context: { id: "reply-contract" },
+					codingMode,
+					steps: [
+						{
+							iteration: 1,
+							terminalOnly,
+							result: {
+								success: true,
+								transcriptVisibility,
+								modelReplyRequired,
+								userFacingText,
+							},
+						},
+					],
+					archivedSteps: [],
+					plannedQueue: [],
+					evaluatorOutputs: [],
+				},
+			});
+			expect(
+				useModel.mock.calls[0][1].responseSchema.required.includes(
+					"messageToUser",
+				),
+			).toBe(required);
+			expect(result.messageToUser).toBeUndefined();
+			expect(result.decision).toBe("CONTINUE");
+			expect(evaluatorSchema.required).not.toContain("messageToUser");
+		},
+	);
+
+	it("accepts an explicitly empty reply during context restoration but rejects draft prose", () => {
+		const request = {
+			success: false,
+			decision: "CONTINUE",
+			contextRequest: "full",
+			replyEffectStatus: "none",
+			messageToUser: "",
+		};
+		const output = parseEvaluatorOutput(JSON.stringify(request));
+		expect(output.protocolFailure).not.toBe(true);
+		expect(output.raw?.contextRequest).toBe("full");
+		expect(output.messageToUser).toBeUndefined();
+		for (const messageToUser of ["Working on it", " ", null]) {
+			expect(
+				parseEvaluatorOutput(JSON.stringify({ ...request, messageToUser }))
+					.protocolFailure,
+			).toBe(true);
+		}
+	});
+
 	it.each(["disabled", "callback", "standalone"] as const)(
 		"matches clipboard schema and prompt to the host: %s",
 		async (host) => {

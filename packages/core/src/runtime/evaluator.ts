@@ -383,10 +383,29 @@ export async function runEvaluator(
 	if (!clipboardAvailable) delete baseProperties.copyToClipboard;
 	// Match the canonical proof boundary without changing the recorded results
 	// or forgiving invalid IDs returned by a provider that ignores its schema.
+	const latestStep = params.trajectory.steps.at(-1);
+	const requiresReplyField =
+		params.trajectory.codingMode === false &&
+		!latestStep?.terminalOnly &&
+		latestStep?.result?.transcriptVisibility === "internal" &&
+		latestStep.result.modelReplyRequired === true &&
+		!latestStep.result.userFacingText?.trim();
 	const responseSchema = {
 		...evaluatorSchema,
+		...(requiresReplyField
+			? { required: [...(evaluatorSchema.required ?? []), "messageToUser"] }
+			: {}),
 		properties: {
 			...baseProperties,
+			...(requiresReplyField
+				? {
+						messageToUser: {
+							...baseProperties.messageToUser,
+							description:
+								"This internal result requires a model-authored reply. For FINISH, provide the grounded outcome or necessary question here. For CONTINUE or contextRequest, use an empty string; do not publish a progress draft.",
+						},
+					}
+				: {}),
 			// Candidate action names and past calls are not an executable queue.
 			// The planner's existing dispatch/fallback checks remain authoritative.
 			...(queuedCallIds.length
@@ -1202,10 +1221,10 @@ function evaluatorEnvelopeProtocolError(
 		) ||
 			output.success !== false ||
 			parseEvaluatorRoute(output.decision ?? output.route) !== "CONTINUE" ||
-			Object.hasOwn(output, "messageToUser") ||
+			(Object.hasOwn(output, "messageToUser") && output.messageToUser !== "") ||
 			Object.hasOwn(output, "copyToClipboard"))
 	)
-		return "contextRequest must be full, history or providers with CONTINUE, success=false, and no messageToUser or copyToClipboard";
+		return "contextRequest must be full, history or providers with CONTINUE, success=false, no reply text, and no copyToClipboard";
 	if (
 		Object.hasOwn(output, "messageToUser") &&
 		typeof output.messageToUser !== "string"
