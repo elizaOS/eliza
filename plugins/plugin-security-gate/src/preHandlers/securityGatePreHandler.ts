@@ -3,10 +3,7 @@ import type {
   ChatPreHandlerContext,
   ChatPreHandlerResult,
 } from "@elizaos/core";
-import {
-  inspectPayloadLocally,
-  isCodePayload,
-} from "../localSecurityGate.js";
+import { inspectPayloadLocally, isCodePayload } from "../localSecurityGate.js";
 
 declare const process: { env?: Record<string, string | undefined> } | undefined;
 
