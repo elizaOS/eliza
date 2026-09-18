@@ -33,6 +33,7 @@ const TYPED_EXIT_CODE = 23;
 
 let binDirectory: string | undefined;
 let previousBaseline: string | undefined;
+let holdStartupCheck = false;
 
 type HarnessRejection = {
   kind: string;
@@ -54,6 +55,7 @@ function argvPath(): string {
 }
 
 function createBaselineDirectory(): string {
+  holdStartupCheck = false;
   binDirectory = mkdtempSync(join(tmpdir(), "eliza-container-harness-"));
   return binDirectory;
 }
@@ -77,6 +79,7 @@ function installStayAliveStub(): void {
 
 function installImmediateExitStub(exitCode: number): void {
   const directory = createBaselineDirectory();
+  holdStartupCheck = true;
   writeExecutableStub(
     directory,
     [
@@ -119,6 +122,7 @@ function runHarness(
       env: {
         ...process.env,
         ELIZA_HOST_EXECUTION_BASELINE_PATH: binDirectory,
+        ELIZA_TEST_HOLD_STARTUP_CHECK: holdStartupCheck ? "1" : "0",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });

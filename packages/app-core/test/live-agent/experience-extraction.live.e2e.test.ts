@@ -1,21 +1,19 @@
 /** Exercises experience extraction live e2e behavior with deterministic app-core test fixtures. */
 import crypto from "node:crypto";
+import { ChannelType, type Memory, type UUID } from "@elizaos/common";
 import {
   type AgentRuntime,
-  ChannelType,
   createMessageMemory,
-  type EvaluatorService,
-  type Memory,
   type Plugin,
-  type UUID,
 } from "@elizaos/core";
+import type { EvaluatorService } from "@elizaos/plugin-assistant";
 import { afterAll, beforeAll, describe, expect } from "vitest";
-import { experiencePatternEvaluator } from "../../../core/src/features/advanced-capabilities/experience/evaluators/experience-items.ts";
-import { ExperienceService } from "../../../core/src/features/advanced-capabilities/experience/service.ts";
+import { experiencePatternEvaluator } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/experience/evaluators/experience-items.ts";
+import { ExperienceService } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/experience/service.ts";
 import {
   ExperienceType,
   OutcomeType,
-} from "../../../core/src/features/advanced-capabilities/experience/types.ts";
+} from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/experience/types.ts";
 import { itIf } from "../helpers/conditional-tests.ts";
 import { ConversationHarness } from "../helpers/conversation-harness.js";
 import { selectLiveProvider } from "../helpers/live-provider";
@@ -108,7 +106,6 @@ describe("Experience extraction live LLM E2E", () => {
       withLLM: true,
       preferredProvider: selectedLiveProvider?.name,
       characterName: "ExperienceLiveAgent",
-      advancedCapabilities: true,
       plugins: [experienceCapabilityPlugin],
     });
 

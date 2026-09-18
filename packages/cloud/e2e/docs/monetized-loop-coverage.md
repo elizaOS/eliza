@@ -84,13 +84,13 @@ capacity.
 
 ```bash
 # all cloud e2e specs
-bun run cloud:e2e
+bun run --cwd packages/cloud/e2e test
 
 # just the full loop (the registrar dev-stub is on by default via the env fixture)
-bun run cloud:e2e -- monetized-full-loop.spec.ts
+bun run --cwd packages/cloud/e2e test -- monetized-full-loop.spec.ts
 
 # the always-on real-HTTP-seam charge test (boots an in-process OpenAI mock; no key)
-bun run cloud:e2e -- monetized-mock-llm-journey.spec.ts
+bun run --cwd packages/cloud/e2e test -- monetized-mock-llm-journey.spec.ts
 ```
 
 Relevant env (defaulted by `src/fixtures/env.ts`, override to tune): `MOCK_HETZNER_ACTION_MS`

@@ -15,9 +15,8 @@
  * any real ASR backend.
  */
 
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
-
-import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter";
 import { AgentRuntime } from "../../../../packages/core/src/runtime";
 import { ModelType } from "../../../../packages/core/src/types";
 

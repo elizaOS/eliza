@@ -7,8 +7,8 @@
  */
 
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../core/src/database/inMemoryAdapter.ts";
 import {
   handleMemoryRoutes,
   MEMORY_TABLE_NAMES,

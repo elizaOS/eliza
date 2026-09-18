@@ -8,7 +8,7 @@
  */
 // @vitest-environment jsdom
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

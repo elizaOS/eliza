@@ -1,6 +1,6 @@
 /** Starts only committed, provider-bound funding and records the host's durable start time for retry-safe metering. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { DbTransaction } from "../../db/client";

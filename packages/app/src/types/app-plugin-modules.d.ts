@@ -1,7 +1,7 @@
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/personal-assistant";
 import type { CodingAgentTasksPanelProps } from "@elizaos/ui/config";
 import type { ComponentType } from "react";
 

@@ -10,11 +10,11 @@ export type {
   EmailCategory,
   EmailClassification,
   EmailLikeMessage,
-} from "@elizaos/shared";
+} from "@elizaos/shared/email-classification/email-classifier";
 export {
   _resetEmailClassifierCache,
   classifyEmail,
   classifyEmailByRules,
   getConfiguredEmailClassifierModel,
   isEmailClassifierEnabled,
-} from "@elizaos/shared";
+} from "@elizaos/shared/email-classification/email-classifier";

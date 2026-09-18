@@ -3,7 +3,7 @@
  * Local test console server: one process that serves the console UI, holds
  * the operator's saved credentials, and drives test runs with live status.
  *
- * Launched via `bun run test:console`. Binds 127.0.0.1 only — it holds raw
+ * Launched via `node packages/scripts/test-console/server.mjs`. Binds 127.0.0.1 only — it holds raw
  * API keys and can execute repo code, so it must never listen on a routable
  * interface; there is deliberately no auth layer beyond that. The browser
  * gets presence/suffix hints for saved secrets, never the values.

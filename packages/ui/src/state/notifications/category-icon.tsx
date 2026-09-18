@@ -2,7 +2,7 @@
  * Single source of truth mapping a notification category to its lucide icon,
  * used by every notification surface so category iconography stays consistent.
  */
-import type { NotificationCategory } from "@elizaos/core";
+import type { NotificationCategory } from "@elizaos/common";
 import {
   Bot,
   Check,

@@ -8,13 +8,13 @@
 
 import type { ServerResponse } from "node:http";
 import { describe, expect, it, vi } from "vitest";
-import { ElizaError } from "../errors";
-import type { IAgentRuntime } from "../types";
-import { Service } from "../types/service";
 import {
 	TrajectoriesService,
 	tryHandleTrajectoryReadRoutes,
-} from "./trajectories";
+} from "../../../../plugins/plugin-assistant/src/services/trajectories.ts";
+import { ElizaError } from "../errors";
+import type { IAgentRuntime } from "../types";
+import { Service } from "../types/service";
 
 function makeRuntime(
 	overrides: {

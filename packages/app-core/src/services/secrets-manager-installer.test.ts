@@ -15,7 +15,7 @@ import {
   type InstallMethod,
   type SecretsManager,
   type TestVault,
-} from "@elizaos/vault";
+} from "@elizaos/credentials/vault";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _resetSecretsManagerInstallerForTesting,

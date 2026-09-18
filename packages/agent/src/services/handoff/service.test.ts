@@ -8,7 +8,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/core/testing";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { HandoffService, resolveHandoffService } from "./service.ts";
 import { evaluateResume } from "./store.ts";

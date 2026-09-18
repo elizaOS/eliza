@@ -7,15 +7,15 @@
 import {
 	AgentRuntime,
 	type Memory,
-	renderActionResultsForModel,
 	type ViewScopedAction,
 } from "@elizaos/core";
+import { renderActionResultsForModel } from "@elizaos/plugin-assistant";
 import { describe, expect, it, vi } from "vitest";
 import {
 	actionResultToPlannerToolResult,
 	runPlannerLoop,
-} from "../../../../packages/core/src/runtime/planner-loop.js";
-import { collectPreviousActionResults } from "../../../../packages/core/src/services/message/planned-tool.js";
+} from "../../../plugin-assistant/src/runtime/planner-loop.ts";
+import { collectPreviousActionResults } from "../../../plugin-assistant/src/services/message/planned-tool.ts";
 import { createViewsAction } from "./views.js";
 import {
 	createViewsClient,

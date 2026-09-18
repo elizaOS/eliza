@@ -48,6 +48,6 @@ describe("cloud stack e2e workflow split", () => {
       "Run full cloud stack e2e suite",
     );
 
-    expect(run.trim()).toBe("bun run cloud:e2e");
+    expect(run.trim()).toBe("bun run --cwd packages/cloud/e2e test");
   });
 });

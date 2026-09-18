@@ -5,13 +5,8 @@
  * runtime, model, transport, or database boundary is mocked.
  */
 import { createServer, type IncomingMessage, type Server } from "node:http";
-import {
-  AgentRuntime,
-  EventType,
-  InMemoryDatabaseAdapter,
-  MemoryType,
-  type UUID,
-} from "@elizaos/core";
+import { AgentRuntime, EventType, MemoryType, type UUID } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { registerCloudEmbeddingModels } from "../../../../../plugins/plugin-elizacloud/src/index.ts";

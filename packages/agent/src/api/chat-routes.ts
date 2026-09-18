@@ -41,10 +41,8 @@ import {
   ModelType,
   markInference,
   nextInferenceTurnId,
-  persistInferenceTimingSummary,
   type RolesWorldMetadata,
   type RoomHandlerLease,
-  type RouteRequestContext,
   readActionReplyFailure,
   recordOwnerGrant,
   recordRoleGrant,
@@ -52,10 +50,10 @@ import {
   revertedEffectReceiptIds,
   runWithInferenceTiming,
   runWithTrajectoryContext,
-  shouldSkipResponseMemoryPersistence,
   stringToUuid,
   stripDashboardOnlyMarkers,
   type TrustedApiPrincipal,
+  type TurnOutcome,
   tagsMayProduceEffects,
   timeInferenceSpan,
   toWellFormedUnicode,
@@ -63,6 +61,10 @@ import {
   type UUID,
   withRoomDeliverySettlement,
 } from "@elizaos/core";
+import {
+  persistInferenceTimingSummary,
+  shouldSkipResponseMemoryPersistence,
+} from "@elizaos/plugin-assistant";
 import type {
   ChatFailureKind,
   ChatTerminalFailure,
@@ -82,6 +84,7 @@ import {
   parseChatTerminalFailure,
   readAliasedEnv,
 } from "@elizaos/shared";
+import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
 import type { ElizaConfig } from "../config/config.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
@@ -467,6 +470,8 @@ export interface AccountConnectRequest {
 }
 
 export interface ChatGenerationResult {
+  /** Server-owned execution status, independent of recovered reply delivery. */
+  outcome?: TurnOutcome;
   text: string;
   agentName: string;
   /** Machine-only final text that must not render as assistant prose. */
@@ -561,13 +566,15 @@ export interface ChatGenerateOptions {
 const POST_COMMIT_INTERRUPTED_REPLY =
   "The action finished before the response was interrupted. It was not run again.";
 
-function recoverSettledMutatingActionTurn(
+export function recoverSettledMutatingActionTurn(
   runtime: AgentRuntime,
   settledResults: readonly ActionResult[],
+  interruption: { error: unknown; signal: AbortSignal },
 ): {
   text: string;
   actionResults: ActionResult[];
   actionNames: string[];
+  outcome: TurnOutcome;
   replyFailure?: ActionReplyFailure;
 } | null {
   const allReceipts = settledResults.flatMap(
@@ -636,9 +643,30 @@ function recoverSettledMutatingActionTurn(
         .filter((name) => name.length > 0),
     ),
   );
+  const text =
+    replyFailure?.message ?? (verifiedText || POST_COMMIT_INTERRUPTED_REPLY);
+  const cancelled =
+    !isChatGenerationTimeoutError(interruption.error) &&
+    (interruption.signal.aborted ||
+      asRecord(interruption.error)?.name === "AbortError");
   return {
-    text:
-      replyFailure?.message ?? (verifiedText || POST_COMMIT_INTERRUPTED_REPLY),
+    text,
+    outcome: cancelled
+      ? {
+          status: "cancelled",
+          reason: "Turn interrupted after a committed action",
+          effects: allReceipts,
+        }
+      : {
+          status: "failed",
+          error: replyFailure ?? {
+            kind: "handler_error",
+            code: "TURN_INTERRUPTED_AFTER_EFFECT",
+            transient: false,
+            message: text,
+          },
+          effects: allReceipts,
+        },
     actionResults: [...settledResults],
     actionNames,
     ...(replyFailure ? { replyFailure } : {}),
@@ -2932,6 +2960,7 @@ async function generateChatResponseWithTiming(
               ? directText || "(no response)"
               : directText;
             result = {
+              outcome: { status: "completed" as const, effects: [] },
               didRespond: true,
               responseContent: { text: finalText },
               responseMessages: [],
@@ -3055,6 +3084,7 @@ async function generateChatResponseWithTiming(
             const recovery = recoverSettledMutatingActionTurn(
               runtime,
               settledActionResults,
+              { error, signal: generationAbortController.signal },
             );
             if (!recovery) throw error;
             responseText = recovery.text;
@@ -3071,9 +3101,7 @@ async function generateChatResponseWithTiming(
               responseMessages: [],
               actionResults: recovery.actionResults,
               mode: "actions",
-              ...(recovery.replyFailure
-                ? { terminalFailure: recovery.replyFailure }
-                : {}),
+              outcome: recovery.outcome,
               ...(trajectoryTerminalOwner ? { trajectoryTerminalOwner } : {}),
             } as typeof result;
             runtime.logger.warn(
@@ -3092,7 +3120,11 @@ async function generateChatResponseWithTiming(
           // disconnect. The remaining path finalizes that result and only runs
           // new work while the owner signal is live.
 
-          terminalFailure = parseChatTerminalFailure(result?.terminalFailure);
+          terminalFailure = parseChatTerminalFailure(
+            result?.outcome.status === "failed"
+              ? result.outcome.error
+              : undefined,
+          );
           replyFailure = result?.actionResults
             ?.map((actionResult) =>
               readActionReplyFailure(actionResult.replyFailure),
@@ -3589,6 +3621,7 @@ async function generateChatResponseWithTiming(
     return {
       text: finalText,
       agentName,
+      ...(result?.outcome ? { outcome: result.outcome } : {}),
       ...(transcriptVisibility ? { transcriptVisibility } : {}),
       ...(thought ? { thought } : {}),
       ...(intentionalNoResponse

@@ -7,7 +7,7 @@
  * plus quoting/fenced counter-examples); no model.
  */
 import { describe, expect, it } from "vitest";
-import { parseMessageHandlerOutput } from "../message-handler";
+import { parseMessageHandlerOutput } from "../../../../../plugins/plugin-assistant/src/runtime/message-handler.ts";
 import {
 	extractReplyTextFromTranscript,
 	looksLikeRawFieldTranscript,

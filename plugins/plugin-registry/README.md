@@ -85,6 +85,6 @@ The optional `ELIZA_SETTINGS_DEBUG` env var enables verbose before/after logging
 
 - `@elizaos/core` — `AgentRuntime`, `logger`
 - `@elizaos/shared` — shared request/response schemas, plugin constants
-- `@elizaos/vault` — encrypted secret storage (via `@elizaos/app-core` vault-mirror service)
+- `@elizaos/credentials/vault` — encrypted secret storage (via `@elizaos/app-core` vault-mirror service)
 
 The canonical plugin install implementation lives in `@elizaos/agent`. The forwarders in `src/services/plugin-installer.ts` lazy-load it at call time to avoid a static circular dependency.

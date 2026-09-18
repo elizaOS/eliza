@@ -3,7 +3,7 @@
  * renderer boot sequence.
  */
 
-import { resolveAppBranding } from "@elizaos/app-core";
+import { resolveAppBranding } from "@elizaos/shared/config/app-config";
 import appConfig from "../app.config";
 
 export const APP_CONFIG = appConfig;

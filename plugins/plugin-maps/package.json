@@ -69,7 +69,8 @@
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",
     "react": "^19.0.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/plugin-inmemorydb": "workspace:*"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.4.5",
@@ -85,7 +86,8 @@
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^4.0.17"
+    "vitest": "^4.0.17",
+    "@elizaos/testing": "workspace:*"
   },
   "peerDependencies": {
     "react-dom": "^19.0.0"

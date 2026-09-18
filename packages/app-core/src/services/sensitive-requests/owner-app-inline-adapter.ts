@@ -10,9 +10,9 @@
  * runtime is type-narrowed at the boundary instead of importing `IAgentRuntime`,
  * so the registry can pass `unknown`.
  */
+
+import { ChannelType, type Content, type UUID } from "@elizaos/common";
 import {
-  ChannelType,
-  type Content,
   classifySensitiveRequestSource,
   type DeliveryResult,
   type DispatchSensitiveRequest,
@@ -23,7 +23,6 @@ import {
   type SensitiveRequestDeliveryAdapter,
   type SensitiveRequestSecretTarget,
   type TargetInfo,
-  type UUID,
 } from "@elizaos/core";
 
 /**

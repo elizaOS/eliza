@@ -407,11 +407,6 @@ function normalizeGoogleToolCalls(
         id,
         name,
         arguments: args,
-        toolName: name,
-        toolCallId: id,
-        type: "function",
-        args,
-        input: args,
       };
     })
     .filter((call): call is ToolCall => Boolean(call));

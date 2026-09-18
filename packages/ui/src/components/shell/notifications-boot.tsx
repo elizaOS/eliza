@@ -8,7 +8,7 @@
  * Home.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { useEffect } from "react";
 import { client } from "../../api/client";
 import { initLocalNotificationTapRouting } from "../../bridge/native-notifications";

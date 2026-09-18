@@ -8,7 +8,7 @@
  * in-memory only and silently reverts.
  */
 
-import { resolveServerOnlyPort } from "@elizaos/core";
+import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
 import type { CommandResult, ParsedCommand } from "../types";
 import {
 	CODING_BACKEND_DISPLAY,

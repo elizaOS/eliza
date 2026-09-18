@@ -5,7 +5,7 @@
  * Cloud panel signs the user in rather than pretending the route is live.
  */
 
-import type { ModelOption } from "@elizaos/shared";
+import type { ModelOption } from "@elizaos/shared/contracts/first-run-options";
 import { Cloud, Cpu, KeyRound, LogIn, ShieldCheck } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import type {

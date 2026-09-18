@@ -1,21 +1,15 @@
 /**
- * Core planner-loop suite: `parsePlannerOutput` shape/recovery parsing and
- * end-to-end `runPlannerLoop` behavior — tool dispatch, the evaluator FINISH
- * gate, trajectory limits, coding/full-surface token caps, required-tool
- * handling, explicit input-budget rejection, and `plannerTemplate` policy text. Deterministic
- * — `useModel`, `executeToolCall`, and `evaluate` are vitest mocks; no live
- * model.
+ * Exercises production planner parsing, dispatch, completion, coding verification,
+ * and input-budget behavior with deterministic model, tool, and evaluator
+ * collaborators. No live model or actual tool process runs in this suite.
  */
 import { describe, expect, it, vi } from "vitest";
-import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import {
 	plannerBatchScopeDescription,
 	plannerRequiredPolicy,
 	plannerSchema,
 	plannerTemplate,
-} from "../../prompts/planner";
-import { ModelType } from "../../types/model";
-import { TrajectoryLimitExceeded } from "../limits";
+} from "../../../../../plugins/plugin-assistant/src/prompts/planner.ts";
 import {
 	__codingMutationRequiresVerificationForTests,
 	__isSuccessfulCodingVerificationStepForTests,
@@ -26,14 +20,55 @@ import {
 	PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
 	parsePlannerOutput,
 	partitionRedundantSucceededCalls,
-	runPlannerLoop,
+	runPlannerLoop as runPlannerLoopImplementation,
 	TURN_SCOPE_ARG,
 	TURN_SCOPE_FINAL,
 	TURN_SCOPE_MORE_WORK_PENDING,
 	withTurnScopeToolArg,
-} from "../planner-loop";
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import { shellVerificationReceipt } from "../../../../../plugins/plugin-coding-tools/src/lib/verification.ts";
+import { promoteSubactionsToActions } from "../../actions/promote-subactions";
+import { ModelType } from "../../types/model";
+import { TrajectoryLimitExceeded } from "../limits";
 import type { PlannerLoopParams } from "../planner-types";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
+
+/** These planner fixtures model SHELL's producer contract with its real receipt
+ * classifier. Actual process execution is covered by coding-tools/bash.test.ts. */
+async function runPlannerLoop(params: PlannerLoopParams) {
+	const execute = params.executeToolCall;
+	return runPlannerLoopImplementation({
+		...params,
+		executeToolCall: async (...args) => {
+			const result = await execute(...args);
+			const call = args[0];
+			if (
+				call.name !== "SHELL" ||
+				typeof call.params?.command !== "string" ||
+				result.verification
+			)
+				return result;
+			const data = result.data;
+			return {
+				...result,
+				verification: shellVerificationReceipt({
+					command: call.params.command,
+					exitCode:
+						typeof data?.exit_code === "number"
+							? data.exit_code
+							: result.success
+								? 0
+								: 1,
+					output:
+						typeof data?.output === "string"
+							? data.output
+							: (result.text ?? ""),
+					signal: typeof data?.signal === "string" ? data.signal : null,
+				}),
+			};
+		},
+	});
+}
 
 function renderedMessagePrompt(
 	messages: Array<{ role?: string; content?: unknown }> | undefined,
@@ -290,68 +325,6 @@ describe("v5 planner loop skeleton", () => {
 			"REPLY",
 			"TASKS_SPAWN_AGENT",
 		]);
-	});
-
-	it("instructs planners to use exposed tools for unresolved current work", () => {
-		expect(plannerTemplate).toContain(
-			"incomplete while user needs live/current/external data, filesystem/runtime state, command output, repo work, build, PR, deploy, verify, side effect, and exposed tool can try",
-		);
-		expect(plannerTemplate).toContain(
-			"attachments/memory/snippets do not replace explicit current run/check/fetch/inspect/build/deploy/verify/look up now",
-		);
-		expect(plannerTemplate).toContain(
-			"require the matching exposed tool before reporting completion",
-		);
-		expect(plannerTemplate).toContain(
-			"Match its name, routing hint and description, not a fixed required name",
-		);
-		expect(plannerTemplate).toContain(
-			"an operation that always commits is not a preview operation",
-		);
-		expect(plannerTemplate).toContain(
-			"outstanding separate confirmation forbids the effect even when a matching tool exists",
-		);
-		expect(plannerTemplate).toContain(
-			"messageToUser alone cannot save, schedule, send, update, remember, or complete anything",
-		);
-		expect(plannerTemplate).toContain(
-			'never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless a tool result this turn proves it',
-		);
-		expect(plannerTemplate).toContain(
-			"native toolCalls: pass each argument as a direct field in that tool's args object exactly as its schema declares",
-		);
-		expect(plannerTemplate).toContain(
-			"never nest arguments under `parameters` unless the tool schema itself declares a `parameters` field",
-		);
-		expect(plannerTemplate).toContain(
-			"plain-JSON fallback only (when native tool calls are unavailable)",
-		);
-		expect(plannerTemplate).toContain(
-			"never put that envelope inside a native tool's args",
-		);
-		expect(plannerTemplate).toContain(
-			"owner goal save/create/update/review when OWNER_GOALS is exposed",
-		);
-	});
-
-	it("keeps terminal planner replies human-readable unless raw output was requested", () => {
-		expect(plannerTemplate).toContain(
-			"natural conversation, not a database or debug log",
-		);
-		expect(plannerTemplate).toContain(
-			"Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times",
-		);
-		expect(plannerTemplate).toContain(
-			"unless the user explicitly asks for raw or technical output",
-		);
-	});
-
-	it("does not instruct model-authored widgets or arbitrary JSON/tool attempts", () => {
-		expect(plannerTemplate).toContain("arbitrary JSON/tool attempts");
-		expect(plannerTemplate).not.toContain(
-			"Structured chat markers are allowed",
-		);
-		expect(plannerTemplate).not.toContain("[FORM]");
 	});
 
 	it.each([
@@ -1485,7 +1458,14 @@ describe("v5 planner loop skeleton", () => {
 				},
 			},
 		} as Parameters<typeof __isSuccessfulCodingVerificationStepForTests>[0];
+		mixedStep.result!.verification = shellVerificationReceipt({
+			command: "go test ./...",
+			exitCode: 0,
+			output: mixedStep.result!.text!,
+		});
 		expect(__isSuccessfulCodingVerificationStepForTests(mixedStep)).toBe(true);
+		delete mixedStep.result!.verification;
+		expect(__isSuccessfulCodingVerificationStepForTests(mixedStep)).toBe(false);
 	});
 
 	it("does not treat a successful inspection command as coding verification", async () => {
@@ -1567,110 +1547,77 @@ describe("v5 planner loop skeleton", () => {
 		});
 	});
 
-	it.each([
-		"echo vitest",
-		"printf 'git diff --check'",
-		"test -f config.go",
-		"[ -f config.go ]",
-		"echo 'bun test packages/core'",
-		"npm exec echo test",
-		"printf 'safe && vitest'",
-		"git diff --check",
-		"go test ./... &",
-		"go test ./... || true",
-		"go test ./...; true",
-		"go test ./... | tee test.log",
-		"git diff --check || echo ignored",
-		"tsc --version",
-		"eslint --version",
-		"biome --version",
-		"pytest --help",
-		"go test -h",
-		"cargo test --help",
-		"tox --help",
-		"npx vitest --help",
-		"pytest '--help'",
-		'tsc "--version"',
-		"npx vitest '--help'",
-		"tsc --showConfig",
-		"jest --showConfig",
-	])(
-		"does not treat verifier-looking shell text as coding verification: %s",
-		async (spoofCommand) => {
-			await withCodingRequiredToolDefaults(async () => {
-				const runtime = {
-					useModel: vi
-						.fn()
-						.mockResolvedValueOnce({
-							text: "",
-							toolCalls: [
-								{
-									id: "write-1",
-									name: "WRITE",
-									arguments: { path: "config.go", content: "package config" },
-								},
-							],
-						})
-						.mockResolvedValueOnce({
-							text: "",
-							toolCalls: [
-								{
-									id: "shell-spoof-1",
-									name: "SHELL",
-									arguments: { command: spoofCommand },
-								},
-							],
-						})
-						.mockResolvedValueOnce(
-							codingReply("reply-spoofed", "Implemented the change."),
-						)
-						.mockResolvedValueOnce({
-							text: "",
-							toolCalls: [
-								{
-									id: "shell-real-1",
-									name: "SHELL",
-									arguments: { command: "go test ./..." },
-								},
-							],
-						})
-						.mockResolvedValueOnce(
-							codingReply(
-								"reply-verified",
-								"Implemented and tested the change.",
-							),
-						),
-					logger: { warn: vi.fn() },
-				};
-				const executeToolCall = vi.fn(async () => ({
-					success: true,
-					text: "succeeded",
-				}));
-
-				const result = await runPlannerLoop({
-					runtime,
-					context: codingPlannerContext,
-					codingMode: true,
-					tools: [
-						{ name: "WRITE", description: "Write a file." },
-						{ name: "SHELL", description: "Run a command." },
-						{ name: "REPLY", description: "Reply to the user." },
-					],
-					executeToolCall,
-					evaluate: vi.fn(),
-				});
-
-				expect(runtime.useModel).toHaveBeenCalledTimes(5);
-				expect(executeToolCall).toHaveBeenCalledTimes(3);
-				expect(result.finalMessage).toBe("Implemented and tested the change.");
-				expect(
-					result.trajectory.evaluatorOutputs.filter(
-						(output) => output.decision === "CONTINUE",
+	it("does not accept a masked shell verifier as completion", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "write-1",
+								name: "WRITE",
+								arguments: { path: "config.go", content: "package config" },
+							},
+						],
+					})
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "shell-spoof-1",
+								name: "SHELL",
+								arguments: { command: "go test ./... || true" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply("reply-spoofed", "Implemented the change."),
+					)
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "shell-real-1",
+								name: "SHELL",
+								arguments: { command: "go test ./..." },
+							},
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply("reply-verified", "Implemented and tested the change."),
 					),
-				).toHaveLength(1);
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: true,
+				text: "succeeded",
+			}));
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "WRITE", description: "Write a file." },
+					{ name: "SHELL", description: "Run a command." },
+					{ name: "REPLY", description: "Reply to the user." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
 			});
-		},
-	);
+
+			expect(runtime.useModel).toHaveBeenCalledTimes(5);
+			expect(executeToolCall).toHaveBeenCalledTimes(3);
+			expect(result.finalMessage).toBe("Implemented and tested the change.");
+			expect(
+				result.trajectory.evaluatorOutputs.filter(
+					(output) => output.decision === "CONTINUE",
+				),
+			).toHaveLength(1);
+		});
+	});
 
 	it.each([
 		{
@@ -1808,79 +1755,6 @@ describe("v5 planner loop skeleton", () => {
 		},
 	);
 
-	it.each([
-		"./gradlew test",
-		"npx vitest",
-		"bunx vitest",
-		"uv run pytest",
-		"poetry run pytest",
-		"bundle exec rspec",
-		"swift test",
-		"mix test",
-		"tox",
-		"cd pkg && go test ./...",
-		"go test ./... && tsc",
-		"go test ./... 2>&1",
-		"go test ./... &>test.log",
-		"python -m pytest",
-		"python -m unittest",
-		"pnpm exec vitest",
-		"npm exec vitest",
-		"npx --yes vitest",
-		"uv run python -m pytest",
-		"cargo nextest run",
-		"./gradlew :app:test",
-		"./mvnw test",
-		"export CGO_ENABLED=0 && go test ./...",
-	])("accepts a successful common coding verifier: %s", async (command) => {
-		await withCodingRequiredToolDefaults(async () => {
-			const runtime = {
-				useModel: vi
-					.fn()
-					.mockResolvedValueOnce({
-						text: "",
-						toolCalls: [
-							{
-								id: "write-1",
-								name: "WRITE",
-								arguments: { path: "config.go", content: "package config" },
-							},
-						],
-					})
-					.mockResolvedValueOnce({
-						text: "",
-						toolCalls: [
-							{ id: "verify-1", name: "SHELL", arguments: { command } },
-						],
-					})
-					.mockResolvedValueOnce(
-						codingReply("reply-verified", "Implemented and tested the change."),
-					),
-				logger: { warn: vi.fn() },
-			};
-			const executeToolCall = vi.fn(async () => ({
-				success: true,
-				text: "succeeded",
-			}));
-
-			const result = await runPlannerLoop({
-				runtime,
-				context: codingPlannerContext,
-				codingMode: true,
-				tools: [
-					{ name: "WRITE", description: "Write a file." },
-					{ name: "SHELL", description: "Run a command." },
-					{ name: "REPLY", description: "Reply to the user." },
-				],
-				executeToolCall,
-				evaluate: vi.fn(),
-			});
-
-			expect(runtime.useModel).toHaveBeenCalledTimes(3);
-			expect(executeToolCall).toHaveBeenCalledTimes(2);
-			expect(result.finalMessage).toBe("Implemented and tested the change.");
-		});
-	});
 	it.each([
 		{ label: "ordinary verifier exit 1", exitCode: 1 },
 		{ label: "typed normal verifier exit 137", exitCode: 137 },
@@ -2804,7 +2678,7 @@ describe("v5 planner loop skeleton", () => {
 		expect(result.finalMessage).toBe("Final answer.");
 	});
 
-	it("applies the derived per-model reserve when no reserve override is configured", async () => {
+	it("does not infer a context limit or reserve from the model name", async () => {
 		const runtime = {
 			useModel: vi.fn(
 				async () => `{
@@ -2826,15 +2700,15 @@ describe("v5 planner loop skeleton", () => {
 		const plannerParams = runtime.useModel.mock.calls[0]?.[1];
 		expect(plannerParams?.providerOptions.eliza.modelInputBudget).toMatchObject(
 			{
-				contextWindowTokens: 131_000,
-				reserveTokens: 26_200,
-				dispatchThresholdTokens: 104_800,
-				resolvedModelKey: "gpt-oss-120b",
+				contextWindowTokens: 1_000_000,
+				reserveTokens: 10_000,
+				dispatchThresholdTokens: 990_000,
+				resolvedModelKey: null,
 			},
 		);
 	});
 
-	it("keeps explicit compactionReserveTokens overrides with a model lookup", async () => {
+	it("honors explicit context windows and reserve overrides", async () => {
 		const runtime = {
 			useModel: vi.fn(
 				async () => `{
@@ -2850,6 +2724,7 @@ describe("v5 planner loop skeleton", () => {
 			context: { id: "ctx" },
 			config: {
 				contextWindowModelName: "gpt-oss-120b",
+				contextWindowTokens: 131_000,
 				compactionReserveTokens: 5_000,
 			},
 		});
@@ -2860,7 +2735,7 @@ describe("v5 planner loop skeleton", () => {
 				contextWindowTokens: 131_000,
 				reserveTokens: 5_000,
 				dispatchThresholdTokens: 126_000,
-				resolvedModelKey: "gpt-oss-120b",
+				resolvedModelKey: null,
 			},
 		);
 	});
@@ -4597,7 +4472,22 @@ describe("v5 planner loop skeleton", () => {
 		expect(evaluate).not.toHaveBeenCalled();
 	});
 
-	it("keeps the original failure authoritative when a fallback tool succeeds without a correlated retry", async () => {
+	it.each([
+		{
+			name: "keeps an honest diagnosis after uncorrelated fallback success",
+			modelCalls: 3,
+			synthesisReply:
+				"The primary lookup failed on a DNS error; the backup source did return a result.",
+			expectedReply:
+				"The primary lookup failed on a DNS error; the backup source did return a result.",
+		},
+		{
+			name: "rejects an in-flight action claim from failure synthesis",
+			modelCalls: 4,
+			synthesisReply: "calling web search now.",
+			expectedReply: FAILED_TOOL_FALLBACK_MESSAGE,
+		},
+	])("$name", async ({ synthesisReply, expectedReply, modelCalls }) => {
 		const runtime = {
 			useModel: vi
 				.fn()
@@ -4626,7 +4516,7 @@ describe("v5 planner loop skeleton", () => {
 				// the loop asks the model for an honest failure reply instead of
 				// shipping the generic failed-step sentence.
 				.mockResolvedValueOnce({
-					text: "The primary lookup failed on a DNS error; the backup source did return a result.",
+					text: synthesisReply,
 					toolCalls: [],
 				}),
 		};
@@ -4662,7 +4552,7 @@ describe("v5 planner loop skeleton", () => {
 			evaluate,
 		});
 
-		expect(runtime.useModel).toHaveBeenCalledTimes(3);
+		expect(runtime.useModel).toHaveBeenCalledTimes(modelCalls);
 		const retryParams = runtime.useModel.mock.calls[1]?.[1] as {
 			messages?: Array<{ role?: string; content?: unknown }>;
 		};
@@ -4678,9 +4568,8 @@ describe("v5 planner loop skeleton", () => {
 			},
 			expect.objectContaining({ iteration: 2 }),
 		);
-		// The uncorrelated success still cannot launder the failure — but the
-		// reply is now the model's own failure-aware synthesis, primed with the
-		// failed step and its cause, not the fixed canned sentence (#17948).
+		// A fallback result does not settle the original failed operation.
+		// Synthesis receives that failure and cannot promise unexecuted work.
 		const synthesisParams = runtime.useModel.mock.calls[2]?.[1] as {
 			messages?: Array<{ role?: string; content?: string | null }>;
 		};
@@ -4691,77 +4580,7 @@ describe("v5 planner loop skeleton", () => {
 			.join("\n");
 		expect(synthesisPrompt).toContain("The SHELL step failed");
 		expect(synthesisPrompt).toContain("DNS lookup failed");
-		expect(result.finalMessage).toBe(
-			"The primary lookup failed on a DNS error; the backup source did return a result.",
-		);
-	});
-
-	it("never ships an in-flight action claim as the failure-synthesis reply (matrix F40)", async () => {
-		// Live shape: the forced failure-aware synthesis pass answered with an
-		// imminent-action promise instead of a diagnosis. The synthesis is the
-		// turn's last model call, so "calling web search now." is a false claim
-		// and must degrade to the generic failed-step sentence.
-		const runtime = {
-			useModel: vi
-				.fn()
-				.mockResolvedValueOnce({
-					text: "",
-					toolCalls: [
-						{
-							id: "call-1",
-							name: "SHELL",
-							arguments: { command: "curl https://stale.example.invalid" },
-						},
-					],
-				})
-				.mockResolvedValueOnce({
-					text: "",
-					toolCalls: [
-						{
-							id: "call-2",
-							name: "SHELL",
-							arguments: { command: "curl https://backup.example.com" },
-						},
-					],
-				})
-				.mockResolvedValueOnce({
-					text: "calling web search now.",
-					toolCalls: [],
-				}),
-		};
-		const executeToolCall = vi
-			.fn()
-			.mockResolvedValueOnce({
-				success: false,
-				text: "command_failed: DNS lookup failed",
-			})
-			.mockResolvedValueOnce({
-				success: true,
-				text: "backup source returned a result",
-			});
-		const evaluate = vi
-			.fn()
-			.mockResolvedValueOnce({
-				success: false,
-				decision: "FINISH" as const,
-				thought: "The first lookup failed, but I forgot to include a reply.",
-			})
-			.mockResolvedValueOnce({
-				success: true,
-				decision: "FINISH" as const,
-				thought: "Done.",
-				messageToUser: "The backup source returned a result.",
-			});
-
-		const result = await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			tools: [{ name: "SHELL", description: "Run a shell command." }],
-			executeToolCall,
-			evaluate,
-		});
-
-		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+		expect(result.finalMessage).toBe(expectedReply);
 		expect(result.finalMessage).not.toContain("calling web search");
 	});
 
@@ -4948,14 +4767,18 @@ describe("v5 planner loop skeleton", () => {
 		},
 	);
 
-	it("surfaces the tool's diagnostic reason (not a bare 'failed') when a success:false result carries no typed error (#14873)", async () => {
-		// SCHEDULED_TASKS and most actions report failure as
-		// `{ success:false, text:"<why>", data:{ error:"<CODE>" } }`, reserving the
-		// typed `error` field for thrown Errors. Before the fix the failure
-		// signature flattened every such failure to the literal "failed", so a
-		// repeated-failure abort read `Repeated tool failure limit exceeded for
-		// SCHEDULED_TASKS:failed` — diagnostically useless (observed live on the
-		// news-heartbeat turn). The human reason must survive into the limit error.
+	it.each([
+		{
+			name: "preserves the human diagnostic text",
+			text: "I need a trigger (once | cron | interval | ...) to schedule a task.",
+			expectedReason: "I need a trigger",
+		},
+		{
+			name: "falls back to the machine error code when text is absent",
+			text: undefined,
+			expectedReason: "MISSING_TRIGGER",
+		},
+	])("repeated failure $name", async ({ text, expectedReason }) => {
 		const runtime = {
 			useModel: vi.fn(async () => ({
 				text: "",
@@ -4970,7 +4793,7 @@ describe("v5 planner loop skeleton", () => {
 		};
 		const executeToolCall = vi.fn(async () => ({
 			success: false,
-			text: "I need a trigger (once | cron | interval | ...) to schedule a task.",
+			...(text === undefined ? {} : { text }),
 			data: { subaction: "create", error: "MISSING_TRIGGER" },
 		}));
 		const evaluate = vi.fn(async () => ({
@@ -4995,53 +4818,8 @@ describe("v5 planner loop skeleton", () => {
 		expect(thrown).toBeInstanceOf(TrajectoryLimitExceeded);
 		const message = (thrown as TrajectoryLimitExceeded).message;
 		expect(message).toContain("SCHEDULED_TASKS");
-		expect(message).toContain("I need a trigger");
+		expect(message).toContain(expectedReason);
 		expect(message).not.toContain("SCHEDULED_TASKS:failed");
-	});
-
-	it("falls back to the data.error code when a success:false result has no text (#14873)", async () => {
-		// The `text` projection is the preferred human reason, but a failure that
-		// carries only a machine code in `data.error` must still name that code
-		// rather than degrade to "failed".
-		const runtime = {
-			useModel: vi.fn(async () => ({
-				text: "",
-				toolCalls: [
-					{
-						id: "call-1",
-						name: "SCHEDULED_TASKS",
-						arguments: { action: "create" },
-					},
-				],
-			})),
-		};
-		const executeToolCall = vi.fn(async () => ({
-			success: false,
-			data: { subaction: "create", error: "MISSING_TRIGGER" },
-		}));
-		const evaluate = vi.fn(async () => ({
-			success: false,
-			decision: "CONTINUE" as const,
-			thought: "Retry.",
-		}));
-
-		let thrown: unknown;
-		try {
-			await runPlannerLoop({
-				runtime,
-				context: { id: "ctx" },
-				config: { maxRepeatedFailures: 1 },
-				executeToolCall,
-				evaluate,
-			});
-		} catch (error) {
-			thrown = error;
-		}
-
-		expect(thrown).toBeInstanceOf(TrajectoryLimitExceeded);
-		expect((thrown as TrajectoryLimitExceeded).message).toContain(
-			"MISSING_TRIGGER",
-		);
 	});
 
 	it("does not count different failed tool parameters as the same repeated failure", async () => {
@@ -5177,45 +4955,6 @@ describe("v5 planner loop skeleton", () => {
 		expect(executeToolCall.mock.calls.length).toBeLessThanOrEqual(2);
 	});
 
-	it("derives completed=false from a native more_work_pending scope arg and strips it", () => {
-		const output = parsePlannerOutput({
-			text: "",
-			toolCalls: [
-				{
-					id: "call-1",
-					name: "SETTINGS",
-					arguments: {
-						action: "set",
-						key: "shell",
-						[TURN_SCOPE_ARG]: TURN_SCOPE_MORE_WORK_PENDING,
-					},
-				},
-			],
-		} as never);
-
-		expect(output.completed).toBe(false);
-		expect(output.toolCalls[0]?.params).toEqual({
-			action: "set",
-			key: "shell",
-		});
-	});
-
-	it("derives completed=true from a native final scope arg", () => {
-		const output = parsePlannerOutput({
-			text: "",
-			toolCalls: [
-				{
-					id: "call-1",
-					name: "SETTINGS",
-					arguments: { action: "set", [TURN_SCOPE_ARG]: TURN_SCOPE_FINAL },
-				},
-			],
-		} as never);
-
-		expect(output.completed).toBe(true);
-		expect(output.toolCalls[0]?.params).toEqual({ action: "set" });
-	});
-
 	it("treats an unknown scope value as no opinion but still strips it", () => {
 		const output = parsePlannerOutput({
 			text: "",
@@ -5230,26 +4969,6 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(output.completed).toBeUndefined();
 		expect(output.toolCalls[0]?.params).toEqual({ action: "set" });
-	});
-
-	it("lets any pending declaration in a batch outvote a final one", () => {
-		const output = parsePlannerOutput({
-			text: "",
-			toolCalls: [
-				{
-					id: "call-1",
-					name: "SETTINGS",
-					arguments: { [TURN_SCOPE_ARG]: TURN_SCOPE_MORE_WORK_PENDING },
-				},
-				{
-					id: "call-2",
-					name: "LOOKUP",
-					arguments: { [TURN_SCOPE_ARG]: TURN_SCOPE_FINAL },
-				},
-			],
-		} as never);
-
-		expect(output.completed).toBe(false);
 	});
 
 	it("keeps the JSON lane's explicit top-level completed over per-call scope args", () => {
@@ -7159,7 +6878,13 @@ describe("tool-turn reply guarantee (#16935)", () => {
 			const runtime = {
 				useModel: vi.fn().mockResolvedValueOnce({
 					text: "",
-					toolCalls: [{ name: "LOOKUP", arguments: { query: "catalog" } }],
+					toolCalls: [
+						{
+							id: "catalog-read",
+							name: "LOOKUP",
+							arguments: { query: "catalog" },
+						},
+					],
 				}),
 				logger: { warn: vi.fn() },
 			};

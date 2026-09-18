@@ -43,8 +43,7 @@ describe("UI source-catalog CI gate", () => {
     const rootPackage = JSON.parse(
       readFileSync(join(repoRoot, "package.json"), "utf8"),
     ) as { scripts?: Record<string, string> };
-    expect(rootPackage.scripts?.verify).toContain("bun run check:i18n");
-    expect(rootPackage.scripts?.["check:i18n"]).toBe(
+    expect(rootPackage.scripts?.verify).toContain(
       "node packages/app-core/scripts/check-i18n.mjs",
     );
   });

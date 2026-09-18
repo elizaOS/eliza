@@ -127,7 +127,7 @@ describe("action roleGate resolves plugin-registered contexts (#12089)", () => {
 		const allowed = await executePlannedToolCall(
 			runtime,
 			{
-				message: msg(),
+				message: { ...msg(), entityId: runtime.agentId },
 				activeContexts: ["plugin_billing"],
 				userRoles: ["OWNER"],
 			},

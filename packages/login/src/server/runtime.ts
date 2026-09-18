@@ -3,7 +3,7 @@
  * The application host supplies the persisted vault password before startup;
  * database migrations and authentication initialization finish before listening.
  */
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/common";
 
 let activeOwner: symbol | undefined;
 

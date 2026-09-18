@@ -1,5 +1,5 @@
 /** Enqueues cancellation notice intent inside the caller's canonical lifecycle transaction without authorizing any external submission. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, eq } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import type { BillingSubscription } from "../schemas/billing-subscriptions";

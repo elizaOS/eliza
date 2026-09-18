@@ -5,7 +5,7 @@
  * Default anvil wallet is auto-admin in devnet (not production).
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import { apiKeysRepository } from "../../db/repositories";

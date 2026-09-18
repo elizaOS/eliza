@@ -6,7 +6,7 @@
  * socket/header stub; the guard and `@elizaos/agent` upstream are not mocked.
  */
 import type http from "node:http";
-import type { WalletExportRequestBody } from "@elizaos/shared";
+import type { WalletExportRequestBody } from "@elizaos/shared/contracts/wallet-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   normalizeCompatRejection,

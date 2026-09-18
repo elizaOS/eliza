@@ -16,7 +16,8 @@
     "plugins"
   ],
   "files": [
-    "src"
+    "dist",
+    "entries/third-party"
   ],
   "publishConfig": {
     "access": "public"
@@ -27,25 +28,25 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./runtime-kernel": {
-      "types": "./src/runtime-kernel.ts",
-      "import": "./src/runtime-kernel.ts",
-      "default": "./src/runtime-kernel.ts"
+      "types": "./dist/runtime-kernel.d.ts",
+      "import": "./dist/runtime-kernel.js",
+      "default": "./dist/runtime-kernel.js"
     },
     "./first-party": {
-      "types": "./src/first-party/index.ts",
-      "import": "./src/first-party/index.ts",
-      "default": "./src/first-party/index.ts"
+      "types": "./dist/first-party/index.d.ts",
+      "import": "./dist/first-party/index.js",
+      "default": "./dist/first-party/index.js"
     },
-    "./first-party/generated.json": "./src/first-party/generated.json",
-    "./first-party/curated-app-definitions.json": "./src/first-party/curated-app-definitions.json",
-    "./first-party/channel-plugin-map.json": "./src/first-party/channel-plugin-map.json",
-    "./first-party/provider-plugin-map.json": "./src/first-party/provider-plugin-map.json",
-    "./first-party/short-id-plugin-map.json": "./src/first-party/short-id-plugin-map.json"
+    "./first-party/generated.json": "./dist/first-party/generated.json",
+    "./first-party/curated-app-definitions.json": "./dist/first-party/curated-app-definitions.json",
+    "./first-party/channel-plugin-map.json": "./dist/first-party/channel-plugin-map.json",
+    "./first-party/provider-plugin-map.json": "./dist/first-party/provider-plugin-map.json",
+    "./first-party/short-id-plugin-map.json": "./dist/first-party/short-id-plugin-map.json"
   },
   "scripts": {
     "validate": "bun run src/validate-cli.ts",
@@ -59,7 +60,9 @@
     "lint:fix": "bunx @biomejs/biome check --write --unsafe src",
     "format": "bunx @biomejs/biome format --write src",
     "format:check": "bunx @biomejs/biome format src",
-    "format:fix": "bunx @biomejs/biome format --write src"
+    "format:fix": "bunx @biomejs/biome format --write src",
+    "build": "node ../scripts/rm-path-recursive.mjs dist && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/registry && node ../scripts/copy-package-assets.mjs packages/registry src/first-party/channel-plugin-map.json src/first-party/curated-app-definitions.json src/first-party/generated.json src/first-party/provider-plugin-map.json src/first-party/short-id-plugin-map.json",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "zod": "^4.4.3"
@@ -72,7 +75,11 @@
     "scripts": {
       "testLanes": [
         "server"
-      ]
+      ],
+      "buildOnInstall": {
+        "sentinel": "dist/index.js",
+        "order": 1
+      }
     }
   }
 }

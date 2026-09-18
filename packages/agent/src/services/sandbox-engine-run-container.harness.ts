@@ -1,10 +1,18 @@
 /** Drives Apple Container startup in a subprocess for inherited-stdio boundary tests. */
 
+import { mock } from "node:test";
 import { ElizaError } from "@elizaos/core";
 import {
   AppleContainerEngine,
   type ContainerRunOptions,
 } from "./sandbox-engine.ts";
+
+// The stderr boundary test observes a real child exit without racing the
+// startup grace timer against Node launch or pipe-drain scheduling. Its outer
+// process still enforces a real timeout; ordinary startup tests use real time.
+if (process.env.ELIZA_TEST_HOLD_STARTUP_CHECK === "1") {
+  mock.timers.enable({ apis: ["setTimeout"] });
+}
 
 const mode = process.argv[2];
 const name =

@@ -14,7 +14,7 @@ import { ActionNoticeToast } from "@elizaos/ui/components/shell/ActionNoticeToas
 import { PairingView } from "@elizaos/ui/components/shell/PairingView";
 import { StartupFailureView } from "@elizaos/ui/components/shell/StartupFailureView";
 import { AppWorkspaceChrome } from "@elizaos/ui/components/workspace/AppWorkspaceChrome";
-import { getBootConfig } from "@elizaos/ui/config/boot-config-store";
+import { getBootConfig } from "@elizaos/ui/config";
 import {
   resolveDetachedShellTarget,
   type WindowShellRoute,

@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Real-filesystem coverage for the Notes backend. Tests restart the
  * durable store, exercise concurrent serialized writes, drive every domain
@@ -11,12 +12,14 @@ import {
   AgentRuntime,
   createCharacter,
   type IAgentRuntime,
-  type Route,
-  type RouteHandlerContext,
-  type RouteHandlerResult,
   Service,
   stringToUuid,
 } from "@elizaos/core";
+import type {
+  Route,
+  RouteHandlerContext,
+  RouteHandlerResult,
+} from "@elizaos/shared/api/http-plugin";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   interact,
@@ -119,12 +122,11 @@ async function createTestRuntime(agentId: string): Promise<AgentRuntime> {
   const runtime = new AgentRuntime({
     agentId: testAgentId(agentId),
     character: createCharacter({ name: `Notes ${agentId}` }),
-    disableBasicCapabilities: true,
     enableAutonomy: false,
     logLevel: "fatal",
   });
   testRuntimes.push(runtime);
-  await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+  await initializeTestRuntime(runtime, { skipMigrations: true });
   return runtime;
 }
 

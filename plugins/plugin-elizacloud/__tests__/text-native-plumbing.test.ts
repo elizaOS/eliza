@@ -13,7 +13,7 @@
  * Skips with a yellow warning when `ELIZAOS_CLOUD_API_KEY` is not set.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core";
+import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleActionPlanner, handleResponseHandler } from "../src/models/text";
@@ -178,11 +178,11 @@ describe.skipIf(missing.length > 0)("Eliza Cloud native planner plumbing (live)"
     ) {
       const toolCalls = (
         result as {
-          toolCalls: Array<{ toolName?: string }>;
+          toolCalls: Array<{ name?: string }>;
         }
       ).toolCalls;
       expect(toolCalls.length).toBeGreaterThan(0);
-      expect(toolCalls[0]?.toolName).toBe("PLAN_ACTIONS");
+      expect(toolCalls[0]?.name).toBe("PLAN_ACTIONS");
     }
   }, 120_000);
 });

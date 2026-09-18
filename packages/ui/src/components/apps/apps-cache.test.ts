@@ -2,7 +2,7 @@
  * Unit tests for apps cache: validates catalog caching and validation.
  */
 
-import type { RegistryAppInfo } from "@elizaos/shared";
+import type { RegistryAppInfo } from "@elizaos/shared/contracts/apps";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clearAppsCache, readAppsCache, writeAppsCache } from "./apps-cache.ts";
 

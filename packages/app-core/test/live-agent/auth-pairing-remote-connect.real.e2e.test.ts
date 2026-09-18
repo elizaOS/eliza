@@ -68,7 +68,7 @@
  */
 
 import crypto from "node:crypto";
-import { createDeterministicModelPlugin } from "@elizaos/core/testing";
+import { createDeterministicModelPlugin } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import { SESSION_COOKIE_NAME } from "../../src/api/auth/sessions.ts";

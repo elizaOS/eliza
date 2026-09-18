@@ -8,7 +8,7 @@
  * contract cannot select the legacy database-backed bridge.
  */
 
-import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/common";
 import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys } from "@/lib/cache/keys";

@@ -25,11 +25,8 @@
  * requires live model credentials to prove model routing.
  */
 import { pluginAction } from "@elizaos/agent/actions/plugin";
-import {
-  type IAgentRuntime,
-  type Plugin,
-  promoteSubactionsToActions,
-} from "@elizaos/core";
+import type { Plugin } from "@elizaos/core";
+import { type IAgentRuntime, promoteSubactionsToActions } from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioContext,

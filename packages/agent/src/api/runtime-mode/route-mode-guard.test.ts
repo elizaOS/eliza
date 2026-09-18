@@ -1,3 +1,5 @@
+import type { Route } from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Coverage for the route-mode gate decision, focused on the fail-closed
  * drift guard added for arch-audit #12633.
@@ -88,17 +90,16 @@ describe("evaluateRouteModeGate — fail-closed protected namespaces (#12633)", 
     // A plugin declares /api/tts/cloud visible in local/cloud/remote via its
     // route.modes — the gate honors that declaration (hidden only in
     // local-only) even though the static matrix has no entry for it.
-    const runtime = {
-      routes: [
-        {
-          type: "POST" as const,
-          path: "/api/tts/cloud",
-          rawPath: true,
-          modes: ["local", "cloud", "remote"] as const,
-          modeReason: "cloud TTS preview fixture",
-        },
-      ],
-    };
+    const runtime = {};
+    getHttpRuntime(runtime).routes = [
+      {
+        type: "POST" as const,
+        path: "/api/tts/cloud",
+        rawPath: true,
+        modes: ["local", "cloud", "remote"] as const,
+        modeReason: "cloud TTS preview fixture",
+      },
+    ] as Route[];
     expect(
       evaluateRouteModeGate({
         pathname: "/api/tts/cloud",

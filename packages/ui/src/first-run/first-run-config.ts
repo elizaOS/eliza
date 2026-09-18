@@ -2,18 +2,23 @@
  * Builds the first-run configuration payload: deployment target, credential
  * inputs, and Eliza Cloud service routing for the chosen provider/topology.
  */
+
+import type { DeploymentTargetConfig } from "@elizaos/shared/contracts/deployment-types";
+import {
+  type FirstRunCredentialInputs,
+  type FirstRunLocalProviderId,
+  normalizeFirstRunProviderId,
+  requiresAdditionalRuntimeProvider,
+} from "@elizaos/shared/contracts/first-run-options";
 import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
-  type DeploymentTargetConfig,
-  type FirstRunCredentialInputs,
-  type FirstRunLocalProviderId,
-  type LinkedAccountFlagsConfig,
-  normalizeFirstRunProviderId,
-  requiresAdditionalRuntimeProvider,
-  type ServiceRouteConfig,
-  type ServiceRoutingConfig,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/service-routing";
+import type {
+  LinkedAccountFlagsConfig,
+  ServiceRouteConfig,
+  ServiceRoutingConfig,
+} from "@elizaos/shared/contracts/service-routing-types";
 import type { FirstRunRuntime } from "./first-run";
 import {
   type FirstRunRuntimeTarget,

@@ -5,7 +5,8 @@
  * and the trailing Examples plus docs-link block. Rendering only — it defines
  * no command behavior.
  */
-import { formatDocsLink, isRich, theme } from "@elizaos/shared";
+import { formatDocsLink } from "@elizaos/shared/terminal/links";
+import { isRich, theme } from "@elizaos/shared/terminal/theme";
 import type { Command } from "commander";
 import { formatCliBannerLine, hasEmittedCliBanner } from "../banner";
 import { replaceCliName, resolveCliName } from "../cli-name";

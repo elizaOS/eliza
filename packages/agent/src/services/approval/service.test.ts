@@ -20,7 +20,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { ServiceType } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/core/testing";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ApprovalEnqueueInput,

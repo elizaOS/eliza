@@ -39,15 +39,15 @@ function parseMigrationTargets(guide: string): MigrationTarget[] {
     const cwdRun = command.match(/^bun run --cwd (\S+) ([^\s-]\S*)(?:\s|$)/);
     const rootRun = command.match(/^bun run ([^\s-]\S*)(?:\s|$)/);
     const bunTest = command.match(/^bun test ([^\s-]\S*)(?:\s|$)/);
-    const nodeRun = command.match(/^node (\S+)/);
+    const fileRun = command.match(/^(?:node|bun) (\S+\.(?:mjs|js|ts))(?:\s|$)/);
     if (cwdRun) {
       targets.push({ raw: command, packageDir: cwdRun[1], script: cwdRun[2] });
     } else if (rootRun) {
       targets.push({ raw: command, packageDir: ".", script: rootRun[1] });
     } else if (bunTest) {
       targets.push({ raw: command, packageDir: ".", testFile: bunTest[1] });
-    } else if (nodeRun) {
-      targets.push({ raw: command, packageDir: ".", testFile: nodeRun[1] });
+    } else if (fileRun) {
+      targets.push({ raw: command, packageDir: ".", testFile: fileRun[1] });
     } else {
       throw new Error(`Unsupported migration command: ${command}`);
     }

@@ -9,4 +9,4 @@
 export {
   formatUncaughtError,
   shouldIgnoreUnhandledRejection,
-} from "@elizaos/shared";
+} from "@elizaos/shared/error-classification";

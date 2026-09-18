@@ -2,6 +2,7 @@ node_modules
 /out
 /output/
 
+
 # E2E recording output — videos, traces, contact sheets (generated locally)
 /e2e-recordings/
 # Local cross-silo evidence review dashboard (generated locally)
@@ -612,7 +613,6 @@ packages/inference/verify/vulkan_dispatch_smoke
 packages/training/vendor/
 
 # Generated run output — never source data.
-packages/app-core/collision-report.json
 /plugins/plugin-personal-assistant/docs/audit/cerebras-journey-eval-results.json
 
 # Compiler output belongs in each package's dist directory, never beside source.

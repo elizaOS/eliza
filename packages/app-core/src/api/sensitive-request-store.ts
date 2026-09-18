@@ -10,8 +10,8 @@
  * `localSensitiveRequestStore` is the shared process singleton.
  */
 import crypto from "node:crypto";
+import type { JsonObject } from "@elizaos/common";
 import {
-  type JsonObject,
   redactSensitiveRequestMetadata,
   type SensitiveRequest,
   type SensitiveRequestEvent,

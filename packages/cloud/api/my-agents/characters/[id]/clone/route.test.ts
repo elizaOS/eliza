@@ -11,7 +11,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { Hono } from "hono";
 
 import type { UserCharacter } from "@/db/repositories/characters";

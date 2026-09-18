@@ -20,7 +20,7 @@
  * passes over just the changed tail of a growing turn (O(delta) per frame
  * instead of O(len) — #15280) while producing byte-identical output.
  */
-import { stripAssistantStageDirections } from "@elizaos/shared";
+import { stripAssistantStageDirections } from "@elizaos/shared/utils/assistant-text";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
 import type { JsonSchemaObject } from "../../config/config-catalog";

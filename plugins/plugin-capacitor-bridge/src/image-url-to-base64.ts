@@ -2,7 +2,7 @@
  * Resolves caller-influenced bionic vision image URLs through the canonical
  * guarded media fetch without widening the bridge package's public exports.
  */
-import { fetchRemoteMedia } from "@elizaos/core";
+import { fetchRemoteMedia } from "@elizaos/shared/media";
 
 // Match the bounds used by the sibling plugin-local-inference vision paths.
 const IMAGE_DESCRIPTION_FETCH_MAX_BYTES = 20 * 1024 * 1024;

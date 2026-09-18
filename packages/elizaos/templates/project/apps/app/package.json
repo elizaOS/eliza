@@ -16,10 +16,10 @@
     "brand:assets": "node scripts/generate-brand-assets.mjs",
     "plugin:build": "bun scripts/plugin-build.mjs",
     "build": "bun scripts/build.mjs",
-    "build:ios": "node ../../../../../scripts/run-eliza-app-core-script.mjs run-mobile-build.mjs ios",
-    "build:android": "node ../../../../../scripts/run-eliza-app-core-script.mjs run-mobile-build.mjs android",
-    "ios": "node ../../../../../scripts/run-eliza-app-core-script.mjs run-mobile-build.mjs ios && capacitor open ios",
-    "android": "node ../../../../../scripts/run-eliza-app-core-script.mjs run-mobile-build.mjs android && capacitor open android",
+    "build:ios": "node ../../scripts/run-eliza-app-core-script.mjs run-mobile-build.mjs ios",
+    "build:android": "node ../../scripts/run-eliza-app-core-script.mjs run-mobile-build.mjs android",
+    "ios": "node ../../scripts/run-eliza-app-core-script.mjs run-mobile-build.mjs ios && capacitor open ios",
+    "android": "node ../../scripts/run-eliza-app-core-script.mjs run-mobile-build.mjs android && capacitor open android",
     "cap:sync": "capacitor sync",
     "cap:sync:ios": "capacitor sync ios",
     "cap:sync:android": "capacitor sync android",
@@ -37,6 +37,8 @@
     "@capacitor/status-bar": "^8.0.1",
     "@elizaos/app-core": "__ELIZAOS_VERSION__",
     "@elizaos/core": "__ELIZAOS_VERSION__",
+    "@elizaos/plugin-documents": "__ELIZAOS_VERSION__",
+    "@elizaos/plugin-inbox": "__ELIZAOS_VERSION__",
     "@elizaos/ui": "__ELIZAOS_VERSION__",
     "@elizaos/shared": "__ELIZAOS_VERSION__",
     "@pixiv/three-vrm": "^3.4.5",
@@ -56,6 +58,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.0.8",
-    "vitest": "^4.0.0"
+    "vitest": "^4.0.0",
+    "tsx": "^4.21.0"
   }
 }

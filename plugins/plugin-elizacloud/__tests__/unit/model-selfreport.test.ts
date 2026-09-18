@@ -7,11 +7,9 @@
  */
 
 import type { IAgentRuntime, Memory, ModelRegistrationMetadata } from "@elizaos/core";
-import {
-  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-  ModelType,
-  runtimeModelContextProvider,
-} from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
+import { runtimeModelContextProvider } from "@elizaos/plugin-assistant";
+import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerTextInferenceModels } from "../../src/index";
 import { DEFAULT_ELIZA_CLOUD_LARGE_MODEL } from "../../src/utils/config";

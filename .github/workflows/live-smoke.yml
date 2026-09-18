@@ -2114,7 +2114,8 @@ jobs:
           unset key_without_whitespace
       - name: Run shared staging onboarding smoke
         id: shared_live
-        run: bun run cloud:shared-onboarding:live
+        run: bun packages/cloud/scripts/admin/live-cloud-provision-smoke.ts
+
       - name: Upload privacy-safe shared staging evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -2236,7 +2237,7 @@ jobs:
           ELIZAOS_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
           ELIZA_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
       - name: Validate remote capability cloud live report
-        run: bun run test:remote-capabilities:validate-live-reports --kind cloud --expect-count 1 --max-age-minutes 90 --max-future-minutes 5 --require-ci --require-file-identity --match-github-env reports/remote-capabilities/cloud
+        run: bun packages/agent/scripts/validate-capability-router-live-reports.ts --kind cloud --expect-count 1 --max-age-minutes 90 --max-future-minutes 5 --require-ci --require-file-identity --match-github-env reports/remote-capabilities/cloud
       - name: Upload remote capability cloud live report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -2309,7 +2310,7 @@ jobs:
           ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_ENDPOINT_ID: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_ENDPOINT_ID }}
           ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_MODULES: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_MODULES }}
       - name: Validate remote capability provider live reports
-        run: bun run test:remote-capabilities:validate-live-reports --kind provider --expect-count 2..3 --max-age-minutes 90 --max-future-minutes 5 --allowed-providers home-machine,mobile-companion,desktop-companion --require-providers home-machine,mobile-companion --require-ci --require-file-identity --match-github-env reports/remote-capabilities/providers
+        run: bun packages/agent/scripts/validate-capability-router-live-reports.ts --kind provider --expect-count 2..3 --max-age-minutes 90 --max-future-minutes 5 --allowed-providers home-machine,mobile-companion,desktop-companion --require-providers home-machine,mobile-companion --require-ci --require-file-identity --match-github-env reports/remote-capabilities/providers
       - name: Upload remote capability provider live report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -2363,9 +2364,9 @@ jobs:
             --name remote-capability-provider-live-report \
             --dir reports/remote-capabilities/providers || echo "::notice::remote-capability-provider-live-report artifact not present"
       - name: Re-validate cloud live report from downloaded artifact
-        run: bun run test:remote-capabilities:validate-live-reports --kind cloud --expect-count 1 --max-age-minutes 120 --max-future-minutes 5 --require-ci --require-file-identity reports/remote-capabilities/cloud
+        run: bun packages/agent/scripts/validate-capability-router-live-reports.ts --kind cloud --expect-count 1 --max-age-minutes 120 --max-future-minutes 5 --require-ci --require-file-identity reports/remote-capabilities/cloud
       - name: Re-validate provider live reports from downloaded artifacts
-        run: bun run test:remote-capabilities:validate-live-reports --kind provider --expect-count 2..3 --max-age-minutes 120 --max-future-minutes 5 --allowed-providers home-machine,mobile-companion,desktop-companion --require-providers home-machine,mobile-companion --require-ci --require-file-identity reports/remote-capabilities/providers
+        run: bun packages/agent/scripts/validate-capability-router-live-reports.ts --kind provider --expect-count 2..3 --max-age-minutes 120 --max-future-minutes 5 --allowed-providers home-machine,mobile-companion,desktop-companion --require-providers home-machine,mobile-companion --require-ci --require-file-identity reports/remote-capabilities/providers
 env:
   CI: "true"
   BUN_VERSION: 1.3.14

@@ -93,7 +93,7 @@ None. This package reads no environment variables and has no runtime configurati
 - **Creation fields are required.** TypeScript and Swift both require a non-empty title plus valid `startAt` and `endAt` values. EventKit supplies no defaults for direct saves.
 - **Dates must be ISO 8601.** The Swift layer accepts both fractional-seconds and whole-seconds variants; always pass UTC ISO strings from TypeScript.
 - **`calendarId = "primary"` or `""` resolves to `defaultCalendarForNewEvents`** in the Swift layer.
-- **Build output:** `dist/plugin.cjs.js` (CJS), `dist/esm/index.js` (ESM), `dist/plugin.js` (IIFE for unpkg). The `bun`/`development` export condition resolves directly to `src/index.ts` for source-mode development.
+- **Build output:** `dist/plugin.cjs.js` (CJS), `dist/esm/index.js` (ESM), `dist/plugin.js` (IIFE for unpkg). The explicit `eliza-source` export condition resolves directly to `src/index.ts` for source-mode development.
 - See the root `CLAUDE.md` for repo-wide architecture rules, naming conventions, and logger requirements.
 
 ## Verification

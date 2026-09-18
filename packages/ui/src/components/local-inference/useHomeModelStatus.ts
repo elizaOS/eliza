@@ -4,7 +4,7 @@
  * model placement are separate: a local agent may still send text to Cerebras.
  */
 
-import { normalizeServiceRoutingConfig } from "@elizaos/shared";
+import { normalizeServiceRoutingConfig } from "@elizaos/shared/contracts/service-routing";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { client } from "../../api";

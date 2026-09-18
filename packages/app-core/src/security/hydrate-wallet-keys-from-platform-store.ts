@@ -15,7 +15,7 @@ import { logger } from "@elizaos/core";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudStewardOperationalTuple,
-} from "@elizaos/shared";
+} from "@elizaos/shared/elizacloud/dev-cloud-env-authority";
 
 import { sharedVault } from "../services/vault-mirror";
 import { deriveAgentVaultId } from "./agent-vault-id";

@@ -32,11 +32,7 @@ import {
   scoreEntries,
   toSearchResults,
 } from "@elizaos/agent/services/registry-client-queries";
-import type {
-  AppPackageRouteContext,
-  IAgentRuntime,
-  RouteRequestMeta,
-} from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
 import {
@@ -72,6 +68,10 @@ import {
   parseAppIsolation,
   parseAppPermissions,
 } from "@elizaos/shared";
+import type {
+  AppPackageRouteContext,
+  RouteRequestMeta,
+} from "@elizaos/shared/api/route-helpers";
 
 function decodeAppPathSegment(raw: string): string | null {
   try {

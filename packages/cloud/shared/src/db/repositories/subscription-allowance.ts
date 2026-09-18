@@ -3,7 +3,7 @@
  * It locks organization first, reads PostgreSQL wall time after that lock, and
  * never accepts caller time or escapes to a global database connection.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, desc, eq, gt, lt, or } from "drizzle-orm";
 import { resolveSubscriptionPlanDefinition } from "../../lib/services/subscription-catalog";
 import type { DbTransaction } from "../client";

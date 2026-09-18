@@ -8,16 +8,16 @@
  * No model or embeddings; scores are computed from the in-memory catalog.
  */
 import { describe, expect, it } from "vitest";
-import { promoteSubactionsToActions } from "../../actions/promote-subactions";
-import { messageAction } from "../../features/advanced-capabilities/actions/message";
-import { searchMessagesAction } from "../../features/messaging/triage/actions/searchMessages";
-import { buildActionCatalog } from "../action-catalog";
+import { messageAction } from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/message.ts";
+import { searchMessagesAction } from "../../../../../plugins/plugin-assistant/src/features/messaging/triage/actions/searchMessages.ts";
+import { buildActionCatalog } from "../../../../../plugins/plugin-assistant/src/runtime/action-catalog.ts";
 import {
 	parentAliasesForCandidateAction,
 	retrieveActions,
 	stripControlBlockMarkers,
 	tokenizeActionSearchText,
-} from "../action-retrieval";
+} from "../../../../../plugins/plugin-assistant/src/runtime/action-retrieval.ts";
+import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 
 const actions = [
 	{

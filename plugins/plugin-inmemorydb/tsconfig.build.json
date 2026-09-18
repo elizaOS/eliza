@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.build.template.json",
   "compilerOptions": {
     "rootDir": ".",
-    "outDir": "./dist/browser",
+    "outDir": "./dist",
     "declaration": true,
     "declarationMap": true,
     "composite": false,

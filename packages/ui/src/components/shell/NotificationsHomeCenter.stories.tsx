@@ -4,7 +4,7 @@
  * the stories render real store-driven states (no network).
  */
 
-import type { AgentNotification } from "@elizaos/core";
+import type { AgentNotification } from "@elizaos/common";
 import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect, useState } from "react";
 import {

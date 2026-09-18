@@ -18,7 +18,7 @@ import {
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { tasksAction } from "../actions/tasks.ts";
 

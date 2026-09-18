@@ -15,7 +15,8 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { createTestRuntimeWithModelProvider } from "@elizaos/core/testing";
+import { createAssistantPlugin } from "@elizaos/plugin-assistant";
+import { createTestRuntimeWithModelProvider } from "@elizaos/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../services/acp-service.js";
 import {
@@ -92,6 +93,7 @@ describe("parent-agent explicit coding-mode negative conformance", () => {
     };
     const harness = await createTestRuntimeWithModelProvider({
       characterName: "ParentBrokerConformanceAgent",
+      plugins: [createAssistantPlugin()],
       resolve: (call) => {
         if (call.modelType !== ModelType.ACTION_PLANNER) return undefined;
         plannerCalls += 1;
@@ -124,7 +126,6 @@ describe("parent-agent explicit coding-mode negative conformance", () => {
       },
     });
     cleanups.push(harness.cleanup);
-    await harness.runtime.disableTrajectories();
     harness.runtime.registerAction(writeAction);
     expect(harness.runtime.actions).toContain(writeAction);
 

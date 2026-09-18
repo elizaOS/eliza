@@ -11,7 +11,7 @@
  * `AccountList`; it never duplicates that UI.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing-types";
 import { useMemo, useState } from "react";
 import type { AccountConnectRequest } from "../../api/client-types-chat";
 import { useAccounts } from "../../hooks/useAccounts";

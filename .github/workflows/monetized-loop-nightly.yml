@@ -48,7 +48,7 @@ jobs:
       # locally on top of the linked-workspace build; the 30-minute historical
       # budget for two specs becomes 60 for the whole lane.
       - name: Run full cloud stack e2e suite
-        run: bun run cloud:e2e
+        run: bun run --cwd packages/cloud/e2e test
 
       - name: Upload Playwright evidence
         if: always()

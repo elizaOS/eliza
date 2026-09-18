@@ -34,7 +34,7 @@ await buildPlugin({
       "readline",
       "@elizaos/shared",
       "@elizaos/agent",
-      "@elizaos/vault",
+      "@elizaos/credentials/vault",
       "@elizaos/cloud-routing",
       "node-llama-cpp",
       "@node-llama-cpp/*",

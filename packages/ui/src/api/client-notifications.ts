@@ -9,7 +9,7 @@ import type {
   AgentNotification,
   NotificationCategory,
   NotificationInput,
-} from "@elizaos/core";
+} from "@elizaos/common";
 import { ElizaClient } from "./client-base";
 
 export interface NotificationListResponse {

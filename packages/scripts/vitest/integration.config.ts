@@ -7,7 +7,7 @@ import {
   getElizaCoreEntry,
   getSharedSourceRoot,
   getUiSourceRoot,
-} from "../../core/src/testing/eliza-package-paths";
+} from "@elizaos/testing/eliza-package-paths";
 import { repoRoot } from "./repo-root";
 import { buildWorkspaceSourceAliases } from "./source-aliases";
 import {
@@ -23,39 +23,6 @@ import {
 } from "./workspace-aliases";
 
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
-const elizaCoreEntryDir = elizaCoreEntry
-  ? path.dirname(elizaCoreEntry)
-  : undefined;
-// Exact-match aliases for the `@elizaos/core/<subpath>` exports this lane's
-// module graph imports (`./node` from plugin dists, `./testing` from test
-// runtimes, `./connectors` from connector plugins). Each candidate list covers
-// the source layout (entry at src/) first, then the built layout (entry at
-// dist/node/), so every subpath resolves inside the same core tree as
-// `elizaCoreEntry` — mixing source and dist would boot two copies of core.
-const elizaCoreSubpathAliases: ModuleAlias[] = elizaCoreEntryDir
-  ? [
-      { subpath: "node", candidates: ["index.node.ts", "index.node.js"] },
-      {
-        subpath: "testing",
-        candidates: ["testing/index.ts", "../testing/index.js"],
-      },
-      {
-        subpath: "connectors",
-        candidates: ["connectors.ts", "../connectors.js"],
-      },
-      {
-        subpath: "client-public",
-        candidates: ["client-public.ts", "client-public.js"],
-      },
-    ].flatMap(({ subpath, candidates }) => {
-      const replacement = candidates
-        .map((candidate) => path.join(elizaCoreEntryDir, candidate))
-        .find((candidate) => existsSync(candidate));
-      return replacement
-        ? [{ find: new RegExp(`^@elizaos/core/${subpath}$`), replacement }]
-        : [];
-    })
-  : [];
 const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 // plugin-discord is not part of build:core, so its `/user-account-scraper`
 // subpath export has no dist and dies with "Cannot find package" when the PA
@@ -213,15 +180,6 @@ const integrationResolveAlias: ModuleAlias[] = [
   },
   ...(elizaCoreEntry
     ? [
-        // Subpath aliases must precede the bare specifier. A bare-string
-        // `find` is prefix-matched by Vite/rollup, so a string
-        // "@elizaos/core" alias rewrites "@elizaos/core/node" (and
-        // "/testing", "/connectors") into "<core entry file>/<subpath>" — a
-        // path under a *file* (ENOTDIR) — which killed every plugin
-        // integration test in this lane (#11047). The bare specifier is
-        // exact-matched so any other subpath falls through to normal
-        // package-exports resolution instead of being rewritten.
-        ...elizaCoreSubpathAliases,
         {
           find: /^@elizaos\/core$/,
           replacement: elizaCoreEntry,

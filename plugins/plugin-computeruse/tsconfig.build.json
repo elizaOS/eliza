@@ -8,7 +8,14 @@
     "declaration": true,
     "incremental": false,
     "noEmit": false,
-    "types": ["node", "bun-types"]
+    "types": ["node", "bun-types"],
+    "paths": {
+      "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
+      "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/dist/*"],
+      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/dist/*"]
+    }
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]

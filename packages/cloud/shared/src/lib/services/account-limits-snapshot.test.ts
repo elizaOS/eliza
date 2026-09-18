@@ -5,7 +5,7 @@
  * isolation, and serialization logic — no snapshot field is hand-assembled.
  */
 import { describe, expect, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { DrizzleQueryError } from "drizzle-orm";
 import { type AccountLimitsSources, buildAccountLimitsSnapshot } from "./account-limits-snapshot";
 

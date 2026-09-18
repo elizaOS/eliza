@@ -19,7 +19,7 @@
  * actually up and reachable on a known port.
  */
 
-import { resolveDesktopApiPort } from "@elizaos/shared";
+import { resolveDesktopApiPort } from "@elizaos/shared/runtime-env";
 
 export function resolveRpcAgentPort(
   embeddedPort: number | null,

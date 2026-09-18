@@ -211,7 +211,7 @@ describe("workspace package resolution", () => {
         );
 
         for (const subpath of [
-          "@elizaos/core/testing",
+          "@elizaos/testing",
           "@elizaos/core/roles",
           "@elizaos/core/client-public-extra",
         ]) {

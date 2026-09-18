@@ -5,7 +5,7 @@
  * binding that is no longer active. Deterministic, mocked runner harness.
  */
 
-import type { IAgentRuntime, Memory } from "@elizaos/core/edge";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { decideDispatchPolicy } from "./dispatch-policy.js";
 import type {

@@ -934,6 +934,7 @@ function startVite() {
   const { command: viteCmd, args: viteArgs } = resolveSupervisedViteCommand({
     appDir: path.join(cwd, appDir),
     force: viteForce,
+    sourceCheckout,
     nodePath: resolveNodeRuntimePath(process.env),
     port: UI_PORT,
   });
@@ -1111,8 +1112,8 @@ if (uiOnly) {
   const apiCmd = [
     apiRuntimeCmd,
     ...(apiRuntimeIsBun ? ["--no-install"] : []),
-    "--conditions=eliza-source",
-    ...(apiRuntimeIsBun ? [] : ["--import", "tsx"]),
+    ...(sourceCheckout ? ["--conditions=eliza-source"] : []),
+    ...(!apiRuntimeIsBun && sourceCheckout ? ["--import", "tsx"] : []),
     devServerEntry,
   ];
   // The API server resolves @elizaos/* deps via Bun workspace lookup, which
@@ -1306,7 +1307,10 @@ if (uiOnly) {
         if (shuttingDown) return;
         voiceGatewayProcess = spawn(
           which("bun") ?? "bun",
-          ["--conditions=eliza-source", voiceGatewayScript],
+          [
+            ...(sourceCheckout ? ["--conditions=eliza-source"] : []),
+            voiceGatewayScript,
+          ],
           {
             cwd: apiSpawnCwd,
             env: {

@@ -218,3 +218,7 @@ This plugin is published to npm as `@elizaos/plugin-elizacloud`. Publishing requ
 ## License
 
 MIT
+
+Native inference returns core `{ id, name, arguments }` tool calls for buffered
+and streaming responses. Protocol-specific fields are converted inside this
+plugin; this does not introduce a cloud dependency into core.

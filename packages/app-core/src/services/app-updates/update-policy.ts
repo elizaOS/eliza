@@ -15,11 +15,11 @@
  * render these DTO fields, they do not recompute them.
  */
 import { Capacitor } from "@capacitor/core";
-import {
-  type AgentUpdateAuthority,
-  type AgentUpdateStatus,
-  isElizaOS,
-} from "@elizaos/shared";
+import type {
+  AgentUpdateAuthority,
+  AgentUpdateStatus,
+} from "@elizaos/shared/contracts/update-status";
+import { isElizaOS } from "@elizaos/shared/platform/eliza-os";
 import { type BuildVariant, getBuildVariant } from "@elizaos/ui/build-variant";
 
 export type AppUpdatePlatform = "desktop" | "ios" | "android" | "web";

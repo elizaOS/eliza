@@ -3,7 +3,7 @@
  * agent containers. Workflow operations derive their owner only from trusted
  * internal headers and return typed, non-enumerating errors across tenants.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { Elysia } from "elysia";
 import type { AgentManager } from "./agent-manager";
 import { EventBodySchema } from "./handlers/event";

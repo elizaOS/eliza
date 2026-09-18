@@ -6,9 +6,9 @@
 
 import {
   type ContextDefinition,
-  type Plugin,
   promoteSubactionsToActions,
 } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { notesAction } from "./action.js";
 import { NOTES_CAPABILITIES } from "./capabilities.js";
 import { serverInteract } from "./interact.js";

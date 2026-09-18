@@ -1,0 +1,1052 @@
+/** Tests final reply grounding and recovery against real evaluator parsing and receipt validation. */
+
+import { ChannelType, type IAgentRuntime } from "@elizaos/core";
+import { createMockRuntime as createBaseMockRuntime } from "@elizaos/testing/mock-runtime";
+import { assert, describe, expect, it, vi } from "vitest";
+import { completionContextSources } from "../../../../packages/core/src/runtime/completion-context.ts";
+import {
+  renderContextObject,
+  segmentBlock,
+} from "../../../../packages/core/src/runtime/context-renderer.ts";
+import type { PlannerTrajectory } from "../../../../packages/core/src/runtime/planner-types.ts";
+import { attestDeliveryAudienceFromCanonicalRoom } from "../../../../packages/core/src/security/trusted-delivery-audience.ts";
+import { runWithStreamingContext } from "../../../../packages/core/src/streaming-context.ts";
+import { applyGroundedActionReply } from "../../../../packages/core/src/types/action-reply.ts";
+import {
+  type ActionResult,
+  type Memory,
+  ModelType,
+} from "../../../../packages/core/src/types/index.ts";
+import { parseEvaluatorOutput } from "../runtime/evaluator.ts";
+import { runPlannerLoop } from "../runtime/planner-loop.ts";
+import { capturePlannerReplyRecovery } from "./message/egress-policy.ts";
+import { resolvePlannedReplyEgress } from "./message.ts";
+
+/** Existing parser/receipt cases explicitly accept semantic review; adversarial verdicts live in recovery-grounding.test.ts. */
+function createMockRuntime(...args: Parameters<typeof createBaseMockRuntime>) {
+  const runtime = createBaseMockRuntime(...args);
+  if (!vi.isMockFunction(runtime.useModel)) return runtime;
+  const model = vi.mocked(runtime.useModel);
+  const implementation = model.getMockImplementation();
+  if (!implementation) return runtime;
+  model.mockImplementation(((
+    ...modelArgs: Parameters<IAgentRuntime["useModel"]>
+  ) => {
+    const params = modelArgs[1] as { prompt?: string };
+    if (params?.prompt?.startsWith("Review recovered reply grounding.")) {
+      return Promise.resolve(
+        JSON.stringify({
+          grounded: true,
+          completedChangeClaim: false,
+          reason:
+            "Controlled semantic acceptance for this parser and receipt fixture.",
+        }),
+      );
+    }
+    return implementation(...modelArgs);
+  }) as IAgentRuntime["useModel"]);
+  return runtime;
+}
+
+const message: Memory = {
+  id: "00000000-0000-4000-8000-000000000001",
+  roomId: "00000000-0000-4000-8000-000000000002",
+  entityId: "00000000-0000-4000-8000-000000000003",
+  content: { text: "Make a note about the picnic." },
+};
+
+const savedNote: ActionResult = {
+  success: true,
+  data: {
+    actionName: "NOTES",
+    note: { title: "Picnic", body: "bring a charger" },
+  },
+  effectReceipts: [
+    {
+      receiptId: "note-proof",
+      operation: "notes.create",
+      outcome: "applied",
+      resource: { kind: "note", id: "picnic" },
+      artifacts: [],
+      idempotency: { key: "picnic-request", replayed: false },
+      observedAt: "2026-09-04T12:00:00.000Z",
+      commit: {
+        kind: "durable",
+        id: "note-write",
+        committedAt: "2026-09-04T12:00:00.000Z",
+      },
+    },
+  ],
+};
+
+const withdrawnEditMessage: Memory = {
+  ...message,
+  content: {
+    text: "Cancel the unstarted copper-tag edit. Read QA note B, then update note-qa-missing. If it is missing, do not create or substitute anything; leave the existing notes unchanged.",
+  },
+};
+const readThenRejectedUpdate: ActionResult[] = [
+  {
+    success: true,
+    data: {
+      actionName: "NOTES_LIST",
+      readOnlyOperation: true,
+      notes: [{ id: "qa-b", title: "QA note B", body: "silver thermos" }],
+    },
+  },
+  {
+    success: false,
+    error: 'No sticky note matches "note-qa-missing".',
+    data: { actionName: "NOTES_UPDATE" },
+  },
+];
+const withdrawnEditReply =
+  "I will not perform that edit. QA note B says silver thermos. The requested update failed because the target note was not found; neither existing note changed.";
+
+describe("model-backed final reply recovery", () => {
+  function selectedRecoveryTrajectory(): PlannerTrajectory {
+    const context: PlannerTrajectory["context"] = {
+      id: "selected-recovery",
+      metadata: { roomId: message.roomId, messageId: message.id },
+      events: [
+        ...[
+          "Keep the red note unchanged.",
+          "Correction: bring the burgundy charger, not teal.",
+          "An unrelated completed trip. ".repeat(200),
+        ].map((content, index) => ({
+          id: `source-${index}`,
+          type: "segment" as const,
+          source: "prior-dialogue",
+          segment: {
+            id: `source-${index}`,
+            label: "prior_message:user",
+            content,
+            stable: false,
+          },
+        })),
+        {
+          id: "privacy",
+          type: "provider",
+          name: "PRIVACY",
+          text: "Only the verified owner may read these notes.",
+        },
+        {
+          id: "request",
+          type: "message",
+          message: { role: "user", content: message.content },
+        },
+        { id: "effect", type: "tool_result", metadata: { result: savedNote } },
+      ],
+    };
+    context.metadata = {
+      ...context.metadata,
+      completionContext: {
+        mode: "selected",
+        complete: true,
+        sourceSetId: completionContextSources(context).sourceSetId,
+        relevantSourceIds: [],
+        constraintSourceIds: ["h1", "h2"],
+        referentSourceIds: [],
+        pendingIntentSourceIds: [],
+      },
+    };
+    return {
+      context,
+      modelBaseContext: context,
+      steps: [],
+      archivedSteps: [],
+      plannedQueue: [{ name: "CALENDAR_READ" }],
+      evaluatorOutputs: [],
+    };
+  }
+
+  it.each([false, true])(
+    "recovers from selected originals with tool-free full restoration=%s",
+    async (restore) => {
+      const trajectory = selectedRecoveryTrajectory();
+      const before = structuredClone(trajectory);
+      const prompts: string[] = [];
+      const reply =
+        "The Picnic note was saved. The calendar read is still pending.";
+      const runtime = createMockRuntime({
+        useModel: vi.fn(async (_type, params) => {
+          prompts.push(String(params.prompt));
+          return JSON.stringify(
+            restore && prompts.length === 1
+              ? {
+                  contextRequest: "full",
+                  response: "Do not deliver this draft.",
+                  effectReceiptIds: ["invented"],
+                }
+              : { response: reply, effectReceiptIds: ["note-proof"] },
+          );
+        }),
+        processActions: vi.fn(),
+      });
+      const recovery = JSON.parse(
+        JSON.stringify(
+          capturePlannerReplyRecovery(runtime, message, trajectory),
+        ),
+      );
+      expect(recovery.context).toContain("An unrelated completed trip.");
+      expect(recovery.historySelection.context).not.toContain(
+        "An unrelated completed trip.",
+      );
+      await expect(
+        resolvePlannedReplyEgress({
+          runtime,
+          message,
+          reply: "",
+          recovery,
+          actionResults: [savedNote],
+        }),
+      ).resolves.toEqual({ text: reply, effectReceiptIds: ["note-proof"] });
+      expect(prompts).toHaveLength(restore ? 2 : 1);
+      expect(prompts[0]).not.toContain("An unrelated completed trip.");
+      for (const prompt of prompts) {
+        expect(prompt).toContain("Keep the red note unchanged.");
+        expect(prompt).toContain("burgundy charger, not teal");
+        expect(prompt).toContain("Only the verified owner");
+        expect(prompt).toContain("CALENDAR_READ");
+        expect(prompt).toContain("note-proof");
+        expect(prompt).toContain(message.content.text);
+      }
+      if (restore) {
+        const line = prompts[1]
+          .split("\n")
+          .find((value) => value.startsWith("Original action payload: "));
+        assert(line, "Missing original action payload");
+        expect(
+          JSON.parse(line.replace("Original action payload: ", ""))
+            .replyOnlyRecovery.context,
+        ).toBe(recovery.context);
+      }
+      expect(runtime.processActions).not.toHaveBeenCalled();
+      expect(trajectory).toEqual(before);
+    },
+  );
+
+  it("keeps full recovery when the planner restored context or source bindings changed", () => {
+    const runtime = createMockRuntime();
+    const trajectory = selectedRecoveryTrajectory();
+    trajectory.codingMode = true;
+    expect(
+      capturePlannerReplyRecovery(runtime, message, trajectory)
+        .historySelection,
+    ).toBeUndefined();
+    trajectory.codingMode = false;
+    trajectory.modelBaseContext = {
+      ...trajectory.context,
+      metadata: {
+        ...trajectory.context.metadata,
+        completionContext: undefined,
+      },
+    };
+    expect(
+      capturePlannerReplyRecovery(runtime, message, trajectory)
+        .historySelection,
+    ).toBeUndefined();
+    trajectory.modelBaseContext = trajectory.context;
+    trajectory.context.events[0] = {
+      ...trajectory.context.events[0],
+      metadata: { sourceEdited: true },
+    };
+    expect(
+      capturePlannerReplyRecovery(runtime, message, trajectory)
+        .historySelection,
+    ).toBeUndefined();
+  });
+
+  it.each(["selected", "original", "missing"])(
+    "uses complete context for a %s damaged saved projection",
+    async (damaged) => {
+      const runtime = createMockRuntime({
+        useModel: vi.fn(async () =>
+          JSON.stringify({
+            response: "Saved the Picnic note.",
+            effectReceiptIds: ["note-proof"],
+          }),
+        ),
+      });
+      const recovery = capturePlannerReplyRecovery(
+        runtime,
+        message,
+        selectedRecoveryTrajectory(),
+      );
+      if (damaged === "selected") {
+        assert(recovery.historySelection, "Missing history selection fixture");
+        recovery.historySelection.context = "Tampered selected evidence.";
+      }
+      if (damaged === "original")
+        recovery.context += "\nNew original evidence.";
+      if (damaged === "missing") delete recovery.historySelection;
+      await resolvePlannedReplyEgress({
+        runtime,
+        message,
+        reply: "",
+        recovery,
+        actionResults: [savedNote],
+      });
+      expect(runtime.useModel).toHaveBeenCalledTimes(2);
+      expect(runtime.useModel).toHaveBeenCalledWith(
+        ModelType.TEXT_SMALL,
+        expect.objectContaining({
+          prompt: expect.stringContaining("An unrelated completed trip."),
+        }),
+      );
+    },
+  );
+
+  it("rejects repeated context requests without returning a draft or repeating actions", async () => {
+    const runtime = createMockRuntime({
+      useModel: vi.fn(async () =>
+        JSON.stringify({ contextRequest: "full", response: "Not an answer." }),
+      ),
+      processActions: vi.fn(),
+    });
+    const recovery = capturePlannerReplyRecovery(
+      runtime,
+      message,
+      selectedRecoveryTrajectory(),
+    );
+    await expect(
+      resolvePlannedReplyEgress({
+        runtime,
+        message,
+        reply: "",
+        recovery,
+        actionResults: [savedNote],
+      }),
+    ).rejects.toThrow();
+    expect(runtime.useModel).toHaveBeenCalledTimes(2);
+    expect(runtime.processActions).not.toHaveBeenCalled();
+  });
+  it("does not dispatch full context after the original turn is cancelled", async () => {
+    const controller = new AbortController();
+    const cancellation = new Error("Original turn was cancelled");
+    const runtime = createMockRuntime({
+      useModel: vi.fn(async () => {
+        controller.abort(cancellation);
+        return JSON.stringify({ contextRequest: "full" });
+      }),
+      processActions: vi.fn(),
+    });
+    const recovery = capturePlannerReplyRecovery(
+      runtime,
+      message,
+      selectedRecoveryTrajectory(),
+    );
+    await expect(
+      runWithStreamingContext(
+        { messageId: message.id, abortSignal: controller.signal },
+        () =>
+          resolvePlannedReplyEgress({
+            runtime,
+            message,
+            reply: "",
+            recovery,
+            actionResults: [savedNote],
+          }),
+      ),
+    ).rejects.toBe(cancellation);
+    expect(runtime.useModel).toHaveBeenCalledTimes(1);
+    expect(runtime.processActions).not.toHaveBeenCalled();
+  });
+
+  it("repairs an unsaved draft without serializing the provider store and retains complete grounding evidence", async () => {
+    const response = "I will not create or change any notes.";
+    let repairPrompt = "";
+    const runtime = createMockRuntime({
+      useModel: vi.fn(async (_type, params) => {
+        repairPrompt = String(params.prompt);
+        return JSON.stringify({ response, effectReceiptIds: [] });
+      }),
+    });
+    const historyStore = "internal-provider-history-copy ".repeat(10000);
+    const walletEvidence = {
+      data: {
+        token: "SOL",
+        balance: "2.000000001",
+        warning: "Exact observation: 紫色; not settlement.",
+      },
+      text: "Observed balance is 2.000000001 SOL; observation-tail.",
+    };
+    const recovery = {
+      context:
+        'Complete saved context: wait for APPROVE VIOLET.\nCorrection: 紫色. Keep "two  spaces", C:\\notes\\draft and literal \\n. context-tail',
+      pendingToolCalls: [],
+      evaluatorOutputs: [],
+    };
+    await expect(
+      resolvePlannedReplyEgress({
+        runtime,
+        message: {
+          ...message,
+          content: {
+            text: "Cancel that unsaved draft. Do not create or change any notes.",
+          },
+        },
+        reply:
+          "Cancelled. The audit note was only a preview and was never saved, so there's nothing to undo. No notes created or changed.",
+        actionResults: [],
+        providers: {
+          RECENT_MESSAGES: {
+            text: historyStore,
+            data: { originalMessages: historyStore },
+          },
+          "get-balance": walletEvidence,
+        },
+        recovery,
+      }),
+    ).resolves.toEqual({ text: response, effectReceiptIds: [] });
+    expect(runtime.useModel).toHaveBeenCalledTimes(2);
+    expect(repairPrompt).not.toContain("internal-provider-history-copy");
+    const payloadLine = repairPrompt
+      .split("\n")
+      .find((line) => line.startsWith("Original action payload: "));
+    assert(payloadLine, "Missing original action payload");
+    const payload = JSON.parse(
+      payloadLine.replace("Original action payload: ", ""),
+    );
+    expect(payload.providers).toEqual({ "get-balance": walletEvidence });
+    expect(payload.replyOnlyRecovery.context).toBe(recovery.context);
+    expect(payload.request.text).toBe(
+      "Cancel that unsaved draft. Do not create or change any notes.",
+    );
+  });
+
+  it("reuses lossless history references in durable recovery without dropping corrections or replaying effects", async () => {
+    const repeated =
+      "Standing rule: show the full title and wait for separate approval.\n".repeat(
+        40,
+      );
+    const history = [
+      repeated,
+      "Correction: the charger is burgundy, previously teal.",
+      repeated,
+    ];
+    const trajectory: PlannerTrajectory = {
+      context: {
+        id: "recovery-context",
+        metadata: { historyReferenceEncoding: true },
+        events: [
+          { id: "policy", type: "provider", name: "PRIVACY", text: repeated },
+          ...history.map((content, index) => ({
+            id: `history-${index}`,
+            type: "segment" as const,
+            source: "prior-dialogue",
+            segment: {
+              id: `history-${index}`,
+              label: "prior_message:user",
+              content,
+              stable: false,
+            },
+          })),
+          {
+            id: "current",
+            type: "message",
+            message: { role: "user", content: message.content },
+          },
+          {
+            id: "effect",
+            type: "tool_result",
+            metadata: { result: savedNote },
+          },
+        ],
+      },
+      steps: [],
+      archivedSteps: [],
+      plannedQueue: [{ name: "CALENDAR_READ" }],
+      evaluatorOutputs: [],
+    };
+    const before = structuredClone(trajectory);
+    const reply =
+      "The Picnic note was saved. The calendar read is still pending.";
+    const useModel = vi.fn(async () =>
+      JSON.stringify({ response: reply, effectReceiptIds: ["note-proof"] }),
+    );
+    const processActions = vi.fn();
+    const runtime = createMockRuntime({ useModel, processActions });
+    const recovery = capturePlannerReplyRecovery(runtime, message, trajectory);
+    const original = renderContextObject(trajectory.context)
+      .promptSegments.map(segmentBlock)
+      .join("\n\n");
+    expect(recovery.context.length).toBeLessThan(original.length);
+    // Independently expand the recorded backward reference and its anchor.
+    const expanded = recovery.context
+      .replace(/^History encoding:.*\n\n/m, "")
+      .replace("prior_message:user:\n[h1]\n", "prior_message:user:\n")
+      .replace(
+        "prior_message:user:\n[h3; same_text_as=h1]",
+        `prior_message:user:\n${history[0]}`,
+      );
+    const redactedOriginal = original.replace(
+      '"key":"picnic-request"',
+      '"key":"[REDACTED]"',
+    );
+    expect(expanded).toBe(redactedOriginal);
+    expect(trajectory).toEqual(before);
+    expect(recovery.pendingToolCalls).toEqual(trajectory.plannedQueue);
+    // Persist/reload the capture before using the real reply-only boundary.
+    await expect(
+      resolvePlannedReplyEgress({
+        runtime,
+        message,
+        reply: "",
+        actionResults: [savedNote],
+        recovery: JSON.parse(JSON.stringify(recovery)),
+      }),
+    ).resolves.toEqual({ text: reply, effectReceiptIds: ["note-proof"] });
+    expect(useModel).toHaveBeenCalledTimes(2);
+    expect(useModel).toHaveBeenCalledWith(
+      ModelType.TEXT_SMALL,
+      expect.objectContaining({
+        prompt: expect.stringContaining("same_text_as=h1"),
+      }),
+    );
+    expect(processActions).not.toHaveBeenCalled();
+    // Voice/group/legacy contexts without the explicit encoding contract stay unchanged.
+    trajectory.context.metadata = {};
+    expect(
+      capturePlannerReplyRecovery(runtime, message, trajectory).context,
+    ).toBe(redactedOriginal);
+  });
+  it("accepts withdrawn intent and a pre-write rejection without mutation proof or another call", async () => {
+    const runtime = createMockRuntime({ useModel: vi.fn() });
+    await expect(
+      resolvePlannedReplyEgress({
+        runtime,
+        message: withdrawnEditMessage,
+        reply: withdrawnEditReply,
+        actionResults: readThenRejectedUpdate,
+      }),
+    ).resolves.toEqual({ text: withdrawnEditReply, effectReceiptIds: [] });
+    expect(runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it("rewrites ambiguous cancellation as withdrawn intent with complete read and failure evidence", async () => {
+    const useModel = vi.fn(async () =>
+      JSON.stringify({ response: withdrawnEditReply, effectReceiptIds: [] }),
+    );
+    const processActions = vi.fn();
+    const runtime = createMockRuntime({ useModel, processActions });
+    const originalResults = structuredClone(readThenRejectedUpdate);
+    await expect(
+      resolvePlannedReplyEgress({
+        runtime,
+        message: withdrawnEditMessage,
+        reply: "Cancelled the copper-tag edit without modifying either note.",
+        actionResults: readThenRejectedUpdate,
+      }),
+    ).resolves.toEqual({ text: withdrawnEditReply, effectReceiptIds: [] });
+    expect(useModel).toHaveBeenCalledTimes(2);
+    for (const evidence of [
+      withdrawnEditMessage.content.text,
+      "silver thermos",
+      "note-qa-missing",
+      "NOTES_LIST",
+      "NOTES_UPDATE",
+    ]) {
+      expect(useModel).toHaveBeenCalledWith(
+        ModelType.TEXT_SMALL,
+        expect.objectContaining({ prompt: expect.stringContaining(evidence) }),
+      );
+    }
+    expect(processActions).not.toHaveBeenCalled();
+    expect(readThenRejectedUpdate).toEqual(originalResults);
+  });
+
+  it.each([
+    "I will not perform that edit. I deleted the note.",
+    "I will not perform that edit, and I deleted the note.",
+    "I will not perform that edit. I cancelled the calendar event.",
+    "I will not perform that edit, and I cancelled the calendar event.",
+    "Cancelled the copper-tag edit without modifying either note.",
+  ])(
+    "still rejects unproven completed changes in a withdrawal rewrite: %s",
+    async (response) => {
+      const useModel = vi.fn(async () =>
+        JSON.stringify({ response, effectReceiptIds: [] }),
+      );
+      const runtime = createMockRuntime({ useModel });
+      await expect(
+        resolvePlannedReplyEgress({
+          runtime,
+          message: withdrawnEditMessage,
+          reply: "Cancelled the copper-tag edit without modifying either note.",
+          actionResults: readThenRejectedUpdate,
+        }),
+      ).rejects.toMatchObject({ code: "REPLY_GROUNDING_FAILED" });
+      expect(useModel).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("preserves an earlier committed write when a later edit is rejected before writing", async () => {
+    const response =
+      "I will not perform the copper-tag edit. I created the Picnic note. QA note B says silver thermos; the later update failed because the target note was not found.";
+    const useModel = vi.fn(async () =>
+      JSON.stringify({ response, effectReceiptIds: ["note-proof"] }),
+    );
+    const runtime = createMockRuntime({ useModel });
+    await expect(
+      resolvePlannedReplyEgress({
+        runtime,
+        message: withdrawnEditMessage,
+        reply: "Cancelled the copper-tag edit without modifying either note.",
+        actionResults: [savedNote, ...readThenRejectedUpdate],
+      }),
+    ).resolves.toEqual({ text: response, effectReceiptIds: ["note-proof"] });
+    expect(useModel).toHaveBeenCalledTimes(2);
+    for (const evidence of [
+      "bring a charger",
+      "silver thermos",
+      "note-qa-missing",
+    ]) {
+      expect(useModel).toHaveBeenCalledWith(
+        ModelType.TEXT_SMALL,
+        expect.objectContaining({ prompt: expect.stringContaining(evidence) }),
+      );
+    }
+  });
+
+  it("retains original constraints and unfinished intents during reply-only recovery", async () => {
+    const response =
+      "I saved Picnic. The calendar change was not completed, and I have not retried it.";
+    const useModel = vi.fn(async () =>
+      JSON.stringify({ response, effectReceiptIds: ["note-proof"] }),
+    );
+    const processActions = vi.fn();
+    const runtime = createMockRuntime({ useModel, processActions });
+    runtime.getSetting = (key) =>
+      key === "ELIZA_ADMIN_ENTITY_ID" ? message.entityId : undefined;
+    runtime.getParticipantsForRoom = async () => [
+      message.entityId,
+      runtime.agentId,
+    ];
+    runtime.getRoom = async () => ({
+      id: message.roomId,
+      type: ChannelType.DM,
+      source: "test",
+    });
+    const attestedMessage = { ...message, agentId: runtime.agentId };
+    await attestDeliveryAudienceFromCanonicalRoom(runtime, attestedMessage);
+    const context = `${"prior constraint ".repeat(2000)}Keep the existing calendar event unchanged.`;
+    const grounding = `${"complete action fact 🦊 ".repeat(2000)}Preserve both original and corrected descriptions.`;
+    await expect(
+      resolvePlannedReplyEgress({
+        runtime,
+        message: attestedMessage,
+        reply: "",
+        actionResults: [
+          applyGroundedActionReply(savedNote, { kind: "deferred", grounding }),
+        ],
+        recovery: {
+          context,
+          pendingToolCalls: [
+            { name: "CALENDAR", arguments: { operation: "create" } },
+          ],
+          evaluatorOutputs: [
+            { decision: "CONTINUE", reason: "Calendar is still pending" },
+          ],
+          ownerExclusiveDisclosureUsed: true,
+        },
+      }),
+    ).resolves.toEqual({ text: response, effectReceiptIds: ["note-proof"] });
+    expect(useModel).toHaveBeenCalledTimes(2);
+    const parameters = useModel.mock.calls[0]?.[1] as { prompt: string };
+    expect(parameters.prompt).toContain(context);
+    expect(parameters.prompt).toContain(grounding);
+    expect(parameters.prompt).toContain("Calendar is still pending");
+    expect(parameters.prompt).toContain(
+      "does not prove the whole request completed",
+    );
+    expect(parameters.prompt).toContain(
+      "not a fresh observation of current state",
+    );
+    expect(processActions).not.toHaveBeenCalled();
+  });
+
+  it("delivers the evaluator's receipt-bound reply without another model call", async () => {
+    const reply = "I've created Picnic with your reminder to bring a charger.";
+    const evaluator = parseEvaluatorOutput(
+      JSON.stringify({
+        thought: "The recorded note write completed the request.",
+        success: true,
+        decision: "FINISH",
+        messageToUser: reply,
+        effectReceiptIds: ["note-proof"],
+      }),
+    );
+    const runtime = createMockRuntime({ useModel: vi.fn() });
+    await expect(
+      resolvePlannedReplyEgress({
+        runtime,
+        message,
+        reply,
+        actionResults: [savedNote],
+        evaluator,
+      }),
+    ).resolves.toEqual({ text: reply, effectReceiptIds: ["note-proof"] });
+    expect(runtime.useModel).not.toHaveBeenCalled();
+    expect(savedNote.userFacingText).toBeUndefined();
+  });
+
+  it.each([
+    "missing receipt",
+    "invented receipt",
+    "nonterminal verdict",
+    "changed final reply",
+    "changed evaluator reply",
+    "other turn",
+    "preview",
+    "rollback",
+  ])("does not reuse evaluator proof after %s", async (condition) => {
+    const reply = "I've created the picnic note.";
+    const evaluator = parseEvaluatorOutput(
+      JSON.stringify({
+        thought: "Check the note write.",
+        success: true,
+        decision: condition === "nonterminal verdict" ? "CONTINUE" : "FINISH",
+        messageToUser: reply,
+        effectReceiptIds:
+          condition === "missing receipt"
+            ? []
+            : condition === "invented receipt"
+              ? ["unrelated-proof"]
+              : ["note-proof"],
+      }),
+    );
+    if (condition === "changed evaluator reply")
+      evaluator.messageToUser = "I've created a different note.";
+    const receipt = savedNote.effectReceipts?.[0];
+    if (!receipt) throw new Error("Missing receipt fixture");
+    const actionResults: ActionResult[] =
+      condition === "other turn"
+        ? []
+        : [
+            {
+              ...savedNote,
+              effectReceipts:
+                condition === "preview"
+                  ? [{ ...receipt, outcome: "preview" }]
+                  : condition === "rollback"
+                    ? [
+                        receipt,
+                        {
+                          ...receipt,
+                          receiptId: "rollback",
+                          outcome: "rolled_back",
+                          rollback: {
+                            receiptId: "undo-write",
+                            revertedReceiptIds: ["note-proof"],
+                            rolledBackAt: "2026-09-04T12:01:00.000Z",
+                          },
+                        },
+                      ]
+                    : [receipt],
+            },
+          ];
+    const recovery = "The saved result could not be confirmed.";
+    const runtime = createMockRuntime({
+      useModel: vi.fn(async () =>
+        JSON.stringify({ response: recovery, effectReceiptIds: [] }),
+      ),
+    });
+    await expect(
+      resolvePlannedReplyEgress({
+        runtime,
+        message,
+        reply: condition.startsWith("changed")
+          ? "I've created a different note."
+          : reply,
+        actionResults,
+        evaluator,
+      }),
+    ).resolves.toEqual({ text: recovery, effectReceiptIds: [] });
+    expect(runtime.useModel).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves a valid model reply without another inference call", async () => {
+    const runtime = createMockRuntime({ useModel: vi.fn() });
+    const reply = "What would you like the note to say?";
+    await expect(
+      resolvePlannedReplyEgress({ runtime, message, reply, actionResults: [] }),
+    ).resolves.toEqual({ text: reply, effectReceiptIds: [] });
+    expect(runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it("repairs an unproven claim using the request and complete results without replaying actions", async () => {
+    const handler = vi.fn();
+    const response = "The note service did not confirm a saved note.";
+    const useModel = vi.fn(async () => JSON.stringify({ response }));
+    const runtime = createMockRuntime({
+      useModel,
+      actions: [
+        {
+          name: "NOTES",
+          description: "Notes",
+          validate: async () => true,
+          handler,
+        },
+      ],
+    });
+    const actionResults: ActionResult[] = [
+      {
+        success: false,
+        error: "write not confirmed",
+        data: {
+          actionName: "NOTES",
+          details: `${"context ".repeat(1500)}tail-proof`,
+        },
+      },
+    ];
+    await expect(
+      resolvePlannedReplyEgress({
+        runtime,
+        message,
+        reply: "I've created the note.",
+        actionResults,
+      }),
+    ).resolves.toEqual({ text: response, effectReceiptIds: [] });
+    expect(useModel).toHaveBeenCalledTimes(2);
+    expect(useModel).toHaveBeenCalledWith(
+      ModelType.TEXT_SMALL,
+      expect.objectContaining({
+        prompt: expect.stringContaining("Make a note about the picnic."),
+      }),
+    );
+    expect(useModel).toHaveBeenCalledWith(
+      ModelType.TEXT_SMALL,
+      expect.objectContaining({
+        prompt: expect.stringContaining("tail-proof"),
+      }),
+    );
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    "keeps one reply owner for evaluated internal effects (caller recovery: %s)",
+    async (deferInternalReplyRecoveryToCaller) => {
+      const response = "Created the picnic note with your charger reminder.";
+      const useModel = vi
+        .fn()
+        .mockResolvedValueOnce({
+          text: "",
+          toolCalls: [
+            { id: "create-note", name: "NOTES_CREATE", arguments: {} },
+          ],
+        })
+        .mockResolvedValueOnce(
+          JSON.stringify({
+            response,
+            messageToUser: response,
+            effectReceiptIds: ["note-proof"],
+            completed: true,
+            toolCalls: [],
+          }),
+        );
+      const runtime = createMockRuntime({ useModel });
+      const actionResult: ActionResult = {
+        ...savedNote,
+        transcriptVisibility: "internal",
+        modelReplyRequired: true,
+      };
+      const executeToolCall = vi.fn(async () => actionResult);
+      const evaluate = vi.fn(async () =>
+        parseEvaluatorOutput(
+          JSON.stringify({
+            success: true,
+            thought: "The requested note was saved.",
+            decision: "FINISH",
+            effectReceiptIds: ["note-proof"],
+          }),
+        ),
+      );
+      const result = await runPlannerLoop({
+        runtime,
+        context: { id: "reply-owner" },
+        executeToolCall,
+        evaluate,
+        deferInternalReplyRecoveryToCaller,
+      });
+      expect(executeToolCall).toHaveBeenCalledTimes(1);
+      expect(evaluate).toHaveBeenCalledTimes(1);
+      if (deferInternalReplyRecoveryToCaller) {
+        expect(useModel).toHaveBeenCalledTimes(1);
+        expect(result.replyRecoveryRequired).toBe(true);
+        expect(result.finalMessage).toBeUndefined();
+        await expect(
+          resolvePlannedReplyEgress({
+            runtime,
+            message,
+            reply: "",
+            actionResults: [actionResult],
+            evaluator: result.evaluator,
+          }),
+        ).resolves.toEqual({
+          text: response,
+          effectReceiptIds: ["note-proof"],
+        });
+      } else {
+        expect(result.replyRecoveryRequired).toBeUndefined();
+        expect(result.finalMessage).toBe(response);
+      }
+      expect(useModel).toHaveBeenCalledTimes(
+        deferInternalReplyRecoveryToCaller ? 3 : 2,
+      );
+      expect(executeToolCall).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("renders a missing reply from completed results while retaining exact receipt grounding", async () => {
+    const response = "I've created the picnic note.";
+    const runtime = createMockRuntime({
+      useModel: vi.fn(async () => JSON.stringify({ response })),
+    });
+    const actionResults: ActionResult[] = [
+      {
+        ...savedNote,
+        userFacingText: response,
+        verifiedUserFacing: true,
+        userFacingEffectReceiptIds: ["note-proof"],
+      },
+    ];
+    await expect(
+      resolvePlannedReplyEgress({ runtime, message, reply: "", actionResults }),
+    ).resolves.toEqual({ text: response, effectReceiptIds: ["note-proof"] });
+    expect(runtime.useModel).toHaveBeenCalledTimes(2);
+  });
+
+  it("binds model-authored prose to the selected current-turn receipt without canned action text", async () => {
+    const response =
+      "I've created Picnic with your reminder to bring a charger.";
+    const runtime = createMockRuntime({
+      useModel: vi.fn(async () =>
+        JSON.stringify({ response, effectReceiptIds: ["note-proof"] }),
+      ),
+    });
+    await expect(
+      resolvePlannedReplyEgress({
+        runtime,
+        message,
+        reply: "I've created the note.",
+        actionResults: [savedNote],
+      }),
+    ).resolves.toEqual({ text: response, effectReceiptIds: ["note-proof"] });
+    expect(runtime.useModel).toHaveBeenCalledTimes(2);
+    expect(savedNote.userFacingText).toBeUndefined();
+  });
+
+  it.each(
+    [
+      [],
+      ["invented-proof"],
+      ["note-proof", "invented-proof"],
+      [42],
+      "note-proof",
+    ].map((effectReceiptIds) => ({ effectReceiptIds })),
+  )(
+    "rejects unsupported or malformed model-selected receipt IDs: %j",
+    async ({ effectReceiptIds }) => {
+      const runtime = createMockRuntime({
+        useModel: vi.fn(async () =>
+          JSON.stringify({
+            response: "I've created the note.",
+            effectReceiptIds,
+          }),
+        ),
+      });
+      await expect(
+        resolvePlannedReplyEgress({
+          runtime,
+          message,
+          reply: "",
+          actionResults: [savedNote],
+        }),
+      ).rejects.toMatchObject({ code: "REPLY_GROUNDING_FAILED" });
+    },
+  );
+
+  it("does not turn a preview or a rolled-back write into a completed-change confirmation", async () => {
+    const runtime = createMockRuntime({
+      useModel: vi.fn(async () =>
+        JSON.stringify({
+          response: "I've created the note.",
+          effectReceiptIds: ["note-proof"],
+        }),
+      ),
+    });
+    const applied = savedNote.effectReceipts?.[0];
+    if (!applied) throw new Error("Missing receipt fixture");
+    for (const effectReceipts of [
+      [{ ...applied, outcome: "preview" as const }],
+      [
+        applied,
+        {
+          ...applied,
+          receiptId: "rollback",
+          outcome: "rolled_back" as const,
+          rollback: {
+            receiptId: "undo-write",
+            revertedReceiptIds: ["note-proof"],
+            rolledBackAt: "2026-09-04T12:01:00.000Z",
+          },
+        },
+      ],
+    ]) {
+      await expect(
+        resolvePlannedReplyEgress({
+          runtime,
+          message,
+          reply: "",
+          actionResults: [{ ...savedNote, effectReceipts }],
+        }),
+      ).rejects.toMatchObject({ code: "REPLY_GROUNDING_FAILED" });
+    }
+  });
+
+  it.each([
+    [
+      "another ungrounded claim",
+      JSON.stringify({ response: "I've created the note." }),
+    ],
+    ["empty response", JSON.stringify({ response: "" })],
+    ["invalid response", "not JSON"],
+  ])(
+    "fails explicitly instead of emitting canned dialogue after %s",
+    async (_label, output) => {
+      const runtime = createMockRuntime({
+        useModel: vi.fn(async () => output),
+      });
+      await expect(
+        resolvePlannedReplyEgress({
+          runtime,
+          message,
+          reply: "",
+          actionResults: [],
+        }),
+      ).rejects.toMatchObject({ code: "REPLY_GROUNDING_FAILED" });
+      expect(runtime.useModel).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("reports a model outage and never substitutes a preset assistant reply", async () => {
+    const reportError = vi.fn();
+    const runtime = createMockRuntime({
+      reportError,
+      logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      useModel: vi.fn(async () => {
+        throw new Error("provider unavailable");
+      }),
+    });
+    await expect(
+      resolvePlannedReplyEgress({
+        runtime,
+        message,
+        reply: "",
+        actionResults: [],
+      }),
+    ).rejects.toMatchObject({ code: "REPLY_GROUNDING_FAILED" });
+    expect(reportError).toHaveBeenCalled();
+  });
+});

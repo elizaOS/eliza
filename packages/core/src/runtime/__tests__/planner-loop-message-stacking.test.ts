@@ -7,13 +7,13 @@
  * array; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type {
 	ChatMessage,
 	ChatMessageContentPart,
 	ToolDefinition,
 } from "../../types/model";
 import { ModelType } from "../../types/model";
-import { runPlannerLoop } from "../planner-loop";
 
 /**
  * Regression: the planner messages array must grow append-only across

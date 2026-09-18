@@ -8,7 +8,7 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { ActiveModelCoordinator } from "./active-model";
 import { readEffectiveAssignments, setAssignment } from "./assignments";
 import { registerBundledModels } from "./bundled-models";

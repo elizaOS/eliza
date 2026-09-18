@@ -8,7 +8,7 @@ import type {
   LinkedAccountConfig,
   LinkedAccountProviderId,
   ServiceRouteAccountStrategy,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/service-routing-types";
 import { parseAccountsListResponse } from "./client-agent-accounts-validator";
 import { ElizaClient } from "./client-base";
 
@@ -21,7 +21,7 @@ export type {
   LinkedAccountHealthDetail,
   LinkedAccountProviderId,
   LinkedAccountUsage,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/service-routing-types";
 
 export interface AccountWithCredentialFlag extends LinkedAccountConfig {
   hasCredential: boolean;

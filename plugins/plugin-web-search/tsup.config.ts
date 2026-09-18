@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-    entry: ["src/index.ts", "src/edge.ts"],
+    entry: ["src/index.ts", "src/edge.ts", "src/keyless-web-search.ts"],
     outDir: "dist",
     sourcemap: true,
     clean: true,

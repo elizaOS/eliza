@@ -6,14 +6,14 @@
  */
 
 import type http from "node:http";
+import type { IAgentRuntime } from "@elizaos/core";
 import type {
-  IAgentRuntime,
   LegacyRouteHandler,
-  Plugin,
+  HttpPlugin as Plugin,
   Route,
   RouteRequest,
   RouteResponse,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-plugin";
 import { getAcpService } from "./actions/common.js";
 import type { RouteContext } from "./api/route-utils.js";
 import { handleCodingAgentRoutes } from "./api/routes.js";

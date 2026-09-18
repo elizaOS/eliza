@@ -39,7 +39,7 @@ const fakes = vi.hoisted(() => ({
   getAgentHostBridge: vi.fn(),
 }));
 
-vi.mock("@elizaos/auth/account-storage", () => ({
+vi.mock("@elizaos/credentials/auth/account-storage", () => ({
   createRuntimeAccountStoragePolicy: fakes.createRuntimeAccountStoragePolicy,
 }));
 vi.mock("../config/config.ts", () => ({

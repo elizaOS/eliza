@@ -328,6 +328,12 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
 
   private repositoryInstance: GoalsRepository | null = null;
   private warnedSpineMissing = false;
+  private stopping = false;
+  private releaseStop!: () => void;
+  private readonly stopRequested = new Promise<void>((resolve) => {
+    this.releaseStop = resolve;
+  });
+  private reconciliation?: Promise<void>;
   private readonly now: () => Date;
 
   constructor(runtime?: IAgentRuntime, now: () => Date = () => new Date()) {
@@ -340,12 +346,15 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
   ): Promise<GoalsCheckinService> {
     logger.info(`${GOALS_LOG_PREFIX} starting GoalsCheckinService`);
     const service = new GoalsCheckinService(runtime);
-    void service.reconcileWhenReady();
+    service.reconciliation = service.reconcileWhenReady();
     return service;
   }
 
   override async stop(): Promise<void> {
     logger.info(`${GOALS_LOG_PREFIX} stopping GoalsCheckinService`);
+    this.stopping = true;
+    this.releaseStop();
+    await this.reconciliation;
   }
 
   private rt(): IAgentRuntime {
@@ -600,18 +609,22 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
   private async reconcileWhenReady(): Promise<void> {
     const runtime = this.rt();
     try {
-      await runtime.initPromise;
+      await Promise.race([runtime.initPromise, this.stopRequested]);
+      if (this.stopping) return;
       if (!runtime.hasService(ScheduledTaskRunnerService.serviceType)) {
         logger.info(
           `${GOALS_LOG_PREFIX} [GoalsCheckinService] scheduling spine not registered on this runtime; skipping goal check-in reconcile`,
         );
         return;
       }
-      await runtime.getServiceLoadPromise(
-        ScheduledTaskRunnerService.serviceType,
-      );
+      await Promise.race([
+        runtime.getServiceLoadPromise(ScheduledTaskRunnerService.serviceType),
+        this.stopRequested,
+      ]);
+      if (this.stopping) return;
       const goals = await this.repository().listGoals(requireAgentId(runtime));
       for (const goal of goals) {
+        if (this.stopping) return;
         await this.syncGoalCheckins(goal);
       }
       logger.info(

@@ -19,8 +19,8 @@ const mediaMocks = vi.hoisted(() => ({
 		| ((...args: unknown[]) => Promise<unknown>),
 }));
 
-vi.mock("@elizaos/core", async (importActual) => {
-	const actual = await importActual<typeof import("@elizaos/core")>();
+vi.mock("@elizaos/shared/media", async (importActual) => {
+	const actual = await importActual<typeof import("@elizaos/shared/media")>();
 	mediaMocks.realFetchRemoteMedia = actual.fetchRemoteMedia as (
 		...args: unknown[]
 	) => Promise<unknown>;

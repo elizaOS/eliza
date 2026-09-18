@@ -1,5 +1,5 @@
-// Exercises agent backup diff behavior with deterministic cloud-shared lib fixtures.
-import { describe, expect, test } from "vitest";
+/** Exercises real backup delta round trips, chain retention and restore budgets with deterministic state. */
+import { describe, expect, test } from "bun:test";
 import type { AgentBackupStateData } from "../../db/schemas/agent-sandboxes";
 import {
   applyBackupDelta,
@@ -95,11 +95,20 @@ describe("diffBackupState / applyBackupDelta round-trip", () => {
   }
 });
 
+test("independent empty backup states do not share mutable data", () => {
+  const first = emptyBackupState();
+  first.memories.push(mem("new memory", 1));
+  first.config.changed = true;
+  first.workspaceFiles["new.txt"] = "new file";
+  expect(emptyBackupState()).toEqual({ memories: [], config: {}, workspaceFiles: {} });
+});
+
 describe("diff structure", () => {
   test("append uses base count + tail, not a rebase", () => {
     const base = state({ memories: [mem("a", 1), mem("b", 2)] });
     const next = state({ memories: [mem("a", 1), mem("b", 2), mem("c", 3)] });
     const delta = diffBackupState(base, next);
+    expect(isEmptyDelta(delta)).toBe(false);
     expect(delta.memoriesBaseCount).toBe(2);
     expect(delta.memoriesAppended).toEqual([mem("c", 3)]);
   });

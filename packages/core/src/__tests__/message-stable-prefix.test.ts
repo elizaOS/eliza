@@ -4,7 +4,7 @@
  * `vi`-mocked runtime with a stubbed `composeState`; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
-import { renderMessageHandlerStablePrefix } from "../services/message";
+import { renderMessageHandlerStablePrefix } from "../../../../plugins/plugin-assistant/src/services/message.ts";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";

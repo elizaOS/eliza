@@ -6,13 +6,13 @@ import { createServer } from "node:http";
 import {
   AgentRuntime,
   ChannelType,
-  EvaluatorService,
-  InMemoryDatabaseAdapter,
   type Memory,
   ModelType,
   stringToUuid,
   TaskService,
 } from "@elizaos/core";
+import { EvaluatorService } from "@elizaos/plugin-assistant";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { expect, it, vi } from "vitest";
 import { handleTextSmall } from "../models/text";
 

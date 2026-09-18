@@ -33,7 +33,7 @@
  */
 
 import { existsSync, promises as fs } from "node:fs";
-import { fetchRemoteMedia } from "@elizaos/core";
+import { fetchRemoteMedia } from "@elizaos/shared/media";
 import { resolveImageBytes } from "./hash";
 import {
 	VISION_IMAGE_FETCH_TIMEOUT_MS,

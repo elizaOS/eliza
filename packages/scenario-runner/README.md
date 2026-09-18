@@ -382,7 +382,7 @@ work or wait/seed/final checks and are validated again by the real executor
 before each attempt. Migration is complete when no scenario reports
 `legacy-fallback`.
 
-Reusable Stage-1/planner fixtures are exported by `@elizaos/core/testing` for
+Reusable Stage-1/planner fixtures are exported by `@elizaos/testing` for
 single tools, multiple tools, clarifications, terminal replies, evaluators,
 scheduled rendering, and adversarial/malformed outputs.
 
@@ -406,3 +406,5 @@ await cleanup();
 - A simulated CLI invocation runs its scenarios in one shared runtime because PGLite cannot be recreated in-process. All declared plugins are registered before runtime initialization, preserving service availability for existing seeds. Test companions must scope dependency overrides and ledgers to the runtime, dispose them at shutdown, and declare a guaranteed cleanup assertion for exact completeness. The CLI rejects a shared batch that mixes the meetings test companion with production-only meetings scenarios; use process isolation for that selection. Provider-qualified definitions are restricted to one scenario and still require an external production controller; the ordinary executor deliberately refuses to qualify them.
 - Schema types (`ScenarioDefinition`, `CapturedAction`, etc.) come from `@elizaos/scenario-runner/schema`, not from the main export.
 - Scenarios starting with `_` or in directories starting with `_` are skipped by the loader.
+
+The published Node package bundles its required private model fixtures and their types. Consumers do not install `@elizaos/testing`. `bun run build` emits JavaScript and declarations under `dist`; the TypeScript runtime dependency loads authored `.scenario.ts` files. Repository-only simulated LifeOps setup still requires its repository fixtures.

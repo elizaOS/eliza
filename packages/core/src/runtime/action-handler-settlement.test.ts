@@ -27,35 +27,14 @@ function makeMockRuntime(): IAgentRuntime {
 
 describe("action-handler-settlement", () => {
 	describe("normalizeActionResult", () => {
-		it("normalizes boolean and nullish returns", () => {
-			expect(normalizeActionResult("TEST_ACTION", true)).toEqual({
-				success: true,
-				data: { actionName: "TEST_ACTION" },
-			});
-
-			expect(normalizeActionResult("TEST_ACTION", false)).toEqual({
-				success: false,
-				data: { actionName: "TEST_ACTION" },
-			});
-
-			expect(normalizeActionResult("TEST_ACTION", null)).toEqual({
-				success: true,
-				data: { actionName: "TEST_ACTION" },
-			});
-
-			expect(normalizeActionResult("TEST_ACTION", undefined)).toEqual({
-				success: true,
-				data: { actionName: "TEST_ACTION" },
-			});
-		});
-
-		it("normalizes primitive text returns", () => {
-			expect(normalizeActionResult("TEST_ACTION", "done")).toEqual({
-				success: true,
-				text: "done",
-				data: { actionName: "TEST_ACTION" },
-			});
-		});
+		it.each([undefined, null, true, false, "done", 42, {}, { text: "done" }])(
+			"rejects implicit success from an invalid handler return: %j",
+			(result) => {
+				expect(() => normalizeActionResult("TEST_ACTION", result)).toThrowError(
+					ElizaError,
+				);
+			},
+		);
 
 		it("normalizes plain ActionResult object returns", () => {
 			const res = normalizeActionResult("TEST_ACTION", {
@@ -102,6 +81,30 @@ describe("action-handler-settlement", () => {
 	});
 
 	describe("settleActionHandler", () => {
+		it.each([undefined, null, true, "done", {}])(
+			"does not deliver a success callback from an invalid result: %j",
+			async (invalidResult) => {
+				const callback = vi.fn(async () => []);
+				const action: Action = {
+					name: "INVALID_RETURN",
+					description: "Exercise result contract",
+					validate: async () => true,
+					handler: async () => ({ success: true }),
+				};
+				const result = await settleActionHandler({
+					runtime: makeMockRuntime(),
+					action,
+					callback,
+					invoke: async (buffered) => {
+						await buffered?.({ text: "I completed the operation" });
+						return invalidResult;
+					},
+				});
+				expect(result.success).toBe(false);
+				expect(callback).not.toHaveBeenCalled();
+			},
+		);
+
 		it("settles handler execution and invokes callback upon completion", async () => {
 			const runtime = makeMockRuntime();
 			const action: Action = {
@@ -214,14 +217,6 @@ describe("action-handler-settlement additional branches", () => {
 					},
 				}),
 			).toThrowError(ElizaError);
-		});
-
-		it("converts number returns into successful text results", () => {
-			expect(normalizeActionResult("TEST_ACTION", 42)).toEqual({
-				success: true,
-				text: "42",
-				data: { actionName: "TEST_ACTION" },
-			});
 		});
 
 		it("replaces a non-object data payload with executor-owned data", () => {

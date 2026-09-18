@@ -6,4 +6,4 @@ export {
   type RateLimitCheck,
   type RateLimiter,
   type RateLimiterOptions,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/rate-limiter";

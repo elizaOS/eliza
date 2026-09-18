@@ -15,28 +15,31 @@ import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import { createLocalAgentBackup } from "@elizaos/agent/services/agent-backup";
 import { withAgentBackupAuthority } from "@elizaos/agent/services/agent-backup-authority";
 import { AuthStore } from "@elizaos/app-core/services/auth-store";
+import type { Plugin } from "@elizaos/core";
 import {
   type AgentRuntime,
   attestAuthenticatedApiDeliveryAudience,
   ChannelType,
-  DocumentService,
-  documentsPluginCore,
   ElizaError,
   type IAgentRuntime,
   type IFileStorageService,
   type Memory,
   ModelType,
-  type Plugin,
   Service,
   ServiceType,
   type UUID,
 } from "@elizaos/core";
+import {
+  createDocumentsPlugin,
+  DocumentService,
+} from "@elizaos/plugin-assistant";
 import type { PdfService } from "@elizaos/plugin-pdf";
 import {
   getScheduledTaskRunner,
   registerScheduledTaskChannelDispatcher,
 } from "@elizaos/plugin-scheduling";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { collectReferencedMedia } from "../../../../../packages/agent/src/api/media-runtime.ts";
@@ -47,8 +50,8 @@ import {
   createBrowserSession,
   createMachineSession,
 } from "../../../../../packages/app-core/src/api/auth/sessions.ts";
-import { composeResponseState } from "../../../../../packages/core/src/services/message/provider-state.js";
 import { TrajectoriesService } from "../../../../../packages/core/src/services/trajectories.ts";
+import { composeResponseState } from "../../../../plugin-assistant/src/services/message/provider-state.ts";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
@@ -212,7 +215,10 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     );
     process.env.ELIZA_STATE_DIR = mediaStateDir;
     runtimeResult = await createLifeOpsTestRuntime({
-      plugins: [fileStoragePlugin, documentsPluginCore],
+      plugins: [
+        fileStoragePlugin,
+        createDocumentsPlugin({ enableActions: false }),
+      ],
     });
     runtime = runtimeResult.runtime;
     await createPinRoom(familyRoomId);
@@ -1496,6 +1502,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       rememberDevice: false,
     });
     const service = createAgreementKnowledgeService(runtime);
+    installHttpPluginLifecycle(runtime);
     const server = createServer(async (req, res) => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       const handled = await tryHandleRuntimePluginRoute({
@@ -4487,9 +4494,13 @@ describe("reviewed workspace deletion — real database and disk", () => {
     process.env.ELIZA_STATE_DIR = mediaDir;
     const result = await createLifeOpsTestRuntime({
       pgliteDir: path.join(mediaDir, "pglite"),
-      plugins: [fileStoragePlugin, documentsPluginCore],
+      plugins: [
+        fileStoragePlugin,
+        createDocumentsPlugin({ enableActions: false }),
+      ],
     });
     const runtime = result.runtime;
+    installHttpPluginLifecycle(runtime);
     const server = createServer(async (req, res) => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       const handled = await tryHandleRuntimePluginRoute({
@@ -4799,7 +4810,10 @@ describe("reviewed workspace deletion — real database and disk", () => {
     const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), "family-delete-"));
     process.env.ELIZA_STATE_DIR = mediaDir;
     const result = await createLifeOpsTestRuntime({
-      plugins: [fileStoragePlugin, documentsPluginCore],
+      plugins: [
+        fileStoragePlugin,
+        createDocumentsPlugin({ enableActions: false }),
+      ],
     });
     const runtime = result.runtime;
     try {

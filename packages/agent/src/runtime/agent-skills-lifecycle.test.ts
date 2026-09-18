@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /** Proves Agent Skills command registration through the real runtime service lifecycle. */
 
 import {
@@ -51,7 +52,7 @@ describe("Agent Skills runtime lifecycle", () => {
       ],
     };
     const runtime = new AgentRuntime({ logLevel: "fatal" });
-    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    await initializeTestRuntime(runtime, { skipMigrations: true });
 
     try {
       await runtime.registerPlugin(skillsPlugin);
@@ -101,7 +102,7 @@ describe("Agent Skills runtime lifecycle", () => {
       ],
     };
     const runtime = new AgentRuntime({ logLevel: "fatal" });
-    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    await initializeTestRuntime(runtime, { skipMigrations: true });
 
     try {
       await runtime.registerPlugin(commandsPlugin);

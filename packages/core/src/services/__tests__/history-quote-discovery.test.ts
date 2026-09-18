@@ -3,12 +3,12 @@
  * controlled Stage-1 replies, preserving source bytes and read-loop boundaries.
  */
 import { describe, expect, it } from "vitest";
-import { completionContextSources } from "../../runtime/completion-context";
-import { createContextObject } from "../../runtime/context-object";
 import {
 	type HistoryDiscovery,
 	requestedHistory,
-} from "../message/history-discovery";
+} from "../../../../../plugins/plugin-assistant/src/services/message/history-discovery.ts";
+import { completionContextSources } from "../../runtime/completion-context";
+import { createContextObject } from "../../runtime/context-object";
 
 const original =
 	"For the fictional plan, the mug is blue. Keep records unchanged.";

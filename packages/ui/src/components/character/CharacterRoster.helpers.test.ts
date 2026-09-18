@@ -2,7 +2,7 @@
  * Unit tests for CharacterRoster helpers: validates roster mapping and custom pack creation.
  */
 
-import type { StylePreset } from "@elizaos/shared";
+import type { StylePreset } from "@elizaos/shared/contracts/first-run-options";
 import { describe, expect, it } from "vitest";
 import {
   createCustomPackRosterEntry,

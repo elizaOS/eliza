@@ -4,7 +4,10 @@
  * what actions the UI may offer.
  */
 import { Capacitor } from "@capacitor/core";
-import type { AgentUpdateAuthority, AgentUpdateStatus } from "@elizaos/shared";
+import type {
+  AgentUpdateAuthority,
+  AgentUpdateStatus,
+} from "@elizaos/shared/contracts/update-status";
 import { type BuildVariant, getBuildVariant } from "../../build-variant";
 import { isElizaOS } from "../../platform";
 

@@ -34,7 +34,7 @@ const SEED_TARGETS = [
   },
   { label: "@elizaos/ui", dir: path.join(ELIZA_ROOT, "packages", "ui") },
   {
-    label: "@elizaos/vault",
+    label: "@elizaos/credentials/vault",
     dir: path.join(ELIZA_ROOT, "packages", "vault"),
   },
   {

@@ -6,7 +6,7 @@
  * from mutating surfaces adopted by a newer renderer.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { getNativePlugin } from "../bridge/native-plugins";
 import type {
   NativePageRead,

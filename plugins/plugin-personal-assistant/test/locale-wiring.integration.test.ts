@@ -6,12 +6,12 @@
  * `OwnerFactStore`.
  */
 
-import {
-  type ActionExample,
-  buildActionCatalog,
-  type IAgentRuntime,
-  type LocalizedActionExampleResolver,
+import type {
+  ActionExample,
+  IAgentRuntime,
+  LocalizedActionExampleResolver,
 } from "@elizaos/core";
+import { buildActionCatalog } from "@elizaos/plugin-assistant";
 import { describe, expect, it } from "vitest";
 import { createOwnerLocaleExamplesProvider } from "../src/lifeops/i18n/localized-examples-provider.ts";
 import {

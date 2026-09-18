@@ -5,7 +5,7 @@
  * Polls the agent status until running, then dispatches AGENT_RUNNING.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import {
   type AgentBootProgress,
   type AgentStartupDiagnostics,

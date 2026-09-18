@@ -4,7 +4,7 @@
  * preset matching the character's avatar index. Paths are normalized to be
  * root-relative (leading slashes stripped) so callers can join them uniformly.
  */
-import { getStylePresets } from "@elizaos/shared";
+import { getStylePresets } from "@elizaos/shared/character-presets";
 
 function normalizeGreetingAnimationPath(path: string | null | undefined) {
   const trimmed = path?.trim();

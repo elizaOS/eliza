@@ -249,7 +249,7 @@ describe("ensureCloudTestRuntime", () => {
     expect(ran).toEqual([]);
   });
 
-  it("on a clean install runs the keyword codegen before build:core and logs the missing paths", () => {
+  it("on a clean install runs build:core and logs the missing paths", () => {
     const ran = [];
     const logs = [];
     const created = new Set();
@@ -267,27 +267,9 @@ describe("ensureCloudTestRuntime", () => {
       log: (text) => logs.push(text),
     });
     expect(ran).toEqual([
-      PREFLIGHT_STEPS.keywordCodegen.label,
       PREFLIGHT_STEPS.coreBuild.label,
     ]);
     expect(logs.join("")).toContain("missing runtime artifact");
-  });
-
-  it("runs only the codegen when a turbo cache hit restored dist without the generated modules", () => {
-    const ran = [];
-    let generated = false;
-    ensureCloudTestRuntime({
-      requiredArtifacts: artifacts,
-      steps: PREFLIGHT_STEPS,
-      existsFn: (file) =>
-        artifacts.coreBuild.includes(file) ? true : generated,
-      runStep: (step) => {
-        ran.push(step.label);
-        generated = true;
-      },
-      log: () => {},
-    });
-    expect(ran).toEqual([PREFLIGHT_STEPS.keywordCodegen.label]);
   });
 
   it("fails loudly when a step completes without producing its artifacts", () => {
@@ -344,7 +326,7 @@ describe("runPreflightStep", () => {
 
   it("reports the signal when the step was killed", () => {
     expect(() =>
-      runPreflightStep(PREFLIGHT_STEPS.keywordCodegen, {
+      runPreflightStep(PREFLIGHT_STEPS.coreBuild, {
         repoRoot: "/repo",
         spawnFn: () => ({ status: null, signal: "SIGTERM" }),
       }),
@@ -353,7 +335,7 @@ describe("runPreflightStep", () => {
 
   it("surfaces a spawn error as could-not-start", () => {
     expect(() =>
-      runPreflightStep(PREFLIGHT_STEPS.keywordCodegen, {
+      runPreflightStep(PREFLIGHT_STEPS.coreBuild, {
         repoRoot: "/repo",
         spawnFn: () => ({
           error: new Error("spawn ENOENT"),
@@ -361,7 +343,7 @@ describe("runPreflightStep", () => {
           signal: null,
         }),
       }),
-    ).toThrow(/could not start i18n keyword codegen/);
+    ).toThrow(/could not start core workspace build/);
   });
 });
 

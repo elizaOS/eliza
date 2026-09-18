@@ -13,7 +13,7 @@
  */
 import { Filesystem } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
 import { shellLocalStorage } from "@elizaos/ui/bridge";
 
 const IOS_ATTACHMENT_SMOKE_REQUEST_KEY = "eliza:ios-attachment-smoke:request";

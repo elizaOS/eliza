@@ -381,19 +381,8 @@ export class FileMessageInteractionSessionStore
       device: directoryStat.dev,
       inode: directoryStat.ino,
     };
-    const existing = await existsLstat(this.filePath);
-    if (existing?.isSymbolicLink() || (existing && !existing.isFile())) {
-      storeError(
-        "UNSAFE_INTERACTION_STORE_PATH",
-        "Interaction store file must be a regular file.",
-      );
-    }
-    if (existing && (existing.nlink !== 1 || (existing.mode & 0o077) !== 0)) {
-      storeError(
-        "UNSAFE_INTERACTION_STORE_PATH",
-        "Interaction store file must be private and have one filesystem link.",
-      );
-    }
+    // File validation belongs inside the lock: atomic replacement can retire
+    // the inode observed by an unlocked lstat, even for a legitimate writer.
     this.initialized = true;
   }
 
@@ -1265,7 +1254,7 @@ export class FileMessageInteractionSessionStore
 
   private async transaction<T>(
     operation: (document: SessionFile) => T | Promise<T>,
-    options: { opportunisticPrune?: boolean } = {},
+    options: { opportunisticPrune?: boolean; readOnly?: boolean } = {},
   ): Promise<T> {
     const owner = await this.acquireLock();
     let result: T | undefined;
@@ -1273,19 +1262,21 @@ export class FileMessageInteractionSessionStore
     try {
       await this.assertDirectoryIdentity();
       const document = await this.readFile();
-      if (options.opportunisticPrune !== false) {
+      if (!options.readOnly && options.opportunisticPrune !== false) {
         this.prune(document, this.clock());
       }
       result = await operation(document);
       await this.assertDirectoryIdentity();
-      await this.writeFile(document);
+      if (!options.readOnly) await this.writeFile(document);
     } catch (error) {
+      // error-policy:J2 preserve the operation failure alongside lock teardown.
       operationError = error;
     }
     let releaseError: unknown;
     try {
       await this.releaseLock(owner);
     } catch (error) {
+      // error-policy:J2 retain lock recovery details before translating writes.
       releaseError = error;
     }
     if (operationError && releaseError) {
@@ -1318,6 +1309,7 @@ export class FileMessageInteractionSessionStore
       );
     }
     if (operationError) throw operationError;
+    if (releaseError && options.readOnly) throw releaseError;
     if (releaseError) {
       // error-policy:J2 The state rename and directory fsync completed before
       // every release path, so no release failure is safe for caller retry.
@@ -1364,11 +1356,13 @@ export class FileMessageInteractionSessionStore
   }
 
   async get(reference: string): Promise<MessageInteractionSession | null> {
-    await this.initialize();
-    const document = await this.readFile();
-    return document.sessions[reference]
-      ? structuredClone(document.sessions[reference])
-      : null;
+    return this.transaction(
+      (document) =>
+        document.sessions[reference]
+          ? structuredClone(document.sessions[reference])
+          : null,
+      { readOnly: true },
+    );
   }
 
   async claimIfCurrent(
@@ -1409,17 +1403,19 @@ export class FileMessageInteractionSessionStore
   }): Promise<MessageInteractionSession[]> {
     safeInteger(args.committedBefore, "committedBefore", 0);
     safeInteger(args.limit, "limit", 1);
-    await this.initialize();
-    const document = await this.readFile();
-    return Object.values(document.sessions)
-      .filter(
-        (session) =>
-          session.consume.state === "committed" &&
-          Date.parse(session.consume.committedAt) <= args.committedBefore,
-      )
-      .sort((a, b) => a.reference.localeCompare(b.reference))
-      .slice(0, args.limit)
-      .map((session) => structuredClone(session));
+    return this.transaction(
+      (document) =>
+        Object.values(document.sessions)
+          .filter(
+            (session) =>
+              session.consume.state === "committed" &&
+              Date.parse(session.consume.committedAt) <= args.committedBefore,
+          )
+          .sort((a, b) => a.reference.localeCompare(b.reference))
+          .slice(0, args.limit)
+          .map((session) => structuredClone(session)),
+      { readOnly: true },
+    );
   }
 
   async reconcileCommitted(

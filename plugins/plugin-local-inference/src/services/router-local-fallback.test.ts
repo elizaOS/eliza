@@ -8,13 +8,13 @@ import {
 	type Character,
 	type GenerateTextParams,
 	type IAgentRuntime,
-	InMemoryDatabaseAdapter,
 	MODEL_PROVIDER_ATTEMPTS,
 	type ModelProviderAttempt,
 	ModelType,
 	runWithStreamingContext,
 	type StreamChunkCallback,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const readiness = vi.hoisted(() => ({

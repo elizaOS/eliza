@@ -3,7 +3,7 @@
  * surface coordination.
  */
 
-import type { CapabilityHandoffRequest } from "@elizaos/shared";
+import type { CapabilityHandoffRequest } from "@elizaos/shared/capability-catalog";
 import type {
   ChatFailureKind,
   ChatTerminalFailure,

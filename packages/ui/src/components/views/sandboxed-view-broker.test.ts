@@ -3,7 +3,7 @@
 // boundary. Pure logic — parses untrusted messages, checks grants, and returns
 // typed denials without touching a facility when a capability is not granted.
 
-import { resolveSurfaceManifest, type SurfaceManifest } from "@elizaos/core";
+import { resolveSurfaceManifest, type SurfaceManifest } from "@elizaos/common";
 import { describe, expect, it, vi } from "vitest";
 import {
   brokerSandboxedViewRequest,
