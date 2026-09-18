@@ -17,8 +17,10 @@ export function providerReviewSources(context: ContextObject) {
 			event.type === "provider" &&
 			"reviewableSources" in event &&
 			Boolean(event.reviewableSources) &&
-			!("discoveryText" in event && event.discoveryText) &&
-			!(Array.isArray(loaded) && loaded.includes(String(event.name))),
+			// Indexed originals may be reviewed after this turn loaded their full
+			// body. Forced restoration of an ordinary provider stays unprojected.
+			Boolean("discoveryText" in event && event.discoveryText) ===
+				Boolean(Array.isArray(loaded) && loaded.includes(String(event.name))),
 	);
 	if (
 		!context.metadata?.roomId ||

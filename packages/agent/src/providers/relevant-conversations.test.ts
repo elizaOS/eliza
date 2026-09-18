@@ -14,13 +14,19 @@ import type { IAgentRuntime, Memory, Room, State } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  applyHistoryRetentionReview,
+  prepareHistoryRetention,
+} from "../../../core/src/runtime/history-retention.ts";
+import {
   projectDeferredProviders,
   providerReviewSources,
 } from "../../../core/src/runtime/provider-context.ts";
+import { historyRetentionContext } from "../../../core/src/services/history-retention.ts";
 import type {
   ContextObject,
   ContextProviderEvent,
 } from "../../../core/src/types/context-object.ts";
+import { ChannelType } from "../../../core/src/types/primitives.ts";
 
 // The provider closes over `embedRecallQuery` from @elizaos/core at import time.
 // Partially mock the module so we can drive the shared recall embed to a
@@ -29,6 +35,9 @@ import type {
 const embedRecallQuery =
   vi.fn<(runtime: IAgentRuntime, text: string) => Promise<number[] | null>>();
 const buildAccessContext = vi.fn();
+const getEvaluatorProgressState = vi.fn<() => Promise<unknown>>(
+  async () => undefined,
+);
 const revalidateOwnerExclusiveDisclosure = vi.fn(
   async (
     _runtime: IAgentRuntime,
@@ -81,6 +90,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@elizaos/core")>();
   return {
     ...actual,
+    getEvaluatorProgressState,
     buildAccessContext: (...args: unknown[]) => buildAccessContext(...args),
     embedRecallQuery: (runtime: IAgentRuntime, text: string) =>
       embedRecallQuery(runtime, text),
@@ -212,6 +222,7 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
   afterEach(() => {
     embedRecallQuery.mockReset();
     buildAccessContext.mockReset();
+    getEvaluatorProgressState.mockReset();
     revalidateOwnerExclusiveDisclosure.mockClear();
     revalidateOwnerExclusiveDisclosure.mockResolvedValue({
       allowed: true,
@@ -395,6 +406,128 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
       expect.objectContaining({ roomId: ROOM_ID }),
     );
   });
+
+  it.each([
+    "valid",
+    "missing",
+    "stale",
+    "other-world",
+    "group",
+    "voice",
+    "voice-room",
+  ])(
+    "uses retention only for a validated private source room: %s",
+    async (mode) => {
+      const message = makeMessage("open notes");
+      if (mode === "voice") message.content.channelType = ChannelType.VOICE_DM;
+      const worldId = "00000000-0000-0000-0000-0000000000w1";
+      buildAccessContext.mockResolvedValue({
+        requesterEntityId: message.entityId,
+        role: "OWNER",
+        isOwner: true,
+        worldId,
+      });
+      embedRecallQuery.mockResolvedValue([0.1, 0.2, 0.3]);
+      const originals = Array.from({ length: 20 }, (_, index) => ({
+        ...message,
+        id: `source-${index}`,
+        entityId: index % 2 ? message.agentId : message.entityId,
+        roomId: OTHER_ROOM,
+        createdAt: index,
+        content: {
+          text:
+            index === 0
+              ? "Keep the original permission rule."
+              : `Historical source ${index}: ` + "Exact  Ω body. ".repeat(20),
+        },
+        metadata: { type: "message", scope: "shared" },
+      })) as unknown as Memory[];
+      const hidden = {
+        ...originals[5],
+        id: "hidden",
+        entityId: "other-user",
+        content: { text: "PRIVATE_SENTINEL" },
+        metadata: { type: "message", scope: "private" },
+      } as unknown as Memory;
+      const all = [...originals, hidden];
+      const getMemories = vi.fn(async (options: { roomId?: string }) =>
+        options.roomId === OTHER_ROOM ? all : [],
+      );
+      const { runtime, searchMemories } = makeRuntime({
+        agentId: message.agentId,
+        getRoom: vi.fn(
+          async () =>
+            ({
+              id: ROOM_ID,
+              type:
+                mode === "voice-room" ? ChannelType.VOICE_DM : ChannelType.DM,
+            }) as Room,
+        ),
+        getMemories,
+        getRoomsByIds: vi.fn(
+          async () =>
+            [
+              {
+                id: OTHER_ROOM,
+                worldId: mode === "other-world" ? "other" : worldId,
+                type: mode === "group" ? ChannelType.GROUP : ChannelType.DM,
+              },
+            ] as unknown as Room[],
+        ),
+      });
+      const context = historyRetentionContext(
+        runtime,
+        { ...message, roomId: OTHER_ROOM },
+        all,
+      );
+      const prepared = prepareHistoryRetention(
+        context,
+        {
+          agentId: runtime.agentId,
+          roomId: OTHER_ROOM,
+          entityId: message.entityId,
+          roles: ["OWNER"],
+        },
+        null,
+        "snapshot",
+        context.events.length,
+      );
+      const checkpoint = applyHistoryRetentionReview(prepared, {
+        sourceSetId: prepared.sourceSetId,
+        complete: true,
+        retainSourceIds: ["h1"],
+        deferSourceIds: prepared.candidates.slice(1).map((source) => source.id),
+        uncertainSourceIds: [],
+        dependencyGroups: [],
+      });
+      getEvaluatorProgressState.mockResolvedValue(
+        mode === "missing" ? undefined : checkpoint,
+      );
+      if (mode === "stale") originals[2].content.text += " changed";
+      searchMemories.mockResolvedValue(all);
+      const result = await relevantConversationsProvider.get(
+        runtime,
+        message,
+        EMPTY_STATE,
+      );
+      expect(result.text).not.toContain("PRIVATE_SENTINEL");
+      expect(result.data?.messages).toHaveLength(20);
+      if (mode === "valid") {
+        expect(
+          vi
+            .mocked(runtime.reportError)
+            .mock.calls.map(([tag, error]) => [tag, String(error)]),
+        ).toEqual([]);
+        expect(result.discoveryText).toContain(
+          "Keep the original permission rule.",
+        );
+        expect(result.discoveryText).not.toContain("Historical source 2:");
+        expect(result.discoveryText).toContain("Historical source 19:");
+        expect(result.discoveryText).not.toContain("PRIVATE_SENTINEL");
+        expect(result.text).toContain("Historical source 2:");
+      } else expect(result.discoveryText).toBeUndefined();
+    },
+  );
 
   it("keeps the first readable cross-room occurrence and every unidentified record", async () => {
     embedRecallQuery.mockResolvedValue([0.1, 0.2, 0.3]);

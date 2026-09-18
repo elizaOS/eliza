@@ -23,9 +23,13 @@ import type {
 } from "@elizaos/core";
 import {
   buildAccessContext,
+  ChannelType,
   embedRecallQuery,
   filterByAccessContext,
+  getEvaluatorProgressState,
   getUserMessageText,
+  HISTORY_RETENTION_EVALUATOR,
+  historyRetentionContext,
   labelHistorySources,
   markOwnerExclusiveDisclosureUsed,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
@@ -33,6 +37,7 @@ import {
   revalidateOwnerExclusiveDisclosure,
   searchCanonicalConversationMemories,
   stringToUuid,
+  visibleHistoryEventIds,
 } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
@@ -339,8 +344,116 @@ export const relevantConversationsProvider: Provider = {
         compactText.length < originalText.length ? compactText : originalText,
       );
 
+      // The checkpoint is an internal index, never a disclosure grant. Validate
+      // its original room snapshot, then only defer records already admitted
+      // above. No body read for index validation enters the provider output.
+      const deferred = new Set<string>();
+      if (
+        accessContext.role === "OWNER" &&
+        accessContext.worldId &&
+        message.content.channelType !== ChannelType.VOICE_DM &&
+        currentRoom?.type !== ChannelType.VOICE_DM
+      ) {
+        await Promise.all(
+          roomIds.map(async (roomId) => {
+            const room = roomCache.get(roomId);
+            if (
+              !room ||
+              room.worldId !== accessContext.worldId ||
+              ![
+                ChannelType.DM,
+                ChannelType.API,
+                ChannelType.SELF,
+                ChannelType.VOICE_DM,
+              ].some((type) => type === room.type)
+            )
+              return;
+            try {
+              const sourceMessage = { ...message, roomId };
+              const checkpoint = await getEvaluatorProgressState(
+                runtime,
+                sourceMessage,
+                HISTORY_RETENTION_EVALUATOR,
+              );
+              if (!checkpoint) return;
+              const originals = await runtime.getMemories({
+                agentId: runtime.agentId,
+                roomId,
+                tableName: "messages",
+                unique: false,
+                includeEmbedding: false,
+                orderDirection: "asc",
+              });
+              const context = historyRetentionContext(
+                runtime,
+                sourceMessage,
+                originals,
+              );
+              const visible = visibleHistoryEventIds(
+                context,
+                {
+                  agentId: runtime.agentId,
+                  roomId,
+                  entityId: message.entityId,
+                  roles: ["OWNER"],
+                },
+                checkpoint,
+              );
+              if (!visible) return;
+              const originalIds = new Set(
+                context.events.map((event) => event.id),
+              );
+              const byId = new Map(
+                originals.map((original) => [original.id, original]),
+              );
+              const roomDeferred: string[] = [];
+              for (const memory of filtered) {
+                if (!memory.id || memory.roomId !== roomId) continue;
+                const original = byId.get(memory.id);
+                if (
+                  !original ||
+                  original.entityId !== memory.entityId ||
+                  original.roomId !== memory.roomId ||
+                  original.createdAt !== memory.createdAt ||
+                  JSON.stringify(original.content) !==
+                    JSON.stringify(memory.content) ||
+                  JSON.stringify(original.metadata) !==
+                    JSON.stringify(memory.metadata)
+                )
+                  continue;
+                const eventId = `history:${memory.id}`;
+                if (originalIds.has(eventId) && !visible.has(eventId))
+                  roomDeferred.push(memory.id);
+              }
+              for (const id of roomDeferred) deferred.add(id);
+            } catch (error) {
+              // error-policy:J4 Optional index failure preserves full admitted recall.
+              runtime.reportError(
+                "RelevantConversationsProvider.retention",
+                error,
+                { roomId },
+              );
+            }
+          }),
+        );
+      }
+      const fullText = lines.join("\n");
+      const discoveryText = deferred.size
+        ? [
+            lines[0],
+            ...segments.flatMap((segment, index) =>
+              deferred.has(filtered[index].id ?? "")
+                ? []
+                : [`[recalled${index + 1}]\n${segment.content}`],
+            ),
+            "Other reviewed conversation originals are deferred, not absent. Request relevant-conversations for complete recalled originals when a fact, correction, quotation or dependency is missing. Retention is not proof of relevance or permission.",
+          ].join("\n")
+        : undefined;
       return {
-        text: lines.join("\n"),
+        text: fullText,
+        ...(discoveryText && discoveryText.length < fullText.length
+          ? { discoveryText }
+          : {}),
         reviewableSources: {
           notice: lines[0],
           sources: segments.map((segment, index) => ({

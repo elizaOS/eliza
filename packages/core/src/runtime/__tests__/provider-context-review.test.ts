@@ -129,6 +129,54 @@ describe("reviewed provider sources", () => {
 		event.reviewableSources!.sources[1].id = "recalled1";
 		expect(providerReviewSources(context)).toBeUndefined();
 	});
+	it("reviews freshly loaded indexed originals without reusing a prior review", () => {
+		const context = fixture();
+		const event = context.events[0] as ContextProviderEvent;
+		if (!context.metadata) throw new Error("Missing fixture metadata");
+		select(context);
+		event.discoveryText = "Read RECALL for originals.";
+		expect(providerReviewSources(context)).toBeUndefined();
+		context.metadata.loadedContextProviders = ["RECALL"];
+		expect(projectDeferredProviders(context).context.events).toEqual(
+			context.events,
+		);
+		select(context);
+		expect(
+			(
+				projectDeferredProviders(context).context
+					.events[0] as ContextProviderEvent
+			).text,
+		).not.toContain("Unrelated earlier answer");
+		context.metadata.providerDiscoveryEnabled = false;
+		expect(projectDeferredProviders(context).context.events).toEqual(
+			context.events,
+		);
+	});
+	it.each(["missing", "incomplete", "turn", "author", "body"])(
+		"keeps loaded originals after %s invalidates the fresh review",
+		(mode) => {
+			const context = fixture();
+			const event = context.events[0] as ContextProviderEvent;
+			if (!context.metadata || !event.reviewableSources)
+				throw new Error("Invalid fixture");
+			event.discoveryText = "Read RECALL for originals.";
+			context.metadata.loadedContextProviders = ["RECALL"];
+			select(context);
+			if (mode === "missing") delete context.metadata.providerReview;
+			if (mode === "incomplete")
+				(context.metadata.providerReview as { complete: boolean }).complete =
+					false;
+			if (mode === "turn") context.metadata.messageId = "changed";
+			if (mode === "author")
+				event.reviewableSources.sources[0].metadata.entityId = "changed";
+			if (mode === "body")
+				event.reviewableSources.sources[0].text += " changed";
+			expect(projectDeferredProviders(context).context.events).toEqual(
+				context.events,
+			);
+		},
+	);
+
 	it("materializes a selected repeated occurrence with its exact original body", () => {
 		const context = fixture();
 		const event = context.events[0] as ContextProviderEvent;

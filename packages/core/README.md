@@ -807,3 +807,18 @@ unknown or stale selections retain full context. The provider notice always
 remains, selected repeated occurrences materialize their complete original text,
 and the existing provider-restoration path recovers full evidence. Selection
 does not change storage, authorize disclosure, or add a model stage.
+
+
+Native direct-text history reads also restore deferred, reviewable provider
+originals from the freshly recomposed authorized state. A separate notice and
+trace field identify those provider bodies; they are not literal-search matches
+in the current conversation. Ordinary reference providers and voice retain their
+existing read paths. This recovery uses the already requested decision round.
+
+An indexed provider loaded in that turn may receive a fresh source-bound review
+for planning and completion. A pre-load, missing, incomplete or stale review
+keeps the complete loaded evidence. Explicit restoration of ordinary provider
+context also remains complete. Node consumers can reuse `visibleHistoryEventIds`,
+`historyRetentionContext`, `HISTORY_RETENTION_EVALUATOR` and
+`getEvaluatorProgressState` to validate existing retention checkpoints; those
+checkpoints never grant source access.

@@ -413,3 +413,21 @@ text snapshot and vocabulary identity. Edits, removals, changed state or locale
 are rechecked; weak message keys release retained snapshots. This does not cache
 action validation or permission decisions, remove history, change vocabulary,
 or alter the complete match collector used by consumers that need every match.
+
+
+## Recalled conversation discovery
+
+The relevant-conversations provider may use an existing retention checkpoint
+from an owner-private source room to defer reviewed originals. It validates the
+complete source snapshot and scope, then intersects visibility with the records
+already admitted by recall access checks. Retained constraints and pending
+originals remain inline. Missing or stale checkpoints, mismatched record bytes,
+other worlds and group rooms retain complete admitted recall. Stored records and
+the full provider result are unchanged.
+
+The discovery notice offers complete originals through the existing read path.
+A native direct-text history read also restores these authorized provider bodies
+in its existing decision round, separately from the current-room search receipt.
+A fresh provider review may then select originals for planning and completion;
+invalid review keeps them all. No similarity cutoff, result-count limit or new
+classification call is introduced.

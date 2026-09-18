@@ -281,6 +281,10 @@ export async function generateStage1Decision(
 	let sourceReplySnapshot: SourceReplySnapshot | undefined;
 	let providerReviewSourceSetId: string | undefined;
 	const createMessageHandlerTools = () => {
+		context.metadata = {
+			...context.metadata,
+			loadedContextProviders: [...loadedContext],
+		};
 		// Bind to the exact sources offered by this inference, not a model-echoed nonce.
 		providerReviewSourceSetId =
 			discoveryEnabled && !voiceDirectMessageChannel
@@ -883,6 +887,52 @@ export async function generateStage1Decision(
 				args.state,
 				loadedContext,
 			);
+			const restoredProviders: string[] = [];
+			if (
+				historyRequested.length &&
+				nativeHistoryRead &&
+				!voiceDirectMessageChannel
+			) {
+				// A missing-dialogue read can refer to recalled originals from another
+				// room. Restore only freshly authorized, provider-indexed originals;
+				// leave the current-room search scope and its match receipt unchanged.
+				for (const event of context.events) {
+					if (
+						event.type === "provider" &&
+						"reviewableSources" in event &&
+						event.reviewableSources &&
+						"name" in event &&
+						typeof event.name === "string" &&
+						discovery.available.has(event.name)
+					) {
+						loadedContext.add(event.name);
+						restoredProviders.push(event.name);
+					}
+				}
+				if (restoredProviders.length) {
+					discovery = projectDiscoverableContext(
+						context,
+						args.state,
+						loadedContext,
+					);
+					discovery.context = {
+						...discovery.context,
+						events: [
+							...discovery.context.events,
+							{
+								id: "history-read-provider-restoration",
+								type: "segment",
+								source: "message-service",
+								segment: {
+									id: "history-read-provider-restoration",
+									stable: false,
+									content: `Additional authorized provider originals restored during this history read: ${JSON.stringify(restoredProviders)}. These are separate provider evidence, not matches in the current-conversation literal search.`,
+								},
+							},
+						],
+					};
+				}
+			}
 			if (contextCatalog && !contextCatalog.loaded)
 				discovery.available.add(CONTEXT_CATALOG_REFERENCE);
 			for (const reference of historyReferences(context, history))
@@ -894,6 +944,7 @@ export async function generateStage1Decision(
 					{
 						requestedCount: historyRequested.length,
 						fullRestoration: !history,
+						restoredProviders: restoredProviders.join(","),
 					},
 				);
 			// The read refreshed state and authority. Recheck field activity so

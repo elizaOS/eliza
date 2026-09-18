@@ -422,9 +422,23 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
-	it.each(["keep", "omit", "stale", "changed", "restore"])(
+	it.each([
+		"keep",
+		"omit",
+		"stale",
+		"changed",
+		"restore",
+		"loaded-keep",
+		"loaded-omit",
+		"loaded-stale",
+		"loaded-changed",
+		"loaded-restore",
+	])(
 		"preserves provider review through planning and completion: %s",
-		async (mode) => {
+		async (scenario) => {
+			const loaded = scenario.startsWith("loaded-");
+			const mode = scenario.replace(/^loaded-/, "");
+			let count = 0;
 			const body =
 				"Complete unrelated recalled source with Ω punctuation. ".repeat(60);
 			const notice =
@@ -477,6 +491,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			state.data.providers = {
 				RECALL: {
 					text: `[recalled1]\n${body}`,
+					...(loaded
+						? { discoveryText: "Read RECALL for full originals." }
+						: {}),
 					reviewableSources: {
 						notice,
 						sources: [
@@ -491,10 +508,13 @@ describe("runV5MessageRuntimeStage1", () => {
 			};
 			runtime.composeState = vi.fn(async () => {
 				const next = structuredClone(state);
-				if (mode === "changed")
+				if (mode === "changed" && (!loaded || count >= 2))
 					next.data.providers = {
 						RECALL: {
 							text: `[recalled1]\n${body}New applicable constraint.`,
+							...(loaded
+								? { discoveryText: "Read RECALL for full originals." }
+								: {}),
 							reviewableSources: {
 								notice,
 								sources: [
@@ -510,10 +530,24 @@ describe("runV5MessageRuntimeStage1", () => {
 				return next;
 			});
 			const model = runtime.useModel.bind(runtime);
-			let count = 0;
 			runtime.useModel = vi.fn(
 				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
-					if (++count !== 1) return model(...args);
+					count++;
+					if (loaded && count === 1) {
+						expect(
+							JSON.stringify((args[1] as { messages: unknown }).messages),
+						).not.toContain(body.trim());
+						return {
+							text: "",
+							toolCalls: [
+								{
+									toolName: "READ_CONTEXT",
+									input: { contextRequests: ["RECALL"] },
+								},
+							],
+						};
+					}
+					if (count !== (loaded ? 2 : 1)) return model(...args);
 					const input = args[1] as {
 						messages: unknown;
 						tools: Array<{ name: string; parameters: JSONSchema }>;
@@ -549,15 +583,18 @@ describe("runV5MessageRuntimeStage1", () => {
 			});
 			expect(lookup).toHaveBeenCalledTimes(1);
 			const calls = useModelCalls(runtime);
-			expect(calls).toHaveLength(mode === "restore" ? 4 : 3);
-			for (let index = 1; index < calls.length; index++) {
+			expect(calls).toHaveLength(
+				(mode === "restore" ? 4 : 3) + (loaded ? 1 : 0),
+			);
+			for (let index = loaded ? 2 : 1; index < calls.length; index++) {
+				const stageIndex = index - (loaded ? 1 : 0);
 				const wire = JSON.stringify(
 					(calls[index][1] as { messages: unknown }).messages,
 				);
 				expect(wire.includes(body.trim())).toBe(
-					mode !== "omit" && (mode !== "restore" || index > 1),
+					mode !== "omit" && (mode !== "restore" || stageIndex > 1),
 				);
-				if (mode === "omit" || (mode === "restore" && index === 1))
+				if (mode === "omit" || (mode === "restore" && stageIndex === 1))
 					expect(wire).toContain(notice);
 			}
 			expect(
@@ -713,6 +750,120 @@ describe("runV5MessageRuntimeStage1", () => {
 			`\n\n${originalText}\n\n`,
 		);
 	});
+
+	it.each(["fresh", "revoked", "ordinary-reference"])(
+		"restores only fresh reviewable providers during a native history read: %s",
+		async (mode) => {
+			const { runtime, message, state } = await reviewedHistoryFixture();
+			const result = (text: string) => ({
+				text: `[recalled1]\n${text}`,
+				discoveryText: "Read RECALL for omitted originals.",
+				...(mode !== "ordinary-reference"
+					? {
+							reviewableSources: {
+								notice: "Authorized originals",
+								sources: [
+									{
+										id: "recalled1",
+										text,
+										originalText: text,
+										metadata: {
+											roomId: "other-room",
+											entityId: message.entityId,
+										},
+									},
+								],
+							},
+						}
+					: {}),
+			});
+			runtime.providers.push({ name: "RECALL", get: vi.fn() });
+			state.data.providers = {
+				...state.data.providers,
+				RECALL: result("STALE_PROVIDER_SENTINEL ".repeat(20)),
+			};
+			runtime.composeState = async () => {
+				const fresh = structuredClone(state);
+				if (mode === "revoked") delete fresh.data.providers.RECALL;
+				else
+					fresh.data.providers.RECALL = result(
+						"FRESH_PROVIDER_SENTINEL ".repeat(20),
+					);
+				return fresh;
+			};
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			let calls = 0;
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					calls++;
+					const input = args[1] as { messages: Array<{ content: string }> };
+					const text = input.messages.map((item) => item.content).join("\n");
+					expect(text).not.toContain("STALE_PROVIDER_SENTINEL");
+					if (calls === 1)
+						return {
+							text: "",
+							toolCalls: [
+								{
+									toolName: "READ_CONTEXT",
+									input: { contextRequests: ["history:search-user:blueberry"] },
+								},
+							],
+						};
+					expect(calls).toBe(2);
+					expect(text.includes("FRESH_PROVIDER_SENTINEL")).toBe(
+						mode === "fresh",
+					);
+					expect(
+						text.includes("Additional authorized provider originals restored"),
+					).toBe(mode === "fresh");
+					expect(text).toContain("history_literal_search_results:");
+					return stage1Response({
+						contexts: ["simple"],
+						replyText: "Read complete.",
+						extra: {
+							replyText: [
+								{
+									kind: mode === "fresh" ? "source" : "text",
+									value: mode === "fresh" ? "recalled1" : "Read complete.",
+								},
+							],
+							providerReview: {
+								complete: true,
+								keep: mode === "fresh" ? ["recalled1"] : [],
+							},
+							replyEffectStatus: "none",
+							completionContext: {
+								mode: "relevant_prior_dialogue",
+								complete: true,
+								sourceSetId: text.match(
+									/completion_source_set: ([a-f0-9]{64})/,
+								)?.[1],
+								relevantSourceIds: [],
+								constraintSourceIds: [],
+								referentSourceIds: [],
+								pendingIntentSourceIds: [],
+							},
+						},
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state,
+				responseId: message.id as UUID,
+				stage1DecisionOnly: true,
+			});
+			expect(calls).toBe(2);
+			if (mode === "fresh")
+				expect(dispatch.mock.calls[0]?.[0].rawParsed.replyText).toBe(
+					`\n\n${"FRESH_PROVIDER_SENTINEL ".repeat(20)}\n\n`,
+				);
+		},
+	);
 
 	it.each(["quote", "malformed", "legacy-json", "legacy-object"])(
 		"resolves native source parts before dispatch: %s",
