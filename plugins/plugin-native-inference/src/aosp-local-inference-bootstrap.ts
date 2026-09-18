@@ -17,8 +17,7 @@
  * single loader, single model (resolved/auto-downloaded then loaded on first
  * call).
  *
- * Why not import { assertBgeTokenAgreement, prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
-import from `@elizaos/app-core` directly? `@elizaos/app-core`
+ * Why not import from `@elizaos/app-core` directly? `@elizaos/app-core`
  * already depends on `@elizaos/agent`, so an `agent → app-core` import
  * creates a hard cyclic workspace dependency that breaks `bun install`
  * and CI even when the bundler can inline the cycle. Keeping the AOSP
@@ -72,6 +71,10 @@ import {
   FIRST_RUN_DEFAULT_MODEL_ID,
   tierBundleSlug,
 } from "@elizaos/shared/local-inference";
+import {
+  assertBgeTokenAgreement,
+  prepareBgeEmbeddingInput,
+} from "@elizaos/shared/local-inference/bge-input";
 import { writeAospLlamaDebugLog } from "./aosp-debug-log.js";
 import {
   prepareAospEmbeddingBundle,
