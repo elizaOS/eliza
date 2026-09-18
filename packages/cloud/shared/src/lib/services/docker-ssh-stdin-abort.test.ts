@@ -1,35 +1,18 @@
-import { describe, expect, mock, test } from "bun:test";
+/**
+ * Deterministic SSH channel faults exercise cancellation and receipt fencing
+ * in the real client; the separate loopback suite covers native SSH framing.
+ */
+import { describe, expect, spyOn, test } from "bun:test";
 import { EventEmitter } from "node:events";
+import { Client } from "ssh2";
 import { DockerSSHClient } from "./docker-ssh";
-
-let connectingSession: FakeConnectingSshClient | undefined;
-
-class FakeConnectingSshClient extends EventEmitter {
-  connectCalls = 0;
-  destroyCalls = 0;
-
-  constructor() {
-    super();
-    connectingSession = this;
-  }
-
-  connect(): void {
-    this.connectCalls += 1;
-  }
-
-  destroy(): this {
-    this.destroyCalls += 1;
-    return this;
-  }
-}
-
-mock.module("ssh2", () => ({ Client: FakeConnectingSshClient }));
 
 class FakeClientChannel extends EventEmitter {
   readonly stderr = new EventEmitter();
   closeCalls = 0;
   destroyCalls = 0;
   endedWith: Buffer | undefined;
+  writtenWith: Buffer | undefined;
 
   close(): void {
     this.closeCalls += 1;
@@ -42,6 +25,11 @@ class FakeClientChannel extends EventEmitter {
 
   end(input: Buffer): void {
     this.endedWith = input;
+  }
+
+  write(input: Buffer): boolean {
+    this.writtenWith = input;
+    return true;
   }
 }
 
@@ -72,6 +60,7 @@ async function requireError(promise: Promise<unknown>): Promise<Error> {
   try {
     await promise;
   } catch (error) {
+    // error-policy:J1 The assertion boundary requires an explicit rejection.
     if (error instanceof Error) return error;
     throw new Error("Expected an Error rejection");
   }
@@ -102,7 +91,6 @@ describe("DockerSSHClient.connect cancellation", () => {
   });
 
   test("preserves the exact reason when aborted while connect is in flight", async () => {
-    connectingSession = undefined;
     const client = new DockerSSHClient({
       hostname: "restore-node.example.test",
       privateKey: Buffer.from("unused"),
@@ -111,24 +99,123 @@ describe("DockerSSHClient.connect cancellation", () => {
     const controller = new AbortController();
     const reason = makeCallerAbortReason("cancelled during SSH connect");
 
-    const promise = client.connect(controller.signal);
-
-    for (let attempt = 0; attempt < 100 && !connectingSession; attempt += 1) {
-      await Bun.sleep(1);
+    let notifyConnecting!: () => void;
+    const connecting = new Promise<void>((resolve) => {
+      notifyConnecting = resolve;
+    });
+    // Replace only this test's socket-opening method, not the process-wide ssh2
+    // module: neighbouring integration suites must keep the real Client/Server.
+    const connect = spyOn(Client.prototype, "connect").mockImplementation(function (this: Client) {
+      notifyConnecting();
+      return this;
+    });
+    const destroy = spyOn(Client.prototype, "destroy").mockImplementation(function (this: Client) {
+      return this;
+    });
+    const pending = requireError(client.connect(controller.signal));
+    try {
+      await connecting;
+      expect(connect).toHaveBeenCalledTimes(1);
+      controller.abort(reason);
+      expect(await pending).toBe(reason);
+      expect(destroy).toHaveBeenCalledTimes(1);
+      expect(client.isConnected).toBe(false);
+    } finally {
+      controller.abort(reason);
+      try {
+        await pending;
+      } finally {
+        connect.mockRestore();
+        destroy.mockRestore();
+      }
     }
-    if (!connectingSession) throw new Error("Expected SSH connection attempt to start");
-    expect(connectingSession.connectCalls).toBe(1);
-
-    controller.abort(reason);
-    const error = await requireError(promise);
-
-    expect(error).toBe(reason);
-    expect(connectingSession.destroyCalls).toBe(1);
-    expect(client.isConnected).toBe(false);
   });
 });
 
 describe("DockerSSHClient.execStdinAbortable", () => {
+  function receiptExchange(expected = "a".repeat(64)) {
+    const channel = new FakeClientChannel();
+    const session: FakeSshSession = {
+      execCalls: 0,
+      destroyCalls: 0,
+      exec(_command, callback) {
+        this.execCalls += 1;
+        callback(undefined, channel);
+      },
+      destroy() {
+        this.destroyCalls += 1;
+      },
+    };
+    const controller = new AbortController();
+    const input = Buffer.from("private restore frame");
+    const promise = makeConnectedClient(session).execStdinAbortable(
+      "restore-worker",
+      input,
+      controller.signal,
+      5_000,
+      expected,
+    );
+    return { channel, session, controller, input, promise };
+  }
+
+  test("keeps framed stdin open and requires the complete receipt plus exit zero", async () => {
+    const { channel, input, promise } = receiptExchange();
+    expect(channel.writtenWith).toBe(input);
+    expect(channel.endedWith).toBeUndefined();
+    let settled = false;
+    void promise.then(() => {
+      settled = true;
+    });
+    for (const text of ["a".repeat(17), "a".repeat(47)]) {
+      const chunk = Buffer.from(text);
+      channel.emit("data", chunk);
+      expect(chunk.every((byte) => byte === 0)).toBe(true);
+    }
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    channel.emit("close", 0);
+    await promise;
+    expect(settled).toBe(true);
+  });
+
+  test.each([
+    ["short", "a".repeat(63), false, 0],
+    ["wrong", "b".repeat(64), false, 0],
+    ["trailing", `${"a".repeat(64)}\n`, false, 0],
+    ["stderr", "private restore frame", true, 0],
+    ["failed exit", "a".repeat(64), false, 1],
+  ] as const)(
+    "rejects %s acknowledgements without reflecting remote bytes",
+    async (_name, data, stderr, code) => {
+      const { channel, promise } = receiptExchange();
+      const chunk = Buffer.from(data);
+      (stderr ? channel.stderr : channel).emit("data", chunk);
+      channel.emit("close", code);
+      const error = await requireError(promise);
+      expect(chunk.every((byte) => byte === 0)).toBe(true);
+      expect(error.message).not.toContain(data);
+    },
+  );
+
+  test("abort wins even after the full receipt arrived", async () => {
+    const { channel, controller, promise } = receiptExchange();
+    channel.emit("data", Buffer.from("a".repeat(64)));
+    const reason = makeCallerAbortReason("lease lost before exit");
+    controller.abort(reason);
+    channel.emit("close", 0);
+    expect(await requireError(promise)).toBe(reason);
+  });
+
+  test.each(["", "A".repeat(64), `${"a".repeat(64)}\n`, "a".repeat(65)])(
+    "rejects malformed expected receipt before opening a channel (%s)",
+    async (expected) => {
+      const { session, channel, promise } = receiptExchange(expected);
+      expect((await requireError(promise)).message).toBe("Invalid expected SSH restore receipt");
+      expect(session.execCalls).toBe(0);
+      expect(channel.writtenWith).toBeUndefined();
+    },
+  );
+
   test("preserves a pre-aborted signal reason before opening an SSH exec channel", async () => {
     const channel = new FakeClientChannel();
     const session: FakeSshSession = {
