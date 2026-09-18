@@ -782,6 +782,8 @@ export interface ProviderResult {
 		sources: Array<{
 			id: string;
 			text: string;
+			/** Exact original body, excluding provider presentation, for source-backed replies. */
+			originalText?: string;
 			metadata: Record<string, JsonValue>;
 		}>;
 	};

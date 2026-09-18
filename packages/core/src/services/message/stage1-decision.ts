@@ -274,20 +274,6 @@ export async function generateStage1Decision(
 			history,
 		},
 	);
-	let stage1PrefixHashes = computePrefixHashes(
-		messageHandlerInput.promptSegments,
-	);
-	const stableStage1Segments = messageHandlerInput.promptSegments.filter(
-		(segment) => segment.stable,
-	);
-	const stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
-	const stage1SystemContent =
-		typeof messageHandlerInput.messages[0]?.content === "string"
-			? messageHandlerInput.messages[0].content
-			: "";
-	let stage1PrefixHash =
-		stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
-		hashString(`stage1:${stage1SystemContent}`);
 	let compactInactiveFields = discoveryEnabled;
 	let repairHistoryIdentity = false;
 	let repairHistorySourceIds: string[] | undefined;
@@ -333,7 +319,7 @@ export async function generateStage1Decision(
 			nativeHistoryRead &&
 			!voiceDirectMessageChannel &&
 			history &&
-			history.loadedSourceIds.size > 0 &&
+			(history.loadedSourceIds.size > 0 || providerReviewSourceSetId) &&
 			selectedResponseHandlerFields.includes(replyTextFieldEvaluator) &&
 			canonicalResponseHandlerSchema.properties?.replyText ===
 				replyTextFieldEvaluator.schema
@@ -344,7 +330,11 @@ export async function generateStage1Decision(
 			const memories = providers?.RECENT_MESSAGES?.data?.recentMessages;
 			if (Array.isArray(memories)) {
 				const snapshot = createSourceReplySnapshot(context, history, memories);
-				if (snapshot && snapshot.originals.size === snapshot.suppliedIds.size)
+				if (
+					snapshot &&
+					snapshot.originals.size === snapshot.suppliedIds.size &&
+					(history.loadedSourceIds.size > 0 || snapshot.providerSourceSetId)
+				)
 					sourceReplySnapshot = snapshot;
 			}
 		}
@@ -382,7 +372,49 @@ export async function generateStage1Decision(
 			...(readTool ? [readTool] : []),
 		];
 	};
+	const appendSourceReplyInstructions = () => {
+		if (
+			sourceReplySnapshot &&
+			!messageHandlerInput.promptSegments.some(
+				(segment) => segment.content === SOURCE_REPLY_INSTRUCTIONS,
+			)
+		) {
+			const first = messageHandlerInput.messages[0];
+			if (first?.role === "system" && typeof first.content === "string") {
+				messageHandlerInput = {
+					...messageHandlerInput,
+					messages: [
+						{
+							...first,
+							content: `${first.content}\n${SOURCE_REPLY_INSTRUCTIONS}`,
+						},
+						...messageHandlerInput.messages.slice(1),
+					],
+					promptSegments: [
+						...messageHandlerInput.promptSegments,
+						{ content: SOURCE_REPLY_INSTRUCTIONS, stable: false },
+					],
+				};
+			}
+		}
+	};
 	let messageHandlerTools = createMessageHandlerTools();
+	appendSourceReplyInstructions();
+	let stage1PrefixHashes = computePrefixHashes(
+		messageHandlerInput.promptSegments,
+	);
+	const stableStage1Segments = messageHandlerInput.promptSegments.filter(
+		(segment) => segment.stable,
+	);
+	const stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
+	const stage1SystemContent =
+		typeof messageHandlerInput.messages[0]?.content === "string"
+			? messageHandlerInput.messages[0].content
+			: "";
+	let stage1PrefixHash =
+		stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
+		hashString(`stage1:${stage1SystemContent}`);
+
 	// Discovery continues the same scoped workflow, even as its input expands.
 	const stage1ConversationId = args.message.roomId
 		? JSON.stringify([args.runtime.agentId, args.message.roomId, "stage1"])
@@ -443,21 +475,30 @@ export async function generateStage1Decision(
 	// prompt text stays byte-stable, only the grammar varies per turn. Cloud
 	// adapters ignore `responseSkeleton` / `grammar` — `tools` carries the
 	// equivalent (unforced) contract for them.
-	const responseGrammar = buildResponseGrammar(
-		{
-			actions: args.runtime.actions ?? [],
-			responseHandlerFields: selectedResponseHandlerFields,
-			responseHandlerFieldSignature:
-				args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(),
-		},
-		{
-			contexts: availableContexts.map((definition) => String(definition.id)),
-			channelType:
-				typeof args.message.content?.channelType === "string"
-					? args.message.content.channelType
-					: undefined,
-		},
-	);
+	const createResponseGrammar = () =>
+		buildResponseGrammar(
+			{
+				actions: args.runtime.actions ?? [],
+				responseHandlerFields: sourceReplySnapshot
+					? selectedResponseHandlerFields.map((field) =>
+							field === replyTextFieldEvaluator
+								? { ...field, schema: SOURCE_REPLY_SCHEMA }
+								: field,
+						)
+					: selectedResponseHandlerFields,
+				responseHandlerFieldSignature: sourceReplySnapshot
+					? undefined
+					: args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(),
+			},
+			{
+				contexts: availableContexts.map((definition) => String(definition.id)),
+				channelType:
+					typeof args.message.content?.channelType === "string"
+						? args.message.content.channelType
+						: undefined,
+			},
+		);
+	const responseGrammar = createResponseGrammar();
 
 	// Per-span argmax sampling for the structured envelope: every enum,
 	// number, and boolean span gets temperature=0 / topK=1 so the model
@@ -879,30 +920,7 @@ export async function generateStage1Decision(
 		// Field activity was refreshed for reads; repairs reuse the earlier prompt.
 		compactInactiveFields = !decisionRepair;
 		messageHandlerTools = createMessageHandlerTools();
-		if (
-			sourceReplySnapshot &&
-			!messageHandlerInput.promptSegments.some(
-				(segment) => segment.content === SOURCE_REPLY_INSTRUCTIONS,
-			)
-		) {
-			const first = messageHandlerInput.messages[0];
-			if (first?.role === "system" && typeof first.content === "string") {
-				messageHandlerInput = {
-					...messageHandlerInput,
-					messages: [
-						{
-							...first,
-							content: `${first.content}\n${SOURCE_REPLY_INSTRUCTIONS}`,
-						},
-						...messageHandlerInput.messages.slice(1),
-					],
-					promptSegments: [
-						...messageHandlerInput.promptSegments,
-						{ content: SOURCE_REPLY_INSTRUCTIONS, stable: false },
-					],
-				};
-			}
-		}
+		appendSourceReplyInstructions();
 		stage1PrefixHashes = computePrefixHashes(
 			messageHandlerInput.promptSegments,
 		);
@@ -920,23 +938,7 @@ export async function generateStage1Decision(
 		// Full restoration returns to the ordinary selection contract. Keep the
 		// actual tool schema aligned with the newly rendered history policy.
 		// Keep the local decode grammar aligned with the native reply field.
-		const readGrammar = sourceReplySnapshot
-			? buildResponseGrammar(
-					{
-						actions: args.runtime.actions ?? [],
-						responseHandlerFields: selectedResponseHandlerFields.map((field) =>
-							field === replyTextFieldEvaluator
-								? { ...field, schema: SOURCE_REPLY_SCHEMA }
-								: field,
-						),
-					},
-					{
-						contexts: availableContexts.map((definition) =>
-							String(definition.id),
-						),
-					},
-				)
-			: responseGrammar;
+		const readGrammar = createResponseGrammar();
 		stage1ModelParams = {
 			...stage1ModelParams,
 			tools: messageHandlerTools,

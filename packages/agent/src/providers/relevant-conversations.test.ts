@@ -737,6 +737,9 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
     );
     const text = result.text ?? "";
     const sources = result.reviewableSources?.sources ?? [];
+    for (const [index, source] of sources.entries()) {
+      expect(source.originalText).toBe(records[index].content.text);
+    }
     expect(sources).toHaveLength(records.length);
     const dictionaryLine = text
       .split("\n")

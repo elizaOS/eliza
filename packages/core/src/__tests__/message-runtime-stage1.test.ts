@@ -642,6 +642,78 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it("quotes an already supplied recalled original in the first decision", async () => {
+		const { runtime, message, state } = await reviewedHistoryFixture();
+		const originalText =
+			"  Original correction: Mira’s backpack is violet.\nKeep  spaces.\n";
+		runtime.providers = [{ name: "RECALL", get: vi.fn() }];
+		state.data.providers = {
+			...state.data.providers,
+			RECALL: {
+				text: `[recalled1]\nUser: ${originalText}`,
+				reviewableSources: {
+					notice: "Authorized recall",
+					sources: [
+						{
+							id: "recalled1",
+							text: `User: ${originalText}`,
+							originalText,
+							metadata: { entityId: message.entityId, roomId: "other-room" },
+						},
+					],
+				},
+			},
+		};
+		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
+		runtime.useModel = vi.fn(
+			async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+				const input = args[1] as {
+					messages: Array<{ content: string }>;
+					tools: Array<{ name: string; parameters: JSONSchema }>;
+					responseSkeleton: string;
+				};
+				const wire = input.messages.map((m) => m.content).join("\n");
+				expect(wire).toContain(originalText);
+				expect(wire).toContain("Reply parts:");
+				expect(
+					input.tools.find((t) => t.name === "HANDLE_RESPONSE")?.parameters
+						.properties?.replyText.type,
+				).toBe("array");
+				return stage1Response({
+					contexts: ["simple"],
+					extra: {
+						replyEffectStatus: "none",
+						replyText: [{ kind: "source", value: "recalled1" }],
+						providerReview: { complete: true, keep: ["recalled1"] },
+						completionContext: {
+							mode: "relevant_prior_dialogue",
+							complete: true,
+							sourceSetId: wire.match(
+								/completion_source_set: ([a-f0-9]{64})/,
+							)?.[1],
+							relevantSourceIds: [],
+							constraintSourceIds: ["h1"],
+							referentSourceIds: [],
+							pendingIntentSourceIds: [],
+						},
+					},
+				});
+			},
+		) as IAgentRuntime["useModel"];
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state,
+			responseId: message.id as UUID,
+			stage1DecisionOnly: true,
+		});
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(dispatch).toHaveBeenCalledTimes(1);
+		expect(dispatch.mock.calls[0]?.[0].rawParsed.replyText).toBe(
+			`\n\n${originalText}\n\n`,
+		);
+	});
+
 	it.each(["quote", "malformed", "legacy-json", "legacy-object"])(
 		"resolves native source parts before dispatch: %s",
 		async (mode) => {

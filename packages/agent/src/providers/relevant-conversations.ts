@@ -346,6 +346,7 @@ export const relevantConversationsProvider: Provider = {
           sources: segments.map((segment, index) => ({
             id: `recalled${index + 1}`,
             text: segment.content,
+            originalText: memoryText(filtered[index]),
             metadata: {
               recordId: filtered[index].id ?? "",
               roomId: filtered[index].roomId,
