@@ -20,8 +20,8 @@ import { readRequestBody } from "@elizaos/shared/api/http-helpers";
 import type { DeploymentTargetRuntime } from "@elizaos/shared/contracts/deployment-types";
 import {
   getDirectAccountProviderForFirstRunProvider,
-  normalizeFirstRunCredentialInputs,
   migrateLegacyRuntimeConfig,
+  normalizeFirstRunCredentialInputs,
   normalizeFirstRunProviderId,
 } from "@elizaos/shared/contracts/first-run-options";
 import {
