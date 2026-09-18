@@ -139,7 +139,6 @@ describe("direct model routing", () => {
           const runtime = new AgentRuntime({
             character: { name: pass, bio: ["Direct routing wire regression"] },
             adapter,
-            disableBasicCapabilities: true,
             settings: {
               ...buildRuntimeSettingsProjection(config),
               ELIZA_PROVIDER: backend,
