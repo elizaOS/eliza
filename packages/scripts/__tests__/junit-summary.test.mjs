@@ -29,6 +29,16 @@ describe("parseJunitSummary", () => {
       errors: 0,
       skipped: 1,
       executedTests: 1,
+      files: [
+        {
+          file: "example.test.ts",
+          tests: 2,
+          failures: 0,
+          errors: 0,
+          skipped: 1,
+          executedTests: 1,
+        },
+      ],
     });
   });
 
@@ -39,7 +49,36 @@ describe("parseJunitSummary", () => {
       errors: 0,
       skipped: 2,
       executedTests: 0,
+      files: [
+        {
+          file: "example.test.ts",
+          tests: 2,
+          failures: 0,
+          errors: 0,
+          skipped: 2,
+          executedTests: 0,
+        },
+      ],
     });
+  });
+
+  test("preserves independent file outcomes and represents unnamed file evidence explicitly", () => {
+    const report = parseJunitSummary(`<testsuites tests="2" skipped="1">
+      <testsuite name="nested/active.test.ts" tests="1"><testcase name="runs" /></testsuite>
+      <testsuite name="nested/gated.test.ts" tests="1" skipped="1"><testcase name="gated"><skipped /></testcase></testsuite>
+      <testsuite tests="0" />
+    </testsuites>`);
+    expect(
+      report.files.map(({ file, executedTests, skipped }) => ({
+        file,
+        executedTests,
+        skipped,
+      })),
+    ).toEqual([
+      { file: "nested/active.test.ts", executedTests: 1, skipped: 0 },
+      { file: "nested/gated.test.ts", executedTests: 0, skipped: 1 },
+      { file: null, executedTests: 0, skipped: 0 },
+    ]);
   });
 
   test("rejects count smuggling and unsafe XML structure", () => {

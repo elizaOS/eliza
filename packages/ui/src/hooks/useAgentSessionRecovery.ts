@@ -18,7 +18,7 @@
  * owner-password wall.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCloudAuthToken } from "../api/client-cloud";
 import { isAppModeHost } from "../cloud/app-mode/app-mode";

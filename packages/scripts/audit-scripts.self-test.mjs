@@ -66,30 +66,39 @@ function hasFinding(report, fragment) {
   );
 }
 
-// 2. An orphan root script (unreferenced, unknown namespace) fails.
+// Workflow invocation validation lives in the required audit, not its report.
 {
-  const report = runAudit({ root: { "frobnicate:widgets": "node tool.mjs" } });
-  assert(!report.ok, "orphan script should fail");
-  assert(hasFinding(report, "[orphan]"), "expected an [orphan] finding");
-  assert(
-    hasFinding(report, "frobnicate:widgets"),
-    "orphan finding should name the script",
-  );
-}
-
-// 3. An orphan-looking script that is referenced by a workflow passes.
-{
-  const report = runAudit({
-    root: { "frobnicate:widgets": "node tool.mjs" },
+  const workflow = (command) =>
+    `jobs:\n  check:\n    steps:\n      - run: |\n          ${command}\n`;
+  const missing = runAudit({
     files: {
-      "tool.mjs": "// tool",
-      ".github/workflows/ci.yml":
-        "steps:\n  - run: bun run frobnicate:widgets\n",
+      ".github/workflows/check.yml": workflow("bun run removed-command"),
     },
   });
   assert(
+    hasFinding(missing, "[missing-workflow-script]"),
+    "missing workflow command must fail",
+  );
+  const comment = runAudit({
+    files: {
+      ".github/workflows/check.yml": workflow("# bun run removed-command"),
+    },
+  });
+  assert(
+    comment.ok,
+    "comment-only command must not be treated as an invocation",
+  );
+}
+
+// A manual command needs a valid target, not a namespace or a textual caller.
+{
+  const report = runAudit({
+    root: { "maintenance:repair": "node scripts/repair.mjs" },
+    files: { "scripts/repair.mjs": "export function main() {}\n" },
+  });
+  assert(
     report.ok,
-    `referenced script should pass, got ${JSON.stringify(report.failures)}`,
+    `manual command should pass: ${JSON.stringify(report.failures)}`,
   );
 }
 
@@ -160,12 +169,10 @@ function hasFinding(report, fragment) {
   );
 }
 
-// 9. An unallowlisted exact root -> package script wrapper fails.
+// A package wrapper is valid when its target exists, regardless of its name.
 {
   const report = runAudit({
-    root: {
-      "audit:thing": "bun run --cwd packages/thing test",
-    },
+    root: { "audit:thing": "bun run --cwd packages/thing test" },
     files: {
       "packages/thing/package.json": JSON.stringify({
         name: "thing",
@@ -173,29 +180,9 @@ function hasFinding(report, fragment) {
       }),
     },
   });
-  assert(!report.ok, "unallowlisted cwd wrapper should fail");
-  assert(
-    hasFinding(report, "[cwd-wrapper]"),
-    "expected a [cwd-wrapper] finding",
-  );
-}
-
-// 10. A documented allowlisted exact root -> package script wrapper passes.
-{
-  const report = runAudit({
-    root: {
-      "test:hmr": "bun run --cwd packages/app test:hmr",
-    },
-    files: {
-      "packages/app/package.json": JSON.stringify({
-        name: "app",
-        scripts: { "test:hmr": "vitest run test/hmr.test.ts" },
-      }),
-    },
-  });
   assert(
     report.ok,
-    `allowlisted cwd wrapper should pass, got ${JSON.stringify(report.failures)}`,
+    `valid package wrapper should pass: ${JSON.stringify(report.failures)}`,
   );
 }
 
@@ -345,58 +332,15 @@ function hasFinding(report, fragment) {
   );
 }
 
-// 18. Dynamically inventoried script tests are not orphaned utilities.
+// A self mention or documentation does not make a missing executable valid.
 {
   const report = runAudit({
-    root: { build: "tsc -b" },
-    files: {
-      "packages/scripts/owned.test.mjs":
-        "it('runs through the inventory', () => {});\n",
-      "packages/scripts/orphan-utility.mjs": "export const orphan = true;\n",
-    },
-  });
-  assert(!report.ok, "the ordinary unreferenced script should remain orphaned");
-  assert(
-    hasFinding(report, "orphan-utility.mjs"),
-    "expected the ordinary script to remain an orphan",
-  );
-  assert(
-    !hasFinding(report, "owned.test.mjs"),
-    "script tests are executed by the dynamic inventory and cannot be orphaned",
-  );
-}
-
-// 19. A script named from a composite action is a CI caller, not an orphan.
-{
-  const report = runAudit({
-    root: { build: "tsc -b" },
-    files: {
-      "packages/scripts/ci-fetch-bun-release.mjs":
-        "export async function main() {}\n",
-      ".github/actions/setup-bun-workspace/action.yml":
-        "runs:\n  using: composite\n  steps:\n    - run: node packages/scripts/ci-fetch-bun-release.mjs --print-variant\n",
-    },
+    root: { "maintenance:repair": "node scripts/missing.mjs" },
+    files: { "README.md": "Run scripts/missing.mjs for maintenance.\n" },
   });
   assert(
-    report.ok,
-    `composite-action caller should pass, got ${JSON.stringify(report.failures)}`,
-  );
-}
-
-// 20. The macOS clean-install command is an intentional human entrypoint.
-{
-  const report = runAudit({
-    root: {
-      "desktop:clean-install-state":
-        "node scripts/desktop-clean-install-state.mjs",
-    },
-    files: {
-      "scripts/desktop-clean-install-state.mjs": "export function main() {}\n",
-    },
-  });
-  assert(
-    report.ok,
-    `desktop cleanup entrypoint should pass, got ${JSON.stringify(report.failures)}`,
+    hasFinding(report, "[broken-path]"),
+    "documentation cannot validate a missing command",
   );
 }
 

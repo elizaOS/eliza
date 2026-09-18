@@ -6,21 +6,21 @@
  * `runScenario` executor with its real loopback API server and real fetch; only
  * the runtime is the package's standard stub.
  */
+import type { AgentRuntime } from "@elizaos/core";
 import type {
-  AgentRuntime,
   Route,
   RouteRequest,
   RouteResponse,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-plugin";
+import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
 import { describe, expect, it, vi } from "vitest";
 import { runScenario } from "../executor.js";
 
 function createRuntime(routes: Route[]): AgentRuntime {
-  return {
+  const runtime = {
     actions: [],
     agentId: "00000000-0000-4000-8000-000000000001",
     plugins: [],
-    routes,
     ensureConnection: async () => undefined,
     getTasksByName: async () => [],
     getService: () => null,
@@ -33,6 +33,16 @@ function createRuntime(routes: Route[]): AgentRuntime {
       error: () => {},
     },
   } as unknown as AgentRuntime;
+  registerHttpPluginRoutes(
+    runtime,
+    {
+      name: "executor-abort-fixture",
+      description: "Scenario cancellation test routes",
+      routes,
+    },
+    false,
+  );
+  return runtime;
 }
 
 /** Route handler that never completes the response; records socket teardown. */

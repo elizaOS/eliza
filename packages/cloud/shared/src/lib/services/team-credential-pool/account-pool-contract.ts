@@ -3,7 +3,7 @@
  * implementation keeps selection metadata dependency-injected so the same pool
  * logic can run over Drizzle rows without coupling to self-host runtime state.
  */
-import type { LinkedAccountConfig } from "@elizaos/core";
+import type { LinkedAccountConfig } from "@elizaos/shared/contracts/service-routing";
 
 export type Strategy = "priority" | "round-robin" | "least-used" | "quota-aware";
 

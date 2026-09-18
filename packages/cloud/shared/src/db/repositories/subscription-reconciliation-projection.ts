@@ -1,5 +1,5 @@
 /** Requires a semantically current immutable source and derived entitlement before acknowledging a lifecycle observation without publication. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, eq } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import {

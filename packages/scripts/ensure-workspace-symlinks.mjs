@@ -135,15 +135,15 @@ function main() {
   // Hoist a known set of transitive deps that workspace packages re-export
   // but bun's isolated install left only at `node_modules/.bun/<name>@.../node_modules/<name>`.
   // Vite + vitest cannot follow the realpath chain on Windows when a test
-  // file in `plugins/foo` imports `@elizaos/logger`, which in turn imports
+  // file in `plugins/foo` imports `@elizaos/core`, which in turn imports
   // `adze` — the resolver walks up from the importer (the plugin), not from
-  // `@elizaos/logger`'s realpath. Adding a top-level `node_modules/<name>`
+  // `@elizaos/core`'s realpath. Adding a top-level `node_modules/<name>`
   // symlink unblocks the resolution everywhere.
   //
   // Add an entry whenever a workspace package depends on a package that
   // (a) appears in NO root manifest (and so isn't auto-hoisted) and
   // (b) is imported across workspace boundaries.
-  const HOIST_TRANSITIVE = [{ name: "adze", consumer: "@elizaos/logger" }];
+  const HOIST_TRANSITIVE = [{ name: "adze", consumer: "@elizaos/core" }];
   let hoisted = 0;
   for (const root of NODE_MODULES_DIRS) {
     const nodeModulesRoot = join(REPO_ROOT, root);

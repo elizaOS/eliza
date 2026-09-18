@@ -12,7 +12,8 @@ import {
   loadTrajectoryById,
   type PersistedTrajectory,
 } from "@elizaos/agent";
-import type { IAgentRuntime, UUID } from "@elizaos/core";
+import type { UUID } from "@elizaos/common";
+import type { IAgentRuntime } from "@elizaos/core";
 import { expect } from "vitest";
 
 const SETTLE_DELAY_MS = 500;

@@ -30,7 +30,7 @@ vi.mock("@elizaos/agent/config/paths", () => ({
   resolveStateDir: () => "/tmp/example-state",
 }));
 
-vi.mock("@elizaos/vault", () => ({
+vi.mock("@elizaos/credentials/vault", () => ({
   listVaultInventory: vaultMocks.listVaultInventory,
   profileStorageKey: (key: string, profileId: string) =>
     `${key}.profile.${profileId}`,

@@ -14,7 +14,8 @@
  * legacy paths without the plugin-name prefix.
  */
 
-import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { Route, RouteRequest, RouteResponse } from "@elizaos/shared/api/http-plugin";
 import { resolveWhatsAppAuthDirectory } from "./baileys/auth.js";
 import type { WhatsAppPairingEvent } from "./pairing-service.js";
 import {

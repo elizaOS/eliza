@@ -1,14 +1,4 @@
-/**
- * Validation keywords — barrel re-export.
- *
- * Keyword DATA is generated from JSON: keywords/*.keywords.json
- *   → generated/validation-keyword-data.ts  (codegen, do not edit)
- *
- * Matching UTILITIES are hand-written: keyword-matching.ts
- *
- * To add/edit keywords, edit the JSON files and run:
- *   node scripts/generate-keywords.mjs
- */
+/** Keyword matching uses the authored table in @elizaos/prompts/keywords. */
 export {
   collectKeywordTermMatches,
   collectPreparedKeywordTermMatches,

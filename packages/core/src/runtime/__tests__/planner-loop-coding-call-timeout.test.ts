@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	PLANNER_MODEL_CALL_TIMEOUT_MESSAGE,
 	runPlannerLoop,
-} from "../planner-loop";
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 const ENV_KEY = "ELIZA_CODING_PLANNER_CALL_TIMEOUT_MS";
 

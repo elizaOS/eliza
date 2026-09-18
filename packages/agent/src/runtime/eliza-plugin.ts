@@ -6,13 +6,14 @@
  * Memory search/get actions are superseded by the todos plugin.
  */
 
-import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
+import type { IAgentRuntime, ServiceClass } from "@elizaos/core";
 import {
   AgentEventService,
   NotificationService,
   PairingService,
   promoteSubactionsToActions,
 } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { connectAccountAction } from "../actions/connect-account.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";

@@ -10,21 +10,25 @@ const pluginSqlRoot = path.join(
 	"plugin-sql",
 	"src",
 );
-const loggerSource = path.join(
-	getElizaWorkspaceRoot(repoRoot),
-	"packages",
-	"logger",
-	"src",
-	"index.ts",
-);
 
 export default defineConfig({
 	resolve: {
 		alias: [
 			{
-				find: /^@elizaos\/logger$/,
-				replacement: loggerSource,
+				find: /^@elizaos\/common$/,
+				replacement: new URL("../common/src/index.ts", import.meta.url)
+					.pathname,
 			},
+			{
+				find: /^@elizaos\/core$/,
+				replacement: new URL("./src/index.ts", import.meta.url).pathname,
+			},
+			{
+				find: /^@elizaos\/prompts\/keywords$/,
+				replacement: new URL("../prompts/src/keywords.ts", import.meta.url)
+					.pathname,
+			},
+
 			{
 				// Core's src re-exports `@elizaos/prompts`, which ships no dist in
 				// this lane — anchor it to source so suites importing core prompts
@@ -40,7 +44,7 @@ export default defineConfig({
 			},
 			{
 				find: /^@elizaos\/plugin-sql$/,
-				replacement: path.join(pluginSqlRoot, "index.node.ts"),
+				replacement: path.join(pluginSqlRoot, "index.ts"),
 			},
 			{
 				find: /^@elizaos\/plugin-sql\/schema$/,

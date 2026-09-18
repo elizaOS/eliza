@@ -101,7 +101,8 @@
     "ox": "1.6.0",
     "undici": "8.10.0",
     "viem": "^2.48.8",
-    "ws": "8.21.3"
+    "ws": "8.21.3",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

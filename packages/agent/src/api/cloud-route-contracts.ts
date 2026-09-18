@@ -6,7 +6,7 @@
  * lazily loaded @elizaos/plugin-elizacloud.
  */
 import type http from "node:http";
-import type { RouteHelpers } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/shared/api/route-helpers";
 import type { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 import type { ServerState } from "./server-types.ts";
 

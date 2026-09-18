@@ -12,9 +12,9 @@ import {
 	createUniqueUuid,
 	type IAgentRuntime,
 	type MessageConnectorQueryContext,
-	resolveMutedTargetFlags,
 	type UUID,
 } from "@elizaos/core";
+import { resolveMutedTargetFlags } from "@elizaos/plugin-assistant";
 import { describe, expect, it } from "vitest";
 import { DiscordService } from "../service.ts";
 

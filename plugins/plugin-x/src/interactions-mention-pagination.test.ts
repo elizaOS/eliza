@@ -10,11 +10,6 @@ import type { Tweet } from "./client";
 import { TwitterInteractionClient } from "./interactions";
 import type { TwitterClientState } from "./types";
 
-vi.mock("@elizaos/core", async () => {
-  const node = await import("@elizaos/core/node");
-  return node;
-});
-
 const PROFILE_ID = "bot-user";
 
 function createRuntime() {

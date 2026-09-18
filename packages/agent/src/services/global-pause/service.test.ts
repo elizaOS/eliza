@@ -7,7 +7,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/core/testing";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { GlobalPauseService, resolveGlobalPauseService } from "./service.ts";
 

@@ -3,19 +3,16 @@
  * package fixtures, then checked against the real repository tree.
  */
 import { describe, expect, test } from "bun:test";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import {
-  assertExtraScriptNamesCurrent,
   classifyLaneDeclaration,
   computeTestLaneMembershipReport,
-  EXTRA_SCRIPT_NAMES,
   extractKnownLaneNames,
   isTestLikeFile,
   TEST_LANE_MEMBERSHIP_EXCLUSIONS,
   testShapedScriptNames,
 } from "../audit-test-lane-membership.mjs";
+
+import { EXTRA_SCRIPT_NAMES } from "../lib/script-metadata.mjs";
 
 const ROOT_SCRIPTS = {
   "test:server": "node run-all-tests.mjs --lane=server --no-cloud",
@@ -280,37 +277,6 @@ describe("computeTestLaneMembershipReport", () => {
       }),
     );
     expect(report.relevantPackages).toBe(0);
-  });
-});
-
-describe("assertExtraScriptNamesCurrent", () => {
-  const tempDirs: string[] = [];
-  function tempRoot() {
-    const root = fs.mkdtempSync(
-      path.join(os.tmpdir(), "test-lane-membership-"),
-    );
-    tempDirs.push(root);
-    return root;
-  }
-
-  test("does not throw against the real repository", () => {
-    const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..");
-    expect(() => assertExtraScriptNamesCurrent(repoRoot)).not.toThrow();
-  });
-
-  test("throws when the local copy drifts from run-all-tests.mjs", () => {
-    const root = tempRoot();
-    fs.mkdirSync(path.join(root, "packages", "scripts"), { recursive: true });
-    fs.writeFileSync(
-      path.join(root, "packages", "scripts", "run-all-tests.mjs"),
-      'const EXTRA_SCRIPT_NAMES = [\n  "test:integration",\n  "test:e2e",\n];\n',
-    );
-    expect(() => assertExtraScriptNamesCurrent(root)).toThrow(
-      "EXTRA_SCRIPT_NAMES drifted",
-    );
-    for (const dir of tempDirs.splice(0)) {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
   });
 });
 

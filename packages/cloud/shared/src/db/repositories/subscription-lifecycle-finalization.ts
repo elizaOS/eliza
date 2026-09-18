@@ -1,5 +1,5 @@
 /** Validates complete terminal lifecycle observations against locked receipt and organization authority, without deciding trial, invoice or allowance policy. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { z } from "zod";
 import type { BillingSubscription } from "../schemas/billing-subscriptions";
 import type { BillingSubscriptionEventReceipt } from "../schemas/subscription-billing-operations";

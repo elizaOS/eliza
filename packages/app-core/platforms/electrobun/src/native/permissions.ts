@@ -7,8 +7,8 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { ElizaError } from "@elizaos/core";
-import { getMacPermissionDeepLink } from "@elizaos/shared";
+import { ElizaError } from "@elizaos/common";
+import { getMacPermissionDeepLink } from "@elizaos/shared/utils/permission-deep-links";
 import type { SendToWebview } from "../types.js";
 import { resolveRuntimeDistPath } from "./agent";
 import {

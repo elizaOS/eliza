@@ -1,6 +1,8 @@
 # Bundle-first evidence review
 
-The normal evidence path is one integrity-checked bundle:
+The normal evidence path is one integrity-checked bundle. Its test lane invokes
+`test:all`, including workspace tests and the separately inventoried script
+tests:
 
 ```bash
 bun run test:matrix                 # producers -> bundle -> verify -> review

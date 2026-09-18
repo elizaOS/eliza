@@ -24,6 +24,7 @@ import {
   getCuratedAppDefinitions,
   packageNameToAppDisplayName,
 } from "@elizaos/shared";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import appControlPlugin from "../../../../plugins/plugin-app-control/src/index.js";
 import { handleAppsRoutes } from "../../../../plugins/plugin-app-manager/src/index.js";
 import { resetAppControlHttpLoopback } from "./_helpers/app-control-http-loopback";
@@ -495,12 +496,12 @@ async function scenarioRouteHandler(
 }
 
 function registerScenarioApiRoutes(runtime: RuntimeWithRoutes): void {
-  const routes = runtime.routes ?? [];
-  runtime.routes = routes.filter(
+  const routes = getHttpRuntime(runtime).routes ?? [];
+  getHttpRuntime(runtime).routes = routes.filter(
     (route) => route.__scenarioGeneratedAppRoutes !== true,
   );
   for (const [type, routePath] of scenarioApiRoutePaths) {
-    runtime.routes.push({
+    getHttpRuntime(runtime).routes.push({
       type,
       path: routePath,
       handler: scenarioRouteHandler,

@@ -6,7 +6,7 @@
 import {
   CODING_PROVIDER_DESCRIPTORS,
   codingProviderEnrollmentAvailability,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/coding-agent-capabilities";
 import { describe, expect, it } from "vitest";
 import { ACCOUNT_PROVIDER_OPTIONS } from "./account-provider-options";
 

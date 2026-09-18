@@ -18,30 +18,28 @@ import {
   setActiveViewContext,
   setActiveViewElements,
 } from "@elizaos/agent/runtime/view-action-affinity";
+import type { AgentRuntime, IAgentRuntime, ViewDeclaration } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
+import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import type {
-  AgentRuntime,
-  IAgentRuntime,
-  Plugin,
+  HttpPlugin as Plugin,
   Route,
   RouteRequest,
   RouteResponse,
-  ViewDeclaration,
-} from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+} from "@elizaos/shared/api/http-plugin";
 import type {
   DeterministicModelCall,
   DeterministicModelFixture,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import {
   matchesScenarioInput,
   type RuntimeWithScenarioModelFixtures,
   stage1ResponseHandlerFixture,
-} from "@elizaos/core/testing";
-import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing";
+import { postToolEvaluatorFixture } from "@elizaos/testing/post-tool-evaluator-fixture";
 import { VIEW_CATALOG_SCOPE_CONTEXT } from "../../../../plugins/plugin-app-control/src/actions/view-catalog-scope.ts";
 import { NAVIGATION_CAPABILITY_READ_INSTRUCTION } from "../../../../plugins/plugin-app-control/src/actions/view-navigation-context.ts";
-import { postToolEvaluatorFixture } from "../../../core/src/testing/post-tool-evaluator-fixture.ts";
 
 import { typedTurnEvaluationFixtures } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
 

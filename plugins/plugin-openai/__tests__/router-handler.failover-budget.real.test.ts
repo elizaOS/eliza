@@ -13,9 +13,9 @@ import {
   MODEL_PROVIDER_ATTEMPTS,
   ModelType,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { generateText } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../packages/core/src/database/inMemoryAdapter";
 import { installRouterHandler } from "../../plugin-local-inference/src/services/router-handler";
 
 const routing = vi.hoisted(() => ({

@@ -60,7 +60,8 @@ across `@elizaos/plugin-reminders` and the shared scheduled-task runner.
 ### Services
 - **`GoalsCheckinService`** (`src/services/checkin.ts`) — reconciles per-goal
   `ScheduledTask` check-ins with goal cadence, records owner responses, and
-  retires tasks when goals or cadence change.
+  retires tasks when goals or cadence change. Startup reconciliation is owned
+  by the service; stop cancels readiness waits and drains admitted database work.
 
 ### Views
 - **`goals`** — `GoalsView` (`src/components/goals/GoalsView.tsx`); path

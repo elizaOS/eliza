@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { ChannelType, type JsonValue, stringToUuid } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/core/testing";
+import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import formPlugin from "./index";
 import { FormService } from "./service";

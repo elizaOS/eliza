@@ -804,3 +804,34 @@ describe("connector metadata is registry-driven, not Discord-special-cased (#120
 		expect(rolesSource).not.toContain("discordChannelId");
 	});
 });
+
+// A missing principal must not inherit the privileges of the local process.
+describe("missing role authority", () => {
+	it.each(["GUEST", "USER", "ADMIN", "OWNER"] as const)(
+		"denies %s without an explicit runtime and sender",
+		async (role) => {
+			const runtime = { agentId: "agent" } as IAgentRuntime;
+			const message = {
+				entityId: "sender",
+				content: { text: "hello" },
+			} as Memory;
+			expect(await hasRoleAccess(undefined, undefined, role)).toBe(false);
+			expect(await hasRoleAccess(undefined, message, role)).toBe(false);
+			expect(await hasRoleAccess(runtime, undefined, role)).toBe(false);
+			expect(
+				await hasRoleAccess(
+					runtime,
+					{ ...message, entityId: "" } as Memory,
+					role,
+				),
+			).toBe(false);
+			expect(
+				await hasRoleAccess(
+					{ ...runtime, agentId: "" } as IAgentRuntime,
+					message,
+					role,
+				),
+			).toBe(false);
+		},
+	);
+});

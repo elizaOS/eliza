@@ -43,13 +43,13 @@ import {
   type MessageMetadata,
   type MessagePayload,
   type Room,
-  resolveAttachmentBytes,
   Service,
   stringToUuid,
   type TargetInfo,
   type UUID,
   type World,
 } from "@elizaos/core";
+import { resolveAttachmentBytes } from "@elizaos/shared/media";
 import { App, LogLevel } from "@slack/bolt";
 import { WebClient as SlackWebClient } from "@slack/web-api";
 

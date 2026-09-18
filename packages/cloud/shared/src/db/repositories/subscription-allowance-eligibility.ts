@@ -1,5 +1,5 @@
 /** Reads the canonical eligibility for new allowance spending in the caller's transaction and database clock; historical reservations never pass through this gate. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, desc, eq, gt, lte } from "drizzle-orm";
 import { readOrganizationQuotaPolicyInTransaction } from "../../lib/services/organization-quota-policy";
 import type { DbTransaction } from "../client";

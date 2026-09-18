@@ -10,12 +10,13 @@ bun add @elizaos/plugin-sql
 
 ## Overview
 
-This plugin registers a `DatabaseAdapter` with the elizaOS agent runtime so that all core runtime persistence (memories, entities, rooms, tasks, cache, logs, relationships, etc.) works against a real SQL backend. On Node/Bun it selects PostgreSQL when `POSTGRES_URL` is set, otherwise falls back to embedded PGlite. In the browser build it always uses PGlite (WASM).
+This plugin registers a `DatabaseAdapter` with the elizaOS agent runtime so that all core runtime persistence (memories, entities, rooms, tasks, cache, logs, relationships, etc.) works against a real SQL backend. On Node/Bun it selects PostgreSQL when `POSTGRES_URL` is set, otherwise falls back to embedded PGlite. The plugin runs in Node. Browser clients use the host transport.
 
 ## Identity authority
 
 The plugin registers `SqlPrincipalService` as the runtime's canonical
-identity authority. Its private person-link endpoints let an authenticated
+identity authority. The agent host owns the private person-link HTTP endpoints;
+the SQL plugin registers no routes. These endpoints let an authenticated
 OWNER or ADMIN attest that two preserved principals represent the same person
 without merging or deleting either principal:
 
@@ -71,28 +72,9 @@ The plugin uses the following main tables:
 
 Table definitions live in `src/schema/`.
 
-## Electric Sync (PGlite ↔ Electric Cloud)
+## Local persistence
 
-When `ELIZA_ELECTRIC_SYNC_URL` and `AGENT_ID` are set, PGlite connects to an Electric sync service and streams real-time updates for all core tables. Each agent syncs only its own rows (filtered by `agent_id` / `id`), preserving per-agent isolation in shared-Neon deployments.
-
-### Local dev with Electric Cloud
-
-The e2e write-back test (`__tests__/integration/electric-write-back.test.ts`) uses a [Caddy](https://caddyserver.com) reverse proxy to forward shape requests to Electric Cloud with auth. Caddy is the proxy [recommended by Electric](https://electric.ax/docs/sync/guides/troubleshooting#missing-headers).
-
-```bash
-# 1. Set your Electric Cloud credentials (get these from dashboard.electric-sql.cloud)
-export ELECTRIC_CLOUD_SOURCE_ID=svc-xxxxxxxxxxxx
-export ELECTRIC_CLOUD_SECRET=eyJ...
-
-# 2. Start the Caddy proxy
-caddy run --config plugins/plugin-sql/caddy/electric-proxy.Caddyfile
-
-# 3. Run the e2e test
-bun run --cwd plugins/plugin-sql test -- \
-  __tests__/integration/electric-write-back.test.ts
-```
-
-The Caddyfile at `plugins/plugin-sql/caddy/electric-proxy.Caddyfile` forwards every incoming request to `api.electric-sql.cloud` with auth query params appended.
+The base SQL plugin supports PostgreSQL endpoints and local PGlite. It does not synchronize to a hosted service or forward local mutations to a cloud API. Supply PGlite extensions explicitly when a host needs local reactive queries.
 
 ## Environment Variables
 
@@ -100,13 +82,7 @@ The Caddyfile at `plugins/plugin-sql/caddy/electric-proxy.Caddyfile` forwards ev
 |----------|----------|---------|--------|
 | `POSTGRES_URL` | No | — | PostgreSQL connection string. When absent, PGlite is used. |
 | `PGLITE_DATA_DIR` | No | `.eliza/.elizadb` | Directory (or `idb://` URL) for PGlite data storage. |
-| `ELIZA_ELECTRIC_SYNC_URL` | No | — | Base URL of Electric sync service (e.g. `http://localhost:3001` via Caddy). |
-| `AGENT_ID` | Conditional | — | UUID of the agent. Required when `ELIZA_ELECTRIC_SYNC_URL` is set (per-agent WHERE filter). |
-| `ELIZA_CLOUD_WRITE_BASE_URL` | No | — | Write-back cloud endpoint for forwarding local PGlite writes to Postgres. |
-| `ELIZA_CLOUD_SERVICE_KEY` | No | — | Service key for authenticating write-back requests. |
-| `ELECTRIC_CLOUD_SOURCE_ID` | Test-only | — | Electric Cloud source ID (consumed by Caddy, not the runtime). |
-| `ELECTRIC_CLOUD_SECRET` | Test-only | — | Electric Cloud JWT secret (consumed by Caddy, not the runtime). |
-| `ELIZA_PGLITE_DISABLE_EXTENSIONS` | No | `false` | Set to `1` to disable PGlite extensions (vector, live, fuzzystrmatch, pg_trgm, Electric sync). |
+| `ELIZA_PGLITE_DISABLE_EXTENSIONS` | No | `false` | Set to `1` to disable PGlite extensions (vector, fuzzystrmatch, pg_trgm). |
 | `ENABLE_DATA_ISOLATION` | No | `false` | When `true`, enables PostgreSQL Row Level Security per-server isolation. |
 | `ELIZA_SERVER_ID` | Conditional | — | Required when `ENABLE_DATA_ISOLATION=true`; becomes the RLS server UUID. |
 | `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS` | No | `false` | Allow column drops and other destructive schema changes at startup. |

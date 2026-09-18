@@ -19,7 +19,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { getCodingAgentSelectorBridge } from "@elizaos/core";
-import type { LinkedAccountConfig } from "@elizaos/shared";
+import type { LinkedAccountConfig } from "@elizaos/shared/contracts/service-routing-types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   AccountPool,

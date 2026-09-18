@@ -138,7 +138,10 @@ function expandPositiveGlob(repoRoot, pattern) {
       }
       const candidate = path.join(dir, part);
       try {
-        if (statSync(candidate).isDirectory()) next.push(candidate);
+        if (!statSync(candidate).isDirectory()) {
+          throw new Error(`Workspace path is not a directory: ${candidate}`);
+        }
+        next.push(candidate);
       } catch (error) {
         // error-policy:J3 an unmatched literal branch is valid glob input
         if (!isMissingPathError(error)) throw error;

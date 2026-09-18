@@ -1,7 +1,7 @@
 /** Tests the outbound Twilio call boundary with provider and storage doubles. */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 const requireUser = mock(async () => ({
   id: "11111111-1111-4111-8111-111111111111",

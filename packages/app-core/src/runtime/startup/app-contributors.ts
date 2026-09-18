@@ -9,15 +9,14 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { resolvePackageEntry } from "@elizaos/agent/runtime/plugin-types";
-import {
-  type AgentRuntime,
-  isOptionalAppRoutePluginUnavailableError,
-  logger,
-  OptionalAppRoutePluginUnavailableError,
-  type Plugin,
-} from "@elizaos/core";
+import { type AgentRuntime, logger } from "@elizaos/core";
 import { getApps, loadRegistry } from "@elizaos/registry/first-party";
-import { formatErrorWithStack } from "@elizaos/shared";
+import {
+  isOptionalAppRoutePluginUnavailableError,
+  OptionalAppRoutePluginUnavailableError,
+} from "@elizaos/shared/api/app-route-plugin-registry";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import { formatErrorWithStack } from "@elizaos/shared/format-error";
 import {
   type AppRoutePluginRegistryEntry,
   drainAppRoutePluginLoaders,

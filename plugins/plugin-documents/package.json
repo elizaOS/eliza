@@ -38,7 +38,8 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "lucide-react": "^1.0.0"
+    "lucide-react": "^1.0.0",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19.0.0",

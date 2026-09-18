@@ -165,7 +165,7 @@ The proposed design deliberately removes concepts:
 | Real persistence integration | PGLite/temp filesystem/loopback connector | Transactions/auth/indexes in PGLite; restart/readback in a fresh child process over an explicit state directory; cleanup |
 | Deterministic action scenario | Scenario runner, model-free direct turns | Production handlers return exact late pages, revisions, typed denials, and one text carrier |
 | Deterministic planning scenario | Scenario runner with strict fixture model | Agent sees partial marker, calls next/search, and answers from late evidence without canary leakage |
-| Isolated scenario | `test:scenarios:isolated` | No cross-scenario memory, handle, cache, or embedding leakage |
+| Isolated scenario | `bun packages/scripts/run-scenarios-isolated.mjs` | No cross-scenario memory, handle, cache, or embedding leakage |
 | Live-model scenario | Credentialed scheduled lane | Multiple model families reliably discover and use continuation without prompt coaching |
 | API/UI E2E | Real local stack plus Playwright | Upload/email/document flow, visible partial state, context inspector, later retrieval |
 | Soak/load | Separate benchmark process | Stable RSS/heap, bounded open handles, no latency drift, cleanup/retention |

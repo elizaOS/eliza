@@ -1,5 +1,7 @@
 // Wires hosted Eliza agent context routing behavior for cloud runtime services.
-import type { Action, Content, Memory, Provider, State } from "@elizaos/core";
+
+import type { Content, Memory } from "@elizaos/common";
+import type { Action, Provider, State } from "@elizaos/core";
 
 export const AVAILABLE_CONTEXTS_STATE_KEY = "availableContexts";
 export const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";

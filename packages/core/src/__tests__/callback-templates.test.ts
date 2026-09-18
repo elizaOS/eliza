@@ -4,11 +4,12 @@
  * while rejecting non-string/non-function ones. Deterministic: pure prompt
  * composition, no model.
  */
+
+import { composePromptFromState } from "@elizaos/prompts/rendering";
 import { describe, expect, it } from "vitest";
 import { characterSchema } from "../schemas/character";
 import type { Character } from "../types/agent";
 import type { State } from "../types/state";
-import { composePromptFromState } from "../utils";
 
 describe("Character Callback Templates", () => {
 	it("should support string templates (existing behavior)", async () => {

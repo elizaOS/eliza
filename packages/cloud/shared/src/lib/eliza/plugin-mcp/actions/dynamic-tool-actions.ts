@@ -1,4 +1,6 @@
 // Wires hosted Eliza agent dynamic tool actions behavior for cloud runtime services.
+
+import { type Memory, toWellFormedUnicode } from "@elizaos/common";
 import {
   type Action,
   type ActionResult,
@@ -6,9 +8,7 @@ import {
   type HandlerOptions,
   type IAgentRuntime,
   logger,
-  type Memory,
   type State,
-  toWellFormedUnicode,
 } from "@elizaos/core";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import { MCP_SERVICE_NAME } from "../types";

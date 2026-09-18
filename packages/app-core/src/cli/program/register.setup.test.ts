@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { formatDocsLink } from "@elizaos/shared";
+import { formatDocsLink } from "@elizaos/shared/terminal/links";
 import { Command, CommanderError } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

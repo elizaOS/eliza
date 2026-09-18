@@ -7,15 +7,17 @@
  */
 import {
   AgentRuntime,
+  ChannelType,
   type Character,
-  InMemoryDatabaseAdapter,
+  checkSenderRole,
   type Memory,
-  runShortcutGate,
   type State,
   type UUID,
 } from "@elizaos/core";
+import { runShortcutGate } from "@elizaos/plugin-assistant";
 import commandsPlugin from "@elizaos/plugin-commands";
-import { beforeAll, describe, expect, it } from "vitest";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const responseId = "00000000-0000-0000-0000-0000000000f1" as UUID;
 
@@ -32,13 +34,36 @@ describe("commands plugin → runtime shortcut wiring (real runtime)", () => {
   let runtime: AgentRuntime;
 
   beforeAll(async () => {
+    const adapter = new InMemoryDatabaseAdapter();
     runtime = new AgentRuntime({
       character: { name: "TestAgent", bio: ["t"], settings: {} } as Character,
-      adapter: new InMemoryDatabaseAdapter(),
+      adapter,
       logLevel: "fatal",
     });
+    const caller = message("/help");
+    const worldId = "00000000-0000-0000-0000-0000000000e2" as UUID;
+    await runtime.createWorld({
+      id: worldId,
+      agentId: runtime.agentId,
+      name: "Command owner world",
+      metadata: { ownership: { ownerId: caller.entityId } },
+    });
+    await adapter.createRooms([
+      {
+        id: caller.roomId,
+        agentId: runtime.agentId,
+        worldId,
+        source: "client_chat",
+        type: ChannelType.DM,
+      },
+    ]);
+    expect((await checkSenderRole(runtime, caller))?.role).toBe("OWNER");
     runtime.composeState = async () => ({ values: {}, data: {}, text: "" });
     await runtime.registerPlugin(commandsPlugin);
+  });
+
+  afterAll(async () => {
+    await runtime.stop();
   });
 
   it("registers the command actions and slash shortcuts", () => {

@@ -3,7 +3,7 @@
  * returning null when the payload's permission id is unknown so callers can
  * inline-render permission prompts detected in message text without guarding.
  */
-import { isPermissionId } from "@elizaos/shared";
+import { isPermissionId } from "@elizaos/shared/contracts/permissions";
 import type * as React from "react";
 
 import { PermissionCard, type PermissionCardProps } from "./permission-card";

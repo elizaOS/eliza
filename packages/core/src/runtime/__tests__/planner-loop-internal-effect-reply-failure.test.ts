@@ -4,16 +4,16 @@
  * presentation after an internal applied effect must not replay the request.
  */
 import { describe, expect, it, vi } from "vitest";
-import { NoModelProviderConfiguredError } from "../../runtime";
-import { subPlannerResultToPlannerToolResult } from "../../services/message";
-import type { Action, IAgentRuntime } from "../../types";
-import { ModelType } from "../../types/model";
-import { settleActionHandler } from "../action-handler-settlement";
-import { runEvaluator } from "../evaluator";
+import { runEvaluator } from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
 import {
 	actionResultToPlannerToolResult,
 	runPlannerLoop,
-} from "../planner-loop";
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import { subPlannerResultToPlannerToolResult } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
+import { NoModelProviderConfiguredError } from "../../runtime";
+import type { Action, IAgentRuntime } from "../../types";
+import { ModelType } from "../../types/model";
+import { settleActionHandler } from "../action-handler-settlement";
 import type { PlannerRuntime, PlannerToolCall } from "../planner-types";
 
 const receipt = {

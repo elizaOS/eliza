@@ -49,7 +49,6 @@ import {
 type RuntimeAction = NonNullable<Plugin["actions"]>[number];
 type RuntimeProvider = NonNullable<Plugin["providers"]>[number];
 type RuntimeEvaluator = RegisteredEvaluator;
-type RuntimeRoute = NonNullable<Plugin["routes"]>[number];
 type RuntimeServiceClass = NonNullable<Plugin["services"]>[number];
 type RuntimeEventHandler = PluginEventRegistration["handler"];
 type RuntimeEventRegistration = PluginEventRegistration;
@@ -533,7 +532,6 @@ function createEmptyOwnership(plugin: Plugin): PluginOwnership {
 		actions: [],
 		providers: [],
 		evaluators: [],
-		routes: [],
 		events: [],
 		models: [],
 		services: [],
@@ -701,14 +699,6 @@ function removeOwnedEvents(
 	}
 }
 
-function removeOwnedRoutes(
-	runtime: RuntimeWithPluginLifecycle,
-	ownership: PluginOwnership,
-): void {
-	if (ownership.routes.length === 0 || runtime.routes.length === 0) return;
-	removeArrayItemsByReference(runtime.routes, ownership.routes);
-}
-
 function removeOwnedPlugins(
 	runtime: RuntimeWithPluginLifecycle,
 	ownership: PluginOwnership,
@@ -822,7 +812,6 @@ async function teardownPluginOwnership(
 
 	try {
 		removeOwnedEvents(runtime, ownership);
-		removeOwnedRoutes(runtime, ownership);
 		removeOwnedModels(privateState, ownership);
 		removeOwnedConnectorSources(ownership);
 		removeOwnedComponents(runtime, ownership);
@@ -853,22 +842,15 @@ async function teardownPluginOwnership(
 	}
 }
 
-function trackRoutesAndPluginRef(
+function trackPluginRef(
 	runtime: RuntimeWithPluginLifecycle,
 	ownership: PluginOwnership,
 	pluginsBefore: Set<Plugin>,
-	routesBefore: Set<RuntimeRoute>,
 ): void {
 	for (const plugin of runtime.plugins) {
 		if (!pluginsBefore.has(plugin) && plugin.name === ownership.pluginName) {
 			ownership.registeredPlugin = plugin;
 			break;
-		}
-	}
-
-	for (const route of runtime.routes) {
-		if (!routesBefore.has(route)) {
-			pushUniqueRef(ownership.routes, route);
 		}
 	}
 }
@@ -1086,7 +1068,6 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 
 	runtimeWithLifecycle.registerPlugin = (async (plugin: Plugin) => {
 		const pluginsBefore = new Set(runtimeWithLifecycle.plugins);
-		const routesBefore = new Set(runtimeWithLifecycle.routes);
 		const serviceClassCountsBefore = new Map<RuntimeServiceClass, number>();
 		for (const classes of privateState.serviceTypes.values()) {
 			for (const serviceClass of classes) {
@@ -1123,19 +1104,13 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			await pluginRegistrationContext.run(capture, async () => {
 				await originalRegisterPlugin(plugin);
 			});
-			trackRoutesAndPluginRef(
-				runtimeWithLifecycle,
-				capture.ownership,
-				pluginsBefore,
-				routesBefore,
-			);
+			trackPluginRef(runtimeWithLifecycle, capture.ownership, pluginsBefore);
 			captureDeclaredServices();
 			if (
 				capture.ownership.registeredPlugin ||
 				capture.ownership.actions.length > 0 ||
 				capture.ownership.providers.length > 0 ||
 				capture.ownership.evaluators.length > 0 ||
-				capture.ownership.routes.length > 0 ||
 				capture.ownership.events.length > 0 ||
 				capture.ownership.models.length > 0 ||
 				capture.ownership.services.length > 0 ||
@@ -1151,12 +1126,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		} catch (error) {
 			// error-policy:J2 Roll back partial plugin ownership before preserving
 			// the original registration failure.
-			trackRoutesAndPluginRef(
-				runtimeWithLifecycle,
-				capture.ownership,
-				pluginsBefore,
-				routesBefore,
-			);
+			trackPluginRef(runtimeWithLifecycle, capture.ownership, pluginsBefore);
 			captureDeclaredServices();
 			await teardownPluginOwnership(runtimeWithLifecycle, capture.ownership, {
 				allowAdapterUnload: true,

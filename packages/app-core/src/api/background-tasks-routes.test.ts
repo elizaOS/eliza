@@ -9,23 +9,17 @@
  */
 import * as http from "node:http";
 import { Socket } from "node:net";
+import type { UUID } from "@elizaos/common";
 import {
   AgentRuntime,
   createCharacter,
   ServiceType,
-  type UUID,
+  TaskService,
 } from "@elizaos/core";
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes";
 import type { CompatRuntimeState } from "./compat-route-shared";
-
-vi.mock("@elizaos/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@elizaos/core")>();
-  return {
-    ...actual,
-    ServiceType: { TASK: "task" },
-  };
-});
 
 vi.mock("./auth.ts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./auth.ts")>();
@@ -186,13 +180,19 @@ describe("POST /api/background/run-due-tasks — real TaskService", () => {
   beforeAll(async () => {
     runtime = new AgentRuntime({
       character: createCharacter({ name: "BackgroundRouteTestAgent" }),
-      plugins: [],
+      plugins: [
+        {
+          name: "background-task-fixture",
+          description: "Registers the real scheduler",
+          services: [TaskService],
+        },
+      ],
       logLevel: "warn",
       enableAutonomy: false,
     });
     // No SQL plugin: the runtime falls back to the in-memory adapter, which is
     // enough to exercise the real TaskService + task persistence contract.
-    await runtime.initialize({ allowNoDatabase: true });
+    await initializeTestRuntime(runtime, {});
 
     // A real task worker that records its execution in the (real) runtime
     // cache so we can observe that the route actually drove it.

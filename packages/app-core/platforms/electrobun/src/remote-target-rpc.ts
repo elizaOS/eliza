@@ -4,7 +4,7 @@
  * the host bearer and private JWKs never cross this boundary.
  */
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import type { RemoteTargetPublicIdentity } from "@elizaos/shared/contracts/remote-control";
 import { logger } from "./logger";
 import {

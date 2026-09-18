@@ -8,7 +8,7 @@
 // wrap in RoleProvider (OWNER by default) because the delete affordance is
 // role-gated (#14781).
 
-import type { RoleGateRole } from "@elizaos/core";
+import type { RoleGateRole } from "@elizaos/common";
 import {
   cleanup,
   fireEvent,

@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { MemoryType, ModelType, type UUID } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/core/testing";
+import { createTestRuntime } from "@elizaos/testing";
 import { afterEach, expect, it, vi } from "vitest";
 import { handleTextSmall } from "../../../plugins/plugin-openai/models/index.ts";
 import {

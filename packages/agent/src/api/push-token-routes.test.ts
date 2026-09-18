@@ -14,7 +14,7 @@
  */
 import type http from "node:http";
 import { ElizaError } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/core/testing";
+import { createMockRuntime } from "@elizaos/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationPushService } from "../services/push/notification-push-service.ts";
 import {

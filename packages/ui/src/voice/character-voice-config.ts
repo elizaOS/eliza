@@ -5,7 +5,7 @@
 import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
-} from "@elizaos/shared";
+} from "@elizaos/shared/character-presets";
 import type { VoiceConfig } from "../api/client";
 import { asRecord } from "../state/config-readers";
 import { hasConfiguredApiKey, PREMADE_VOICES } from "./types";

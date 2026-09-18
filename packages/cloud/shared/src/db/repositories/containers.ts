@@ -4,7 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import Decimal from "decimal.js";
 import {
   and,

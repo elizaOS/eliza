@@ -16,7 +16,7 @@ import {
 // domain contract from TypeScript source, which `node` refuses with
 // ERR_UNKNOWN_FILE_EXTENSION. Pinning the interpreter here asserts that
 // requirement instead of inheriting whichever runtime happened to launch the
-// test, and matches the `cloud:verify-steward-email-callback` root script.
+// test, using the same script entrypoint invoked by deployment tooling.
 const CLI_PATH = fileURLToPath(
   new URL("../verify-steward-email-callback-config.mjs", import.meta.url),
 );

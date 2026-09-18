@@ -14,15 +14,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchRemoteMediaMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@elizaos/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@elizaos/core")>();
+vi.mock("@elizaos/shared/media", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/shared/media")>();
   return {
     ...actual,
     fetchRemoteMedia: (...args: unknown[]) => fetchRemoteMediaMock(...args),
   };
 });
 
-import { VISION_IMAGE_MAX_BYTES } from "@elizaos/core";
+import { VISION_IMAGE_MAX_BYTES } from "@elizaos/shared/media";
 import { ElizaSchema } from "../config/zod-schema";
 import {
   type AudioGenerationProvider,

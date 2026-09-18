@@ -13,7 +13,7 @@ function namedAction(name: string): Action {
   return {
     name,
     description: `${name} fixture`,
-    handler: async () => undefined,
+    handler: async () => ({ success: true }),
     validate: async () => true,
   };
 }

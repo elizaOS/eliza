@@ -17,38 +17,23 @@ const mocks = vi.hoisted(() => ({
   realFetchRemoteMedia: null as null | ((...args: unknown[]) => Promise<unknown>),
 }));
 
-// The handler imports logger/recordLlmCall from `@elizaos/core`; the Node
-// URL fetcher (models/transcription-url.node.ts) loads `fetchRemoteMedia`
-// lazily from `@elizaos/core/node` so the browser bundle never pulls it in.
-// Under Node both specifiers resolve to the same module file, so both mocks
-// must expose the same full mocked surface.
-const coreMockFactory = vi.hoisted(
-  () => async (importActual: () => Promise<Record<string, unknown>>) => {
-    const actual = await importActual();
-    mocks.realFetchRemoteMedia = actual.fetchRemoteMedia as (
-      ...args: unknown[]
-    ) => Promise<unknown>;
-    return {
-      ...actual,
-      logger: {
-        debug: vi.fn(),
-        error: vi.fn(),
-        log: vi.fn(),
-        warn: vi.fn(),
-      },
-      recordLlmCall: mocks.recordLlmCall,
-      fetchRemoteMedia: (...args: unknown[]) => {
-        if (mocks.useRealFetchRemoteMedia && mocks.realFetchRemoteMedia) {
-          return mocks.realFetchRemoteMedia(...args);
-        }
-        return mocks.fetchRemoteMedia(...args);
-      },
-    };
-  }
-);
-
-vi.mock("@elizaos/core", coreMockFactory);
-vi.mock("@elizaos/core/node", coreMockFactory);
+// Replace only the media boundary; SSRF cases exercise its real implementation.
+vi.mock("@elizaos/core", async (importActual) => ({
+  ...(await importActual<typeof import("@elizaos/core")>()),
+  recordLlmCall: mocks.recordLlmCall,
+}));
+vi.mock("@elizaos/shared/media", async (importActual) => {
+  const actual = await importActual<typeof import("@elizaos/shared/media")>();
+  mocks.realFetchRemoteMedia = actual.fetchRemoteMedia as (...args: unknown[]) => Promise<unknown>;
+  return {
+    ...actual,
+    fetchRemoteMedia: (...args: unknown[]) => {
+      if (mocks.useRealFetchRemoteMedia && mocks.realFetchRemoteMedia)
+        return mocks.realFetchRemoteMedia(...args);
+      return mocks.fetchRemoteMedia(...args);
+    },
+  };
+});
 
 vi.mock("../utils/config", () => ({
   getAuthHeader: mocks.getAuthHeader,
@@ -60,11 +45,6 @@ vi.mock("../utils/config", () => ({
 }));
 
 import { handleTranscription } from "../models/audio";
-import { installNodeTranscriptionUrlFetcher } from "../models/transcription-url.node";
-
-// The Node entrypoint installs this in production; tests import models
-// directly, so install the same guarded fetcher here.
-installNodeTranscriptionUrlFetcher();
 
 function createRuntime(): IAgentRuntime {
   return {

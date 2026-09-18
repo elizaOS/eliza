@@ -9,7 +9,7 @@
  * browser coordination fails closed before callers perform network work.
  */
 
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/common";
 import { runAsPrivilegedShell } from "../../../surface-realm-channel";
 
 export const CARD_CHECKOUT_INTENT_TTL_MS = 25 * 60 * 60 * 1000;

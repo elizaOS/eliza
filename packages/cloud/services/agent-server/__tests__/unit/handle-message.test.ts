@@ -3,11 +3,11 @@
  * connector metadata using deterministic runtime doubles.
  */
 import { describe, expect, mock, test } from "bun:test";
+import type { Memory } from "@elizaos/common";
 import type {
   HandlerCallback,
   IAgentRuntime,
   IMessageService,
-  Memory,
   MessageProcessingResult,
 } from "@elizaos/core";
 import { AgentManager } from "../../src/agent-manager";

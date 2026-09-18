@@ -4,8 +4,8 @@
  * network/clock work in effects.
  */
 
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
+import { ElizaError } from "@elizaos/common";
+import { logger } from "@elizaos/shared/logger";
 import * as React from "react";
 import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
 import { client } from "../api/client";

@@ -127,7 +127,7 @@ A. Lossless continuity and restart
 
 B. Native corpus realization and conformance
    - Exclusive ownership: `packages/corpus-tools/src/progressive-content-*`, a
-     shared conformance harness under `packages/core/src/testing/`, the checked-in
+     shared conformance harness under `packages/testing/src/`, the checked-in
      mutant registry schema/runner, and content-context threshold/result schemas.
    - Consume corpus v2 and seed real memory/document/media/Gmail/tool-output
      services. Emit a verified object-to-native-reference/revision/scope/cleanup ledger.

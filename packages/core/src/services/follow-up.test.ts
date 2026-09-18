@@ -5,10 +5,10 @@
  * timers over the real TaskService tick loop with an in-memory store.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FollowUpService } from "../../../../plugins/plugin-assistant/src/services/followUp.ts";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { Task, TaskWorker } from "../types/task";
-import { FollowUpService } from "./followUp.ts";
 import { TaskService } from "./task.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000bb" as UUID;

@@ -4,7 +4,7 @@
  * the message text, and hands the chosen name back via `onSave`; the caller
  * owns the actual persistence.
  */
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";

@@ -4,7 +4,7 @@
  */
 
 import { afterEach, expect, test } from "bun:test";
-import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/common";
 import type { Bindings } from "@/types/cloud-worker-env";
 
 process.env.MOCK_REDIS = "1";

@@ -7,13 +7,15 @@
  * against an in-memory runtime while instrumented model and fetch boundaries
  * make accidental remote work observable.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
-import { advancedProviders } from "../features/advanced-capabilities/index.ts";
-import { basicProviders } from "../features/basic-capabilities/index.ts";
-import { AgentRuntime } from "../runtime";
+import { advancedProviders } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/index.ts";
+import { basicProviders } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/index.ts";
+import type { AgentRuntime } from "../runtime";
 import type { Character, Memory, UUID } from "../types";
 import { ChannelType } from "../types";
+import { createInitializedRuntime } from "./initialized-runtime";
 
 const WORLD_ID = "11111111-1111-1111-1111-111111111110" as UUID;
 const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
@@ -21,7 +23,7 @@ const ENTITY_ID = "22222222-2222-2222-2222-222222222222" as UUID;
 
 async function makeRuntime(): Promise<AgentRuntime> {
 	const adapter = new InMemoryDatabaseAdapter();
-	const runtime = new AgentRuntime({
+	const runtime = await createInitializedRuntime({
 		character: { name: "purity-guard" } as Character,
 		adapter,
 		logLevel: "fatal",

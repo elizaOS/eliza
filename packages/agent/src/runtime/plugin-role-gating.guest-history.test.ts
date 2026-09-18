@@ -16,7 +16,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { basicProviders } from "@elizaos/core";
+import { basicProviders } from "@elizaos/plugin-assistant";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const rolesMock = vi.hoisted(() => ({

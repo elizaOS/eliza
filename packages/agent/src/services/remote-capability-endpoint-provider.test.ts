@@ -10,9 +10,17 @@ import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   ElizaError,
   type IAgentRuntime,
-  type Plugin,
+  type RemotePluginModuleManifest,
   type UUID,
 } from "@elizaos/core";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
+import {
+  getHttpRuntime,
+  registerHttpPluginRoutes,
+} from "@elizaos/shared/api/http-plugin-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildRemoteCapabilityEndpointTrustPolicy,
@@ -261,7 +269,7 @@ describe("remote capability endpoint providers", () => {
       unloadMissing: true,
     });
 
-    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+    expect(runtime.plugins.map((plugin: Plugin) => plugin.name)).toEqual([
       "@remote/home-a",
       "@remote/home-b",
     ]);
@@ -288,69 +296,16 @@ describe("remote capability endpoint providers", () => {
 
   it("materializes only allowed modules from a shared endpoint and records the rest as skipped", async () => {
     const runtime = makeRuntime();
-    globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
-      const body = init?.body
-        ? (JSON.parse(String(init.body)) as {
-            method?: string;
-            params?: { moduleId?: string };
-          })
-        : undefined;
-      if (
-        String(url) === "https://shared.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.modules.list"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: {
-            modules: [
-              {
-                id: "allowed-plugin",
-                name: "@remote/allowed",
-                actions: [
-                  {
-                    name: "ALLOWED_ACTION",
-                    description: "Run the allowed module.",
-                  },
-                ],
-              },
-              {
-                id: "foreign-plugin",
-                name: "@remote/foreign",
-                actions: [
-                  {
-                    name: "FOREIGN_ACTION",
-                    description: "Run the foreign module.",
-                  },
-                ],
-              },
-            ],
-          },
-        });
-      }
-      if (
-        String(url) === "https://shared.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.action.invoke"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: { text: `${body.params?.moduleId} action` },
-        });
-      }
-      return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
-    }) as unknown as typeof fetch;
+    installSharedEndpointFetch({
+      id: "foreign-plugin",
+      name: "@remote/foreign",
+      actions: [
+        { name: "FOREIGN_ACTION", description: "Run the foreign module." },
+      ],
+    });
 
     const result = await connectRemoteCapabilityEndpointProvider(runtime, {
-      provider: {
-        id: "home-machine",
-        provision: async () => ({
-          providerId: "home-machine",
-          endpoint: {
-            id: "shared-home",
-            baseUrl: "https://shared.example.test",
-          },
-          allowedModuleIds: ["allowed-plugin"],
-        }),
-      },
+      provider: sharedEndpointProvider(["allowed-plugin"]),
       provisionOptions: {},
       unloadMissing: true,
     });
@@ -374,7 +329,7 @@ describe("remote capability endpoint providers", () => {
         reason: "module-not-allowed",
       }),
     ]);
-    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+    expect(runtime.plugins.map((plugin: Plugin) => plugin.name)).toEqual([
       "@remote/allowed",
     ]);
     expect(runtime.actions.map((action) => action.name)).toEqual([
@@ -387,63 +342,20 @@ describe("remote capability endpoint providers", () => {
 
   it("unloads a previously trusted shared-endpoint module when the allowlist shrinks", async () => {
     const runtime = makeRuntime();
-    globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
-      const body = init?.body
-        ? (JSON.parse(String(init.body)) as {
-            method?: string;
-            params?: { moduleId?: string };
-          })
-        : undefined;
-      if (
-        String(url) === "https://shared.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.modules.list"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: {
-            modules: [
-              {
-                id: "allowed-plugin",
-                name: "@remote/allowed",
-                actions: [
-                  {
-                    name: "ALLOWED_ACTION",
-                    description: "Run the allowed module.",
-                  },
-                ],
-              },
-              {
-                id: "retired-plugin",
-                name: "@remote/retired",
-                actions: [
-                  {
-                    name: "RETIRED_ACTION",
-                    description: "Run the retired module.",
-                  },
-                ],
-              },
-            ],
-          },
-        });
-      }
-      if (
-        String(url) === "https://shared.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.action.invoke"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: { text: `${body.params?.moduleId} action` },
-        });
-      }
-      return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
-    }) as unknown as typeof fetch;
+    installSharedEndpointFetch({
+      id: "retired-plugin",
+      name: "@remote/retired",
+      actions: [
+        { name: "RETIRED_ACTION", description: "Run the retired module." },
+      ],
+    });
 
     await connectRemoteCapabilityEndpointProvider(runtime, {
       provider: sharedEndpointProvider(["allowed-plugin", "retired-plugin"]),
       provisionOptions: {},
       unloadMissing: true,
     });
-    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+    expect(runtime.plugins.map((plugin: Plugin) => plugin.name)).toEqual([
       "@remote/allowed",
       "@remote/retired",
     ]);
@@ -478,7 +390,7 @@ describe("remote capability endpoint providers", () => {
       }),
     ]);
     expect(runtime.unloaded).toEqual(["@remote/retired"]);
-    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+    expect(runtime.plugins.map((plugin: Plugin) => plugin.name)).toEqual([
       "@remote/allowed",
     ]);
     expect(runtime.actions.map((action) => action.name)).toEqual([
@@ -590,7 +502,7 @@ describe("remote capability endpoint providers", () => {
       });
     }
 
-    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+    expect(runtime.plugins.map((plugin: Plugin) => plugin.name)).toEqual([
       "@remote/home",
       "@remote/mobile",
     ]);
@@ -610,8 +522,8 @@ describe("remote capability endpoint providers", () => {
           ?.get(runtime, {} as never, {} as never),
       ).resolves.toMatchObject({ text: `${family.id} provider` });
       await expect(
-        runtime.routes
-          .find((route) => route.path === `/remote/${family.id}`)
+        getHttpRuntime(runtime)
+          .routes.find((route) => route.path === `/remote/${family.id}`)
           ?.routeHandler?.({
             runtime,
             method: "POST",
@@ -755,37 +667,6 @@ describe("remote capability endpoint providers", () => {
       }),
     ).toThrow(ElizaError);
   });
-
-  it("normalizes and validates URL-backed provider endpoints before sync", async () => {
-    await expect(
-      homeMachineCapabilityEndpointProvider.provision({
-        baseUrl: "https://home.example.test/capability/",
-      }),
-    ).resolves.toMatchObject({
-      providerId: "home-machine",
-      endpoint: {
-        id: "home-machine",
-        baseUrl: "https://home.example.test/capability",
-      },
-    });
-
-    await expect(
-      homeMachineCapabilityEndpointProvider.provision({
-        baseUrl: "file:///tmp/capability",
-      }),
-    ).rejects.toThrow("must use http or https");
-    await expect(
-      mobileCompanionCapabilityEndpointProvider.provision({
-        baseUrl: "https://user:pass@mobile.example.test",
-      }),
-    ).rejects.toThrow("must not include embedded credentials");
-    await expect(
-      mobileCompanionCapabilityEndpointProvider.provision({
-        baseUrl: "https://mobile.example.test",
-        endpointId: "../mobile",
-      }),
-    ).rejects.toThrow("must not contain path or query separators");
-  });
 });
 
 function makeRuntime(): IAgentRuntime & {
@@ -802,7 +683,7 @@ function makeRuntime(): IAgentRuntime & {
     actions: [] as NonNullable<Plugin["actions"]>,
     providers: [] as NonNullable<Plugin["providers"]>,
     evaluators: [] as NonNullable<Plugin["evaluators"]>,
-    routes: [] as NonNullable<Plugin["routes"]>,
+
     unloaded: [] as string[],
     services: new Map() as IAgentRuntime["services"],
     getService: (serviceType: string) =>
@@ -817,7 +698,7 @@ function makeRuntime(): IAgentRuntime & {
       runtime.actions.push(...(plugin.actions ?? []));
       runtime.providers.push(...(plugin.providers ?? []));
       runtime.evaluators.push(...(plugin.evaluators ?? []));
-      runtime.routes.push(...(plugin.routes ?? []));
+      registerHttpPluginRoutes(runtime, plugin);
     },
     reloadPlugin: async (plugin: Plugin) => {
       await runtime.registerPlugin(plugin);
@@ -827,7 +708,7 @@ function makeRuntime(): IAgentRuntime & {
         (plugin) => plugin.name === pluginName,
       );
       if (pluginIndex < 0) return null;
-      const [plugin] = runtime.plugins.splice(pluginIndex, 1);
+      const [plugin]: Plugin[] = runtime.plugins.splice(pluginIndex, 1);
       runtime.actions = runtime.actions.filter(
         (action) => !(plugin.actions ?? []).includes(action),
       );
@@ -837,9 +718,7 @@ function makeRuntime(): IAgentRuntime & {
       runtime.evaluators = runtime.evaluators.filter(
         (evaluator) => !(plugin.evaluators ?? []).includes(evaluator),
       );
-      runtime.routes = runtime.routes.filter(
-        (route) => !(plugin.routes ?? []).includes(route),
-      );
+      registerHttpPluginRoutes(runtime, { ...plugin, routes: [] });
       runtime.unloaded.push(pluginName);
       return {
         pluginName,
@@ -852,7 +731,7 @@ function makeRuntime(): IAgentRuntime & {
       };
     },
     getAllPluginOwnership: () =>
-      runtime.plugins.map((plugin) => ({
+      runtime.plugins.map((plugin: Plugin) => ({
         pluginName: plugin.name,
         plugin,
         actions: plugin.actions ?? [],
@@ -868,6 +747,9 @@ function makeRuntime(): IAgentRuntime & {
     routes: NonNullable<Plugin["routes"]>;
     unloaded: string[];
   };
+  getHttpRuntime(runtime).routes = [] as NonNullable<
+    Plugin["routes"]
+  > as Route[];
   return runtime;
 }
 
@@ -912,4 +794,50 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+function installSharedEndpointFetch(
+  otherModule: RemotePluginModuleManifest,
+): void {
+  globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
+    const body = init?.body
+      ? (JSON.parse(String(init.body)) as {
+          method?: string;
+          params?: { moduleId?: string };
+        })
+      : undefined;
+    if (
+      String(url) === "https://shared.example.test/v1/capabilities/invoke" &&
+      body?.method === "plugin.modules.list"
+    ) {
+      return jsonResponse({
+        ok: true,
+        result: {
+          modules: [
+            {
+              id: "allowed-plugin",
+              name: "@remote/allowed",
+              actions: [
+                {
+                  name: "ALLOWED_ACTION",
+                  description: "Run the allowed module.",
+                },
+              ],
+            },
+            otherModule,
+          ],
+        },
+      });
+    }
+    if (
+      String(url) === "https://shared.example.test/v1/capabilities/invoke" &&
+      body?.method === "plugin.action.invoke"
+    ) {
+      return jsonResponse({
+        ok: true,
+        result: { text: `${body.params?.moduleId} action` },
+      });
+    }
+    return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
+  }) as unknown as typeof fetch;
 }

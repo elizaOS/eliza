@@ -17,7 +17,7 @@
  * Deterministic provider: `createDeterministicModelPlugin` from core testing.
  */
 
-import { createDeterministicModelPlugin } from "@elizaos/core/testing";
+import { createDeterministicModelPlugin } from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createConversation,

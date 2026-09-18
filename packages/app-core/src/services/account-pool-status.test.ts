@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { LinkedAccountConfig } from "@elizaos/shared";
+import type { LinkedAccountConfig } from "@elizaos/shared/contracts/service-routing-types";
 import { afterEach, describe, expect, it } from "vitest";
 import { AccountPool } from "./account-pool";
 import type { AccountPoolConsumerUsageBreakdown } from "./account-pool-consumer-metering";

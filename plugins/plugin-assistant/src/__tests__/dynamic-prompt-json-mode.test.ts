@@ -1,0 +1,288 @@
+/** Exercises structured retries, callback draining, and corrective repair prompts through a real runtime and in-memory database with deterministic model handlers. */
+import {
+  AgentRuntime,
+  type Character,
+  ModelType,
+  type State,
+} from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  disposeAssistantReasoning,
+  installAssistantReasoning,
+} from "../runtime/assistant-reasoning.ts";
+
+const runtimes: AgentRuntime[] = [];
+afterEach(async () => {
+  for (const runtime of runtimes.splice(0)) {
+    disposeAssistantReasoning(runtime);
+    await runtime.stop();
+  }
+});
+
+function makeRuntime(): AgentRuntime {
+  const runtime = new AgentRuntime({
+    adapter: new InMemoryDatabaseAdapter(),
+    character: {
+      name: "dynamic-prompt-json-mode-test",
+      bio: "test",
+      settings: {},
+    } as Character,
+    logLevel: "fatal",
+  });
+
+  installAssistantReasoning(runtime);
+  runtimes.push(runtime);
+  return runtime;
+}
+
+describe("AgentRuntime.dynamicPromptExecFromState", () => {
+  it("does not repeat an exhausted rate-limited provider chain", async () => {
+    const runtime = makeRuntime();
+    const limited = () =>
+      Object.assign(new Error("Provider capacity reached"), {
+        statusCode: 429,
+      });
+    const primary = vi.fn(async () => {
+      throw limited();
+    });
+    const fallback = vi.fn(async () => {
+      throw limited();
+    });
+    runtime.registerModel(ModelType.TEXT_LARGE, primary, "primary", 100);
+    runtime.registerModel(ModelType.TEXT_LARGE, fallback, "fallback", 50);
+    const state: State = { values: {}, data: {}, text: "" };
+
+    const result = await runtime.dynamicPromptExecFromState({
+      state,
+      params: { prompt: "Return an answer." },
+      schema: [{ field: "answer", description: "Answer", required: true }],
+      options: { modelType: ModelType.TEXT_LARGE, maxRetries: 3 },
+    });
+
+    expect(result).toBeNull();
+    expect(primary).toHaveBeenCalledTimes(1);
+    expect(fallback).toHaveBeenCalledTimes(1);
+    expect(state.data.structuredOutputFailure).toMatchObject({
+      kind: "model_error",
+      attempts: 1,
+      maxRetries: 3,
+      parseError: "Provider capacity reached",
+    });
+  });
+
+  it("still uses a healthy fallback after a rate-limited provider", async () => {
+    const runtime = makeRuntime();
+    const primary = vi.fn(async () => {
+      throw Object.assign(new Error("Too many requests"), { statusCode: 429 });
+    });
+    const fallback = vi.fn(async () => '{"answer":"available"}');
+    runtime.registerModel(ModelType.TEXT_LARGE, primary, "primary", 100);
+    runtime.registerModel(ModelType.TEXT_LARGE, fallback, "fallback", 50);
+    const result = await runtime.dynamicPromptExecFromState({
+      params: { prompt: "Return an answer." },
+      schema: [{ field: "answer", description: "Answer", required: true }],
+      options: {
+        modelType: ModelType.TEXT_LARGE,
+        maxRetries: 3,
+        contextCheckLevel: 0,
+      },
+    });
+    expect(result).toEqual({ answer: "available" });
+    expect(primary).toHaveBeenCalledTimes(1);
+    expect(fallback).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    new Error("ECONNRESET"),
+    Object.assign(new Error("Invalid provider credentials"), {
+      statusCode: 401,
+    }),
+  ])(
+    "does not use semantic retries to restart failed dispatch: %s",
+    async (error) => {
+      const runtime = makeRuntime();
+      const handler = vi.fn(async () => {
+        throw error;
+      });
+      runtime.registerModel(ModelType.TEXT_LARGE, handler, "test", 100);
+      const state: State = { values: {}, data: {}, text: "" };
+      const result = await runtime.dynamicPromptExecFromState({
+        state,
+        params: { prompt: "Return an answer." },
+        schema: [{ field: "answer", description: "Answer", required: true }],
+        options: {
+          modelType: ModelType.TEXT_LARGE,
+          maxRetries: 3,
+          contextCheckLevel: 0,
+        },
+      });
+      expect(result).toBeNull();
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(state.data.structuredOutputFailure).toMatchObject({
+        kind: "model_error",
+        attempts: 1,
+        parseError: error.message,
+      });
+    },
+  );
+
+  it("drains an older structured callback before starting a retry", async () => {
+    const runtime = makeRuntime();
+    let attempt = 0;
+    const handler = vi.fn(
+      async (
+        _runtime,
+        params: { onStreamChunk?: (chunk: string) => Promise<void> | void },
+      ) => {
+        attempt += 1;
+        if (attempt === 1) {
+          await params.onStreamChunk?.("text: old\nother: x\n");
+          return '{"wrong":"retry"}';
+        }
+        await params.onStreamChunk?.("text: new.\n");
+        return '{"text":"new."}';
+      },
+    );
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      handler,
+      "eliza-local-inference",
+      100,
+    );
+    let releaseOld: (() => void) | undefined;
+    const oldGate = new Promise<void>((resolve) => {
+      releaseOld = resolve;
+    });
+    let markOldEntered: (() => void) | undefined;
+    const oldEntered = new Promise<void>((resolve) => {
+      markOldEntered = resolve;
+    });
+    const delivered: Array<{ chunk: string; revision: number | undefined }> =
+      [];
+
+    const resultPromise = runtime.dynamicPromptExecFromState({
+      params: { prompt: "Return text." },
+      schema: [
+        {
+          field: "text",
+          description: "Reply",
+          required: true,
+          streamField: true,
+        },
+        { field: "other", description: "Non-streamed metadata" },
+      ],
+      options: {
+        modelType: ModelType.TEXT_LARGE,
+        maxRetries: 1,
+        contextCheckLevel: 0,
+        onStreamChunk: async (chunk, _messageId, _accumulated, revision) => {
+          delivered.push({ chunk, revision });
+          if (delivered.length === 1) {
+            markOldEntered?.();
+            await oldGate;
+          }
+        },
+      },
+    });
+
+    await oldEntered;
+    await Promise.resolve();
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(delivered.map(({ chunk }) => chunk)).toEqual(["old"]);
+
+    releaseOld?.();
+    expect(await resultPromise).toEqual({ text: "new." });
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(delivered.map(({ chunk }) => chunk)).toEqual(["old", "new."]);
+    expect(delivered[0]?.revision).not.toBe(delivered[1]?.revision);
+  });
+
+  it("requests JSON-object mode for structured model calls", async () => {
+    const runtime = makeRuntime();
+    let seenParams: unknown;
+    const handler = vi.fn(async (_runtime, params: unknown) => {
+      seenParams = params;
+      return '{"answer":"ok"}';
+    });
+    runtime.registerModel(ModelType.TEXT_LARGE, handler, "test", 100);
+
+    await runtime.dynamicPromptExecFromState({
+      params: { prompt: "Return an answer." },
+      schema: [{ field: "answer", description: "Answer", required: true }],
+      options: { modelType: ModelType.TEXT_LARGE, maxRetries: 0 },
+    });
+
+    expect(seenParams).toMatchObject({
+      responseFormat: { type: "json_object" },
+    });
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("feeds a corrective repair context into the reroll after a validation failure", async () => {
+    const runtime = makeRuntime();
+    const prompts: string[] = [];
+    const handler = vi.fn(async (_runtime, params: { prompt: string }) => {
+      // Always invalid (missing the required `answer`) so every reroll's
+      // prompt is captured; we assert the reroll became corrective.
+      prompts.push(params.prompt);
+      return '{"wrong":"nope-value"}';
+    });
+    runtime.registerModel(ModelType.TEXT_LARGE, handler, "test", 100);
+
+    await runtime.dynamicPromptExecFromState({
+      params: { prompt: "Return an answer." },
+      schema: [{ field: "answer", description: "Answer", required: true }],
+      options: { modelType: ModelType.TEXT_LARGE, maxRetries: 1 },
+    });
+
+    // maxRetries:1 → 2 attempts. The first carries no repair context; the
+    // reroll feeds back the concrete failure + the (echoed) prior output, so
+    // it is corrective rather than a blind re-roll of the same prompt.
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).not.toContain("[REPAIR]");
+    expect(prompts[1]).toContain("[REPAIR]");
+    expect(prompts[1]).toContain("Your previous (invalid) output was:");
+    expect(prompts[1]).toContain("nope-value");
+  });
+
+  it("still returns null after exhausting retries (behavior preserved)", async () => {
+    const runtime = makeRuntime();
+    const handler = vi.fn(async () => '{"wrong":"always-invalid"}');
+    runtime.registerModel(ModelType.TEXT_LARGE, handler, "test", 100);
+
+    const result = await runtime.dynamicPromptExecFromState({
+      params: { prompt: "Return an answer." },
+      schema: [{ field: "answer", description: "Answer", required: true }],
+      options: { modelType: ModelType.TEXT_LARGE, maxRetries: 1 },
+    });
+
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(result).toBeNull();
+  });
+
+  it("preserves an explicit caller response format", async () => {
+    const runtime = makeRuntime();
+    let seenParams: unknown;
+    const handler = vi.fn(async (_runtime, params: unknown) => {
+      seenParams = params;
+      return '{"answer":"ok"}';
+    });
+    runtime.registerModel(ModelType.TEXT_LARGE, handler, "test", 100);
+
+    await runtime.dynamicPromptExecFromState({
+      params: {
+        prompt: "Return an answer.",
+        responseFormat: { type: "text" },
+      },
+      schema: [{ field: "answer", description: "Answer", required: true }],
+      options: { modelType: ModelType.TEXT_LARGE, maxRetries: 0 },
+    });
+
+    expect(seenParams).toMatchObject({
+      responseFormat: { type: "text" },
+    });
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+});

@@ -5,4 +5,4 @@
 export {
   formatSubscriptionRequestError,
   normalizeOpenAICallbackInput,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/subscription-auth";

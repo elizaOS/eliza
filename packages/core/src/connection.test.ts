@@ -2,9 +2,10 @@
  * Exercises connection reconciliation against the production in-memory adapter,
  * including durable shared-world role metadata across sequential callers.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
 import { ensureConnection } from "./connection";
-import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { recordOwnerGrant, recordRoleGrant } from "./roles";
 import { stringToUuid } from "./utils";
 

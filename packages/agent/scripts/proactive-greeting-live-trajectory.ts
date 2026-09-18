@@ -12,7 +12,7 @@
  *      bun packages/agent/scripts/proactive-greeting-live-trajectory.ts
  */
 import type { IAgentRuntime, ViewSwitchedPayload } from "@elizaos/core";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import { renderLiveStateForScope } from "../src/providers/page-scoped-live-state.ts";
 import {
   buildProactiveJudgePrompt,

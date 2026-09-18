@@ -53,7 +53,7 @@ import {
   type VaultEntryMetaUpdate,
   type VaultEntryProfile,
   writeRoutingConfig,
-} from "@elizaos/vault";
+} from "@elizaos/credentials/vault";
 import { listConnectorSecretFindings } from "../services/connector-secret-inventory";
 import { sharedVault } from "../services/vault-mirror";
 import {

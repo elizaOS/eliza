@@ -25,9 +25,7 @@ const { buildChatAttachments, CHAT_UPLOAD_MIME_TYPES, validateChatImages } =
 const { mediaFileNameFromUrl, serveMediaFile } = await import(
   "./media-store.ts"
 );
-const { ContentType, DefaultMessageService, ModelType } = await import(
-  "@elizaos/core"
-);
+const { ContentType, ModelType } = await import("@elizaos/core");
 
 afterAll(() => {
   fs.rmSync(stateDir, { recursive: true, force: true });
@@ -368,3 +366,5 @@ describe("chat attachment upload -> store -> processing lifecycle (#10714)", () 
     }
   });
 });
+
+const { DefaultMessageService } = await import("@elizaos/plugin-assistant");

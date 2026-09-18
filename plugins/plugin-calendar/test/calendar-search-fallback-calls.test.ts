@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   actionResultToPlannerToolResult,
   runPlannerLoop,
-} from "../../../packages/core/src/runtime/planner-loop.js";
+} from "../../plugin-assistant/src/runtime/planner-loop.ts";
 import {
   type CalendarActionDeps,
   createCalendarActionRunner,

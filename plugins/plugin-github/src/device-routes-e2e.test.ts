@@ -17,7 +17,8 @@ import http_ from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { IAgentRuntime, Route } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { Route } from "@elizaos/shared/api/http-plugin";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 // Pin the credential store to an isolated temp dir BEFORE importing any module

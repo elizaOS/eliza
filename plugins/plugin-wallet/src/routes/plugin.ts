@@ -12,7 +12,10 @@
  */
 
 import type http from "node:http";
-import type { Plugin, Route } from "@elizaos/core";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
 import { handleWalletMarketOverviewRoute } from "./wallet-market-overview-route";
 
 async function marketOverviewHandler(

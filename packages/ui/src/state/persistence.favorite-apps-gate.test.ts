@@ -20,8 +20,9 @@ vi.mock("../api/csrf-client", () => ({
 
 const warn = vi.fn();
 const debug = vi.fn();
-vi.mock("@elizaos/logger", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@elizaos/logger")>();
+vi.mock("@elizaos/shared/logger", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@elizaos/shared/logger")>();
   return {
     ...actual,
     logger: {

@@ -5,8 +5,8 @@
  * deterministic without starting or restarting a live agent runtime.
  */
 import type http from "node:http";
+import type { SecretsManager } from "@elizaos/credentials/vault";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
-import type { SecretsManager } from "@elizaos/vault";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
 import { resetDevCloudEnvAuthorityForTests } from "../config/dev-cloud-env-authority.ts";

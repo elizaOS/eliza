@@ -14,13 +14,13 @@ import {
   extractPlugin,
   type PluginModuleShape,
 } from "@elizaos/agent";
+import type { Plugin } from "@elizaos/core";
 import {
   AgentRuntime,
   ChannelType,
   createMessageMemory,
   logger,
   type Memory,
-  type Plugin,
   type UUID,
 } from "@elizaos/core";
 import dotenv from "dotenv";

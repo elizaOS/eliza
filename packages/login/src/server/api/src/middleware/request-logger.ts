@@ -12,7 +12,7 @@
  * query), so credentials in query strings never reach stdout.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { createMiddleware } from "hono/factory";
 import { getPath } from "hono/utils/url";
 

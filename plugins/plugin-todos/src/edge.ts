@@ -1,6 +1,6 @@
 /** Worker-safe Todos plugin bound to host-owned durable storage. */
 
-import type { Plugin } from "@elizaos/core/edge";
+import type { Plugin } from "@elizaos/core";
 import { createTodoAction } from "./actions/todo.js";
 import { createCurrentTodosProvider } from "./providers/current-todos.js";
 import type { TodoStore } from "./store.js";

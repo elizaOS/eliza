@@ -1,4 +1,4 @@
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 export interface DedicatedActivationConfirmationQuote {
   quoteId: string;

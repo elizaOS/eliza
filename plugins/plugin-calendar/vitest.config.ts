@@ -29,7 +29,6 @@ const pluginSchedulingSrc = path.join(
 const sharedSrc = path.join(elizaRoot, "packages", "shared", "src");
 const uiSrc = path.join(elizaRoot, "packages", "ui", "src");
 const coreSrc = path.join(elizaRoot, "packages", "core", "src");
-const loggerSrc = path.join(elizaRoot, "packages", "logger", "src");
 const appCoreNativeLibraryPolicy = path.join(
   elizaRoot,
   "packages",
@@ -107,7 +106,7 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/plugin-sql$/,
-        replacement: path.join(pluginSqlSrc, "index.node.ts"),
+        replacement: path.join(pluginSqlSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/plugin-sql\/(.+)$/,
@@ -147,11 +146,11 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/core$/,
-        replacement: path.join(coreSrc, "index.node.ts"),
+        replacement: path.join(coreSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/core\/node$/,
-        replacement: path.join(coreSrc, "index.node.ts"),
+        replacement: path.join(coreSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/core\/atomic-json$/,
@@ -160,10 +159,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/core\/(.+)$/,
         replacement: path.join(coreSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/logger$/,
-        replacement: path.join(loggerSrc, "index.ts"),
       },
     ],
   },

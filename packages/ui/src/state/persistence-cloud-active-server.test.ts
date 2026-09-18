@@ -7,7 +7,7 @@
  * never persisted or restored as a runtime API base, plus token scrub. jsdom +
  * real `localStorage`; no network.
  */
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "../api/direct-cloud-endpoints";

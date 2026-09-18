@@ -28,10 +28,9 @@
   "scripts": {
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
-    "build": "bun run build:i18n && bun run build:dist",
-    "build:i18n": "node scripts/generate-keywords.mjs",
+    "build": "bun run build:dist",
     "generate:coding-provider-support-matrix": "bun scripts/generate-coding-provider-support-matrix.ts",
-    "typecheck": "bun run build:i18n && tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check --write src",
     "lint:check": "bunx @biomejs/biome check src",
@@ -651,7 +650,39 @@
     },
     "./brand.css": "./dist/brand/brand.css",
     "./brand-classic.css": "./dist/brand-classic/brand.css",
-    "./assets/*": "./assets/*"
+    "./assets/*": "./assets/*",
+    "./utils/filesystem": {
+      "types": "./dist/utils/filesystem.d.ts",
+      "eliza-source": "./src/utils/filesystem.ts",
+      "import": "./dist/utils/filesystem.js",
+      "default": "./dist/utils/filesystem.js"
+    },
+    "./logger": {
+      "types": "./dist/logger.d.ts",
+      "eliza-source": "./src/logger.ts",
+      "import": "./dist/logger.js",
+      "default": "./dist/logger.js"
+    },
+    "./markdown": {
+      "types": "./dist/markdown/index.d.ts",
+      "eliza-source": {
+        "types": "./src/markdown/index.ts",
+        "import": "./src/markdown/index.ts",
+        "default": "./src/markdown/index.ts"
+      },
+      "import": "./dist/markdown/index.js",
+      "default": "./dist/markdown/index.js"
+    },
+    "./media": {
+      "types": "./dist/media/index.d.ts",
+      "eliza-source": {
+        "types": "./src/media/index.ts",
+        "import": "./src/media/index.ts",
+        "default": "./src/media/index.ts"
+      },
+      "import": "./dist/media/index.js",
+      "default": "./dist/media/index.js"
+    }
   },
   "publishConfig": {
     "access": "public",
@@ -666,7 +697,11 @@
     "json5": "^2.2.3",
     "react": "^19.0.0",
     "yaml": "^2.8.2",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/prompts": "workspace:*",
+    "@elizaos/common": "workspace:*",
+    "markdown-it": "^14.1.0",
+    "file-type": "^22.0.0"
   },
   "devDependencies": {
     "bun-types": "^1.3.12",
@@ -674,7 +709,8 @@
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
     "vitest": "^4.1.10",
-    "esbuild": "^0.28.0"
+    "esbuild": "^0.28.0",
+    "@types/markdown-it": "^14.1.2"
   },
   "types": "./dist/index.d.ts",
   "elizaos": {

@@ -23,8 +23,12 @@
 import fs from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
-import { readJsonFile, writeJsonAtomic } from "@elizaos/core/atomic-json";
+import {
+  ElizaError,
+  logger,
+  readJsonFile,
+  writeJsonAtomic,
+} from "@elizaos/core";
 import { formatError } from "@elizaos/shared";
 import { resolveStateDir } from "../../config/paths.ts";
 import type {

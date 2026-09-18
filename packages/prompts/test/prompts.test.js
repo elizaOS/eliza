@@ -1,5 +1,5 @@
 /**
- * Verifies prompt rendering, exported template integrity, generated specs,
+ * Verifies prompt rendering, exported template integrity,
  * lossless model context, and the injection boundary around contact input.
  */
 import assert from "node:assert";
@@ -7,21 +7,15 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { composePrompt } from "../../core/src/utils.ts";
+import { composePrompt } from "@elizaos/prompts/rendering";
 import * as prompts from "../src/index.ts";
-import { compressPromptDescription } from "../src/prompt-compression.ts";
 
 const exportedPrompts = Object.fromEntries(Object.entries(prompts));
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const srcIndex = join(packageRoot, "src", "index.ts");
-const specsDir = join(packageRoot, "specs");
 
 function readSrc() {
   return readFileSync(srcIndex, "utf-8");
-}
-
-function readJsonFile(filePath) {
-  return JSON.parse(readFileSync(filePath, "utf-8"));
 }
 
 function extractTemplateConsts(source) {
@@ -145,58 +139,6 @@ describe("prompt template exports", () => {
       (source.match(/\{\{/g) || []).length,
       (source.match(/\}\}/g) || []).length,
     );
-  });
-});
-
-describe("compressPromptDescription", () => {
-  it("preserves the complete authored description", () => {
-    const description =
-      "  Read `npm run test`,\nhttps://example.com/a?b=c, and OPENAI_API_KEY before validating configuration.  ";
-    assert.strictEqual(compressPromptDescription(description), description);
-  });
-});
-
-describe("specs directory", () => {
-  it("ships non-empty action and provider specs with unique names", () => {
-    const specs = [
-      { path: join(specsDir, "actions", "core.json"), key: "actions" },
-      { path: join(specsDir, "providers", "core.json"), key: "providers" },
-    ];
-
-    for (const spec of specs) {
-      const parsed = readJsonFile(spec.path);
-      assert.ok(Array.isArray(parsed[spec.key]));
-      assert.ok(parsed[spec.key].length > 0);
-      const names = new Set();
-      for (const item of parsed[spec.key]) {
-        assert.ok(item.name.trim().length > 0);
-        assert.strictEqual(names.has(item.name), false);
-        names.add(item.name);
-        assert.ok(item.description.trim().length > 0);
-      }
-    }
-  });
-
-  it("keeps generated descriptions complete and aliases aligned", () => {
-    const generated = readJsonFile(
-      join(specsDir, "actions", "plugins.generated.json"),
-    );
-    assert.ok(Array.isArray(generated.actions));
-    for (const action of generated.actions) {
-      assert.strictEqual(
-        compressPromptDescription(action.description),
-        action.description,
-      );
-      if (
-        action.compressedDescription !== undefined &&
-        action.descriptionCompressed !== undefined
-      ) {
-        assert.strictEqual(
-          action.compressedDescription,
-          action.descriptionCompressed,
-        );
-      }
-    }
   });
 });
 

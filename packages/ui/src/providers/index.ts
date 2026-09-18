@@ -17,7 +17,7 @@ export {
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   type SubscriptionProviderSelectionId,
   sortFirstRunProviders,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/first-run-options";
 
 import { resolveAppAssetUrl } from "../utils/asset-url";
 

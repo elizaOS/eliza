@@ -10,7 +10,10 @@
  * returning an exercised-surface report. Remaining helpers normalize/validate
  * options and parse capability-invoke responses.
  */
-import { readAliasedEnv, resolveDesktopApiPort, theme } from "@elizaos/shared";
+
+import { resolveDesktopApiPort } from "@elizaos/shared/runtime-env";
+import { theme } from "@elizaos/shared/terminal/theme";
+import { readAliasedEnv } from "@elizaos/shared/utils/env";
 import type { Command } from "commander";
 
 function resolveDefaultAgentApiBase(): string {

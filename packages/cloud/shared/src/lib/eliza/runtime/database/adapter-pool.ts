@@ -1,5 +1,7 @@
 // Wires hosted Eliza agent adapter pool behavior for cloud runtime services.
-import { elizaLogger, type IDatabaseAdapter, type UUID } from "@elizaos/core";
+
+import { type UUID } from "@elizaos/common";
+import { elizaLogger, type IDatabaseAdapter } from "@elizaos/core";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 import { getStaticEmbeddingDimension } from "../../../cache/edge-runtime-cache";
 import { resolveRuntimeDatabaseAdapterConfig } from "../../database-adapter-config";

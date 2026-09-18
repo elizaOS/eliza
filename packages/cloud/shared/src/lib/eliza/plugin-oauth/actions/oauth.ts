@@ -7,13 +7,13 @@
  * resolve.
  */
 
+import { type Memory } from "@elizaos/common";
 import {
   type ActionExample,
   type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
-  type Memory,
   type State,
 } from "@elizaos/core";
 import { oauthService } from "../../../services/oauth";

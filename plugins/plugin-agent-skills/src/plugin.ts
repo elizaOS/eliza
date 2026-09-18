@@ -10,8 +10,9 @@
  * @see https://agentskills.io
  */
 
-import type { Action, Plugin, Provider } from "@elizaos/core";
+import type { Action, Provider } from "@elizaos/core";
 import { promoteSubactionsToActions } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 
 // Actions
 import { skillAction } from "./actions/skill";

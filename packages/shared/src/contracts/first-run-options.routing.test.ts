@@ -1,23 +1,27 @@
 /**
- * Canonical service-routing resolution: once a route matrix exists, unrelated
- * persisted provider credentials cannot manufacture ownership for an omitted
- * capability.
+ * Canonical service-routing resolution ensures an explicit capability matrix
+ * cannot gain ownership from unrelated ambient provider credentials.
  */
 import { describe, expect, it } from "vitest";
-import { resolveServiceRoutingInConfig } from "./first-run-options";
+import {
+  inferFirstRunConnectionFromConfig,
+  resolveServiceRoutingInConfig,
+} from "./first-run-options.ts";
 
 describe("resolveServiceRoutingInConfig canonical ownership", () => {
   it("does not infer llmText from ambient credentials beside a media-only route", () => {
-    const routing = resolveServiceRoutingInConfig({
+    const config = {
       serviceRouting: {
         media: { backend: "elizacloud", transport: "cloud-proxy" },
       },
       env: { OPENAI_API_KEY: "sk-unrelated" },
-    });
+    };
+    const routing = resolveServiceRoutingInConfig(config);
 
     expect(routing).toEqual({
       media: { backend: "elizacloud", transport: "cloud-proxy" },
     });
     expect(routing?.llmText).toBeUndefined();
+    expect(inferFirstRunConnectionFromConfig(config)).toBeNull();
   });
 });

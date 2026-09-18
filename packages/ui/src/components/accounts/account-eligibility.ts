@@ -13,8 +13,8 @@
 import {
   codingAgentSpawnCapabilityForProvider,
   codingProviderDescriptorForProvider,
-  type LinkedAccountProviderId,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/coding-agent-capabilities";
+import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing-types";
 import type { ProviderRuntimeEligibility } from "../../api/client-accounts";
 import type { AccountsListProvider } from "../../api/client-agent";
 import type { AccountProviderOption } from "./account-provider-options";

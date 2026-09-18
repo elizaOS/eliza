@@ -4,7 +4,6 @@
  * DatabaseMigrationService — connection lifecycle, withDatabase error
  * propagation, and agent CRUD.
  */
-import { PGlite } from "@electric-sql/pglite";
 import type { Agent, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -22,8 +21,8 @@ describe("PostgreSQL Adapter Integration Tests", () => {
 
   beforeEach(async () => {
     agentId = uuidv4() as UUID;
-    const client = new PGlite();
-    manager = new PGliteClientManager(client);
+
+    manager = new PGliteClientManager({ dataDir: "memory://" });
     adapter = new PgliteDatabaseAdapter(agentId, manager);
     await adapter.init();
 
@@ -151,8 +150,7 @@ describe("PostgreSQL Adapter Integration Tests", () => {
 
     it("should handle query failures", async () => {
       // PGLite adapter init doesn't actually run queries, so we test a different operation
-      const mockClient = new PGlite();
-      const mockManager = new PGliteClientManager(mockClient as PGlite);
+      const mockManager = new PGliteClientManager({ dataDir: "memory://" });
       const mockAdapter = new PgliteDatabaseAdapter(uuidv4() as UUID, mockManager);
 
       // Close the manager to simulate a connection issue

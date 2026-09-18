@@ -6,15 +6,12 @@
  */
 
 import { createHash } from "node:crypto";
+import { EventType, type IAgentRuntime, type Memory, validateReadView } from "@elizaos/core/node";
 import {
   __resetDefaultTriageServiceForTests,
-  EventType,
   getDefaultTriageService,
-  type IAgentRuntime,
-  type Memory,
   messageAction,
-  validateReadView,
-} from "@elizaos/core/node";
+} from "@elizaos/plugin-assistant";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GoogleApiClientFactory } from "./client-factory.js";
 import { GoogleGmailClient } from "./gmail.js";

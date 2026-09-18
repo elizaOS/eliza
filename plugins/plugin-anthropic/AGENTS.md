@@ -30,8 +30,6 @@ No actions, providers, evaluators, services, routes, or event handlers are regis
 ```
 plugins/plugin-anthropic/
 ├── index.ts                  # Plugin definition, model dispatch wiring, built-in test suite
-├── index.node.ts             # Node/Bun build entrypoint (re-exports index.ts; build.ts → dist/node)
-├── index.browser.ts          # Browser build entrypoint (re-exports index.ts; build.ts → dist/browser)
 ├── auto-enable.ts            # Auto-enable check: reads ANTHROPIC_API_KEY / CLAUDE_API_KEY
 ├── init.ts                   # initializeAnthropic() — auth mode detection and startup log
 ├── models/
@@ -62,7 +60,7 @@ plugins/plugin-anthropic/
 Scripts from `plugins/plugin-anthropic/package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-anthropic build          # Bun.build (node + browser + cjs, via build.ts)
+bun run --cwd plugins/plugin-anthropic build          # Node ESM and bundled declarations, via build.ts
 bun run --cwd plugins/plugin-anthropic dev            # build in watch mode
 bun run --cwd plugins/plugin-anthropic test           # run all tests (vitest, excludes *.live.test.ts)
 bun run --cwd plugins/plugin-anthropic test:unit      # run the default keyless test suite
@@ -130,7 +128,7 @@ Follow the pattern in `utils/config.ts`: `getRawSetting(runtime, "ANTHROPIC_X_MO
 - **Prompt caching:** `cache_control: ephemeral` is emitted by default on system prompts, stable `promptSegments`, the LAST tool in the tools array, and the kept-trajectory tail (final assistant/tool turn) on the native-messages path. TTL is `5m` unless `ANTHROPIC_PROMPT_CACHE_TTL=1h`; per-segment overrides ride on `PromptSegment.ttl`. The 4-breakpoint API budget is spent system -> tools -> trajectory/segments (`models/text.ts` `buildSegmentCacheControls`); opt out per call with `anthropic.cacheTools: false` / `anthropic.cacheTrajectory: false` in `providerOptions`.
 - **Cache visibility:** every call logs a structured `[Anthropic] prompt cache hit|write|none` line (read/write token counts) via `emitModelUsageEvent` (`utils/events.ts`) at debug level.
 - **Per-call model override.** Text handlers honor `params.model` before slot-level model settings. Workflow generation uses this for isolated Claude tests without changing every Anthropic text call.
-- **Browser build:** `exports.browser` omits `process.env` and `node:*` imports. Use `ANTHROPIC_BROWSER_BASE_URL` to point the browser at a proxy (never expose the API key client-side).
+- **Host endpoint configuration:** the endpoint-config leaf retains explicit browser-proxy URL selection for host configuration; it does not provide a browser runtime.
 - **Multi-account OAuth pool:** The credential store reads the shared `ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL` bridge accessor from `@elizaos/core`. When present, token selection and 401/429 failover route through the pool (`utils/credential-store.ts`).
 - **Usage events:** Every successful model call emits `EventType.MODEL_USED` via `emitModelUsageEvent` (`utils/events.ts`), including cache hit/write token counts.
 - **Structured output:** Pass `responseSchema` (JSON Schema object) to any text handler. The plugin builds a native AI SDK `output` object; the response is parsed JSON, not a plain string.
@@ -143,3 +141,7 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+The provider publishes one Node ESM root with bundled declarations. The separate
+endpoint-config entry remains for host configuration. Browser and CommonJS
+runtime builds and manually synthesized declaration shims are retired.

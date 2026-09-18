@@ -8,7 +8,7 @@ import type {
   WalletBalancesResponse,
   WalletMarketMover,
   WalletMarketPriceSnapshot,
-} from "@elizaos/core";
+} from "@elizaos/shared/contracts/wallet";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_WIDGET_SYMBOLS,

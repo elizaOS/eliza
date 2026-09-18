@@ -1,0 +1,924 @@
+/** Tests complete, permission-scoped schema loading without any live domain effects. */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { describe, expect, it } from "vitest";
+import { buildPlannerToolsFromActions } from "../../../../../packages/core/src/actions/to-tool.ts";
+import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
+import type { Action } from "../../../../../packages/core/src/types/components.ts";
+import type { ContextObject } from "../../../../../packages/core/src/types/context-object.ts";
+import type { Memory } from "../../../../../packages/core/src/types/memory.ts";
+import type { IAgentRuntime } from "../../../../../packages/core/src/types/runtime.ts";
+import { documentAction } from "../../features/documents/actions";
+import { createAssistantPlugin } from "../../index.ts";
+import { collectV5PlannerCandidateActions } from "./action-surface";
+import {
+  collectBudgetedStageOneCandidateActions,
+  collectPlannerTools,
+} from "./planned-tool";
+import {
+  appendDiscoveredPlannerTools,
+  collectDiscoveryCatalogActions,
+  createPlannerToolDiscoveryAction,
+} from "./tool-discovery.ts";
+
+const runtime = {} as IAgentRuntime;
+const message = {} as Memory;
+
+describe("planner tool discovery", () => {
+  it("indexes every admitted name while retrieving complete descriptions on demand", async () => {
+    const original = "  Full original Ω description\n".repeat(50);
+    const actions: Action[] = [
+      {
+        name: "CUSTOM",
+        description: original,
+        routingHint: "Read custom records",
+        subActions: ["CUSTOM_READ"],
+      },
+      { name: "CUSTOM_READ", description: original },
+      { name: "REVOKED", description: "Must not be disclosed" },
+    ];
+    const fresh = actions.slice(0, 2);
+    const loads: Action[][] = [];
+    const discovery = createPlannerToolDiscoveryAction(
+      actions,
+      (a) => loads.push(a),
+      async () => fresh,
+      { catalogIndex: true },
+    );
+    const legacy = createPlannerToolDiscoveryAction(
+      actions,
+      () => {},
+      async () => fresh,
+    );
+    const call = (action: Action, parameters: Record<string, unknown>) =>
+      action.handler?.(runtime, message, undefined, { parameters });
+    const index = await call(discovery, { names: [] });
+    expect(index).toMatchObject({
+      success: true,
+      data: {
+        catalog: [
+          {
+            name: "CUSTOM",
+            routingHint: "Read custom records",
+            children: ["CUSTOM_READ"],
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(index)).not.toContain(original);
+    expect(JSON.stringify(index)).not.toContain("REVOKED");
+    expect(await call(discovery, { names: [], mode: "describe" })).toEqual(
+      await call(legacy, { names: [], mode: "describe" }),
+    );
+    expect(
+      await call(discovery, { names: ["CUSTOM_READ"], mode: "describe" }),
+    ).toEqual(await call(legacy, { names: ["CUSTOM_READ"], mode: "describe" }));
+    expect(
+      await call(discovery, { names: ["REVOKED"], mode: "describe" }),
+    ).toMatchObject({ success: false });
+    expect(loads).toEqual([]);
+  });
+
+  it("keeps inline callers unchanged while the reference preserves native parameters", () => {
+    const actions: Action[] = [
+      {
+        name: "CUSTOM",
+        description: "Exact domain",
+        subActions: ["CUSTOM_READ"],
+      },
+      { name: "CUSTOM_READ", description: "Read the complete record" },
+    ];
+    const inline = createPlannerToolDiscoveryAction(actions, () => {});
+    const explicitInline = createPlannerToolDiscoveryAction(
+      actions,
+      () => {},
+      undefined,
+      { deferNameIndex: false },
+    );
+    const reference = createPlannerToolDiscoveryAction(
+      actions,
+      () => {},
+      undefined,
+      { deferNameIndex: true },
+    );
+    expect(explicitInline.description).toBe(inline.description);
+    expect(reference.description).toContain("No name index is preloaded here");
+    expect(reference.description).toContain("names=[]");
+    expect(reference.description).not.toContain("CUSTOM_READ");
+    expect(reference.description.length).toBeLessThan(
+      inline.description.length,
+    );
+    const [{ description: _inlineDescription, ...inlineTool }] =
+      buildPlannerToolsFromActions([inline]);
+    const [{ description: _referenceDescription, ...referenceTool }] =
+      buildPlannerToolsFromActions([reference]);
+    expect(referenceTool).toEqual(inlineTool);
+  });
+
+  it.each([
+    { names: [] },
+    { names: [], mode: "describe" },
+    { names: ["CUSTOM"] },
+    { names: ["CUSTOM_READ"] },
+    { names: ["CUSTOM"], mode: "describe" },
+    { names: ["CUSTOM_READ"], mode: "describe" },
+    { names: ["CUSTOM_UNICODE_Ω-工具"], mode: "describe" },
+    { names: ["LATE_READ"] },
+    { names: ["CUSTOM", "REVOKED"], mode: "describe" },
+    { names: ["CUSTOM", "DENIED"] },
+    { names: ["READ"] },
+    { names: [null] },
+    { names: ["CUSTOM"], mode: "invalid" },
+  ])(
+    "deferred discovery retains complete fresh results for %j",
+    async (parameters) => {
+      const description =
+        '  Complete Ω descriptions, quotes " and\nlines. '.repeat(50);
+      let executions = 0;
+      const handler = async () => {
+        executions++;
+        return { success: true };
+      };
+      const initial: Action[] = [
+        { name: "CUSTOM", description, subActions: ["CUSTOM_READ"], handler },
+        {
+          name: "CUSTOM_READ",
+          description,
+          contexts: ["custom-domain"],
+          similes: ["read Ω exactly"],
+          handler,
+        },
+        { name: "CUSTOM_UNICODE_Ω-工具", description, handler },
+        {
+          name: "REVOKED",
+          description: "Must not leak after revocation",
+          handler,
+        },
+      ];
+      const fresh: Action[] = [
+        ...initial.filter((action) => action.name !== "REVOKED"),
+        { name: "LATE_READ", description, handler },
+      ];
+      const results = [];
+      for (const deferNameIndex of [false, true]) {
+        const reads: string[][] = [];
+        const loads: Action[][] = [];
+        const discovery = createPlannerToolDiscoveryAction(
+          initial,
+          (actions) => loads.push(actions),
+          async (names) => {
+            reads.push(names);
+            return fresh;
+          },
+          { deferNameIndex },
+        );
+        results.push({
+          result: await discovery.handler?.(runtime, message, undefined, {
+            parameters,
+          }),
+          reads,
+          loads,
+        });
+      }
+      expect(results[1]).toEqual(results[0]);
+      expect(executions).toBe(0);
+      if (parameters.names.length === 0) {
+        expect(results[1]?.reads).toEqual([[]]);
+        expect(results[1]?.loads).toEqual([]);
+        expect(JSON.stringify(results[1]?.result)).toContain(
+          "CUSTOM_UNICODE_Ω-工具",
+        );
+        expect(JSON.stringify(results[1]?.result)).not.toContain("REVOKED");
+      }
+    },
+  );
+
+  it.each(["NOTES", "NOTES_READ"])(
+    "describes %s without loading schemas or unrelated families",
+    async (name) => {
+      const detail = "Exact description Ω\n".repeat(1000);
+      let loads = 0;
+      const discovery = createPlannerToolDiscoveryAction(
+        [
+          { name: "NOTES", description: detail, subActions: ["NOTES_READ"] },
+          { name: "NOTES_READ", description: detail },
+          { name: "UNRELATED", description: "Other content" },
+        ],
+        () => {
+          loads++;
+        },
+      );
+      const result = await discovery.handler?.(runtime, message, undefined, {
+        parameters: { names: [name], mode: "describe" },
+      });
+      expect(result?.success).toBe(true);
+      expect(result?.data?.readOnlyOperation).toBe(true);
+      expect(result?.data?.catalog).toEqual([
+        expect.objectContaining({
+          name,
+          description: detail,
+          children: name === "NOTES" ? ["NOTES_READ"] : [],
+        }),
+      ]);
+      expect(loads).toBe(0);
+    },
+  );
+
+  it("refreshes descriptions and rejects revoked mixed requests without stale data", async () => {
+    let loads = 0;
+    const requests: string[][] = [];
+    const discovery = createPlannerToolDiscoveryAction(
+      [
+        { name: "ALLOWED", description: "Old" },
+        { name: "REVOKED", description: "Private stale description" },
+      ],
+      () => {
+        loads++;
+      },
+      async (names) => {
+        requests.push(names);
+        return [{ name: "ALLOWED", description: "Fresh complete description" }];
+      },
+    );
+    const denied = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: ["ALLOWED", "REVOKED"], mode: "describe" },
+    });
+    expect(denied?.success).toBe(false);
+    expect(denied?.data).toBeUndefined();
+    const allowed = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: ["ALLOWED"], mode: "describe" },
+    });
+    expect(allowed?.data?.catalog).toEqual([
+      expect.objectContaining({
+        name: "ALLOWED",
+        description: "Fresh complete description",
+      }),
+    ]);
+    expect(requests).toEqual([["ALLOWED", "REVOKED"], ["ALLOWED"]]);
+    expect(loads).toBe(0);
+  });
+
+  it.each(["USER", "GUEST"] as const)(
+    "admits observed document hints through canonical role gates for %s",
+    async (role) => {
+      const actualRuntime = new AgentRuntime({
+        plugins: [createAssistantPlugin()],
+        character: { name: "Document admission", bio: "test" },
+        adapter: new InMemoryDatabaseAdapter(),
+        logLevel: "fatal",
+      });
+      actualRuntime.actions.length = 0;
+      actualRuntime.actions.push({
+        name: "DOCUMENT",
+        similes: documentAction.similes,
+        description: "Stored documents",
+        contexts: ["documents"],
+        contextGate: { anyOf: ["documents"] },
+        roleGate: { minRole: "USER" },
+      });
+      for (const hint of [
+        "DOCUMENTS_READ",
+        "DOCUMENTS_SEARCH",
+        "DOCS_READ",
+        "DOCS_SEARCH",
+      ]) {
+        const admitted = await collectV5PlannerCandidateActions({
+          runtime: actualRuntime,
+          message,
+          state: { values: {}, data: {}, text: "" },
+          selectedContexts: ["documents"],
+          candidateActions: [hint],
+          userRoles: [role],
+        });
+        const initial = collectBudgetedStageOneCandidateActions({
+          actions: admitted,
+          candidateActions: [hint],
+          contexts: ["documents"],
+          deferUnselectedContexts: true,
+        });
+        expect(initial.map((action) => action.name)).toEqual(
+          role === "USER" ? ["DOCUMENT"] : [],
+        );
+      }
+    },
+  );
+
+  it("defers a parent beside an exact child but loads its complete contract on discovery", async () => {
+    const actions: Action[] = [
+      {
+        name: "VIEWS",
+        description: "Layouts and arbitrary view capabilities",
+        subActions: ["VIEWS_SHOW"],
+        toolSchemaStrict: false,
+        allowAdditionalParameters: true,
+        parameters: [
+          {
+            name: "params",
+            description: "Complete capability arguments",
+            required: false,
+            schema: { type: "object", additionalProperties: true },
+          },
+        ],
+      },
+      {
+        name: "VIEWS_SHOW",
+        description: "Open one view",
+        toolSchemaStrict: true,
+      },
+      { name: "NOTES_LIST", description: "Read notes", toolSchemaStrict: true },
+    ];
+    const initial = collectBudgetedStageOneCandidateActions({
+      actions,
+      candidateActions: ["VIEWS", "VIEWS_SHOW", "NOTES_LIST"],
+      contexts: [],
+      deferUnselectedContexts: true,
+      deferParentHints: true,
+    });
+    expect(initial).toEqual(actions.slice(1));
+    const context: ContextObject = {
+      id: "turn",
+      events: initial.map((tool) => ({ id: tool.name, type: "tool", tool })),
+    };
+    const tools = collectPlannerTools(context, initial);
+    expect(tools.map((tool) => tool.name)).toEqual([
+      "VIEWS_SHOW",
+      "NOTES_LIST",
+      "REPLY",
+      "IGNORE",
+      "STOP",
+    ]);
+    expect(tools.every((tool) => tool.strict === true)).toBe(true);
+    const before = structuredClone(tools);
+    const discovery = createPlannerToolDiscoveryAction(actions, (loaded) => {
+      appendDiscoveredPlannerTools(context, tools, loaded);
+    });
+    const result = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: ["VIEWS", "VIEWS_SHOW"] },
+    });
+    expect(result?.success).toBe(true);
+    expect(tools).toEqual([
+      ...before,
+      ...buildPlannerToolsFromActions([actions[0]]),
+    ]);
+    // A parent-only hint still requests the full family immediately. The
+    // projection is not applied to legacy callers without discovery either.
+    for (const options of [
+      { candidateActions: ["VIEWS"], deferUnselectedContexts: true },
+      {
+        candidateActions: ["VIEWS", "VIEWS_SHOW"],
+        deferUnselectedContexts: false,
+      },
+    ]) {
+      expect(
+        collectBudgetedStageOneCandidateActions({
+          actions,
+          contexts: [],
+          deferParentHints: true,
+          ...options,
+        }),
+      ).toEqual(actions.slice(0, 2));
+    }
+  });
+  it.each([
+    ["VIEWS_SHOW", "CALENDAR_SHOW", "NOTES_LIST", "NOTES_GET"],
+    ["VIEWS_SHOW", "NOTES_LIST", "READ_UNKNOWN_RECORD"],
+  ])(
+    "defers unregistered hints instead of guessing a broad tool: %j",
+    async (...candidates) => {
+      const actions: Action[] = [
+        {
+          name: "VIEWS",
+          description: "Layouts and view capabilities",
+          similes: ["SPLIT_VIEWS"],
+          subActions: ["VIEWS_SHOW"],
+          toolSchemaStrict: false,
+        },
+        {
+          name: "VIEWS_SHOW",
+          description: "Open one view",
+          toolSchemaStrict: true,
+        },
+        {
+          name: "NOTES_LIST",
+          description: "Read notes",
+          toolSchemaStrict: true,
+        },
+      ];
+      const select = (names: string[]) =>
+        collectBudgetedStageOneCandidateActions({
+          actions,
+          candidateActions: names,
+          contexts: [],
+          deferUnselectedContexts: true,
+        });
+      const initial = select(candidates);
+      expect(initial.map((a) => a.name)).toEqual(["VIEWS_SHOW", "NOTES_LIST"]);
+      expect(
+        buildPlannerToolsFromActions(initial).every(
+          (tool) => tool.strict === true,
+        ),
+      ).toBe(true);
+      // Registered names and declared aliases still carry their actual contract.
+      expect(select(["VIEWS", "NOTES_LIST"])).toEqual(actions);
+      expect(select(["SPLIT_VIEWS", "NOTES_LIST"])).toEqual(actions);
+      expect(select(["LIST_NOTES"])).toEqual([actions[2]]);
+      // Unknown-only hints are resolved through the same complete discovery catalog.
+      expect(select(["CALENDAR_SHOW", "NOTES_GET"])).toEqual([]);
+      let loaded: Action[] = [];
+      const discovery = createPlannerToolDiscoveryAction(actions, (next) => {
+        loaded = next;
+      });
+      const result = await discovery.handler?.(runtime, message, undefined, {
+        parameters: { names: ["VIEWS"] },
+      });
+      expect(result?.success).toBe(true);
+      expect(loaded).toEqual(actions.slice(0, 2));
+    },
+  );
+  it("does not guess between ambiguous reordered action names", () => {
+    expect(
+      collectBudgetedStageOneCandidateActions({
+        actions: [
+          { name: "GET_CURRENT_NOTE", description: "First operation" },
+          { name: "NOTE_GET_CURRENT", description: "Second operation" },
+        ],
+        candidateActions: ["CURRENT_NOTE_GET"],
+        contexts: [],
+        deferUnselectedContexts: true,
+      }),
+    ).toEqual([]);
+  });
+  it("starts with exact child hints, retaining other operations through explicit discovery", async () => {
+    const actions: Action[] = [
+      {
+        name: "NOTES",
+        description: "Note operations",
+        subActions: ["NOTES_CREATE", "NOTES_LIST", "NOTES_DELETE"],
+      },
+      { name: "NOTES_CREATE", description: "Create a note" },
+      { name: "NOTES_LIST", description: "Read notes" },
+      { name: "NOTES_DELETE", description: "Delete a note" },
+    ];
+    const initial = collectBudgetedStageOneCandidateActions({
+      actions,
+      candidateActions: ["NOTES_CREATE"],
+      contexts: [],
+      deferUnselectedContexts: true,
+    });
+    expect(initial.map((a) => a.name)).toEqual(["NOTES_CREATE"]);
+    const compound = collectBudgetedStageOneCandidateActions({
+      actions,
+      candidateActions: ["NOTES_CREATE", "NOTES_LIST"],
+      contexts: [],
+      deferUnselectedContexts: true,
+    });
+    expect(compound.map((a) => a.name)).toEqual(["NOTES_CREATE", "NOTES_LIST"]);
+    let loaded: Action[] = [];
+    const discovery = createPlannerToolDiscoveryAction(actions, (next) => {
+      loaded = next;
+    });
+    expect(discovery.description).toContain("NOTES_LIST");
+    const context: ContextObject = {
+      id: "turn",
+      events: [{ id: "notes-create", type: "tool", tool: actions[1] }],
+    };
+    const tools = collectPlannerTools(context, initial);
+    const before = structuredClone(tools);
+    const repeated = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: ["NOTES_CREATE"] },
+    });
+    expect(repeated?.success).toBe(true);
+    appendDiscoveredPlannerTools(context, tools, loaded);
+    expect(tools).toEqual(before);
+    const result = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: ["NOTES_LIST"] },
+    });
+    expect(result?.success).toBe(true);
+    expect(loaded).toEqual([actions[2]]);
+    appendDiscoveredPlannerTools(context, tools, loaded);
+    expect(tools).toEqual([
+      ...before,
+      ...buildPlannerToolsFromActions([actions[2]]),
+    ]);
+    const family = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: ["NOTES"] },
+    });
+    expect(family?.success).toBe(true);
+    expect(loaded).toEqual(actions);
+    // Legacy callers and explicit parent requests retain complete families.
+    expect(
+      collectBudgetedStageOneCandidateActions({
+        actions,
+        candidateActions: ["NOTES"],
+        contexts: [],
+        deferUnselectedContexts: true,
+      }),
+    ).toEqual(actions);
+    expect(
+      collectBudgetedStageOneCandidateActions({
+        actions,
+        candidateActions: ["NOTES_CREATE"],
+        contexts: [],
+      }),
+    ).toEqual(actions);
+  });
+  it.each([
+    { role: "ADMIN", deferNameIndex: false },
+    { role: "USER", deferNameIndex: false },
+    { role: "ADMIN", deferNameIndex: true },
+    { role: "USER", deferNameIndex: true },
+  ] as const)(
+    "re-admits a requested domain with canonical gates for $role (reference=$deferNameIndex)",
+    async ({ role, deferNameIndex }) => {
+      const actualRuntime = new AgentRuntime({
+        plugins: [createAssistantPlugin()],
+        character: { name: "Discovery gates", bio: "test" },
+        adapter: new InMemoryDatabaseAdapter(),
+        logLevel: "fatal",
+      });
+      actualRuntime.actions.length = 0;
+      const notes: Action = {
+        name: "NOTES",
+        description: "Owner notes",
+        contexts: ["notes"],
+        contextGate: { anyOf: ["notes"] },
+        roleGate: { minRole: "ADMIN" },
+        subActions: ["NOTES_READ"],
+      };
+      actualRuntime.actions.push(
+        { name: "CALENDAR", description: "Calendar", contexts: ["calendar"] },
+        notes,
+        { ...notes, name: "NOTES_READ", subActions: undefined },
+        {
+          ...notes,
+          name: "PRIVATE_NOTES",
+          private: true,
+          subActions: undefined,
+        },
+        {
+          ...notes,
+          name: "BLOCKED_NOTES",
+          contextGate: { anyOf: ["notes"], noneOf: ["calendar"] },
+          subActions: undefined,
+        },
+        {
+          ...notes,
+          name: "DISABLED_NOTES",
+          validate: async () => false,
+          subActions: undefined,
+        },
+      );
+      const turn = {
+        id: "00000000-0000-4000-8000-000000000001",
+        roomId: "00000000-0000-4000-8000-000000000002",
+        entityId: "00000000-0000-4000-8000-000000000003",
+        content: { text: "Discover the Notes family; keep Calendar visible." },
+      } as Memory;
+      const admit = (names: string[]) =>
+        collectV5PlannerCandidateActions({
+          runtime: actualRuntime,
+          message: turn,
+          state: { values: {}, data: {}, text: "" },
+          selectedContexts: ["calendar"],
+          candidateActions: names,
+          userRoles: [role],
+        });
+      const initial = await admit([]);
+      expect(initial.map((action) => action.name)).not.toContain("NOTES");
+      let loaded: Action[] = [];
+      const discovery = createPlannerToolDiscoveryAction(
+        initial,
+        (actions) => {
+          loaded = actions;
+        },
+        (names) =>
+          admit(
+            names.length > 0
+              ? names
+              : actualRuntime.actions.map((action) => action.name),
+          ),
+        { deferNameIndex },
+      );
+      const invoke = (names: string[]) =>
+        discovery.handler?.(actualRuntime, turn, undefined, {
+          parameters: { names },
+        });
+      const catalogRead = await invoke([]);
+      expect(catalogRead?.success).toBe(true);
+      const entries = catalogRead?.data?.catalog;
+      if (!Array.isArray(entries)) throw new Error("Missing discovery catalog");
+      const catalogNames = entries.map((entry: { name: string }) => entry.name);
+      expect(catalogNames.includes("NOTES")).toBe(role === "ADMIN");
+      for (const name of ["PRIVATE_NOTES", "BLOCKED_NOTES", "DISABLED_NOTES"])
+        expect(catalogNames).not.toContain(name);
+      expect(loaded).toEqual([]);
+      expect((await invoke(["NOTES"]))?.success).toBe(role === "ADMIN");
+      expect(loaded.map((action) => action.name)).toEqual(
+        role === "ADMIN" ? ["NOTES", "NOTES_READ"] : [],
+      );
+      for (const name of [
+        "PRIVATE_NOTES",
+        "BLOCKED_NOTES",
+        "DISABLED_NOTES",
+        "NOT_REGISTERED",
+      ]) {
+        loaded = [];
+        expect((await invoke(["NOTES", name]))?.success).toBe(false);
+        expect(loaded).toEqual([]);
+      }
+    },
+  );
+
+  it("adds discovered Notes schemas without expanding an existing Calendar umbrella", () => {
+    const calendar: Action = {
+      name: "CALENDAR",
+      description: "Complete calendar umbrella",
+      subActions: ["CALENDAR_CREATE"],
+    };
+    const current = buildPlannerToolsFromActions([calendar]);
+    const before = structuredClone(current);
+    const context = {
+      id: "turn",
+      events: [{ id: "calendar", type: "tool", tool: calendar }],
+    } as ContextObject;
+    const notes: Action[] = [
+      {
+        name: "NOTES",
+        description: "All note operations",
+        subActions: ["NOTES_LIST"],
+      },
+      { name: "NOTES_LIST", description: "Complete notes list schema" },
+    ];
+    appendDiscoveredPlannerTools(context, current, notes);
+    expect(current.slice(0, before.length)).toEqual(before);
+    expect(current.map((tool) => tool.name)).toContain("NOTES_LIST");
+    expect(current.map((tool) => tool.name)).not.toContain("CALENDAR_CREATE");
+    const once = JSON.stringify(current);
+    appendDiscoveredPlannerTools(context, current, notes);
+    expect(JSON.stringify(current)).toBe(once);
+  });
+
+  it("loads complete authorized families, including nested children, without executing them", async () => {
+    let executions = 0;
+    const completeDescription = `Full selected schema ${"operation detail ".repeat(900)} FINAL_DETAIL`;
+    const actions: Action[] = [
+      { name: "VIEWS", description: "Navigate" },
+      {
+        name: "CALENDAR",
+        description: "Calendar",
+        subActions: ["EVENTS", "DENIED_CHILD"],
+      },
+      { name: "EVENTS", description: "Events", subActions: ["READ_EVENT"] },
+      {
+        name: "READ_EVENT",
+        description: completeDescription,
+        parameters: [
+          {
+            name: "title",
+            description: "Exact title",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
+        handler: async () => {
+          executions++;
+          return { success: true };
+        },
+      },
+    ];
+    let loaded: Action[] = [];
+    const discovery = createPlannerToolDiscoveryAction(actions, (selected) => {
+      loaded = selected;
+    });
+    expect(discovery.description).not.toContain("DENIED_CHILD");
+    for (const name of ["VIEWS", "CALENDAR", "EVENTS", "READ_EVENT"]) {
+      expect(discovery.description).toContain(name);
+    }
+    const result = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: ["CALENDAR"] },
+    });
+    expect(result?.success).toBe(true);
+    expect(loaded.map((action) => action.name)).toEqual([
+      "CALENDAR",
+      "EVENTS",
+      "READ_EVENT",
+    ]);
+    const tools = buildPlannerToolsFromActions(loaded);
+    expect(tools.find((tool) => tool.name === "READ_EVENT")?.description).toBe(
+      completeDescription,
+    );
+    expect(
+      tools.find((tool) => tool.name === "READ_EVENT")?.parameters?.required,
+    ).toContain("title");
+    expect(executions).toBe(0);
+  });
+
+  it.each([false, true])(
+    "losslessly encodes every authorized name with shared prefixes=%s",
+    async (sharedPrefixes) => {
+      const childName = (i: number) =>
+        sharedPrefixes ? `FAMILY_${i}_CHILD` : `CHILD_${i}`;
+      const actions: Action[] = Array.from({ length: 250 }, (_, i) => ({
+        name: `FAMILY_${i}`,
+        description: `Complete documentation ${i}`,
+        subActions: [childName(i)],
+      }));
+      actions.push(
+        ...Array.from({ length: 250 }, (_, i) => ({
+          name: childName(i),
+          description: `Operation ${i}`,
+        })),
+        {
+          name: 'CUSTOM_"FAMILY',
+          description: "A custom family with an unrelated child name",
+          subActions: ["custom-child-operation"],
+        },
+        { name: "custom-child-operation", description: "Custom child" },
+        { name: "STANDALONE", description: "No children" },
+      );
+      let loads = 0;
+      const discovery = createPlannerToolDiscoveryAction(actions, () => {
+        loads++;
+      });
+      const index: Record<string, string[] | { _: string[] }> = JSON.parse(
+        discovery.description.split("\n").at(-1) ?? "",
+      );
+      const decoded = Object.fromEntries(
+        Object.entries(index).map(([name, children]) => [
+          name,
+          Array.isArray(children)
+            ? children
+            : children._.map((suffix) => `${name}_${suffix}`),
+        ]),
+      );
+      const result = await discovery.handler?.(runtime, message, undefined, {
+        parameters: { names: [] },
+      });
+      const catalog = result?.data?.catalog as Array<{
+        name: string;
+        children: string[];
+      }>;
+      expect(Object.entries(decoded)).toEqual(
+        catalog.map(({ name, children }) => [name, children]),
+      );
+      expect(Object.keys(decoded)).toHaveLength(252);
+      expect(decoded.FAMILY_249).toEqual([childName(249)]);
+      expect(index.FAMILY_249).toEqual(
+        sharedPrefixes ? { _: ["CHILD"] } : ["CHILD_249"],
+      );
+      expect(index['CUSTOM_"FAMILY']).toEqual(["custom-child-operation"]);
+      expect(index.STANDALONE).toEqual([]);
+      expect(loads).toBe(0);
+      const suffixOnly = await discovery.handler?.(
+        runtime,
+        message,
+        undefined,
+        { parameters: { names: ["CHILD"] } },
+      );
+      expect(suffixOnly?.success).toBe(false);
+      expect(loads).toBe(0);
+      const exactChild = await discovery.handler?.(
+        runtime,
+        message,
+        undefined,
+        { parameters: { names: decoded.FAMILY_249 } },
+      );
+      expect(exactChild?.data?.loadedTools).toEqual([childName(249)]);
+      expect(loads).toBe(1);
+    },
+  );
+
+  it("keeps all names inline and retrieves complete descriptions without loading tools", async () => {
+    let loads = 0;
+    const childDetail = "  Exact child instructions Ω\n".repeat(100);
+    const detail = `Exact family documentation ${"detail\n".repeat(900)} FINAL_DETAIL`;
+    const discovery = createPlannerToolDiscoveryAction(
+      [
+        { name: "NOTES", description: detail, subActions: ["NOTES_READ"] },
+        {
+          name: "NOTES_READ",
+          description: childDetail,
+          contexts: ["notes"],
+          similes: ["READ_SAVED_NOTE"],
+        },
+      ],
+      () => {
+        loads++;
+      },
+    );
+    expect(discovery.description).toContain("NOTES_READ");
+    expect(discovery.description).not.toContain("FINAL_DETAIL");
+    const result = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: [] },
+    });
+    expect(result?.success).toBe(true);
+    expect(JSON.stringify(result?.data)).toContain(
+      JSON.stringify(detail).slice(1, -1),
+    );
+    expect(result?.data?.catalog).toEqual([
+      expect.objectContaining({
+        name: "NOTES",
+        description: detail,
+        childDefinitions: [
+          {
+            name: "NOTES_READ",
+            description: childDetail,
+            contexts: ["notes"],
+            similes: ["READ_SAVED_NOTE"],
+          },
+        ],
+      }),
+    ]);
+    expect(loads).toBe(0);
+  });
+
+  it.each([
+    { names: ["VIEWS", "UNAUTHORIZED"] },
+    { names: [null] },
+    { names: ["VIEWS"], mode: "unknown" },
+    { names: ["views"] },
+  ])(
+    "rejects invalid or unavailable names atomically: %j",
+    async (parameters) => {
+      let loaded = false;
+      const discovery = createPlannerToolDiscoveryAction(
+        [{ name: "VIEWS", description: "Navigate" }],
+        () => {
+          loaded = true;
+        },
+      );
+      const result = await discovery.handler?.(runtime, message, undefined, {
+        parameters,
+      });
+      expect(result?.success).toBe(false);
+      expect(result?.error).toContain("No tools were loaded");
+      expect(loaded).toBe(false);
+    },
+  );
+
+  it("returns admitted exact retry names without loading a partial or rejected request", async () => {
+    const loads: Action[][] = [];
+    const discovery = createPlannerToolDiscoveryAction(
+      [{ name: "DOCUMENT", description: "Read documents" }],
+      (actions) => loads.push(actions),
+      async () => [],
+    );
+    const rejected = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: ["DOCUMENT", "DOCUMENTS_READ"] },
+    });
+    expect(rejected?.success).toBe(false);
+    expect(loads).toEqual([]);
+    expect(rejected?.data?.availableNames).toEqual(["DOCUMENT"]);
+    const retry = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: ["DOCUMENT"] },
+    });
+    expect(retry?.success).toBe(true);
+    expect(loads.flat().map((action) => action.name)).toEqual(["DOCUMENT"]);
+  });
+
+  it("lists a family gated only by context under its own declared contexts and keeps the private and role gates (live: MESSAGE on a general-routed turn)", async () => {
+    const actions: Action[] = [
+      { name: "MESSAGE", description: "Messaging", contexts: ["messaging"] },
+      { name: "VIEWS", description: "Navigate", contexts: ["general"] },
+      {
+        name: "PRIVATE_X",
+        description: "Autonomy only",
+        contexts: ["general"],
+        private: true,
+      },
+      {
+        name: "OWNER_X",
+        description: "Owner only",
+        contexts: ["general"],
+        roleGate: { minRole: "OWNER" },
+      },
+    ] as Action[];
+    const catalog = collectDiscoveryCatalogActions({
+      actions,
+      message,
+      selectedContexts: ["general"],
+      userRoles: ["ADMIN"],
+    });
+    expect(catalog.map((action) => action.name)).toEqual(["MESSAGE", "VIEWS"]);
+    let loaded: string[] = [];
+    const discovery = createPlannerToolDiscoveryAction(catalog, (found) => {
+      loaded = found.map((action) => action.name);
+    });
+    expect(discovery.description).not.toContain("PRIVATE_X");
+    expect(discovery.description).not.toContain("OWNER_X");
+    const result = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: ["MESSAGE"] },
+    });
+    expect(result?.success).toBe(true);
+    expect(loaded).toEqual(["MESSAGE"]);
+  });
+
+  it("rejects a registered action using the reserved discovery protocol name", () => {
+    expect(() =>
+      createPlannerToolDiscoveryAction(
+        [{ name: "DISCOVER_TOOLS", description: "Collision" }],
+        () => undefined,
+      ),
+    ).toThrow("conflicts");
+  });
+});

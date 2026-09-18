@@ -1,3 +1,5 @@
+import type { Route } from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Regression tests for the hono-mount body-size cap.
  *
@@ -40,39 +42,39 @@ async function echoHandler() {
 }
 
 function makeRuntime(): IAgentRuntime {
-  return {
-    routes: [
-      {
-        type: "POST",
-        path: "/api/test-plugin/echo",
-        public: true,
-        name: "test-echo",
-        publicReason: "Hono mount body-cap fixture route.",
-        publicWrite:
-          "Fixture POST authenticated by the test harness, not the local gate.",
-        routeHandler: echoHandler,
-      },
-      {
-        type: "GET",
-        path: "/api/test-plugin/data",
-        public: true,
-        name: "test-data",
-        publicReason: "Hono mount body-cap fixture route.",
-        routeHandler: async () => ({ status: 200, body: { ok: true } }),
-      },
-      {
-        type: "POST",
-        path: "/api/test-plugin/large",
-        maxBodyBytes: 2 * ONE_MIB,
-        public: true,
-        name: "test-large",
-        publicReason: "Hono mount route-specific body-cap fixture route.",
-        publicWrite:
-          "Fixture POST authenticated by the test harness, not the local gate.",
-        routeHandler: echoHandler,
-      },
-    ],
-  } as unknown as IAgentRuntime;
+  const runtime = {} as IAgentRuntime;
+  getHttpRuntime(runtime).routes = [
+    {
+      type: "POST",
+      path: "/api/test-plugin/echo",
+      public: true,
+      name: "test-echo",
+      publicReason: "Hono mount body-cap fixture route.",
+      publicWrite:
+        "Fixture POST authenticated by the test harness, not the local gate.",
+      routeHandler: echoHandler,
+    },
+    {
+      type: "GET",
+      path: "/api/test-plugin/data",
+      public: true,
+      name: "test-data",
+      publicReason: "Hono mount body-cap fixture route.",
+      routeHandler: async () => ({ status: 200, body: { ok: true } }),
+    },
+    {
+      type: "POST",
+      path: "/api/test-plugin/large",
+      maxBodyBytes: 2 * ONE_MIB,
+      public: true,
+      name: "test-large",
+      publicReason: "Hono mount route-specific body-cap fixture route.",
+      publicWrite:
+        "Fixture POST authenticated by the test harness, not the local gate.",
+      routeHandler: echoHandler,
+    },
+  ];
+  return runtime;
 }
 
 interface FakeRes {
@@ -256,18 +258,17 @@ describe("tryHandleHonoRuntimeRoute body cap", () => {
   });
 
   it("does not buffer a body for HEAD", async () => {
-    const headRuntime: IAgentRuntime = {
-      routes: [
-        {
-          type: "HEAD",
-          path: "/api/test-plugin/data",
-          public: true,
-          name: "test-head",
-          publicReason: "Hono mount body-cap fixture route.",
-          routeHandler: async () => ({ status: 200, body: null }),
-        },
-      ],
-    } as unknown as IAgentRuntime;
+    const headRuntime: IAgentRuntime = {} as unknown as IAgentRuntime;
+    getHttpRuntime(headRuntime).routes = [
+      {
+        type: "HEAD",
+        path: "/api/test-plugin/data",
+        public: true,
+        name: "test-head",
+        publicReason: "Hono mount body-cap fixture route.",
+        routeHandler: async () => ({ status: 200, body: null }),
+      },
+    ] as Route[];
 
     const h = makeReqRes("HEAD", "/api/test-plugin/data", null);
     const handled = await tryHandleHonoRuntimeRoute({

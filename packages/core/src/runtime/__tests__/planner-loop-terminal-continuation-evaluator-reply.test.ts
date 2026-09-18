@@ -7,8 +7,8 @@
  * `evaluate`; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { TrajectoryLimitExceeded } from "../limits";
-import { runPlannerLoop } from "../planner-loop";
 
 const UNSAFE_TERMINAL_TEXT = "I need to call TRACKING again before answering.";
 const RAW_TOOL_TEXT =

@@ -7,4 +7,4 @@ export {
   parseAllowedHostEnv,
   toCapacitorAllowNavigation,
   toViteAllowedHosts,
-} from "@elizaos/shared";
+} from "@elizaos/shared/config/allowed-hosts";

@@ -33,8 +33,8 @@ requirements, not runtime feature detection.
 Use the explicit Android lanes when validating that boundary:
 
 ```bash
-bun run build:android:cloud
-bun run build:android:system
+bun run --cwd packages/app build:android:cloud
+bun run --cwd packages/app build:android:system
 ```
 
 The Cloud command produces the store-oriented thin client. The system command

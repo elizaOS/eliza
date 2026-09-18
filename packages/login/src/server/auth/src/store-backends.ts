@@ -12,7 +12,7 @@
  * constructors.  Neither store cares which backend it uses.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { getSql, hasTenantTransactionDatabase } from "../../db/src/index.ts";
 import { redactedThrownDiagnostics } from "../../shared/src/index.ts";
 import { createDatabaseAuthSql, createPostgresAuthSql } from "./auth-sql";

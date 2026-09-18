@@ -6,12 +6,12 @@
  * `executeInboxQueueOperation`). Owner-gated; validates and coerces request
  * bodies before handing pre-validated input to the service.
  */
+import type { IAgentRuntime } from "@elizaos/core";
 import type {
-  IAgentRuntime,
   Route,
   RouteHandlerContext,
   RouteHandlerResult,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-plugin";
 import {
   executeInboxQueueOperation,
   type InboxQueueOperationResult,

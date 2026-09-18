@@ -6,7 +6,8 @@
  * provider and dedicated-agent propagation is tracked separately.
  */
 
-import { ElizaError, isInferenceTraceId, mintInferenceTraceId } from "@elizaos/core";
+import { ElizaError, isInferenceTraceId } from "@elizaos/common";
+import { mintInferenceTraceId } from "@elizaos/core";
 import type { InferenceAuthTelemetry } from "../services/inference-auth-context";
 
 export const ELIZA_TRACE_ID_HEADER = "X-Eliza-Trace-Id";
