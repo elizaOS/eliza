@@ -30,6 +30,7 @@ jobs:
               - 'packages/core/**'
               - 'packages/login/**'
               - 'packages/prompts/**'
+              - 'packages/retrieval/**'
               - 'packages/shared/**'
               - 'packages/skills/**'
               - 'packages/common/**'
