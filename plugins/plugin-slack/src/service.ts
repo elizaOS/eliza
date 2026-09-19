@@ -395,7 +395,8 @@ interface SlackMessageEventType {
   thread_ts?: string;
   team?: string;
   bot_id?: string;
-  files?: SlackFile[];
+  /** Raw Slack file objects (snake_case wire shape); normalized at use. */
+  files?: unknown[];
 }
 
 interface SlackAppMentionEventType {
@@ -485,6 +486,7 @@ import {
   resolveDefaultSlackAccountId,
 } from "./accounts";
 import { markdownToSlackMrkdwn, splitSlackText } from "./formatting";
+import { normalizeSlackFiles, slackFilesToMedia } from "./inbound-files";
 import {
   extractSlackEventWorkspace,
   SlackAccountPolicyResolver,
@@ -504,7 +506,6 @@ import {
   type SlackBlock,
   type SlackChannel,
   SlackEventTypes,
-  type SlackFile,
   type SlackMessage,
   type SlackMessageSendOptions,
   type SlackReactionPayload,
@@ -2210,19 +2211,12 @@ export class SlackService extends Service implements ISlackService {
       : null;
     const displayName = user ? getSlackUserDisplayName(user) : senderId;
 
-    // Extract media from files
-    const media: Media[] = [];
-    if ("files" in message && message.files) {
-      for (const file of message.files) {
-        media.push({
-          id: file.id,
-          url: file.urlPrivate,
-          title: file.title || file.name,
-          source: "slack",
-          description: file.name,
-        });
-      }
-    }
+    // Slack sends url_private / url_private_download; normalize at the boundary
+    // so every attachment carries a fetchable url (#31767).
+    const media: Media[] = slackFilesToMedia(
+      "files" in message ? normalizeSlackFiles(message.files) : undefined,
+      { channelId: message.channel, messageTs: message.ts },
+    );
 
     const memory: Memory = {
       id: createUniqueUuid(
@@ -3185,13 +3179,10 @@ export class SlackService extends Service implements ISlackService {
         ? ChannelType.DM
         : ChannelType.GROUP;
 
-    const attachments: Media[] = (message.files ?? []).map((file) => ({
-      id: file.id,
-      url: file.urlPrivate,
-      title: file.title || file.name,
-      source: "slack",
-      description: file.name,
-    }));
+    const attachments: Media[] = slackFilesToMedia(message.files, {
+      channelId,
+      messageTs: message.ts,
+    });
 
     return {
       id: createUniqueUuid(
@@ -3978,7 +3969,7 @@ export class SlackService extends Service implements ISlackService {
         reactions: item.message.reactions as
           | { name: string; count: number; users: string[] }[]
           | undefined,
-        files: item.message.files as SlackFile[] | undefined,
+        files: normalizeSlackFiles(item.message.files),
         attachments: item.message.attachments as SlackAttachment[] | undefined,
         blocks: item.message.blocks as SlackBlock[] | undefined,
       }));
@@ -4037,7 +4028,7 @@ export class SlackService extends Service implements ISlackService {
       reactions: msg.reactions as
         | { name: string; count: number; users: string[] }[]
         | undefined,
-      files: msg.files as SlackFile[] | undefined,
+      files: normalizeSlackFiles(msg.files),
       attachments: msg.attachments as SlackAttachment[] | undefined,
       blocks: msg.blocks as SlackBlock[] | undefined,
     }));
