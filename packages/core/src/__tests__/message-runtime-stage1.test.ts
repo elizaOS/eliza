@@ -9793,6 +9793,114 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("delivers planning progress before work without consuming the final reply", async () => {
+		const order: string[] = [];
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				replyText: "I'll check that now.",
+				extra: { requiresTool: true, replyEffectStatus: "pending" },
+			}),
+			JSON.stringify({
+				thought: "Finished the follow-up.",
+				toolCalls: [],
+				messageToUser: "The follow-up is complete.",
+			}),
+		]);
+		runtime.composeState = vi.fn(async () => {
+			order.push("compose-planner-state");
+			return makeState();
+		});
+		const onPlanningAcknowledgment = vi.fn((text: string) => {
+			order.push(text);
+		});
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onPlanningAcknowledgment,
+		});
+		expect(onPlanningAcknowledgment).toHaveBeenCalledTimes(1);
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(order).toEqual(["I'll check that now.", "compose-planner-state"]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"The follow-up is complete.",
+			);
+		}
+	});
+
+	it.each([
+		{ text: "Hi!", replyEffectStatus: "none" },
+		{
+			text: "What time should I schedule it?",
+			replyEffectStatus: "non_applied",
+		},
+	])(
+		"does not acknowledge a direct reply: $text",
+		async ({ text, replyEffectStatus }) => {
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["simple"],
+					replyText: text,
+					extra: { replyEffectStatus },
+				}),
+			]);
+			const onPlanningAcknowledgment = vi.fn();
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				onPlanningAcknowledgment,
+			});
+			expect(result.kind).toBe("direct_reply");
+			expect(onPlanningAcknowledgment).not.toHaveBeenCalled();
+			expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		},
+	);
+
+	it("does not publish an acknowledgment after routing is cancelled", async () => {
+		const abort = new AbortController();
+		const runtime = makeRuntime(
+			[
+				stage1Response({
+					contexts: ["general"],
+					replyText: "I'll check that now.",
+					extra: { requiresTool: true, replyEffectStatus: "pending" },
+				}),
+			],
+			undefined,
+			[
+				{
+					name: "cancel-before-planning",
+					priority: 1,
+					shouldRun: () => true,
+					evaluate: () => {
+						abort.abort(new Error("cancelled before acknowledgment"));
+						return { requiresTool: true };
+					},
+				},
+			],
+		);
+		const onPlanningAcknowledgment = vi.fn();
+		await expect(
+			runWithStreamingContext({ abortSignal: abort.signal }, () =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message: makeMessage(),
+					state: makeState(),
+					responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+					onPlanningAcknowledgment,
+				}),
+			),
+		).rejects.toThrow("cancelled before acknowledgment");
+		expect(onPlanningAcknowledgment).not.toHaveBeenCalled();
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
+
 	it("keeps an applied effect claim buffered until the planner has a receipt", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
@@ -9808,6 +9916,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 		const earlyReply = vi.fn(async () => undefined);
+		const onPlanningAcknowledgment = vi.fn();
 
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
@@ -9815,9 +9924,11 @@ describe("runV5MessageRuntimeStage1", () => {
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			onResponseHandlerEarlyReply: earlyReply,
+			onPlanningAcknowledgment,
 		});
 
 		expect(earlyReply).not.toHaveBeenCalled();
+		expect(onPlanningAcknowledgment).not.toHaveBeenCalled();
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(

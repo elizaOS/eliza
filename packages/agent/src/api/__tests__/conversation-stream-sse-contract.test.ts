@@ -1401,6 +1401,34 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
   });
 
+  it("delivers a new acknowledgment label within thinking before the final reply", async () => {
+    const service: NonNullable<AgentRuntime["messageService"]> =
+      createModelBackedMessageService();
+    const originalHandleMessage = service.handleMessage;
+    service.handleMessage = async (runtime, message, callback, options) => {
+      options?.onPlanningAcknowledgment?.("On it—I'll check your calendar.");
+      return originalHandleMessage(runtime, message, callback, options);
+    };
+    const { ctx, record, useModel } = createCtx(service);
+    await handleConversationRoutes(ctx);
+    const payloads = parseSsePayloads(record.writes);
+    const acknowledgmentIndex = payloads.findIndex(
+      (frame) =>
+        frame.type === "status" &&
+        frame.kind === "thinking" &&
+        frame.label === "On it—I'll check your calendar.",
+    );
+    const done = payloads.filter((frame) => frame.type === "done");
+    expect(acknowledgmentIndex).toBeGreaterThan(0);
+    expect(acknowledgmentIndex).toBeLessThan(
+      payloads.findIndex((frame) => frame.type === "token"),
+    );
+    expect(done).toHaveLength(1);
+    expect(done[0].fullText).toBe(FINAL_TEXT);
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(persistAssistantConversationMemory).toHaveBeenCalledTimes(1);
+  });
+
   it("emits thinking→streaming status, ordered cumulative token frames, then a terminal done frame with thought", async () => {
     const { ctx, record, useModel } = createCtx();
 

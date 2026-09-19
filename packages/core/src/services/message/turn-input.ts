@@ -27,6 +27,8 @@ export type V5MessageRuntimeInput = {
 	deliveredVisibleTexts?: Set<string>;
 	plannerLoopConfig?: PlannerLoopParams["config"];
 	onSettledActionResult?: (result: ActionResult) => void;
+	/** Transient progress; never satisfies final reply delivery. */
+	onPlanningAcknowledgment?: (text: string) => void;
 	roomHandlerLease?: RoomHandlerLease;
 	runTerminalOwner?: MessageRunTerminalOwner;
 	/**

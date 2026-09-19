@@ -1,8 +1,19 @@
 # Text demo: short handoff
 
-Candidate: `ganttnubs`, source `d502d12aad7`. Post-call fixes are committed;
+Baseline: `ganttnubs`, source `d502d12aad7`. Post-call fixes are committed;
 bounded browser checks, fixture cleanup and final-source repository verification passed. The scoped text cleanup and audit are complete; the three-second target remains unmet for some flows.
 This is not merged develop or a release certificate.
+
+## Text acknowledgment checkpoint
+
+Planned text tasks now show a model-written acknowledgment while work continues.
+No extra model call is added; only the final answer is saved in the conversation.
+Saved tag: `codex/ganttnubs-text-acknowledgments-20260918`. All 373 repository
+tasks and 627 focused regression tests passed.
+A live Notes check showed feedback at 1.15 seconds and its final answer at 2.63
+seconds, with the usual three calls. Open Notes remained one call, 1.34 seconds.
+A Calendar recovery took 9.18 seconds despite feedback at 1.44 seconds; actual
+completion latency is not universally solved. Voice remains deferred.
 
 ## What is fixed
 
@@ -73,3 +84,8 @@ Saved code checkpoint: local tag `codex/ganttnubs-shaw-text-20260918`.
 
 
 The app is left running at http://127.0.0.1:5248/chat. All 41 notes and the three existing events in the latest read window are unchanged. Rollback tags preserve code, not a reset of conversation/database state. This is suitable for a text rehearsal with the measured latency limits above; it is not a claim that every scenario is perfect or under three seconds.
+
+
+Acknowledgment rollback baseline: `codex/ganttnubs-text-acceptance-20260918`
+(`e3bd1efaad3`). The acknowledgment follow-up has its own verification section in
+GANTTNUBS-SCENARIO-RESULTS.md; the older counts and tags above describe prior phases.

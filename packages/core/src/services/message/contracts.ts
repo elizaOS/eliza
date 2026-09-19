@@ -29,6 +29,7 @@ export type ResolvedMessageOptions = {
 	continueAfterActions: boolean;
 	keepExistingResponses: boolean;
 	onStreamChunk?: StreamChunkCallback;
+	onPlanningAcknowledgment?: (text: string) => void;
 	shouldRespondModel: ShouldRespondModelType;
 	/**
 	 * Per-turn abort signal threaded into the streaming context so

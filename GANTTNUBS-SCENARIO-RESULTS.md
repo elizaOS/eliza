@@ -201,3 +201,54 @@ Whole turn: **4 calls / 4.080 seconds / 28,397 inputs / 10,240 cache reads**. No
 The final source passed Calendar 1,008 tests (four existing skips), host Calendar schema 20 tests, core completion/pending/failure 415 tests, and root verification 373/373 tasks plus audits. Earlier unchanged Notes and full Personal Assistant evidence remains labeled above. Final-state comparison against the before snapshot proves all 41 notes and the three existing events in the read window unchanged. No test fixtures were added in this follow-up. API/database healthy, deferred startup complete, no failed plugins/services. Runtime loaded the exact final source before this browser check.
 
 Scoped implementation, scenario reconciliation, context/call/cache audit, acknowledgment design review and verified handoff are complete. Performance beyond these measured runs remains unguaranteed: multi-step Calendar often exceeds three seconds, original-context recovery and semantic matching can add calls, and ambiguous language/generated explanatory prose can still need correction. These are disclosed limits, not universal product acceptance. No further broad paid sweep is justified by this evidence. Voice, broad PRD features, external provider acceptance and develop integration stay separate.
+
+
+## Text acknowledgment follow-up — September 18
+
+Acknowledgments reuse the initial routing call's model-authored pending-work text.
+They travel as a transient chat status label before planner preparation, never as
+a persisted answer or completion verdict. The label remains stable through tool
+phases and disappears when the independently generated final answer settles.
+No character/provider prompt, extra inference stage or phrase-specific router
+was added. Direct navigation remains receipt-gated and skips this acknowledgment.
+
+The first live read exposed a second status deduplication boundary which ignored
+label changes within the same phase. The conversation SSE route now includes the
+label in that comparison; its route-level regression test verifies the actual
+status frame precedes reply tokens and only one final reply is persisted.
+Cancellation now checks the signal before progress and additional planning.
+
+| Live text scenario | Acknowledgment emitted | Final reply visible | Calls | Input / cached input |
+|---|---:|---:|---:|---:|
+| Calendar read, before transport correction | 1.734 s, dropped downstream | 3.438 s | 3 | 25,054 / 8,192 |
+| Calendar read, corrected transport | 1.441 s, visibly confirmed | 9.179 s | 7 | 122,710 / 24,576 |
+| Notes creation-date read | 1.146 s, visibly confirmed | 2.631 s | 3 | 26,122 / 10,240 |
+| Open Notes | Omitted, as intended | 1.335 s | 1 | 9,625 / 7,168 |
+
+Timings are server request marks, not screenshot observation times. Whole-request
+finalization was 9.186 s, 2.638 s and 1.341 s in the final three checks. Cached
+inputs are part of input tokens. These are individual observations, not latency
+percentiles or guarantees. No acknowledgment-only model call appears.
+
+The slow Calendar run selected CALENDAR_SEARCH_EVENTS without a query, then
+recovered through tool discovery and a context restoration before CALENDAR_FEED.
+It reached the correct empty-day result without writes, but did not meet the
+three-second target. Acknowledgments improve early feedback; this selection and
+recovery variability remains an actual completion-latency limitation.
+
+Browser inspection showed the generated progress label while work was pending,
+then one final answer; navigation displayed the actual Notes view. Complete
+before/after record comparisons found all 41 notes and the three original events
+in the September 18–20 audit window unchanged. Continuous chat/history was not
+reset. Voice was not exercised or enabled.
+
+Deterministic checks: 403 Stage-1 tests; 100 planner/delivery/audience tests;
+42 host usage/status tests; 82 conversation SSE contract tests. These cover
+progress/final separation, no extra call, success/failure delivery, claim
+suppression, greetings/clarifications, cancellation, deduplication and terminal
+persistence. Final repository verification passed 373/373 tasks and final audits
+(ack-accepted-verify.log). The initially narrow SSE test fixture type was corrected
+to use the canonical message-service contract before this passing gate.
+Private evidence remains outside Git: ack-calendar-initial, ack-calendar-final,
+ack-notes-final, ack-navigation-final traces, acknowledgment timing snapshots,
+and latency-audit/ack-preservation.json.

@@ -5385,7 +5385,7 @@ export async function handleConversationRoutes(
         // collapse the identical opening status generateChatResponse re-emits so
         // the wire carries each phase transition once. Distinct consecutive phases
         // (thinking → running_action → thinking) still pass through.
-        let lastStatusSignature = "thinking::";
+        let lastStatusSignature = JSON.stringify({ kind: "thinking" });
         // The early callback can settle a reply before generation later throws.
         // Keep that shared result readable by the terminal recovery path.
         const generation: { result: ChatGenerationResult | null } = {
@@ -5606,13 +5606,9 @@ export async function handleConversationRoutes(
                 ) {
                   return;
                 }
-                // Array.join renders absent optional fields as empty segments, so
-                // the dedup key is stable without nullish-coalescing each field.
-                const signature = [
-                  status.kind,
-                  status.actionName,
-                  status.toolName,
-                ].join(":");
+                // A model acknowledgment can change the label within the same
+                // phase. Preserve that visible update through the SSE boundary.
+                const signature = JSON.stringify(status);
                 if (signature === lastStatusSignature) {
                   return;
                 }

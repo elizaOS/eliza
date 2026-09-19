@@ -835,7 +835,12 @@ export async function runV5MessageRuntimeStage1(
 			messageHandler,
 		)
 			? ""
-			: routedResponseHandlerReply || parsedResponseHandlerReply;
+			: routedResponseHandlerReply ||
+				parsedResponseHandlerReply ||
+				(args.onPlanningAcknowledgment &&
+				prePatchStageOneReplyEffectStatus === "pending"
+					? (fieldRunResult?.parsed.replyText ?? "")
+					: "");
 		// `replyEffectStatus: applied` is the model's prediction, not an effect
 		// receipt. Keep it buffered until the planner either produces a verified
 		// action result or returns the terminal failure; otherwise the client sees a
@@ -844,7 +849,10 @@ export async function runV5MessageRuntimeStage1(
 			earlyReplyText = "";
 		}
 		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
-		if (earlyReplyText.length > 0 && onResponseHandlerEarlyReply) {
+		if (
+			earlyReplyText.length > 0 &&
+			(onResponseHandlerEarlyReply || args.onPlanningAcknowledgment)
+		) {
 			const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
 				providers: args.state.data.providers,
 				request: getUserMessageText(args.message),
@@ -859,6 +867,20 @@ export async function runV5MessageRuntimeStage1(
 				// (or the final-path ack fallback) owns this turn's delivery.
 				earlyReplyText = "";
 			}
+		}
+		// Progress has its own delivery channel: it must not mark an answer as
+		// sent, persist a reply, or disarm final-answer recovery. The existing
+		// routing call supplies the text and semantic pending-work classification.
+		getStreamingContext()?.abortSignal?.throwIfAborted();
+		if (
+			args.onPlanningAcknowledgment &&
+			!addressedToOtherParticipant &&
+			messageHandler.processMessage === "RESPOND" &&
+			prePatchStageOneReplyEffectStatus === "pending" &&
+			!messageHandler.plan.deterministicToolCall &&
+			earlyReplyText.trim().length > 0
+		) {
+			args.onPlanningAcknowledgment(restorePiiInUserReplyText(earlyReplyText));
 		}
 		// The addressing gate above already terminal-routes addressed-to-other
 		// turns to ignored, so a gated turn cannot normally reach this planning

@@ -818,6 +818,21 @@ export class MessageProcessor {
 								: {}),
 							runTerminalOwner,
 							onSettledActionResult,
+							onPlanningAcknowledgment:
+								!voiceResponseHandlerFastPath && opts.onPlanningAcknowledgment
+									? (text) => {
+											if (
+												opts.abortSignal?.aborted ||
+												(!opts.keepExistingResponses &&
+													getLatestResponseId(
+														runtime.agentId,
+														message.roomId,
+													) !== responseId)
+											)
+												return;
+											opts.onPlanningAcknowledgment?.(text);
+										}
+									: undefined,
 							onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
 							onStage1RespondDecision: () => {
 								stage1DecidedRespond = true;

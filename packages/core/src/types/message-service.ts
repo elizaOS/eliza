@@ -48,6 +48,11 @@ export interface MessageProcessingOptions {
 	shouldRespondModel?: ShouldRespondModelType;
 	onStreamChunk?: StreamChunkCallback;
 	/**
+	 * One model-authored acknowledgment before planned work. This is transient
+	 * progress, never a final reply, persisted answer, or evidence of execution.
+	 */
+	onPlanningAcknowledgment?: (text: string) => void;
+	/**
 	 * When true, run a follow-up reasoning pass after actions complete so the
 	 * agent can decide whether to share results, run another action, or stop.
 	 * Defaults to enabled unless runtime.getSetting("CONTINUE_AFTER_ACTIONS")

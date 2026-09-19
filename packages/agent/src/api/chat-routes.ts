@@ -2705,12 +2705,16 @@ async function generateChatResponseWithTiming(
     // same phase (an action firing many callbacks should emit one
     // `running_action`, not one per chunk) by tracking the last signature.
     let lastStatusSignature = "";
+    let planningAcknowledgment: string | undefined;
     const emitStatus = (status: ChatTurnStatus): void => {
       if (!opts?.onStatus) return;
-      const signature = `${status.kind}:${status.actionName ?? ""}:${status.toolName ?? ""}`;
+      const visibleStatus = planningAcknowledgment
+        ? { ...status, label: planningAcknowledgment }
+        : status;
+      const signature = JSON.stringify(visibleStatus);
       if (signature === lastStatusSignature) return;
       lastStatusSignature = signature;
-      opts.onStatus(status);
+      opts.onStatus(visibleStatus);
     };
     // `thinking` is the opening phase: the turn started, the model is being
     // prompted, but no visible text has streamed yet.
@@ -3016,6 +3020,21 @@ async function generateChatResponseWithTiming(
                     abortSignal: generationAbortController.signal,
                     roomHandlerLease: opts?.roomHandlerLease,
                     keepExistingResponses: true,
+                    onPlanningAcknowledgment: opts?.onStatus
+                      ? (text) => {
+                          if (
+                            planningAcknowledgment ||
+                            generationAbortController.signal.aborted
+                          ) {
+                            return;
+                          }
+                          // Retain one progress label through the tool phases.
+                          // It never enters responseText or terminal persistence.
+                          planningAcknowledgment = text;
+                          emitStatus({ kind: "thinking" });
+                          markInference("chat:planning-acknowledgment");
+                        }
+                      : undefined,
                     onSettledActionResult: (actionResult) => {
                       settledActionResults.push(actionResult);
                     },

@@ -256,3 +256,19 @@ Calendar tests: 1,008 passed, four existing skips. Core completion/pending/failu
 ### Final handoff
 
 Source `d502d12aad7`: all required final gates and the exact full-date browser acceptance passed. The same read request now covers September 18–20 in America/New_York through September 21 midnight, with four model calls and no recovery. Final comparison proves all 41 notes and the three original events unchanged. The rejected schema-union experiment is absent from source. See GANTTNUBS-DEMO.md for the concise user handoff and GANTTNUBS-SCENARIO-RESULTS.md for the full requirement/evidence audit.
+
+
+## Completed follow-up: text acknowledgments
+
+The user authorized implementation after reviewing both September 18 call transcripts.
+Rollback checkpoint: `e3bd1efaad3`, tag `codex/ganttnubs-text-acceptance-20260918`.
+
+- Reuse the existing Stage-1 model-authored pending-work text; no new model call or character/provider prompt.
+- Deliver through the existing chat status label before planner preparation. Keep it stable through tool phases; the final reply remains independently owned and persisted.
+- Preserve direct replies/navigation, authorization, effect receipts, original context and voice behavior. Check cancellation before progress or additional planning.
+- Verify pending-work progress, final success/failure, premature-claim suppression, greetings/clarifications, cancellation, and direct navigation. Then inspect a bounded live browser turn and its trajectory; measure acknowledgment and completion separately.
+- Finish required package/root checks, document results, commit and tag. Voice and develop integration remain deferred.
+
+Acceptance: the final repository gate passed 373/373 tasks and its audits; 627 focused regression tests passed across routing, delivery, host and conversation SSE contracts. Live Notes and Calendar requests displayed their model-authored acknowledgment before one final answer; direct navigation stayed one call. All 41 notes and the three Calendar events in the audit window remained unchanged. No extra acknowledgment model call or prompt change was introduced. See GANTTNUBS-SCENARIO-RESULTS.md for the exact timings, cache inputs and the unresolved seven-call Calendar recovery.
+
+Saved result tag: `codex/ganttnubs-text-acknowledgments-20260918`. The previous rollback tag remains unchanged. Voice acceptance and consistent three-second Calendar completion are not claimed.
