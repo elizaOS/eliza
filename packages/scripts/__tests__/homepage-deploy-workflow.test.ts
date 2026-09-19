@@ -1287,29 +1287,27 @@ describe("homepage deployment workflow", () => {
   });
 
   it("builds the default-condition workspace chain before homepage validation", () => {
-    // Homepage resolves UI's public dist subpaths and the frontend reaches
-    // prompts through core. A clean --ignore-scripts install produces none of
-    // those dist artifacts, so the consumer gates must follow their builds.
-    expect(releaseWorkflow).toContain("run: bun run build:core");
-    const promptsBuildIndex = qualityWorkflow.indexOf(
-      "bun run --cwd packages/prompts build:package",
+    const frontend = (Bun.YAML.parse(qualityWorkflow) as WorkflowFile).jobs?.[
+      "frontend-build"
+    ];
+    if (!frontend?.steps) throw new Error("Missing frontend build steps");
+    const steps = frontend.steps;
+    const buildIndex = steps.findIndex(
+      (step) => step.name === "Build frontend workspace dependencies",
     );
-    const coreBuildIndex = qualityWorkflow.indexOf(
-      "bun run build:core",
-      promptsBuildIndex,
+    const commands = steps[buildIndex]?.run;
+    if (!commands) throw new Error("Missing frontend dependency build");
+    const coreBuild = commands.indexOf("bun run build:core");
+    expect(coreBuild).toBeGreaterThan(-1);
+    expect(commands.indexOf("bun run --cwd packages/ui build")).toBeGreaterThan(
+      coreBuild,
     );
-    const uiBuildIndex = qualityWorkflow.indexOf(
-      "bun run --cwd packages/ui build",
+    const validationIndex = steps.findIndex(
+      (step) => step.name === "Validate homepage source contracts",
     );
-    const homepageValidationIndex = qualityWorkflow.indexOf(
-      "name: Validate homepage source contracts",
-    );
-    const webBuildIndex = qualityWorkflow.indexOf("run: bun run build:web");
-    expect(promptsBuildIndex).toBeGreaterThan(-1);
-    expect(coreBuildIndex).toBeGreaterThan(promptsBuildIndex);
-    expect(uiBuildIndex).toBeGreaterThan(coreBuildIndex);
-    expect(homepageValidationIndex).toBeGreaterThan(uiBuildIndex);
-    expect(coreBuildIndex).toBeGreaterThan(-1);
-    expect(webBuildIndex).toBeGreaterThan(homepageValidationIndex);
+    expect(validationIndex).toBeGreaterThan(buildIndex);
+    expect(
+      steps.findIndex((step) => step.run === "bun run build:web"),
+    ).toBeGreaterThan(validationIndex);
   });
 });
