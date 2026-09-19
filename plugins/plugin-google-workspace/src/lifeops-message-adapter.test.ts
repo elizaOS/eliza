@@ -6,7 +6,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { EventType, type IAgentRuntime, type Memory, validateReadView } from "@elizaos/core/node";
+import { EventType, type IAgentRuntime, type Memory, validateReadView } from "@elizaos/core";
 import {
   __resetDefaultTriageServiceForTests,
   getDefaultTriageService,
