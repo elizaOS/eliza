@@ -149,7 +149,9 @@ function buildConnectPayload(
   const base = {
     unloadMissing,
     persist: options.persist ?? true,
-    ...(allowedModuleIds.length === 0 ? {} : { allowedModuleIds }),
+    ...(allowedModuleIds.length === 0 || !options.endpointUrl
+      ? {}
+      : { allowedModuleIds }),
     ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }),
   };
 
