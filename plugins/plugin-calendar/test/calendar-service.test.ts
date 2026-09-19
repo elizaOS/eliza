@@ -1,30 +1,42 @@
 /**
- * CalendarService CRUD against a real PGlite-backed database.
- *
- * Self-contained: spins up an in-process PGlite instance with the calendar
- * tables, drives `CalendarService` through the Apple-calendar provider path
- * (native bridge mocked), and asserts persistence, feed aggregation,
- * next-event context, and that the injected `CalendarHostGate` receives the
- * reminder-plan side effects calendar events are expected to schedule.
- *
- * No Google grant and no full runtime are needed — the gate stubs the connector
- * layer, exactly as LifeOps injects its real implementation in production.
+ * Exercises calendar persistence, Apple mutation receipts and feed behavior with
+ * a real PGlite-backed AgentRuntime and the production calendar schema.
+ * The external EventKit bridge and host reminder hooks are controlled.
  */
 
-import { PGlite } from "@electric-sql/pglite";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsReminderPlan } from "@elizaos/shared";
-import { sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/pglite";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { __testing, APPLE_CALENDAR_GRANT_ID } from "../src/apple-calendar.js";
+import type { AgentRuntime, Plugin } from "@elizaos/core";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsReminderPlan,
+} from "@elizaos/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createRealTestRuntime,
+  type RealTestRuntimeResult,
+} from "../../../packages/app-core/test/helpers/real-runtime.ts";
+import { __testing, APPLE_CALENDAR_GRANT_ID } from "../src/apple-calendar.ts";
 import {
   type CalendarHostGate,
+  CalendarRepository,
   CalendarService,
-  ensureCalendarFeedPreferenceTable,
-} from "../src/service/index.js";
+  calendarSchema,
+  createLifeOpsCalendarSyncState,
+} from "../src/service/index.ts";
 
 const INTERNAL_URL = new URL("http://internal.local/api/calendar");
+
+/**
+ * Schema-only test plugin. In production the calendar plugin registers
+ * `calendarSchema` (the carved `app_calendar` tables) itself; here we register
+ * just the schema (not the full plugin's services/actions) so
+ * `runtime.initialize()` runs the SQL plugin migration that creates
+ * `life_calendar_events` + `life_calendar_sync_states` with minimal surface.
+ */
+const calendarSchemaPlugin: Plugin = {
+  name: "calendar-real-db-schema",
+  description: "Test-only calendar table bootstrap.",
+  schema: calendarSchema,
+};
 
 const APPLE_EVENT = {
   id: "apple-evt-1",
@@ -42,6 +54,7 @@ const APPLE_EVENT = {
   attendees: [],
 };
 
+/** Mocked native EventKit bridge — the only external dependency. */
 function appleBridge() {
   return {
     platform: "darwin",
@@ -72,7 +85,9 @@ function appleBridge() {
 }
 
 const reminderPlans: LifeOpsReminderPlan[] = [];
+const reportError = vi.fn();
 
+/** No-op connector gate (production LifeOps injects the real one). */
 function fakeGate(): CalendarHostGate {
   return {
     getGoogleConnectorAccounts: async () => [],
@@ -95,95 +110,124 @@ function fakeGate(): CalendarHostGate {
   };
 }
 
-let pg: PGlite;
-let calendar: CalendarService;
-const reportError = vi.fn();
+describe("CalendarRepository + CalendarService — real PGLite", () => {
+  let runtime: AgentRuntime;
+  let testResult: RealTestRuntimeResult;
+  let repository: CalendarRepository;
+  let calendar: CalendarService;
 
-const CREATE_EVENTS_TABLE = `CREATE TABLE app_calendar.life_calendar_events (
-  id TEXT PRIMARY KEY,
-  agent_id TEXT NOT NULL,
-  provider TEXT NOT NULL DEFAULT 'google',
-  side TEXT NOT NULL DEFAULT 'owner',
-  calendar_id TEXT NOT NULL,
-  external_event_id TEXT NOT NULL,
-  connector_account_id TEXT,
-  purge_resync_required BOOLEAN NOT NULL DEFAULT false,
-  purge_resync_reason TEXT,
-  grant_id TEXT,
-  title TEXT NOT NULL DEFAULT '',
-  description TEXT NOT NULL DEFAULT '',
-  location TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT '',
-  start_at TEXT NOT NULL,
-  end_at TEXT NOT NULL,
-  is_all_day BOOLEAN NOT NULL DEFAULT false,
-  timezone TEXT,
-  html_link TEXT,
-  conference_link TEXT,
-  organizer_json TEXT,
-  attendees_json TEXT NOT NULL DEFAULT '[]',
-  metadata_json TEXT NOT NULL DEFAULT '{}',
-  synced_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  UNIQUE (agent_id, provider, side, calendar_id, external_event_id)
-)`;
+  beforeEach(async () => {
+    testResult = await createRealTestRuntime({
+      characterName: "calendar-real-db-tests",
+      plugins: [calendarSchemaPlugin],
+    });
+    runtime = testResult.runtime;
+    reminderPlans.length = 0;
+    reportError.mockClear();
+    vi.spyOn(runtime, "reportError").mockImplementation(reportError);
+    repository = new CalendarRepository(runtime);
+    calendar = new CalendarService(runtime);
+    calendar.setGate(fakeGate());
+    __testing.setNativeCalendarBridgeForTest(appleBridge() as never);
+  }, 180_000);
 
-const CREATE_SYNC_TABLE = `CREATE TABLE app_calendar.life_calendar_sync_states (
-  id TEXT PRIMARY KEY,
-  agent_id TEXT NOT NULL,
-  provider TEXT NOT NULL DEFAULT 'google',
-  side TEXT NOT NULL DEFAULT 'owner',
-  calendar_id TEXT NOT NULL,
-  connector_account_id TEXT,
-  grant_id TEXT,
-  purge_resync_required BOOLEAN NOT NULL DEFAULT false,
-  purge_resync_reason TEXT,
-  window_start_at TEXT NOT NULL,
-  window_end_at TEXT NOT NULL,
-  next_sync_token TEXT,
-  synced_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  UNIQUE (agent_id, provider, side, calendar_id)
-)`;
+  afterEach(async () => {
+    __testing.setNativeCalendarBridgeForTest(undefined as never);
+    await testResult?.cleanup();
+    vi.restoreAllMocks();
+  });
 
-beforeAll(async () => {
-  pg = new PGlite();
-  const db = drizzle(pg);
-  await db.execute(sql.raw("CREATE SCHEMA IF NOT EXISTS app_calendar"));
-  await db.execute(sql.raw(CREATE_EVENTS_TABLE));
-  await db.execute(sql.raw(CREATE_SYNC_TABLE));
-  await ensureCalendarFeedPreferenceTable(
-    async (statement) =>
-      (await pg.query<Record<string, unknown>>(statement)).rows,
-  );
+  it("upserts an event via the repository and reads it back from the live DB", async () => {
+    const event: LifeOpsCalendarEvent = {
+      id: `${runtime.agentId}:google:owner:calendar:primary:repo-evt-1`,
+      externalId: "repo-evt-1",
+      agentId: runtime.agentId,
+      provider: "google",
+      side: "owner",
+      calendarId: "primary",
+      title: "Standup",
+      description: "Daily standup",
+      location: "Zoom",
+      status: "confirmed",
+      startAt: "2026-06-01T09:00:00.000Z",
+      endAt: "2026-06-01T09:15:00.000Z",
+      isAllDay: false,
+      timezone: "UTC",
+      htmlLink: null,
+      conferenceLink: null,
+      organizer: null,
+      attendees: [],
+      metadata: { source: "real-db-test" },
+      syncedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      grantId: "grant-1",
+    };
+    await repository.upsertCalendarEvent(event, "owner");
 
-  const runtime = {
-    agentId: "agent-cal-test",
-    adapter: { db },
-    logger: {
-      info: () => undefined,
-      warn: () => undefined,
-      error: () => undefined,
-      debug: () => undefined,
-    },
-    getCache: async () => undefined,
-    setCache: async () => undefined,
-    getService: () => null,
-    reportError,
-  } as unknown as IAgentRuntime;
+    // Round-trip: the row is really in the DB, parsed back into a domain event.
+    const rows = await repository.listCalendarEvents(
+      runtime.agentId,
+      "google",
+      "2026-06-01T00:00:00.000Z",
+      "2026-06-02T00:00:00.000Z",
+      "owner",
+    );
+    const fetched = rows.find((e) => e.externalId === "repo-evt-1");
+    expect(fetched).toBeTruthy();
+    expect(fetched?.title).toBe("Standup");
+    expect(fetched?.description).toBe("Daily standup");
+    expect(fetched?.location).toBe("Zoom");
+    expect(fetched?.metadata).toEqual({ source: "real-db-test" });
 
-  calendar = new CalendarService(runtime);
-  calendar.setGate(fakeGate());
-  __testing.setNativeCalendarBridgeForTest(appleBridge() as never);
-});
+    // ON CONFLICT DO UPDATE: re-upsert with a new title updates the same row.
+    await repository.upsertCalendarEvent(
+      {
+        ...event,
+        title: "Standup (moved)",
+        updatedAt: new Date().toISOString(),
+      },
+      "owner",
+    );
+    const reread = (
+      await repository.listCalendarEvents(
+        runtime.agentId,
+        "google",
+        "2026-06-01T00:00:00.000Z",
+        "2026-06-02T00:00:00.000Z",
+        "owner",
+      )
+    ).filter((e) => e.externalId === "repo-evt-1");
+    expect(reread).toHaveLength(1);
+    expect(reread[0]?.title).toBe("Standup (moved)");
+  });
 
-afterAll(async () => {
-  __testing.setNativeCalendarBridgeForTest(undefined as never);
-  await pg.close();
-});
+  it("upserts + reads a calendar sync-state row against the live DB", async () => {
+    const state = createLifeOpsCalendarSyncState({
+      agentId: runtime.agentId,
+      provider: "google",
+      side: "owner",
+      grantId: "connector-account:test",
+      connectorAccountId: "test",
+      calendarId: "primary",
+      windowStartAt: "2026-06-01T00:00:00.000Z",
+      windowEndAt: "2026-06-08T00:00:00.000Z",
+      nextSyncToken: "sync-token-1",
+      syncedAt: new Date().toISOString(),
+    });
+    await repository.upsertCalendarSyncState(state);
 
-describe("CalendarService (real PGlite, Apple provider)", () => {
-  it("creates an Apple event, persists it, and schedules reminder plans", async () => {
+    const fetched = await repository.getCalendarSyncState(
+      runtime.agentId,
+      "google",
+      "primary",
+      "owner",
+    );
+    expect(fetched).not.toBeNull();
+    expect(fetched?.windowStartAt).toBe("2026-06-01T00:00:00.000Z");
+    expect(fetched?.windowEndAt).toBe("2026-06-08T00:00:00.000Z");
+  });
+
+  it("creates, reads, updates and deletes an Apple event with persisted state and reminder effects", async () => {
     reminderPlans.length = 0;
     const created = await calendar.createCalendarEvent(INTERNAL_URL, {
       grantId: APPLE_CALENDAR_GRANT_ID,
@@ -195,10 +239,73 @@ describe("CalendarService (real PGlite, Apple provider)", () => {
     });
     expect(created.title).toBe("Dentist");
     expect(created.provider).toBe("apple_calendar");
-    // The event should schedule at least one reminder plan via the gate.
+    // The service scheduled at least one reminder plan via the injected gate.
     expect(reminderPlans.length).toBeGreaterThan(0);
-  });
 
+    // Round-trip: the event the service wrote is really in the DB, not the mock.
+    const persisted = await repository.listCalendarEvents(
+      runtime.agentId,
+      "apple_calendar",
+      "2026-05-12T00:00:00.000Z",
+      "2026-05-13T00:00:00.000Z",
+      "owner",
+    );
+    const dentist = persisted.find((e) => e.externalId === "apple-evt-1");
+    expect(dentist).toBeTruthy();
+    expect(dentist?.title).toBe("Dentist");
+    expect(dentist?.location).toBe("123 Main St");
+
+    const feed = await calendar.getCalendarFeed(
+      INTERNAL_URL,
+      {
+        grantId: APPLE_CALENDAR_GRANT_ID,
+        timeMin: "2026-05-12T00:00:00.000Z",
+        timeMax: "2026-05-13T00:00:00.000Z",
+      },
+      new Date("2026-05-12T12:00:00.000Z"),
+    );
+    expect(feed.events.some((e) => e.title === "Dentist")).toBe(true);
+
+    const ctx = await calendar.getNextCalendarEventContext(
+      INTERNAL_URL,
+      { grantId: APPLE_CALENDAR_GRANT_ID },
+      new Date("2026-05-12T16:30:00.000Z"),
+    );
+    expect(ctx.event?.title).toBe("Dentist");
+    expect(ctx.startsInMinutes).toBe(30);
+
+    expect(
+      (
+        await calendar.listCalendars(INTERNAL_URL, {
+          grantId: APPLE_CALENDAR_GRANT_ID,
+        })
+      ).some((entry) => entry.provider === "apple_calendar"),
+    ).toBe(true);
+    const updated = await calendar.updateCalendarEvent(INTERNAL_URL, {
+      grantId: APPLE_CALENDAR_GRANT_ID,
+      calendarId: "primary",
+      eventId: "apple-evt-1",
+      title: "Dentist (rescheduled)",
+    });
+    expect(updated.title).toBe("Dentist (rescheduled)");
+    expect((await calendar.getCalendarEventById(created.id))?.title).toBe(
+      updated.title,
+    );
+
+    await calendar.deleteCalendarEvent(INTERNAL_URL, {
+      grantId: APPLE_CALENDAR_GRANT_ID,
+      calendarId: "primary",
+      eventId: "apple-evt-1",
+    });
+    const remaining = await repository.listCalendarEvents(
+      runtime.agentId,
+      "apple_calendar",
+      "2026-05-12T00:00:00.000Z",
+      "2026-05-13T00:00:00.000Z",
+      "owner",
+    );
+    expect(remaining.some((e) => e.externalId === "apple-evt-1")).toBe(false);
+  });
   it("fails closed before a receipt-unaware add-only write", async () => {
     const createEvent = vi.fn(async () => ({
       ok: true as const,
@@ -282,13 +389,6 @@ describe("CalendarService (real PGlite, Apple provider)", () => {
     }
   });
 
-  it("lists the Apple calendar", async () => {
-    const calendars = await calendar.listCalendars(INTERNAL_URL, {
-      grantId: APPLE_CALENDAR_GRANT_ID,
-    });
-    expect(calendars.some((c) => c.provider === "apple_calendar")).toBe(true);
-  });
-
   it("keeps an unsupported Apple source explicit without systemic escalation", async () => {
     reportError.mockClear();
     __testing.setNativeCalendarBridgeForTest(null);
@@ -355,49 +455,6 @@ describe("CalendarService (real PGlite, Apple provider)", () => {
     } finally {
       __testing.setNativeCalendarBridgeForTest(appleBridge() as never);
     }
-  });
-
-  it("returns the event in the aggregated feed", async () => {
-    const feed = await calendar.getCalendarFeed(
-      INTERNAL_URL,
-      {
-        grantId: APPLE_CALENDAR_GRANT_ID,
-        timeMin: "2026-05-12T00:00:00.000Z",
-        timeMax: "2026-05-13T00:00:00.000Z",
-      },
-      new Date("2026-05-12T12:00:00.000Z"),
-    );
-    expect(feed.events.some((e) => e.title === "Dentist")).toBe(true);
-  });
-
-  it("computes next-event context from the feed", async () => {
-    const ctx = await calendar.getNextCalendarEventContext(
-      INTERNAL_URL,
-      { grantId: APPLE_CALENDAR_GRANT_ID },
-      new Date("2026-05-12T16:30:00.000Z"),
-    );
-    expect(ctx.event?.title).toBe("Dentist");
-    expect(ctx.startsInMinutes).toBe(30);
-  });
-
-  it("updates the Apple event through the bridge", async () => {
-    const updated = await calendar.updateCalendarEvent(INTERNAL_URL, {
-      grantId: APPLE_CALENDAR_GRANT_ID,
-      calendarId: "primary",
-      eventId: "apple-evt-1",
-      title: "Dentist (rescheduled)",
-    });
-    expect(updated.title).toBe("Dentist (rescheduled)");
-  });
-
-  it("deletes the Apple event through the bridge", async () => {
-    await expect(
-      calendar.deleteCalendarEvent(INTERNAL_URL, {
-        grantId: APPLE_CALENDAR_GRANT_ID,
-        calendarId: "primary",
-        eventId: "apple-evt-1",
-      }),
-    ).resolves.toBeUndefined();
   });
 
   it("requires confirmation and purges only Eliza's exact Apple projection", async () => {
