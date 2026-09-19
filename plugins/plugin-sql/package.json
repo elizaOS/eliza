@@ -58,7 +58,8 @@
     "dotenv": "^17.2.3",
     "drizzle-orm": "0.45.2",
     "pg": "^8.23.0",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "@elizaos/retrieval": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
