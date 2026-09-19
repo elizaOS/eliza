@@ -574,6 +574,39 @@ describe("passthrough streaming — qualifying request pipes bytes verbatim and 
     expect(aiBillingRecord).toHaveBeenCalledTimes(1);
   });
 
+  test("writes the billing ledger row even when usage analytics fails (#31112)", async () => {
+    const ledger = makeLedgerReservation(100, 0.9);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    fetchImpl = async () => sseResponse(UPSTREAM_SSE);
+    // The shared mock is declared without parameters; widen it here so the
+    // failure can be handed back through the onError option.
+    (
+      recordUsageAnalytics as unknown as {
+        mockImplementationOnce: (
+          fn: (...args: unknown[]) => Promise<null>,
+        ) => void;
+      }
+    ).mockImplementationOnce(async (...args) => {
+      const options = args[2] as { onError?: (e: unknown) => void };
+      options.onError?.(new Error("usage_records insert failed"));
+      return null;
+    });
+
+    const res = await callStreaming(settle, { effectiveMaxTokens: 4096 });
+    await res.text();
+
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(recordUsageAnalytics).toHaveBeenCalledTimes(1);
+    expect(aiBillingRecord).toHaveBeenCalledTimes(1);
+    const [recordInput] = (
+      aiBillingRecord.mock.calls as unknown as Array<[Record<string, unknown>]>
+    )[0];
+    expect(recordInput).toMatchObject({
+      usageRecord: null,
+      usageRecordError: "usage_records insert failed",
+    });
+  });
+
   test("usage-bearing passthrough keeps the admitted estimate when local billing fails", async () => {
     const ledger = makeLedgerReservation(100, 0.9);
     const settle = createCreditReservationSettler(ledger.reservation);

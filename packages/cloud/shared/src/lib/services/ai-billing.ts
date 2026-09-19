@@ -716,6 +716,12 @@ export async function recordUsageAnalytics(
     purpose?: string;
     /** Latency in ms for trajectory logging */
     latencyMs?: number;
+    /**
+     * Receives the failure when the usage row cannot be written. Billing
+     * callers use it to record the ledger row with an explicit
+     * "usage record unavailable" marker instead of skipping it (#31112).
+     */
+    onError?: (error: unknown) => void;
   } = {},
 ): Promise<UsageRecord | null> {
   const { type = "chat", isSuccessful = true, errorMessage, content, prompt } = options;
@@ -809,9 +815,13 @@ export async function recordUsageAnalytics(
     }
     return usageRecord;
   } catch (error) {
+    // error-policy:J4 user-facing degrade: analytics is best-effort for the
+    // request, but the failure is handed to the caller so the billing ledger
+    // can still be written with an explicit unavailable marker.
     logger.error("[AI Billing] Failed to record usage analytics", {
       error: error instanceof Error ? error.message : String(error),
     });
+    options.onError?.(error);
     return null;
   }
 }
