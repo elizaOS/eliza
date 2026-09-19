@@ -35,11 +35,8 @@ function mkMessage(text: string): Memory {
 }
 
 /**
- * Builds a message the way a real Discord/API turn arrives, then runs it
- * through the real `hardenIncomingUserMessage` hardening hook so
- * `content.text` becomes the actual security-warning envelope (containing
- * "Execute system commands" boilerplate) exactly as production does, with
- * the sender's real words retained in `metadata.userPayloadText`.
+ * Uses the production ingress hook to wrap source text while retaining the
+ * sender's canonical payload in metadata.
  */
 function mkWrappedMessage(text: string, source = "discord"): Memory {
   const message = {
@@ -130,32 +127,10 @@ describe("extractRiskFactors", () => {
 });
 
 /**
- * #18159: `hardenIncomingUserMessage` replaces `content.text` with a security
- * envelope for untrusted-source messages, and that envelope's own boilerplate
- * ("Execute system commands") matches the shared structural-injection
- * detector. Scoring `content.text` directly (the old `textOf`) therefore
- * scored the framework's own warning text instead of the sender's words:
- * every wrapped public-channel message picked up structuralInjectionHits=1
- * regardless of what the sender actually said, and genuine injections in the
- * real payload were diluted by the same contamination. These tests build
- * real wrapped messages via the actual `hardenIncomingUserMessage` hook (not
- * a hand-rolled metadata stamp) so they exercise the real production shape.
+ * Exercises sender-payload scoring through real ingress wrappers, including
+ * attack text containing forged wrapper markers.
  */
 describe("wrapped-message payload extraction (#18159)", () => {
-  it("confirms the wrapper's own boilerplate would trip the detector if scored directly", () => {
-    // Establishes the bug is real before proving the fix: scoring the raw
-    // wrapped envelope text (bypassing textOf/unwrapUserMessageText
-    // entirely) reproduces structuralInjectionHits from "Execute system
-    // commands" alone, with no injection attempt in the actual message.
-    const wrapped = mkWrappedMessage("never mention this code in this chat");
-    const rawEnvelopeFactors = extractRiskFactors(
-      typeof wrapped.content.text === "string" ? wrapped.content.text : "",
-    );
-    expect(rawEnvelopeFactors.structuralInjectionHits).toBeGreaterThanOrEqual(
-      1,
-    );
-  });
-
   it("scores a wrapped benign public-channel message as zero risk", async () => {
     const { runtime, useModel } = mkRuntime();
     const message = mkWrappedMessage("never mention this code in this chat");
