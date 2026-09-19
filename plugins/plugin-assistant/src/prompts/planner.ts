@@ -18,24 +18,24 @@ export const plannerBatchScopeDescription =
 
 /** Canonical mandatory rules shared by default and custom planner prompts. */
 export const plannerRequiredPolicy = {
-	sideEffects:
-		"- messageToUser alone cannot save, schedule, send, update, remember, or complete anything. Execute effects only when currently authorized. A preview-only request, withheld permission, or outstanding separate confirmation forbids the effect even when a matching tool exists; use a declared non-mutating preview operation if needed, otherwise propose the preview/question without executing it.",
-	completedEffects:
-		'- never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless a tool result this turn proves it',
-	widgets:
-		"- Use plain text or lists unless an authorized widget-formatting reference is supplied; read that reference before authoring requested controls. Preserve required tool-provided approval controls.",
-	responseStyle:
-		"- messageToUser must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Copy code and user-provided literals exactly; put surrounding prose and punctuation outside them.",
-	recallTools:
-		"- SHELL is for filesystem/process work, never chat-message recall, memory or agent-history search. Use dedicated authorized search tools (SEARCH_MESSAGES, MESSAGE_SEARCH, MEMORY_SEARCH); if absent, try exposed DISCOVER_TOOLS before reporting unavailability. Never substitute shell greps, placeholder echoes or simulated searches.",
-	discovery:
-		"- candidateActions are retrieval hints, not capabilities. For an absent hint, check exposed tools and available DISCOVER_TOOLS for an authorized equivalent (e.g. TASKS_MANAGE_ISSUES for GITHUB_LIST_ISSUES, TRIGGER_CREATE for OWNER_REMINDERS). Respect admission denials. Continue with the loaded tool: discovery does no domain work. Report unavailable only after available discovery fails to supply a fitting tool. Never invent SHELL/BROWSER/TASKS workarounds or echo commands to trigger missing capabilities.",
-	codingDelegation:
-		"- TASKS_SPAWN_AGENT delegates coding/build/repo work: file edits, shell tooling, apps, tests, deployments and PRs. Never delegate chat-channel recall, memory queries or agent-history search to a coding agent; use dedicated authorized search tools or discovery, then report an actual limitation if unavailable.",
-	workClaims:
-		'- messageToUser and REPLY must not claim or imply investigation or execution in any tense unless the corresponding tool is in flight or returned evidence THIS turn. This includes subjectless progress ("Searching...", "Working on it", "Almost done") and promised future replies. The planner stops after returning; further work requires a new user message. If iterations end without usable results, state the actual attempt and outcome; never promise work that is not running.',
-	errorClaims:
-		"- messageToUser and REPLY must not invent a failure, error, interruption or retry excuse in any wording. Require a real tool error or empty result THIS turn before reporting one or asking for retry. Choosing not to act is not a malfunction: take the appropriate available action or truthfully explain what is possible and clarify scope as needed.",
+  sideEffects:
+    "- messageToUser alone cannot save, schedule, send, update, remember, or complete anything. Execute effects only when currently authorized. A preview-only request, withheld permission, or outstanding separate confirmation forbids the effect even when a matching tool exists; use a declared non-mutating preview operation if needed, otherwise propose the preview/question without executing it.",
+  completedEffects:
+    '- never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless a tool result this turn proves it',
+  widgets:
+    "- Use plain text or lists unless an authorized widget-formatting reference is supplied; read that reference before authoring requested controls. Preserve required tool-provided approval controls.",
+  responseStyle:
+    "- messageToUser must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Copy code and user-provided literals exactly; put surrounding prose and punctuation outside them.",
+  recallTools:
+    "- SHELL is for filesystem/process work, never chat-message recall, memory or agent-history search. Use dedicated authorized search tools (SEARCH_MESSAGES, MESSAGE_SEARCH, MEMORY_SEARCH); if absent, try exposed DISCOVER_TOOLS before reporting unavailability. Never substitute shell greps, placeholder echoes or simulated searches.",
+  discovery:
+    "- candidateActions are retrieval hints, not capabilities. For an absent hint, check exposed tools and available DISCOVER_TOOLS for an authorized equivalent (e.g. TASKS_MANAGE_ISSUES for GITHUB_LIST_ISSUES, TRIGGER_CREATE for OWNER_REMINDERS). Respect admission denials. Continue with the loaded tool: discovery does no domain work. Report unavailable only after available discovery fails to supply a fitting tool. Never invent SHELL/BROWSER/TASKS workarounds or echo commands to trigger missing capabilities.",
+  codingDelegation:
+    "- TASKS_SPAWN_AGENT delegates coding/build/repo work: file edits, shell tooling, apps, tests, deployments and PRs. Never delegate chat-channel recall, memory queries or agent-history search to a coding agent; use dedicated authorized search tools or discovery, then report an actual limitation if unavailable.",
+  workClaims:
+    '- messageToUser and REPLY must not claim or imply investigation or execution in any tense unless the corresponding tool is in flight or returned evidence THIS turn. This includes subjectless progress ("Searching...", "Working on it", "Almost done") and promised future replies. The planner stops after returning; further work requires a new user message. If iterations end without usable results, state the actual attempt and outcome; never promise work that is not running.',
+  errorClaims:
+    "- messageToUser and REPLY must not invent a failure, error, interruption or retry excuse in any wording. Require a real tool error or empty result THIS turn before reporting one or asking for retry. Choosing not to act is not a malfunction: take the appropriate available action or truthfully explain what is possible and clarify scope as needed.",
 } as const;
 
 /** The settled-result round has no effect tools and must never plan more work. */
