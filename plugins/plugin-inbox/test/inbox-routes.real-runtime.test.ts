@@ -1,11 +1,10 @@
-import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Route-level e2e for the inbox HTTP surface against a REAL runtime.
  *
  * Unlike `inbox-routes.test.ts` (pure auth-gate unit with the service
  * mocked out), this suite registers the REAL `inboxPlugin` on a REAL
  * PGLite-backed AgentRuntime and drives the registered route handlers the
- * way app-core's HTTP adapter does: `runtime.routes` lookup + a
+ * way app-core's HTTP adapter does: host-owned route lookup + a
  * RouteHandlerContext. The InboxService / InboxRepository / migration
  * service / `app_inbox` tables are all real; only the TEXT_SMALL model is a
  * deterministic handler (the LLM boundary).
@@ -24,6 +23,10 @@ import type {
   RouteHandlerContext,
   RouteHandlerResult,
 } from "@elizaos/shared/api/http-plugin";
+import {
+  getHttpRuntime,
+  installHttpPluginLifecycle,
+} from "@elizaos/shared/api/http-plugin-runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
@@ -145,6 +148,7 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
       plugins: [inboxPlugin],
     });
     runtime = testResult.runtime;
+    installHttpPluginLifecycle(runtime);
     runtime.registerModel(
       ModelType.TEXT_SMALL as ModelTypeName,
       async (_rt, params) =>
