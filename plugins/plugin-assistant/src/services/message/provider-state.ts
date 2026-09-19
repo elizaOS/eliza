@@ -199,14 +199,10 @@ export function uiViewActionPriority(
 /** Select authorized evidence needed to interpret the turn before direct delivery. */
 export function stage1ResponseStateProviderNames(
   runtime: IAgentRuntime,
-  message: Memory,
+  _message: Memory,
   userRoles?: readonly RoleGateRole[],
 ): string[] {
-  // Explicit benchmark evidence is part of this incoming request, not retrieved domain state.
-  return [
-    ...STAGE1_RESPONSE_STATE_PROVIDERS,
-    ...(hasInboundBenchmarkContext(message) ? ["CONTEXT_BENCH"] : []),
-  ].filter((name) => {
+  return [...STAGE1_RESPONSE_STATE_PROVIDERS].filter((name) => {
     const provider = runtime.providers?.find((entry) => entry.name === name);
     return (
       !provider ||
@@ -247,9 +243,6 @@ export function selectV5PlannerStateProviderNames(args: {
   const providerNames = new Set<string>(CORE_RESPONSE_STATE_PROVIDERS);
   if (hasPageScopedRoutingMetadata(args.message))
     providerNames.add("page-scoped-context");
-  if (hasInboundBenchmarkContext(args.message)) {
-    providerNames.add("CONTEXT_BENCH");
-  }
 
   const providers = Array.isArray(args.runtime.providers)
     ? (args.runtime.providers as Provider[])

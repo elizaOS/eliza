@@ -9,7 +9,6 @@ import type {
   TrajectoryRecorder,
 } from "@elizaos/core";
 import {
-  isObjectRecord,
   buildModelInputBudget,
   buildResponseGrammar,
   buildSpanSamplerPlan,
@@ -21,6 +20,7 @@ import {
   getStreamingContext,
   HANDLE_RESPONSE_TOOL_NAME,
   hashString,
+  isObjectRecord,
   ModelType,
   recordInferenceSpan,
   sanitizeUserVisibleModelOutput,
