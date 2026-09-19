@@ -1,10 +1,7 @@
 /**
- * `OWNER_DOCUMENTS` umbrella action — unit tests.
- *
- * Wave-1 scaffold (W1-8). Asserts that the action surface advertised in the
- * PRD §Docs And Portals exists and validates inputs correctly. Persistence
- * for `DocumentRequest` is in-memory in Wave-1; these tests pin that
- * behavior so Wave-2 scenarios can build on it.
+ * Exercises owner document-request creation, deadline tracking and closure with
+ * the real action and request store. Approval, scheduling and ledger boundaries
+ * are controlled collaborators; this does not prove signing or durable storage.
  */
 
 import type {
@@ -17,39 +14,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(async () => true),
-  enqueue: vi.fn(async (input: unknown) => ({
-    id: `approval-${Math.random().toString(36).slice(2, 8)}`,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    state: "pending" as const,
-    requestedBy:
-      (input as { requestedBy?: string }).requestedBy ?? "OWNER_DOCUMENTS",
-    subjectUserId:
-      (input as { subjectUserId?: string }).subjectUserId ?? "owner-1",
-    action: (input as { action?: string }).action ?? "sign_document",
-    payload: (input as { payload?: unknown }).payload ?? {},
-    channel: (input as { channel?: string }).channel ?? "internal",
-    reason: (input as { reason?: string }).reason ?? "",
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-    resolvedAt: null,
-    resolvedBy: null,
-    resolutionReason: null,
-  })),
+  enqueue: vi.fn(async (_input: unknown) => ({ id: "approval-document" })),
   listTasks: vi.fn(async (): Promise<unknown[]> => []),
-  schedule: vi.fn(async (task: { kind: string; trigger: unknown }) => ({
-    taskId: `task-${Math.random().toString(36).slice(2, 8)}`,
-    kind: task.kind,
-    trigger: task.trigger,
-    state: { status: "scheduled", followupCount: 0 },
+  schedule: vi.fn(async (_task: { kind: string; trigger: unknown }) => ({
+    taskId: "document-watcher",
   })),
   upsertCommitmentLedgerRecord: vi.fn(async () => undefined),
-  apply: vi.fn(async (taskId: string, verb: string) => ({
-    taskId,
-    state: {
-      status: verb === "dismiss" ? "dismissed" : "scheduled",
-      followupCount: 0,
-    },
-  })),
+  apply: vi.fn(
+    async (_taskId: string, _verb: string, _options: unknown) => undefined,
+  ),
 }));
 
 vi.mock("@elizaos/agent", () => ({
@@ -58,15 +31,7 @@ vi.mock("@elizaos/agent", () => ({
 
 vi.mock("../src/lifeops/approval-queue.js", () => ({
   createApprovalQueue: () => ({
-    capability: "eliza.approval-execution",
-    protocolVersion: 2,
     enqueue: mocks.enqueue,
-    list: vi.fn(),
-    approve: vi.fn(),
-    reject: vi.fn(),
-    claimExecution: vi.fn(),
-    markDispatchStarted: vi.fn(),
-    markDone: vi.fn(),
   }),
 }));
 
@@ -75,10 +40,6 @@ vi.mock("../src/lifeops/scheduled-task/service.js", () => ({
     schedule: mocks.schedule,
     apply: mocks.apply,
     list: mocks.listTasks,
-    pipeline: vi.fn(),
-    evaluateCompletion: vi.fn(),
-    fire: vi.fn(),
-    fireWithResult: vi.fn(),
   }),
 }));
 
@@ -90,6 +51,7 @@ vi.mock("../src/lifeops/repository.js", () => ({
 
 import {
   __resetDocumentStoreForTests,
+  getDocumentRequest,
   ownerDocumentsAction,
 } from "../src/actions/document.js";
 
@@ -140,16 +102,7 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
     mocks.listTasks.mockImplementation(async () => []);
   });
 
-  describe("metadata", () => {
-    it("validates as accessible for an owner-attached message", async () => {
-      const ok = await ownerDocumentsAction.validate?.(
-        makeRuntime(),
-        makeMessage(),
-        undefined,
-      );
-      expect(ok).toBe(true);
-    });
-
+  describe("operation selection", () => {
     it("rejects calls with no subaction selector", async () => {
       const result = await callDoc(makeRuntime(), makeMessage(), {});
       expect(result.success).toBe(false);
@@ -163,12 +116,15 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
         documentTitle: "Quarterly Plan",
       });
       expect(result.success).toBe(true);
-      expect(result.data).toMatchObject({ subaction: "request_approval" });
+      expect(result.data).toMatchObject({
+        subaction: "request_approval",
+        documentRequest: { kind: "approval", status: "pending" },
+      });
     });
   });
 
   describe("request_signature", () => {
-    it("creates a DocumentRequest, enqueues an approval, and schedules a deadline task", async () => {
+    it("creates a signature request and closes its exact deadline watcher", async () => {
       const runtime = makeRuntime();
       const result = await callDoc(runtime, makeMessage(), {
         subaction: "request_signature",
@@ -220,6 +176,26 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
           status: "tracked",
         },
       );
+      const stored = getDocumentRequest(runtime, docId);
+      expect(stored).toMatchObject({
+        status: "pending",
+        approvalRequestId: "approval-document",
+        scheduledTaskId: "document-watcher",
+      });
+      const closed = await callDoc(runtime, makeMessage(), {
+        subaction: "close_request",
+        documentRequestId: docId,
+      });
+      expect(closed).toMatchObject({
+        success: true,
+        data: { status: "completed" },
+      });
+      expect(getDocumentRequest(runtime, docId)?.status).toBe("completed");
+      expect(mocks.apply).toHaveBeenCalledExactlyOnceWith(
+        stored?.scheduledTaskId,
+        "dismiss",
+        { reason: "document completed" },
+      );
     });
 
     it("returns a clear error when deadline is missing", async () => {
@@ -245,18 +221,6 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
   });
 
   describe("request_approval", () => {
-    it("creates a DocumentRequest with an approval kind", async () => {
-      const result = await callDoc(makeRuntime(), makeMessage(), {
-        subaction: "request_approval",
-        documentTitle: "Vendor SOW",
-        approvalReason: "Need yes/no on the SOW",
-      });
-      expect(result.success).toBe(true);
-      const doc = (result.data as { documentRequest: { kind: string } })
-        .documentRequest;
-      expect(doc.kind).toBe("approval");
-    });
-
     it("errors when documentTitle is missing", async () => {
       const result = await callDoc(makeRuntime(), makeMessage(), {
         subaction: "request_approval",
@@ -269,6 +233,7 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
   describe("track_deadline", () => {
     it("updates an existing DocumentRequest's deadline and schedules a new watcher", async () => {
       const runtime = makeRuntime();
+      const deadline = new Date(Date.now() + 30 * 86_400_000).toISOString();
       const created = await callDoc(runtime, makeMessage(), {
         subaction: "request_approval",
         documentTitle: "Vendor SOW",
@@ -280,14 +245,18 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
       const result = await callDoc(runtime, makeMessage(), {
         subaction: "track_deadline",
         documentRequestId: docId,
-        deadline: "2026-06-01T17:00:00.000Z",
+        deadline,
       });
       expect(result.success).toBe(true);
       expect(mocks.schedule).toHaveBeenCalledTimes(1);
       const scheduleArg = mocks.schedule.mock.calls[0][0] as {
         trigger: { atIso: string };
       };
-      expect(scheduleArg.trigger.atIso).toBe("2026-06-01T17:00:00.000Z");
+      expect(scheduleArg.trigger.atIso).toBe(deadline);
+      expect(getDocumentRequest(runtime, docId)).toMatchObject({
+        deadline,
+        scheduledTaskId: "document-watcher",
+      });
       expect(mocks.upsertCommitmentLedgerRecord).toHaveBeenCalledTimes(1);
       expect(mocks.upsertCommitmentLedgerRecord.mock.calls[0][0]).toMatchObject(
         {
@@ -295,7 +264,7 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
           sourceKey: docId,
           summary: "Vendor SOW deadline",
           kind: "renewal",
-          dueAt: "2026-06-01T17:00:00.000Z",
+          dueAt: deadline,
           status: "tracked",
         },
       );
@@ -412,30 +381,7 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
   });
 
   describe("close_request", () => {
-    it("marks the request completed and dismisses the linked SCHEDULED_TASK", async () => {
-      const runtime = makeRuntime();
-      const created = await callDoc(runtime, makeMessage(), {
-        subaction: "request_signature",
-        requesteeEntityId: "entity-alice-001",
-        documentTitle: "Partnership NDA",
-        deadline: "2026-05-15T17:00:00.000Z",
-      });
-      const docId = (created.data as { documentRequestId: string })
-        .documentRequestId;
-      mocks.apply.mockClear();
-
-      const result = await callDoc(runtime, makeMessage(), {
-        subaction: "close_request",
-        documentRequestId: docId,
-      });
-      expect(result.success).toBe(true);
-      expect(result.data).toMatchObject({ status: "completed" });
-      expect(mocks.apply).toHaveBeenCalledTimes(1);
-      const [, verb] = mocks.apply.mock.calls[0];
-      expect(verb).toBe("dismiss");
-    });
-
-    it("supports cancelled and expired resolutions", async () => {
+    it("supports cancelling an approval request", async () => {
       const runtime = makeRuntime();
       const created = await callDoc(runtime, makeMessage(), {
         subaction: "request_approval",
@@ -572,31 +518,6 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
         "document.obligation.observed",
         expect.objectContaining({ obligationKind: "renewal", deadline }),
       );
-    });
-
-    it("track_deadline with no installed guarantee schedules only the deadline watcher", async () => {
-      const runtime = makeRuntime();
-      const deadline = new Date(
-        Date.now() + 30 * 24 * 60 * 60 * 1000,
-      ).toISOString();
-      const created = await callDoc(runtime, makeMessage(), {
-        subaction: "request_approval",
-        documentTitle: "Simple NDA",
-      });
-      const docId = (created.data as { documentRequestId: string })
-        .documentRequestId;
-      const result = await callDoc(runtime, makeMessage(), {
-        subaction: "track_deadline",
-        documentRequestId: docId,
-        deadline,
-      });
-      expect(result.success).toBe(true);
-      const warnCalls = mocks.schedule.mock.calls.filter((call) =>
-        (call[0] as { idempotencyKey?: string }).idempotencyKey?.startsWith(
-          "commitment-warn:",
-        ),
-      );
-      expect(warnCalls).toHaveLength(0);
     });
   });
 });

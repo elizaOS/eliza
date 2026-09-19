@@ -1,11 +1,7 @@
 /**
- * Proves updateDocument publishes document revisions atomically (#16021): the
- * replacement fragment generation is staged reader-invisible before the parent
- * compare-and-swap commits, every failure (embed outage, Nth insert, CAS
- * conflict, discard outage) preserves the complete prior committed revision,
- * and readers never observe zero, partial, or mixed fragment generations.
- * Integration-backed: a real AgentRuntime over a real PGLite SQL adapter
- * (plugin-sql); only the embedding model handler is injected.
+ * Exercises document revision publication, failed replacement recovery and
+ * reader isolation with a real runtime and PGlite adapter. Embedding gates and
+ * injected adapter failures control failure timing; durable rows are read back.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AgentRuntime } from "../../runtime.ts";
@@ -180,36 +176,6 @@ describe("updateDocument atomic revision publication (#16021)", () => {
 		).toHaveLength(0);
 	}, 120_000);
 
-	it("preserves the old revision when atomic replacement fails", async () => {
-		const documentId = await seedDocument();
-		// Long enough to prove the complete replacement set reaches the one atomic
-		// adapter boundary; no fragment is inserted individually beforehand.
-		const longV2 = Array.from(
-			{ length: 200 },
-			(_, i) => `Version two long paragraph ${i}: ${V2_TEXT}`,
-		).join("\n\n");
-		const adapter = runtime.adapter;
-		const realReplace = adapter.replaceDocumentRevision.bind(adapter);
-		let replacementFragmentCount = 0;
-		adapter.replaceDocumentRevision = async (params) => {
-			replacementFragmentCount = params.fragments.length;
-			throw new Error("injected atomic replacement outage");
-		};
-		try {
-			await expect(
-				service.updateDocument({ documentId, content: longV2 }),
-			).rejects.toThrow(/atomically replace document revision/);
-		} finally {
-			adapter.replaceDocumentRevision = realReplace;
-		}
-		expect(replacementFragmentCount).toBeGreaterThan(2);
-		await expectCommittedV1(documentId);
-		const raw = await rawFragmentsFor(documentId);
-		expect(
-			raw.filter((memory) => memory.content.text?.includes("Version two")),
-		).toHaveLength(0);
-	}, 120_000);
-
 	it("keeps the old revision committed when a concurrent writer wins the CAS", async () => {
 		const documentId = await seedDocument();
 		const adapter = runtime.adapter;
@@ -264,21 +230,28 @@ describe("updateDocument atomic revision publication (#16021)", () => {
 		expect(after.join(" ")).not.toContain("Version one");
 	}, 120_000);
 
-	it("leaves no replacement rows when the atomic adapter throws", async () => {
+	it("preserves the old revision on a failed multi-fragment replacement and recovers", async () => {
 		const documentId = await seedDocument();
+		const longV2 = Array.from(
+			{ length: 200 },
+			(_, i) => `Version two long paragraph ${i}: ${V2_TEXT}`,
+		).join("\n\n");
+		let replacementFragmentCount = 0;
 		const realReplace = runtime.adapter.replaceDocumentRevision.bind(
 			runtime.adapter,
 		);
-		runtime.adapter.replaceDocumentRevision = async () => {
+		runtime.adapter.replaceDocumentRevision = async (params) => {
+			replacementFragmentCount = params.fragments.length;
 			throw new Error("injected transaction outage");
 		};
 		try {
 			await expect(
-				service.updateDocument({ documentId, content: V2_TEXT }),
+				service.updateDocument({ documentId, content: longV2 }),
 			).rejects.toThrow(/atomically replace document revision/);
 		} finally {
 			runtime.adapter.replaceDocumentRevision = realReplace;
 		}
+		expect(replacementFragmentCount).toBeGreaterThan(2);
 		// The adapter transaction never committed, so neither replacement source
 		// nor embedding fragments can be visible.
 		const raw = await rawFragmentsFor(documentId);

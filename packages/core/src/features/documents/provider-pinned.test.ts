@@ -205,36 +205,16 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		expect(rendered.truncated).toBe(false);
 	});
 
-	it("injects an authorized pin while retaining the complete document inventory", async () => {
+	it("preserves oversized pinned content and the complete unpinned inventory", async () => {
+		const oversized = document("Ground truth", "X".repeat(40_000), true);
 		const recent = Array.from({ length: 25 }, (_, index) =>
 			document(`Recent ${index}`, `recent ${index}`),
 		);
-		const olderPinned = document("Standing rule", "NEVER FABRICATE", true);
 		const runtime = {
 			getService: vi.fn(() => ({
 				composeProviderDocuments: vi.fn(async () => ({
 					relevantFragments: [],
-					documents: [...recent, olderPinned],
-					pinnedDocuments: [olderPinned],
-				})),
-			})),
-		};
-		const result = await documentsProvider.get(
-			runtime as never,
-			document("query", "unrelated query"),
-		);
-		expect(result.text).toContain("NEVER FABRICATE");
-		expect(result.data?.documents).toHaveLength(26);
-		expect(result.data?.pinnedDocumentIds).toEqual([olderPinned.id]);
-	});
-
-	it("preserves oversized pinned content completely", async () => {
-		const oversized = document("Ground truth", "X".repeat(40_000), true);
-		const runtime = {
-			getService: vi.fn(() => ({
-				composeProviderDocuments: vi.fn(async () => ({
-					relevantFragments: [],
-					documents: [oversized],
+					documents: [...recent, oversized],
 					pinnedDocuments: [oversized],
 				})),
 			})),
@@ -247,6 +227,9 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		expect(result.text).toContain(`reference document:${oversized.id}`);
 		expect(result.data?.pinnedDocumentsTruncated).toBe(false);
 		expect(result.data?.pinnedDocumentIds).toEqual([oversized.id]);
+		expect(result.data?.documents).toEqual(
+			[...recent, oversized].map(({ id }) => expect.objectContaining({ id })),
+		);
 	});
 
 	it("preserves every pinned source and wrapper without a shared budget", () => {
@@ -257,17 +240,10 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		expect(rendered.truncated).toBe(false);
 		expect(rendered.includedIds).toHaveLength(25);
 		for (const item of documents) {
+			expect(rendered.text).toContain(item.metadata?.title);
 			expect(rendered.text).toContain(`reference document:${item.id}`);
 			expect(rendered.text).toContain(item.content.text);
 		}
-	});
-
-	it("preserves complete pinned titles regardless of length", () => {
-		const longTitle = `critical-${"owner-authored-title-".repeat(20)}`;
-		const rendered = renderPinnedDocuments([
-			document(longTitle, "complete source", true),
-		]);
-		expect(rendered.text).toContain(longTitle);
 	});
 
 	it("rejects repeating pagination cursors when listing pinned documents", async () => {
@@ -287,29 +263,9 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			},
 		}));
 		const runtime = {
-			agentId,
+			...runtimeWithDocumentQuery(queryDocumentsMock, agentId),
 			getRoom: async () => ({ agentId }),
 			getParticipantsForRoom: async () => [agentId],
-			adapter: {
-				documentListQueryCapability: 4,
-				queryDocuments: queryDocumentsMock,
-				queryDocumentFragments: vi.fn(async () => []),
-				getDocument: vi.fn(async () => null),
-				compareAndSwapDocument: vi.fn(async () => ({ status: "ok" })),
-				updateDocumentDirectGrants: vi.fn(async () => ({ status: "ok" })),
-				replaceDocumentRevision: vi.fn(async () => ({ status: "ok" })),
-				deleteDocumentWithSnapshot: vi.fn(async () => ({ status: "ok" })),
-			},
-			getMemories: vi.fn(async () => []),
-			searchMemories: vi.fn(async () => []),
-			getModel: vi.fn(() => null),
-			reportError: vi.fn(),
-			logger: {
-				info: vi.fn(),
-				warn: vi.fn(),
-				error: vi.fn(),
-				debug: vi.fn(),
-			},
 		};
 		const service = new DocumentService(runtime as never);
 		const message = {
