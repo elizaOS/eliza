@@ -1,8 +1,9 @@
 /**
- * Exercises the catalog coverage reporter against the real MVP scenario ledgers.
+ * Exercises the real catalog CLI with controlled ledgers, including filtered
+ * summaries, incomplete verification, receipt rejection and capability order.
  */
-import { describe, expect, setDefaultTimeout, test } from "bun:test";
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { afterEach, expect, setDefaultTimeout, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "../lib/spawn-sync-captured.mjs";
@@ -11,185 +12,129 @@ const scriptPath = join(
   import.meta.dirname,
   "../check-lifeops-persona-catalog-coverage.mjs",
 );
-
+const catalogDir = join(
+  import.meta.dirname,
+  "../../../plugins/plugin-personal-assistant/test/scenarios/_catalogs",
+);
+const temporaryDirs: string[] = [];
 setDefaultTimeout(15_000);
 
-function runCoverage(...args: string[]) {
-  const result = spawnSync(process.execPath, [scriptPath, ...args], {
-    encoding: "utf8",
-  });
-  expect(result.stderr).toBe("");
-  expect(result.status).toBe(0);
-  return result.stdout;
+afterEach(() => {
+  for (const directory of temporaryDirs.splice(0))
+    rmSync(directory, { recursive: true, force: true });
+});
+
+function fixture(file: string, pack: string) {
+  const directory = mkdtempSync(join(tmpdir(), "lifeops-catalogs-"));
+  temporaryDirs.push(directory);
+  const catalog = JSON.parse(readFileSync(join(catalogDir, file), "utf8"));
+  return {
+    catalog,
+    run(...args: string[]) {
+      writeFileSync(join(directory, file), JSON.stringify(catalog));
+      return spawnSync(
+        process.execPath,
+        [scriptPath, "--pack", pack, ...args],
+        {
+          encoding: "utf8",
+          env: { ...process.env, LIFEOPS_CATALOG_DIR: directory },
+        },
+      );
+    },
+  };
 }
 
-function runCoverageResult(...args: string[]) {
-  return spawnSync(process.execPath, [scriptPath, ...args], {
-    encoding: "utf8",
-  });
-}
-
-describe("LifeOps persona catalog coverage", () => {
-  test("JSON output includes unverified rows grouped by surface", () => {
-    const report = JSON.parse(runCoverage("--json"));
-    expect(report.errors).toEqual([]);
-
-    const g1 = report.packs.find(
-      (pack: { pack: string }) => pack.pack === "G1",
-    );
-    expect(g1).toMatchObject({
-      authored: 15,
+test("filtered reports distinguish authored, planned and verified rows across surfaces", () => {
+  const { catalog, run } = fixture("first-run-onboarding.catalog.json", "FR1");
+  const [verified, authored, planned] = catalog.scenarios;
+  catalog.scenarios = [
+    { ...verified, status: "verified" },
+    { ...authored, status: "authored" },
+    { ...planned, status: "planned" },
+    {
+      ...verified,
+      id: "bench-authored",
+      surface: "lifeops-bench",
+      status: "authored",
+    },
+    {
+      ...verified,
+      id: "bench-planned",
+      surface: "lifeops-bench",
+      status: "planned",
+    },
+  ];
+  const json = run("--json");
+  expect(json.status).toBe(0);
+  expect(json.stderr).toBe("");
+  const report = JSON.parse(json.stdout);
+  expect(report).toMatchObject({ authored: 3, verified: 1, errors: [] });
+  expect(report.packs).toEqual([
+    expect.objectContaining({
+      pack: "FR1",
+      authored: 3,
       verified: 1,
-      unverified: 14,
-      unverifiedBySurface: {
-        "lifeops-bench": 6,
-        "scenario-runner": 8,
-      },
-    });
-    expect(g1.unverifiedRows).toContainEqual(
-      expect.objectContaining({
-        id: "g1-apology-draft-requires-approval",
-        surface: "scenario-runner",
-      }),
-    );
+      unverified: 2,
+      unverifiedBySurface: { "scenario-runner": 1, "lifeops-bench": 1 },
+      unverifiedRows: [
+        expect.objectContaining({ id: authored.id }),
+        expect.objectContaining({ id: "bench-authored" }),
+      ],
+    }),
+  ]);
+  const triage = run("--unverified");
+  expect(triage.status).toBe(0);
+  expect(triage.stdout).toContain("lifeops-bench:1, scenario-runner:1");
+  expect(triage.stdout).toContain(authored.id);
+  expect(triage.stdout).toContain("bench-authored");
+  expect(triage.stdout).not.toContain("bench-planned");
 
-    const e1 = report.packs.find(
-      (pack: { pack: string }) => pack.pack === "E1",
-    );
-    expect(e1).toMatchObject({
-      target: 28,
-      authored: 34,
-      overTarget: 6,
-    });
-  });
+  for (const row of catalog.scenarios)
+    if (row.status === "planned") row.status = "authored";
+  const incomplete = run("--require-verified");
+  expect(incomplete.status).toBe(1);
+  expect(incomplete.stdout).toContain(
+    "5 authored (target 4, +1), 1/5 verified",
+  );
+  expect(incomplete.stderr).toContain(
+    "requires every authored row to be verified",
+  );
+  for (const row of catalog.scenarios) {
+    row.status = "verified";
+    row.evidence = verified.evidence;
+  }
+  const complete = run("--require-verified");
+  expect(complete.status).toBe(0);
+  expect(complete.stderr).toBe("");
+});
 
-  test("default summary separates planning targets from authored-row counts", () => {
-    const output = runCoverage();
-    expect(output).toContain("E1 34 authored (target 28, +6)");
-    expect(output).toContain("F1 35 authored (target 32, +3)");
-    expect(output).toContain(
-      "Total: 414 authored (target 344), 163/414 verified, 251 unverified",
-    );
-    expect(output).not.toContain("414/344 authored");
-  });
+test("strict evidence rejects a missing receipt and accepts its restoration", () => {
+  const { catalog, run } = fixture("first-run-onboarding.catalog.json", "FR1");
+  const receipt = catalog.scenarios[0].evidence;
+  delete catalog.scenarios[0].evidence;
+  const rejected = run("--require-verified");
+  expect(rejected.status).toBe(1);
+  expect(rejected.stderr).toContain(
+    "verified rows in pack FR1 must carry an evidence object",
+  );
+  catalog.scenarios[0].evidence = receipt;
+  const restored = run("--require-verified");
+  expect(restored.status).toBe(0);
+  expect(restored.stderr).toBe("");
+});
 
-  test("--unverified prints a board-triage list without hiding surface blockers", () => {
-    const output = runCoverage("--unverified");
-    expect(output).toContain(
-      "G1 14/15 unverified (lifeops-bench:6, scenario-runner:8)",
-    );
-    expect(output).toContain(
-      "J1 21/21 unverified (lifeops-bench:8, scenario-runner:13)",
-    );
-    expect(output).toContain("M1 48/48 unverified (lifeops-bench:48)");
-    expect(output).toContain(
-      "Total: 251/414 authored rows still need verification",
-    );
-  });
-
-  test("--pack narrows the report to a specific persona pack", () => {
-    const report = JSON.parse(runCoverage("--pack", "B2", "--json"));
-
-    expect(report.packs).toHaveLength(1);
-    expect(report).toMatchObject({
-      target: 22,
-      authored: 27,
-      verified: 6,
-      errors: [],
-    });
-    expect(report.packs[0]).toMatchObject({
-      pack: "B2",
-      file: "shift-rotation.catalog.json",
-      unverified: 21,
-      unverifiedBySurface: {
-        "lifeops-bench": 16,
-        "scenario-runner": 5,
-      },
-    });
-  });
-
-  test("--require-verified fails a selected pack until every authored row is verified", () => {
-    const result = runCoverageResult("--pack", "B2", "--require-verified");
-
-    expect(result.status).toBe(1);
-    expect(result.stdout).toContain(
-      "B2 27 authored (target 22, +5), 6/27 verified",
-    );
-    expect(result.stderr).toContain(
-      "B2: 6/27 verified; --require-verified requires every authored row to be verified",
-    );
-  });
-
-  test("L1 and FR1 pass --require-verified with structured row evidence", () => {
-    for (const pack of ["L1", "FR1"]) {
-      const result = runCoverageResult("--pack", pack, "--require-verified");
-      expect(result.stderr).toBe("");
-      expect(result.status).toBe(0);
-    }
-  });
-
-  test("M1 resolves exactly one executable scenario for every G1-G48 capability", () => {
-    const report = JSON.parse(runCoverage("--pack", "M1", "--json"));
-
-    expect(report).toMatchObject({
-      target: 48,
-      authored: 48,
-      verified: 0,
-      errors: [],
-    });
-    expect(report.packs[0]).toMatchObject({
-      pack: "M1",
-      file: "world-traveling-coparent.catalog.json",
-      unverified: 48,
-      unverifiedBySurface: {
-        "lifeops-bench": 48,
-      },
-    });
-  });
-
-  test("M1 rejects a missing or out-of-order capability id", () => {
-    const catalogDir = join(
-      import.meta.dirname,
-      "../../../plugins/plugin-personal-assistant/test/scenarios/_catalogs",
-    );
-    const tampered = mkdtempSync(join(tmpdir(), "lifeops-catalogs-"));
-    cpSync(catalogDir, tampered, { recursive: true });
-    const m1File = join(tampered, "world-traveling-coparent.catalog.json");
-    const m1 = JSON.parse(readFileSync(m1File, "utf8"));
-    m1.scenarios[0].capabilityId = "G2";
-    writeFileSync(m1File, JSON.stringify(m1));
-
-    const result = spawnSync(process.execPath, [scriptPath, "--pack", "M1"], {
-      encoding: "utf8",
-      env: { ...process.env, LIFEOPS_CATALOG_DIR: tampered },
-    });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("scenarios[0].capabilityId=G2 expected G1");
-  });
-
-  test("strict-evidence packs reject a verified row whose evidence receipt is missing", () => {
-    const catalogDir = join(
-      import.meta.dirname,
-      "../../../plugins/plugin-personal-assistant/test/scenarios/_catalogs",
-    );
-    const tampered = mkdtempSync(join(tmpdir(), "lifeops-catalogs-"));
-    cpSync(catalogDir, tampered, { recursive: true });
-    const fr1File = join(tampered, "first-run-onboarding.catalog.json");
-    const fr1 = JSON.parse(readFileSync(fr1File, "utf8"));
-    delete fr1.scenarios[0].evidence;
-    writeFileSync(fr1File, JSON.stringify(fr1));
-
-    const result = spawnSync(
-      process.execPath,
-      [scriptPath, "--pack", "FR1", "--require-verified"],
-      {
-        encoding: "utf8",
-        env: { ...process.env, LIFEOPS_CATALOG_DIR: tampered },
-      },
-    );
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain(
-      "verified rows in pack FR1 must carry an evidence object",
-    );
-  });
+test("M1 rejects an out-of-order capability and accepts the original mapping", () => {
+  const { catalog, run } = fixture(
+    "world-traveling-coparent.catalog.json",
+    "M1",
+  );
+  const original = catalog.scenarios[0].capabilityId;
+  catalog.scenarios[0].capabilityId = "G2";
+  const rejected = run();
+  expect(rejected.status).toBe(1);
+  expect(rejected.stderr).toContain("scenarios[0].capabilityId=G2 expected G1");
+  catalog.scenarios[0].capabilityId = original;
+  const restored = run();
+  expect(restored.status).toBe(0);
+  expect(restored.stderr).toBe("");
 });

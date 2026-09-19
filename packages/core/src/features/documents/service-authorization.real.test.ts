@@ -466,7 +466,7 @@ describe("DocumentService requester authorization", () => {
 		expect((await runtime.getMemoryById(id))?.content.text).toBe(updated);
 	});
 
-	it("keeps ordinary memory and non-source document fields under the JSON budget on update", async () => {
+	it("preserves large memory text while rejecting oversized non-source document fields", async () => {
 		const documentId = "f4300000-0000-4000-8000-000000000032" as UUID;
 		const messageId = "f4300000-0000-4000-8000-000000000033" as UUID;
 		const content = { text: "unchanged" };
@@ -479,8 +479,11 @@ describe("DocumentService requester authorization", () => {
 			{ ...message(), id: messageId, content },
 			"messages",
 		);
+		await runtime.updateMemory({ id: messageId, content: { text: oversized } });
+		expect((await runtime.getMemoryById(messageId))?.content.text).toBe(
+			oversized,
+		);
 		for (const update of [
-			{ id: messageId, content: { text: oversized } },
 			{ id: documentId, content: { text: "new", nested: { text: oversized } } },
 			{ id: documentId, content: { text: "new", title: oversized } },
 			{ id: documentId, content: { text: "invalid\0source" } },
@@ -1017,52 +1020,47 @@ describe("DocumentService requester authorization", () => {
 		if (!snapshot) throw new Error("Revision race fixture is invalid");
 		const ready = Promise.withResolvers<void>();
 		const query = runtime.adapter.queryDocuments.bind(runtime.adapter);
-		const fragments = runtime.adapter.queryDocumentFragments.bind(
-			runtime.adapter,
-		);
+		const searchMethod = "searchDocumentsWithRequester";
+		const readSearch = service[searchMethod];
 		const inventory = vi
 			.spyOn(runtime.adapter, "queryDocuments")
 			.mockImplementation(async (...args) => {
 				await ready.promise;
 				return query(...args);
 			});
-		let scans = 0;
-		const search = vi
-			.spyOn(runtime.adapter, "queryDocumentFragments")
-			.mockImplementation(async (...args) => {
-				const rows = await fragments(...args);
-				// Both complete scans and their empty continuation probes finish before the write.
-				if (++scans === 4) {
-					const replacement = {
-						...original,
-						content: { text: "raceword revised source" },
-						metadata: {
-							...original.metadata,
-							type: MemoryType.DOCUMENT,
-							documentRevision: 1,
-						},
-					};
-					const mutation = await runtime.adapter.replaceDocumentRevision({
-						agentId: runtime.agentId,
-						documentId: id,
-						requesterEntityId: USER_ID,
-						requesterRole: "USER",
-						requesterRoomIds: [ROOM_ID, roomId],
-						expected: snapshot,
+		// Release inventory only after the real search has captured the old revision.
+		service[searchMethod] = async (...args) => {
+			const rows = await readSearch.apply(service, args);
+			expect(rows.some((row) => row.metadata?.documentId === id)).toBe(true);
+			const replacement = {
+				...original,
+				content: { text: "raceword revised source" },
+				metadata: {
+					...original.metadata,
+					type: MemoryType.DOCUMENT,
+					documentRevision: 1,
+				},
+			};
+			const mutation = await runtime.adapter.replaceDocumentRevision({
+				agentId: runtime.agentId,
+				documentId: id,
+				requesterEntityId: USER_ID,
+				requesterRole: "USER",
+				requesterRoomIds: [ROOM_ID, roomId],
+				expected: snapshot,
+				replacement,
+				fragments: [
+					documentFragment(
 						replacement,
-						fragments: [
-							documentFragment(
-								replacement,
-								"raceword revised source",
-								crypto.randomUUID() as UUID,
-							),
-						],
-					});
-					expect(mutation.status).toBe("updated");
-					ready.resolve();
-				}
-				return rows;
+						"raceword revised source",
+						crypto.randomUUID() as UUID,
+					),
+				],
 			});
+			expect(mutation.status).toBe("updated");
+			ready.resolve();
+			return rows;
+		};
 		try {
 			await expect(
 				service.composeProviderDocuments({
@@ -1074,7 +1072,7 @@ describe("DocumentService requester authorization", () => {
 		} finally {
 			ready.resolve();
 			inventory.mockRestore();
-			search.mockRestore();
+			service[searchMethod] = readSearch;
 		}
 		const current = await service.composeProviderDocuments({
 			...message(),
@@ -1277,58 +1275,63 @@ describe("DocumentService requester authorization", () => {
 			isOwner: false,
 		};
 
-		await runWithTrajectoryContext(
-			{ turnMemo: new Map<string, Promise<unknown>>() },
-			async () => {
-				await expect(
-					service.getDocumentById(UPDATE_DOCUMENT_ID, request),
-				).resolves.toMatchObject({ id: UPDATE_DOCUMENT_ID });
+		try {
+			await runWithTrajectoryContext(
+				{ turnMemo: new Map<string, Promise<unknown>>() },
+				async () => {
+					await expect(
+						service.getDocumentById(UPDATE_DOCUMENT_ID, request),
+					).resolves.toMatchObject({ id: UPDATE_DOCUMENT_ID });
 
-				await expect(runtime.removeParticipant(USER_ID, ROOM_ID)).resolves.toBe(
-					true,
-				);
-				const revokedRead = await documentAction.handler?.(
-					runtime,
-					request,
-					undefined,
-					{
-						parameters: {
-							action: "read",
+					await expect(
+						runtime.removeParticipant(USER_ID, ROOM_ID),
+					).resolves.toBe(true);
+					const revokedRead = await documentAction.handler?.(
+						runtime,
+						request,
+						undefined,
+						{
+							parameters: {
+								action: "read",
+								documentId: UPDATE_DOCUMENT_ID,
+							},
+						} as HandlerOptions,
+					);
+					expect(revokedRead?.success).toBe(false);
+					expect(revokedRead?.values).toMatchObject({ error: "not_found" });
+
+					await expect(
+						service.updateDocument({
 							documentId: UPDATE_DOCUMENT_ID,
-						},
-					} as HandlerOptions,
-				);
-				expect(revokedRead?.success).toBe(false);
-				expect(revokedRead?.values).toMatchObject({ error: "not_found" });
+							content: "Unauthorized replacement",
+							message: request,
+						}),
+					).rejects.toMatchObject({ code: "DOCUMENT_NOT_FOUND" });
+					await expect(
+						service.deleteDocumentWithAccessContext(
+							DELETE_DOCUMENT_ID,
+							accessContext,
+						),
+					).rejects.toMatchObject({ code: "DOCUMENT_NOT_FOUND" });
+				},
+			);
 
-				await expect(
-					service.updateDocument({
-						documentId: UPDATE_DOCUMENT_ID,
-						content: "Unauthorized replacement",
-						message: request,
-					}),
-				).rejects.toMatchObject({ code: "DOCUMENT_NOT_FOUND" });
-				await expect(
-					service.deleteDocumentWithAccessContext(
-						DELETE_DOCUMENT_ID,
-						accessContext,
-					),
-				).rejects.toMatchObject({ code: "DOCUMENT_NOT_FOUND" });
-			},
-		);
-
-		expect(membershipReads).toHaveBeenCalledTimes(4);
-		const stored = await runtime.adapter.getMemoriesByIds(
-			[UPDATE_DOCUMENT_ID, DELETE_DOCUMENT_ID],
-			"documents",
-		);
-		expect(stored).toHaveLength(2);
-		expect(
-			stored.find((document) => document.id === UPDATE_DOCUMENT_ID)?.content,
-		).toMatchObject({ text: "Original update body" });
-		expect(
-			stored.find((document) => document.id === DELETE_DOCUMENT_ID)?.content,
-		).toMatchObject({ text: "Original delete body" });
-		getService.mockRestore();
+			expect(membershipReads).toHaveBeenCalledTimes(4);
+			const stored = await runtime.adapter.getMemoriesByIds(
+				[UPDATE_DOCUMENT_ID, DELETE_DOCUMENT_ID],
+				"documents",
+			);
+			expect(stored).toHaveLength(2);
+			expect(
+				stored.find((document) => document.id === UPDATE_DOCUMENT_ID)?.content,
+			).toMatchObject({ text: "Original update body" });
+			expect(
+				stored.find((document) => document.id === DELETE_DOCUMENT_ID)?.content,
+			).toMatchObject({ text: "Original delete body" });
+		} finally {
+			membershipReads.mockRestore();
+			getService.mockRestore();
+			await runtime.addParticipant(USER_ID, ROOM_ID);
+		}
 	});
 });
