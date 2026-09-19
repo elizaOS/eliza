@@ -2605,6 +2605,8 @@
       "name": "@elizaos/capacitor-llama",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "llama-cpp-capacitor": "^0.1.5",
       },
       "devDependencies": {
