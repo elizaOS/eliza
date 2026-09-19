@@ -43,6 +43,11 @@ rejected before a read. For partial-day or multi-day queries, use
 `details.timeMin` and `details.timeMax` instead. Results and reply context retain
 the actual queried window; an empty result only describes that window.
 
+The host's promoted `CALENDAR_SEARCH_EVENTS` tool requires nonempty `query`
+text. `queries` may add more content filters; dates remain read bounds, not
+search terms. The legacy umbrella handler still accepts its existing filter
+aliases. An unfiltered agenda belongs to `CALENDAR_FEED`.
+
 ## Microsoft account contract
 
 The host acquires delegated OAuth consent and registers a connected

@@ -2204,22 +2204,31 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
           ...(name === "search_events"
             ? {
                 description:
-                  "Find existing events matching a required content filter in query/queries or details.query/details.queries, within their CURRENT time window. A date alone is not a content filter; use CALENDAR_FEED for an unfiltered agenda. Filtered results cannot establish free time: use CALENDAR_CHECK_AVAILABILITY or CALENDAR_PROPOSE_TIMES. For rescheduling, use CALENDAR_UPDATE_EVENT with the existing title or ID, not a search of the destination window. Empty results never authorize a replacement event.",
+                  "Find existing events matching required query text within their CURRENT time window. Additional queries can broaden the content filter. A date alone is not a content filter; use CALENDAR_FEED for an unfiltered agenda. Filtered results cannot establish free time: use CALENDAR_CHECK_AVAILABILITY or CALENDAR_PROPOSE_TIMES. For rescheduling, use CALENDAR_UPDATE_EVENT with the existing title or ID, not a search of the destination window. Empty results never authorize a replacement event.",
               }
             : {
                 description:
                   "Read the complete agenda for a day or range. For one day supply details.date as YYYY-MM-DD plus details.timeZone; code calculates the local day boundaries. For a multi-day or partial-day range supply details.timeMin/timeMax instead. Report only the actual returned window; empty results do not establish that a different day is free.",
               }),
-          parameters: calendarAction.parameters?.map((parameter) =>
-            parameter.name === "details"
+          parameters: calendarAction.parameters?.map((parameter) => {
+            if (name === "search_events" && parameter.name === "query") {
+              return {
+                ...parameter,
+                required: true,
+                description:
+                  "Required event-content search text, such as a title, attendee, location or topic. Put date bounds in details; use CALENDAR_FEED for an unfiltered agenda.",
+                schema: { type: "string", minLength: 1 },
+              };
+            }
+            return parameter.name === "details"
               ? {
                   ...parameter,
                   description:
                     "Optional calendar read bounds, IANA timezone, exact connector/calendar scope and refresh controls. Omit unknown values. Feed reads use selected calendars; searches include hidden calendars unless explicitly restricted.",
                   schema,
                 }
-              : parameter,
-          ),
+              : parameter;
+          }),
         },
       ]),
     ),

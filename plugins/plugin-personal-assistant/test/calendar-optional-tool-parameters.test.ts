@@ -177,6 +177,43 @@ it("retains every calendar and timezone spelling for next-event reads and the co
   expect(next.disclosureGate).toEqual(calendarAction.disclosureGate);
 });
 
+it("requires a search query on the native wire and rejects empty text locally", () => {
+  const family = promoteSubactionsToActions(
+    calendarAction,
+    calendarActionPromotionOptions,
+  );
+  const read = family.find(
+    (action) => action.name === "CALENDAR_SEARCH_EVENTS",
+  );
+  if (!read) throw new Error("Missing search action");
+  // Strict provider grammars omit minLength; the local validator retains it.
+  expect(validateToolArgs(read, { query: "" }).valid).toBe(false);
+  for (const cerebrasMode of [false, true]) {
+    const normalized = normalizeNativeToolsForCall(
+      buildPlannerToolsFromActions([read]),
+      { cerebrasMode },
+    ).tools;
+    if (!normalized) throw new Error("Missing normalized tools");
+    const schema = (
+      normalized[read.name] as {
+        inputSchema: { jsonSchema: ActionParameterSchema };
+      }
+    ).inputSchema.jsonSchema;
+    for (const args of [
+      {},
+      {
+        query: "Shaw",
+        details: { date: "2026-09-20", timeZone: "America/New_York" },
+      },
+    ]) {
+      const errors: string[] = [];
+      validateSchema(schema, args, "", errors);
+      expect(errors.length === 0).toBe(args.query === "Shaw");
+      expect(validateToolArgs(read, args).valid).toBe(args.query === "Shaw");
+    }
+  }
+});
+
 it.each(["feed", "search_events"])(
   "preserves %s read scope, range and aliases without mutation details",
   (operation) => {
@@ -188,6 +225,7 @@ it.each(["feed", "search_events"])(
       (action) => action.name === `CALENDAR_${operation.toUpperCase()}`,
     );
     if (!read) throw new Error("Missing read action");
+    const filter = operation === "search_events" ? { query: "Dentist" } : {};
     for (const suffix of [0, 1, 2]) {
       const details = {
         [["calendarId", "calendarid", "calendar_id"][suffix]]: "primary",
@@ -204,15 +242,17 @@ it.each(["feed", "search_events"])(
         includeHiddenCalendars: false,
         label: "requested day",
       };
-      expect(validateToolArgs(read, { details })).toMatchObject({
+      expect(validateToolArgs(read, { ...filter, details })).toMatchObject({
         valid: true,
-        args: { details },
+        args: { ...filter, details },
       });
     }
-    expect(validateToolArgs(read, {}).valid).toBe(true);
+    expect(validateToolArgs(read, {}).valid).toBe(operation === "feed");
     expect(
-      validateToolArgs(read, { details: { includeHiddenCalendars: "true" } })
-        .valid,
+      validateToolArgs(read, {
+        ...filter,
+        details: { includeHiddenCalendars: "true" },
+      }).valid,
     ).toBe(false);
     expect(read.roleGate).toEqual(calendarAction.roleGate);
     expect(read.disclosureGate).toEqual(calendarAction.disclosureGate);
@@ -236,7 +276,8 @@ it.each(["feed", "search_events"])(
     if (operation === "search_events") {
       for (const key of ["query", "oldTitle", "oldtitle", "old_title"]) {
         expect(
-          validateToolArgs(read, { details: { [key]: "Dentist" } }).valid,
+          validateToolArgs(read, { ...filter, details: { [key]: "Dentist" } })
+            .valid,
         ).toBe(true);
       }
       expect(
@@ -261,6 +302,7 @@ it.each(["feed", "search_events"])(
       (action) => action.name === `CALENDAR_${operation.toUpperCase()}`,
     );
     if (!read) throw new Error("Missing read action");
+    const filter = operation === "search_events" ? { query: "Dentist" } : {};
     const normalized = normalizeNativeToolsForCall(
       buildPlannerToolsFromActions([read]),
       { cerebrasMode: true },
@@ -278,7 +320,7 @@ it.each(["feed", "search_events"])(
     };
     for (const mode of ["local", "remote", "cloud_managed"]) {
       for (const side of ["owner", "agent"]) {
-        expect(errorsFor({ details: { mode, side } })).toEqual([]);
+        expect(errorsFor({ ...filter, details: { mode, side } })).toEqual([]);
       }
     }
     for (const details of [
@@ -286,9 +328,9 @@ it.each(["feed", "search_events"])(
       { mode: "read" },
       { side: "all" },
     ]) {
-      expect(errorsFor({ details }).length).toBeGreaterThan(0);
+      expect(errorsFor({ ...filter, details }).length).toBeGreaterThan(0);
     }
-    expect(errorsFor({})).toEqual([]);
+    expect(errorsFor(filter)).toEqual([]);
     // Parent compatibility remains separate from the promoted read grammar.
     expect(
       validateToolArgs(calendarAction, { details: { mode: "count" } }).valid,
