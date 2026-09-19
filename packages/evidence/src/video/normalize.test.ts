@@ -1,11 +1,6 @@
-// Video normalization against tiny videos generated in-test with ffmpeg. The
-// whole ffmpeg-backed suite is skipped with an explicit reason when ffmpeg is
-// absent (never a fabricated pass); when present it asserts probe correctness,
-// pass-through for an already-canonical mp4, remux for a non-faststart mp4, and
-// transcode for a webm. The skipped-missing-tool path is asserted separately by
-// overriding the binary names to a nonexistent command.
+/** Exercises real ffmpeg copy, remux, transcode and stream preservation, with explicit unavailable-tool outcomes. */
 import { execFile } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -118,38 +113,27 @@ async function countStreams(file: string): Promise<Record<string, number>> {
 }
 
 describe.skipIf(!tools.available)("normalizeVideo (ffmpeg present)", () => {
-  it("probes an mp4 as h264 with faststart", async () => {
-    const clip = join(dir, "probe.mp4");
-    await makeClip(clip);
-    const probe = await probeVideo(clip);
-    expect(probe.videoCodec).toBe("h264");
-    expect(probe.formatName).toMatch(/mp4/);
-    expect(probe.faststart).toBe(true);
-  });
-
-  it("detects a non-faststart mp4 (moov after mdat)", async () => {
-    const clip = join(dir, "nofast.mp4");
-    await makeClip(clip, { faststart: false });
-    const probe = await probeVideo(clip);
-    expect(probe.faststart).toBe(false);
-  });
-
   it("copies through an already-canonical h264+faststart mp4", async () => {
     const clip = join(dir, "canonical.mp4");
     await makeClip(clip);
+    const input = await probeVideo(clip);
+    expect(input.videoCodec).toBe("h264");
+    expect(input.formatName).toMatch(/mp4/);
+    expect(input.faststart).toBe(true);
     const out = join(dir, "canonical-out.mp4");
     const result = await normalizeVideo(clip, out);
     expect(result.status).toBe("copied");
     expect(existsSync(out)).toBe(true);
-    // Copy-through is byte-identical to the source.
-    const [a, b] = await Promise.all([probeVideo(clip), probeVideo(out)]);
-    expect(b.videoCodec).toBe(a.videoCodec);
-    expect(b.faststart).toBe(true);
+    expect(readFileSync(out)).toEqual(readFileSync(clip));
+    const output = await probeVideo(out);
+    expect(output.videoCodec).toBe("h264");
+    expect(output.faststart).toBe(true);
   });
 
   it("remuxes a non-faststart h264 mp4 to faststart without re-encoding", async () => {
     const clip = join(dir, "remux-in.mp4");
     await makeClip(clip, { faststart: false });
+    expect((await probeVideo(clip)).faststart).toBe(false);
     const out = join(dir, "remux-out.mp4");
     const result = await normalizeVideo(clip, out);
     expect(result.status).toBe("remuxed");
