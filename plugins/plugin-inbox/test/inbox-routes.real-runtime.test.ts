@@ -23,10 +23,7 @@ import type {
   RouteHandlerContext,
   RouteHandlerResult,
 } from "@elizaos/shared/api/http-plugin";
-import {
-  getHttpRuntime,
-  installHttpPluginLifecycle,
-} from "@elizaos/shared/api/http-plugin-runtime";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
@@ -148,7 +145,6 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
       plugins: [inboxPlugin],
     });
     runtime = testResult.runtime;
-    installHttpPluginLifecycle(runtime);
     runtime.registerModel(
       ModelType.TEXT_SMALL as ModelTypeName,
       async (_rt, params) =>
