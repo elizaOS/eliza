@@ -15,6 +15,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { MAX_PAYMENT_REQUEST_LEDGER_CENTS } from "@/db/schemas/payment-requests";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { storableJsonRecord, storableString } from "@/lib/api/storable-strings";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   moneyRateLimit,
@@ -49,7 +50,7 @@ const CreatePaymentRequestSchema = z.object({
     .transform(() => "USD")
     .optional(),
   paymentContext: PaymentContextSchema,
-  reason: z.string().max(500).optional(),
+  reason: storableString().max(500).optional(),
   expiresInMs: z
     .number()
     .int()
@@ -66,7 +67,7 @@ const CreatePaymentRequestSchema = z.object({
   cancelUrl: z.string().url().optional(),
   success_url: z.string().url().optional(),
   cancel_url: z.string().url().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  metadata: storableJsonRecord().optional(),
 });
 
 const ListQuerySchema = z.object({

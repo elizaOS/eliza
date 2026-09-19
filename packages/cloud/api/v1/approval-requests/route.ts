@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { approvalRequestsRepository } from "@/db/repositories/approval-requests";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { storableJsonRecord } from "@/lib/api/storable-strings";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -37,7 +38,7 @@ const ChallengePayloadSchema = z.object({
   signerKind: SignerKindSchema.optional(),
   walletAddress: z.string().min(1).max(256).optional(),
   publicKey: z.string().min(1).max(1024).optional(),
-  context: z.record(z.string(), z.unknown()).optional(),
+  context: storableJsonRecord().optional(),
 });
 
 const CreateApprovalRequestSchema = z.object({
@@ -51,7 +52,7 @@ const CreateApprovalRequestSchema = z.object({
     .min(30_000)
     .max(24 * 60 * 60 * 1000)
     .optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  metadata: storableJsonRecord().optional(),
 });
 
 const ListQuerySchema = z.object({
