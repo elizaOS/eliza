@@ -331,23 +331,24 @@ describe("UnlimitedOcrEngine direct recognize failures", () => {
   });
 });
 
-describe("parseGroundingDecorations edge branches", () => {
-  it("passes through a ]-terminated line that has no [ bracket", () => {
-    const raw = "array literal ends here]";
-    expect(parseGroundingDecorations(raw)).toEqual({
-      text: raw,
-      regions: [],
+describe("parseGroundingDecorations", () => {
+  it.each([
+    "array literal ends here]",
+    "Marker [1,2,3]",
+    "Panel [5,5,-3,9]",
+    "Header [300,10,12,60]",
+    `Header [1,1,${"9".repeat(20)},5]`,
+    "# Screen\nSign in to Eliza",
+    `Header [${"0".repeat(100_000)}x,0,1,1]`,
+  ])("preserves undecorated or invalid coordinate input %#", (raw) => {
+    expect(parseGroundingDecorations(raw)).toEqual({ text: raw, regions: [] });
+  });
+
+  it("keeps coordinate-only regions separate from ordinary text", () => {
+    expect(parseGroundingDecorations("[0,0,64,64]\nBody")).toEqual({
+      text: "Body",
+      regions: [{ text: "", box: [0, 0, 64, 64] }],
     });
-  });
-
-  it("rejects a bracketed tail whose bbox has the wrong arity", () => {
-    const raw = "Marker [1,2,3]";
-    expect(parseGroundingDecorations(raw)).toEqual({ text: raw, regions: [] });
-  });
-
-  it("rejects negative coordinates instead of fabricating a region", () => {
-    const raw = "Panel [5,5,-3,9]";
-    expect(parseGroundingDecorations(raw)).toEqual({ text: raw, regions: [] });
   });
 
   it("accepts a degenerate zero-size box (x2==x1, y2==y1)", () => {
