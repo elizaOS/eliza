@@ -93,7 +93,7 @@ it.each(["complete", "length", "unauthorized"] as const)(
       vi.stubEnv("OPENAI_BASE_URL", `http://127.0.0.1:${address.port}/v1`);
       vi.stubEnv("OPENAI_SMALL_MODEL", "gpt-4o-mini");
       const runtime = new AgentRuntime({
-        character: { name: "HealthWire", bio: "test" },
+        character: { name: "HealthWire", bio: ["test"] },
         logLevel: "fatal",
         adapter: new InMemoryDatabaseAdapter(),
       });
@@ -109,6 +109,8 @@ it.each(["complete", "length", "unauthorized"] as const)(
         expect(result).toEqual({ ok: true });
       } else {
         expect(result.ok).toBe(false);
+        if (result.ok)
+          throw new Error("Invalid provider output passed activation");
         expect(result.reason).toContain(
           outcome === "length"
             ? "did not complete successfully (length)"

@@ -7,7 +7,7 @@
  * surfaces; the database probe and credit classifier run unmocked.
  */
 
-import { type AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   builtInHealthChecks,

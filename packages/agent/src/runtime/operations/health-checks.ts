@@ -157,6 +157,7 @@ export const providerSmokeCheck: HealthCheck = {
       });
       return { ok: true };
     } catch (err) {
+      // error-policy:J1 Translate provider failures into failed activation checks.
       if (isInsufficientCreditsError(err)) {
         return {
           ok: false,
