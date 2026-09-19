@@ -376,67 +376,34 @@ describe("EvidenceBundle", () => {
     ).toBe(true);
   });
 
-  it("copies by default so later producer writes cannot mutate the bundle", async () => {
-    const sources = tmpDir();
-    const bundle = createBundle({
-      rootDir: tmpDir(),
-      provenance: PROVENANCE,
-      now: fixedClock(),
-    });
-    const sourcePath = writeFixture(sources, "video.mp4", "mp4-bytes");
-    const entry = await bundle.addArtifact(sourcePath, {
-      kind: "video",
-      source: "e2e-recordings",
-      producedBy: "run-all.mjs",
-    });
-    const stored = path.join(bundle.dir, ...entry.path.split("/"));
-    expect(fs.statSync(stored).ino).not.toBe(fs.statSync(sourcePath).ino);
-    const finalized = await bundle.finalize();
-    fs.writeFileSync(sourcePath, "changed-after-finalize");
-    expect(fs.readFileSync(stored, "utf8")).toBe("mp4-bytes");
-    expect((await verifyBundle(path.dirname(finalized.manifestPath))).ok).toBe(
-      true,
-    );
-  });
-
-  it("copies when linkMode is copy", async () => {
-    const sources = tmpDir();
-    const bundle = createBundle({
-      rootDir: tmpDir(),
-      provenance: PROVENANCE,
-      now: fixedClock(),
-      linkMode: "copy",
-    });
-    const sourcePath = writeFixture(sources, "video.mp4", "mp4-bytes");
-    const entry = await bundle.addArtifact(sourcePath, {
-      kind: "video",
-      source: "e2e-recordings",
-      producedBy: "run-all.mjs",
-    });
-    const stored = path.join(bundle.dir, ...entry.path.split("/"));
-    expect(fs.statSync(stored).ino).not.toBe(fs.statSync(sourcePath).ino);
-    expect(fs.readFileSync(stored, "utf8")).toBe("mp4-bytes");
-  });
-
-  it("keeps the legacy auto linkMode source-compatible without creating links", async () => {
-    const sources = tmpDir();
-    const bundle = createBundle({
-      rootDir: tmpDir(),
-      provenance: PROVENANCE,
-      now: fixedClock(),
-      linkMode: "auto",
-    });
-    const sourcePath = writeFixture(sources, "legacy-auto.log", "copy-only");
-    const entry = await bundle.addArtifact(sourcePath, {
-      kind: "log",
-      source: "test",
-      producedBy: "test",
-    });
-    const stored = path.join(bundle.dir, ...entry.path.split("/"));
-    expect(fs.statSync(stored).ino).not.toBe(fs.statSync(sourcePath).ino);
-    expect(fs.statSync(stored).nlink).toBe(1);
-    expect(fs.readFileSync(stored, "utf8")).toBe("copy-only");
-  });
+  it.each([undefined, "copy", "auto"] as const)(
+    "isolates finalized bytes from producer writes with linkMode=%s",
+    async (linkMode) => {
+      const sources = tmpDir();
+      const bundle = createBundle({
+        rootDir: tmpDir(),
+        provenance: PROVENANCE,
+        now: fixedClock(),
+        ...(linkMode === undefined ? {} : { linkMode }),
+      });
+      const sourcePath = writeFixture(sources, "video.mp4", "mp4-bytes");
+      const entry = await bundle.addArtifact(sourcePath, {
+        kind: "video",
+        source: "e2e-recordings",
+        producedBy: "run-all.mjs",
+      });
+      const stored = path.join(bundle.dir, ...entry.path.split("/"));
+      expect(fs.statSync(stored).ino).not.toBe(fs.statSync(sourcePath).ino);
+      expect(fs.statSync(stored).nlink).toBe(1);
+      expect(fs.readFileSync(stored, "utf8")).toBe("mp4-bytes");
+      const finalized = await bundle.finalize();
+      fs.writeFileSync(sourcePath, "changed-after-finalize");
+      expect(fs.readFileSync(stored, "utf8")).toBe("mp4-bytes");
+      expect(
+        (await verifyBundle(path.dirname(finalized.manifestPath))).ok,
+      ).toBe(true);
+    },
+  );
 
   it("rejects symlink and hardlink sources instead of copying external bytes", async () => {
     const sources = tmpDir();

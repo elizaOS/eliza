@@ -1,9 +1,4 @@
-// Pure state-machine transitions for the GPU job queue: job parsing (valid,
-// unsafe-id, missing fields, bad kind — every defect listed, never a repaired
-// default), FIFO claim order over enqueue-timestamped ids, enqueue backpressure,
-// and the worker connectivity latch (healthy → unreachable → drain past the
-// window → reset on contact). No filesystem, no clock, no GPU — every function
-// under test is total.
+/** Exercises queue parsing, ordering, backpressure and connectivity transitions with deterministic inputs. */
 
 import { describe, expect, it } from "vitest";
 import type { AnalyzerResult } from "../analyzers/types.ts";
@@ -112,31 +107,19 @@ describe("decideEnqueue (backpressure)", () => {
 });
 
 describe("worker connectivity latch", () => {
-  it("stamps unreachableSince on the first failure but does not drain yet", () => {
-    const s0 = createWorkerState();
-    const s1 = onServiceUnreachable(s0, 1_000, 10_000);
-    expect(s1.unreachableSince).toBe(1_000);
-    expect(shouldDrain(s1)).toBe(false);
-  });
-
-  it("latches into drain once the outage outlasts the window", () => {
-    let s = createWorkerState();
-    s = onServiceUnreachable(s, 1_000, 10_000);
-    s = onServiceUnreachable(s, 5_000, 10_000);
-    expect(shouldDrain(s)).toBe(false);
-    s = onServiceUnreachable(s, 11_000, 10_000); // 10_000ms since first failure
-    expect(shouldDrain(s)).toBe(true);
-    expect(s.unreachableSince).toBe(1_000);
-  });
-
-  it("resets fully on a successful contact", () => {
-    let s = createWorkerState();
-    s = onServiceUnreachable(s, 1_000, 10_000);
-    s = onServiceUnreachable(s, 20_000, 10_000);
-    expect(shouldDrain(s)).toBe(true);
-    s = onServiceOk();
-    expect(s.unreachableSince).toBeNull();
-    expect(shouldDrain(s)).toBe(false);
+  it("preserves the first outage time, drains at the threshold and resets on contact", () => {
+    let state = createWorkerState();
+    state = onServiceUnreachable(state, 1_000, 10_000);
+    expect(state.unreachableSince).toBe(1_000);
+    expect(shouldDrain(state)).toBe(false);
+    state = onServiceUnreachable(state, 5_000, 10_000);
+    expect(shouldDrain(state)).toBe(false);
+    state = onServiceUnreachable(state, 11_000, 10_000);
+    expect(shouldDrain(state)).toBe(true);
+    expect(state.unreachableSince).toBe(1_000);
+    state = onServiceOk();
+    expect(state.unreachableSince).toBeNull();
+    expect(shouldDrain(state)).toBe(false);
   });
 });
 
