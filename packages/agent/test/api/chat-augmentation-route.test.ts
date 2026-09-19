@@ -23,6 +23,7 @@
 import http from "node:http";
 import {
   type AgentRuntime,
+  type Memory,
   ModelType,
   RoomHandlerQueue,
   stringToUuid,
@@ -158,8 +159,21 @@ function createRuntime(
   overrides: Partial<AgentRuntime> = {},
 ): AgentRuntime {
   const participantsByRoom = new Map<UUID, Set<UUID>>();
+  const memories = new Map<UUID, Memory>();
   const runtime = {
     agentId,
+    // The route persists and reads back the exact delivered reply.
+    getMemoriesByIds: vi.fn(async (ids: UUID[]) =>
+      ids.flatMap((id) => {
+        const memory = memories.get(id);
+        return memory ? [structuredClone(memory)] : [];
+      }),
+    ),
+    createMemory: vi.fn(async (memory: Memory) => {
+      if (!memory.id) throw new Error("Fixture memory requires an ID");
+      memories.set(memory.id, structuredClone(memory));
+      return memory.id;
+    }),
     character: { name: "Eliza", settings: {} },
     plugins: [],
     actions: [],

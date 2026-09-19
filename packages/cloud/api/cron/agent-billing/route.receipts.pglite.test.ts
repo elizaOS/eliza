@@ -17,10 +17,8 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AgentHourlyBillingOutcome } from "@/db/repositories/agent-billing";
 
-const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
-const CAN_USE_ISOLATED_PGLITE =
-  AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
-process.env.DATABASE_URL ||= "pglite://memory";
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
@@ -86,24 +84,6 @@ async function defaultRecordHourlyBilling(input: {
 const recordHourlyBilling = mock(defaultRecordHourlyBilling);
 const suspendFailedSandboxBilling = mock(async () => 0);
 const getOrganizationCreditBalance = mock(async () => 100);
-const warningCallOrder: string[] = [];
-const commitShutdownWarningForRun = mock(
-  async (_input: {
-    runId: string;
-    leaseToken: string;
-    sandboxId: string;
-    organizationId: string;
-    agentName: string;
-    now: Date;
-  }) => {
-    warningCallOrder.push("commit");
-    return true;
-  },
-);
-const sendContainerShutdownWarningEmail = mock(async () => {
-  warningCallOrder.push("email");
-  return true;
-});
 const loggerInfo = mock(() => undefined);
 const loggerWarn = mock(() => undefined);
 const loggerError = mock(() => undefined);
@@ -116,7 +96,6 @@ mock.module("@/db/repositories/agent-billing", () => ({
     suspendFailedSandboxBilling,
     getOrganizationCreditBalance,
     scheduleShutdownWarning: mock(async () => undefined),
-    commitShutdownWarningForRun,
     suspendSandboxForInsufficientCredits: mock(async () => undefined),
   },
 }));
@@ -131,9 +110,9 @@ mock.module("@/db/repositories/users", () => ({
   usersRepository: { listByOrganization: mock(async () => []) },
 }));
 
-mock.module("@/lib/services/email", () => ({
-  emailService: {
-    sendContainerShutdownWarningEmail,
+mock.module("@/lib/services/agent-unfunded-stop", () => ({
+  enqueueAgentUnfundedStopForRun: async () => {
+    throw new Error("Unexpected unfunded stop in receipt-only fixture");
   },
 }));
 
@@ -197,7 +176,6 @@ const SCHEDULE = "0 * * * *";
 const SCHEDULED_TIME = Date.UTC(2026, 7, 20, 17, 0, 0);
 const CRON_SECRET = "test-cron-secret";
 const PGLITE_TIMEOUT = 60_000;
-let pgliteReady = true;
 
 function mountRoute(): Hono {
   const app = new Hono();
@@ -249,18 +227,6 @@ async function dispatchScheduledRequest(app: Hono): Promise<Response> {
   return routeResponse;
 }
 
-async function dispatchManualRequest(
-  app: Hono = mountRoute(),
-): Promise<Response> {
-  return app.fetch(
-    new Request(`http://internal${PATH}`, {
-      method: "POST",
-      headers: { "x-cron-secret": CRON_SECRET },
-    }),
-    { CRON_SECRET, NEXT_PUBLIC_APP_URL: "http://internal" } as Bindings,
-  );
-}
-
 function dispatchHttpThroughFullApp(
   app: Hono,
   request: Request,
@@ -277,32 +243,14 @@ function dispatchHttpThroughFullApp(
 }
 
 beforeAll(async () => {
-  if (!CAN_USE_ISOLATED_PGLITE) {
-    pgliteReady = false;
-    console.warn(
-      "[agent-billing route receipts] DATABASE_URL is not isolated PGlite; refusing to mutate it.",
-    );
-    return;
-  }
-  try {
-    const { apply } = await pushSchema(
-      { agentBillingRuns, agentBillingRunItems } as never,
-      dbWrite as never,
-    );
-    await apply();
-  } catch (error) {
-    // error-policy:J1 isolated test-harness setup boundary; dependent tests
-    // fail through the explicit readiness assertion with this diagnostic.
-    pgliteReady = false;
-    console.error(
-      "[agent-billing route receipts] PGlite schema setup failed",
-      error,
-    );
-  }
+  const { apply } = await pushSchema(
+    { agentBillingRuns, agentBillingRunItems } as never,
+    dbWrite as never,
+  );
+  await apply();
 }, PGLITE_TIMEOUT);
 
 beforeEach(async () => {
-  expect(pgliteReady).toBe(true);
   await dbWrite.delete(agentBillingRunItems);
   await dbWrite.delete(agentBillingRuns);
   selectedSandboxes = [firstSandbox];
@@ -314,22 +262,6 @@ beforeEach(async () => {
   recordHourlyBilling.mockImplementation(defaultRecordHourlyBilling);
   getOrganizationCreditBalance.mockClear();
   getOrganizationCreditBalance.mockImplementation(async () => 100);
-  warningCallOrder.length = 0;
-  commitShutdownWarningForRun.mockClear();
-  commitShutdownWarningForRun.mockImplementation(async () => {
-    warningCallOrder.push("commit");
-    return true;
-  });
-  suspendFailedSandboxBilling.mockClear();
-  suspendFailedSandboxBilling.mockImplementation(async () => 0);
-  sendContainerShutdownWarningEmail.mockClear();
-  sendContainerShutdownWarningEmail.mockImplementation(async () => {
-    warningCallOrder.push("email");
-    return true;
-  });
-  loggerInfo.mockClear();
-  loggerWarn.mockClear();
-  loggerError.mockClear();
 });
 
 afterAll(async () => {
@@ -363,6 +295,15 @@ describe("agent billing durable run receipts on PGlite", () => {
     );
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        triggerKind: "manual",
+        status: "empty",
+        sandboxesProcessed: 0,
+        totalRevenue: "0.000000",
+      },
+    });
     const [receipt] = await dbWrite.select().from(agentBillingRuns);
     expect(receipt).toMatchObject({
       trigger_kind: "manual",
@@ -411,13 +352,13 @@ describe("agent billing durable run receipts on PGlite", () => {
     selectedSandboxes = [firstSandbox, secondSandbox];
     billingFailureIds.add(secondSandbox.id);
     const app = mountRoute();
-    const statuses = new Map<string, number>();
+    let failedResponse: Response | undefined;
     const scheduled = makeCronHandler(async (request, env, ctx) => {
       if (new URL(request.url).pathname !== PATH) {
         return new Response(null, { status: 204 });
       }
       const response = await app.fetch(request, env, ctx);
-      statuses.set(PATH, response.status);
+      failedResponse = response.clone();
       return response;
     });
     const pending: Promise<unknown>[] = [];
@@ -434,7 +375,20 @@ describe("agent billing durable run receipts on PGlite", () => {
     );
     await Promise.all(pending);
 
-    expect(statuses.get(PATH)).toBe(500);
+    expect(failedResponse?.status).toBe(500);
+    const responseText = await failedResponse!.text();
+    expect(responseText).not.toContain("sk_live_secret");
+    expect(responseText).not.toContain("raw provider response");
+    expect(JSON.parse(responseText)).toMatchObject({
+      success: false,
+      data: {
+        status: "partial_failure",
+        sandboxesProcessed: 2,
+        sandboxesBilled: 1,
+        errors: 1,
+        totalRevenue: "0.100000",
+      },
+    });
     expect(loggerWarn).toHaveBeenCalledWith(`[Cron] ${PATH} -> 500`);
     const [receipt] = await dbWrite.select().from(agentBillingRuns);
     expect(receipt).toMatchObject({
@@ -455,163 +409,6 @@ describe("agent billing durable run receipts on PGlite", () => {
     expect(JSON.stringify(receipt)).not.toContain("raw provider response");
   });
 
-  test("records an email provider false result as a failed run item", async () => {
-    recordHourlyBilling.mockImplementation(async () => ({
-      status: "insufficient_credits",
-    }));
-    getOrganizationCreditBalance.mockImplementation(async () => 0);
-    sendContainerShutdownWarningEmail.mockImplementation(async () => false);
-
-    const response = await dispatchManualRequest();
-
-    expect(response.status).toBe(500);
-    expect(commitShutdownWarningForRun).not.toHaveBeenCalled();
-    const [receipt] = await dbWrite.select().from(agentBillingRuns);
-    expect(receipt).toMatchObject({
-      status: "failed",
-      sandboxes_processed: 1,
-      warnings_sent: 0,
-      errors: 1,
-    });
-    const items = await dbWrite.select().from(agentBillingRunItems);
-    expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({
-      sandbox_id: firstSandbox.id,
-      action: "error",
-      detail_code: "sandbox_processing_failed",
-    });
-  });
-
-  test("records an email provider rejection as a failed run item", async () => {
-    recordHourlyBilling.mockImplementation(async () => ({
-      status: "insufficient_credits",
-    }));
-    getOrganizationCreditBalance.mockImplementation(async () => 0);
-    sendContainerShutdownWarningEmail.mockImplementation(async () => {
-      throw new Error("provider rejected shutdown warning");
-    });
-
-    const response = await dispatchManualRequest();
-
-    expect(response.status).toBe(500);
-    expect(commitShutdownWarningForRun).not.toHaveBeenCalled();
-    const [receipt] = await dbWrite.select().from(agentBillingRuns);
-    expect(receipt).toMatchObject({
-      status: "failed",
-      sandboxes_processed: 1,
-      warnings_sent: 0,
-      errors: 1,
-    });
-    const items = await dbWrite.select().from(agentBillingRunItems);
-    expect(items).toHaveLength(1);
-    expect(items[0]?.action).toBe("error");
-  });
-
-  test("delivers the warning before arming the shutdown and records one warning item", async () => {
-    recordHourlyBilling.mockImplementation(async () => ({
-      status: "insufficient_credits",
-    }));
-    getOrganizationCreditBalance.mockImplementation(async () => 0);
-
-    const response = await dispatchManualRequest();
-
-    expect(response.status).toBe(200);
-    expect(warningCallOrder).toEqual(["email", "commit"]);
-    const [receipt] = await dbWrite.select().from(agentBillingRuns);
-    expect(receipt).toMatchObject({
-      status: "succeeded",
-      sandboxes_processed: 1,
-      warnings_sent: 1,
-      errors: 0,
-    });
-    const items = await dbWrite.select().from(agentBillingRunItems);
-    expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({
-      sandbox_id: firstSandbox.id,
-      action: "warning_sent",
-    });
-  });
-
-  test("records an honest skip when the warning is no longer applicable at commit", async () => {
-    recordHourlyBilling.mockImplementation(async () => ({
-      status: "insufficient_credits",
-    }));
-    getOrganizationCreditBalance.mockImplementation(async () => 0);
-    commitShutdownWarningForRun.mockImplementation(async () => {
-      warningCallOrder.push("commit");
-      return false;
-    });
-
-    const response = await dispatchManualRequest();
-
-    expect(response.status).toBe(200);
-    expect(warningCallOrder).toEqual(["email", "commit"]);
-    const [receipt] = await dbWrite.select().from(agentBillingRuns);
-    expect(receipt).toMatchObject({
-      status: "succeeded",
-      sandboxes_processed: 1,
-      warnings_sent: 0,
-      errors: 0,
-    });
-    const items = await dbWrite.select().from(agentBillingRunItems);
-    expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({
-      sandbox_id: firstSandbox.id,
-      action: "skipped",
-      detail_message: "Shutdown warning was no longer applicable",
-    });
-  });
-
-  test("a crashed pre-commit warning attempt is redelivered by the scheduled retry", async () => {
-    recordHourlyBilling.mockImplementation(async () => ({
-      status: "insufficient_credits",
-    }));
-    getOrganizationCreditBalance.mockImplementation(async () => 0);
-    const crashed = await agentBillingRunRepository.startOrLoad({
-      invocationKey: scheduledCronInvocationId(
-        { cron: SCHEDULE, scheduledTime: SCHEDULED_TIME },
-        PATH,
-      ),
-      triggerKind: "scheduled",
-      schedule: SCHEDULE,
-      scheduledAt: new Date(SCHEDULED_TIME),
-      leaseDurationMs: 5 * 60_000,
-    });
-    if (!crashed.leaseToken) throw new Error("Expected initial run lease");
-    // Worker death after (at most) the email attempt: no sandbox mutation and
-    // no run item exist, so the retry must redeliver, never fabricate a skip.
-    const staleUpdatedAt = new Date(Date.now() - 2 * 60_000);
-    await dbWrite
-      .update(agentBillingRuns)
-      .set({
-        lease_expires_at: new Date(staleUpdatedAt.getTime() + 60_000),
-        updated_at: staleUpdatedAt,
-      })
-      .where(eq(agentBillingRuns.id, crashed.run.id));
-
-    const response = await dispatchScheduledRequest(mountRoute());
-
-    expect(response.status).toBe(200);
-    expect(sendContainerShutdownWarningEmail).toHaveBeenCalledTimes(1);
-    expect(warningCallOrder).toEqual(["email", "commit"]);
-    const [receipt] = await dbWrite.select().from(agentBillingRuns);
-    expect(receipt).toMatchObject({
-      id: crashed.run.id,
-      status: "succeeded",
-      attempt_count: 2,
-      sandboxes_processed: 1,
-      warnings_sent: 1,
-      errors: 0,
-    });
-    const items = await dbWrite.select().from(agentBillingRunItems);
-    expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({
-      run_id: crashed.run.id,
-      sandbox_id: firstSandbox.id,
-      action: "warning_sent",
-    });
-  });
-
   test("a selection exception leaves a durable failed receipt and returns non-2xx", async () => {
     selectionFailure = new Error("raw database statement with secret value");
     const response = await mountRoute().fetch(
@@ -625,6 +422,10 @@ describe("agent billing durable run receipts on PGlite", () => {
     expect(response.status).toBe(500);
     const body = await response.text();
     expect(body).not.toContain("raw database statement");
+    expect(JSON.parse(body)).toMatchObject({
+      success: false,
+      data: { status: "failed", sandboxesProcessed: 0, errors: 1 },
+    });
     const [receipt] = await dbWrite.select().from(agentBillingRuns);
     expect(receipt).toMatchObject({
       status: "failed",

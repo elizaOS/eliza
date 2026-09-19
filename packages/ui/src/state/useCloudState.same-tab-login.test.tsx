@@ -561,6 +561,52 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     expect(params.setActionNotice).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["/cloud/billing?from=login#receipt", "authenticated", true],
+    ["//evil.example/cloud", "authenticated", false],
+    ["/chat", "authenticated", false],
+    ["/cloudish", "authenticated", false],
+    ["/cloud/agents", "expired", false],
+  ])(
+    "returns to %s only after successful local CLI authentication (%s)",
+    async (destination, status, navigates) => {
+      const replace = vi.fn();
+      const search = `?elizaCloudLogin=complete&elizaCloudLoginSession=account-return&elizaCloudLoginReturnTo=${encodeURIComponent(destination)}`;
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+          href: `http://127.0.0.1:2189/settings${search}`,
+          origin: "http://127.0.0.1:2189",
+          protocol: "http:",
+          hostname: "127.0.0.1",
+          port: "2189",
+          pathname: "/settings",
+          search,
+          assign: assignSpy,
+          replace,
+        },
+      });
+      vi.stubEnv("VITE_STEWARD_API_URL", "https://staging.eliza.app/steward");
+      vi.stubEnv("VITE_STEWARD_TENANT_ID", "elizacloud-staging");
+      setBootConfig({
+        branding: {},
+        cloudApiBase: "https://api-staging.eliza.app",
+      });
+      vi.spyOn(client, "getBaseUrl").mockReturnValue("http://127.0.0.1:31337");
+      cloudLoginPollDirectSpy.mockResolvedValue({
+        status,
+        token: "eliza_account_return_test_key",
+      });
+      const { result } = renderHook(() => useCloudState(makeParams()));
+      await waitFor(() => expect(cloudLoginPollDirectSpy).toHaveBeenCalled());
+      await waitFor(() =>
+        expect(result.current.elizaCloudLoginBusy).toBe(false),
+      );
+      if (navigates) expect(replace).toHaveBeenCalledWith(destination);
+      else expect(replace).not.toHaveBeenCalled();
+    },
+  );
+
   it("claims a hosted staging return once under Strict Mode without replacing the localhost backend", async () => {
     const search =
       "?elizaCloudLogin=complete&elizaCloudLoginSession=staging-return";

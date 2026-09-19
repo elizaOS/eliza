@@ -55,12 +55,18 @@ import {
 import { actionMatchesScenarioExpectation } from "./action-families.ts";
 import { runFinalCheck } from "./final-checks/index.ts";
 import { attachInterceptor } from "./interceptor.ts";
-import { judgeTextWithLlm } from "./judge.ts";
+import {
+  type JudgeEvidence,
+  JudgeParseError,
+  type JudgeResult,
+  judgeTextWithLlm,
+} from "./judge.ts";
 import {
   deterministicJudgeFixturesActive,
   isJudgeIndependent,
   judgeIndependenceRequired,
 } from "./judge-independence.ts";
+import { JudgeModelObserver } from "./judge-model-observer.ts";
 import {
   beginScenarioModelFixtureAttempt,
   scenarioModelFixtureMode,
@@ -75,6 +81,10 @@ import {
 } from "./required-plugins.ts";
 import { waitForScenarioRequiredServices } from "./required-services.ts";
 import { enterScenarioActionScope } from "./scenario-action-scope.ts";
+import {
+  assertScenarioBackgroundMemoryIdle,
+  drainScenarioBackgroundMemory,
+} from "./scenario-background-memory";
 import { applyScenarioSeedStep } from "./seeds.ts";
 import { resolveScenarioTurnSender } from "./turn-sender.ts";
 import type {
@@ -796,6 +806,7 @@ async function drainScenarioPostDeliveryTasks(
 ): Promise<string | undefined> {
   const timeoutMs = opts.postDeliveryTimeoutMs ?? opts.turnTimeoutMs;
   const controller = new AbortController();
+  const readDeadline = AbortSignal.timeout(timeoutMs);
   const timeout = setTimeout(() => {
     controller.abort(
       new Error(`post-delivery drain timed out after ${timeoutMs}ms`),
@@ -810,6 +821,11 @@ async function drainScenarioPostDeliveryTasks(
   if (opts.abortSignal?.aborted) abortFromCaller();
   try {
     await drainPostDeliveryTasks(runtime, { signal: controller.signal });
+    await drainScenarioBackgroundMemory(
+      runtime,
+      controller.signal,
+      readDeadline,
+    );
     return undefined;
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
@@ -2465,6 +2481,8 @@ function turnUsesStatusResponse(turnKind: string): boolean {
 }
 
 interface TurnAssertionResult {
+  judgment?: JudgeResult;
+  judgeFailure?: JudgeEvidence;
   failures: string[];
   /** Numeric `responseJudge` score when the turn ran an LLM judge (#8795). */
   judgeScore?: number;
@@ -2478,6 +2496,8 @@ async function runTurnAssertions(
 ): Promise<TurnAssertionResult> {
   const failures: string[] = [];
   let judgeScore: number | undefined;
+  let judgment: JudgeResult | undefined;
+  let judgeFailure: JudgeEvidence | undefined;
   const kind = typeof turn.kind === "string" ? turn.kind : "message";
 
   if (execution.syntheticFailure === true) {
@@ -2678,6 +2698,7 @@ async function runTurnAssertions(
         buildExecutionJudgeCandidate(turn, execution),
         rubric.rubric,
       );
+      judgment = judged;
       judgeScore = judged.score;
       if (judged.score < threshold) {
         failures.push(
@@ -2685,13 +2706,20 @@ async function runTurnAssertions(
         );
       }
     } catch (err) {
+      // error-policy:J1 expose invalid judgment evidence in the scenario report.
+      if (err instanceof JudgeParseError) judgeFailure = err.evidence;
       failures.push(
         `responseJudge: judge failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
 
-  return { failures, ...(judgeScore !== undefined ? { judgeScore } : {}) };
+  return {
+    failures,
+    judgment,
+    judgeFailure,
+    ...(judgeScore !== undefined ? { judgeScore } : {}),
+  };
 }
 
 async function runJudgeRubricFinalCheck(
@@ -2725,6 +2753,7 @@ async function runJudgeRubricFinalCheck(
         status: "failed",
         detail: `score ${judged.score.toFixed(2)} < ${threshold}: ${judged.reason}`,
         score: judged.score,
+        judgment: judged,
       };
     }
     return {
@@ -2733,18 +2762,21 @@ async function runJudgeRubricFinalCheck(
       status: "passed",
       detail: `score ${judged.score.toFixed(2)} ≥ ${threshold}`,
       score: judged.score,
+      judgment: judged,
     };
   } catch (err) {
+    // error-policy:J1 preserve parse failure evidence at the scenario boundary.
     return {
       label: name ?? "judgeRubric",
       type: "judgeRubric",
       status: "failed",
+      ...(err instanceof JudgeParseError ? { judgeFailure: err.evidence } : {}),
       detail: `judge failed: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
 }
 
-export async function runScenario(
+async function runObservedScenario(
   scenario: ScenarioDefinition,
   runtime: AgentRuntime,
   opts: ExecutorOptions,
@@ -2827,6 +2859,22 @@ export async function runScenario(
     report.durationMs = Date.now() - startedAt;
     return report;
   }
+  try {
+    await assertScenarioBackgroundMemoryIdle(
+      runtime,
+      AbortSignal.timeout(opts.postDeliveryTimeoutMs ?? opts.turnTimeoutMs),
+    );
+  } catch (error) {
+    // error-policy:J1 Report unsafe runtime reuse before replacing its fixture scope.
+    report.status = "failed";
+    report.error = error instanceof Error ? error.message : String(error);
+    report.failedAssertions.push({
+      label: "runtimeIsolation",
+      detail: report.error,
+    });
+    report.durationMs = Date.now() - startedAt;
+    return report;
+  }
   const quarantineReason = postDeliveryTaskQuarantineReason(runtime);
   if (quarantineReason) {
     report.status = "failed";
@@ -2870,7 +2918,7 @@ export async function runScenario(
     }
     if (!(await isJudgeIndependent())) {
       preflightProblems.push(
-        "independent judge is unavailable; configure its dedicated provider credentials",
+        "independent judge identity has not been observed; credentials alone cannot qualify this execution",
       );
     }
     if (!opts.runDir) {
@@ -3189,8 +3237,12 @@ export async function runScenario(
       execution.actionsCalled = actionsThisTurn;
       ctx.turns.push(execution);
 
-      const { failures: failedAssertions, judgeScore: turnJudgeScore } =
-        await runTurnAssertions(turn, execution, runtime, opts.minJudgeScore);
+      const {
+        failures: failedAssertions,
+        judgeScore: turnJudgeScore,
+        judgment,
+        judgeFailure,
+      } = await runTurnAssertions(turn, execution, runtime, opts.minJudgeScore);
       if (turnJudgeScore !== undefined) {
         judgeScores.push(turnJudgeScore);
       }
@@ -3208,6 +3260,8 @@ export async function runScenario(
         ...(execution.validation ? { validation: execution.validation } : {}),
         durationMs: execution.durationMs ?? 0,
         failedAssertions,
+        judgment,
+        judgeFailure,
         ...(turnJudgeScore !== undefined ? { judgeScore: turnJudgeScore } : {}),
         ...(voiceRun?.audioArtifacts && voiceRun.audioArtifacts.length > 0
           ? { audioArtifacts: voiceRun.audioArtifacts }
@@ -3217,6 +3271,26 @@ export async function runScenario(
         report.status = "failed";
         for (const detail of failedAssertions) {
           report.failedAssertions.push({ label: turn.name, detail });
+        }
+      }
+      // Deterministic turn fixtures own their complete post-delivery effects.
+      // Finish those effects before a later input becomes extraction evidence.
+      if (
+        kind === "message" &&
+        executionProfile === "simulated" &&
+        (runtime as RuntimeWithScenarioModelFixtures).scenarioModelFixtures
+      ) {
+        const drainFailure = await drainScenarioPostDeliveryTasks(
+          runtime,
+          opts,
+        );
+        if (drainFailure) {
+          report.status = "failed";
+          report.failedAssertions.push({
+            label: "postDeliveryTasks",
+            detail: drainFailure,
+          });
+          break;
         }
       }
     }
@@ -3340,24 +3414,60 @@ export async function runScenario(
 
   if (judgeScores.length > 0) {
     report.judgeScore = Math.min(...judgeScores);
-    // Judge-independence governance (#9310): a judge score produced without
-    // independent judge credentials (and outside the deterministic-proxy
-    // fixture lanes) came from the model under test grading itself. Stamp it
-    // fail-loud-visible; strict mode turns it into a failure.
-    if (!deterministicJudgeFixturesActive() && !(await isJudgeIndependent())) {
-      report.judgeSelfGraded = true;
+    // Identity evidence is separate from transport configuration and fixture scoring.
+    const judgments = [
+      ...report.turns.flatMap((turn) => (turn.judgment ? [turn.judgment] : [])),
+      ...report.finalChecks.flatMap((check) =>
+        check.judgment ? [check.judgment] : [],
+      ),
+    ];
+    if (!deterministicJudgeFixturesActive()) {
+      report.judgeIndependence =
+        judgments.length &&
+        judgments.every(
+          (result) => result.evidence.independence === "independent",
+        )
+          ? "independent"
+          : judgments.some(
+                (result) => result.evidence.independence === "self-graded",
+              )
+            ? "self-graded"
+            : "unknown";
+    }
+    if (
+      !deterministicJudgeFixturesActive() &&
+      report.judgeIndependence !== "independent"
+    ) {
+      if (report.judgeIndependence === "self-graded")
+        report.judgeSelfGraded = true;
       logger.warn(
-        `[scenario-runner] ${scenario.id}: judge scores were produced by the model under test (self-graded) — set CEREBRAS_API_KEY for an independent judge`,
+        `[scenario-runner] ${scenario.id}: judge independence was not established from observed model identities; inspect judgment evidence`,
       );
       if (judgeIndependenceRequired()) {
         report.status = "failed";
         report.failedAssertions.push({
           label: "judgeIndependence",
           detail:
-            "SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1: judge scores came from the model under test (self-graded); configure CEREBRAS_API_KEY / EVAL_CEREBRAS_API_KEY so scenarios are graded independently",
+            "SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1: observed identities do not establish independence from the model under test; CEREBRAS_API_KEY alone is insufficient",
         });
       }
     }
   }
   return report;
+}
+
+/** Isolate actor/judge observations for one scenario and always detach them. */
+export async function runScenario(
+  scenario: ScenarioDefinition,
+  runtime: AgentRuntime,
+  opts: ExecutorOptions,
+): Promise<ScenarioReport> {
+  if (typeof runtime.useModel !== "function")
+    return runObservedScenario(scenario, runtime, opts);
+  const observer = new JudgeModelObserver(runtime);
+  try {
+    return await runObservedScenario(scenario, runtime, opts);
+  } finally {
+    observer.close();
+  }
 }

@@ -2,6 +2,12 @@
  * Keyless catalog coverage for the browser-workspace action surface against a
  * seeded browser tab. Runs on the pr-deterministic lane under the model provider.
  */
+
+import type { Action } from "@elizaos/core";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioTurnExecution,
@@ -13,10 +19,7 @@ import {
   ensureBrowserWorkspaceDefaultTab,
   executeBrowserWorkspaceCommand,
 } from "../../../../plugins/plugin-browser/src/workspace/browser-workspace.ts";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
+import { transientTurnEvaluationSeed } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
 
 const strictBrowserRoutes = [
   {
@@ -24,15 +27,14 @@ const strictBrowserRoutes = [
     args: { selector: "#scenario-title" },
     contextIds: ["browser", "web"],
     input: "Read the browser form heading",
-    messageToUser: "Browser get result (web):\nScenario Browser Form",
+    messageToUser: "The heading is Scenario Browser Form.",
   },
   {
     actionName: "BROWSER_WAIT",
     args: { selector: "#scenario-input", timeoutMs: 4000 },
     contextIds: ["browser", "web"],
     input: "Wait for the browser form input",
-    messageToUser:
-      'Browser wait result (web):\n{\n  "findBy": null,\n  "selector": "#scenario-input",\n  "state": null,\n  "text": null,\n  "url": "https://scenario.test/form"\n}',
+    messageToUser: "The input #scenario-input is ready.",
   },
   {
     actionName: "BROWSER_TYPE",
@@ -43,22 +45,21 @@ const strictBrowserRoutes = [
     contextIds: ["browser", "web"],
     input: "Type deterministic text into the browser form input",
     messageToUser:
-      'Browser type result (web):\n{\n  "selector": "#scenario-input",\n  "value": "typed by strict browser scenario"\n}',
+      "I entered typed by strict browser scenario in the form input.",
   },
   {
     actionName: "BROWSER_CLICK",
     args: { selector: "#scenario-button" },
     contextIds: ["browser", "web"],
     input: "Click the seeded browser form button",
-    messageToUser:
-      'Browser click result (web):\n{\n  "clickCount": 1,\n  "selector": "#scenario-button",\n  "text": "Submit"\n}',
+    messageToUser: "I clicked Submit.",
   },
   {
     actionName: "BROWSER_SCREENSHOT",
     args: {},
     contextIds: ["browser", "web"],
     input: "Capture a browser workspace screenshot",
-    messageToUser: "Browser screenshot captured a preview in web mode.",
+    messageToUser: "I captured a preview of the browser page.",
   },
   {
     actionName: "BROWSER_OPEN",
@@ -72,8 +73,7 @@ const strictBrowserRoutes = [
     args: {},
     contextIds: ["browser", "web"],
     input: "List the browser workspace tabs",
-    messageToUser:
-      "Browser tabs (web):\n- Scenario Browser Form (https://scenario.test/form)\n- New Tab (about:blank)",
+    messageToUser: "The open tabs are Scenario Browser Form and New Tab.",
   },
   {
     actionName: "BROWSER_CLOSE",
@@ -89,61 +89,47 @@ const WAIT_FOR_URL_CALLBACK_URL =
   "https://scenario.test/oauth/callback?code=scenario";
 const WAIT_FOR_URL_PATTERN = "callback?code=scenario";
 const SEEDED_FORM_TAB_ID = "btab_1";
-let waitForUrlCallbackTimer: ReturnType<typeof setInterval> | null = null;
-
-function clearWaitForUrlCallbackTimer(): void {
-  if (waitForUrlCallbackTimer) {
-    clearInterval(waitForUrlCallbackTimer);
-    waitForUrlCallbackTimer = null;
+/** Advance the fixture only after the real action reports a nonmatching poll. */
+function installWaitForUrlCallbackNavigation(actions: Action[]): void {
+  const index = actions.findIndex(
+    (action) => action.name === "BROWSER_WAIT_FOR_URL",
+  );
+  if (index < 0) {
+    throw new Error("BROWSER_WAIT_FOR_URL is not registered");
   }
-}
-
-// Hold the tab at START for this long after the fixture first observes it there,
-// then flip it to CALLBACK. The window must comfortably exceed the latency
-// between BROWSER_WAIT_FOR_URL navigating the tab to START and its FIRST poll —
-// which is gated behind an awaited, streamed "watching…" callback whose cost
-// balloons on a contended CI runner. At 150ms that latency occasionally won the
-// race, so the tab reached CALLBACK before the first poll and the action matched
-// on poll 1 (< the asserted ≥2). 500ms keeps the first poll safely inside the
-// START window on any plausibly-loaded runner without approaching the action's
-// 4s poll budget.
-const WAIT_FOR_URL_START_HOLD_MS = 500;
-
-function scheduleWaitForUrlCallbackNavigation(): void {
-  clearWaitForUrlCallbackTimer();
-  const startedAt = Date.now();
-  let startSeenAt: number | null = null;
-  waitForUrlCallbackTimer = setInterval(() => {
-    void (async () => {
-      const tabs = await executeBrowserWorkspaceCommand({ subaction: "list" });
-      const waitTab = tabs.tabs?.find(
-        (tab) => tab.url === WAIT_FOR_URL_START_URL,
+  const originalAction = actions[index];
+  // Keep the original object so the runner can detach its seed-time interceptor
+  // before wrapping this scenario-owned action for turn capture.
+  actions[index] = {
+    ...originalAction,
+    handler: async (runtime, message, state, options, callback, responses) => {
+      let navigated = false;
+      return originalAction.handler(
+        runtime,
+        message,
+        state,
+        options,
+        async (content, actionName) => {
+          const delivered = callback ? await callback(content, actionName) : [];
+          if (
+            !navigated &&
+            content.text?.includes(
+              `still waiting for "${WAIT_FOR_URL_PATTERN}"`,
+            )
+          ) {
+            navigated = true;
+            await executeBrowserWorkspaceCommand({
+              id: SEEDED_FORM_TAB_ID,
+              subaction: "navigate",
+              url: WAIT_FOR_URL_CALLBACK_URL,
+            });
+          }
+          return delivered;
+        },
+        responses,
       );
-      if (waitTab?.id) {
-        startSeenAt ??= Date.now();
-        if (Date.now() - startSeenAt < WAIT_FOR_URL_START_HOLD_MS) {
-          return;
-        }
-        clearWaitForUrlCallbackTimer();
-        await executeBrowserWorkspaceCommand({
-          id: waitTab.id,
-          subaction: "navigate",
-          url: WAIT_FOR_URL_CALLBACK_URL,
-        });
-        return;
-      }
-
-      // Give up only if START never appears; once seen, the hold above owns the
-      // timing (its window is deliberately shorter than this abort budget).
-      if (startSeenAt === null && Date.now() - startedAt > 6_000) {
-        clearWaitForUrlCallbackTimer();
-      }
-    })().catch(() => {
-      if (Date.now() - startedAt > 6_000) {
-        clearWaitForUrlCallbackTimer();
-      }
-    });
-  }, 50);
+    },
+  };
 }
 
 function toRecord(value: unknown): Record<string, unknown> {
@@ -283,7 +269,7 @@ function expectActionTurn(
   expected: {
     actionName: string;
     parameters: Record<string, unknown>;
-    responseText: string;
+    responseText?: string;
     resultFields: Record<string, unknown>;
   },
 ): string | undefined {
@@ -294,7 +280,10 @@ function expectActionTurn(
     return `expected ${expected.actionName} action, saw ${execution.actionsCalled.map((candidate) => candidate.actionName).join(", ") || "none"}`;
   }
 
-  if (action.result?.text !== expected.responseText) {
+  if (
+    expected.responseText !== undefined &&
+    action.result?.text !== expected.responseText
+  ) {
     return `expected ${expected.actionName} result.text=${JSON.stringify(expected.responseText)}, saw responseText=${JSON.stringify(execution.responseText)}, result.text=${JSON.stringify(action.result?.text)}`;
   }
 
@@ -330,6 +319,15 @@ export default scenario({
     plugins: ["@elizaos/plugin-browser"],
   },
   seed: [
+    transientTurnEvaluationSeed(
+      strictBrowserRoutes.map((route) => ({
+        input: route.input,
+        action: route.actionName,
+        completed: true,
+        reason: `The requested ${route.actionName} operation succeeded.`,
+      })),
+      "These synthetic browser control requests contain no personal facts, standing preferences, relationships, or durable owner goal.",
+    ),
     {
       type: "custom",
       name: "register browser plugin and seed a JSDOM workspace tab",
@@ -341,6 +339,7 @@ export default scenario({
         const runtime = ctx.runtime as
           | ({
               plugins?: Array<{ name?: string }>;
+              actions: Action[];
               registerPlugin?: (plugin: typeof browserPlugin) => Promise<void>;
             } & RuntimeWithScenarioModelFixtures)
           | undefined;
@@ -402,7 +401,7 @@ export default scenario({
           url: "https://scenario.test/form",
         });
 
-        scheduleWaitForUrlCallbackNavigation();
+        installWaitForUrlCallbackNavigation(runtime.actions);
         registerStrictActionRouteFixtures(runtime, strictBrowserRoutes);
         return undefined;
       },
@@ -564,10 +563,11 @@ export default scenario({
         expectActionTurn(execution, {
           actionName: "BROWSER_OPEN",
           parameters: { url: "about:blank" },
-          responseText: "Opened about:blank.",
           resultFields: {
+            "raw.turnComplete": true,
             "values.mode": "web",
             "values.subaction": "open",
+            "data.result.pageContentObserved": false,
             "data.result.tab.title": "New Tab",
             "data.result.tab.url": "about:blank",
           },

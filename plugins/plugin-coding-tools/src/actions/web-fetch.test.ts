@@ -236,6 +236,58 @@ describe("coding-tools WEB_FETCH", () => {
     expect(result.text?.isWellFormed()).toBe(true);
   });
 
+  it("names the WEB_SEARCH fallback on an upstream 5xx (live sweep: wttr.in HTTP 500)", async () => {
+    usePinnedRoutes({
+      "https://wttr.in/Austin,Texas?format=j1": new Response("boom", {
+        status: 500,
+        headers: { "content-type": "text/plain" },
+      }),
+    });
+    const result = await runFetch({
+      url: "https://wttr.in/Austin,Texas?format=j1",
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("HTTP 500");
+    expect(result.text).toContain("wttr.in failed upstream");
+    expect(result.text).toContain("WEB_SEARCH");
+    expect(result.data).toMatchObject({ status: 500 });
+  });
+
+  it("carries no fallback hint on a plain 4xx", async () => {
+    usePinnedRoutes({
+      "https://public.example.test/missing": new Response("nope", {
+        status: 404,
+        headers: { "content-type": "text/plain" },
+      }),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/missing",
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("HTTP 404");
+    expect(result.text).not.toContain("WEB_SEARCH");
+  });
+
+  it("names the WEB_SEARCH fallback after an aborted request (fetch-guard timeouts abort with no reason)", async () => {
+    // fetchWithSsrfGuard enforces timeoutMs with controller.abort() and no
+    // reason, so a real WEB_FETCH timeout reaches the handler as a bare
+    // AbortError whose message never contains "timeout". The transport
+    // pattern therefore treats "aborted" as the endpoint's failure too;
+    // otherwise a timed-out endpoint would carry no fallback hint.
+    __setWebHttpLookupFnForTests(async () => [
+      { address: PUBLIC_IP, family: 4 },
+    ]);
+    __setWebHttpPinnedFetchImplForTests(async () => {
+      throw new DOMException("The operation was aborted", "AbortError");
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/cancelled",
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("aborted");
+    expect(result.text).toContain("WEB_SEARCH");
+  });
+
   it("surfaces timeout-style fetch errors honestly", async () => {
     __setWebHttpLookupFnForTests(async () => [
       { address: PUBLIC_IP, family: 4 },
@@ -248,6 +300,7 @@ describe("coding-tools WEB_FETCH", () => {
 
     expect(result.success).toBe(false);
     expect(result.text).toContain("request aborted by timeout");
+    expect(result.text).toContain("WEB_SEARCH");
   });
 
   it("extracts useful readable text from HTML instead of raw markup", async () => {

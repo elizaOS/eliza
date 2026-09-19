@@ -8,6 +8,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { AgentSurfaceProvider } from "../../agent-surface/AgentSurfaceContext";
+import { getViewRegistry } from "../../agent-surface/registry";
 
 import { CockpitModePicker } from "./CockpitModePicker";
 import type { CockpitModeConfig } from "./cockpit-modes";
@@ -86,16 +88,41 @@ describe("CockpitModePicker", () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(
-      <Harness
-        initial={{ mode: "eliza-cloud", agentType: "elizaos", tier: "small" }}
-        onChange={onChange}
-      />,
+      <AgentSurfaceProvider viewId="cockpit-choice-selection" viewType="gui">
+        <Harness
+          initial={{ mode: "eliza-cloud", agentType: "elizaos", tier: "small" }}
+          onChange={onChange}
+        />
+      </AgentSurfaceProvider>,
     );
+    const registry = getViewRegistry("cockpit-choice-selection", "gui");
+    if (!registry) throw new Error("Rendered cockpit registry unavailable");
+    const cloud = screen.getByTestId("cockpit-mode-eliza-cloud");
+    const claude = screen.getByTestId("cockpit-mode-claude");
+    expect(cloud.getAttribute("data-state")).toBe("on");
+    expect(claude.getAttribute("data-state")).toBe("off");
+    expect(
+      registry
+        .snapshot()
+        .elements.find((e) => e.id === "cockpit-mode-eliza-cloud")?.status,
+    ).toBe("active");
     await user.click(screen.getByTestId("cockpit-mode-claude"));
     expect(onChange).toHaveBeenLastCalledWith({
       mode: "subscription",
       agentType: "claude",
     });
+    expect(cloud.getAttribute("data-state")).toBe("off");
+    expect(claude.getAttribute("data-state")).toBe("on");
+    expect(claude.getAttribute("aria-pressed")).toBe("true");
+    expect(
+      registry
+        .snapshot()
+        .elements.find((e) => e.id === "cockpit-mode-eliza-cloud")?.status,
+    ).toBe("inactive");
+    expect(
+      registry.snapshot().elements.find((e) => e.id === "cockpit-mode-claude")
+        ?.status,
+    ).toBe("active");
   });
 
   it("flipping the Eliza-Cloud tier emits the new tier", async () => {

@@ -577,7 +577,7 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
   // (via the user-facing routes that don't reactivate themselves) cannot run
   // (status='running') permanently excluded from listBillableSandboxes = free
   // dedicated compute. This drives the REAL provision() success path; the writer
-  // itself is proven against a real DB in agent-billing-reactivation.test.ts.
+  // itself is proven against a real DB in agent-billing-safety.pglite.test.ts.
   test("(6) a successful provision re-enters the billable set", async () => {
     const { ElizaSandboxService } = await import("../eliza-sandbox.ts?actual");
     const row = provisioningReadyRow();

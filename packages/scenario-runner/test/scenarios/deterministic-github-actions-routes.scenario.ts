@@ -2,14 +2,17 @@
  * Keyless catalog coverage for the plugin-github action and route surface against
  * a mocked GitHub API. Runs on the pr-deterministic lane under the model provider.
  */
+
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type IAgentRuntime, ModelType, type Plugin } from "@elizaos/core";
 import {
+  type DeterministicModelFixture,
   finalMessageUserText,
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
+  strictActionRouteFixtures,
 } from "@elizaos/core/testing";
 import type {
   CapturedAction,
@@ -22,6 +25,7 @@ import { buildReviewPreview } from "../../../../plugins/plugin-github/src/action
 import githubPlugin, {
   GitHubService,
 } from "../../../../plugins/plugin-github/src/index.ts";
+import { transientTurnEvaluationSeed } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
 
 const REPO = "octo/repo";
 const ISSUE_TITLE = "Deterministic issue";
@@ -397,35 +401,103 @@ const strictGithubRoutes = [
   },
 ];
 
-function matchesGithubIssueCreatePreviewEvaluation(value: string): boolean {
-  return (
-    finalMessageUserText(value) ===
-      "create deterministic GitHub issue preview" &&
-    value.includes("event:message_handler:") &&
-    value.includes(
-      "Stage 1 router marked this current turn as requiring a tool",
+/** Evaluates only the correlated pending confirmation, never a failed mutation. */
+const githubPreviewEvaluator: DeterministicModelFixture = {
+  name: "route-github-issue-create-preview-evaluator",
+  match(call) {
+    if (
+      call.modelType !== ModelType.RESPONSE_HANDLER ||
+      call.toolNames.length !== 0
     )
-  );
-}
+      return false;
+    const messages = call.params.messages ?? [];
+    if (
+      !messages.some(
+        (message) =>
+          message.role === "system" &&
+          typeof message.content === "string" &&
+          message.content.includes("evaluator_stage:\n"),
+      )
+    )
+      return false;
+    const inputs = messages.filter(
+      (message) =>
+        message.role === "user" &&
+        typeof message.content === "string" &&
+        message.content.includes("message:user:\n"),
+    );
+    if (
+      inputs.length !== 1 ||
+      typeof inputs[0].content !== "string" ||
+      finalMessageUserText(inputs[0].content) !==
+        "create deterministic GitHub issue preview"
+    )
+      return false;
+    const calls = messages
+      .filter((message) => message.role === "assistant")
+      .flatMap((message) =>
+        Array.isArray(message.content) ? message.content : [],
+      )
+      .filter((part) => part.type === "tool-call");
+    const results = messages
+      .filter((message) => message.role === "tool")
+      .flatMap((message) =>
+        Array.isArray(message.content) ? message.content : [],
+      )
+      .filter((part) => part.type === "tool-result");
+    if (calls.length !== 1 || results.length !== 1) return false;
+    const toolCall = calls[0];
+    const result = results[0];
+    if (
+      toolCall.type !== "tool-call" ||
+      result.type !== "tool-result" ||
+      toolCall.toolName !== "GITHUB_ISSUE_CREATE" ||
+      stableStringify(toolCall.input) !==
+        stableStringify(githubIssueParameters(false)) ||
+      result.toolCallId !== toolCall.toolCallId ||
+      result.toolName !== toolCall.toolName ||
+      result.output.type !== "text"
+    )
+      return false;
+    try {
+      const receipt: unknown = JSON.parse(result.output.value);
+      return (
+        isRecord(receipt) &&
+        receipt.success === false &&
+        readPath(receipt, "data.requiresConfirmation") === true &&
+        readPath(receipt, "data.awaitingUserInput") === true &&
+        readPath(receipt, "data.preview") === ISSUE_CREATE_PREVIEW &&
+        receipt.text ===
+          `${ISSUE_CREATE_PREVIEW} Reply yes to confirm or no to cancel.`
+      );
+    } catch {
+      // error-policy:J3 Invalid receipt JSON cannot match the confirmation fixture.
+      return false;
+    }
+  },
+  response: {
+    success: false,
+    decision: "FINISH",
+    thought:
+      "The issue mutation is awaiting the user's confirmation; no issue was created.",
+    messageToUser: ISSUE_CREATE_PREVIEW,
+  },
+  times: 1,
+};
 
 function registerGithubStrictFixtures(
   runtime: RuntimeWithGithubScenario,
 ): void {
-  registerStrictActionRouteFixtures(runtime, strictGithubRoutes);
-  runtime.scenarioModelFixtures?.register({
-    name: "route-github-issue-create-preview-evaluator",
-    match: {
-      modelType: ModelType.RESPONSE_HANDLER,
-      input: matchesGithubIssueCreatePreviewEvaluation,
-    },
-    response: {
-      success: false,
-      decision: "FINISH",
-      thought: "The issue-create action produced a confirmation preview.",
-      messageToUser: ISSUE_CREATE_PREVIEW,
-    },
-    times: 1,
-  });
+  const [previewRoute, ...completedRoutes] = strictGithubRoutes;
+  registerStrictActionRouteFixtures(runtime, completedRoutes);
+  // Preview has no successful mutation receipt. Register routing and planning
+  // with its own pending evaluator, not the success-only completion fixture.
+  const [route, planner] = strictActionRouteFixtures(previewRoute);
+  runtime.scenarioModelFixtures?.register(
+    route,
+    planner,
+    githubPreviewEvaluator,
+  );
 }
 
 function expectGithubPreview(
@@ -493,7 +565,7 @@ function expectGithubConfirmation({
     if (result.text !== prompt) {
       return `expected confirmation prompt ${JSON.stringify(prompt)}, saw ${JSON.stringify(result.text)}`;
     }
-    if (!execution.responseText?.includes(prompt)) {
+    if (execution.responseText !== prompt) {
       return `expected user-facing confirmation prompt, saw ${JSON.stringify(execution.responseText)}`;
     }
     if (githubLedger.length !== expectedLedgerLength) {
@@ -876,6 +948,20 @@ export default scenario({
     plugins: ["@elizaos/plugin-github"],
   },
   seed: [
+    transientTurnEvaluationSeed(
+      strictGithubRoutes.map((route) => ({
+        input: route.input,
+        action: route.actionName,
+        completed: route.input !== "create deterministic GitHub issue preview",
+        actionSuccess:
+          route.input !== "create deterministic GitHub issue preview",
+        reason:
+          route.input === "create deterministic GitHub issue preview"
+            ? "Issue creation awaits confirmation."
+            : "The requested GitHub operation completed.",
+      })),
+      "Synthetic issue and pull-request operations are tool records, not owner identity or lasting preferences.",
+    ),
     {
       type: "custom",
       name: "register real GitHub plugin with fake Octokit client and isolated state dir",

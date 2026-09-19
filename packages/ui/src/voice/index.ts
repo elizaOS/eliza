@@ -90,6 +90,12 @@ export {
   type VoiceCaptureState,
   type VoiceCaptureTranscriptSegment,
 } from "./voice-capture-factory";
+export type {
+  VoicePlaybackEvidenceEvent,
+  VoicePlaybackObserver,
+  VoicePlaybackTerminal,
+  VoiceTransportLeg,
+} from "./voice-playback-evidence";
 export {
   type DefaultVoiceProviderResult,
   isCloudVoiceRunnable,

@@ -5,6 +5,7 @@ import type { RoomHandlerLease } from "../../runtime/room-handler-queue";
 import type { CodingActionProfile } from "../../types/coding";
 import type { ActionResult, HandlerCallback } from "../../types/components";
 import type { Memory } from "../../types/memory";
+import type { MessageReplyRecoveryContext } from "../../types/message-service";
 import type { UUID } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { State } from "../../types/state";
@@ -29,6 +30,10 @@ export type V5MessageRuntimeInput = {
 	onSettledActionResult?: (result: ActionResult) => void;
 	roomHandlerLease?: RoomHandlerLease;
 	runTerminalOwner?: MessageRunTerminalOwner;
+	/** Publish a lazy capture of this turn's assembled context to delivery. */
+	onReplyRecoveryPrepared?: (
+		prepare: () => Promise<MessageReplyRecoveryContext>,
+	) => void;
 	/**
 	 * Optional pre-planner early-reply delivery seam. A consumer that decides
 	 * NOT to deliver the event (e.g. the voice fast path's async-handoff gate)

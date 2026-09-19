@@ -528,7 +528,7 @@ describe("secret container environment transport (#22060)", () => {
     }
   });
 
-  test("distinguishes pre-effect, definitive, and ambiguous Docker-create failures", async () => {
+  async function createExactCreateHarness() {
     const { spawn } = await import("node:child_process");
     const fs = await import("node:fs");
     const os = await import("node:os");
@@ -592,12 +592,39 @@ describe("secret container environment transport (#22060)", () => {
         child.on("close", (code) => resolve({ code, output }));
         child.stdin.end(input);
       });
+    const secretInput = buildDockerContainerEnvTransport({
+      API_KEY: "one-shot-secret-sentinel",
+    }).secretInput;
+    return {
+      fs,
+      path,
+      root,
+      volume,
+      attempts,
+      agentId,
+      containerName,
+      attemptId,
+      marker,
+      run,
+      seedControlVaultSnapshot,
+      secretInput,
+      dispose: () => fs.rmSync(root, { recursive: true, force: true }),
+    };
+  }
 
+  async function withExactCreateHarness(
+    scenario: (harness: Awaited<ReturnType<typeof createExactCreateHarness>>) => Promise<void>,
+  ): Promise<void> {
+    const harness = await createExactCreateHarness();
     try {
-      const secretInput = buildDockerContainerEnvTransport({
-        API_KEY: "one-shot-secret-sentinel",
-      }).secretInput;
+      await scenario(harness);
+    } finally {
+      harness.dispose();
+    }
+  }
 
+  test("exact Docker creation cleans legacy artifacts with a quiescent receipt", async () => {
+    await withExactCreateHarness(async ({ fs, path, volume, containerName, run }) => {
       const legacyAttemptId = "22222222-2222-4222-8222-222222222223";
       const legacyVaultPath = path.join(volume, ".vault-passphrase");
       const legacyArtifactPaths = [
@@ -620,7 +647,11 @@ describe("secret container environment transport (#22060)", () => {
       for (const artifactPath of legacyArtifactPaths) {
         expect(fs.existsSync(artifactPath)).toBe(false);
       }
+    });
+  }, 10_000);
 
+  test("exact Docker creation refuses cleanup of a retained hardlink", async () => {
+    await withExactCreateHarness(async ({ fs, path, root, volume, containerName, run }) => {
       const hardlinkAttemptId = "22222222-2222-4222-8222-222222222224";
       const hardlinkedLegacyEnv = path.join(volume, `.container-env-${hardlinkAttemptId}`);
       const retainedHardlink = path.join(root, "retained-legacy-env-hardlink");
@@ -638,149 +669,205 @@ describe("secret container environment transport (#22060)", () => {
       );
       expect(fs.readFileSync(hardlinkedLegacyEnv, "utf8")).toBe("hardlinked-plaintext");
       expect(fs.readFileSync(retainedHardlink, "utf8")).toBe("hardlinked-plaintext");
+    });
+  }, 10_000);
 
-      const symlinkAttemptId = "99999999-9999-4999-8999-999999999999";
-      const symlinkSecretPath = getReplacementControlSecretEnvPath(symlinkAttemptId);
-      const symlinkAttemptDirectory = path.join(attempts, symlinkAttemptId);
-      const externalEnvTarget = path.join(root, "external-env-target");
-      const externalBodyTarget = path.join(root, "external-env-body-target");
-      seedControlVaultSnapshot(symlinkAttemptId);
-      fs.writeFileSync(externalEnvTarget, "external-env-must-not-change", { mode: 0o640 });
-      fs.writeFileSync(externalBodyTarget, "external-body-must-not-change", { mode: 0o640 });
-      fs.symlinkSync(externalEnvTarget, path.join(symlinkAttemptDirectory, "container-env"));
-      fs.symlinkSync(externalBodyTarget, path.join(symlinkAttemptDirectory, "container-env.body"));
-      const symlinkProducer = buildDockerCreateWithSecretEnvCommand({
-        dockerCreateCommand: "true",
-        secretEnvPath: symlinkSecretPath,
-        vaultPassphrasePath: getReplacementControlVaultPassphrasePath(symlinkAttemptId),
-        exactReplacement: { containerName, replacementAttemptId: symlinkAttemptId },
-      });
-      expect(await run(symlinkProducer, secretInput)).toEqual({ code: 0, output: "" });
-      expect(fs.readFileSync(externalEnvTarget, "utf8")).toBe("external-env-must-not-change");
-      expect(fs.readFileSync(externalBodyTarget, "utf8")).toBe("external-body-must-not-change");
-      expect(fs.statSync(externalEnvTarget).mode & 0o777).toBe(0o640);
-      expect(fs.statSync(externalBodyTarget).mode & 0o777).toBe(0o640);
-      expect(fs.existsSync(path.join(symlinkAttemptDirectory, "container-env"))).toBe(false);
-      expect(fs.existsSync(path.join(symlinkAttemptDirectory, "container-env.body"))).toBe(false);
+  test("exact Docker creation replaces control symlinks without changing external files", async () => {
+    await withExactCreateHarness(
+      async ({
+        fs,
+        path,
+        root,
+        attempts,
+        containerName,
+        run,
+        seedControlVaultSnapshot,
+        secretInput,
+      }) => {
+        const symlinkAttemptId = "99999999-9999-4999-8999-999999999999";
+        const symlinkSecretPath = getReplacementControlSecretEnvPath(symlinkAttemptId);
+        const symlinkAttemptDirectory = path.join(attempts, symlinkAttemptId);
+        const externalEnvTarget = path.join(root, "external-env-target");
+        const externalBodyTarget = path.join(root, "external-env-body-target");
+        seedControlVaultSnapshot(symlinkAttemptId);
+        fs.writeFileSync(externalEnvTarget, "external-env-must-not-change", { mode: 0o640 });
+        fs.writeFileSync(externalBodyTarget, "external-body-must-not-change", { mode: 0o640 });
+        fs.symlinkSync(externalEnvTarget, path.join(symlinkAttemptDirectory, "container-env"));
+        fs.symlinkSync(
+          externalBodyTarget,
+          path.join(symlinkAttemptDirectory, "container-env.body"),
+        );
+        const symlinkProducer = buildDockerCreateWithSecretEnvCommand({
+          dockerCreateCommand: "true",
+          secretEnvPath: symlinkSecretPath,
+          vaultPassphrasePath: getReplacementControlVaultPassphrasePath(symlinkAttemptId),
+          exactReplacement: { containerName, replacementAttemptId: symlinkAttemptId },
+        });
+        expect(await run(symlinkProducer, secretInput)).toEqual({ code: 0, output: "" });
+        expect(fs.readFileSync(externalEnvTarget, "utf8")).toBe("external-env-must-not-change");
+        expect(fs.readFileSync(externalBodyTarget, "utf8")).toBe("external-body-must-not-change");
+        expect(fs.statSync(externalEnvTarget).mode & 0o777).toBe(0o640);
+        expect(fs.statSync(externalBodyTarget).mode & 0o777).toBe(0o640);
+        expect(fs.existsSync(path.join(symlinkAttemptDirectory, "container-env"))).toBe(false);
+        expect(fs.existsSync(path.join(symlinkAttemptDirectory, "container-env.body"))).toBe(false);
+      },
+    );
+  }, 10_000);
 
-      const malformedAttemptId = "77777777-7777-4777-8777-777777777777";
-      const malformedSecretPath = getReplacementControlSecretEnvPath(malformedAttemptId);
-      seedControlVaultSnapshot(malformedAttemptId);
-      const malformedProducer = buildDockerCreateWithSecretEnvCommand({
-        dockerCreateCommand: `: > ${shellQuote(marker)}`,
-        secretEnvPath: malformedSecretPath,
-        vaultPassphrasePath: getReplacementControlVaultPassphrasePath(malformedAttemptId),
-        exactReplacement: { containerName, replacementAttemptId: malformedAttemptId },
-      });
-      const malformed = await run(malformedProducer, "API_KEY=truncated-without-sentinel\n");
-      expect(malformed.code).not.toBe(0);
-      expect(fs.existsSync(marker)).toBe(false);
-      expect(fs.existsSync(path.join(attempts, malformedAttemptId, "active"))).toBe(false);
-      expect(fs.existsSync(path.join(attempts, malformedAttemptId, "container-env"))).toBe(false);
-      const malformedCleanup = await run(
-        buildReplacementSecretArtifactsCleanupCommand(containerName, malformedAttemptId),
-      );
-      expect(malformedCleanup).toEqual({
-        code: 0,
-        output: `${getReplacementSecretArtifactsCleanupReceipt(malformedAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(malformedAttemptId)}\n`,
-      });
+  test("exact Docker creation rejects malformed stdin before Docker creation", async () => {
+    await withExactCreateHarness(
+      async ({ fs, path, attempts, containerName, marker, run, seedControlVaultSnapshot }) => {
+        const malformedAttemptId = "77777777-7777-4777-8777-777777777777";
+        const malformedSecretPath = getReplacementControlSecretEnvPath(malformedAttemptId);
+        seedControlVaultSnapshot(malformedAttemptId);
+        const malformedProducer = buildDockerCreateWithSecretEnvCommand({
+          dockerCreateCommand: `: > ${shellQuote(marker)}`,
+          secretEnvPath: malformedSecretPath,
+          vaultPassphrasePath: getReplacementControlVaultPassphrasePath(malformedAttemptId),
+          exactReplacement: { containerName, replacementAttemptId: malformedAttemptId },
+        });
+        const malformed = await run(malformedProducer, "API_KEY=truncated-without-sentinel\n");
+        expect(malformed.code).not.toBe(0);
+        expect(fs.existsSync(marker)).toBe(false);
+        expect(fs.existsSync(path.join(attempts, malformedAttemptId, "active"))).toBe(false);
+        expect(fs.existsSync(path.join(attempts, malformedAttemptId, "container-env"))).toBe(false);
+        const malformedCleanup = await run(
+          buildReplacementSecretArtifactsCleanupCommand(containerName, malformedAttemptId),
+        );
+        expect(malformedCleanup).toEqual({
+          code: 0,
+          output: `${getReplacementSecretArtifactsCleanupReceipt(malformedAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(malformedAttemptId)}\n`,
+        });
+      },
+    );
+  }, 10_000);
 
-      const definitiveAttemptId = "88888888-8888-4888-8888-888888888888";
-      const definitiveSecretPath = getReplacementControlSecretEnvPath(definitiveAttemptId);
-      seedControlVaultSnapshot(definitiveAttemptId);
-      const definitiveProducer = buildDockerCreateWithSecretEnvCommand({
-        dockerCreateCommand: `sh -c ${shellQuote(
-          "printf '%s\\n' 'docker: Error response from daemon: Conflict. The container name is already in use by container' >&2; exit 125",
-        )}`,
-        secretEnvPath: definitiveSecretPath,
-        vaultPassphrasePath: getReplacementControlVaultPassphrasePath(definitiveAttemptId),
-        exactReplacement: { containerName, replacementAttemptId: definitiveAttemptId },
-      });
-      const definitive = await run(definitiveProducer, secretInput);
-      expect(definitive.code).toBe(125);
-      expect(definitive.output).not.toContain("Conflict. The container name");
-      expect(fs.existsSync(path.join(attempts, definitiveAttemptId, "active"))).toBe(false);
-      expect(fs.existsSync(path.join(attempts, definitiveAttemptId, "docker-error"))).toBe(false);
-      const definitiveCleanup = await run(
-        buildReplacementSecretArtifactsCleanupCommand(containerName, definitiveAttemptId),
-      );
-      expect(definitiveCleanup).toEqual({
-        code: 0,
-        output: `${getReplacementSecretArtifactsCleanupReceipt(definitiveAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(definitiveAttemptId)}\n`,
-      });
+  test("exact Docker creation preserves definitive Docker-create failure and quiescence", async () => {
+    await withExactCreateHarness(
+      async ({ fs, path, attempts, containerName, run, seedControlVaultSnapshot, secretInput }) => {
+        const definitiveAttemptId = "88888888-8888-4888-8888-888888888888";
+        const definitiveSecretPath = getReplacementControlSecretEnvPath(definitiveAttemptId);
+        seedControlVaultSnapshot(definitiveAttemptId);
+        const definitiveProducer = buildDockerCreateWithSecretEnvCommand({
+          dockerCreateCommand: `sh -c ${shellQuote(
+            "printf '%s\\n' 'docker: Error response from daemon: Conflict. The container name is already in use by container' >&2; exit 125",
+          )}`,
+          secretEnvPath: definitiveSecretPath,
+          vaultPassphrasePath: getReplacementControlVaultPassphrasePath(definitiveAttemptId),
+          exactReplacement: { containerName, replacementAttemptId: definitiveAttemptId },
+        });
+        const definitive = await run(definitiveProducer, secretInput);
+        expect(definitive.code).toBe(125);
+        expect(definitive.output).not.toContain("Conflict. The container name");
+        expect(fs.existsSync(path.join(attempts, definitiveAttemptId, "active"))).toBe(false);
+        expect(fs.existsSync(path.join(attempts, definitiveAttemptId, "docker-error"))).toBe(false);
+        const definitiveCleanup = await run(
+          buildReplacementSecretArtifactsCleanupCommand(containerName, definitiveAttemptId),
+        );
+        expect(definitiveCleanup).toEqual({
+          code: 0,
+          output: `${getReplacementSecretArtifactsCleanupReceipt(definitiveAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(definitiveAttemptId)}\n`,
+        });
+      },
+    );
+  }, 10_000);
 
-      const secretEnvPath = getReplacementControlSecretEnvPath(attemptId);
-      seedControlVaultSnapshot(attemptId);
-      const failedProducer = buildDockerCreateWithSecretEnvCommand({
-        dockerCreateCommand: "false",
-        secretEnvPath,
-        vaultPassphrasePath: getReplacementControlVaultPassphrasePath(attemptId),
-        exactReplacement: { containerName, replacementAttemptId: attemptId },
-      });
-      const failed = await run(failedProducer, secretInput);
-      expect(failed.code).not.toBe(0);
-      expect(failed.output).not.toContain("one-shot-secret-sentinel");
-      expect(fs.existsSync(path.join(attempts, attemptId, "active"))).toBe(true);
-      expect(fs.existsSync(path.join(attempts, attemptId, "container-env"))).toBe(false);
+  test("exact Docker creation keeps ambiguous creation fenced through cleanup and rejects replay", async () => {
+    await withExactCreateHarness(
+      async ({
+        fs,
+        path,
+        attempts,
+        containerName,
+        attemptId,
+        marker,
+        run,
+        seedControlVaultSnapshot,
+        secretInput,
+      }) => {
+        const secretEnvPath = getReplacementControlSecretEnvPath(attemptId);
+        seedControlVaultSnapshot(attemptId);
+        const failedProducer = buildDockerCreateWithSecretEnvCommand({
+          dockerCreateCommand: "false",
+          secretEnvPath,
+          vaultPassphrasePath: getReplacementControlVaultPassphrasePath(attemptId),
+          exactReplacement: { containerName, replacementAttemptId: attemptId },
+        });
+        const failed = await run(failedProducer, secretInput);
+        expect(failed.code).not.toBe(0);
+        expect(failed.output).not.toContain("one-shot-secret-sentinel");
+        expect(fs.existsSync(path.join(attempts, attemptId, "active"))).toBe(true);
+        expect(fs.existsSync(path.join(attempts, attemptId, "container-env"))).toBe(false);
 
-      const cleanup = await run(
-        buildReplacementSecretArtifactsCleanupCommand(containerName, attemptId),
-      );
-      expect(cleanup).toEqual({
-        code: 0,
-        output: `${getReplacementSecretArtifactsCleanupReceipt(attemptId)}\n`,
-      });
-      expect(fs.existsSync(path.join(attempts, attemptId, "active"))).toBe(true);
-      const observedContainerId = "b".repeat(64);
-      const observed = await run(
-        buildReplacementCandidateObservedCommand(attemptId, observedContainerId),
-      );
-      expect(observed).toEqual({
-        code: 0,
-        output: `${getReplacementCandidateObservedReceipt(attemptId, observedContainerId)}\n`,
-      });
-      const cleanupWithObservation = await run(
-        buildReplacementSecretArtifactsCleanupCommand(containerName, attemptId),
-      );
-      expect(cleanupWithObservation).toEqual({
-        code: 0,
-        output: `${getReplacementSecretArtifactsCleanupReceipt(attemptId)}\n${getReplacementCandidateObservedReceipt(attemptId, observedContainerId)}\n`,
-      });
+        const cleanup = await run(
+          buildReplacementSecretArtifactsCleanupCommand(containerName, attemptId),
+        );
+        expect(cleanup).toEqual({
+          code: 0,
+          output: `${getReplacementSecretArtifactsCleanupReceipt(attemptId)}\n`,
+        });
+        expect(fs.existsSync(path.join(attempts, attemptId, "active"))).toBe(true);
+        const observedContainerId = "b".repeat(64);
+        const observed = await run(
+          buildReplacementCandidateObservedCommand(attemptId, observedContainerId),
+        );
+        expect(observed).toEqual({
+          code: 0,
+          output: `${getReplacementCandidateObservedReceipt(attemptId, observedContainerId)}\n`,
+        });
+        const cleanupWithObservation = await run(
+          buildReplacementSecretArtifactsCleanupCommand(containerName, attemptId),
+        );
+        expect(cleanupWithObservation).toEqual({
+          code: 0,
+          output: `${getReplacementSecretArtifactsCleanupReceipt(attemptId)}\n${getReplacementCandidateObservedReceipt(attemptId, observedContainerId)}\n`,
+        });
 
-      const replay = buildDockerCreateWithSecretEnvCommand({
-        dockerCreateCommand: `: > ${shellQuote(marker)}`,
-        secretEnvPath,
-        vaultPassphrasePath: getReplacementControlVaultPassphrasePath(attemptId),
-        exactReplacement: { containerName, replacementAttemptId: attemptId },
-      });
-      const rejectedReplay = await run(replay, secretInput);
-      expect(rejectedReplay.code).toBe(75);
-      expect(rejectedReplay.output).not.toContain("one-shot-secret-sentinel");
-      expect(fs.existsSync(marker)).toBe(false);
+        const replay = buildDockerCreateWithSecretEnvCommand({
+          dockerCreateCommand: `: > ${shellQuote(marker)}`,
+          secretEnvPath,
+          vaultPassphrasePath: getReplacementControlVaultPassphrasePath(attemptId),
+          exactReplacement: { containerName, replacementAttemptId: attemptId },
+        });
+        const rejectedReplay = await run(replay, secretInput);
+        expect(rejectedReplay.code).toBe(75);
+        expect(rejectedReplay.output).not.toContain("one-shot-secret-sentinel");
+        expect(fs.existsSync(marker)).toBe(false);
+      },
+    );
+  }, 10_000);
 
-      const successfulAttemptId = "66666666-6666-4666-8666-666666666666";
-      const successfulSecretPath = getReplacementControlSecretEnvPath(successfulAttemptId);
-      seedControlVaultSnapshot(successfulAttemptId);
-      const successfulProducer = buildDockerCreateWithSecretEnvCommand({
-        dockerCreateCommand: `printf '%s\\n' ${shellQuote("a".repeat(64))}`,
-        secretEnvPath: successfulSecretPath,
-        vaultPassphrasePath: getReplacementControlVaultPassphrasePath(successfulAttemptId),
-        exactReplacement: {
-          containerName,
-          replacementAttemptId: successfulAttemptId,
-        },
-      });
-      const succeeded = await run(successfulProducer, secretInput);
-      expect(succeeded).toEqual({ code: 0, output: `${"a".repeat(64)}\n` });
-      expect(fs.existsSync(path.join(attempts, successfulAttemptId, "active"))).toBe(false);
-      const quiescentCleanup = await run(
-        buildReplacementSecretArtifactsCleanupCommand(containerName, successfulAttemptId),
-      );
-      expect(quiescentCleanup).toEqual({
-        code: 0,
-        output: `${getReplacementSecretArtifactsCleanupReceipt(successfulAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(successfulAttemptId)}\n`,
-      });
+  test("exact Docker creation clears the creation fence only after successful creation", async () => {
+    await withExactCreateHarness(
+      async ({ fs, path, attempts, containerName, run, seedControlVaultSnapshot, secretInput }) => {
+        const successfulAttemptId = "66666666-6666-4666-8666-666666666666";
+        const successfulSecretPath = getReplacementControlSecretEnvPath(successfulAttemptId);
+        seedControlVaultSnapshot(successfulAttemptId);
+        const successfulProducer = buildDockerCreateWithSecretEnvCommand({
+          dockerCreateCommand: `printf '%s\\n' ${shellQuote("a".repeat(64))}`,
+          secretEnvPath: successfulSecretPath,
+          vaultPassphrasePath: getReplacementControlVaultPassphrasePath(successfulAttemptId),
+          exactReplacement: {
+            containerName,
+            replacementAttemptId: successfulAttemptId,
+          },
+        });
+        const succeeded = await run(successfulProducer, secretInput);
+        expect(succeeded).toEqual({ code: 0, output: `${"a".repeat(64)}\n` });
+        expect(fs.existsSync(path.join(attempts, successfulAttemptId, "active"))).toBe(false);
+        const quiescentCleanup = await run(
+          buildReplacementSecretArtifactsCleanupCommand(containerName, successfulAttemptId),
+        );
+        expect(quiescentCleanup).toEqual({
+          code: 0,
+          output: `${getReplacementSecretArtifactsCleanupReceipt(successfulAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(successfulAttemptId)}\n`,
+        });
+      },
+    );
+  }, 10_000);
 
+  test("exact Docker creation refuses cleanup receipts when file or symlink artifacts survive", async () => {
+    await withExactCreateHarness(async ({ fs, path, root, attempts, containerName, run }) => {
       for (const [suffix, kind] of [
         ["44444444-4444-4444-8444-444444444444", "file"],
         ["55555555-5555-4555-8555-555555555555", "symlink"],
@@ -810,9 +897,7 @@ describe("secret container environment transport (#22060)", () => {
           expect(fs.statSync(externalTarget).mode & 0o777).toBe(0o640);
         }
       }
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
+    });
   }, 10_000);
 
   test("derives exact cleanup paths from the canonical container name only", () => {
@@ -889,6 +974,15 @@ describe("extractDockerCreateContainerId", () => {
     const out = "WARNING: something\n" + "a".repeat(64);
     expect(extractDockerCreateContainerId(out)).toBe("aaaaaaaaaaaa");
     expect(() => extractDockerCreateContainerId("no id here")).toThrow(/invalid container id/);
+  });
+  test("paid admission retains all 64 identity characters and rejects abbreviated ids", () => {
+    const id = "a".repeat(64);
+    expect(extractDockerCreateContainerId(`WARNING: pull\n${id}`, { requireFullId: true })).toBe(
+      id,
+    );
+    expect(() => extractDockerCreateContainerId(id.slice(0, 12), { requireFullId: true })).toThrow(
+      "full immutable Docker id",
+    );
   });
 });
 

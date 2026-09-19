@@ -69,7 +69,7 @@ const PLUGINS_DIR = "plugins";
 export const TEST_LANE_MEMBERSHIP_EXCLUSIONS = new Map([
   [
     "packages/app-core/platforms/electrobun",
-    "full `test` script (vitest, unfiltered config) is not lane-tagged; only a hand-picked 6-file subset (desktop-window/rpc-handlers/surface-windows/host/application-menu tests) runs, and only post-merge via test.yml's push-to-develop trigger, never as a PR gate. The untested remainder may carry native/macOS-only content unsafe for the shared ubuntu-24.04 lane runners, so this needs an owner decision (curate a safe subset into a lane, or accept post-merge-only coverage explicitly) rather than a blind tag.",
+    "full `test` script (vitest, unfiltered config) is not lane-tagged; ci.yml's desktop-contract job owns the supported deterministic desktop subset during full branch validation. Native/macOS-only tests require their platform owner rather than inclusion in the shared Linux lane.",
   ],
   [
     "packages/cloud/e2e",
@@ -77,7 +77,7 @@ export const TEST_LANE_MEMBERSHIP_EXCLUSIONS = new Map([
   ],
   [
     "packages/homepage",
-    "plain `test` script (bun:test suite covering contact, wallet-linking, onboarding, and auth-return paths) runs only in the separate Quality (Extended) workflow (quality.yml), which triggers on push to develop/main or PRs targeting main, never on PRs targeting develop — this repo's actual contribution target (see CONTRIBUTING.md). `test:e2e` is separately excluded from the root e2e sweep via ROOT_PR_E2E_EXCLUDED_PACKAGE_DIRS for GPU/timing-budget reasons. Needs an owner decision on lane membership for the plain `test` script.",
+    "plain `test` script (bun:test contact, wallet-linking, onboarding and auth-return contracts) runs in ci.yml's frontend-build job during full branch validation. Homepage browser tests retain their explicit owner because the root e2e sweep excludes this workspace for GPU/timing-budget reasons.",
   ],
 ]);
 

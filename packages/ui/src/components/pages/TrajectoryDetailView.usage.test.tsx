@@ -1,0 +1,472 @@
+/** Exercises recorded trajectory inspection and clipboard state with controlled API and platform boundaries. */
+// @vitest-environment jsdom
+
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { TrajectoryDetailView } from "./TrajectoryDetailView";
+
+const api = vi.hoisted(() => ({ getTrajectoryDetail: vi.fn(), copy: vi.fn() }));
+vi.mock("../../api/client", () => ({ client: api }));
+vi.mock("../../state", () => ({
+  useAppSelector: (selector: (state: unknown) => unknown) =>
+    selector({
+      t: (key: string, options?: { defaultValue?: string }) =>
+        options?.defaultValue ?? key,
+      copyToClipboard: api.copy,
+    }),
+}));
+vi.mock("../../agent-surface", () => ({
+  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
+}));
+
+const recordedUsage = [
+  [38396, 425],
+  [6298, 58],
+  [2502, 80],
+  [29501, 71],
+  [11489, 200],
+  [13394, 114],
+];
+
+function detail(unknownUsage = false) {
+  return {
+    trajectory: {
+      id: "recorded-correction",
+      status: "completed",
+      llmCallCount: 6,
+      providerAccessCount: 61,
+      durationMs: 7468,
+      createdAt: "2026-09-08T23:47:08.696Z",
+    },
+    llmCalls: recordedUsage.map(([promptTokens, completionTokens], index) => ({
+      id: `call-${index}`,
+      model: "fixture-model",
+      purpose: "external_llm",
+      timestamp: 1788911221228 + index,
+      latencyMs: 100,
+      maxTokens: 0,
+      temperature: 0,
+      promptTokens,
+      completionTokens:
+        unknownUsage && index === 0 ? undefined : completionTokens,
+      userPrompt: "Recorded fixture input",
+      response: "Recorded fixture output",
+    })),
+    providerAccesses: [],
+  };
+}
+
+describe("TrajectoryDetailView recorded usage", () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+    api.copy.mockReset();
+  });
+
+  it("separates retained history from each recorded model input", async () => {
+    const text =
+      "# Conversation Messages (78 retained)\nprivate diagnostic transcript";
+    const fixture = detail();
+    api.getTrajectoryDetail.mockResolvedValue({
+      ...fixture,
+      llmCalls: fixture.llmCalls.map((call, index) => ({
+        ...call,
+        userPrompt: `combined prompt ${index}`,
+        messages: [{ role: "user", content: `actual input ${index}` }],
+      })),
+      providerAccesses: [
+        {
+          id: "history",
+          providerName: "RECENT_MESSAGES",
+          purpose: "compose_state",
+          data: { text, textLength: text.length, outcome: "success" },
+        },
+      ],
+    });
+    render(
+      <TrajectoryDetailView
+        trajectoryId="recorded-correction"
+        collapsibleCalls
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Context & timeline" }),
+      ).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Context & timeline" }));
+    expect(screen.getByText(/78 messages retained/)).toBeTruthy();
+    const disclosure = screen
+      .getByText("Show full retained transcript")
+      .closest("details");
+    expect(disclosure?.open).toBe(false);
+    fireEvent.click(screen.getByText("Show full retained transcript"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy Retained transcript" }),
+    );
+    expect(api.copy).toHaveBeenLastCalledWith(text);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Model input" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    expect(
+      screen.getByRole("region", { name: "Recorded model input" }).textContent,
+    ).toBe("[user] actual input 0");
+    fireEvent.change(screen.getByRole("combobox", { name: "Model call" }), {
+      target: { value: "call-1" },
+    });
+    expect(
+      screen.getByRole("region", { name: "Recorded model input" }).textContent,
+    ).toBe("[user] actual input 1");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy Recorded model input" }),
+    );
+    expect(api.copy).toHaveBeenLastCalledWith("[user] actual input 1");
+  });
+  it.each(["copied", "failed"])(
+    "keeps the current copy pending when an older run's copy is %s",
+    async (olderOutcome) => {
+      const first = detail();
+      const second = {
+        ...detail(),
+        trajectory: { ...detail().trajectory, id: "second-run" },
+      };
+      api.getTrajectoryDetail
+        .mockResolvedValueOnce(first)
+        .mockResolvedValueOnce(second);
+      let settleOlder!: () => void;
+      let finishCurrent!: () => void;
+      api.copy
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve, reject) => {
+              settleOlder =
+                olderOutcome === "copied"
+                  ? resolve
+                  : () => reject(new Error("Older clipboard request denied"));
+            }),
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve) => {
+              finishCurrent = resolve;
+            }),
+        );
+      const view = render(
+        <TrajectoryDetailView
+          trajectoryId="recorded-correction"
+          collapsibleCalls
+        />,
+      );
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Copy entire recorded run" }),
+      );
+      view.rerender(
+        <TrajectoryDetailView trajectoryId="second-run" collapsibleCalls />,
+      );
+      await waitFor(() =>
+        expect(
+          (
+            screen.getByRole("button", {
+              name: "Copy entire recorded run",
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(false),
+      );
+      const current = screen.getByRole("button", {
+        name: "Copy entire recorded run",
+      }) as HTMLButtonElement;
+      fireEvent.click(current);
+      expect(api.copy.mock.calls.map(([payload]) => payload)).toEqual([
+        JSON.stringify(first, null, 2),
+        JSON.stringify(second, null, 2),
+      ]);
+      await act(async () => settleOlder());
+      try {
+        expect(current.disabled).toBe(true);
+        expect(screen.getByRole("status").textContent).toBe("Copying…");
+      } finally {
+        await act(async () => finishCurrent());
+      }
+      expect(screen.getByRole("status").textContent).toBe(
+        "Recorded run copied.",
+      );
+      expect(current.disabled).toBe(false);
+    },
+  );
+
+  it("reports whole-run clipboard completion only after the full payload is copied", async () => {
+    const recorded = detail();
+    api.getTrajectoryDetail.mockResolvedValue(recorded);
+    let finishCopy!: () => void;
+    api.copy.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishCopy = resolve;
+        }),
+    );
+    render(
+      <TrajectoryDetailView
+        trajectoryId="recorded-correction"
+        collapsibleCalls
+      />,
+    );
+    const button = await screen.findByRole("button", {
+      name: "Copy entire recorded run",
+    });
+    fireEvent.click(button);
+    expect(api.copy).toHaveBeenCalledWith(JSON.stringify(recorded, null, 2));
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("status").textContent).toBe("Copying…");
+    finishCopy();
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toBe(
+        "Recorded run copied.",
+      ),
+    );
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("shows a retryable clipboard failure instead of an unhandled rejection", async () => {
+    api.getTrajectoryDetail.mockResolvedValue(detail());
+    api.copy.mockRejectedValueOnce(new Error("Permission denied"));
+    render(
+      <TrajectoryDetailView
+        trajectoryId="recorded-correction"
+        collapsibleCalls
+      />,
+    );
+    const button = await screen.findByRole("button", {
+      name: "Copy entire recorded run",
+    });
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toContain(
+        "Could not copy",
+      ),
+    );
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    api.copy.mockResolvedValueOnce(undefined);
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toBe(
+        "Recorded run copied.",
+      ),
+    );
+  });
+
+  it("distinguishes missing provider text, captured text, empty results and raw metadata", async () => {
+    const text = `Actual provider output\n${"context ".repeat(10000)}EXACT_END`;
+    const legacy = {
+      id: "legacy",
+      providerName: "recent-conversations",
+      purpose: "compose_state",
+      query: { message: "hi\n[Language instruction]" },
+      durationMs: 58,
+      data: { textLength: 1782, outcome: "success", cacheHit: false },
+    };
+    const captured = {
+      ...legacy,
+      id: "captured",
+      data: {
+        text,
+        textLength: text.length,
+        outcome: "success",
+        cacheHit: true,
+      },
+    };
+    const empty = {
+      ...legacy,
+      id: "empty",
+      data: { text: "", textLength: 0, outcome: "success" },
+    };
+    api.getTrajectoryDetail.mockResolvedValue({
+      ...detail(),
+      providerAccesses: [
+        legacy,
+        captured,
+        empty,
+        {
+          ...legacy,
+          id: "failed",
+          data: { outcome: "error", errorCode: "PROVIDER_COMPOSITION_FAILED" },
+        },
+      ],
+    });
+    render(
+      <TrajectoryDetailView
+        trajectoryId="recorded-correction"
+        collapsibleCalls
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Context & timeline" }),
+      ).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Context & timeline" }));
+    expect(
+      screen.getByText(/Provider result text was not recorded/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Provider cache: result was not reused/),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("region", { name: "Full provider record" }),
+    ).toBeNull();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Request" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    expect(
+      screen.getByRole("region", { name: "Provider request" }).textContent,
+    ).toBe(legacy.query.message);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy Provider request" }),
+    );
+    expect(api.copy).toHaveBeenLastCalledWith(legacy.query.message);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Result" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.change(
+      screen.getByRole("combobox", { name: /Context provider/ }),
+      { target: { value: "captured" } },
+    );
+    expect(
+      screen.getByRole("region", { name: "Provider result text" }).textContent,
+    ).toBe(text);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy Provider result text" }),
+    );
+    expect(api.copy).toHaveBeenLastCalledWith(text);
+    expect(screen.getByText(/Provider cache: reused result/)).toBeTruthy();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Raw data" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    expect(
+      JSON.parse(
+        screen.getByRole("region", { name: "Full provider record" })
+          .textContent ?? "",
+      ),
+    ).toEqual(captured);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Result" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.change(
+      screen.getByRole("combobox", { name: /Context provider/ }),
+      { target: { value: "empty" } },
+    );
+    expect(screen.getByText("Provider returned no text.")).toBeTruthy();
+    expect(
+      screen.queryByText(/Provider result text was not recorded/),
+    ).toBeNull();
+  });
+
+  it("renders 102.5k instead of zero when the detail response omits rollups", async () => {
+    api.getTrajectoryDetail.mockResolvedValue(detail());
+    render(<TrajectoryDetailView trajectoryId="recorded-correction" />);
+    await waitFor(() => {
+      expect(
+        screen
+          .getByText("Tokens", { selector: "dt" })
+          .parentElement?.querySelector("dd")?.textContent,
+      ).toBe("102.5k");
+    });
+    expect(
+      screen
+        .getByText("Model calls", { selector: "dt" })
+        .parentElement?.querySelector("dd")?.textContent,
+    ).toBe("6");
+    expect(
+      screen
+        .getByText("Provider reads", { selector: "dt" })
+        .parentElement?.querySelector("dd")?.textContent,
+    ).toBe("61");
+  });
+
+  it("preserves complete model text and selected calls while a live run refreshes, and cancels closed reads", async () => {
+    const original = detail();
+    const input =
+      Array.from(
+        { length: 32 },
+        (_, index) => `${index}: ${"context ".repeat(500)}`,
+      ).join("\n") + "\nFINAL_INPUT_SENTINEL";
+    original.llmCalls[0].userPrompt = input;
+    api.getTrajectoryDetail.mockResolvedValue(original);
+    const view = render(
+      <TrajectoryDetailView
+        trajectoryId="recorded-correction"
+        revision="one"
+        collapsibleCalls
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("Model call")).toBeTruthy(),
+    );
+    expect(screen.getByRole("region", { name: "Input" }).textContent).toBe(
+      input,
+    );
+    api.getTrajectoryDetail.mockResolvedValue({
+      ...original,
+      llmCalls: [
+        ...original.llmCalls,
+        {
+          ...original.llmCalls[0],
+          id: "late-evaluation",
+          purpose: "evaluation",
+          userPrompt: "Later evaluation input",
+        },
+      ],
+    });
+    view.rerender(
+      <TrajectoryDetailView
+        trajectoryId="recorded-correction"
+        revision="two"
+        collapsibleCalls
+      />,
+    );
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(7));
+    expect(
+      (screen.getByLabelText("Model call") as HTMLSelectElement).value,
+    ).toBe(original.llmCalls[0].id);
+    expect(screen.getByRole("region", { name: "Input" }).textContent).toBe(
+      input,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Copy Input" }));
+    expect(api.copy).toHaveBeenLastCalledWith(input);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Output" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    expect(screen.getByRole("region", { name: "Output" }).textContent).toBe(
+      "Recorded fixture output",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Copy Output" }));
+    expect(api.copy).toHaveBeenLastCalledWith("Recorded fixture output");
+    const signal = api.getTrajectoryDetail.mock.calls.at(-1)?.[1].signal;
+    view.unmount();
+    expect(signal.aborted).toBe(true);
+  });
+
+  it("renders unknown total usage as a dash rather than a partial sum", async () => {
+    api.getTrajectoryDetail.mockResolvedValue(detail(true));
+    render(<TrajectoryDetailView trajectoryId="recorded-correction" />);
+    await waitFor(() => {
+      expect(
+        screen
+          .getByText("Tokens", { selector: "dt" })
+          .parentElement?.querySelector("dd")?.textContent,
+      ).toBe("—");
+    });
+  });
+});

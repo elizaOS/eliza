@@ -1078,7 +1078,7 @@ export function SensitiveRequestBlock({
         <div className="min-w-0">
           <div className="break-words font-medium">{requestLabel}</div>
           {canCollectSecret && !tunnel && !isRemoteConnect && (
-            <div className="mt-0.5 text-xs text-muted">
+            <div className="mt-0.5 text-xs text-muted-strong">
               Masked input. It never lands in the transcript.
             </div>
           )}
@@ -1087,7 +1087,7 @@ export function SensitiveRequestBlock({
           data-testid="sensitive-request-status"
           className={cn(
             "flex shrink-0 items-center gap-1 text-xs",
-            isSaved ? "text-ok" : "text-muted",
+            isSaved ? "text-ok" : "text-muted-strong",
           )}
         >
           {isSaved && <Check className="size-3.5" aria-hidden />}
@@ -1095,10 +1095,12 @@ export function SensitiveRequestBlock({
         </div>
       </div>
       {request.reason && (
-        <div className="text-xs text-muted">{request.reason}</div>
+        <div className="text-xs text-muted-strong">{request.reason}</div>
       )}
       {request.delivery?.instruction && (
-        <div className="text-xs text-muted">{request.delivery.instruction}</div>
+        <div className="text-xs text-muted-strong">
+          {request.delivery.instruction}
+        </div>
       )}
       {canCollectSecret && (
         <SemanticForm className="space-y-3" onSubmit={handleSubmit}>
@@ -1208,7 +1210,7 @@ export function SensitiveRequestBlock({
           </Button>
           {!isRemoteConnect && (
             <div
-              className="flex items-center gap-1.5 text-xs text-muted"
+              className="flex items-center gap-1.5 text-xs text-muted-strong"
               data-testid="sensitive-request-security-note"
             >
               <ShieldCheck className="size-3.5 shrink-0" aria-hidden />
@@ -1395,6 +1397,7 @@ export function MessageContent({
   // Composer prefill for followup `prompt` chips. Outside the chat provider,
   // `useChatComposer` returns an inert setter, so this is safe everywhere.
   const { setChatInput } = useChatComposer();
+  const [replyRecoveryPending, setReplyRecoveryPending] = useState(false);
   const [localDownloadState, setLocalDownloadState] = useState<
     "idle" | "busy" | "queued" | "failed"
   >("idle");
@@ -1504,6 +1507,32 @@ export function MessageContent({
           {localDownloadError ? (
             <div className="text-xs text-danger">{localDownloadError}</div>
           ) : null}
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (message.role === "assistant" && message.replyRecoveryAvailable === true) {
+    return (
+      <Alert variant="warning">
+        <AlertDescription>
+          <div className="whitespace-pre-wrap">{message.text}</div>
+          <Button
+            type="button"
+            size="sm"
+            disabled={replyRecoveryPending}
+            onClick={async () => {
+              if (!message.id || replyRecoveryPending) return;
+              setReplyRecoveryPending(true);
+              try {
+                await handleChatRetry(message.id);
+              } finally {
+                setReplyRecoveryPending(false);
+              }
+            }}
+          >
+            {replyRecoveryPending ? "Regenerating reply…" : "Regenerate reply"}
+          </Button>
         </AlertDescription>
       </Alert>
     );
@@ -1665,7 +1694,7 @@ export function MessageContent({
                   <div className="text-xs font-semibold text-accent">
                     &lt;{seg.tag}&gt;
                   </div>
-                  <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs text-muted overscroll-x-contain">
+                  <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs text-muted-strong overscroll-x-contain">
                     {seg.content.trim()}
                   </pre>
                 </Card>
@@ -1706,7 +1735,7 @@ export function MessageContent({
       {analysisMode && message.actionName && (
         <Card variant="insetPadded" stack="compact" className="my-2">
           <div className="text-xs font-semibold text-accent">Action taken</div>
-          <div className="space-y-1 font-mono text-xs text-muted">
+          <div className="space-y-1 font-mono text-xs text-muted-strong">
             {message.actionName}
           </div>
         </Card>
@@ -1718,7 +1747,7 @@ export function MessageContent({
             <div className="text-xs font-semibold text-muted-strong">
               Action callback history
             </div>
-            <div className="space-y-1 font-mono text-xs text-muted">
+            <div className="space-y-1 font-mono text-xs text-muted-strong">
               {(() => {
                 const occurrence = new Map<string, number>();
                 return message.actionCallbackHistory.map((log) => {

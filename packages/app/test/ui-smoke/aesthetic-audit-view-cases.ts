@@ -28,7 +28,7 @@ export const BUILTIN_TAB_PATHS: Record<string, string> = {
   trajectories: "/apps/trajectories",
   transcripts: "/apps/transcripts",
   memories: "/apps/memories",
-  rolodex: "/rolodex",
+  rolodex: "/apps/relationships",
   runtime: "/apps/runtime",
   database: "/apps/database",
   desktop: "/desktop",
@@ -44,7 +44,7 @@ export interface AuditViewCase {
   path: string;
   viewType: "gui" | "tui";
   kind: "builtin" | "plugin";
-  fixtureState?: "cloud-signed-out";
+  fixtureState?: "cloud-signed-out" | "family-interview";
 }
 
 export function buildAuditViewCases(): AuditViewCase[] {
@@ -82,7 +82,16 @@ export function buildAuditViewCases(): AuditViewCase[] {
               fixtureState: "cloud-signed-out",
             },
           ]
-        : [base];
+        : view.id === "family-operations"
+          ? [
+              base,
+              {
+                ...base,
+                slug: "plugin-family-interview-gui",
+                fixtureState: "family-interview",
+              },
+            ]
+          : [base];
     }),
   ];
 }

@@ -4,6 +4,7 @@
  * directories and no filesystem mocks.
  */
 
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
@@ -30,6 +31,74 @@ async function makeDir(prefix: string): Promise<string> {
 }
 
 describe("copyPluginTreeWithoutEscapingSymlinks", () => {
+  it("preserves all sibling modules, bytes, and cross-directory links for a fresh consumer", async () => {
+    const src = await makeDir("plugin-copy-parallel-src-");
+    const target = path.join(
+      await makeDir("plugin-copy-parallel-dst-"),
+      "tree",
+    );
+    await fsp.mkdir(path.join(src, "shared"));
+    await fsp.writeFile(
+      path.join(src, "shared", "marker.mjs"),
+      "export const marker = 'shared';\n",
+    );
+    const expected: { payload: string; marker: string }[] = [];
+    const imports: string[] = [];
+    for (let index = 0; index < 12; index++) {
+      const name = `consumer-${index}`;
+      const directory = path.join(src, name);
+      await fsp.mkdir(directory);
+      const payload = `${index}:complete-data:`.repeat(256);
+      expected.push({ payload, marker: "shared" });
+      await fsp.writeFile(path.join(directory, "payload.txt"), payload);
+      await fsp.symlink(
+        process.platform === "win32" ? path.join(src, "shared") : "../shared",
+        path.join(directory, "shared"),
+        process.platform === "win32" ? "junction" : "dir",
+      );
+      await fsp.writeFile(
+        path.join(directory, "index.mjs"),
+        "import { readFileSync } from 'node:fs'; import { marker } from './shared/marker.mjs'; export default { payload: readFileSync(new URL('./payload.txt', import.meta.url), 'utf8'), marker };\n",
+      );
+      imports.push(
+        `import('./${name}/index.mjs').then(module => module.default)`,
+      );
+    }
+    await fsp.writeFile(
+      path.join(src, "index.mjs"),
+      `console.log(JSON.stringify(await Promise.all([${imports.join(",")}])));\n`,
+    );
+    await copyPluginTreeWithoutEscapingSymlinks(src, target);
+    await fsp.rm(src, { recursive: true, force: true });
+    const output = execFileSync(
+      process.execPath,
+      [path.join(target, "index.mjs")],
+      { encoding: "utf8" },
+    );
+    expect(JSON.parse(output)).toEqual(expected);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "restores restrictive directory modes after copying their children",
+    async () => {
+      const src = await makeDir("plugin-copy-mode-src-");
+      const target = path.join(await makeDir("plugin-copy-mode-dst-"), "tree");
+      await fsp.mkdir(path.join(src, "nested"));
+      await fsp.writeFile(path.join(src, "nested", "value.txt"), "complete");
+      await fsp.chmod(src, 0o500);
+      try {
+        await copyPluginTreeWithoutEscapingSymlinks(src, target);
+        expect(
+          await fsp.readFile(path.join(target, "nested", "value.txt"), "utf8"),
+        ).toBe("complete");
+        expect((await fsp.stat(target)).mode & 0o777).toBe(0o500);
+      } finally {
+        await fsp.chmod(src, 0o700);
+        if (fs.existsSync(target)) await fsp.chmod(target, 0o700);
+      }
+    },
+  );
+
   it("copies regular files and in-tree symlinks", async () => {
     const src = await makeDir("plugin-copy-src-");
     const dst = await makeDir("plugin-copy-dst-");

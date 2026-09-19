@@ -83,10 +83,17 @@ const meta = {
   title: "Docs/ApiRouteExplorerClient",
   component: ApiRouteExplorerClient,
   tags: ["autodocs"],
+  globals: { theme: "dark" },
   parameters: { backgrounds: { default: "dark" } },
   decorators: [
-    (Story) => (
-      <div className="dark bg-black p-6 text-white">
+    (Story, context) => (
+      <div
+        className={
+          context.globals.theme === "light"
+            ? "bg-bg p-6 text-txt"
+            : "dark bg-black p-6 text-white"
+        }
+      >
         <Story />
       </div>
     ),
@@ -98,6 +105,11 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: { routes },
+};
+
+export const LightTheme: Story = {
+  args: { routes },
+  globals: { theme: "light" },
 };
 
 export const Empty: Story = {

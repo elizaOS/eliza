@@ -173,6 +173,22 @@ describe("CerebrasJudge", () => {
     expect(result.reason).toBe("good");
   });
 
+  it.each(["0.9junk", "1e", 2, -0.1, [0.9], null, true])(
+    "does not certify invalid score %j even with an explicit PASS",
+    async (score) => {
+      const raw = JSON.stringify({
+        score,
+        verdict: "PASS",
+        reason: "claimed success",
+      });
+      mockFetchOnceJson(raw);
+      const result = await new CerebrasJudge().judge("test prompt");
+      expect(result.raw).toBe(raw);
+      expect(result.score).toBeUndefined();
+      expect(result.verdict).toBeUndefined();
+    },
+  );
+
   it("parses fenced JSON output", async () => {
     mockFetchOnceJson('```json\n{"verdict":"FAIL","reason":"nope"}\n```');
     const judge = new CerebrasJudge();

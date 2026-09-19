@@ -346,6 +346,37 @@ describe("eliza.thinking='off' reasoning suppression (Cerebras mode)", () => {
   });
 });
 
+describe("explicit reasoning for original-source reconciliation", () => {
+  const params = {
+    prompt: "Read the originals",
+    providerOptions: { eliza: { thinking: "on" } },
+  } as never;
+  function effort(settings: Record<string, string>, model = "qwen-3.8-27b") {
+    const opts = __INTERNAL_resolveProviderOptions(params, buildRuntime(settings), model);
+    return (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort;
+  }
+  it("enables low reasoning only when the supported Qwen call opts in", () => {
+    expect(effort({ CEREBRAS_API_KEY: "csk-test" })).toBe("low");
+    expect(effort({ CEREBRAS_API_KEY: "csk-test" }, "cerebras/qwen-3.8-27b")).toBe("low");
+    expect(effort({ OPENAI_API_KEY: "sk-test" })).toBeUndefined();
+    expect(effort({ CEREBRAS_API_KEY: "csk-test" }, "qwen-custom")).toBeUndefined();
+  });
+  it("preserves a configured reasoning effort and explicit per-call overrides", () => {
+    expect(effort({ CEREBRAS_API_KEY: "csk-test", OPENAI_REASONING_EFFORT: "high" })).toBe("high");
+    const opts = __INTERNAL_resolveProviderOptions(
+      {
+        prompt: "originals",
+        providerOptions: { eliza: { thinking: "on" }, openai: { reasoningEffort: "none" } },
+      } as never,
+      buildRuntime({ CEREBRAS_API_KEY: "csk-test" }),
+      "qwen-3.8-27b"
+    );
+    expect((opts as { openai?: { reasoningEffort?: string } })?.openai?.reasoningEffort).toBe(
+      "none"
+    );
+  });
+});
+
 describe("Cerebras Qwen 3.8 reasoning contract", () => {
   it("accepts an explicit none effort for the supported Qwen endpoint", () => {
     const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test", OPENAI_REASONING_EFFORT: "none" });

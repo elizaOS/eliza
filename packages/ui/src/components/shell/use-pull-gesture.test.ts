@@ -8,7 +8,7 @@
 // one internal contract — rAF coalescing of move deltas (#9141) — NOT the real
 // browser pointer/capture/hit-test pipeline. That real pipeline (touch-action,
 // implicit capture, pointercancel, hit-testing) is covered end-to-end by the
-// REAL CDP-touch runners: run-chatux-gesture-e2e.mjs and run-home-screen-e2e.mjs.
+// REAL CDP-touch runners: run-chat-sheet-e2e.mjs and run-home-screen-e2e.mjs.
 import { renderHook } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";

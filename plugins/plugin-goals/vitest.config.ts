@@ -56,6 +56,16 @@ export default defineConfig({
         replacement: sourceOf("src/db/goals-repository.ts"),
       },
       {
+        find: /^@elizaos\/plugin-calendar\/service\/CalendarRepository$/,
+        replacement: sourceOf(
+          "../plugin-calendar/src/service/CalendarRepository.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-calendar\/service\/schema$/,
+        replacement: sourceOf("../plugin-calendar/src/service/schema.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-reminders\/db\/schema$/,
         replacement: sourceOf("../plugin-reminders/src/db/schema.ts"),
       },

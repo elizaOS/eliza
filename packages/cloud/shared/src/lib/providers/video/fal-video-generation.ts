@@ -108,7 +108,9 @@ export function buildFalVideoInput(request: VideoGenerationRequest): Record<stri
   }
   if (request.durationSeconds) {
     input.duration = isSeedance25 ? String(request.durationSeconds) : request.durationSeconds;
-    if (!isSeedance25) input.duration_seconds = request.durationSeconds;
+    if (!isSeedance25 && request.model !== "minimax/h3-max/image-to-video") {
+      input.duration_seconds = request.durationSeconds;
+    }
   }
   if (request.resolution) {
     input.resolution = request.resolution;
@@ -122,6 +124,12 @@ export function buildFalVideoInput(request: VideoGenerationRequest): Record<stri
   if (request.endUserId) input.end_user_id = request.endUserId;
   if (request.voiceControl !== undefined) {
     input.voice_control = request.voiceControl;
+  }
+  if (request.model === "minimax/h3-max/image-to-video") {
+    input.prompt_expansion_mode = "balanced";
+    delete input.audio;
+    delete input.generate_audio;
+    delete input.voice_control;
   }
   return input;
 }

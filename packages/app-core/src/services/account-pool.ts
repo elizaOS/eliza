@@ -47,6 +47,7 @@ import {
   DIRECT_ACCOUNT_PROVIDER_IDS,
   type DirectAccountProvider,
   isSubscriptionProvider,
+  OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER,
 } from "@elizaos/auth/types";
 import {
   type AnthropicAccountPoolBridge,
@@ -150,14 +151,6 @@ const DIRECT_PROVIDER_BY_BACKEND: Readonly<
   // `serviceRouting.llmText`; `xai` stays as the compatibility alias.
   grok: "xai-api",
   xai: "xai-api",
-};
-
-const OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER: Readonly<
-  Partial<Record<DirectAccountProvider, string>>
-> = {
-  "moonshot-api": "https://api.moonshot.ai/v1",
-  "openrouter-api": "https://openrouter.ai/api/v1",
-  "xai-api": "https://api.x.ai/v1",
 };
 
 const KEEP_ALIVE_INTERVAL_MS = 5 * 60_000;
@@ -360,7 +353,41 @@ export class AccountPool {
     strategy: Strategy = "priority",
     opts?: { model?: string; accountIds?: string[] },
   ): { activeAccountId: string | null; reason: string | null } {
+    return this.selectionStateFromAccounts(
+      this.deps.readAccounts(),
+      providerId,
+      strategy,
+      opts,
+    );
+  }
+
+  /** A request-scoped inventory; later requests must acquire a fresh snapshot. */
+  readSnapshot(): {
+    list(providerId?: PoolProviderId): LinkedAccountConfig[];
+    selectionState(
+      providerId: PoolProviderId,
+      strategy?: Strategy,
+    ): { activeAccountId: string | null; reason: string | null };
+  } {
     const all = this.deps.readAccounts();
+    return {
+      list: (providerId?: PoolProviderId): LinkedAccountConfig[] =>
+        Object.values(all).filter(
+          (account) => !providerId || account.providerId === providerId,
+        ),
+      selectionState: (
+        providerId: PoolProviderId,
+        strategy: Strategy = "priority",
+      ) => this.selectionStateFromAccounts(all, providerId, strategy),
+    };
+  }
+
+  private selectionStateFromAccounts(
+    all: Record<string, LinkedAccountConfig>,
+    providerId: PoolProviderId,
+    strategy: Strategy,
+    opts?: { model?: string; accountIds?: string[] },
+  ): { activeAccountId: string | null; reason: string | null } {
     const eligible = this.filterEligible(all, {
       providerId,
       accountIds: opts?.accountIds,

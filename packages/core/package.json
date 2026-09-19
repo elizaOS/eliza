@@ -300,6 +300,16 @@
 			"import": "./dist/node/security/mcp-server-config.js",
 			"default": "./dist/node/security/mcp-server-config.js"
 		},
+		"./security/redact": {
+			"types": "./dist/security/redact.d.ts",
+			"eliza-source": {
+				"types": "./src/security/redact.ts",
+				"import": "./src/security/redact.ts",
+				"default": "./src/security/redact.ts"
+			},
+			"import": "./dist/node/security/redact.js",
+			"default": "./dist/node/security/redact.js"
+		},
 		"./security/*": {
 			"types": "./dist/security/*.d.ts",
 			"eliza-source": {

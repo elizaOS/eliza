@@ -204,9 +204,16 @@ async function createHarness(
 	});
 	const voiceHandler = vi.fn(
 		async (_runtime: IAgentRuntime, params: { prompt: string }) =>
-			params.prompt.startsWith("Compose a user-facing response")
-				? JSON.stringify({ response: rewriteText })
-				: rewriteText,
+			params.prompt.startsWith("Review recovered reply grounding.")
+				? JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"Controlled review accepts this financial fixture's honest recovery; semantic verdict rejection is covered separately.",
+					})
+				: params.prompt.startsWith("Compose a user-facing response")
+					? JSON.stringify({ response: rewriteText })
+					: rewriteText,
 	);
 	runtime.registerModel(
 		ModelType.RESPONSE_HANDLER,
@@ -1155,4 +1162,304 @@ it("allows an explicitly named queried wallet to change a list's subject", async
 	);
 	expect(texts).toContain(reply);
 	expect(stored).toContain(reply);
+});
+
+it("retains prior corrections and standing constraints during Stage-1 recovery", async () => {
+	const priorCorrection =
+		"Correction: the queried wallet belongs to the archive project, not me. λ雪";
+	const standingConstraint =
+		"Always identify this observation as the archive project wallet and preserve its ownership uncertainty.";
+	const providers: StateData["providers"] = {
+		RECENT_MESSAGES: { text: priorCorrection, values: {}, data: {} },
+		CONTEXT_RECOVERY_CONSTRAINT: {
+			text: standingConstraint,
+			values: {},
+			data: {},
+		},
+		"solana-wallet": {
+			text: "The queried wallet observation reports 2 SOL.",
+			values: {},
+			data: { items: [{ symbol: "SOL", uiAmount: 2 }], totalSol: "4" },
+		},
+	};
+	const harness = await createHarness(
+		"Your wallet balance is 4 SOL.",
+		undefined,
+		undefined,
+		BALANCE_UNVERIFIED,
+		{ providers, directReply: true },
+	);
+	const result = await new DefaultMessageService().handleMessage(
+		harness.runtime,
+		makeMessage(harness.runtime, "Check that wallet balance."),
+		harness.callback,
+	);
+	expect(harness.actionHandler).not.toHaveBeenCalled();
+	expect(result.responseContent?.text).toBe(BALANCE_UNVERIFIED);
+	const rewriteCalls = harness.voiceHandler.mock.calls.filter((call) =>
+		call[1].prompt.startsWith("Compose a user-facing response"),
+	);
+	expect(rewriteCalls).toHaveLength(1);
+	const payloadLine = rewriteCalls[0][1].prompt
+		.split("\n")
+		.find((line: string) => line.startsWith("Original action payload: "));
+	expect(payloadLine).toBeDefined();
+	if (!payloadLine)
+		throw new Error("Recovery rewrite payload was not captured");
+	const payload = JSON.parse(
+		payloadLine.slice("Original action payload: ".length),
+	);
+	const completeEvidence = JSON.stringify(payload);
+	expect(completeEvidence).toContain(priorCorrection);
+	expect(completeEvidence).toContain(standingConstraint);
+});
+
+it("retains turn constraints when an outgoing hook triggers callback recovery", async () => {
+	const correction =
+		"The archive project appointment is not my personal appointment. λ雪";
+	const constraint =
+		"Preserve the archive project attribution and disclose uncertainty about its calendar changes.";
+	const recovered = "The requested calendar change is not verified.";
+	const harness = await createHarness(
+		"I cannot verify that change.",
+		undefined,
+		undefined,
+		recovered,
+		{
+			directReply: true,
+			providers: {
+				RECENT_MESSAGES: { text: correction, values: {}, data: {} },
+				CONTEXT_RECOVERY_CONSTRAINT: { text: constraint, values: {}, data: {} },
+			},
+		},
+	);
+	let edits = 0;
+	harness.runtime.registerPipelineHook({
+		id: "context-recovery-outgoing-regression",
+		phase: "outgoing_before_deliver",
+		handler: (_runtime, context) => {
+			if (
+				context.phase !== "outgoing_before_deliver" ||
+				context.source !== "simple"
+			)
+				return;
+			edits += 1;
+			context.content.text =
+				"Deleted your dentist appointment from the calendar.";
+		},
+	});
+	const result = await new DefaultMessageService().handleMessage(
+		harness.runtime,
+		makeMessage(harness.runtime, "What happened with that appointment?"),
+		harness.callback,
+	);
+	expect(edits).toBe(1);
+	expect(harness.actionHandler).not.toHaveBeenCalled();
+	expect(result.responseContent?.text).toBe(recovered);
+	const calls = harness.voiceHandler.mock.calls.filter((call) =>
+		call[1].prompt.startsWith("Compose a user-facing response"),
+	);
+	expect(calls).toHaveLength(1);
+	const payloadLine = calls[0][1].prompt
+		.split("\n")
+		.find((line: string) => line.startsWith("Original action payload: "));
+	if (!payloadLine)
+		throw new Error("Recovery rewrite payload was not captured");
+	const evidence = JSON.parse(
+		payloadLine.slice("Original action payload: ".length),
+	);
+	expect(JSON.stringify(evidence)).toContain(correction);
+	expect(JSON.stringify(evidence)).toContain(constraint);
+});
+
+it("retains Stage-1 evaluator patch evidence during direct recovery", async () => {
+	const correction =
+		"The archive project wallet has not established personal ownership; retain that attribution uncertainty. λ雪";
+	const harness = await createHarness(
+		"Your wallet balance is 4 SOL.",
+		undefined,
+		undefined,
+		BALANCE_UNVERIFIED,
+		{
+			directReply: true,
+			providers: {
+				"solana-wallet": {
+					text: "Observed 2 SOL for the queried address.",
+					values: {},
+					data: { items: [{ symbol: "SOL", uiAmount: 2 }] },
+				},
+			},
+		},
+	);
+	const evaluate = vi.fn(() => ({ debug: [correction] }));
+	harness.runtime.registerResponseHandlerEvaluator({
+		name: "archive-ownership-correction",
+		shouldRun: () => true,
+		evaluate,
+	});
+	const result = await new DefaultMessageService().handleMessage(
+		harness.runtime,
+		makeMessage(harness.runtime, "Check that wallet balance."),
+		harness.callback,
+	);
+	expect(evaluate).toHaveBeenCalledTimes(1);
+	expect(harness.actionHandler).not.toHaveBeenCalled();
+	expect(result.responseContent?.text).toBe(BALANCE_UNVERIFIED);
+	const calls = harness.voiceHandler.mock.calls.filter((call) =>
+		call[1].prompt.startsWith("Compose a user-facing response"),
+	);
+	expect(calls).toHaveLength(1);
+	const payloadLine = calls[0][1].prompt
+		.split("\n")
+		.find((line: string) => line.startsWith("Original action payload: "));
+	if (!payloadLine)
+		throw new Error("Recovery rewrite payload was not captured");
+	const evidence = JSON.parse(
+		payloadLine.slice("Original action payload: ".length),
+	);
+	expect(JSON.stringify(evidence)).toContain(correction);
+});
+
+it("retains earlier settled receipts during a later planner callback recovery", async () => {
+	const receiptId = "receipt-archive-first-tool-31494";
+	const recovered = "The appointment change is not verified.";
+	const harness = await createHarness(
+		"I cannot verify the change.",
+		undefined,
+		undefined,
+		recovered,
+	);
+	const observedAt = "2026-09-16T00:00:00.000Z";
+	const firstHandler = vi.fn(async () => ({
+		success: true,
+		text: "First write persisted.",
+		effectReceipts: [
+			{
+				receiptId,
+				operation: "archive.note.create",
+				outcome: "applied" as const,
+				resource: { kind: "archive.note", id: "archive-note-1" },
+				artifacts: [],
+				idempotency: { key: null, replayed: false },
+				observedAt,
+				commit: {
+					kind: "durable" as const,
+					id: "archive-commit-1",
+					committedAt: observedAt,
+				},
+			},
+		],
+	}));
+	const laterHandler = vi.fn(
+		async (_rt, _message, _state, _options, callback) => {
+			await callback?.({
+				text: "Deleted your dentist appointment from the calendar.",
+				agentVoiced: true,
+			});
+			return {
+				success: false,
+				text: "Calendar change rejected before any write.",
+			};
+		},
+	);
+	harness.runtime.actions.length = 0;
+	for (const [name, handler] of [
+		["FIRST_ARCHIVE_WRITE", firstHandler],
+		["LATER_CALENDAR_CHANGE", laterHandler],
+	] as const) {
+		harness.runtime.registerAction({
+			name,
+			description: name,
+			validate: async () => true,
+			handler,
+		});
+	}
+	const stageOne = stageOneWalletResponse("FIRST_ARCHIVE_WRITE");
+	stageOne.toolCalls[0].arguments.candidateActionNames = [
+		"FIRST_ARCHIVE_WRITE",
+		"LATER_CALENDAR_CHANGE",
+	];
+	const responses = [
+		stageOne,
+		JSON.stringify({
+			decision: "CONTINUE",
+			success: false,
+			thought: "The second requested operation is pending.",
+		}),
+		plannerFinish(recovered),
+	];
+	harness.runtime.registerModel(
+		ModelType.RESPONSE_HANDLER,
+		async () => {
+			const next = responses.shift();
+			if (!next) throw new Error("Unexpected response-handler call");
+			return next;
+		},
+		"recovery-two-tools",
+		1000,
+	);
+	let finalSynthesisCalls = 0;
+	const plans = [
+		{
+			text: "",
+			toolCalls: [
+				{
+					id: "archive-first",
+					name: "FIRST_ARCHIVE_WRITE",
+					args: { eliza_turn_scope: "more_work_pending" },
+				},
+			],
+		},
+		{
+			text: "",
+			toolCalls: [
+				{
+					id: "calendar-later",
+					name: "LATER_CALENDAR_CHANGE",
+					args: { eliza_turn_scope: "final" },
+				},
+			],
+		},
+	];
+	harness.runtime.registerModel(
+		ModelType.ACTION_PLANNER,
+		async () => {
+			const next = plans.shift();
+			if (!next && finalSynthesisCalls++ === 0) {
+				const delivered = harness.callbacks[0]?.text;
+				if (!delivered)
+					throw new Error("Final synthesis requires a grounded callback");
+				return { text: delivered, toolCalls: [] };
+			}
+			if (!next) throw new Error("Unexpected planner call");
+			return next;
+		},
+		"recovery-two-tools",
+		1000,
+	);
+
+	await new DefaultMessageService().handleMessage(
+		harness.runtime,
+		makeMessage(
+			harness.runtime,
+			"Create the archive note, then change that appointment.",
+		),
+		harness.callback,
+	);
+	expect(firstHandler).toHaveBeenCalledTimes(1);
+	expect(laterHandler).toHaveBeenCalledTimes(1);
+	expect(finalSynthesisCalls).toBe(1);
+	expect(harness.callbacks).toHaveLength(1);
+	expect(harness.sent).toHaveLength(1);
+	const calls = harness.voiceHandler.mock.calls.filter((call) =>
+		call[1].prompt.startsWith("Compose a user-facing response"),
+	);
+	expect(calls.length).toBeGreaterThan(0);
+	expect(calls[0][1].prompt).toContain(receiptId);
+	expect(calls[0][1].prompt).toContain(
+		"Calendar change rejected before any write.",
+	);
+	expect(calls[0][1].prompt).toContain(
+		"The second requested operation is pending.",
+	);
 });

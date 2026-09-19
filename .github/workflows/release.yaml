@@ -197,6 +197,9 @@ jobs:
       - name: Setup credential-free workspace
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
+          install-native-deps: "true"
           bun-version: "1.3.14"
           skip-avatar-clone: "true"
           no-vision-deps: "true"

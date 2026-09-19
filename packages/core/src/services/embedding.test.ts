@@ -42,10 +42,20 @@ function makeRuntime(opts: RuntimeMockOpts): IAgentRuntime {
 			}
 			return handler(params);
 		},
-		updateMemory: opts.updateMemory ?? (async () => {}),
+		updateMemoryEmbedding: async ({
+			id,
+			embedding,
+		}: {
+			id: string;
+			embedding: number[];
+		}) => {
+			await opts.updateMemory?.({ id, embedding });
+			return true;
+		},
 		log: async () => {},
 		emitEvent: async () => {},
 		registerEvent: vi.fn(),
+		unregisterEvent: vi.fn(),
 		registerTaskWorker: vi.fn(),
 		getTasksByName: async () => [],
 		getTask: async () => null,
@@ -161,6 +171,47 @@ describe("EmbeddingGenerationService drain config", () => {
 		expect(service.getQueueSize()).toBe(0);
 		expect(updateMemory).not.toHaveBeenCalled();
 	});
+
+	test("coalesces only identical pending sources and releases exhausted failures", async () => {
+		let fail = true;
+		const embedHandler = vi.fn(async () => {
+			if (fail) throw new Error("temporary embedding failure");
+			return [0.3];
+		});
+		const runtime = makeRuntime({ batch: false, embedHandler });
+		const service = (await EmbeddingGenerationService.start(
+			runtime,
+		)) as EmbeddingGenerationService;
+		// biome-ignore lint/suspicious/noExplicitAny: drive the existing event and drain boundaries
+		const internal = service as any;
+		try {
+			const item = makeItem("same-id", "original text");
+			await internal.handleEmbeddingRequest(item);
+			await internal.handleEmbeddingRequest(structuredClone(item));
+			expect(service.getQueueSize()).toBe(1);
+			await internal.batchQueue.drain();
+			expect(embedHandler).toHaveBeenCalledTimes(4);
+			fail = false;
+			await internal.handleEmbeddingRequest(structuredClone(item));
+			await internal.handleEmbeddingRequest(
+				makeItem("same-id", "corrected text"),
+			);
+			await internal.handleEmbeddingRequest({ ...item, priority: "high" });
+			await internal.handleEmbeddingRequest({
+				...item,
+				memory: { ...item.memory, roomId: "another-room" },
+			});
+			expect(service.getQueueSize()).toBe(4);
+			await internal.batchQueue.drain();
+			expect(embedHandler).toHaveBeenCalledTimes(8);
+			await internal.handleEmbeddingRequest(structuredClone(item));
+			expect(service.getQueueSize()).toBe(1);
+			await internal.batchQueue.drain();
+			expect(embedHandler).toHaveBeenCalledTimes(9);
+		} finally {
+			await service.stop();
+		}
+	}, 15000);
 
 	test("queues empty vectors but skips memories with a non-empty vector", async () => {
 		const runtime = makeRuntime({ batch: false });

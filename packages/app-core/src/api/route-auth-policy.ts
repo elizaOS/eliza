@@ -227,6 +227,11 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   sessionPrefix("plugins.management", "/api/plugins"),
   sessionPrefix("catalog", "/api/catalog"),
   sessionExact("first-run.submit", "POST", "/api/first-run"),
+  sessionRegex(
+    "first-run.activation",
+    "GET",
+    /^\/api\/first-run\/activation\/[0-9a-f-]{36}$/i,
+  ),
   sessionRegex("plugins.ui-spec", "GET", /^\/api\/plugins\/[^/]+\/ui-spec$/),
   sessionExact("agents.list", "GET", "/api/agents"),
   // Per-agent message/event endpoints are OWNED by the upstream agent server

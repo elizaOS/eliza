@@ -223,6 +223,55 @@ export function toolMessageContent(result: PlannerToolResult): string {
 	return stringifyForModel(projectToolResultForModel(result));
 }
 
+/**
+ * Remove only canonical JSON indentation from a model-facing history copy.
+ * Original messages and every result field/string remain unchanged; custom
+ * text and JSON that cannot roundtrip byte-for-byte keep their original form.
+ */
+export function compactCanonicalToolMessagesForModel(
+	messages: readonly ChatMessage[],
+): ChatMessage[] {
+	return messages.map((message): ChatMessage => {
+		if (message.role !== "tool" || !Array.isArray(message.content)) {
+			return message;
+		}
+		return {
+			...message,
+			content: message.content.map((part) => {
+				const output =
+					part.type === "tool-result" && "output" in part
+						? part.output
+						: undefined;
+				if (
+					!output ||
+					typeof output !== "object" ||
+					!("type" in output) ||
+					output.type !== "text" ||
+					!("value" in output) ||
+					typeof output.value !== "string"
+				) {
+					return part;
+				}
+				try {
+					const result: unknown = JSON.parse(output.value);
+					// Only change the canonical serialization emitted by the planner.
+					// This rejects lossy parse roundtrips (duplicate object keys, large
+					// integers, etc.) and retains legacy/custom tool text verbatim.
+					if (JSON.stringify(result, null, 2) !== output.value) return part;
+					return {
+						...part,
+						output: { ...output, value: JSON.stringify(result) },
+					};
+				} catch {
+					// error-policy:J3 Non-JSON tool text is valid evidence. Preserve it
+					// completely instead of repairing or extracting a JSON substring.
+					return part;
+				}
+			}),
+		};
+	});
+}
+
 function hasRecoverableContentLocator(value: unknown): boolean {
 	const pending: unknown[] = [value];
 	const visited = new WeakSet<object>();
@@ -261,12 +310,17 @@ function hasRecoverableContentLocator(value: unknown): boolean {
 
 /**
  * Produce the sole model-bound shape for a tool result. `promptData` is
- * supplemental metadata and never replaces `data`; final request preparation
- * rejects unsupported sizes instead of deleting fields.
+ * supplemental by default. Only an explicit producer-declared replace-data
+ * contract substitutes it for runtime data. Never infer a projection from size
+ * or field names; text, receipts, failures and the original result stay intact.
  */
 export function projectToolResultForModel(
 	result: PlannerToolResult,
 ): PlannerToolResult {
+	if (result.promptDataMode === "replace-data" && result.promptData) {
+		const { data: _data, promptData, promptDataMode: _mode, ...rest } = result;
+		return { ...rest, data: promptData };
+	}
 	return { ...result };
 }
 

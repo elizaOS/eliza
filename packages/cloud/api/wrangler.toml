@@ -506,12 +506,12 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 name = "eliza-cloud-api-staging"
 workers_dev = false
 
-# Keep this edge/API Worker in Cloudflare's default caller-local placement.
-# Inference performs authentication and serial Durable Object admission before
-# provider dispatch; moving the whole fetch handler near an inferred HTTP
-# origin adds a cross-region round trip to every stateful phase. If a backend
-# needs placement, split it behind an unplaced edge Worker and certify that
-# boundary independently before changing this contract.
+# Use the explicitly measured region, rather than infer placement from the
+# provider HTTP endpoint. The September 13 control/target/restore probes kept
+# auth, primary policy reads, and Durable Object admission intact: production
+# warm pre-dispatch time fell from 3.6-3.8s to 0.83s. Staging improved similarly.
+# Revalidate live inference and agent-proxy flows when upstream locations change.
+placement = { mode = "targeted", region = "gcp:us-west2" }
 routes = [
   # Canonical browser hosts belong to the eliza-app Pages project. Pages
   # Functions proxy /api and auth protocol paths to this Worker.
@@ -824,12 +824,12 @@ simple = { limit = 120, period = 60 }
 [env.production]
 name = "eliza-cloud-api-prod"
 
-# Keep this edge/API Worker in Cloudflare's default caller-local placement.
-# Inference performs authentication and serial Durable Object admission before
-# provider dispatch; moving the whole fetch handler near an inferred HTTP
-# origin adds a cross-region round trip to every stateful phase. If a backend
-# needs placement, split it behind an unplaced edge Worker and certify that
-# boundary independently before changing this contract.
+# Use the explicitly measured region, rather than infer placement from the
+# provider HTTP endpoint. The September 13 control/target/restore probes kept
+# auth, primary policy reads, and Durable Object admission intact: production
+# warm pre-dispatch time fell from 3.6-3.8s to 0.83s. Staging improved similarly.
+# Revalidate live inference and agent-proxy flows when upstream locations change.
+placement = { mode = "targeted", region = "gcp:us-west2" }
 workers_dev = false
 # Canonical routes serve the API and UUID agents. The cloud.eliza.app browser
 # host belongs to Pages; legacy routes remain redirect ingress during the

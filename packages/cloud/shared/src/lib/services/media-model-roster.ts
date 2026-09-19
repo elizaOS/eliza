@@ -108,17 +108,19 @@ export const MEDIA_MODEL_ROSTER: readonly MediaModelRosterEntry[] = [
     surfaces: ["video", "music"],
     status: "wired",
     sourceUrls: [
+      "https://fal.ai/models/minimax/h3-max/image-to-video",
       "https://fal.ai/models/fal-ai/minimax/hailuo-2.3/standard/text-to-video",
       "https://fal.ai/models/fal-ai/minimax/hailuo-2.3/pro/text-to-video",
       "https://fal.ai/models/fal-ai/minimax-music/v2.6/api",
     ],
     wiredModelIds: [
+      "minimax/h3-max/image-to-video",
       "fal-ai/minimax/hailuo-2.3/standard/text-to-video",
       "fal-ai/minimax/hailuo-2.3/pro/text-to-video",
       "fal-ai/minimax-music/v2.6",
     ],
     rationale:
-      "Hailuo 2.3 video and MiniMax Music 2.6 have supported pricing definitions; music is cataloged for pricing while video is routed.",
+      "MiniMax H3 Max image-to-video is the primary Cloud video model; Hailuo 2.3 video and MiniMax Music 2.6 remain supported, with music cataloged for pricing while video is routed.",
   },
   {
     family: "ElevenLabs Music",

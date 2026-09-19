@@ -20,8 +20,8 @@
  * Keep this in lockstep with WIDGET_MATRIX.md.
  */
 
-import { render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CONFIG_RE, FENCED_CODE_RE } from "../message-parser-helpers";
 // Side effect: registers the built-in inline widgets (choice / followups / form).
 import "./inline-builtins";
@@ -72,6 +72,9 @@ const ctx: InlineWidgetContext = {
 };
 
 describe("inline-widget matrix gate (#9304)", () => {
+  // Vitest globals are disabled, so Testing Library cannot register cleanup.
+  afterEach(cleanup);
+
   it("the registry contains EXACTLY the documented built-in inline kinds", () => {
     expect(
       getInlineWidgets()

@@ -1,33 +1,20 @@
 /**
- * Judge-independence governance (#9310).
- *
- * The LLM judge (judge.ts) grades on Cerebras when eval credentials are
- * configured and otherwise falls back to the runtime's own TEXT_LARGE model —
- * i.e. the model under test grades itself. Self-grading is tolerable for ad-hoc
- * local runs but must never be silent: the executor stamps
- * `judgeSelfGraded: true` on the scenario report and the stdout summary prints
- * a prominent warning. `SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1` (set in the
- * nightly live lane) upgrades self-graded scenarios to failures so the run
- * honestly reports the judge-availability gap instead of quietly self-grading.
+ * Enforce independently observed model identities for strict scenario grading.
+ * Missing identity evidence is unavailable, even when dedicated credentials exist.
  */
 
-type LifeOpsEvalModelModule = {
-  isCerebrasEvalEnabled: () => boolean;
-};
+import type { JudgeEvidence } from "./judge.ts";
+import { compareJudgeModels } from "./judge-model-observer.ts";
 
-let lifeOpsEvalModelModule: Promise<LifeOpsEvalModelModule> | null = null;
-
-/**
- * True when judge calls are served by the independent Cerebras judge instead
- * of the runtime's own TEXT_LARGE model. Mirrors the exact gate judge.ts uses
- * to pick its transport.
- */
-export async function isJudgeIndependent(): Promise<boolean> {
-  lifeOpsEvalModelModule ??= import(
-    "../../../plugins/plugin-personal-assistant/test/helpers/lifeops-eval-model.ts"
-  ) as Promise<LifeOpsEvalModelModule>;
-  const { isCerebrasEvalEnabled } = await lifeOpsEvalModelModule;
-  return isCerebrasEvalEnabled();
+/** Independence requires observations from both actor and judge calls. */
+export async function isJudgeIndependent(
+  evidence?: JudgeEvidence,
+): Promise<boolean> {
+  return (
+    evidence !== undefined &&
+    compareJudgeModels(evidence.actorModels, evidence.judgeModels) ===
+      "independent"
+  );
 }
 
 function envFlag(value: string | undefined): boolean {
