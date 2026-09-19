@@ -32,6 +32,7 @@ import {
 import {
   createDocumentsPlugin,
   DocumentService,
+  TrajectoriesService,
 } from "@elizaos/plugin-assistant";
 import type { PdfService } from "@elizaos/plugin-pdf";
 import {
@@ -50,8 +51,10 @@ import {
   createBrowserSession,
   createMachineSession,
 } from "../../../../../packages/app-core/src/api/auth/sessions.ts";
-import { TrajectoriesService } from "../../../../../packages/core/src/services/trajectories.ts";
-import { composeResponseState } from "../../../../plugin-assistant/src/services/message/provider-state.ts";
+import {
+  composeResponseState,
+  selectV5PlannerStateProviderNames,
+} from "../../../../plugin-assistant/src/services/message/provider-state.ts";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
@@ -512,7 +515,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
   });
 
-  it("composes approved pins on ordinary owner turns while preserving room and audience boundaries", async () => {
+  it("composes approved pins for owner planning while preserving room and audience boundaries", async () => {
     const service = createAgreementKnowledgeService(runtime);
     const ownerId = crypto.randomUUID() as UUID;
     const roomId = crypto.randomUUID() as UUID;
@@ -549,7 +552,21 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         kind: "owner_session",
         principalId: ownerId,
       });
-      return composeResponseState(runtime, message);
+      const responseState = await composeResponseState(runtime, message);
+      expect(responseState.text).not.toContain(
+        "Share school notices within twenty-four hours.",
+      );
+      return runtime.composeState(
+        message,
+        selectV5PlannerStateProviderNames({
+          runtime,
+          message,
+          selectedContexts: ["general"],
+          userRoles: ["OWNER"],
+        }),
+        true,
+        true,
+      );
     };
     let pin = await service.pin({
       artifactId: artifact.id,
