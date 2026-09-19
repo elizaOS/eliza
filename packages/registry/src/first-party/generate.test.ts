@@ -84,25 +84,28 @@ describe("collectCuratedAppDefinitions", () => {
     ]);
   });
 
-  it("treats a non-finite order as position zero", () => {
-    const infinite = curatedEntry(
-      "infinite",
-      "@elizaos/plugin-infinite",
-      "infinite",
-      Number.POSITIVE_INFINITY,
-      [],
-    );
-    const finite = curatedEntry(
-      "finite",
-      "@elizaos/plugin-finite",
-      "finite",
-      5,
-      [],
-    );
-    expect(
-      collectCuratedAppDefinitions([finite, infinite]).map((d) => d.slug),
-    ).toEqual(["infinite", "finite"]);
-  });
+  it.each([Number.POSITIVE_INFINITY, Number.NaN])(
+    "treats non-finite order %s as position zero",
+    (order) => {
+      const infinite = curatedEntry(
+        "infinite",
+        "@elizaos/plugin-infinite",
+        "infinite",
+        order,
+        [],
+      );
+      const finite = curatedEntry(
+        "finite",
+        "@elizaos/plugin-finite",
+        "finite",
+        5,
+        [],
+      );
+      expect(
+        collectCuratedAppDefinitions([finite, infinite]).map((d) => d.slug),
+      ).toEqual(["infinite", "finite"]);
+    },
+  );
 
   it("breaks order ties by slug", () => {
     const entries = [
@@ -193,6 +196,7 @@ describe("collectShortIdPluginMap", () => {
         npmName: "@elizaos/plugin-bare",
         shortIds: ["mu"],
       }),
+      pluginEntry("unmarked", { npmName: "@elizaos/plugin-unmarked" }),
     ]);
     expect(map).toEqual({
       alpha: "@elizaos/plugin-aliased",
@@ -250,6 +254,12 @@ describe("collectProviderPluginMap", () => {
         npmName: "@elizaos/plugin-two",
         config: {
           C_KEY: { type: "string", required: false, autoEnableProvider: true },
+        },
+      }),
+      pluginEntry("unmarked", {
+        npmName: "@elizaos/plugin-unmarked",
+        config: {
+          UNMARKED_KEY: { type: "secret", required: false, sensitive: true },
         },
       }),
     ]);
