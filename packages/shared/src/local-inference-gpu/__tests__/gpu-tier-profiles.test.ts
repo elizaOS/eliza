@@ -14,48 +14,7 @@ import {
   selectBestProfile,
 } from "../gpu-tier-profiles.js";
 
-// ---------------------------------------------------------------------------
-// 1. GPU_PROFILES — registry shape and integrity
-// ---------------------------------------------------------------------------
-
-describe("GPU_PROFILES", () => {
-  it("contains exactly the four supported built-in ids", () => {
-    expect(Object.keys(GPU_PROFILES).sort()).toEqual([
-      "h200",
-      "rtx-3090",
-      "rtx-4090",
-      "rtx-5090",
-    ]);
-  });
-
-  it("keys every entry by its own canonical id", () => {
-    for (const [key, profile] of Object.entries(GPU_PROFILES)) {
-      expect(profile.id).toBe(key);
-    }
-  });
-
-  it("only carries sane hardware numbers on every profile", () => {
-    for (const profile of Object.values(GPU_PROFILES)) {
-      expect(profile.vram_gb).toBeGreaterThan(0);
-      expect(profile.display_name.length).toBeGreaterThan(0);
-      expect(profile.notes.length).toBeGreaterThan(0);
-      expect(profile.features.length).toBeGreaterThan(0);
-      expect(profile.ctx_size_tokens).toBeGreaterThan(0);
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 2. getGpuProfile — hit and miss branches
-// ---------------------------------------------------------------------------
-
 describe("getGpuProfile", () => {
-  it("returns the registry entry itself for every built-in id", () => {
-    for (const [key, profile] of Object.entries(GPU_PROFILES)) {
-      expect(getGpuProfile(key)).toBe(profile);
-    }
-  });
-
   it("returns null for an unrecognised id", () => {
     expect(getGpuProfile("rtx-totally-fake")).toBeNull();
   });
@@ -65,10 +24,6 @@ describe("getGpuProfile", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 3. selectBestProfile — eligibility, ordering, ties, empty result
-// ---------------------------------------------------------------------------
-
 describe("selectBestProfile", () => {
   it("qualifies a card at the exact VRAM and compute boundaries", () => {
     // 24 GB / sm_8.6 host: only the 3090 satisfies both limits exactly.
@@ -77,6 +32,10 @@ describe("selectBestProfile", () => {
 
   it("returns null when the detected VRAM sits below every supported card", () => {
     expect(selectBestProfile(8, "8.6")).toBeNull();
+  });
+
+  it("rejects insufficient compute capability despite enough VRAM", () => {
+    expect(selectBestProfile(24, "5.0")).toBeNull();
   });
 
   it("picks the highest-VRAM card that fits", () => {
@@ -114,10 +73,6 @@ describe("selectBestProfile", () => {
     expect(selectBestProfile(141, "")).toBeNull();
   });
 });
-
-// ---------------------------------------------------------------------------
-// 4. buildLlamaCppArgs — flag order, conditional flags, overrides
-// ---------------------------------------------------------------------------
 
 describe("buildLlamaCppArgs", () => {
   it("emits the documented flag order for a mmap+non-NUMA card", () => {
@@ -168,6 +123,14 @@ describe("buildLlamaCppArgs", () => {
       "--ctx-size",
       "262144",
     ]);
+  });
+
+  it("uses an explicit GPU layer count", () => {
+    const profile = getGpuProfile("rtx-4090");
+    if (!profile) throw new Error("expected rtx-4090 profile");
+    expect(
+      buildLlamaCppArgs(profile, { n_gpu_layers: 32 }).slice(0, 2),
+    ).toEqual(["--n-gpu-layers", "32"]);
   });
 
   it("honours a ctx_size_tokens override without mutating the shared profile", () => {

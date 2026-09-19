@@ -21,10 +21,6 @@ import {
   VerifyRecipe,
 } from "../gpu-profile-schema.js";
 
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
-
 function makeBundle(overrides: Record<string, unknown> = {}) {
   return {
     n_gpu_layers: 99,
@@ -37,6 +33,18 @@ function makeBundle(overrides: Record<string, unknown> = {}) {
     flash_attention: true,
     estimated_decode_tps: 40.5,
     estimated_prefill_tps: 900.1,
+    ...overrides,
+  };
+}
+
+function makeRecipe(overrides: Record<string, unknown> = {}) {
+  return {
+    build_target: "llama-server",
+    cuda_arch: 86,
+    cmake_flags: ["-DGGML_CUDA=ON"],
+    expected_kernels: ["mtp"],
+    smoke_bundle: ELIZA_1_TIER_IDS[0],
+    tolerance_pct: 10,
     ...overrides,
   };
 }
@@ -59,21 +67,10 @@ function makeProfile(overrides: Record<string, unknown> = {}) {
       draft_max: 6,
       draft_gpu_layers: 10,
     },
-    verify_recipe: {
-      build_target: "llama-server",
-      cuda_arch: 86,
-      cmake_flags: ["-DGGML_CUDA=ON"],
-      expected_kernels: ["mtp"],
-      smoke_bundle: ELIZA_1_TIER_IDS[0],
-      tolerance_pct: 10,
-    },
+    verify_recipe: makeRecipe(),
     ...overrides,
   };
 }
-
-// ---------------------------------------------------------------------------
-// 1. GpuYamlId — card id enum
-// ---------------------------------------------------------------------------
 
 describe("GpuYamlId", () => {
   it("accepts each of the four card ids", () => {
@@ -89,10 +86,6 @@ describe("GpuYamlId", () => {
     expect(GpuYamlId.safeParse(undefined).success).toBe(false);
   });
 });
-
-// ---------------------------------------------------------------------------
-// 2. KvCacheType / KernelName enums
-// ---------------------------------------------------------------------------
 
 describe("KvCacheType", () => {
   it("accepts every documented cache-type string", () => {
@@ -135,10 +128,6 @@ describe("KernelName", () => {
     expect(KernelName.safeParse("").success).toBe(false);
   });
 });
-
-// ---------------------------------------------------------------------------
-// 3. BundleRecommendation
-// ---------------------------------------------------------------------------
 
 describe("BundleRecommendation", () => {
   it("parses a complete bundle and preserves every field", () => {
@@ -254,10 +243,6 @@ describe("BundleRecommendation", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 4. MtpTuning
-// ---------------------------------------------------------------------------
-
 describe("MtpTuning", () => {
   it("parses a valid tuning block", () => {
     expect(
@@ -332,103 +317,27 @@ describe("MtpTuning", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 5. VerifyRecipe
-// ---------------------------------------------------------------------------
-
 describe("VerifyRecipe", () => {
-  it("defaults unavailable_kernels to an empty array when omitted", () => {
-    const parsed = VerifyRecipe.parse({
-      build_target: "llama-server",
-      cuda_arch: 120,
-      cmake_flags: ["-DGGML_CUDA=ON"],
-      expected_kernels: ["turbo3"],
-      smoke_bundle: "eliza-1-4b",
-      tolerance_pct: 15,
-    });
-    expect(parsed.unavailable_kernels).toEqual([]);
-  });
-
-  it("preserves a provided unavailable_kernels list", () => {
-    const parsed = VerifyRecipe.parse({
-      build_target: "llama-server",
-      cuda_arch: 120,
-      cmake_flags: ["-DGGML_CUDA=ON"],
-      expected_kernels: ["turbo4"],
+  it("defaults unavailable kernels and preserves explicit kernel policy", () => {
+    expect(VerifyRecipe.parse(makeRecipe()).unavailable_kernels).toEqual([]);
+    const input = makeRecipe({
       unavailable_kernels: ["qjl_full", "polarquant"],
       warn_on_kernel_absent: true,
-      smoke_bundle: "eliza-1-4b",
-      tolerance_pct: 15,
     });
-    expect(parsed.unavailable_kernels).toEqual(["qjl_full", "polarquant"]);
-    expect(parsed.warn_on_kernel_absent).toBe(true);
+    expect(VerifyRecipe.parse(input)).toEqual(input);
   });
 
-  it("requires at least one cmake flag and one expected kernel", () => {
-    const base = {
-      build_target: "llama-server",
-      cuda_arch: 86,
-      expected_kernels: ["mtp"],
-      smoke_bundle: "eliza-1-2b",
-      tolerance_pct: 10,
-    };
-    expect(VerifyRecipe.safeParse({ ...base, cmake_flags: [] }).success).toBe(
-      false,
-    );
-    expect(
-      VerifyRecipe.safeParse({ ...base, cmake_flags: ["-DGGML_CUDA=ON"] })
-        .success,
-    ).toBe(true);
-    expect(
-      VerifyRecipe.safeParse({ ...base, expected_kernels: [] }).success,
-    ).toBe(false);
-  });
-
-  it("validates kernel entries against KernelName", () => {
-    expect(
-      VerifyRecipe.safeParse({
-        build_target: "llama-server",
-        cuda_arch: 86,
-        cmake_flags: ["-DGGML_CUDA=ON"],
-        expected_kernels: ["warp9"],
-        smoke_bundle: "eliza-1-2b",
-        tolerance_pct: 10,
-      }).success,
-    ).toBe(false);
-  });
-
-  it("requires a positive cuda_arch and tolerance_pct", () => {
-    const base = {
-      build_target: "llama-server",
-      cmake_flags: ["-DGGML_CUDA=ON"],
-      expected_kernels: ["mtp"],
-      smoke_bundle: "eliza-1-2b",
-      tolerance_pct: 10,
-    };
-    expect(VerifyRecipe.safeParse({ ...base, cuda_arch: 0 }).success).toBe(
-      false,
-    );
-    expect(VerifyRecipe.safeParse({ ...base, tolerance_pct: 0 }).success).toBe(
-      false,
-    );
-  });
-
-  it("requires build_target and smoke_bundle strings", () => {
-    expect(
-      VerifyRecipe.safeParse({
-        cuda_arch: 86,
-        cmake_flags: ["-DGGML_CUDA=ON"],
-        expected_kernels: ["mtp"],
-        smoke_bundle: "eliza-1-2b",
-        tolerance_pct: 10,
-      }).success,
-    ).toBe(false);
+  it.each([
+    { cmake_flags: [] },
+    { expected_kernels: [] },
+    { expected_kernels: ["warp9"] },
+    { cuda_arch: 0 },
+    { tolerance_pct: 0 },
+    { build_target: undefined },
+  ])("rejects an invalid recipe field: %j", (override) => {
+    expect(VerifyRecipe.safeParse(makeRecipe(override)).success).toBe(false);
   });
 });
-
-// ---------------------------------------------------------------------------
-// 6. GpuYamlProfile — the full document schema
-// ---------------------------------------------------------------------------
 
 describe("GpuYamlProfile", () => {
   it("round-trips a complete valid profile", () => {
@@ -501,10 +410,6 @@ describe("GpuYamlProfile", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 7. bundleIdsInProfileMatchCatalog
-// ---------------------------------------------------------------------------
-
 describe("bundleIdsInProfileMatchCatalog", () => {
   it("returns ok for profiles whose bundle ids are all real tier ids", () => {
     const result = bundleIdsInProfileMatchCatalog(
@@ -554,10 +459,6 @@ describe("bundleIdsInProfileMatchCatalog", () => {
     expect(result.unknown).toEqual([]);
   });
 });
-
-// ---------------------------------------------------------------------------
-// 8. getRecommendationsByTier
-// ---------------------------------------------------------------------------
 
 describe("getRecommendationsByTier", () => {
   it("maps known tier ids to their recommendation objects", () => {
