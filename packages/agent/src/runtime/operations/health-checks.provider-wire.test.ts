@@ -6,9 +6,9 @@
  */
 import { createServer } from "node:http";
 import { AgentRuntime, ModelType } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, expect, it, vi } from "vitest";
 import { handleTextSmall } from "../../../../../plugins/plugin-openai/models/text";
-import { InMemoryDatabaseAdapter } from "../../../../core/src/database/inMemoryAdapter";
 import { providerSmokeCheck } from "./health-checks";
 
 afterEach(() => {
