@@ -1,5 +1,16 @@
 # Text demo: short handoff
 
+Latest focused latency follow-up: Calendar now selected its day-feed directly
+in the browser: **3 calls, 3.36 seconds to final reply**, down from the observed
+seven-call 9.18-second detour. Notes was 2.89 seconds; Open Notes was 1.44 seconds.
+These are individual runs, not a universal speed guarantee. The Calendar run
+had no cached inputs. All 41 notes and three audit-window events are unchanged.
+The recovery error now names the exact feed tool and correct date arguments;
+full discovery, history recovery and all write safeguards remain available.
+Verification: Calendar 1,008 tests, core 738 focused tests, root 373/373 tasks
+and final audits passed. Local rollback tag:
+`codex/ganttnubs-calendar-latency-20260918`. Nothing was pushed or deployed.
+
 Baseline: `ganttnubs`, source `d502d12aad7`. Post-call fixes are committed;
 bounded browser checks, fixture cleanup and final-source repository verification passed. The scoped text cleanup and audit are complete; the three-second target remains unmet for some flows.
 This is not merged develop or a release certificate.
@@ -69,7 +80,7 @@ provides the detail. [The plan](GANTTNUBS-PLAN.md) lists remaining gates.
 This phase covers Notes/Calendar reads, writes, follow-ups, conflicts, duration,
 note-to-event transfer and their model paths. Acknowledgments were reviewed:
 use a separate progress event from an existing model response, not a terminal
-REPLY or an extra model call. Implementation remains separate.
+REPLY or an extra model call. The later acknowledgment checkpoint above implements this text behavior.
 
 Voice, broad browser/attachment work, reminders/alarms, messaging integrations,
 full PRD work and combining with current develop remain deferred.

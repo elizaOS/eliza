@@ -230,8 +230,9 @@ finalization was 9.186 s, 2.638 s and 1.341 s in the final three checks. Cached
 inputs are part of input tokens. These are individual observations, not latency
 percentiles or guarantees. No acknowledgment-only model call appears.
 
-The slow Calendar run selected CALENDAR_SEARCH_EVENTS without a query, then
-recovered through tool discovery and a context restoration before CALENDAR_FEED.
+The slow Calendar run selected CALENDAR_SEARCH_EVENTS with the invalid generic
+query `event`, then described the full Calendar family before loading CALENDAR_FEED.
+The base context stayed unchanged; no RESTORE_CONTEXT call occurred.
 It reached the correct empty-day result without writes, but did not meet the
 three-second target. Acknowledgments improve early feedback; this selection and
 recovery variability remains an actual completion-latency limitation.
@@ -252,3 +253,95 @@ to use the canonical message-service contract before this passing gate.
 Private evidence remains outside Git: ack-calendar-initial, ack-calendar-final,
 ack-notes-final, ack-navigation-final traces, acknowledgment timing snapshots,
 and latency-audit/ack-preservation.json.
+
+
+## Focused Calendar latency continuation — September 18
+
+Starting checkpoint: `c76e22f5eb51db1c400974061c33530651377adf`, clean
+`ganttnubs` in the existing isolated checkout. This section supersedes the
+older attribution of the seven-call Calendar run to context restoration.
+
+| Demonstrated cause | Focused correction or keep decision |
+|---|---|
+| Routing chose search for an unfiltered day and invented `query: "event"`. | Replace the existing candidate guidance with the explicit day/range lookup versus user-supplied content-filter distinction. No request-text router or additional classifier. |
+| Preflight coaching named umbrella `feed` and timestamp bounds rather than the promoted operation and civil-date contract. | Name CALENDAR_FEED, preserve date/range/timezone, and identify its direct schema-load operation. Keep rejection, failed receipt, evaluator and permission admission. |
+| `describe CALENDAR` returned 95,049 characters of complete family schemas; the next three calls retained them. | Avoid this unnecessary read when the required operation is known. Full descriptions remain available for actual schema questions; no returned result is removed or truncated. |
+| Suspected full-history recovery caused the input spike. | Disproved: the earlier message prefix is exactly unchanged, with three new discovery messages appended. There are zero RESTORE_CONTEXT calls. Keep source selection and restoration unchanged. |
+
+The saved failure used seven calls, 122,710 inputs and 24,576 cache reads.
+Its model timers sum to 7,308 ms; request finalization was 9,186 ms. The
+1,878 ms remainder is outside those model timers, not a measured Wi-Fi delay.
+The original summary tool-event projection omits schema bodies; the actual
+wire tool message establishes the 95,049-character result size.
+
+Existing deterministic Calendar tests already reproduce rejection of `event`,
+`events`, `calendar` and missing queries before reads/inference, and successful
+repair without stale-failure delivery. These tests are reused rather than
+adding assertions that merely repeat the new prose.
+
+One bounded saved-input Cerebras replay changed only the error's coaching facts.
+It chose `DISCOVER_TOOLS mode=load names=["CALENDAR_FEED"]` directly, omitting
+family description. 710 ms request time, 8,970 input tokens, zero cached inputs.
+No tool executed in that replay. This proves the selected recovery step, not an
+end-to-end recovery latency or a universal routing guarantee.
+
+### Fresh browser acceptance
+
+Same continuous chat and database, same qwen-3.8-27b provider configuration.
+The candidate API was restarted from the patched checkout before these checks.
+No repository verification overlapped the measured turns. No write fixtures,
+history resets, voice actions or additional paid sweeps were used.
+
+| Scenario | Calls | Final reply mark | Request total | Trajectory total | Input / cached input | Outcome |
+|---|---:|---:|---:|---:|---:|---|
+| Sunday September 20 local agenda | 3 | 3.363 s | 3.370 s | 3.403 s | 24,410 / 0 | CALENDAR_FEED with exact date/timezone; correct empty day, no discovery/recovery |
+| Notes created September 18 Pacific | 3 | 2.886 s | 2.903 s | 2.940 s | 25,214 / 10,240 | Exact createdAt local-day filter, zero matches among 41 notes |
+| Open Notes | 1 | 1.435 s | 1.442 s | 1.482 s | 9,338 / 7,168 | Actual Notes view, one final reply, idle composer |
+
+| Scenario / stage | Model ms | Input tokens | Cached inputs |
+|---|---:|---:|---:|
+| Calendar routing | 995 | 9,333 | 0 |
+| Calendar plan/feed | 572 | 8,139 | 0 |
+| Calendar completion | 549 | 6,938 | 0 |
+| Notes routing | 1,117 | 9,349 | 7,168 |
+| Notes plan/list | 591 | 8,643 | 0 |
+| Notes completion | 464 | 7,222 | 3,072 |
+| Navigation routing | 934 | 9,338 | 7,168 |
+
+Calendar model time totals 2,116 ms; 1,254 ms of its 3,370 ms request lies
+outside those timers. Semantic stages cover routing 1,281 ms, tool search 4 ms,
+planning 665 ms, feed 73 ms and evaluation 630 ms (2,653 ms total); the remaining
+717 ms is before/between/after stages. These stage envelopes overlap the model
+timers and must not be added to them. Provider work overlaps internally.
+No evidence justifies removing required provider or durable-history work.
+
+Acknowledgment emission marks: Calendar 1,677 ms, Notes 1,495 ms; navigation
+omits it. The bounded UI observations inspected the pending state and final
+responses but did not capture those transient labels; earlier unchanged SSE
+and visible-acknowledgment acceptance remains the display evidence. All final
+answers and the idle composer were inspected in the browser. Full before/after
+comparisons preserve all 41 notes and all three events in the Sep18–20 window.
+
+The seven-call detour was absent in this run. Calendar is near the roughly
+three-second target but still above three seconds; these are individual
+observations, not percentiles or a controlled cache-matched speedup. Genuine
+history recovery, semantic search and write extraction may still add calls.
+
+Private evidence: continuation-cause-audit.json, continuation-recovery-replay*,
+continuation-calendar-final, continuation-notes-final,
+continuation-navigation-final, continuation-final-timing.json and
+continuation-before/after-* under the existing candidate-runtime directory.
+Final owning/repository verification is recorded with the saved checkpoint below.
+
+
+Final gates: Calendar **1,008 passed / 4 existing skips**; core routing,
+discovery, source binding, completion and pending-scope checks **738 passed**
+(95 + 643). Root `bun run verify` passed **373/373 tasks** plus final audits,
+exit zero. The first attempt rejected quote formatting; formatting was corrected
+and an exact decoded-string comparison proved no runtime-text change from the
+accepted browser/replay source. The final log is continuation-verify-final.log.
+Changed-document file links and git diff whitespace checks passed.
+
+Saved rollback tag: `codex/ganttnubs-calendar-latency-20260918` (local only).
+The earlier acknowledgment tag remains intact. Code tags do not reset database
+or continuous chat state. No push, PR, merge, deployment or voice acceptance.

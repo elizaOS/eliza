@@ -272,3 +272,23 @@ Rollback checkpoint: `e3bd1efaad3`, tag `codex/ganttnubs-text-acceptance-2026091
 Acceptance: the final repository gate passed 373/373 tasks and its audits; 627 focused regression tests passed across routing, delivery, host and conversation SSE contracts. Live Notes and Calendar requests displayed their model-authored acknowledgment before one final answer; direct navigation stayed one call. All 41 notes and the three Calendar events in the audit window remained unchanged. No extra acknowledgment model call or prompt change was introduced. See GANTTNUBS-SCENARIO-RESULTS.md for the exact timings, cache inputs and the unresolved seven-call Calendar recovery.
 
 Saved result tag: `codex/ganttnubs-text-acknowledgments-20260918`. The previous rollback tag remains unchanged. Voice acceptance and consistent three-second Calendar completion are not claimed.
+
+
+## Focused latency continuation checkpoint
+
+The new focused goal starts at `c76e22f5eb51db1c400974061c33530651377adf`.
+One owner, same checkout and branch; local commits/tags only.
+
+- [x] Pin clean source, candidate runtime source/health and unchanged data baseline.
+- [x] Audit the exact seven-call wire trace: generic `event` query, broad family-description result, no history restoration.
+- [x] Replace existing Calendar routing/coaching guidance with canonical operation and read-scope instructions; preserve all admission, context, failed-receipt and completion contracts.
+- [x] Reuse meaningful offline rejection/repair tests; one saved-input recovery replay selects the exact feed schema directly.
+- [x] Bounded browser acceptance: Calendar 3 calls / 3.363 s final reply; Notes 3 / 2.886 s; navigation 1 / 1.435 s. Input/cache and timing boundaries are in the scenario ledger.
+- [x] Verify all 41 notes and three Calendar events unchanged; keep the continuous conversation.
+- [x] Finish owning checks/root verification, local commit, rollback tag and clean-tree handoff. Calendar 1,008 passed / 4 existing skips; core 738 passed; root 373/373 plus audits. Local tag: `codex/ganttnubs-calendar-latency-20260918`.
+
+Full discovery and genuine original-context recovery remain available. The
+95,049-character description was the input-growth cause; changing history
+retention would not repair it. Calendar's cold-cache sample is near the target,
+not proof of universal sub-three-second completion. No broad new audit, write
+sweep, voice work, protected branch, push, PR, merge or deployment is included.
