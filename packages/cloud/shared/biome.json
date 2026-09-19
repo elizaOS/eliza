@@ -129,6 +129,13 @@
   },
   "overrides": [
     {
+      "includes": [
+        "src/lib/providers/bge/tokenizer.json",
+        "src/lib/providers/bge/tokenizer_config.json"
+      ],
+      "formatter": { "enabled": false }
+    },
+    {
       "includes": ["src/lib/eliza/**/*.ts"],
       "linter": {
         "rules": {

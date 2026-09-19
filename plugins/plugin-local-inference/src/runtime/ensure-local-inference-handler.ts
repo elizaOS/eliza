@@ -21,10 +21,12 @@
  * Parallels `ensure-text-to-speech-handler.ts` — same shape, same guards.
  */
 
+import path from "node:path";
 import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
 	canonicalPromptForModelCall,
+	ElizaError,
 	fetchRemoteMedia,
 	type GenerateTextParams,
 	getInferencePriorityGate,
@@ -32,6 +34,7 @@ import {
 	type IAgentRuntime,
 	type ImageDescriptionParams,
 	type ImageDescriptionResult,
+	identifyEmbeddingVector,
 	inferenceRamClassFromEnv,
 	logger,
 	type MobileDeviceBridgeService,
@@ -87,17 +90,19 @@ import {
 } from "../services/vision/image-input";
 import type { VisionImageInput } from "../services/vision/types";
 import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
-import {
-	ELIZA_POOLING_CLS,
-	ELIZA_POOLING_LAST,
-	ELIZA_POOLING_MEAN,
-} from "../services/voice/ffi-bindings";
 import { extractRequestedKokoroVoiceId } from "../services/voice/requested-voice.js";
 import { DEFAULT_MODELS_DIR } from "./embedding-manager-support";
 import {
 	EMBEDDING_PRESETS,
 	selectEmbeddingPresetFromHardware,
 } from "./embedding-presets";
+import {
+	embedCompleteInput,
+	normalizeEmbeddingVector,
+	resolveBgeContextLimit,
+	resolveEmbeddingPooling,
+	verifyBgeEmbeddingBundle,
+} from "./embedding-vector-space";
 import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
 import { resolveFusedEmbeddingBundleRoot } from "./fused-embedding-bundle";
 
@@ -258,6 +263,23 @@ async function ensureAssignedModelLoaded(
 ): Promise<void> {
 	const assignments = await readEffectiveAssignments();
 	const assignedId = assignments[slot];
+	if (slot === "TEXT_EMBEDDING" && loader?.prepareEmbeddingModel) {
+		if (!assignedId) {
+			await loader.prepareEmbeddingModel();
+			return;
+		}
+		const target = (await listInstalledModels()).find(
+			(model) => model.id === assignedId,
+		);
+		if (!target) {
+			throw new ElizaError("The assigned embedding model is not installed", {
+				code: "EMBEDDING_MODEL_UNAVAILABLE",
+				context: { assignedId },
+			});
+		}
+		await loader.prepareEmbeddingModel(target.path);
+		return;
+	}
 	if (!assignedId) {
 		// Loud-failure guard: an unassigned chat slot must not silently
 		// dispatch to whatever model happens to be loaded — if that's an
@@ -620,9 +642,8 @@ function makeEmbeddingHandler(): EmbeddingHandler {
 				"[local-inference] Active loader does not implement embed; falling through to next provider",
 			);
 		}
-		// Embeddings in this runtime are not slot-aware — there's a single
-		// active model. Make sure the user's TEXT_EMBEDDING assignment, if
-		// any, is loaded before we hit the loader.
+		// Dedicated encoders preserve chat state; older single-model loaders
+		// retain their existing assignment transition.
 		await ensureAssignedModelLoaded(loader, "TEXT_EMBEDDING");
 		const text = extractEmbeddingText(params);
 		const result = await loader.embed({ input: text });
@@ -640,7 +661,7 @@ interface DesktopEmbeddingConfig {
 /**
  * Resolve the desktop embedding model + load params from the same
  * `LOCAL_EMBEDDING_*` env that `configureLocalEmbeddingPlugin` and the boot
- * warmup set, falling back to the compact gte-small preset.
+ * warmup set, defaulting to the shared BGE-small representation.
  */
 function resolveDesktopEmbeddingConfig(
 	hardware?: Awaited<ReturnType<typeof probeHardware>>,
@@ -677,6 +698,10 @@ function resolveDesktopEmbeddingConfig(
  * `null` once resolution fails (the handler then falls back).
  */
 type FusedEmbeddingHandle = {
+	embeddingSpace: string | undefined;
+	model: string;
+	modelsDir: string;
+	nativeContextSetting: string | undefined;
 	ffi: import("../services/voice/ffi-bindings").ElizaInferenceFfi;
 	ctx: import("../services/voice/ffi-bindings").ElizaInferenceContextHandle;
 	embed: NonNullable<
@@ -717,7 +742,7 @@ function installFusedEmbeddingExitCleanup(): void {
 
 // A null resolution is retried on the next embed rather than cached for the
 // process lifetime — the boot dimension-probe can call getFusedEmbeddingHandle
-// before the gte-small GGUF / fused lib finishes staging, and caching that miss
+// before the BGE-small GGUF / fused lib finishes staging, and caching that miss
 // would pin embeddings to the cloud fallback forever. But bound the retry to this
 // window after the first failure so a host that genuinely cannot serve on-device
 // embeddings (no fused lib) stops re-probing every embed and quietly stays on the
@@ -726,6 +751,7 @@ const FUSED_EMBED_RETRY_WINDOW_MS = 3 * 60_000;
 let fusedEmbedFirstFailureMs: number | null = null;
 
 async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
+	embeddingSpace: string | undefined;
 	embed: (text: string) => Float32Array;
 } | null> {
 	if (fusedEmbedHandlePromise === null) {
@@ -761,6 +787,7 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 				);
 				return null;
 			}
+			const embeddingSpace = verifyBgeEmbeddingBundle(bundleRoot, cfg.model);
 			const libPath = resolveFusedLibraryPath(bundleRoot);
 			if (!libPath) {
 				logger.warn(
@@ -784,7 +811,15 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 				return null;
 			}
 			const ctx = ffi.create(bundleRoot);
-			const handle = { ffi, ctx, embed: ffi.embed };
+			const handle = {
+				embeddingSpace,
+				ffi,
+				ctx,
+				embed: ffi.embed,
+				model: cfg.model,
+				modelsDir: cfg.modelsDir,
+				nativeContextSetting: process.env.ELIZA_EMBED_N_CTX,
+			};
 			liveFusedEmbeddingHandle = handle;
 			installFusedEmbeddingExitCleanup();
 			logger.info(
@@ -809,24 +844,58 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 		}
 		return null;
 	}
-	// Pooling is part of the vector space: BGE uses CLS, GTE uses MEAN.
-	// Retain the legacy default for existing stores until explicitly migrated.
-	const requestedPooling =
-		process.env.ELIZA_EMBED_POOLING?.trim().toLowerCase();
-	const pooling =
-		requestedPooling === "cls"
-			? ELIZA_POOLING_CLS
-			: requestedPooling === "last"
-				? ELIZA_POOLING_LAST
-				: ELIZA_POOLING_MEAN;
+	const pooling = resolveEmbeddingPooling(
+		cfg.model,
+		process.env.ELIZA_EMBED_POOLING,
+	);
+	if (
+		handle.model !== cfg.model ||
+		handle.modelsDir !== cfg.modelsDir ||
+		handle.nativeContextSetting !== process.env.ELIZA_EMBED_N_CTX
+	) {
+		throw new ElizaError(
+			"Embedding model or native context changed after initialization; restart the runtime before embedding",
+			{ code: "EMBEDDING_CONFIGURATION_CHANGED" },
+		);
+	}
+	const boundedEncoder = [
+		"bge-small-en-v1.5-f16.gguf",
+		"gte-small_fp16.gguf",
+	].includes(path.basename(cfg.model));
+	const contextLimit = boundedEncoder
+		? resolveBgeContextLimit(handle.nativeContextSetting)
+		: undefined;
 	return {
-		embed: (text: string) => handle.embed({ ctx: handle.ctx, text, pooling }),
+		embeddingSpace: handle.embeddingSpace,
+		embed: (text: string) => {
+			const embed = (input: string) =>
+				handle.embed({ ctx: handle.ctx, text: input, pooling });
+			if (contextLimit === undefined) return embed(text);
+			const tokenize = handle.ffi.tokenize;
+			if (!tokenize)
+				throw new ElizaError(
+					"The embedding library must expose its tokenizer to validate complete inputs; rebuild the native library",
+					{ code: "EMBEDDING_TOKENIZER_UNAVAILABLE" },
+				);
+			return embedCompleteInput(
+				text,
+				(input) =>
+					tokenize({
+						ctx: handle.ctx,
+						text: input,
+						addSpecial: true,
+						parseSpecial: false,
+					}),
+				embed,
+				contextLimit,
+			);
+		},
 	};
 }
 
 /**
  * Desktop TEXT_EMBEDDING handler over the FUSED `libelizainference`
- * (`eliza_inference_embed`, ABI v9). The dedicated embedding GGUF (gte-small,
+ * (`eliza_inference_embed`, ABI v9). The dedicated embedding GGUF (BGE-small,
  * 384-dim — an exact match for plugin-sql's dim384 column) is staged as the
  * sole entry of an isolated fused embed bundle (see
  * `resolveFusedEmbeddingBundleRoot`)
@@ -879,7 +948,20 @@ function makeFusedEmbeddingHandler(): EmbeddingHandler {
 		loadedConfig = cfg;
 		const close = getInferenceTimer()?.openSpan("embedding:native");
 		try {
-			return Array.from(fused.embed(text));
+			const output = fused.embed(text);
+			if (fused.embeddingSpace === undefined) return Array.from(output);
+			if (output.length !== 384)
+				throw new ElizaError(
+					"BGE backend returned an unexpected vector dimension",
+					{
+						code: "EMBEDDING_VECTOR_INVALID",
+						context: { dimension: output.length },
+					},
+				);
+			return identifyEmbeddingVector(
+				normalizeEmbeddingVector(output),
+				fused.embeddingSpace,
+			);
 		} finally {
 			close?.();
 		}
@@ -1627,7 +1709,7 @@ export async function ensureLocalInferenceHandler(
 	}
 
 	// Text/voice availability and embedding availability are independent on
-	// desktop. gte-small uses the dedicated fused embedding entry point and can
+	// desktop. BGE-small uses the dedicated fused embedding entry point and can
 	// be present even when no generative model/backend is active. The old
 	// process-wide preflight returned here and therefore never registered the
 	// perfectly usable local 384-dim embedder; the runtime then pinned Eliza
@@ -1709,7 +1791,7 @@ export async function ensureLocalInferenceHandler(
 	//     `localInferenceLoader` service → route through that.
 	//   - Desktop has no `localInferenceLoader`; it serves embeddings through
 	//     the fused `libelizainference` (`eliza_inference_embed`) over the
-	//     dedicated gte-small GGUF staged as an isolated embed bundle. libllama
+	//     dedicated BGE-small GGUF staged as an isolated embed bundle. libllama
 	//     is retired — there is no capacitor/libllama embedding fallback.
 	// Neither path registers a handler that would serve a silent zero-vector:
 	// both throw when there's nothing real to call, so the runtime falls

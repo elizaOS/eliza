@@ -115,6 +115,9 @@ crons = [
 binding = "BLOB"
 bucket_name = "eliza-cloud-blob"
 
+[ai]
+binding = "AI"
+
 [browser]
 binding = "BROWSER"
 
@@ -540,6 +543,9 @@ routes = [
 __dirname = '"/"'
 __filename = '"/worker.js"'
 
+[env.staging.ai]
+binding = "AI"
+
 [env.staging.browser]
 binding = "BROWSER"
 
@@ -858,6 +864,9 @@ routes = [
 [env.production.define]
 __dirname = '"/"'
 __filename = '"/worker.js"'
+
+[env.production.ai]
+binding = "AI"
 
 [env.production.browser]
 binding = "BROWSER"

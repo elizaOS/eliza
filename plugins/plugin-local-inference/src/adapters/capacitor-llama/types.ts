@@ -18,6 +18,8 @@
  * keep the interface free-standing so any backend can implement it.
  */
 
+import { BGE_EMBEDDING_MODEL } from "../../runtime/bge-embedding-model";
+
 export interface TokenizerConfig {
 	name: string;
 	type: string;
@@ -215,6 +217,20 @@ export interface CapacitorLlamaEmbeddingResult {
 	embedding: number[];
 }
 
+/** Encoder-only native contexts do not claim chat-model metadata or GPU capabilities. */
+export interface CapacitorEmbeddingContext {
+	tokenize(text: string): Promise<{ tokens: number[] }>;
+	embedding(
+		text: string,
+		params?: { embd_normalize?: number },
+	): Promise<{
+		embedding: number[];
+		embeddingSpace?: string;
+		tokens?: number;
+	}>;
+	release(): Promise<void>;
+}
+
 export interface CapacitorLlamaBenchResult {
 	modelDesc: string;
 	modelSize: number;
@@ -359,13 +375,13 @@ export const MODEL_SPECS = {
 		tokenizer: { name: "elizaos/eliza-1", type: "eliza1" },
 	},
 	embedding: {
-		name: "gte-small_fp16.gguf",
-		repo: "ChristianAzinn/gte-small-gguf",
+		name: BGE_EMBEDDING_MODEL.filename,
+		repo: BGE_EMBEDDING_MODEL.repository,
 		size: "64 MB",
 		quantization: "fp16 GGUF",
 		contextSize: 512,
 		dimensions: 384,
-		tokenizer: { name: "ChristianAzinn/gte-small-gguf", type: "bert" },
+		tokenizer: { name: "BAAI/bge-small-en-v1.5", type: "bert" },
 	},
 } as const satisfies {
 	small: ModelSpec;

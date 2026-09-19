@@ -1,4 +1,8 @@
 /** Owns embedding provider pinning, dimension initialization, and complete-memory embedding requests using the canonical runtime. */
+import {
+	copyEmbeddingVectorSpace,
+	getEmbeddingVectorSpace,
+} from "../embedding-vector-space";
 import { ElizaError } from "../errors";
 import {
 	EventType,
@@ -174,6 +178,63 @@ export class RuntimeEmbeddings {
 			fetch(...args: Parameters<typeof fetch>): ReturnType<typeof fetch>;
 		},
 	) {}
+
+	private pinnedEmbeddingSpace: string | undefined;
+	private pinnedEmbeddingDimension: number | undefined;
+
+	validateProviderOutput(
+		modelType: string,
+		params: unknown,
+		embeddingProviderOutput: unknown,
+		result: unknown,
+		provider: string,
+	): void {
+		const batch = modelType === ModelType.TEXT_EMBEDDING_BATCH;
+		const sources =
+			batch && Array.isArray(embeddingProviderOutput)
+				? embeddingProviderOutput
+				: [embeddingProviderOutput];
+		const targets = batch && Array.isArray(result) ? result : [result];
+		const namedSpace = sources
+			.map(getEmbeddingVectorSpace)
+			.find((space) => space !== undefined);
+		const expected = this.pinnedEmbeddingSpace ?? namedSpace;
+		if (expected !== undefined) {
+			if (
+				this.pinnedEmbeddingSpace === undefined &&
+				(params !== null || batch)
+			) {
+				throw new ElizaError(
+					"Initialize the embedding representation before generating vectors",
+					{
+						code: "EMBEDDING_SPACE_NOT_INITIALIZED",
+					},
+				);
+			}
+			if (
+				sources.length !== targets.length ||
+				sources.some(
+					(vector) =>
+						getEmbeddingVectorSpace(vector) !== expected ||
+						(this.pinnedEmbeddingDimension !== undefined &&
+							(!Array.isArray(vector) ||
+								vector.length !== this.pinnedEmbeddingDimension)),
+				)
+			) {
+				throw new ElizaError(
+					"Embedding provider returned a different or unidentified representation",
+					{
+						code: "EMBEDDING_SPACE_MISMATCH",
+						context: { expected, provider: provider },
+					},
+				);
+			}
+			for (let index = 0; index < sources.length; index++) {
+				copyEmbeddingVectorSpace(sources[index], targets[index]);
+			}
+		}
+	}
+
 	getPinnedProvider(): string | undefined {
 		return this.pinnedEmbeddingProvider;
 	}
@@ -393,13 +454,45 @@ export class RuntimeEmbeddings {
 				continue;
 			}
 
+			const spaceId = getEmbeddingVectorSpace(embedding);
+			if (
+				spaceId !== undefined &&
+				this.pinnedEmbeddingProvider !== undefined &&
+				this.pinnedEmbeddingSpace !== spaceId
+			) {
+				throw new ElizaError(
+					"Restart the runtime before changing its embedding representation",
+					{
+						code: "EMBEDDING_SPACE_CHANGED",
+					},
+				);
+			}
+			if (spaceId !== undefined && !this.runtime.adapter.ensureEmbeddingSpace) {
+				throw new ElizaError(
+					"This database adapter cannot separate embedding representations; upgrade the adapter before using this model",
+					{
+						code: "EMBEDDING_SPACE_UNSUPPORTED",
+					},
+				);
+			}
 			await this.runtime.adapter.ensureEmbeddingDimension(embedding.length);
-			const modelLabel = await this.guardEmbeddingStoreIdentity(
-				registration.provider,
-				embedding.length,
-			);
+			const representationMemoryIds =
+				spaceId !== undefined && this.runtime.adapter.ensureEmbeddingSpace
+					? await this.runtime.adapter.ensureEmbeddingSpace(spaceId)
+					: [];
+			const modelLabel =
+				spaceId === undefined
+					? await this.guardEmbeddingStoreIdentity(
+							registration.provider,
+							embedding.length,
+						)
+					: spaceId;
+			this.pinnedEmbeddingSpace = spaceId;
+			this.pinnedEmbeddingDimension = embedding.length;
 			this.pinnedEmbeddingProvider = registration.provider;
 			this.enableEmbeddingGeneration();
+			if (representationMemoryIds.length > 0)
+				void this.reembedMemoriesByIds(representationMemoryIds);
 			this.runtime.logger.info(
 				{
 					src: "agent",

@@ -113,10 +113,10 @@ Get an API key from
 | `ELIZAOS_CLOUD_MEGA_MODEL` | Mega model override | `MEGA_MODEL` or large model |
 | `ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL` | Response handler model override | small model |
 | `ELIZAOS_CLOUD_ACTION_PLANNER_MODEL` | Action planner model override | large model |
-| `ELIZAOS_CLOUD_EMBEDDING_MODEL` | Embedding model | `text-embedding-3-small` |
+| `ELIZAOS_CLOUD_EMBEDDING_MODEL` | Embedding model | `bge-small-en-v1.5` |
 | `ELIZAOS_CLOUD_EMBEDDING_URL` | Optional custom embedding API base URL | unset |
 | `ELIZAOS_CLOUD_EMBEDDING_API_KEY` | Optional custom embedding API key | `ELIZAOS_CLOUD_API_KEY` |
-| `ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS` | Embedding vector size | `1536` |
+| `ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS` | Embedding vector size | `384` for BGE; `1536` for legacy OpenAI models |
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL` | Vision model used for image descriptions | `gpt-5.4-mini` |
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS` | Optional positive-integer image-description output limit; omitted sends no provider cap | unset |
 | `ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL` | Image generation model override | `google/nano-banana-2/text-to-image` |
@@ -125,6 +125,14 @@ Get an API key from
 | `ELIZAOS_CLOUD_USE_STT` | Per-service opt-in for Cloud STT when `ELIZAOS_CLOUD_ENABLED` is unset (capability-only mode) | unset |
 | `ELIZAOS_CLOUD_STT_TIMEOUT_MS` | Cloud STT request timeout | `60000` |
 | `ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY` | Enables experimental telemetry metadata | `false` |
+
+The default model is `bge-small-en-v1.5`; the output width is 384 and the server
+must return the canonical CLS/L2 `embedding_space` identifier. Initialization makes a real
+embedding request to verify that contract before the runtime selects a vector
+representation. Older servers or a BGE server using mean pooling are rejected;
+matching model names or dimensions alone cannot establish compatibility with
+existing vectors. Deploy the matching server before activating this model in
+clients, and follow the SQL adapter's migration and process-restart requirements.
 
 Browser builds must not receive secrets directly. Use
 `ELIZAOS_CLOUD_BROWSER_BASE_URL` and `ELIZAOS_CLOUD_BROWSER_EMBEDDING_URL` for

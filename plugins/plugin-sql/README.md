@@ -130,7 +130,11 @@ VECTOR_DIMS = {
 };
 ```
 
-When an agent switches embedding dimensions, runtime boot deletes vectors stored in other dimension columns and queues those memories for re-embedding at the active width. Memory rows survive; stale vectors do not.
+Unversioned embedding stores retain the dimension-based migration path: runtime boot deletes vectors in other dimension columns and queues their source memories for re-embedding.
+
+Call `ensureEmbeddingSpace(spaceId)` after selecting a dimension to activate an explicitly identified representation. The identifier must include the model, pooling, normalization, and any revision that changes the vector space. This operation preserves existing memory text and vectors, excludes other representations from reads and similarity searches, and returns the current agent's text-bearing memories that still need re-embedding. Repeating it after a restart returns any unfinished work. New vectors receive the active identifier; legacy vectors are never adopted merely because their dimensions match. A running adapter rejects changes to an already selected representation or dimension.
+
+Stop older runtimes that access the same database before activating a named representation, and restart all participating runtimes with compatible code. The database write fence rejects an older writer's in-place overwrite of a tagged vector, including rolling back its enclosing transaction. It does not make older readers representation-aware or prevent an older binary from deleting and recreating a row. Rolling back to an older binary after cutover therefore requires an explicit database/vector migration, not just an application rollback. Complete schema migrations before calling the activation method; a failure must stop embedding use until corrected.
 
 ## Runtime Migrations
 

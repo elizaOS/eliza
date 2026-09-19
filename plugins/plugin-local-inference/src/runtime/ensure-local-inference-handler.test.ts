@@ -4,7 +4,10 @@
  * assignments, and the registry are mocked; no model loads.
  */
 
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { Module } from "node:module";
+import os from "node:os";
+import path from "node:path";
 import {
 	AgentRuntime,
 	ModelType,
@@ -146,9 +149,14 @@ vi.mock("../services/voice", () => ({
 }));
 
 import { resolveLocalInferenceLoadArgs } from "../services/active-model";
+import { BionicHostLoader } from "../services/bionic-host-loader";
 import { probeHardware } from "../services/hardware";
 import { installRouterHandler } from "../services/router-handler";
-import { TimedAsrService } from "../services/runtime-services";
+import {
+	type LocalInferenceLoaderRuntimeService,
+	registerLocalInferenceLoaderService,
+	TimedAsrService,
+} from "../services/runtime-services";
 import { VoiceStartupError } from "../services/voice/errors";
 import { registerLocalInferenceBoot } from "./boot";
 import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler";
@@ -439,7 +447,7 @@ describe("ensureLocalInferenceHandler", () => {
 		expect(engineState.available).not.toHaveBeenCalled();
 	});
 
-	it("registers desktop gte-small embeddings when no generative backend is available", async () => {
+	it("registers desktop BGE embeddings when no generative backend is available", async () => {
 		engineState.available.mockResolvedValue(false);
 		const { registrations, runtime } = makeRuntime();
 
@@ -477,6 +485,7 @@ describe("ensureLocalInferenceHandler", () => {
 			.mockImplementation((id, ...args) =>
 				id === "bun:ffi" ? id : originalResolve.call(nativeModule, id, ...args),
 			);
+		vi.stubEnv("LOCAL_EMBEDDING_MODEL", "unit-custom.gguf");
 		vi.stubEnv("ELIZA_EMBED_POOLING", "mean");
 		try {
 			const { registrations, runtime } = makeRuntime();
@@ -1091,4 +1100,37 @@ describe("ensureLocalInferenceHandler", () => {
 			}),
 		);
 	});
+});
+
+it("does not unload the chat assignment when a dedicated embedding assignment is invalid", async () => {
+	const root = mkdtempSync(path.join(os.tmpdir(), "bionic-assignment-"));
+	try {
+		const encoder = path.join(root, "invalid-encoder.gguf");
+		writeFileSync(encoder, "not canonical weights");
+		assignmentsState.assignments = { TEXT_EMBEDDING: "encoder" };
+		registryState.installed = [{ id: "encoder", path: encoder }];
+		const loader = new BionicHostLoader("unused-assignment-test");
+		const chat = path.join(root, "text", "chat.gguf");
+		await loader.loadModel({ modelPath: chat });
+		const { runtime, registrations } = makeRuntime();
+		await registerLocalInferenceLoaderService(runtime, loader);
+		await runtime.getServiceLoadPromise("localInferenceLoader");
+		engineState.hasLoadedModel.mockReturnValue(true);
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.TEXT_EMBEDDING,
+		);
+		await expect(
+			handler(runtime, { text: "complete source" }),
+		).rejects.toMatchObject({ code: "EMBEDDING_MODEL_UNAVAILABLE" });
+		expect(loader.currentModelPath()).toBe(chat);
+		expect(
+			runtime
+				.getService<LocalInferenceLoaderRuntimeService>("localInferenceLoader")
+				?.currentModelPath(),
+		).toBe(chat);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
 });

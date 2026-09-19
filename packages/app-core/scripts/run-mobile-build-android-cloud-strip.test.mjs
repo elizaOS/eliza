@@ -13,7 +13,10 @@
  * This test scans the real committed android source tree (no device, no gradle)
  * and asserts every ElizaAgentService-referencing main source is accounted for.
  */
+
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -98,23 +101,144 @@ describe("android-cloud ElizaAgentService strip coverage (#15106)", () => {
     const strippedClassNames = ANDROID_CLOUD_STRIPPED_JAVA_FILES.map((file) =>
       file.replace(/\.java$/, ""),
     );
-    const testFiles = fs
-      .readdirSync(androidTestJavaRoot, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".java"))
-      .map((entry) => entry.name)
+    const testRoots = [
+      androidTestJavaRoot,
+      path.resolve(
+        scriptsDir,
+        "../platforms/android/app/src/androidTest/java/ai/elizaos/app",
+      ),
+    ];
+    const referencesStrippedCode = testRoots
+      .flatMap((root) =>
+        fs
+          .readdirSync(root, { withFileTypes: true })
+          .filter((entry) => entry.isFile() && entry.name.endsWith(".java"))
+          .filter((entry) => {
+            const source = fs.readFileSync(path.join(root, entry.name), "utf8");
+            return strippedClassNames.some((name) =>
+              new RegExp(`\\b${name}\\b`).test(source),
+            );
+          })
+          .map((entry) => entry.name),
+      )
       .sort();
-    const referencesStrippedCode = testFiles.filter((file) => {
-      const source = fs.readFileSync(
-        path.join(androidTestJavaRoot, file),
-        "utf8",
-      );
-      return strippedClassNames.some((className) =>
-        new RegExp(`\\b${className}\\b`).test(source),
-      );
-    });
 
-    expect(ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES).toEqual(
+    expect([...ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES].sort()).toEqual(
       referencesStrippedCode,
     );
   });
+});
+
+it("removes BGE runtime and its instrumented tests from an actual cloud source tree while retaining local source", () => {
+  const fixture = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-cloud-bge-strip-"),
+  );
+  try {
+    const app = path.join(fixture, "packages", "app");
+    fs.mkdirSync(app, { recursive: true });
+    fs.writeFileSync(
+      path.join(app, "package.json"),
+      '{"name":"fixture","type":"module"}',
+    );
+    fs.writeFileSync(
+      path.join(app, "app.config.ts"),
+      'export default { appId: "ai.elizaos.app", appName: "Fixture" };',
+    );
+    const local = path.join(fixture, "local");
+    const cloud = path.join(app, "android");
+    const configPath = path.join(
+      cloud,
+      "app/src/main/assets/capacitor.config.json",
+    );
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        appId: "ai.elizaos.app",
+        appName: "Fixture",
+        webDir: "dist",
+      }),
+    );
+
+    const files = [
+      ["main", "BgeEmbeddingSession.java"],
+      ["main", "ElizaVoiceNative.java"],
+      ["main", "ElizaBionicInferenceServer.java"],
+      ["test", "BgeEmbeddingSessionTest.java"],
+      ["androidTest", "BionicEmbeddingInstrumentedTest.java"],
+    ];
+    for (const [sourceSet, name] of files) {
+      const relative = path.join(
+        "app",
+        "src",
+        sourceSet,
+        "java",
+        "ai",
+        "elizaos",
+        "app",
+        name,
+      );
+      const original = path.resolve(
+        scriptsDir,
+        "../platforms/android",
+        relative,
+      );
+      for (const target of [local, cloud]) {
+        fs.mkdirSync(path.dirname(path.join(target, relative)), {
+          recursive: true,
+        });
+        fs.copyFileSync(original, path.join(target, relative));
+      }
+    }
+    const keep = path.join(
+      cloud,
+      "app/src/androidTest/java/ai/elizaos/app/CloudIndependentTest.java",
+    );
+    fs.writeFileSync(keep, "final class CloudIndependentTest {}\n");
+    const module = new URL("./mobile/android/strip.mjs", import.meta.url).href;
+    const context = new URL("./mobile/context.mjs", import.meta.url).href;
+    execFileSync(
+      "node",
+      [
+        "--input-type=module",
+        "-e",
+        `
+      import { androidDir } from ${JSON.stringify(context)};
+      import { stripAndroidForCloud } from ${JSON.stringify(module)};
+      if (androidDir !== ${JSON.stringify(cloud)}) throw new Error("Unsafe fixture path");
+      stripAndroidForCloud();
+    `,
+      ],
+      {
+        env: {
+          ...process.env,
+          ELIZA_MOBILE_REPO_ROOT: fixture,
+          ELIZA_ANDROID_USE_APP_DIR: "1",
+        },
+        timeout: 30000,
+      },
+    );
+    for (const [sourceSet, name] of files) {
+      const relative = path.join(
+        "app",
+        "src",
+        sourceSet,
+        "java",
+        "ai",
+        "elizaos",
+        "app",
+        name,
+      );
+      expect(fs.existsSync(path.join(cloud, relative))).toBe(false);
+      expect(fs.readFileSync(path.join(local, relative), "utf8")).toBe(
+        fs.readFileSync(
+          path.resolve(scriptsDir, "../platforms/android", relative),
+          "utf8",
+        ),
+      );
+    }
+    expect(fs.readFileSync(keep, "utf8")).toContain("CloudIndependentTest");
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
 });

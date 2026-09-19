@@ -46,6 +46,7 @@
  *                                   on iOS 16 the embedded library fails to load
  *                                   and the runtime cleanly falls back to CPU.
  *                                   The iOS min-version flag is appended here.
+ *   CMAKE_BUILD_PARALLEL_LEVEL     positive build-worker limit (default host CPUs)
  *   ELIZA_MTP_FORCE_REBUILD=1       ignore a cached slice and rebuild
  */
 
@@ -55,6 +56,11 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  fusedSliceCacheMatches,
+  recordFusedSliceProvenance,
+  sha256File,
+} from "./lib/ios-fused-slice-cache.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // packages/app-core/scripts → repo root
@@ -248,7 +254,7 @@ function requiredKernelsMissing(symbolsText) {
   );
 }
 
-function copyHeaders(srcDir, outDir) {
+function copyHeaders(srcDir, outDir, { fused = false } = {}) {
   const incOut = path.join(outDir, "include");
   removePathRecursive(incOut);
   fs.mkdirSync(incOut, { recursive: true });
@@ -261,6 +267,17 @@ function copyHeaders(srcDir, outDir) {
       if (!name.endsWith(".h")) continue;
       fs.copyFileSync(path.join(incDir, name), path.join(incOut, name));
     }
+  }
+  if (fused) {
+    // The bridge must compile against the header from the same native source as its archive.
+    const ffiHeader = path.join(
+      srcDir,
+      "tools",
+      "omnivoice",
+      "include",
+      "eliza-inference-ffi.h",
+    );
+    fs.copyFileSync(ffiHeader, path.join(incOut, "eliza-inference-ffi.h"));
   }
 }
 
@@ -280,7 +297,8 @@ function collectArchives(buildDir, outDir) {
       // assembler merges every .a with `libtool -static`. kokoro_lib is a
       // separate static target (its own GGUF reader + iSTFT decoder), so its
       // archive must be collected for the xcframework to carry Kokoro.
-      /^lib(llama|ggml|mtmd|kokoro_lib|elizainference)[^/]*\.a$/.test(
+      // Voice classifiers are another static dependency of the fused FFI.
+      /^lib(llama|ggml|mtmd|kokoro_lib|elizainference|eliza_voice_classifiers)[^/]*\.a$/.test(
         path.basename(p),
       ),
     );
@@ -314,17 +332,56 @@ function buildTarget(target) {
     die("iOS slice builds require a macOS host with Xcode + Metal toolchain.");
   }
 
+  const requestedParallelism = process.env.CMAKE_BUILD_PARALLEL_LEVEL?.trim();
+  if (
+    requestedParallelism !== undefined &&
+    (!/^[1-9][0-9]*$/.test(requestedParallelism) ||
+      !Number.isSafeInteger(Number(requestedParallelism)))
+  ) {
+    die("CMAKE_BUILD_PARALLEL_LEVEL must be a positive safe integer.");
+  }
+  const buildParallelism = requestedParallelism ?? String(os.cpus().length);
+
+  const srcDir = resolveForkSrc();
+  const sourceRevision = capture("git", [
+    "-C",
+    srcDir,
+    "rev-parse",
+    "HEAD",
+  ]).trim();
+  const sourceStatus = spawnSync(
+    "git",
+    ["-C", srcDir, "status", "--porcelain"],
+    { encoding: "utf8" },
+  );
+  const sourceClean =
+    sourceStatus.status === 0 && sourceStatus.stdout.trim() === "";
+  const sourceHeader = path.join(
+    srcDir,
+    "tools",
+    "omnivoice",
+    "include",
+    "eliza-inference-ffi.h",
+  );
+  const sourceHeaderSha256 = t.fused ? sha256File(sourceHeader) : null;
   const outDir = path.join(STATE_DIR, "local-inference", "bin", "mtp", target);
   const capabilitiesPath = path.join(outDir, "CAPABILITIES.json");
   if (
     fs.existsSync(capabilitiesPath) &&
-    process.env.ELIZA_MTP_FORCE_REBUILD !== "1"
+    process.env.ELIZA_MTP_FORCE_REBUILD !== "1" &&
+    (!t.fused ||
+      fusedSliceCacheMatches({
+        outDir,
+        target,
+        sourceRevision,
+        sourceClean,
+        sourceHeader,
+      }))
   ) {
     log(`reusing cached slice: ${outDir}`);
     return outDir;
   }
 
-  const srcDir = resolveForkSrc();
   const revision = forkRevision(srcDir);
   log(`target=${target} sdk=${t.sdk} fork=${revision}`);
   log(`source: ${srcDir}`);
@@ -417,13 +474,13 @@ function buildTarget(target) {
     "--config",
     "Release",
     "--parallel",
-    String(os.cpus().length),
+    buildParallelism,
     "--target",
     ...buildTargets,
   ]);
 
   const archives = collectArchives(buildDir, outDir);
-  copyHeaders(srcDir, outDir);
+  copyHeaders(srcDir, outDir, { fused: t.fused });
 
   // AGENTS.md §3 gate: every required kernel symbol must be present in the
   // produced archives or the slice is rejected (no CAPABILITIES.json written).
@@ -457,7 +514,35 @@ function buildTarget(target) {
     }
   }
 
+  const finalSourceStatus = spawnSync(
+    "git",
+    ["-C", srcDir, "status", "--porcelain"],
+    { encoding: "utf8" },
+  );
+  if (
+    t.fused &&
+    (capture("git", ["-C", srcDir, "rev-parse", "HEAD"]).trim() !==
+      sourceRevision ||
+      sha256File(sourceHeader) !== sourceHeaderSha256 ||
+      (sourceClean &&
+        (finalSourceStatus.status !== 0 ||
+          finalSourceStatus.stdout.trim() !== "")))
+  ) {
+    die(
+      "Native source changed during the fused iOS build; refusing to certify its cache.",
+    );
+  }
+  const fusedProvenance = t.fused
+    ? recordFusedSliceProvenance({
+        sourceRevision,
+        sourceClean,
+        sourceHeader,
+        outDir,
+        archives,
+      })
+    : null;
   const capabilities = {
+    ...(t.fused ? { fusedProvenance } : {}),
     schema: "eliza-1.mtp-slice/v1",
     target,
     sdk: t.sdk,
