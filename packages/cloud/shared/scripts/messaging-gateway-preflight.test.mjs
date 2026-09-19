@@ -492,7 +492,11 @@ test("reusable workflow keeps the develop caller source-test-only", () => {
     "develop-full cloud-gateway-discord caller",
   );
 
-  assert.deepEqual(requireMapping(developPush, "develop-full push trigger").branches, ["develop"]);
+  assert.deepEqual(requireMapping(developPush, "develop-full push trigger").branches, [
+    "develop",
+    "staging",
+    "main",
+  ]);
   assertDevelopSourceOnlyCaller(caller);
 });
 

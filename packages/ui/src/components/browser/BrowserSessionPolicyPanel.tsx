@@ -96,7 +96,7 @@ function policyBadgeClass(allowed: boolean, mode: BrowserDomainPolicyMode) {
   }
   return allowed
     ? "border-accent/50 bg-accent/15 text-accent"
-    : "border-border bg-muted/40 text-muted-foreground";
+    : "border-border bg-bg-muted text-muted-strong";
 }
 
 type LoadPhase = "loading" | "error" | "ready" | "unsupported";
@@ -326,7 +326,7 @@ export function BrowserSessionPolicyPanel({
     return (
       <div
         data-testid="browser-session-policy-empty"
-        className="rounded-sm border border-border bg-muted/30 p-4 text-sm text-muted-foreground"
+        className="rounded-sm border border-border bg-muted/30 p-4 text-sm text-muted-strong"
       >
         No browser sessions yet. When the agent drives a website, the session
         appears here with its domain policy and controls.
@@ -355,7 +355,7 @@ export function BrowserSessionPolicyPanel({
         >
           <div className="min-w-0 text-sm">
             <div className="font-medium">Browser access was revoked</div>
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-muted-strong">
               Reset {BROWSER_LABELS[companion.browser]} to allow automatic
               reconnection.
             </div>
@@ -430,7 +430,7 @@ export function BrowserSessionPolicyPanel({
               </div>
             ) : null}
             {takeover ? (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
                   disabled={busy}
@@ -450,7 +450,7 @@ export function BrowserSessionPolicyPanel({
                 </Button>
               </div>
             ) : null}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {blocked ? (
                 <Button
                   size="sm"
@@ -499,11 +499,11 @@ export function BrowserSessionPolicyPanel({
               >
                 {receipt.map((entry) => (
                   <div key={entry.key} className="contents">
-                    <dt className="text-muted-foreground">{entry.key}</dt>
+                    <dt className="text-muted-strong">{entry.key}</dt>
                     <dd
                       className={cn(
                         "break-all",
-                        entry.redacted && "italic text-muted-foreground",
+                        entry.redacted && "italic text-muted-strong",
                       )}
                     >
                       {entry.value}

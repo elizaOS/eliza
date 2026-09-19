@@ -86,7 +86,7 @@ const CLOUD_LIVE_ENABLED =
 const HAS_CLOUD_KEY = Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim());
 const DEPLOYED_RENDERER_ENABLED =
   process.env.ELIZA_UI_SMOKE_DEPLOYED_RENDERER === "1";
-const DEPLOYED_RENDERER_ALIAS = "https://develop.eliza-app.pages.dev";
+const DEPLOYED_RENDERER_ALIAS = "https://staging.eliza-app.pages.dev";
 const DEPLOYED_RENDERER_MANIFEST_SCHEMA = "elizaos.renderer.build/v1";
 const DEPLOYED_BROWSER_SMOKE_SCHEMA = "elizaos.cloud.deployed-browser-smoke/v3";
 const REQUIRE_NAMED_WARMING =
@@ -142,6 +142,23 @@ async function chooseCloudRuntime(
       await onRuntimeChoiceState?.("timeout");
     } else if (error instanceof CloudLiveRequiredActionUnavailableError) {
       await onRuntimeChoiceState?.("unavailable");
+      return await rethrowCloudLiveFailureAfterDiagnostic(error, async () => {
+        console.warn(
+          "[cloud-live] runtime choice unavailable",
+          JSON.stringify({
+            bindingPresent: (await readActiveBinding(page)) !== null,
+            chatOverlayVisible: await page
+              .getByTestId("chat-overlay")
+              .isVisible(),
+            retryVisible: await page
+              .getByTestId("choice-__first_run__:error:retry")
+              .isVisible(),
+            googleSignInVisible: await page
+              .getByRole("button", { name: "Google", exact: true })
+              .isVisible(),
+          }),
+        );
+      });
     }
     throw error;
   }
@@ -583,6 +600,7 @@ async function resolvePersonalIdentity(
   chooseRuntime = true,
   onRecovery?: (recovery: CloudLivePersonalIdentityRecovery) => Promise<void>,
   existingDedicatedAdoptionProof?: DedicatedAdoptionConsentProof,
+  existingReferenceBinding?: CloudLiveRuntimeBinding,
 ): Promise<CloudLiveRuntimeBinding> {
   const dedicatedAdoptionProof =
     existingDedicatedAdoptionProof ??
@@ -593,6 +611,12 @@ async function resolvePersonalIdentity(
       chatOverlay: page.getByTestId("chat-overlay"),
       chatOverlayTimeoutMs: 60_000,
       chooseRuntimeAction: () => chooseCloudRuntime(page),
+      resolvedIdentity: existingReferenceBinding
+        ? {
+            reference: existingReferenceBinding,
+            readBinding: () => readActiveBinding(page),
+          }
+        : undefined,
     });
     const confirmationChoices = page.locator(
       '[data-testid="dedicated-adoption-confirm"], [data-testid="choice-__first_run__:dedicated-adoption:confirm"], [data-testid^="choice-__first_run__:dedicated-adoption:confirm:"], [data-testid="choice-__first_run__:dedicated-activation:confirm"], [data-testid^="choice-__first_run__:dedicated-activation:confirm:"]',
@@ -1356,6 +1380,10 @@ test.describe("real cloud login + personal identity + chat", () => {
           dedicatedConsentGate,
           freshAudit,
           CLOUD_LIVE_CONTINUITY_IDENTITY_TIMEOUT_MS,
+          true,
+          undefined,
+          undefined,
+          referenceBinding,
         ).catch((cause: unknown) =>
           rethrowCloudLiveFailureAfterDiagnostic(cause, async () => {
             await enterTrajectoryPhase(

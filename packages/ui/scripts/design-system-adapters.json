@@ -119,15 +119,6 @@
       "matchCount": 1
     },
     {
-      "file": "packages/ui/src/components/shell/TopicGroup.tsx",
-      "symbol": "TitledTopicGroup",
-      "primitive": "Button",
-      "role": "action",
-      "owner": "UI shell topic group",
-      "reason": "Owns the gesture-driven collapsed pill and expanded divider as one state machine.",
-      "matchCount": 2
-    },
-    {
       "file": "packages/ui/src/components/shell/TrayLauncher.tsx",
       "symbol": "TrayLauncher",
       "primitive": "Button",

@@ -28,6 +28,23 @@ const unitExcludes = [
 export default defineConfig({
   ...baseConfig,
   root: here,
+  plugins: [
+    ...(baseConfig.plugins ?? []),
+    {
+      name: "renderer-cold-boot",
+      enforce: "pre",
+      transform(source, id) {
+        if (id.split("?")[0] !== path.join(here, "src/main.tsx")) return;
+        // Composition tests boot the shipped renderer without a dev server.
+        // Vitest's Vite-client stub lacks hot.data; the dedicated main-bootstrap
+        // suite separately exercises real HMR persistence with a complete context.
+        return {
+          code: source.replaceAll("import.meta.hot", "undefined"),
+          map: null,
+        };
+      },
+    },
+  ],
   resolve: {
     ...baseConfig.resolve,
     alias: [

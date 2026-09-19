@@ -1,5 +1,6 @@
 /** Delegates Telegram protocol behavior to the shared Web-standard connector. */
 
+import { normalizeIdentityLinkCodeBody } from "@elizaos/cloud-services-common/identity-link-code";
 import {
   parseTelegramWebhook,
   resolveTelegramBotUsername,
@@ -26,7 +27,7 @@ export {
 };
 
 const TELEGRAM_GROUP_LINK_COMMAND =
-  /^(?:\/eliza_link(?:@([a-z0-9_]{5,32}))?|eliza\s+link)\s+[2-9A-HJ-NP-Z]{8}$/i;
+  /^(?:\/eliza_link(?:@([a-z0-9_]{5,32}))?|eliza\s+link)\s+(\S+)$/i;
 
 function telegramGroupLinkTarget(
   text: string,
@@ -34,6 +35,7 @@ function telegramGroupLinkTarget(
 ): "not-link" | "this-bot" | "other-bot" {
   const match = text.trim().match(TELEGRAM_GROUP_LINK_COMMAND);
   if (!match) return "not-link";
+  if (!normalizeIdentityLinkCodeBody(match[2])) return "not-link";
   const target = match[1];
   if (!target) return "this-bot";
   return botUsername && target.toLowerCase() === botUsername.toLowerCase()

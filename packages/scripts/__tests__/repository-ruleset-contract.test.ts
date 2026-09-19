@@ -23,7 +23,7 @@ const driftSource = read(".github/workflows/repository-ruleset-drift.yml");
 describe("repository ruleset contract", () => {
   test("publishes one stable fail-closed aggregate for PR and merge candidates", () => {
     expect(admission.on.pull_request).toEqual({
-      branches: ["develop", "main"],
+      branches: ["develop", "staging", "main"],
       types: ["opened", "synchronize", "reopened", "ready_for_review"],
     });
     expect(admission.on.merge_group).toEqual({ types: ["checks_requested"] });
@@ -42,6 +42,9 @@ describe("repository ruleset contract", () => {
       "subscription-authority-postgres",
     ]);
     expect(admission.jobs["billing-payment-replay-e2e"].needs).toBeUndefined();
+    expect(
+      admission.jobs["subscription-authority-postgres"].needs,
+    ).toBeUndefined();
     expect(admission.jobs["browser-bridge-windows-security"].uses).toBe(
       "./.github/workflows/browser-bridge-windows-security.yml",
     );
@@ -51,12 +54,12 @@ describe("repository ruleset contract", () => {
     expect(admission.concurrency["cancel-in-progress"]).toBeTrue();
   });
 
-  test("requires the aggregate on main and develop without bypass actors", () => {
+  test("requires the aggregate on develop without bypass actors", () => {
     expect(manifest.enforcement).toBe("active");
     expect(manifest.target).toBe("branch");
     expect(manifest.bypass_actors).toEqual([]);
     expect(manifest.conditions.ref_name).toEqual({
-      include: ["refs/heads/develop", "refs/heads/main"],
+      include: ["refs/heads/develop"],
       exclude: [],
     });
     const pullRequest = manifest.rules.find(

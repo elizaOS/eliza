@@ -85,10 +85,19 @@ it.each([2, 4])(
       );
       const corrected = `Your wallet balance is ${observedAmount} SOL.`;
       const rewrite = vi.fn(
-        async (_runtime: IAgentRuntime, params: { prompt: string }) =>
-          params.prompt.startsWith("Compose a user-facing response")
+        async (_runtime: IAgentRuntime, params: { prompt: string }) => {
+          if (params.prompt.startsWith("Review recovered reply grounding.")) {
+            return JSON.stringify({
+              grounded: true,
+              completedChangeClaim: false,
+              reason:
+                "The fixture reply matches the current wallet observation.",
+            });
+          }
+          return params.prompt.startsWith("Compose a user-facing response")
             ? JSON.stringify({ response: corrected })
-            : corrected,
+            : corrected;
+        },
       );
       runtime.registerModel(
         ModelType.TEXT_SMALL,

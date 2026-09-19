@@ -48,6 +48,7 @@ export * from "./remote-agent-request.js";
 export * from "./remote-control.js";
 export * from "./runtime-management.js";
 export * from "./scheduled-task-execution.js";
+export * from "./screen-capture.js";
 export * from "./service-routing.js";
 export * from "./skills-routes.js";
 export * from "./subscription-routes.js";

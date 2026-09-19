@@ -1,4 +1,4 @@
-/*
+/**
  * Shared Tailwind v4 token map for every elizaOS frontend.
  * Host apps own layout-specific CSS, but color/font/radius/shadow tokens
  * must resolve through the same CSS custom properties from base.css.
@@ -14,6 +14,11 @@
   --color-bg-hover: var(--bg-hover);
   --color-bg-muted: var(--bg-muted);
   --color-card: var(--card);
+  --color-bg-choice-hover: color-mix(
+    in srgb,
+    var(--card) 92%,
+    var(--card-foreground) 8%
+  );
   --color-bg-card-hover: color-mix(
     in srgb,
     var(--card) 92%,
@@ -44,6 +49,10 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
+  --color-accent-action: var(--accent-action);
+  --color-accent-action-foreground: var(--accent-action-foreground);
+  --color-accent-action-hover: var(--accent-action-hover);
+  --color-accent-action-hover-foreground: var(--accent-action-hover-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent-hover: var(--accent-hover);
@@ -68,6 +77,8 @@
   --color-warn-subtle: var(--warn-subtle);
   --color-danger: var(--danger);
   --color-destructive: var(--destructive);
+  --color-destructive-solid: var(--destructive-solid);
+  --color-destructive-solid-hover: var(--destructive-solid-hover);
   --color-destructive-fg: var(--destructive-foreground);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-destructive-subtle: var(--destructive-subtle);

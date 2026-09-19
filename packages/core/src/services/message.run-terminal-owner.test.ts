@@ -5,6 +5,10 @@
 
 import { v4 } from "uuid";
 import { describe, expect, it, vi } from "vitest";
+import {
+	factMemoryEvaluator,
+	relationshipEvaluator,
+} from "../features/advanced-capabilities/evaluators/reflection-items";
 import { NoModelProviderConfiguredError } from "../runtime";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
@@ -12,13 +16,14 @@ import { RoomHandlerQueue } from "../runtime/room-handler-queue";
 import { TurnControllerRegistry } from "../runtime/turn-controller";
 import { getStreamingContext } from "../streaming-context";
 import { createMockRuntime } from "../testing/mock-runtime";
-import type { EffectReceipt, IAgentRuntime, Memory } from "../types";
+import type { EffectReceipt, IAgentRuntime, Memory, Task } from "../types";
 import { EventType, ModelType } from "../types";
 import {
 	applyGroundedActionReply,
 	createUnavailableGroundedActionReply,
 } from "../types/action-reply";
 import { asUUID, ChannelType, type UUID } from "../types/primitives";
+import { EvaluatorService } from "./evaluator";
 import { DefaultMessageService } from "./message";
 import {
 	drainPostDeliveryTasks,
@@ -220,6 +225,12 @@ describe("DefaultMessageService run-terminal owner", () => {
 					Object.assign(new Error("Unavailable"), { statusCode: 503 }),
 			},
 			{
+				label: "unexpected evaluator exception",
+				kind: "reply_generation_error",
+				error: () =>
+					new TypeError("Synthetic evaluator implementation failure"),
+			},
+			{
 				label: "no provider",
 				kind: "no_provider",
 				error: () => new NoModelProviderConfiguredError(),
@@ -326,7 +337,10 @@ describe("DefaultMessageService run-terminal owner", () => {
 				responseContent: null,
 				terminalFailure: {
 					kind,
-					code: "EVALUATOR_REPLY_GENERATION_FAILED",
+					code:
+						kind === "reply_generation_error"
+							? "POST_EFFECT_EVALUATION_FAILED"
+							: "EVALUATOR_REPLY_GENERATION_FAILED",
 					transient: false,
 				},
 				actionResults: [
@@ -337,6 +351,20 @@ describe("DefaultMessageService run-terminal owner", () => {
 					},
 				],
 			});
+			expect(result.replyRecovery?.context).toContain(
+				"Delete the selected calendar event.",
+			);
+			expect(result.replyRecovery?.context).toContain("event-1");
+			if (kind === "reply_generation_error") {
+				expect(runtime.reportError).toHaveBeenCalledWith(
+					"MessageService.plannerLoop",
+					expect.objectContaining({
+						code: "POST_EFFECT_EVALUATION_FAILED",
+						cause: expect.any(TypeError),
+					}),
+					expect.objectContaining({ roomId: ROOM_ID }),
+				);
+			}
 			expect([...events]).toEqual(["untouched"]);
 			expect(handler).toHaveBeenCalledTimes(1);
 			expect(callback).not.toHaveBeenCalled();
@@ -428,6 +456,51 @@ describe("DefaultMessageService run-terminal owner", () => {
 			vi.mocked(runtime.runActionsByMode).mock.calls.map(([mode]) => mode),
 		).not.toContain("ALWAYS_AFTER");
 		expect(terminalPayloads).toHaveLength(1);
+	});
+
+	it("durably delegates built-in fact validation to the shared background batch with no second foreground model", async () => {
+		const { runtime, useModel } = makeRuntime({
+			facts: ["The user likes jasmine tea."],
+		});
+		runtime.evaluators = [factMemoryEvaluator, relationshipEvaluator];
+		const tasks = new Map<UUID, Task>();
+		runtime.getTask = async (id) => tasks.get(id) ?? null;
+		runtime.createTask = async (task) => {
+			if (!task.id) throw new Error("Task ID required");
+			tasks.set(task.id, structuredClone(task));
+			return task.id;
+		};
+		runtime.updateTask = async (id, patch) => {
+			const old = tasks.get(id);
+			if (!old) throw new Error("Task missing");
+			tasks.set(id, { ...old, ...patch });
+		};
+		runtime.registerTaskWorker = vi.fn();
+		const memory = await EvaluatorService.start(runtime);
+		runtime.getService = ((name: string) =>
+			name === "evaluator" ? memory : null) as IAgentRuntime["getService"];
+		runtime.getServiceLoadPromise = (async () =>
+			memory) as IAgentRuntime["getServiceLoadPromise"];
+		const deliveries: string[] = [];
+		await new DefaultMessageService().handleMessage(
+			runtime,
+			inputMessage("I like jasmine tea"),
+			async (content) => {
+				if (content.text) deliveries.push(content.text);
+				return [];
+			},
+		);
+		await drainPostDeliveryTasks(runtime);
+		expect(deliveries).toContain("Delivery is ready.");
+		expect(
+			useModel.mock.calls.filter(([type]) => type === ModelType.TEXT_LARGE),
+		).toHaveLength(0);
+		expect([...tasks.values()]).toHaveLength(1);
+		expect([...tasks.values()][0]).toMatchObject({
+			name: "POST_TURN_MEMORY",
+			entityId: ENTITY_ID,
+			roomId: ROOM_ID,
+		});
 	});
 
 	it("waits for parallel facts extraction without delaying visible delivery", async () => {
@@ -526,7 +599,7 @@ describe("DefaultMessageService run-terminal owner", () => {
 		]);
 	});
 
-	it("finishes a pending fact extraction before a later turn can forget it", async () => {
+	it("keeps legacy post-turn state work ordered before a later turn can forget it", async () => {
 		const modelGate = deferred();
 		const modelStarted = deferred();
 		const facts = new Set<string>();
@@ -539,7 +612,7 @@ describe("DefaultMessageService run-terminal owner", () => {
 		(
 			runtime as unknown as { getServiceLoadPromise: unknown }
 		).getServiceLoadPromise = vi.fn(async () => ({
-			run: async () => {
+			enqueue: async () => {
 				modelStarted.release();
 				await modelGate.promise;
 				facts.add("jasmine tea");

@@ -4,7 +4,7 @@
  * actions, and exact-resource readback without making external requests.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { HetznerAcceptedResourceError, HetznerCloudClient } from "./hetzner-cloud-api";
 
 type ResponseFactory = (init: RequestInit | undefined) => Response | Promise<Response>;
@@ -188,60 +188,90 @@ describe("Hetzner lifecycle deadlines and absence", () => {
   });
 
   test("shares one deadline across every returned action instead of resetting per poll", async () => {
-    json(
-      {
-        server: server(41, "initializing"),
-        action: action(11, "create_server", "running", { id: 41, type: "server" }),
-        next_actions: [action(12, "attach_network", "running", { id: 900, type: "network" })],
-        root_password: null,
+    let clock = 1_000_000;
+    let secondRequestBudget: number | undefined;
+    let bodyAborted = false;
+    const timers: Array<{
+      handle: ReturnType<typeof setTimeout>;
+      delay: number | undefined;
+      fire: () => void;
+    }> = [];
+    const originalSetTimeout = globalThis.setTimeout;
+    const clockSpy = spyOn(Date, "now").mockImplementation(() => clock);
+    const timerSpy = spyOn(globalThis, "setTimeout").mockImplementation(
+      (callback, delay, ...args) => {
+        if (typeof callback !== "function") throw new Error("Expected a deadline callback");
+        const handle = originalSetTimeout(() => {}, 60_000);
+        timers.push({ handle, delay, fire: () => callback(...args) });
+        return handle;
       },
-      201,
     );
-    responses.push(
-      () =>
-        new Promise((resolve) => {
-          setTimeout(
-            () =>
-              resolve(
-                Response.json({
-                  action: action(11, "create_server", "success", {
-                    id: 41,
-                    type: "server",
-                  }),
-                }),
-              ),
-            20,
-          );
-        }),
-    );
-    responses.push((init) => {
-      const signal = init?.signal;
-      return {
-        status: 200,
-        ok: true,
-        headers: new Headers(),
-        text: () =>
-          new Promise<string>((_resolve, reject) => {
-            signal?.addEventListener("abort", () => reject(new Error("deadline reached")), {
-              once: true,
-            });
-          }),
-      } as Response;
-    });
-
-    const startedAt = Date.now();
-    await expect(
-      client({ requestTimeoutMs: 1_000, lifecycleTimeoutMs: 100 }).createServer(
-        createServerInput(),
-      ),
-    ).rejects.toMatchObject({ code: "transport_error" });
-    expect(Date.now() - startedAt).toBeLessThan(350);
-    expect(requests.map(({ path }) => path)).toEqual([
-      "/v1/servers",
-      "/v1/actions/11",
-      "/v1/actions/12",
-      "/v1/servers/41",
-    ]);
+    try {
+      json(
+        {
+          server: server(41, "initializing"),
+          action: action(11, "create_server", "running", { id: 41, type: "server" }),
+          next_actions: [action(12, "attach_network", "running", { id: 900, type: "network" })],
+          root_password: null,
+        },
+        201,
+      );
+      responses.push(() => {
+        // Advance only at the first action's actual completion boundary.
+        clock += 80;
+        return Response.json({
+          action: action(11, "create_server", "success", { id: 41, type: "server" }),
+        });
+      });
+      responses.push((init) => {
+        const deadlineTimer = timers.at(-1);
+        if (!deadlineTimer)
+          throw new Error("Second action request did not install its deadline timer");
+        secondRequestBudget = deadlineTimer.delay;
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers(),
+          text: () =>
+            new Promise<string>((_resolve, reject) => {
+              init?.signal?.addEventListener(
+                "abort",
+                () => {
+                  bodyAborted = true;
+                  reject(new Error("deadline reached"));
+                },
+                { once: true },
+              );
+              queueMicrotask(() => {
+                clock += 20;
+                deadlineTimer.fire();
+              });
+            }),
+        } as Response;
+      });
+      json({ error: { code: "not_found", message: "server missing" } }, 404);
+      await expect(
+        client({ requestTimeoutMs: 1_000, lifecycleTimeoutMs: 100 }).createServer(
+          createServerInput(),
+        ),
+      ).rejects.toMatchObject({
+        code: "transport_error",
+        resourceId: 41,
+        compensation: "succeeded",
+      });
+      expect(secondRequestBudget).toBe(20);
+      expect(bodyAborted).toBe(true);
+      expect(requests.map(({ path }) => path)).toEqual([
+        "/v1/servers",
+        "/v1/actions/11",
+        "/v1/actions/12",
+        "/v1/servers/41",
+      ]);
+    } finally {
+      timerSpy.mockRestore();
+      clockSpy.mockRestore();
+      for (const timer of timers) clearTimeout(timer.handle);
+    }
   });
 
   test("polls accepted server readback through initializing", async () => {

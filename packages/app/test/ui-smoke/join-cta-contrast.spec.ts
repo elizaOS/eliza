@@ -6,7 +6,6 @@
  */
 import { writeFile } from "node:fs/promises";
 import {
-  type CDPSession,
   devices,
   expect,
   type Locator,
@@ -77,6 +76,10 @@ async function installJoinRoutes(page: Page): Promise<void> {
   });
 
   await page.route("**/api/v1/eliza/personal", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
     await fulfillJson(route, 503, {
       success: false,
       error: "Personal Eliza is temporarily unavailable.",
@@ -137,45 +140,27 @@ async function readContrast(locator: Locator): Promise<ContrastSample> {
 }
 
 async function assertStableContrast(
-  cdp: CDPSession,
   page: Page,
   button: Locator,
   hoverCapable: boolean,
+  feedback: "backgroundColor" | "color",
 ): Promise<{ rest: ContrastSample; hover: ContrastSample }> {
   await page.mouse.move(0, 0);
   await page.waitForTimeout(200);
   const rest = await readContrast(button);
   expect(rest.ratio).toBeGreaterThanOrEqual(4.5);
 
-  const box = await button.boundingBox();
-  if (!box) throw new Error("Join CTA has no rendered bounding box");
-  const node = await cdp.send("DOM.getNodeForLocation", {
-    x: Math.floor(box.x + box.width / 2),
-    y: Math.floor(box.y + box.height / 2),
-    includeUserAgentShadowDOM: true,
-  });
-  await cdp.send("DOM.getDocument", { depth: -1, pierce: true });
-  const { nodeIds } = await cdp.send("DOM.pushNodesByBackendIdsToFrontend", {
-    backendNodeIds: [node.backendNodeId],
-  });
-  const nodeId = nodeIds[0];
-  if (!nodeId) throw new Error("Join CTA could not be resolved in the DOM");
-  await cdp.send("CSS.forcePseudoState", {
-    nodeId,
-    forcedPseudoClasses: ["hover"],
-  });
+  await button.hover();
   await page.waitForTimeout(200);
   const hover = await readContrast(button);
   if (hoverCapable) {
-    expect(hover.backgroundColor).not.toBe(rest.backgroundColor);
+    expect(hover[feedback]).not.toBe(rest[feedback]);
   } else {
-    expect(hover.backgroundColor).toBe(rest.backgroundColor);
+    expect(hover[feedback]).toBe(rest[feedback]);
   }
+  const stableChannel = feedback === "color" ? "backgroundColor" : "color";
+  expect(hover[stableChannel]).toBe(rest[stableChannel]);
   expect(hover.ratio).toBeGreaterThanOrEqual(4.5);
-  await cdp.send("CSS.forcePseudoState", {
-    nodeId,
-    forcedPseudoClasses: [],
-  });
   return { rest, hover };
 }
 
@@ -221,10 +206,10 @@ test("Join recovery actions preserve computed contrast on desktop, mobile-hover,
     await expect(retry).toBeVisible();
     await expect(signOut).toBeVisible();
     const retryContrast = await assertStableContrast(
-      cdp,
       page,
       retry,
       surface.hoverCapable,
+      "backgroundColor",
     );
     await page.screenshot({
       path: testInfo.outputPath(`${surface.name}-retry-hover.png`),
@@ -232,10 +217,10 @@ test("Join recovery actions preserve computed contrast on desktop, mobile-hover,
     });
 
     const signOutContrast = await assertStableContrast(
-      cdp,
       page,
       signOut,
       surface.hoverCapable,
+      "color",
     );
     await page.screenshot({
       path: testInfo.outputPath(`${surface.name}-sign-out-hover.png`),

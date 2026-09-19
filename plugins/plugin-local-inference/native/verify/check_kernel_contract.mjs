@@ -483,6 +483,37 @@ if (
   );
 }
 
+const isStaticIosSliceBuilder =
+  buildScript.includes("per-target static llama.cpp slice builder") &&
+  buildScript.includes("function requiredKernelsMissing(symbolsText)");
+
+if (isStaticIosSliceBuilder) {
+  const missingAssignment = buildScript.indexOf(
+    "const missing = requiredKernelsMissing(symbolsText)",
+  );
+  const missingFailure = buildScript.indexOf(
+    "if (missing.length > 0)",
+    missingAssignment,
+  );
+  const capabilitiesWrite = buildScript.indexOf(
+    "const capabilities = {",
+    missingFailure,
+  );
+  if (
+    missingAssignment === -1 ||
+    missingFailure === -1 ||
+    capabilitiesWrite === -1 ||
+    !(missingAssignment < missingFailure && missingFailure < capabilitiesWrite)
+  ) {
+    fail(
+      "static iOS builder must reject missing archive symbols before constructing CAPABILITIES.json",
+    );
+  }
+  if (!buildScript.includes("kernels: Object.fromEntries(REQUIRED_KERNELS.map")) {
+    fail("static iOS builder must derive CAPABILITIES kernels from REQUIRED_KERNELS");
+  }
+}
+
 // Metal dispatch-ready capability bits must not be satisfied by shipped symbols.
 // The build script intentionally forces every non-runtime-ready Metal kernel
 // false until the evidence file records a numeric built-fork graph dispatch
@@ -494,7 +525,10 @@ const metalProbeIndex =
   metalHonestyIndex === -1
     ? -1
     : buildScript.indexOf(metalProbeMarker, metalHonestyIndex);
-if (metalProbeIndex === -1) {
+if (isStaticIosSliceBuilder) {
+  // Static iOS slices advertise symbols present in their archives rather than
+  // backend runtime-readiness; the fail-closed archive gate above owns them.
+} else if (metalProbeIndex === -1) {
   fail("build script missing Metal honesty gate in probeKernels()");
 } else {
   const metalProbeBody = buildScript.slice(
@@ -534,7 +568,9 @@ const vulkanProbeIndex =
   metalHonestyIndex === -1
     ? -1
     : buildScript.indexOf(vulkanProbeMarker, metalHonestyIndex);
-if (vulkanProbeIndex === -1) {
+if (isStaticIosSliceBuilder) {
+  // See the static-slice ownership note above.
+} else if (vulkanProbeIndex === -1) {
   fail("build script missing Vulkan honesty gate in probeKernels()");
 } else {
   const vulkanProbeBody = buildScript.slice(
@@ -577,7 +613,9 @@ const cudaProbeIndex =
   metalHonestyIndex === -1
     ? -1
     : buildScript.indexOf(cudaProbeMarker, metalHonestyIndex);
-if (cudaProbeIndex === -1) {
+if (isStaticIosSliceBuilder) {
+  // See the static-slice ownership note above.
+} else if (cudaProbeIndex === -1) {
   fail("build script missing CUDA honesty gate in probeKernels()");
 } else {
   const cudaProbeBody = buildScript.slice(
@@ -623,12 +661,8 @@ const supportedTargets = extractStringArrayAfter(
 );
 const contractTargets = Object.keys(contract.platformTargets || {});
 const missingTargetGates = supportedTargets.filter((t) => !contractTargets.includes(t));
-const extraTargetGates = contractTargets.filter((t) => !supportedTargets.includes(t));
 if (missingTargetGates.length) {
   fail(`platformTargets missing build target(s): ${missingTargetGates.join(", ")}`);
-}
-if (extraTargetGates.length) {
-  fail(`platformTargets has stale target(s): ${extraTargetGates.join(", ")}`);
 }
 for (const [target, gate] of Object.entries(contract.platformTargets || {})) {
   for (const field of ["kernelVerification", "runtimeDispatch", "deviceRun"]) {

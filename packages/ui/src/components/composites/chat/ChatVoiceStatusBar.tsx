@@ -342,7 +342,7 @@ export function ChatVoiceStatusBar({
       interimTranscript &&
       interimTranscript.trim().length > 0 ? (
         <span
-          className="min-w-0 flex-1 truncate italic text-muted"
+          className="min-w-0 flex-1 truncate italic text-muted-strong"
           data-testid="chat-voice-interim-transcript"
           title={interimTranscript}
         >
@@ -369,9 +369,7 @@ export function ChatVoiceStatusBar({
       >
         {formatLatency(primaryLatency)}
         {cached ? (
-          <span className="text-3xs uppercase tracking-wider opacity-70">
-            cached
-          </span>
+          <span className="text-3xs uppercase tracking-wider">cached</span>
         ) : null}
       </Badge>
 

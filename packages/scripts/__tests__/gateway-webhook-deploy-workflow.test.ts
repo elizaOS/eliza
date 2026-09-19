@@ -102,7 +102,7 @@ function githubExpression(body: string): string {
 function hasExactWorkflowReadmeRow(
   readme: string,
   environment: "staging" | "production",
-  branch: "develop" | "main",
+  branch: "staging" | "main",
   service: "gateway-webhook-stg" | "gateway-webhook",
 ): boolean {
   const escaped = [environment, branch, service].map((value) =>
@@ -117,7 +117,7 @@ function hasExactWorkflowReadmeRow(
 const expectedJobEnvironment = {
   TARGET_ENVIRONMENT: githubExpression("inputs.environment"),
   DEPLOY_BRANCH: githubExpression(
-    "inputs.environment == 'production' && 'main' || 'develop'",
+    "inputs.environment == 'production' && 'main' || 'staging'",
   ),
   EXPECTED_SERVICE_NAME: githubExpression(
     "inputs.environment == 'production' && 'gateway-webhook' || 'gateway-webhook-stg'",
@@ -390,7 +390,7 @@ describe("protected gateway-webhook deployment workflow", () => {
       hasExactWorkflowReadmeRow(
         workflowReadme,
         "staging",
-        "develop",
+        "staging",
         "gateway-webhook-stg",
       ),
     ).toBe(true);
@@ -404,9 +404,9 @@ describe("protected gateway-webhook deployment workflow", () => {
     ).toBe(true);
     expect(
       hasExactWorkflowReadmeRow(
-        "| staging\n| develop\n| gateway-webhook-stg\n|",
+        "| staging\n| staging\n| gateway-webhook-stg\n|",
         "staging",
-        "develop",
+        "staging",
         "gateway-webhook-stg",
       ),
     ).toBe(false);

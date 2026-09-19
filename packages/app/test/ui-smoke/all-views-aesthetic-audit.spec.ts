@@ -7,6 +7,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import {
+  type AuditOcrControls,
+  bindAuditOcrControls,
+} from "../../scripts/lib/audit-capture-manifest";
 import { readAuditFindings, writeAuditFinding } from "./aesthetic-audit-report";
 import {
   type AestheticMetricBudget,
@@ -333,6 +337,7 @@ interface ViewFinding {
   slug: string;
   viewport: string;
   path: string;
+  ocrControls: AuditOcrControls;
   consoleErrors: string[];
   /** User-visible loading persistence, overlap, or composer legibility failures. */
   renderStateIssues: string[];
@@ -2191,6 +2196,39 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         await seedAppStorage(page);
         await seedStewardSession(page, { jwt: true });
         await installDefaultAppRoutes(page);
+        if (view.fixtureState === "family-interview") {
+          // Capture the real renderer's private answer form against explicit read-only empty inventories.
+          await page.route(
+            "**/api/lifeops/family-workflows/intake?*",
+            async (route) => {
+              if (route.request().method() !== "GET") {
+                await route.fallback();
+                return;
+              }
+              await route.fulfill({
+                status: 200,
+                contentType: "application/json",
+                body: JSON.stringify({ reviews: [], sources: [] }),
+              });
+            },
+          );
+          await page.route(
+            "**/api/lifeops/family-workflows/email-options",
+            async (route) => {
+              if (route.request().method() !== "GET") {
+                await route.fallback();
+                return;
+              }
+              await route.fulfill({
+                status: 200,
+                contentType: "application/json",
+                body: JSON.stringify({
+                  options: { accounts: [], recipients: [] },
+                }),
+              });
+            },
+          );
+        }
         const remoteBundleProof = await forceRemoteBundleAuditRoute(page, view);
         await openAppPath(page, remoteBundleProof?.auditPath ?? view.path);
         const bundleResponse = remoteBundleProof
@@ -2208,6 +2246,50 @@ test.describe("all-views aesthetic audit (#8796)", () => {
             remoteBundleProof.componentExport,
           );
           expect(bundleResponse.headers()["x-eliza-view-id"]).toBe(view.id);
+        }
+
+        if (view.fixtureState === "family-interview") {
+          await page
+            .getByRole("button", { name: "Monthly packet", exact: true })
+            .click();
+          await page
+            .getByText("Fill missing information", { exact: true })
+            .click();
+          const interview = page.getByRole("form", { name: "Owner interview" });
+          await interview.getByLabel("Topic").selectOption("school");
+          await interview
+            .getByRole("radio", { name: "I have an update", exact: true })
+            .check();
+          await interview
+            .getByLabel("Your update")
+            .fill("Please confirm who will handle school pickup on Friday.");
+          await interview
+            .getByRole("checkbox", { name: "This update needs an answer" })
+            .check();
+          const saveAnswer = interview.getByRole("button", {
+            name: "Save private answer",
+          });
+          await expect(saveAnswer).toBeEnabled();
+          // Exercise the actual shell hit target without persisting fixture data.
+          // A floating composer must not prevent the owner reaching the action.
+          await saveAnswer.click({ trial: true });
+          const discardAnswer = interview.getByRole("button", {
+            name: "Discard answer",
+          });
+          await discardAnswer.focus();
+          await page.keyboard.press("Enter");
+          await expect(interview.getByLabel("Your update")).toHaveCount(0);
+          await expect(saveAnswer).toBeDisabled();
+          await interview
+            .getByRole("radio", { name: "I have an update", exact: true })
+            .check();
+          await interview
+            .getByLabel("Your update")
+            .fill("Please confirm who will handle school pickup on Friday.");
+          await interview
+            .getByRole("checkbox", { name: "This update needs an answer" })
+            .check();
+          await saveAnswer.click({ trial: true });
         }
 
         // The shell and composer paint before lazy views settle, so readiness is
@@ -2311,6 +2393,36 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         // re-sample a few times so a momentarily-unpainted frame is not recorded
         // as a one-color "broken".
         const restPath = path.join(shotDir, `${view.slug}.png`);
+        const measureControls = () =>
+          page.evaluate(() => ({
+            width: window.innerWidth,
+            height: window.innerHeight,
+            rectangles: Array.from(
+              document.querySelectorAll(
+                'button, a[href], [role="button"], input[type="button"], input[type="submit"]',
+              ),
+            ).flatMap((element) => {
+              const style = getComputedStyle(element);
+              const rect = element.getBoundingClientRect();
+              if (
+                style.display === "none" ||
+                style.visibility === "hidden" ||
+                Number(style.opacity) === 0 ||
+                rect.width <= 0 ||
+                rect.height <= 0
+              )
+                return [];
+              return [
+                {
+                  left: rect.left,
+                  top: rect.top,
+                  width: rect.width,
+                  height: rect.height,
+                },
+              ];
+            }),
+          }));
+        let controlGeometry = await measureControls();
         let buffer = await page.screenshot({ path: restPath, fullPage: false });
         let quality = await analyzeScreenshot(buffer).catch(() => null);
         for (
@@ -2319,12 +2431,15 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           attempt += 1
         ) {
           await page.waitForTimeout(800);
+          controlGeometry = await measureControls();
           buffer = await page.screenshot({ path: restPath, fullPage: false });
           quality = await analyzeScreenshot(buffer).catch(() => null);
         }
         const qualityIssues = quality
           ? screenshotQualityIssues(`${view.slug} ${vp.name}`, quality)
           : [];
+
+        const ocrControls = await bindAuditOcrControls(buffer, controlGeometry);
 
         const blueColors = await collectBlueColors(page).catch(() => []);
         const { violations: hoverViolations, hoverFailures } =
@@ -2375,6 +2490,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           slug: view.slug,
           viewport: vp.name,
           path: view.path,
+          ocrControls,
           viewType: view.viewType,
           bundleProvenance:
             bundleResponse?.headers()["x-eliza-view-bundle-provenance"],
@@ -2426,6 +2542,29 @@ test.describe("all-views aesthetic audit (#8796)", () => {
               `(documentElement.scrollWidth exceeds innerWidth — likely overflow-y ` +
               `without overflow-x:hidden)`,
           ).toBeLessThanOrEqual(HORIZONTAL_OVERFLOW_TOLERANCE_PX);
+        }
+        if (view.slug === "builtin-relationships") {
+          // Measure and capture the rest state above before scrolling. The
+          // actual last-row action must remain reachable beneath the composer.
+          const lastRowAction = viewRoot.getByRole("button", {
+            name: "Open Acme Corp",
+            exact: true,
+          });
+          await lastRowAction.scrollIntoViewIfNeeded();
+          const messageResponse = page.waitForResponse(
+            (response) =>
+              response.request().method() === "POST" &&
+              /\/api\/conversations\/[^/]+\/messages$/.test(
+                new URL(response.url()).pathname,
+              ),
+          );
+          await lastRowAction.click();
+          const response = await messageResponse;
+          expect(response.status()).toBe(200);
+          expect(response.request().postDataJSON()).toMatchObject({
+            text: "Tell me about ent-acme in my relationships graph.",
+            channelType: "DM",
+          });
         }
         if (view.fixtureState === "cloud-signed-out") {
           await viewRoot

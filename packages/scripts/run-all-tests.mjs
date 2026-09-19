@@ -814,6 +814,14 @@ function isSingleVitestWrapperCommand(command) {
   );
 }
 
+function isSingleVitestBatchWrapperCommand(command) {
+  // The agent's mobile-entry preflight must succeed before its final batch
+  // runner receives the JUnit arguments appended to the package command.
+  return /^(?:bun\s+run\s+test:mobile-workspace-entry\s+&&\s+)?node\s+scripts\/run-vitest-batches\.mjs$/.test(
+    stripLeadingEnvAssignments(command),
+  );
+}
+
 function stripLeadingEnvAssignments(command) {
   return command.replace(
     /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S+)\s+)*/,
@@ -876,7 +884,8 @@ function structuredEvidenceKind(scriptName, scripts) {
   }
   if (
     isSingleVitestRunCommand(command) ||
-    isSingleVitestWrapperCommand(command)
+    isSingleVitestWrapperCommand(command) ||
+    isSingleVitestBatchWrapperCommand(command)
   ) {
     return "vitest";
   }

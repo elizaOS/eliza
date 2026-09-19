@@ -8,10 +8,15 @@
  * owner service-account JSON / key file from env or the top-level character
  * `settings.googleChat` identity fields.
  */
-import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import {
+  DEFAULT_CONNECTOR_ACCOUNT_ID,
+  ElizaError,
+  type IAgentRuntime,
+  selectDefaultConnectorAccountId,
+} from "@elizaos/core";
 import type { GoogleChatAudienceType, GoogleChatSettings } from "./types.js";
 
-export const DEFAULT_GOOGLE_CHAT_ACCOUNT_ID = "default";
+export const DEFAULT_GOOGLE_CHAT_ACCOUNT_ID = DEFAULT_CONNECTOR_ACCOUNT_ID;
 
 export type GoogleChatAccountConfig = Partial<Omit<GoogleChatSettings, "spaces" | "accountId">> & {
   accountId?: string;
@@ -152,10 +157,7 @@ export function resolveDefaultGoogleChatAccountId(runtime: IAgentRuntime): strin
     stringSetting(runtime, "GOOGLE_CHAT_ACCOUNT_ID");
   if (requested) return normalizeGoogleChatAccountId(requested);
 
-  const ids = listGoogleChatAccountIds(runtime);
-  return ids.includes(DEFAULT_GOOGLE_CHAT_ACCOUNT_ID)
-    ? DEFAULT_GOOGLE_CHAT_ACCOUNT_ID
-    : (ids[0] ?? DEFAULT_GOOGLE_CHAT_ACCOUNT_ID);
+  return selectDefaultConnectorAccountId(listGoogleChatAccountIds(runtime));
 }
 
 export function readGoogleChatAccountId(...sources: unknown[]): string | undefined {

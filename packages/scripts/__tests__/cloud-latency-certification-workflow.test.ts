@@ -77,7 +77,7 @@ function executeStep(name: string, env: Record<string, string>) {
 const preflightEnvironment = {
   EXPECTED_DEPLOY_SHA: "a".repeat(40),
   GITHUB_SHA: "b".repeat(40),
-  GITHUB_REF: "refs/heads/develop",
+  GITHUB_REF: "refs/heads/staging",
   RUN_AUTH: "false",
   RUN_SUSPENDED: "false",
   CEREBRAS_API_KEY: "private-fixture-cerebras",

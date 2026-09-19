@@ -334,7 +334,12 @@ describeE2E("Group H — GET /api/v1/proxy/birdeye/*", () => {
 describeE2E("Group H — GET /api/v1/apis/birdeye/*", () => {
   test("auth gate: missing credentials → 401", async () => {
     const res = await api.get("/api/v1/apis/birdeye/defi/price?address=foo");
-    expect(res.status).toBe(401);
+    const responseDiagnostic = JSON.stringify({
+      contentType: res.headers.get("content-type"),
+      server: res.headers.get("server"),
+      body: await res.text(),
+    });
+    expect(res.status, responseDiagnostic).toBe(401);
   });
 
   test.skipIf(birdeyeConfigured)(
@@ -438,7 +443,7 @@ describeE2E("Group H — POST /api/cron/agent-billing", () => {
 // ─────────────────────────────────────────────────────────────────────────
 describeE2E("Group H — POST /api/crypto/payments/:id/confirm", () => {
   test("browser preflight returns credentialed CORS without route bootstrap", async () => {
-    const origin = "https://develop.eliza-app.pages.dev";
+    const origin = "https://staging.eliza-app.pages.dev";
     const res = await fetch(url("/api/crypto/payments/missing-id/confirm"), {
       method: "OPTIONS",
       headers: {

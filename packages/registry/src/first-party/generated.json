@@ -1395,40 +1395,40 @@
           "type": "string",
           "required": false,
           "sensitive": false,
-          "default": "gemma-4-31b",
+          "default": "qwen-3.8-27b",
           "label": "Cloud Small Model",
-          "help": "Small/fast model for quick tasks (overrides SMALL_MODEL). Default: gemma-4-31b",
-          "placeholder": "gemma-4-31b",
+          "help": "Small/fast model for quick tasks (overrides SMALL_MODEL). Default: qwen-3.8-27b",
+          "placeholder": "qwen-3.8-27b",
           "advanced": false
         },
         "SMALL_MODEL": {
           "type": "string",
           "required": false,
           "sensitive": false,
-          "default": "gemma-4-31b",
+          "default": "qwen-3.8-27b",
           "label": "Model",
           "help": "Fallback identifier for the small language model if ELIZAOS_CLOUD_SMALL_MODEL is not set.",
-          "placeholder": "gemma-4-31b",
+          "placeholder": "qwen-3.8-27b",
           "advanced": false
         },
         "ELIZAOS_CLOUD_LARGE_MODEL": {
           "type": "string",
           "required": false,
           "sensitive": false,
-          "default": "gemma-4-31b",
+          "default": "qwen-3.8-27b",
           "label": "Cloud Large Model",
-          "help": "Large/powerful model for complex tasks (overrides LARGE_MODEL). Default: gemma-4-31b",
-          "placeholder": "gemma-4-31b",
+          "help": "Large/powerful model for complex tasks (overrides LARGE_MODEL). Default: qwen-3.8-27b",
+          "placeholder": "qwen-3.8-27b",
           "advanced": false
         },
         "LARGE_MODEL": {
           "type": "string",
           "required": false,
           "sensitive": false,
-          "default": "gemma-4-31b",
+          "default": "qwen-3.8-27b",
           "label": "Model",
           "help": "Fallback identifier for the large language model if ELIZAOS_CLOUD_LARGE_MODEL is not set.",
-          "placeholder": "gemma-4-31b",
+          "placeholder": "qwen-3.8-27b",
           "advanced": false
         },
         "ELIZAOS_CLOUD_EMBEDDING_MODEL": {
@@ -1480,9 +1480,8 @@
           "type": "secret",
           "required": false,
           "sensitive": true,
-          "default": "8192",
           "label": "Cloud Image Description Max Tokens",
-          "help": "Maximum number of tokens allowed in the image-description model response.",
+          "help": "Optional positive-integer image-description output limit; unset sends no provider cap.",
           "advanced": false
         },
         "ELIZAOS_CLOUD_TTS_MODEL": {
@@ -2484,7 +2483,7 @@
     {
       "id": "imessage",
       "name": "iMessage",
-      "description": "iMessage connector for native macOS Messages or Blooio-hosted conversations and message automation.",
+      "description": "iMessage connector using native macOS Messages or an authenticated, channel-isolated Blooio transport for hosted agents.",
       "npmName": "@elizaos/plugin-imessage",
       "version": "2.0.0-beta.0",
       "source": "bundled",
@@ -2499,12 +2498,23 @@
       ],
       "config": {
         "IMESSAGE_TRANSPORT": {
-          "type": "string",
-          "required": false,
+          "type": "select",
+          "required": true,
           "sensitive": false,
+          "default": "native",
           "label": "Transport",
-          "help": "Message transport: native on macOS or blooio for a hosted bridge",
-          "advanced": false
+          "help": "Use native for the local macOS Messages app, or blooio for a hosted agent with a Blooio API channel.",
+          "advanced": false,
+          "options": [
+            {
+              "value": "native",
+              "label": "Native macOS Messages"
+            },
+            {
+              "value": "blooio",
+              "label": "Blooio hosted transport"
+            }
+          ]
         },
         "IMESSAGE_DB_PATH": {
           "type": "file-path",
@@ -2558,35 +2568,51 @@
         },
         "IMESSAGE_BLOOIO_API_KEY": {
           "type": "secret",
-          "required": false,
+          "required": true,
           "sensitive": true,
           "label": "Blooio API Key",
           "help": "Blooio API key used when IMESSAGE_TRANSPORT is blooio",
-          "advanced": false
+          "advanced": false,
+          "visible": {
+            "key": "IMESSAGE_TRANSPORT",
+            "equals": "blooio"
+          }
         },
         "IMESSAGE_BLOOIO_WEBHOOK_SECRET": {
           "type": "secret",
-          "required": false,
+          "required": true,
           "sensitive": true,
           "label": "Blooio Webhook Secret",
           "help": "Signing secret for Blooio webhook verification",
-          "advanced": false
+          "advanced": false,
+          "visible": {
+            "key": "IMESSAGE_TRANSPORT",
+            "equals": "blooio"
+          }
         },
         "IMESSAGE_BLOOIO_FROM_NUMBER": {
           "type": "string",
-          "required": false,
+          "required": true,
           "sensitive": false,
           "label": "Blooio From Number",
           "help": "Blooio sender phone number in E.164 format",
-          "advanced": false
+          "advanced": false,
+          "visible": {
+            "key": "IMESSAGE_TRANSPORT",
+            "equals": "blooio"
+          }
         },
         "IMESSAGE_BLOOIO_CHANNEL_ID": {
           "type": "string",
-          "required": false,
+          "required": true,
           "sensitive": false,
           "label": "Blooio Channel ID",
-          "help": "Blooio channel that owns the configured sender number",
-          "advanced": false
+          "help": "Exact Blooio channel accepted for inbound webhooks and used by the configured sender number",
+          "advanced": false,
+          "visible": {
+            "key": "IMESSAGE_TRANSPORT",
+            "equals": "blooio"
+          }
         }
       },
       "render": {
@@ -2599,7 +2625,7 @@
         "actions": ["enable", "configure", "setup-guide"]
       },
       "resources": {
-        "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#imessage-macos-only"
+        "setupGuideUrl": "https://docs.eliza.ai/tracks/agent/connect-channels#imessage-native-or-blooio"
       },
       "dependsOn": [],
       "channels": ["imessage", "blooio"],
@@ -2607,8 +2633,13 @@
       "kind": "connector",
       "subtype": "messaging",
       "auth": {
-        "kind": "token",
-        "credentialKeys": []
+        "kind": "credentials",
+        "credentialKeys": [
+          "IMESSAGE_BLOOIO_API_KEY",
+          "IMESSAGE_BLOOIO_WEBHOOK_SECRET",
+          "IMESSAGE_BLOOIO_FROM_NUMBER",
+          "IMESSAGE_BLOOIO_CHANNEL_ID"
+        ]
       }
     },
     {

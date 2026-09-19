@@ -4,6 +4,7 @@
  * locally stored Plaid access tokens through a deterministic SQL executor.
  */
 
+import type { CarveOutDatabase } from "@elizaos/plugin-sql";
 import { describe, expect, it } from "vitest";
 import {
   MIGRATED_FINANCE_TABLES,
@@ -22,7 +23,12 @@ import {
  * - `sourcePresent`: what `to_regclass('app_lifeops.X') IS NOT NULL` returns.
  * - `targetEmpty`: what `NOT EXISTS (SELECT 1 FROM app_finances.X)` returns.
  */
-function makeExecutor(opts: { sourcePresent: boolean; targetEmpty: boolean }): {
+function makeExecutor(opts: {
+  sourcePresent: boolean;
+  targetEmpty: boolean;
+  missing?: number;
+  conflicts?: number;
+}): {
   exec: SqlExecutor;
   inserts: string[];
   state: { createdSchema: boolean };
@@ -30,6 +36,29 @@ function makeExecutor(opts: { sourcePresent: boolean; targetEmpty: boolean }): {
   const inserts: string[] = [];
   const state = { createdSchema: false };
   const exec: SqlExecutor = async (sql) => {
+    if (sql.includes("carve-out:claim")) {
+      return [{ holder_token: [...sql.matchAll(/'([^']+)'/g)][1]?.[1] }];
+    }
+    if (
+      sql.includes("carve-out:release") ||
+      sql.includes("carve-out:previous-status") ||
+      sql.includes("carve-out:lock-sources")
+    )
+      return [];
+    if (sql.includes("carve-out:complete")) return [{ migration_key: "done" }];
+    if (sql.includes("carve-out:verify-projection")) {
+      return [
+        {
+          missing_count: String(opts.missing ?? 0),
+          conflict_count: String(opts.conflicts ?? 0),
+          source_null_key_count: "0",
+          target_null_key_count: "0",
+          source_duplicate_key_count: "0",
+          target_duplicate_key_count: "0",
+        },
+      ];
+    }
+    if (sql.startsWith("CREATE TABLE")) return [];
     if (sql.startsWith("CREATE SCHEMA")) {
       state.createdSchema = true;
       return [];
@@ -51,6 +80,10 @@ function makeExecutor(opts: { sourcePresent: boolean; targetEmpty: boolean }): {
 
 const SAMPLE_TABLE: MigratedFinanceTable = "life_payment_sources";
 
+function transactionDatabase(exec: SqlExecutor): CarveOutDatabase {
+  return { execute: exec, transaction: (operation) => operation(exec) };
+}
+
 describe("migrateFinanceTable guards", () => {
   it("skips when the source table is missing", async () => {
     const { exec, inserts } = makeExecutor({
@@ -62,7 +95,7 @@ describe("migrateFinanceTable guards", () => {
     expect(inserts).toHaveLength(0);
   });
 
-  it("skips when the target table already has rows", async () => {
+  it("preserves ownership when the target table already has rows", async () => {
     const { exec, inserts } = makeExecutor({
       sourcePresent: true,
       targetEmpty: false,
@@ -94,7 +127,7 @@ describe("migrateFinanceTables", () => {
       sourcePresent: true,
       targetEmpty: true,
     });
-    const results = await migrateFinanceTables(exec);
+    const results = await migrateFinanceTables(transactionDatabase(exec));
     expect(state.createdSchema).toBe(true);
     expect(results.map((r) => r.table)).toEqual([...MIGRATED_FINANCE_TABLES]);
     expect(results.every((r) => r.outcome === "copied")).toBe(true);
@@ -106,7 +139,7 @@ describe("migrateFinanceTables", () => {
       sourcePresent: false,
       targetEmpty: true,
     });
-    const results = await migrateFinanceTables(exec);
+    const results = await migrateFinanceTables(transactionDatabase(exec));
     expect(results.every((r) => r.outcome === "source-missing")).toBe(true);
     expect(inserts).toHaveLength(0);
   });

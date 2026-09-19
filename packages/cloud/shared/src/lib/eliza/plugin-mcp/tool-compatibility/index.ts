@@ -1,4 +1,4 @@
-// Wires hosted Eliza agent index behavior for cloud runtime services.
+/** Selects the model-specific MCP tool compatibility policy for hosted runtimes. */
 export {
   McpToolCompatibility,
   type ModelInfo,
@@ -6,48 +6,19 @@ export {
 } from "./base";
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { ModelInfo, ModelProvider } from "./base";
+import { detectMcpModelProvider } from "@elizaos/shared/mcp";
+import type { ModelInfo } from "./base";
 import { AnthropicMcpCompatibility } from "./providers/anthropic";
 import { GoogleMcpCompatibility } from "./providers/google";
 import { OpenAIMcpCompatibility, OpenAIReasoningMcpCompatibility } from "./providers/openai";
 
 export function detectModelProvider(runtime: IAgentRuntime): ModelInfo {
-  const providerString = String(
-    (runtime as IAgentRuntime & { modelProvider?: string })?.modelProvider || "",
-  ).toLowerCase();
-  const modelString = String(
-    (runtime as IAgentRuntime & { model?: string })?.model || "",
-  ).toLowerCase();
-
-  let provider: ModelProvider = "unknown";
-  let supportsStructuredOutputs = false;
-  let isReasoningModel = false;
-
-  if (
-    providerString.includes("openai") ||
-    modelString.includes("gpt-") ||
-    modelString.includes("o1") ||
-    modelString.includes("o3")
-  ) {
-    provider = "openai";
-    supportsStructuredOutputs =
-      modelString.includes("gpt-5.5") || modelString.includes("o1") || modelString.includes("o3");
-    isReasoningModel = modelString.includes("o1") || modelString.includes("o3");
-  } else if (providerString.includes("anthropic") || modelString.includes("claude")) {
-    provider = "anthropic";
-    supportsStructuredOutputs = true;
-  } else if (providerString.includes("google") || modelString.includes("gemini")) {
-    provider = "google";
-    supportsStructuredOutputs = true;
-  } else if (providerString.includes("bitrouter") || modelString.includes("bitrouter")) {
-    provider = "bitrouter";
-  }
-
+  const detected = detectMcpModelProvider(runtime);
   return {
-    provider,
-    modelId: modelString || providerString || "unknown",
-    supportsStructuredOutputs,
-    isReasoningModel,
+    ...detected,
+    // OpenRouter was not a distinct Cloud compatibility policy before the
+    // shared detector existed, so preserve the facade's unknown fallback.
+    provider: detected.provider === "openrouter" ? "unknown" : detected.provider,
   };
 }
 

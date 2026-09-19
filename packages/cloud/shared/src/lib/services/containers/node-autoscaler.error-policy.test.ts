@@ -36,6 +36,8 @@ class FakeHetznerCloudError extends Error {
 
 const mocks = {
   findByNodeId: mock(),
+  findAll: mock(),
+  requestDeprovision: mock(),
   updateNode: mock(),
   deleteNode: mock(),
   countRetained: mock(),
@@ -47,6 +49,8 @@ const mocks = {
 mock.module("../../../db/repositories/docker-nodes", () => ({
   dockerNodesRepository: {
     findByNodeId: mocks.findByNodeId,
+    findAll: mocks.findAll,
+    requestAutoscaleDeprovision: mocks.requestDeprovision,
     update: mocks.updateNode,
     delete: mocks.deleteNode,
   },
@@ -127,6 +131,9 @@ async function drainDeprovision(): Promise<void> {
 describe("NodeAutoscaler drain deprovision — fail-closed error policy (#13415)", () => {
   beforeEach(() => {
     mocks.findByNodeId.mockReset();
+    mocks.findAll.mockReset();
+    mocks.requestDeprovision.mockReset();
+    mocks.requestDeprovision.mockResolvedValue(makeNode());
     mocks.updateNode.mockReset();
     mocks.deleteNode.mockReset();
     mocks.countRetained.mockReset();
@@ -156,6 +163,85 @@ describe("NodeAutoscaler drain deprovision — fail-closed error policy (#13415)
         { id: 8102, status: "applied" },
       ],
     });
+  });
+
+  test("a later autoscale cycle retries failed deletion without selecting an operator-disabled node", async () => {
+    const node = { ...makeNode(), enabled: true };
+    const operatorDisabled = {
+      ...makeNode(),
+      id: "operator-disabled-row",
+      node_id: "operator-disabled",
+    };
+    let rows = [node, operatorDisabled];
+    mocks.findByNodeId.mockImplementation(
+      async (id: string) => rows.find((row) => row.node_id === id) ?? null,
+    );
+    mocks.findAll.mockImplementation(async () => rows);
+    mocks.updateNode.mockImplementation(async (id: string, patch: Partial<DockerNode>) => {
+      const row = rows.find((candidate) => candidate.id === id);
+      if (!row) return null;
+      Object.assign(row, patch);
+      return row;
+    });
+    mocks.requestDeprovision.mockImplementation(async (id: string) => {
+      const row = rows.find((candidate) => candidate.id === id);
+      if (!row) return null;
+      row.enabled = false;
+      row.metadata = { ...row.metadata, autoscaleDeprovisionRequested: true };
+      return row;
+    });
+    mocks.deleteNode.mockImplementation(async (id: string) => {
+      rows = rows.filter((row) => row.id !== id);
+      return true;
+    });
+    mocks.deleteServer.mockRejectedValueOnce(new Error("temporary provider outage"));
+    mocks.deleteServer.mockResolvedValueOnce(undefined);
+    const { NodeAutoscaler, DEFAULT_AUTOSCALE_POLICY } = await import("./node-autoscaler");
+    const newCycle = () =>
+      new NodeAutoscaler(
+        { ...DEFAULT_AUTOSCALE_POLICY, minFreeSlotsBuffer: 0, minHotAvailableSlots: 0 },
+        () => Date.parse("2026-05-15T13:00:00Z"),
+        provider,
+      );
+
+    await expect(newCycle().drainNode(NODE_ID, { deprovision: true })).rejects.toThrow(
+      "temporary provider outage",
+    );
+    expect(node.enabled).toBe(false);
+    expect(rows).toHaveLength(2);
+
+    // A fresh scheduler instance must discover the pending provider effect
+    // from persisted state, without treating every operator cordon as deletion.
+    const decision = await newCycle().evaluateCapacity();
+    expect(decision.shouldScaleUp).toBe(false);
+    expect(decision.shouldScaleDownNodeIds).toEqual([NODE_ID]);
+    await newCycle().drainNode(decision.shouldScaleDownNodeIds[0]!, { deprovision: true });
+    expect(mocks.deleteServer).toHaveBeenCalledTimes(2);
+    expect(rows.map((row) => row.node_id)).toEqual(["operator-disabled"]);
+  });
+
+  test("a pending deprovision never bypasses retained workloads", async () => {
+    const node = makeNode();
+    node.metadata.autoscaleDeprovisionRequested = true;
+    mocks.findAll.mockResolvedValue([node]);
+    mocks.countRetained.mockResolvedValue(1);
+    const { NodeAutoscaler, DEFAULT_AUTOSCALE_POLICY } = await import("./node-autoscaler");
+    const autoscaler = new NodeAutoscaler(
+      { ...DEFAULT_AUTOSCALE_POLICY, minFreeSlotsBuffer: 0, minHotAvailableSlots: 0 },
+      undefined,
+      provider,
+    );
+    expect((await autoscaler.evaluateCapacity()).shouldScaleDownNodeIds).toEqual([]);
+    await autoscaler.drainNode(NODE_ID, { deprovision: true });
+    expect(mocks.deleteServer).not.toHaveBeenCalled();
+    expect(mocks.deleteNode).not.toHaveBeenCalled();
+  });
+
+  test("does not issue provider deletion when durable drain intent cannot be saved", async () => {
+    mocks.requestDeprovision.mockRejectedValue(new Error("database unavailable"));
+    await expect(drainDeprovision()).rejects.toThrow("database unavailable");
+    expect(mocks.deleteServer).not.toHaveBeenCalled();
+    expect(mocks.deleteNode).not.toHaveBeenCalled();
   });
 
   test("propagates a typed Hetzner API failure and KEEPS the DB row (no orphaned server)", async () => {

@@ -143,4 +143,40 @@ describe("trajectory semantic stages", () => {
 		}));
 		expect(parseTrajectorySemanticStages(stages)).toEqual(stages);
 	});
+
+	it("preserves complete scalar values and repeated non-cyclic references", () => {
+		const semantic = recordedStageToSemanticStage(toolSearchStage);
+		const shared = { text: '🦊 café\n\t"quoted"', empty: null };
+		const payload = {
+			model: { values: [shared, shared, true, false, 0, -1.5] },
+		};
+		expect(
+			parseTrajectorySemanticStage({ ...semantic, payload }).payload,
+		).toEqual(payload);
+	});
+
+	it.each([NaN, Infinity, -Infinity, 1n, new Date(0)])(
+		"still rejects unsupported JSON payload value %s",
+		(value) => {
+			const semantic = recordedStageToSemanticStage(toolSearchStage);
+			expect(() =>
+				parseTrajectorySemanticStage({
+					...semantic,
+					payload: { model: { value } },
+				}),
+			).toThrow(/semantic stage is invalid/i);
+		},
+	);
+
+	it("retains the nesting validation independently of payload size", () => {
+		const semantic = recordedStageToSemanticStage(toolSearchStage);
+		let nested: unknown = "leaf";
+		for (let depth = 0; depth < 25; depth += 1) nested = { nested };
+		expect(() =>
+			parseTrajectorySemanticStage({
+				...semantic,
+				payload: { model: nested },
+			}),
+		).toThrow(/semantic stage is invalid/i);
+	});
 });

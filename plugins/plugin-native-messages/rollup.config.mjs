@@ -1,6 +1,8 @@
+/**
+ * Generated native Capacitor package build configuration. Change the scaffold
+ * manifest or generator instead of editing this file directly.
+ */
 import nodeResolve from "@rollup/plugin-node-resolve";
-
-const external = ["@capacitor/core"];
 
 export default [
   {
@@ -21,7 +23,7 @@ export default [
         inlineDynamicImports: true,
       },
     ],
-    external,
+    external: ["@capacitor/core"],
     plugins: [nodeResolve()],
   },
 ];

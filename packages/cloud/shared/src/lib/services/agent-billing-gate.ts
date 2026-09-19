@@ -1,13 +1,13 @@
 /**
  * Agent billing gate — pre-provisioning credit check.
  *
- * Ensures an organization has more than the minimum running balance before
+ * Ensures an organization has at least the minimum running balance before
  * allowing agent creation, provisioning, or resume.
  */
 
-import { organizationsRepository } from "../../db/repositories";
 import { AGENT_PRICING } from "../constants/agent-pricing";
 import { logger } from "../utils/logger";
+import { readAgentFundingAccount } from "./agent-funding-account";
 import {
   readWelcomeBonusWithheldSettings,
   type SignupGrantWithheldReason,
@@ -91,7 +91,7 @@ async function runCreditGate(
   insufficientMessage: (balance: number) => string,
 ): Promise<CreditGateResult> {
   try {
-    const org = await organizationsRepository.findById(organizationId);
+    const org = await readAgentFundingAccount(organizationId);
     if (!org) {
       return {
         allowed: false,
@@ -100,9 +100,12 @@ async function runCreditGate(
       };
     }
 
-    const balance = parseGateCreditBalance(org.credit_balance);
+    const balance =
+      parseGateCreditBalance(org.credit_balance) +
+      parseGateCreditBalance(org.eligible_subscription_allowance);
+    if (!Number.isFinite(balance)) throw new CorruptCreditBalanceError(balance);
 
-    if (balance <= minimumBalance) {
+    if (balance < minimumBalance) {
       // A successful credit transaction removes this marker atomically with
       // its balance increase. If it remains at zero, the org has never been
       // funded since signup and the original withheld reason is still honest.
@@ -122,6 +125,7 @@ async function runCreditGate(
 
     return { allowed: true, balance };
   } catch (error) {
+    // error-policy:J1 Funding authority failures deny admission at the billing boundary.
     if (error instanceof CorruptCreditBalanceError) {
       // error-policy:J1 — corrupt stored money value: deny, surface for repair.
       logger.error("[agent-billing-gate] Corrupt credit_balance — failing closed", {
@@ -151,7 +155,7 @@ async function runCreditGate(
 /**
  * Check whether an organization has sufficient credits for Eliza agent operations.
  *
- * Returns `{ allowed: true }` if `credit_balance > MINIMUM_DEPOSIT`,
+ * Returns `{ allowed: true }` if `credit_balance >= MINIMUM_DEPOSIT`,
  * otherwise returns a user-facing error message directing them to add funds.
  *
  * Fails CLOSED on a corrupt stored balance (distinct observable log) and on
@@ -161,7 +165,7 @@ async function runCreditGate(
 export async function checkAgentCreditGate(organizationId: string): Promise<CreditGateResult> {
   return runCreditGate(organizationId, AGENT_PRICING.MINIMUM_DEPOSIT, (balance) => {
     const deficit = Math.max(AGENT_PRICING.MINIMUM_DEPOSIT - balance, 0.01);
-    return `Insufficient credits. A balance greater than $${AGENT_PRICING.MINIMUM_DEPOSIT.toFixed(2)} is required to create or run Eliza agents. Please add at least $${deficit.toFixed(2)} to your account at /cloud/billing.`;
+    return `Insufficient credits. A balance of at least $${AGENT_PRICING.MINIMUM_DEPOSIT.toFixed(2)} is required to create or run Eliza agents. Please add at least $${deficit.toFixed(2)} to your account at /cloud/billing.`;
   });
 }
 
@@ -179,6 +183,6 @@ export async function checkAgentTierUpgradeCreditGate(
   const minimum = AGENT_PRICING.UPGRADE_MINIMUM_BALANCE;
   return runCreditGate(organizationId, minimum, (balance) => {
     const deficit = Math.max(minimum - balance, 0.01);
-    return `Insufficient credits to upgrade. A dedicated agent costs $${AGENT_PRICING.DAILY_RUNNING_COST.toFixed(2)}/day of hosting, and upgrading requires a balance above $${minimum.toFixed(2)} (${AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS} days of hosting). Please add at least $${deficit.toFixed(2)} to your account at /cloud/billing.`;
+    return `Insufficient credits to upgrade. A dedicated agent costs $${AGENT_PRICING.DAILY_RUNNING_COST.toFixed(2)}/day of hosting, and upgrading requires a balance of at least $${minimum.toFixed(2)} (${AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS} days of hosting). Please add at least $${deficit.toFixed(2)} to your account at /cloud/billing.`;
   });
 }

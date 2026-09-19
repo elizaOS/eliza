@@ -95,11 +95,11 @@ function PipelineNodeButton({
       ? "text-[color:var(--settings-foreground)]"
       : "text-[color:var(--settings-muted)]",
     skipped: "text-[color:var(--settings-muted)] opacity-50",
-    error: "text-danger/80",
+    error: selected ? "text-accent-foreground" : "text-danger",
   };
 
   const countTone = {
-    active: selected ? ("accent" as const) : ("muted" as const),
+    active: "muted" as const,
     skipped: "muted" as const,
     error: "danger" as const,
   };
@@ -118,9 +118,15 @@ function PipelineNodeButton({
       </span>
       <Badge
         asChild
-        variant="secondary"
+        variant={
+          selected
+            ? node.status === "error"
+              ? "destructive"
+              : "metaStrong"
+            : "secondary"
+        }
         size="compact"
-        tone={countTone[node.status]}
+        tone={selected ? "default" : countTone[node.status]}
         className="px-2 py-0.5 text-xs font-medium normal-case leading-none"
       >
         <span>{node.id === "input" ? "Ready" : `${node.callCount} calls`}</span>

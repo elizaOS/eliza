@@ -5,6 +5,7 @@
 
 import { access } from "node:fs/promises";
 
+import { createDeterministicModelFixtureRegistry } from "@elizaos/core/testing";
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -32,6 +33,7 @@ describe("deterministic coding-tools scenario cleanup", () => {
     delete process.env[BLOCKED_PATHS];
     const originalEvaluators = [{ name: "shared-evaluator" }];
     const runtime = {
+      scenarioModelFixtures: createDeterministicModelFixtureRegistry(),
       evaluators: originalEvaluators,
       plugins: [],
       registerPlugin: async () => {
@@ -44,19 +46,31 @@ describe("deterministic coding-tools scenario cleanup", () => {
       throw new Error("coding-tools scenario custom seed/cleanup unavailable");
     }
 
-    await expect(
-      seed.apply({ runtime } as unknown as ScenarioContext),
-    ).rejects.toThrow("forced registration failure");
-    const temporaryRoot = process.env[WORKSPACE_ROOTS];
-    expect(temporaryRoot).not.toBe("/outer/workspace");
-    expect(process.env[BLOCKED_PATHS]).toBeDefined();
-    expect(runtime.evaluators).toEqual([]);
-
-    await cleanup.apply({ runtime } as unknown as ScenarioContext);
+    const context = { runtime } as unknown as ScenarioContext;
+    let temporaryRoot: string | undefined;
+    try {
+      await expect(seed.apply(context)).rejects.toThrow(
+        "forced registration failure",
+      );
+      temporaryRoot = process.env[WORKSPACE_ROOTS];
+      if (!temporaryRoot || temporaryRoot === "/outer/workspace") {
+        throw new Error("seed did not install its isolated workspace");
+      }
+      // Confirm setup reached the real filesystem and isolation changes before
+      // the injected plugin registration failure, not an earlier seed guard.
+      await access(temporaryRoot);
+      expect(process.env[BLOCKED_PATHS]).toBeDefined();
+      expect(runtime.evaluators).toEqual([]);
+    } finally {
+      await cleanup.apply(context);
+    }
 
     expect(runtime.evaluators).toBe(originalEvaluators);
     expect(process.env[WORKSPACE_ROOTS]).toBe("/outer/workspace");
     expect(process.env[BLOCKED_PATHS]).toBeUndefined();
-    await expect(access(temporaryRoot as string)).rejects.toThrow();
+    if (!temporaryRoot) throw new Error("isolated workspace was not observed");
+    await expect(access(temporaryRoot)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 });

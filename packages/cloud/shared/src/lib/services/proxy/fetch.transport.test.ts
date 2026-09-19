@@ -3,6 +3,7 @@
  * The RPC tests redirect only the provider URL; handler, retry, and fetch run unchanged.
  */
 import { afterEach, describe, expect, it } from "bun:test";
+import { createServer } from "node:http";
 import { type RetryFetchOptions, retryFetch } from "./fetch";
 import { rpcHandlerForChain } from "./services/rpc";
 import type { HandlerContext, ProxyRequestBody } from "./types";
@@ -205,4 +206,71 @@ describe("caller cancellation", () => {
       server.stop(true);
     }
   });
+});
+
+describe("shared retry policy at the HTTP boundary", () => {
+  for (const status of [401, 403, 429, 503]) {
+    it(`handles HTTP ${status} according to transient status policy`, async () => {
+      let requests = 0;
+      const server = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        fetch() {
+          requests += 1;
+          return requests === 1
+            ? new Response("provider rejection", { status })
+            : new Response("provider recovered");
+        },
+      });
+      try {
+        const response = await retryFetch(options(String(server.url)));
+        const transient = status === 429 || status === 503;
+        expect(response.status).toBe(transient ? 200 : status);
+        expect(await response.text()).toBe(transient ? "provider recovered" : "provider rejection");
+        expect(requests).toBe(transient ? 2 : 1);
+      } finally {
+        server.stop(true);
+      }
+    });
+  }
+
+  for (const replayPolicy of ["idempotent", "never"] as const) {
+    it(`preserves ${replayPolicy} after an actual socket disconnect`, async () => {
+      let requests = 0;
+      const bodies: string[] = [];
+      const server = createServer(async (request, response) => {
+        requests += 1;
+        let body = "";
+        for await (const chunk of request) body += chunk.toString();
+        bodies.push(body);
+        if (requests === 1) request.socket.destroy();
+        else response.end("provider recovered");
+      });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("Missing listener address");
+      try {
+        const result = retryFetch({
+          ...options(`http://127.0.0.1:${address.port}`),
+          replayPolicy,
+          init: {
+            method: "POST",
+            body: "complete provider request",
+            headers: { connection: "close" },
+          },
+        });
+        if (replayPolicy === "never") {
+          await expect(result).rejects.toBeInstanceOf(Error);
+          expect(bodies).toEqual(["complete provider request"]);
+        } else {
+          expect(await (await result).text()).toBe("provider recovered");
+          expect(bodies).toEqual(["complete provider request", "complete provider request"]);
+        }
+      } finally {
+        await new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        );
+      }
+    });
+  }
 });

@@ -44,10 +44,16 @@ mock.module("../usage", () => ({
 const { createHandler } = await import("./engine");
 const { rpcConfigForChain, rpcHandlerForChain } = await import("./services/rpc");
 const originalFetch = globalThis.fetch;
-const envNames = ["CACHE_BACKEND", "ALCHEMY_API_KEY", "ALCHEMY_MAX_RETRIES"] as const;
+const envNames = [
+  "CACHE_ENABLED",
+  "CACHE_BACKEND",
+  "ALCHEMY_API_KEY",
+  "ALCHEMY_MAX_RETRIES",
+] as const;
 const originalEnv = Object.fromEntries(envNames.map((name) => [name, process.env[name]]));
 
 beforeEach(() => {
+  process.env.CACHE_ENABLED = "true";
   process.env.CACHE_BACKEND = "memory";
   process.env.ALCHEMY_API_KEY = "local-cache-fixture";
   process.env.ALCHEMY_MAX_RETRIES = "1";

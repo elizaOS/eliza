@@ -92,7 +92,7 @@ export function RotationStrategyPicker({
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-2xs font-medium uppercase tracking-wider text-muted">
+      <span className="text-2xs font-medium uppercase tracking-wider text-muted-strong">
         {t("accounts.strategy.label", { defaultValue: "Strategy" })}
       </span>
       <Select

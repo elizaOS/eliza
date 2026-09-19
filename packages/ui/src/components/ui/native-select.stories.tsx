@@ -24,6 +24,14 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 
+export const Touch: Story = {
+  args: { presentation: "touch" },
+};
+
 export const Disabled: Story = {
   args: { disabled: true },
+};
+
+export const Toolbar: Story = {
+  args: { presentation: "toolbar" },
 };

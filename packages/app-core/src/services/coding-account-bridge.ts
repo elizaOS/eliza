@@ -115,16 +115,17 @@ function getEnvCodingStrategy(): Strategy | undefined {
  * eligible account wins. The shared descriptor only maps credential transports
  * that the bridge can actually materialize for the selected executable.
  *
- * claude (claude-agent-acp) and codex (codex-acp) are first-party CLIs.
- * Kimi and Grok native adapters authenticate through provider-owned CLI state,
- * not pooled API credentials, so they remain deliberately absent here. The
- * same is true for z.ai / GLM backends without a bridge-owned spawn route.
+ * claude (claude-agent-acp) and codex (codex-acp) are first-party CLIs. Pi
+ * receives selected coding-plan or direct API credentials through a private
+ * per-child provider config. Native Kimi and Grok adapters still authenticate
+ * through provider-owned CLI state and remain deliberately absent here.
  */
 const AGENT_PROVIDER_CANDIDATES: Readonly<
   Record<string, readonly LinkedAccountProviderId[]>
 > = {
   claude: CODING_AGENT_BACKEND_PROVIDERS.claude,
   codex: CODING_AGENT_BACKEND_PROVIDERS.codex,
+  "pi-agent": CODING_AGENT_BACKEND_PROVIDERS["pi-agent"],
 };
 
 function candidatesFor(agentType: string): readonly LinkedAccountProviderId[] {
@@ -830,6 +831,10 @@ async function buildEnvPatch(
   switch (providerId) {
     case "anthropic-subscription":
       return { CLAUDE_CODE_OAUTH_TOKEN: accessToken };
+    case "zai-coding":
+      return { ZAI_API_KEY: accessToken };
+    case "kimi-coding":
+      return { KIMI_API_KEY: accessToken };
     default: {
       // Direct API providers map to their corresponding injected API keys.
       // inject under their canonical env key; run-main.ts normalizes aliases
@@ -872,6 +877,13 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
       const candidates = candidatesFor(agentType);
       if (candidates.length === 0) return null;
       for (const providerId of candidates) {
+        if (opts?.providerId && providerId !== opts.providerId) continue;
+        const excluded = [
+          ...(opts?.exclude ?? []),
+          ...(opts?.excludeAccounts ?? [])
+            .filter((account) => account.providerId === providerId)
+            .map((account) => account.accountId),
+        ];
         // Explicit caller override > the app's per-provider
         // config.accountStrategies > ELIZA_CODING_ACCOUNT_STRATEGY env > the
         // provider default (Anthropic drains expiring weekly windows; other
@@ -889,7 +901,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
           providerId,
           strategy,
           ...(opts?.sessionKey ? { sessionKey: opts.sessionKey } : {}),
-          ...(opts?.exclude ? { exclude: opts.exclude } : {}),
+          ...(excluded.length ? { exclude: excluded } : {}),
           ...(opts?.model ? { model: opts.model } : {}),
           // Follow-up pin: a continuing session restricts the pool to its
           // spawn-time account so an expired session-affinity can't strategy-
@@ -971,9 +983,12 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
             continue;
           }
         }
-        const source: "oauth" | "api-key" = isSubscriptionProvider(providerId)
-          ? "oauth"
-          : "api-key";
+        const source =
+          providerId === "zai-coding" || providerId === "kimi-coding"
+            ? "coding-plan-key"
+            : isSubscriptionProvider(providerId)
+              ? "oauth"
+              : "api-key";
         logger.info(
           `[coding-account-bridge] ${agentType} → ${providerId} account "${account.label}" (${account.id}) via ${strategy}`,
         );

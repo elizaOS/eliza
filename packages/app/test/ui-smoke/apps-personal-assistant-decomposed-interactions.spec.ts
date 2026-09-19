@@ -1,23 +1,34 @@
-// Interaction coverage for the decomposed personal-assistant domain views
-// (calendar, finances, focus, goals, health, inbox, todos, relationships).
-// These are dynamic plugin views; the ui-smoke stub registers their bundles so
-// they render (not the launcher fallback). Each `<Domain>View` is a spatial
-// wrapper that renders the same DOM on the desktop `chromium` and Pixel-7
-// `mobile-chromium` lanes, so every assertion below is a viewport-independent
-// semantic outcome: populated content from the mocked lifeops endpoints plus a
-// real state-changing interaction (channel/kind/status filters, calendar day
-// selection and month navigation). This is the interaction owner that closes
+/**
+ * Exercises populated personal-assistant plugin views and their state-changing
+ * controls through the real desktop and Pixel-7 renderer with deterministic
+ * lifeops endpoints. Hit testing also catches overlays that intercept input.
+ */
 
 import type { Locator, Page } from "@playwright/test";
-import { expect, test } from "@playwright/test";
+import { test as base, expect } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { installRemoteConnectionsView } from "./remote-connections-fixture";
 
-test.beforeEach(async ({ page }) => {
-  await seedAppStorage(page);
+const test = base.extend<{ calendarTheme: "light" | undefined }>({
+  calendarTheme: [undefined, { option: true }],
+});
+
+test.beforeEach(async ({ page, calendarTheme }) => {
+  await seedAppStorage(
+    page,
+    calendarTheme
+      ? {
+          "eliza:ui-theme": calendarTheme,
+          "eliza:ui-theme-mode": calendarTheme,
+          "elizaos:ui-theme": calendarTheme,
+          "elizaos:ui-theme-mode": calendarTheme,
+        }
+      : {},
+  );
   await installDefaultAppRoutes(page);
 });
 
@@ -55,15 +66,161 @@ async function openPopulatedCalendar(page: Page): Promise<void> {
   });
 }
 
+test.describe("calendar legacy appearance", () => {
+  test.use({ calendarTheme: "light" });
+  test("calendar normalizes legacy light preference to curated dark action and selection colors", async ({
+    page,
+  }) => {
+    await openPopulatedCalendar(page);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    expect(
+      await page.evaluate(() => localStorage.getItem("eliza:ui-theme-mode")),
+    ).toBe("dark");
+    await page.getByRole("button", { name: "Month", exact: true }).click();
+    const grid = page.getByTestId("calendar-month-grid");
+    const current = grid.locator('button[aria-current="date"]');
+    const selected = grid
+      .locator(
+        'button[data-agent-id^="calendar-day-"]:not([aria-current="date"])',
+      )
+      .first();
+    await selected.click();
+    await expect(selected).toHaveAttribute("aria-pressed", "true");
+    await page.mouse.move(0, 0);
+    const readColors = () =>
+      page.evaluate(() => {
+        const today = document.querySelector(
+          '[data-testid="calendar-month-grid"] button[aria-current="date"]',
+        );
+        const selection = document.querySelector(
+          '[data-testid="calendar-month-grid"] button[aria-pressed="true"]',
+        );
+        if (!today || !selection)
+          throw new Error("Calendar day controls missing");
+        const probe = document.createElement("span");
+        document.body.append(probe);
+        const resolve = (
+          token: string,
+          owner: Element = document.documentElement,
+        ) => {
+          probe.style.backgroundColor =
+            getComputedStyle(owner).getPropertyValue(token);
+          return getComputedStyle(probe).backgroundColor;
+        };
+        const luminance = (color: string) => {
+          const channels = color
+            .match(/[\d.]+/g)
+            ?.slice(0, 3)
+            .map(Number);
+          if (channels?.length !== 3)
+            throw new Error(`Unsupported computed color: ${color}`);
+          const linear = channels.map((value) => {
+            const c = value / 255;
+            return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+          });
+          return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+        };
+        const style = getComputedStyle(today);
+        const background = luminance(style.backgroundColor);
+        const foreground = luminance(style.color);
+        const result = {
+          current: style.backgroundColor,
+          currentText: style.color,
+          selected: getComputedStyle(selection).backgroundColor,
+          selectedState: selection.getAttribute("data-state"),
+          action: resolve("--accent-action"),
+          actionText: resolve("--accent-action-foreground"),
+          hover: resolve("--accent-action-hover"),
+          hoverText: resolve("--accent-action-hover-foreground"),
+          subtle: resolve("--accent-subtle", selection),
+          surfaceLuminance: luminance(resolve("--bg")),
+          actionLuminance: luminance(resolve("--accent-action")),
+          currentLuminance: background,
+          contrast:
+            (Math.max(background, foreground) + 0.05) /
+            (Math.min(background, foreground) + 0.05),
+        };
+        probe.remove();
+        return result;
+      });
+    await test.info().attach("calendar-colors", {
+      body: JSON.stringify(await readColors()),
+      contentType: "application/json",
+    });
+    const expected = await readColors();
+    await expect.poll(readColors).toMatchObject({
+      current: expected.action,
+      currentText: expected.actionText,
+      selected: expected.subtle,
+    });
+    const resting = await readColors();
+    expect(resting.contrast).toBeGreaterThanOrEqual(4.5);
+    expect(resting.surfaceLuminance).toBeLessThan(0.1);
+    if (await page.evaluate(() => matchMedia("(hover: hover)").matches)) {
+      await current.hover();
+      await expect
+        .poll(async () => {
+          const colors = await readColors();
+          return (
+            colors.current === colors.hover &&
+            colors.currentText === colors.hoverText
+          );
+        })
+        .toBe(true);
+      const hovering = await readColors();
+      expect(hovering.currentLuminance).toBeLessThan(hovering.actionLuminance);
+      expect(hovering.contrast).toBeGreaterThanOrEqual(4.5);
+    } else {
+      await current.tap();
+      await expect(current).toHaveAttribute("aria-pressed", "true");
+      const tapped = await readColors();
+      expect(tapped.current).toBe(tapped.action);
+      expect(tapped.contrast).toBeGreaterThanOrEqual(4.5);
+      await selected.tap();
+      await expect(selected).toHaveAttribute("aria-pressed", "true");
+    }
+    await page.mouse.move(0, 0);
+    await expect
+      .poll(async () => {
+        const colors = await readColors();
+        return (
+          colors.current === colors.action && colors.selected === colors.subtle
+        );
+      })
+      .toBe(true);
+  });
+});
+
 test("calendar decomposed view: responsive modes and event creation", async ({
   page,
 }) => {
   await openPopulatedCalendar(page);
 
+  if ((await page.evaluate(() => window.innerWidth)) >= 768) {
+    const todayBounds = await page
+      .getByRole("button", { name: "Today", exact: true })
+      .boundingBox();
+    const createBounds = await page
+      .getByTestId("lifeops-calendar-new-event")
+      .boundingBox();
+    if (!todayBounds || !createBounds)
+      throw new Error("Calendar toolbar controls are missing");
+    expect(
+      Math.abs(
+        todayBounds.y +
+          todayBounds.height / 2 -
+          createBounds.y -
+          createBounds.height / 2,
+      ),
+      "Desktop calendar navigation and creation should share one compact toolbar row",
+    ).toBeLessThan(4);
+  }
+
   const monthMode = page.getByRole("button", { name: "Month", exact: true });
   await expectTopmostAtCenter(monthMode, "Calendar Month mode");
   await monthMode.click();
   await expect(monthMode).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("calendar-month-grid")).toBeVisible();
 
   const newEvent = page.getByTestId("lifeops-calendar-new-event");
   await expectTopmostAtCenter(newEvent, "Calendar New event");
@@ -86,6 +243,7 @@ test("calendar mobile layout keeps navigation and editor inside 390px viewport",
   await expectTopmostAtCenter(dayMode, "Calendar Day mode");
   await dayMode.click();
   await expect(dayMode).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("calendar-time-grid")).toBeVisible();
 
   const newEvent = page.getByTestId("lifeops-calendar-new-event");
   await expectTopmostAtCenter(newEvent, "Calendar New event");
@@ -115,6 +273,50 @@ test("calendar mobile layout keeps navigation and editor inside 390px viewport",
   ).toBeVisible();
 });
 
+for (const width of [1280, 390]) {
+  test(`empty calendar preserves selected projections and creation at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.route("**/api/lifeops/calendar/feed**", async (route) => {
+      const url = new URL(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          calendarId: "primary",
+          events: [],
+          source: "cache",
+          state: "complete",
+          sources: [],
+          timeMin: url.searchParams.get("timeMin"),
+          timeMax: url.searchParams.get("timeMax"),
+          syncedAt: new Date().toISOString(),
+        }),
+      });
+    });
+    await openAppPath(page, "/calendar");
+    for (const mode of ["Day", "Week", "Month"]) {
+      const control = page.getByRole("button", { name: mode, exact: true });
+      await control.click();
+      await expect(control).toHaveAttribute("aria-pressed", "true");
+      await expect(
+        page.getByTestId(
+          mode === "Month" ? "calendar-month-grid" : "calendar-time-grid",
+        ),
+      ).toBeVisible();
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBe(width);
+    }
+    await page.getByTestId("lifeops-calendar-new-event").click();
+    await expect(page.getByLabel("Event title")).toBeInViewport();
+    await expect(
+      page.getByRole("button", { name: "Create event" }),
+    ).toBeVisible();
+  });
+}
+
 test("inbox decomposed view: channel filters toggle", async ({ page }) => {
   // /inbox renders the populated triage list from the inbox mock: an Email
   // (gmail) thread and a Discord thread.
@@ -126,23 +328,26 @@ test("inbox decomposed view: channel filters toggle", async ({ page }) => {
     page.getByText("gm everyone — standup in 10").first(),
   ).toBeVisible({ timeout: 15_000 });
 
-  // Activating a channel chip narrows the server query (?channels=<channel>)
-  // and the rendered list: the active chip is renamed "* <Channel>", its
-  // thread stays, and the other channel's thread disappears.
+  // The selected channel must narrow the rendered server-backed list, and
+  // clearing it must restore the other channel's messages.
   const emailChip = page
     .getByRole("button", { name: "Email", exact: true })
     .first();
   await expectTopmostAtCenter(emailChip, "Inbox Email filter chip");
   await emailChip.click();
-  await expect(
-    page.getByRole("button", { name: "* Email", exact: true }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(emailChip).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Invoice #42 overdue").first()).toBeVisible({
     timeout: 15_000,
   });
   await expect(page.getByText("gm everyone — standup in 10")).toHaveCount(0, {
     timeout: 15_000,
   });
+  await emailChip.click();
+  await expect(emailChip).toHaveAttribute("aria-pressed", "false");
+  await expect(
+    page.getByText("gm everyone — standup in 10").first(),
+  ).toBeVisible();
+  await expect(page.getByText("Invoice #42 overdue").first()).toBeVisible();
 });
 
 test("finances decomposed view: renders the financial summary", async ({
@@ -178,7 +383,9 @@ test("focus decomposed view: renders the focus scaffold", async ({ page }) => {
   ).toBeVisible({ timeout: 60_000 });
 });
 
-test("goals decomposed view: renders the goals scaffold", async ({ page }) => {
+test("goals decomposed view: filters populated goals by status", async ({
+  page,
+}) => {
   // The goals mock seeds one active goal + one paused goal (flagged
   // needs_attention → the "1 goal needs a review." proactive line).
   await openAppPath(page, "/goals");
@@ -192,15 +399,28 @@ test("goals decomposed view: renders the goals scaffold", async ({ page }) => {
     timeout: 15_000,
   });
 
-  // Toggling the "Active" status chip narrows the groups: the paused goal
-  // disappears, the active goal stays.
-  await page.getByRole("button", { name: "Active", exact: true }).click();
+  const statusFilter = page.getByRole("combobox", {
+    name: "Status",
+    exact: true,
+  });
+  await expectTopmostAtCenter(statusFilter, "Goals status filter");
+  await statusFilter.selectOption({ label: "Active" });
   await expect(page.getByText("Learn conversational Spanish")).toHaveCount(0, {
     timeout: 15_000,
   });
   await expect(page.getByText("Run a half marathon").first()).toBeVisible({
     timeout: 15_000,
   });
+  await statusFilter.selectOption({ label: "Paused" });
+  await expect(page.getByText("Run a half marathon")).toHaveCount(0);
+  await expect(
+    page.getByText("Learn conversational Spanish").first(),
+  ).toBeVisible();
+  await statusFilter.selectOption({ label: "All goals" });
+  await expect(page.getByText("Run a half marathon").first()).toBeVisible();
+  await expect(
+    page.getByText("Learn conversational Spanish").first(),
+  ).toBeVisible();
 });
 
 test("health decomposed view: renders the health regions", async ({ page }) => {
@@ -312,3 +532,61 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
     timeout: 15_000,
   });
 });
+
+for (const width of [1280, 390]) {
+  test(`connections calendar recovery loads through the built host at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    const { bundleRequests } = await installRemoteConnectionsView(page);
+    await page.route(
+      "**/api/lifeops/connectors/google/status**",
+      async (route) => {
+        await route.fulfill({ json: { accounts: [] } });
+      },
+    );
+    await page.route("**/api/permissions/calendar", async (route) => {
+      await route.fulfill({
+        json: {
+          id: "calendar",
+          status: "denied",
+          lastChecked: Date.now(),
+          canRequest: false,
+          platform: "darwin",
+        },
+      });
+    });
+    await page.route("**/api/lifeops/account-handoffs/active", (route) =>
+      route.fulfill({ json: { handoff: null } }),
+    );
+    await openAppPath(page, "/lifeops/connections");
+    const refresh = page.getByRole("button", {
+      name: "Retry all connection checks and synchronization",
+    });
+    await expect(refresh).toBeEnabled({ timeout: 60_000 });
+    await page
+      .getByRole("button", { name: "Replace an account", exact: true })
+      .click();
+    await expect(
+      page.getByLabel("Test account to disconnect", { exact: true }),
+    ).toBeVisible();
+    const synchronized = page.waitForRequest((request) => {
+      const url = new URL(request.url());
+      return (
+        url.pathname === "/api/lifeops/calendar/feed" &&
+        url.searchParams.get("forceSync") === "true"
+      );
+    });
+    await refresh.click();
+    await synchronized;
+    await expect(refresh).toBeEnabled();
+    expect(
+      bundleRequests.some(
+        (url) => new URL(url).searchParams.get("hostExternalRuntime") === "1",
+      ),
+    ).toBe(true);
+    expect(pageErrors).toEqual([]);
+  });
+}

@@ -1,6 +1,6 @@
 # GitHub Actions
 
-The repository intentionally keeps a small workflow surface. Product behavior
+Automatic validation has one PR entry and one branch entry. Product behavior
 belongs in package scripts; workflow YAML supplies triggers, credentials,
 runners, environments, and a concise job graph.
 
@@ -19,51 +19,69 @@ against PostgreSQL 16. It does not run scenarios, live providers, devices,
 deployments, or destructive effects. New commits cancel stale work for the same
 pull request or merge group.
 
-`develop-full.yml` is the sole develop-push workflow. Its stable concurrency
-group cancels the complete read-only graph for a superseded tip, delegates each
-invalidated validation family to its reusable workflow, and publishes `Complete
-manifest` only when every registered family has current green evidence.
-`.github/develop-surface-graph.json` owns the reviewed surface DAG, workspace
-roots, non-workspace inputs, environment identity, and evidence lifetime.
-`packages/scripts/develop-impact-evidence.mjs` hashes exact tracked bytes plus
-each surface's transitive workspace, surface, reusable-workflow, and composite-
-action dependencies. Missing, invalid, or cyclic repository-local `uses:`
-targets fail closed. Persistently unowned tracked inputs are also bound into
-every surface digest, so a force-run input cannot later collide with evidence
-from before that input existed. Missing, malformed,
-duplicate, unexpected, stale, or ambiguous evidence fails closed or reruns the
-surface; unknown changed-path ownership forces the full graph. The expected and
-observed manifests are retained as the run's reviewable domain artifact.
-The hosted runner image is mutable and is not yet measured by this graph, so
-the reviewed `current-run-only` policy disables cross-run verdict reuse. The
-environment digest identifies declared toolchain and runner policy only; it is
-not represented as an exact hosted-image match. Cross-run cache reuse may be
-enabled only after every delegated runner's immutable image identity is bound
-to its surface evidence.
-Markdown and `packages/docs` inputs belong to the Quality surface, which checks
-CLAUDE/AGENTS parity, maintained relative-link targets, and formatting before
-their evidence can be reused.
-After the exact aggregate succeeds, `develop-full.yml` hands its SHA and run ID
-to the non-cancelable, dispatch-only `develop-reconcile.yml` authority. The
-reconciler revalidates the successful Develop Full push and its exact manifests,
-then records agent-image, apps-worker staging, provisioning-worker staging, and
-Cloud staging effects in GitHub Deployments. Both daemons deploy before the
-Cloud release runs its live renderer gate, so that gate verifies the current
-release against its provisioning and app workers. `.github/develop-effects.json`
-binds every effect to its validation-surface digests, immutable workflow bytes,
-and typed inputs. A current exact success is idempotent; matching prior input is
-re-ledgered for the current SHA. An interrupted dispatch is resumed only when
-its exact workflow run can be rediscovered by workflow, SHA, and input digest;
-an ambiguous gap or failed run fails closed instead of replaying an external
-mutation. Each child rechecks the current develop SHA before accepting an
-external mutation.
+`develop-full.yml` validates `develop`, `staging`, and `main`. Each branch has
+its own cancellation scope. Manual recovery accepts only the exact canonical
+branch SHA and an effect digest; feature branches cannot obtain deployment
+authority through this entry.
 
-Main promotion is the final ledgered effect. It runs only after all four exact-
-SHA effect rows succeed and atomically compares both refs while fast-forwarding
-`main`: `develop` must still equal the verified SHA and `main` must still equal
-the previously compared base at the mutation boundary. An advanced develop tip
-is a neutral stale reconciliation; a behind or divergent main fails instead of
-creating an untested merge commit.
+Each branch has an effect registry: `develop-effects.json`,
+`staging-effects.json`, and `main-effects.json`. All three publish a verified
+agent image for their own commit. Staging and main then deploy their apps
+worker, provisioning worker, and Cloud release in that order, using their
+respective environment credentials. Production requires an unexpired immutable
+staging certificate for the byte-identical staging tree before publishing its
+image or dispatching either daemon deployment. The certificate expiry is checked
+again between effects. Protected jobs verify the certificate after admission,
+before image publication or database migration; remote host steps recheck its
+verified expiry after waiting for their deployment lock. The Cloud release
+retains its protected certificate gate.
+
+The reconciler records exact-commit effects in GitHub Deployments. Interrupted
+effects require an unambiguous workflow run matching the branch, SHA, workflow,
+and input digest. A newer source stops reconciliation. A successful develop
+or staging reconciliation opens or updates a promotion PR to the next branch;
+it cannot update Git refs or merge the PR. Normal review and required checks
+apply. Main is terminal and opens no further promotion.
+
+Before destination effects run, reconciliation verifies the merged PR came
+from the preceding branch, that its tree exactly matches the reviewed source,
+and that every source effect has a successful exact-SHA ledger receipt backed
+by a successful source validation run.
+
+A PR merge can produce a new SHA. The destination push therefore starts full
+validation and rebuilds its own image before deployment. Effects are never
+copied from the source commit to certify a different destination commit.
+For PRs opened or synchronized with `GITHUB_TOKEN`, GitHub creates PR workflows
+in an approval-required state. A maintainer with write access selects
+**Approve workflows to run** in the PR merge box, waits for **All Tests Passed**
+on the current commit, and obtains the required review before merging. This is
+a workflow-run approval, distinct from approving the code review.
+
+The staging application uses the `staging.eliza-app.pages.dev` alias.
+`staging-approval` contains deployment policy only and accepts the `staging`
+branch; runtime credentials stay in `staging`. Production accepts `main`.
+
+### Deployment cutover prerequisites
+
+Merging these definitions does not provision branch policies, environment
+credentials, DNS, or activate reconciliation. Keep the legacy reconciler disabled
+until an owner completes and reads back the reviewed cutover under issue #30855:
+
+1. Establish the canonical `staging` branch from reviewed source and apply the
+   checked-in branch rulesets with explicit administration authorization.
+2. Restrict `staging-approval` and `staging` to `staging`, and production to
+   `main`; verify required reviewers, environment credentials, and each runtime's
+   deployment configuration against the selected branch.
+3. Apply the reviewed staging Pages alias and DNS plan and verify its served
+   source. A healthy endpoint alone does not certify the selected tree.
+4. Enable reconciliation only after those readbacks, then inspect the first
+   exact-source validation, effect ledger, staging certification, and reviewed
+   promotion. Workflow admission approval and code review remain separate gates.
+
+Source validation and disposable contract tests do not replace this live cutover
+evidence. An absent staging branch or missing policy is an unfinished activation
+prerequisite, not permission to bypass promotion checks.
+
 The delegated `platform-smoke.yml` family preserves macOS and Windows core
 proof without a separate periodic authority. Its additional manual dispatch
 lets an authorized maintainer collect pre-merge watchdog/core evidence from
@@ -78,7 +96,11 @@ evidence, not a replacement for PR Static Smoke or the automatic Develop Full
 validation of the merged tip.
 
 `.github/rulesets/required-branches.json` is the reviewed no-bypass ruleset
-manifest for `develop` and `main`. `scripts/security/apply-branch-protection.sh`
+manifest for `develop`. `promotion-branches.json` covers `staging` and `main`
+with the same review requirement and no bypass actors. Promotion branches allow
+merge commits to preserve ancestry between successive releases. Their source
+checks do not require merging the destination back into the source; the merged
+destination must pass the full validation graph before deployment. `scripts/security/apply-branch-protection.sh`
 is read-only by default (`--check`) and requires explicit `--apply` authority to
 create or update that exact ruleset. `repository-ruleset-drift.yml` performs the
 same semantic readback by manual dispatch and through the
@@ -97,7 +119,8 @@ paths, then submit a separate reviewed manifest change enabling Code Owner
 review. The current ruleset still requires one approval, last-push approval,
 and review-thread resolution.
 
-The manifest allows squash and rebase only: linear history rejects merge commits.
+The develop manifest allows squash and rebase only. The promotion manifest
+allows merge commits only; do not squash releases between long-lived branches.
 Required-signature enforcement is deferred because GitHub cannot generally
 produce a signed web squash for an external contributor unless the merger is
 also the pull-request author, while rebase admission requires every source
@@ -105,6 +128,22 @@ commit to be signed. An owner may propose signature enforcement separately only
 after proving contributor-safe signed squash/rebase canaries; ordinary approval,
 last-push approval, thread resolution, status checks, linear history, and the
 force-push/deletion bans remain active here.
+
+## Device qualification
+
+`device-e2e.yml` supports explicit `workflow_dispatch` platform selection and
+`workflow_call` from authorized certification callers. A reusable call runs both
+Android and iOS bundle producers; a manual dispatch can select either platform
+or both. Ordinary PR and develop validation do not invoke device qualification.
+
+Manual `platform=windows-runtime` selects only the Windows identity and plugin
+staging job. The staging proof creates a temporary standard user on the
+disposable hosted runner, requires ordinary directory symlinks to fail with
+`EPERM`, and runs real dependency-graph and junction-publication consumers.
+Its temporary account, profile, process job, and fixture are cleaned even on
+failure; Developer Mode is unchanged. The `windows-normal-user-plugin-staging`
+artifact retains child logs. A failed privilege prerequisite is an incomplete
+proof, not a Windows compatibility pass.
 
 ## On-demand security analysis
 
@@ -116,51 +155,58 @@ security suite inside hosted-job limits while covering every maintained package,
 plugin, product, cloud, and operational script root. Generated, vendored, test,
 fixture, research, example, and documentation trees are excluded.
 
-## Specialized pull-request checks
+## Deterministic validation ownership
 
-Several branch-scoped and path-scoped workflows run alongside the canonical CI
-gate for specific surfaces. This list is non-exhaustive; other specialized
-gates such as `cloud-tests.yml`, `chat-shell-gestures.yml`, and the `pr.yaml`
-title check cover narrower contracts. None replaces the required
-`All Tests Passed` aggregate.
-Representative examples:
+Develop Full delegates nine families. `ci.yml` owns repository verification,
+formatting, the script inventory, disjoint server and plugin partitions, client
+unit tests, the complete partitioned app Playwright inventory, local scenario
+and integration proofs, Android compilation, desktop contracts, and the
+consolidated frontend build. Each browser project is selected by the app's
+Playwright configuration; the additional WebKit pointer/focus project is enabled
+in CI. The real-local workflow journey, accounts UI, and recorded walkthrough
+retain their distinct harnesses.
 
-- `cloud-tests.yml` distributes the complete unit manifest across four jobs with
-  `ELIZA_CLOUD_TEST_SHARD=index/total`. Each API unit file runs in a fresh process
-  to isolate module mocks and request bindings. The Vitest-only suites run once
-  on shard 1; every unit shard must succeed. Omit the shard variable for the full
-  local `bun run test:cloud` lane.
-- `gitleaks.yml` scans the develop tip inside Develop Full. `pr-static-smoke.yml` owns the
-  equivalent diff-scoped pull-request secret scan on a hosted runner.
-- `quality.yml` supplies the extended homepage build and workspace format gate
-  for `main`-targeted PRs and post-merge pushes, including the single
-  `packages/app` frontend artifact and embedded homepage source contracts.
-- `scenario-pr.yml` supplies the opt-in scenario-runner and browser matrix for
-  `main`-targeted PRs carrying the `ci:full` label.
-- `ui-e2e-gate.yml` and `ui-fixture-e2e.yml` run the packages/ui Chromium and
-  WebKit fixture gates when `packages/ui/src/**` changes.
-- `device-e2e.yml` is the exact-head Android-emulator and iOS-simulator
-  device-bundle producer (#19640). Pull requests never call it;
-  `workflow_dispatch` is the on-demand route and `workflow_call` is available to
-  an explicit trusted caller.
-  Artifact names include the run ID and attempt so reruns cannot overwrite or
-  link a prior attempt's bundle. Both jobs initialize a revision-bound artifact
-  root after checkout, then run the bundle-owning runners with `--output`.
-  Android retains its bootstrap record under `android/logs/` and atomically
-  publishes its allowlisted proof under `android/evidence/`; iOS retains its
-  existing full bundle layout. An earlier toolchain or device failure retains
-  the bootstrap record plus the Actions log. No job reads a repository secret.
-- `android-arm64-local-e2e.yml` is the separate trusted repository-dispatch
-  self-hosted physical-device lane for the embedded Bun + GGUF agent. Its
-  `[self-hosted, Linux, ARM64, android-device]` labels are an infrastructure
-  contract: the job stays queued until such a runner is online, then fails
-  closed unless both the host and attached Android target pass ARM64 and pinned
-  toolchain preflight. Preflight output is uploaded even when a prerequisite
-  fails before the bundle runner starts. It runs local chat plus
-  local-runtime/route WebView probes; on-device voice remains separately
-  qualified. Manual arbitrary-ref dispatch is intentionally unavailable because
-  this runner persists and owns a physical device; repository dispatch resolves
-  the workflow from the trusted default branch.
+`cloud-tests.yml` owns cloud unit/integration/stack tests. Its first unit shard
+owns the batch-runner self-tests; the other shards execute only their assigned
+cloud suites. The cloud API E2E command intentionally has two database owners:
+canonical smoke exercises its local PGlite startup/migration path, while the
+Cloud Tests E2E job supplies PostgreSQL. These database environments remain
+separate contracts. The `--no-cloud` runner flag does not exclude the cloud API
+workspace task.
+
+The separate `cloud-gateway-discord.yml` source-only contract keeps its
+secretless caller and configuration boundary. `ui-e2e-gate.yml` owns the core,
+extended, and gesture fixtures with non-overlapping commands; engine variants
+remain separate tests.
+`ui-story-gate.yml` retains the full story catalog gate. `dev-smoke.yml`,
+`docker-ci-smoke.yml`, and `platform-smoke.yml` retain startup/HMR, container,
+and macOS/Windows contracts. `gitleaks.yml` scans branch commits once; PR
+admission retains its own diff scan.
+
+The retired `test.yml`, `quality.yml`, `scenario-pr.yml`, UI extended and chat
+wrappers and reusable classifier have no independent status
+authority. Manual canonical CI runs the same complete deterministic contract.
+There is no per-child path classifier on branch validation. A cheap source check
+precedes canonical fan-out; missing, skipped, cancelled, or failed required
+children fail the aggregate.
+
+The surface manifest uses current-run evidence only. It does not restore or save
+cross-run success certificates. Exact-source completion and deployment handoff
+remain required; build caches cannot substitute for a green validation result.
+
+The shared setup action restores dependency and Turbo caches independently of
+validation. `publish-caches` defaults to `true`; the smoke and plugin matrices
+select shard 1 as their publisher and use restore-only actions in the other
+shards, with unchanged keys and restore prefixes. Every shard still installs and
+runs its own tasks. If the publisher fails, later runs may have a cold cache;
+that failure still fails the required matrix. Story shards serve the catalog
+artifact and disable Turbo caching because they do not execute Turbo tasks.
+
+Physical-device and live-model evidence remains explicit through the existing
+manual/device entry points. `live-smoke.yml` with `suite=remote-capabilities`
+now owns the remote-capability Cloud/provider proofs and downloaded-artifact
+validation; missing required credentials or failed producers fail that request.
+These proofs do not allocate no-op jobs during ordinary develop validation.
 
 ## Manual operations
 
@@ -261,7 +307,7 @@ Representative examples:
   CNAME/TXT values as DNS-only records and imports existing records only by
   reviewed Cloudflare id.
 - `deploy-gateway-webhook.yml` is the protected Railway release path for the
-  multi-platform webhook gateway. Staging dispatches must select `develop` and
+  multi-platform webhook gateway. Staging dispatches must select `staging` and
   production dispatches must select `main`. The workflow validates the exact
   protected Railway project, environment, service, and public URL; uploads the
   exact dispatch SHA from the repository root with a byte-identical root copy
@@ -288,7 +334,7 @@ Representative examples:
   secret. Existing sensitive service values stay in Railway and are checked by
   name without being printed or rewritten, including the required
   `ELIZA_APP_WEBHOOK_GATEWAY_SECRET` BFF-forwarding trust gate. Staging is
-  protected by the workflow's exact `develop` branch and environment-scoped
+  protected by the workflow's exact `staging` branch and environment-scoped
   configuration gates but does not currently require a reviewer; production
   retains its required-reviewer approval.
 
@@ -297,7 +343,7 @@ Representative examples:
 
   | Dispatch / GitHub Environment | Source branch | Railway service       |
   | ----------------------------- | ------------- | --------------------- |
-  | `staging`                     | `develop`     | `gateway-webhook-stg` |
+  | `staging`                     | `staging`     | `gateway-webhook-stg` |
   | `production`                  | `main`        | `gateway-webhook`     |
 
   The pinned Railway CLI is invoked without a relative path so its explicit
@@ -310,7 +356,7 @@ These workflows use `workflow_dispatch` and never run for pull requests.
 
 ## Deployments
 
-Path-scoped deployment workflows may run after changes land on `develop` or
+Path-scoped deployment workflows may run after changes land on `develop`, `staging`, or
 `main`. They do not create pull-request checks. GitHub environments own
 production approvals and credentials.
 
@@ -334,29 +380,29 @@ Production does not run these gates. They detect broken login discovery;
 restoring the upstream Railway service remains a separate authorized operation.
 
 Production Cloud admission is also tree-bound to staging. A staging release
-whose run SHA the `develop` head has fast-forwarded past ends neutrally before
+whose run SHA the `staging` head has fast-forwarded past ends neutrally before
 any mutation only when GitHub proves that an active Cloud CF Deploy push run
 exists for the exact new head (the canonical-source guard reports
 `superseded=true`, every deploy job skips, and no certification is uploaded).
 Ancestry without a successor run, production staleness, divergence, or any
 unverifiable source still fails the run. After every successful, non-superseded
-`develop` Cloud release, `cloud-cf-deploy.yml` uploads a 14-day immutable
+`staging` Cloud release, `cloud-cf-deploy.yml` uploads a 14-day immutable
 certification whose JSON names the repository, workflow,
 source SHA, root Git tree, run/attempt, environment, and deterministic artifact
 name. A production dispatch checks out the exact requested `main` SHA and must
 resolve that tree's non-expired artifact from a completed successful
-`develop` run admitted by `push` or `workflow_dispatch` before the protected
+`staging` run admitted by `push` or `workflow_dispatch` before the protected
 `production` approval job is even reachable. The artifact id, GitHub digest,
 owning run, payload, current workflow
 bytes, and expiry are all checked. Different merge commits are accepted only
 when their root trees are byte-identical; `force` never bypasses this gate.
 
 Protected staging releases also preserve monotonic forward progress during
-sustained `develop` merge traffic. If a release was current when admitted and
-`develop` advances before a later mutation boundary, the source guard may
+sustained `staging` merge traffic. If a release was current when admitted and
+`staging` advances before a later mutation boundary, the source guard may
 continue only after proving both ancestry edges: the currently served staging
 commit is an ancestor of the release SHA, and the release SHA is an ancestor of
-the new `develop` head. Missing served identity, divergence, rollback, and
+the new `staging` head. Missing served identity, divergence, rollback, and
 unverifiable ancestry still fail closed. Production never enables this mode.
 
 Cloudflare application deploys require Workers and Pages write access. The
@@ -373,10 +419,10 @@ pair only when it matches the protected `staging` GitHub Environment secret
 `TELEGRAM_IDENTITY_AUTHORITY_SHA256`, and requires both components to differ
 from production. The receipt is the lowercase SHA-256 of the framed bytes
 `elizaOS/eliza\0staging\0telegram-public-identity\0v1\0<ID>\0<lowercase-username>\n`.
-`staging-approval` is the policy-only admission checkpoint for `develop`, not a
+`staging-approval` is the policy-only admission checkpoint for `staging`, not a
 third runtime or a Git branch. The `staging` Environment owns staging runtime
 configuration; `production` deploys certified `main` trees. Deployment branch
-policies must allow `develop` for staging approval and `main` for production.
+policies must allow `staging` for staging approval and `main` for production.
 
 The protected staging entry job reads the receipt directly and verifies that the
 existing Worker has both Telegram binding names before any release mutation. It
@@ -432,7 +478,7 @@ reads a value back from a provider.
 ## Staging provisioning diagnostics
 
 The provisioning-worker workflow also accepts `mode=diagnose`, dispatched from
-`develop` with `environment=staging` and the exact `expected_worker_sha` currently
+`staging` with `environment=staging` and the exact `expected_worker_sha` currently
 installed on the host. This mode skips deployment and rejects deployment SHA or
 reconciler inputs. It takes a shared read lease on the existing deployment lock,
 checks source and process identity before and after collection, and reports only

@@ -2,6 +2,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   AnthropicMark,
+  ApiKeyMark,
   CerebrasMark,
   DeepSeekMark,
   ElizaCloudMark,
@@ -20,6 +21,7 @@ const marks = [
   ["Moonshot", MoonshotMark],
   ["Z.ai", ZaiMark],
   ["Cerebras", CerebrasMark],
+  ["External API key", ApiKeyMark],
   ["Eliza Cloud", ElizaCloudMark],
   ["Local", LocalMark],
 ] as const;

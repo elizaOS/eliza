@@ -4,15 +4,20 @@
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAppShellPage } from "../app-shell-registry";
 import { resetUiRegistryHostForTests } from "../registry-host";
+import { developerShellUrl } from "./developer-route";
 import {
   ALL_TAB_GROUPS,
   BUILTIN_ROUTE_IDS,
+  getWindowNavigationPath,
+  isDeveloperWorkspaceRoute,
   LEGACY_PREFIX_TAB_ALIASES,
+  pathForTab,
   resolveBuiltinRouteDescriptor,
   resolveLegacyBuiltinRoute,
+  shouldUseHashNavigation,
   TAB_PATHS,
   tabFromPath,
   titleForTab,
@@ -24,9 +29,96 @@ beforeEach(() => {
 
 afterEach(() => {
   resetUiRegistryHostForTests();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
+describe.each(["/dev", "/dev2"])(
+  "local developer shell routing at %s",
+  (route) => {
+    const location = {
+      protocol: "http:",
+      hostname: "localhost",
+      pathname: route,
+      search: "",
+      hash: "",
+    };
+    it("starts at chat and reads inner app routes without leaving the developer shell", () => {
+      expect(isDeveloperWorkspaceRoute(location)).toBe(true);
+      expect(shouldUseHashNavigation(location)).toBe(true);
+      expect(getWindowNavigationPath(location)).toBe("/chat");
+      expect(getWindowNavigationPath({ ...location, hash: "#/notes" })).toBe(
+        "/notes",
+      );
+      expect(
+        isDeveloperWorkspaceRoute({ ...location, pathname: `${route}/` }),
+      ).toBe(true);
+    });
+    it.each([
+      "/chat",
+      "/notes",
+      "/calendar",
+      "/developer",
+      "/dev22",
+      "/dev2/notes",
+    ])(
+      "leaves normal route %s alone, including legacy opt-in URLs",
+      (pathname) => {
+        const normal = {
+          ...location,
+          pathname,
+          search: "?devtools=1",
+          hash: "#/settings",
+        };
+        expect(isDeveloperWorkspaceRoute(normal)).toBe(false);
+        expect(shouldUseHashNavigation(normal)).toBe(false);
+        expect(getWindowNavigationPath(normal)).toBe(pathname);
+      },
+    );
+    it("does not enable the developer shell on remote hosts or production builds", () => {
+      expect(
+        isDeveloperWorkspaceRoute({ ...location, hostname: "eliza.example" }),
+      ).toBe(false);
+      vi.stubEnv("DEV", false);
+      expect(isDeveloperWorkspaceRoute(location)).toBe(false);
+      expect(shouldUseHashNavigation(location)).toBe(false);
+    });
+    it.each(["127.0.0.1", "localhost", "[::1]"])(
+      "recognizes the developer tab on loopback host %s",
+      (hostname) => {
+        expect(isDeveloperWorkspaceRoute({ ...location, hostname })).toBe(true);
+      },
+    );
+    it("keeps app navigation in the current developer route and retains both query strings", () => {
+      vi.stubGlobal("window", {
+        location: new URL(`http://localhost${route}?reader=1#/chat`),
+      });
+      expect(developerShellUrl("/notes?folder=work#note-1")).toBe(
+        `${route}?reader=1#/notes?folder=work#note-1`,
+      );
+      expect(developerShellUrl("https://eliza.example/notes")).toBe(
+        "https://eliza.example/notes",
+      );
+      expect(developerShellUrl(`${route}#/calendar`)).toBe(
+        `${route}#/calendar`,
+      );
+      expect(developerShellUrl(null)).toBeNull();
+    });
+  },
+);
+
 describe("navigation tabFromPath", () => {
+  it.each(["/rolodex", "/ROLODEX/"])(
+    "routes legacy contact-book links %s to Relationships",
+    (path) => {
+      expect(tabFromPath(path)).toBe("relationships");
+      expect(resolveLegacyBuiltinRoute(path)).toEqual({
+        tab: "relationships",
+        canonicalPath: TAB_PATHS.relationships,
+      });
+      expect(pathForTab("rolodex")).toBe(TAB_PATHS.relationships);
+    },
+  );
   it.each(["/home", "/HOME/"])(
     "canonicalizes the Home alias %s to the chat canvas",
     (path) => {

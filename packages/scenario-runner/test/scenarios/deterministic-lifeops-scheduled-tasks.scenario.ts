@@ -2,17 +2,22 @@
  * Keyless coverage for the LifeOps ScheduledTask action surface. Runs on the
  * pr-deterministic lane under the model provider.
  */
+
+import type { AgentRuntime } from "@elizaos/core";
+import type {
+  RuntimeWithScenarioModelFixtures,
+  StrictActionRouteFixture,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-  type StrictActionRouteFixture,
-} from "@elizaos/core/testing";
+
+import { typedTurnEvaluationFixtures } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
+
+import { registerLifeOpsActionFixtures } from "./_lifeops-action-fixtures";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -143,7 +148,38 @@ function seedStrictFixtures(ctx: ScenarioContext): string | undefined {
   historyParameters.taskId = "__created_task_id_unset__";
 
   scenarioRuntime = ctx.runtime as RuntimeWithScenarioModelFixtures;
-  registerStrictActionRouteFixtures(scenarioRuntime, initialStrictRoutes);
+  registerLifeOpsActionFixtures(scenarioRuntime, initialStrictRoutes);
+  // Reminder CRUD is task state, not evidence of a standing personal goal,
+  // identity, relationship, health condition, or enduring preference.
+  for (const input of [
+    createText,
+    listText,
+    getText,
+    snoozeText,
+    completeText,
+    historyText,
+  ]) {
+    scenarioRuntime.scenarioModelFixtures?.register(
+      ...typedTurnEvaluationFixtures(ctx.runtime as AgentRuntime, ctx, {
+        name: `scheduled-tasks-${input}`,
+        input,
+        action: "SCHEDULED_TASKS",
+        goal: { goalFound: false, goal: "", confidence: 0 },
+        memory: {
+          factMemory: { ops: [] },
+          relationships: { relationships: [] },
+          identities: { identities: [] },
+          preferences: { ops: [] },
+          experiencePatterns: { experiences: [] },
+          success: {
+            completed: true,
+            reason:
+              "The requested water reminder operation succeeded; its state belongs to the scheduled-task record.",
+          },
+        },
+      }),
+    );
+  }
   return undefined;
 }
 
@@ -151,7 +187,7 @@ function registerIdDependentFixtures(taskId: string): string | undefined {
   if (!scenarioRuntime) {
     return "scenario runtime unavailable for id-dependent strict fixtures";
   }
-  registerStrictActionRouteFixtures(
+  registerLifeOpsActionFixtures(
     scenarioRuntime,
     idDependentStrictRoutes(taskId),
   );

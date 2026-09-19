@@ -675,6 +675,12 @@ describe("accounts routes provider-scoped account resolution", () => {
   });
 
   it("keeps z.ai coding-plan and direct API accounts in separate credential pools", async () => {
+    const reconcileCredentials = vi.fn(async () => undefined);
+    setAgentHostBridge({
+      ...defaultAgentHostBridge,
+      getDefaultAccountPool: () => poolMock,
+      applyAccountPoolApiCredentials: reconcileCredentials,
+    });
     vi.stubEnv("ZAI_API_KEY", "");
     vi.stubEnv("Z_AI_API_KEY", undefined);
     poolMock.list.mockImplementation((providerId?: string) => {
@@ -703,6 +709,7 @@ describe("accounts routes provider-scoped account resolution", () => {
 
     expect(codingHandled).toBe(true);
     expect(codingCtx.status).toBe(201);
+    expect(reconcileCredentials).not.toHaveBeenCalled();
     expect(process.env.ZAI_API_KEY).toBe("");
     expect(process.env.Z_AI_API_KEY).toBeUndefined();
     expect(codingCtx.body).toMatchObject({
@@ -726,8 +733,11 @@ describe("accounts routes provider-scoped account resolution", () => {
 
     expect(directHandled).toBe(true);
     expect(directCtx.status).toBe(201);
-    expect(process.env.ZAI_API_KEY).toBe("sk-test-zai-api-key");
-    expect(process.env.Z_AI_API_KEY).toBe("sk-test-zai-api-key");
+    expect(reconcileCredentials).toHaveBeenCalledOnce();
+    // The host pool owns credential selection; enrollment must not publish
+    // the submitted key directly when this boundary declines to export it.
+    expect(process.env.ZAI_API_KEY).toBe("");
+    expect(process.env.Z_AI_API_KEY).toBeUndefined();
     expect(vi.mocked(saveAccount).mock.calls.map(([record]) => record)).toEqual(
       [
         expect.objectContaining({

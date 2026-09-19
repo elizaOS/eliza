@@ -281,7 +281,10 @@ function createMockCloud(state: MockCloudState): Server {
     }
 
     // ── control plane ──────────────────────────────────────────────────────
-    if (path.startsWith("/api/v1/eliza/agents")) {
+    if (
+      path.startsWith("/api/v1/eliza/agents") ||
+      path.startsWith("/api/v1/jobs/")
+    ) {
       if (auth !== `Bearer ${AUTH_TOKEN}`) {
         json(res, 401, { error: "unauthorized", success: false });
         return;
@@ -313,6 +316,19 @@ function createMockCloud(state: MockCloudState): Server {
             status: "queued",
             message: "Agent resume enqueued",
           },
+        });
+        return;
+      }
+      const job = /^\/api\/v1\/jobs\/job-(.+)$/.exec(path);
+      if (job && method === "GET") {
+        const agent = state.agents.get(job[1]);
+        if (!agent?.resumeRequested) {
+          json(res, 404, { success: false, error: "unknown resume job" });
+          return;
+        }
+        json(res, 200, {
+          success: true,
+          data: { id: `job-${agent.id}`, status: "completed" },
         });
         return;
       }

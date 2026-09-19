@@ -45,7 +45,9 @@ export type DirectAccountProvider =
   | "deepseek-api"
   | "zai-api"
   | "moonshot-api"
-  | "cerebras-api";
+  | "cerebras-api"
+  | "openrouter-api"
+  | "xai-api";
 
 export type AccountCredentialProvider =
   | SubscriptionProvider
@@ -85,6 +87,8 @@ export const DIRECT_ACCOUNT_PROVIDER_IDS = [
   "zai-api",
   "moonshot-api",
   "cerebras-api",
+  "openrouter-api",
+  "xai-api",
 ] as const satisfies readonly DirectAccountProvider[];
 
 export const ACCOUNT_CREDENTIAL_PROVIDER_IDS = [
@@ -169,6 +173,17 @@ export const DIRECT_ACCOUNT_PROVIDER_ENV: Record<
   "zai-api": "ZAI_API_KEY",
   "moonshot-api": "MOONSHOT_API_KEY",
   "cerebras-api": "CEREBRAS_API_KEY",
+  "openrouter-api": "OPENROUTER_API_KEY",
+  "xai-api": "XAI_API_KEY",
+};
+
+/** Direct accounts served through the OpenAI-compatible credential bridge. */
+export const OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER: Readonly<
+  Partial<Record<DirectAccountProvider, string>>
+> = {
+  "moonshot-api": "https://api.moonshot.ai/v1",
+  "openrouter-api": "https://openrouter.ai/api/v1",
+  "xai-api": "https://api.x.ai/v1",
 };
 
 /** Maps subscription provider IDs to their model provider short names. */

@@ -71,9 +71,9 @@ export const uiContextProvider: Provider = {
 				? `view_actions: ${uiViewActionNames.join(", ")}`
 				: null,
 			`active_contexts: ${activeContexts.join(", ") || "general"}`,
-			"Treat view_capabilities as available context, not as a request to invoke them.",
-			"View and subview IDs are routing identifiers, not necessarily the displayed titles. Use get-text to read the title when describing an open section. This context identifies the view and available operations; it does not contain its displayed content or current record values. Only questions about view identity or available capabilities can be answered directly from it. For displayed text, balances, selections, or current settings, inspect the focused view using VIEWS get-text/list-elements or the relevant domain read action before answering. Never infer displayed values from route names or configuration diagnostics.",
-			"For an actual operation, prefer the focused domain action (for example NOTES for note records or CALENDAR for events). Use VIEWS for navigation, layout, or an explicit declared UI capability that has no dedicated domain action. Never claim an operation happened unless its action succeeded.",
+			"view_capabilities is context, not an invocation request.",
+			"Only view identity/capabilities are supplied, not displayed content or current record values. View/subview IDs are routing identifiers, not necessarily titles; read titles with get-text. For displayed text, balances, selections or current settings, first inspect the focused view via VIEWS get-text/list-elements or a relevant domain read action. Never infer displayed values from routes or configuration diagnostics.",
+			"Open views with registered VIEWS_SHOW, otherwise VIEWS; opening is not a record operation. Use note/event actions only for requested record reads/writes, preferring available child actions over umbrellas. Use VIEWS for layout or capabilities without domain actions. Claim effects only from successful results.",
 		].filter((line): line is string => line !== null);
 
 		return {

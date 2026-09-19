@@ -10,6 +10,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { logger } from "@elizaos/core";
+import { isRegistryCacheFresh } from "@elizaos/registry";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import type { RegistryEndpoint } from "../config/types.eliza.ts";
@@ -145,7 +146,7 @@ async function readFileCache(): Promise<Map<
     };
     if (typeof parsed.fetchedAt !== "number" || !Array.isArray(parsed.plugins))
       return null;
-    if (Date.now() - parsed.fetchedAt > CACHE_TTL_MS) return null;
+    if (!isRegistryCacheFresh(parsed.fetchedAt, CACHE_TTL_MS)) return null;
     return new Map(parsed.plugins);
   } catch {
     return null;
@@ -272,27 +273,12 @@ async function loadRegistryPlugins(
 ): Promise<Map<string, RegistryPluginInfo>> {
   if (
     memoryCache &&
-    Date.now() - memoryCache.fetchedAt < (memoryCache.ttlMs ?? CACHE_TTL_MS)
+    isRegistryCacheFresh(
+      memoryCache.fetchedAt,
+      memoryCache.ttlMs ?? CACHE_TTL_MS,
+    )
   ) {
     return memoryCache.plugins;
-  }
-
-  if (!skipFileCache) {
-    const fileReadGeneration = registryGeneration;
-    const fromFile = await readFileCache();
-    if (fromFile) {
-      await applyLocalWorkspaceApps(fromFile);
-      await applyNodeModulePlugins(fromFile);
-      await mergeCustomEndpoints(fromFile, getConfiguredEndpoints());
-
-      // A refresh can unlink the cache while an earlier read still owns an open
-      // file handle. Return that snapshot only to its original caller; publishing
-      // it would replace the post-refresh memory cache with stale disk state.
-      if (fileReadGeneration !== registryGeneration) return fromFile;
-
-      memoryCache = { plugins: fromFile, fetchedAt: Date.now() };
-      return fromFile;
-    }
   }
 
   if (registryLoadPromise) {
@@ -300,7 +286,27 @@ async function loadRegistryPlugins(
   }
 
   const generation = registryGeneration;
+  // Disk snapshots also require workspace discovery. Share the entire load so
+  // concurrent callers do not repeat those scans before memory is populated.
   const load: Promise<Map<string, RegistryPluginInfo>> = (async () => {
+    if (!skipFileCache) {
+      const fileReadGeneration = registryGeneration;
+      const fromFile = await readFileCache();
+      if (fromFile) {
+        await applyLocalWorkspaceApps(fromFile);
+        await applyNodeModulePlugins(fromFile);
+        await mergeCustomEndpoints(fromFile, getConfiguredEndpoints());
+
+        // A refresh can unlink the cache while an earlier read still owns an open
+        // file handle. Return that snapshot only to its original caller; publishing
+        // it would replace the post-refresh memory cache with stale disk state.
+        if (fileReadGeneration !== registryGeneration) return fromFile;
+
+        memoryCache = { plugins: fromFile, fetchedAt: Date.now() };
+        return fromFile;
+      }
+    }
+
     logger.info("[registry-client] Fetching plugin registry...");
     let plugins: Map<string, RegistryPluginInfo>;
     let usedLocalFallback = false;

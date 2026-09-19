@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "ledgerVersion": "2026-09-06.three-branch-v1",
+  "sourceBranch": "main",
+  "effects": [
+    {
+      "id": "agent-image-production",
+      "workflow": "build-agent-image.yml",
+      "surfaces": [
+        "canonical",
+        "cloud",
+        "docker"
+      ],
+      "shaInput": "source_sha",
+      "inputs": {
+        "publication_target": "canonical"
+      }
+    },
+    {
+      "id": "apps-worker-production",
+      "workflow": "deploy-apps-worker.yml",
+      "surfaces": [
+        "canonical",
+        "cloud"
+      ],
+      "shaInput": "source_sha",
+      "inputs": {
+        "environment": "production"
+      }
+    },
+    {
+      "id": "provisioning-worker-production",
+      "workflow": "deploy-eliza-provisioning-worker.yml",
+      "surfaces": [
+        "canonical",
+        "cloud"
+      ],
+      "shaInput": "deployment_sha",
+      "inputs": {
+        "environment": "production"
+      }
+    },
+    {
+      "id": "cloud-production",
+      "workflow": "cloud-cf-deploy.yml",
+      "surfaces": [
+        "canonical",
+        "cloud",
+        "quality",
+        "ui-core"
+      ],
+      "shaInput": "source_sha",
+      "inputs": {
+        "environment": "production",
+        "force": "false"
+      }
+    }
+  ],
+  "promotion": null
+}

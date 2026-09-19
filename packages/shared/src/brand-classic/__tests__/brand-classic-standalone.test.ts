@@ -2,7 +2,11 @@
  * Unit tests for Eliza Classic brand tokens and path resolution.
  * Validates canonical color definitions, logo paths, and asset path normalization.
  */
+
+import { existsSync } from "node:fs";
+import { basename } from "node:path";
 import { describe, expect, it } from "vitest";
+import { LOGO_FILES } from "../../brand/index.ts";
 import {
   BRAND_ASSET_BASE_PATH,
   brandAssetPath,
@@ -52,6 +56,22 @@ describe("brand-classic", () => {
       );
       expect(brandFavicons.ico).toBe("/brand/favicons/favicon.ico");
       expect(brandFavicons.svg).toBe("/brand/favicons/favicon.svg");
+    });
+
+    it("resolves every compatibility logo through the canonical asset catalog", () => {
+      const canonicalNames = new Set(Object.values(LOGO_FILES));
+      const compatibilityNames = Object.values(brandLogos).map((value) =>
+        basename(value),
+      );
+      expect(new Set(compatibilityNames)).toEqual(canonicalNames);
+      for (const filename of compatibilityNames) {
+        expect(
+          existsSync(
+            new URL(`../../../assets/logos/${filename}`, import.meta.url),
+          ),
+          `missing canonical brand asset ${filename}`,
+        ).toBe(true);
+      }
     });
 
     it("exports brand concepts and cloud backgrounds", () => {

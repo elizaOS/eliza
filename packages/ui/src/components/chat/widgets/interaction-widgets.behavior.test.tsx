@@ -371,7 +371,7 @@ describe("ChoiceWidget — pick an option", () => {
     expect(onChoose).toHaveBeenCalledTimes(1);
   });
 
-  it("multi-option first-run: the SELECTED row keeps full-opacity accent tokens; only the non-selected locked rows fade (#15144, #15516)", () => {
+  it("locks both first-run choices after selection and dispatches only once", () => {
     const onChoose = vi.fn();
     render(
       <ChoiceWidget
@@ -384,45 +384,20 @@ describe("ChoiceWidget — pick an option", () => {
         onChoose={onChoose}
       />,
     );
-
-    // Multi-option keeps the shell (title + count label). The count is plain
-    // theme-token text — no pill background, no border (chat-native de-slop;
-    // the theme text token stays readable on every surface).
-    expect(screen.getByText("Choose next step")).toBeTruthy();
-    const chip = screen.getByText("2 options");
-    expect(chip.className).toContain("text-muted");
-    expect(chip.className).not.toContain("bg-surface");
-    expect(chip.className).not.toContain("bg-bg");
-
-    const cloudBeforePick = screen.getByTestId("choice-cloud");
-    const localBeforePick = screen.getByTestId("choice-local");
-    expect(cloudBeforePick.getAttribute("data-state")).toBe("on");
-    expect(cloudBeforePick.className).toContain("data-[state=on]:bg-accent");
-    expect(cloudBeforePick.className).toContain(
-      "data-[state=on]:disabled:opacity-100",
-    );
-
-    expect(localBeforePick.getAttribute("data-state")).toBe("off");
-    expect(localBeforePick.className.split(/\s+/)).toEqual(
-      expect.arrayContaining([
-        "bg-card",
-        "text-txt-strong",
-        "border-border-strong",
-        "disabled:opacity-40",
-      ]),
-    );
-
-    fireEvent.click(screen.getByTestId("choice-cloud"));
-
-    const picked = screen.getByTestId("choice-cloud");
-    const other = screen.getByTestId("choice-local");
-    expect(picked.getAttribute("data-state")).toBe("on");
-    expect(other.getAttribute("data-state")).toBe("off");
-    expect(picked.getAttribute("aria-pressed")).toBe("true");
-    expect(other.getAttribute("aria-pressed")).toBe("false");
-    expect(picked.className).toContain("data-[state=on]:disabled:opacity-100");
-    expect(other.className).toContain("disabled:opacity-40");
-    expect(onChoose).toHaveBeenCalledWith("cloud");
+    const cloud = screen.getByRole("button", {
+      name: "Eliza Cloud (recommended)",
+    });
+    const local = screen.getByRole("button", { name: "On this device" });
+    expect(cloud.hasAttribute("disabled")).toBe(false);
+    expect(local.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(cloud);
+    expect(cloud.getAttribute("aria-pressed")).toBe("true");
+    expect(local.getAttribute("aria-pressed")).toBe("false");
+    expect(cloud.hasAttribute("disabled")).toBe(true);
+    expect(local.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(local);
+    fireEvent.click(cloud);
+    expect(onChoose).toHaveBeenCalledExactlyOnceWith("cloud");
   });
 
   it("multi-option first-run: selecting the non-recommended row demotes the recommended row after lock", () => {

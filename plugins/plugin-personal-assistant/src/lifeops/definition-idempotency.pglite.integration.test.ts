@@ -20,6 +20,7 @@ import {
   type RealTestRuntimeResult,
 } from "../../test/helpers/runtime.js";
 import { ownerTodosAction } from "../actions/owner-surfaces.js";
+import { LifeOpsRepository } from "./repository.js";
 import { LifeOpsService } from "./service.js";
 import { executeRawSql } from "./sql.js";
 
@@ -48,6 +49,9 @@ describe("durable owner definition creation identity", () => {
       pgliteDir: directory,
       removePgliteDirOnCleanup: false,
     });
+    // Direct service calls bypass the HTTP route's awaited schema boundary.
+    // Run that real compatibility migration before testing persisted replay.
+    await LifeOpsRepository.bootstrapSchema(host.runtime);
     service = new LifeOpsService(host.runtime, {
       ownerEntityId: host.runtime.agentId,
     });

@@ -65,7 +65,7 @@ export function AccountListShell({
     >
       <section>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-strong">
             {heading}
           </h3>
           {action}

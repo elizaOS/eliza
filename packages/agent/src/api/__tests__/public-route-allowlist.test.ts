@@ -263,7 +263,7 @@ function scanRepo(): PublicRoute[] {
       text,
       path.relative(REPO_ROOT, file),
     )) {
-      const dedupe = `${route.identity} ${route.file}`;
+      const dedupe = `${route.identity}\0${route.file}`;
       if (seen.has(dedupe)) continue;
       seen.add(dedupe);
       routes.push(route);
@@ -340,6 +340,8 @@ const ALLOWLIST: Record<string, string> = {
     "Blooio webhook delivery is unauthenticated at the agent gate and verified by provider signature",
 
   // @elizaos/ui cloud public pages — reachable by external/unauthenticated users.
+  pricing:
+    "cloud public page: published subscription prices, no private account data",
   "payment/:paymentRequestId":
     "cloud public page: external payer; the request id is the capability link",
   "payment/success": "cloud public page: payment success landing",

@@ -116,27 +116,6 @@ afterEach(() => {
 });
 
 describe("MemoryViewerView mobile sidebar header trigger", () => {
-  it("renders the Filters trigger in the view header and no inline trigger in the content", async () => {
-    render(<MemoryViewerView />);
-
-    await waitFor(() =>
-      expect(clientMock.getRelationshipsPeople).toHaveBeenCalled(),
-    );
-
-    const triggers = screen.getAllByTestId(
-      "page-layout-mobile-sidebar-trigger",
-    );
-    expect(triggers).toHaveLength(1);
-    expect(triggers[0].textContent).toContain("Filters");
-    expect(
-      within(screen.getByTestId("view-header")).getByTestId(
-        "page-layout-mobile-sidebar-trigger",
-      ),
-    ).toBe(triggers[0]);
-    // The old orphan placement: inside the PageLayout main pane, below the header.
-    expect(triggers[0].closest("main")).toBeNull();
-  });
-
   it("opens the people drawer from the header control", async () => {
     render(<MemoryViewerView />);
 

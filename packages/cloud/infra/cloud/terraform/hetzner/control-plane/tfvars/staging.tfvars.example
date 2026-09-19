@@ -18,6 +18,6 @@ ssh_public_keys = [
   # "ssh-ed25519 AAAA... operator@laptop"
 ]
 
-# Branch the host's auto-deploy follows. Staging tracks 'develop' by default;
+# Branch the host's auto-deploy follows. Staging tracks 'staging' by default;
 # production MUST be 'main' (enforced by validation).
-deploy_branch = "develop"
+deploy_branch = "staging"

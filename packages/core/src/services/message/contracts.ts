@@ -10,6 +10,7 @@ import type {
 } from "../../types/components";
 import type { Memory } from "../../types/memory";
 import type {
+	MessageReplyRecoveryContext,
 	MessageTerminalFailure,
 	ShouldRespondModelType,
 } from "../../types/message-service";
@@ -40,6 +41,8 @@ export type ResolvedMessageOptions = {
 	onTrajectoryTerminalOwner?: (owner: "run") => void;
 	onInferenceTimingSummary?: (summary: InferenceTurnSummary) => void;
 	runTerminalOwner?: MessageRunTerminalOwner;
+	/** Turn-owned authorized originals for reply-only delivery recovery. */
+	prepareReplyRecovery?: () => Promise<MessageReplyRecoveryContext>;
 };
 
 /**
@@ -54,6 +57,7 @@ export interface StrategyResult {
 	responseContent: Content | null;
 	responseMessages: Memory[];
 	actionResults?: ActionResult[];
+	replyRecovery?: MessageReplyRecoveryContext;
 	terminalFailure?: MessageTerminalFailure;
 	state: State;
 	mode: StrategyMode;

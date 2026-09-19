@@ -1,6 +1,5 @@
-# This non-cancelable authority accepts only an exact successful Develop Full
-# push run, reconciles durable external effects, then fast-forwards main without
-# manufacturing an untested commit. It never runs from pull requests.
+# Reconciles effects only after exact source validation and opens a reviewed
+# promotion request. Branch updates remain subject to repository protection.
 name: Develop Effect Reconcile
 
 run-name: Reconcile ${{ inputs.source_sha }} from Develop Full ${{ inputs.source_run_id }}
@@ -9,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       source_sha:
-        description: Exact fully verified develop commit
+        description: Exact fully verified source branch commit
         required: true
         type: string
       source_run_id:
@@ -18,18 +17,19 @@ on:
         type: string
 
 concurrency:
-  group: develop-effect-reconcile
+  group: branch-effect-reconcile-${{ github.ref_name }}
   cancel-in-progress: false
   queue: max
 
 permissions:
   actions: write
-  contents: write
+  contents: read
   deployments: write
+  pull-requests: write
 
 jobs:
   reconcile:
-    name: Reconcile exact effects and promote main
+    name: Reconcile exact effects and promote next branch
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     steps:
@@ -39,6 +39,10 @@ jobs:
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
+          [[ "$GITHUB_REF_NAME" == "develop" || "$GITHUB_REF_NAME" == "staging" || "$GITHUB_REF_NAME" == "main" ]] || {
+            echo "::error::Reconciliation requires develop, staging, or main"
+            exit 1
+          }
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
             echo "::error::source_sha must be a lowercase full commit SHA"
             exit 1
@@ -69,7 +73,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           SOURCE_SHA: ${{ inputs.source_sha }}
-        run: node packages/scripts/develop-effect-ledger.mjs await-source --source-sha "$SOURCE_SHA" --source-run-id "$SOURCE_RUN_ID"
+        run: node packages/scripts/develop-effect-ledger.mjs await-source --source-sha "$SOURCE_SHA" --source-run-id "$SOURCE_RUN_ID" --source-branch "$GITHUB_REF_NAME"
 
       - name: Download exact validation manifest
         env:
@@ -78,9 +82,9 @@ jobs:
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: gh run download "$SOURCE_RUN_ID" --name "develop-full-manifest-$SOURCE_SHA" --dir .develop-evidence
 
-      - name: Reconcile effects and fast-forward main
+      - name: Reconcile effects and fast-forward next branch
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           SOURCE_SHA: ${{ inputs.source_sha }}
-        run: node packages/scripts/develop-effect-ledger.mjs reconcile --source-sha "$SOURCE_SHA" --source-run-id "$SOURCE_RUN_ID" --expected .develop-evidence/expected.json --observed .develop-evidence/observed.json
+        run: node packages/scripts/develop-effect-ledger.mjs reconcile --source-sha "$SOURCE_SHA" --source-run-id "$SOURCE_RUN_ID" --source-branch "$GITHUB_REF_NAME" --expected .develop-evidence/expected.json --observed .develop-evidence/observed.json

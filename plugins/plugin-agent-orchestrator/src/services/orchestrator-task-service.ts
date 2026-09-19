@@ -4353,10 +4353,9 @@ export class OrchestratorTaskService extends Service {
         // carry the snapshot forward instead of clobbering it.
         doc = (await this.store.getTask(taskId)) ?? doc;
         if (residuals.status === "unverifiable") {
-          // An inspection failure is not a finding: burning the bounded
-          // attempt cap on transient git timeouts/fs races would exhaust it
-          // with zero residuals. Record + report and stay `validating` — a
-          // manual /validate or the next task_complete re-runs the gate.
+          // Inspection failure is infrastructure uncertainty, not a worker
+          // failure. Reuse the canonical retry/escalation transition without
+          // consuming its corrective-attempt budget.
           await this.store.addEvent({
             id: randomUUID(),
             taskId,
@@ -4386,7 +4385,15 @@ export class OrchestratorTaskService extends Service {
             ),
             { taskId, sessionId },
           );
-          this.emitChange(taskId);
+          await this.retryInconclusiveVerification({
+            taskId,
+            sessionId,
+            eventType: "auto_verify_inconclusive",
+            verifier: COMPLETION_RESIDUALS_VERIFIER_NAME,
+            summary: summarizeResiduals(residuals),
+            correction:
+              "Workspace verification was unavailable. Your work was not counted as a failed attempt. Restore access to the existing workspace and re-report completion with the same evidence so verification can retry.",
+          });
           return;
         }
         if (residuals.status !== "clean") {

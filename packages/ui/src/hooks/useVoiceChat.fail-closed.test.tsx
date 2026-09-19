@@ -47,13 +47,15 @@ const speechSynthesisMock = {
   }),
 };
 
-class FakeAudioContext {
+class FakeAudioContext extends EventTarget {
+  currentTime = 0;
   state = "running";
   destination = {};
   resume = vi.fn(async () => {});
   createAnalyser = vi.fn(() => ({
     fftSize: 2048,
     smoothingTimeConstant: 0.8,
+    getFloatTimeDomainData: vi.fn((samples: Float32Array) => samples.fill(0)),
     connect: vi.fn(),
     disconnect: vi.fn(),
   }));
@@ -174,6 +176,8 @@ describe("useVoiceChat TTS fails closed (#12253)", () => {
     });
     await waitFor(() => {
       expect(result.current.ttsError).toBeNull();
+      expect(result.current.isSpeaking).toBe(true);
+      expect(result.current.mouthOpen).toBeGreaterThan(0);
     });
     expect(speechSynthesisMock.speak).not.toHaveBeenCalled();
   });

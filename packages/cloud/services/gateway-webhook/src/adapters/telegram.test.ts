@@ -410,7 +410,7 @@ describe("telegramAdapter.extractEvent", () => {
     expect(fetches).toBe(0);
   });
 
-  test("does not treat a Crockford-invalid code as a link command", async () => {
+  test("does not treat a product-alphabet-invalid code as a link command", async () => {
     let fetches = 0;
     globalThis.fetch = mock(async () => {
       fetches += 1;

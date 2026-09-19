@@ -34,6 +34,7 @@ import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { openEventSource } from "../utils/event-source";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { androidNativeAgentLifecycleForUrl } from "./android-native-agent-transport";
+import { waitForFirstRunActivation } from "./first-run-activation";
 import "./client-agent-accounts";
 
 export * from "./client-agent-accounts";
@@ -145,6 +146,7 @@ import {
 } from "./client-types";
 import { isApiError } from "./client-types-core";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
+import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
 import { workflowSurfaceClient } from "./workflow-surface-routing";
 
 export {
@@ -275,6 +277,7 @@ async function getDesktopStatusRpc<T>(
   params?: unknown,
 ): Promise<T | null> {
   if (
+    !isDesktopLocalApiBaseUrl(baseUrl) ||
     isDesktopExternalApiBaseUrl(baseUrl) ||
     isRemoteRelayRestAdapterBase(baseUrl)
   ) {
@@ -294,6 +297,7 @@ async function invokeLocalDesktopAgentRpc<T>(
   options: { rpcMethod: string; ipcChannel: string; params?: unknown },
 ): Promise<T | null> {
   if (
+    !isDesktopLocalApiBaseUrl(baseUrl) ||
     isDesktopExternalApiBaseUrl(baseUrl) ||
     isRemoteRelayRestAdapterBase(baseUrl)
   ) {
@@ -1529,10 +1533,14 @@ ElizaClient.prototype.submitFirstRun = async function (
   this: ElizaClient,
   data,
 ) {
-  await this.fetch("/api/first-run", {
+  const response = await this.fetch<unknown>("/api/first-run", {
     method: "POST",
+    headers: { "Idempotency-Key": crypto.randomUUID() },
     body: JSON.stringify(data),
   });
+  await waitForFirstRunActivation(response, (id) =>
+    this.fetch(`/api/first-run/activation/${encodeURIComponent(id)}`),
+  );
 };
 
 ElizaClient.prototype.startAnthropicLogin = async function (this: ElizaClient) {

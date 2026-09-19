@@ -9,7 +9,7 @@
  * cases prove `imageRepoSql` normalization inside the candidate queries returns
  * same-repo rows and still excludes a genuinely different (custom) repo.
  *
- * Harness mirrors `__tests__/agent-billing-reactivation.test.ts`: drizzle-kit
+ * Harness mirrors `__tests__/agent-billing-safety.pglite.test.ts`: drizzle-kit
  * `pushSchema` applies the exact DDL from the real schema objects to the same
  * PGlite connection the repository queries through. Fails LOUDLY (never
  * silently passes) when a shared non-PGlite Postgres is the ambient DATABASE_URL.

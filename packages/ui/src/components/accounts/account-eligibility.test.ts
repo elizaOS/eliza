@@ -44,15 +44,6 @@ describe("resolveProviderEligibility", () => {
     expect(resolved.codingAgent).toBe(false);
   });
 
-  it("does not infer coding-agent spawn support for inference-only APIs", () => {
-    const resolved = resolveProviderEligibility(
-      option("deepseek-api"),
-      undefined,
-    );
-    expect(resolved.chat).toBe(true);
-    expect(resolved.codingAgent).toBe(false);
-  });
-
   it("surfaces the server's unsupported spawn reason", () => {
     const resolved = resolveProviderEligibility(option("kimi-coding"), {
       chat: { available: true, credentialPath: "account-pool" },
@@ -88,15 +79,33 @@ describe("resolveProviderEligibility", () => {
     }
   });
 
-  it.each(["zai-coding", "kimi-coding"] as const)(
-    "infers inference-only eligibility for %s",
+  it.each([
+    "deepseek-api",
+    "zai-coding",
+    "kimi-coding",
+    "openrouter-api",
+    "xai-api",
+  ] as const)(
+    "uses Pi eligibility for %s until runtime authority reports it unavailable",
     (providerId) => {
-      expect(resolveProviderEligibility(option(providerId), undefined)).toEqual(
-        {
-          chat: true,
-          codingAgent: false,
-          source: "inferred",
+      const provider = option(providerId);
+      const inferred = resolveProviderEligibility(provider, undefined);
+      expect(inferred.chat).toBe(true);
+      expect(inferred.codingAgent).toBe(true);
+      expect(inferred.source).toBe("inferred");
+
+      const unavailable = resolveProviderEligibility(provider, {
+        chat: { available: true, credentialPath: "account-pool" },
+        codingAgent: {
+          available: false,
+          credentialPath: "none",
+          unavailableReason: "The selected account requires reauthentication.",
         },
+      });
+      expect(unavailable.codingAgent).toBe(false);
+      expect(unavailable.source).toBe("runtime");
+      expect(unavailable.note).toBe(
+        "The selected account requires reauthentication.",
       );
     },
   );

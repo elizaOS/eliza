@@ -83,8 +83,24 @@ const agentSourceJsToTsPlugin = {
     if (source === "@elizaos/agent/api/connector-account-routes") {
       return path.join(agentSourceRoot, "api", "connector-account-routes.ts");
     }
+    if (source === "@elizaos/agent/api/zip-utils") {
+      return path.join(agentSourceRoot, "api", "zip-utils.ts");
+    }
+    if (source === "@elizaos/agent/services/agent-backup") {
+      return path.join(agentSourceRoot, "services", "agent-backup.ts");
+    }
+    if (source === "@elizaos/agent/services/agent-backup-authority") {
+      return path.join(
+        agentSourceRoot,
+        "services",
+        "agent-backup-authority.ts",
+      );
+    }
     if (source === "@elizaos/agent/api/server-helpers") {
       return path.join(agentSourceRoot, "api", "server-helpers.ts");
+    }
+    if (source === "@elizaos/agent/runtime/plugin-collector") {
+      return path.join(agentSourceRoot, "runtime", "plugin-collector.ts");
     }
     if (source === "@elizaos/ui") {
       return path.join(lifeopsTestStubsRoot, "ui.ts");
@@ -246,6 +262,39 @@ export default defineConfig({
     ...baseConfig.resolve,
     preserveSymlinks: false,
     alias: [
+      {
+        find: /^@elizaos\/app-core\/api\/compat-route-shared$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "app-core",
+          "src",
+          "api",
+          "compat-route-shared.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/app-core\/api\/auth$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "app-core",
+          "src",
+          "api",
+          "auth.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/app-core\/services\/auth-store$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "app-core",
+          "src",
+          "services",
+          "auth-store.ts",
+        ),
+      },
       // The real agent runtime loads audio-redaction services while this lane
       // boots the OWNER/USER matrix. This specialized alias list replaces the
       // base shared-source aliases, so keep these two package subpaths anchored
@@ -283,8 +332,31 @@ export default defineConfig({
         replacement: path.join(agentSourceRoot, "api", "server-helpers.ts"),
       },
       {
+        // The real plugin collector, so a runtime test can register plugins
+        // in the order the standalone agent derives (#30943).
+        find: /^@elizaos\/agent\/runtime\/plugin-collector$/,
+        replacement: path.join(
+          agentSourceRoot,
+          "runtime",
+          "plugin-collector.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/app-core\/platform\/native-library-policy$/,
         replacement: appCoreNativeLibraryPolicy,
+      },
+      // Registered HTTP routes must exercise the real owner authentication
+      // boundary even when app-core's distribution has not been built.
+      {
+        find: /^@elizaos\/app-core\/api\/(auth|compat-route-shared)$/,
+        replacement: path.join(elizaRoot, "packages/app-core/src/api/$1.ts"),
+      },
+      {
+        find: /^@elizaos\/app-core\/services\/auth-store$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages/app-core/src/services/auth-store.ts",
+        ),
       },
       {
         find: /^@elizaos\/app-core\/services\/task-host-capabilities$/,
@@ -441,6 +513,10 @@ export default defineConfig({
       // trust-fallback owner derivations; anchor both to source ahead of the
       // bare `@elizaos/agent` stub alias below.
       {
+        find: /^@elizaos\/agent\/api\/zip-utils$/,
+        replacement: path.join(agentSourceRoot, "api", "zip-utils.ts"),
+      },
+      {
         find: /^@elizaos\/agent\/api\/client-chat-admin$/,
         replacement: path.join(agentSourceRoot, "api", "client-chat-admin.ts"),
       },
@@ -473,6 +549,18 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent\/config\/paths$/,
         replacement: path.join(agentSourceRoot, "config", "paths.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/services\/agent-backup-authority$/,
+        replacement: path.join(
+          agentSourceRoot,
+          "services",
+          "agent-backup-authority.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/agent\/services\/agent-backup$/,
+        replacement: path.join(agentSourceRoot, "services", "agent-backup.ts"),
       },
       {
         find: "@elizaos/agent",

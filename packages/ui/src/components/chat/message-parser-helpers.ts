@@ -138,6 +138,11 @@ export function resetParserWork(): void {
  */
 export function normalizeDisplayCore(text: string): string {
   parserWork.normalizedChars += text.length;
+  return stripAssistantStageDirections(stripHiddenDisplayContent(text));
+}
+
+/** Prepare identical visible input for full normalization and streaming stage-direction detection. */
+export function stripHiddenDisplayContent(text: string): string {
   let normalized = text;
 
   // Hide hidden reasoning/tool blocks from chat bubbles.
@@ -148,7 +153,6 @@ export function normalizeDisplayCore(text: string): string {
   // user never sees hidden-tag fragments while tokens arrive.
   normalized = normalized.replace(TRAILING_PARTIAL_TAG_RE, "");
 
-  normalized = stripAssistantStageDirections(normalized);
   return normalized;
 }
 
@@ -212,8 +216,29 @@ export function looksLikePatch(trimmed: string): boolean {
 export function tryParsePatch(line: string): PatchOp | null {
   const t = line.trim();
   if (!looksLikePatch(t)) return null;
+  // Recover only redundant closing braces AFTER a complete JSON object.
+  // Live Qwen output sometimes adds one to an otherwise valid table patch.
+  // Never fill missing values/brackets or alter quoted content. The source
+  // message and trajectory retain the original bytes; this is render-only.
+  let json = t;
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let i = 0; i < t.length; i++) {
+    const char = t[i];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') quoted = false;
+    } else if (char === '"') quoted = true;
+    else if (char === "{") depth++;
+    else if (char === "}" && --depth === 0) {
+      if (/^\s*}(?:\s*})*\s*$/.test(t.slice(i + 1))) json = t.slice(0, i + 1);
+      break;
+    }
+  }
   try {
-    const obj = JSON.parse(t) as Record<string, unknown>;
+    const obj = JSON.parse(json) as Record<string, unknown>;
     if (typeof obj.op === "string" && typeof obj.path === "string")
       return obj as PatchOp;
     return null;

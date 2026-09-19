@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       expected_deploy_sha:
-        description: Exact 40-character develop SHA served by both staging arms.
+        description: Exact 40-character staging SHA served by both staging arms.
         required: true
         type: string
       smart_base_url:
@@ -57,8 +57,8 @@ jobs:
             echo "::error::expected_deploy_sha must be a lowercase 40-character commit."
             exit 1
           fi
-          if [[ "$GITHUB_REF" != "refs/heads/develop" || "$GITHUB_SHA" != "$EXPECTED_DEPLOY_SHA" ]]; then
-            echo "::error::Dispatch develop at the exact SHA served by both staging arms."
+          if [[ "$GITHUB_REF" != "refs/heads/staging" || "$GITHUB_SHA" != "$EXPECTED_DEPLOY_SHA" ]]; then
+            echo "::error::Dispatch staging at the exact SHA served by both staging arms."
             exit 1
           fi
           required=(ELIZAOS_CLOUD_API_KEY CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID)

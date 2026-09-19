@@ -3,7 +3,6 @@
 import { ModelType } from "@elizaos/core";
 import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import legacyScenario from "../test/scenarios/deterministic-pr-smoke.scenario.ts";
 import { runScenario } from "./executor.ts";
 import { beginScenarioModelFixtureAttempt } from "./model-fixtures.ts";
 import {
@@ -13,6 +12,12 @@ import {
 
 describe("legacy deterministic scenario compatibility", () => {
   let runtimeResult: RuntimeFactoryResult | undefined;
+  const legacyScenario: ScenarioDefinition = {
+    id: "legacy-compatibility",
+    title: "Legacy compatibility",
+    domain: "scenario-runner",
+    turns: [],
+  };
 
   beforeAll(async () => {
     runtimeResult = await createScenarioRuntime({

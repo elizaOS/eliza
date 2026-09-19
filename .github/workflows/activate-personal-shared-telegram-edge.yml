@@ -38,7 +38,7 @@ jobs:
     env:
       REQUESTED_ENVIRONMENT: ${{ inputs.environment }}
       TARGET_ENVIRONMENT: ${{ inputs.environment == 'production' && 'production' || 'staging' }}
-      EXPECTED_BRANCH: ${{ inputs.environment == 'production' && 'main' || 'develop' }}
+      EXPECTED_BRANCH: ${{ inputs.environment == 'production' && 'main' || 'staging' }}
       EDGE_SECRET_NAME: ${{ inputs.environment == 'production' && 'PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED' || 'PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED' }}
       EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
       DESIRED_ENABLED: ${{ inputs.enabled && 'true' || 'false' }}
@@ -64,8 +64,8 @@ jobs:
           require_exact REQUESTED_ENVIRONMENT "$REQUESTED_ENVIRONMENT" "$TARGET_ENVIRONMENT"
           case "$TARGET_ENVIRONMENT" in
             staging)
-              require_exact EXPECTED_BRANCH "$EXPECTED_BRANCH" develop
-              require_exact GITHUB_REF "$GITHUB_REF" refs/heads/develop
+              require_exact EXPECTED_BRANCH "$EXPECTED_BRANCH" staging
+              require_exact GITHUB_REF "$GITHUB_REF" refs/heads/staging
               require_exact EDGE_SECRET_NAME "$EDGE_SECRET_NAME" PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED
               require_exact HEALTH_URL "$HEALTH_URL" https://api-staging.eliza.app/api/health
               require_exact GATEWAY_URL "$GATEWAY_URL" https://gateway-webhook-stg-staging.up.railway.app
@@ -133,7 +133,7 @@ jobs:
     env:
       REQUESTED_ENVIRONMENT: ${{ inputs.environment }}
       TARGET_ENVIRONMENT: ${{ inputs.environment == 'production' && 'production' || 'staging' }}
-      EXPECTED_BRANCH: ${{ inputs.environment == 'production' && 'main' || 'develop' }}
+      EXPECTED_BRANCH: ${{ inputs.environment == 'production' && 'main' || 'staging' }}
       EDGE_SECRET_NAME: ${{ inputs.environment == 'production' && 'PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED' || 'PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED' }}
       EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
       DESIRED_ENABLED: ${{ inputs.enabled && 'true' || 'false' }}
