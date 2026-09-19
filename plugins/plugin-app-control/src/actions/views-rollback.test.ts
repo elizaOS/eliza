@@ -20,7 +20,16 @@ const coreMock = vi.hoisted(() => ({
 		error instanceof Error ? error.message : String(error),
 }));
 
-vi.mock("@elizaos/core", () => coreMock);
+vi.mock("@elizaos/core", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@elizaos/core")>();
+	return { ...actual, ...coreMock };
+});
+
+vi.mock("@elizaos/shared/runtime-env", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("@elizaos/shared/runtime-env")>();
+	return { ...actual, resolveServerOnlyPort: coreMock.resolveServerOnlyPort };
+});
 
 import { isRollbackRequest, runViewsRollback } from "./views-rollback.js";
 import {

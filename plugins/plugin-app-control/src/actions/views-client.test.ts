@@ -18,6 +18,12 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	return { ...actual, ...coreMock };
 });
 
+vi.mock("@elizaos/shared/runtime-env", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("@elizaos/shared/runtime-env")>();
+	return { ...actual, resolveServerOnlyPort: coreMock.resolveServerOnlyPort };
+});
+
 function jsonResponse(body: unknown) {
 	return new Response(JSON.stringify(body), {
 		status: 200,
