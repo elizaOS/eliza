@@ -85,6 +85,23 @@ function review(
   };
 }
 
+function issue(
+  number: number,
+  title: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    number,
+    title,
+    html_url: `https://github.com/elizaOS/eliza/issues/${number}`,
+    user: account(`author-${number}`),
+    labels: [],
+    assignees: [],
+    comments: 0,
+    ...overrides,
+  };
+}
+
 function pullRequest(number: number, overrides: Record<string, unknown> = {}) {
   return {
     number,
@@ -934,127 +951,61 @@ describe("live report behavior", () => {
 
   it("filters bots, sensitive or claimed work and audits disclosures and evidence", () => {
     const openIssues = [
-      {
-        number: 1,
-        title: "Bot issue",
-        html_url: "https://github.com/elizaOS/eliza/issues/1",
+      issue(1, "Bot issue", {
         user: account("dependabot[bot]", "Bot"),
-        labels: [],
-        assignees: [],
-        comments: 0,
-      },
-      {
-        number: 2,
-        title: "Claimed issue",
-        html_url: "https://github.com/elizaOS/eliza/issues/2",
+      }),
+      issue(2, "Claimed issue", {
         user: account("human-one"),
         labels: [{ name: "good first issue" }],
-        assignees: [],
         comments: 1,
-      },
-      {
-        number: 3,
-        title: "Candidate issue",
-        html_url: "https://github.com/elizaOS/eliza/issues/3",
+      }),
+      issue(3, "Candidate issue", {
         user: account("human-two"),
         labels: [{ name: "good first issue" }],
-        assignees: [],
         comments: 1,
-      },
-      {
-        number: 4,
-        title: "Sensitive report",
-        html_url: "https://github.com/elizaOS/eliza/issues/4",
+      }),
+      issue(4, "Sensitive report", {
         user: account("human-three"),
         labels: [{ name: "security" }],
-        assignees: [],
-        comments: 0,
-      },
-      {
-        number: 5,
-        title: "Lane-labeled claim",
-        html_url: "https://github.com/elizaOS/eliza/issues/5",
+      }),
+      issue(5, "Lane-labeled claim", {
         user: account("human-four"),
         labels: [{ name: "good first issue" }, { name: "claimed:shaw-codex" }],
-        assignees: [],
-        comments: 0,
-      },
-      {
-        number: 6,
-        title: "Blocked issue",
-        html_url: "https://github.com/elizaOS/eliza/issues/6",
+      }),
+      issue(6, "Blocked issue", {
         user: account("human-five"),
         labels: [{ name: "good first issue" }, { name: "status: blocked" }],
-        assignees: [],
-        comments: 0,
-      },
-      {
-        number: 7,
-        title: "Ghost-authored issue",
-        html_url: "https://github.com/elizaOS/eliza/issues/7",
+      }),
+      issue(7, "Ghost-authored issue", {
         user: null,
-        labels: [],
-        assignees: [],
-        comments: 0,
-      },
-      {
-        number: 8,
-        title: "Needs maintainer triage",
-        html_url: "https://github.com/elizaOS/eliza/issues/8",
+      }),
+      issue(8, "Needs maintainer triage", {
         user: account("human-six"),
-        labels: [],
-        assignees: [],
-        comments: 0,
-      },
-      {
-        number: 9,
-        title: "[Epic] Replace the whole contribution pipeline",
-        html_url: "https://github.com/elizaOS/eliza/issues/9",
+      }),
+      issue(9, "[Epic] Replace the whole contribution pipeline", {
         user: account("human-seven"),
         labels: [{ name: "triage-reviewed" }],
-        assignees: [],
-        comments: 0,
-      },
-      {
-        number: 19,
-        title: "Decision reserved for a maintainer",
-        html_url: "https://github.com/elizaOS/eliza/issues/19",
+      }),
+      issue(19, "Decision reserved for a maintainer", {
         user: account("human-eight"),
         labels: [
           { name: "triage-reviewed" },
           { name: "needs-human-verification" },
         ],
-        assignees: [],
-        comments: 0,
-      },
-      {
-        number: 20,
-        title: "Replace the whole contribution pipeline",
-        html_url: "https://github.com/elizaOS/eliza/issues/20",
+      }),
+      issue(20, "Replace the whole contribution pipeline", {
         user: account("human-nine"),
         labels: [{ name: "triage-reviewed" }, { name: "Epic 4" }],
-        assignees: [],
-        comments: 0,
-      },
-      {
-        number: 21,
-        title: "Proposal awaiting a decision",
-        html_url: "https://github.com/elizaOS/eliza/issues/21",
+      }),
+      issue(21, "Proposal awaiting a decision", {
         user: account("human-ten"),
         labels: [{ name: "triage-reviewed" }, { name: "status/proposal" }],
-        assignees: [],
-        comments: 0,
-      },
-      {
-        number: 10,
-        title: "PR shadow from issues endpoint",
+      }),
+      issue(10, "PR shadow from issues endpoint", {
         html_url: "https://github.com/elizaOS/eliza/pull/10",
         user: account("author"),
-        labels: [],
-        assignees: [],
-        comments: 0,
         pull_request: {},
-      },
+      }),
     ];
     const openPulls = [
       pullRequest(10, { title: "Ready PR", user: account("author") }),
@@ -1256,51 +1207,27 @@ describe("live report behavior", () => {
   it("expires comment claims after seven days but preserves durable issue state", () => {
     assert.strictEqual(CLAIM_RECENCY_DAYS, 7);
     const issues = [
-      {
-        number: 20,
-        title: "Recent comment claim",
-        html_url: "https://github.com/elizaOS/eliza/issues/20",
-        user: account("author-20"),
+      issue(20, "Recent comment claim", {
         labels: [{ name: "help wanted" }],
-        assignees: [],
         comments: 1,
-      },
-      {
-        number: 21,
-        title: "Expired comment claim",
-        html_url: "https://github.com/elizaOS/eliza/issues/21",
-        user: account("author-21"),
+      }),
+      issue(21, "Expired comment claim", {
         labels: [{ name: "help wanted" }],
-        assignees: [],
         comments: 1,
-      },
-      {
-        number: 22,
-        title: "Durably assigned",
-        html_url: "https://github.com/elizaOS/eliza/issues/22",
-        user: account("author-22"),
+      }),
+      issue(22, "Durably assigned", {
         labels: [{ name: "help wanted" }],
         assignees: [account("maintainer")],
         comments: 1,
-      },
-      {
-        number: 23,
-        title: "Durably labeled",
-        html_url: "https://github.com/elizaOS/eliza/issues/23",
-        user: account("author-23"),
+      }),
+      issue(23, "Durably labeled", {
         labels: [{ name: "help wanted" }, { name: "  status: in-progress  " }],
-        assignees: [],
         comments: 1,
-      },
-      {
-        number: 24,
-        title: "Untrusted public claim",
-        html_url: "https://github.com/elizaOS/eliza/issues/24",
-        user: account("author-24"),
+      }),
+      issue(24, "Untrusted public claim", {
         labels: [{ name: "help wanted" }],
-        assignees: [],
         comments: 1,
-      },
+      }),
     ];
     const comments = new Map([
       [
