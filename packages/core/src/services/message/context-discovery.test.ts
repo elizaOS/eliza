@@ -102,15 +102,18 @@ describe("enumerable context request schema", () => {
 		expect(projected.required).toBe(original.required);
 	});
 
-	it("represents no remaining reads as exactly [] without a length cap", () => {
+	it("permits only the empty read list when no references remain", () => {
 		const projected = withAvailableContextRequests(schema(), new Set());
 		expect(projected.properties?.contextRequests).toEqual({
 			type: "array",
 			items: { type: "string" },
 			description: "Read complete authorized references.",
-			enum: [[]],
+			maxItems: 0,
 		});
 		expect(readContextRequests({ contextRequests: [] }, new Set())).toEqual([]);
+		expect(() =>
+			readContextRequests({ contextRequests: ["unknown"] }, new Set()),
+		).toThrow();
 	});
 
 	it("intersects an authored item enum without broadening it", () => {

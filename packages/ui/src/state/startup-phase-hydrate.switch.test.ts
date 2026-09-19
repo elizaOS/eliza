@@ -62,6 +62,7 @@ function makeDeps(): ReadyPhaseDeps {
     setPtySessions: vi.fn(),
     hasPtySessionsRef: { current: false },
     agentRunningRef: { current: false },
+    codingAgentsEnabledRef: { current: true },
     setTabRaw: vi.fn(),
     setConversationMessages: vi.fn(),
     setUnreadConversations: vi.fn(),
