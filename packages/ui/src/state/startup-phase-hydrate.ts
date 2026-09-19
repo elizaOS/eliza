@@ -15,7 +15,7 @@ import {
   normalizeShellNavigateViewPayload,
   SHELL_NAVIGATE_VIEW_WS_EVENT,
 } from "@elizaos/shared/events";
-import type { AgentStatus, WalletAddresses } from "../api";
+import type { AgentStatus, PluginInfo, WalletAddresses } from "../api";
 import {
   type CodingAgentSession,
   type Conversation,
@@ -100,6 +100,27 @@ function waitForDirectCloudHydrationRetry(): Promise<void> {
   });
 }
 
+/**
+ * Whether the coding-agent orchestrator feature is actually enabled/active.
+ * `agentRunningRef` only proves the agent runtime is up; the orchestrator is a
+ * desktop-only plugin that may be disabled, in which case its
+ * `/api/coding-agents` and `/api/orchestrator/*` routes answer 503 while the
+ * optional services start and the browser logs a red console error for every
+ * poll. Hydration must gate on this feature state — not merely on the runtime.
+ */
+export function isCodingAgentFeatureEnabled(
+  plugins: readonly PluginInfo[] | undefined,
+): boolean {
+  return (plugins ?? []).some((plugin) => {
+    const identity =
+      `${plugin.id} ${plugin.name} ${plugin.npmName ?? ""}`.toLowerCase();
+    return (
+      identity.includes("agent-orchestrator") &&
+      (plugin.enabled || plugin.isActive === true)
+    );
+  });
+}
+
 export interface ReadyPhaseDeps {
   setAgentStatusIfChanged: (v: AgentStatus) => void;
   setPendingRestart: (v: boolean | ((prev: boolean) => boolean)) => void;
@@ -117,6 +138,11 @@ export interface ReadyPhaseDeps {
   hasPtySessionsRef: React.MutableRefObject<boolean>;
   /** Ref whose .current is true when the agent runtime state is "running". */
   agentRunningRef: React.MutableRefObject<boolean>;
+  /**
+   * Whether the coding-agent/orchestrator feature is enabled and active. Read
+   * on demand so a feature enabled after startup hydrates at that point.
+   */
+  isCodingAgentFeatureAvailable: () => boolean;
   setTabRaw: (t: Tab) => void;
   setConversationMessages: (
     v:
@@ -407,7 +433,15 @@ export function bindReadyPhase(
   let handleVis: (() => void) | null = null;
   const unbindDeviceControl = registerDeviceControlInteractHandler();
 
+  const featureAvailable = (): boolean =>
+    depsRef.current?.isCodingAgentFeatureAvailable?.() ?? false;
+
   const doHydratePty = () => {
+    // A disabled orchestrator feature is not polled. Its routes 503 while the
+    // optional ACP/orchestrator services start, and the browser logs a red
+    // console error for every request; the runtime being "running" does not
+    // establish that those optional services are registered.
+    if (!featureAvailable()) return;
     const baseUrl =
       typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
     if (!supportsFullAppShellRoutes(baseUrl)) return;
@@ -428,18 +462,21 @@ export function bindReadyPhase(
       });
   };
   // Recovery/refresh triggers (reconnect, visibility, periodic) only hit the
-  // orchestrator/ACP routes once the agent runtime is running. Before that those
-  // routes return 404 (runtime not yet wired) or 503 (services still finishing
-  // start()); the browser logs every non-2xx fetch as a red console error
-  // regardless of the .catch below, so gating the request — not catching it — is
-  // what keeps the startup console clean.
+  // orchestrator/ACP routes once the agent runtime is running AND the feature is
+  // enabled. Before that those routes return 404 (runtime not yet wired) or 503
+  // (services still finishing start()) or belong to a disabled plugin; the
+  // browser logs every non-2xx fetch as a red console error regardless of the
+  // .catch below, so gating the request — not catching it — is what keeps the
+  // startup console clean.
   const hydratePty = () => {
     if (depsRef.current?.agentRunningRef.current) doHydratePty();
   };
-  // Fire the initial (and post-restart) hydrate exactly once each time the agent
-  // enters "running". Driven by the live status event below, with the poll
-  // interval as a catch-all — no fixed delay guessing how long boot takes.
-  let ptyRunning = false;
+  // Fire the initial (and post-restart, and post-enable) hydrate exactly once
+  // each time the agent is "running" with the feature enabled. Driven by the
+  // live status event below, with the poll interval as a catch-all — no fixed
+  // delay guessing how long boot takes. Re-arms on restart or when the feature
+  // is enabled later, so a feature turned on after startup still hydrates.
+  let ptyActive = false;
   let conversationResyncPending = false;
   const reconcileConversationAfterReconnect = (running: boolean): void => {
     if (!running || !conversationResyncPending) return;
@@ -450,11 +487,12 @@ export function bindReadyPhase(
     });
   };
   const hydrateOnRunning = (running: boolean) => {
-    if (running && !ptyRunning) {
-      ptyRunning = true;
+    const active = running && featureAvailable();
+    if (active && !ptyActive) {
+      ptyActive = true;
       doHydratePty();
-    } else if (!running && ptyRunning) {
-      ptyRunning = false; // re-arm so a restart re-hydrates once the agent is back
+    } else if (!active && ptyActive) {
+      ptyActive = false; // re-arm so a restart or later enablement re-hydrates
     }
   };
   // Re-poll only while sessions are active — avoids idle 5-second API calls. Also
@@ -472,7 +510,12 @@ export function bindReadyPhase(
     const running = depsRef.current?.agentRunningRef.current ?? false;
     hydrateOnRunning(running);
     reconcileConversationAfterReconnect(running);
-    if (running && depsRef.current?.hasPtySessionsRef.current) doHydratePty();
+    if (
+      running &&
+      featureAvailable() &&
+      depsRef.current?.hasPtySessionsRef.current
+    )
+      doHydratePty();
   }, 5_000);
 
   client.connectWs();
@@ -542,7 +585,7 @@ export function bindReadyPhase(
           void d.loadPlugins();
           void d.loadWalletConfig();
           void d.pollCloudCredits();
-          ptyRunning = false; // force re-hydrate now that the agent restarted
+          ptyActive = false; // force re-hydrate now that the agent restarted
         }
         const running = ns.state === "running";
         hydrateOnRunning(running);
