@@ -18,7 +18,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { Route } from "@elizaos/shared/api/http-plugin";
+import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 // Pin the credential store to an isolated temp dir BEFORE importing any module
@@ -31,81 +31,11 @@ process.env.ELIZA_STATE_DIR = stateDir;
 const { tryHandleRuntimePluginRoute } = await import(
   "../../../packages/agent/src/api/runtime-plugin-routes.ts"
 );
-const { handleGitHubRoutes } = await import("./routes/github-routes.ts");
+const { githubPlugin } = await import("./index.ts");
 const { clearDeviceFlowsForTest } = await import("./device-flow.ts");
 const { clearCredentials, loadMetadata } = await import(
   "./github-credentials.ts"
 );
-
-/**
- * Mirror the plugin's route wiring from src/index.ts exactly — including the
- * runtime-derived context (agent scoping, per-agent oauth client id
- * resolution, and live-runtime token apply/clear). Importing the full plugin
- * object instead would drag in the entire (unrelated) action graph; the route
- * declaration + adapter is what we exercise.
- */
-function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
-  return async (
-    req: unknown,
-    res: unknown,
-    runtime: unknown,
-  ): Promise<void> => {
-    const httpReq = req as http.IncomingMessage;
-    const httpRes = res as http.ServerResponse;
-    const url = new URL(httpReq.url ?? "/api/github/token", "http://localhost");
-    const agentRuntime = runtime as IAgentRuntime;
-    await handleGitHubRoutes({
-      req: httpReq,
-      res: httpRes,
-      method,
-      pathname: url.pathname,
-      agentKey: String(agentRuntime.agentId),
-      getOauthClientId: () => {
-        const clientId = agentRuntime.getSetting("GITHUB_OAUTH_CLIENT_ID");
-        return typeof clientId === "string" ? clientId : undefined;
-      },
-      applyRuntimeToken: (token) =>
-        agentRuntime.setSetting("GITHUB_TOKEN", token, true),
-      clearRuntimeToken: () => {
-        const secrets = agentRuntime.character.secrets;
-        if (secrets && "GITHUB_TOKEN" in secrets) delete secrets.GITHUB_TOKEN;
-      },
-    });
-  };
-}
-
-const githubRoutes: Route[] = [
-  {
-    type: "GET",
-    path: "/api/github/token",
-    rawPath: true,
-    handler: createGitHubRouteHandler("GET"),
-  },
-  {
-    type: "POST",
-    path: "/api/github/token",
-    rawPath: true,
-    handler: createGitHubRouteHandler("POST"),
-  },
-  {
-    type: "DELETE",
-    path: "/api/github/token",
-    rawPath: true,
-    handler: createGitHubRouteHandler("DELETE"),
-  },
-  {
-    type: "POST",
-    path: "/api/github/device/start",
-    rawPath: true,
-    handler: createGitHubRouteHandler("POST"),
-  },
-  {
-    type: "POST",
-    path: "/api/github/device/poll",
-    rawPath: true,
-    handler: createGitHubRouteHandler("POST"),
-  },
-];
 
 /** Per-test runtime stub: a real settings map per agent, nothing shared. */
 function makeRuntime(options: {
@@ -113,9 +43,8 @@ function makeRuntime(options: {
   oauthClientId?: string;
 }): IAgentRuntime & { secrets: Record<string, string> } {
   const secrets: Record<string, string> = {};
-  return {
+  const runtime = {
     agentId: options.agentId,
-    routes: githubRoutes,
     character: { name: "test", secrets },
     secrets,
     getSetting: (key: string) => {
@@ -132,6 +61,8 @@ function makeRuntime(options: {
     },
     getService: () => null,
   } as unknown as IAgentRuntime & { secrets: Record<string, string> };
+  registerHttpPluginRoutes(runtime, githubPlugin);
+  return runtime;
 }
 
 const servers: http.Server[] = [];
