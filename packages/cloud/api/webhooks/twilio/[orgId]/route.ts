@@ -18,7 +18,7 @@ import {
 import { phoneErrorDiagnostic } from "@/lib/services/phone-error-diagnostics";
 import { twilioAutomationService } from "@/lib/services/twilio-automation";
 import { usageService } from "@/lib/services/usage";
-import { isAlreadyProcessed, markAsProcessed } from "@/lib/utils/idempotency";
+import { processOnce } from "@/lib/utils/idempotency";
 import { logger } from "@/lib/utils/logger";
 import {
   extractMediaUrls,
@@ -143,28 +143,24 @@ async function handleTwilioWebhook(c: AppContext): Promise<Response> {
       }
     }
 
-    const idempotencyKey = `twilio:${event.MessageSid}`;
-    if (await isAlreadyProcessed(idempotencyKey)) {
-      logger.info("[TwilioWebhook] Duplicate message, skipping", {
-        orgId,
-      });
-      return c.body(
-        '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
-        200,
-        {
-          "Content-Type": "application/xml",
-        },
-      );
-    }
-
     logger.info("[TwilioWebhook] Received SMS", {
       orgId,
       hasBody: !!event.Body,
       numMedia: extractMediaUrls(event).length,
     });
 
-    await handleIncomingMessage(c, orgId, event);
-    await markAsProcessed(idempotencyKey, "twilio");
+    // Claim the MessageSid before any inference or outbound send so an
+    // overlapping redelivery cannot be processed a second time (#31768).
+    const outcome = await processOnce(
+      `twilio:${event.MessageSid}`,
+      "twilio",
+      () => handleIncomingMessage(c, orgId, event),
+    );
+    if (outcome.status === "duplicate") {
+      logger.info("[TwilioWebhook] Duplicate message, skipping", {
+        orgId,
+      });
+    }
 
     return c.body(
       '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
