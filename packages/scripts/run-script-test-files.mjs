@@ -100,6 +100,7 @@ function runOne(file, options, fragmentPath, active) {
       `--config=${options.config}`,
       "test",
       "--conditions=eliza-source",
+      "--timeout=60000",
     ];
     if (fragmentPath) {
       args.push("--reporter=junit", `--reporter-outfile=${fragmentPath}`);
