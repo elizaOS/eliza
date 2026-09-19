@@ -16,7 +16,6 @@ import type { ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import type { Plugin } from "@elizaos/core";
-import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import {
   type Action,
   AgentRuntime,
@@ -32,6 +31,7 @@ import {
   withEvaluatorStep,
 } from "@elizaos/core";
 import {
+  createAssistantPlugin,
   DefaultMessageService,
   TrajectoriesService,
   trajectoriesPlugin,
