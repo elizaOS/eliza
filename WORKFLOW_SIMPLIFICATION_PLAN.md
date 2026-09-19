@@ -254,6 +254,45 @@ shards preserve catalog coverage. Failed app browser shards retain diagnostics
 for three days, while successful shards avoid those uploads. Release and
 certification artifacts retain their separate authority and retention.
 
+### Repair qualification — September 18 evening
+
+Cache-key and websocket repair [#31739](https://github.com/elizaOS/eliza/pull/31739)
+merged as `20edfeca079ec2f76e0f4a5d027f0e7c943c84a7`. The subsequent observed
+base is `1eba34ba95c3ee56a0d30b95fd97e463ba78f698`. The seven retired
+workflows remain retired; the structural counts above are unchanged.
+
+Schema repair [#31738](https://github.com/elizaOS/eliza/issues/31738) and the
+required-smoke report guard [#31741](https://github.com/elizaOS/eliza/issues/31741)
+are under final merge qualification. Disabled coding-feature hydration
+[#31751](https://github.com/elizaOS/eliza/issues/31751) gates startup/reconnect
+and periodic requests using the configured feature state, while preserving
+hydration after enablement and the existing runtime readiness condition.
+
+The combined source `0564ed2961c6f62205c49a40891a07e79ae1bbea` passed both
+jobs in [Dev Smoke 35408566140](https://github.com/elizaOS/eliza/actions/runs/35408566140).
+The required local report has two passes, zero skipped or unexpected tests,
+zero retries, and no runner errors. The browser trace contains zero disabled
+coding-service requests; the inspected capture shows real replies `READY_1`
+and `BUN_DEV_SMOKE_OK`. [Consumer receipt](https://github.com/elizaOS/eliza/releases/download/pr-evidence-13/31751-live-success-0564.json)
+and [reply capture](https://github.com/elizaOS/eliza/releases/download/pr-evidence-13/31751-live-success-0564.jpg)
+were downloaded and hash verified. Successful streaming bodies were not
+retained in this trace; the receipt distinguishes browser evidence from a
+backend prompt dump. This branch result does not qualify a later develop SHA.
+
+The db7 develop attempt passed Windows and all three cloud integration/e2e
+owners but was cancelled after failures in local onboarding, Docs stories,
+and the canonical PGlite cloud API invocation. The apparent duplicate cloud
+API command is intentionally retained: canonical smoke owns local PGlite
+startup/migration, and cloud e2e owns PostgreSQL. Candidate deletion
+[#31756](https://github.com/elizaOS/eliza/issues/31756) was withdrawn before
+commit after comparing those environments. Intermittent cloud HTTP 500s
+remain under diagnosis; no assertion, timeout, or required lane was relaxed.
+
+Still required: merge the qualified repairs, resolve remaining owning-lane
+failures, obtain terminal green full validation on current develop, and collect
+completed comparable performance observations. The 40% job-minute and 30%
+wall-time targets remain unproven. Host-capacity checks are not a delivery gate.
+
 ### Baseline and measurement
 
 The [published baseline manifest](https://github.com/elizaOS/eliza/releases/download/pr-evidence-13/31556-baseline-20260916-manifest.json)
