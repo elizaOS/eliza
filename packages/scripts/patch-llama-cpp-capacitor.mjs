@@ -290,14 +290,15 @@ const bridgePatches = readFileSync(patchFile, "utf8")
   .split(/(?=^diff --git )/m)
   .filter((part) => /^diff --git a\/(?:dist|ios|types)\//.test(part));
 
-const upgradeFile = join(
-  repoRoot,
-  "patches",
+const bridgeUpgrades = [
   "llama-cpp-capacitor@0.1.5-bge-upgrade.patch",
-);
-const bridgeUpgrades = existsSync(upgradeFile)
-  ? readFileSync(upgradeFile, "utf8").split(/(?=^diff --git )/m)
-  : [];
+  "llama-cpp-capacitor@0.1.5-bge-cache-upgrade.patch",
+].flatMap((name) => {
+  const file = join(repoRoot, "patches", name);
+  return existsSync(file)
+    ? readFileSync(file, "utf8").split(/(?=^diff --git )/m)
+    : [];
+});
 
 function ensureBridgePatch(pkgDir) {
   let changed = false;
@@ -320,15 +321,14 @@ function ensureBridgePatch(pkgDir) {
     let applicable = patch;
     if (forward.status !== 0) {
       const upgrade = bridgeUpgrades.find(
-        (part) => part.split("\n", 1)[0] === patch.split("\n", 1)[0],
+        (part) =>
+          part.split("\n", 1)[0] === patch.split("\n", 1)[0] &&
+          spawnSync("git", ["apply", "--check", "-"], {
+            ...options,
+            input: part,
+          }).status === 0,
       );
-      const admitted =
-        upgrade &&
-        spawnSync("git", ["apply", "--check", "-"], {
-          ...options,
-          input: upgrade,
-        });
-      if (admitted?.status === 0) applicable = upgrade;
+      if (upgrade) applicable = upgrade;
       else
         throw new Error(
           `[patch-llama-cpp-capacitor] Bridge patch is neither applicable nor verified for ${patch.split("\n", 1)[0]}: ${forward.stderr || forward.error}`,

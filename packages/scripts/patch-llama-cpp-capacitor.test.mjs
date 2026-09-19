@@ -41,6 +41,7 @@ for (const mode of [
   "hardlinked",
   "corrupt",
   "previous bridge",
+  "current bridge",
   "invalid upgrade",
 ]) {
   test(`installer admits ${mode} package without silent omissions`, () => {
@@ -76,10 +77,14 @@ for (const mode of [
           path.join(pkg, "dist/esm/index.js"),
           "incompatible upstream\n",
         );
-      if (mode === "previous bridge" || mode === "invalid upgrade") {
+      if (
+        mode === "previous bridge" ||
+        mode === "current bridge" ||
+        mode === "invalid upgrade"
+      ) {
         fs.writeFileSync(
           path.join(pkg, "dist/esm/index.js"),
-          "export const legacy = 1;\nexport const embedding = 1;\n",
+          `export const legacy = 1;\nexport const embedding = ${mode === "current bridge" ? 0 : 1};\n`,
         );
         fs.writeFileSync(
           path.join(
@@ -93,6 +98,22 @@ for (const mode of [
  export const legacy = 1;
 -export const embedding = 1;
 +export const embedding = ${mode === "invalid upgrade" ? 3 : 2};
+`,
+        );
+      }
+      if (mode === "current bridge") {
+        fs.writeFileSync(
+          path.join(
+            root,
+            "patches/llama-cpp-capacitor@0.1.5-bge-cache-upgrade.patch",
+          ),
+          `diff --git a/dist/esm/index.js b/dist/esm/index.js
+--- a/dist/esm/index.js
++++ b/dist/esm/index.js
+@@ -1,2 +1,2 @@
+ export const legacy = 1;
+-export const embedding = 0;
++export const embedding = 2;
 `,
         );
       }
