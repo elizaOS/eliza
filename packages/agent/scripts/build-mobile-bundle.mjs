@@ -683,7 +683,7 @@ const dedupeTargets = {
     "packages",
     "core",
     "src",
-    "index.node.ts",
+    "index.ts",
   ),
   "@elizaos/shared": path.resolve(
     repoRoot,
@@ -736,7 +736,7 @@ const dedupeTargets = {
     "plugins",
     "plugin-sql",
     "src",
-    "index.node.ts",
+    "index.ts",
   ),
   "@elizaos/plugin-wallet": path.resolve(
     repoRoot,
