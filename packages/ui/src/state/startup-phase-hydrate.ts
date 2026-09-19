@@ -117,6 +117,8 @@ export interface ReadyPhaseDeps {
   hasPtySessionsRef: React.MutableRefObject<boolean>;
   /** Ref whose .current is true when the agent runtime state is "running". */
   agentRunningRef: React.MutableRefObject<boolean>;
+  /** Tracks the configured coding feature independently of runtime readiness. */
+  codingAgentsEnabledRef: React.MutableRefObject<boolean>;
   setTabRaw: (t: Tab) => void;
   setConversationMessages: (
     v:
@@ -408,13 +410,14 @@ export function bindReadyPhase(
   const unbindDeviceControl = registerDeviceControlInteractHandler();
 
   const doHydratePty = () => {
+    if (!depsRef.current?.codingAgentsEnabledRef.current) return;
     const baseUrl =
       typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
     if (!supportsFullAppShellRoutes(baseUrl)) return;
     client
       .getCodingAgentStatus()
       .then((s) => {
-        if (s?.tasks)
+        if (s?.tasks && depsRef.current?.codingAgentsEnabledRef.current)
           depsRef.current?.setPtySessions(mapServerTasksToSessions(s.tasks));
       })
       .catch((err: unknown) => {
@@ -428,7 +431,7 @@ export function bindReadyPhase(
       });
   };
   // Recovery/refresh triggers (reconnect, visibility, periodic) only hit the
-  // orchestrator/ACP routes once the agent runtime is running. Before that those
+  // enabled orchestrator/ACP routes once the agent runtime is running. Before that those
   // routes return 404 (runtime not yet wired) or 503 (services still finishing
   // start()); the browser logs every non-2xx fetch as a red console error
   // regardless of the .catch below, so gating the request — not catching it — is
@@ -450,11 +453,12 @@ export function bindReadyPhase(
     });
   };
   const hydrateOnRunning = (running: boolean) => {
-    if (running && !ptyRunning) {
+    const ready = running && depsRef.current?.codingAgentsEnabledRef.current;
+    if (ready && !ptyRunning) {
       ptyRunning = true;
       doHydratePty();
-    } else if (!running && ptyRunning) {
-      ptyRunning = false; // re-arm so a restart re-hydrates once the agent is back
+    } else if (!ready && ptyRunning) {
+      ptyRunning = false; // Re-arm after a restart or feature disablement.
     }
   };
   // Re-poll only while sessions are active — avoids idle 5-second API calls. Also

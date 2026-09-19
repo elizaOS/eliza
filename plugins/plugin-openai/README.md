@@ -279,9 +279,11 @@ controls cache retention. See [Cerebras prompt caching](https://inference-docs.c
 Strict tool schemas encode open maps as reversible key/value entry arrays.
 Returned arguments are restored to the original object shape before runtime
 validation. Structured planner responses use their own reversible transform.
-Direct Cerebras response schemas preserve caller semantics, including optional
-fields; unsupported schemas remain explicit provider errors. Other compatible
-providers retain their existing strict-schema normalization.
+Direct Cerebras response schemas retain optional fields and declared object/nullable
+shapes. The shared adapter moves unsupported constraints such as `maxItems` into
+complete descriptions; runtime validation checks the original schema. Other
+unsupported schemas remain explicit provider errors. Other compatible providers
+retain their existing strict-schema normalization.
 
 ### Same-call server retry budgets
 

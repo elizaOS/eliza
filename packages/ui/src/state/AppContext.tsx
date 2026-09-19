@@ -1451,6 +1451,10 @@ function AppProviderInner({
   // during the post-(re)start window before those services finish starting.
   const agentRunningRef = useRef(agentStatus?.state === "running");
   agentRunningRef.current = agentStatus?.state === "running";
+  const codingAgentsEnabledRef = useRef(false);
+  codingAgentsEnabledRef.current = plugins.some(
+    (plugin) => plugin.id === "agent-orchestrator" && plugin.enabled,
+  );
 
   // ── StartupCoordinator (sole startup authority) ──────────────────────
   // Called after all dependency hooks so every setter/callback is available.
@@ -1496,6 +1500,7 @@ function AppProviderInner({
     setPtySessions,
     hasPtySessionsRef,
     agentRunningRef,
+    codingAgentsEnabledRef,
     setTab,
     setTabRaw,
     setConversationMessages,

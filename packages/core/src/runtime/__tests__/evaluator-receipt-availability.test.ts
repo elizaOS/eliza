@@ -129,7 +129,7 @@ describe("evaluator current-turn committed receipt choices", () => {
 		);
 		expect(request.responseSchema.properties?.effectReceiptIds).toMatchObject({
 			type: "array",
-			enum: [[]],
+			maxItems: 0,
 		});
 	});
 	it("recomputes choices after a later rollback instead of reusing another evaluation's schema", async () => {
@@ -146,7 +146,7 @@ describe("evaluator current-turn committed receipt choices", () => {
 		).toMatchObject({ enum: [applied.receiptId] });
 		expect(
 			second.request.responseSchema.properties?.effectReceiptIds,
-		).toMatchObject({ enum: [[]] });
+		).toMatchObject({ maxItems: 0 });
 	});
 	it("does not expose a receipt identifier redacted from model diagnostics", async () => {
 		const { request } = await evaluate(
@@ -155,7 +155,7 @@ describe("evaluator current-turn committed receipt choices", () => {
 			(text) => text.replaceAll("private-proof", "[REDACTED]"),
 		);
 		expect(request.responseSchema.properties?.effectReceiptIds).toMatchObject({
-			enum: [[]],
+			maxItems: 0,
 		});
 		expect(JSON.stringify(request)).not.toContain("private-proof");
 	});

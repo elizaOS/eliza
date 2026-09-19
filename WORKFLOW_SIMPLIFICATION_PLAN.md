@@ -1,8 +1,39 @@
 # GitHub Actions simplification implementation plan
 
-Status: consolidation (#31556), integration repair (#31614), and cache cleanup (#31714) are merged. Surviving hosted failures, final develop qualification and performance measurement remain in progress. See the current checkpoint below.
+Status: consolidation (#31556), integration repair (#31614), cache cleanup (#31714), and cache-key/WebSocket repair (#31739) are merged. Surviving hosted failures, final develop qualification and performance measurement remain in progress. See the current checkpoint below.
 
 Prepared 2026-09-16 for elizaOS/eliza. This file is the execution checklist and progress record. The objective is less repeated work and faster trustworthy develop validation, not merely fewer YAML files.
+
+
+## Repair checkpoint — 2026-09-18
+
+Repair [PR #31739](https://github.com/elizaOS/eliza/pull/31739) merged as
+`20edfeca079ec2f76e0f4a5d027f0e7c943c84a7` after all five hosted admission
+checks and the complete root verification passed at `023e9450895ee7ba9eb670bc097b39b8b085ffdb`.
+Its cache-key and WebSocket regressions passed; the earlier full core run still
+had a PGlite timeout and worker startup error, with both affected files passing
+focused reruns. This is not a claim that that full core run passed.
+
+The remaining onboarding failure is tracked in
+[#31738](https://github.com/elizaOS/eliza/issues/31738). A controlled request in
+[run 35401348765](https://github.com/elizaOS/eliza/actions/runs/35401348765)
+changed only the structured empty-array enum on inactive `threadOps`: original
+HTTP 400, probe HTTP 200. The probe did not consume a reply or execute tools;
+onboarding remained failed. The repair uses the canonical empty-array
+`maxItems: 0` constraint, the existing provider compatibility adapter, and local
+validation that rejects nonempty values without modifying the caller's data.
+The temporary diagnostic probe is removed from the repair.
+
+[#31741](https://github.com/elizaOS/eliza/issues/31741) also closes a required-lane
+false green: the local onboarding command could exit successfully after skipping
+its live reply test. The workflow now checks the actual Playwright JSON report
+for executed passing required specs, including explicit retry accounting.
+Optional local developer execution remains available. This adds no workflow or job.
+
+Final hosted onboarding, current-develop terminal green, successful cold/warm
+full runs, and the three-run performance comparison remain outstanding. The
+20edfeca full run was cancelled after another agent's merge; cancellation is not
+qualification evidence. The seven retired workflows remain retired.
 
 ## Baseline and evidence
 
@@ -222,6 +253,45 @@ the separate integration contract remains in general E2E. Four Story Gate
 shards preserve catalog coverage. Failed app browser shards retain diagnostics
 for three days, while successful shards avoid those uploads. Release and
 certification artifacts retain their separate authority and retention.
+
+### Repair qualification — September 18 evening
+
+Cache-key and websocket repair [#31739](https://github.com/elizaOS/eliza/pull/31739)
+merged as `20edfeca079ec2f76e0f4a5d027f0e7c943c84a7`. The subsequent observed
+base is `1eba34ba95c3ee56a0d30b95fd97e463ba78f698`. The seven retired
+workflows remain retired; the structural counts above are unchanged.
+
+Schema repair [#31738](https://github.com/elizaOS/eliza/issues/31738) and the
+required-smoke report guard [#31741](https://github.com/elizaOS/eliza/issues/31741)
+are under final merge qualification. Disabled coding-feature hydration
+[#31751](https://github.com/elizaOS/eliza/issues/31751) gates startup/reconnect
+and periodic requests using the configured feature state, while preserving
+hydration after enablement and the existing runtime readiness condition.
+
+The combined source `0564ed2961c6f62205c49a40891a07e79ae1bbea` passed both
+jobs in [Dev Smoke 35408566140](https://github.com/elizaOS/eliza/actions/runs/35408566140).
+The required local report has two passes, zero skipped or unexpected tests,
+zero retries, and no runner errors. The browser trace contains zero disabled
+coding-service requests; the inspected capture shows real replies `READY_1`
+and `BUN_DEV_SMOKE_OK`. [Consumer receipt](https://github.com/elizaOS/eliza/releases/download/pr-evidence-13/31751-live-success-0564.json)
+and [reply capture](https://github.com/elizaOS/eliza/releases/download/pr-evidence-13/31751-live-success-0564.jpg)
+were downloaded and hash verified. Successful streaming bodies were not
+retained in this trace; the receipt distinguishes browser evidence from a
+backend prompt dump. This branch result does not qualify a later develop SHA.
+
+The db7 develop attempt passed Windows and all three cloud integration/e2e
+owners but was cancelled after failures in local onboarding, Docs stories,
+and the canonical PGlite cloud API invocation. The apparent duplicate cloud
+API command is intentionally retained: canonical smoke owns local PGlite
+startup/migration, and cloud e2e owns PostgreSQL. Candidate deletion
+[#31756](https://github.com/elizaOS/eliza/issues/31756) was withdrawn before
+commit after comparing those environments. Intermittent cloud HTTP 500s
+remain under diagnosis; no assertion, timeout, or required lane was relaxed.
+
+Still required: merge the qualified repairs, resolve remaining owning-lane
+failures, obtain terminal green full validation on current develop, and collect
+completed comparable performance observations. The 40% job-minute and 30%
+wall-time targets remain unproven. Host-capacity checks are not a delivery gate.
 
 ### Baseline and measurement
 

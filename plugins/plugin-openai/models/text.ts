@@ -567,9 +567,9 @@ function buildStructuredOutput(
   return {
     output: Output.object({
       schema: jsonSchema(
-        cerebrasMode
-          ? (preparedSchema.schema as JSONSchema7)
-          : sanitizeJsonSchema(preparedSchema.schema, true)
+        sanitizeJsonSchema(preparedSchema.schema, true, "$", undefined, {
+          preserveStructure: cerebrasMode,
+        })
       ),
       ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
       ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
@@ -1593,11 +1593,14 @@ function sanitizeJsonSchema(
   transforms?: RecordArgTransform[],
   options: {
     preserveOptional?: boolean;
+    preserveStructure?: boolean;
     responseCompatibility?: { preservesShape: boolean };
   } = {}
 ): JSONSchema7 {
   const { responseCompatibility } = options;
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    // Response schemas retain boolean/composed leaves for provider admission.
+    if (options.preserveStructure) return schema as JSONSchema7;
     if (responseCompatibility) responseCompatibility.preservesShape = false;
     // Bare-object fallback. In Cerebras mode `normalizeSchemaForCerebras`
     // closes this afterwards (explicit empty `properties` +
@@ -1622,14 +1625,13 @@ function sanitizeJsonSchema(
     responseCompatibility.preservesShape = false;
   }
 
-  // Non-Cerebras response schemas and strict/unspecified tool schemas share
-  // this compatibility rewrite. Direct Cerebras response schemas bypass it to
-  // preserve optional fields; explicit non-strict tools also bypass it.
-  // Proxy endpoints can still require strict grammar even when detected as
-  // OpenAI, so compatibility normalization remains enabled for those callers.
+  // All structured responses and strict tools share constraint translation.
+  // Cerebras responses retain their declared shape and optionality; only the
+  // unsupported constraints become guidance. Explicit non-strict tools bypass
+  // this adapter, while proxy endpoints retain strict-tool normalization.
   stripStrictUnsupportedConstraints(sanitized);
 
-  if (typeof sanitized.type !== "string") {
+  if (!options.preserveStructure && typeof sanitized.type !== "string") {
     const inferredType = inferJsonSchemaType(sanitized, isRoot);
     if (inferredType) {
       if (responseCompatibility) responseCompatibility.preservesShape = false;
@@ -1637,7 +1639,7 @@ function sanitizeJsonSchema(
     }
   }
 
-  if (isRoot && hasIllegalStrictRoot(sanitized)) {
+  if (!options.preserveStructure && isRoot && hasIllegalStrictRoot(sanitized)) {
     if (responseCompatibility) responseCompatibility.preservesShape = false;
     // Wrap the original schema under properties.value. Strict-tool callers
     // that unwrap arguments will see `{ value: <original> }`. The recursion
@@ -1668,12 +1670,16 @@ function sanitizeJsonSchema(
     // Cerebras supports optional fields in strict tools as well as responses.
     // Requiring unused arguments invents values that fail runtime validation.
     // Retain the all-properties-required rule for other strict providers.
-    if (!options.preserveOptional) {
+    if (!options.preserveOptional && !options.preserveStructure) {
       sanitized.required = [...new Set([...existingRequired, ...propertyKeys])];
     }
   }
 
-  if (sanitized.type === "object" && sanitized.additionalProperties !== false) {
+  if (
+    !options.preserveStructure &&
+    sanitized.type === "object" &&
+    sanitized.additionalProperties !== false
+  ) {
     // An omitted additionalProperties also permits extra keys. Preserve the
     // existing response contract unless the caller explicitly closed it.
     if (responseCompatibility) responseCompatibility.preservesShape = false;
@@ -1763,7 +1769,7 @@ function sanitizeJsonSchema(
   // instance path; tuple/item schemas use the array wildcard/index path that
   // reverse argument restoration understands.
   for (const singleKey of JSON_SCHEMA_SINGLE_KEYWORDS) {
-    if (singleKey === "additionalProperties") continue;
+    if (singleKey === "additionalProperties" && !options.preserveStructure) continue;
     if (responseCompatibility && singleKey in sanitized) {
       responseCompatibility.preservesShape = false;
     }

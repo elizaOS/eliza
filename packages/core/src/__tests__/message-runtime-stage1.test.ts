@@ -544,10 +544,9 @@ describe("runV5MessageRuntimeStage1", () => {
 						tools: Array<{ parameters: JSONSchema }>;
 					};
 					const field = params.tools[0].parameters.properties?.inactiveOps;
-					if (calls === 1 && !initiallyActive)
-						expect(field?.enum).toEqual([[]]);
+					if (calls === 1 && !initiallyActive) expect(field?.maxItems).toBe(0);
 					else {
-						expect(field?.enum).toBeUndefined();
+						expect(field?.maxItems).toBeUndefined();
 						expect(field?.items).toMatchObject({ type: "object" });
 					}
 					expect(handle).not.toHaveBeenCalled();
@@ -1060,12 +1059,12 @@ describe("runV5MessageRuntimeStage1", () => {
 					}
 					if (text.includes("Complete original history index:")) {
 						// Literal search remains open while deferred originals exist.
-						expect(requestSchema?.enum).toBeUndefined();
+						expect(requestSchema?.maxItems).toBeUndefined();
 						expect(requestSchema?.items).toEqual({ type: "string" });
 					} else {
 						// This fixture has no deferred providers. After full restoration,
 						// the native contract must not invite another invalid history read.
-						expect(requestSchema?.enum).toEqual([[]]);
+						expect(requestSchema?.maxItems).toBe(0);
 					}
 					return stage1Response({
 						contexts: ["simple"],

@@ -181,7 +181,7 @@ describe("direct-text builtin schema descriptions", () => {
 			properties(original).completionContext,
 		);
 		const inactive = withInactiveArrayFields(projected, ["relationships"]);
-		expect(properties(inactive).relationships.enum).toEqual([[]]);
+		expect(properties(inactive).relationships.maxItems).toBe(0);
 		expect(properties(inactive).shouldRespond.description).toBeUndefined();
 		expect(properties(projected).relationships.items).toBe(
 			properties(original).relationships.items,

@@ -122,7 +122,7 @@ export function withAvailableContextRequests(
 				...requests,
 				...(names.length
 					? { items: { ...items, enum: names } }
-					: { enum: [[]] }),
+					: { maxItems: 0 }),
 			},
 		},
 	};
