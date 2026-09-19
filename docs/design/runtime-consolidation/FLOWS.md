@@ -132,6 +132,10 @@ flowchart TD
     DB --> SHARED[plugin-inmemorydb root: IStorage + HNSW]
     DB --> S4[SQL base + scoped stores]
     S4 --> SCHEMA[SQL schema + migrations]
+    MEM --> RET[S7 retrieval: keyword reranking / message search]
+    SHARED --> RET
+    S4 --> RET
+    RET --> PAGE[Scoped result page; semantic-only hits retained]
     S4 --> PG[pg adapter / manager]
     S4 --> PGL[PGlite adapter / manager]
     PG --> DISK1[PostgreSQL]
@@ -245,6 +249,7 @@ A row names the primary owner and important adjacent files; it does not assert t
 | S3 | Ingress/reply/embedding persistence | [packages/core/src/runtime.ts](../../../packages/core/src/runtime.ts) adapter delegation; [plugins/plugin-assistant/src/services/message/processor.ts](../../../plugins/plugin-assistant/src/services/message/processor.ts) | Memory records + queued embeddings | core interface/SQL implementation; idempotent IDs |
 | S4 | Adapter read/write method | [plugins/plugin-sql/src/base.ts](../../../plugins/plugin-sql/src/base.ts); `stores/memory.store.ts` and other stores | Scoped SQL reads/writes/transactions | SQL; keep application predicates for PGlite |
 | S5 | Authenticated identity/person link request | [host route](../../../packages/agent/src/api/identity-person-link-routes.ts); [SQL adapter](../../../plugins/plugin-sql/src/base.ts) | Authorized attestation/membership mutation | Host authenticates; SQL retains transactional domain rules. |
+| S7 | Vector result page + optional query | [packages/retrieval/src/rerank.ts](../../../packages/retrieval/src/rerank.ts); [search algorithms](../../../packages/retrieval/src/search.ts); SQL and in-memory `searchMemories` | Keyword-ranked page, retaining semantic-only/attachment-only hits | Adapters scope and paginate first. Core delegates without ranking. |
 | S6 | Hosted sync/write-back | Removed from the base SQL plugin | No implicit hosted SQL traffic | Optional external integration must be explicitly composed. |
 | C1 | Login/API credential input | [packages/credentials/src/auth/oauth-flow.ts](../../../packages/credentials/src/auth/oauth-flow.ts); `account-storage.ts`; provider auth modules | Stored account credentials / refreshable tokens | credentials; preserve atomic account writes |
 | C2 | Token expiry/refresh request | [packages/credentials/src/auth/refresh-mutex.ts](../../../packages/credentials/src/auth/refresh-mutex.ts); `token-expiry.ts` | Deduplicated refresh or retryable/auth failure | credentials; concurrent process coordination |

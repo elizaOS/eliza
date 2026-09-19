@@ -71,7 +71,6 @@ import {
   type Relationship,
   ROLE_WRITE_AUDIT_LOG_TYPE,
   type Room,
-  rankMessageSearch,
   requireFreshWorldMetadataRevision,
   type Task,
   type UUID,
@@ -82,9 +81,9 @@ import {
   type World,
   type WorldMetadataCompareAndSwapParams,
   type WorldMetadataMutationResult,
-  withinCreatedAtWindow,
   worldMetadataValueEquals,
 } from "@elizaos/core";
+import { rankMessageSearch, rerankMemories, withinCreatedAtWindow } from "@elizaos/retrieval";
 import { dataContainsFilter } from "./data-contains-filter";
 import { EphemeralHNSW } from "./hnsw";
 import { COLLECTIONS, type IStorage } from "./types";
@@ -1386,10 +1385,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         new Set(memoriesById.keys())
       );
 
-      return results.slice(offset).flatMap((result) => {
+      const memories = results.slice(offset).flatMap((result) => {
         const memory = memoriesById.get(result.id);
         return memory ? [{ ...memory, similarity: result.similarity }] : [];
       });
+      return rerankMemories(params.query, memories);
     });
   }
 

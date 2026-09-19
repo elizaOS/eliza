@@ -1,0 +1,48 @@
+{
+  "name": "@elizaos/retrieval",
+  "version": "2.0.3-beta.7",
+  "description": "Optional dependency-free keyword, hybrid and message retrieval algorithms for storage adapters and assistant features.",
+  "type": "module",
+  "sideEffects": false,
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "bun run build.ts && node ../scripts/prepare-package-dist.mjs packages/retrieval",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "lint:check": "biome check src"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "tsup": "^8.5.1",
+    "vitest": "^4.1.10",
+    "@biomejs/biome": "2.5.8",
+    "@typescript/native": "npm:typescript@^7.0.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ],
+      "buildOnInstall": {
+        "sentinel": "dist/index.js",
+        "order": 1
+      }
+    }
+  }
+}

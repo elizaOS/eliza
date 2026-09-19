@@ -32,7 +32,8 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "workspace:*",
+    "@elizaos/retrieval": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

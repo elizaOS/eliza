@@ -112,7 +112,8 @@
     "@elizaos/credentials": "workspace:*",
     "@elizaos/prompts": "workspace:*",
     "@elizaos/common": "workspace:*",
-    "@elizaos/plugin-inmemorydb": "workspace:*"
+    "@elizaos/plugin-inmemorydb": "workspace:*",
+    "@elizaos/retrieval": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

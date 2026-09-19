@@ -74,7 +74,6 @@ import {
 	textFromChatMessageContent,
 } from "./runtime/system-prompt";
 import { TurnControllerRegistry } from "./runtime/turn-controller";
-import { BM25 } from "./search";
 import {
 	locateConfiguredSecretFragmentTaint,
 	type SecretFragment,
@@ -4694,39 +4693,9 @@ export class AgentRuntime implements IAgentRuntime {
 		tableName: string;
 		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
-		const memories = await this.adapter.searchMemories({
-			...params,
-			tableName: params.tableName,
-		});
-		if (params.query) {
-			const rerankedMemories = await this.rerankMemories(
-				params.query,
-				memories,
-			);
-			return rerankedMemories;
-		}
-		return memories;
+		return this.adapter.searchMemories(params);
 	}
-	async rerankMemories(query: string, memories: Memory[]): Promise<Memory[]> {
-		const docs = memories.map((memory) => ({
-			title: memory.id,
-			content: memory.content.text,
-		}));
-		const bm25 = new BM25(docs);
-		const results = bm25.search(query, memories.length);
-		const rankedIndexes = new Set(results.map((result) => result.index));
-		const rerankedMemories = results.map((result) => memories[result.index]);
 
-		// BM25 is a reranker, not a filter. Keep zero-overlap vector hits
-		// after scored matches so semantic recall cannot disappear.
-		for (let index = 0; index < memories.length; index++) {
-			if (!rankedIndexes.has(index)) {
-				rerankedMemories.push(memories[index]);
-			}
-		}
-
-		return rerankedMemories;
-	}
 	/**
 	 * Get the secrets to redact from character settings.
 	 * Returns an empty object if no secrets are configured.

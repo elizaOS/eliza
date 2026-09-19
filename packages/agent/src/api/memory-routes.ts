@@ -14,7 +14,6 @@
 import crypto from "node:crypto";
 import {
   type AgentRuntime,
-  BM25,
   ChannelType,
   compareMemoryIds,
   composeToolDiagnosticRedactor,
@@ -29,6 +28,7 @@ import {
 } from "@elizaos/core";
 import { memoryContextQaTemplate } from "@elizaos/prompts";
 import { composePrompt } from "@elizaos/prompts/rendering";
+import { BM25 } from "@elizaos/retrieval";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
   PatchMemoryRequestSchema,
