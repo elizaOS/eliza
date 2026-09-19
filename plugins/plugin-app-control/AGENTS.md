@@ -49,7 +49,7 @@ port resolver.
 |---|---|---|
 | `available_apps` | `src/providers/available-apps.ts` | Injects installed apps + running run counts into planner context. Active in `settings` and `automation` contexts only; cache scope is per-turn. |
 | `current_view` | `src/providers/current-view.ts` | Supplies current shell-view context and acknowledgement state for navigation turns. |
-| `app_control_choices` | `src/providers/pending-choices.ts` | Owner-private, uncached-per-turn pending app/view/model choices, available before Stage 1 and planner selection. Empty when no choice exists; never dispatches from user text. |
+| `app_control_choices` | `src/providers/pending-choices.ts` | Owner-private, uncached-per-turn pending app/view/model choices, available during planning after Stage-1 routing. Empty when no choice exists; never dispatches from user text. |
 
 ### Services
 
