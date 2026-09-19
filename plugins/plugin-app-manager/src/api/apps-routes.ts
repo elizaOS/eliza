@@ -1187,6 +1187,10 @@ export async function handleAppsRoutes(
     }
 
     if (subroute === "stop") {
+      if (!canLaunchApps(actorRole)) {
+        error(res, "App stop requires OWNER or ADMIN role", 403);
+        return true;
+      }
       const pluginManager = getPluginManager();
       const result = await appManager.stop(pluginManager, "", runId, null);
       json(res, result);
@@ -1247,6 +1251,10 @@ export async function handleAppsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/apps/install") {
+    if (!canLaunchApps(actorRole)) {
+      error(res, "App install requires OWNER or ADMIN role", 403);
+      return true;
+    }
     try {
       const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
       if (rawBody === null) return true;
@@ -1321,6 +1329,10 @@ export async function handleAppsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/apps/stop") {
+    if (!canLaunchApps(actorRole)) {
+      error(res, "App stop requires OWNER or ADMIN role", 403);
+      return true;
+    }
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawBody === null) return true;
     const parsed = PostStopAppRequestSchema.safeParse(rawBody);
@@ -1440,6 +1452,13 @@ export async function handleAppsRoutes(
   // -------------------------------------------------------------------------
 
   if (method === "POST" && pathname === "/api/apps/relaunch") {
+    // Relaunch stops then launches, so it performs the same privileged
+    // operation as /api/apps/launch and carries the same role gate. Without
+    // this, a USER/GUEST/undefined actor could launch (and stop) apps here.
+    if (!canLaunchApps(actorRole)) {
+      error(res, "App relaunch requires OWNER or ADMIN role", 403);
+      return true;
+    }
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawBody === null) return true;
     const parsed = PostRelaunchAppRequestSchema.safeParse(rawBody);
@@ -1543,6 +1562,10 @@ export async function handleAppsRoutes(
       error(res, "slug is required");
       return true;
     }
+    if (method === "PUT" && !canLaunchApps(actorRole)) {
+      error(res, "App permission changes require OWNER or ADMIN role", 403);
+      return true;
+    }
     const runtimeWithRegistry = runtime as {
       getService?: (type: string) => {
         getPermissionsView?: (slug: string) => Promise<unknown>;
@@ -1604,6 +1627,14 @@ export async function handleAppsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/apps/load-from-directory") {
+    if (!canLaunchApps(actorRole)) {
+      error(
+        res,
+        "Loading apps from a directory requires OWNER or ADMIN role",
+        403,
+      );
+      return true;
+    }
     // Body validation goes through PostLoadFromDirectoryRequestSchema
     // (zod, see @elizaos/shared/contracts/apps-loading-routes.ts).
     // The browser-safe schema handles the structural wire contract. The host
@@ -1748,6 +1779,10 @@ export async function handleAppsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/apps/create") {
+    if (!canLaunchApps(actorRole)) {
+      error(res, "App create requires OWNER or ADMIN role", 403);
+      return true;
+    }
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawBody === null) return true;
     const parsed = PostCreateAppRequestSchema.safeParse(rawBody);
