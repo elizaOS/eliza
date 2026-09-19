@@ -28,9 +28,9 @@ Pinned peer integration is ready for a local review checkpoint. All 33 peer comm
 - [x] Run focused offline checks for recalled-source deferral, original/correction preservation, source ownership, non-owner withholding, stale/missing checkpoint fallback, provider restoration, handler/planner/evaluator routing and no premature effects.
 - [x] Check Notes/Calendar current contracts and accepted single-call navigation remain intact; owning types/lint and root verify on the integrated source.
 - [x] Set up a separate local instance with separate writable state and unused ports; label it explicitly. Do not use 5248/31372, 5228 or 5199. Preserve provider/model settings; never log secrets.
-- [ ] Minimal necessary real browser acceptance: navigation, exact historical quote plus correction, one representative Notes write/read and Calendar clarification/proposal path where affected. Reuse archived trajectories first; no repeated paid timing sweep. Record source version and state, foreground/background calls, input/cache/output, acknowledgment/final times and actual saved values.
+- [x] Minimal necessary real browser acceptance (recorded limitations below): navigation, exact historical quote plus correction, one representative Notes write/read and Calendar clarification/proposal path where affected. Reuse archived trajectories first; no repeated paid timing sweep. Record source version and state, foreground/background calls, input/cache/output, acknowledgment/final times and actual saved values.
 - [x] Investigate the extra exact-recall call and handler prompt overhead from actual traces. Retain the recovery call if removing it loses authorized originals/corrections. No arbitrary context truncation, summary substitution or phrase-specific fast path.
-- [ ] Classify result ACCEPT / HOLD with remaining limits; clean only integration fixtures; commit/tag integrated source only after its own gates. Keep baseline available for comparison. No claim that integration is already deployed or universally faster.
+- [x] Classify result ACCEPT / HOLD with remaining limits; clean only integration fixtures; commit/tag integrated source only after its own gates. Keep baseline available for comparison. No claim that integration is already deployed or universally faster.
 
 ## Invariants
 
@@ -51,6 +51,10 @@ To compare or revert this work, use the pre-integration tag in another isolated 
 - `/Users/nubs/Documents/ChatGPT/test/eliza-peer-integration-20260919/LATENCY-INVESTIGATION.md`: why original-evidence recovery cannot be dropped for speed.
 - Root final check: `verify-typed-calendar.log`, exit0,373/373tasks plus audits. Personal Assistant receipt/handoff44pass; separately configured scheduling real lane9pass. Notes191pass. Calendar split-run coverage documented in REVIEW.md.
 - Notes and synthetic historical-conversation fixtures were removed through owning APIs; Calendar test day remains empty. Main synthetic QA transcript remains as evidence.
-- Outstanding: inspect the unavailable semantic-recall reason and unnecessary discovery path; account for unsolicited scheduled output separately from captured foreground/background-memory calls. Progress transport preserves one final reply, but model-authored progress wording failed the desired conversational quality in one sample. Do not weaken source/permission checks or add phrase matching to hide it.
+- Documented follow-ups: semantic-recall unavailability reason and unnecessary discovery path; uninstrumented scheduled usage is unavailable and must not be counted as zero. Offline logs identify the unsolicited outputs as default-pack work, unchanged by this merge. Progress transport preserves one final reply, but model-authored progress wording failed the desired conversational quality in one sample. Do not weaken source/permission checks or add phrase matching to hide it.
 
-This local checkpoint preserves reviewed integration work without changing the saved demo or authorizing a remote merge/deploy. The goal remains active until the outstanding audit is resolved or concretely documented as a bounded tradeoff.
+This local checkpoint preserves reviewed integration work without changing the saved demo or authorizing a remote merge/deploy. The completion audit documents the remaining tradeoffs without claiming universal speed or release acceptance.
+
+## Review checkpoint
+
+Integration merge `d80236a956377fc1c5bce6970ea56339a8f783dc`, local tag `codex/peer-integration-reviewed-checkpoint-20260919`. Detailed requirement-by-requirement audit: `/Users/nubs/Documents/ChatGPT/test/eliza-peer-integration-20260919/COMPLETION-AUDIT.md`. Core integration and sampled text correctness: accepted for local review. Universal latency, acknowledgment prose quality and broader release readiness: HOLD. No further model calls made to chase timing samples.
