@@ -1,0 +1,20 @@
+{
+  "package": "@agenda-intelligence/plugin-guard",
+  "repository": "github:vassiliylakhonin/agenda-intelligence-md",
+  "kind": "plugin",
+  "description": "Deterministic pre-sign transaction firewall, OFAC/sanctions screening, drainer defense, velocity caps, and autonomous M2M escrow arbiter for elizaOS agents on Base.",
+  "homepage": "https://github.com/vassiliylakhonin/agenda-intelligence-md/tree/main/integrations/elizaos",
+  "version": "1.10.0",
+  "directory": "integrations/elizaos",
+  "tags": [
+    "security",
+    "compliance",
+    "ofac",
+    "sanctions",
+    "escrow",
+    "base",
+    "usdc",
+    "x402",
+    "drainer-defense"
+  ]
+}

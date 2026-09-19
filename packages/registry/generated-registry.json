@@ -45,6 +45,55 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@agenda-intelligence/plugin-guard": {
+      "git": {
+        "repo": "vassiliylakhonin/agenda-intelligence-md",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@agenda-intelligence/plugin-guard",
+        "v0": null,
+        "v1": null,
+        "v2": "1.10.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Deterministic pre-sign transaction firewall, OFAC/sanctions screening, drainer defense, velocity caps, and autonomous M2M escrow arbiter for elizaOS agents on Base.",
+      "homepage": "https://github.com/vassiliylakhonin/agenda-intelligence-md/tree/main/integrations/elizaos",
+      "topics": [
+        "security",
+        "compliance",
+        "ofac",
+        "sanctions",
+        "escrow",
+        "base",
+        "usdc",
+        "x402",
+        "drainer-defense"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "integrations/elizaos"
+    },
     "@agentradar/eliza-plugin": {
       "git": {
         "repo": "Bichev/agentradar-integrations",
