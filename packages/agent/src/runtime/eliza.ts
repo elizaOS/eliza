@@ -5003,6 +5003,7 @@ export async function startEliza(
   // surface a failure loudly — a missing store is exactly the silent-token-
   // loss condition this service exists to prevent.
   const ensureConnectorCredentialStoreStarted = async (): Promise<void> => {
+    await runtime.getServiceLoadPromise("connector_account");
     try {
       await runtime.getServiceLoadPromise("connector_credential_store");
     } catch (err) {
