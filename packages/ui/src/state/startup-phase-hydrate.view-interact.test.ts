@@ -12,8 +12,13 @@ import {
   SHELL_NAVIGATE_VIEW_WS_EVENT,
 } from "@elizaos/shared/events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { PluginInfo } from "../api";
 import { RESYNC_EVENT } from "./AppContext.hooks";
-import { bindReadyPhase, type ReadyPhaseDeps } from "./startup-phase-hydrate";
+import {
+  bindReadyPhase,
+  isCodingAgentFeatureEnabled,
+  type ReadyPhaseDeps,
+} from "./startup-phase-hydrate";
 
 const clientMock = vi.hoisted(() => {
   const handlers = new Map<string, (data: Record<string, unknown>) => void>();
@@ -55,6 +60,7 @@ function makeDeps(): ReadyPhaseDeps {
     setPtySessions: vi.fn(),
     hasPtySessionsRef: { current: false },
     agentRunningRef: { current: false },
+    isCodingAgentFeatureAvailable: () => true,
     setTabRaw: vi.fn(),
     setConversationMessages: vi.fn(),
     setUnreadConversations: vi.fn(),
@@ -92,6 +98,95 @@ describe("bindReadyPhase pty hydration readiness gate", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("does not poll a disabled orchestrator feature even while the agent runs", () => {
+    clientMock.getCodingAgentStatus.mockClear();
+    vi.useFakeTimers();
+    try {
+      const deps = makeDeps();
+      deps.isCodingAgentFeatureAvailable = () => false;
+      deps.agentRunningRef.current = true;
+      const cleanup = bindReadyPhase({ current: deps });
+
+      vi.advanceTimersByTime(15_000);
+      expect(clientMock.getCodingAgentStatus).not.toHaveBeenCalled();
+
+      cleanup();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("hydrates when the feature becomes enabled after startup, and re-arms on disable", () => {
+    clientMock.getCodingAgentStatus.mockClear();
+    vi.useFakeTimers();
+    try {
+      let enabled = false;
+      const deps = makeDeps();
+      deps.isCodingAgentFeatureAvailable = () => enabled;
+      deps.agentRunningRef.current = true;
+      const cleanup = bindReadyPhase({ current: deps });
+
+      vi.advanceTimersByTime(5_000);
+      expect(clientMock.getCodingAgentStatus).not.toHaveBeenCalled();
+
+      enabled = true;
+      vi.advanceTimersByTime(5_000);
+      expect(clientMock.getCodingAgentStatus).toHaveBeenCalledTimes(1);
+
+      // Still active: no repeat while there are no live PTY sessions.
+      vi.advanceTimersByTime(5_000);
+      expect(clientMock.getCodingAgentStatus).toHaveBeenCalledTimes(1);
+
+      // Disable then re-enable: the gate re-arms and hydrates again.
+      enabled = false;
+      vi.advanceTimersByTime(5_000);
+      enabled = true;
+      vi.advanceTimersByTime(5_000);
+      expect(clientMock.getCodingAgentStatus).toHaveBeenCalledTimes(2);
+
+      cleanup();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("isCodingAgentFeatureEnabled", () => {
+  const plugin = (overrides: Partial<PluginInfo>): PluginInfo =>
+    ({
+      id: "agent-orchestrator",
+      name: "Agent Orchestrator",
+      enabled: false,
+      ...overrides,
+    }) as PluginInfo;
+
+  it("requires the orchestrator plugin to be enabled or active", () => {
+    expect(isCodingAgentFeatureEnabled([])).toBe(false);
+    expect(isCodingAgentFeatureEnabled(undefined)).toBe(false);
+    expect(
+      isCodingAgentFeatureEnabled([
+        plugin({ enabled: false, isActive: false }),
+      ]),
+    ).toBe(false);
+    expect(isCodingAgentFeatureEnabled([plugin({ enabled: true })])).toBe(true);
+    expect(
+      isCodingAgentFeatureEnabled([plugin({ enabled: false, isActive: true })]),
+    ).toBe(true);
+  });
+
+  it("ignores an unrelated plugin even when enabled", () => {
+    expect(
+      isCodingAgentFeatureEnabled([
+        plugin({
+          id: "other",
+          name: "Other",
+          npmName: "@elizaos/plugin-other",
+          enabled: true,
+        }),
+      ]),
+    ).toBe(false);
   });
 });
 

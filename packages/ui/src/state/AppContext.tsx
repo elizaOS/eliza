@@ -74,6 +74,7 @@ import {
 } from "./runtime-url-trust";
 import { deriveUiShellModeForTab } from "./shell-routing";
 import type { RuntimeTarget } from "./startup-coordinator";
+import { isCodingAgentFeatureEnabled } from "./startup-phase-hydrate";
 import { useTranslation } from "./TranslationContext.hooks";
 import { TranslationProvider } from "./TranslationProvider";
 import { useAppLifecycleEvents } from "./useAppLifecycleEvents";
@@ -416,6 +417,10 @@ function AppProviderInner({
     showRestartBanner,
     triggerRestart: triggerRestartProxy,
   });
+  // Ready-phase PTY hydration reads this on demand so the coding-agent feature
+  // state stays current, including when it is enabled after startup.
+  const pluginsRef = useRef(pluginsSkillsHook.plugins);
+  pluginsRef.current = pluginsSkillsHook.plugins;
   const {
     plugins,
     setPlugins,
@@ -1496,6 +1501,8 @@ function AppProviderInner({
     setPtySessions,
     hasPtySessionsRef,
     agentRunningRef,
+    isCodingAgentFeatureAvailable: () =>
+      isCodingAgentFeatureEnabled(pluginsRef.current),
     setTab,
     setTabRaw,
     setConversationMessages,
