@@ -8,6 +8,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -15,6 +16,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
+import { loadSkillsFromDir } from "../src/loader.js";
 import {
   clearSkillsDirCache,
   getCuratedActiveDir,
@@ -195,6 +197,7 @@ describe("promoteSkill", () => {
       /Invalid skill name "Invalid_Name"/,
     );
     assert.throws(() => promoteSkill("skill!"), /Invalid skill name "skill!"/);
+    assert.throws(() => promoteSkill("../escape"), /Invalid skill name/);
     assert.throws(
       () => promoteSkill("CamelCaseSkill"),
       /Invalid skill name "CamelCaseSkill"/,
@@ -224,7 +227,15 @@ describe("promoteSkill", () => {
     assert.strictEqual(existsSync(proposedDir), false);
     assert.strictEqual(existsSync(activeDir), true);
     assert.strictEqual(activeDir, join(getCuratedActiveDir(), skillName));
-    assert.strictEqual(existsSync(join(activeDir, "SKILL.md")), true);
+    assert.strictEqual(
+      readFileSync(join(activeDir, "SKILL.md"), "utf8"),
+      "---\nname: test-skill-promo\ndescription: A test skill\n---\n# Test",
+    );
+    const { skills } = loadSkillsFromDir({
+      dir: getCuratedActiveDir(),
+      source: "curated",
+    });
+    assert.ok(skills.find((skill) => skill.name === skillName));
   });
 
   it("throws when active skill already exists", () => {

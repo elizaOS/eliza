@@ -14,6 +14,14 @@ import {
 } from "../src/formatter.js";
 import type { Skill, SkillEntry } from "../src/types.js";
 
+function skillEntry(
+  skill: Skill,
+  invocation: SkillEntry["invocation"] = {},
+  frontmatter: SkillEntry["frontmatter"] = {},
+): SkillEntry {
+  return { skill, frontmatter, metadata: {}, invocation };
+}
+
 describe("formatSkillsForPrompt", () => {
   it("returns empty string for no skills", () => {
     assert.strictEqual(formatSkillsForPrompt([]), "");
@@ -74,18 +82,14 @@ describe("formatSkillsForPrompt", () => {
 describe("formatSkillEntriesForPrompt", () => {
   it("filters entries by invocation policy", () => {
     const entries: SkillEntry[] = [
-      {
-        skill: { name: "visible", description: "Visible" },
-        frontmatter: {},
-        metadata: {},
-        invocation: { disableModelInvocation: false },
-      },
-      {
-        skill: { name: "hidden", description: "Hidden" },
-        frontmatter: {},
-        metadata: {},
-        invocation: { disableModelInvocation: true },
-      },
+      skillEntry(
+        { name: "visible", description: "Visible" },
+        { disableModelInvocation: false },
+      ),
+      skillEntry(
+        { name: "hidden", description: "Hidden" },
+        { disableModelInvocation: true },
+      ),
     ];
     const result = formatSkillEntriesForPrompt(entries);
     assert.ok(result.includes("visible"));
@@ -94,12 +98,10 @@ describe("formatSkillEntriesForPrompt", () => {
 
   it("returns empty string when all entries are hidden", () => {
     const entries: SkillEntry[] = [
-      {
-        skill: { name: "hidden", description: "Hidden" },
-        frontmatter: {},
-        metadata: {},
-        invocation: { disableModelInvocation: true },
-      },
+      skillEntry(
+        { name: "hidden", description: "Hidden" },
+        { disableModelInvocation: true },
+      ),
     ];
     assert.strictEqual(formatSkillEntriesForPrompt(entries), "");
   });
@@ -134,12 +136,7 @@ describe("formatSkillsList", () => {
 describe("buildSkillCommandSpecs", () => {
   it("builds command specs from entries", () => {
     const entries: SkillEntry[] = [
-      {
-        skill: { name: "my-skill", description: "A skill" },
-        frontmatter: {},
-        metadata: {},
-        invocation: {},
-      },
+      skillEntry({ name: "my-skill", description: "A skill" }),
     ];
     const specs = buildSkillCommandSpecs(entries);
     assert.strictEqual(specs.length, 1);
@@ -150,12 +147,10 @@ describe("buildSkillCommandSpecs", () => {
 
   it("excludes non-user-invocable skills", () => {
     const entries: SkillEntry[] = [
-      {
-        skill: { name: "internal", description: "Internal only" },
-        frontmatter: {},
-        metadata: {},
-        invocation: { userInvocable: false },
-      },
+      skillEntry(
+        { name: "internal", description: "Internal only" },
+        { userInvocable: false },
+      ),
     ];
     const specs = buildSkillCommandSpecs(entries);
     assert.strictEqual(specs.length, 0);
@@ -163,12 +158,7 @@ describe("buildSkillCommandSpecs", () => {
 
   it("avoids reserved names by appending suffix", () => {
     const entries: SkillEntry[] = [
-      {
-        skill: { name: "help", description: "Help skill" },
-        frontmatter: {},
-        metadata: {},
-        invocation: {},
-      },
+      skillEntry({ name: "help", description: "Help skill" }),
     ];
     const specs = buildSkillCommandSpecs(entries, new Set(["help"]));
     assert.notStrictEqual(specs[0].name, "help");
@@ -178,12 +168,7 @@ describe("buildSkillCommandSpecs", () => {
   it("truncates long descriptions to 100 chars", () => {
     const longDesc = "A".repeat(200);
     const entries: SkillEntry[] = [
-      {
-        skill: { name: "long", description: longDesc },
-        frontmatter: {},
-        metadata: {},
-        invocation: {},
-      },
+      skillEntry({ name: "long", description: longDesc }),
     ];
     const specs = buildSkillCommandSpecs(entries);
     assert.ok(specs[0].description.length <= 100);
@@ -193,12 +178,10 @@ describe("buildSkillCommandSpecs", () => {
     // 98 ascii characters followed by 🤖 (which is 2 UTF-16 code units, at indices 98 and 99)
     const descWithSurrogateAtBoundary = `${"a".repeat(98)}🤖extra`;
     const entries: SkillEntry[] = [
-      {
-        skill: { name: "emoji-desc", description: descWithSurrogateAtBoundary },
-        frontmatter: {},
-        metadata: {},
-        invocation: {},
-      },
+      skillEntry({
+        name: "emoji-desc",
+        description: descWithSurrogateAtBoundary,
+      }),
     ];
     const specs = buildSkillCommandSpecs(entries);
     assert.strictEqual(specs[0].description, `${"a".repeat(98)}…`);
@@ -206,21 +189,11 @@ describe("buildSkillCommandSpecs", () => {
 
   it("replaces pre-existing lone surrogates before building descriptions", () => {
     const entries: SkillEntry[] = [
-      {
-        skill: { name: "short", description: "before \uD83D after" },
-        frontmatter: {},
-        metadata: {},
-        invocation: {},
-      },
-      {
-        skill: {
-          name: "boundary",
-          description: `${"a".repeat(98)}\uD83Dextra`,
-        },
-        frontmatter: {},
-        metadata: {},
-        invocation: {},
-      },
+      skillEntry({ name: "short", description: "before \uD83D after" }),
+      skillEntry({
+        name: "boundary",
+        description: `${"a".repeat(98)}\uD83Dextra`,
+      }),
     ];
     const specs = buildSkillCommandSpecs(entries);
     assert.strictEqual(specs[0].description, "before � after");
@@ -229,18 +202,8 @@ describe("buildSkillCommandSpecs", () => {
 
   it("handles duplicate skill names by adding numeric suffix", () => {
     const entries: SkillEntry[] = [
-      {
-        skill: { name: "dup", description: "First" },
-        frontmatter: {},
-        metadata: {},
-        invocation: {},
-      },
-      {
-        skill: { name: "dup", description: "Second" },
-        frontmatter: {},
-        metadata: {},
-        invocation: {},
-      },
+      skillEntry({ name: "dup", description: "First" }),
+      skillEntry({ name: "dup", description: "Second" }),
     ];
     const specs = buildSkillCommandSpecs(entries);
     assert.strictEqual(specs.length, 2);
@@ -249,15 +212,14 @@ describe("buildSkillCommandSpecs", () => {
 
   it("parses dispatch configuration from frontmatter", () => {
     const entries: SkillEntry[] = [
-      {
-        skill: { name: "dispatched", description: "Has dispatch" },
-        frontmatter: {
+      skillEntry(
+        { name: "dispatched", description: "Has dispatch" },
+        {},
+        {
           "command-dispatch": "tool",
           "command-tool": "myTool",
         },
-        metadata: {},
-        invocation: {},
-      },
+      ),
     ];
     const specs = buildSkillCommandSpecs(entries);
     assert.ok(specs[0].dispatch);
@@ -268,14 +230,13 @@ describe("buildSkillCommandSpecs", () => {
 
   it("returns no dispatch when command-dispatch is not 'tool'", () => {
     const entries: SkillEntry[] = [
-      {
-        skill: { name: "no-dispatch", description: "No dispatch" },
-        frontmatter: {
+      skillEntry(
+        { name: "no-dispatch", description: "No dispatch" },
+        {},
+        {
           "command-dispatch": "other",
         },
-        metadata: {},
-        invocation: {},
-      },
+      ),
     ];
     const specs = buildSkillCommandSpecs(entries);
     assert.strictEqual(specs[0].dispatch, undefined);
