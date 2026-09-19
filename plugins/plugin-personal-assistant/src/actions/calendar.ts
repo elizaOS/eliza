@@ -2144,6 +2144,10 @@ export const calendarAction: Action & {
  * discriminator pinning, delegation and the inherited authorization gates. */
 export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
   overrides: {
+    create_event: {
+      description:
+        "Create an authorized event at the requested or accepted time. This action validates scheduling details and checks fresh availability before writing; a conflict or incomplete coverage prevents creation and returns the reason and checked alternatives when available. Use it directly for 'book this if I am free'; a separate availability call is unnecessary. Missing timing needs clarification. Do not book a suggested alternative until the user accepts it or explicitly delegates choosing a time.",
+    },
     check_availability: {
       parameters: calendarAction.parameters
         ?.filter(
