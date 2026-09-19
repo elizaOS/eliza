@@ -230,6 +230,13 @@ export const openaiPlugin: Plugin = {
     registerMediaModels(runtime);
   },
 
+  modelMetadata: {
+    [ModelType.TEXT_EMBEDDING]: {
+      displayModelSetting: "OPENAI_EMBEDDING_MODEL",
+      displayModelDefault: "text-embedding-3-small",
+    },
+  },
+
   models: {
     [ModelType.TEXT_EMBEDDING]: async (
       runtime: IAgentRuntime,
