@@ -7,6 +7,7 @@
  * no plugin imports.
  */
 
+export * from "./calendar-time-zone.js";
 export * from "./service-error.js";
 export * from "./service-normalize.js";
 export * from "./time-util.js";
