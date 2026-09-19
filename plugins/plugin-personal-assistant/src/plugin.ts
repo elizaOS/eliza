@@ -49,7 +49,10 @@ import {
 import { inboxPlugin } from "@elizaos/plugin-inbox/plugin";
 import { pdfPlugin } from "@elizaos/plugin-pdf";
 import { remindersPlugin } from "@elizaos/plugin-reminders";
-import { waitForScheduledTaskRunnerService } from "@elizaos/plugin-scheduling";
+import {
+  registerScheduledTaskRunnerBootHook,
+  waitForScheduledTaskRunnerService,
+} from "@elizaos/plugin-scheduling";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import type {
   IPermissionsRegistry,
@@ -62,7 +65,10 @@ import { MEETING_TRANSCRIPT_FINALIZED_EVENT } from "@elizaos/shared";
 import { ownerAgreementKnowledgeAction } from "./actions/agreement-knowledge.js";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
-import { calendarAction } from "./actions/calendar.js";
+import {
+  calendarAction,
+  calendarActionPromotionOptions,
+} from "./actions/calendar.js";
 import { registerPersonalAssistantCalendarSourcesHost } from "./actions/calendar-sources.js";
 import {
   conflictDetectAction,
@@ -734,7 +740,10 @@ const rawPersonalAssistantPlugin: Plugin = {
     ...promoteSubactionsToActions(blockAction),
     ...promoteSubactionsToActions(ownerFinancesAction),
     ...promoteSubactionsToActions(credentialsAction),
-    ...promoteSubactionsToActions(calendarAction),
+    ...promoteSubactionsToActions(
+      calendarAction,
+      calendarActionPromotionOptions,
+    ),
     ...promoteSubactionsToActions(householdCoordinationAction),
     ...promoteSubactionsToActions(householdOperationsAction),
     ...promoteSubactionsToActions(resourceCapacityAction),
@@ -1083,6 +1092,15 @@ const rawPersonalAssistantPlugin: Plugin = {
     // probes, and anchor registry. First-wins, so this stays authoritative for
     // the lifetime of the runtime once registered.
     registerLifeOpsScheduledTaskRunnerDeps(runtime);
+    registerScheduledTaskRunnerBootHook(runtime, async (service) => {
+      const { ensureFamilyBackupCleanupSchedule } = await import(
+        "./lifeops/family-workflows/backup-cleanup-schedule.js"
+      );
+      await ensureFamilyBackupCleanupSchedule(
+        runtime,
+        service.getRunner({ agentId: runtime.agentId }),
+      );
+    });
 
     const sendPolicyRegistry = createSendPolicyRegistry();
     registerSendPolicyRegistry(runtime, sendPolicyRegistry);

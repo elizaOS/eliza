@@ -1,29 +1,9 @@
 #!/usr/bin/env node
-// Directory-driven ui-smoke spec discovery for the keyless PR lane (issue #9943).
-//
-// The PR lane used to hand-name most ui-smoke specs across several jobs, which
-// left the rest silently off the PR path. This script makes the run
-// directory-driven instead: it walks every test/ui-smoke/**/*.spec.ts, subtracts
-// the explicit, checked-in deny-list (.pr-deny-list.json), and emits the set of
-// specs that should run keyless. Any NEW spec is on the PR path by default; the
-// only way to exclude one is to record it in the deny-list with a category and a
-// reason. The script's --check mode validates the deny-list itself.
-//
-// Modes:
-//   --list        (default) print every runnable spec (all specs - deny-list),
-//                 one relative path per line.
-//   --list-auto   print the runnable specs that are NOT already hand-named in
-//                 scenario-pr.yml — i.e. the catch-all set the auto-discovered
-//                 workflow job runs — space-separated on one line. New specs land
-//                 here automatically, so they always run on PR.
-//   --json        print a machine-readable breakdown.
-//   --check       validate the deny-list (entries reference real specs, have a
-//                 valid category + non-empty reason, no duplicates) and exit
-//                 non-zero on any problem.
-//
-// Paths are printed relative to packages/app (e.g. test/ui-smoke/foo.spec.ts),
-// which is the cwd Playwright runs in via `bun run --cwd packages/app test:e2e`.
-
+/**
+ * Lists keyless browser specs for manual diagnosis using the maintained deny list.
+ * The default develop suite is independently selected by Playwright; --list-auto
+ * omits specs explicitly named by a dedicated canonical CI harness.
+ */
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,12 +13,7 @@ const APP_DIR = path.resolve(SCRIPT_DIR, "..");
 const REPO_ROOT = path.resolve(APP_DIR, "../..");
 const UI_SMOKE_DIR = path.join(APP_DIR, "test", "ui-smoke");
 const DENY_LIST_PATH = path.join(UI_SMOKE_DIR, ".pr-deny-list.json");
-const WORKFLOW_PATH = path.join(
-  REPO_ROOT,
-  ".github",
-  "workflows",
-  "scenario-pr.yml",
-);
+const WORKFLOW_PATH = path.join(REPO_ROOT, ".github", "workflows", "ci.yml");
 
 const VALID_CATEGORIES = new Set([
   "live-only",
@@ -81,7 +56,7 @@ function deniedSpecNames() {
   return new Set(loadDenyList().map((entry) => entry.spec));
 }
 
-/** Spec paths hand-named in scenario-pr.yml (test/ui-smoke/<path>.spec.ts). */
+/** Spec paths hand-named in ci.yml (test/ui-smoke/<path>.spec.ts). */
 function namedInWorkflow() {
   const workflow = readFileSync(WORKFLOW_PATH, "utf8");
   return new Set(
@@ -144,7 +119,7 @@ function runCheck() {
   const auto = autoDiscoveredSpecs();
   console.log(
     `ui-smoke deny-list OK: ${specs.size} specs total, ${entries.length} denied, ` +
-      `${runnable.length} runnable on PR (${auto.length} via auto-discovery).`,
+      `${runnable.length} runnable for keyless diagnosis (${auto.length} via auto-discovery).`,
   );
 }
 

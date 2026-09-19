@@ -20,6 +20,7 @@ const meta = {
   component: SocialConnectionHint,
   tags: ["autodocs"],
   parameters: {
+    layout: "fullscreen",
     backgrounds: {
       default: "dark",
       values: [{ name: "dark", value: "#0a0a0a" }],
@@ -29,7 +30,7 @@ const meta = {
     (Story) => (
       <MemoryRouter initialEntries={["/cloud"]}>
         <div
-          className="max-w-2xl space-y-4 p-6"
+          className="mx-auto w-full max-w-2xl space-y-4 p-6"
           style={{ background: "#0a0a0a" }}
         >
           <Story />

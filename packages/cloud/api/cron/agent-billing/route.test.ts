@@ -1,5 +1,6 @@
 /**
- * Verifies billing route outcomes, durable receipts, exact totals, and replay behavior.
+ * Exercises billing route webhook signatures, recovery and failure translation
+ * with deterministic repository boundaries; PGlite suites own persisted receipts.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createHmac } from "node:crypto";
@@ -78,44 +79,43 @@ const loggerWarn = mock(() => undefined);
 const loggerError = mock(() => undefined);
 const startedRuns = new Map<string, Record<string, unknown>>();
 const durableRunItems = new Map<string, Map<string, Record<string, unknown>>>();
-const startOrLoadBillingRun = mock(
-  async (input: {
-    invocationKey: string;
-    triggerKind: "scheduled" | "manual";
-    schedule: string | null;
-    scheduledAt: Date | null;
-    leaseDurationMs: number;
-  }) => {
-    const leaseToken = crypto.randomUUID();
-    const databaseNow = new Date();
-    const run = {
-      id: crypto.randomUUID(),
-      invocation_key: input.invocationKey,
-      trigger_kind: input.triggerKind,
-      schedule: input.schedule,
-      scheduled_at: input.scheduledAt,
-      status: "started",
-      started_at: databaseNow,
-      billing_cutoff_at: databaseNow,
-      attempt_count: 1,
-      lease_token: leaseToken,
-      lease_expires_at: new Date(databaseNow.getTime() + input.leaseDurationMs),
-      completed_at: null,
-      sandboxes_processed: 0,
-      sandboxes_billed: 0,
-      warnings_sent: 0,
-      sandboxes_shutdown: 0,
-      errors: 0,
-      total_revenue: "0.000000",
-      duration_ms: null,
-      error_samples: [],
-      created_at: databaseNow,
-      updated_at: databaseNow,
-    };
-    startedRuns.set(run.id, run);
-    return { run, claimed: true, recovered: false, leaseToken };
-  },
-);
+const defaultStartOrLoadBillingRun = async (input: {
+  invocationKey: string;
+  triggerKind: "scheduled" | "manual";
+  schedule: string | null;
+  scheduledAt: Date | null;
+  leaseDurationMs: number;
+}) => {
+  const leaseToken = crypto.randomUUID();
+  const databaseNow = new Date();
+  const run = {
+    id: crypto.randomUUID(),
+    invocation_key: input.invocationKey,
+    trigger_kind: input.triggerKind,
+    schedule: input.schedule,
+    scheduled_at: input.scheduledAt,
+    status: "started",
+    started_at: databaseNow,
+    billing_cutoff_at: databaseNow,
+    attempt_count: 1,
+    lease_token: leaseToken,
+    lease_expires_at: new Date(databaseNow.getTime() + input.leaseDurationMs),
+    completed_at: null,
+    sandboxes_processed: 0,
+    sandboxes_billed: 0,
+    warnings_sent: 0,
+    sandboxes_shutdown: 0,
+    errors: 0,
+    total_revenue: "0.000000",
+    duration_ms: null,
+    error_samples: [],
+    created_at: databaseNow,
+    updated_at: databaseNow,
+  };
+  startedRuns.set(run.id, run);
+  return { run, claimed: true, recovered: false, leaseToken };
+};
+const startOrLoadBillingRun = mock(defaultStartOrLoadBillingRun);
 const listBillingRunItems = mock(async (runId: string) => [
   ...(durableRunItems.get(runId)?.values() ?? []),
 ]);
@@ -374,38 +374,7 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
       job: { id: "stop-job" },
       created: true,
     }));
-    startOrLoadBillingRun.mockImplementation(async (input) => {
-      const leaseToken = crypto.randomUUID();
-      const databaseNow = new Date();
-      const run = {
-        id: crypto.randomUUID(),
-        invocation_key: input.invocationKey,
-        trigger_kind: input.triggerKind,
-        schedule: input.schedule,
-        scheduled_at: input.scheduledAt,
-        status: "started",
-        started_at: databaseNow,
-        billing_cutoff_at: databaseNow,
-        attempt_count: 1,
-        lease_token: leaseToken,
-        lease_expires_at: new Date(
-          databaseNow.getTime() + input.leaseDurationMs,
-        ),
-        completed_at: null,
-        sandboxes_processed: 0,
-        sandboxes_billed: 0,
-        warnings_sent: 0,
-        sandboxes_shutdown: 0,
-        errors: 0,
-        total_revenue: "0.000000",
-        duration_ms: null,
-        error_samples: [],
-        created_at: databaseNow,
-        updated_at: databaseNow,
-      };
-      startedRuns.set(run.id, run);
-      return { run, claimed: true, recovered: false, leaseToken };
-    });
+    startOrLoadBillingRun.mockImplementation(defaultStartOrLoadBillingRun);
   });
 
   test("queues an immediate stop and signs credits.depleted when balance is insufficient", async () => {
@@ -597,45 +566,6 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
     );
   });
 
-  test("creates the started receipt before selection and finalizes an explicit empty run", async () => {
-    listBillableSandboxes.mockImplementationOnce(async () => {
-      expect(startedRuns.size).toBe(1);
-      expect([...startedRuns.values()][0]?.status).toBe("started");
-      return { runningSandboxes: [], stoppedWithBackups: [] };
-    });
-
-    const response = await app.fetch(
-      new Request("https://api.example.test/", {
-        method: "POST",
-        headers: { "x-cron-secret": "cron-secret" },
-      }),
-      { CRON_SECRET: "cron-secret" },
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      success: true,
-      data: {
-        triggerKind: "manual",
-        status: "empty",
-        sandboxesProcessed: 0,
-        totalRevenue: "0.000000",
-      },
-    });
-    expect(completeBillingRun).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
-      expect.objectContaining({ status: "empty", errors: 0 }),
-    );
-    expect(loggerInfo).toHaveBeenCalledWith(
-      "[Agent Billing] No billable sandboxes",
-      {
-        runId: expect.any(String),
-        invocationKey: expect.stringMatching(/^manual:agent-billing:/),
-      },
-    );
-  });
-
   test("rearms due agent stops and nudges the worker even when no sandbox is billable", async () => {
     const intent = {
       id: "00000000-0000-4000-8000-000000000091",
@@ -787,42 +717,6 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
     });
   });
 
-  test("finalizes a failed receipt when selection throws and never leaks the raw error", async () => {
-    listBillableSandboxes.mockImplementationOnce(async () => {
-      throw new Error("sk_live_should_not_escape raw provider payload");
-    });
-
-    const response = await app.fetch(
-      new Request("https://api.example.test/", {
-        method: "POST",
-        headers: { "x-cron-secret": "cron-secret" },
-      }),
-      { CRON_SECRET: "cron-secret" },
-    );
-    const bodyText = await response.text();
-
-    expect(response.status).toBe(500);
-    expect(bodyText).not.toContain("sk_live_should_not_escape");
-    expect(bodyText).not.toContain("raw provider payload");
-    expect(JSON.parse(bodyText)).toMatchObject({
-      success: false,
-      data: { status: "failed", sandboxesProcessed: 0, errors: 1 },
-    });
-    expect(completeBillingRun).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
-      expect.objectContaining({
-        status: "failed",
-        errorSamples: [
-          {
-            code: "billing_run_failed",
-            message: "Agent billing run failed",
-          },
-        ],
-      }),
-    );
-  });
-
   test("fails closed before selection when the started receipt cannot be stored", async () => {
     startOrLoadBillingRun.mockImplementationOnce(async () => {
       throw new Error("receipt database unavailable");
@@ -865,87 +759,6 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toMatchObject({ success: false });
     expect(completeBillingRun).toHaveBeenCalledTimes(2);
-  });
-
-  test("uses a new server-generated identity for every authenticated manual GET or POST", async () => {
-    listBillableSandboxes.mockImplementation(async () => ({
-      runningSandboxes: [],
-      stoppedWithBackups: [],
-    }));
-
-    for (const method of ["GET", "POST"] as const) {
-      const response = await app.fetch(
-        new Request("https://api.example.test/", {
-          method,
-          headers: { "x-cron-secret": "cron-secret" },
-        }),
-        { CRON_SECRET: "cron-secret" },
-      );
-      expect(response.status).toBe(200);
-    }
-
-    const identities = startOrLoadBillingRun.mock.calls.map(
-      ([input]) => input.invocationKey,
-    );
-    expect(identities).toHaveLength(2);
-    expect(new Set(identities).size).toBe(2);
-    expect(
-      identities.every((identity) =>
-        identity.startsWith("manual:agent-billing:"),
-      ),
-    ).toBe(true);
-  });
-
-  test("returns non-2xx with exact revenue and sanitized diagnostics for a mixed run", async () => {
-    const secondSandbox = {
-      ...runningSandbox,
-      id: "223e4567-e89b-42d3-a456-426614174001",
-      agent_name: "Second Agent",
-    };
-    listBillableSandboxes.mockImplementationOnce(async () => ({
-      runningSandboxes: [runningSandbox, secondSandbox],
-      stoppedWithBackups: [],
-    }));
-    listBillingOrganizations.mockImplementationOnce(async () => [
-      {
-        id: "agent-org",
-        name: "Agent Org",
-        credit_balance: "100",
-        billing_email: "billing@example.test",
-      },
-    ]);
-    recordHourlyBilling.mockImplementationOnce(async () => ({
-      status: "billed",
-      amount: 0.1,
-      amountDecimal: "0.100000",
-      newBalance: 99.9,
-      transactionId: "transaction-1",
-    }));
-    recordHourlyBilling.mockImplementationOnce(async () => {
-      throw new Error("secret provider response must not persist");
-    });
-
-    const response = await app.fetch(
-      new Request("https://api.example.test/", {
-        method: "POST",
-        headers: { "x-cron-secret": "cron-secret" },
-      }),
-      { CRON_SECRET: "cron-secret" },
-    );
-    const bodyText = await response.text();
-
-    expect(response.status).toBe(500);
-    expect(bodyText).not.toContain("secret provider response");
-    expect(JSON.parse(bodyText)).toMatchObject({
-      success: false,
-      data: {
-        status: "partial_failure",
-        sandboxesProcessed: 2,
-        sandboxesBilled: 1,
-        errors: 1,
-        totalRevenue: "0.100000",
-      },
-    });
   });
 
   test("never returns stale-owner local results after another owner completes", async () => {

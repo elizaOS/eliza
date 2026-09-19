@@ -8,6 +8,7 @@ import { vector } from "@electric-sql/pglite/vector";
 import {
   type Agent,
   ChannelType,
+  clearSaltCache,
   type Entity,
   type Memory,
   type Room,
@@ -29,10 +30,14 @@ describe("message-search production DDL guard", () => {
   let pgClient: PGlite;
   let db: DrizzleDatabase;
   let originalNodeEnv: string | undefined;
+  let originalSecretSalt: string | undefined;
   let originalApplyMessageSearchObjects: string | undefined;
 
   beforeEach(async () => {
     originalNodeEnv = process.env.NODE_ENV;
+    originalSecretSalt = process.env.SECRET_SALT;
+    process.env.SECRET_SALT = `message-search-test-${v4()}`;
+    clearSaltCache();
     originalApplyMessageSearchObjects = process.env.ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS;
 
     pgClient = new PGlite({ extensions: { vector } });
@@ -40,6 +45,12 @@ describe("message-search production DDL guard", () => {
   });
 
   afterEach(async () => {
+    if (originalSecretSalt === undefined) {
+      delete process.env.SECRET_SALT;
+    } else {
+      process.env.SECRET_SALT = originalSecretSalt;
+    }
+    clearSaltCache();
     if (originalNodeEnv === undefined) {
       delete process.env.NODE_ENV;
     } else {

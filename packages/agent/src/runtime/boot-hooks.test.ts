@@ -1,11 +1,6 @@
 /**
- * Contract for the registry-driven boot-hook channel, with the registry and
- * logger stubbed and no real plugin installed.
- *
- * Guards the two designed absences that leave voice dead if they regress: a
- * packaged build whose registry is empty must still install the local-inference
- * hook, and a host that ships without that plugin must skip it rather than
- * abort startup — while a genuinely broken hook module still fails the boot.
+ * Exercises boot-hook selection and dynamic invocation with deterministic
+ * declarations, a data-module hook, and an absent optional package.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -16,22 +11,26 @@ import {
 const LOCAL_INFERENCE_ID = "@elizaos/plugin-local-inference";
 
 describe("boot-hook contributors", () => {
-  it("installs the local-inference hook when the registry is empty", () => {
+  it("selects a fallback declaration when the registry is empty", () => {
     // The packaged-build case: loadRegistry() degrades to [] by design, so an
     // empty declaration list must not mean "no local model handlers".
     const contributors = resolveBootHookContributors([]);
     expect(contributors.map((c) => c.id)).toContain(LOCAL_INFERENCE_ID);
   });
 
-  it("lets a registry declaration win over the fallback for the same id", () => {
+  it("invokes the registry override once instead of the fallback", async () => {
     const declared: BootHookDeclaration = {
       id: LOCAL_INFERENCE_ID,
-      specifier: "@elizaos/plugin-local-inference/runtime",
-      exportName: "registerLocalInferenceBoot",
+      specifier:
+        "data:text/javascript,export function register(runtime) { runtime.hookRuns += 1; }",
+      exportName: "register",
     };
     const contributors = resolveBootHookContributors([declared]);
     const matching = contributors.filter((c) => c.id === LOCAL_INFERENCE_ID);
-    expect(matching).toHaveLength(1);
+    const runtime = { hookRuns: 0 };
+    for (const contributor of matching)
+      await contributor.invoke(runtime as never);
+    expect(runtime.hookRuns).toBe(1);
   });
 
   it("skips a hook whose own module is not installed", async () => {

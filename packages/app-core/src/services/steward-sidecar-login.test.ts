@@ -1,7 +1,8 @@
-/** Exercises wallet provisioning and recovery through the actual bundled login child and local database. */
+/** Exercises wallet provisioning and recovery through the actual login source child and local database. */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, it, vi } from "vitest";
 import { StewardSidecar } from "./steward-sidecar";
 
@@ -9,7 +10,17 @@ it("provisions a local wallet and reopens the same authority after restarting", 
   const directory = await mkdtemp(join(tmpdir(), "eliza-login-sidecar-"));
   // Isolate legacy migration discovery from the developer's existing wallet.
   vi.stubEnv("HOME", directory);
-  const sidecar = new StewardSidecar({ dataDir: directory, maxRestarts: 0 });
+  vi.stubEnv(
+    "STEWARD_ENTRY_POINT",
+    fileURLToPath(
+      new URL("../../../login/src/server/embedded.ts", import.meta.url),
+    ),
+  );
+  const config = {
+    dataDir: directory,
+    maxRestarts: 0,
+  };
+  const sidecar = new StewardSidecar(config);
   let resumed: StewardSidecar | undefined;
   try {
     const first = await sidecar.start();
@@ -22,7 +33,7 @@ it("provisions a local wallet and reopens the same authority after restarting", 
     const restarted = await sidecar.restart();
     expect(restarted.walletAddress).toBe(credentials.walletAddress);
     await sidecar.stop();
-    resumed = new StewardSidecar({ dataDir: directory, maxRestarts: 0 });
+    resumed = new StewardSidecar(config);
     const restored = await resumed.start();
     expect(restored.state).toBe("running");
     expect(restored.walletAddress).toBe(credentials.walletAddress);

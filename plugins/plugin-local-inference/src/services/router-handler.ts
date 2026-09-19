@@ -532,6 +532,18 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 						},
 					};
 				}
+				if (
+					providerParams !== params &&
+					providerParams !== null &&
+					typeof providerParams === "object"
+				) {
+					// Stream-owner copies must retain the non-enumerable, call-local
+					// retry ledger so delegates cannot restart an exhausted budget.
+					Object.defineProperty(providerParams, MODEL_PROVIDER_ATTEMPTS, {
+						value: providerAttempts,
+						enumerable: false,
+					});
+				}
 				// Record dispatch, not just rejection: a returned lazy stream may fail
 				// later in the runtime's existing stream owner, outside this catch.
 				providerAttempts.push(providerAttempt);

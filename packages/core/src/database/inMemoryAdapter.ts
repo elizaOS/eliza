@@ -1066,6 +1066,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (!canRequesterManageDocumentDirectGrants(existing, params)) {
 			return { status: "forbidden" };
 		}
+		if (
+			params.requesterRole === "ADMIN" &&
+			!this.participantsByRoom
+				.get(String(existing.roomId))
+				?.has(String(params.requesterEntityId))
+		) {
+			return { status: "forbidden" };
+		}
 		for (const entityId of directGrantEntityIds) {
 			const entity = this.entities.get(String(entityId));
 			if (!entity || entity.agentId !== params.agentId) {
@@ -1335,11 +1343,18 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		);
 	}
 
-	async getMemoriesByIds(ids: UUID[]): Promise<Memory[]> {
+	async getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]> {
 		const out: Memory[] = [];
 		for (const id of ids) {
 			const m = this.memoriesById.get(String(id));
-			if (m) out.push(m);
+			if (
+				m &&
+				(tableName === undefined ||
+					this.memoriesByRoom
+						.get(roomTableKey(tableName, m.roomId))
+						?.some((row) => row.id === m.id))
+			)
+				out.push(m);
 		}
 		return out;
 	}
@@ -1609,6 +1624,34 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			ids.push(asUuid(id));
 		}
 		return ids;
+	}
+
+	async updateMemoryEmbedding(
+		update: import("../types/database").MemoryEmbeddingUpdate,
+	): Promise<boolean> {
+		const current = this.memoriesById.get(String(update.id));
+		const expected = update.expected;
+		if (
+			!current ||
+			current.agentId !== expected.agentId ||
+			current.roomId !== expected.roomId ||
+			current.entityId !== expected.entityId ||
+			current.content.text !== expected.text
+		)
+			return false;
+		if (
+			!update.embedding.length ||
+			(this.embeddingDimension !== undefined &&
+				update.embedding.length !== this.embeddingDimension) ||
+			!update.embedding.every(Number.isFinite)
+		)
+			throw new Error("Invalid memory embedding");
+		// updateMemories performs its map writes synchronously, before returning its
+		// promise. No other mutation can interleave with this comparison.
+		await this.updateMemories([
+			{ id: update.id, embedding: [...update.embedding] },
+		]);
+		return true;
 	}
 
 	async updateMemories(

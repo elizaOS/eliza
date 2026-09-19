@@ -18,9 +18,13 @@ import type { IAgentRuntime } from "../../types/runtime";
 import type { ShortcutMatch } from "../../types/shortcut";
 import type { State } from "../../types/state";
 import { getUserMessageText } from "../../utils/message-text";
+import { createV5MessageContextObject } from "./context-assembly.js";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
-import { resolvePlannedReplyEgress } from "./egress-policy.js";
+import {
+	captureMessageReplyRecovery,
+	resolvePlannedReplyEgress,
+} from "./egress-policy.js";
 import {
 	announceDirectToolCallToStream,
 	settleFailedDirectToolCallOnStream,
@@ -162,6 +166,18 @@ export async function runShortcutGate(args: {
 			message: args.message,
 			reply: captured,
 			actionResults: shortcutActionResults,
+			prepareRecovery: async () =>
+				captureMessageReplyRecovery(
+					args.runtime,
+					args.message,
+					await createV5MessageContextObject({
+						runtime: args.runtime,
+						message: args.message,
+						state: resultState,
+						userRoles: [args.senderRole],
+						includeTools: false,
+					}),
+				),
 		});
 
 	// #8792: report the interaction so the proactive-comment decider can react.

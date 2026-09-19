@@ -6,6 +6,7 @@
 import { Button, Input } from "@elizaos/ui";
 import { useId, useRef, useState } from "react";
 import type {
+  FamilyBackupCleanupReview,
   FamilyDeletionJob,
   FamilyDeletionPreview,
 } from "../../lifeops/family-workflows/deletion-contracts.js";
@@ -33,6 +34,7 @@ export function FamilyDeletionPanel({
   onChange: () => Promise<void>;
 }) {
   const reviewId = useId();
+  const backupReviewId = useId();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const activeRequest = useRef(false);
@@ -40,6 +42,9 @@ export function FamilyDeletionPanel({
   const [job, setJob] = useState<FamilyDeletionJob | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reviewed, setReviewed] = useState(false);
+  const [backupReview, setBackupReview] =
+    useState<FamilyBackupCleanupReview | null>(null);
+  const [backupReviewed, setBackupReviewed] = useState(false);
   const [retention, setRetention] = useState<
     FamilyDeletionJob["backupRetention"] | null
   >(null);
@@ -55,6 +60,8 @@ export function FamilyDeletionPanel({
       // error-policy:J1 Preserve the failure and require a fresh review/status before another deletion attempt.
       setPreview(null);
       setReviewed(false);
+      setBackupReview(null);
+      setBackupReviewed(false);
       setError(
         cause instanceof Error
           ? cause.message
@@ -69,6 +76,8 @@ export function FamilyDeletionPanel({
     perform(async () => {
       setPreview(null);
       setReviewed(false);
+      setBackupReview(null);
+      setBackupReviewed(false);
       const current = await adapter.status();
       setJob(current);
       if (!current) setPreview(await adapter.preview());
@@ -100,6 +109,39 @@ export function FamilyDeletionPanel({
     perform(async () => {
       setJob(await adapter.resume());
       await onChange();
+    });
+  const reviewBackups = () =>
+    perform(async () => {
+      setBackupReview(null);
+      setBackupReviewed(false);
+      const current = await adapter.status();
+      setJob(current);
+      if (current?.state !== "backup_pending")
+        throw new Error(
+          "Refresh deletion status before reviewing backup cleanup.",
+        );
+      setBackupReview(await adapter.previewBackups());
+    });
+  const admitBackups = () =>
+    perform(async () => {
+      if (!backupReview || !backupReviewed || backupReview.jobId !== job?.id)
+        throw new Error(
+          "Review every backup and acknowledge removal of its whole archived history.",
+        );
+      setJob(
+        await adapter.admitBackups({
+          expectedSha256: backupReview.sha256,
+          acknowledgeWholeArchiveHistory: true,
+        }),
+      );
+      setBackupReview(null);
+      setBackupReviewed(false);
+    });
+  const resumeBackups = () =>
+    perform(async () => {
+      setJob(await adapter.resumeBackups());
+      setBackupReview(null);
+      setBackupReviewed(false);
     });
 
   if (!open)
@@ -151,7 +193,9 @@ export function FamilyDeletionPanel({
           <p role="status">
             {job.state === "purge_pending"
               ? "Access is revoked. Primary-file cleanup is still pending."
-              : "Primary cleanup is verified. Backup cleanup is pending; deletion is not complete."}
+              : job.state === "complete"
+                ? "Workspace deletion is complete. Referenced provider records remain with their providers."
+                : "Primary cleanup is verified. Backup cleanup is pending; deletion is not complete."}
           </p>
           <p>
             {job.databaseRowsRemoved} database records removed. Backup
@@ -183,6 +227,92 @@ export function FamilyDeletionPanel({
               Retry primary cleanup
             </Button>
           ) : null}
+          {job.state === "backup_pending" ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => void reviewBackups()}
+              >
+                Review backup copies
+              </Button>
+              {job.backupCleanup ? (
+                <>
+                  <p>
+                    Backup cleanup was admitted. Copies are retained until{" "}
+                    {new Date(job.backupCleanup.notBefore).toLocaleString()}.
+                    Cleanup remains pending until removal is verified.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={
+                      busy ||
+                      Date.now() < Date.parse(job.backupCleanup.notBefore)
+                    }
+                    onClick={() => void resumeBackups()}
+                  >
+                    Retry backup cleanup
+                  </Button>
+                </>
+              ) : null}
+            </>
+          ) : null}
+          {job.backupCleanup ? (
+            <details>
+              <summary>Admitted backup identities</summary>
+              <pre className="whitespace-pre-wrap break-all text-xs">
+                {JSON.stringify(job.backupCleanup, null, 2)}
+              </pre>
+            </details>
+          ) : null}
+        </>
+      ) : null}
+      {backupReview ? (
+        <>
+          <p>
+            These are whole-agent backup copies. Removing them permanently
+            removes all history in those copies, including unrelated archived
+            history. Unrelated live records and provider records remain
+            retained.
+          </p>
+          <p>
+            Eligible for removal after{" "}
+            {new Date(backupReview.notBefore).toLocaleString()}.
+          </p>
+          <details>
+            <summary>
+              Review all {backupReview.archives.length} backup copies
+            </summary>
+            <pre className="whitespace-pre-wrap break-all text-xs">
+              {JSON.stringify(backupReview.archives, null, 2)}
+            </pre>
+          </details>
+          <label
+            htmlFor={backupReviewId}
+            className="flex min-h-11 items-start gap-2"
+          >
+            <Input
+              id={backupReviewId}
+              type="checkbox"
+              checked={backupReviewed}
+              disabled={busy}
+              onChange={(event) =>
+                setBackupReviewed(event.currentTarget.checked)
+              }
+            />
+            I reviewed every backup and understand that its entire archived
+            history will be permanently removed.
+          </label>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={busy || !backupReviewed}
+            onClick={() => void admitBackups()}
+          >
+            Confirm reviewed backup cleanup
+          </Button>
         </>
       ) : null}
       {preview ? (

@@ -4,7 +4,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { normalizeCalendarAttendees } from "./calendar-handler.ts";
+import {
+  attendeeEmailAccepted,
+  normalizeCalendarAttendees,
+} from "./calendar-handler.ts";
 
 describe("normalizeCalendarAttendees (planner-arg sanitization)", () => {
   it("drops a planner-invented bare-name attendee instead of failing the create (live regression)", () => {
@@ -18,15 +21,25 @@ describe("normalizeCalendarAttendees (planner-arg sanitization)", () => {
     const out = normalizeCalendarAttendees({
       attendees: [
         { email: "dana", displayName: "Dana" },
-        { email: "sam@example.com", displayName: "Sam" },
+        { email: "sam@acme.co", displayName: "Sam" },
         "marco",
-        "polo@example.com",
+        "polo@acme.co",
       ],
     });
     expect(out).toEqual([
-      { email: "sam@example.com", displayName: "Sam" },
-      { email: "polo@example.com" },
+      { email: "sam@acme.co", displayName: "Sam" },
+      { email: "polo@acme.co" },
     ]);
+  });
+
+  it("preserves explicitly supplied addresses without guessing whether a domain was invented", () => {
+    const attendees = [
+      { email: "sam@example.com", displayName: "Sam" },
+      { email: "guest@Example.ORG" },
+      { email: "qa@team.test" },
+    ];
+    expect(normalizeCalendarAttendees({ attendees })).toEqual(attendees);
+    expect(attendeeEmailAccepted("sam@example.com")).toBe(true);
   });
 
   it("returns undefined when the details carry no attendees", () => {

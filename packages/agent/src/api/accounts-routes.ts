@@ -288,6 +288,8 @@ interface PoolFacade {
     opts?: { codexAccountId?: string; providerId?: string },
   ): Promise<void>;
   sweepExpired?(providerId?: string): Promise<number>;
+  /** Current hosts share one validated read across inventory projections. */
+  readSnapshot?(): Pick<PoolFacade, "list" | "selectionState">;
   /**
    * Non-mutating "which account is next + why" dry-run for the accounts API.
    * Older host bridges may not implement it; callers must null-guard.
@@ -920,10 +922,11 @@ async function handleListAllAccounts(
   const pool = await requirePool(ctx);
   if (!pool) return true;
   await pool.sweepExpired?.();
+  const inventory = pool.readSnapshot?.() ?? pool;
   const broker = brokerSnapshot();
   const providers = await Promise.all(
     SUPPORTED_PROVIDER_IDS.map(async (providerId) => {
-      const linkedConfigs = pool.list(providerId).sort((a, b) => {
+      const linkedConfigs = inventory.list(providerId).sort((a, b) => {
         const aPriority =
           typeof a.priority === "number" && Number.isFinite(a.priority)
             ? a.priority
@@ -943,7 +946,7 @@ async function handleListAllAccounts(
       // Non-mutating dry-run: which account the pool would serve next + why,
       // so the UI can label the active row without re-deriving policy. Guarded
       // because older host bridges may not implement selectionState.
-      const selection = pool.selectionState?.(providerId, strategy);
+      const selection = inventory.selectionState?.(providerId, strategy);
       const providerBroker = broker.providers[providerId];
       const lastSelection = providerBroker?.lastSelection
         ? {

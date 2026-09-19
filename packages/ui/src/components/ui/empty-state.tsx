@@ -62,7 +62,7 @@ export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
           {title}
         </h3>
         {description && (
-          <p className="max-w-sm text-sm text-muted">{description}</p>
+          <p className="max-w-sm text-sm text-muted-strong">{description}</p>
         )}
       </div>
       {action}

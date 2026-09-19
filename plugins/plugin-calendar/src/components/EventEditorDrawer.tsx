@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import {
   type ComponentProps,
+  type CSSProperties,
   type ReactNode,
   useCallback,
   useEffect,
@@ -54,6 +55,13 @@ const calendarClient = client as typeof client & CalendarClientMethods;
 let editorOperationSequence = 0;
 
 type EditorMode = "edit" | "create";
+
+const editorAccent: CSSProperties &
+  Record<"--accent" | "--accent-hover" | "--accent-foreground", string> = {
+  "--accent": "var(--brand-orange)",
+  "--accent-hover": "#e65a10",
+  "--accent-foreground": "#140c07",
+};
 
 function EventEditorInput({
   mode,
@@ -222,6 +230,9 @@ export interface EventEditorDrawerProps {
 
 interface FormState {
   title: string;
+  isAllDay: boolean;
+  startDate: string;
+  lastDate: string;
   startAt: string;
   endAt: string;
   notes: string;
@@ -232,11 +243,45 @@ interface FormState {
   side: LifeOpsConnectorSide;
 }
 
+function shiftCivilDate(value: string, days: number): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (
+    !Number.isFinite(date.getTime()) ||
+    !date.toISOString().startsWith(`${value}T`)
+  )
+    return null;
+  date.setUTCDate(date.getUTCDate() + days);
+  const shifted = date.toISOString().split("T")[0];
+  return shifted && /^\d{4}-\d{2}-\d{2}$/.test(shifted) ? shifted : null;
+}
+
+function editorRange(
+  form: FormState,
+):
+  | { allDay: { startDate: string; endDateExclusive: string } }
+  | { startAt: string; endAt: string }
+  | null {
+  if (form.isAllDay) {
+    const startDate = shiftCivilDate(form.startDate, 0);
+    const endDateExclusive = shiftCivilDate(form.lastDate, 1);
+    return startDate && endDateExclusive && endDateExclusive > startDate
+      ? { allDay: { startDate, endDateExclusive } }
+      : null;
+  }
+  const startAt = fromLocalInputValue(form.startAt);
+  const endAt = fromLocalInputValue(form.endAt);
+  return startAt && endAt && endAt > startAt ? { startAt, endAt } : null;
+}
+
 function blankFormState(defaults?: EventEditorDefaults): FormState {
   const seedDate = defaults?.date ?? new Date();
   const start = nextHalfHourIso(seedDate);
   return {
     title: "",
+    isAllDay: false,
+    startDate: toLocalInputValue(start).split("T")[0] ?? "",
+    lastDate: toLocalInputValue(isoPlusMinutes(start, 30)).split("T")[0] ?? "",
     startAt: toLocalInputValue(start),
     endAt: toLocalInputValue(isoPlusMinutes(start, 30)),
     notes: "",
@@ -254,8 +299,21 @@ function formStateFromEvent(event: LifeOpsCalendarEvent): FormState {
     .filter((email) => email.length > 0);
   return {
     title: event.title,
-    startAt: toLocalInputValue(event.startAt),
-    endAt: toLocalInputValue(event.endAt),
+    isAllDay: event.isAllDay,
+    // All-day feed bounds encode civil dates at UTC midnight, not instants in
+    // the browser zone. Applying the timed conversion would shift western dates.
+    startDate: event.isAllDay
+      ? (event.startAt.split("T")[0] ?? "")
+      : (toLocalInputValue(event.startAt).split("T")[0] ?? ""),
+    lastDate: event.isAllDay
+      ? (shiftCivilDate(event.endAt.split("T")[0] ?? "", -1) ?? "")
+      : (toLocalInputValue(event.endAt).split("T")[0] ?? ""),
+    startAt: event.isAllDay
+      ? `${event.startAt.split("T")[0]}T09:00`
+      : toLocalInputValue(event.startAt),
+    endAt: event.isAllDay
+      ? `${shiftCivilDate(event.endAt.split("T")[0] ?? "", -1)}T09:30`
+      : toLocalInputValue(event.endAt),
     notes: event.description,
     location: event.location,
     attendees,
@@ -636,13 +694,19 @@ export function EventEditorDrawer({
         );
         return;
       }
-      const startIso = fromLocalInputValue(form.startAt);
-      const endIso = fromLocalInputValue(form.endAt);
-      if (!startIso || !endIso) {
+      const range = editorRange(form);
+      if (!range) {
         setError(
-          t("eventEditor.invalidTimes", {
-            defaultValue: "Pick valid start and end times.",
-          }),
+          t(
+            form.isAllDay
+              ? "eventEditor.invalidDates"
+              : "eventEditor.invalidTimes",
+            {
+              defaultValue: form.isAllDay
+                ? "Choose valid dates with the last day on or after the first day."
+                : "Pick valid start and end times.",
+            },
+          ),
         );
         return;
       }
@@ -661,8 +725,7 @@ export function EventEditorDrawer({
             title: titleTrimmed,
             description: form.notes.trim() || undefined,
             location: form.location.trim() || undefined,
-            startAt: startIso,
-            endAt: endIso,
+            ...range,
             timeZone: TIME_ZONE,
             attendees: attendees.length > 0 ? attendees : undefined,
             idempotencyKey: createIdempotencyKey,
@@ -733,8 +796,14 @@ export function EventEditorDrawer({
             notifyAttendees: false,
           };
           if (titleTrimmed !== event.title) patch.title = titleTrimmed;
-          if (startIso !== event.startAt) patch.startAt = startIso;
-          if (endIso !== event.endAt) patch.endAt = endIso;
+          if ("allDay" in range) {
+            patch.allDay = range.allDay;
+          } else {
+            if (event.isAllDay || range.startAt !== event.startAt)
+              patch.startAt = range.startAt;
+            if (event.isAllDay || range.endAt !== event.endAt)
+              patch.endAt = range.endAt;
+          }
           if (form.notes.trim() !== event.description) {
             patch.notes = form.notes.trim();
           }
@@ -880,6 +949,21 @@ export function EventEditorDrawer({
     ? t("eventEditor.creating", { defaultValue: "Creating event" })
     : t("common.saving", { defaultValue: "Saving event" });
 
+  const deduplication = event?.metadata.deduplication;
+  const pendingUpdate =
+    event?.provider === "eliza" &&
+    typeof deduplication === "object" &&
+    deduplication !== null &&
+    "pendingUpdate" in deduplication
+      ? deduplication.pendingUpdate
+      : null;
+  const hasPendingGoogleUpdate =
+    typeof pendingUpdate === "object" &&
+    pendingUpdate !== null &&
+    "linkId" in pendingUpdate &&
+    typeof pendingUpdate.linkId === "string" &&
+    pendingUpdate.linkId.length > 0;
+
   const selectedCalendarOption = findSelectedCalendarOption(
     calendarOptions,
     form,
@@ -892,9 +976,11 @@ export function EventEditorDrawer({
     <>
       <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
         <DialogContent
+          showCloseButton={false}
           className="fixed bottom-0 right-0 top-0 !left-auto !right-0 !top-0 m-0 h-full min-w-0 max-w-none !translate-x-0 !translate-y-0 overflow-x-hidden overflow-y-auto bg-bg p-0"
           data-testid="event-editor-drawer"
           style={{
+            ...editorAccent,
             top: 0,
             right: 0,
             bottom: 0,
@@ -924,6 +1010,7 @@ export function EventEditorDrawer({
               size="icon-sm"
               type="button"
               onClick={onClose}
+              className="size-11"
               aria-label={t("common.close", { defaultValue: "Close" })}
             >
               <X className="size-4" />
@@ -933,6 +1020,15 @@ export function EventEditorDrawer({
           <div className="min-w-0 space-y-4 p-5">
             {error ? (
               <div className="p-1 text-xs text-danger">{error}</div>
+            ) : null}
+
+            {hasPendingGoogleUpdate ? (
+              <p role="status" className="p-1 text-xs leading-5 text-muted">
+                {t("eventEditor.googleUpdatePending", {
+                  defaultValue:
+                    "Saved in Eliza. Google calendar update pending.",
+                })}
+              </p>
             ) : null}
 
             {readOnlyReason ? (
@@ -969,26 +1065,88 @@ export function EventEditorDrawer({
               />
             </div>
 
+            <fieldset disabled={readOnly} className="space-y-2">
+              <legend className="text-xs font-medium text-muted">
+                {t("eventEditor.timing", { defaultValue: "Event timing" })}
+              </legend>
+              <div className="flex gap-2">
+                <EventEditorActionButton
+                  agentId={`event-${mode}-timed`}
+                  label="Timed"
+                  description="Use start and end times for this event"
+                  variant="choice"
+                  aria-pressed={!form.isAllDay}
+                  data-state={!form.isAllDay ? "on" : "off"}
+                  onClick={() => {
+                    if (form.isAllDay) {
+                      updateForm(
+                        "startAt",
+                        `${form.startDate}T${form.startAt.split("T")[1] ?? "09:00"}`,
+                      );
+                      updateForm(
+                        "endAt",
+                        `${form.lastDate}T${form.endAt.split("T")[1] ?? "09:30"}`,
+                      );
+                    }
+                    updateForm("isAllDay", false);
+                  }}
+                >
+                  {t("eventEditor.timed", { defaultValue: "Timed" })}
+                </EventEditorActionButton>
+                <EventEditorActionButton
+                  agentId={`event-${mode}-all-day`}
+                  label="All day"
+                  description="Use whole calendar days for this event"
+                  variant="choice"
+                  aria-pressed={form.isAllDay}
+                  data-state={form.isAllDay ? "on" : "off"}
+                  onClick={() => {
+                    if (!form.isAllDay) {
+                      updateForm("startDate", form.startAt.split("T")[0] ?? "");
+                      updateForm("lastDate", form.endAt.split("T")[0] ?? "");
+                    }
+                    updateForm("isAllDay", true);
+                  }}
+                >
+                  {t("eventEditor.allDay", { defaultValue: "All day" })}
+                </EventEditorActionButton>
+              </div>
+            </fieldset>
+
             <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="min-w-0 space-y-1.5">
                 <label
                   htmlFor="event-editor-start-at"
                   className="block text-xs font-medium text-muted"
                 >
-                  {t("eventEditor.startAt", { defaultValue: "Start" })}
+                  {t(
+                    form.isAllDay
+                      ? "eventEditor.firstDay"
+                      : "eventEditor.startAt",
+                    {
+                      defaultValue: form.isAllDay ? "First day" : "Start",
+                    },
+                  )}
                 </label>
                 <EventEditorInput
                   mode={mode}
                   field="start-at"
-                  label="Event start time"
-                  description="Start date and time of the event"
-                  inputType="datetime-local"
-                  value={form.startAt}
+                  label={form.isAllDay ? "Event first day" : "Event start time"}
+                  description="First day or start time of the event"
+                  inputType={form.isAllDay ? "date" : "datetime-local"}
+                  value={form.isAllDay ? form.startDate : form.startAt}
                   disabled={readOnly}
-                  onChange={(value) => updateForm("startAt", value)}
-                  ariaLabel={t("eventEditor.startAtAria", {
-                    defaultValue: "Start time",
-                  })}
+                  onChange={(value) =>
+                    updateForm(form.isAllDay ? "startDate" : "startAt", value)
+                  }
+                  ariaLabel={t(
+                    form.isAllDay
+                      ? "eventEditor.firstDayAria"
+                      : "eventEditor.startAtAria",
+                    {
+                      defaultValue: form.isAllDay ? "First day" : "Start time",
+                    },
+                  )}
                 />
               </div>
               <div className="min-w-0 space-y-1.5">
@@ -996,20 +1154,36 @@ export function EventEditorDrawer({
                   htmlFor="event-editor-end-at"
                   className="block text-xs font-medium text-muted"
                 >
-                  {t("eventEditor.endAt", { defaultValue: "End" })}
+                  {t(
+                    form.isAllDay ? "eventEditor.lastDay" : "eventEditor.endAt",
+                    {
+                      defaultValue: form.isAllDay
+                        ? "Last day (included)"
+                        : "End",
+                    },
+                  )}
                 </label>
                 <EventEditorInput
                   mode={mode}
                   field="end-at"
-                  label="Event end time"
-                  description="End date and time of the event"
-                  inputType="datetime-local"
-                  value={form.endAt}
+                  label={form.isAllDay ? "Event last day" : "Event end time"}
+                  description="Last included day or end time of the event"
+                  inputType={form.isAllDay ? "date" : "datetime-local"}
+                  value={form.isAllDay ? form.lastDate : form.endAt}
                   disabled={readOnly}
-                  onChange={(value) => updateForm("endAt", value)}
-                  ariaLabel={t("eventEditor.endAtAria", {
-                    defaultValue: "End time",
-                  })}
+                  onChange={(value) =>
+                    updateForm(form.isAllDay ? "lastDate" : "endAt", value)
+                  }
+                  ariaLabel={t(
+                    form.isAllDay
+                      ? "eventEditor.lastDayAria"
+                      : "eventEditor.endAtAria",
+                    {
+                      defaultValue: form.isAllDay
+                        ? "Last day (included)"
+                        : "End time",
+                    },
+                  )}
                 />
               </div>
             </div>
@@ -1175,7 +1349,7 @@ export function EventEditorDrawer({
                   description="Open chat about this event"
                   variant="ghost"
                   size="sm"
-                  className="size-8 p-0 text-muted"
+                  className="size-11 p-0 text-muted"
                   onClick={() => onChat(event)}
                 >
                   <MessageSquare className="size-3.5" aria-hidden />
@@ -1197,7 +1371,7 @@ export function EventEditorDrawer({
                   }
                   variant="surfaceDestructive"
                   size="sm"
-                  className="size-8 p-0"
+                  className="size-11 p-0"
                   disabled={deleting || saving || !deleteCapable}
                   onClick={() => setConfirmDeleteOpen(true)}
                 >
@@ -1225,7 +1399,7 @@ export function EventEditorDrawer({
                 description="Close the event editor without saving"
                 variant="outline"
                 size="sm"
-                className="size-8 p-0"
+                className="size-11 p-0"
                 onClick={onClose}
                 disabled={saving}
               >
@@ -1242,7 +1416,7 @@ export function EventEditorDrawer({
                     description="Save the event and keep the editor open"
                     variant="outline"
                     size="sm"
-                    className="size-8 p-0"
+                    className="size-11 p-0"
                     disabled={saving || !form.title.trim() || !calendarReady}
                     onClick={() => void handleSave({ keepOpen: true })}
                   >
@@ -1264,7 +1438,7 @@ export function EventEditorDrawer({
                     label={isCreate ? "Create event" : "Save event"}
                     description="Save the calendar event and close the editor"
                     size="sm"
-                    className="size-8 p-0"
+                    className="size-11 p-0"
                     disabled={saving || !form.title.trim() || !calendarReady}
                     onClick={() => void handleSave()}
                   >

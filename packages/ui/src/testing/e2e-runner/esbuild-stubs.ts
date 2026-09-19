@@ -11,6 +11,7 @@
  */
 
 import { builtinModules } from "node:module";
+import { fileURLToPath } from "node:url";
 import type { Plugin } from "esbuild";
 
 /**
@@ -29,6 +30,7 @@ export function stubElizaCore(): Plugin {
       }));
       build.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
         contents: `
+        const notifications = require(${JSON.stringify(fileURLToPath(new URL("../../../../core/src/types/notification.ts", import.meta.url)))});
         const noop = new Proxy(() => noop, { get: () => noop });
         // The wake/provision path (client-cloud.ts) subclasses the real
         // ElizaError; esbuild's ESM interop copies only this object's own keys,
@@ -50,6 +52,7 @@ export function stubElizaCore(): Plugin {
         }
         module.exports = new Proxy(
           {
+            ...notifications,
             ElizaError,
             isElizaError: (v) => v instanceof ElizaError,
             isViewVisible: () => true,
@@ -68,6 +71,7 @@ export function stubElizaCore(): Plugin {
         );
       `,
         loader: "js",
+        resolveDir: fileURLToPath(new URL(".", import.meta.url)),
       }));
     },
   };

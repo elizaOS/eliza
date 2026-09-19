@@ -1,47 +1,25 @@
 name: Docker CI Smoke
-
 on:
-  # Reusable entry for the exhaustive Develop Full lane (#12342).
   workflow_call:
     inputs:
       concurrency_scope:
-        description: "Caller-owned concurrency namespace"
+        description: Caller-owned concurrency namespace
         required: false
         type: string
         default: standalone
-  workflow_dispatch:
-
-# Reusable callers pass a distinct scope; manual dispatches remain independent.
+  workflow_dispatch: null
 concurrency:
   group: docker-ci-smoke-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
-
 permissions:
   contents: read
-
 jobs:
-  changes:
-    name: Classify changed paths
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')
-    uses: ./.github/workflows/classify-paths.yml
-    with:
-      config: docker
-      # docker-ci-smoke.yml was unconditionally hosted before consolidation
-      # and has no pull_request trigger — ALL its events are non-PR (push,
-      # schedule, dispatch). force_hosted preserves the pre-consolidation
-      # invariant that the classifier never goes to the self-hosted fleet.
-      force_hosted: true
-
   docker-ci-smoke:
     name: Build production Docker image (+ smoke boot)
-    needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.docker == 'true'
-    # The smoke builds and boots a real container. The general Hetzner fleet
-    # does not expose a Docker daemon, so use the provisioned hosted image.
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      BUN_VERSION: "1.3.14"
+      BUN_VERSION: 1.3.14
       DOCKER_IMAGE: elizaos/agent:docker-smoke
       SMOKE_TIMEOUT_SEC: "420"
       SMOKE_PORT: "32138"
@@ -51,17 +29,14 @@ jobs:
         with:
           submodules: false
           show-progress: false
-
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "24.15.0"
-
+          node-version: 24.15.0
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: ${{ env.BUN_VERSION }}
-
       - name: Cache Bun install
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
@@ -69,7 +44,6 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: |
             bun-${{ runner.os }}-
-
       - name: Free disk space for Docker smoke
         run: |
           df -h
@@ -78,11 +52,8 @@ jobs:
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
           docker system prune -af --volumes || true
           df -h
-
       - name: Run Docker CI smoke path
         timeout-minutes: 45
-        # Run the smoke script in its own process group so a wedged docker
-        # child cannot outlive the wrapper timeout and keep the step active.
         run: |
           set -euo pipefail
 
@@ -132,8 +103,6 @@ jobs:
             echo "::error::Docker CI smoke failed with exit code ${smoke_status}; see the step tail and uploaded .tmp/qa artifacts."
             exit "$smoke_status"
           fi
-
-      # Inline log capture runs on failure (not cancelled).
       - name: Dump container log + inspect (inline)
         if: failure()
         timeout-minutes: 2
@@ -150,7 +119,6 @@ jobs:
             timeout 15 docker inspect "$C" --format '{{json .State}}' 2>&1 | python3 -m json.tool || true
             echo "::endgroup::"
           done
-
       - name: Upload container logs + inspect
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -161,7 +129,6 @@ jobs:
             /tmp/eliza-docker-*.txt
           if-no-files-found: warn
           retention-days: 7
-
       - name: Summarize Docker smoke result
         if: always()
         run: |
