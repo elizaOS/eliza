@@ -1866,7 +1866,7 @@ export const calendarAction: Action & {
     {
       name: "duration",
       description:
-        "Slot length: supply minutes, or existingEventQuery to resolve an existing event and preserve its duration without a preliminary search. Both fields mean use the explicit new duration for that existing event. Ambiguous event matches ask for selection; no event is changed.",
+        "For a new event, supply minutes only. Use existingEventQuery only to reschedule an event already on the calendar, never for a new event's title. Also supply minutes when changing that existing event's duration. This proposes slots without changing events.",
       required: false,
       subactions: ["propose_times"],
       schema: {

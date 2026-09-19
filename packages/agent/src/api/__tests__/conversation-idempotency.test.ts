@@ -37,6 +37,7 @@ import type {
   Service,
 } from "@elizaos/core";
 import {
+  deriveCanonicalProvenance,
   executePlannedToolCall,
   getTrajectoryContext,
   logger,
@@ -3481,6 +3482,12 @@ describe("conversation handoff import — exact source identities", () => {
     expect(
       storedMemories.every((memory) => memory.metadata?.scope === "shared"),
     ).toBe(true);
+    for (const memory of storedMemories) {
+      expect(deriveCanonicalProvenance(memory, AGENT_ID)).toMatchObject({
+        valid: true,
+        provenance: { source: "handoff_import" },
+      });
+    }
     const queue = state.runtime!.queueEmbeddingGeneration;
     expect(queue).toHaveBeenCalledTimes(2);
     for (const memory of storedMemories) {
@@ -3711,5 +3718,44 @@ describe("conversation handoff import — exact source identities", () => {
       "error 400: Todo snapshot source does not match the conversation",
     );
     expect(wrongSourceHarness.storedMemories).toHaveLength(0);
+  });
+
+  it("repairs only the contradictory source stamp on an exact import retry", async () => {
+    const { state, storedMemories } = createHarness();
+    const messages = [
+      {
+        sourceId: "legacy-import",
+        role: "user",
+        text: "  Keep this.  ",
+        timestamp: 10,
+      },
+    ];
+    const path = "/api/conversations/conv-1/import";
+    await runRoute("POST", path, state, { messages });
+    const original = storedMemories[0]!;
+    original.metadata = {
+      ...original.metadata,
+      type: "message",
+      provider: "client_chat",
+    };
+    const before = structuredClone(original);
+    expect(deriveCanonicalProvenance(original, AGENT_ID)).toMatchObject({
+      valid: false,
+    });
+    const changed = await runRoute("POST", path, state, {
+      messages: [{ ...messages[0], text: "changed source" }],
+    });
+    expect(changed.record.writes.join("")).toContain("different content");
+    expect(storedMemories[0]).toEqual(before);
+    const retry = await runRoute("POST", path, state, { messages });
+    expect(retry.captured.payload).toMatchObject({ inserted: 0, skipped: 1 });
+    expect(storedMemories).toHaveLength(1);
+    expect(storedMemories[0]).toEqual({
+      ...before,
+      metadata: { ...before.metadata, provider: "handoff_import" },
+    });
+    expect(
+      deriveCanonicalProvenance(storedMemories[0]!, AGENT_ID),
+    ).toMatchObject({ valid: true });
   });
 });

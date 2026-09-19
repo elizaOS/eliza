@@ -1886,6 +1886,48 @@ describe("MEMORY op:delete by query", () => {
     expect(rows).toHaveLength(2);
   });
 
+  it("recovers later user corrections through a complete room read after keyword discovery", async () => {
+    const { runtime, rows } = makeRuntime();
+    const sourceTexts = [
+      "The Willow project code is AMBER.",
+      "The Willow project code is EMBER.",
+      "Actually, it's COBALT now.",
+    ];
+    for (const [index, text] of sourceTexts.entries())
+      rows.push({
+        tableName: "messages",
+        memory: {
+          id: crypto.randomUUID() as UUID,
+          agentId: AGENT_ID,
+          entityId: index === 1 ? AGENT_ID : USER_ID,
+          roomId: ROOM_ID,
+          createdAt: index + 1,
+          content: { text },
+        },
+      });
+    const before = structuredClone(rows);
+    const matches = await runAction(runtime, makeMessage(), {
+      action: "search",
+      type: "messages",
+      query: "Willow",
+      limit: 50,
+    });
+    expect(matches.values?.totalMatches).toBe(2);
+    const originals = await runAction(runtime, makeMessage(), {
+      action: "search",
+      type: "messages",
+      roomId: ROOM_ID,
+      author: "requester",
+      query: "",
+      limit: 50,
+    });
+    expect(originals.values?.totalMatches).toBe(2);
+    expect(JSON.stringify(originals.data)).toContain(sourceTexts[0]);
+    expect(JSON.stringify(originals.data)).toContain(sourceTexts[2]);
+    expect(JSON.stringify(originals.data)).not.toContain(sourceTexts[1]);
+    expect(rows).toEqual(before);
+  });
+
   it("returns a clean not-found when no stored memory matches", async () => {
     const { runtime, rows } = makeRuntime();
     seedFact(rows, { text: "nubs plays guitar", entityId: USER_ID });

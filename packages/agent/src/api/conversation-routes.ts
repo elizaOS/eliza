@@ -4057,6 +4057,9 @@ export async function handleConversationRoutes(
           };
           memory.createdAt = createdAt;
           if (memory.metadata && typeof memory.metadata === "object") {
+            // Import is the source surface, not a live client-chat delivery.
+            // Keep it consistent with content.source for canonical recall.
+            memory.metadata.provider = "handoff_import";
             memory.metadata.timestamp = createdAt;
             if (m.sourceId) {
               memory.metadata.sourceId = m.sourceId;
@@ -4069,6 +4072,32 @@ export async function handleConversationRoutes(
               memory,
               historyLease,
             );
+            // Exact identity/content admission above makes this a repair of
+            // this import's old contradictory stamp, never a scope migration.
+            if (
+              !result.created &&
+              result.memory.content.source === "handoff_import" &&
+              result.memory.metadata?.type === "message" &&
+              result.memory.metadata.provider === "client_chat" &&
+              result.memory.metadata.accountId === runtime.agentId
+            ) {
+              const metadata = {
+                ...result.memory.metadata,
+                provider: "handoff_import",
+              };
+              const updated = await runtime.roomHandlerQueue.runInLease(
+                conv.roomId,
+                historyLease,
+                () => runtime.updateMemory({ id: result.memory.id!, metadata }),
+              );
+              if (!updated) {
+                throw new ElizaError("Imported source stamp repair failed", {
+                  code: "CONVERSATION_IMPORT_PROVENANCE_REPAIR_FAILED",
+                  context: { memoryId: result.memory.id, roomId: conv.roomId },
+                });
+              }
+              result.memory = { ...result.memory, metadata };
+            }
             if (result.created) inserted += 1;
             else skipped += 1;
             // Import bypasses normal message processing, which otherwise
