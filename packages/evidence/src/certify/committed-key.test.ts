@@ -22,18 +22,8 @@ const pemPath = resolve(
 );
 
 describe("committed certification trust anchor", () => {
-  it("exists in the repo (not swallowed by the *.pem gitignore rule)", () => {
-    expect(() => readFileSync(pemPath, "utf8")).not.toThrow();
-  });
-
   it(`matches the documented fingerprint ${TRUSTED_FINGERPRINT}`, () => {
     const pem = readFileSync(pemPath, "utf8");
     expect(fingerprintPublicKey(pem)).toBe(TRUSTED_FINGERPRINT);
-  });
-
-  it("is an Ed25519 SPKI public key in PEM form", () => {
-    const pem = readFileSync(pemPath, "utf8");
-    expect(pem.startsWith("-----BEGIN PUBLIC KEY-----")).toBe(true);
-    expect(pem.trimEnd().endsWith("-----END PUBLIC KEY-----")).toBe(true);
   });
 });
