@@ -33,6 +33,7 @@ import type { MessageHandlerResult } from "../../types/components";
 import type { GenerateTextResult } from "../../types/model";
 import { ModelType } from "../../types/model";
 import { ChannelType } from "../../types/primitives";
+import { isObjectRecord } from "../../utils/type-guards";
 import { getEvaluatorProgressState } from "../evaluator-progress.ts";
 import { HISTORY_RETENTION_EVALUATOR } from "../history-retention.ts";
 import { CODING_SUB_AGENT_CONTEXTS } from "./action-surface.js";
@@ -492,7 +493,7 @@ export async function generateStage1Decision(
 			: getStage1RetryReason(rawMessageHandler);
 	}
 	// An explicit RESPOND without an answer or pending work gets one repaired
-	// re-ask. STOP and IGNORE remain terminal in every language. The retry
+	// re-ask. Consistent STOP and IGNORE decisions retain their terminal meaning. The retry
 	// still passes through ordinary terminal routing and reply validation.
 	// Voice keeps its complete path: its spoken answer need not sit in replyText.
 	if (!args.codingMode && !voiceDirectMessageChannel) {
@@ -595,15 +596,20 @@ export async function generateStage1Decision(
 			!historyIdentityRepairAttempted &&
 			explicit.length === 0 &&
 			canRepairHistoryIdentity(context, history, parsedDecision);
+		const contentMetadata = args.message.content.metadata;
+		const messageMetadata = args.message.metadata;
+		const automatedSender =
+			(isObjectRecord(contentMetadata) &&
+				(contentMetadata.fromBot === true ||
+					contentMetadata.isAutonomous === true)) ||
+			(isObjectRecord(messageMetadata) && messageMetadata.fromBot === true);
 		const ignoreReview =
 			!directIgnoreReviewed &&
 			!routingRepair &&
 			!repairHistoryIdentity &&
 			requested.length === 0 &&
 			args.message.entityId !== args.runtime.agentId &&
-			args.message.content.metadata?.fromBot !== true &&
-			args.message.metadata?.fromBot !== true &&
-			args.message.content.metadata?.isAutonomous !== true &&
+			!automatedSender &&
 			!isSubAgentCompletionArtifact(args.message) &&
 			getActionInferenceMessageText(args.message).trim().length > 0
 				? getStage1DirectIgnoreReview(parsedDecision)
@@ -832,13 +838,15 @@ export async function generateStage1Decision(
 	const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
 	if (
 		routingRepairAttempted &&
-		rawFieldParsed?.replyEffectStatus === "non_applied" &&
+		(rawFieldParsed?.replyEffectStatus === "non_applied" ||
+			rawFieldParsed?.shouldRespond === "STOP" ||
+			rawFieldParsed?.shouldRespond === "IGNORE") &&
 		getStage1RoutingRepair(rawFieldParsed)
 	) {
 		// A repeated preview/pending-work conflict cannot authorize effects or a
 		// terminal reply. Keep the recorded model attempts and reject before fields.
 		throw new ElizaError(
-			"Stage-1 preview still declares pending work after repair; retry with a consistent routing decision",
+			"Stage-1 decision still conflicts with pending work after repair; retry with a consistent routing decision",
 			{
 				code: "STAGE1_ROUTING_CONFLICT",
 				context: { messageId: args.message.id },

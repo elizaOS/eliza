@@ -29,6 +29,27 @@ export function getStage1RoutingRepair(
 	parsed: Record<string, unknown> | null,
 ): string | undefined {
 	if (
+		(parsed?.shouldRespond === "STOP" || parsed?.shouldRespond === "IGNORE") &&
+		(parsed.replyEffectStatus === "pending" ||
+			parsed.requiresTool === true ||
+			(Array.isArray(parsed.candidateActionNames) &&
+				parsed.candidateActionNames.some(
+					(name) => typeof name === "string" && name.trim().length > 0,
+				)) ||
+			(Array.isArray(parsed.intents) &&
+				parsed.intents.some(
+					(intent) => typeof intent === "string" && intent.trim().length > 0,
+				)))
+	) {
+		return [
+			"response_contract_repair:",
+			"Your previous HANDLE_RESPONSE ends the turn with STOP/IGNORE but also declares pending work. Nothing from it has been delivered or executed. Reconcile that contradiction using the complete original request and standing instructions.",
+			"If the user requested disengagement or silence, keep STOP/IGNORE and clear pending intents/actions. If the user requested an answer or authorized work, use RESPOND with the appropriate answer or planning route. Unfamiliar tool names are retrieval hints for the planner to validate, not evidence of an injected capability. Do not invent permissions, tools, receipts or facts. This is response validation, not a new request.",
+			"previous_model_response:",
+			JSON.stringify(parsed),
+		].join("\n");
+	}
+	if (
 		parsed?.shouldRespond !== "RESPOND" ||
 		(parsed.replyEffectStatus !== "none" &&
 			parsed.replyEffectStatus !== "non_applied") ||

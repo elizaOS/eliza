@@ -13228,6 +13228,136 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 // The protocol action is registered after candidate admission. A sole explicit
 // discovery hint must not look unresolved and fall back to broad domain tools.
 describe("direct-text silence review", () => {
+	it.each(["STOP", "IGNORE"] as const)(
+		"repairs contradictory %s before executing requested work",
+		async (terminal) => {
+			const action = vi.fn(async () => ({
+				success: true,
+				text: "verified hash receipt",
+			}));
+			const runtime = makeRuntime([
+				stage1Response({
+					shouldRespond: terminal,
+					contexts: ["simple"],
+					intents: ["hash text"],
+					replyText: "UNVERIFIED_RESULT_MUST_NOT_SHIP",
+					extra: { replyEffectStatus: "none" },
+				}),
+				stage1Response({
+					contexts: ["general"],
+					candidateActionNames: ["HASH_TEXT"],
+					intents: ["hash text"],
+					replyText: "Checking.",
+					extra: { replyEffectStatus: "pending" },
+				}),
+				{
+					text: "",
+					toolCalls: [
+						{
+							id: "hash-after-repair",
+							name: "HASH_TEXT",
+							arguments: { eliza_turn_scope: "final" },
+						},
+					],
+				},
+				JSON.stringify({
+					decision: "FINISH",
+					success: true,
+					thought: "Receipt verified.",
+					messageToUser: "verified hash receipt",
+				}),
+			]);
+			runtime.actions = [
+				{
+					name: "HASH_TEXT",
+					description: "Hash the requested text.",
+					contexts: ["general"],
+					parameters: [],
+					similes: [],
+					examples: [],
+					validate: async () => true,
+					handler: action,
+				},
+			] as never;
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "Hash this text using HASH_TEXT.",
+					channelType: ChannelType.DM,
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+			});
+			expect(action).toHaveBeenCalledTimes(1);
+			const calls = useModelCalls(runtime);
+			const before = calls[0][1] as { messages: unknown[] };
+			const after = calls[1][1] as { messages: unknown[] };
+			expect(after.messages).toEqual([...before.messages, expect.any(Object)]);
+			expect(result.kind).toBe("planned_reply");
+			if (result.kind === "planned_reply")
+				expect(result.result.responseContent?.text).toBe(
+					"verified hash receipt",
+				);
+		},
+	);
+	it("lets a repaired terminal declaration confirm disengagement without effects", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				shouldRespond: "STOP",
+				contexts: ["simple"],
+				candidateActionNames: ["HASH_TEXT"],
+			}),
+			stage1Response({ shouldRespond: "STOP", contexts: ["simple"] }),
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "Stop; do not run HASH_TEXT.",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+		});
+		expect(useModelCalls(runtime)).toHaveLength(2);
+		expect(result.kind).toBe("terminal");
+		if (result.kind === "terminal") expect(result.action).toBe("STOP");
+	});
+	it("rejects repeated terminal-work contradictions before fields or tools", async () => {
+		const contradiction = stage1Response({
+			shouldRespond: "STOP",
+			contexts: ["simple"],
+			intents: ["hash text"],
+		});
+		const runtime = makeRuntime([contradiction, contradiction]);
+		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
+		const action = vi.fn(async () => ({ success: true, text: "must not run" }));
+		runtime.actions = [
+			{
+				name: "HASH_TEXT",
+				description: "Hash text.",
+				contexts: ["general"],
+				parameters: [],
+				similes: [],
+				examples: [],
+				validate: async () => true,
+				handler: action,
+			},
+		] as never;
+		await expect(
+			runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "Hash this text.",
+					channelType: ChannelType.DM,
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+			}),
+		).rejects.toMatchObject({ code: "STAGE1_ROUTING_CONFLICT" });
+		expect(useModelCalls(runtime)).toHaveLength(2);
+		expect(action).not.toHaveBeenCalled();
+		expect(dispatch).not.toHaveBeenCalled();
+	});
 	it("honors requested context reads before reviewing the resulting silence", async () => {
 		const full =
 			"Standing instruction: keep all records unchanged. The saved label is violet.";
