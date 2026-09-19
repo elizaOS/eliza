@@ -1529,6 +1529,7 @@ describe("runV5MessageRuntimeStage1", () => {
 							text.match(/history_literal_search_results: (.+)/)?.[1] ?? "null",
 						);
 						expect(receipt).toEqual({
+							scope: "current_conversation",
 							sourceSetId: text.match(
 								/completion_source_set: ([a-f0-9]{64})/,
 							)?.[1],
@@ -1556,6 +1557,7 @@ describe("runV5MessageRuntimeStage1", () => {
 									"null",
 							);
 							expect(receipt).toEqual({
+								scope: "current_conversation",
 								sourceSetId: text.match(
 									/completion_source_set: ([a-f0-9]{64})/,
 								)?.[1],
@@ -1606,6 +1608,7 @@ describe("runV5MessageRuntimeStage1", () => {
 								),
 							};
 							expect(receipt).toEqual({
+								scope: "current_conversation",
 								sourceSetId: text.match(
 									/completion_source_set: ([a-f0-9]{64})/,
 								)?.[1],
