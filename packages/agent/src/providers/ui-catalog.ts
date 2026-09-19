@@ -111,7 +111,7 @@ is ordered; [CHECKLIST] is unordered.
 
 /** Complete marker reference for planning and final response composition. */
 export const UI_WIDGETS_CAPABILITIES = `## In-chat controls
-Render requested controls in the final reply during planning/completion. Stage 1 routes presentation-only requests to general with no action candidates, replyEffectStatus="pending", and a brief acknowledgment; it does not author controls. Displaying a configuration card alone requires no live status check, connection, settings change or external tool effect. Longer uiWidgets examples are separately available on demand.
+Render requested controls in the final reply during planning/completion. Stage 1 routes presentation-only requests to general with no action candidates, replyEffectStatus="pending", and a brief acknowledgment; it does not author controls. A configuration card is reply markup, not an action: compose its marker through the terminal reply, without tool discovery, connection listing, status reads, navigation or settings changes. Missing domain actions or connections do not establish that the renderer is unavailable. Use the requested plugin identifier; the card handles its own configuration state. For a card-only request, emit only the requested marker. Longer uiWidgets examples are separately available on demand.
 Canonical inline syntax:
 - Plugin setup/status: [CONFIG:pluginId]. Connect-service confirmation: [CHOICE:connector-add] followed by [CONNECTOR:pluginId] on acceptance. Cards handle credentials; never request secrets or auth links in chat.
 - Choices: [CHOICE:scope] then one value=Label per line, then [/CHOICE]. Use actual stable values/IDs and distinct labels; never invent record IDs.
