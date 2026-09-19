@@ -1,4 +1,4 @@
-/** Rollup config that wraps the tsc ESM output into IIFE + CJS `dist/plugin` bundles with dynamic imports inlined; `@capacitor/core` and `llama-cpp-capacitor` stay external. */
+/** Rollup config that wraps the tsc ESM output into IIFE + CJS `dist/plugin` bundles with dynamic imports inlined; native bindings and shared framework contracts stay external. */
 
 export default {
   input: "dist/esm/index.js",
@@ -9,18 +9,28 @@ export default {
       name: "capacitorLlama",
       globals: {
         "@capacitor/core": "capacitorExports",
+        "llama-cpp-capacitor": "llamaCppCapacitor",
+        "@elizaos/core": "elizaCore",
+        "@elizaos/shared/local-inference": "elizaLocalInference",
+        "@elizaos/shared/local-inference/bge-input": "elizaBgeInput",
       },
       sourcemap: true,
       inlineDynamicImports: true,
     },
     {
-      file: "dist/plugin.cjs.js",
+      file: "dist/plugin.cjs",
       format: "cjs",
       sourcemap: true,
       inlineDynamicImports: true,
     },
   ],
-  external: ["@capacitor/core", "llama-cpp-capacitor"],
+  external: [
+    "@capacitor/core",
+    "llama-cpp-capacitor",
+    "@elizaos/core",
+    "@elizaos/shared/local-inference",
+    "@elizaos/shared/local-inference/bge-input",
+  ],
   onwarn(warning, warn) {
     if (
       warning.code === "THIS_IS_UNDEFINED" &&

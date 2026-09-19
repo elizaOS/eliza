@@ -2,7 +2,8 @@
  * Behavioral tests for the Capacitor-llama `local-ai` plugin's model handlers.
  * The loader is mocked and a hand-built `CapacitorLlamaContext` fake drives
  * completion/streaming, so the handler wiring — not a real native model — is
- * under test.
+ * under test. Each case owns a fresh manager; retry and sharing assertions use
+ * repeated calls within that case.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -18,7 +19,10 @@ import type {
 
 const mocks = vi.hoisted(() => ({
 	initCapacitorLlama: vi.fn(),
-	verifyBgeEmbeddingFile: vi.fn(() => "BAAI/bge-small-en-v1.5:cls:l2:384:hf-bert-v1:tail-v1"),
+	initMobileBgeEmbedding: vi.fn(),
+	verifyBgeEmbeddingFile: vi.fn(
+		() => "BAAI/bge-small-en-v1.5:cls:l2:384:hf-bert-v1:tail-v1",
+	),
 }));
 
 vi.mock("../..", () => ({
@@ -28,6 +32,7 @@ vi.mock("../..", () => ({
 
 vi.mock("../loader", () => ({
 	initCapacitorLlama: mocks.initCapacitorLlama,
+	initMobileBgeEmbedding: mocks.initMobileBgeEmbedding,
 }));
 
 vi.mock("../../../runtime/embedding-vector-space", async (importOriginal) => {
@@ -39,8 +44,9 @@ vi.mock("../../../runtime/embedding-vector-space", async (importOriginal) => {
 });
 
 let corruptEmbeddingTokenizer = false;
+let corruptEmbeddingOutputTokens = false;
 const embeddingInputs: string[] = [];
-const { localAiPlugin } = await import("../index");
+let localAiPlugin: typeof import("../index")["localAiPlugin"];
 
 let observedCompletion:
 	| ((params: CapacitorLlamaCompletionParams) => void)
@@ -112,7 +118,14 @@ function makeCtx(
 		detokenize: vi.fn(async () => ""),
 		embedding: vi.fn(async (text: string) => {
 			embeddingInputs.push(text);
-			return { embedding: [3, 4, ...Array.from({ length: 382 }, () => 0)] };
+			const tokenIds = [...prepareBgeEmbeddingInput(text).tokenIds];
+			if (corruptEmbeddingOutputTokens) tokenIds[1] = 999;
+			return {
+				embedding: [3, 4, ...Array.from({ length: 382 }, () => 0)],
+				tokenIds,
+				tokens: tokenIds.length,
+				embeddingSpace: "BAAI/bge-small-en-v1.5:cls:l2:384:hf-bert-v1:tail-v1",
+			};
 		}),
 		bench: vi.fn(async () => ({
 			modelDesc: "",
@@ -135,13 +148,21 @@ function makeRuntime(): IAgentRuntime {
 }
 
 describe("local-ai compat adapter behavior", () => {
-	beforeEach(() => {
+	beforeEach(async () => {
+		vi.resetModules();
 		vi.clearAllMocks();
 		corruptEmbeddingTokenizer = false;
+		corruptEmbeddingOutputTokens = false;
 		embeddingInputs.length = 0;
 		observedCompletion = undefined;
 		completionResultOverrides = {};
-		mocks.initCapacitorLlama.mockImplementation(async () => makeCtx());
+		mocks.initCapacitorLlama
+			.mockReset()
+			.mockImplementation(async () => makeCtx());
+		mocks.initMobileBgeEmbedding
+			.mockReset()
+			.mockImplementation(async () => makeCtx());
+		({ localAiPlugin } = await import("../index"));
 	});
 
 	it.each([null, "", "   ", { text: "" }, { text: "   " }])(
@@ -167,21 +188,34 @@ describe("local-ai compat adapter behavior", () => {
 			} as never),
 		).rejects.toBe(failure);
 		expect(mocks.initCapacitorLlama).not.toHaveBeenCalled();
+		expect(mocks.initMobileBgeEmbedding).not.toHaveBeenCalled();
 		expect(embeddingInputs).toEqual([]);
+		await expect(
+			localAiPlugin.models?.[ModelType.TEXT_EMBEDDING]?.(makeRuntime(), {
+				text: "retry with a verified artifact",
+			} as never),
+		).resolves.toHaveLength(384);
+		expect(embeddingInputs).toEqual(["retry with a verified artifact"]);
 	});
 
 	it("propagates native startup failure without caching a broken context", async () => {
 		const failure = new Error("native allocation failed");
-		mocks.initCapacitorLlama.mockRejectedValueOnce(failure);
+		mocks.initMobileBgeEmbedding.mockRejectedValueOnce(failure);
 		await expect(
 			localAiPlugin.models?.[ModelType.TEXT_EMBEDDING]?.(makeRuntime(), {
 				text: "retry after startup failure",
 			} as never),
 		).rejects.toBe(failure);
 		expect(embeddingInputs).toEqual([]);
+		await expect(
+			localAiPlugin.models?.[ModelType.TEXT_EMBEDDING]?.(makeRuntime(), {
+				text: "retry with a working native context",
+			} as never),
+		).resolves.toHaveLength(384);
+		expect(embeddingInputs).toEqual(["retry with a working native context"]);
 	});
 
-	it("routes non-empty embedding input to the real embedding context", async () => {
+	it("routes concurrent embedding input to one dedicated embedding context", async () => {
 		const [result, concurrent] = await Promise.all([
 			localAiPlugin.models?.[ModelType.TEXT_EMBEDDING]?.(makeRuntime(), {
 				text: "embed me",
@@ -191,7 +225,8 @@ describe("local-ai compat adapter behavior", () => {
 			} as never),
 		]);
 		expect(concurrent).toEqual(result);
-		expect(mocks.initCapacitorLlama).toHaveBeenCalledTimes(1);
+		expect(mocks.initMobileBgeEmbedding).toHaveBeenCalledTimes(1);
+		expect(mocks.initCapacitorLlama).not.toHaveBeenCalled();
 
 		expect(result).toEqual([0.6, 0.8, ...Array.from({ length: 382 }, () => 0)]);
 		expect(getEmbeddingVectorSpace(result)).toBe(
@@ -200,12 +235,9 @@ describe("local-ai compat adapter behavior", () => {
 		expect(mocks.verifyBgeEmbeddingFile).toHaveBeenCalledWith(
 			expect.stringContaining("bge-small-en-v1.5-f16.gguf"),
 		);
-		expect(mocks.initCapacitorLlama).toHaveBeenCalledWith(
-			expect.objectContaining({
-				embedding: true,
-				pooling_type: "cls",
-				n_ctx: 512,
-			}),
+		expect(mocks.initMobileBgeEmbedding).toHaveBeenCalledWith(
+			expect.stringContaining("bge-small-en-v1.5-f16.gguf"),
+			512,
 		);
 		expect(embeddingInputs).toEqual(["embed me", "concurrent complete input"]);
 	});
@@ -226,6 +258,17 @@ describe("local-ai compat adapter behavior", () => {
 			text: `obsolete ${tail}`,
 		} as never);
 		expect(embeddingInputs).toEqual([tail]);
+	});
+
+	it("rejects returned token disagreement after a matching native preflight", async () => {
+		corruptEmbeddingOutputTokens = true;
+		const text = "complete source with a verified ending";
+		await expect(
+			localAiPlugin.models?.[ModelType.TEXT_EMBEDDING]?.(makeRuntime(), {
+				text,
+			} as never),
+		).rejects.toMatchObject({ code: "EMBEDDING_TOKENIZER_MISMATCH" });
+		expect(embeddingInputs).toEqual([text]);
 	});
 
 	it("dispatches the complete boundary-sized text", async () => {

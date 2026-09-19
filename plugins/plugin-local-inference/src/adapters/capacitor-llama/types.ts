@@ -222,10 +222,15 @@ export interface CapacitorEmbeddingContext {
 	tokenize(text: string): Promise<{ tokens: number[] }>;
 	embedding(
 		text: string,
-		params?: { embd_normalize?: number },
+		params?: {
+			embd_normalize?: number;
+			expectedTokenIds?: number[];
+			embeddingSpace?: string;
+		},
 	): Promise<{
 		embedding: number[];
 		embeddingSpace?: string;
+		tokenIds?: number[];
 		tokens?: number;
 	}>;
 	release(): Promise<void>;
@@ -310,7 +315,11 @@ export interface CapacitorLlamaContext {
 
 	embedding(
 		text: string,
-		params?: { embd_normalize?: number },
+		params?: {
+			embd_normalize?: number;
+			expectedTokenIds?: number[];
+			embeddingSpace?: string;
+		},
 	): Promise<CapacitorLlamaEmbeddingResult>;
 
 	bench(

@@ -460,42 +460,72 @@ diff --git a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java b/
          }
      }
 diff --git a/dist/esm/index.js b/dist/esm/index.js
-index 96f321707dfa7..67254c953f17c 100644
+index 96f321707d..c4ff517542 100644
 --- a/dist/esm/index.js
 +++ b/dist/esm/index.js
-@@ -569,4 +569,14 @@ export const BuildInfo = {
+@@ -12,11 +12,13 @@ const LlamaCpp = registerPlugin('LlamaCpp');
+ // Log listeners management
+ const logListeners = [];
+ // Set up native log listener
++if (globalThis.Capacitor?.isPluginAvailable?.('LlamaCpp')) {
+ LlamaCpp.addListener(EVENT_ON_NATIVE_LOG, (evt) => {
+     logListeners.forEach((listener) => listener(evt.level, evt.text));
+ });
+ // Trigger unset to use default log callback
+ (_c = (_b = (_a = LlamaCpp === null || LlamaCpp === void 0 ? void 0 : LlamaCpp.toggleNativeLog) === null || _a === void 0 ? void 0 : _a.call(LlamaCpp, { enabled: false })) === null || _b === void 0 ? void 0 : _b.catch) === null || _c === void 0 ? void 0 : _c.call(_b, () => { });
++}
+ export const RNLLAMA_MTMD_DEFAULT_MEDIA_MARKER = LLAMACPP_MTMD_DEFAULT_MEDIA_MARKER;
+ const validCacheTypes = [
+     'f16',
+@@ -569,4 +571,15 @@ export const BuildInfo = {
  };
  // Re-export the plugin for direct access
  export { LlamaCpp };
 -//# sourceMappingURL=index.js.map
 \ No newline at end of file
 +//# sourceMappingURL=index.js.map
-+/** Creates an iOS-only verified encoder context without fabricating chat metadata. */
++/** Creates a verified mobile encoder context without fabricating chat metadata. */
 +async function initBgeEmbedding(params) {
-+    const context = await LlamaCpp.initBgeEmbedding({ model: params.model, contextSize: params.n_ctx });
++    const bridge = globalThis.Capacitor?.getPlatform() === 'android' ? registerPlugin('ElizaBge') : LlamaCpp;
++    const context = await bridge.initBgeEmbedding({ model: params.model, contextSize: params.n_ctx });
 +    return {
-+        tokenize: (text) => LlamaCpp.tokenizeBge({ contextId: context.contextId, text }),
-+        embedding: (text) => LlamaCpp.embedBge({ contextId: context.contextId, text }),
-+        release: () => LlamaCpp.releaseBge({ contextId: context.contextId }),
++        tokenize: (text) => bridge.tokenizeBge({ contextId: context.contextId, text }),
++        embedding: (text, params) => bridge.embedBge({ contextId: context.contextId, text, expectedTokenIds: params?.expectedTokenIds, embeddingSpace: params?.embeddingSpace }),
++        release: () => bridge.releaseBge({ contextId: context.contextId }),
 +    };
 +}
 +export { initBgeEmbedding };
 diff --git a/dist/plugin.cjs.js b/dist/plugin.cjs.js
-index 08776b33b9b7b..16e3950fa0eb0 100644
+index 08776b33b9..3d30474499 100644
 --- a/dist/plugin.cjs.js
 +++ b/dist/plugin.cjs.js
-@@ -588,3 +588,14 @@ exports.releaseAllLlama = releaseAllLlama;
+@@ -15,11 +15,13 @@ const LlamaCpp = core.registerPlugin('LlamaCpp');
+ // Log listeners management
+ const logListeners = [];
+ // Set up native log listener
++if (globalThis.Capacitor?.isPluginAvailable?.('LlamaCpp')) {
+ LlamaCpp.addListener(EVENT_ON_NATIVE_LOG, (evt) => {
+     logListeners.forEach((listener) => listener(evt.level, evt.text));
+ });
+ // Trigger unset to use default log callback
+ (_c = (_b = (_a = LlamaCpp === null || LlamaCpp === void 0 ? void 0 : LlamaCpp.toggleNativeLog) === null || _a === void 0 ? void 0 : _a.call(LlamaCpp, { enabled: false })) === null || _b === void 0 ? void 0 : _b.catch) === null || _c === void 0 ? void 0 : _c.call(_b, () => { });
++}
+ const RNLLAMA_MTMD_DEFAULT_MEDIA_MARKER = LLAMACPP_MTMD_DEFAULT_MEDIA_MARKER;
+ const validCacheTypes = [
+     'f16',
+@@ -588,3 +590,15 @@ exports.releaseAllLlama = releaseAllLlama;
  exports.setContextLimit = setContextLimit;
  exports.toggleNativeLog = toggleNativeLog;
  //# sourceMappingURL=plugin.cjs.js.map
 +
-+/** Creates an iOS-only verified encoder context without fabricating chat metadata. */
++/** Creates a verified mobile encoder context without fabricating chat metadata. */
 +async function initBgeEmbedding(params) {
-+    const context = await LlamaCpp.initBgeEmbedding({ model: params.model, contextSize: params.n_ctx });
++    const bridge = globalThis.Capacitor?.getPlatform() === 'android' ? core.registerPlugin('ElizaBge') : LlamaCpp;
++    const context = await bridge.initBgeEmbedding({ model: params.model, contextSize: params.n_ctx });
 +    return {
-+        tokenize: (text) => LlamaCpp.tokenizeBge({ contextId: context.contextId, text }),
-+        embedding: (text) => LlamaCpp.embedBge({ contextId: context.contextId, text }),
-+        release: () => LlamaCpp.releaseBge({ contextId: context.contextId }),
++        tokenize: (text) => bridge.tokenizeBge({ contextId: context.contextId, text }),
++        embedding: (text, params) => bridge.embedBge({ contextId: context.contextId, text, expectedTokenIds: params?.expectedTokenIds, embeddingSpace: params?.embeddingSpace }),
++        release: () => bridge.releaseBge({ contextId: context.contextId }),
 +    };
 +}
 +exports.initBgeEmbedding = initBgeEmbedding;
@@ -658,7 +688,7 @@ diff --git a/ios/Sources/LlamaCppPlugin/LlamaCppPlugin.swift b/ios/Sources/Llama
 index eaaa61c08baf5..1e588b5b8cc0b 100644
 --- a/ios/Sources/LlamaCppPlugin/LlamaCppPlugin.swift
 +++ b/ios/Sources/LlamaCppPlugin/LlamaCppPlugin.swift
-@@ -7,9 +7,93 @@ import Capacitor
+@@ -7,9 +7,102 @@ import Capacitor
   */
  @objc(LlamaCppPlugin)
  public class LlamaCppPlugin: CAPPlugin, CAPBridgedPlugin {
@@ -719,7 +749,16 @@ index eaaa61c08baf5..1e588b5b8cc0b 100644
 +                return
 +            }
 +            do {
-+                call.resolve(try encoder.embed(text: text))
++                let actual = try encoder.tokenize(text: text)
++                guard let expected = call.getArray("expectedTokenIds", Int.self),
++                    call.getString("embeddingSpace") == "BAAI/bge-small-en-v1.5:cls:l2:384:hf-bert-v1:tail-v1",
++                    actual.map({ $0.intValue }) == expected else {
++                    call.reject("Native BGE tokens differ from the admitted source suffix", "EMBEDDING_TOKENIZER_MISMATCH")
++                    return
++                }
++                var result = try encoder.embed(text: text)
++                result["tokenIds"] = actual
++                call.resolve(result)
 +            } catch {
 +                // error-policy:J1 Preserve complete-input and native inference failures.
 +                call.reject(error.localizedDescription, (error as NSError).domain)
@@ -771,10 +810,10 @@ index 61e2672ce6702..d07be5deb20d6 100644
    // Legacy type aliases for backward compatibility
    export type RNLlamaMessagePart = LlamaCppMessagePart;
    export type RNLlamaOAICompatibleMessage = LlamaCppOAICompatibleMessage;
-+  /** iOS fused BGE context; no chat-model metadata is fabricated. */
++  /** Mobile fused BGE context; no chat-model metadata is fabricated. */
 +  export function initBgeEmbedding(params: { model: string; n_ctx: number }): Promise<{
 +      tokenize(text: string): Promise<{ tokens: number[] }>;
-+      embedding(text: string): Promise<{ embedding: number[]; tokens: number; n_embd: number; embeddingSpace: string }>;
++      embedding(text: string, params: { expectedTokenIds: number[]; embeddingSpace: string }): Promise<{ embedding: number[]; tokens: number; tokenIds: number[]; n_embd: number; embeddingSpace: string }>;
 +      release(): Promise<void>;
 +  }>;
  }

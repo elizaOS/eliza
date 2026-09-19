@@ -64,8 +64,8 @@ __tests__/                         Bun tests for paths, ABI, handlers, and polic
   unavailability may route to the next registered cloud handler; aborts and
   unclassified failures propagate.
 - `TEXT_EMBEDDING` uses a separate, checksum-verified BGE-small context when explicitly enabled.
-  It uses CLS pooling, normalizes 384-dimensional vectors, and rejects complete
-  inputs above the native context limit before encoding. The fused C API reads
+  It uses CLS pooling, normalizes 384-dimensional vectors, and prepares the shared
+  unchanged tail for oversized embedding inputs before verifying native token IDs. The fused C API reads
   its context's text GGUF, so the embedding context must never reuse chat weights.
   Disabled requests throw `LOCAL_EMBEDDING_DISABLED` before model loading or
   native dispatch. No zero vector may stand in for an unavailable embedding.

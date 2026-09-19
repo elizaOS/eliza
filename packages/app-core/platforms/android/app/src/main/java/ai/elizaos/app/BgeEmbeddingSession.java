@@ -89,12 +89,10 @@ final class BgeEmbeddingSession {
         }
     }
 
-    JSONObject embed(String requestedBundle, String text, JSONArray expectedIds, String expectedSpace) throws JSONException {
-        if (!SPACE.equals(expectedSpace) || expectedIds == null || expectedIds.length() == 0) {
-            throw new Failure("EMBEDDING_TOKENIZER_MISMATCH", "Canonical embedding space and expected token IDs are required");
+    void open(String requestedBundle, int limit) {
+        if (limit < 3 || limit > 512) {
+            throw new Failure("EMBEDDING_CONTEXT_INVALID", "BGE context limit must be between 3 and 512 tokens");
         }
-        byte[] input = completeUtf8(text);
-        int limit = configuredContextLimit();
         if (context == 0L || !requestedBundle.equals(bundle)) {
             String verified = verifyBundle(requestedBundle);
             close();
@@ -103,12 +101,30 @@ final class BgeEmbeddingSession {
             bundle = requestedBundle;
             contextLimit = limit;
         } else if (limit != contextLimit) {
-            throw new Failure("EMBEDDING_CONTEXT_INVALID", "Release the embedding model before changing ELIZA_EMBED_N_CTX");
+            throw new Failure("EMBEDDING_CONTEXT_INVALID", "Release the embedding model before changing its context limit");
         }
+    }
+
+    int[] tokenize(String requestedBundle, String text, int limit) {
+        byte[] input = completeUtf8(text);
+        open(requestedBundle, limit);
         int[] tokens = ElizaVoiceNative.nativeTokenizeWithOptionsUtf8(context, input, true);
         if (tokens == null || tokens.length == 0) {
             throw new Failure("EMBEDDING_BACKEND_UNAVAILABLE", "BGE tokenizer returned no tokens");
         }
+        return tokens;
+    }
+
+    JSONObject embed(String requestedBundle, String text, JSONArray expectedIds, String expectedSpace) throws JSONException {
+        return embed(requestedBundle, text, expectedIds, expectedSpace, configuredContextLimit());
+    }
+
+    JSONObject embed(String requestedBundle, String text, JSONArray expectedIds, String expectedSpace, int limit) throws JSONException {
+        if (!SPACE.equals(expectedSpace) || expectedIds == null || expectedIds.length() == 0) {
+            throw new Failure("EMBEDDING_TOKENIZER_MISMATCH", "Canonical embedding space and expected token IDs are required");
+        }
+        byte[] input = completeUtf8(text);
+        int[] tokens = tokenize(requestedBundle, text, limit);
         if (tokens.length > contextLimit) {
             throw new Failure("EMBEDDING_INPUT_TOO_LARGE", "Complete embedding input has " + tokens.length
                 + " tokens; limit is " + contextLimit + ". Split the source into explicit lossless chunks.");
@@ -138,7 +154,7 @@ final class BgeEmbeddingSession {
         double norm = Math.sqrt(normSquared);
         JSONArray values = new JSONArray();
         for (float value : vector) values.put(value / norm);
-        return new JSONObject().put("ok", true).put("embedding", values).put("dim", vector.length)
+        return new JSONObject().put("ok", true).put("embedding", values).put("dim", vector.length).put("n_embd", vector.length)
             .put("tokens", tokens.length).put("tokenIds", new JSONArray(tokens)).put("embeddingSpace", SPACE);
     }
 

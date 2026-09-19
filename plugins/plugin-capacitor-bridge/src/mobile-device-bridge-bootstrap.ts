@@ -28,10 +28,12 @@ import type { Plugin } from "@elizaos/core";
 import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
+	BGE_SMALL_VECTOR_SPACE,
 	ElizaError,
 	type GenerateTextParams,
 	getInferencePriorityGate,
 	type IAgentRuntime,
+	identifyEmbeddingVector,
 	inferenceRamClassFromEnv,
 	type LocalInferencePriority,
 	logger,
@@ -43,6 +45,11 @@ import {
 	ServiceType,
 	type TextEmbeddingParams,
 } from "@elizaos/core";
+import { BGE_EMBEDDING_MODEL } from "@elizaos/shared/local-inference";
+import {
+	assertBgeTokenAgreement,
+	prepareBgeEmbeddingInput,
+} from "@elizaos/shared/local-inference/bge-input";
 import { imageUrlToBase64 } from "./image-url-to-base64.ts";
 import { downloadHttpModel } from "./shared/http-model-download.ts";
 import { resolveStoredModelPath } from "./shared/local-inference-stored-path.ts";
@@ -83,13 +90,6 @@ const deviceAttachUnsubscribers = new WeakMap<AgentRuntime, () => void>();
  * registerMobileDeviceBridgeModels, never by mere plugin presence.
  */
 let registeredModelTrigger: "bionic-host" | "device-bridge" | null = null;
-const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
-	"eliza-1-embedding": 1024,
-	// 2B reuses the text backbone for embeddings (--pooling last), so its dim is the
-	// model's embedding_length = 2048 (device-verified: EMBED -> dim 2048), NOT 1536.
-	"eliza-1-2b": 2048,
-	"eliza-1-4b": 2560,
-};
 
 // Gemma 4 MTP uses a separate assistant/drafter GGUF. The current shared
 // catalog declares `mtp/drafter-<tier>.gguf` with a measured one-token draft
@@ -274,9 +274,17 @@ type DeviceOutbound =
 			correlationId: string;
 			ok: true;
 			embedding: number[];
+			embeddingSpace?: string;
+			tokenIds?: number[];
 			tokens: number;
 	  }
-	| { type: "embedResult"; correlationId: string; ok: false; error: string }
+	| {
+			type: "embedResult";
+			correlationId: string;
+			ok: false;
+			error: string;
+			code?: string;
+	  }
 	| {
 			type: "formatChatResult";
 			correlationId: string;
@@ -302,7 +310,13 @@ type AgentOutbound =
 			maxTokens?: number;
 			temperature?: number;
 	  }
-	| { type: "embed"; correlationId: string; input: string }
+	| {
+			type: "embed";
+			correlationId: string;
+			input: string;
+			expectedTokenIds: number[];
+			embeddingSpace: string;
+	  }
 	| {
 			type: "formatChat";
 			correlationId: string;
@@ -384,7 +398,7 @@ class MobileDeviceBridge {
 	private readonly pendingLoads = new Map<string, Pending<void>>();
 	private readonly pendingUnloads = new Map<string, Pending<void>>();
 	private readonly pendingGenerates = new Map<string, Pending<string>>();
-	private readonly pendingEmbeds = new Map<string, Pending<number[]>>();
+	private readonly pendingEmbeds = new Map<string, Pending<BgeWireResponse>>();
 	private readonly pendingFormatChats = new Map<
 		string,
 		Pending<string | null>
@@ -670,9 +684,13 @@ class MobileDeviceBridge {
 			clearTimeout(pending.timeout);
 			this.pendingEmbeds.delete(msg.correlationId);
 			if (msg.ok === true) {
-				pending.resolve(msg.embedding);
+				pending.resolve(msg);
 			} else {
-				pending.reject(new Error(msg.error));
+				pending.reject(
+					new ElizaError(msg.error, {
+						code: msg.code ?? "EMBEDDING_BACKEND_UNAVAILABLE",
+					}),
+				);
 			}
 			return;
 		}
@@ -877,17 +895,21 @@ class MobileDeviceBridge {
 		);
 	}
 
-	embed(args: { input: string }): Promise<number[]> {
-		return this.sendToPrimary<number[]>(
+	async embed(args: { input: string }): Promise<number[]> {
+		const prepared = prepareBgeEmbeddingInput(args.input);
+		const response = await this.sendToPrimary<BgeWireResponse>(
 			this.pendingEmbeds,
 			(correlationId) => ({
 				type: "embed",
 				correlationId,
-				input: args.input,
+				input: prepared.text,
+				expectedTokenIds: prepared.tokenIds,
+				embeddingSpace: BGE_SMALL_VECTOR_SPACE,
 			}),
 			this.embedTimeoutMs,
 			"DEVICE_TIMEOUT: no device returned embeddings within deadline",
 		);
+		return validateBgeResponse(response, prepared);
 	}
 
 	/**
@@ -1203,6 +1225,32 @@ function buildLoadArgsFromManifestModel(model: {
 }
 
 function resolveLocalLoadArgs(slot: string): LocalInferenceLoadArgs | null {
+	if (slot === "TEXT_EMBEDDING") {
+		const configured = process.env.ELIZA_LOCAL_EMBEDDING_MODEL_PATH?.trim();
+		const assigned = resolveAssignedRegistryModel(slot);
+		const assignedPath =
+			assigned && path.basename(assigned.path) === BGE_EMBEDDING_MODEL.filename
+				? assigned.path
+				: undefined;
+		const modelPath =
+			configured ||
+			assignedPath ||
+			path.join(modelsDir(), BGE_EMBEDDING_MODEL.filename);
+		if (path.basename(modelPath) !== BGE_EMBEDDING_MODEL.filename) {
+			throw new ElizaError(
+				"The mobile embedding slot requires the pinned BGE-small model",
+				{ code: "EMBEDDING_MODEL_MISMATCH" },
+			);
+		}
+		if (configured && !existsSync(modelPath))
+			throw new ElizaError("Configured BGE model path is unavailable", {
+				code: "EMBEDDING_MODEL_UNAVAILABLE",
+				context: { modelPath },
+			});
+		return existsSync(modelPath)
+			? { modelPath, contextSize: BGE_EMBEDDING_MODEL.contextSize }
+			: null;
+	}
 	const envPath = resolveFromEnv(slot);
 	if (envPath) return { modelPath: envPath };
 	const registryModel = resolveAssignedRegistryModel(slot);
@@ -1229,6 +1277,7 @@ type RecommendedModel = {
 	ggufFile: string;
 	localFile?: string;
 	expectedSizeBytes?: number;
+	revision?: string;
 };
 
 const RECOMMENDED_MODELS: Record<
@@ -1252,10 +1301,12 @@ const RECOMMENDED_MODELS: Record<
 		localFile: "eliza-1-2b-128k.gguf",
 	},
 	TEXT_EMBEDDING: {
-		id: "eliza-1-embedding",
-		hfRepo: "elizaos/eliza-1",
-		ggufFile: "bundles/4b/embedding/eliza-1-embedding.gguf",
-		localFile: "eliza-1-embedding.gguf",
+		id: "bge-small-en-v1.5",
+		hfRepo: BGE_EMBEDDING_MODEL.repository,
+		ggufFile: BGE_EMBEDDING_MODEL.filename,
+		localFile: BGE_EMBEDDING_MODEL.filename,
+		expectedSizeBytes: BGE_EMBEDDING_MODEL.sizeBytes,
+		revision: BGE_EMBEDDING_MODEL.revision,
 	},
 };
 
@@ -1271,7 +1322,7 @@ function buildHfResolveUrl(model: RecommendedModel): string {
 		.split("/")
 		.map((segment) => encodeURIComponent(segment))
 		.join("/");
-	return `https://huggingface.co/${model.hfRepo}/resolve/main/${encodedPath}?download=true`;
+	return `https://huggingface.co/${model.hfRepo}/resolve/${model.revision ?? "main"}/${encodedPath}?download=true`;
 }
 
 function buildRecommendedLoadArgs(
@@ -1279,6 +1330,8 @@ function buildRecommendedLoadArgs(
 	modelPath: string,
 ): LocalInferenceLoadArgs {
 	const model = RECOMMENDED_MODELS[slot];
+	if (slot === "TEXT_EMBEDDING")
+		return { modelPath, contextSize: BGE_EMBEDDING_MODEL.contextSize };
 	return buildLoadArgsFromRegistryModel({ id: model.id, path: modelPath });
 }
 
@@ -1352,17 +1405,19 @@ async function resolveLoadArgsWithAutoDownload(
 }
 
 function resolveEmbeddingDimension(): number {
-	const assigned = resolveAssignedRegistryModel("TEXT_EMBEDDING");
-	return (
-		positiveInteger(process.env.ELIZA_LOCAL_EMBEDDING_DIMENSIONS) ??
-		positiveInteger(process.env.TEXT_EMBEDDING_DIMENSIONS) ??
-		positiveInteger(assigned?.dimensions) ??
-		positiveInteger(assigned?.embeddingDimension) ??
-		positiveInteger(assigned?.embeddingDimensions) ??
-		(assigned?.id ? KNOWN_EMBEDDING_DIMENSIONS[assigned.id] : null) ??
-		KNOWN_EMBEDDING_DIMENSIONS[RECOMMENDED_MODELS.TEXT_EMBEDDING.id] ??
-		1024
-	);
+	for (const name of [
+		"ELIZA_LOCAL_EMBEDDING_DIMENSIONS",
+		"TEXT_EMBEDDING_DIMENSIONS",
+	]) {
+		const value = process.env[name];
+		if (value !== undefined && value.trim() !== "" && value.trim() !== "384") {
+			throw new ElizaError("BGE-small requires 384 embedding dimensions", {
+				code: "EMBEDDING_DIMENSION_MISMATCH",
+				context: { name },
+			});
+		}
+	}
+	return BGE_EMBEDDING_MODEL.dimensions;
 }
 
 // elizaOS v5 message-pipeline calls `runtime.useModel(TEXT_LARGE, params)`
@@ -1443,6 +1498,9 @@ interface BionicGenerateResponse {
 	ms?: number;
 	tokS?: number;
 	embedding?: number[];
+	embeddingSpace?: string;
+	tokenIds?: number[];
+	code?: string;
 	dim?: number;
 }
 
@@ -2003,6 +2061,37 @@ function collectRoleLabeledPromptMessages(
 	return result.length > 0 ? result : null;
 }
 
+interface BgeWireResponse {
+	embedding?: number[];
+	tokens?: number;
+	tokenIds?: number[];
+	embeddingSpace?: string;
+}
+
+function validateBgeResponse(
+	response: BgeWireResponse,
+	prepared: ReturnType<typeof prepareBgeEmbeddingInput>,
+): number[] {
+	const { embedding, tokenIds } = response;
+	if (
+		response.embeddingSpace !== BGE_SMALL_VECTOR_SPACE ||
+		response.tokens !== prepared.tokenIds.length ||
+		!Array.isArray(tokenIds) ||
+		!tokenIds.every(Number.isInteger) ||
+		!Array.isArray(embedding) ||
+		embedding.length !== BGE_EMBEDDING_MODEL.dimensions ||
+		!embedding.every(Number.isFinite) ||
+		Math.abs(Math.hypot(...embedding) - 1) > 1e-4
+	) {
+		throw new ElizaError(
+			"Mobile BGE returned invalid vector data or provenance",
+			{ code: "EMBEDDING_VECTOR_INVALID" },
+		);
+	}
+	assertBgeTokenAgreement(prepared, tokenIds);
+	return identifyEmbeddingVector(embedding, BGE_SMALL_VECTOR_SPACE);
+}
+
 function extractEmbeddingText(
 	params: TextEmbeddingParams | string | null,
 ): string {
@@ -2011,14 +2100,30 @@ function extractEmbeddingText(
 	return params.text;
 }
 
-function makeEmbeddingHandler(): EmbeddingHandler {
+function makeEmbeddingHandler(runtime: AgentRuntime): EmbeddingHandler {
+	let readiness: Promise<void> | undefined;
 	return async (_runtime, params) => {
+		const dimensions = resolveEmbeddingDimension();
 		if (params === null) {
 			// Runtime initialization uses a null embedding request only to size
 			// the vector column. On stock Capacitor, the WebView cannot attach to
 			// the device bridge until the agent HTTP server is already listening,
 			// so this startup probe must not try to load the native model.
-			return new Array(resolveEmbeddingDimension()).fill(0);
+			return identifyEmbeddingVector(
+				new Array(dimensions).fill(0),
+				BGE_SMALL_VECTOR_SPACE,
+			);
+		}
+		// Device attachment can register this handler after runtime initialization skipped embeddings.
+		// Share admission across concurrent first calls; the null probe above never enters this path.
+		readiness ??= runtime.ensureEmbeddingDimension();
+		const pending = readiness;
+		let admitted = false;
+		try {
+			await pending;
+			admitted = true;
+		} finally {
+			if (!admitted && readiness === pending) readiness = undefined;
 		}
 		let loadArgs: LocalInferenceLoadArgs | null =
 			resolveLocalLoadArgs("TEXT_EMBEDDING");
@@ -2038,28 +2143,42 @@ function makeEmbeddingHandler(): EmbeddingHandler {
 			);
 		}
 
-		// GPU delegation: embed on the in-process bionic host (--pooling last over
-		// the fused text model), bypassing the device-bridge. This is what makes
-		// on-device memory + doc-seeding run locally instead of failing over to
-		// cloud BatchEmbeddings (401 on a fresh local install).
+		const prepared = prepareBgeEmbeddingInput(extractEmbeddingText(params));
 		const bionicSock = bionicSocketName();
 		if (bionicSock) {
-			const res = await bionicHostGenerate(bionicSock, {
+			const absolute = path.resolve(loadArgs.modelPath);
+			const bundle = `${absolute}.embedding.bundle`;
+			const textDir = path.join(bundle, "text");
+			mkdirSync(textDir, { recursive: true });
+			const target = path.join(textDir, BGE_EMBEDDING_MODEL.filename);
+			if (!existsSync(target)) symlinkSync(absolute, target);
+			const request = {
 				op: "embed",
-				bundleDir: deriveBionicBundleDir(loadArgs.modelPath),
-				text: extractEmbeddingText(params),
-			});
-			if (!res.ok || !Array.isArray(res.embedding)) {
-				throw new Error(
-					`[mobile-device-bridge] bionic embed failed: ${res.error ?? "no embedding"}`,
+				bundleDir: bundle,
+				text: prepared.text,
+				expectedTokenIds: prepared.tokenIds,
+				embeddingSpace: BGE_SMALL_VECTOR_SPACE,
+			};
+			const byteLength = Buffer.byteLength(JSON.stringify(request), "utf8");
+			if (byteLength > 1 << 20)
+				throw new ElizaError(
+					"Prepared embedding exceeds the Android host frame limit",
+					{
+						code: "EMBEDDING_INPUT_TOO_LARGE",
+						context: { byteLength, limit: 1 << 20 },
+					},
 				);
-			}
-			return res.embedding;
+			const res = await bionicHostGenerate(bionicSock, request);
+			if (!res.ok)
+				throw new ElizaError(res.error || "Bionic embedding failed", {
+					code: res.code || "EMBEDDING_BACKEND_UNAVAILABLE",
+				});
+			return validateBgeResponse(res, prepared);
 		}
 
 		await mobileDeviceBridge.loadModel(loadArgs);
 		return mobileDeviceBridge.embed({
-			input: extractEmbeddingText(params),
+			input: prepared.text,
 		});
 	};
 }
@@ -2353,7 +2472,7 @@ function registerMobileDeviceBridgeModels(
 	// way the embedding slot becomes available without an agent restart.
 	runtimeWithRegistration.registerModel(
 		ModelType.TEXT_EMBEDDING,
-		makeEmbeddingHandler(),
+		makeEmbeddingHandler(runtime),
 		PROVIDER,
 		LOCAL_INFERENCE_PRIORITY,
 	);

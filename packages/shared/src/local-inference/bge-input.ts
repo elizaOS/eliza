@@ -75,7 +75,8 @@ export function prepareBgeEmbeddingInput(
       },
     );
   }
-  if (!text.isWellFormed()) {
+  // Unicode mode treats a valid surrogate pair as one scalar outside this range.
+  if (/[\ud800-\udfff]/u.test(text)) {
     throw new ElizaError(
       "Embedding input contains unpaired UTF-16 surrogates",
       {

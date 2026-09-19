@@ -57,19 +57,25 @@ async function loadMobileCapacitor(): Promise<MobileCapacitorModule> {
 	return mod;
 }
 
-/** Opens the dedicated iOS BGE bridge without manufacturing unused chat capabilities. */
-export async function initIosBgeEmbedding(
+/** Opens the dedicated mobile BGE bridge without manufacturing unused chat capabilities. */
+export async function initMobileBgeEmbedding(
 	model: string,
 	contextSize: number,
 ): Promise<CapacitorEmbeddingContext> {
 	const mod = await loadMobileCapacitor();
 	if (typeof mod.initBgeEmbedding !== "function") {
-		throw new ElizaError("Install the iOS fused BGE bridge before embedding", {
-			code: "EMBEDDING_BACKEND_UNAVAILABLE",
-		});
+		throw new ElizaError(
+			"Install the mobile fused BGE bridge before embedding",
+			{
+				code: "EMBEDDING_BACKEND_UNAVAILABLE",
+			},
+		);
 	}
 	return mod.initBgeEmbedding({ model, n_ctx: contextSize });
 }
+
+/** Compatibility name for callers that explicitly select the iOS transport. */
+export const initIosBgeEmbedding = initMobileBgeEmbedding;
 
 // === Public loader =========================================================
 

@@ -4,11 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { getBootConfig, setBootConfig } from "@elizaos/shared";
+import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
 import { afterEach, expect, it, vi } from "vitest";
 
 const native = vi.hoisted(() => ({
 	space: "BAAI/bge-small-en-v1.5:cls:l2:384:hf-bert-v1:tail-v1",
-	initIosBgeEmbedding: vi.fn(),
+	initMobileBgeEmbedding: vi.fn(),
 	initCapacitorLlama: vi.fn(),
 }));
 
@@ -41,13 +42,16 @@ it("selects the identity-checked iOS encoder from a branded platform alias", asy
 	vi.stubEnv("ACME_PLATFORM", "ios");
 	vi.stubEnv("MODELS_DIR", path.join(directory, "models"));
 	vi.stubEnv("CACHE_DIR", path.join(directory, "cache"));
+	const input = "Preserve this complete branded iOS request.";
+	const prepared = prepareBgeEmbeddingInput(input);
 	const embedding = vi.fn(async () => ({
 		embedding: [3, 4, ...Array.from({ length: 382 }, () => 0)],
 		embeddingSpace: native.space,
-		tokens: 3,
+		tokens: prepared.tokenIds.length,
+		tokenIds: prepared.tokenIds,
 	}));
-	native.initIosBgeEmbedding.mockResolvedValue({
-		tokenize: async () => ({ tokens: [1, 2, 3] }),
+	native.initMobileBgeEmbedding.mockResolvedValue({
+		tokenize: async () => ({ tokens: prepared.tokenIds }),
 		embedding,
 		release: async () => undefined,
 	});
@@ -62,14 +66,18 @@ it("selects the identity-checked iOS encoder from a branded platform alias", asy
 		{ text: "Preserve this complete branded iOS request." } as never,
 	);
 	expect(result).toEqual([0.6, 0.8, ...Array.from({ length: 382 }, () => 0)]);
-	expect(native.initIosBgeEmbedding).toHaveBeenCalledWith(
+	expect(native.initMobileBgeEmbedding).toHaveBeenCalledWith(
 		expect.stringContaining("bge-small-en-v1.5-f16.gguf"),
 		512,
 	);
 	expect(native.initCapacitorLlama).not.toHaveBeenCalled();
 	expect(embedding).toHaveBeenCalledWith(
 		"Preserve this complete branded iOS request.",
-		{ embd_normalize: 2 },
+		{
+			embd_normalize: 2,
+			expectedTokenIds: prepared.tokenIds,
+			embeddingSpace: native.space,
+		},
 	);
 	expect(process.env.ELIZA_PLATFORM).toBeUndefined();
 });

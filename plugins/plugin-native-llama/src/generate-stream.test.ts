@@ -2,8 +2,10 @@
  * Event-ordering tests for `CapacitorLlamaAdapter.generateStream()`. Mocks
  * `llama-cpp-capacitor` so we can drive token events from the test and
  * assert the resulting `GenerationEvent` sequence.
+ * Shared runtime dependencies load before timed cases; native contexts remain isolated.
  */
 
+import "./capacitor-llama-adapter";
 import type { PluginListenerHandle } from "@capacitor/core";
 import { describe, expect, it, vi } from "vitest";
 

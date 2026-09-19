@@ -38,7 +38,6 @@ import {
 	logger,
 	ModelType,
 	type Plugin,
-	resolveAliasedEnvValue,
 	resolveStateDir,
 } from "@elizaos/core";
 import {
@@ -57,7 +56,7 @@ import {
 import { type Config, validateConfig } from "./environment";
 import {
 	initCapacitorLlama,
-	initIosBgeEmbedding,
+	initMobileBgeEmbedding,
 	releaseAllCapacitorLlama,
 } from "./loader";
 import { resolveMobileGpuAdmission } from "./memory-admission";
@@ -610,12 +609,9 @@ class LocalAIManager {
 			const space = canonical
 				? verifyBgeEmbeddingFile(this.embeddingModelPath)
 				: undefined;
-			this.embeddingHasNativeIdentity =
-				canonical &&
-				resolveAliasedEnvValue("ELIZA_PLATFORM")?.trim().toLowerCase() ===
-					"ios";
+			this.embeddingHasNativeIdentity = canonical;
 			const ctx = this.embeddingHasNativeIdentity
-				? await initIosBgeEmbedding(
+				? await initMobileBgeEmbedding(
 						this.embeddingModelPath,
 						this.embeddingModelConfig.contextSize,
 					)
@@ -677,17 +673,27 @@ class LocalAIManager {
 		}
 		const result = await this.embeddingCtx.embedding(inputText, {
 			embd_normalize: 2,
+			...(prepared
+				? {
+						expectedTokenIds: prepared.tokenIds,
+						embeddingSpace: this.embeddingSpace,
+					}
+				: {}),
 		});
 		if (
 			this.embeddingHasNativeIdentity &&
 			(result.embeddingSpace !== this.embeddingSpace ||
-				result.tokens !== tokenized.tokens.length)
+				result.tokens !== tokenized.tokens.length ||
+				!Array.isArray(result.tokenIds))
 		) {
 			throw new ElizaError(
 				"Native BGE provenance or token count does not match the prepared source",
 				{ code: "EMBEDDING_VECTOR_INVALID" },
 			);
 		}
+
+		if (prepared && this.embeddingHasNativeIdentity && result.tokenIds)
+			assertBgeTokenAgreement(prepared, result.tokenIds);
 		if (
 			this.embeddingSpace &&
 			result.embedding.length !== BGE_EMBEDDING_MODEL.dimensions

@@ -543,6 +543,7 @@ describe("ensureLocalInferenceHandler", () => {
 				ctx: 1,
 				text: "warm",
 				pooling: ELIZA_POOLING_CLS,
+				parseSpecial: false,
 			});
 			expect(probeHardware).toHaveBeenCalledTimes(3);
 			expect(embeddingState.create).toHaveBeenCalledTimes(1);

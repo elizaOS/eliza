@@ -29,6 +29,8 @@
  *   probe support, that path wins automatically.
  */
 
+import { ElizaError } from "@elizaos/core";
+import { BGE_EMBEDDING_MODEL } from "@elizaos/shared/local-inference";
 import { loadCapacitorLlama } from "./load-capacitor-llama.js";
 
 interface DeviceCapabilities {
@@ -79,7 +81,13 @@ type AgentInbound =
       maxTokens?: number;
       temperature?: number;
     }
-  | { type: "embed"; correlationId: string; input: string }
+  | {
+      type: "embed";
+      correlationId: string;
+      input: string;
+      expectedTokenIds: number[];
+      embeddingSpace: string;
+    }
   | {
       type: "formatChat";
       correlationId: string;
@@ -119,8 +127,16 @@ type DeviceOutbound =
       ok: true;
       embedding: number[];
       tokens: number;
+      embeddingSpace?: string;
+      tokenIds?: number[];
     }
-  | { type: "embedResult"; correlationId: string; ok: false; error: string }
+  | {
+      type: "embedResult";
+      correlationId: string;
+      ok: false;
+      error: string;
+      code?: string;
+    }
   | {
       type: "formatChatResult";
       correlationId: string;
@@ -460,7 +476,11 @@ export class DeviceBridgeClient {
 
     if (msg.type === "load") {
       try {
-        const capacitorLlama = await loadCapacitorLlama();
+        const capacitorLlama = await loadCapacitorLlama(
+          msg.modelPath.split("/").pop() === BGE_EMBEDDING_MODEL.filename
+            ? "embedding"
+            : "chat",
+        );
         await capacitorLlama.load({
           modelPath: msg.modelPath,
           contextSize: msg.contextSize,
@@ -499,6 +519,7 @@ export class DeviceBridgeClient {
       try {
         const capacitorLlama = await loadCapacitorLlama();
         await capacitorLlama.unload();
+        await loadCapacitorLlama("embedding").unload();
         this.send(ws, {
           type: "unloadResult",
           correlationId: msg.correlationId,
@@ -553,14 +574,20 @@ export class DeviceBridgeClient {
 
     if (msg.type === "embed") {
       try {
-        const capacitorLlama = await loadCapacitorLlama();
-        const result = await capacitorLlama.embed({ input: msg.input });
+        const capacitorLlama = await loadCapacitorLlama("embedding");
+        const result = await capacitorLlama.embed({
+          input: msg.input,
+          expectedTokenIds: msg.expectedTokenIds,
+          embeddingSpace: msg.embeddingSpace,
+        });
         this.send(ws, {
           type: "embedResult",
           correlationId: msg.correlationId,
           ok: true,
           embedding: result.embedding,
           tokens: result.tokens,
+          tokenIds: result.tokenIds,
+          embeddingSpace: result.embeddingSpace,
         });
       } catch (err) {
         // error-policy:J1 RPC boundary: relay the failure to the agent as a
@@ -569,6 +596,10 @@ export class DeviceBridgeClient {
           type: "embedResult",
           correlationId: msg.correlationId,
           ok: false,
+          code:
+            err instanceof ElizaError
+              ? err.code
+              : "EMBEDDING_BACKEND_UNAVAILABLE",
           error: err instanceof Error ? err.message : String(err),
         });
       }
