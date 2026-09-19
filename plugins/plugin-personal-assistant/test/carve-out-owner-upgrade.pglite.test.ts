@@ -92,33 +92,60 @@ async function ownerRows(domain: string, table: string) {
   ).rows;
 }
 
-it.each(["source-missing", "target-non-empty"] as const)(
-  "preserves reminder owner rows when migration returns %s",
-  async (outcome) => {
-    const table = "life_reminder_plans";
-    const database = await fixture("reminders", table);
-    if (outcome === "source-missing") {
-      await db.exec(`DROP TABLE app_lifeops.${table}`);
-    } else {
-      await db.exec(
-        `INSERT INTO app_reminders.${table} VALUES ('owner-created', 'owner', 'keep mine')`,
-      );
-    }
-    const before = await ownerRows("reminders", table);
-    expect(await migrateReminderTables(database)).toContainEqual({
-      table,
-      outcome,
-    });
-    expect(await ownerRows("reminders", table)).toEqual(before);
-    if (outcome === "target-non-empty") {
-      expect(
-        (await db.query(`SELECT id FROM app_lifeops.${table} ORDER BY id`))
-          .rows,
-      ).toEqual([{ id: "deleted" }, { id: "retained" }]);
-    }
-  },
-  120_000,
-);
+it("creates reminder migration storage on a fresh install without a legacy schema", async () => {
+  const database = await fixture("reminders", "life_reminder_plans");
+  await db.exec(
+    "DROP SCHEMA app_reminders CASCADE; DROP SCHEMA app_lifeops CASCADE",
+  );
+  expect(await migrateReminderTables(database)).toContainEqual({
+    table: "life_reminder_plans",
+    outcome: "source-missing",
+  });
+}, 120_000);
+
+it("preserves populated reminder owner tables and legacy rows", async () => {
+  const table = "life_reminder_plans";
+  const database = await fixture("reminders", table);
+  await db.exec(
+    `INSERT INTO app_reminders.${table} (id, agent_id, payload)
+     VALUES ('owner-created', 'owner', 'keep mine')`,
+  );
+  const before = await ownerRows("reminders", table);
+  expect(await migrateReminderTables(database)).toContainEqual({
+    table,
+    outcome: "target-non-empty",
+  });
+  expect(await ownerRows("reminders", table)).toEqual(before);
+  expect(
+    (await db.query(`SELECT id FROM app_lifeops.${table} ORDER BY id`)).rows,
+  ).toEqual([{ id: "deleted" }, { id: "retained" }]);
+}, 120_000);
+
+it("preserves a complete reminder copy when an insert encounters an existing key", async () => {
+  const table = "life_reminder_plans";
+  const database = await fixture("reminders", table);
+  // A trigger introduces the conflict after the SELECT's absent-key check.
+  // This exercises actual unique-conflict handling without pretending to run two sessions.
+  await db.exec(`
+    CREATE FUNCTION competing_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF pg_trigger_depth() = 1 THEN
+        INSERT INTO app_reminders.${table} VALUES (NEW.id, NEW.agent_id, NEW.payload);
+      END IF;
+      RETURN NEW;
+    END $$;
+    CREATE TRIGGER competing_insert BEFORE INSERT ON app_reminders.${table}
+      FOR EACH ROW EXECUTE FUNCTION competing_insert();
+  `);
+  expect(await migrateReminderTables(database)).toContainEqual({
+    table,
+    outcome: "copied",
+  });
+  expect(await ownerRows("reminders", table)).toEqual([
+    { id: "deleted", payload: "remove" },
+    { id: "retained", payload: "keep" },
+  ]);
+}, 120_000);
 
 describe.each(domains)(
   "$domain owner adoption",
