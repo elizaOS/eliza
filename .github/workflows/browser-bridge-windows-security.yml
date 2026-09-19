@@ -22,6 +22,20 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.3.14
+      - name: Locate Bun download cache
+        id: bun-cache-path
+        shell: powershell
+        run: |
+          $cachePath = bun pm cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $cachePath = ([string]$cachePath).Trim()
+          if ([string]::IsNullOrWhiteSpace($cachePath)) { throw "Bun returned an empty cache path" }
+          "path=$cachePath" >> $env:GITHUB_OUTPUT
+      - name: Restore and save Bun downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ${{ steps.bun-cache-path.outputs.path }}
+          key: bun-download-windows-2025-${{ runner.arch }}-bun1.3.14-node24.15.0-${{ hashFiles('bun.lock', 'bunfig.toml', 'package.json', '.npmrc') }}-v1
       - name: Install workspace dependencies
         id: install
         shell: powershell
