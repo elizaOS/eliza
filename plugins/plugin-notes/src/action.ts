@@ -335,6 +335,11 @@ export const notesAction: Action = {
       required: false,
       subactions: ["create", "list", "update", "delete"],
       requiredForSubactions: ["create", "update", "delete"],
+      // The handler accepts these spellings as fallbacks for `content`, but
+      // core's validator rejects any undeclared key before the handler runs, so
+      // they must be declared here or a planner that uses them burns a round
+      // on "Unexpected argument" and saves nothing (#31114).
+      aliases: ["text", "note", "title", "query"],
       // Strict providers may serialize an omitted optional string as "". The
       // empty string is never valid note content (minLength is 1), so normalize
       // that provider sentinel back to omission before schema validation. This
