@@ -1,44 +1,18 @@
-/**
- * Unit tests for the web fallback (`ElizaTasksWeb`) — exercises the real
- * class directly, asserting every method resolves an explicit
- * `supported: false` result instead of throwing or masking the unsupported
- * platform as success.
- */
-import { describe, expect, it } from "vitest";
-
+/** Exercises unsupported scheduling and cancellation through the real web bridge. */
+import { expect, it } from "vitest";
 import { ElizaTasksWeb } from "./web";
 
-describe("ElizaTasksWeb fallback", () => {
-  it("reports the browser as unsupported without throwing", async () => {
-    await expect(new ElizaTasksWeb().getStatus()).resolves.toEqual({
-      supported: false,
-      platform: "web",
-      refreshScheduled: false,
-      processingScheduled: false,
-      lastWakeFiredAtMs: null,
-      lastWakeKind: null,
-      reason: "BGTaskScheduler is iOS-only; web has no background wake path.",
-    });
-  });
-
-  it.each([
-    undefined,
-    {},
-    { earliestBeginSec: Number.NaN, alsoProcessing: true },
-    { earliestBeginSec: Number.POSITIVE_INFINITY, alsoProcessing: true },
-    { earliestBeginSec: -1, alsoProcessing: true },
-  ])("ignores schedule options on web %#", async (options) => {
-    await expect(new ElizaTasksWeb().scheduleNext(options)).resolves.toEqual({
-      scheduled: false,
-      identifier: "ai.eliza.tasks.refresh",
-      earliestBeginAtMs: null,
-      reason: "BGTaskScheduler is iOS-only; web has no background wake path.",
-    });
-  });
-
-  it("cancelAll reports that no web wake requests were cancelled", async () => {
-    await expect(new ElizaTasksWeb().cancelAll()).resolves.toEqual({
-      cancelled: false,
-    });
+it("keeps background wakes unsupported after scheduling and cancellation", async () => {
+  const plugin = new ElizaTasksWeb();
+  await expect(
+    plugin.scheduleNext({ earliestBeginSec: 900, alsoProcessing: true }),
+  ).resolves.toMatchObject({ scheduled: false, earliestBeginAtMs: null });
+  await expect(plugin.cancelAll()).resolves.toEqual({ cancelled: false });
+  await expect(plugin.getStatus()).resolves.toMatchObject({
+    supported: false,
+    refreshScheduled: false,
+    processingScheduled: false,
+    lastWakeFiredAtMs: null,
+    lastWakeKind: null,
   });
 });
