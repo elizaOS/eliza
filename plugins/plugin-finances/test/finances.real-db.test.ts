@@ -150,26 +150,26 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
     );
     await FinancesMigrationService.start(runtime);
     const stored = await repository.getPaymentSource(runtime.agentId, sourceId);
-    expect(stored).toMatchObject({
-      status: "needs_attention",
-      metadata: {
-        unrelated: "preserved",
-        plaid: {
-          cursor: "old",
-          institutionId: "legacy-institution",
-          migrationStatus: "relink_required",
-        },
-      },
-    });
-    expect(JSON.stringify(stored)).not.toContain(secret);
+    expect(stored?.status).toBe("needs_attention");
     const retainedRows = await executeRawSql(
       runtime,
       `SELECT status, metadata_json FROM app_lifeops.life_payment_sources
        WHERE id = '${sourceId}'`,
     );
     expect(retainedRows[0]?.status).toBe("needs_attention");
-    expect(String(retainedRows[0]?.metadata_json)).toContain("relink_required");
-    expect(JSON.stringify(retainedRows)).not.toContain(secret);
+    for (const metadata of [
+      stored?.metadata,
+      JSON.parse(String(retainedRows[0]?.metadata_json)),
+    ]) {
+      expect(metadata).toEqual({
+        unrelated: "preserved",
+        plaid: {
+          cursor: "old",
+          institutionId: "legacy-institution",
+          migrationStatus: "relink_required",
+        },
+      });
+    }
     await expect(
       service.syncPlaidTransactions({ sourceId }),
     ).rejects.toMatchObject({ status: 409 });
