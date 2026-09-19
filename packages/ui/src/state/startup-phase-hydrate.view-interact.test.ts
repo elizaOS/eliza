@@ -55,6 +55,7 @@ function makeDeps(): ReadyPhaseDeps {
     setPtySessions: vi.fn(),
     hasPtySessionsRef: { current: false },
     agentRunningRef: { current: false },
+    codingAgentsEnabledRef: { current: true },
     setTabRaw: vi.fn(),
     setConversationMessages: vi.fn(),
     setUnreadConversations: vi.fn(),
@@ -90,6 +91,63 @@ describe("bindReadyPhase pty hydration readiness gate", () => {
 
       cleanup();
     } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("disabled coding feature hydration", () => {
+  it("ignores a pending hydration result after the feature is disabled", async () => {
+    vi.useFakeTimers();
+    const deps = makeDeps();
+    deps.agentRunningRef.current = true;
+    const pending = Promise.withResolvers<{ tasks: never[] }>();
+    clientMock.getCodingAgentStatus.mockReturnValueOnce(pending.promise);
+    const cleanup = bindReadyPhase({ current: deps });
+    try {
+      await vi.advanceTimersByTimeAsync(5_000);
+      deps.codingAgentsEnabledRef.current = false;
+      pending.resolve({ tasks: [] });
+      await Promise.resolve();
+      expect(deps.setPtySessions).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
+  });
+
+  it("waits for enablement, suspends disabled polling, and hydrates again after re-enabling", async () => {
+    clientMock.getCodingAgentStatus.mockClear();
+    vi.useFakeTimers();
+    const deps = makeDeps();
+    deps.agentRunningRef.current = true;
+    deps.codingAgentsEnabledRef.current = false;
+    deps.hasPtySessionsRef.current = true;
+    const cleanup = bindReadyPhase({ current: deps });
+    try {
+      await vi.advanceTimersByTimeAsync(5_000);
+      clientMock.handlers.get("ws-reconnected")?.({});
+      await Promise.resolve();
+      expect(clientMock.getCodingAgentStatus).not.toHaveBeenCalled();
+
+      deps.hasPtySessionsRef.current = false;
+      deps.codingAgentsEnabledRef.current = true;
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(clientMock.getCodingAgentStatus).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(clientMock.getCodingAgentStatus).toHaveBeenCalledTimes(1);
+
+      deps.codingAgentsEnabledRef.current = false;
+      deps.hasPtySessionsRef.current = true;
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(clientMock.getCodingAgentStatus).toHaveBeenCalledTimes(1);
+
+      deps.hasPtySessionsRef.current = false;
+      deps.codingAgentsEnabledRef.current = true;
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(clientMock.getCodingAgentStatus).toHaveBeenCalledTimes(2);
+    } finally {
+      cleanup();
       vi.useRealTimers();
     }
   });
