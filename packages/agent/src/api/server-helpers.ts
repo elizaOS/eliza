@@ -547,7 +547,7 @@ export async function buildChatAttachments(
         );
       }
       return {
-        id: `img-${i}`,
+        id: checksum ?? url,
         url,
         title: img.name,
         source: MESSAGE_SOURCE_CLIENT_CHAT,
