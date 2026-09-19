@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { ChannelType, type JsonValue, stringToUuid } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/core/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { coerceExtractionsAgainstControls } from "./extraction";
 import formPlugin from "./index";
 import { FormService } from "./service";
 import {
@@ -74,6 +75,90 @@ describe("form component SQL publication", () => {
 
   afterAll(async () => {
     await harness?.cleanup();
+  }, 60_000);
+
+  it("persists normalized calendar dates and rejects partial numeric extractions", async () => {
+    const runtime = harness.runtime;
+    const entityId = runtime.agentId;
+    const dateRoomId = stringToUuid("form-calendar-sql-room");
+    await runtime.ensureRoomExists({
+      id: dateRoomId,
+      worldId: runtime.agentId,
+      name: "Calendar forms",
+      source: "test",
+      type: ChannelType.DM,
+    });
+    const amountControl = {
+      key: "amount",
+      label: "Amount",
+      type: "number",
+      required: true,
+    };
+    service.registerForm({
+      id: "calendar",
+      name: "Calendar",
+      controls: [
+        { key: "entered", label: "Entered date", type: "date" },
+        {
+          key: "defaulted",
+          label: "Default date",
+          type: "date",
+          defaultValue: "September 15, 2026",
+        },
+        amountControl,
+      ],
+    });
+    const session = await service.startSession(
+      "calendar",
+      entityId,
+      dateRoomId,
+      {
+        initialValues: { entered: "September 15, 2026" },
+      },
+    );
+    const created = await getSessionById(runtime, entityId, session.id);
+    expect(created?.fields.entered).toMatchObject({
+      status: "filled",
+      value: "2026-09-15",
+      source: "manual",
+    });
+    expect(created?.fields.defaulted).toMatchObject({
+      status: "filled",
+      value: "2026-09-15",
+      source: "default",
+    });
+    await service.updateField(
+      session.id,
+      entityId,
+      "entered",
+      "September 16, 2026",
+      1,
+      "manual",
+    );
+    const [invalid] = coerceExtractionsAgainstControls(
+      [{ field: "amount", value: "50abc", confidence: 1 }],
+      [amountControl],
+      undefined,
+      (id) => service.getControlType(id),
+    );
+    await service.updateField(
+      session.id,
+      entityId,
+      "amount",
+      invalid.value,
+      invalid.confidence,
+      "extraction",
+    );
+    const updated = await getSessionById(runtime, entityId, session.id);
+    expect(updated?.fields.entered).toMatchObject({
+      status: "filled",
+      value: "2026-09-16",
+    });
+    expect(updated?.fields.amount).toMatchObject({
+      status: "invalid",
+      value: "50abc",
+      confidence: 0.3,
+    });
   }, 60_000);
 
   it("persists session and autofill updates and submissions without losing own JSON keys", async () => {
