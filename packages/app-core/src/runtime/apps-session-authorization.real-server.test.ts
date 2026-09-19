@@ -154,7 +154,7 @@ describe("App mutations through authenticated host sessions", () => {
       await migrations.initializeWithDatabase(db);
       migrations.discoverAndRegisterPluginSchemas([sqlPlugin]);
       await migrations.runAllPluginMigrations();
-      const store = new AuthStore(db as DrizzleDatabase);
+      const store = new AuthStore(adapter.db as DrizzleDatabase);
       await store.createIdentity({
         id: "owner",
         kind: "owner",
