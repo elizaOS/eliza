@@ -17,9 +17,9 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { recentMessagesProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/recentMessages.ts";
 import { stage1ResponseStateProviderNames } from "../../../../plugins/plugin-assistant/src/services/message/provider-state.ts";
 import { memoryAction } from "../actions/memories.ts";
 import { recentConversationsProvider } from "./recent-conversations.ts";
@@ -48,7 +48,6 @@ async function createRuntime(): Promise<{
   const agentId = stringToUuid("recent-conversations-access-agent");
   const adapter = new InMemoryDatabaseAdapter(agentId);
   const runtime = new AgentRuntime({
-    plugins: [createAssistantPlugin()],
     character,
     agentId,
     adapter,
@@ -134,6 +133,7 @@ describe("recentConversationsProvider access-context integration", () => {
     await ensureOwnerDm(runtime, RETAINED_ROOM, "telegram");
     for (const action of [...runtime.actions])
       runtime.unregisterAction(action.name);
+    runtime.registerProvider(recentMessagesProvider);
     runtime.registerProvider(recentConversationsProvider);
     await runtime.createMemory(
       storedMessage(
