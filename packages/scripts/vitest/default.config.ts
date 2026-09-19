@@ -164,6 +164,7 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-anthropic",
   "plugin-app-control",
   "plugin-app-manager",
+  "plugin-assistant",
   "plugin-browser",
   "plugin-capacitor-bridge",
   "plugin-coding-tools",

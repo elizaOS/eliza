@@ -24,14 +24,13 @@ const coreMock = vi.hoisted(() => ({
 
 vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
-	return {
-		...coreMock,
-		getStreamingContext: actual.getStreamingContext,
-		getTurnActionConstraint: actual.getTurnActionConstraint,
-		setTurnActionConstraint: actual.setTurnActionConstraint,
-		getUserMessageText: actual.getUserMessageText,
-		unwrapUserMessageText: actual.unwrapUserMessageText,
-	};
+	return { ...actual, ...coreMock };
+});
+
+vi.mock("@elizaos/shared/runtime-env", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("@elizaos/shared/runtime-env")>();
+	return { ...actual, resolveServerOnlyPort: coreMock.resolveServerOnlyPort };
 });
 
 const REGISTRY: ViewSummary[] = [

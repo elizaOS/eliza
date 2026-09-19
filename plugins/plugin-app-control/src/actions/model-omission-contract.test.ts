@@ -30,7 +30,13 @@ function runtimeFor(action: Action): IAgentRuntime {
 	return {
 		actions: [action],
 		agentId: "agent-id" as UUID,
-		getRoom: vi.fn(async () => null),
+		getRoom: vi.fn(async () => ({ worldId: "world-id" })),
+		getWorld: vi.fn(async () => ({
+			metadata: {
+				roles: { "owner-id": "OWNER" },
+				roleSources: { "owner-id": "manual" },
+			},
+		})),
 		getService: vi.fn(() => undefined),
 		getTasks: vi.fn(async () => tasks),
 		createTask: vi.fn(async (task: Task) => {
