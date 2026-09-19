@@ -1,6 +1,25 @@
 # ganttnubs: context, latency and scenario QA
 
-Status: bounded text-demo checkpoint COMPLETE; multi-step latency target remains OPEN. Owner: Nubs. Start: 2026-09-18. Target checkpoint: 22:48 UTC, followed by a concise walkthrough; this is not a promise that every latency target can be met.
+Status: ACTIVE follow-up after the Shaw call. The earlier bounded text-demo checkpoint passed; the broader Notes/Calendar scenario matrix and multi-step latency target remain OPEN. Owner: Nubs. Start: 2026-09-18.
+
+## Current finish checklist
+
+The new call confirms Notes and Calendar correctness first, then acknowledgment design. This checklist extends the previous checkpoint rather than treating its selected examples as complete product acceptance. Private meeting transcripts and trajectories stay local.
+
+- [x] Repair the Notes CRUD scenario to verify structured results and persisted content instead of obsolete response prose; run with no paid model calls. The real action/store round trip now passes create, topic lookup, field patch, readback and delete. Added the missing scenario-runner Notes development dependency. These direct-action checks do not prove language routing.
+- [ ] Audit Notes topic/date searches and exact edits against existing coverage. Date questions currently return all notes for the model to inspect; determine whether a typed date filter is needed before changing the read contract.
+- [ ] Verify Calendar agenda/week/history/topic reads, time changes, duration extensions, missing-time follow-ups, and conflict alternatives. Distinguish finding a matching event from proving an entire window is free.
+- [ ] Verify note-to-event transfer preserves the source note and asks for missing scheduling details; never silently book a suggested alternative without authorization.
+- [ ] For each uncovered conversational path, use one bounded real rehearsal after local checks, inspect the visible result and stored state, and record routing/planning/extraction/completion calls, input/cache tokens and timing.
+- [ ] Identify demonstrated redundant calls or context. Keep safety extraction and full-context recovery unless an equivalent validated contract replaces them. Approximately three seconds remains a measured target, not a guarantee.
+- [ ] Review planner acknowledgment delivery last: avoid an extra model call, duplicate final replies, premature success, and extra planning on direct navigation.
+- [ ] Run required owning/repository checks for changes, commit small verified units, retain rollback checkpoints, and finish with an explicit pass/open/deferred handoff.
+
+Voice, broad browser/attachments work, reminders/alarms, messaging integrations and develop consolidation remain separate. The call describes those future areas; they are not prerequisites for finishing this text cleanup.
+
+### Evidence boundaries
+
+Direct-action scenarios prove plugin/store behavior, not natural-language routing. Unit tests do not prove browser acceptance. Cached tokens are a subset of input tokens, not a measured bill. A successful replay does not by itself establish why a prior model choice failed. Network/provider delay and local overhead require separate measurements.
 
 ## Scope and sequence
 

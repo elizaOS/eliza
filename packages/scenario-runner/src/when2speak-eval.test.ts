@@ -5,6 +5,7 @@ import {
   messageChallengesPriorAgentReply,
   stringToUuid,
 } from "@elizaos/core";
+import { getDefaultStylePreset } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
   buildWhen2SpeakEvaluationState,
@@ -29,12 +30,10 @@ describe("When2Speak evaluator", () => {
       name: "Eliza",
       adjectives: expect.arrayContaining(["brief", "warm", "dry"]),
     });
-    expect(character?.system).toContain(
-      "In group chats, not every message deserves a reply.",
-    );
-    expect(character?.style?.chat).toContain(
-      "if another assistant already answered, don't answer again",
-    );
+    // The evaluator must use the product preset, not a stale copy of its prose.
+    const productPreset = getDefaultStylePreset("en");
+    expect(character?.system).toBe(productPreset.system);
+    expect(character?.style).toEqual(productPreset.style);
   });
 
   it("fingerprints the requested personality deterministically", () => {

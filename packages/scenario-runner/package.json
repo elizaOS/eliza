@@ -117,6 +117,7 @@
   },
   "devDependencies": {
     "@elizaos/corpus-tools": "workspace:*",
+    "@elizaos/plugin-notes": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
