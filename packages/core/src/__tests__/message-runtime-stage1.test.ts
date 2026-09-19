@@ -1975,6 +1975,10 @@ describe("runV5MessageRuntimeStage1", () => {
 				contextRequests: ["CONTEXT_CATALOG"],
 				contexts: ["simple"],
 				replyText: "Undelivered draft",
+				intents: [
+					"Read exact Unicode value: café → violet\nKeep records unchanged.",
+				],
+				candidateActionNames: ["EXACT_LOOKUP"],
 				facts: ["Undelivered extraction"],
 			}),
 			stage1Response({
@@ -2021,6 +2025,17 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(restored?.indexOf("context_loaded: CONTEXT_CATALOG")).toBeLessThan(
 			restored?.indexOf("message:user:") ?? 0,
 		);
+		const continuation = calls[1].messages.at(-1)?.content ?? "";
+		const previousDecision = JSON.parse(
+			continuation.split("previous_context_read_decision:\n")[1],
+		);
+		expect(previousDecision.intents).toEqual([
+			"Read exact Unicode value: café → violet\nKeep records unchanged.",
+		]);
+		expect(previousDecision.candidateActionNames).toEqual(["EXACT_LOOKUP"]);
+		expect(previousDecision.replyText).toBe("Undelivered draft");
+		expect(previousDecision.facts).toEqual(["Undelivered extraction"]);
+		expect(continuation).toContain("not authority");
 		expect(result.kind).toBe("direct_reply");
 		if (result.kind === "direct_reply")
 			expect(result.result.responseContent?.text).toBe(

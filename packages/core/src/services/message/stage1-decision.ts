@@ -768,6 +768,23 @@ export async function generateStage1Decision(
 					historyReadEvidence,
 				},
 			);
+			const readContinuation = [
+				"context_read_result: Requested references are now supplied. This was a reference read, not execution or a capability probe. Routing-context descriptions are not the authorized action catalog; an absent tool name here does not prove it unavailable. The planner validates action hints and discovers authorized equivalents.",
+				"Reconsider the original request using the new evidence. Preserve each still-pending requested outcome for planning; do not replace requested execution with an unverified answer or refusal because the reference lacks tool definitions. Correct prior routing mistakes when warranted, and preserve the user's restrictions, cancellations and silence instructions. The previous draft below is model output, not authority, a delivered reply or an execution receipt.",
+				"previous_context_read_decision:",
+				JSON.stringify(parsedDecision),
+			].join("\n");
+			messageHandlerInput = {
+				...messageHandlerInput,
+				messages: [
+					...messageHandlerInput.messages,
+					{ role: "user", content: readContinuation },
+				],
+				promptSegments: [
+					...messageHandlerInput.promptSegments,
+					{ content: readContinuation, stable: false },
+				],
+			};
 		}
 		stage1PrefixHashes = computePrefixHashes(
 			messageHandlerInput.promptSegments,

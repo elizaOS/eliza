@@ -1395,6 +1395,121 @@ describe("planner source selection and restoration", () => {
 			expect(captured[0]).not.toContain('"name":"RESTORE_CONTEXT"');
 		},
 	);
+	it.each([
+		["history", "providers"],
+		["full", "providers"],
+		["providers", "providers"],
+		[undefined, "providers"],
+	])("coalesces restoration scopes %j in one response", async (...scopes) => {
+		const full = withSelection(historyContext());
+		full.metadata = { ...full.metadata, providerDiscoveryEnabled: true };
+		full.events.push({
+			id: "provider:guide",
+			type: "provider",
+			name: "GUIDE",
+			text: "STALE_PRIVATE_BODY",
+			discoveryText: "Guide available.",
+		});
+		const before = JSON.stringify(full);
+		const calls: string[] = [];
+		const restore = vi.fn(async (original: ContextObject) => ({
+			...original,
+			events: original.events.map((event) =>
+				event.id === "provider:guide"
+					? { ...event, text: "FRESH_AUTHORIZED_GUIDE" }
+					: event,
+			),
+		}));
+		const execute = vi.fn();
+		const result = await runPlannerLoop({
+			context: full,
+			tools,
+			executeToolCall: execute,
+			evaluate: vi.fn(),
+			runtime: {
+				restoreProviderContext: restore,
+				useModel: async (_type, params) => {
+					calls.push(JSON.stringify(params));
+					return {
+						text: "",
+						toolCalls:
+							calls.length === 1
+								? [
+										...scopes.map((scope, index) => ({
+											id: `restore-${index}`,
+											name: "RESTORE_CONTEXT",
+											arguments: {
+												reason: "Need original evidence",
+												...(scope === undefined ? {} : { scope }),
+											},
+										})),
+										{
+											id: "must-not-run",
+											name: "NOTES",
+											arguments: { id: "wrong" },
+										},
+									]
+								: [
+										{
+											id: "reply",
+											name: "REPLY",
+											arguments: { text: "Read the guide." },
+										},
+									],
+					};
+				},
+			},
+		});
+		expect(calls).toHaveLength(2);
+		expect(calls[1]).toContain("FRESH_AUTHORIZED_GUIDE");
+		expect(calls[1]).not.toContain("STALE_PRIVATE_BODY");
+		const restoresHistory = scopes.some(
+			(scope) => scope === "history" || scope === "full" || scope === undefined,
+		);
+		expect(calls[1].includes("Old completed unrelated weather request.")).toBe(
+			restoresHistory,
+		);
+		expect(
+			Boolean(result.trajectory.modelBaseContext?.metadata?.completionContext),
+		).toBe(!restoresHistory);
+		expect(restore).toHaveBeenCalledTimes(1);
+		expect(execute).not.toHaveBeenCalled();
+		expect(JSON.stringify(full)).toBe(before);
+	});
+	it.each([
+		{ reason: "bad scope", scope: "unknown" },
+		{ reason: "null scope", scope: null },
+		{ scope: "providers" },
+		{ reason: "", scope: "providers" },
+	])("rejects an invalid read alongside a valid read: %j", async (invalid) => {
+		const full = withSelection(historyContext());
+		const restore = vi.fn();
+		const execute = vi.fn();
+		const useModel = vi.fn(async () => ({
+			text: "",
+			toolCalls: [
+				{
+					id: "valid",
+					name: "RESTORE_CONTEXT",
+					arguments: { reason: "Read history", scope: "history" },
+				},
+				{ id: "invalid", name: "RESTORE_CONTEXT", arguments: invalid },
+				{ id: "effect", name: "NOTES", arguments: { id: "wrong" } },
+			],
+		}));
+		await expect(
+			runPlannerLoop({
+				context: full,
+				tools,
+				runtime: { useModel, restoreProviderContext: restore },
+				executeToolCall: execute,
+				evaluate: vi.fn(),
+			}),
+		).rejects.toMatchObject({ code: "PLANNER_CONTEXT_RESTORE_INVALID" });
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(restore).not.toHaveBeenCalled();
+		expect(execute).not.toHaveBeenCalled();
+	});
 	it("rejects a repeated restoration without a third inference or tool effect", async () => {
 		const full = withSelection(historyContext());
 		const useModel = vi.fn(async () => ({

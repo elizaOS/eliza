@@ -3986,13 +3986,32 @@ async function callPlanner(
 		const reads = output.toolCalls.filter(
 			(call) => call.name === RESTORE_CONTEXT_TOOL.name,
 		);
-		const scope = reads[0]?.params?.scope ?? "full";
-		const readHistory = scope === "history" || scope === "full";
-		const readProviders = scope === "providers" || scope === "full";
+		// Multiple read requests in one response are one restoration, not
+		// successive rounds. Union valid scopes; execute no accompanying effects.
+		const scopes = reads.map((call) =>
+			call.params?.scope === undefined ? "full" : call.params.scope,
+		);
+		const validScopes = scopes.every(
+			(scope) =>
+				scope === "history" || scope === "providers" || scope === "full",
+		);
+		const readHistory = scopes.includes("history") || scopes.includes("full");
+		const readProviders =
+			scopes.includes("providers") || scopes.includes("full");
+		const scope =
+			readHistory && readProviders
+				? "full"
+				: readHistory
+					? "history"
+					: "providers";
 		if (
 			params.trajectory.codingMode ||
 			(!params.tools?.length && !params.allowReplyContextProjection) ||
-			reads.length !== 1 ||
+			!validScopes ||
+			reads.some(
+				(call) =>
+					typeof call.params?.reason !== "string" || !call.params.reason.trim(),
+			) ||
 			(!readHistory && !readProviders) ||
 			(!(
 				readHistory &&
