@@ -107,7 +107,7 @@ Android uses reflection to call `ElizaAgentService` (resolved by scanning regist
 - **`Agent.request` is path-only.** All implementations reject absolute URLs and paths starting with `//`. Only paths starting with `/` are accepted.
 - **Body size limits.** Request and response bodies are capped at 10 MB on iOS; requests are capped at 10 MB on Android.
 - **Chat uses a per-session conversation.** `AgentWeb` and the iOS native bridge lazily create a conversation via `POST /api/conversations` and cache the ID in `sessionStorage` (web) or a static class dictionary (iOS). A 404 on message send clears the cache and retries once.
-- **Build outputs three artifacts:** `dist/esm/index.js` (ESM, from tsc), `dist/plugin.js` (IIFE for unpkg/CDN), `dist/plugin.cjs.js` (CJS for require). The `bun` and `development` export conditions resolve directly to `src/index.ts`.
+- **Build outputs three artifacts:** `dist/esm/index.js` (ESM, from tsc), `dist/plugin.js` (IIFE for unpkg/CDN), `dist/plugin.cjs.js` (CJS for require). The explicit `eliza-source` export condition resolve directly to `src/index.ts`.
 - **iOS deployment target:** iOS 13.0 (from podspec). `callAsyncJavaScript` requires iOS 14+; the plugin falls back to a 503 response on iOS 13.
 - **Timeout bounds (iOS):** clamped to 1000–120000 ms. Android default is 10000 ms, max 600000 ms.
 

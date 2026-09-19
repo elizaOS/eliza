@@ -5,7 +5,7 @@
  * rewrite so a cyclic or deeply nested `inputSchema` cannot stack-overflow
  * the agent event loop. This module has no Ajv import.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 export const MAX_MCP_SCHEMA_JSON_BYTES = 256 * 1024;
 export const MAX_MCP_SCHEMA_DEPTH = 32;

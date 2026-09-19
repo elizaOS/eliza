@@ -496,7 +496,7 @@ async function consumeResponseStream(
                 }
                 // error-policy:J3 malformed function-call JSON stays the raw string.
               }
-              toolCalls.push({ id: call.id, name: call.name, arguments: parsed, type: "function" });
+              toolCalls.push({ id: call.id, name: call.name, arguments: parsed });
               if (itemId) activeByItemId.delete(itemId);
             }
           }

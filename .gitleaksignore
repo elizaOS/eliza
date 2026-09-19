@@ -46,3 +46,9 @@ f5aaa84aa0b5cf3dcd018f4e35f9c7243c5cc80c:plugins/plugin-agent-orchestrator/src/_
 # scenario runner. The package manifest contains names only, not secret values.
 5f255cc1c2eccb3a7733ad6b866c6dec61a838b7:packages/scenario-runner/package.json:generic-api-key:70
 5f255cc1c2eccb3a7733ad6b866c6dec61a838b7:packages/scenario-runner/package.json:generic-api-key:71
+
+# Synthetic redaction and setup fixtures moved during runtime consolidation.
+# Exact historical findings only; current and future credentials remain scanned.
+75eb0ae147a321492f85af78c329171e142c6dd8:packages/core/src/logger.test.ts:generic-api-key:787
+75eb0ae147a321492f85af78c329171e142c6dd8:plugins/plugin-assistant/src/features/secrets/actions/mask.test.ts:aws-access-token:28
+75eb0ae147a321492f85af78c329171e142c6dd8:plugins/plugin-assistant/src/features/secrets/setup/state-machine.test.ts:generic-api-key:77

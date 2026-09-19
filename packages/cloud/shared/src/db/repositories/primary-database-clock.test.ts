@@ -1,7 +1,7 @@
 /** Deterministic boundary tests for primary-database clock failures. */
 
 import { expect, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import type { DbTransaction } from "../client";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 

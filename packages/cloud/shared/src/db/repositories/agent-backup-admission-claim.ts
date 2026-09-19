@@ -8,7 +8,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";

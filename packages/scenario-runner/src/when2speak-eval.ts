@@ -10,17 +10,19 @@ import readline from "node:readline";
 import {
   ChannelType,
   type CharacterInput,
-  classifyMessageAddress,
   ElizaError,
   type IAgentRuntime,
   type Memory,
-  messageChallengesPriorAgentReply,
-  runV5MessageRuntimeStage1,
   type State,
   stringToUuid,
 } from "@elizaos/core";
-import type { LiveProviderName } from "@elizaos/core/testing";
+import {
+  classifyMessageAddress,
+  messageChallengesPriorAgentReply,
+  runV5MessageRuntimeStage1,
+} from "@elizaos/plugin-assistant";
 import { getDefaultStylePreset } from "@elizaos/shared";
+import type { LiveProviderName } from "@elizaos/testing/live-provider";
 import { createScenarioRuntime } from "./runtime-factory.ts";
 
 export type TimingLabel = "SPEAK" | "SILENT";

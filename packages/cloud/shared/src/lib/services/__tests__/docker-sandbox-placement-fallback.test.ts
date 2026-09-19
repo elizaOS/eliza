@@ -4,7 +4,7 @@
  */
 
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { dockerNodesRepository } from "../../../db/repositories/docker-nodes";
 import type { DockerNode } from "../../../db/schemas/docker-nodes";
 import { dockerNodeManager } from "../docker-node-manager";

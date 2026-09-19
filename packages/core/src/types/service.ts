@@ -27,7 +27,6 @@ export interface ServiceTypeRegistry {
 	PDF: "pdf";
 	REMOTE_FILES: "aws_s3";
 	TUNNEL: "tunnel";
-	CLOUD_AUTH: "CLOUD_AUTH";
 	WEB_SEARCH: "web_search";
 	EMAIL: "email";
 	TEE: "tee";
@@ -133,7 +132,6 @@ export const ServiceType = {
 	PDF: "pdf",
 	REMOTE_FILES: "aws_s3",
 	TUNNEL: "tunnel",
-	CLOUD_AUTH: "CLOUD_AUTH",
 	WEB_SEARCH: "web_search",
 	EMAIL: "email",
 	TEE: "tee",

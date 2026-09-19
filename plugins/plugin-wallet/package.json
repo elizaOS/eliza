@@ -105,7 +105,8 @@
     "tweetnacl": "^1.0.3",
     "uuid": "^11.1.0",
     "viem": "^2.48.8",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/prompts": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

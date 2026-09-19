@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   selectV5PlannerStateProviderNames,
   stage1ResponseStateProviderNames,
-} from "../../../core/src/services/message/provider-state.ts";
+} from "../../../../plugins/plugin-assistant/src/services/message/provider-state.ts";
 import {
   uiGenerativeProvider,
   uiWidgetCapabilitiesProvider,

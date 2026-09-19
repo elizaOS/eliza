@@ -30,4 +30,4 @@ export {
   MODEL_CATALOG,
   tierBundleSlug,
   tierPublishedSlug,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference/catalog";

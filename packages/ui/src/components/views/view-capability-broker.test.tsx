@@ -13,7 +13,7 @@ import {
   IMMERSIVE_WALLPAPER_SURFACE,
   resolveSurfaceManifest,
   type SurfaceManifest,
-} from "@elizaos/core";
+} from "@elizaos/common";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {

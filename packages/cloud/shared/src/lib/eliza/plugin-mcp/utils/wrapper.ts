@@ -1,9 +1,10 @@
 // Wires hosted Eliza agent wrapper behavior for cloud runtime services.
+
+import { type Memory } from "@elizaos/common";
 import {
   type HandlerCallback,
   type IAgentRuntime,
   logger,
-  type Memory,
   ModelType,
   type State,
 } from "@elizaos/core";

@@ -11,7 +11,9 @@
  * regex.
  */
 import type http from "node:http";
-import type { AgentRuntime, Route } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
+import type { Route } from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   captureDevCloudEnvAuthority,
@@ -744,7 +746,8 @@ describe("handleLifeOpsRuntimePluginRoute", () => {
   }
 
   it("returns false when the runtime has no plugin routes", async () => {
-    const runtime = { routes: [] } as unknown as AgentRuntime;
+    const runtime = {} as unknown as AgentRuntime;
+    getHttpRuntime(runtime).routes = [] as Route[];
     await expect(
       handleLifeOpsRuntimePluginRoute(ctx("/lifeops/ping", { runtime })),
     ).resolves.toBe(false);
@@ -761,15 +764,14 @@ describe("handleLifeOpsRuntimePluginRoute", () => {
       expect(incoming.url).toBe("/lifeops/private");
       return false;
     });
-    const runtime = {
-      routes: [
-        {
-          type: "GET",
-          path: "/lifeops/private",
-          handler: vi.fn(),
-        },
-      ] as unknown as Route[],
-    } as unknown as AgentRuntime;
+    const runtime = {} as unknown as AgentRuntime;
+    getHttpRuntime(runtime).routes = [
+      {
+        type: "GET",
+        path: "/lifeops/private",
+        handler: vi.fn(),
+      },
+    ] as unknown as Route[] as Route[];
     const args = ctx("/lifeops/private", { runtime, isAuthorizedRequest });
     await expect(handleLifeOpsRuntimePluginRoute(args)).resolves.toBe(true);
     expect(isAuthorizedRequest).toHaveBeenCalledWith(args.req);
@@ -780,17 +782,16 @@ describe("handleLifeOpsRuntimePluginRoute", () => {
     const handler = vi.fn(async (_req: unknown, res: unknown) => {
       (res as http.ServerResponse).end(JSON.stringify({ ok: true }));
     });
-    const runtime = {
-      routes: [
-        {
-          type: "GET",
-          path: "/lifeops/ping",
-          public: true,
-          publicReason: "test ping",
-          handler,
-        },
-      ] as unknown as Route[],
-    } as unknown as AgentRuntime;
+    const runtime = {} as unknown as AgentRuntime;
+    getHttpRuntime(runtime).routes = [
+      {
+        type: "GET",
+        path: "/lifeops/ping",
+        public: true,
+        publicReason: "test ping",
+        handler,
+      },
+    ] as unknown as Route[] as Route[];
     const args = ctx("/lifeops/ping", {
       runtime,
       isAuthorizedRequest: vi.fn(() => false),
@@ -802,17 +803,16 @@ describe("handleLifeOpsRuntimePluginRoute", () => {
 
   it("does not match a GET route against POST", async () => {
     const handler = vi.fn();
-    const runtime = {
-      routes: [
-        {
-          type: "GET",
-          path: "/lifeops/ping",
-          public: true,
-          publicReason: "test ping",
-          handler,
-        },
-      ] as unknown as Route[],
-    } as unknown as AgentRuntime;
+    const runtime = {} as unknown as AgentRuntime;
+    getHttpRuntime(runtime).routes = [
+      {
+        type: "GET",
+        path: "/lifeops/ping",
+        public: true,
+        publicReason: "test ping",
+        handler,
+      },
+    ] as unknown as Route[] as Route[];
     await expect(
       handleLifeOpsRuntimePluginRoute(
         ctx("/lifeops/ping", { method: "POST", runtime }),

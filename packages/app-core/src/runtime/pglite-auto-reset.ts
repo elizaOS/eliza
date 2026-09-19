@@ -4,9 +4,10 @@
  * path calls (after quarantining the `.elizadb` dir) so the next
  * `createDatabaseAdapter()` rebuilds a fresh PGlite manager from clean state.
  */
+
+import { formatError } from "@elizaos/common";
 import { logger } from "@elizaos/core";
 import { closePgliteSingleton } from "@elizaos/plugin-sql";
-import { formatError } from "@elizaos/shared";
 
 /**
  * Close the process-global plugin-sql PGlite singleton through the plugin's

@@ -15,7 +15,9 @@ import path from "node:path";
 import process from "node:process";
 import * as readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { pluginManagerPlugin } from "@elizaos/plugin-registry/runtime";
 import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import { createAssistantPlugins } from "./assistant-plugins.ts";
 import {
   initializeBlockingCoreRuntimeForBoot,
   preregisterCorePluginsInDependencyWaves,
@@ -121,6 +123,7 @@ export {
 
 // resolvePlugins is re-exported via index.ts from ./plugin-resolver
 
+import type { Plugin } from "@elizaos/core";
 // `@elizaos/plugin-personal-assistant` is NOT eagerly imported here. It
 // transitively imports from `@elizaos/agent` (e.g. `hasOwnerAccess` from this
 // package's barrel) — a top-level static import would form a module-init cycle
@@ -135,14 +138,10 @@ export {
 // add `as const` data only — never an `import * as` of these packages.
 import {
   AgentRuntime,
-  AUTONOMY_SERVICE_TYPE,
-  AutonomyService,
   addLogListener,
   ChannelType,
   type Component,
-  createBasicCapabilitiesPlugin,
   createMessageMemory,
-  drainAppRoutePluginLoaders,
   ElizaError,
   EmbeddingDimensionProbeError,
   type Entity,
@@ -150,16 +149,20 @@ import {
   type LogEntry,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
-  type Plugin,
   type Provider,
   type RuntimeStopOptions,
   requireConfirmedSendHandlerDelivery,
   stringToUuid,
-  subAgentCredentialsPlugin,
   type TargetInfo,
   type UUID,
   warnOnUnmatchedActionRolePolicyKeys,
 } from "@elizaos/core";
+import { resolveDefaultVaultDataDir } from "@elizaos/credentials/vault";
+import {
+  AUTONOMY_SERVICE_TYPE,
+  AutonomyService,
+  subAgentCredentialsPlugin,
+} from "@elizaos/plugin-assistant";
 import {
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   formatError,
@@ -177,8 +180,8 @@ import {
   resolveServiceRoutingInConfig,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
+import { drainAppRoutePluginLoaders } from "@elizaos/shared/api/drain-app-route-plugins";
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
-import { resolveDefaultVaultDataDir } from "@elizaos/vault";
 import { registerDesktopScreenCaptureBridgeService } from "./desktop-screen-capture-bridge-service.ts";
 import {
   type AgentHostBridge,
@@ -390,7 +393,7 @@ async function loadRequiredPluginSql(): Promise<
   } catch (err) {
     const sourceEntry = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
-      "../../../../plugins/plugin-sql/src/index.node.ts",
+      "../../../../plugins/plugin-sql/src/index.ts",
     );
     if (
       !isWorkspacePluginSourceFallbackAllowed() ||
@@ -4352,7 +4355,9 @@ export async function startEliza(
   //     it only logs availability — so deferring it changes no resolve input.
   let subscriptionCredentialsDeferredPromise: Promise<void> = Promise.resolve();
   try {
-    const { applySubscriptionCredentialsLocal } = await import("@elizaos/auth");
+    const { applySubscriptionCredentialsLocal } = await import(
+      "@elizaos/credentials/auth"
+    );
     await applySubscriptionCredentialsLocal(config);
   } catch (err) {
     logger.warn(
@@ -4362,7 +4367,7 @@ export async function startEliza(
 
   subscriptionCredentialsDeferredPromise = (async () => {
     const { applySubscriptionCredentialsDeferred } = await import(
-      "@elizaos/auth"
+      "@elizaos/credentials/auth"
     );
     await applySubscriptionCredentialsDeferred();
   })().catch((err) => {
@@ -4802,25 +4807,10 @@ export async function startEliza(
   const subAgentCredentialPlugins = shouldRegisterSubAgentCredentialsPlugin()
     ? [subAgentCredentialsPlugin]
     : [];
-  const settings = character.settings ?? {};
-  const basicCapabilitiesPlugin = createBasicCapabilitiesPlugin({
-    disableBasic:
-      settings.DISABLE_BASIC_CAPABILITIES === true ||
-      settings.DISABLE_BASIC_CAPABILITIES === "true",
-    enableExtended:
-      settings.ENABLE_EXTENDED_CAPABILITIES === true ||
-      settings.ENABLE_EXTENDED_CAPABILITIES === "true" ||
-      settings.ADVANCED_CAPABILITIES === true ||
-      settings.ADVANCED_CAPABILITIES === "true",
-    skipCharacterProvider: false,
-    enableAutonomy:
-      settings.ENABLE_AUTONOMY === true || settings.ENABLE_AUTONOMY === "true",
-    // The app ships a Vault/Secrets settings section by default, so the
-    // matching chat action must be present in the default runtime as well.
-    enableSecretsManager: true,
-  });
+  const assistantPlugins = createAssistantPlugins(character);
+  const assistantPlugin = assistantPlugins[0];
   deduplicatePluginActions([
-    basicCapabilitiesPlugin,
+    ...assistantPlugins,
     ...subAgentCredentialPlugins,
     elizaPlugin,
     ...pluginsForRuntime,
@@ -4849,9 +4839,13 @@ export async function startEliza(
         // advancedCapabilities: true,
         actionPlanning: true,
         // advancedMemory is enabled via character.advancedMemory
-        enableSecretsManager: true,
         plugins: [
+          ...assistantPlugins,
           ...subAgentCredentialPlugins,
+          ...(character.settings?.ENABLE_PLUGIN_MANAGER === true ||
+          character.settings?.ENABLE_PLUGIN_MANAGER === "true"
+            ? [pluginManagerPlugin]
+            : []),
           elizaPlugin,
           ...pluginsForRuntime,
         ],
@@ -5672,7 +5666,7 @@ export async function startEliza(
       }
     }
     deduplicatePluginActions([
-      basicCapabilitiesPlugin,
+      assistantPlugin,
       ...subAgentCredentialPlugins,
       elizaPlugin,
       ...(runtime.plugins ?? []),

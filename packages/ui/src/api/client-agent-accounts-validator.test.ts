@@ -1,12 +1,12 @@
 /** Covers fail-closed parsing of /api/accounts inventory responses before UI state consumes them. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   CODING_AGENT_BACKENDS,
   codingAgentSpawnCapabilityForProvider,
   codingProviderCredentialPathForProvider,
   codingProviderDescriptorForProvider,
-  type LinkedAccountProviderId,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/coding-agent-capabilities";
+import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing-types";
 import { describe, expect, it } from "vitest";
 import {
   ACCOUNTS_RESPONSE_INVALID_CODE,

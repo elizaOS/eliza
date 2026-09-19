@@ -5,7 +5,7 @@
  * process-level one-shot guard, TTY gate, and `--json`/`--version` skips
  * can be observed without replacing the formatter.
  */
-import { isRich, theme } from "@elizaos/shared";
+import { isRich, theme } from "@elizaos/shared/terminal/theme";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatCliBannerLine, hasEmittedCliBanner } from "./banner";
 import { resolveCommitHash } from "./git-commit";

@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Real-runtime coverage for the SAVED_NOTES provider: a note written through
  * the durable service must come back out through `composeState`, which is the
@@ -86,12 +87,11 @@ async function bareRuntime(): Promise<AgentRuntime> {
   const runtime = new AgentRuntime({
     agentId: stringToUuid(`notes-provider-runtime-${runtimeSequence++}`),
     character: createCharacter({ name: "Notes provider" }),
-    disableBasicCapabilities: true,
     enableAutonomy: false,
     logLevel: "fatal",
   });
   testRuntimes.push(runtime);
-  await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+  await initializeTestRuntime(runtime, { skipMigrations: true });
   return runtime;
 }
 

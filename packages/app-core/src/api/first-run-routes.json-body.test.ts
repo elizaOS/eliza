@@ -49,8 +49,8 @@ vi.mock("@elizaos/core", async () => ({
     info: vi.fn(),
     warn: vi.fn(),
   },
-  readRequestBody,
 }));
+vi.mock("@elizaos/shared/api/http-helpers", () => ({ readRequestBody }));
 
 vi.mock("@elizaos/agent", () => ({
   applyCanonicalFirstRunConfig: vi.fn(),
@@ -59,18 +59,33 @@ vi.mock("@elizaos/agent", () => ({
   saveElizaConfig,
 }));
 
-vi.mock("@elizaos/shared", async () => ({
-  ...(await import("../../../shared/src/elizacloud/dev-cloud-env-authority")),
-  getCloudSecret,
-  getDirectAccountProviderForFirstRunProvider: () => null,
-  normalizeFirstRunCredentialInputs: () => undefined,
-  migrateLegacyRuntimeConfig: vi.fn(),
+vi.mock("@elizaos/shared/elizacloud/cloud-secrets", () => ({ getCloudSecret }));
+vi.mock(
+  "@elizaos/shared/elizacloud/dev-cloud-env-authority",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@elizaos/shared/elizacloud/dev-cloud-env-authority")
+    >()),
+    resolveDevCloudAuthorityEnvValue,
+    resolveDevCloudEnvAuthority,
+  }),
+);
+vi.mock(
+  "@elizaos/shared/contracts/first-run-options",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@elizaos/shared/contracts/first-run-options")
+    >()),
+    getDirectAccountProviderForFirstRunProvider: () => null,
+    normalizeFirstRunCredentialInputs: () => undefined,
+    migrateLegacyRuntimeConfig: vi.fn(),
+    normalizeFirstRunProviderId: () => null,
+  }),
+);
+vi.mock("@elizaos/shared/contracts/service-routing", () => ({
   normalizeDeploymentTargetConfig: () => undefined,
-  normalizeFirstRunProviderId: () => null,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig: () => undefined,
-  resolveDevCloudAuthorityEnvValue,
-  resolveDevCloudEnvAuthority,
 }));
 
 vi.mock("./auth.ts", () => ({

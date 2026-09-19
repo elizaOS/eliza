@@ -8,8 +8,6 @@ import crypto from 'node:crypto';
 import {
   type TriggerRunRecord as CoreTriggerRunRecord,
   type IAgentRuntime,
-  type RouteHelpers,
-  type RouteRequestContext,
   stringToUuid,
   type Task,
   type TriggerConfig,
@@ -19,6 +17,7 @@ import {
   type TriggerWakeMode,
   type UUID,
 } from '@elizaos/core';
+import type { RouteHelpers, RouteRequestContext } from '@elizaos/shared/api/route-helpers';
 
 export type TriggerRouteHelpers = RouteHelpers;
 

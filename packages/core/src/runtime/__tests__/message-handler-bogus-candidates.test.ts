@@ -27,7 +27,7 @@ import { describe, expect, it } from "vitest";
 import {
 	messageHandlerFromFieldResult,
 	resolvePlannerActionName,
-} from "../../services/message";
+} from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 import type { Action } from "../../types/components";
 
 // Minimal Action stub — only `name` and `similes` matter for these lookups.

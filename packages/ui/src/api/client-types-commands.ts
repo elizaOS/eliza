@@ -10,18 +10,20 @@ import type {
   SerializedCommand,
   SerializedCommandArg,
   SerializedCommandSource,
-} from "@elizaos/shared";
+} from "@elizaos/shared/api/command-transport-types";
 
 export type {
   ClientCommandAction,
   CommandArgSource,
   CommandSurface,
-  CommandsCatalogResponse,
   CommandTarget as SlashCommandTarget,
+} from "@elizaos/shared";
+export type {
+  CommandsCatalogResponse,
   SerializedCommand,
   SerializedCommandArg,
   SerializedCommandSource,
-} from "@elizaos/shared";
+} from "@elizaos/shared/api/command-transport-types";
 
 /** UI-local alias for the wire argument shape. */
 export type SlashCommandArg = SerializedCommandArg;

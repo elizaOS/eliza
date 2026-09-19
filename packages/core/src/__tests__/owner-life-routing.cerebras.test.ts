@@ -4,6 +4,10 @@
  * an adversarial alternative.
  */
 
+import {
+	createRealTestRuntime,
+	type RealTestRuntimeResult,
+} from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
 	type Action,
@@ -15,10 +19,6 @@ import {
 	stringToUuid,
 	type UUID,
 } from "../index.ts";
-import {
-	createRealTestRuntime,
-	type RealTestRuntimeResult,
-} from "../testing/index.ts";
 
 interface LiveTrajectoryDetail {
 	metrics?: { finalStatus?: string };

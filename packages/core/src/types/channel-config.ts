@@ -85,13 +85,13 @@ export type BlockStreamingChunkConfig = {
 // Markdown Configuration
 // ============================================================
 
-/** Markdown table rendering mode - re-exported from markdown module for convenience */
-export type { MarkdownTableMode } from "../markdown/ir.js";
+/** Transport formatting preference; rendering belongs to the host. */
+export type MarkdownTableMode = "off" | "bullets" | "code";
 
 /** Markdown formatting configuration. */
 export type MarkdownConfig = {
 	/** Table rendering mode (off|bullets|code). */
-	tables?: import("../markdown/ir.js").MarkdownTableMode;
+	tables?: MarkdownTableMode;
 };
 
 // ============================================================

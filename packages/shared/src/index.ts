@@ -4,6 +4,22 @@
  * Public surface: barrel exports for the shared workspace contract.
  */
 
+export {
+  getDirectAccountProviderForFirstRunProvider,
+  getFirstRunProviderFamily,
+  getFirstRunProviderOption,
+  getFirstRunProviderSignalEnvKeys,
+  getStoredFirstRunProviderId,
+  getStoredSubscriptionProviderForRequest,
+  normalizeFirstRunProviderId,
+  sortFirstRunProviders,
+} from "@elizaos/shared/contracts/first-run-options";
+export {
+  DEFAULT_CEREBRAS_TEXT_MODEL,
+  DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
+  DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+} from "@elizaos/shared/contracts/service-routing";
 // Agent-backup size limits — the single source of truth for the maximum
 // RESTORABLE v1 snapshot wire size, imported by every side that retains or
 // consumes a snapshot so a backup can never be retained above what restore
@@ -207,28 +223,12 @@ export * from "./config/zod-schema.agent-runtime.js";
 export * from "./config/zod-schema.core.js";
 export * from "./connector-account-catalog.js";
 export * from "./connectors.js";
-export {
-  getDirectAccountProviderForFirstRunProvider,
-  getFirstRunProviderFamily,
-  getFirstRunProviderOption,
-  getFirstRunProviderSignalEnvKeys,
-  getStoredFirstRunProviderId,
-  getStoredSubscriptionProviderForRequest,
-  normalizeFirstRunProviderId,
-  sortFirstRunProviders,
-} from "./contracts/first-run-options.js";
 // Contracts barrel — exposes apps/awareness/cloud-topology/config/content-pack/
 // drop/inbox/first-run/permissions/service-routing/verification/wallet.
 // `contracts/theme` is intentionally NOT pulled in here; it reaches the public
 // surface through `./themes`, which already re-exports the same identifiers.
 export * from "./contracts/index.js";
 export { PutCuratedSkillSourceRequestSchema } from "./contracts/plugin-routes.js";
-export {
-  DEFAULT_CEREBRAS_TEXT_MODEL,
-  DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
-  DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
-  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-} from "./contracts/service-routing.js";
 export {
   PostMarketplaceInstallRequestSchema,
   PostMarketplaceUninstallRequestSchema,
@@ -253,7 +253,6 @@ export * from "./dev-settings-table.js";
 // elizacloud helpers — pure utilities + config-driven server helpers used by
 // app-core and the agent so they don't reverse-import from plugin-elizacloud.
 export * from "./elizacloud/index.js";
-export * from "./email-classification/index.js";
 export * from "./env-utils.js";
 export * from "./error-classification.js";
 export * from "./events/index.js";
@@ -338,7 +337,6 @@ export * from "./utils/sql-compat.js";
 export * from "./utils/streaming-text.js";
 export * from "./utils/subscription-auth.js";
 export * from "./utils/trajectory-format.js";
-export * from "./utils/tts-debug.js";
 export * from "./validation-keywords.js";
 export * from "./view-hero-art.js";
 export * from "./views/host-external-contract.js";

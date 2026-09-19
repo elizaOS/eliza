@@ -6,8 +6,9 @@
  * the response/trajectory keep surrogates (never real values), and that the
  * layer is a pure no-op when disabled.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import {
 	GazetteerEntityRecognizer,

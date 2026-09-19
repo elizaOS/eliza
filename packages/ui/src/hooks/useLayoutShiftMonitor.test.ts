@@ -1,6 +1,7 @@
 /** Verifies startLayoutShiftMonitor through the package's configured test harness. */
 // @vitest-environment jsdom
 
+import { logger } from "@elizaos/shared/logger";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
@@ -65,8 +66,8 @@ describe("startLayoutShiftMonitor", () => {
     const telemetry: unknown[] = [];
     (globalThis as RenderTelemetryGlobal).__ELIZA_RENDER_TELEMETRY__ =
       telemetry;
-    const consoleError = vi
-      .spyOn(console, "error")
+    const diagnosticError = vi
+      .spyOn(logger, "error")
       .mockImplementation(() => {});
     const eventListener = vi.fn();
     window.addEventListener(RENDER_TELEMETRY_EVENT, eventListener);
@@ -108,8 +109,7 @@ describe("startLayoutShiftMonitor", () => {
       windowMs: 100,
     });
     expect(eventListener).toHaveBeenCalledTimes(1);
-    expect(consoleError).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(diagnosticError).toHaveBeenCalledWith(
       expect.anything(),
       expect.stringContaining("render-telemetry.layout-shift"),
     );
@@ -193,7 +193,7 @@ describe("startLayoutShiftMonitor", () => {
     const telemetry: unknown[] = [];
     (globalThis as RenderTelemetryGlobal).__ELIZA_RENDER_TELEMETRY__ =
       telemetry;
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(logger, "error").mockImplementation(() => {});
 
     let callback: MockPerformanceObserverCallback = () => {
       throw new Error("PerformanceObserver callback was not installed");
@@ -242,7 +242,7 @@ describe("startLayoutShiftMonitor", () => {
     const telemetry: unknown[] = [];
     (globalThis as RenderTelemetryGlobal).__ELIZA_RENDER_TELEMETRY__ =
       telemetry;
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(logger, "error").mockImplementation(() => {});
 
     let callback: MockPerformanceObserverCallback = () => {
       throw new Error("PerformanceObserver callback was not installed");

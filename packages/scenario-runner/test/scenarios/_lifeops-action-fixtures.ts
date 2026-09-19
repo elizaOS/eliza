@@ -7,7 +7,7 @@ import {
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
   type StrictActionRouteFixture,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 
 export function registerLifeOpsActionFixtures(
   runtime: RuntimeWithScenarioModelFixtures,

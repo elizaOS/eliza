@@ -4,7 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, desc, eq, inArray, lt, type SQL, sql } from "drizzle-orm";
 import {
   assertAdminCanaryImageJobData,

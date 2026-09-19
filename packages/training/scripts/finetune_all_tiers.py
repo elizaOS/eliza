@@ -128,15 +128,18 @@ def _print_nebius_manifests(
     manifests: list[dict[str, Any]],
     output_dir: Path,
     timestamp: int,
+    *,
+    dry_run: bool,
 ) -> None:
     out_file = output_dir / f"nebius_jobs_{timestamp}.json"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    out_file.write_text(json.dumps(manifests, indent=2))
-    log.info("Nebius job manifests written to %s", out_file)
+    if not dry_run:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        out_file.write_text(json.dumps(manifests, indent=2))
+        log.info("Nebius job manifests written to %s", out_file)
     print("\nNebius submission commands:")
     for m in manifests:
         print(f"  {m['launch_command']}")
-    print(f"\nFull manifests: {out_file}")
+    print(json.dumps(manifests, indent=2) if dry_run else f"\nFull manifests: {out_file}")
 
 
 def finetune_tier(
@@ -151,8 +154,9 @@ def finetune_tier(
     dry_run: bool,
 ) -> dict[str, Any]:
     """Fine-tune one tier: SFT → eval → quantize. Returns a result dict."""
+    data_path = data_path.resolve()
+    output_dir = output_dir.resolve()
     log_dir = output_dir / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
 
     run_name = f"{entry.eliza_short_name}-apollo-{timestamp}"
     checkpoint_dir = output_dir / run_name / "final"
@@ -176,6 +180,7 @@ def finetune_tier(
         sys.executable, "scripts/run_pipeline.py",
         "--registry-key", tier,
         "--run-name", run_name,
+        "--out-dir", str(output_dir),
         "--train-file", str(data_path / "train.jsonl"),
         "--val-file", str(data_path / "val.jsonl"),
         "--test-file", str(data_path / "test.jsonl"),
@@ -215,13 +220,19 @@ def finetune_tier(
         ]
         rc = _run(eval_cmd, log_file=eval_log, dry_run=dry_run, cwd=ROOT)
         if rc != 0:
-            log.warning("[%s] eval_checkpoint failed (exit=%d)", tier, rc)
-        elif not dry_run and eval_out.exists():
+            result["error"] = f"Evaluation failed (exit {rc}); see {eval_log}"
+            return result
+        if not dry_run:
             try:
                 eval_data = json.loads(eval_out.read_text())
-                result["eval_score"] = eval_data.get("format_ok")
-            except (json.JSONDecodeError, OSError):
-                pass
+                score = eval_data["structure_ok"]
+                if type(score) not in (int, float) or not 0 <= score <= 1:
+                    raise ValueError("structure_ok must be a finite rate in [0, 1]")
+                result["eval_score"] = score
+            except (ValueError, KeyError, TypeError, OSError) as error:
+                # error-policy:J1 report an invalid evaluation artifact as a failed tier.
+                result["error"] = f"Invalid evaluation result {eval_out}: {error}"
+                return result
         log.info("[%s] eval score: %s", tier, result["eval_score"])
 
     # Stage 3: quantization pipeline (turboquant → polarquant → qjl)
@@ -230,9 +241,9 @@ def finetune_tier(
         for quant in quant_pipeline:
             apply_script = ROOT / "scripts" / "quantization" / f"{quant}_apply.py"
             if not apply_script.exists():
-                log.warning("[%s] quantizer script not found: %s", tier, apply_script)
                 result["quant_status"][quant] = "script_missing"
-                continue
+                result["error"] = f"Quantizer script not found: {apply_script}"
+                return result
             quant_out = output_dir / run_name / f"final-{quant}"
             quant_log = log_dir / f"{log_prefix}_{quant}.log"
             quant_cmd = [
@@ -246,9 +257,9 @@ def finetune_tier(
             status = "ok" if rc == 0 else f"failed(exit={rc})"
             result["quant_status"][quant] = status
             if rc != 0:
-                log.warning("[%s] quantizer %s failed (exit=%d)", tier, quant, rc)
-            else:
-                log.info("[%s] quantizer %s done → %s", tier, quant, quant_out)
+                result["error"] = f"Quantizer {quant} failed (exit {rc}); see {quant_log}"
+                return result
+            log.info("[%s] quantizer %s done → %s", tier, quant, quant_out)
 
     result["passed"] = result["error"] is None
     return result
@@ -337,7 +348,7 @@ def main() -> int:
             m = _nebius_manifest(tier, entry, data_path, output_dir, timestamp)
             manifests.append(m)
             log.info("[%s] Nebius manifest generated", tier)
-        _print_nebius_manifests(manifests, output_dir, timestamp)
+        _print_nebius_manifests(manifests, output_dir, timestamp, dry_run=args.dry_run)
         return 0
 
     results: list[dict[str, Any]] = []

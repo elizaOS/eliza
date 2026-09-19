@@ -8,9 +8,13 @@
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type IAgentRuntime,
-  type Plugin,
   type UUID,
 } from "@elizaos/core";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   connectCloudCapabilitySandbox,
@@ -210,26 +214,43 @@ describe("cloud capability sandbox provisioner", () => {
     expect(progress[0]).toContain("unexpected availability payload");
   });
 
-  it("reports the last readiness failure when cloud availability never starts", async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({ error: "not ready" }, 503),
-    );
+  it.each([
+    ["short HTTP error", 503, "not ready", 'HTTP 503: {"error":"not ready"}'],
+    [
+      "long HTTP error",
+      503,
+      `${"a".repeat(489)}🦊tail`,
+      `HTTP 503: {"error":"${"a".repeat(489)}`,
+    ],
+    [
+      "long unexpected payload",
+      200,
+      `${"a".repeat(489)}🦊tail`,
+      `unexpected availability payload: {"error":"${"a".repeat(489)}`,
+    ],
+  ] as const)(
+    "reports readiness failure: %s",
+    async (_case, status, error, diagnostic) => {
+      const fetchMock = vi.fn(async () => jsonResponse({ error }, status));
 
-    await expect(
-      waitForCloudCapabilityEndpointAvailability({
-        endpoint: {
-          id: "cloud-capability",
-          baseUrl: "https://capability.example.test",
-        },
-        timeoutMs: 1,
-        pollIntervalMs: 1,
-        requestTimeoutMs: 1_000,
-        fetch: fetchMock as unknown as typeof fetch,
-      }),
-    ).rejects.toThrow(
-      'Cloud capability endpoint cloud-capability did not report plugin availability within 1ms. Last error: HTTP 503: {"error":"not ready"}',
-    );
-  });
+      await expect(
+        waitForCloudCapabilityEndpointAvailability({
+          endpoint: {
+            id: "cloud-capability",
+            baseUrl: "https://capability.example.test",
+          },
+          timeoutMs: 1,
+          pollIntervalMs: 1,
+          requestTimeoutMs: 1_000,
+          fetch: fetchMock as unknown as typeof fetch,
+        }),
+      ).rejects.toEqual(
+        new Error(
+          `Cloud capability endpoint cloud-capability did not report plugin availability within 1ms. Last error: ${diagnostic}`,
+        ),
+      );
+    },
+  );
 
   it("fails when provisioning completes without an endpoint", async () => {
     const fetchMock = vi.fn(async (url: string | URL) => {
@@ -367,126 +388,49 @@ describe("cloud capability sandbox provisioner", () => {
             },
           });
         }
-        if (body.method === "plugin.action.invoke") {
-          return jsonResponse({
-            ok: true,
-            result: { text: "cloud capability action" },
-          });
-        }
-        if (body.method === "plugin.provider.get") {
-          return jsonResponse({
-            ok: true,
-            result: {
-              text: "cloud capability provider",
-              values: { source: "cloud" },
-            },
-          });
-        }
-        if (body.method === "plugin.evaluator.shouldRun") {
-          return jsonResponse({
-            ok: true,
-            result: { shouldRun: true },
-          });
-        }
-        if (body.method === "plugin.evaluator.prepare") {
-          return jsonResponse({
-            ok: true,
-            result: { prepared: { cloudPrepared: true } },
-          });
-        }
-        if (body.method === "plugin.evaluator.prompt") {
-          return jsonResponse({
-            ok: true,
-            result: { prompt: "cloud evaluator prompt" },
-          });
-        }
-        if (body.method === "plugin.evaluator.process") {
-          return jsonResponse({
-            ok: true,
-            result: { result: { cloudProcessed: true } },
-          });
-        }
-        if (body.method === "plugin.responseHandlerEvaluator.shouldRun") {
-          return jsonResponse({
-            ok: true,
-            result: { shouldRun: true },
-          });
-        }
-        if (body.method === "plugin.responseHandlerEvaluator.evaluate") {
-          return jsonResponse({
-            ok: true,
-            result: { patch: { cloudResponse: true } },
-          });
-        }
-        if (body.method === "plugin.responseHandlerFieldEvaluator.shouldRun") {
-          return jsonResponse({
-            ok: true,
-            result: { shouldRun: true },
-          });
-        }
-        if (body.method === "plugin.responseHandlerFieldEvaluator.parse") {
-          return jsonResponse({
-            ok: true,
-            result: { value: { cloudParsed: true } },
-          });
-        }
-        if (body.method === "plugin.responseHandlerFieldEvaluator.handle") {
-          return jsonResponse({
-            ok: true,
-            result: { effect: { patch: { cloudHandled: true } } },
-          });
-        }
-        if (body.method === "plugin.model.invoke") {
-          return jsonResponse({
-            ok: true,
-            result: { result: { cloudModel: true } },
-          });
-        }
-        if (body.method === "plugin.lifecycle.call") {
-          return jsonResponse({
-            ok: true,
-            result: { ok: true },
-          });
-        }
-        if (body.method === "plugin.event.handle") {
-          return jsonResponse({
-            ok: true,
-            result: { handled: true },
-          });
-        }
-        if (body.method === "plugin.service.call") {
-          return jsonResponse({
-            ok: true,
-            result: { result: { cloudService: true } },
-          });
-        }
-        if (body.method === "plugin.appBridge.call") {
-          return jsonResponse({
-            ok: true,
-            result: { result: { handled: true, body: { cloudBridge: true } } },
-          });
-        }
-        if (body.method === "plugin.route.call") {
-          return jsonResponse({
-            ok: true,
-            result: {
-              status: 202,
-              headers: { "x-cloud-capability": "yes" },
-              body: { routed: true },
-            },
-          });
-        }
-        if (body.method === "plugin.asset.get") {
-          return jsonResponse({
-            ok: true,
-            result: {
-              path: "/assets/cloud-capability.js",
-              contentType: "text/javascript",
-              bodyBase64: Buffer.from(
-                "export const cloudCapabilityView = true;",
-              ).toString("base64"),
-            },
-          });
+        const results: Record<string, unknown> = {
+          "plugin.action.invoke": { text: "cloud capability action" },
+          "plugin.provider.get": {
+            text: "cloud capability provider",
+            values: { source: "cloud" },
+          },
+          "plugin.evaluator.shouldRun": { shouldRun: true },
+          "plugin.evaluator.prepare": { prepared: { cloudPrepared: true } },
+          "plugin.evaluator.prompt": { prompt: "cloud evaluator prompt" },
+          "plugin.evaluator.process": { result: { cloudProcessed: true } },
+          "plugin.responseHandlerEvaluator.shouldRun": { shouldRun: true },
+          "plugin.responseHandlerEvaluator.evaluate": {
+            patch: { cloudResponse: true },
+          },
+          "plugin.responseHandlerFieldEvaluator.shouldRun": { shouldRun: true },
+          "plugin.responseHandlerFieldEvaluator.parse": {
+            value: { cloudParsed: true },
+          },
+          "plugin.responseHandlerFieldEvaluator.handle": {
+            effect: { patch: { cloudHandled: true } },
+          },
+          "plugin.model.invoke": { result: { cloudModel: true } },
+          "plugin.lifecycle.call": { ok: true },
+          "plugin.event.handle": { handled: true },
+          "plugin.service.call": { result: { cloudService: true } },
+          "plugin.appBridge.call": {
+            result: { handled: true, body: { cloudBridge: true } },
+          },
+          "plugin.route.call": {
+            status: 202,
+            headers: { "x-cloud-capability": "yes" },
+            body: { routed: true },
+          },
+          "plugin.asset.get": {
+            path: "/assets/cloud-capability.js",
+            contentType: "text/javascript",
+            bodyBase64: Buffer.from(
+              "export const cloudCapabilityView = true;",
+            ).toString("base64"),
+          },
+        };
+        if (body.method && Object.hasOwn(results, body.method)) {
+          return jsonResponse({ ok: true, result: results[body.method] });
         }
       }
       return jsonResponse({ error: `unexpected ${href}` }, 404);
@@ -549,7 +493,7 @@ describe("cloud capability sandbox provisioner", () => {
       values: { source: "cloud" },
     });
     await expect(
-      runtime.routes[0]?.routeHandler?.({
+      getHttpRuntime(runtime).routes[0]?.routeHandler?.({
         runtime,
         method: "POST",
         path: "/cloud/capability",
@@ -695,7 +639,6 @@ describe("cloud capability sandbox provisioner", () => {
         String(url) ===
         "https://capability-cloud.example.test/v1/capabilities/invoke",
     );
-    expect(capabilityCalls).toHaveLength(19);
     expect(
       capabilityCalls.map(([, init]) => {
         const body = JSON.parse(String(init?.body)) as { method?: string };
@@ -745,7 +688,7 @@ function makeRuntime(): IAgentRuntime {
     actions: [] as NonNullable<Plugin["actions"]>,
     providers: [] as NonNullable<Plugin["providers"]>,
     evaluators: [] as NonNullable<Plugin["evaluators"]>,
-    routes: [] as NonNullable<Plugin["routes"]>,
+
     services: new Map() as IAgentRuntime["services"],
     getService: (serviceType: string) =>
       runtime.services.get(serviceType as never)?.[0] ?? null,
@@ -759,7 +702,7 @@ function makeRuntime(): IAgentRuntime {
       runtime.actions.push(...(plugin.actions ?? []));
       runtime.providers.push(...(plugin.providers ?? []));
       runtime.evaluators.push(...(plugin.evaluators ?? []));
-      runtime.routes.push(...(plugin.routes ?? []));
+      getHttpRuntime(runtime).routes.push(...(plugin.routes ?? []));
     },
     reloadPlugin: async (plugin: Plugin) => {
       await runtime.registerPlugin(plugin);
@@ -772,5 +715,8 @@ function makeRuntime(): IAgentRuntime {
     evaluators: NonNullable<Plugin["evaluators"]>;
     routes: NonNullable<Plugin["routes"]>;
   };
+  getHttpRuntime(runtime).routes = [] as NonNullable<
+    Plugin["routes"]
+  > as Route[];
   return runtime;
 }

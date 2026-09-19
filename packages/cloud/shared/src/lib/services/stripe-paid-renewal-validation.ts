@@ -1,6 +1,6 @@
 /** Validates captured full-price platform Stripe payments for first activation and adjacent renewals; unsupported billing adjustments never become allowance authority. */
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { z } from "zod";
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
 import {

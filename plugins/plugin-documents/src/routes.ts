@@ -27,20 +27,20 @@ import type {
   AgentRuntime,
   IFileStorageService,
   Memory,
-  RouteHelpers,
-  RouteRequestContext,
   UUID,
 } from "@elizaos/core";
+import { actorFromAccessContext, ElizaError, ServiceType } from "@elizaos/core";
 import {
   __setDocumentUrlFetchImplForTests,
-  actorFromAccessContext,
-  ElizaError,
   fetchDocumentFromUrl,
   isYouTubeUrl,
   normalizeDocumentContentType,
-  ServiceType,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import { parseClampedFloat, parsePositiveInteger } from "@elizaos/shared";
+import type {
+  RouteHelpers,
+  RouteRequestContext,
+} from "@elizaos/shared/api/route-helpers";
 import {
   getDocumentContentType,
   getDocumentDeleteability,

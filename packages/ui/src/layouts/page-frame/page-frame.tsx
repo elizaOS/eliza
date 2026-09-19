@@ -4,7 +4,7 @@
  * landmark when a host shell already owns one.
  */
 
-import type { PageLayoutManifest } from "@elizaos/core";
+import type { PageLayoutManifest } from "@elizaos/common";
 import {
   forwardRef,
   type HTMLAttributes,

@@ -2,13 +2,16 @@
  * Resolves Eliza Cloud deployment/service-routing preferences from a config,
  * used to patch first-run defaults toward the linked cloud topology.
  */
+
+import {
+  isElizaCloudLinkedInConfig,
+  resolveElizaCloudTopology,
+} from "@elizaos/shared/contracts/cloud-topology";
 import {
   getFirstRunProviderOption,
-  isElizaCloudLinkedInConfig,
   resolveDeploymentTargetInConfig,
-  resolveElizaCloudTopology,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/first-run-options";
 import { asRecord, readString } from "../state/config-readers";
 import type {
   CloudPreferenceClientLike as ClientLike,

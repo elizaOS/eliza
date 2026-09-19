@@ -12,7 +12,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveConfigPath } from "@elizaos/agent";
-import { formatDocsLink, theme } from "@elizaos/shared";
+import { formatDocsLink } from "@elizaos/shared/terminal/links";
+import { theme } from "@elizaos/shared/terminal/theme";
 import type { Command } from "commander";
 import JSON5 from "json5";
 import { runCommandWithRuntime } from "../cli-utils";

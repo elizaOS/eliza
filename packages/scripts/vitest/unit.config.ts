@@ -1,7 +1,7 @@
 /** Configures the unit shared Vitest lane used by workspace package tests. */
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { getElizaCoreEntry } from "../../core/src/testing/eliza-package-paths";
+import { getElizaCoreEntry } from "@elizaos/testing/eliza-package-paths";
 import baseConfig from "./default.config";
 import { repoRoot } from "./repo-root";
 import {
@@ -14,9 +14,9 @@ import {
 const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
 
-/** This monorepo: core lives in `packages/core` (see `./testing` barrel in package exports). */
+/** Prefer the checkout source for the public core root. */
 const monorepoCoreRoot = path.join(repoRoot, "packages", "core");
-const monorepoCoreSource = path.join(monorepoCoreRoot, "src", "index.node.ts");
+const monorepoCoreSource = path.join(monorepoCoreRoot, "src", "index.ts");
 const localElizaCoreReplacement = existsSync(monorepoCoreSource)
   ? monorepoCoreSource
   : elizaCoreEntry;
@@ -37,19 +37,15 @@ const unitAliasEntries: ModuleAlias[] = [
     localElizaCoreReplacement
       ? [
           {
-            // Keep the separately bundled public client entry ahead of the
-            // prefix-matching bare-core alias below.
-            find: /^@elizaos\/core\/client-public$/,
+            find: /^@elizaos\/common$/,
             replacement: path.join(
-              path.dirname(localElizaCoreReplacement),
-              localElizaCoreReplacement.endsWith(".ts")
-                ? "client-public.ts"
-                : "client-public.js",
+              elizaWorkspaceRoot,
+              "packages/common/src/index.ts",
             ),
           },
           {
             // Published-only CI disables the repo-local eliza checkout, so unit tests must fall back to the installed package entry in that mode.
-            find: "@elizaos/core",
+            find: /^@elizaos\/core$/,
             replacement: localElizaCoreReplacement,
           },
         ]

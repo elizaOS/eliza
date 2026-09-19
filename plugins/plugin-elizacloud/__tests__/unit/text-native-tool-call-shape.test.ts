@@ -130,17 +130,17 @@ describe("non-streaming planner tool-call shape (offline)", () => {
     // object (not a bare string), with parsed tool calls.
     expect(result).toBeTypeOf("object");
     expect(result).not.toBeNull();
-    const toolCalls = (result as { toolCalls?: Array<{ toolName: string; input: unknown }> })
+    const toolCalls = (result as { toolCalls?: Array<{ name: string; arguments: unknown }> })
       .toolCalls;
     expect(Array.isArray(toolCalls)).toBe(true);
     expect(toolCalls).toHaveLength(1);
 
     const call = toolCalls?.[0];
-    // The toolName comes from the OpenAI `function.name`.
-    expect(call?.toolName).toBe("PLAN_ACTIONS");
+    // The name comes from the OpenAI `function.name`.
+    expect(call?.name).toBe("PLAN_ACTIONS");
     // The JSON-string `arguments` is parsed into a real object (the planner
-    // consumes `input`, not a raw string).
-    expect(call?.input).toEqual({
+    // receives canonical `arguments`).
+    expect(call?.arguments).toEqual({
       actions: [{ action: "REPLY", thought: "greet the user" }],
     });
   });

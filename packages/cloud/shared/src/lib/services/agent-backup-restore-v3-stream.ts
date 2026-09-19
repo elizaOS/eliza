@@ -6,7 +6,7 @@
 
 import { createHash, createHmac } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   AGENT_BACKUP_PAYLOAD_DIGEST_DERIVATION,
   AGENT_BACKUP_RECORD_STREAM_V1_FORMAT,

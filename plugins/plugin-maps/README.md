@@ -109,3 +109,7 @@ bun run --cwd plugins/plugin-maps typecheck
 bun run --cwd plugins/plugin-maps lint:check
 bun run --cwd plugins/plugin-maps build
 ```
+
+The maps package owns the managed-provider connection, HTTP transport, health,
+and pagination helpers exported from its root barrel. These Cloud-facing
+contracts are not part of the core runtime; transport uses core network guards.

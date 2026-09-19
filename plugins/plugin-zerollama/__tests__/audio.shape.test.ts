@@ -119,6 +119,17 @@ describe("Ollama audio handlers", () => {
     });
   });
 
+  it("rejects a private transcription URL before inference", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    await expect(
+      handleTranscription(
+        runtime({ OLLAMA_TRANSCRIPTION_MODEL: "whisper-base" }),
+        "http://127.0.0.1/private.wav"
+      )
+    ).rejects.toThrow(/private|loopback|blocked|SSRF/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("POSTs multipart /v1/audio/transcriptions", async () => {
     const fetchMock = vi.fn(
       async () =>

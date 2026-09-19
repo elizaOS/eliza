@@ -15,7 +15,6 @@ import {
   ContentType,
   checkPairingAllowed,
   createUniqueUuid,
-  DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
   ElizaError,
   type Entity,
   type EventPayload,
@@ -33,15 +32,18 @@ import {
   type MessageConnectorRegistration,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
-  readResponseWithLimit,
-  resolveAttachmentBytes,
   Service,
   ServiceType,
   type TargetInfo,
   truncateWellFormed,
-  trustedLocalMediaUrl,
   type UUID,
 } from "@elizaos/core";
+import {
+  DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
+  readResponseWithLimit,
+  resolveAttachmentBytes,
+  trustedLocalMediaUrl,
+} from "@elizaos/shared/media";
 import {
   DEFAULT_ACCOUNT_ID as IMESSAGE_LOCAL_ACCOUNT_ID,
   normalizeAccountId as normalizeIMessageAccountId,

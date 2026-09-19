@@ -32,9 +32,6 @@ import type {
   Memory,
   Metadata,
   ProviderValue,
-  RelationshipsGraphService,
-  RelationshipsPersonDetail,
-  RelationshipsPersonSummary,
   SearchCategoryRegistration,
   State,
   UUID,
@@ -43,13 +40,17 @@ import {
   describeUserReference,
   ElizaError,
   FOLLOW_UP_CAPABLE_ACTION_TAG,
-  findEntityByName,
-  getEntityDetails,
   logger,
   requireConfirmation,
   stringToUuid,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import type {
+  RelationshipsGraphService,
+  RelationshipsPersonDetail,
+  RelationshipsPersonSummary,
+} from "@elizaos/plugin-assistant";
+import { findEntityByName, getEntityDetails } from "@elizaos/plugin-assistant";
 import { resolveRelationshipsGraphService } from "../services/relationships-graph.ts";
 import { hasContextSignalSyncForKey } from "./context-signal.ts";
 import { extractActionParamsViaLlm } from "./extract-params.ts";
@@ -129,7 +130,7 @@ interface RelationshipActivityItem {
 }
 
 interface RelationshipsServiceLike {
-  createContact?: import("@elizaos/core/services/relationships").RelationshipsService["createContact"];
+  createContact?: import("@elizaos/plugin-assistant").RelationshipsService["createContact"];
   addContact?(
     entityId: UUID,
     categories: string[],

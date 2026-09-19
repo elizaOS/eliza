@@ -1,49 +1,10 @@
 #!/usr/bin/env node
 /**
- * Inventory + reachability classifier for build/dev/support scripts (issue
- * #10194; packages/app surface added for #10200).
- *
- * Classifies every `packages/scripts/*.mjs` file, every root `package.json`
- * script, and every `packages/app/package.json` script (the second dense script
- * surface) as one of:
- *   - reachable-from-verify
- *   - reachable-from-test
- *   - reachable-from-build
- *   - reachable-from-ci-workflow
- *   - reachable-from-operator-script
- *   - reachable-from-package-script
- *   - reachable-from-docs
- *   - reachable-from-app-internal   (packages/app scripts only)
- *   - orphan
- *
- * packages/app reachability also models Turbo task fan-out (`run-turbo run
- * build|lint|typecheck` reaches app's same-named script), `--cwd packages/app
- * <name>` invocations, `working-directory: packages/app` CI step blocks, app→app
- * `bun run <name>`, and npm pre/post lifecycle pairs.
- *
- * Reachability model:
- *   1. Root scripts form a call graph: a script body that runs `bun run X` /
- *      `npm run X` makes root script X reachable transitively.
- *   2. The seed entrypoints are `verify` (+ its `check` alias), `test`, `build`,
- *      every root script name referenced from a `.github/` workflow, and every
- *      named root script as a lower-priority human/operator entrypoint.
- *   3. A reachable script body that runs `node packages/scripts/X.mjs` (or
- *      otherwise names a packages/scripts file) makes that file reachable.
- *   4. `.github/` workflows that directly name a packages/scripts file make it
- *      reachable-from-ci-workflow.
- *   5. A reachable `.mjs` file that spawnSync/exec/imports/names another
- *      packages/scripts `.mjs` propagates reachability to it.
- *   6. A packages/scripts file named from docs/source/test text is documented
- *      as an intentional standalone/support entrypoint, not a true orphan.
- *
- * Output:
- *   - machine-readable JSON to reports/scripts-inventory.json (gitignored).
- *   - a summary table to stdout (total files, total LOC, orphan count,
- *     root-script count).
- *
- * Usage:
- *   node packages/scripts/audit-scripts-inventory.mjs            # write + print
- *   node packages/scripts/audit-scripts-inventory.mjs --json     # print JSON
+ * Reports static command references for root commands, app commands and top-level
+ * repository MJS tools. This deliberately partial inventory is advisory: textual
+ * references do not prove execution, and absence does not prove a tool is unused.
+ * Documentation and test mentions are not evidence of an executable caller.
+ * Workflow command validation and script-test discovery retain their own checks.
  */
 import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -65,8 +26,6 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SCRIPT_DIR, "..", "..");
 const APP_PACKAGE_PATH = "packages/app/package.json";
 
-const DOCUMENTATION_SOURCE_ALIASES = new Map();
-
 const CATEGORIES = [
   "reachable-from-verify",
   "reachable-from-test",
@@ -74,38 +33,17 @@ const CATEGORIES = [
   "reachable-from-ci-workflow",
   "reachable-from-operator-script",
   "reachable-from-package-script",
-  "reachable-from-docs",
-  "orphan",
+  "unclassified",
 ];
 
-// packages/app scripts can also be reached app-internally (one app script runs
-// another, or via an npm pre/post lifecycle pair) — a color the root/file graphs
-// don't need. Priority: verify > test > build > ci-workflow > operator-script >
-// app-internal.
 const APP_CATEGORIES = [
   "reachable-from-verify",
   "reachable-from-test",
   "reachable-from-build",
   "reachable-from-ci-workflow",
   "reachable-from-operator-script",
-  "reachable-from-app-internal",
-  "orphan",
+  "unclassified",
 ];
-
-const DOCUMENTATION_REFERENCE_EXTENSIONS = new Set([
-  ".cjs",
-  ".js",
-  ".json",
-  ".md",
-  ".mdx",
-  ".mjs",
-  ".py",
-  ".ts",
-  ".tsx",
-  ".txt",
-  ".yaml",
-  ".yml",
-]);
 
 /** Read one Git-named repository file without following symlinked components. */
 export function readRepositoryCandidateText(repoRoot, relative, label) {
@@ -254,6 +192,7 @@ export function workflowRootScriptReferences(source, file = "<workflow>") {
   for (const step of workflowExecutionSteps(source, file)) {
     let atRepositoryRoot = isRepositoryRootDirectory(step.workingDirectory);
     for (const command of step.run.split(/&&|\|\||[;|\n]/)) {
+      if (command.trimStart().startsWith("#")) continue;
       atRepositoryRoot = directoryAfterCd(command, atRepositoryRoot);
       if (!atRepositoryRoot) continue;
       for (const script of referencedRootScripts(command)) {
@@ -336,33 +275,6 @@ function reachableRootScripts(seeds, rootScripts) {
   return reached;
 }
 
-/** File-graph adjacency: file -> set of packages/scripts files it references. */
-function buildFileGraph(fileUniverse) {
-  const graph = new Map();
-  for (const file of fileUniverse) {
-    const body = readRepositoryText(`packages/scripts/${file}`);
-    const refs = referencedScriptFiles(body, fileUniverse);
-    refs.delete(file);
-    graph.set(file, refs);
-  }
-  return graph;
-}
-
-/** BFS the file graph from a set of seed files. */
-function reachableFiles(seedFiles, graph) {
-  const reached = new Set();
-  const queue = [...seedFiles];
-  while (queue.length) {
-    const file = queue.shift();
-    if (reached.has(file)) continue;
-    reached.add(file);
-    for (const next of graph.get(file) ?? []) {
-      if (!reached.has(next)) queue.push(next);
-    }
-  }
-  return reached;
-}
-
 /** Seed files named directly in reachable root-script bodies. */
 function filesFromRootScripts(reachedRoots, rootScripts, fileUniverse) {
   const seeds = new Set();
@@ -436,51 +348,6 @@ function filesFromPackageScripts(fileUniverse, candidateFiles) {
     );
   }
   return callersByFile;
-}
-
-/**
- * packages/scripts files referenced from docs/source/test text outside their own
- * script file. This is intentionally low priority: package.json / CI /
- * operator-script reachability wins, but a documented standalone support script
- * is not a true zero-reference orphan.
- */
-function filesFromDocumentation(fileUniverse, candidateFiles) {
-  const referencesByFile = new Map();
-  const candidates = new Set(candidateFiles);
-  for (const rel of candidateFiles) {
-    if (rel === "package.json" || path.posix.basename(rel) === "package.json") {
-      continue;
-    }
-    if (
-      !DOCUMENTATION_REFERENCE_EXTENSIONS.has(
-        path.posix.extname(rel).toLocaleLowerCase("en-US"),
-      )
-    ) {
-      continue;
-    }
-    const canonicalAliasTarget = DOCUMENTATION_SOURCE_ALIASES.get(rel);
-    if (canonicalAliasTarget) {
-      if (!candidates.has(canonicalAliasTarget)) {
-        throw new Error(
-          `documentation source alias ${rel} is missing canonical target ${canonicalAliasTarget}`,
-        );
-      }
-      continue;
-    }
-    const body = readRepositoryText(rel);
-    for (const scriptFile of referencedScriptFiles(body, fileUniverse)) {
-      const ownScriptPath = path.posix.join("packages", "scripts", scriptFile);
-      if (rel === ownScriptPath) continue;
-      if (!referencesByFile.has(scriptFile))
-        referencesByFile.set(scriptFile, []);
-      referencesByFile.get(scriptFile).push(rel);
-    }
-  }
-
-  for (const references of referencesByFile.values()) {
-    references.sort((a, b) => a.localeCompare(b));
-  }
-  return referencesByFile;
 }
 
 /**
@@ -596,12 +463,7 @@ function buildInventory() {
       "packages/scripts inventory discovered zero top-level files",
     );
   }
-  const fileGraph = buildFileGraph(fileUniverse);
   const packageScriptCallersByFile = filesFromPackageScripts(
-    fileUniverse,
-    candidateFiles,
-  );
-  const documentationReferencesByFile = filesFromDocumentation(
     fileUniverse,
     candidateFiles,
   );
@@ -664,45 +526,31 @@ function buildInventory() {
     fileUniverse,
   );
 
-  // Reachable file sets, colored by entrypoint
-  // (priority verify > test > build > ci > operator > package-local script).
-  const verifyFiles = reachableFiles(
-    filesFromRootScripts(verifyRoots, rootScripts, fileUniverse),
-    fileGraph,
+  // Only command bodies and the executable test inventory seed file categories.
+  // A source comment or self-test mentioning a helper cannot establish a caller.
+  const verifyFiles = filesFromRootScripts(
+    verifyRoots,
+    rootScripts,
+    fileUniverse,
   );
-  const testFiles = reachableFiles(
-    new Set([
-      ...filesFromRootScripts(testRoots, rootScripts, fileUniverse),
-      ...scriptTests.files
-        .map(({ file }) => file)
-        .filter((file) => /^packages\/scripts\/[^/]+\.mjs$/.test(file))
-        .map((file) => path.posix.basename(file)),
-    ]),
-    fileGraph,
+  const testFiles = new Set([
+    ...filesFromRootScripts(testRoots, rootScripts, fileUniverse),
+    ...scriptTests.files
+      .map(({ file }) => file)
+      .filter((file) => /^packages\/scripts\/[^/]+\.mjs$/.test(file))
+      .map((file) => path.posix.basename(file)),
+  ]);
+  const buildFiles = filesFromRootScripts(
+    buildRoots,
+    rootScripts,
+    fileUniverse,
   );
-  const buildFiles = reachableFiles(
-    filesFromRootScripts(buildRoots, rootScripts, fileUniverse),
-    fileGraph,
-  );
-  const ciFiles = reachableFiles(
-    new Set([
-      ...filesFromRootScripts(ciRoots, rootScripts, fileUniverse),
-      ...ciFileSeeds,
-    ]),
-    fileGraph,
-  );
-  const operatorFiles = reachableFiles(
-    new Set(operatorScriptCallersByFile.keys()),
-    fileGraph,
-  );
-  const packageScriptFiles = reachableFiles(
-    new Set(packageScriptCallersByFile.keys()),
-    fileGraph,
-  );
-  const documentedFiles = reachableFiles(
-    new Set(documentationReferencesByFile.keys()),
-    fileGraph,
-  );
+  const ciFiles = new Set([
+    ...filesFromRootScripts(ciRoots, rootScripts, fileUniverse),
+    ...ciFileSeeds,
+  ]);
+  const operatorFiles = new Set(operatorScriptCallersByFile.keys());
+  const packageScriptFiles = new Set(packageScriptCallersByFile.keys());
 
   const classifyRoot = (name) => {
     if (verifyRoots.has(name)) return "reachable-from-verify";
@@ -710,7 +558,7 @@ function buildInventory() {
     if (buildRoots.has(name)) return "reachable-from-build";
     if (ciRoots.has(name)) return "reachable-from-ci-workflow";
     if (operatorRoots.has(name)) return "reachable-from-operator-script";
-    return "orphan";
+    return "unclassified";
   };
   const classifyFile = (file) => {
     if (verifyFiles.has(file)) return "reachable-from-verify";
@@ -719,8 +567,7 @@ function buildInventory() {
     if (ciFiles.has(file)) return "reachable-from-ci-workflow";
     if (operatorFiles.has(file)) return "reachable-from-operator-script";
     if (packageScriptFiles.has(file)) return "reachable-from-package-script";
-    if (documentedFiles.has(file)) return "reachable-from-docs";
-    return "orphan";
+    return "unclassified";
   };
 
   const files = fileUniverse.map((file) => ({
@@ -729,7 +576,6 @@ function buildInventory() {
     category: classifyFile(file),
     operatorScriptCallers: operatorScriptCallersByFile.get(file) ?? [],
     packageScriptCallers: packageScriptCallersByFile.get(file) ?? [],
-    documentationReferences: documentationReferencesByFile.get(file) ?? [],
   }));
   const roots = Object.keys(rootScripts).map((name) => ({
     name,
@@ -809,28 +655,13 @@ function buildInventory() {
     appScripts,
     appUniverse,
   );
-  // App-internal: reachable through the app graph from any directly-seeded script.
-  const directlySeeded = new Set([
-    ...verifyApp,
-    ...testApp,
-    ...buildApp,
-    ...ciApp,
-    ...operatorApp,
-  ]);
-  const internalApp = reachableAppScripts(
-    directlySeeded,
-    appScripts,
-    appUniverse,
-  );
-
   const classifyApp = (name) => {
     if (verifyApp.has(name)) return "reachable-from-verify";
     if (testApp.has(name)) return "reachable-from-test";
     if (buildApp.has(name)) return "reachable-from-build";
     if (ciApp.has(name)) return "reachable-from-ci-workflow";
     if (operatorApp.has(name)) return "reachable-from-operator-script";
-    if (internalApp.has(name)) return "reachable-from-app-internal";
-    return "orphan";
+    return "unclassified";
   };
   const appScriptList = Object.keys(appScripts).map((name) => ({
     name,
@@ -844,10 +675,10 @@ function buildInventory() {
     summary: {
       totalFiles: files.length,
       totalLoc: files.reduce((sum, f) => sum + f.loc, 0),
-      orphanFiles: fileTotals.orphan,
-      orphanLoc: fileLocTotals.orphan,
+      unclassifiedFiles: fileTotals.unclassified,
+      unclassifiedLoc: fileLocTotals.unclassified,
       totalRootScripts: roots.length,
-      orphanRootScripts: rootTotals.orphan,
+      unclassifiedRootScripts: rootTotals.unclassified,
       filesByCategory: fileTotals,
       locByCategory: fileLocTotals,
       rootScriptsByCategory: rootTotals,
@@ -857,11 +688,8 @@ function buildInventory() {
       operatorScriptFileReferences: [
         ...operatorScriptCallersByFile.values(),
       ].reduce((sum, callers) => sum + callers.length, 0),
-      documentationFileReferences: [
-        ...documentationReferencesByFile.values(),
-      ].reduce((sum, references) => sum + references.length, 0),
       totalAppScripts: appScriptList.length,
-      orphanAppScripts: appTotals.orphan,
+      unclassifiedAppScripts: appTotals.unclassified,
       appScriptsByCategory: appTotals,
       totalScriptTests: scriptTests.discoveredCount,
       excludedScriptTests: scriptTests.excludedCount,
@@ -877,7 +705,7 @@ function printSummary(inv) {
   const { summary } = inv;
   const w = process.stdout.write.bind(process.stdout);
   const categoryWidth = 31;
-  w("\n[audit-scripts-inventory] packages/scripts/*.mjs reachability\n\n");
+  w("\n[audit-scripts-inventory] packages/scripts/*.mjs static references\n\n");
   w(`  ${"category".padEnd(categoryWidth)} files     loc   roots\n`);
   w(`  ${"-".repeat(categoryWidth)} ------- ------- -------\n`);
   for (const c of CATEGORIES) {
@@ -895,21 +723,23 @@ function printSummary(inv) {
   );
   w(
     `  total files: ${summary.totalFiles}  total LOC: ${summary.totalLoc}  ` +
-      `orphan files: ${summary.orphanFiles} (${summary.orphanLoc} LOC)  ` +
-      `root scripts: ${summary.totalRootScripts} (${summary.orphanRootScripts} orphan)\n\n`,
+      `unclassified files: ${summary.unclassifiedFiles} (${summary.unclassifiedLoc} LOC)  ` +
+      `root scripts: ${summary.totalRootScripts} (${summary.unclassifiedRootScripts} unclassified)\n\n`,
   );
-  const orphans = inv.files.filter((f) => f.category === "orphan");
+  const orphans = inv.files.filter((f) => f.category === "unclassified");
   if (orphans.length) {
-    w("  orphan files:\n");
+    w("  unclassified files:\n");
     for (const f of orphans) w(`    - ${f.file} (${f.loc} LOC)\n`);
     w(
-      "\n  note: orphan here means no root/CI/package-script caller found, " +
+      "\n  note: unclassified here means no root/CI/package-script caller found, " +
         'not "safe to delete". Root operator commands are tracked separately.\n\n',
     );
   }
 
   // packages/app — the second dense script surface (issue #10200, item 2).
-  w("[audit-scripts-inventory] packages/app/package.json reachability\n\n");
+  w(
+    "[audit-scripts-inventory] packages/app/package.json static references\n\n",
+  );
   w("  category                         scripts\n");
   w("  ------------------------------ ---------\n");
   for (const c of APP_CATEGORIES) {
@@ -922,13 +752,15 @@ function printSummary(inv) {
     `  ${"TOTAL".padEnd(28)} ${String(summary.totalAppScripts).padStart(7)}\n\n`,
   );
   w(
-    `  app scripts: ${summary.totalAppScripts} (${summary.orphanAppScripts} ` +
+    `  app scripts: ${summary.totalAppScripts} (${summary.unclassifiedAppScripts} ` +
       `with no detected automated caller)\n` +
-      '  note: orphan here means "no root/CI/app-internal caller found", not ' +
+      '  note: unclassified here means "no root/CI/app-internal caller found", not ' +
       '"safe to delete" — many are\n  human/maintainer entrypoints ' +
       "(build:ios:*, capture:*, preflight:*), the same as root DEV-ENTRY scripts.\n\n",
   );
-  const appOrphans = inv.appScripts.filter((a) => a.category === "orphan");
+  const appOrphans = inv.appScripts.filter(
+    (a) => a.category === "unclassified",
+  );
   if (appOrphans.length) {
     w("  app scripts with no detected automated caller:\n");
     for (const a of appOrphans) w(`    - ${a.name}\n`);

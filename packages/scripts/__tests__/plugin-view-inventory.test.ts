@@ -532,6 +532,56 @@ export const factoryPlugin: Plugin = createPlugin();\n`,
     );
   });
 
+  test("resolves a fresh imported factory through immutable local composition", () => {
+    const root = makeRoot();
+    const source = addPluginSource(
+      root,
+      "plugin-local-composition",
+      `
+import { createBehavior } from "./behavior.ts";
+function createPlugin(): Plugin {
+  const behavior = createBehavior();
+  return { ...behavior, name: "composed" };
+}
+export const composedPlugin: Plugin = createPlugin();
+`,
+    );
+    write(
+      root,
+      "plugins/plugin-local-composition/src/behavior.ts",
+      `
+export function createBehavior() {
+  return { name: "behavior", views: [${view("composed-view")}] };
+}
+`,
+    );
+    const inventory = discover(root, [source]);
+    expect(JSON.stringify(inventory)).toContain("composed-view");
+  });
+
+  test("rejects side effects and recursion in local factory initializers", () => {
+    for (const factory of [
+      `function helper() { mutateViews(); return {}; }`,
+      `function helper(_effect = mutateViews()) { return {}; }`,
+      `function helper() { return { nested: helper() }; }`,
+    ]) {
+      const root = makeRoot();
+      const source = addPluginSource(
+        root,
+        "plugin-unsafe-local",
+        `
+${factory}
+function createPlugin(): Plugin {
+  const behavior = helper();
+  return { ...behavior, name: "unsafe", views: [${view("unsafe-view")}] };
+}
+export const unsafePlugin: Plugin = createPlugin();
+`,
+      );
+      expect(() => discover(root, [source])).toThrow();
+    }
+  });
+
   test("rejects a zero-argument call whose factory has an effectful default parameter", () => {
     const root = makeRoot();
     const source = addPluginSource(

@@ -45,6 +45,7 @@ function runHarness(mode: "stdout" | "immediate-exit"): Promise<{
         env: {
           ...process.env,
           ELIZA_HOST_EXECUTION_BASELINE_PATH: binDirectory,
+          ELIZA_TEST_HOLD_STARTUP_CHECK: mode === "immediate-exit" ? "1" : "0",
         },
         stdio: ["ignore", "pipe", "pipe"],
       },
@@ -128,7 +129,7 @@ describe.skipIf(process.platform === "win32")(
       );
     }, 90_000);
 
-    it("forwards immediate-exit stderr byte-for-byte and rejects typed", async () => {
+    it("forwards startup-exit stderr byte-for-byte and rejects typed", async () => {
       const stderrPayload = `stderr-start:${"e".repeat(300_000)}:stderr-end\n`;
       installContainerStub(
         [

@@ -6,19 +6,19 @@
  * Deterministic; exercises the real action definitions and schema builder.
  */
 import { describe, expect, it } from "vitest";
-import { actionToJsonSchema } from "../../actions/action-schema";
 import {
 	MESSAGE_PARAMETERS,
 	messageAction,
-} from "../../features/advanced-capabilities/actions/message";
-import { characterAction } from "../../features/advanced-capabilities/personality/actions/character";
-import { manageMessageAction } from "../../features/messaging/triage/actions/manageMessage";
-import { MANAGE_OPERATION_KINDS } from "../../features/messaging/triage/types";
-import { paymentAction } from "../../features/payments/actions/payment";
+} from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/message.ts";
+import { characterAction } from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/actions/character.ts";
+import { manageMessageAction } from "../../../../../plugins/plugin-assistant/src/features/messaging/triage/actions/manageMessage.ts";
+import { MANAGE_OPERATION_KINDS } from "../../../../../plugins/plugin-assistant/src/features/messaging/triage/types.ts";
+import { paymentAction } from "../../../../../plugins/plugin-assistant/src/features/payments/actions/payment.ts";
 import {
 	PAYMENT_CONTEXT_KINDS,
 	PAYMENT_CONTEXT_SCOPES,
-} from "../../features/payments/types";
+} from "../../../../../plugins/plugin-assistant/src/features/payments/types.ts";
+import { actionToJsonSchema } from "../../actions/action-schema";
 import type { Action, ActionParameter } from "../../types/components";
 import { CANONICAL_MESSAGE_TARGET_KINDS } from "../../types/runtime";
 

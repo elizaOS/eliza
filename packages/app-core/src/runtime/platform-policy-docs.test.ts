@@ -20,8 +20,12 @@ describe("platform policy docs", () => {
     expect(mobileDoc).toMatch(
       /WebView does not open a TCP\s+connection to the full-Bun backend/,
     );
-    expect(mobileDoc).toContain("bun run build:android:cloud");
-    expect(mobileDoc).toContain("bun run build:android:system");
+    expect(mobileDoc).toContain(
+      "bun run --cwd packages/app build:android:cloud",
+    );
+    expect(mobileDoc).toContain(
+      "bun run --cwd packages/app build:android:system",
+    );
 
     for (const stripped of [
       "ElizaAgentService",

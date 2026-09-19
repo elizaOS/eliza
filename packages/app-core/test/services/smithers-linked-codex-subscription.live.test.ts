@@ -16,7 +16,7 @@ import {
   createIsolatedAccountStoragePolicy,
   loadAccount,
   saveAccount,
-} from "@elizaos/auth/account-storage";
+} from "@elizaos/credentials/auth/account-storage";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../../../../plugins/plugin-agent-orchestrator/src/services/acp-service.js";
 import { OrchestratorTaskService } from "../../../../plugins/plugin-agent-orchestrator/src/services/orchestrator-task-service.js";

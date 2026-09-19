@@ -218,7 +218,7 @@ const oneShotModuleSpecifiers = [
   "@elizaos/cloud-shared/lib/utils/with-timeout",
   "@elizaos/cloud-shared/lib/services/node-disk-manager",
   "@elizaos/cloud-shared/lib/services/agent-backup-verifier",
-  "@elizaos/core/security/kms",
+  "@elizaos/credentials/kms",
   "@elizaos/cloud-shared/lib/services/cloud-api-db-heartbeat",
   "@elizaos/cloud-shared/lib/services/provisioning-worker-health",
   "@elizaos/cloud-shared/lib/services/docker-ssh",
@@ -501,7 +501,7 @@ describe("real one-shot daemon entrypoint", () => {
           escalated: 0,
         }),
       },
-      "@elizaos/core/security/kms": {
+      "@elizaos/credentials/kms": {
         resolveKmsBackend: () => "memory",
         createKmsClient: () => ({ getOrCreateKey }),
         systemKey: (name: string) => `system:${name}/v1`,

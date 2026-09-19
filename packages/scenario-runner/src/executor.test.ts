@@ -9,18 +9,22 @@ import type {
   HandlerCallback,
   IAgentRuntime,
   Memory,
-  RouteRequest,
-  RouteResponse,
 } from "@elizaos/core";
 import {
   pendingPostDeliveryTaskCount,
   stringToUuid,
   trackPostDeliveryTask,
 } from "@elizaos/core";
+import type {
+  Route,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/shared/api/http-plugin";
+import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
 import {
   createDeterministicModelFixtureRegistry,
   type DeterministicModelFixtureRegistry,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import type { ScenarioContext } from "../schema/index.d.ts";
 import { runScenario } from "./executor";
@@ -33,7 +37,6 @@ function createRuntime(
     actions,
     agentId: "00000000-0000-4000-8000-000000000001",
     plugins: [],
-    routes: [],
     ensureConnection: vi.fn(async () => undefined),
     getEntityById: vi.fn(async () => null),
     createEntity: vi.fn(async () => true),
@@ -820,34 +823,46 @@ describe("provider-qualified execution boundary", () => {
   });
 });
 
+function createHttpRuntime(routes: Route[]): AgentRuntime {
+  const runtime = createRuntime([]);
+  registerHttpPluginRoutes(
+    runtime,
+    {
+      name: "executor-fixture",
+      description: "Scenario API test routes",
+      routes,
+    },
+    false,
+  );
+  return runtime;
+}
+
 describe("scenario executor api turn captures", () => {
   it("captures API response fields for later path and body templates", async () => {
-    const runtime = createRuntime([], {
-      routes: [
-        {
-          type: "POST",
-          path: "/mint",
-          handler: async (_req: RouteRequest, res: RouteResponse) => {
-            res
-              .status(200)
-              .json({ scope: { id: "scope-123" }, token: "token-abc" });
-          },
+    const runtime = createHttpRuntime([
+      {
+        type: "POST",
+        path: "/mint",
+        handler: async (_req: RouteRequest, res: RouteResponse) => {
+          res
+            .status(200)
+            .json({ scope: { id: "scope-123" }, token: "token-abc" });
         },
-        {
-          type: "POST",
-          path: "/redeem/:scopeId",
-          handler: async (req: RouteRequest, res: RouteResponse) => {
-            const body = req.body ?? {};
-            res.status(200).json({
-              ok: true,
-              scopeId: req.params?.scopeId,
-              token: body.token,
-              authorization: req.headers?.authorization,
-            });
-          },
+      },
+      {
+        type: "POST",
+        path: "/redeem/:scopeId",
+        handler: async (req: RouteRequest, res: RouteResponse) => {
+          const body = req.body ?? {};
+          res.status(200).json({
+            ok: true,
+            scopeId: req.params?.scopeId,
+            token: body.token,
+            authorization: req.headers?.authorization,
+          });
         },
-      ],
-    });
+      },
+    ]);
 
     const report = await runScenario(
       {
@@ -912,25 +927,23 @@ describe("scenario executor api turn captures", () => {
 
   it("inserts captured values containing replacement patterns ($&, $$, $`) literally", async () => {
     const rawToken = "pre$&mid$$post$`";
-    const runtime = createRuntime([], {
-      routes: [
-        {
-          type: "POST",
-          path: "/mint",
-          handler: async (_req: RouteRequest, res: RouteResponse) => {
-            res.status(200).json({ secret: rawToken });
-          },
+    const runtime = createHttpRuntime([
+      {
+        type: "POST",
+        path: "/mint",
+        handler: async (_req: RouteRequest, res: RouteResponse) => {
+          res.status(200).json({ secret: rawToken });
         },
-        {
-          type: "POST",
-          path: "/echo",
-          handler: async (req: RouteRequest, res: RouteResponse) => {
-            const body = req.body ?? {};
-            res.status(200).json({ echoed: body.secret });
-          },
+      },
+      {
+        type: "POST",
+        path: "/echo",
+        handler: async (req: RouteRequest, res: RouteResponse) => {
+          const body = req.body ?? {};
+          res.status(200).json({ echoed: body.secret });
         },
-      ],
-    });
+      },
+    ]);
 
     const report = await runScenario(
       {
@@ -982,21 +995,19 @@ describe("scenario executor api turn captures", () => {
   });
 
   it("redacts configured API response fields only in persisted turn reports", async () => {
-    const runtime = createRuntime([], {
-      routes: [
-        {
-          type: "GET",
-          path: "/credential",
-          handler: async (_req: RouteRequest, res: RouteResponse) => {
-            res.status(200).json({
-              key: "OPENAI_API_KEY",
-              value: "sk-real-looking-but-test-only",
-              retrievedAt: 123,
-            });
-          },
+    const runtime = createHttpRuntime([
+      {
+        type: "GET",
+        path: "/credential",
+        handler: async (_req: RouteRequest, res: RouteResponse) => {
+          res.status(200).json({
+            key: "OPENAI_API_KEY",
+            value: "sk-real-looking-but-test-only",
+            retrievedAt: 123,
+          });
         },
-      ],
-    });
+      },
+    ]);
 
     const report = await runScenario(
       {
@@ -1040,17 +1051,15 @@ describe("scenario executor api turn captures", () => {
   });
 
   it("exposes the scenario loopback base URL to final checks", async () => {
-    const runtime = createRuntime([], {
-      routes: [
-        {
-          type: "GET",
-          path: "/healthz",
-          handler: async (_req: RouteRequest, res: RouteResponse) => {
-            res.status(200).json({ ok: true });
-          },
+    const runtime = createHttpRuntime([
+      {
+        type: "GET",
+        path: "/healthz",
+        handler: async (_req: RouteRequest, res: RouteResponse) => {
+          res.status(200).json({ ok: true });
         },
-      ],
-    });
+      },
+    ]);
 
     const report = await runScenario(
       {

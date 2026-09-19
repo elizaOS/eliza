@@ -10,12 +10,8 @@
  */
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
-import {
-  AgentRuntime,
-  type Character,
-  type Plugin,
-  type UUID,
-} from "@elizaos/core";
+import type { Plugin } from "@elizaos/core";
+import { AgentRuntime, type Character, type UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PgliteDatabaseAdapter } from "../../../plugin-sql/src/pglite/adapter.js";

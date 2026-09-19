@@ -24,9 +24,9 @@
  *    own their package manifests and test lanes and are outside this scan.
  *
  * Usage:
- *   bun run ensure-plugin-test-conventions     # apply to all plugins
- *   bun run ensure-plugin-test-conventions --dry-run   # print what would change
- *   bun run ensure-plugin-test-conventions --check     # exit 1 if any would change (CI)
+ *   bun packages/scripts/ensure-plugin-test-conventions.mjs     # apply to all plugins
+ *   bun packages/scripts/ensure-plugin-test-conventions.mjs --dry-run   # print what would change
+ *   bun packages/scripts/ensure-plugin-test-conventions.mjs --check     # exit 1 if any would change (CI)
  */
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";

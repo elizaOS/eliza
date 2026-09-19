@@ -5,7 +5,8 @@
  * service is present it registers Solana with it opportunistically (failure
  * to register is logged, not fatal).
  */
-import type { IAgentRuntime, Plugin, ServiceTypeName } from "@elizaos/core";
+import type { IAgentRuntime, ServiceTypeName } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { SOLANA_SERVICE_NAME } from "./constants";
 import { walletProvider } from "./providers/wallet";
 import { solanaRoutes } from "./routes/index";

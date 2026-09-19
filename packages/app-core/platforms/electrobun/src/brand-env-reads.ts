@@ -8,7 +8,7 @@
  * heavy top-level side effects and is not unit-testable — so the resolution
  * contract can be exercised directly by `brand-env-reads.test.ts`.
  */
-import { readAliasedEnv } from "@elizaos/shared";
+import { readAliasedEnv } from "@elizaos/shared/utils/env";
 
 /**
  * Renderer URL for the desktop webview: an explicit `ELIZA_RENDERER_URL` (or its

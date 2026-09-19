@@ -10,7 +10,7 @@
 import {
   formatUncaughtError as sharedFormatUncaughtError,
   shouldIgnoreUnhandledRejection as sharedShouldIgnoreUnhandledRejection,
-} from "@elizaos/shared";
+} from "@elizaos/shared/error-classification";
 import { describe, expect, it } from "vitest";
 import * as errorHandlers from "./error-handlers";
 import {

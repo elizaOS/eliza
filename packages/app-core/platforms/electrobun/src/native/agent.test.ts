@@ -5,7 +5,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { applyDevCloudAuthoritySnapshotToEnv } from "@elizaos/shared";
+import { applyDevCloudAuthoritySnapshotToEnv } from "@elizaos/shared/elizacloud/dev-cloud-env-authority";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   applyDesktopDeferAppRoutesPolicy,

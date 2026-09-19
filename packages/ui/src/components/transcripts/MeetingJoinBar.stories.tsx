@@ -1,5 +1,5 @@
 /** Empty, active-session, joining, and failed meeting-join states. */
-import type { MeetingSession } from "@elizaos/shared";
+import type { MeetingSession } from "@elizaos/shared/meetings";
 import type { Meta, StoryObj } from "@storybook/react";
 import { assert } from "../../storybook/home-widget-decorator";
 import { MeetingJoinBar } from "./MeetingJoinBar";

@@ -416,54 +416,22 @@ describe("provisioning worker deployment contract", () => {
     expect(workflow).toContain('if [ "$deployed_sha" = "$DEPLOY_SHA" ]; then');
   });
 
-  it("regenerates before deploy and self-heals every service", () => {
-    expect(workflow).toContain(
-      "bash packages/cloud/scripts/admin/ensure-generated-keywords.sh",
-    );
-    for (const service of generatedKeywordServices) {
-      expect(service).toContain(
-        "ExecStartPre=/opt/eliza/packages/cloud/scripts/admin/ensure-generated-keywords.sh",
-      );
-    }
-    // The deployment already generated the sources before systemd is
-    // restarted. This unit has ProtectSystem=strict and must not attempt a
-    // second write beneath /opt/eliza from its read-only ExecStartPre sandbox.
-    expect(backupService).not.toContain("ensure-generated-keywords.sh");
-  });
-
-  it("builds the default-condition prompts runtime before core and restart", () => {
+  it("builds the linked runtime before verification and restart", () => {
     const script = deployStep("Deploy and restart worker").with?.script ?? "";
     const install = script.indexOf(
       "bun install --frozen-lockfile --no-save --ignore-scripts",
     );
-    const promptsLinkRemoval = script.indexOf(
-      "rm -rf packages/core/node_modules/@elizaos/prompts",
-    );
-    const promptsLink = script.indexOf(
-      "ln -s ../../../prompts packages/core/node_modules/@elizaos/prompts",
-    );
-    const promptsLinkIdentity = script.indexOf(
-      'test "$(realpath packages/core/node_modules/@elizaos/prompts)" =',
-    );
-    const promptsBuild = script.indexOf(
-      "bun run --cwd packages/prompts build:package",
-    );
-    const promptsSentinel = script.indexOf(
-      "test -f packages/core/node_modules/@elizaos/prompts/dist/index.js",
-    );
     const coreBuild = script.indexOf("bun run build:core");
+    const runtimeProbe = script.indexOf(
+      'await import("@elizaos/core"); await import("@elizaos/prompts")',
+    );
     const firstRestart = script.indexOf(
       'sudo systemctl restart "$SYSTEMD_UNIT"',
     );
-
     expect(install).toBeGreaterThan(-1);
-    expect(promptsLinkRemoval).toBeGreaterThan(install);
-    expect(promptsLink).toBeGreaterThan(promptsLinkRemoval);
-    expect(promptsLinkIdentity).toBeGreaterThan(promptsLink);
-    expect(promptsBuild).toBeGreaterThan(promptsLinkIdentity);
-    expect(promptsSentinel).toBeGreaterThan(promptsBuild);
-    expect(coreBuild).toBeGreaterThan(promptsSentinel);
-    expect(firstRestart).toBeGreaterThan(coreBuild);
+    expect(coreBuild).toBeGreaterThan(install);
+    expect(runtimeProbe).toBeGreaterThan(coreBuild);
+    expect(firstRestart).toBeGreaterThan(runtimeProbe);
   });
 
   it("installs the deletion-only backup worker with persistent spool and live-cycle health", () => {

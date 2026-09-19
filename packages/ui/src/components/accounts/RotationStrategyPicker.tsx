@@ -4,7 +4,7 @@
  * routing that through `client.patchProviderStrategy`.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing-types";
 import type { AccountStrategy } from "../../api/client-agent";
 import { useAppSelector } from "../../state/app-store";
 import {

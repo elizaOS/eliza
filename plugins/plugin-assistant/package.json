@@ -1,0 +1,62 @@
+{
+  "name": "@elizaos/plugin-assistant",
+  "version": "2.0.3-beta.7",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun run build.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "bunx @biomejs/biome check --write src",
+    "lint:check": "bunx @biomejs/biome check src",
+    "lint:fix": "bunx @biomejs/biome check --write src",
+    "format": "bunx @biomejs/biome format --write src",
+    "format:check": "bunx @biomejs/biome format src"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@ai-sdk/anthropic": "^3.0.13",
+    "@ai-sdk/google": "^3.0.8",
+    "@ai-sdk/openai": "^3.0.9",
+    "@openrouter/ai-sdk-provider": "^2.0.0",
+    "ai": "^6.0.30",
+    "drizzle-orm": "0.45.2",
+    "dedent": "^1.7.1",
+    "mammoth": "^1.9.0",
+    "unpdf": "^1.4.0",
+    "@elizaos/prompts": "workspace:*",
+    "zod": "^4.4.3",
+    "uuid": "^14.0.0",
+    "@elizaos/shared": "workspace:*",
+    "yaml": "^2.7.0",
+    "handlebars": "^4.7.8"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "tsup": "^8.5.1",
+    "vitest": "^4.1.10",
+    "@elizaos/testing": "workspace:*",
+    "@biomejs/biome": "2.5.8",
+    "@elizaos/plugin-sql": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

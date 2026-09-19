@@ -10,8 +10,11 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { AgentRuntime, Plugin } from "@elizaos/core";
-import { logger, OptionalAppRoutePluginUnavailableError } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { OptionalAppRoutePluginUnavailableError } from "@elizaos/shared/api/app-route-plugin-registry";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -473,7 +476,7 @@ describe("registerAppRoutePlugins", () => {
   it("no-ops when both the registry and global loader queues are empty", async () => {
     const runtime = runtimeStub();
     await expect(registerAppRoutePlugins(runtime)).resolves.toBeUndefined();
-    expect(runtime.routes).toEqual([]);
+    expect(getHttpRuntime(runtime).routes).toEqual([]);
   });
 
   it("drains a single global loader onto the runtime route table", async () => {
@@ -486,7 +489,9 @@ describe("registerAppRoutePlugins", () => {
     await registerAppRoutePlugins(runtime);
 
     expect(load).toHaveBeenCalledOnce();
-    expect(runtime.routes).toEqual([{ type: "GET", path: "/api/notes" }]);
+    expect(getHttpRuntime(runtime).routes).toEqual([
+      { type: "GET", path: "/api/notes" },
+    ]);
   });
 
   it("prefixes a loader route path that does not start with a slash", async () => {
@@ -500,7 +505,7 @@ describe("registerAppRoutePlugins", () => {
     const runtime = runtimeStub();
     await registerAppRoutePlugins(runtime);
 
-    expect(runtime.routes.map((route) => route.path)).toEqual([
+    expect(getHttpRuntime(runtime).routes.map((route) => route.path)).toEqual([
       "/api/slashless",
     ]);
   });
@@ -523,7 +528,9 @@ describe("registerAppRoutePlugins", () => {
 
     expect(skippedLoad).not.toHaveBeenCalled();
     expect(keptLoad).toHaveBeenCalledOnce();
-    expect(runtime.routes.map((route) => route.path)).toEqual(["/api/notes"]);
+    expect(getHttpRuntime(runtime).routes.map((route) => route.path)).toEqual([
+      "/api/notes",
+    ]);
   });
 
   it("skips a loader by normalized short alias", async () => {
@@ -589,7 +596,7 @@ describe("registerAppRoutePlugins", () => {
     await registerAppRoutePlugins(runtime);
 
     expect(load).toHaveBeenCalledOnce();
-    expect(runtime.routes.map((route) => route.path)).toEqual([
+    expect(getHttpRuntime(runtime).routes.map((route) => route.path)).toEqual([
       "/api/notes-global",
     ]);
   });
@@ -613,7 +620,7 @@ describe("registerAppRoutePlugins", () => {
     const runtime = runtimeStub();
     await registerAppRoutePlugins(runtime);
 
-    expect(runtime.routes).toEqual([]);
+    expect(getHttpRuntime(runtime).routes).toEqual([]);
     expect(info).toHaveBeenCalledWith(
       "[eliza] Skipping 1 app route plugin(s) via ELIZA_SKIP_APP_ROUTE_PLUGINS: local-notes",
     );

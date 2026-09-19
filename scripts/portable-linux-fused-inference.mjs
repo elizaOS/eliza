@@ -6,7 +6,7 @@
  *
  * The expensive path is deliberately opt-in and transactional:
  *
- *   bun run linux:build-portable-fused-inference -- --out /absolute/output
+ *   node scripts/portable-linux-fused-inference.mjs --out /absolute/output
  *
  * `--print-plan` and `--preflight-only` do not download or build anything.
  */
@@ -864,7 +864,7 @@ function safeRemoveBuilderWorkspace(workRoot, keepTemp) {
 
 function printHelp() {
   process.stdout.write(
-    `Usage:\n  bun run linux:build-portable-fused-inference -- --out /absolute/output [options]\n\nOptions:\n  --out PATH         New output directory (required; must not exist)\n  --jobs N           Build parallelism, 1-64 (default: host CPUs, capped at 32)\n  --temp-root PATH   Builder workspace parent (default: system temporary dir)\n  --keep-temp        Retain the builder workspace for diagnosis\n  --preflight-only   Verify tools, capacity, namespace, and repository pins only\n  --print-plan       Print the immutable build plan as JSON; do no work\n`,
+    `Usage:\n  node scripts/portable-linux-fused-inference.mjs --out /absolute/output [options]\n\nOptions:\n  --out PATH         New output directory (required; must not exist)\n  --jobs N           Build parallelism, 1-64 (default: host CPUs, capped at 32)\n  --temp-root PATH   Builder workspace parent (default: system temporary dir)\n  --keep-temp        Retain the builder workspace for diagnosis\n  --preflight-only   Verify tools, capacity, namespace, and repository pins only\n  --print-plan       Print the immutable build plan as JSON; do no work\n`,
   );
 }
 

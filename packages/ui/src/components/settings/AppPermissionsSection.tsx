@@ -12,7 +12,7 @@ import {
   parseAppPermissions,
   RECOGNISED_PERMISSION_NAMESPACES,
   type RecognisedPermissionNamespace,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/app-permissions";
 import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";

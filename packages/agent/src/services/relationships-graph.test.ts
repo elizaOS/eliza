@@ -9,7 +9,7 @@ import {
   createNativeRelationshipsGraphService as coreCreateNativeRelationshipsGraphService,
   getMemoriesForCluster as coreGetMemoriesForCluster,
   searchMemoriesForCluster as coreSearchMemoriesForCluster,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import { describe, expect, it } from "vitest";
 import {
   createNativeRelationshipsGraphService,

@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 const CLAIM_GENERATION = new Date("2026-09-18T00:00:01Z");
 const REQUESTED_AT = new Date("2026-08-19T00:00:00Z");

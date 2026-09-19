@@ -6,12 +6,16 @@
  * `RouteHandlerResult` still carries the full body. Drives the real
  * `dispatchRoute` with a minimal fake runtime; no server boot.
  */
-import type { IAgentRuntime, Route } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { Route } from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { describe, expect, it } from "vitest";
 import { dispatchRoute } from "./dispatch-route.ts";
 
 function runtimeWithRoutes(routes: Route[]): IAgentRuntime {
-  return { routes } as unknown as IAgentRuntime;
+  const runtime = {} as IAgentRuntime;
+  getHttpRuntime(runtime).routes = routes;
+  return runtime;
 }
 
 describe("dispatchRoute onChunk sink (#12352)", () => {

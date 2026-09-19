@@ -6,7 +6,7 @@
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node", "react"],
+    "types": ["node", "react", "vite/client"],
     "allowImportingTsExtensions": true,
     "declaration": false,
     "noEmit": true,
@@ -60,15 +60,17 @@
       "@elizaos/skills/*": ["../skills/src/*"],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/*": ["../core/src/*"],
-      "@elizaos/logger": ["../logger/src/index.ts"],
-      "@elizaos/logger/*": ["../logger/src/*"],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
       "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
       "@elizaos/agent/*": ["./src/platform/empty-node-module.ts"],
-      "@elizaos/vault": ["../../packages/vault/src/index.ts"],
-      "@elizaos/vault/*": ["../../packages/vault/src/*"],
+      "@elizaos/credentials/vault": [
+        "../../packages/credentials/src/vault/index.ts"
+      ],
+      "@elizaos/credentials/vault/*": [
+        "../../packages/credentials/src/vault/*"
+      ],
       "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
       "@elizaos/cloud-shared": ["../cloud/shared/src/index.ts"],

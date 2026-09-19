@@ -14,12 +14,12 @@
  * context, so no message phrasing may drop it. Uses a real in-memory
  * AgentRuntime with call-counting providers; no database or model.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
-import { userPersonalityProvider } from "../features/advanced-capabilities/personality/providers/user-personality";
-import { PersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store";
-import { AgentRuntime } from "../runtime";
-import { stage1ResponseStateProviderNames } from "../services/message";
+import { userPersonalityProvider } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/providers/user-personality.ts";
+import { PersonalityStore } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/services/personality-store.ts";
+import { stage1ResponseStateProviderNames } from "../../../../plugins/plugin-assistant/src/services/message.ts";
 import type {
 	Character,
 	Content,
@@ -29,6 +29,7 @@ import type {
 	UUID,
 } from "../types";
 import { ChannelType } from "../types";
+import { createInitializedRuntime } from "./initialized-runtime";
 
 const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
 const ENTITY_ID = "22222222-2222-2222-2222-222222222222" as UUID;
@@ -66,7 +67,7 @@ function countingProvider(name: string): {
 
 describe("stage1ResponseStateProviderNames", () => {
 	it("composes the actual user's saved style before context selection without exposing another user's slot", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createInitializedRuntime({
 			character: { name: "preference-stage1" } as Character,
 			adapter: new InMemoryDatabaseAdapter(),
 		});
@@ -201,7 +202,7 @@ describe("stage1ResponseStateProviderNames", () => {
 	});
 
 	it("composes the core providers once and reuses them in the planner recompose", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createInitializedRuntime({
 			character: { name: "stage1-exec-test" } as Character,
 		});
 		const entities = countingProvider("ENTITIES");
@@ -343,7 +344,7 @@ describe("RECENT_ERRORS stage-1 exclusion on unaddressed group turns", () => {
 	});
 
 	it("never composes RECENT_ERRORS for an unaddressed group turn, but renders it for an addressed one", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createInitializedRuntime({
 			character: { name: AGENT_NAME } as Character,
 		});
 		const recentErrors = countingProvider("RECENT_ERRORS");

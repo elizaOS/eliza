@@ -12,7 +12,7 @@
  * added separately when that dependency is acceptable.
  */
 
-import type { Vault } from "@elizaos/vault";
+import type { Vault } from "@elizaos/credentials/vault";
 import { ethers } from "ethers";
 import { revealAgentWalletPrivateKey } from "../runtime/agent-wallets.ts";
 import type {

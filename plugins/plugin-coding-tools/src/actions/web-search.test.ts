@@ -13,28 +13,16 @@ import type {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { webSearchAction } from "./web-search.js";
 
-vi.mock("@elizaos/logger", () => {
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
   const logger = {
+    ...actual.logger,
     debug: vi.fn(),
     error: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
   };
-  return {
-    __loggerTestHooks: {},
-    addLogListener: vi.fn(),
-    createLogger: () => logger,
-    customLevels: {},
-    default: logger,
-    elizaLogger: logger,
-    logChatIn: vi.fn(),
-    logChatOut: vi.fn(),
-    logger,
-    logPrompt: vi.fn(),
-    logResponse: vi.fn(),
-    recentLogs: [],
-    removeLogListener: vi.fn(),
-  };
+  return { ...actual, logger, createLogger: () => logger, elizaLogger: logger };
 });
 
 const mcpJson = (text: string): string =>

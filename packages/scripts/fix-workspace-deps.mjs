@@ -22,8 +22,8 @@
  *
  * Workflow:
  *   1. Pull/clone
- *   2. `bun run fix-deps:check` verifies local packages use workspace:*
- *   3. `bun run fix-deps` repairs drift if a manifest picked up a registry pin
+ *   2. `bun packages/scripts/fix-workspace-deps.mjs --check` verifies local packages use workspace:*
+ *   3. `bun packages/scripts/fix-workspace-deps.mjs` repairs drift if a manifest picked up a registry pin
  *   4. Publish/deploy tooling materializes exact npm versions at the boundary
  *
  * Git submodule plugins (plugins/*) can drift to registry pins from their

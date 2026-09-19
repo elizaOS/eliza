@@ -1,11 +1,6 @@
-/**
- * Re-export of @elizaos/core's sandbox-policy module so callers can import
- * from the conventional `app-core/src/runtime/sandbox-policy` path.
- * Canonical implementation lives in @elizaos/core (a leaf), letting any
- * package consult it without importing app-core.
- */
+/** Shared host policy for application store restrictions on local execution. */
 
 export {
   buildStoreVariantBlockedMessage,
   isLocalCodeExecutionAllowed,
-} from "@elizaos/core";
+} from "@elizaos/shared/platform/sandbox-policy";

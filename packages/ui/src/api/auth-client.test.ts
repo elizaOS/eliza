@@ -1,13 +1,13 @@
 /** Verifies the P1 session auth client's endpoint mapping and failure unions through the package's configured test harness. */
 // @vitest-environment node
 
-import { getElizaApiToken } from "@elizaos/shared";
 import {
   clearStoredStewardToken,
   hasStewardAuthedCookie,
   readStoredStewardToken,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
+import { getElizaApiToken } from "@elizaos/shared/utils/eliza-globals";
 /**
  * Unit coverage for auth-client.ts. Transport, boot-config, desktop bridge,
  * steward-session storage, and client-cloud seams are mocked; every asserted
@@ -42,7 +42,9 @@ import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
 
 vi.mock("./csrf-client", () => ({ fetchWithCsrf: vi.fn() }));
 vi.mock("../config/boot-config", () => ({ getBootConfig: vi.fn() }));
-vi.mock("@elizaos/shared", () => ({ getElizaApiToken: vi.fn() }));
+vi.mock("@elizaos/shared/utils/eliza-globals", () => ({
+  getElizaApiToken: vi.fn(),
+}));
 vi.mock("@elizaos/shared/steward-session-client", () => ({
   readStoredStewardToken: vi.fn(),
   writeStoredStewardToken: vi.fn(),

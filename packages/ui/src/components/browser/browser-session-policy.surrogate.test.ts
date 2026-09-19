@@ -3,7 +3,7 @@
  * truncation (200 cap). Mirrors #23565 precedent.
  */
 
-import { toWellFormedUnicode } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import {
   renderReceiptValue,

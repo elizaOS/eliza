@@ -11,16 +11,16 @@
  * is real; only the model surface is stubbed (deterministic — no live model).
  */
 
-import { v4 } from "uuid";
+import { randomUUID as v4 } from "node:crypto";
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
-import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import { TurnControllerRegistry } from "../runtime/turn-controller";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import {
 	candidateActionsIncludeAsyncHandoff,
 	DefaultMessageService,
-} from "../services/message";
-import { createMockRuntime } from "../testing/mock-runtime";
+} from "../../../../plugins/plugin-assistant/src/services/message.ts";
+import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
+import { TurnControllerRegistry } from "../runtime/turn-controller";
 import type { Action, IAgentRuntime } from "../types";
 import type { Room } from "../types/environment";
 import type { Memory } from "../types/memory";
@@ -93,7 +93,7 @@ function stage1ToolRouted(replyText: string, candidateActionNames: string[]) {
 function plannerToolCall(actionName: string) {
 	return {
 		text: "",
-		toolCalls: [{ id: `call-${actionName}`, name: actionName, args: {} }],
+		toolCalls: [{ id: `call-${actionName}`, name: actionName, arguments: {} }],
 	};
 }
 

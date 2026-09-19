@@ -14,7 +14,7 @@
  * first load renders a compact route to the wallet's detailed error state.
  */
 
-import type { WalletBalancesResponse } from "@elizaos/shared";
+import type { WalletBalancesResponse } from "@elizaos/shared/contracts/wallet-types";
 import { Wallet } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api";

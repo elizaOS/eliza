@@ -90,7 +90,7 @@ jobs:
       # install that skipped lifecycle scripts.
       - name: Batch runner clean-install preflight self-test
         if: matrix.shard == 1
-        run: node packages/scripts/test-cloud-run-preflight.self-test.mjs
+        run: bun test packages/scripts/__tests__/test-cloud-run.test.mjs
       - name: Run cloud unit tests
         run: bun run test:cloud
 
@@ -269,7 +269,7 @@ jobs:
         run: .github/scripts/install-playwright-browsers.sh chromium
       - name: Run blocking cloud stack specs
         run: >-
-          bun run cloud:e2e --
+          bun run --cwd packages/cloud/e2e test --
           'app-client-onboarding\.spec\.ts$'
           'app-client-handoff-success\.spec\.ts$'
           '(^|/)provision\.spec\.ts$'

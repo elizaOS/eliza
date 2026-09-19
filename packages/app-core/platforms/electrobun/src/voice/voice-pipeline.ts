@@ -1,12 +1,12 @@
 /** Implements Electrobun desktop voice pipeline ts behavior for app-core shell integration. */
-import type { JsonValue } from "@elizaos/core";
+import type { JsonValue } from "@elizaos/common";
+import { MODEL_CATALOG } from "@elizaos/shared/local-inference/catalog";
+import type { CatalogModel } from "@elizaos/shared/local-inference/types";
 import {
-  type CatalogModel,
-  MODEL_CATALOG,
   VOICE_MODEL_VERSIONS,
   type VoiceModelId,
   type VoiceModelVersion,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference/voice-models";
 import type {
   VoiceComponentRole,
   VoiceComponentSnapshot,

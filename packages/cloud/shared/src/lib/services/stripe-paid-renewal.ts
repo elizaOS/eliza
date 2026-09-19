@@ -1,6 +1,6 @@
 /** Reconciles signed invoice-paid deliveries through current platform provider objects and a single paid-renewal transaction; it never initiates a payment. */
 import { createHash, randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { dbWrite } from "../../db/helpers";

@@ -6,25 +6,30 @@ import {
   asUUID,
   ChannelType,
   type Content,
-  composePromptFromState,
+  type Media,
+  type Memory,
+  type MentionContext,
+  type UUID,
+} from "@elizaos/common";
+import {
   createUniqueUuid,
   EventType,
   executePlannedToolCall,
+  getStreamingContext,
   type HandlerCallback,
   type IAgentRuntime,
   type IMessageService,
   logger,
-  type Media,
-  type Memory,
-  type MentionContext,
   ModelType,
   parseBooleanFromText,
   type Room,
+  RunTerminalOwner,
+  runWithStreamingContext,
   type State,
   stripAugmentationForPersistence,
   truncateToCompleteSentence,
-  type UUID,
 } from "@elizaos/core";
+import { composePromptFromState } from "@elizaos/prompts/rendering";
 import { v4 } from "uuid";
 import { createPerfTrace } from "../../../../utils/perf-trace";
 import { invalidateActionValidationCache } from "../../providers/actions";
@@ -131,6 +136,25 @@ export class CloudBootstrapMessageService implements IMessageService {
     const timeoutDuration = options?.timeoutDuration ?? 60 * 60 * 1000; // 1 hour default
     let timeoutId: NodeJS.Timeout | undefined;
     let runId: UUID | undefined;
+    let terminal: RunTerminalOwner | undefined;
+    const deadline = new AbortController();
+    const signal = options?.abortSignal
+      ? AbortSignal.any([options.abortSignal, deadline.signal])
+      : deadline.signal;
+    let rejectAborted: (() => void) | undefined;
+    const abortPromise = new Promise<never>((_, reject) => {
+      rejectAborted = () => reject(signal.reason);
+      if (signal.aborted) rejectAborted();
+      else signal.addEventListener("abort", rejectAborted, { once: true });
+    });
+    const turnOptions: CloudMessageOptions = {
+      ...options,
+      abortSignal: signal,
+      onSettledActionResult: (result) => {
+        terminal?.recordActionResult(result);
+        options?.onSettledActionResult?.(result);
+      },
+    };
     // Initialize startTime at declaration to avoid non-null assertion in timeout callback
     const startTime = Date.now();
     const responseId = v4();
@@ -148,7 +172,16 @@ export class CloudBootstrapMessageService implements IMessageService {
       await setLatestResponseId(runtime.agentId, message.roomId, responseId);
 
       // Start run tracking
+      signal.throwIfAborted();
       runId = runtime.startRun(message.roomId) as UUID;
+      terminal = new RunTerminalOwner(
+        runtime,
+        runId,
+        message,
+        startTime,
+        options?.roomHandlerLease,
+      );
+      options?.onTrajectoryTerminalOwner?.("run");
 
       await runtime.emitEvent(EventType.RUN_STARTED, {
         runtime,
@@ -169,76 +202,67 @@ export class CloudBootstrapMessageService implements IMessageService {
           // let a stalled or rejecting listener keep the entire run pending
           // forever. Reject first, then emit the lifecycle event in the
           // background with failures reported and never blocking the deadline.
-          const timeoutEmission = runtime.emitEvent(EventType.RUN_TIMEOUT, {
-            runtime,
-            runId,
-            messageId: message.id!,
-            roomId: message.roomId,
-            entityId: message.entityId,
-            startTime,
-            status: "timeout",
-            endTime: Date.now(),
-            duration: Date.now() - startTime,
-            error: "Run exceeded timeout",
-            source: "CloudBootstrapMessageService",
-          } as never) as unknown;
-          if (typeof (timeoutEmission as { then?: unknown })?.then === "function") {
-            (timeoutEmission as Promise<void>).catch((error: unknown) => {
-              logger.warn(
-                {
-                  error: error instanceof Error ? error.message : String(error),
-                },
-                "[CloudBootstrap] RUN_TIMEOUT emission failed after deadline enforcement",
-              );
-              try {
-                runtime.reportError("CloudBootstrapMessageService.runTimeoutEmission", error);
-              } catch {
-                // error-policy:J7 reporting is best-effort diagnostics; the
-                // deadline was already enforced above.
-              }
-            });
-          }
-          reject(new Error("Run exceeded timeout"));
+          const timeoutError = new Error("Run exceeded timeout");
+          deadline.abort(timeoutError);
+          reject(timeoutError);
+          const timeoutEmission = Promise.resolve().then(() =>
+            runtime.emitEvent(EventType.RUN_TIMEOUT, {
+              runtime,
+              runId,
+              messageId: message.id!,
+              roomId: message.roomId,
+              entityId: message.entityId,
+              startTime,
+              status: "timeout",
+              endTime: Date.now(),
+              duration: Date.now() - startTime,
+              error: "Run exceeded timeout",
+              source: "CloudBootstrapMessageService",
+            } as never),
+          );
+          timeoutEmission.catch((error: unknown) => {
+            logger.warn(
+              {
+                error: error instanceof Error ? error.message : String(error),
+              },
+              "[CloudBootstrap] RUN_TIMEOUT emission failed after deadline enforcement",
+            );
+            try {
+              runtime.reportError("CloudBootstrapMessageService.runTimeoutEmission", error);
+            } catch {
+              // error-policy:J7 reporting is best-effort diagnostics; the
+              // deadline was already enforced above.
+            }
+          });
         }, timeoutDuration);
       });
 
-      const processingPromise = this.processMessage(
-        runtime,
-        message,
-        callback,
-        responseId,
-        runId,
-        startTime,
-        options,
+      const processingPromise = runWithStreamingContext(
+        { ...getStreamingContext(), messageId: message.id, abortSignal: signal },
+        () => this.processMessage(runtime, message, callback, responseId, startTime, turnOptions),
       );
-
-      const result = await Promise.race([processingPromise, timeoutPromise]);
-
-      clearTimeout(timeoutId);
-      return result;
+      const result = await Promise.race([processingPromise, timeoutPromise, abortPromise]);
+      signal.throwIfAborted();
+      const outcome = { ...result.outcome, effects: terminal.effects };
+      terminal.request(outcome);
+      return { ...result, outcome, trajectoryTerminalOwner: "run" };
     } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      terminal?.request(
+        signal.aborted
+          ? { status: "cancelled", reason, effects: terminal.effects }
+          : {
+              status: "failed",
+              error: { kind: "turn_execution", transient: false, message: reason },
+              effects: terminal.effects,
+            },
+        error,
+      );
       await cleanupLatestResponseId(runtime.agentId, message.roomId, responseId);
-
-      // Emit RUN_ENDED event on error so tracking is complete
-      if (runId && startTime) {
-        await runtime.emitEvent(EventType.RUN_ENDED, {
-          runtime,
-          runId,
-          messageId: message.id!,
-          roomId: message.roomId,
-          entityId: message.entityId,
-          startTime,
-          status: "error",
-          endTime: Date.now(),
-          duration: Date.now() - startTime,
-          error: error instanceof Error ? error.message : String(error),
-          source: "CloudBootstrapMessageService",
-        } as never);
-      }
-
       throw error;
     } finally {
       clearTimeout(timeoutId);
+      if (rejectAborted) signal.removeEventListener("abort", rejectAborted);
     }
   }
 
@@ -247,7 +271,6 @@ export class CloudBootstrapMessageService implements IMessageService {
     message: Memory,
     callback: HandlerCallback | undefined,
     responseId: string,
-    runId: UUID,
     startTime: number,
     options?: CloudMessageOptions,
   ): Promise<MessageProcessingResult> {
@@ -258,8 +281,8 @@ export class CloudBootstrapMessageService implements IMessageService {
     // Skip messages from self
     if (message.entityId === runtime.agentId) {
       logger.debug(`[CloudBootstrap] Skipping message from self`);
-      await this.emitRunEnded(runtime, runId, message, startTime, "self");
       return {
+        outcome: { status: "completed", reason: "self", effects: [] },
         didRespond: false,
         responseContent: null,
         responseMessages: [],
@@ -303,8 +326,8 @@ export class CloudBootstrapMessageService implements IMessageService {
 
     if (defLlmOff && agentUserState === null) {
       logger.debug("[CloudBootstrap] LLM is off by default");
-      await this.emitRunEnded(runtime, runId, message, startTime, "off");
       return {
+        outcome: { status: "completed", reason: "off", effects: [] },
         didRespond: false,
         responseContent: null,
         responseMessages: [],
@@ -319,8 +342,8 @@ export class CloudBootstrapMessageService implements IMessageService {
       !message.content.text?.toLowerCase().includes(runtime.character.name?.toLowerCase() ?? "");
     if (isMuted) {
       logger.debug(`[CloudBootstrap] Ignoring muted room ${message.roomId}`);
-      await this.emitRunEnded(runtime, runId, message, startTime, "muted");
       return {
+        outcome: { status: "completed", reason: "muted", effects: [] },
         didRespond: false,
         responseContent: null,
         responseMessages: [],
@@ -387,8 +410,8 @@ export class CloudBootstrapMessageService implements IMessageService {
 
     if (!shouldRespondToMessage) {
       logger.debug(`[CloudBootstrap] Not responding based on evaluation`);
-      await this.emitRunEnded(runtime, runId, message, startTime, "shouldRespond:no");
       return {
+        outcome: { status: "completed", reason: "shouldRespond:no", effects: [] },
         didRespond: false,
         responseContent: null,
         responseMessages: [],
@@ -411,6 +434,7 @@ export class CloudBootstrapMessageService implements IMessageService {
       parseBooleanFromText(String(runtime.getSetting("USE_NATIVE_PLANNER") ?? "true"));
 
     perfTrace.mark("llm-processing");
+    options?.abortSignal?.throwIfAborted();
     // Run appropriate processing strategy
     let result: StrategyResult;
     if (useNativePlanner) {
@@ -428,6 +452,7 @@ export class CloudBootstrapMessageService implements IMessageService {
       result = await this.runNativeSinglePassCore(runtime, message, state, callback, options);
     }
 
+    options?.abortSignal?.throwIfAborted();
     const responseContent = result.responseContent;
     const responseMessages = result.responseMessages;
     state = result.state;
@@ -435,8 +460,8 @@ export class CloudBootstrapMessageService implements IMessageService {
     // Race check before sending response
     if (!(await isLatestResponseId(runtime.agentId, message.roomId, responseId))) {
       logger.info(`[CloudBootstrap] Response discarded - newer message being processed`);
-      await this.emitRunEnded(runtime, runId, message, startTime, "race-discarded");
       return {
+        outcome: { status: "cancelled", reason: "race-discarded", effects: [] },
         didRespond: false,
         responseContent: null,
         responseMessages: [],
@@ -455,6 +480,7 @@ export class CloudBootstrapMessageService implements IMessageService {
       if (mode === "simple") {
         // Simple mode - just call callback with content
         if (callback) {
+          options?.abortSignal?.throwIfAborted();
           await callback(responseContent);
         }
       }
@@ -478,6 +504,7 @@ export class CloudBootstrapMessageService implements IMessageService {
               responseContent.evalCallbacks = content;
             }
             if (callback) {
+              options?.abortSignal?.throwIfAborted();
               return callback(content);
             }
             return [];
@@ -493,25 +520,12 @@ export class CloudBootstrapMessageService implements IMessageService {
       logger.debug("[CloudBootstrap] Skipping evaluators because memory storage is unavailable");
     }
 
-    // Emit run ended event
-    await runtime.emitEvent(EventType.RUN_ENDED, {
-      runtime,
-      runId,
-      messageId: message.id!,
-      roomId: message.roomId,
-      entityId: message.entityId,
-      startTime,
-      status: "completed",
-      endTime: Date.now(),
-      duration: Date.now() - startTime,
-      source: "CloudBootstrapMessageService",
-    } as never);
-
     perfTrace.mark("finalize");
     perfTrace.end();
     logger.info(`[CloudBootstrap] Completed in ${Date.now() - startTime}ms`);
 
     return {
+      outcome: { status: "completed", effects: [] },
       didRespond: true,
       responseContent,
       responseMessages,
@@ -924,7 +938,11 @@ export class CloudBootstrapMessageService implements IMessageService {
               ],
             },
             hasActionParams ? { name: action, params: actionParams } : { name: action },
-            options?.onStreamChunk ? { onStreamChunk: options.onStreamChunk } : undefined,
+            {
+              onStreamChunk: options?.onStreamChunk,
+              abortSignal: options?.abortSignal,
+              onSettledResult: options?.onSettledActionResult,
+            },
           );
           const resultText =
             typeof result.text === "string" && result.text.length > 0
@@ -1494,26 +1512,5 @@ export class CloudBootstrapMessageService implements IMessageService {
     logger.info(
       `[CloudBootstrap] Cleared ${deletedCount}/${memories.length} memories from channel ${channelId}`,
     );
-  }
-
-  private async emitRunEnded(
-    runtime: IAgentRuntime,
-    runId: UUID,
-    message: Memory,
-    startTime: number,
-    status: string,
-  ): Promise<void> {
-    await runtime.emitEvent(EventType.RUN_ENDED, {
-      runtime,
-      runId,
-      messageId: message.id!,
-      roomId: message.roomId,
-      entityId: message.entityId,
-      startTime,
-      status,
-      endTime: Date.now(),
-      duration: Date.now() - startTime,
-      source: "CloudBootstrapMessageService",
-    } as never);
   }
 }

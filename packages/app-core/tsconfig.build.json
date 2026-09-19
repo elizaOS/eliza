@@ -15,11 +15,11 @@
       "@elizaos/app-core": ["./src/index.ts"],
       "@elizaos/agent": ["../agent/dist/packages/agent/src/index.d.ts"],
       "@elizaos/agent/*": ["../agent/dist/packages/agent/src/*"],
-      "@elizaos/core": ["../core/dist/index.node.d.ts"],
+      "@elizaos/core": ["../core/dist/index.d.ts"],
       "@elizaos/core/*": ["../core/dist/*"],
       "@elizaos/shared": ["../shared/dist/index.d.ts"],
       "@elizaos/ui": ["../ui/dist/index.d.ts"],
-      "@elizaos/vault": ["../vault/dist/index.d.ts"],
+      "@elizaos/credentials/vault": ["../credentials/dist/vault/index.d.ts"],
       "@elizaos/plugin-browser": [
         "../../plugins/plugin-browser/dist/index.d.ts"
       ],
@@ -29,7 +29,7 @@
       "@elizaos/plugin-elizacloud/*": [
         "../../plugins/plugin-elizacloud/dist/*"
       ],
-      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-wechat": ["../../plugins/plugin-wechat/dist/index.d.ts"],
       "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],

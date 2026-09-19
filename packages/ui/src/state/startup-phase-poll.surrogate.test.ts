@@ -2,7 +2,7 @@
  * Surrogate-safe truncation for startup-phase-poll boot traces.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 
 describe("startup-phase-poll surrogate-safe", () => {

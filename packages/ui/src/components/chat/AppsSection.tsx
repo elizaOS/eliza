@@ -5,7 +5,7 @@
  * that are not currently running. Clicking an app launches / focuses it.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { LayoutGrid, MoreHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";

@@ -13,7 +13,7 @@
  * abort, no retries); the caller owns retry/backoff policy.
  */
 
-import { ElizaError } from "@elizaos/core/edge";
+import { ElizaError } from "@elizaos/common";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
 
 export const SHARED_RECALL_EDGE_COMPATIBILITY = {

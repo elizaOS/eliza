@@ -11,7 +11,7 @@ import {
   parseDevTrajectoryRecoveryChildMessage,
   sameDevTrajectoryRecoveryOwner,
   sameDevTrajectoryRecoveryScope,
-} from "../../../agent/src/runtime/dev-trajectory-recovery-protocol.ts";
+} from "@elizaos/agent/runtime/dev-trajectory-recovery-protocol";
 
 export function createDevTrajectoryRecoveryCoordinator({ warn }) {
   const knownOwners = new Map();

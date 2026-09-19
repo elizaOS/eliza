@@ -1,7 +1,7 @@
 /**
  * Types for the registered-action inventory scanner so TypeScript consumers
  * (the builtin-view action guard test in packages/ui) can import the plain-JS
- * module that the catalog generator and the CI guard share.
+ * module shared by source navigation and the CI guard.
  */
 export interface RegisteredActionInventoryEntry {
   name: string;

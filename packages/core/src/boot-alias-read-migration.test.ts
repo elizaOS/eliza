@@ -9,8 +9,8 @@
  */
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveTrajectoryDir } from "./runtime/trajectory-recorder";
-import { isElizaSettingsDebugEnabled } from "./settings-debug";
+import { resolveTrajectoryDir } from "../../../plugins/plugin-assistant/src/runtime/trajectory-recorder.ts";
+import { isElizaSettingsDebugEnabled } from "../../shared/src/settings-debug.ts";
 
 const STORE_KEY = Symbol.for("elizaos.app.boot-config");
 const WINDOW_KEY = "__ELIZAOS_APP_BOOT_CONFIG__";

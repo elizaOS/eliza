@@ -49,14 +49,14 @@
 
 import {
   type ActionParameterSchema,
-  composePrompt,
   type IAgentRuntime,
   logger,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
+import { composePrompt } from "@elizaos/prompts/rendering";
 import { getRecentMessagesData } from "@elizaos/shared";
 
 /**

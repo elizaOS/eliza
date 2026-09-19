@@ -2,7 +2,7 @@
  * Unit coverage asserting the category→icon map covers the frozen
  * NotificationCategory union exactly. Pure, no harness.
  */
-import type { NotificationCategory } from "@elizaos/core";
+import type { NotificationCategory } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import { CATEGORY_ICON, categoryIcon } from "./category-icon";
 

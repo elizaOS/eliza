@@ -14,14 +14,14 @@
  * (#9948).
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type {
-  IAgentRuntime,
   LegacyRouteHandler,
   Route,
   RouteRequest,
   RouteResponse,
-} from "@elizaos/core";
-import { logger } from "@elizaos/core";
+} from "@elizaos/shared/api/http-plugin";
 import { Connection, type SendOptions, Transaction, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { resolveWalletBackend } from "../../../wallet/select-backend";

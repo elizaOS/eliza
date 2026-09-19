@@ -17,18 +17,18 @@ import {
   BM25,
   ChannelType,
   compareMemoryIds,
-  composePrompt,
   composeToolDiagnosticRedactor,
   createMessageMemory,
   ElizaError,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
   ModelType,
-  memoryContextQaTemplate,
   projectCompleteToolValueForModel,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { memoryContextQaTemplate } from "@elizaos/prompts";
+import { composePrompt } from "@elizaos/prompts/rendering";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
   PatchMemoryRequestSchema,

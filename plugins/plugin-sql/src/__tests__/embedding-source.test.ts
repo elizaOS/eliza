@@ -1,32 +1,22 @@
 /** Real PGlite source-conditioned vector persistence, not a mocked adapter. */
 import { randomUUID } from "node:crypto";
 import { ChannelType, type IDatabaseAdapter, type UUID } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/core/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createDatabaseAdapter } from "../index.node";
+import { createIsolatedTestDatabase } from "./test-helpers";
 
 describe("SQL embedding source writes", () => {
   let agentId: UUID, entityId: UUID, roomId: UUID;
   let adapter: IDatabaseAdapter;
   let cleanup: () => Promise<void>;
   beforeAll(async () => {
-    const setup = await createTestRuntime({
-      characterName: "EmbeddingSourceSQL",
-      embeddingDimensions: 384,
-    });
+    const setup = await createIsolatedTestDatabase("EmbeddingSourceSQL");
     cleanup = setup.cleanup;
     agentId = setup.runtime.agentId;
-    // Reuse the migrated fixture store but exercise this checkout's source adapter.
-    adapter = createDatabaseAdapter({ dataDir: setup.pgliteDir }, agentId);
+    adapter = setup.adapter;
     entityId = randomUUID() as UUID;
     roomId = randomUUID() as UUID;
-    await setup.runtime.ensureConnection({
-      entityId,
-      roomId,
-      worldId: agentId,
-      source: "test",
-      type: ChannelType.DM,
-    });
+    await adapter.createEntities([{ id: entityId, agentId, names: ["Embedding source"] }]);
+    await adapter.createRooms([{ id: roomId, agentId, source: "test", type: ChannelType.DM }]);
   });
   afterAll(async () => {
     await cleanup?.();

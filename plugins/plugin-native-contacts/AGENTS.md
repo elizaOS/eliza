@@ -94,7 +94,7 @@ Add the interface/type to `src/definitions.ts` and re-export via `src/index.ts` 
 - **Permissions are feature-gated, not app-required.** The plugin declares the `contacts` alias (`READ_CONTACTS`/`WRITE_CONTACTS`) in `@CapacitorPlugin(permissions=…)`, so the Capacitor base `Plugin` auto-provides `checkPermissions()` / `requestPermissions()` (`{ contacts: PermissionState }`; web rejects with `UNAVAILABLE`). The Contacts view calls `requestPermissions()` on first open (idempotent — already-granted never re-prompts) and shows a grant-in-settings message if denied. Nothing requests contacts at app launch. The bridge methods still reject if not granted (defensive); do NOT add a launch-time or app-wide contacts gate.
 - **Complete by default.** `listContacts` returns every matching contact unless the caller explicitly requests a positive pagination limit.
 - **vCard parser is internal.** `parseVCards` in `ContactsPlugin.kt` handles RFC 6350 line folding and the `FN`/`N`/`TEL`/`EMAIL` properties. It intentionally ignores other vCard fields. Photo data is not imported.
-- **Build output.** The published package ships `dist/esm/` (ESM, consumed by bundlers) and `dist/plugin.cjs.js` (CJS). The `bun`/`development` export condition points directly to `src/index.ts` for zero-build dev.
+- **Build output.** The published package ships `dist/esm/` (ESM, consumed by bundlers) and `dist/plugin.cjs.js` (CJS). The explicit `eliza-source` export condition points directly to `src/index.ts` for zero-build dev.
 - **Peer dep.** `@capacitor/core ^8.3.1` must be present in the consuming app.
 
 ## Verification

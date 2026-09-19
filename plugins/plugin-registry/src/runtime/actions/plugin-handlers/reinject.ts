@@ -1,0 +1,68 @@
+/** Removes a managed local plugin copy so package resolution uses the installed release. */
+
+import type {
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+} from "@elizaos/core";
+import type { PluginManagerService } from "../../services/pluginManagerService.ts";
+
+export interface ReinjectInput {
+  runtime: IAgentRuntime;
+  name: string;
+  callback?: HandlerCallback;
+}
+
+export async function runReinject({
+  runtime,
+  name,
+  callback,
+}: ReinjectInput): Promise<ActionResult> {
+  const service = runtime.getService(
+    "plugin_manager",
+  ) as PluginManagerService | null;
+  if (!service) {
+    const text = "Plugin manager service not available";
+    await callback?.({ text });
+    return { success: false, text };
+  }
+
+  if (!name) {
+    const text = "Specify an ejected plugin name to reinject.";
+    await callback?.({ text });
+    return { success: false, text };
+  }
+
+  const result = await service.reinjectPlugin(name);
+
+  if (!result.success) {
+    const text = `Failed to reinject ${name}: ${result.error ?? "unknown error"}`;
+    await callback?.({ text });
+    return { success: false, text };
+  }
+
+  // Human wording, no raw removed-path (it stays in values/data); verified +
+  // turnComplete make the confirmation the sole delivery.
+  const text =
+    `Reinjected ${result.pluginName} — back on the standard installed version.` +
+    (result.requiresRestart ? " A restart is needed to pick it up." : "");
+  await callback?.({ text });
+  return {
+    success: true,
+    text,
+    userFacingText: text,
+    verifiedUserFacing: true,
+    turnComplete: true,
+    values: {
+      mode: "reinject",
+      name: result.pluginName,
+      removedPath: result.removedPath,
+    },
+    data: {
+      success: result.success,
+      pluginName: result.pluginName,
+      removedPath: result.removedPath,
+      requiresRestart: result.requiresRestart,
+    },
+  };
+}

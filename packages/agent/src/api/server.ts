@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * REST API server for the Eliza Control UI.
  *
@@ -9,7 +10,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
-import { createRequire } from "node:module";
 import { registerInProcessApi } from "./in-process-api.ts";
 
 function tokenMatches(expected: string, provided: string): boolean {
@@ -64,25 +64,27 @@ import {
   type IAgentRuntime,
   logger,
   NotificationService,
-  readJsonBody as parseJsonBody,
-  type ReadJsonBodyOptions,
-  type Route,
-  readRequestBody,
   resolveOwnerEntityIdOrDefault,
   ServiceType,
-  sendJson,
-  sendJsonError,
-  tryHandleTrajectoryReadRoutes,
-  writeJsonError,
-  writeJsonResponse,
 } from "@elizaos/core";
 import type {
   AppManagerLike,
   AppsRouteActorRole,
   FavoriteAppsStore,
 } from "@elizaos/plugin-app-manager";
+import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
 import { formatError, readAliasedEnv } from "@elizaos/shared";
 import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
+import {
+  readJsonBody as parseJsonBody,
+  type ReadJsonBodyOptions,
+  readRequestBody,
+  sendJson,
+  sendJsonError,
+  writeJsonError,
+  writeJsonResponse,
+} from "@elizaos/shared/api/http-helpers";
+import type { Route } from "@elizaos/shared/api/http-plugin";
 import {
   getStylePresets,
   normalizeCharacterLanguage,
@@ -649,8 +651,6 @@ import {
   type PluginEntry,
 } from "./plugin-discovery-helpers.ts";
 
-const _nodeRequire = createRequire(import.meta.url);
-
 // Re-export for downstream consumers (e.g. @elizaos/app-core)
 export {
   AGENT_EVENT_ALLOWED_STREAMS,
@@ -742,7 +742,6 @@ function requireCoreManager(runtime: AgentRuntime | null): CoreManagerLike {
 }
 
 const DELETED_CONVERSATIONS_FILENAME = "deleted-conversations.v1.json";
-const MAX_DELETED_CONVERSATION_IDS = 5000;
 
 interface DeletedConversationsStateFile {
   version: 1;
@@ -768,32 +767,6 @@ function readDeletedConversationIdsFromState(): Set<string> {
     );
     return new Set();
   }
-}
-
-function _persistDeletedConversationIdsToState(ids: Set<string>): void {
-  const dir = resolveStateDir();
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
-
-  const normalized = Array.from(ids)
-    .map((id) => id.trim())
-    .filter((id) => id.length > 0)
-    .slice(-MAX_DELETED_CONVERSATION_IDS);
-
-  const filePath = path.join(dir, DELETED_CONVERSATIONS_FILENAME);
-  const tmpFilePath = `${filePath}.${process.pid}.tmp`;
-  const payload: DeletedConversationsStateFile = {
-    version: 1,
-    updatedAt: new Date().toISOString(),
-    ids: normalized,
-  };
-
-  fs.writeFileSync(tmpFilePath, `${JSON.stringify(payload, null, 2)}\n`, {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
-  fs.renameSync(tmpFilePath, filePath);
 }
 
 export type {
@@ -1249,16 +1222,14 @@ function writeFavoriteAppsToConfig(
 const isBlockedObjectKey = isBlockedObjectKeyFromConfig;
 
 import {
-  resolveMcpServersRejection as _resolveMcpServersRejection,
-  resolveMcpTerminalAuthorizationRejection as _resolveMcpTerminalAuthorizationRejection,
+  resolveMcpServersRejection,
+  resolveMcpTerminalAuthorizationRejection,
 } from "./server-helpers-mcp.ts";
 
 export {
   resolveMcpServersRejection,
   resolveMcpTerminalAuthorizationRejection,
 } from "./server-helpers-mcp.ts";
-
-const resolveMcpServersRejection = _resolveMcpServersRejection;
 
 import { pickRandomNames } from "../runtime/first-run-names.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
@@ -1328,7 +1299,6 @@ export {
 
 import type { AgentAutomationMode } from "./server-types.ts";
 
-const AGENT_AUTOMATION_HEADER = "x-eliza-agent-action";
 const AGENT_AUTOMATION_MODES = new Set<AgentAutomationMode>([
   "connectors-only",
   "full",
@@ -1340,12 +1310,6 @@ function parseAgentAutomationMode(value: unknown): AgentAutomationMode | null {
     return null;
   }
   return normalized as AgentAutomationMode;
-}
-
-function _isAgentAutomationRequest(req: http.IncomingMessage): boolean {
-  const raw = req.headers[AGENT_AUTOMATION_HEADER];
-  if (typeof raw !== "string") return false;
-  return /^(1|true|yes|agent)$/i.test(raw.trim());
 }
 
 function persistAgentAutomationMode(
@@ -1388,25 +1352,20 @@ function buildPluginEvmDiagnosticEntry(
   );
 }
 
-import { resolveWalletExportRejection as _resolveWalletExportRejection } from "./server-helpers-wallet.ts";
+import { resolveWalletExportRejection } from "./server-helpers-wallet.ts";
 
 export {
   resolveWalletExportRejection,
   type WalletExportRejection,
 } from "./server-helpers-wallet.ts";
 
-const resolveWalletExportRejection = _resolveWalletExportRejection;
-
-import { resolvePluginConfigMutationRejections as _resolvePluginConfigMutationRejections } from "./server-helpers-plugin.ts";
+import { resolvePluginConfigMutationRejections } from "./server-helpers-plugin.ts";
 
 export {
   type PluginConfigMutationRejection,
   resolvePluginConfigMutationRejections,
   resolvePluginConfigReply,
 } from "./server-helpers-plugin.ts";
-
-const resolvePluginConfigMutationRejections =
-  _resolvePluginConfigMutationRejections;
 
 // ---------------------------------------------------------------------------
 // Route handler
@@ -1432,39 +1391,36 @@ interface RequestContext {
   getAppManager?: () => Promise<AppManagerLike>;
 }
 
-const resolveMcpTerminalAuthorizationRejection =
-  _resolveMcpTerminalAuthorizationRejection;
-
 import {
-  applyCors as _applyCors,
-  clearPairing as _clearPairing,
-  ensureApiTokenForBindHost as _ensureApiTokenForBindHost,
-  ensurePairingCode as _ensurePairingCode,
-  extractWebSocketHandshakeToken as _extractWebSocketHandshakeToken,
-  getConfiguredApiToken as _getConfiguredApiToken,
-  getPairingExpiresAt as _getPairingExpiresAt,
-  isAllowedHost as _isAllowedHost,
-  isAuthorized as _isAuthorized,
-  isBoundaryRoleAuthorized as _isBoundaryRoleAuthorized,
-  isCredentialedCorsOrigin as _isCredentialedCorsOrigin,
-  isServerTokenAuthorized as _isServerTokenAuthorized,
-  isSharedTerminalClientId as _isSharedTerminalClientId,
-  isTrustedLocalRequest as _isTrustedLocalRequest,
-  isWebSocketAuthorized as _isWebSocketAuthorized,
-  isWebSocketSessionTokenAuthorized as _isWebSocketSessionTokenAuthorized,
-  isWebSocketUpgradeSessionAuthorized as _isWebSocketUpgradeSessionAuthorized,
-  markWebSocketUpgradeSessionAuthorized as _markWebSocketUpgradeSessionAuthorized,
-  normalizePairingCode as _normalizePairingCode,
-  normalizeWsClientId as _normalizeWsClientId,
-  pairingEnabled as _pairingEnabled,
-  rateLimitPairing as _rateLimitPairing,
-  rejectWebSocketUpgrade as _rejectWebSocketUpgrade,
-  releasePendingWebSocket as _releasePendingWebSocket,
-  resolveBoundaryRole as _resolveBoundaryRole,
-  resolveTerminalRunClientId as _resolveTerminalRunClientId,
-  resolveTerminalRunRejection as _resolveTerminalRunRejection,
-  resolveWebSocketUpgradeRejection as _resolveWebSocketUpgradeRejection,
-  tryAcquirePendingWebSocket as _tryAcquirePendingWebSocket,
+  applyCors,
+  clearPairing,
+  ensureApiTokenForBindHost,
+  ensurePairingCode,
+  extractWebSocketHandshakeToken,
+  getConfiguredApiToken,
+  getPairingExpiresAt,
+  isAllowedHost,
+  isAuthorized,
+  isBoundaryRoleAuthorized,
+  isCredentialedCorsOrigin,
+  isServerTokenAuthorized,
+  isSharedTerminalClientId,
+  isTrustedLocalRequest,
+  isWebSocketAuthorized,
+  isWebSocketSessionTokenAuthorized,
+  isWebSocketUpgradeSessionAuthorized,
+  markWebSocketUpgradeSessionAuthorized,
+  normalizePairingCode,
+  normalizeWsClientId,
+  pairingEnabled,
+  rateLimitPairing,
+  rejectWebSocketUpgrade,
+  releasePendingWebSocket,
+  resolveBoundaryRole,
+  resolveTerminalRunClientId,
+  resolveTerminalRunRejection,
+  resolveWebSocketUpgradeRejection,
+  tryAcquirePendingWebSocket,
   WS_AUTH_GRACE_TIMEOUT_MS,
 } from "./server-helpers-auth.ts";
 
@@ -1493,39 +1449,6 @@ import { resolveHostSessionAccessContext } from "./host-session-access-context.t
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { resolveInboxRequestAuthorization } from "./inbox-request-authorization.ts";
 import { isTrajectoryOwnerRequest } from "./trajectory-request-authorization.ts";
-
-const isAllowedHost = _isAllowedHost;
-const applyCors = _applyCors;
-const isAuthorized = _isAuthorized;
-const resolveBoundaryRole = _resolveBoundaryRole;
-const isTrustedLocalRequest = _isTrustedLocalRequest;
-const isBoundaryRoleAuthorized = _isBoundaryRoleAuthorized;
-const isCredentialedCorsOrigin = _isCredentialedCorsOrigin;
-const isServerTokenAuthorized = _isServerTokenAuthorized;
-const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
-const normalizeWsClientId = _normalizeWsClientId;
-const resolveTerminalRunClientId = _resolveTerminalRunClientId;
-const isSharedTerminalClientId = _isSharedTerminalClientId;
-const resolveTerminalRunRejection = _resolveTerminalRunRejection;
-const resolveWebSocketUpgradeRejection = _resolveWebSocketUpgradeRejection;
-const rejectWebSocketUpgrade = _rejectWebSocketUpgrade;
-const isWebSocketAuthorized = _isWebSocketAuthorized;
-const extractWebSocketHandshakeToken = _extractWebSocketHandshakeToken;
-const isWebSocketSessionTokenAuthorized = _isWebSocketSessionTokenAuthorized;
-const isWebSocketUpgradeSessionAuthorized =
-  _isWebSocketUpgradeSessionAuthorized;
-const markWebSocketUpgradeSessionAuthorized =
-  _markWebSocketUpgradeSessionAuthorized;
-const tryAcquirePendingWebSocket = _tryAcquirePendingWebSocket;
-const releasePendingWebSocket = _releasePendingWebSocket;
-const getConfiguredApiToken = _getConfiguredApiToken;
-const pairingEnabled = _pairingEnabled;
-
-const ensurePairingCode = _ensurePairingCode;
-const normalizePairingCode = _normalizePairingCode;
-const rateLimitPairing = _rateLimitPairing;
-const getPairingExpiresAt = _getPairingExpiresAt;
-const clearPairing = _clearPairing;
 
 /**
  * Lazy per-process runtime operation manager. Constructed on first
@@ -2283,26 +2206,6 @@ async function handleRequest(
     if (await handleComputerUseRoutes(req, res, pathname, method)) return;
   }
 
-  // ── Provider inference helpers ────────────────────────────────────────
-  const _disableCloudInference = (): void => {
-    delete process.env.ANTHROPIC_BASE_URL;
-    delete process.env.OPENAI_BASE_URL;
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.OPENAI_API_KEY;
-  };
-
-  const _enableCloudInference = (
-    cloudApiKey: string,
-    baseUrl: string,
-  ): void => {
-    // Configure coding agent CLIs to proxy through ElizaCloud /api/v1
-    process.env.ANTHROPIC_BASE_URL = `${baseUrl}/api/v1`;
-    process.env.ANTHROPIC_API_KEY = cloudApiKey;
-    process.env.OPENAI_BASE_URL = `${baseUrl}/api/v1`;
-    process.env.OPENAI_API_KEY = cloudApiKey;
-    // Gemini CLI and Aider — no proxy support via ElizaCloud inference
-  };
-
   if (method === "POST" && pathname === "/api/provider/switch") {
     if (
       await handleProviderSwitchRoutes({
@@ -2358,7 +2261,7 @@ async function handleRequest(
       error,
       saveConfig: saveElizaConfig,
       loadSubscriptionAuth: async () =>
-        (await import("@elizaos/auth")) as never,
+        (await import("@elizaos/credentials/auth")) as never,
     } as never)
   ) {
     return;
@@ -5307,7 +5210,8 @@ export async function startApiServer(opts?: {
   const assertX402RoutesValid = async (
     rt: AgentRuntime | null | undefined,
   ): Promise<void> => {
-    if (!rt || !runtimeRoutesNeedX402Validation(rt.routes)) return;
+    if (!rt || !runtimeRoutesNeedX402Validation(getHttpRuntime(rt).routes))
+      return;
     const agentId =
       rt.agentId != null && String(rt.agentId).length > 0
         ? String(rt.agentId)
@@ -5316,9 +5220,13 @@ export async function startApiServer(opts?: {
     if (!x402) return; // x402 module unavailable (e.g. mobile bundle) — nothing to validate
     const { validateX402Startup } = x402;
     if (!validateX402Startup) return;
-    const result = validateX402Startup(rt.routes as Route[], rt.character, {
-      agentId,
-    });
+    const result = validateX402Startup(
+      getHttpRuntime(rt).routes as Route[],
+      rt.character,
+      {
+        agentId,
+      },
+    );
     if (!result || typeof result !== "object") {
       logger.warn(
         "[x402] startup validator returned no result; skipping x402 route validation",

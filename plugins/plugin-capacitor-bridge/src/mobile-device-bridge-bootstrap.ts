@@ -24,6 +24,7 @@ import type { Server as HttpServer, IncomingMessage } from "node:http";
 import net from "node:net";
 import path from "node:path";
 import type { Duplex } from "node:stream";
+import type { Plugin } from "@elizaos/core";
 import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
@@ -37,7 +38,6 @@ import {
 	MobileDeviceBridgeService,
 	type MobileDeviceBridgeStatus,
 	ModelType,
-	type Plugin,
 	resolveBackgroundInferenceBudget,
 	resolveStateDir,
 	ServiceType,

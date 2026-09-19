@@ -3,7 +3,7 @@ import type {
   CloudStatusRouteContext,
 } from "./cloud-status-routes-autonomous.js";
 import type { ElizaConfig } from "../lib/config-like";
-import { isElizaCloudServiceSelectedInConfig } from "@elizaos/core";
+import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared/contracts/cloud-topology";
 import {
   fetchCloudCredits,
   resolveCloudConnectionSnapshot,

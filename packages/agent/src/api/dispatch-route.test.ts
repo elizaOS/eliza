@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Unit coverage for the canonical plugin-route dispatcher. The suite drives
  * real route tables through both return-shape and legacy handler paths,
@@ -6,20 +7,24 @@
  */
 
 import { Buffer } from "node:buffer";
+import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  Route,
+  RouteHandlerContext,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/shared/api/http-plugin";
 import {
   getRuntimeRouteHostContext,
-  type IAgentRuntime,
-  type Route,
-  type RouteHandlerContext,
-  type RouteRequest,
-  type RouteResponse,
   setRuntimeRouteHostContext,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/runtime-route-context";
 import { describe, expect, it } from "vitest";
 import { type DispatchRouteArgs, dispatchRoute } from "./dispatch-route.ts";
 
 function runtimeWithRoutes(routes: Route[]): IAgentRuntime {
-  return { routes } as unknown as IAgentRuntime;
+  const runtime = {} as IAgentRuntime;
+  getHttpRuntime(runtime).routes = routes;
+  return runtime;
 }
 
 function dispatch(
@@ -249,7 +254,7 @@ describe("dispatchRoute return-shape handlers", () => {
     const previous = { config: { owner: "previous" } };
     const active = { config: { owner: "active" } };
     setRuntimeRouteHostContext(runtime, previous);
-    runtime.routes.push(
+    getHttpRuntime(runtime).routes.push(
       privateRoute("/api/items", async () => {
         expect(getRuntimeRouteHostContext(runtime)).toBe(active);
         return { status: 200 };
@@ -264,7 +269,7 @@ describe("dispatchRoute return-shape handlers", () => {
   it("restores host context when the handler rejects", async () => {
     const runtime = runtimeWithRoutes([]);
     const active = { config: { owner: "active" } };
-    runtime.routes.push(
+    getHttpRuntime(runtime).routes.push(
       privateRoute("/api/items", async () => {
         expect(getRuntimeRouteHostContext(runtime)).toBe(active);
         throw new Error("route failed");

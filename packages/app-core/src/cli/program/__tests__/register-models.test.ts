@@ -1,12 +1,5 @@
+/** Exercises model-provider configuration reporting through the real CLI formatter. */
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-const mocks = vi.hoisted(() => ({
-  getLogPrefix: vi.fn(() => "[eliza]"),
-}));
-
-vi.mock("@elizaos/shared", () => ({
-  getLogPrefix: (...a: unknown[]) => mocks.getLogPrefix(...a),
-}));
 
 import { registerModelsCli } from "../register.models.ts";
 
@@ -63,7 +56,7 @@ describe("registerModelsCli", () => {
     const action = cmd.action.mock.calls[0][0] as () => void;
     action();
     const all = log.mock.calls.map((c) => c[0] as string).join("\n");
-    expect(all).toContain("[eliza] Model providers:");
+    expect(all).toContain("Model providers:");
     expect(all).toContain("OpenAI (GPT): configured");
     expect(all).toContain("Anthropic (Claude): not set");
     expect(all).toContain("DeepSeek: not set");

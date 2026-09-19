@@ -9,7 +9,7 @@
  * still hashes to the same digest.
  */
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { CANONICAL_JSON_UNBOUNDED } from "@elizaos/shared/canonical-json";
 import { describe, expect, test } from "vitest";
 import { computeStateHash, diffBackupState, emptyBackupState } from "./agent-backup-diff";

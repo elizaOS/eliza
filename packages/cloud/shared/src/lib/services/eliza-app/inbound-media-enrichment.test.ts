@@ -7,7 +7,7 @@
  * fakes; the helper's real typed errors drive the settlement branches.
  */
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import type {
   AdmitInboundMediaDescriptionInput,
   InboundMediaDescriptionAdmission,

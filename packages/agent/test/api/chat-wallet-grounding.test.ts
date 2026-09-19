@@ -5,10 +5,11 @@ import {
   createCharacter,
   createMessageMemory,
   type IAgentRuntime,
-  InMemoryDatabaseAdapter,
   ModelType,
   type State,
 } from "@elizaos/core";
+import { createAssistantPlugin } from "@elizaos/plugin-assistant";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { expect, it, vi } from "vitest";
 import { generateChatResponse } from "../../src/api/chat-routes.js";
 
@@ -23,6 +24,7 @@ it.each([2, 4])(
         settings: { ELIZA_ADMIN_ENTITY_ID: owner },
       }),
       adapter: new InMemoryDatabaseAdapter(),
+      plugins: [createAssistantPlugin()],
       enableAutonomy: false,
       logLevel: "fatal",
     });

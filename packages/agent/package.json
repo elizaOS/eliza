@@ -33,7 +33,6 @@
     "dev": "bun --no-install --conditions=eliza-source --hot src/bin.ts",
     "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
-    "gen:optional-plugin-imports": "bun run scripts/gen-optional-plugin-imports.ts",
     "build:mobile": "bun run scripts/build-mobile-bundle.mjs",
     "build:ios-bun": "bun run scripts/build-mobile-bundle.mjs --target=ios",
     "build:ios-jsc": "bun run scripts/build-mobile-bundle.mjs --target=ios-jsc",
@@ -55,7 +54,7 @@
     "test:e2e": "RUN_CRASH_RESTART_E2E=1 vitest run --config vitest.config.ts test/crash-restart-supervisor.test.ts",
     "test:integration": "cd ../.. && bunx vitest run --config packages/scripts/vitest/integration.config.ts --coverage.enabled=false packages/agent/",
     "test:remote-capabilities": "cd ../.. && bunx vitest run packages/agent/src/services/remote-plugin-adapter.test.ts packages/agent/src/services/remote-capability-router.test.ts packages/agent/src/services/remote-capability-endpoint-provider.test.ts packages/agent/src/services/remote-capability-endpoint-conformance.test.ts packages/agent/src/services/remote-capability-cloud-sandbox.test.ts packages/agent/src/services/remote-capability-live-report.test.ts packages/agent/src/api/remote-capability-routes.test.ts packages/core/src/capabilities/index.test.ts --coverage.enabled=false",
-    "test:remote-capabilities:source-build": "cd ../.. && bunx vitest run packages/agent/src/services/remote-plugin-adapter.test.ts -t \"builds a remote plugin from source|loads a built remote plugin from a separate capability server process\" --coverage.enabled=false",
+    "test:remote-capabilities:source-build": "cd ../.. && ELIZA_REMOTE_PLUGIN_BUILD_SMOKE=1 bunx vitest run packages/agent/src/services/remote-plugin-adapter.test.ts -t \"builds a remote plugin from source|loads a built remote plugin from a separate capability server process\" --coverage.enabled=false",
     "test:remote-capabilities:docker": "cd ../.. && ELIZA_REMOTE_CAPABILITY_DOCKER_SMOKE=1 bunx vitest run packages/agent/src/services/remote-plugin-adapter.test.ts -t \"Docker container capability server\" --coverage.enabled=false",
     "test:remote-capabilities:cloud-live": "cd ../.. && ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE=1 bunx vitest run packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts --coverage.enabled=false",
     "test:remote-capabilities:provider-live": "cd ../.. && ELIZA_REMOTE_CAPABILITY_PROVIDER_LIVE=1 bunx vitest run packages/agent/src/services/remote-capability-url-endpoint-providers.provider-smoke.test.ts --coverage.enabled=false"
@@ -322,6 +321,7 @@
     "directory": "dist"
   },
   "dependencies": {
+    "@elizaos/plugin-web-search": "workspace:*",
     "@ai-sdk/anthropic": "^3.0.13",
     "@ai-sdk/google": "^3.0.75",
     "@ai-sdk/openai": "^3.0.58",
@@ -368,7 +368,6 @@
     "@elizaos/registry": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/skills": "workspace:*",
-    "@elizaos/vault": "workspace:*",
     "@noble/curves": "2.2.0",
     "@noble/hashes": "2.2.0",
     "drizzle-orm": "0.45.2",
@@ -384,7 +383,10 @@
     "pngjs": "^7.0.0",
     "ws": "^8.21.3",
     "zod": "^4.4.3",
-    "@elizaos/auth": "workspace:*"
+    "@elizaos/credentials": "workspace:*",
+    "@elizaos/cloud-routing": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/prompts": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/plugin-calendar": "workspace:*",
@@ -427,7 +429,8 @@
     "resolve.exports": "2.0.3",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@elizaos/testing": "workspace:*"
   },
   "elizaos": {
     "scripts": {

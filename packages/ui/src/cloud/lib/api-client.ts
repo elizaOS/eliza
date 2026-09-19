@@ -25,13 +25,13 @@
  */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
-import { getElizaApiToken } from "@elizaos/shared";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
+import { logger } from "@elizaos/shared/logger";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
+import { getElizaApiToken } from "@elizaos/shared/utils/eliza-globals";
 import { readCsrfTokenFromCookie } from "../../api/auth/csrf-cookie";
 import { CSRF_HEADER_NAME } from "../../api/auth/sessions";
 import { desktopHttpTransportForUrl } from "../../api/desktop-http-transport";

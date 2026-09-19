@@ -35,7 +35,8 @@ import {
   ScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
 import type { LifeOpsGoalDefinition } from "@elizaos/shared";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { GoalsRepository } from "../db/goals-repository.ts";
 import {
   buildCheckinTaskInput,
   checkinIdempotencyKey,
@@ -407,5 +408,56 @@ describe("goal check-in tick mechanics", () => {
     expect(input.kind).toBe("checkin");
     expect(input.respectsGlobalPause).toBe(true);
     expect(input.source).toBe("plugin");
+  });
+});
+
+describe("goals startup reconciliation shutdown", () => {
+  it("stops without waiting for a runtime that never initialized", async () => {
+    const hasService = vi.fn();
+    const service = await GoalsCheckinService.start({
+      initPromise: new Promise<void>(() => {}),
+      hasService,
+    } as unknown as IAgentRuntime);
+    await service.stop();
+    expect(hasService).not.toHaveBeenCalled();
+  });
+
+  it("drains an admitted database read before stop resolves", async () => {
+    let finishRead!: () => void;
+    let enteredRead!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enteredRead = resolve;
+    });
+    const read = new Promise<void>((resolve) => {
+      finishRead = resolve;
+    });
+    const list = vi
+      .spyOn(GoalsRepository.prototype, "listGoals")
+      .mockImplementation(async () => {
+        enteredRead();
+        await read;
+        return [];
+      });
+    try {
+      const service = await GoalsCheckinService.start({
+        agentId: AGENT_ID,
+        initPromise: Promise.resolve(),
+        hasService: () => true,
+        getServiceLoadPromise: () => Promise.resolve({}),
+      } as unknown as IAgentRuntime);
+      await entered;
+      let stopped = false;
+      const stopping = service.stop().then(() => {
+        stopped = true;
+      });
+      await Promise.resolve();
+      expect(stopped).toBe(false);
+      finishRead();
+      await stopping;
+      expect(list).toHaveBeenCalledTimes(1);
+    } finally {
+      finishRead();
+      list.mockRestore();
+    }
   });
 });

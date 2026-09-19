@@ -4,11 +4,11 @@
  * these tests prove causal reply selection, not provider or persistence behavior.
  */
 import { describe, expect, it } from "vitest";
-import type { EffectReceipt } from "../../types/effects";
 import {
 	runPlannerLoop,
 	singleVerifiedUserFacingToolResultText,
-} from "../planner-loop";
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import type { EffectReceipt } from "../../types/effects";
 import type { PlannerToolResult } from "../planner-types";
 
 const question = "When should it happen?";
@@ -219,6 +219,7 @@ describe("planner confirmation preview causal completion", () => {
 							text: "",
 							toolCalls: [
 								{
+									id: `owner-todos-${current}`,
 									name:
 										current === 2 && scenario.tool
 											? scenario.tool

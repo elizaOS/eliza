@@ -3,14 +3,14 @@
  * of canonical private-reasoning markup, including malformed residue.
  */
 import { describe, expect, it } from "vitest";
-import { stripReasoningBlocks } from "../../services/message/fallback-reply";
+import { parseEvaluatorOutput } from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
+import { isUnsafeUserVisibleText } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import { stripReasoningBlocks } from "../../security/model-failure.ts";
 import {
 	hasReasoningResidue,
 	REASONING_TAG_NAMES,
 	stripReasoningPrefixes,
 } from "../../utils/reasoning-tags";
-import { parseEvaluatorOutput } from "../evaluator";
-import { isUnsafeUserVisibleText } from "../planner-loop";
 
 const ENVELOPE =
 	'```json\n{ "success": true, "decision": "FINISH", "thought": "done", "messageToUser": "The task is complete." }\n```';

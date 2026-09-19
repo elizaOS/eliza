@@ -5,8 +5,7 @@
  * over a minimal in-memory adapter; no model or database server.
  */
 import { describe, expect, it, vi } from "vitest";
-import { recentMessagesProvider } from "../features/basic-capabilities/providers/recentMessages";
-import { AgentRuntime } from "../runtime";
+import { recentMessagesProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/recentMessages.ts";
 import { ProviderStateComposer } from "../runtime/state-composition/composer";
 import { attestDeliveryAudienceFromCanonicalRoom } from "../security";
 import type {
@@ -23,6 +22,7 @@ import {
 	type State,
 	type UUID,
 } from "../types";
+import { createInitializedRuntime } from "./initialized-runtime";
 
 const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
 const OTHER_ROOM_ID = "11111111-1111-1111-1111-222222222222" as UUID;
@@ -40,7 +40,7 @@ function makeRecordedMessage(id: string, text = "gm"): Memory {
 
 describe("composeState under trajectory recording", () => {
 	it("keeps diagnostics but omits provider text when the audience changes during execution", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createInitializedRuntime({
 			character: { name: "Private capture" } as Character,
 			settings: { ELIZA_ADMIN_ENTITY_ID: USER_ID },
 		});
@@ -85,7 +85,7 @@ describe("composeState under trajectory recording", () => {
 
 	it("retains complete redacted text on fresh and reused reads without logging private internal data", async () => {
 		const secret = "sk-trajectory-recording-secret-canary-1234567890"; // gitleaks:allow -- synthetic redaction canary
-		const runtime = new AgentRuntime({
+		const runtime = await createInitializedRuntime({
 			character: { name: "Recorded provider" } as Character,
 			settings: { OPENAI_API_KEY: secret },
 		});
@@ -152,7 +152,7 @@ describe("composeState under trajectory recording", () => {
 	});
 
 	it("keeps cross-room interactions suppressed for a group during every compose", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createInitializedRuntime({
 			character: { name: "Agent" } as Character,
 		});
 		const agentEntity = {
@@ -235,7 +235,7 @@ describe("composeState under trajectory recording", () => {
 	});
 
 	it("reuses cached providers outside the refresh list without changing behavior", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createInitializedRuntime({
 			character: { name: "Agent" } as Character,
 		});
 		let factsRuns = 0;

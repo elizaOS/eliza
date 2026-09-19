@@ -11,7 +11,7 @@
  * env flag alone, a token-free env resolves to NO token, and the only thing
  * that mints ELIZA_API_TOKEN is an explicit ensureDesktopApiToken call.
  */
-import { resolveApiToken } from "@elizaos/shared";
+import { resolveApiToken } from "@elizaos/shared/runtime-env";
 import { describe, expect, it } from "vitest";
 import { resolveDesktopRuntimeMode } from "./api-base";
 import { ensureDesktopApiToken } from "./native/agent";

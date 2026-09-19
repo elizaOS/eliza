@@ -1,6 +1,6 @@
 /** Owns sandbox warm-claim operations while preserving the host’s lifecycle transactions, provider instance, and backup authority. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { dbWrite } from "../../../../db/helpers";
 import { type AgentSandbox } from "../../../../db/repositories/agent-sandboxes";
