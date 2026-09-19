@@ -3,8 +3,13 @@
  * OpenAI-compatible SDK. Deterministic loopback completions drive the actual
  * four builtin processors; no evaluator, identity service or database is mocked.
  */
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
 import { MemoryType, ModelType, type UUID } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/core/testing";
 import { afterEach, expect, it, vi } from "vitest";
@@ -15,10 +20,12 @@ import {
   createSemanticFixtures,
   prepareSemanticEvaluators,
   type ReplayFinish,
+  readRetainedSemanticEvidence,
   readSemanticEffects,
   replayResponseBody,
   runSemanticFixture,
 } from "../scripts/cerebras-evaluator-semantics.ts";
+import { shutdownRuntime } from "../src/runtime/eliza.ts";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -176,11 +183,15 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
       throw new Error("Semantic test forbids remote calls");
     return originalFetch(input, init);
   }) as typeof fetch;
+  const retainedRoot = await mkdtemp(join(tmpdir(), "semantic-restart-"));
+  const retainedDatabase = join(retainedRoot, "database");
   let live: Awaited<ReturnType<typeof createTestRuntime>> | undefined;
   try {
     live = await createTestRuntime({
       characterName: "SemanticBuiltinTest",
       embeddingDimensions: 384,
+      pgliteDir: retainedDatabase,
+      removePgliteDirOnCleanup: false,
     });
     live.runtime.registerModel(
       ModelType.TEXT_SMALL,
@@ -212,13 +223,86 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
           "Destination is missing",
         );
     }
+    const retainedReport = join(retainedRoot, "parent.json");
+    const resumedReport = join(retainedRoot, "resumed.json");
+    const runtimeBeforeRestart = live.runtime;
+    const serviceBeforeRestart =
+      await prepareSemanticEvaluators(runtimeBeforeRestart);
+    await writeFile(
+      retainedReport,
+      JSON.stringify({
+        status: "success",
+        processId: process.pid,
+        agentId: live.runtime.agentId,
+        characterName: "SemanticBuiltinTest",
+        databaseDirectory: retainedDatabase,
+        retainedDatabase: true,
+        fixtures,
+        finalReadbacks: await Promise.all(
+          fixtures.map(async (fixture) => ({
+            fixtureId: fixture.id,
+            effects: await readSemanticEffects(
+              runtimeBeforeRestart,
+              serviceBeforeRestart,
+              fixture,
+            ),
+          })),
+        ),
+      }),
+      { mode: 0o600 },
+    );
+    await expect(readRetainedSemanticEvidence(retainedReport)).rejects.toThrow(
+      "distinct process",
+    );
+    await shutdownRuntime(live.runtime, "semantic test restart boundary");
+    await live.cleanup();
+    live = undefined;
+    const moduleUrl = new URL(
+      "../scripts/cerebras-evaluator-semantics.ts",
+      import.meta.url,
+    ).href;
+    const runReadbackChild = () =>
+      promisify(execFile)(
+        "bun",
+        [
+          "--conditions=eliza-source",
+          "--eval",
+          `
+      import { readRetainedSemanticEvidence } from ${JSON.stringify(moduleUrl)};
+      import { writeFile } from "node:fs/promises";
+      const receipt = await readRetainedSemanticEvidence(${JSON.stringify(retainedReport)});
+      await writeFile(${JSON.stringify(resumedReport)}, JSON.stringify(receipt));
+    `,
+        ],
+        { timeout: 120000, maxBuffer: 16 * 1024 * 1024 },
+      );
+    await runReadbackChild();
+    const resumed = JSON.parse(await readFile(resumedReport, "utf8"));
+    expect(resumed.processId).not.toBe(process.pid);
+    expect(resumed.agentId).toBe(agentId);
+    expect(
+      resumed.readbacks.map((entry: { fixtureId: string }) => entry.fixtureId),
+    ).toEqual(fixtures.map((entry) => entry.id));
+    live = await createTestRuntime({
+      characterName: "SemanticBuiltinTest",
+      embeddingDimensions: 384,
+      pgliteDir: retainedDatabase,
+      removePgliteDirOnCleanup: false,
+    });
+    live.runtime.registerModel(
+      ModelType.TEXT_SMALL,
+      handleTextSmall,
+      "openai",
+      100,
+    );
+    const resumedRelationships = await prepareSemanticEvaluators(live.runtime);
     const [fixture, foreign] = fixtures;
     if (!fixture || !foreign) throw new Error("Missing adversarial fixtures");
     const runtime = live.runtime;
     const assertCurrent = async () => {
       const effects = await readSemanticEffects(
         runtime,
-        relationships,
+        resumedRelationships,
         fixture,
       );
       assertSemanticEffects(fixture, effects, agentId, fixtures);
@@ -284,7 +368,7 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
     );
     await runtime.deleteMemory(contradictoryId);
     await assertCurrent();
-    await relationships.upsertIdentity(
+    await resumedRelationships.upsertIdentity(
       fixture.entityId as UUID,
       {
         platform: "github",
@@ -296,8 +380,10 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
       [fixture.messageId as UUID],
     );
     await expect(assertCurrent()).rejects.toThrow("contaminated identity");
+    await shutdownRuntime(live.runtime, "corrupt retained semantic evidence");
     await live.cleanup();
     live = undefined;
+    await expect(runReadbackChild()).rejects.toThrow("contaminated identity");
     for (const rejected of ["length", "content_filter", "malformed"] as const) {
       finish = rejected;
       live = await createTestRuntime({
@@ -364,6 +450,7 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
   } finally {
     await live?.cleanup();
     globalThis.fetch = originalFetch;
+    await rm(retainedRoot, { recursive: true, force: true });
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     );
