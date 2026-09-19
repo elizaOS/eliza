@@ -1455,6 +1455,37 @@ describe("CALENDAR effect receipt settlement", () => {
     );
   });
 
+  it.each(["school fundraiser", "orchid exhibition"])(
+    "grounds an empty search once for %s",
+    async (query) => {
+      const runTextModel = vi.fn(
+        async () => '{"matchIds":[],"reason":"Different subject"}',
+      );
+      const action = createCalendarActionRunner(deps({ runTextModel }));
+      const result = await execute({
+        action,
+        service: { getCalendarFeed: vi.fn(async () => feed()) },
+        actor: message(`find ${query}`),
+        parameters: {
+          subaction: "search_events",
+          query,
+          details: {
+            timeMin: "2026-07-27T00:00:00Z",
+            timeMax: "2026-08-03T00:00:00Z",
+          },
+        },
+        delivered: [],
+      });
+
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      expect(runTextModel).toHaveBeenCalledTimes(1);
+      expect(result.data?.replyContext).toMatchObject({
+        scenario: "search_results",
+        facts: expect.stringContaining("No calendar events matched"),
+      });
+    },
+  );
+
   it("preserves a search query literally equal to its field name", async () => {
     const action = createCalendarActionRunner(deps());
 

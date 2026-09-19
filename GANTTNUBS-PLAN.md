@@ -240,3 +240,15 @@ Code rollback checkpoint for this pass: local tag
 `codex/ganttnubs-shaw-text-20260918`. This preserves code, not a reset of the
 continuous conversation or user database. The earlier pre-follow-up tag
 `codex/ganttnubs-text-demo-20260918` also remains available.
+
+
+### Follow-up audit disposition
+
+Saved provider receipts account for most of the two roughly 300 ms routing gaps: concurrent initial context reads, then newly selected Calendar context. Most previously read providers already hit the turn cache. Preserve these reads pending a measured equivalent implementation; neither a fixed delay nor Wi-Fi is established as their cause. Routing uses low reasoning for original-history reconciliation while planner/extractor/completion use none. Seventy-seven existing provider shape/wire tests pass; no model policy was changed.
+
+One proven redundant search path was fixed: an explicit no-match grounding result no longer triggers an identical grounding call. Both weak lexical matches and completely unmatched feeds have local regression coverage; the Calendar suite passes 1,000 tests with four existing skips. See the scenario ledger for attribution and evidence limits. Roughly-three-second performance remains a target, not an acceptance claim across multi-step Calendar workflows.
+
+
+The single bounded browser follow-up confirms one semantic-grounding call and a correct no-match answer with no writes, but exposes an OPEN read-argument recovery issue: native planner supplied both date and a range, requiring rejection, replanning and reply recovery (7 calls / 6.294 s). Next work is the exclusive day/range schema and safe pre-read coaching classification; do not silently pick one conflicting scope. No broad paid sweep is needed.
+
+Final gates for this duplicate-grounding patch: Calendar 1,000 passed / four existing skips; provider wire/shape 77 passed; repository verification 373/373 successful with final audits passing. The running local API loaded this source before the bounded browser check. No model settings or user records were changed.

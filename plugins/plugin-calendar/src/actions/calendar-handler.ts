@@ -6839,8 +6839,9 @@ const calendarAction: CalendarHandlerAction = {
               .filter((candidate) => groundedIdSet.has(candidate.event.id))
               .map((candidate) => candidate.event);
           }
-        }
-        if (filteredEvents.length === 0 && feed.events.length > 0) {
+        } else if (filteredEvents.length === 0 && feed.events.length > 0) {
+          // Ground unmatched feed candidates only when ranking has not already
+          // been grounded. An explicit empty match set is a settled result.
           const groundedIds = await groundCalendarSearchMatchesWithLlm(
             runtime,
             state,

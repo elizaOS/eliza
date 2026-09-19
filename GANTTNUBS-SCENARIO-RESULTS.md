@@ -123,3 +123,25 @@ normal audit receipts remain in the continuous conversation.
 
 Voice, external calendar-provider acceptance, acknowledgments UI, broad PRD
 features, develop integration and release/deployment are not accepted here.
+
+
+## Follow-up latency attribution (saved trace, no paid sweep)
+
+The `shaw-conditional-booking-final` 4.046-second turn has two provider-composition phases. These are measured local work, not evidence of a fixed sleep or network delay:
+
+- Before routing: provider calls span +69 to +274 ms from turn start. The slowest overlapping providers are firstRun (205 ms) and relevant-conversations (204 ms). Routing begins at +301 ms. Provider durations overlap and must not be added together.
+- After routing ends at +1,756 ms: provider calls span +1,804 to +1,997 ms, with lifeops taking 193 ms and newly selected calendarSources 58 ms. Tool search begins at +2,058 ms. Existing context providers mostly report zero-time cache hits; this is not a full second fetch of all history.
+- The lifeops provider already runs independent reads concurrently and caches per turn. Its overview refresh has a real dependency before completed-occurrence reads. No provider was removed, no history was clipped, and no cross-turn cache was introduced on this evidence.
+- Routing requested thinking=on / reasoningEffort=low; planner and completion requested off / none; scheduling extraction used none. Source enables initial routing reasoning when original-history sources are visible. This is an intentional context-reconciliation policy, not accidental reasoning on every call. Saved provider options plus 77 passing wire/shape tests establish configured serialization, not packet capture or a measured counterfactual speed benefit from turning it off.
+- Search's extra model call is semantic grounding when lexical evidence is weak (such as separated query terms across a title). Keep this correctness step; the sample alone does not justify replacing semantic matching with a term shortcut.
+
+A separate concrete defect was reproduced locally: a grounded empty search could invoke semantic grounding twice with the same candidates. The regression failed with two model calls where one was required. The handler now uses the unranked-feed fallback only when ranked grounding has not already run. Explicit empty results remain final; unmatched feeds still get one semantic lookup. Calendar owning tests: 1,000 passed, four existing skips. This isolated call-count proof does not claim a new browser latency number or explain the earlier successful search's four calls.
+
+
+### Bounded browser no-match replay
+
+`shaw-search-empty-final`: “Find any local calendar events about QA astronomy from September 18 through September 20, 2026, in America/New_York. Only read; do not create or change anything.” Correct final no-match answer; one semantic-grounding call (226 ms), no mutation receipts, same three original Calendar records present afterwards. The duplicate grounding defect is fixed in the real runtime.
+
+Whole turn: **7 calls, 6.294 seconds, 49,081 input tokens, 21,504 cache-read inputs**. This is a performance failure, not a clean four-call search pass. First planner supplied both `details.date` and `timeMin/timeMax`, correctly rejected as CALENDAR_READ_DATE_CONFLICT. The evaluator continued, the replanner supplied a valid range, grounding returned no matches, and reply recovery added another call. Next investigation: express exclusive day-versus-range choice at the native schema boundary and classify safe pre-read argument errors consistently, without silently discarding conflicting arguments or weakening write guards. This remaining issue is OPEN.
+
+Timing caveat: the bounded no-match browser run overlapped repository verification/build/typecheck work on this Mac. Its total duration is not an idle-machine benchmark; the seven observed model calls and invalid-argument recovery are independently recorded in the trajectory.
