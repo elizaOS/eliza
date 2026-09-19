@@ -14,6 +14,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { secretBallotsRepository } from "@/db/repositories/secret-ballots";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { storableJsonRecord } from "@/lib/api/storable-strings";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -41,7 +42,7 @@ const CreateBallotSchema = z.object({
     .max(30 * 24 * 60 * 60 * 1000)
     .optional(),
   agentId: z.string().min(1).max(256).optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  metadata: storableJsonRecord().optional(),
 });
 
 const StatusSchema = z.enum(["open", "tallied", "expired", "canceled"]);

@@ -9,6 +9,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { storableJsonRecord } from "@/lib/api/storable-strings";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -32,15 +33,15 @@ const CreateChargeSchema = z.object({
   cancel_url: z.string().url().optional(),
   callback_url: z.string().url().optional(),
   callback_secret: z.string().min(8).max(256).optional(),
-  callback_channel: z.record(z.string(), z.unknown()).optional(),
-  callback_metadata: z.record(z.string(), z.unknown()).optional(),
+  callback_channel: storableJsonRecord().optional(),
+  callback_metadata: storableJsonRecord().optional(),
   lifetime_seconds: z
     .number()
     .int()
     .min(60)
     .max(30 * 24 * 60 * 60)
     .optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  metadata: storableJsonRecord().optional(),
 });
 
 const app = new Hono<AppEnv>();
