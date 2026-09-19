@@ -302,6 +302,12 @@ function embeddedIpv4ForPolicy(hextets: number[]): number[] | null {
 			return low32ToIpv4();
 		}
 	}
+	// NAT64 local-use prefix 64:ff9b:1::/48 (RFC 8215) — a site-local
+	// translator maps the same low 32 bits, so it screens like the well-known
+	// prefix. Bits 48..96 carry the deployment's own subnet and are ignored.
+	if (h0 === 0x64 && h1 === 0xff9b && h2 === 0x1) {
+		return low32ToIpv4();
+	}
 	// 6to4 2002::/16 — embedded IPv4 sits in bits 16..48.
 	if (h0 === 0x2002) {
 		return [(h1 >> 8) & 0xff, h1 & 0xff, (h2 >> 8) & 0xff, h2 & 0xff];

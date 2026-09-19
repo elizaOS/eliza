@@ -279,6 +279,9 @@ describe("isPrivateIpAddress: IPv6 transition ranges embedding IPv4 (SSRF bypass
 		for (const addr of [
 			"64:ff9b::a9fe:a9fe", // 169.254.169.254
 			"64:ff9b::169.254.169.254", // dotted tail form
+			"64:ff9b:1::a9fe:a9fe", // RFC 8215 local-use prefix, same embedding
+			"64:ff9b:1::7f00:1", // local-use prefix for 127.0.0.1
+			"64:ff9b:1:abcd::a9fe:a9fe", // local-use prefix with a site subnet
 			"64:ff9b::7f00:1", // 127.0.0.1
 			"64:ff9b::a00:1", // 10.0.0.1
 			"64:ff9b::c0a8:101", // 192.168.1.1
@@ -330,7 +333,7 @@ describe("isPrivateIpAddress: IPv6 transition ranges embedding IPv4 (SSRF bypass
 	});
 
 	it("still allows legitimate public IPv6 in the screened prefixes", () => {
-		expect(isPrivateIpAddress("64:ff9b:1::a9fe:a9fe")).toBe(false); // not /96
+		expect(isPrivateIpAddress("64:ff9b:2::a9fe:a9fe")).toBe(false); // outside both NAT64 prefixes
 		expect(isPrivateIpAddress("2001:db8::1")).toBe(false); // docs range, non-Teredo
 		expect(isPrivateIpAddress("2003:a9fe:a9fe::")).toBe(false); // not 6to4
 	});
