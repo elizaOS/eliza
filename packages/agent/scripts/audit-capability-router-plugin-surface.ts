@@ -1,4 +1,7 @@
-// Drives repo automation audit capability router plugin surface with explicit CLI and CI behavior.
+/**
+ * Checks that kernel and host plugin fields have explicit remote-capability
+ * classifications and that endpoint conformance covers the published RPC wire.
+ */
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 
@@ -79,7 +82,10 @@ const localOnly = new Set([
 const remoteManifestKeys = new Set(
   readTypeMembers(capabilityFile, "RemotePluginModuleManifest"),
 );
-const pluginKeys = readInterfaceMembers(pluginFile, "Plugin");
+const pluginKeys = [
+  ...readInterfaceMembers(pluginFile, "Plugin"),
+  ...readInterfaceMembers("packages/shared/src/api/http-plugin.ts", "HttpPlugin"),
+];
 const failures: string[] = [];
 
 for (const key of pluginKeys) {
