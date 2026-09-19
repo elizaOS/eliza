@@ -62,6 +62,12 @@ or `any` for no author restriction. `any` preserves other type, entity and room
 filters, including searches for facts or another speaker. Legacy direct
 `MEMORY action=search` callers may still omit `author` for unfiltered searches.
 
+The promoted search also requires explicit `query` and `limit` choices. An empty
+keyword query intentionally searches all records within the other filters;
+`limit` (1–50) sizes a page, not the total result set. Follow `nextOffset` and
+`snapshot` for further pages. Legacy `MEMORY action=search` keeps these fields
+optional. Mutation parameters and permission checks are unchanged.
+
 For an exact quotation, `queryMode=literal` matches the supplied `query` as a
 case-sensitive substring of source text, including punctuation, whitespace and
 Unicode. It preserves all other filters and returns every match through the same
@@ -411,3 +417,20 @@ or alter the complete match collector used by consumers that need every match.
 Memory searches return `searchScope` and `countsByType` (all matching records versus the returned page). Counts apply only to the searched stores and filters, never every memory system. Planner records carry both UTC `createdAtIso` and a converted `createdAtLocal`, with the result display `timeZone` resolved through the normal message timezone provider.
 
 `MEMORY_COUNT` uses the same complete, scoped traversal as search and returns aggregates without record bodies or pagination. It counts searchable storage records (including historical evidence), not distinct human memories or every memory system. The result includes per-category newest timestamps and read time; separate tables are scanned sequentially, not as a cross-table database transaction. Invalid filters and pagination arguments fail explicitly.
+
+## Recalled conversation discovery
+
+The relevant-conversations provider may use an existing retention checkpoint
+from an owner-private source room to defer reviewed originals. It validates the
+complete source snapshot and scope, then intersects visibility with the records
+already admitted by recall access checks. Retained constraints and pending
+originals remain inline. Missing or stale checkpoints, mismatched record bytes,
+other worlds and group rooms retain complete admitted recall. Stored records and
+the full provider result are unchanged.
+
+The discovery notice offers complete originals through the existing read path.
+A native direct-text history read also restores these authorized provider bodies
+in its existing decision round, separately from the current-room search receipt.
+A fresh provider review may then select originals for planning and completion;
+invalid review keeps them all. No similarity cutoff, result-count limit or new
+classification call is introduced.

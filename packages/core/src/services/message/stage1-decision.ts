@@ -1,3 +1,8 @@
+import {
+	providerReviewSources,
+	withProviderReviewSchema,
+} from "../../runtime/provider-context";
+import type { JsonValue } from "../../types/primitives";
 /** Builds the complete Stage 1 request, performs bounded empty-output retries, and validates the response decision. Registers diagnostic persistence with the outer turn before handing control to routing and planning. */
 
 import {
@@ -81,6 +86,7 @@ import {
 	SOURCE_REPLY_SCHEMA,
 	type SourceReplySnapshot,
 } from "./source-reply";
+import type { SourceReplyReferences } from "./source-reply-references";
 import { createSourceSelectionBinding } from "./source-selection-binding";
 import {
 	getStage1FinishReason,
@@ -269,27 +275,23 @@ export async function generateStage1Decision(
 			history,
 		},
 	);
-	let stage1PrefixHashes = computePrefixHashes(
-		messageHandlerInput.promptSegments,
-	);
-	const stableStage1Segments = messageHandlerInput.promptSegments.filter(
-		(segment) => segment.stable,
-	);
-	const stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
-	const stage1SystemContent =
-		typeof messageHandlerInput.messages[0]?.content === "string"
-			? messageHandlerInput.messages[0].content
-			: "";
-	let stage1PrefixHash =
-		stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
-		hashString(`stage1:${stage1SystemContent}`);
 	let compactInactiveFields = discoveryEnabled;
 	let repairHistoryIdentity = false;
 	let repairHistorySourceIds: string[] | undefined;
 	let nativeHistoryRead = false;
 	let sourceReplySnapshot: SourceReplySnapshot | undefined;
 	let sourceSelectionBinding: ReturnType<typeof createSourceSelectionBinding>;
+	let providerReviewSourceSetId: string | undefined;
 	const createMessageHandlerTools = () => {
+		context.metadata = {
+			...context.metadata,
+			loadedContextProviders: [...loadedContext],
+		};
+		// Bind to the exact sources offered by this inference, not a model-echoed nonce.
+		providerReviewSourceSetId =
+			discoveryEnabled && !voiceDirectMessageChannel
+				? providerReviewSources(context)?.sourceSetId
+				: undefined;
 		const fieldSchema = compactInactiveFields
 			? withInactiveArrayFields(
 					responseHandlerSchema,
@@ -323,7 +325,7 @@ export async function generateStage1Decision(
 			nativeHistoryRead &&
 			!voiceDirectMessageChannel &&
 			history &&
-			history.loadedSourceIds.size > 0 &&
+			(history.loadedSourceIds.size > 0 || providerReviewSourceSetId) &&
 			selectedResponseHandlerFields.includes(replyTextFieldEvaluator) &&
 			canonicalResponseHandlerSchema.properties?.replyText ===
 				replyTextFieldEvaluator.schema
@@ -334,11 +336,15 @@ export async function generateStage1Decision(
 			const memories = providers?.RECENT_MESSAGES?.data?.recentMessages;
 			if (Array.isArray(memories)) {
 				const snapshot = createSourceReplySnapshot(context, history, memories);
-				if (snapshot && snapshot.originals.size === snapshot.suppliedIds.size)
+				if (
+					snapshot &&
+					snapshot.originals.size === snapshot.suppliedIds.size &&
+					(history.loadedSourceIds.size > 0 || snapshot.providerSourceSetId)
+				)
 					sourceReplySnapshot = snapshot;
 			}
 		}
-		const replySchema = sourceReplySnapshot
+		const sourceSchema = sourceReplySnapshot
 			? {
 					...referenceSchema,
 					properties: {
@@ -347,6 +353,10 @@ export async function generateStage1Decision(
 					},
 				}
 			: referenceSchema;
+		const replySchema =
+			discoveryEnabled && !voiceDirectMessageChannel
+				? withProviderReviewSchema(sourceSchema, context)
+				: sourceSchema;
 		const parameters = withRequiredCompletionSourceIdentity(
 			history
 				? withReviewedHistorySelection(
@@ -374,7 +384,49 @@ export async function generateStage1Decision(
 			...(readTool ? [readTool] : []),
 		];
 	};
+	const appendSourceReplyInstructions = () => {
+		if (
+			sourceReplySnapshot &&
+			!messageHandlerInput.promptSegments.some(
+				(segment) => segment.content === SOURCE_REPLY_INSTRUCTIONS,
+			)
+		) {
+			const first = messageHandlerInput.messages[0];
+			if (first?.role === "system" && typeof first.content === "string") {
+				messageHandlerInput = {
+					...messageHandlerInput,
+					messages: [
+						{
+							...first,
+							content: `${first.content}\n${SOURCE_REPLY_INSTRUCTIONS}`,
+						},
+						...messageHandlerInput.messages.slice(1),
+					],
+					promptSegments: [
+						...messageHandlerInput.promptSegments,
+						{ content: SOURCE_REPLY_INSTRUCTIONS, stable: false },
+					],
+				};
+			}
+		}
+	};
 	let messageHandlerTools = createMessageHandlerTools();
+	appendSourceReplyInstructions();
+	let stage1PrefixHashes = computePrefixHashes(
+		messageHandlerInput.promptSegments,
+	);
+	const stableStage1Segments = messageHandlerInput.promptSegments.filter(
+		(segment) => segment.stable,
+	);
+	const stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
+	const stage1SystemContent =
+		typeof messageHandlerInput.messages[0]?.content === "string"
+			? messageHandlerInput.messages[0].content
+			: "";
+	let stage1PrefixHash =
+		stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
+		hashString(`stage1:${stage1SystemContent}`);
+
 	// Discovery continues the same scoped workflow, even as its input expands.
 	const stage1ConversationId = args.message.roomId
 		? JSON.stringify([args.runtime.agentId, args.message.roomId, "stage1"])
@@ -435,21 +487,30 @@ export async function generateStage1Decision(
 	// prompt text stays byte-stable, only the grammar varies per turn. Cloud
 	// adapters ignore `responseSkeleton` / `grammar` — `tools` carries the
 	// equivalent (unforced) contract for them.
-	const responseGrammar = buildResponseGrammar(
-		{
-			actions: args.runtime.actions ?? [],
-			responseHandlerFields: selectedResponseHandlerFields,
-			responseHandlerFieldSignature:
-				args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(),
-		},
-		{
-			contexts: availableContexts.map((definition) => String(definition.id)),
-			channelType:
-				typeof args.message.content?.channelType === "string"
-					? args.message.content.channelType
-					: undefined,
-		},
-	);
+	const createResponseGrammar = () =>
+		buildResponseGrammar(
+			{
+				actions: args.runtime.actions ?? [],
+				responseHandlerFields: sourceReplySnapshot
+					? selectedResponseHandlerFields.map((field) =>
+							field === replyTextFieldEvaluator
+								? { ...field, schema: SOURCE_REPLY_SCHEMA }
+								: field,
+						)
+					: selectedResponseHandlerFields,
+				responseHandlerFieldSignature: sourceReplySnapshot
+					? undefined
+					: args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(),
+			},
+			{
+				contexts: availableContexts.map((definition) => String(definition.id)),
+				channelType:
+					typeof args.message.content?.channelType === "string"
+						? args.message.content.channelType
+						: undefined,
+			},
+		);
+	const responseGrammar = createResponseGrammar();
 
 	// Per-span argmax sampling for the structured envelope: every enum,
 	// number, and boolean span gets temperature=0 / topK=1 so the model
@@ -583,10 +644,22 @@ export async function generateStage1Decision(
 	// still passes through ordinary terminal routing and reply validation.
 	// Voice keeps its complete path: its spoken answer need not sit in replyText.
 	if (!args.codingMode && !voiceDirectMessageChannel) {
-		const unusableRepair = getStage1UnusableDecisionRepair(
-			extractMessageHandlerRawParsed(rawMessageHandler),
-			{ reaskTerminal: readStage1TerminalReaskSetting(args.runtime) },
-		);
+		let usabilityDecision = extractMessageHandlerRawParsed(rawMessageHandler);
+		// Source-part replies must be rendered before a string-based empty-answer
+		// check. Invalid bindings still reach the ordinary history recovery path.
+		if (
+			sourceReplySnapshot &&
+			typeof rawMessageHandler !== "string" &&
+			hasHandleResponseToolCall(rawMessageHandler) &&
+			usabilityDecision
+		) {
+			usabilityDecision =
+				resolveSourceReply(context, sourceReplySnapshot, usabilityDecision) ??
+				usabilityDecision;
+		}
+		const unusableRepair = getStage1UnusableDecisionRepair(usabilityDecision, {
+			reaskTerminal: readStage1TerminalReaskSetting(args.runtime),
+		});
 		if (
 			unusableRepair &&
 			shouldUseStage1PlannerFallback(args.runtime, args.message)
@@ -822,6 +895,52 @@ export async function generateStage1Decision(
 				args.state,
 				loadedContext,
 			);
+			const restoredProviders: string[] = [];
+			if (
+				historyRequested.length &&
+				nativeHistoryRead &&
+				!voiceDirectMessageChannel
+			) {
+				// A missing-dialogue read can refer to recalled originals from another
+				// room. Restore only freshly authorized, provider-indexed originals;
+				// leave the current-room search scope and its match receipt unchanged.
+				for (const event of context.events) {
+					if (
+						event.type === "provider" &&
+						"reviewableSources" in event &&
+						event.reviewableSources &&
+						"name" in event &&
+						typeof event.name === "string" &&
+						discovery.available.has(event.name)
+					) {
+						loadedContext.add(event.name);
+						restoredProviders.push(event.name);
+					}
+				}
+				if (restoredProviders.length) {
+					discovery = projectDiscoverableContext(
+						context,
+						args.state,
+						loadedContext,
+					);
+					discovery.context = {
+						...discovery.context,
+						events: [
+							...discovery.context.events,
+							{
+								id: "history-read-provider-restoration",
+								type: "segment",
+								source: "message-service",
+								segment: {
+									id: "history-read-provider-restoration",
+									stable: false,
+									content: `Additional authorized provider originals restored during this history read: ${JSON.stringify(restoredProviders)}. These are separate provider evidence, not matches in the current-conversation literal search.`,
+								},
+							},
+						],
+					};
+				}
+			}
 			if (contextCatalog && !contextCatalog.loaded)
 				discovery.available.add(CONTEXT_CATALOG_REFERENCE);
 			for (const reference of historyReferences(context, history))
@@ -833,6 +952,7 @@ export async function generateStage1Decision(
 					{
 						requestedCount: historyRequested.length,
 						fullRestoration: !history,
+						restoredProviders: restoredProviders.join(","),
 					},
 				);
 			// The read refreshed state and authority. Recheck field activity so
@@ -859,30 +979,7 @@ export async function generateStage1Decision(
 		// Field activity was refreshed for reads; repairs reuse the earlier prompt.
 		compactInactiveFields = !decisionRepair;
 		messageHandlerTools = createMessageHandlerTools();
-		if (
-			sourceReplySnapshot &&
-			!messageHandlerInput.promptSegments.some(
-				(segment) => segment.content === SOURCE_REPLY_INSTRUCTIONS,
-			)
-		) {
-			const first = messageHandlerInput.messages[0];
-			if (first?.role === "system" && typeof first.content === "string") {
-				messageHandlerInput = {
-					...messageHandlerInput,
-					messages: [
-						{
-							...first,
-							content: `${first.content}\n${SOURCE_REPLY_INSTRUCTIONS}`,
-						},
-						...messageHandlerInput.messages.slice(1),
-					],
-					promptSegments: [
-						...messageHandlerInput.promptSegments,
-						{ content: SOURCE_REPLY_INSTRUCTIONS, stable: false },
-					],
-				};
-			}
-		}
+		appendSourceReplyInstructions();
 		stage1PrefixHashes = computePrefixHashes(
 			messageHandlerInput.promptSegments,
 		);
@@ -900,23 +997,7 @@ export async function generateStage1Decision(
 		// Full restoration returns to the ordinary selection contract. Keep the
 		// actual tool schema aligned with the newly rendered history policy.
 		// Keep the local decode grammar aligned with the native reply field.
-		const readGrammar = sourceReplySnapshot
-			? buildResponseGrammar(
-					{
-						actions: args.runtime.actions ?? [],
-						responseHandlerFields: selectedResponseHandlerFields.map((field) =>
-							field === replyTextFieldEvaluator
-								? { ...field, schema: SOURCE_REPLY_SCHEMA }
-								: field,
-						),
-					},
-					{
-						contexts: availableContexts.map((definition) =>
-							String(definition.id),
-						),
-					},
-				)
-			: responseGrammar;
+		const readGrammar = createResponseGrammar();
 		stage1ModelParams = {
 			...stage1ModelParams,
 			tools: messageHandlerTools,
@@ -972,6 +1053,7 @@ export async function generateStage1Decision(
 		? undefined
 		: args.runtime.getLastResolvedModelProvider?.(ModelType.RESPONSE_HANDLER);
 	let rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
+	let sourceReplyReferences: SourceReplyReferences | undefined;
 	if (
 		sourceReplySnapshot &&
 		typeof rawMessageHandler !== "string" &&
@@ -982,6 +1064,9 @@ export async function generateStage1Decision(
 			context,
 			sourceReplySnapshot,
 			rawFieldParsed,
+			(references) => {
+				sourceReplyReferences = references;
+			},
 		);
 		if (!resolved)
 			throw new ElizaError(
@@ -1199,8 +1284,24 @@ export async function generateStage1Decision(
 		);
 	}
 
+	const rawProviderReview = rawFieldParsed?.providerReview;
 	return {
 		messageHandler,
+		providerReview:
+			providerReviewSourceSetId &&
+			typeof rawMessageHandler !== "string" &&
+			hasHandleResponseToolCall(rawMessageHandler) &&
+			rawProviderReview &&
+			typeof rawProviderReview === "object" &&
+			!Array.isArray(rawProviderReview) &&
+			Object.keys(rawProviderReview).every(
+				(key) => key === "complete" || key === "keep",
+			)
+				? ({
+						...rawProviderReview,
+						sourceSetId: providerReviewSourceSetId,
+					} as JsonValue)
+				: undefined,
 		providerDiscoveryEnabled: discoveryEnabled,
 		loadedContextProviders: [...loadedContext],
 		historyReadEvidence,
@@ -1208,6 +1309,7 @@ export async function generateStage1Decision(
 		fieldRunResult,
 		inferenceMessageText,
 		parsedResponseHandlerReply,
+		sourceReplyReferences,
 		messageHandlerEndedAt,
 	};
 }

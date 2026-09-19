@@ -1,12 +1,15 @@
 /** Foreground reads of reviewed original dialogue before reply processing or
  * effects. Original context events remain intact; only Stage-1 rendering changes. */
+import { ElizaError } from "../../errors.ts";
 import {
 	collectCompletionContextSources,
 	completionContextSources,
 	parseCompletionContextSelection,
 } from "../../runtime/completion-context.ts";
 import {
+	type HistoryRetentionCheckpoint,
 	type HistoryRetentionScope,
+	linkedSourceNeighbors,
 	visibleHistoryEventIds,
 } from "../../runtime/history-retention.ts";
 import type {
@@ -16,6 +19,10 @@ import type {
 import type { JSONSchema, PromptSegment } from "../../types/model.ts";
 import { readContextRequests } from "./context-discovery.ts";
 import { labelHistorySources } from "./history-wire.ts";
+import {
+	readSourceReplyReferences,
+	sourceReplyEventHash,
+} from "./source-reply-references";
 
 /** Match source-selection semantics to the supplied originals and available reads. */
 export function withReviewedHistorySelection(
@@ -125,6 +132,8 @@ export interface HistoryDiscovery {
 	scope: HistoryRetentionScope;
 	visibleEventIds: ReadonlySet<string>;
 	loadedSourceIds: ReadonlySet<string>;
+	/** Source-bound correction/cancellation relationships, including deferred originals. */
+	dependencySourceGroups?: readonly string[][];
 	/** Exact literal misses over this bound source set, never semantic absence. */
 	emptySearchResults?: readonly {
 		query: string;
@@ -152,12 +161,47 @@ export function projectReviewedHistory(
 		!bound.sources.some((source) => !visible.has(source.event.id))
 	)
 		return undefined;
-	return {
+	// A non-null visible projection has already validated this exact checkpoint.
+	const checkpointState = checkpoint as HistoryRetentionCheckpoint;
+	let dependencySourceGroups: string[][] | undefined;
+	if (checkpointState.dependencyEventGroups?.length) {
+		const sourceIdByEvent = new Map(
+			bound.sources.map((source) => [source.event.id, source.id]),
+		);
+		dependencySourceGroups = checkpointState.dependencyEventGroups.map(
+			(group) =>
+				group.map((id) => {
+					const sourceId = sourceIdByEvent.get(id);
+					if (!sourceId)
+						throw new ElizaError("Bound history dependency is missing", {
+							code: "HISTORY_RETENTION_INVALID_DEPENDENCY",
+						});
+					return sourceId;
+				}),
+		);
+	}
+	const projection: HistoryDiscovery = {
 		sourceSetId: bound.sourceSetId,
 		scope,
 		visibleEventIds: visible,
 		loadedSourceIds: new Set(),
+		...(dependencySourceGroups?.length ? { dependencySourceGroups } : {}),
 	};
+	// Visible source-backed replies already depend on these exact originals.
+	// Supply their authorized dependencies before the first model decision,
+	// rather than turning a selected recent quote into an avoidable read round.
+	projection.loadedSourceIds = new Set(
+		referencedHistorySources(
+			bound,
+			projection,
+			new Set(
+				bound.sources
+					.filter(({ event }) => visible.has(event.id))
+					.map(({ id }) => id),
+			),
+		).map(({ id }) => id),
+	);
+	return projection;
 }
 
 export function historyReferences(
@@ -260,6 +304,7 @@ export function requestedHistory(
 		),
 	].filter(({ text }) => /["'“‘`«「]/.test(text));
 	const quoted = quotedHistorySources(bound, projection, quotationTexts);
+	const linked = referencedHistorySources(bound, projection, new Set(selected));
 	return [
 		...new Set([
 			...requested,
@@ -274,8 +319,84 @@ export function requestedHistory(
 				})
 				.map((id) => `${HISTORY_REFERENCE_PREFIX}${id}`),
 			...quoted.map(({ id }) => `${HISTORY_REFERENCE_PREFIX}${id}`),
+			...linked.map(({ id }) => `${HISTORY_REFERENCE_PREFIX}${id}`),
 		]),
 	];
+}
+
+/** Follow validated review dependencies and exact stored quote origins within
+ * this freshly authorized source set. Never fetch an untrusted link directly
+ * or substitute an original for the assistant's own words. */
+function referencedHistorySources(
+	bound: ReturnType<typeof completionContextSources>,
+	projection: HistoryDiscovery,
+	sourceIds: ReadonlySet<string>,
+) {
+	const byEvent = new Map(
+		bound.sources.map((source, index) => [source.event.id, { source, index }]),
+	);
+	const found = new Set<string>();
+	const body = (segment: ContextObjectPromptSegment) => {
+		const speaker = segment.metadata?.speakerName;
+		const prefix = typeof speaker === "string" ? `${speaker}: ` : "";
+		return prefix && segment.content.startsWith(prefix)
+			? segment.content.slice(prefix.length)
+			: segment.content;
+	};
+	const byId = new Map(
+		bound.sources.map((source, index) => [source.id, { source, index }]),
+	);
+	const dependencies = linkedSourceNeighbors(
+		projection.dependencySourceGroups ?? [],
+	);
+	const pending = [...sourceIds];
+	const visited = new Set<string>();
+	while (pending.length) {
+		const id = pending.pop();
+		if (!id || visited.has(id)) continue;
+		visited.add(id);
+		for (const linked of dependencies.get(id) ?? []) {
+			const target = byId.get(linked);
+			if (!target) continue;
+			pending.push(linked);
+			if (
+				!projection.visibleEventIds.has(target.source.event.id) &&
+				!projection.loadedSourceIds.has(linked)
+			)
+				found.add(linked);
+		}
+		const entry = byId.get(id);
+		if (entry?.source.event.segment.label !== "prior_message:agent") continue;
+		const { source: reply, index } = entry;
+		const text = body(reply.event.segment);
+		const stored = reply.event.segment.metadata?.sourceReplyReferences;
+		// A message may itself start with the speaker's name, in which case the
+		// dialogue renderer does not prepend it. Match either exact representation.
+		const references =
+			readSourceReplyReferences(stored, text) ??
+			readSourceReplyReferences(stored, reply.event.segment.content);
+		for (const reference of references?.sources ?? []) {
+			const target = byEvent.get(reference.eventId);
+			if (!target || target.index >= index) continue;
+			const { source } = target;
+			if (
+				source.event.segment.metadata?.roomId !==
+					reply.event.segment.metadata?.roomId ||
+				sourceReplyEventHash(source.event) !== reference.sourceSha256 ||
+				!body(source.event.segment) ||
+				!text.includes(body(source.event.segment))
+			)
+				continue;
+			// Every edge points backward, and visited prevents repeated traversal.
+			pending.push(source.id);
+			if (
+				!projection.visibleEventIds.has(source.event.id) &&
+				!projection.loadedSourceIds.has(source.id)
+			)
+				found.add(source.id);
+		}
+	}
+	return bound.sources.filter((source) => found.has(source.id));
 }
 
 /** Complete earlier sources behind assistant quotations; these are read
@@ -541,6 +662,12 @@ export function loadHistoryReferences(
 		bound,
 		{ ...projection, loadedSourceIds },
 		quotationTexts,
+	))
+		loadedSourceIds.add(source.id);
+	for (const source of referencedHistorySources(
+		bound,
+		{ ...projection, loadedSourceIds },
+		loadedSourceIds,
 	))
 		loadedSourceIds.add(source.id);
 	const evidence = {

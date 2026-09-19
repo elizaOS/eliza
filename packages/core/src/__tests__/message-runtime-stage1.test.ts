@@ -422,6 +422,187 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
+	it.each([
+		"keep",
+		"omit",
+		"stale",
+		"changed",
+		"restore",
+		"loaded-keep",
+		"loaded-omit",
+		"loaded-stale",
+		"loaded-changed",
+		"loaded-restore",
+	])(
+		"preserves provider review through planning and completion: %s",
+		async (scenario) => {
+			const loaded = scenario.startsWith("loaded-");
+			const mode = scenario.replace(/^loaded-/, "");
+			let count = 0;
+			const body =
+				"Complete unrelated recalled source with Ω punctuation. ".repeat(60);
+			const notice =
+				"Recalled bodies reviewed as unrelated; partial access results. Restore provider context if needed.";
+			const runtime = makeRuntime([
+				...(mode === "restore"
+					? [
+							{
+								text: "",
+								toolCalls: [
+									{
+										name: "RESTORE_CONTEXT",
+										arguments: {
+											scope: "providers",
+											reason: "Need original evidence",
+											eliza_turn_scope: "more_work_pending",
+										},
+									},
+								],
+							},
+						]
+					: []),
+				{
+					text: "",
+					toolCalls: [
+						{ name: "LOOKUP", arguments: { eliza_turn_scope: "final" } },
+					],
+				},
+				JSON.stringify({
+					success: true,
+					decision: "FINISH",
+					messageToUser: "Verified.",
+				}),
+			]);
+			const lookup = vi.fn<Action["handler"]>(async () => ({
+				success: true,
+				text: "Verified lookup receipt",
+				data: { readOnlyOperation: true },
+			}));
+			runtime.actions = [
+				{
+					name: "LOOKUP",
+					description: "Read the current record.",
+					validate: async () => true,
+					handler: lookup,
+				},
+			];
+			runtime.providers = [{ name: "RECALL", get: vi.fn() }];
+			const state = makeState();
+			state.data.providers = {
+				RECALL: {
+					text: `[recalled1]\n${body}`,
+					...(loaded
+						? { discoveryText: "Read RECALL for full originals." }
+						: {}),
+					reviewableSources: {
+						notice,
+						sources: [
+							{
+								id: "recalled1",
+								text: body,
+								metadata: { entityId: "user", roomId: "old-room" },
+							},
+						],
+					},
+				},
+			};
+			runtime.composeState = vi.fn(async () => {
+				const next = structuredClone(state);
+				if (mode === "changed" && (!loaded || count >= 2))
+					next.data.providers = {
+						RECALL: {
+							text: `[recalled1]\n${body}New applicable constraint.`,
+							...(loaded
+								? { discoveryText: "Read RECALL for full originals." }
+								: {}),
+							reviewableSources: {
+								notice,
+								sources: [
+									{
+										id: "recalled1",
+										text: body + "New applicable constraint.",
+										metadata: { entityId: "user", roomId: "old-room" },
+									},
+								],
+							},
+						},
+					};
+				return next;
+			});
+			const model = runtime.useModel.bind(runtime);
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					count++;
+					if (loaded && count === 1) {
+						expect(
+							JSON.stringify((args[1] as { messages: unknown }).messages),
+						).not.toContain(body.trim());
+						return {
+							text: "",
+							toolCalls: [
+								{
+									toolName: "READ_CONTEXT",
+									input: { contextRequests: ["RECALL"] },
+								},
+							],
+						};
+					}
+					if (count !== (loaded ? 2 : 1)) return model(...args);
+					const input = args[1] as {
+						messages: unknown;
+						tools: Array<{ name: string; parameters: JSONSchema }>;
+					};
+					expect(JSON.stringify(input.messages)).toContain(body.trim());
+					const reviewSchema = input.tools.find(
+						(tool) => tool.name === "HANDLE_RESPONSE",
+					)?.parameters.properties?.providerReview;
+					expect(reviewSchema.properties).not.toHaveProperty("sourceSetId");
+					return stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["LOOKUP"],
+						replyText: "Checking.",
+						extra: {
+							replyEffectStatus: "pending",
+							providerReview: {
+								complete: true,
+								...(mode === "stale" ? { sourceSetId: "wrong" } : {}),
+								keep: mode === "keep" ? ["recalled1"] : [],
+							},
+						},
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "Read the current record without changing anything.",
+					channelType: ChannelType.DM,
+				}),
+				state,
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(lookup).toHaveBeenCalledTimes(1);
+			const calls = useModelCalls(runtime);
+			expect(calls).toHaveLength(
+				(mode === "restore" ? 4 : 3) + (loaded ? 1 : 0),
+			);
+			for (let index = loaded ? 2 : 1; index < calls.length; index++) {
+				const stageIndex = index - (loaded ? 1 : 0);
+				const wire = JSON.stringify(
+					(calls[index][1] as { messages: unknown }).messages,
+				);
+				expect(wire.includes(body.trim())).toBe(
+					mode !== "omit" && (mode !== "restore" || stageIndex > 1),
+				);
+				if (mode === "omit" || (mode === "restore" && stageIndex === 1))
+					expect(wire).toContain(notice);
+			}
+			expect(
+				(state.data.providers as Record<string, { text: string }>).RECALL.text,
+			).toBe(`[recalled1]\n${body}`);
+		},
+	);
+
 	it.each([false, true])(
 		"voice uses authorized history discovery before field dispatch (read=%s)",
 		async (read) => {
@@ -495,6 +676,192 @@ describe("runV5MessageRuntimeStage1", () => {
 			});
 			expect(calls).toBe(read ? 2 : 1);
 			expect(dispatch).toHaveBeenCalledTimes(1);
+		},
+	);
+
+	it("quotes an already supplied recalled original in the first decision", async () => {
+		const { runtime, message, state } = await reviewedHistoryFixture();
+		const originalText =
+			"  Original correction: Mira’s backpack is violet.\nKeep  spaces.\n";
+		runtime.providers = [{ name: "RECALL", get: vi.fn() }];
+		state.data.providers = {
+			...state.data.providers,
+			RECALL: {
+				text: `[recalled1]\nUser: ${originalText}`,
+				reviewableSources: {
+					notice: "Authorized recall",
+					sources: [
+						{
+							id: "recalled1",
+							text: `User: ${originalText}`,
+							originalText,
+							metadata: { entityId: message.entityId, roomId: "other-room" },
+						},
+					],
+				},
+			},
+		};
+		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
+		runtime.useModel = vi.fn(
+			async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+				const input = args[1] as {
+					messages: Array<{ content: string }>;
+					tools: Array<{ name: string; parameters: JSONSchema }>;
+					responseSkeleton: string;
+				};
+				const wire = input.messages.map((m) => m.content).join("\n");
+				expect(wire).toContain(originalText);
+				expect(wire).toContain("Reply parts:");
+				expect(
+					input.tools.find((t) => t.name === "HANDLE_RESPONSE")?.parameters
+						.properties?.replyText.type,
+				).toBe("array");
+				return stage1Response({
+					contexts: ["simple"],
+					extra: {
+						replyEffectStatus: "none",
+						replyText: [{ kind: "source", value: "recalled1" }],
+						providerReview: { complete: true, keep: ["recalled1"] },
+						completionContext: {
+							mode: "relevant_prior_dialogue",
+							complete: true,
+							sourceSetId: wire.match(
+								/completion_source_set: ([a-f0-9]{64})/,
+							)?.[1],
+							relevantSourceIds: [],
+							constraintSourceIds: ["h1"],
+							referentSourceIds: [],
+							pendingIntentSourceIds: [],
+						},
+					},
+				});
+			},
+		) as IAgentRuntime["useModel"];
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state,
+			responseId: message.id as UUID,
+			stage1DecisionOnly: true,
+		});
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(dispatch).toHaveBeenCalledTimes(1);
+		expect(dispatch.mock.calls[0]?.[0].rawParsed.replyText).toBe(
+			`\n\n${originalText}\n\n`,
+		);
+	});
+
+	it.each(["fresh", "revoked", "ordinary-reference"])(
+		"restores only fresh reviewable providers during a native history read: %s",
+		async (mode) => {
+			const { runtime, message, state } = await reviewedHistoryFixture();
+			const result = (text: string) => ({
+				text: `[recalled1]\n${text}`,
+				discoveryText: "Read RECALL for omitted originals.",
+				...(mode !== "ordinary-reference"
+					? {
+							reviewableSources: {
+								notice: "Authorized originals",
+								sources: [
+									{
+										id: "recalled1",
+										text,
+										originalText: text,
+										metadata: {
+											roomId: "other-room",
+											entityId: message.entityId,
+										},
+									},
+								],
+							},
+						}
+					: {}),
+			});
+			runtime.providers.push({ name: "RECALL", get: vi.fn() });
+			state.data.providers = {
+				...state.data.providers,
+				RECALL: result("STALE_PROVIDER_SENTINEL ".repeat(20)),
+			};
+			runtime.composeState = async () => {
+				const fresh = structuredClone(state);
+				if (mode === "revoked") delete fresh.data.providers.RECALL;
+				else
+					fresh.data.providers.RECALL = result(
+						"FRESH_PROVIDER_SENTINEL ".repeat(20),
+					);
+				return fresh;
+			};
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			let calls = 0;
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					calls++;
+					const input = args[1] as { messages: Array<{ content: string }> };
+					const text = input.messages.map((item) => item.content).join("\n");
+					expect(text).not.toContain("STALE_PROVIDER_SENTINEL");
+					if (calls === 1)
+						return {
+							text: "",
+							toolCalls: [
+								{
+									toolName: "READ_CONTEXT",
+									input: { contextRequests: ["history:search-user:blueberry"] },
+								},
+							],
+						};
+					expect(calls).toBe(2);
+					expect(text.includes("FRESH_PROVIDER_SENTINEL")).toBe(
+						mode === "fresh",
+					);
+					expect(
+						text.includes("Additional authorized provider originals restored"),
+					).toBe(mode === "fresh");
+					expect(text).toContain("history_literal_search_results:");
+					return stage1Response({
+						contexts: ["simple"],
+						replyText: "Read complete.",
+						extra: {
+							replyText: [
+								{
+									kind: mode === "fresh" ? "source" : "text",
+									value: mode === "fresh" ? "recalled1" : "Read complete.",
+								},
+							],
+							providerReview: {
+								complete: true,
+								keep: mode === "fresh" ? ["recalled1"] : [],
+							},
+							replyEffectStatus: "none",
+							completionContext: {
+								mode: "relevant_prior_dialogue",
+								complete: true,
+								sourceSetId: text.match(
+									/completion_source_set: ([a-f0-9]{64})/,
+								)?.[1],
+								relevantSourceIds: [],
+								constraintSourceIds: [],
+								referentSourceIds: [],
+								pendingIntentSourceIds: [],
+							},
+						},
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state,
+				responseId: message.id as UUID,
+				stage1DecisionOnly: true,
+			});
+			expect(calls).toBe(2);
+			if (mode === "fresh")
+				expect(dispatch.mock.calls[0]?.[0].rawParsed.replyText).toBe(
+					`\n\n${"FRESH_PROVIDER_SENTINEL ".repeat(20)}\n\n`,
+				);
 		},
 	);
 
@@ -6250,6 +6617,13 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(JSON.stringify(plannerParams.messages)).not.toContain(
 			"The Stage 1 router marked this current turn as requiring a tool.",
 		);
+		expect(JSON.stringify(plannerParams.messages)).not.toContain(
+			'"actionSurface"',
+		);
+		expect(runtime.logger.debug).toHaveBeenCalledWith(
+			expect.objectContaining({ actionSurface: expect.any(Object) }),
+			"Built v5 planner action surface",
+		);
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(answer);
 		}
@@ -6816,9 +7190,13 @@ describe("runV5MessageRuntimeStage1", () => {
 				}),
 				...(replyEffectStatus === "none"
 					? [
+							{
+								text: "",
+								toolCalls: [
+									{ id: "preview", name: "REPLY", arguments: { text: answer } },
+								],
+							},
 							JSON.stringify({
-								thought:
-									"The current request requires a preview and separate confirmation, not a saved note.",
 								success: true,
 								decision: "FINISH",
 								messageToUser: answer,
@@ -6850,7 +7228,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				replyEffectStatus === "none" ? "planned_reply" : "direct_reply",
 			);
 			expect(useModelCalls(runtime)).toHaveLength(
-				replyEffectStatus === "none" ? 2 : 1,
+				replyEffectStatus === "none" ? 3 : 1,
 			);
 			expect(result.messageHandler.plan.replyEffectStatus).toBe(
 				replyEffectStatus,
@@ -6858,7 +7236,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(handler).not.toHaveBeenCalled();
 			expect(useModelCalls(runtime).map(([type]) => type)).toEqual(
 				replyEffectStatus === "none"
-					? ["RESPONSE_HANDLER", "RESPONSE_HANDLER"]
+					? ["RESPONSE_HANDLER", "ACTION_PLANNER", "RESPONSE_HANDLER"]
 					: ["RESPONSE_HANDLER"],
 			);
 			if (result.kind === "direct_reply" || result.kind === "planned_reply")
@@ -6907,7 +7285,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent?.text).toBe(reply);
 	});
 
-	it("keeps unexecuted work pending when completion evaluation rejects the proposed reply", async () => {
+	it("plans the pending read directly despite the handler declaring no effect", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["general"],
@@ -6915,12 +7293,6 @@ describe("runV5MessageRuntimeStage1", () => {
 				candidateActionNames: ["LOOKUP"],
 				replyText: "Let me check that.",
 				extra: { replyEffectStatus: "none" },
-			}),
-			JSON.stringify({
-				thought:
-					"The requested live status has not been read; perform the lookup.",
-				success: false,
-				decision: "CONTINUE",
 			}),
 			{
 				text: "",
@@ -6963,7 +7335,6 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.kind).toBe("planned_reply");
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
-			"RESPONSE_HANDLER",
 			"RESPONSE_HANDLER",
 			"ACTION_PLANNER",
 			"RESPONSE_HANDLER",
@@ -14011,6 +14382,103 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 // The protocol action is registered after candidate admission. A sole explicit
 // discovery hint must not look unresolved and fall back to broad domain tools.
 describe("explicit discovery survives planner surface construction", () => {
+	it("resolves an unknown search hint instead of finishing with the Stage-1 acknowledgment", async () => {
+		const acknowledgment = "Searching your stored messages now, read-only.";
+		const answer = 'The original message says "green mug".';
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["memory"],
+				intents: ["Search stored messages for the original mug color"],
+				candidateActionNames: ["MEMORY_SEARCH_MESSAGES"],
+				replyText: acknowledgment,
+				extra: { replyEffectStatus: "none" },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "discover-memory",
+						name: "DISCOVER_TOOLS",
+						arguments: {
+							names: ["MEMORY_SEARCH"],
+							eliza_turn_scope: "more_work_pending",
+						},
+					},
+				],
+			},
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "search-memory",
+						name: "MEMORY_SEARCH",
+						arguments: {
+							query: "original mug color",
+							eliza_turn_scope: "final",
+						},
+					},
+				],
+			},
+			JSON.stringify({
+				decision: "FINISH",
+				success: true,
+				thought: "Original stored message retrieved.",
+				messageToUser: answer,
+			}),
+		]);
+		const search = vi.fn(async () => ({
+			success: true,
+			text: 'Original message: "green mug".',
+		}));
+		runtime.actions = [
+			{
+				name: "MEMORY_SEARCH",
+				similes: [],
+				description: "Search stored messages.",
+				contexts: ["memory"],
+				parameters: [
+					{
+						name: "query",
+						description: "Search query",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				validate: async () => true,
+				handler: search,
+			},
+		] as never;
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "Search my stored messages for the original mug color. Quote the source. Keep my records and page unchanged.",
+			}),
+			state: {
+				...makeState(),
+				values: { availableContexts: "general, memory" },
+			},
+			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+		});
+		expect(search).toHaveBeenCalledTimes(1);
+		const calls = useModelCalls(runtime);
+		expect(calls.map(([type]) => type)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		const firstPlanner = calls[1][1] as { tools: Array<{ name: string }> };
+		expect(firstPlanner.tools.map(({ name }) => name)).toContain(
+			"DISCOVER_TOOLS",
+		);
+		expect(firstPlanner.tools.map(({ name }) => name)).not.toContain(
+			"MEMORY_SEARCH",
+		);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply")
+			expect(result.result.responseContent?.text).toBe(answer);
+	});
+
 	it("keeps a general-context greeting discoverable without loading domain schemas", async () => {
 		const runtime = makeRuntime([
 			stage1Response({

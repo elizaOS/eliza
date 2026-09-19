@@ -131,40 +131,59 @@ export const recentConversationsProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
-      const memories = await runtime.getMemoriesByRoomIds({
-        tableName: "messages",
-        roomIds,
-        accessContext,
-      });
-      // Share RECENT_MESSAGES source hygiene: only identical copies of the
-      // same source ID collapse. Distinct connector records and repeated turns
-      // keep their provenance even when their visible text is identical.
-      const byRoom = new Map<string, Memory[]>();
-      for (const memory of memories) {
-        if (
-          !(
-            Boolean(memory.content.text) ||
-            (memory.content.attachments?.length ?? 0) > 0
-          )
-        ) {
-          continue;
+      const recallAction = runtime.actions?.find((action) => {
+        if (action.name !== "MEMORY_SEARCH" && action.name !== "MEMORY") {
+          return false;
         }
-        const bucket = byRoom.get(memory.roomId) ?? [];
-        bucket.push(memory);
-        byRoom.set(memory.roomId, bucket);
-      }
-      const sorted = [...byRoom.values()]
-        .flatMap((roomMemories) =>
-          dedupeHygienicDialogueMessages(
-            roomMemories.sort(
-              (left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0),
+        const rejection = actionGateRejection(action, {
+          message,
+          userRoles: accessContext.role ? [accessContext.role] : [],
+          // This manifest tells the response router to select memory when
+          // needed; context selection has not happened yet. Every other gate
+          // must already admit the action, and execution rechecks all gates.
+          activeContexts: ["memory"],
+        });
+        return rejection === undefined;
+      });
+      let sorted: Memory[] = [];
+      if (!recallAction) {
+        const memories = await runtime.getMemoriesByRoomIds({
+          tableName: "messages",
+          roomIds,
+          accessContext,
+        });
+        // Share RECENT_MESSAGES source hygiene: only identical copies of the
+        // same source ID collapse. Distinct connector records and repeated turns
+        // keep their provenance even when their visible text is identical.
+        const byRoom = new Map<string, Memory[]>();
+        for (const memory of memories) {
+          if (
+            !(
+              Boolean(memory.content.text) ||
+              (memory.content.attachments?.length ?? 0) > 0
+            )
+          ) {
+            continue;
+          }
+          const bucket = byRoom.get(memory.roomId) ?? [];
+          bucket.push(memory);
+          byRoom.set(memory.roomId, bucket);
+        }
+        sorted = [...byRoom.values()]
+          .flatMap((roomMemories) =>
+            dedupeHygienicDialogueMessages(
+              roomMemories.sort(
+                (left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0),
+              ),
+              runtime.agentId,
             ),
-            runtime.agentId,
-          ),
-        )
-        .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0));
-      if (sorted.length === 0) {
-        return { text: "", values: {}, data: {} };
+          )
+          .sort(
+            (left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0),
+          );
+        if (sorted.length === 0) {
+          return { text: "", values: {}, data: {} };
+        }
       }
 
       // Resolve room labels in one adapter read. Missing cosmetic labels do not
@@ -193,26 +212,12 @@ export const recentConversationsProvider: Provider = {
           label: toWellFormedUnicode(roomSourceTag(room)),
         };
       });
-      const recallAction = runtime.actions?.find((action) => {
-        if (action.name !== "MEMORY_SEARCH" && action.name !== "MEMORY") {
-          return false;
-        }
-        const rejection = actionGateRejection(action, {
-          message,
-          userRoles: accessContext.role ? [accessContext.role] : [],
-          // This manifest tells the response router to select memory when
-          // needed; context selection has not happened yet. Every other gate
-          // must already admit the action, and execution rechecks all gates.
-          activeContexts: ["memory"],
-        });
-        return rejection === undefined;
-      });
       const manifestLines = [
         "Stored conversation manifest:",
-        `${sorted.length} stored message(s) across ${rooms.length} authorized room(s).`,
+        `${rooms.length} authorized room(s); message bodies are retrieved on demand.`,
         "This is a room index, not a summary or a claim about what was said. Full message bodies remain stored.",
         "Use current dialogue and relevant recalled evidence for continuity. If an answer needs history not already present, select the memory context and retrieve it before answering; do not guess or treat this index as empty history.",
-        `Read with ${recallAction?.name ?? "MEMORY_SEARCH"}${recallAction?.name === "MEMORY" ? " action=search" : ""}, type=messages and an exact roomId below. query optionally narrows by text; omit query to read the whole room. For large results request limit and follow nextOffset/snapshot with identical filters until the needed range is complete. Never treat a page as all history.`,
+        `Read with ${recallAction?.name ?? "MEMORY_SEARCH"}${recallAction?.name === "MEMORY" ? " action=search" : ""}, type=messages and an exact roomId below. Set query to the requested search terms, or an empty string to intentionally read the whole room. Set limit from 1 to 50 and follow nextOffset/snapshot with identical filters until the needed range is complete. Never treat a page as all history.`,
         ...rooms.map((room) => `- ${room.label} roomId=${room.id}`),
       ];
       markOwnerExclusiveDisclosureUsed(message);
@@ -241,7 +246,7 @@ export const recentConversationsProvider: Provider = {
         // permission bypass or an inaccessible body-free replacement.
         ...(recallAction ? { overflowText: manifestText } : {}),
         values: {
-          recentConversationCount: sorted.length,
+          ...(!recallAction ? { recentConversationCount: sorted.length } : {}),
           recentConversationRoomCount: rooms.length,
         },
         data: { rooms },

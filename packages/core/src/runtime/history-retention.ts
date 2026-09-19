@@ -6,6 +6,9 @@ import type { ContextObject } from "../types/context-object.ts";
 import { collectCompletionContextSources } from "./completion-context.ts";
 import { hashStableJson } from "./context-hash.ts";
 
+/** Complete recent sources always supplied to the foreground. */
+export const HISTORY_CONTINUITY_SOURCE_COUNT = 10;
+
 export type HistoryRetentionScope = {
 	agentId: string;
 	roomId: string;
@@ -19,6 +22,8 @@ export type HistoryRetentionCheckpoint = {
 	reviewedCount: number;
 	prefixHash: string;
 	retainedEventIds: string[];
+	/** Original-source relationships survive deferral and are bound by prefixHash. */
+	dependencyEventGroups?: string[][];
 };
 export type HistoryRetentionReview = {
 	sourceSetId: string;
@@ -88,7 +93,10 @@ export function validateHistoryRetention(
 	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
 	const cp = raw as HistoryRetentionCheckpoint;
 	if (
-		Object.keys(cp).sort().join(",") !==
+		Object.keys(cp)
+			.filter((key) => key !== "dependencyEventGroups")
+			.sort()
+			.join(",") !==
 		"prefixHash,retainedEventIds,reviewedCount,scopeHash,version"
 	)
 		return null;
@@ -115,14 +123,24 @@ export function validateHistoryRetention(
 	if (sourcePrefixHash(scope, prefix) !== cp.prefixHash) return null;
 	const ids = new Set(prefix.map((s) => s.event.id));
 	if (cp.retainedEventIds.some((id) => !ids.has(id))) return null;
+	if (
+		cp.dependencyEventGroups !== undefined &&
+		(!Array.isArray(cp.dependencyEventGroups) ||
+			cp.dependencyEventGroups.some(
+				(group) =>
+					!stringIds(group) ||
+					group.length < 2 ||
+					group.some((id) => !ids.has(id)),
+			))
+	)
+		return null;
 	return structuredClone(cp);
 }
 
-/** Preserve explicit request/reply relationships, without inferring links from prose. */
-function includeLinkedSources(
-	retained: Set<string>,
+/** Shared source relationships form connected groups, independent of retention. */
+export function linkedSourceNeighbors(
 	groups: readonly string[][],
-): void {
+): Map<string, Set<string>> {
 	const neighbors = new Map<string, Set<string>>();
 	for (const group of groups) {
 		const first = group[0];
@@ -133,6 +151,15 @@ function includeLinkedSources(
 			neighbors.get(id)?.add(first);
 		}
 	}
+	return neighbors;
+}
+
+/** Preserve complete connected originals without inferring links from prose. */
+function includeLinkedSources(
+	retained: Set<string>,
+	groups: readonly string[][],
+): void {
+	const neighbors = linkedSourceNeighbors(groups);
 	const pending = [...retained];
 	while (pending.length) {
 		const id = pending.pop();
@@ -178,7 +205,10 @@ export function prepareHistoryRetention(
 		linkedEventGroups.every((group) => stringIds(group) && group.length > 1),
 		"Invalid linked originals",
 	);
-	const allLinkedSourceGroups = linkedEventGroups
+	const allLinkedSourceGroups = [
+		...linkedEventGroups,
+		...(previous?.dependencyEventGroups ?? []),
+	]
 		.filter((group) => group.every((id) => byEvent.has(id)))
 		.map((group) => group.map((id) => byEvent.get(id) as string));
 	const candidateIds = new Set(
@@ -262,8 +292,28 @@ export function applyHistoryRetentionReview(
 	for (const group of output.dependencyGroups)
 		for (const id of group) retained.add(id);
 	includeLinkedSources(retained, prepared.linkedSourceGroups);
+	const dependencyEventGroups = [
+		...new Map(
+			[
+				...(prepared.previous?.dependencyEventGroups ?? []),
+				...output.dependencyGroups
+					.filter((group) => group.length > 1)
+					.map((group) =>
+						group.map((id) => {
+							const source = supplied.get(id);
+							requireValue(source, "Unknown dependency source");
+							return source.event.id;
+						}),
+					),
+			].map((group) => {
+				const ordered = [...group].sort();
+				return [JSON.stringify(ordered), ordered] as const;
+			}),
+		).values(),
+	];
 	const cp: HistoryRetentionCheckpoint = {
 		version: 1,
+		...(dependencyEventGroups.length ? { dependencyEventGroups } : {}),
 		scopeHash: scopeHash(prepared.scope),
 		reviewedCount: prepared.prefix.length,
 		prefixHash: sourcePrefixHash(prepared.scope, prepared.prefix),
@@ -297,8 +347,12 @@ export function visibleHistoryEventIds(
 	// Keep conversational continuity even when the background reviewer has
 	// deferred ordinary recent exchanges. This is a floor, never a cap on
 	// retained constraints, unreviewed originals or the current exchange.
-	start = Math.min(start, Math.max(0, sources.length - 10));
+	start = Math.min(
+		start,
+		Math.max(0, sources.length - HISTORY_CONTINUITY_SOURCE_COUNT),
+	);
 	for (const [i, source] of sources.entries())
 		if (i >= cp.reviewedCount || i >= start) result.add(source.event.id);
+	includeLinkedSources(result, cp.dependencyEventGroups ?? []);
 	return result;
 }

@@ -691,9 +691,9 @@ describe("planner-loop death after a completed tool", () => {
 				makeMessage(harness.runtime, completeRequest),
 				harness.callback,
 			);
-			// A safe Stage-1 draft reaches pre-execution evaluation first. Its
-			// overflow must stop the turn before planning or action dispatch.
-			expect(plannerCalls).toBe(settled ? 1 : 0);
+			// Planning precedes completion evaluation. Planner overflow prevents
+			// dispatch; evaluator overflow preserves the already-settled result.
+			expect(plannerCalls).toBe(1);
 			expect(stageCalls).toBeGreaterThan(1);
 			expect(actionCalls).toBe(settled ? 1 : 0);
 			expect(harness.callbacks).toContainEqual(

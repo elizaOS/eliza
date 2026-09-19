@@ -14,6 +14,7 @@ import {
 import { createAdvancedMemoryPlugin } from "../features/advanced-memory/index";
 import { AgentRuntime } from "../runtime";
 import {
+	HISTORY_CONTINUITY_SOURCE_COUNT,
 	validateHistoryRetention,
 	visibleHistoryEventIds,
 } from "../runtime/history-retention";
@@ -709,7 +710,7 @@ describe("durable background memory", () => {
 		expect(validateHistoryRetention(foreground, scope, checkpoint)).toEqual(
 			checkpoint,
 		);
-		expect(checkpoint).toMatchObject({ reviewedCount: 5 });
+		expect(checkpoint).toEqual(first);
 		// All five originals remain inside the recent-ten continuity window,
 		// independently of the background review's retained-source judgment.
 		expect(visibleHistoryEventIds(foreground, scope, checkpoint)).toEqual(
@@ -721,15 +722,48 @@ describe("durable background memory", () => {
 				`history:${reply.id}`,
 			]),
 		);
-		const reviewSection = prompts[1].slice(
-			prompts[1].lastIndexOf("sourceSetId:"),
-		);
-		expect(reviewSection).toContain(proposal.content.text);
-		expect(reviewSection).toContain(`${greeting.id}`);
-		expect(reviewSection).not.toContain(greeting.content.text);
-		expect(reviewSection).not.toContain(reply.content.text);
-		expect(reviewSection).not.toContain(message.content.text);
-		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(prompts).toHaveLength(1);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		const pending = (
+			await prepareEvaluatorProgress(
+				runtime,
+				greeting,
+				[historyRetentionEvaluator.name],
+				[...rows].sort(
+					(left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0),
+				),
+			)
+		).get(historyRetentionEvaluator.name);
+		expect(pending?.messages.map((row) => row.id)).toEqual([
+			greeting.id,
+			reply.id,
+		]);
+		if (!pending || !greeting.id || !reply.id)
+			throw new Error(
+				"Pending retention evidence or source identity is missing",
+			);
+		const context = {
+			runtime,
+			message: greeting,
+			state,
+			options: { extraction: pending },
+		};
+		expect(await historyRetentionEvaluator.shouldRun(context)).toBe(false);
+		// A byte-limited page must progress even below the cadence threshold;
+		// otherwise older pending evidence can prevent ever reaching that threshold.
+		for (const change of [
+			{ remainingSourceCount: 1 },
+			{ isBackfill: true },
+			{ changedMessageIds: [greeting.id] },
+			{ removedMessageIds: [reply.id] },
+		]) {
+			expect(
+				await historyRetentionEvaluator.shouldRun({
+					...context,
+					options: { extraction: { ...pending, ...change } },
+				}),
+			).toBe(true);
+		}
 		expect(
 			await runtime.getMemories({
 				tableName: "messages",
@@ -737,6 +771,71 @@ describe("durable background memory", () => {
 				unique: false,
 			}),
 		).toEqual(rows);
+	});
+
+	it("batches append-only retention without consuming evidence or delaying other evaluators", async () => {
+		const { runtime, service, message } = await setup();
+		runtime.registerEvaluator(historyRetentionEvaluator);
+		const prompts: string[] = [];
+		runtime.useModel = vi.fn(async (_type, params) => {
+			const prompt = retentionPrompt(params);
+			prompts.push(prompt);
+			const output = prompt.includes("### historyRetention")
+				? JSON.parse(retentionAnswer(prompt, ["h1"]))
+				: {};
+			return JSON.stringify({ ...output, memory: { ok: true } });
+		}) as AgentRuntime["useModel"];
+		await service.enqueue(message, state, { phase: "post_turn" });
+		await execute(runtime, await job(runtime));
+		const initial = await getEvaluatorProgressState(
+			runtime,
+			message,
+			historyRetentionEvaluator.name,
+		);
+		const other = vi.fn(async () => undefined);
+		runtime.registerEvaluator(evaluator(other));
+		for (let i = 1; i <= HISTORY_CONTINUITY_SOURCE_COUNT; i++) {
+			const next = {
+				...message,
+				id: stringToUuid(`cadence-${i}`),
+				createdAt: 20 + i,
+				content: { text: `New original ${i}: keep its exact body.` },
+			};
+			await runtime.upsertMemory(next, "messages");
+			await service.enqueue(next, state, { phase: "post_turn" });
+			await execute(runtime, await job(runtime));
+			const cp = await getEvaluatorProgressState(
+				runtime,
+				next,
+				historyRetentionEvaluator.name,
+			);
+			if (i < HISTORY_CONTINUITY_SOURCE_COUNT) {
+				expect(cp).toEqual(initial);
+				expect(prompts.at(-1)).not.toContain("### historyRetention");
+			} else
+				expect(cp).toMatchObject({
+					reviewedCount: HISTORY_CONTINUITY_SOURCE_COUNT + 1,
+				});
+			const rows = await runtime.getMemories({
+				tableName: "messages",
+				roomId: message.roomId,
+				unique: false,
+			});
+			const visible = visibleHistoryEventIds(
+				historyRetentionContext(runtime, next, rows),
+				await retentionScope(runtime, next),
+				cp,
+			);
+			for (const row of rows)
+				expect(visible?.has(`history:${row.id}`)).toBe(true);
+			expect(await runtime.getMemoryById(next.id)).toMatchObject({
+				content: next.content,
+			});
+		}
+		expect(other).toHaveBeenCalledTimes(HISTORY_CONTINUITY_SOURCE_COUNT);
+		expect(
+			prompts.filter((p) => p.includes("### historyRetention")),
+		).toHaveLength(2);
 	});
 
 	it("keeps a persisted linked reply when the reviewer defers its outcome", async () => {
@@ -870,6 +969,18 @@ describe("durable background memory", () => {
 			content: { text: "Keep following that earlier rule." },
 		};
 		await runtime.upsertMemory(next, "messages");
+		// Fill the existing continuity window so this exercises an actual review,
+		// rather than the append-only batching gate.
+		let latest = next;
+		for (let i = 1; i < HISTORY_CONTINUITY_SOURCE_COUNT; i++) {
+			latest = {
+				...next,
+				id: stringToUuid(`reference-batch-${i}`),
+				createdAt: 20 + i,
+				content: { text: `Recent exchange ${i}` },
+			};
+			await runtime.upsertMemory(latest, "messages");
+		}
 		let read = false;
 		runtime.useModel = vi.fn(async (_type, params) => {
 			if (!read) {
@@ -882,7 +993,7 @@ describe("durable background memory", () => {
 				[String(message.id)],
 			);
 		}) as AgentRuntime["useModel"];
-		await service.enqueue(next, state, { phase: "post_turn" });
+		await service.enqueue(latest, state, { phase: "post_turn" });
 		await execute(runtime, await job(runtime));
 		expect(
 			await getEvaluatorProgressState(
@@ -891,7 +1002,7 @@ describe("durable background memory", () => {
 				historyRetentionEvaluator.name,
 			),
 		).toMatchObject({
-			reviewedCount: 2,
+			reviewedCount: HISTORY_CONTINUITY_SOURCE_COUNT + 1,
 			retainedEventIds: [`history:${message.id}`, `history:${next.id}`],
 		});
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);

@@ -9,6 +9,8 @@
  * only the runtime helpers over them.
  */
 
+import { ElizaError } from "./errors";
+
 import {
 	type Content,
 	type CustomMetadata,
@@ -126,4 +128,47 @@ export function isFragmentMemory(
 
 export function getMemoryText(memory: Memory, defaultValue = ""): string {
 	return memory.content.text ?? defaultValue;
+}
+
+/** Stamp app-owned records at their trusted persistence boundary. Existing
+ * identity and scope fields remain authoritative; conflicting origins are not
+ * rewritten. Callers must establish app ownership before invoking this helper. */
+export function stampAppConversationProvenance<T extends Memory>(
+	agentId: UUID,
+	memory: T,
+): T {
+	if (!memory.id) {
+		throw new ElizaError("Conversation memory is missing its durable id", {
+			code: "CONVERSATION_MEMORY_ID_MISSING",
+			context: { roomId: memory.roomId },
+		});
+	}
+	const metadataRecord =
+		memory.metadata &&
+		typeof memory.metadata === "object" &&
+		!Array.isArray(memory.metadata)
+			? (memory.metadata as Record<string, unknown>)
+			: {};
+	const readMetadataString = (key: string): string | undefined => {
+		const value = metadataRecord[key];
+		return typeof value === "string" && value.trim() ? value : undefined;
+	};
+	const provider = readMetadataString("provider") ?? "client_chat";
+	const accountId = readMetadataString("accountId") ?? agentId;
+	const platformMessageId =
+		readMetadataString("platformMessageId") ?? memory.id;
+	// SQL fills an omitted agent ID with the current runtime's ID. Stamp the
+	// same identity before exact-retry comparison, keeping the factory's
+	// existing metadata.scope (which may intentionally be shared).
+	memory.agentId ??= agentId;
+	memory.metadata = {
+		...metadataRecord,
+		type: "message",
+		scope: memory.metadata?.scope ?? "private",
+		provider,
+		accountId,
+		platformMessageId,
+		sourceId: readMetadataString("sourceId") ?? platformMessageId,
+	} satisfies MessageMetadata;
+	return memory;
 }

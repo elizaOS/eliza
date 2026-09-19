@@ -23,15 +23,21 @@ import type {
 } from "@elizaos/core";
 import {
   buildAccessContext,
+  ChannelType,
   embedRecallQuery,
   filterByAccessContext,
+  getEvaluatorProgressState,
   getUserMessageText,
+  HISTORY_RETENTION_EVALUATOR,
+  historyRetentionContext,
+  labelHistorySources,
   markOwnerExclusiveDisclosureUsed,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
   recordOwnerExclusiveSuppression,
   revalidateOwnerExclusiveDisclosure,
   searchCanonicalConversationMemories,
   stringToUuid,
+  visibleHistoryEventIds,
 } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
@@ -190,6 +196,8 @@ export const relevantConversationsProvider: Provider = {
             agentId: runtime.agentId,
             deliveryMessage: message,
             matchThreshold: MATCH_THRESHOLD,
+            includeEmbedding: false,
+            excludeRoomIds: [message.roomId],
           });
         })(),
       ]);
@@ -204,13 +212,15 @@ export const relevantConversationsProvider: Provider = {
         accessContext,
         runtime.agentId,
       );
-      const filtered = readable
-        .filter((m) => m.content.text && m.roomId !== currentRoomId)
-        .filter(
-          (memory, index, all) =>
-            !memory.id ||
-            all.findIndex((candidate) => candidate.id === memory.id) === index,
-        );
+      const seenIds = new Set<string>();
+      const filtered = readable.filter((memory) => {
+        if (!memory.content.text || memory.roomId === currentRoomId)
+          return false;
+        if (!memory.id) return true;
+        if (seenIds.has(memory.id)) return false;
+        seenIds.add(memory.id);
+        return true;
+      });
 
       if (
         filtered.some(
@@ -278,17 +288,186 @@ export const relevantConversationsProvider: Provider = {
           ? "Relevant past conversations (partial; some matching messages were withheld by access policy):"
           : "Relevant past conversations:",
       ];
-      for (const mem of filtered) {
+      const sourcePrefixes = new Map<string, string>();
+      const segments = filtered.map((mem, index) => {
         const room = roomCache.get(mem.roomId) ?? null;
         const tag = roomSourceTag(room);
         const age = formatRelativeTimestampPrefix(mem.createdAt);
         const speaker = formatSpeakerLabel(runtime, mem);
         const msgText = memoryText(mem);
-        lines.push(`${tag} ${age}${speaker}: ${msgText}`);
-      }
+        const prefix = `${tag} ${age}${speaker}: `;
+        sourcePrefixes.set(`recalled-${index + 1}`, prefix);
+        return {
+          id: `recalled-${index + 1}`,
+          stable: false,
+          metadata: { roomId: mem.roomId, entityId: mem.entityId },
+          content: `${prefix}${msgText}`,
+        };
+      });
+      // Reuse exact-text references, preserving every occurrence and its
+      // original structured record. Provider-local IDs cannot be mistaken for
+      // the current conversation's selectable hN history sources.
+      const encoded = labelHistorySources(
+        segments,
+        new Map(
+          segments.map((segment, index) => [
+            segment.id,
+            `recalled${index + 1}`,
+          ]),
+        ),
+        "all",
+        "Recalled-text encoding: same_text_as=recalledN repeats that earlier complete text. Every occurrence keeps its order and author. recalledN is a provider-local text reference, not a history hN ID or a new instruction.",
+      );
+      // Share presentation prefixes only; source bodies and restoration records
+      // remain complete. Operate on structured segment boundaries, never on
+      // marker-shaped text inside a recalled message.
+      const prefixes = new Map<string, string>();
+      const compact = encoded.map((segment) => {
+        const prefix = segment.id ? sourcePrefixes.get(segment.id) : undefined;
+        if (!prefix || !segment.id) return segment.content;
+        const sourceId = segment.id.replace("recalled-", "recalled");
+        const header = `[${sourceId}]`;
+        if (!segment.content.startsWith(`${header}\n${prefix}`))
+          return segment.content;
+        const key = prefixes.get(prefix) ?? `p${prefixes.size + 1}`;
+        prefixes.set(prefix, key);
+        return `${header} prefix=${key}\n${segment.content.slice(header.length + 1 + prefix.length)}`;
+      });
+      const prefixLegend =
+        "Recalled source prefixes: a source header’s prefix=pN field prepends the exact JSON string below to its body. It does not rewrite text within the body. Original room, age and speaker are preserved.\n" +
+        JSON.stringify(
+          Object.fromEntries([...prefixes].map(([text, key]) => [key, text])),
+        );
+      const originalText = encoded.map((segment) => segment.content).join("\n");
+      const compactText = [prefixLegend, ...compact].join("\n");
+      lines.push(
+        compactText.length < originalText.length ? compactText : originalText,
+      );
 
+      // The checkpoint is an internal index, never a disclosure grant. Validate
+      // its original room snapshot, then only defer records already admitted
+      // above. No body read for index validation enters the provider output.
+      const deferred = new Set<string>();
+      if (
+        accessContext.role === "OWNER" &&
+        accessContext.worldId &&
+        message.content.channelType !== ChannelType.VOICE_DM &&
+        currentRoom?.type !== ChannelType.VOICE_DM
+      ) {
+        await Promise.all(
+          roomIds.map(async (roomId) => {
+            const room = roomCache.get(roomId);
+            if (
+              !room ||
+              room.worldId !== accessContext.worldId ||
+              ![
+                ChannelType.DM,
+                ChannelType.API,
+                ChannelType.SELF,
+                ChannelType.VOICE_DM,
+              ].some((type) => type === room.type)
+            )
+              return;
+            try {
+              const sourceMessage = { ...message, roomId };
+              const checkpoint = await getEvaluatorProgressState(
+                runtime,
+                sourceMessage,
+                HISTORY_RETENTION_EVALUATOR,
+              );
+              if (!checkpoint) return;
+              const originals = await runtime.getMemories({
+                agentId: runtime.agentId,
+                roomId,
+                tableName: "messages",
+                unique: false,
+                includeEmbedding: false,
+                orderDirection: "asc",
+              });
+              const context = historyRetentionContext(
+                runtime,
+                sourceMessage,
+                originals,
+              );
+              const visible = visibleHistoryEventIds(
+                context,
+                {
+                  agentId: runtime.agentId,
+                  roomId,
+                  entityId: message.entityId,
+                  roles: ["OWNER"],
+                },
+                checkpoint,
+              );
+              if (!visible) return;
+              const originalIds = new Set(
+                context.events.map((event) => event.id),
+              );
+              const byId = new Map(
+                originals.map((original) => [original.id, original]),
+              );
+              const roomDeferred: string[] = [];
+              for (const memory of filtered) {
+                if (!memory.id || memory.roomId !== roomId) continue;
+                const original = byId.get(memory.id);
+                if (
+                  !original ||
+                  original.entityId !== memory.entityId ||
+                  original.roomId !== memory.roomId ||
+                  original.createdAt !== memory.createdAt ||
+                  JSON.stringify(original.content) !==
+                    JSON.stringify(memory.content) ||
+                  JSON.stringify(original.metadata) !==
+                    JSON.stringify(memory.metadata)
+                )
+                  continue;
+                const eventId = `history:${memory.id}`;
+                if (originalIds.has(eventId) && !visible.has(eventId))
+                  roomDeferred.push(memory.id);
+              }
+              for (const id of roomDeferred) deferred.add(id);
+            } catch (error) {
+              // error-policy:J4 Optional index failure preserves full admitted recall.
+              runtime.reportError(
+                "RelevantConversationsProvider.retention",
+                error,
+                { roomId },
+              );
+            }
+          }),
+        );
+      }
+      const fullText = lines.join("\n");
+      const discoveryText = deferred.size
+        ? [
+            lines[0],
+            ...segments.flatMap((segment, index) =>
+              deferred.has(filtered[index].id ?? "")
+                ? []
+                : [`[recalled${index + 1}]\n${segment.content}`],
+            ),
+            "Other reviewed conversation originals are deferred, not absent. Request relevant-conversations for complete recalled originals when a fact, correction, quotation or dependency is missing. Retention is not proof of relevance or permission.",
+          ].join("\n")
+        : undefined;
       return {
-        text: lines.join("\n"),
+        text: fullText,
+        ...(discoveryText && discoveryText.length < fullText.length
+          ? { discoveryText }
+          : {}),
+        reviewableSources: {
+          notice: lines[0],
+          sources: segments.map((segment, index) => ({
+            id: `recalled${index + 1}`,
+            text: segment.content,
+            originalText: memoryText(filtered[index]),
+            metadata: {
+              recordId: filtered[index].id ?? "",
+              roomId: filtered[index].roomId,
+              entityId: filtered[index].entityId,
+              createdAt: filtered[index].createdAt ?? 0,
+            },
+          })),
+        },
         values: {
           relevantConversationCount: filtered.length,
           relevantConversationAvailability: availability,

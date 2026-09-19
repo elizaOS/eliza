@@ -176,13 +176,8 @@ describe("recentConversationsProvider access-context integration", () => {
     expect(beforeRevocation.overflowText).toContain(`roomId=${RETAINED_ROOM}`);
     expect(beforeRevocation.overflowText).toContain(`roomId=${REVOKED_ROOM}`);
     expect(beforeRevocation.text).not.toContain("cross-world message");
-    expect(beforeRevocation.values?.recentConversationCount).toBe(2);
-    expect(storageRead).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        roomIds: expect.arrayContaining([RETAINED_ROOM, REVOKED_ROOM]),
-        tableName: "messages",
-      }),
-    );
+    expect(beforeRevocation.values?.recentConversationCount).toBeUndefined();
+    expect(storageRead).not.toHaveBeenCalled();
 
     await runtime.removeParticipant(OWNER, REVOKED_ROOM);
     const afterRevocation = await recentConversationsProvider.get(
@@ -195,13 +190,8 @@ describe("recentConversationsProvider access-context integration", () => {
     expect(afterRevocation.overflowText).not.toContain(
       `roomId=${REVOKED_ROOM}`,
     );
-    expect(afterRevocation.values?.recentConversationCount).toBe(1);
-    expect(storageRead).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        roomIds: [RETAINED_ROOM],
-        tableName: "messages",
-      }),
-    );
+    expect(afterRevocation.values?.recentConversationCount).toBeUndefined();
+    expect(storageRead).not.toHaveBeenCalled();
   });
 
   it("retrieves every complete stored body and attachment through the manifest's lossless read contract", async () => {

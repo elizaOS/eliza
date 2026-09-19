@@ -5062,12 +5062,16 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 	async searchMemories(params: {
 		embedding: number[];
+		/** Omit returned vectors when only message content and scores are needed. */
+		includeEmbedding?: boolean;
 		query?: string;
 		match_threshold?: number;
 		count?: number;
 		limit?: number;
 		offset?: number;
 		roomId?: UUID;
+		/** Exclude these rooms before vector ranking and pagination. */
+		excludeRoomIds?: UUID[];
 		unique?: boolean;
 		worldId?: UUID;
 		entityId?: UUID;

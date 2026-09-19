@@ -89,6 +89,105 @@ describe("source-backed native replies", () => {
 			"later mutation",
 		);
 	});
+	it("renders a reviewed provider original without retyping or granting history identity", () => {
+		const f = fixture();
+		const originalText = "  Mira’s backpack is violet.\nKeep  spacing.\n";
+		f.context.events.push({
+			type: "provider",
+			id: "recall",
+			name: "relevant-conversations",
+			text: `[recalled1]\nOther room user: ${originalText}`,
+			reviewableSources: {
+				notice: "Authorized recall",
+				sources: [
+					{
+						id: "recalled1",
+						text: `Other room user: ${originalText}`,
+						originalText,
+						metadata: {
+							roomId: "other",
+							entityId: "user",
+							recordId: "original",
+						},
+					},
+				],
+			},
+		});
+		const snapshot = createSourceReplySnapshot(f.context, f.projection, [
+			f.memory,
+		]);
+		if (!snapshot) throw Error("missing snapshot");
+		const raw = {
+			...f.raw,
+			providerReview: { complete: true, keep: ["recalled1"] },
+			replyText: [
+				{ kind: "text", value: "Your correction:" },
+				{ kind: "source", value: "recalled1" },
+			],
+		};
+		expect(resolveSourceReply(f.context, snapshot, raw)?.replyText).toBe(
+			`Your correction:\n\n${originalText}\n\n`,
+		);
+		expect(snapshot.references.has("recalled1")).toBe(false);
+		for (const review of [
+			undefined,
+			{ complete: false, keep: ["recalled1"] },
+			{ complete: true, keep: [] },
+			{ complete: true, keep: ["recalled1"], sourceSetId: "injected" },
+		]) {
+			expect(() =>
+				resolveSourceReply(f.context, snapshot, {
+					...raw,
+					providerReview: review,
+				}),
+			).toThrow("Invalid source-backed reply");
+		}
+		const provider = f.context.events.at(-1);
+		if (provider?.type !== "provider" || !provider.reviewableSources)
+			throw Error();
+		provider.reviewableSources.sources[0].metadata.entityId =
+			"different-author";
+		expect(resolveSourceReply(f.context, snapshot, raw)).toBeUndefined();
+	});
+	it.each(["discovery", "unmatched", "missing", "history-alias"])(
+		"does not quote %s provider bodies",
+		(mode) => {
+			const f = fixture();
+			f.context.events.push({
+				type: "provider",
+				id: "recall",
+				name: "relevant-conversations",
+				text:
+					mode === "history-alias"
+						? "[h99]\nUser: original"
+						: "[recalled1]\nUser: original",
+				...(mode === "discovery" ? { discoveryText: "Deferred" } : {}),
+				reviewableSources: {
+					notice: "Authorized recall",
+					sources: [
+						{
+							id: mode === "history-alias" ? "h99" : "recalled1",
+							text: "User: original",
+							...(mode !== "missing"
+								? {
+										originalText:
+											mode === "unmatched" ? "unrelated" : "original",
+									}
+								: {}),
+							metadata: { roomId: "other", entityId: "user" },
+						},
+					],
+				},
+			});
+			const snapshot = createSourceReplySnapshot(f.context, f.projection, [
+				f.memory,
+			]);
+			expect(
+				snapshot?.originals.has(mode === "history-alias" ? "h99" : "recalled1"),
+			).toBe(false);
+		},
+	);
+
 	it.each(["turn", "source", "speaker", "room"])(
 		"rejects stale %s binding",
 		(mode) => {

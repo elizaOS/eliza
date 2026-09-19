@@ -8,6 +8,7 @@ import {
 import { createContextObject } from "../runtime/context-object.ts";
 import {
 	applyHistoryRetentionReview,
+	HISTORY_CONTINUITY_SOURCE_COUNT,
 	type HistoryRetentionCheckpoint,
 	type HistoryRetentionPrepared,
 	type HistoryRetentionReview,
@@ -142,6 +143,20 @@ export const historyRetentionEvaluator: Evaluator<
 			!options.extraction ||
 			!message.id ||
 			message.entityId === runtime.agentId
+		)
+			return false;
+		const evidence = options.extraction;
+		// Unreviewed originals remain visible, and this batch fits inside the
+		// foreground continuity floor. Leave its journal untouched so the next
+		// turn accumulates evidence rather than paying to review it again now.
+		// Backfill, source mutations and size-limited batches must still progress.
+		if (
+			evidence.progressState &&
+			!evidence.isBackfill &&
+			!evidence.changedMessageIds.length &&
+			!evidence.removedMessageIds.length &&
+			!evidence.remainingSourceCount &&
+			evidence.messages.length < HISTORY_CONTINUITY_SOURCE_COUNT
 		)
 			return false;
 		// Direct conversations share foreground projection across text and voice.

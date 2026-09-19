@@ -358,8 +358,10 @@ export async function runV5MessageRuntimeStage1(
 			fieldRunResult,
 			inferenceMessageText,
 			parsedResponseHandlerReply,
+			sourceReplyReferences,
 			messageHandlerEndedAt,
 			providerDiscoveryEnabled,
+			providerReview,
 			loadedContextProviders,
 			historyReadEvidence,
 			contextCatalogRead,
@@ -801,6 +803,7 @@ export async function runV5MessageRuntimeStage1(
 					text: reply,
 					thought: messageHandler.thought,
 					agentVoiced: replyIsModelVoice,
+					sourceReplyReferences,
 				}),
 			};
 		}
@@ -1294,6 +1297,7 @@ export async function runV5MessageRuntimeStage1(
 		plannerContext.metadata = {
 			...plannerContext.metadata,
 			providerDiscoveryEnabled,
+			providerReview,
 			historyReferenceEncoding: providerDiscoveryEnabled,
 			loadedContextProviders,
 		};
@@ -1352,7 +1356,6 @@ export async function runV5MessageRuntimeStage1(
 									})),
 							}
 						: {}),
-					actionSurface: actionSurface.summary,
 				} as JsonValue,
 				thought: messageHandler.thought,
 			},

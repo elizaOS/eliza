@@ -1,10 +1,15 @@
 /** Resolves user-visible replies from settled tool results, verified effects, and actual delivery receipts. */
 
+import { stampAppConversationProvenance } from "../../memory";
 import { bindEffectDelivery } from "../../runtime/effect-delivery";
 import {
 	isTerminalPlannerToolName,
 	type PlannerToolResult,
 } from "../../runtime/planner-loop";
+import {
+	getTrustedDeliveryAudience,
+	trustedDeliveryAudienceIsBoundToRuntime,
+} from "../../security/trusted-delivery-audience";
 import { getTrajectoryContext } from "../../trajectory-context";
 import type { Action, ActionResult } from "../../types/components";
 import type { Memory } from "../../types/memory";
@@ -14,6 +19,10 @@ import type { IAgentRuntime } from "../../types/runtime";
 import type { State } from "../../types/state";
 import type { StrategyMode, StrategyResult } from "./contracts.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
+import {
+	readSourceReplyReferences,
+	type SourceReplyReferences,
+} from "./source-reply-references";
 
 /**
  * Canonical form for delivered-text dedup: callers that thread
@@ -354,6 +363,7 @@ export function createV5ReplyStrategyResult(args: {
 	responseId: UUID;
 	text: string;
 	thought: string;
+	sourceReplyReferences?: SourceReplyReferences;
 	mode?: StrategyMode;
 	attachments?: Media[];
 	transcriptVisibility?: "internal";
@@ -406,6 +416,12 @@ export function createV5ReplyStrategyResult(args: {
 			? { effectReceiptIds: [...args.effectReceiptIds] }
 			: {}),
 	};
+	const sourceReferences = readSourceReplyReferences(
+		args.sourceReplyReferences,
+		responseContent.text ?? "",
+	);
+	if (sourceReferences)
+		responseContent.sourceReplyReferences = sourceReferences;
 	if (args.effectReceiptIds?.length && responseContent.text) {
 		responseContent = bindEffectDelivery(
 			responseContent,
@@ -415,18 +431,32 @@ export function createV5ReplyStrategyResult(args: {
 		);
 	}
 
+	const responseMemory: Memory = {
+		id: args.responseId,
+		entityId: args.runtime.agentId,
+		agentId: args.runtime.agentId,
+		content: responseContent,
+		roomId: args.message.roomId,
+		createdAt: Date.now(),
+	};
+	const audience = getTrustedDeliveryAudience(args.message);
+	const incoming = args.message.metadata;
+	if (
+		audience?.provenance === "authenticated_owner_api" &&
+		audience.roomId === args.message.roomId &&
+		trustedDeliveryAudienceIsBoundToRuntime(args.message, args.runtime) &&
+		incoming &&
+		"provider" in incoming &&
+		"accountId" in incoming &&
+		incoming.provider === "client_chat" &&
+		incoming.accountId === args.runtime.agentId &&
+		incoming.platformMessageId === args.message.id
+	) {
+		stampAppConversationProvenance(args.runtime.agentId, responseMemory);
+	}
 	return {
 		responseContent,
-		responseMessages: [
-			{
-				id: args.responseId,
-				entityId: args.runtime.agentId,
-				agentId: args.runtime.agentId,
-				content: responseContent,
-				roomId: args.message.roomId,
-				createdAt: Date.now(),
-			},
-		],
+		responseMessages: [responseMemory],
 		state: args.state,
 		mode: args.mode ?? "simple",
 		...(args.terminalFailure ? { terminalFailure: args.terminalFailure } : {}),

@@ -592,6 +592,10 @@ export function buildCanonicalRecall(
 interface CanonicalMemorySearchBaseInput {
 	runtime: IAgentRuntime;
 	embedding: number[];
+	/** False omits returned vectors, without changing ranking or source checks. */
+	includeEmbedding?: boolean;
+	/** Additional room exclusions only narrow the authorized recall scope. */
+	excludeRoomIds?: UUID[];
 	query?: string;
 	/** @deprecated Production recall derives the agent from `runtime.agentId`. */
 	agentId?: UUID;
@@ -784,6 +788,12 @@ export async function searchCanonicalConversationMemories(
 		try {
 			roundCandidates = await input.runtime.searchMemories({
 				embedding: input.embedding,
+				...(input.includeEmbedding === false
+					? { includeEmbedding: false }
+					: {}),
+				...(input.excludeRoomIds?.length
+					? { excludeRoomIds: input.excludeRoomIds }
+					: {}),
 				tableName: "messages",
 				match_threshold: input.matchThreshold,
 				count: roundCount,
@@ -817,32 +827,34 @@ export async function searchCanonicalConversationMemories(
 
 		// Deduplicate against what we already have and accumulate.
 		for (const mem of roundCandidates) {
+			// Preserve exclusions even when an older/custom adapter ignores them.
+			if (input.excludeRoomIds?.includes(mem.roomId)) continue;
 			const memId = mem.id?.toString();
 			if (memId && seenIds.has(memId)) continue;
 			if (memId) seenIds.add(memId);
 			allCandidates.push(mem);
 		}
 
-		// Quick-check: if this round added enough candidates to potentially
-		// satisfy the requested count after filtering, we can stop early.
-		// We check the raw count since we don't know the filter ratio yet.
-		const evaluated = evaluateCanonicalRecall({
-			candidates: allCandidates,
-			agentId: input.runtime.agentId,
-			requester,
-			destinationRoomId,
-			crossRoomGate,
-		});
-		const accumulatedEligible = normalizedSource
-			? evaluated.items.filter(
-					(item) => item.provenance.source === normalizedSource,
-				).length
-			: evaluated.items.length;
+		// Limited searches need intermediate eligibility checks to know when
+		// to stop. Complete recall validates once after exhausting the adapter.
+		let hasEnoughEligible = false;
+		if (explicitCount !== undefined) {
+			const evaluated = evaluateCanonicalRecall({
+				candidates: allCandidates,
+				agentId: input.runtime.agentId,
+				requester,
+				destinationRoomId,
+				crossRoomGate,
+			});
+			const accumulatedEligible = normalizedSource
+				? evaluated.items.filter(
+						(item) => item.provenance.source === normalizedSource,
+					).length
+				: evaluated.items.length;
+			hasEnoughEligible = accumulatedEligible >= explicitCount;
+		}
 
-		if (
-			(explicitCount !== undefined && accumulatedEligible >= explicitCount) ||
-			roundCandidates.length < roundCount
-		) {
+		if (hasEnoughEligible || roundCandidates.length < roundCount) {
 			// Either we have enough valid items, or the adapter returned
 			// fewer than requested — it exhausted the eligible set.
 			if (roundCandidates.length < roundCount) {

@@ -255,17 +255,6 @@ function finishEvaluatorResponse(messageToUser = "Done."): CannedResponse {
 	};
 }
 
-function continueEvaluatorResponse(): CannedResponse {
-	return {
-		body: JSON.stringify({
-			success: false,
-			decision: "CONTINUE",
-			thought:
-				"The requested operation has not executed; continue planning it.",
-		}),
-	};
-}
-
 function plannerUserContent(runtime: IAgentRuntime): string {
 	const plannerCall = getCalls(runtime).find(
 		(call) => call.modelType === ModelType.ACTION_PLANNER,
@@ -345,7 +334,7 @@ describe("v5 tiered action surface", () => {
 		{
 			channel: ChannelType.VOICE_DM,
 			candidates: ["CUSTOM_READ"],
-			deferred: false,
+			deferred: true,
 		},
 		{
 			channel: ChannelType.GROUP,
@@ -793,16 +782,11 @@ describe("v5 tiered action surface", () => {
 		},
 		{ name: "malformed effect status", fields: { replyEffectStatus: {} } },
 	])("preserves Calendar planning for $name", async ({ fields }) => {
-		const evaluatesDraft =
-			"intents" in fields || "candidateActionNames" in fields;
 		const handler = vi.fn(async () => {
-			if (evaluatesDraft) {
-				expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
-					ModelType.RESPONSE_HANDLER,
-					ModelType.RESPONSE_HANDLER,
-					ModelType.ACTION_PLANNER,
-				]);
-			}
+			expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.ACTION_PLANNER,
+			]);
 			return { success: true };
 		});
 		const runtime = makeRuntime({
@@ -814,7 +798,6 @@ describe("v5 tiered action surface", () => {
 					replyText: "The requested time is Friday at 1 PM.",
 					...fields,
 				}),
-				...(evaluatesDraft ? [continueEvaluatorResponse()] : []),
 				plannerToolResponse("CALENDAR"),
 				finishEvaluatorResponse("The Calendar tool returned."),
 			],
@@ -830,7 +813,6 @@ describe("v5 tiered action surface", () => {
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
-			...(evaluatesDraft ? [ModelType.RESPONSE_HANDLER] : []),
 			ModelType.ACTION_PLANNER,
 			ModelType.RESPONSE_HANDLER,
 		]);
@@ -842,7 +824,6 @@ describe("v5 tiered action surface", () => {
 	])("preserves nested legacy $name", async ({ fields }) => {
 		const handler = vi.fn(async () => {
 			expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
-				ModelType.RESPONSE_HANDLER,
 				ModelType.RESPONSE_HANDLER,
 				ModelType.ACTION_PLANNER,
 			]);
@@ -864,7 +845,6 @@ describe("v5 tiered action surface", () => {
 						},
 					}),
 				},
-				continueEvaluatorResponse(),
 				plannerToolResponse("CALENDAR"),
 				finishEvaluatorResponse("The Calendar tool returned."),
 			],
@@ -879,7 +859,6 @@ describe("v5 tiered action surface", () => {
 
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
-			ModelType.RESPONSE_HANDLER,
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
 			ModelType.RESPONSE_HANDLER,

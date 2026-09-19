@@ -796,10 +796,35 @@ selection or silently remove its entries. The retry offers only supplied source
 labels and can still READ_CONTEXT. Unknown/deferred valid labels, stale bindings,
 malformed field types and unsuccessful retries retain conservative restoration.
 
-After an authorized original-history read, built-in direct-text native handlers may return ordered reply parts. Source parts insert the selected, supplied original from a private immutable copy of the same authorized provider records; exact presentation, speaker and room must match before admission. Quoted bodies occupy separate paragraphs and retain their original bytes. Resolve parts before response-field dispatch and routing checks, leaving raw model trajectories unchanged. Unknown or unselected source parts fail without effects; incomplete or stale source selection retains ordinary history restoration. Augmented or unmatched source records keep the original reply contract. Initial greetings, custom reply fields, full-history restoration, legacy JSON, voice and coding retain their existing schemas. This does not change history-checkpoint hashes or add stored originals to the model request.
+After an authorized original-history read, built-in direct-text native handlers may return ordered reply parts. Source parts insert the selected, supplied original from a private immutable copy of the same authorized provider records; exact presentation, speaker and room must match before admission. Quoted bodies occupy separate paragraphs and retain their original bytes. Resolve parts before response-field dispatch and routing checks, leaving raw model trajectories unchanged. Unknown or unselected source parts fail without effects; incomplete or stale source selection retains ordinary history restoration. Augmented or unmatched source records keep the original reply contract. Custom reply fields, full-history restoration, legacy JSON, voice and coding retain their existing schemas. Source-part replies are resolved before the empty-answer check as well as routing and dispatch.
 
 When a non-coding planner starts without a reusable reply, its REPLY schema requires text. Clarifications and refusals remain valid proposals and retain completion evaluation. Existing saved-answer release, coding, and later planner rounds keep their contracts.
 
 Keyless web search treats an explicit Parallel zero-result envelope as a miss and tries its existing Exa fallback. Complete MCP text blocks are preserved; unknown result formats are not classified as empty.
 
 After context reads, refreshed field activity controls both instructions and array schemas. Fields still inactive retain their empty contract; newly active fields regain their complete schemas. Decision repairs retain the full contract because they reuse the earlier activity snapshot. Field dispatch still rechecks activity and permissions.
+
+Rendered source quotations retain original-event and text hashes in stored reply metadata. Recent or explicitly retrieved assistant quotations can load their verified earlier originals in the same authorized projection, avoiding a separate read round. Only unchanged sources already in the current authorized room are followed; deleted, edited, reassigned, future, malformed or rewritten bindings are ignored. Original speakers remain separate, and links confer no permission. Visible quote dependencies are supplied before the first decision, so even an ordinary greeting after a quotation can include those originals and use the source-part schema. This trades some input for avoiding a follow-up read; it is not semantic ranking or a guarantee of one-call recall.
+
+Providers may expose complete, labelled `reviewableSources` for the existing
+response handler to select for later planning and completion. Selection binds to
+the exact turn, provider text, source metadata and bodies; missing, incomplete,
+unknown or stale selections retain full context. The provider notice always
+remains, selected repeated occurrences materialize their complete original text,
+and the existing provider-restoration path recovers full evidence. Selection
+does not change storage, authorize disclosure, or add a model stage.
+
+
+Native direct-text history reads also restore deferred, reviewable provider
+originals from the freshly recomposed authorized state. A separate notice and
+trace field identify those provider bodies; they are not literal-search matches
+in the current conversation. Ordinary reference providers and voice retain their
+existing read paths. This recovery uses the already requested decision round.
+
+An indexed provider loaded in that turn may receive a fresh source-bound review
+for planning and completion. A pre-load, missing, incomplete or stale review
+keeps the complete loaded evidence. Explicit restoration of ordinary provider
+context also remains complete. Node consumers can reuse `visibleHistoryEventIds`,
+`historyRetentionContext`, `HISTORY_RETENTION_EVALUATOR` and
+`getEvaluatorProgressState` to validate existing retention checkpoints; those
+checkpoints never grant source access.

@@ -277,7 +277,6 @@ function hasRecoverableContentLocator(value: unknown): boolean {
 	const visited = new WeakSet<object>();
 	while (pending.length > 0) {
 		const current = pending.pop();
-		if (!current) break;
 		if (isReadView(current)) {
 			return true;
 		}

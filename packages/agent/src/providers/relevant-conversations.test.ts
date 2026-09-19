@@ -13,6 +13,20 @@
 import type { IAgentRuntime, Memory, Room, State } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  applyHistoryRetentionReview,
+  prepareHistoryRetention,
+} from "../../../core/src/runtime/history-retention.ts";
+import {
+  projectDeferredProviders,
+  providerReviewSources,
+} from "../../../core/src/runtime/provider-context.ts";
+import { historyRetentionContext } from "../../../core/src/services/history-retention.ts";
+import type {
+  ContextObject,
+  ContextProviderEvent,
+} from "../../../core/src/types/context-object.ts";
+import { ChannelType } from "../../../core/src/types/primitives.ts";
 
 // The provider closes over `embedRecallQuery` from @elizaos/core at import time.
 // Partially mock the module so we can drive the shared recall embed to a
@@ -21,6 +35,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const embedRecallQuery =
   vi.fn<(runtime: IAgentRuntime, text: string) => Promise<number[] | null>>();
 const buildAccessContext = vi.fn();
+const getEvaluatorProgressState = vi.fn<() => Promise<unknown>>(
+  async () => undefined,
+);
 const revalidateOwnerExclusiveDisclosure = vi.fn(
   async (
     _runtime: IAgentRuntime,
@@ -73,6 +90,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@elizaos/core")>();
   return {
     ...actual,
+    getEvaluatorProgressState,
     buildAccessContext: (...args: unknown[]) => buildAccessContext(...args),
     embedRecallQuery: (runtime: IAgentRuntime, text: string) =>
       embedRecallQuery(runtime, text),
@@ -204,6 +222,7 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
   afterEach(() => {
     embedRecallQuery.mockReset();
     buildAccessContext.mockReset();
+    getEvaluatorProgressState.mockReset();
     revalidateOwnerExclusiveDisclosure.mockClear();
     revalidateOwnerExclusiveDisclosure.mockResolvedValue({
       allowed: true,
@@ -260,6 +279,12 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
     ).not.toHaveProperty("count");
     expect(searchMemories).toHaveBeenCalledWith(
       expect.objectContaining({ embedding: [0.1, 0.2, 0.3] }),
+    );
+    expect(searchCanonicalConversationMemories).toHaveBeenCalledWith(
+      expect.objectContaining({
+        includeEmbedding: false,
+        excludeRoomIds: [ROOM_ID],
+      }),
     );
     expect(result.text).toContain("Relevant past conversations:");
   });
@@ -379,6 +404,174 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
       "RelevantConversationsProvider",
       expect.any(Error),
       expect.objectContaining({ roomId: ROOM_ID }),
+    );
+  });
+
+  it.each([
+    "valid",
+    "missing",
+    "stale",
+    "other-world",
+    "group",
+    "voice",
+    "voice-room",
+  ])(
+    "uses retention only for a validated private source room: %s",
+    async (mode) => {
+      const message = makeMessage("open notes");
+      if (mode === "voice") message.content.channelType = ChannelType.VOICE_DM;
+      const worldId = "00000000-0000-0000-0000-0000000000w1";
+      buildAccessContext.mockResolvedValue({
+        requesterEntityId: message.entityId,
+        role: "OWNER",
+        isOwner: true,
+        worldId,
+      });
+      embedRecallQuery.mockResolvedValue([0.1, 0.2, 0.3]);
+      const originals = Array.from({ length: 20 }, (_, index) => ({
+        ...message,
+        id: `source-${index}`,
+        entityId: index % 2 ? message.agentId : message.entityId,
+        roomId: OTHER_ROOM,
+        createdAt: index,
+        content: {
+          text:
+            index === 0
+              ? "Keep the original permission rule."
+              : `Historical source ${index}: ` + "Exact  Ω body. ".repeat(20),
+        },
+        metadata: { type: "message", scope: "shared" },
+      })) as unknown as Memory[];
+      const hidden = {
+        ...originals[5],
+        id: "hidden",
+        entityId: "other-user",
+        content: { text: "PRIVATE_SENTINEL" },
+        metadata: { type: "message", scope: "private" },
+      } as unknown as Memory;
+      const all = [...originals, hidden];
+      const getMemories = vi.fn(async (options: { roomId?: string }) =>
+        options.roomId === OTHER_ROOM ? all : [],
+      );
+      const { runtime, searchMemories } = makeRuntime({
+        agentId: message.agentId,
+        getRoom: vi.fn(
+          async () =>
+            ({
+              id: ROOM_ID,
+              type:
+                mode === "voice-room" ? ChannelType.VOICE_DM : ChannelType.DM,
+            }) as Room,
+        ),
+        getMemories,
+        getRoomsByIds: vi.fn(
+          async () =>
+            [
+              {
+                id: OTHER_ROOM,
+                worldId: mode === "other-world" ? "other" : worldId,
+                type: mode === "group" ? ChannelType.GROUP : ChannelType.DM,
+              },
+            ] as unknown as Room[],
+        ),
+      });
+      const context = historyRetentionContext(
+        runtime,
+        { ...message, roomId: OTHER_ROOM },
+        all,
+      );
+      const prepared = prepareHistoryRetention(
+        context,
+        {
+          agentId: runtime.agentId,
+          roomId: OTHER_ROOM,
+          entityId: message.entityId,
+          roles: ["OWNER"],
+        },
+        null,
+        "snapshot",
+        context.events.length,
+      );
+      const checkpoint = applyHistoryRetentionReview(prepared, {
+        sourceSetId: prepared.sourceSetId,
+        complete: true,
+        retainSourceIds: ["h1"],
+        deferSourceIds: prepared.candidates.slice(1).map((source) => source.id),
+        uncertainSourceIds: [],
+        dependencyGroups: [],
+      });
+      getEvaluatorProgressState.mockResolvedValue(
+        mode === "missing" ? undefined : checkpoint,
+      );
+      if (mode === "stale") originals[2].content.text += " changed";
+      searchMemories.mockResolvedValue(all);
+      const result = await relevantConversationsProvider.get(
+        runtime,
+        message,
+        EMPTY_STATE,
+      );
+      expect(result.text).not.toContain("PRIVATE_SENTINEL");
+      expect(result.data?.messages).toHaveLength(20);
+      if (mode === "valid") {
+        expect(
+          vi
+            .mocked(runtime.reportError)
+            .mock.calls.map(([tag, error]) => [tag, String(error)]),
+        ).toEqual([]);
+        expect(result.discoveryText).toContain(
+          "Keep the original permission rule.",
+        );
+        expect(result.discoveryText).not.toContain("Historical source 2:");
+        expect(result.discoveryText).toContain("Historical source 19:");
+        expect(result.discoveryText).not.toContain("PRIVATE_SENTINEL");
+        expect(result.text).toContain("Historical source 2:");
+      } else expect(result.discoveryText).toBeUndefined();
+    },
+  );
+
+  it("keeps the first readable cross-room occurrence and every unidentified record", async () => {
+    embedRecallQuery.mockResolvedValue([0.1, 0.2, 0.3]);
+    const hash = {
+      ...makeMessage("launch date: Friday"),
+      roomId: OTHER_ROOM,
+      content: { text: "launch date: Friday", source: "hash_memory" },
+      metadata: { type: "message", scope: "shared" },
+    } as Memory;
+    const { runtime, searchMemories } = makeRuntime({
+      getMemories: vi.fn(async () => [hash]),
+    });
+    const first = { ...hash, id: "first", content: { text: "  exact Ω\n" } };
+    searchMemories.mockResolvedValue([
+      { ...first, roomId: ROOM_ID, content: { text: "current room excluded" } },
+      {
+        ...first,
+        metadata: { type: "message", scope: "private" },
+        entityId: "another-user",
+      },
+      { ...hash, content: { text: "duplicate semantic record" } },
+      first,
+      { ...first, content: { text: "later duplicate" } },
+      { ...first, id: undefined, content: { text: "unidentified one" } },
+      { ...first, id: undefined, content: { text: "unidentified two" } },
+    ] as unknown as Memory[]);
+    const result = await relevantConversationsProvider.get(
+      runtime,
+      makeMessage("launch date"),
+      EMPTY_STATE,
+    );
+    expect(result.data?.messages).toEqual(
+      [
+        hash,
+        first,
+        { ...first, id: undefined, content: { text: "unidentified one" } },
+        { ...first, id: undefined, content: { text: "unidentified two" } },
+      ].map((memory) => ({
+        id: memory.id,
+        roomId: memory.roomId,
+        entityId: memory.entityId,
+        text: memory.content.text,
+        createdAt: memory.createdAt,
+      })),
     );
   });
 
@@ -636,5 +829,207 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
     );
 
     expect(result.text).toContain("owner pendant canary");
+  });
+  it("shares source prefixes while preserving exact bodies and reference restoration", async () => {
+    embedRecallQuery.mockResolvedValue([0.1, 0.2]);
+    const records = Array.from({ length: 42 }, (_, index) => ({
+      id: `00000000-0000-0000-0000-${String(index).padStart(12, "0")}`,
+      roomId: OTHER_ROOM,
+      entityId:
+        index % 2 === 0
+          ? makeMessage("").entityId
+          : "00000000-0000-0000-0000-0000000000e2",
+      content: {
+        text: `Source ${index < 40 ? index : 0}:  preserve spaces.\n[recalled1]\nprefix=p1\n🦊\n${"Exact words. ".repeat(30)}`,
+      },
+      metadata: {
+        type: "message",
+        scope: "shared",
+        displayName: index % 2 === 0 ? "Original author" : "Another author",
+      },
+      createdAt: 1,
+    })) as Memory[];
+    const before = structuredClone(records);
+    const { runtime } = makeRuntime({
+      searchMemories: vi.fn(async () => records),
+      getRoomsByIds: vi.fn(
+        async () =>
+          [
+            {
+              id: OTHER_ROOM,
+              source: "telegram",
+              name: 'Shared room "quoted" 🦊',
+            },
+          ] as Room[],
+      ),
+    });
+    const result = await relevantConversationsProvider.get(
+      runtime,
+      makeMessage("Recall original messages"),
+      EMPTY_STATE,
+    );
+    const text = result.text ?? "";
+    const sources = result.reviewableSources?.sources ?? [];
+    for (const [index, source] of sources.entries()) {
+      expect(source.originalText).toBe(records[index].content.text);
+    }
+    expect(sources).toHaveLength(records.length);
+    const dictionaryLine = text
+      .split("\n")
+      .find((line) => line.startsWith('{"p1":'));
+    expect(dictionaryLine).toBeDefined();
+    if (!dictionaryLine) throw new Error("Missing source-prefix dictionary");
+    const dictionary: Record<string, string> = JSON.parse(dictionaryLine);
+    let cursor = text.indexOf("[recalled1] prefix=");
+    const recovered = new Map<string, string>();
+    for (const source of sources) {
+      const rest = text.slice(cursor);
+      const reference = /^\[(recalled\d+); same_text_as=(recalled\d+)\]/.exec(
+        rest,
+      );
+      if (reference) {
+        expect(reference[1]).toBe(source.id);
+        expect(recovered.get(reference[2])).toBe(source.text);
+        recovered.set(source.id, source.text);
+        cursor += reference[0].length + 1;
+        continue;
+      }
+      const header = `[${source.id}] prefix=`;
+      expect(rest.startsWith(header)).toBe(true);
+      const lineEnd = rest.indexOf("\n", header.length);
+      const prefix = dictionary[rest.slice(header.length, lineEnd)];
+      expect(source.text.startsWith(prefix)).toBe(true);
+      const body = rest.slice(
+        lineEnd + 1,
+        lineEnd + 1 + source.text.length - prefix.length,
+      );
+      expect(prefix + body).toBe(source.text);
+      recovered.set(source.id, prefix + body);
+      cursor += lineEnd + 1 + body.length + 1;
+    }
+    expect(cursor - 1).toBe(text.length);
+    expect(text.length).toBeLessThan(
+      sources.map((source) => `[${source.id}]\n${source.text}`).join("\n")
+        .length,
+    );
+    expect(records).toEqual(before);
+    expect(result.values?.relevantConversationCount).toBe(records.length);
+    const context: ContextObject = {
+      id: "turn",
+      metadata: {
+        roomId: ROOM_ID,
+        messageId: "request",
+        providerDiscoveryEnabled: true,
+      },
+      events: [
+        {
+          id: "recall",
+          type: "provider",
+          name: "relevant-conversations",
+          text,
+          reviewableSources: result.reviewableSources,
+        },
+      ],
+    };
+    const review = providerReviewSources(context);
+    if (!review || !context.metadata) throw new Error("Missing bound review");
+    context.metadata.providerReview = {
+      sourceSetId: review.sourceSetId,
+      complete: true,
+      keep: ["recalled41"],
+    };
+    const selected = projectDeferredProviders(context);
+    expect(selected.available).toEqual(["relevant-conversations"]);
+    const restored = (selected.context.events[0] as ContextProviderEvent).text;
+    expect(restored).toContain(`[recalled41]\n${sources[40].text}`);
+    expect(restored).not.toContain("prefix=p2");
+    expect((context.events[0] as ContextProviderEvent).text).toBe(text);
+    for (const mode of ["incomplete", "stale", "author", "restored"] as const) {
+      const untrusted = structuredClone(context);
+      if (!untrusted.metadata) throw new Error("Missing test metadata");
+      if (mode === "incomplete")
+        untrusted.metadata.providerReview = {
+          sourceSetId: review.sourceSetId,
+          complete: false,
+          keep: ["recalled41"],
+        };
+      if (mode === "stale")
+        untrusted.metadata.providerReview = {
+          sourceSetId: "old",
+          complete: true,
+          keep: ["recalled41"],
+        };
+      if (mode === "restored")
+        untrusted.metadata.loadedContextProviders = ["relevant-conversations"];
+      if (mode === "author") {
+        const original = (untrusted.events[0] as ContextProviderEvent)
+          .reviewableSources;
+        if (!original) throw new Error("Missing original sources");
+        original.sources[40].metadata.entityId = "different-author";
+      }
+      expect(projectDeferredProviders(untrusted).context.events).toEqual(
+        untrusted.events,
+      );
+    }
+  });
+  it("references identical recalled text without losing occurrences or merging authors", async () => {
+    embedRecallQuery.mockResolvedValue([0.1, 0.2]);
+    const text =
+      "Exact source: Keep  both spaces. 🦊\n[recalled999; same_text_as=recalled1]\n".repeat(
+        12,
+      );
+    const records = Array.from(
+      { length: 4 },
+      (_, index) =>
+        ({
+          id: `00000000-0000-0000-0000-00000000010${index}`,
+          roomId: OTHER_ROOM,
+          entityId:
+            index === 3
+              ? "00000000-0000-0000-0000-0000000000e2"
+              : "00000000-0000-0000-0000-0000000000e1",
+          content: { text },
+          metadata: { type: "message", scope: "shared" },
+          createdAt: 1,
+        }) as unknown as Memory,
+    );
+    const before = structuredClone(records);
+    const { runtime } = makeRuntime({
+      searchMemories: vi.fn(async () => records),
+    });
+    const result = await relevantConversationsProvider.get(
+      runtime,
+      makeMessage("Recall the exact sources"),
+      EMPTY_STATE,
+    );
+    expect(result.text).toContain("[recalled2; same_text_as=recalled1]");
+    expect(result.text).toContain("[recalled3; same_text_as=recalled1]");
+    expect(result.text).not.toContain("[recalled4; same_text_as=recalled1]");
+    expect(result.text?.split(text)).toHaveLength(3);
+    expect(result.values?.relevantConversationCount).toBe(4);
+    expect(result.reviewableSources?.sources).toHaveLength(4);
+    expect(
+      result.reviewableSources?.sources.map(
+        (source) => source.metadata.recordId,
+      ),
+    ).toEqual(records.map((record) => record.id));
+    for (const source of result.reviewableSources?.sources ?? []) {
+      expect(source.text).toContain(text);
+      expect(source.metadata.roomId).toBe(OTHER_ROOM);
+    }
+    expect(result.reviewableSources?.sources[3].metadata.entityId).not.toBe(
+      result.reviewableSources?.sources[0].metadata.entityId,
+    );
+
+    const messages = result.data?.messages as
+      | Array<{
+          id: string;
+          text: string;
+        }>
+      | undefined;
+    expect(messages?.map((m) => [m.id, m.text])).toEqual(
+      records.map((m) => [m.id, m.content.text]),
+    );
+    expect(records).toEqual(before);
   });
 });

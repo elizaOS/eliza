@@ -227,3 +227,5 @@ never unavailable status or canned user prose; preserve receipts, clarification
 states, permission rechecks, final-context restoration and reply-only recovery.
 
 Backup metadata listing enumerates an existing directory directly, without an unconditional existence stat. After ENOENT, distinguish an absent directory from a dangling symlink before returning an empty list. Permission and non-directory errors remain errors; per-file identity checks, complete results and encrypted restore behavior remain unchanged.
+
+Relevant-conversation rendering reuses core exact-text references when smaller. Provider-local recalledN IDs are not selectable current-dialogue hN IDs. Sharing requires identical rendered text and the same room and author; every occurrence and complete structured source record remains present. Access checks, similarity thresholds, result counts and withheld-policy markers are unchanged. Validate exact recovery and real-model attribution before accepting changes to this encoding.

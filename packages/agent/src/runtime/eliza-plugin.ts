@@ -282,8 +282,17 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
           ?.filter((parameter) => allowed.includes(parameter.name))
           .map((parameter) => ({
             ...parameter,
+            description:
+              action.name === "MEMORY_SEARCH" && parameter.name === "query"
+                ? "Search terms for the requested subject. Use an empty string only to intentionally search all records within the other filters. Keyword mode ranks related terms; literal mode requires known exact wording."
+                : action.name === "MEMORY_SEARCH" && parameter.name === "limit"
+                  ? "Page size from 1 to 50. Follow nextOffset and snapshot with unchanged filters until the needed evidence is complete; a page is not the entire history."
+                  : parameter.description,
             required:
-              parameter.name === "text" || parameter.name === "confirm"
+              parameter.name === "text" ||
+              parameter.name === "confirm" ||
+              (action.name === "MEMORY_SEARCH" &&
+                (parameter.name === "query" || parameter.name === "limit"))
                 ? true
                 : parameter.required,
           }));

@@ -221,7 +221,7 @@ Calendar model runners must preserve both bare-string and native `{ text, ... }`
 
 Calendar time proposals may supply duration.existingEventQuery to preserve a uniquely resolved existing event duration. Reuse Calendar-owned target matching and lookup range, retain complete/fresh source checks and meeting preferences, and exclude only the selected event from busy intervals. Missing or ambiguous targets pause without slots or writes; explicit durations remain supported and every eventual move rechecks availability.
 
-Existing-event scheduling proposals retain successful read/preview receipts but set `awaitingUserInput: true`: resolving the event and finding openings do not select a clock time or apply the move. The completion evaluator can ask for the selection without another planner round; no pending-scope or write guard is bypassed.
+Scheduling proposals retain successful read/preview receipts but set `awaitingUserInput: true`: finding openings does not select a clock time, create an event, or apply a move. The completion evaluator can ask for the selection without another planner round; no pending-scope or write guard is bypassed.
 
 Existing-event proposal results include `existingEventDisplay` with code-formatted start/end labels in the proposal display timezone, alongside the unchanged authoritative event record. Use the same timezone-aware formatter as slot labels; the completion model should not need to infer offset arithmetic from raw timestamps.
 

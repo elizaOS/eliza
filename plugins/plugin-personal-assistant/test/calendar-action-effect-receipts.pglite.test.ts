@@ -628,6 +628,74 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     },
   );
 
+  it.each([undefined, "planner"] as const)(
+    "awaits a new booking selection without creating an event (reply owner %s)",
+    async (replyOwner) => {
+      if (replyOwner === "planner") {
+        const collaborator = await import("@elizaos/agent");
+        const { renderGroundedActionReply } = await import(
+          "../../../packages/agent/src/actions/grounded-action-reply.js"
+        );
+        vi.spyOn(collaborator, "renderGroundedActionReply").mockImplementation(
+          renderGroundedActionReply,
+        );
+      }
+      const bounds = {
+        timeMin: "2027-01-18T14:00:00.000Z",
+        timeMax: "2027-01-18T17:00:00.000Z",
+        includeHiddenCalendars: true,
+      };
+      const before = await calendar.getCalendarFeed(
+        new URL("http://internal.local"),
+        bounds,
+      );
+      const { result } = await invoke(
+        message(
+          replyOwner === "planner"
+            ? "00000000-0000-0000-0000-000000009981"
+            : "00000000-0000-0000-0000-000000009982",
+          replyOwner === "planner"
+            ? "Schedule a 15-minute planning meeting with Mira and Rowan January 18 in the morning, in America/New_York."
+            : "Schedule a 15-minute planning meeting January 18 in the morning, in America/New_York.",
+        ),
+        {
+          duration: { minutes: 15 },
+          ...(replyOwner === "planner"
+            ? { counterparties: ["Mira", "Rowan"] }
+            : {}),
+          windowStart: "2027-01-18T09:00:00",
+          windowEnd: "2027-01-18T12:00:00",
+          timeZone: "America/New_York",
+        },
+        replyOwner !== "planner",
+        "CALENDAR_PROPOSE_TIMES",
+        replyOwner,
+      );
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({
+        awaitingUserInput: true,
+        counterparties: replyOwner === "planner" ? ["Mira", "Rowan"] : [],
+        durationMinutes: 15,
+        slots: expect.arrayContaining([
+          expect.objectContaining({ durationMinutes: 15 }),
+        ]),
+      });
+      expect(result.effectReceipts?.[0]).toMatchObject({
+        outcome: "preview",
+        operation: "calendar.propose_times.preview",
+      });
+      if (replyOwner === "planner") {
+        expect(result.transcriptVisibility).toBe("internal");
+        expect(result.data?.replyGrounding).toEqual(expect.any(String));
+      }
+      const after = await calendar.getCalendarFeed(
+        new URL("http://internal.local"),
+        bounds,
+      );
+      expect(after.events).toEqual(before.events);
+    },
+  );
+
   it("does not substitute a default duration for an unresolved existing event", async () => {
     const { result } = await invoke(
       message(

@@ -35,7 +35,6 @@ import {
   parseJsonModelRecord,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
-  toWellFormedUnicode,
 } from "@elizaos/core";
 import {
   buildWideLookupRange,
@@ -369,46 +368,6 @@ function formatSlotsText(slots: readonly ProposedMeetingSlot[]): string {
   return `Here ${slots.length === 1 ? "is an available option" : `are ${slots.length} options`} you can offer:\n${lines.join("\n")}`;
 }
 
-function cleanBundledCounterparty(value: string): string {
-  return toWellFormedUnicode(value)
-    .replace(/^(?:with|for|and|also|maybe|please)\s{1,32}/iu, "")
-    .replace(/\s{1,32}(?:at|if|while|during|thanks|please)\b.{0,1024}$/iu, "")
-    .replace(/[.?!,;:]+$/u, "")
-    .trim();
-}
-
-export function extractBundledMeetingCounterparties(
-  messageText: string,
-): string[] {
-  const trimmed = toWellFormedUnicode(messageText.trim());
-  if (trimmed.length === 0) {
-    return [];
-  }
-
-  const patterns = [
-    /\bschedule\s{1,32}(.{1,2048}?)(?:\s{1,32}at\s{1,32}the\s{1,32}same\s{1,32}time\b|\s{1,32}same\s{1,32}day\b|\s{1,32}if\s{1,32}possible\b|[.?!]|$)/iu,
-    /\bbundle\s{1,32}(.{1,2048}?)(?:\s{1,32}together\b|\s{1,32}on\s{1,32}the\s{1,32}same\s{1,32}day\b|\s{1,32}if\s{1,32}possible\b|[.?!]|$)/iu,
-    /\bmeetings?\s{1,32}with\s{1,32}(.{1,2048}?)(?:\s{1,32}on\s{1,32}the\s{1,32}same\s{1,32}day\b|\s{1,32}at\s{1,32}the\s{1,32}same\s{1,32}time\b|\s{1,32}if\s{1,32}possible\b|[.?!]|$)/iu,
-  ];
-
-  for (const pattern of patterns) {
-    const match = pattern.exec(trimmed);
-    const raw = match?.[1]?.trim();
-    if (!raw) {
-      continue;
-    }
-    const counterparties = raw
-      .split(/\s{0,32}(?:,|&|\band\b)\s{0,32}/iu)
-      .map(cleanBundledCounterparty)
-      .filter((value) => value.length > 0);
-    if (counterparties.length >= 2) {
-      return counterparties;
-    }
-  }
-
-  return [];
-}
-
 function formatCounterpartyList(counterparties: readonly string[]): string {
   if (counterparties.length === 0) {
     return "those meetings";
@@ -626,10 +585,9 @@ export async function runProposeMeetingTimesHandler(
   const effectivePreferences = inferredTimeZone
     ? { ...preferences, timeZone: inferredTimeZone }
     : preferences;
-  const counterparties =
-    Array.isArray(params.counterparties) && params.counterparties.length > 0
-      ? params.counterparties
-      : extractBundledMeetingCounterparties(messageBody);
+  // Names must come from structured arguments, not punctuation in the request.
+  // The reply model still receives the authored request for conversational context.
+  const counterparties = params.counterparties ?? [];
   const bundleLocationLabel = deriveBundleLocationLabel(messageBody);
   const requestedDuration = params.duration?.minutes ?? params.durationMinutes;
   let durationMinutes =
@@ -842,9 +800,9 @@ export async function runProposeMeetingTimesHandler(
       counterparties,
       bundleLocationLabel,
       calendarSnapshot: calendarSnapshotEffectProof(feed),
-      // A rescheduling preview has resolved the event and read openings, but
-      // still needs the user to choose a clock time. Success describes the
-      // read, not completion of the requested move.
+      // A preview supplies choices, not an accepted time. This applies to
+      // both new bookings and moves; success describes the availability read.
+      awaitingUserInput: true,
       ...(existingEvent
         ? {
             existingEvent,
@@ -860,7 +818,6 @@ export async function runProposeMeetingTimesHandler(
               timeZone: effectivePreferences.timeZone,
             },
             targetSnapshot,
-            awaitingUserInput: true,
           }
         : {}),
     },

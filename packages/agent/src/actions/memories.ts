@@ -1038,22 +1038,21 @@ async function collectCandidates(
     );
   }
 
+  const scores = new Map<MemoryCandidate, number>();
   if (scope.query) {
     const query = scope.query;
     filtered = filtered.filter((c) => {
       const text = searchableMemoryText(c.memory);
-      return scope.queryMode === "literal"
-        ? text.includes(query)
-        : scoreText(text, query) > 0;
+      if (scope.queryMode === "literal") return text.includes(query);
+      const score = scoreText(text, query);
+      scores.set(c, score);
+      return score > 0;
     });
   }
 
   filtered.sort((a, b) => {
     if (scope.query && scope.queryMode !== "literal") {
-      const leftText = searchableMemoryText(a.memory);
-      const rightText = searchableMemoryText(b.memory);
-      const relevance =
-        scoreText(rightText, scope.query) - scoreText(leftText, scope.query);
+      const relevance = (scores.get(b) ?? 0) - (scores.get(a) ?? 0);
       if (relevance !== 0) return relevance;
     }
     return (b.memory.createdAt ?? 0) - (a.memory.createdAt ?? 0);
@@ -1071,7 +1070,7 @@ function describeSearchScope(scope: {
 }): string {
   const parts: string[] = [];
   if (scope.query) parts.push(`query="${scope.query}"`);
-  if (scope.queryMode === "literal") parts.push("queryMode=literal");
+  if (scope.query) parts.push(`queryMode=${scope.queryMode ?? "keywords"}`);
   if (scope.type) parts.push(`type=${scope.type}`);
   if (scope.entityId) parts.push(`entityId=${scope.entityId}`);
   if (scope.roomId) parts.push(`roomId=${scope.roomId}`);
@@ -1384,6 +1383,9 @@ async function doSearch(
 
   const result: ActionResult = {
     success: true,
+    ...(plannerOwnsReply
+      ? { transcriptVisibility: "internal" as const, modelReplyRequired: true }
+      : {}),
     text: [
       `${renderNote} (filters: ${describeSearchScope(scope)}).`,
       describeCompleteScan(scan),
@@ -1409,20 +1411,12 @@ async function doSearch(
     data: {
       actionName: "MEMORY",
       op: "search" as const,
+      readOnlyOperation: true,
       memories: records,
       searchScope,
       countsByType,
       timeZone,
       ...(messageAuthorCounts ? { messageAuthorCounts } : {}),
-      totalMatches,
-      scanned: scan.scanned,
-      offset,
-      nextOffset: nextOffset ?? null,
-      snapshot,
-    },
-    promptData: {
-      actionName: "MEMORY",
-      op: "search" as const,
       totalMatches,
       rendered: items.length,
       scanned: scan.scanned,
@@ -1485,7 +1479,7 @@ async function doSearch(
     ? sharedMemoryRecordFields(records)
     : undefined;
   if (encoded) {
-    result.promptData = { ...result.data, ...result.promptData, ...encoded };
+    result.promptData = { ...result.data, ...encoded };
     result.promptDataMode = "replace-data";
   }
   return result;

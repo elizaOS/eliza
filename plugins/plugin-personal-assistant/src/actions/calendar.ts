@@ -1913,6 +1913,14 @@ export const calendarAction: Action & {
       schema: { type: "string" as const },
     },
     {
+      name: "counterparties",
+      description:
+        "People explicitly named in the scheduling request. Omit when no participants are named.",
+      required: false,
+      subactions: ["propose_times"],
+      schema: { type: "array" as const, items: { type: "string" as const } },
+    },
+    {
       name: "windowEnd",
       description:
         "propose_times latest local clock, YYYY-MM-DDTHH:mm:ss without offset or Z. Code applies timeZone; do not convert to UTC.",

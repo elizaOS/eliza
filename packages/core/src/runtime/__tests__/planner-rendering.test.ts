@@ -386,6 +386,26 @@ describe("toolMessageContent", () => {
 		);
 	});
 
+	it.each([null, false, 0, ""])(
+		"finds a retained page beside an empty sibling (%j)",
+		(empty) => {
+			const text = "complete page";
+			const data = { page: { readView: readViewFor(text) }, optional: empty };
+			const result = { success: true, text, data };
+			const rendered = renderActionResultsForModel([result]);
+			expect(rendered.stats.pagesIncluded).toBe(1);
+			expect(rendered.stats.pagesOmitted).toBe(0);
+			expect(JSON.parse(toolMessageContent(result)).data).toEqual(data);
+			let pagesIncluded = 0;
+			trajectoryStepsToMessages([{ ...stepWithResult(1, text), result }], {
+				onProjectionStats: (stats) => {
+					pagesIncluded = stats.pagesIncluded;
+				},
+			});
+			expect(pagesIncluded).toBe(1);
+		},
+	);
+
 	it("preserves a large non-recoverable result for request-level rejection", () => {
 		const text = "x".repeat(20_000);
 		expect(JSON.parse(toolMessageContent({ success: true, text })).text).toBe(
