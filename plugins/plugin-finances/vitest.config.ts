@@ -12,7 +12,6 @@ const require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
 const uiSrc = path.join(elizaRoot, "packages", "ui", "src");
-const vaultSrc = path.join(elizaRoot, "packages", "vault", "src");
 const baseAliases = Array.isArray(baseConfig.resolve?.alias)
   ? baseConfig.resolve.alias
   : [];
@@ -37,10 +36,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(uiSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/credentials\/vault$/,
-        replacement: path.join(vaultSrc, "index.ts"),
       },
       ...baseAliases,
       {
