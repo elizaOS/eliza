@@ -47,6 +47,19 @@ export const notesPlugin: Plugin = {
   actions: [
     ...promoteSubactionsToActions(notesAction, {
       overrides: {
+        list: {
+          description:
+            "Read current saved notes, including their IDs, exact titles/bodies and createdAt/updatedAt timestamps. Use content for a title/topic filter or noteId for an exact ID; omit both for all notes, counts or date/recency comparisons. Compare returned timestamps for date questions. Saved-note provider text has no timestamps; restoring that context cannot answer a date question. This operation does not change notes or open their view.",
+          parameters: notesAction.parameters?.map((parameter) =>
+            parameter.name === "content"
+              ? {
+                  ...parameter,
+                  description:
+                    "Optional title/topic text filter. Omit for all notes or date/recency comparisons; dates are not text-search terms. Use noteId instead for an exact ID.",
+                }
+              : parameter,
+          ),
+        },
         create: {
           description:
             "Create the note the user asked to save. Separate note content from instructions about the app or the operation. Quotation marks that delimit a supplied title/body are not part of that value unless the user asks to include them; preserve quotes within the content and explicitly requested outer quotes. Preserve the selected content's punctuation, whitespace and line breaks exactly. If an unquoted trailing phrase could be either note content or an app instruction, ask which before writing instead of guessing. Put a separately supplied title and body in content joined by one newline. Creating a note does not open Notes; navigate separately only when requested.",
