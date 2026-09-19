@@ -94,22 +94,13 @@ describe("addDocument orphan compensation (#16021)", () => {
 			}),
 		).rejects.toThrow(/orphan-fail\.txt/);
 
-		// No orphaned zero-fragment DOCUMENT row may survive the failure: the
-		// list surface reads DOCUMENTS_TABLE, so a leftover row is the bug.
-		const documents = await runtime.getMemories({
-			tableName: "documents",
-			agentId: runtime.agentId,
-			count: 10_000,
-		});
-		const orphan = documents.find(
-			(memory) =>
-				(memory.metadata as { title?: string } | undefined)?.title?.includes(
-					"orphan-fail",
-				) ||
-				(typeof memory.content?.text === "string" &&
-					memory.content.text.includes("orphan-compensation test")),
-		);
-		expect(orphan).toBeUndefined();
+		const documentId = generateContentBasedId(DOC_TEXT, runtime.agentId, {
+			includeFilename: "orphan-fail.txt",
+			contentType: "text/plain",
+			literalText: true,
+		}) as UUID;
+		expect(await runtime.getMemoryById(documentId)).toBeNull();
+		expect(await fragmentsFor(documentId)).toBe(0);
 	}, 120_000);
 
 	it("keeps the happy path intact: fragments embed and the document persists", async () => {
