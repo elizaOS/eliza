@@ -61,7 +61,8 @@ request. Regenerate the artifact for the current baseline, or disable the task
 with `OPTIMIZED_PROMPT_DISABLE` to use its current baseline. Whitespace changes
 are baseline changes; matching task names alone do not establish compatibility.
 
-The planner resolves artifacts through its registered `OptimizedPromptService`.
+The assistant planner resolves artifacts through `OptimizedPromptService` from
+`@elizaos/plugin-assistant`. Core exposes only the optional prompt lookup contract.
 Before that service is ready, it uses the bundled baseline. Artifact activation,
 refresh and rollback remain owned by the service.
 
@@ -708,7 +709,7 @@ matching SQL ownership defaults in the ephemeral adapter as well.
 
 ### Restoring the unoptimized baseline
 
-`OptimizedPromptService.restoreBaseline(task)` explicitly returns a task to its
+Assistant-owned `OptimizedPromptService.restoreBaseline(task)` returns a task to its
 caller's baseline, including after a first promotion with no previous artifact.
 It preserves version files and writes an authenticated `activation-baseline`
 record in the existing task directory. Refresh/restart honors this choice even
