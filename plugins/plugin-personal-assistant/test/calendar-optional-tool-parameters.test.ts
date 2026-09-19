@@ -247,6 +247,16 @@ it.each(["feed", "search_events"])(
         args: { ...filter, details },
       });
     }
+    expect(
+      validateToolArgs(read, {
+        ...filter,
+        details: {
+          date: "2026-09-18",
+          endDate: "2026-09-20",
+          timeZone: "America/New_York",
+        },
+      }).valid,
+    ).toBe(true);
     expect(validateToolArgs(read, {}).valid).toBe(operation === "feed");
     expect(
       validateToolArgs(read, {

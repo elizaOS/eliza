@@ -37,11 +37,14 @@ only package both `@elizaos/ui` and the plugins can depend on without a cycle.
 
 For a single-day `feed` or `search_events` action, pass
 `details: { date: "2026-09-20", timeZone: "America/New_York" }`.
-Calendar derives both local-midnight boundaries, including daylight-saving
-changes. Invalid dates and a date combined with explicit range bounds are
-rejected before a read. For partial-day or multi-day queries, use
-`details.timeMin` and `details.timeMax` instead. Results and reply context retain
-the actual queried window; an empty result only describes that window.
+For several whole days, add `endDate` as the final included local date;
+for example, `date: "2026-09-18", endDate: "2026-09-20"` reads through
+midnight at the start of September 21. Calendar derives both midnight
+boundaries, including daylight-saving changes. Invalid/reversed dates and a
+date combined with timestamp/windowDays bounds are rejected before a read.
+Use `timeMin`/`timeMax` for partial-day ranges; those explicit timestamps
+retain their existing exclusive-end semantics. Results and reply context
+retain the actual queried window; an empty result only describes that window.
 
 The host's promoted `CALENDAR_SEARCH_EVENTS` tool requires nonempty `query`
 text. `queries` may add more content filters; dates remain read bounds, not

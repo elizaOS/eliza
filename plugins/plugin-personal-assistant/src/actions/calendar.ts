@@ -1183,7 +1183,7 @@ async function guardProtectedSleepCreate(args: {
 const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
   feed: {
     description:
-      "Read the full unfiltered agenda for a date or time range. Use details.timeMin/timeMax and timeZone. A date-only request or no-keyword-filter request belongs here, not search_events.",
+      "Read the full unfiltered agenda. For whole dates use details.date and optional inclusive endDate with timeZone; for partial days use timeMin/timeMax. A date-only request or no-keyword-filter request belongs here, not search_events.",
     descriptionCompressed:
       "full unfiltered agenda/date/time-range; dates are bounds, not keywords",
     required: [],
@@ -1833,7 +1833,7 @@ export const calendarAction: Action & {
     {
       name: "details",
       description:
-        "For feed/search_events: details.timeMin/timeMax bound the date range and details.timeZone supplies its IANA timezone. For a full agenda use feed without query/queries. " +
+        "For feed/search_events: use details.date and optional inclusive endDate for whole dates; use timeMin/timeMax for partial days. details.timeZone supplies the IANA timezone. For a full agenda use feed without query/queries. " +
         "Structured fields for create_event/update_event/delete_event. " +
         "`start`/`end`: local wall-clock ISO-8601 WITHOUT any offset or Z (e.g. 2026-09-10T18:00:00 for 6pm); never convert to UTC. When supplying the owner's local new start/end, explicitly include `details.timeZone` with the owner's configured IANA timezone; an update otherwise interprets them in the existing event's timezone, which may differ. If the user names another timezone, use that IANA zone for these values. " +
         "For a move or reschedule the time the user names ('to 6pm') is the new `start`; keep the event's previous duration for `end` unless the user gives a new end. " +
@@ -2208,7 +2208,7 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
               }
             : {
                 description:
-                  "Read the complete agenda for a day or range. For one day supply details.date as YYYY-MM-DD plus details.timeZone; code calculates the local day boundaries. For a multi-day or partial-day range supply details.timeMin/timeMax instead. Report only the actual returned window; empty results do not establish that a different day is free.",
+                  "Read the complete agenda for a day or range. For whole dates supply details.date as the first YYYY-MM-DD date, optional endDate as the last included date, and timeZone; code calculates the local midnight boundaries. For partial-day ranges use timeMin/timeMax instead. Report only the actual returned window; empty results do not establish that a different day is free.",
               }),
           parameters: calendarAction.parameters?.map((parameter) => {
             if (name === "search_events" && parameter.name === "query") {

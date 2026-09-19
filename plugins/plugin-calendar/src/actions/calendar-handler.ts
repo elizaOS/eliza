@@ -3340,6 +3340,26 @@ function resolveCalendarWindow(
   };
 }
 
+function parseCalendarReadDate(
+  value: unknown,
+  timeZone: string,
+): LocalDateOnly {
+  const parsed =
+    typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? parseExplicitLocalDate(value, timeZone)
+      : null;
+  const check = new Date(0);
+  if (parsed) check.setUTCFullYear(parsed.year, parsed.month - 1, parsed.day);
+  if (!parsed || check.toISOString().slice(0, 10) !== value) {
+    throw new CalendarServiceError(
+      400,
+      "Read dates must be valid YYYY-MM-DD calendar dates.",
+      "CALENDAR_READ_DATE_INVALID",
+    );
+  }
+  return parsed;
+}
+
 function resolveCalendarReadWindow(
   intent: string,
   details: Record<string, unknown> | undefined,
@@ -3348,17 +3368,20 @@ function resolveCalendarReadWindow(
   timeZone: string,
 ): ReturnType<typeof resolveCalendarWindow> {
   const date = details?.date;
-  if (date !== undefined) {
-    const parsed =
-      typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)
-        ? parseExplicitLocalDate(date, timeZone)
-        : null;
-    const check = new Date(0);
-    if (parsed) check.setUTCFullYear(parsed.year, parsed.month - 1, parsed.day);
-    if (!parsed || check.toISOString().slice(0, 10) !== date) {
+  if (date !== undefined || details?.endDate !== undefined) {
+    const parsed = parseCalendarReadDate(date, timeZone);
+    const finalDate =
+      details?.endDate === undefined
+        ? parsed
+        : parseCalendarReadDate(details.endDate, timeZone);
+    if (
+      typeof date === "string" &&
+      typeof details?.endDate === "string" &&
+      details.endDate < date
+    ) {
       throw new CalendarServiceError(
         400,
-        "date must be a valid YYYY-MM-DD calendar date.",
+        "endDate must be on or after date.",
         "CALENDAR_READ_DATE_INVALID",
       );
     }
@@ -3377,7 +3400,7 @@ function resolveCalendarReadWindow(
     ) {
       throw new CalendarServiceError(
         400,
-        "Supply either date for a whole local day or explicit range bounds, not both.",
+        "Supply date and optional endDate for whole local days, or explicit timestamp bounds, not both.",
         "CALENDAR_READ_DATE_CONFLICT",
       );
     }
@@ -3386,9 +3409,16 @@ function resolveCalendarReadWindow(
         calendarId: calendarIdDetail(details),
         timeZone,
         forceSync: detailBoolean(details, "forceSync"),
-        ...buildLocalDateRange(timeZone, parsed, addDaysToLocalDate(parsed, 1)),
+        ...buildLocalDateRange(
+          timeZone,
+          parsed,
+          addDaysToLocalDate(finalDate, 1),
+        ),
       },
-      label: `on ${formatExplicitCalendarDateLabel({ date: parsed, timeZone })} (${timeZone})`,
+      label:
+        details?.endDate === undefined || details.endDate === date
+          ? `on ${formatExplicitCalendarDateLabel({ date: parsed, timeZone })} (${timeZone})`
+          : `from ${formatExplicitCalendarDateLabel({ date: parsed, timeZone })} through ${formatExplicitCalendarDateLabel({ date: finalDate, timeZone })}, inclusive (${timeZone})`,
       explicitWindow: true,
     };
   }
@@ -6953,14 +6983,6 @@ const calendarAction: CalendarHandlerAction = {
         );
         return respond({
           success: false,
-          // This typed preflight rejection performed no read or effect. Keep its
-          // failed receipt and required evaluation, but allow a corrected plan
-          // to complete without treating the rejected search as a failed task.
-          ...(error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" &&
-          explicitSubaction === "search_events" &&
-          searchQueries.length === 0
-            ? { data: { coachingFailure: true } }
-            : {}),
           text: await renderReply("service_error", fallback, {
             status: error.status,
             subaction,
@@ -6968,9 +6990,12 @@ const calendarAction: CalendarHandlerAction = {
           data: {
             // This typed preflight rejection performed no read or effect. Keep
             // its receipt and evaluation while allowing a corrected plan to finish.
-            ...(error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" &&
-            explicitSubaction === "search_events" &&
-            searchQueries.length === 0
+            ...((error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" &&
+              explicitSubaction === "search_events" &&
+              searchQueries.length === 0) ||
+            ((subaction === "feed" || subaction === "search_events") &&
+              (error.code === "CALENDAR_READ_DATE_INVALID" ||
+                error.code === "CALENDAR_READ_DATE_CONFLICT"))
               ? { coachingFailure: true }
               : {}),
             actionName: "CALENDAR",

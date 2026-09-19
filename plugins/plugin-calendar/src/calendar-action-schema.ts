@@ -10,6 +10,7 @@ const CALENDAR_DETAIL_STRING_KEYS = [
   "calendarId",
   "calendarid",
   "calendar_id",
+  "endDate",
   "timeMin",
   "timemin",
   "time_min",
@@ -159,6 +160,8 @@ const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
     "Window end (exclusive) in the same format as timeMin. For a full day or month, use midnight at the start of the following day or month in the requested timezone, not midnight at the start of its last day.",
   timeZone:
     "IANA timezone for the supplied wall-clock times (e.g. America/New_York): use the user's configured timezone unless they name another. Include it for updates so an existing event's different timezone does not reinterpret the requested new time.",
+  endDate:
+    "Final included YYYY-MM-DD date for feed/search_events whole-day reads, used with date as the first day. Not a mutation timestamp.",
   date: "Local calendar date YYYY-MM-DD that the TARGET event is on NOW, for update_event/delete_event lookups when the user named that current day. Never the destination day of a move or reschedule: the new time belongs in start/startAt (and end/endAt). A bare weekday name means its next upcoming occurrence from today, never a past date; when the user did not name the target's current day, omit date and let query locate the event. Use start/startAt, not date, for create_event.",
   oldTitle:
     "Existing event title to locate for update_event; keep separate from the replacement title in newTitle.",
@@ -300,7 +303,12 @@ export const CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
     date: {
       type: "string",
       description:
-        "For a single-day agenda, supply the requested local calendar date as YYYY-MM-DD and timeZone. Code calculates both midnight boundaries, including DST. Do not also supply timeMin/timeMax or windowDays.",
+        "For whole-day reads, use the first local YYYY-MM-DD date and timeZone. For multiple days, also set endDate to the final included date. Code calculates midnight boundaries and DST. Omit timeMin/timeMax and windowDays; use those only for partial-day reads.",
+    },
+    endDate: {
+      type: "string",
+      description:
+        "Final included YYYY-MM-DD date for a whole-day range beginning at date. Omit for a single day. Requires date; never combine with timeMin/timeMax or windowDays.",
     },
     ...Object.fromEntries(
       Object.entries(CALENDAR_DETAILS_PARAMETER_SCHEMA.properties ?? {}).filter(
