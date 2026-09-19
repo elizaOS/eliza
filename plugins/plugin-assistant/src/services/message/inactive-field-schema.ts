@@ -32,7 +32,7 @@ export function withInactiveArrayFields(
       [name]: {
         type: "array",
         items: { type: "string" },
-				maxItems: 0,
+        maxItems: 0,
         description: "Inactive this turn; return [].",
       },
     };
