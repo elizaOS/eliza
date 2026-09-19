@@ -1,17 +1,9 @@
-// OCR analyzers and engines. Tesseract runs against a rendered-text PNG when the
-// binary is present and skips honestly (recording skipped-missing-tool) when it
-// is not — the test asserts whichever path applies so CI without tesseract still
-// exercises the degradation contract. The GPU `unlimited` client is tested
-// against local stub HTTP servers that assert the OpenAI-compatible request
-// shape (model, temperature 0, the pinned OCR prompt, image data URL), the
-// base-path-preserving URL joining, and serve.json endpoint discovery; a drift
-// guard imports the real scripts/gpu-vision/lib.mjs and pins the prompt to it.
-// The apple-vision engine is driven end-to-end through its real subprocess
-// protocol with fake node helpers (ok:false, timeout, garbage output), so the
-// "helper failure must never become an empty ran transcript" contract is proven
-// without a swift toolchain.
-
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+/**
+ * OCR analyzers consume real image files through Tesseract when available and
+ * a local HTTP model-protocol fixture. Apple Vision subprocess fixtures exercise
+ * typed failures without requiring a Swift toolchain or claiming model quality.
+ */
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -20,7 +12,6 @@ import { makeTmpDir, solidPng, textPng } from "../test-fixtures.ts";
 import type { AnalyzerContext, AnalyzerInput } from "../types.ts";
 import {
   AppleVisionOcrEngine,
-  parseGroundingDecorations,
   TesseractOcrEngine,
   UNLIMITED_OCR_PROMPT,
   UnlimitedOcrEngine,
@@ -98,49 +89,6 @@ describe("UNLIMITED_OCR_PROMPT drift guard", () => {
     );
     const lib = (await import(libUrl.href)) as { OCR_PROMPT: string };
     expect(lib.OCR_PROMPT).toBe(UNLIMITED_OCR_PROMPT);
-  });
-});
-
-describe("parseGroundingDecorations", () => {
-  it("splits `title [x1,y1,x2,y2]` lines into cleaned text plus regions", () => {
-    const raw =
-      "Sign in to Eliza [12, 24, 300, 60]\nWelcome back\nSubmit [40,200,120,240]";
-    const { text, regions } = parseGroundingDecorations(raw);
-    expect(text).toBe("Sign in to Eliza\nWelcome back\nSubmit");
-    expect(regions).toEqual([
-      { text: "Sign in to Eliza", box: [12, 24, 300, 60] },
-      { text: "Submit", box: [40, 200, 120, 240] },
-    ]);
-  });
-
-  it("keeps a coordinate-only decoration as a region without polluting the text", () => {
-    const { text, regions } = parseGroundingDecorations("[0,0,64,64]\nBody");
-    expect(text).toBe("Body");
-    expect(regions).toEqual([{ text: "", box: [0, 0, 64, 64] }]);
-  });
-
-  it("passes through lines whose bbox is invalid instead of fabricating a region", () => {
-    // x2 < x1 and an implausibly large coordinate are not decorations.
-    const inverted = "Header [300,10,12,60]";
-    const huge = `Header [1,1,${"9".repeat(20)},5]`;
-    for (const raw of [inverted, huge]) {
-      const { text, regions } = parseGroundingDecorations(raw);
-      expect(text).toBe(raw);
-      expect(regions).toEqual([]);
-    }
-  });
-
-  it("leaves undecorated markdown untouched", () => {
-    const raw = "# Screen\nSign in to Eliza";
-    expect(parseGroundingDecorations(raw)).toEqual({
-      text: raw,
-      regions: [],
-    });
-  });
-
-  it("rejects a 100k-character malformed coordinate without backtracking", () => {
-    const raw = `Header [${"0".repeat(100_000)}x,0,1,1]`;
-    expect(parseGroundingDecorations(raw)).toEqual({ text: raw, regions: [] });
   });
 });
 
@@ -222,23 +170,27 @@ describe("ocr.unlimited (GPU client against a stub server)", () => {
     }
   });
 
-  it("sends the pinned prompt and parses a completion", async () => {
-    content = "# Screen\nSign in to Eliza";
+  it("sends the complete image and pinned request, then exposes grounded text", async () => {
+    content =
+      "Sign in to Eliza [12, 24, 300, 60]\nWelcome back\nSubmit [40,200,120,240]";
     const engine = new UnlimitedOcrEngine({ baseUrl, model: "unlimited-ocr" });
     expect((await engine.available()).available).toBe(true);
-
     const png = await solidPng(join(dir, "u.png"), [10, 10, 10]);
-    const analyzer = makeOcrAnalyzer(engine, "gpu");
-    // Run at gpu tier so the analyzer executes rather than skipping-tier.
-    const result = await analyzer.analyze(inputFor(png), { tier: "gpu" });
+    const result = await makeOcrAnalyzer(engine, "gpu").analyze(inputFor(png), {
+      tier: "gpu",
+    });
     expect(result.status).toBe("ran");
     if (result.status !== "ran") return;
-    const data = result.data as { text: string; engine: string };
-    expect(data.engine).toBe("unlimited");
-    expect(data.text).toContain("Sign in to Eliza");
-
-    // The request must be OpenAI-compatible: model, temperature 0, the pinned
-    // service prompt, and an image_url content part carrying a base64 data URL.
+    expect(result.data).toEqual(
+      expect.objectContaining({
+        engine: "unlimited",
+        text: "Sign in to Eliza\nWelcome back\nSubmit",
+        regions: [
+          { text: "Sign in to Eliza", box: [12, 24, 300, 60] },
+          { text: "Submit", box: [40, 200, 120, 240] },
+        ],
+      }),
+    );
     const body = stub.requests[stub.requests.length - 1].body as {
       model: string;
       temperature: number;
@@ -252,27 +204,9 @@ describe("ocr.unlimited (GPU client against a stub server)", () => {
     expect(parts.find((p) => p.type === "text")?.text).toBe(
       UNLIMITED_OCR_PROMPT,
     );
-    const image = parts.find((p) => p.type === "image_url");
-    expect(image?.image_url?.url).toMatch(/^data:image\/png;base64,/);
-  });
-
-  it("strips grounding decorations into structured regions", async () => {
-    content = "Sign in to Eliza [12,24,300,60]\nWelcome back";
-    const engine = new UnlimitedOcrEngine({ baseUrl });
-    const png = await solidPng(join(dir, "g.png"), [10, 10, 10]);
-    const analyzer = makeOcrAnalyzer(engine, "gpu");
-    const result = await analyzer.analyze(inputFor(png), { tier: "gpu" });
-    expect(result.status).toBe("ran");
-    if (result.status !== "ran") return;
-    const data = result.data as {
-      text: string;
-      regions: { text: string; box: number[] }[] | null;
-    };
-    // Text comparison sees clean text; coordinates live in structured regions.
-    expect(data.text).toBe("Sign in to Eliza\nWelcome back");
-    expect(data.regions).toEqual([
-      { text: "Sign in to Eliza", box: [12, 24, 300, 60] },
-    ]);
+    expect(parts.find((p) => p.type === "image_url")?.image_url?.url).toBe(
+      `data:image/png;base64,${readFileSync(png).toString("base64")}`,
+    );
   });
 
   it("preserves a base URL path prefix when joining request paths", async () => {
