@@ -82,6 +82,7 @@ async function callDoc(
   message: Memory,
   parameters: Record<string, unknown>,
 ) {
+  expect(await ownerDocumentsAction.validate(runtime, message)).toBe(true);
   return ownerDocumentsAction.handler(
     runtime,
     message,
