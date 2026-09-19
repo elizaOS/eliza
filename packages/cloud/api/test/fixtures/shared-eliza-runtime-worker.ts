@@ -28,8 +28,13 @@ import { isCanonicalPersonalSharedAgent } from "../../../shared/src/lib/services
 import { runSharedAgentTurn } from "../../../shared/src/lib/services/shared-runtime/run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "../../../shared/src/lib/services/shared-runtime/shared-runtime-agent";
 import type { RuntimeDurableObjectNamespace } from "../../../shared/src/types/cloud-worker-env";
+import {
+  type FailureDiagnosticBinding,
+  withWorkerdFailureDiagnostics,
+} from "./workerd-failure-diagnostics";
 
 type Env = {
+  FAILURE_DIAGNOSTICS: FailureDiagnosticBinding;
   NODE_ENV: string;
   OPENROUTER_API_KEY: string;
   OPENROUTER_BASE_URL: string;
@@ -369,7 +374,7 @@ function createReminderProbeRunner(
   };
 }
 
-export default {
+const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     return await runWithCloudBindingsAsync(env, async () => {
       const url = new URL(request.url);
@@ -599,5 +604,14 @@ export default {
       });
       return Response.json(result);
     });
+  },
+};
+
+export default {
+  fetch(request: Request, env: Env): Promise<Response> {
+    return withWorkerdFailureDiagnostics(
+      () => worker.fetch(request, env),
+      env.FAILURE_DIAGNOSTICS,
+    );
   },
 };
