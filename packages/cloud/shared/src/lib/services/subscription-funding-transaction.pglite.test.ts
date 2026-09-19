@@ -2880,6 +2880,65 @@ if (sshFixturePath) {
           // container, and returns the durable receipt that settles the window.
           // No funding row is hand-written.
           const { reconcileExpiredAgentCompute } = await import("./agent-compute-recovery");
+          // Opt-in acceptance record. A reviewer without this rig cannot watch
+          // the lifecycle move, so when COMPUTE_FUNDING_EVIDENCE_DIR is set each
+          // phase writes the same rows the assertions read, plus the live host's
+          // view of the container, into one inspectable document.
+          const evidenceDir = process.env.COMPUTE_FUNDING_EVIDENCE_DIR;
+          const phases: Array<Record<string, unknown>> = [];
+          const recordPhase = async (phase: string) => {
+            if (!evidenceDir) return;
+            const q = async (text: string, params: unknown[] = []) =>
+              (await fixture.query(text, params)).rows;
+            phases.push({
+              phase,
+              funding: await q(
+                `SELECT id, period_start, period_end, settled_at, settled_through,
+                   provider_stopped_at, retirement_backup_id, provider_node_id,
+                   provider_container_id, runtime_ready_at,
+                   provider_stop_receipt IS NOT NULL AS has_stop_receipt
+                 FROM agent_compute_funding WHERE agent_id=$1 ORDER BY period_start, id`,
+                [agentId],
+              ),
+              sandbox: await q(
+                `SELECT status, billing_status, sandbox_id, node_id, last_backup_at,
+                   lifecycle_revision, total_billed, bridge_url, health_url
+                 FROM agent_sandboxes WHERE id=$1`,
+                [agentId],
+              ),
+              stop_intents: await q(
+                `SELECT job_id, "authorization", status, attempts, last_error,
+                   retained_backup_billing, provider_confirmed_at IS NOT NULL AS confirmed
+                 FROM agent_compute_stop_intents WHERE agent_id=$1 ORDER BY created_at`,
+                [agentId],
+              ),
+              backups: await q(
+                `SELECT id, snapshot_type, state_data_storage, verification_status,
+                   size_bytes, sandbox_record_id,
+                   state_data->>'algorithm' AS encryption_algorithm
+                 FROM agent_sandbox_backups WHERE sandbox_record_id=$1 ORDER BY created_at`,
+                [agentId],
+              ),
+              organization: await q("SELECT credit_balance FROM organizations WHERE id=$1", [org]),
+              node_allocation: await q(
+                "SELECT node_id, allocated_count FROM docker_nodes WHERE node_id LIKE $1 ORDER BY node_id",
+                [`${nodeId}%`],
+              ),
+              host_container: {
+                exists:
+                  (
+                    await ssh.exec(`${docker} ps -aq --no-trunc --filter id=${containerId}`)
+                  ).trim() === containerId,
+                running:
+                  (
+                    await ssh.exec(
+                      `${docker} inspect --format '{{.State.Running}}' ${containerId} 2>/dev/null || echo absent`,
+                    )
+                  ).trim() === "true",
+              },
+            });
+          };
+          await recordPhase("1-funded-running-before-expiry");
           if (scenario === "user-suspend-settled-running") {
             // A re-placed agent: the canonical row points at a successor node
             // while the expired window still binds the original placement, so
@@ -2918,6 +2977,7 @@ if (sshFixturePath) {
             fundingId: provider.fundingId,
           });
           expect(settled).toBeTruthy();
+          await recordPhase("2-after-real-expiry-reconciliation");
           expect(
             (
               await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)
@@ -2977,34 +3037,17 @@ if (sshFixturePath) {
               bridgeUrl: `http://${target.hostname}:2138`,
             };
           });
+          // Observed, NOT substituted: the real persistence path runs here, so
+          // the backup row is written by production code — real encryption at
+          // rest, real inline/offload decision, real sandbox metadata update.
+          // Only the snapshot transport above is a fixture, because the tiny
+          // fixture image serves no Eliza state endpoint to read from.
           const persist = spyOn(
             service as unknown as {
               persistSnapshotWithinTransaction: import("./eliza-sandbox/backup/service").SandboxBackup["persistSnapshotWithinTransaction"];
             },
             "persistSnapshotWithinTransaction",
-          ).mockImplementation(async (tx, id, owner, type, data, sizeBytes) => {
-            await tx.insert(agentSandboxBackups).values({
-              id: backupId,
-              sandbox_record_id: id,
-              snapshot_type: type,
-              state_data: data,
-              size_bytes: sizeBytes,
-              state_data_storage: "inline",
-              backup_kind: "full",
-              verification_status: "verified",
-              verified_at: new Date(),
-              created_at: new Date(),
-            });
-            await tx
-              .update(agentSandboxes)
-              .set({ last_backup_at: new Date() })
-              .where(sql`id=${id} AND organization_id=${owner}`);
-            const saved = await tx
-              .select({ lifecycleRevision: agentSandboxes.lifecycle_revision })
-              .from(agentSandboxes)
-              .where(sql`id=${id} AND organization_id=${owner}`);
-            return { backupId, lifecycleRevision: saved[0]!.lifecycleRevision };
-          });
+          );
           try {
             const result = await service.executeSuspend(
               agentId,
@@ -3029,21 +3072,29 @@ if (sshFixturePath) {
                 ).trim(),
               ).toBe(marker);
             } else {
-              expect(result).toMatchObject({
-                success: true,
-                containerStopped: true,
-                backupId,
-              });
+              expect(result).toMatchObject({ success: true, containerStopped: true });
               expect(capture).toHaveBeenCalledTimes(1);
               expect(persist).toHaveBeenCalledTimes(1);
+              // Production code minted this id inside the stop transaction.
+              const persistedBackupId = (result as { backupId?: string }).backupId;
+              expect(persistedBackupId).toMatch(
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+              );
               // The legacy in-place replacement stop removed the container on
               // the real host after its backup gate committed.
               expect(
                 (await ssh.exec(`${docker} ps -aq --no-trunc --filter id=${containerId}`)).trim(),
               ).toBe("");
-              expect((await agentSandboxesRepository.getBackupById(backupId))?.state_data).toEqual(
-                state,
+              // Stored encrypted, read back through the hydrating repository:
+              // the row on disk is not plaintext, and it still decrypts to the
+              // exact captured state.
+              const storedBackup = await agentSandboxesRepository.getStoredBackupById(
+                persistedBackupId!,
               );
+              expect(storedBackup?.state_data).toMatchObject({ algorithm: "kms-aes-256-gcm" });
+              expect(
+                (await agentSandboxesRepository.getBackupById(persistedBackupId!))?.state_data,
+              ).toEqual(state);
             }
             expect(
               (
@@ -3071,6 +3122,7 @@ if (sshFixturePath) {
                 )
               ).rows[0]?.reconciled,
             ).toBe(true);
+            await recordPhase("3-after-user-suspend");
             // A crash retry replays the confirmed intent as a terminal no-op.
             expect(
               await service.executeSuspend(
@@ -3081,6 +3133,35 @@ if (sshFixturePath) {
                 Number(intentRows[0]!.lifecycle_revision),
               ),
             ).toEqual({ success: true, containerStopped: true });
+            await recordPhase("4-after-crash-retry-replay");
+            if (evidenceDir) {
+              await writeFile(
+                join(evidenceDir, `${scenario}.evidence.json`),
+                `${JSON.stringify(
+                  {
+                    scenario,
+                    agentId,
+                    organizationId: org,
+                    containerId,
+                    real: [
+                      "SSH transport and the systemd compute guard on the host",
+                      "Docker container lifecycle (create, start, guard stop, teardown)",
+                      "lease grant/revocation and the durable provider stop receipt",
+                      "PostgreSQL 17 lifecycle transactions, settlement and refunds",
+                      "reconcileExpiredAgentCompute, executeSuspend and the stop-intent machine",
+                      "backup persistence: encryption at rest, storage decision, metadata update",
+                    ],
+                    substituted: [
+                      "fetchSnapshotState (the bridge HTTP read): the fixture image is a bare node http server, not an Eliza runtime, so it serves no state endpoint",
+                    ],
+                    phases,
+                  },
+                  null,
+                  2,
+                )}\n`,
+                { mode: 0o600 },
+              );
+            }
           } finally {
             capture.mockRestore();
             persist.mockRestore();
