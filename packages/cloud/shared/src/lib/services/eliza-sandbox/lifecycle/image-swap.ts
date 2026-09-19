@@ -538,7 +538,7 @@ export class SandboxImageSwap {
       };
     };
 
-    if (!(await provider.checkHealth(blueHandle))) {
+    if (!(await provider.checkHealth(blueHandle, { kind: "candidate" }))) {
       return await failBeforeUpgradeCutover(
         "Blue health check failed; kept agent on old container",
       );
@@ -1043,7 +1043,7 @@ export class SandboxImageSwap {
       return { success: false, oldNodeId, oldContainerName, error };
     };
 
-    if (!(await provider.checkHealth(blueHandle))) {
+    if (!(await provider.checkHealth(blueHandle, { kind: "candidate" }))) {
       return await failBeforeRollbackCutover(
         "Blue health check failed; kept agent on current image",
       );

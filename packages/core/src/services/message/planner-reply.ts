@@ -13,6 +13,7 @@ import type { State } from "../../types/state";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
 import {
 	appliedEffectReceiptIdsForReply,
+	capturePlannerReplyRecovery,
 	evaluatePlannedReplyEgress,
 	resolvePlannedReplyEgress,
 } from "./egress-policy.js";
@@ -239,6 +240,8 @@ export async function finalizePlannerReply(
 		args.codingMode === true || recoveredReply?.text === effectiveReplyText
 			? ({ verdict: "allow" } as const)
 			: evaluatePlannedReplyEgress({
+					providers: finalPlannerState.data.providers,
+					request: args.message.content.text,
 					reply: effectiveReplyText,
 					actionResults,
 					actions: args.runtime.actions,
@@ -246,11 +249,17 @@ export async function finalizePlannerReply(
 				});
 	if (finalReplyEgressDecision.verdict === "reject") {
 		recoveredReply = await resolvePlannedReplyEgress({
+			providers: finalPlannerState.data.providers,
 			runtime: args.runtime,
 			message: args.message,
 			reply: effectiveReplyText,
 			actionResults,
 			evaluator: plannerResult.evaluator,
+			recovery: capturePlannerReplyRecovery(
+				args.runtime,
+				args.message,
+				plannerResult.trajectory,
+			),
 		});
 		effectiveReplyText = recoveredReply.text;
 		replyRecovered = true;
@@ -431,10 +440,16 @@ export async function finalizePlannerReply(
 			"RESPOND turn reached the reply gate with zero deliveries; recovering instead of ending silent",
 		);
 		recoveredReply = await resolvePlannedReplyEgress({
+			providers: finalPlannerState.data.providers,
 			runtime: args.runtime,
 			message: args.message,
 			reply: zeroDeliveryRecovery.text,
 			actionResults,
+			recovery: capturePlannerReplyRecovery(
+				args.runtime,
+				args.message,
+				plannerResult.trajectory,
+			),
 		});
 		effectiveReplyText = recoveredReply.text;
 		strippedPlannedReplyText = effectiveReplyText;

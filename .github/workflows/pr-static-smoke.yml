@@ -9,7 +9,7 @@ name: PR Static Smoke
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [develop, staging, main]
     types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     types: [checks_requested]
@@ -141,6 +141,10 @@ jobs:
           packages/scripts/__tests__/ci-bun-version-contract.test.ts
           packages/scripts/__tests__/github-action-pinning.test.ts
           packages/scripts/__tests__/pr-static-smoke-workflow.test.ts
+
+      - name: Check production and smoke view navigation parity
+        working-directory: packages/app-core
+        run: node ../scripts/run-vitest.mjs run --config vitest.config.ts scripts/smoke-view-declarations.test.ts
 
       - name: Upload Bun runtime resolution inventory
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -379,9 +383,23 @@ jobs:
           trap 'docker stop "$container" >/dev/null 2>&1 || true' EXIT
           docker run --rm --detach --name "$container" \
             --env POSTGRES_HOST_AUTH_METHOD=trust --publish 5432:5432 postgres:16-alpine
-          # The image's temporary initialization server accepts Unix sockets
-          # before restarting. Wait for TCP, which the test uses.
-          until docker exec "$container" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; do
+          for attempt in $(seq 1 60); do
+            if [ "$(docker inspect --format '{{.State.Running}}' "$container")" != "true" ]; then
+              docker logs "$container"
+              echo "::error::PostgreSQL container exited before becoming ready."
+              exit 1
+            fi
+            # The image's initialization server accepts socket connections before
+            # it restarts into the published TCP server. Wait on TCP so the test
+            # cannot connect during that intentional restart window.
+            if docker exec "$container" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              docker logs "$container"
+              echo "::error::PostgreSQL did not become ready on TCP within 60 seconds."
+              exit 1
+            fi
             sleep 1
           done
           bun test --config=/dev/null --isolate \

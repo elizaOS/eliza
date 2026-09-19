@@ -146,30 +146,14 @@ describe("onboarding host deployment contract", () => {
       const resolved = await resolveOnboardingOrigins(section);
       expect(resolved.appOrigin).toBe(appOrigin);
       expect(resolved.loginOrigin).toBe(loginOrigin);
-    },
-  );
-
-  test.each(ONBOARDING_HOST_CONTRACT)(
-    "$section routes the continuation Connect CTA into the Cloud app /get-started, not the homepage",
-    async ({ section, appOrigin }) => {
-      const resolved = await resolveOnboardingOrigins(section);
-      // The Steward-login handoff lives on the Cloud app, so login and app
-      // origins coincide by design; neither is the homepage (eliza.app).
-      expect(resolved.loginOrigin).toBe(appOrigin);
       expect(resolved.loginOrigin).not.toBe(ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin);
       expect(resolved.loginOrigin).not.toBe(ELIZA_DOMAIN_CONTRACTS.staging.marketingOrigin);
+      if (section === "env.staging.vars") {
+        expect(PRODUCTION_APP_ORIGINS).not.toContain(resolved.appOrigin);
+        expect(PRODUCTION_APP_ORIGINS).not.toContain(resolved.loginOrigin);
+      }
     },
   );
-
-  test("staging never resolves a production dashboard origin", async () => {
-    const resolved = await resolveOnboardingOrigins("env.staging.vars");
-    expect(PRODUCTION_APP_ORIGINS).not.toContain(resolved.appOrigin);
-  });
-
-  test("staging never resolves a production login origin for the continuation CTA", async () => {
-    const resolved = await resolveOnboardingOrigins("env.staging.vars");
-    expect(PRODUCTION_APP_ORIGINS).not.toContain(resolved.loginOrigin);
-  });
 
   test("the staging section pins the app origin instead of inheriting one", () => {
     const staging = environmentBindings("env.staging.vars");

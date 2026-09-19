@@ -1,8 +1,9 @@
 /** Exercises live provider behavior with deterministic app-core test fixtures. */
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { parseDocument } from "yaml";
 
 describe("selectLiveProvider", () => {
   beforeEach(() => {
@@ -36,6 +37,32 @@ describe("selectLiveProvider", () => {
     vi.resetModules();
     vi.doUnmock("@elizaos/vault");
     vi.unstubAllEnvs();
+  });
+
+  it("does not activate evaluation-only Cerebras during dev-smoke boot", async () => {
+    const workflow = parseDocument(
+      await readFile(
+        new URL("../../../../.github/workflows/dev-smoke.yml", import.meta.url),
+        "utf8",
+      ),
+    );
+    const availableCredentials = {
+      CEREBRAS_API_KEY: "csk_test_evaluation_only",
+      OPENROUTER_API_KEY: "sk-or-test-smoke",
+    };
+    for (const [key, value] of Object.entries(availableCredentials)) {
+      const binding = workflow.getIn(["env", key]);
+      if (typeof binding === "string" && binding.includes(`secrets.${key}`)) {
+        vi.stubEnv(key, value);
+      }
+    }
+    const { selectLiveProvider } = await import("./live-provider.ts");
+    const { resolveOpenAIBaseURL } = await import(
+      "../../../../plugins/plugin-openai/utils/config.ts"
+    );
+    expect(selectLiveProvider()?.name).toBe("openrouter");
+    const bootEndpoint = resolveOpenAIBaseURL((key) => process.env[key]);
+    expect(new URL(bootEndpoint).hostname).not.toBe("api.cerebras.ai");
   });
 
   it("rejects groq-shaped keys for openai provider selection", async () => {
@@ -97,23 +124,25 @@ describe("selectLiveProvider", () => {
     expect(selectLiveProvider()?.apiKey).toBe("gsk_canonical");
   });
 
-  it("selects cerebras when explicitly selected with ELIZA_PROVIDER", async () => {
+  it("selects cerebras and propagates explicitly configured inference models", async () => {
     vi.stubEnv("CEREBRAS_API_KEY", "csk_test_cerebras_key");
     vi.stubEnv("GROQ_API_KEY", "");
     vi.stubEnv("OPENAI_API_KEY", "");
     vi.stubEnv("ELIZA_PROVIDER", "cerebras");
+    vi.stubEnv("ELIZA_LIVE_TEST_LARGE_MODEL", "review-large-model");
+    vi.stubEnv("ELIZA_LIVE_TEST_SMALL_MODEL", "review-small-model");
 
     const { selectLiveProvider } = await import("./live-provider.ts");
 
     const provider = selectLiveProvider();
     expect(provider?.name).toBe("cerebras");
     expect(provider?.baseUrl).toBe("https://api.cerebras.ai/v1");
-    expect(provider?.largeModel).toBe("gemma-4-31b");
-    expect(provider?.smallModel).toBe("gemma-4-31b");
+    expect(provider?.largeModel).toBe("review-large-model");
+    expect(provider?.smallModel).toBe("review-small-model");
     expect(provider?.env.ELIZA_PROVIDER).toBe("cerebras");
-    expect(provider?.env.CEREBRAS_MODEL).toBe("gemma-4-31b");
-    expect(provider?.env.OPENAI_SMALL_MODEL).toBe("gemma-4-31b");
-    expect(provider?.env.OPENAI_LARGE_MODEL).toBe("gemma-4-31b");
+    expect(provider?.env.CEREBRAS_MODEL).toBe("review-large-model");
+    expect(provider?.env.OPENAI_SMALL_MODEL).toBe("review-small-model");
+    expect(provider?.env.OPENAI_LARGE_MODEL).toBe("review-large-model");
   });
 
   it("resolves Cerebras vault references in the async selector", async () => {

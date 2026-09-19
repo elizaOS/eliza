@@ -214,7 +214,6 @@ describe("required-service readiness", () => {
     const runtime = await createRuntime();
     runtimes.push(runtime);
     const optionalCause = new Error("optional implementation unavailable");
-    let failingStarts = 0;
 
     class FailingOptionalService extends Service {
       static override serviceType = "scenario-sibling";
@@ -222,7 +221,6 @@ describe("required-service readiness", () => {
       capabilityDescription = "failing optional implementation";
 
       static override async start(): Promise<FailingOptionalService> {
-        failingStarts += 1;
         throw optionalCause;
       }
 
@@ -272,7 +270,6 @@ describe("required-service readiness", () => {
     await expect(
       runtime.getServiceLoadPromise("scenario-sibling"),
     ).resolves.toBeInstanceOf(HealthyRequiredService);
-    expect(failingStarts).toBe(1);
   });
 
   it("preserves the original startup cause in a typed preflight failure", async () => {

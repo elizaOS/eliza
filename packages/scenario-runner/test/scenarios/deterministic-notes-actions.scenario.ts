@@ -27,9 +27,11 @@ function capturedNotesAction(
   );
 }
 
+let createdNoteId: string | undefined;
+
 function expectNotesResult(
   op: "create" | "list" | "update" | "delete",
-  expectedText: string,
+  expectedBody: string,
 ): (execution: ScenarioTurnExecution) => string | undefined {
   return (execution) => {
     const action = capturedNotesAction(execution);
@@ -41,12 +43,29 @@ function expectNotesResult(
     if (!data || typeof data !== "object" || data.op !== op) {
       return `expected NOTES op=${op}, saw ${JSON.stringify(data)}`;
     }
-    const text =
-      typeof action.result.text === "string" ? action.result.text : "";
-    return text.includes(expectedText) ||
-      JSON.stringify(data).includes(expectedText)
-      ? undefined
-      : `expected NOTES output to include ${JSON.stringify(expectedText)}, saw ${JSON.stringify({ text, data })}`;
+    const notes = op === "list" ? data.notes : [data.note];
+    if (!Array.isArray(notes) || notes.length !== 1) {
+      return `expected one matching note, saw ${JSON.stringify(data)}`;
+    }
+    const note = notes[0];
+    if (
+      !note ||
+      typeof note !== "object" ||
+      note.title !== "Workflow launch checklist" ||
+      note.body !== expectedBody ||
+      typeof note.id !== "string" ||
+      note.id.length === 0
+    ) {
+      return `note content did not match the requested value: ${JSON.stringify(note)}`;
+    }
+    if (op === "create") createdNoteId = note.id;
+    if (note.id !== createdNoteId) {
+      return "NOTES changed the identity of the created note";
+    }
+    if (op === "delete" && data.removedCount !== 1) {
+      return `expected the created note to be deleted: ${JSON.stringify(data)}`;
+    }
+    return undefined;
   };
 }
 
@@ -90,6 +109,7 @@ export default scenario({
         const service = notesService(ctx);
         if (!service) return "NotesService did not start";
         await service.clearNotes();
+        createdNoteId = undefined;
         return undefined;
       },
     },
@@ -106,7 +126,7 @@ export default scenario({
           content: "Workflow launch checklist\nConfirm the native run output.",
         },
       },
-      assertTurn: expectNotesResult("create", "saved a note"),
+      assertTurn: expectNotesResult("create", "Confirm the native run output."),
     },
     {
       kind: "action",
@@ -116,7 +136,7 @@ export default scenario({
       options: {
         parameters: { action: "list", content: "Workflow launch" },
       },
-      assertTurn: expectNotesResult("list", "Workflow launch checklist"),
+      assertTurn: expectNotesResult("list", "Confirm the native run output."),
     },
     {
       kind: "action",
@@ -130,7 +150,10 @@ export default scenario({
           body: "Workflow launch checklist\nConfirm the native run and widget output.",
         },
       },
-      assertTurn: expectNotesResult("update", "updated the note"),
+      assertTurn: expectNotesResult(
+        "update",
+        "Confirm the native run and widget output.",
+      ),
     },
     {
       kind: "action",
@@ -140,7 +163,10 @@ export default scenario({
       options: {
         parameters: { action: "delete", content: "Workflow launch checklist" },
       },
-      assertTurn: expectNotesResult("delete", "deleted the note"),
+      assertTurn: expectNotesResult(
+        "delete",
+        "Confirm the native run and widget output.",
+      ),
     },
   ],
   finalChecks: [

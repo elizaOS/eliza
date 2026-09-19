@@ -15,7 +15,7 @@ function record(value: unknown): Record<string, unknown> | null {
 }
 
 export default scenario({
-  id: "live-missing-input-terminal-relay",
+  id: "live-chat-widget-missing-input-terminal-relay",
   lane: "live-only",
   title: "Missing-input reminder clarification reaches the owner",
   domain: "chat-widgets",

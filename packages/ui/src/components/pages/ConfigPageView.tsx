@@ -410,9 +410,9 @@ export function ConfigPageView({
             variant="choice"
             size="card"
             align="start"
-            data-state={rpcMode === "cloud" ? "on" : "off"}
             data-testid="wallet-rpc-mode-cloud"
             {...cloudModeEl.agentProps}
+            data-state={rpcMode === "cloud" ? "on" : "off"}
             onClick={() => handleModeChange("cloud")}
             className="relative"
           >
@@ -426,7 +426,7 @@ export function ConfigPageView({
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className={rpcMode === "cloud" ? "text-accent" : "text-muted"}
+                className={rpcMode === "cloud" ? "text-inherit" : "text-muted"}
               >
                 <title>
                   {t("configpageview.CloudModeSvgTitle", {
@@ -441,7 +441,9 @@ export function ConfigPageView({
                 })}
               </span>
             </div>
-            <span className="text-xs-tight text-muted leading-snug">
+            <span
+              className={`text-xs-tight leading-snug ${rpcMode === "cloud" ? "text-inherit" : "text-muted"}`}
+            >
               {t("configpageview.CloudModeDesc", {
                 defaultValue:
                   "Managed RPC for EVM, BSC, and Solana via Eliza Cloud, with Helius on Solana.",
@@ -459,8 +461,8 @@ export function ConfigPageView({
             variant="choice"
             size="card"
             align="start"
-            data-state={rpcMode === "custom" ? "on" : "off"}
             {...customModeEl.agentProps}
+            data-state={rpcMode === "custom" ? "on" : "off"}
             onClick={() => handleModeChange("custom")}
             className="relative"
           >
@@ -474,7 +476,7 @@ export function ConfigPageView({
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className={rpcMode === "custom" ? "text-accent" : "text-muted"}
+                className={rpcMode === "custom" ? "text-inherit" : "text-muted"}
               >
                 <title>
                   {t("configpageview.CustomModeSvgTitle", {
@@ -489,7 +491,9 @@ export function ConfigPageView({
                 })}
               </span>
             </div>
-            <span className="text-xs-tight text-muted leading-snug">
+            <span
+              className={`text-xs-tight leading-snug ${rpcMode === "custom" ? "text-inherit" : "text-muted"}`}
+            >
               {t("configpageview.CustomModeDesc", {
                 defaultValue: "Bring your own API keys. Configure per chain.",
               })}

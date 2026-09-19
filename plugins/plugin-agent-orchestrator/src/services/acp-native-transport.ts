@@ -9,7 +9,11 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import {
+  ElizaError,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import {
   type AcpJsonRpcMessage,
   type AcpTerminalFailure,
@@ -17,9 +21,13 @@ import {
   readAcpTerminalFailure,
 } from "./types.js";
 
+/** Transport-owned classification; raw ACP bytes remain available to observers. */
+export type NativeAcpEventContext = { kind: "startup"; sessionId: string };
+
 export type NativeAcpEventCallback = (
   event: AcpJsonRpcMessage,
   sessionId?: string,
+  context?: NativeAcpEventContext,
 ) => void;
 
 /**
@@ -44,6 +52,8 @@ export type AcpMcpServerConfig =
 export type NativeAcpClientOptions = {
   command: string;
   cwd: string;
+  /** Exact provider/model required by a selected account route, when configured. */
+  expectedModelId?: string;
   env?: NodeJS.ProcessEnv;
   approvalPreset: ApprovalPreset;
   terminal?: boolean;
@@ -110,9 +120,22 @@ export type NativeAcpPromptResult = {
 type JsonRpcId = string | number | null;
 
 type PendingRequest = {
+  method: string;
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
   timer?: ReturnType<typeof setTimeout>;
+};
+
+type StartupState = {
+  expected: string;
+  received: string;
+  started: boolean;
+  failure?: ElizaError;
+  waiters: Set<{
+    resolve: () => void;
+    reject: (error: ElizaError) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }>;
 };
 
 type TerminalRecord = {
@@ -154,8 +177,11 @@ export class NativeAcpClient {
   private proc?: ChildProcessWithoutNullStreams;
   private nextId = 1;
   private readBuffer = "";
+  private stdoutDecoder = new TextDecoder("utf-8", { fatal: true });
+  private closedSessions = new Set<string>();
   private stderrBuffer = "";
   private pending = new Map<JsonRpcId, PendingRequest>();
+  private startupStates = new Map<string, StartupState>();
   private activePrompts = new Map<string, Promise<NativeAcpPromptResult>>();
   private terminals = new Map<string, TerminalRecord>();
   private closed = false;
@@ -199,6 +225,7 @@ export class NativeAcpClient {
     this.proc = proc;
 
     proc.stdout.on("data", (chunk: Buffer) => this.handleStdout(chunk));
+    proc.stdout.on("end", () => this.handleStdout(new Uint8Array(), true));
     // A broken child pipe can report EPIPE asynchronously. Treat stdin failure
     // as terminal because the client can no longer deliver JSON-RPC requests.
     proc.stdin.on("error", (err: NodeJS.ErrnoException) => {
@@ -297,6 +324,22 @@ export class NativeAcpClient {
     );
     const sessionId = stringValue(result?.sessionId);
     if (!sessionId) throw new Error("ACP agent did not return a sessionId");
+    if (this.opts.expectedModelId) {
+      const actualModel = stringValue(asRecord(result?.models)?.currentModelId);
+      if (actualModel !== this.opts.expectedModelId) {
+        throw new ElizaError(
+          "ACP did not confirm the selected provider/model; update the adapter or choose a supported model before retrying",
+          {
+            code: "ACP_SELECTED_MODEL_UNCONFIRMED",
+            context: {
+              expectedModelId: this.opts.expectedModelId,
+              actualModelId: actualModel ?? null,
+            },
+          },
+        );
+      }
+    }
+    await this.awaitStartup(sessionId);
     const modes = asRecord(result?.modes);
     const advertisedModes = modes?.availableModes;
     const availableModes = Array.isArray(advertisedModes)
@@ -331,6 +374,15 @@ export class NativeAcpClient {
     sessionId: string,
     text: string,
   ): Promise<NativeAcpPromptResult> {
+    if (this.closed || this.closedSessions.has(sessionId))
+      throw new ElizaError("ACP session is closed", {
+        code: "ACP_STARTUP_CLOSED",
+        context: { sessionId },
+      });
+    if (this.startupStates.has(sessionId)) await this.awaitStartup(sessionId);
+    this.assertStartupUsable(sessionId);
+    const startup = this.startupStates.get(sessionId);
+    if (startup) startup.started = true;
     const prompt = this.request(
       "session/prompt",
       {
@@ -373,6 +425,10 @@ export class NativeAcpClient {
   }
 
   async closeSession(sessionId: string): Promise<void> {
+    this.closedSessions.add(sessionId);
+    this.abortStartup(sessionId);
+    this.startupStates.delete(sessionId);
+
     // error-policy:J6 best-effort teardown — closing an ACP session; a failed
     // close leaves nothing the caller can act on.
     await this.request("session/close", { sessionId }, 5_000).catch(
@@ -382,6 +438,10 @@ export class NativeAcpClient {
 
   async close(): Promise<void> {
     this.closed = true;
+    for (const sessionId of this.startupStates.keys())
+      this.abortStartup(sessionId);
+    this.startupStates.clear();
+    this.closedSessions.clear();
     const terminals = Array.from(this.terminals.values());
     for (const terminal of terminals) this.terminateTerminal(terminal);
     await Promise.allSettled(
@@ -422,7 +482,7 @@ export class NativeAcpClient {
               reject(new Error(`ACP request timed out: ${method}`));
             }, timeoutMs)
           : undefined;
-      this.pending.set(id, { resolve, reject, timer });
+      this.pending.set(id, { method, resolve, reject, timer });
       if (!this.writeToAgent(payload)) {
         const pending = this.pending.get(id);
         this.pending.delete(id);
@@ -508,9 +568,12 @@ export class NativeAcpClient {
    * an unhandled rejection out of the un-awaited `handleLine` — instead of being
    * contained here.
    */
-  private emitEvent(message: AcpJsonRpcMessage): void {
+  private emitEvent(
+    message: AcpJsonRpcMessage,
+    context?: NativeAcpEventContext,
+  ): void {
     try {
-      this.opts.onEvent?.(message);
+      this.opts.onEvent?.(message, undefined, context);
     } catch {
       // error-policy:J7 diagnostics-must-not-kill-the-loop — onEvent is
       // best-effort trajectory capture; a consumer throw must not break ACP I/O.
@@ -518,13 +581,145 @@ export class NativeAcpClient {
     }
   }
 
+  private registerStartup(value: unknown): ElizaError | undefined {
+    const result = asRecord(value);
+    const sessionId = stringValue(result?.sessionId);
+    const metadata = asRecord(asRecord(result?._meta)?.piAcp);
+    if (!metadata || !("startupInfo" in metadata) || !sessionId) return;
+    if (this.startupStates.has(sessionId))
+      return new ElizaError("ACP reused a session startup declaration", {
+        code: "ACP_STARTUP_INVALID",
+        context: { sessionId },
+      });
+    const expected = metadata.startupInfo;
+    if (expected !== null && typeof expected !== "string") {
+      return new ElizaError("ACP adapter declared invalid startup output", {
+        code: "ACP_STARTUP_INVALID",
+        context: { sessionId },
+      });
+    }
+    this.startupStates.set(sessionId, {
+      expected: expected ?? "",
+      received: "",
+      started: false,
+      waiters: new Set(),
+    });
+  }
+
+  private classifyStartup(
+    message: AcpJsonRpcMessage,
+  ): NativeAcpEventContext | undefined {
+    const record = asRecord(message);
+    if (record?.method !== "session/update") return;
+    const params = asRecord(record.params);
+    const sessionId = stringValue(params?.sessionId);
+    const update = asRecord(params?.update);
+    if (!sessionId || update?.sessionUpdate !== "agent_message_chunk") return;
+    const state = this.startupStates.get(sessionId);
+    if (!state || state.started) return;
+    const content = asRecord(update.content);
+    if (content?.type !== "text" || typeof content.text !== "string") {
+      this.settleStartup(
+        state,
+        new ElizaError("ACP startup output must contain text", {
+          code: "ACP_STARTUP_INVALID",
+          context: { sessionId },
+        }),
+      );
+    } else {
+      state.received += content.text;
+      if (!state.expected.startsWith(state.received)) {
+        this.settleStartup(
+          state,
+          new ElizaError(
+            "ACP startup output differs from the adapter declaration",
+            { code: "ACP_STARTUP_MISMATCH", context: { sessionId } },
+          ),
+        );
+      } else if (state.received === state.expected) this.settleStartup(state);
+    }
+    return { kind: "startup", sessionId };
+  }
+
+  private settleStartup(state: StartupState, failure?: ElizaError): void {
+    if (failure) state.failure = failure;
+    for (const waiter of state.waiters) {
+      clearTimeout(waiter.timer);
+      if (state.failure) waiter.reject(state.failure);
+      else waiter.resolve();
+    }
+    state.waiters.clear();
+  }
+
+  private async awaitStartup(sessionId: string): Promise<void> {
+    this.assertStartupUsable(sessionId);
+    const state = this.startupStates.get(sessionId);
+    if (!state) return;
+    if (state.received === state.expected) return;
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () =>
+          this.settleStartup(
+            state,
+            new ElizaError(
+              "ACP declared startup output did not arrive before the deadline",
+              { code: "ACP_STARTUP_TIMEOUT", context: { sessionId } },
+            ),
+          ),
+        Math.min(
+          this.opts.timeoutMs && this.opts.timeoutMs > 0
+            ? this.opts.timeoutMs
+            : DEFAULT_TIMEOUT_MS,
+          5_000,
+        ),
+      );
+      state.waiters.add({ resolve, reject, timer });
+    });
+    this.assertStartupUsable(sessionId);
+  }
+
+  private assertStartupUsable(sessionId: string): void {
+    if (this.closed || this.closedSessions.has(sessionId))
+      throw new ElizaError("ACP session is closed", {
+        code: "ACP_STARTUP_CLOSED",
+        context: { sessionId },
+      });
+    const failure = this.startupStates.get(sessionId)?.failure;
+    if (failure) throw failure;
+  }
+
+  private abortStartup(sessionId: string): void {
+    const state = this.startupStates.get(sessionId);
+    if (state && state.received !== state.expected)
+      this.settleStartup(
+        state,
+        new ElizaError("ACP session closed before startup output completed", {
+          code: "ACP_STARTUP_CLOSED",
+          context: { sessionId },
+        }),
+      );
+  }
+
   private requireProcess(): ChildProcessWithoutNullStreams {
     if (!this.proc) throw new Error("ACP client has not been started");
     return this.proc;
   }
 
-  private handleStdout(chunk: Buffer): void {
-    this.readBuffer += chunk.toString("utf8");
+  private handleStdout(chunk: Uint8Array, final = false): void {
+    try {
+      this.readBuffer += this.stdoutDecoder.decode(chunk, { stream: !final });
+    } catch (cause) {
+      // error-policy:J1 the transport rejects malformed or incomplete UTF-8 before publishing corrupted protocol text.
+      this.closed = true;
+      this.rejectAll(
+        new ElizaError("ACP output is not complete UTF-8", {
+          code: "ACP_INVALID_UTF8",
+          cause,
+        }),
+      );
+      this.proc?.kill();
+      return;
+    }
     let newline = this.readBuffer.indexOf("\n");
     while (newline >= 0) {
       const line = this.readBuffer.slice(0, newline).trim();
@@ -543,15 +738,22 @@ export class NativeAcpClient {
       // subprocess stdout stream is dropped rather than crashing the reader.
       return;
     }
-    this.emitEvent(message);
-
     const id = (message as { id?: JsonRpcId }).id;
+    const correlated = id === undefined ? undefined : this.pending.get(id);
+    const startupError =
+      correlated?.method === "session/new" && "result" in message
+        ? this.registerStartup(message.result)
+        : undefined;
+    const context = this.classifyStartup(message);
+    this.emitEvent(message, context);
     if (id !== undefined && ("result" in message || "error" in message)) {
       const pending = this.pending.get(id);
       if (!pending) return;
       this.pending.delete(id);
       if (pending.timer) clearTimeout(pending.timer);
-      if ("error" in message && message.error) {
+      if (startupError) {
+        pending.reject(startupError);
+      } else if ("error" in message && message.error) {
         pending.reject(jsonRpcError(message.error));
       } else {
         pending.resolve((message as { result?: unknown }).result);
@@ -786,6 +988,17 @@ export class NativeAcpClient {
   }
 
   private rejectAll(err: unknown): void {
+    for (const state of this.startupStates.values()) {
+      this.settleStartup(
+        state,
+        err instanceof ElizaError
+          ? err
+          : new ElizaError("ACP transport failed before startup completed", {
+              code: "ACP_STARTUP_CLOSED",
+              cause: err,
+            }),
+      );
+    }
     for (const [id, pending] of this.pending) {
       this.pending.delete(id);
       if (pending.timer) clearTimeout(pending.timer);

@@ -8,6 +8,8 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import {
+  DocumentService,
+  ElizaError,
   fetchRemoteMedia,
   fetchWithSsrfGuard,
   type IAgentRuntime,
@@ -15,14 +17,22 @@ import {
   type LookupFn,
   type PinnedLookupFetchLike,
   readResponseWithLimit,
+  resolveOwnerEntityIdOrDefault,
   type Service,
   ServiceType,
+  stringToUuid,
 } from "@elizaos/core";
 import { ELIZA_CALENDAR_GRANT_ID } from "@elizaos/plugin-calendar/internal/eliza-calendar";
 import type { CalendarOwnerMutationGateway } from "@elizaos/plugin-calendar/routes/mutation-gateway";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import {
+  beginFamilyWorkspaceOperation,
+  settleFamilyWorkspaceOperation,
+  withActiveFamilyWorkspaceTransaction,
+} from "../family-workflows/workspace-operation-store.js";
+import {
   executeRawSql,
+  executeRawSqlTx,
   parseJsonArray,
   parseJsonRecord,
   sqlQuote,
@@ -31,6 +41,7 @@ import {
 
 export const CONCORD_SCHOOL_CALENDAR_SOURCE: SchoolCalendarSourceConfig = {
   sourceId: "concord-cps-school-year-calendar",
+  packetVisibility: "guest_shareable",
   landingPageUrl:
     "https://www.concordps.org/district-resources/school-year-calendars",
   allowedHosts: ["www.concordps.org", "resources.finalsite.net"],
@@ -49,8 +60,10 @@ export const SCHOOL_CALENDAR_MONTHLY_CRON = {
 const MAX_LANDING_BYTES = 512 * 1024;
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 10_000;
+const SCHOOL_CALENDAR_USER_AGENT = "elizaOS-SchoolCalendar/1.0";
 const LEASE_MS = 5 * 60_000;
-const SCHOOL_CALENDAR_CONTRACT_VERSION = 2;
+const SCHOOL_CALENDAR_CONTRACT_VERSION = 3;
+const SCHOOL_CALENDAR_ALL_DAY_VERSION = 2;
 
 const SCHEMA = [
   `CREATE SCHEMA IF NOT EXISTS app_lifeops`,
@@ -90,6 +103,8 @@ const SCHEMA = [
 ] as const;
 
 export interface SchoolCalendarSourceConfig {
+  /** Allows imported source facts in owner-reviewed family drafts; calendar edits remain private. */
+  packetVisibility?: "owner_only" | "guest_shareable";
   sourceId: string;
   landingPageUrl: string;
   allowedHosts: string[];
@@ -97,6 +112,10 @@ export interface SchoolCalendarSourceConfig {
   timeZone: string;
   targetGrantId: string;
   targetCalendarId: string;
+  /** Omitted on legacy sources, which included all school levels. */
+  schoolLevel?: "all" | "elementary";
+  /** Automatic application is an explicit owner-configured standing policy. */
+  updateMode?: "review" | "automatic";
 }
 
 export interface SchoolCalendarSemanticEvent {
@@ -105,6 +124,15 @@ export interface SchoolCalendarSemanticEvent {
   startDate: string;
   endDateExclusive: string;
   citation?: SchoolCalendarCitation;
+}
+
+export interface SchoolCalendarImportedEvent {
+  packetVisibility?: "owner_only" | "guest_shareable";
+  sourceId: string;
+  grantId: string;
+  calendarId: string;
+  providerEventId: string;
+  event: SchoolCalendarSemanticEvent;
 }
 
 export interface SchoolCalendarCitation {
@@ -146,15 +174,17 @@ export type SchoolCalendarChange =
 
 export interface SchoolCalendarApprovalPlan {
   version: 1;
-  calendarContractVersion: 2;
+  calendarContractVersion: 3;
   sourceId: string;
   runId: string;
   contentSha256: string;
   mediaUrl: string;
   changes: SchoolCalendarChange[];
+  sourceConfigSha256?: string;
 }
 
 export type SchoolCalendarRunResult =
+  | { state: "applied"; runId: string; plan: SchoolCalendarApprovalPlan }
   | {
       state: "unchanged";
       runId: string;
@@ -167,6 +197,25 @@ export type SchoolCalendarRunResult =
       plan: SchoolCalendarApprovalPlan;
     }
   | { state: "already_running"; runId: null };
+
+export function selectSchoolCalendarEvents(
+  events: SchoolCalendarSemanticEvent[],
+  level: SchoolCalendarSourceConfig["schoolLevel"],
+): SchoolCalendarSemanticEvent[] {
+  if (level !== "elementary") return events;
+  return events.filter((event) => {
+    const title = event.title.replace(/[‐–—]/gu, "-");
+    const elementary =
+      /\b(elementary|CPS|all schools|district[- ]wide|K\s*-\s*5|pre-?K\s*-\s*12)\b/iu.test(
+        title,
+      );
+    const otherSchool =
+      /\b(CCHS|CCRHS|CMS|high school|middle school|pre-?K|preschool|graduation|(?:[6-9]|1[0-2])(?:st|nd|rd|th)?\s+grade|grade\s+(?:[6-9]|1[0-2]))\b/iu.test(
+        title,
+      );
+    return elementary || !otherSchool;
+  });
+}
 
 export interface SchoolCalendarWorkflowStatus {
   sourceId: string;
@@ -708,10 +757,26 @@ export class SchoolCalendarWorkflow {
     await this.ensureSchema();
     assertAllowedUrl(config.landingPageUrl, config);
     const at = this.now().toISOString();
-    await executeRawSql(
+    const configured = await withActiveFamilyWorkspaceTransaction(
       this.runtime,
-      `INSERT INTO app_lifeops.life_school_calendar_sources (agent_id, source_id, config_json, created_at, updated_at) VALUES (${sqlQuote(this.runtime.agentId)}, ${sqlQuote(config.sourceId)}, ${sqlQuote(canonicalJson(config))}, ${sqlQuote(at)}, ${sqlQuote(at)}) ON CONFLICT (agent_id, source_id) DO UPDATE SET config_json = EXCLUDED.config_json, updated_at = EXCLUDED.updated_at`,
+      [
+        "app_lifeops.life_school_calendar_sources",
+        "app_lifeops.life_school_calendar_runs",
+      ],
+      (tx) =>
+        executeRawSqlTx(
+          tx,
+          `INSERT INTO app_lifeops.life_school_calendar_sources (agent_id, source_id, config_json, created_at, updated_at) VALUES (${sqlQuote(this.runtime.agentId)}, ${sqlQuote(config.sourceId)}, ${sqlQuote(canonicalJson(config))}, ${sqlQuote(at)}, ${sqlQuote(at)}) ON CONFLICT (agent_id, source_id) DO UPDATE SET last_content_sha256 = CASE WHEN life_school_calendar_sources.config_json <> EXCLUDED.config_json THEN NULL ELSE life_school_calendar_sources.last_content_sha256 END, config_json = EXCLUDED.config_json, updated_at = EXCLUDED.updated_at
+      WHERE (life_school_calendar_sources.lease_token IS NULL OR life_school_calendar_sources.lease_expires_at < ${sqlQuote(at)})
+        AND NOT EXISTS (SELECT 1 FROM app_lifeops.life_school_calendar_runs WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND source_id=${sqlQuote(config.sourceId)} AND state='applying' AND apply_lease_expires_at >= ${sqlQuote(at)})
+      RETURNING source_id`,
+        ),
     );
+    if (!configured.length)
+      throw new SchoolCalendarWorkflowError(
+        "School calendar work is running. Wait for it to finish before changing settings.",
+        "SCHOOL_CALENDAR_CONFIG_BUSY",
+      );
     return this.status(config.sourceId);
   }
 
@@ -750,6 +815,36 @@ export class SchoolCalendarWorkflow {
     };
   }
 
+  async listImportedEvents(): Promise<SchoolCalendarImportedEvent[]> {
+    await this.ensureSchema();
+    const sources = await executeRawSql(
+      this.runtime,
+      `SELECT source_id, config_json FROM app_lifeops.life_school_calendar_sources WHERE agent_id=${sqlQuote(this.runtime.agentId)}`,
+    );
+    const result: SchoolCalendarImportedEvent[] = [];
+    for (const source of sources) {
+      const sourceId = toText(source.source_id);
+      const config = parseJsonRecord(
+        source.config_json,
+      ) as unknown as SchoolCalendarSourceConfig;
+      for (const event of await this.events(sourceId)) {
+        if (!event.active || !event.providerEventId) continue;
+        result.push({
+          sourceId,
+          packetVisibility:
+            config.packetVisibility === "guest_shareable"
+              ? "guest_shareable"
+              : "owner_only",
+          grantId: config.targetGrantId,
+          calendarId: config.targetCalendarId,
+          providerEventId: event.providerEventId,
+          event,
+        });
+      }
+    }
+    return result;
+  }
+
   async review(runId: string): Promise<SchoolCalendarRunReview | null> {
     await this.ensureSchema();
     const rows = await executeRawSql(
@@ -775,24 +870,59 @@ export class SchoolCalendarWorkflow {
     config: SchoolCalendarSourceConfig = CONCORD_SCHOOL_CALENDAR_SOURCE,
     triggerKind: "manual" | "scheduled" = "manual",
   ): Promise<SchoolCalendarRunResult> {
+    assertAllowedUrl(config.landingPageUrl, config);
+    const runId = randomUUID();
+    const operationId = await beginFamilyWorkspaceOperation(this.runtime, {
+      kind: "school-calendar-work",
+      sourceId: config.sourceId,
+      runId,
+      phase: "ingest",
+    });
+    const result = await this.runAdmitted(
+      config,
+      triggerKind,
+      runId,
+      operationId,
+    );
+    await settleFamilyWorkspaceOperation(this.runtime, operationId);
+    return result;
+  }
+
+  private async runAdmitted(
+    config: SchoolCalendarSourceConfig,
+    triggerKind: "manual" | "scheduled",
+    runId: string,
+    operationId: string,
+  ): Promise<SchoolCalendarRunResult> {
     await this.ensureSchema();
     assertAllowedUrl(config.landingPageUrl, config);
     const leaseToken = randomUUID();
     const now = this.now();
     const acquired = await this.acquire(config, leaseToken, now);
     if (!acquired) return { state: "already_running", runId: null };
-    const runId = randomUUID();
     await this.insertRun(runId, config.sourceId, triggerKind, now);
+    let retentionUncertain = false;
     try {
+      if (!this.deps.retainPdf) await this.retainRecordedSources();
       const { pdfUrl, bytes } = await this.retrieve(config);
       const contentSha256 = sha256(bytes);
+      // Persist the canonical identity before storage can lose its acknowledgement.
+      await executeRawSql(
+        this.runtime,
+        `UPDATE app_lifeops.life_school_calendar_runs SET content_sha256=${sqlQuote(contentSha256)},media_url=${sqlQuote(`/api/media/${contentSha256}.pdf`)},discovered_pdf_url=${sqlQuote(pdfUrl)} WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND run_id=${sqlQuote(runId)}`,
+      );
+      retentionUncertain = true;
       const retained = await this.retain(bytes);
-      if (retained.hash !== contentSha256) {
+      if (
+        retained.hash !== contentSha256 ||
+        retained.url !== `/api/media/${contentSha256}.pdf`
+      ) {
         throw new SchoolCalendarWorkflowError(
           "Canonical media store returned a mismatched content hash.",
           "SCHOOL_CALENDAR_MEDIA_HASH_MISMATCH",
         );
       }
+      retentionUncertain = false;
       const source = await this.source(config.sourceId);
       if (
         source.lastContentSha256 === contentSha256 &&
@@ -814,11 +944,20 @@ export class SchoolCalendarWorkflow {
         };
       }
       const text = await this.extract(bytes);
-      const current = parseSchoolCalendarText(text);
+      const current = selectSchoolCalendarEvents(
+        parseSchoolCalendarText(text),
+        config.schoolLevel,
+      );
+      if (current.length === 0) {
+        throw new SchoolCalendarWorkflowError(
+          "No calendar entries match the configured school level; existing events were preserved.",
+          "SCHOOL_CALENDAR_SELECTION_EMPTY",
+        );
+      }
       const previous = await this.events(config.sourceId);
       const changes = diffSchoolCalendarEvents(previous, current, {
         migrateToAllDay:
-          source.calendarContractVersion < SCHOOL_CALENDAR_CONTRACT_VERSION,
+          source.calendarContractVersion < SCHOOL_CALENDAR_ALL_DAY_VERSION,
       });
       if (changes.every((change) => change.kind === "unchanged")) {
         await this.completeNoop(
@@ -844,6 +983,7 @@ export class SchoolCalendarWorkflow {
         contentSha256,
         mediaUrl: retained.url,
         changes,
+        sourceConfigSha256: sha256(Buffer.from(canonicalJson(config))),
       };
       await this.awaitApproval(
         runId,
@@ -854,7 +994,10 @@ export class SchoolCalendarWorkflow {
       );
       return { state: "awaiting_approval", runId, plan };
     } catch (error) {
+      // error-policy:J2 Preserve the failure after its terminal run record is acknowledged.
       await this.failRun(runId, config.sourceId, leaseToken, error);
+      if (!retentionUncertain)
+        await settleFamilyWorkspaceOperation(this.runtime, operationId);
       throw error;
     }
   }
@@ -865,6 +1008,25 @@ export class SchoolCalendarWorkflow {
     gateway: CalendarOwnerMutationGateway;
     config?: SchoolCalendarSourceConfig;
   }): Promise<void> {
+    const operationId = await beginFamilyWorkspaceOperation(this.runtime, {
+      kind: "school-calendar-work",
+      sourceId: (args.config ?? CONCORD_SCHOOL_CALENDAR_SOURCE).sourceId,
+      runId: args.runId,
+      phase: "apply",
+    });
+    await this.applyAdmitted(args, operationId);
+    await settleFamilyWorkspaceOperation(this.runtime, operationId);
+  }
+
+  private async applyAdmitted(
+    args: {
+      runId: string;
+      requestUrl: URL;
+      gateway: CalendarOwnerMutationGateway;
+      config?: SchoolCalendarSourceConfig;
+    },
+    operationId: string,
+  ): Promise<void> {
     await this.ensureSchema();
     const config = args.config ?? CONCORD_SCHOOL_CALENDAR_SOURCE;
     const applyToken = randomUUID();
@@ -889,6 +1051,7 @@ export class SchoolCalendarWorkflow {
       );
       const state = toText(existing[0]?.state);
       if (state === "applied") return;
+      await settleFamilyWorkspaceOperation(this.runtime, operationId);
       throw new SchoolCalendarWorkflowError(
         state === "applying"
           ? "School calendar plan is already being applied."
@@ -898,8 +1061,23 @@ export class SchoolCalendarWorkflow {
           : "SCHOOL_CALENDAR_RUN_NOT_APPLICABLE",
       );
     }
+    let effectUncertain = false;
     try {
       const plan = parseApprovalPlan(parseJsonRecord(row.plan_json));
+      const configured = (await this.status(config.sourceId)).config;
+      if (
+        plan.sourceId !== config.sourceId ||
+        !configured ||
+        canonicalJson(configured) !== canonicalJson(config) ||
+        (plan.sourceConfigSha256 &&
+          plan.sourceConfigSha256 !==
+            sha256(Buffer.from(canonicalJson(config))))
+      ) {
+        throw new SchoolCalendarWorkflowError(
+          "School source settings changed after this plan was prepared. Run the workflow again.",
+          "SCHOOL_CALENDAR_CONFIG_CHANGED",
+        );
+      }
       const actionable = plan.changes.filter(
         (change) => change.kind !== "unchanged",
       );
@@ -950,6 +1128,7 @@ export class SchoolCalendarWorkflow {
             "SCHOOL_CALENDAR_APPLY_IN_PROGRESS",
           );
         }
+        effectUncertain = true;
         if (change.kind === "add") {
           const result = await args.gateway.create(args.requestUrl, {
             grantId: config.targetGrantId,
@@ -1018,6 +1197,7 @@ export class SchoolCalendarWorkflow {
             result,
           );
         }
+        effectUncertain = false;
       }
       const completedAt = this.now().toISOString();
       const completed = await executeRawSql(
@@ -1046,6 +1226,8 @@ export class SchoolCalendarWorkflow {
       // error-policy:J2 Restore the exact owned apply leases, then rethrow a
       // typed failure with the provider or persistence error preserved.
       await this.releaseApplyForRetry(args.runId, applyToken, error);
+      if (!effectUncertain)
+        await settleFamilyWorkspaceOperation(this.runtime, operationId);
       const code =
         error instanceof SchoolCalendarWorkflowError
           ? error.code
@@ -1066,7 +1248,8 @@ export class SchoolCalendarWorkflow {
   ): Promise<void> {
     const at = this.now().toISOString();
     const code =
-      error instanceof SchoolCalendarWorkflowError
+      error instanceof SchoolCalendarWorkflowError ||
+      error instanceof ElizaError
         ? error.code
         : "SCHOOL_CALENDAR_APPLY_FAILED";
     const message = error instanceof Error ? error.message : String(error);
@@ -1116,6 +1299,12 @@ export class SchoolCalendarWorkflow {
   ): Promise<{ pdfUrl: string; bytes: Buffer }> {
     const guarded = await fetchWithSsrfGuard({
       url: config.landingPageUrl,
+      init: {
+        headers: {
+          "User-Agent": SCHOOL_CALENDAR_USER_AGENT,
+          Accept: "text/html",
+        },
+      },
       fetchImpl: this.deps.fetchImpl,
       lookupFn: this.deps.lookupFn,
       pinnedFetchImpl: this.deps.pinnedFetchImpl,
@@ -1142,6 +1331,7 @@ export class SchoolCalendarWorkflow {
       const pdfUrl = discoverSchoolCalendarPdf(html, guarded.finalUrl, config);
       const pdf = await fetchRemoteMedia({
         url: pdfUrl,
+        userAgent: SCHOOL_CALENDAR_USER_AGENT,
         fetchImpl: this.deps.fetchImpl,
         lookupFn: this.deps.lookupFn,
         pinnedFetchImpl: this.deps.pinnedFetchImpl,
@@ -1174,7 +1364,89 @@ export class SchoolCalendarWorkflow {
         "SCHOOL_CALENDAR_FILE_STORE_UNAVAILABLE",
       );
     const stored = await files.store(bytes, "application/pdf");
+    if (
+      stored.hash !== sha256(bytes) ||
+      stored.url !== `/api/media/${stored.hash}.pdf`
+    )
+      throw new ElizaError(
+        "Canonical media storage returned an invalid school PDF reference.",
+        { code: "SCHOOL_CALENDAR_MEDIA_HASH_MISMATCH" },
+      );
+    await this.retainSourceReference(stored.url, stored.hash);
     return { url: stored.url, hash: stored.hash };
+  }
+
+  /** Preserve historical source references in the canonical document store. */
+  async retainRecordedSources(): Promise<void> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT DISTINCT content_sha256,media_url FROM app_lifeops.life_school_calendar_runs WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND content_sha256 IS NOT NULL`,
+    );
+    for (const row of rows) {
+      const digest = toText(row.content_sha256);
+      const url = toText(row.media_url);
+      if (!/^[a-f0-9]{64}$/.test(digest) || url !== `/api/media/${digest}.pdf`)
+        throw new ElizaError(
+          "A retained school source has an invalid hash or media reference.",
+          { code: "SCHOOL_CALENDAR_SOURCE_INTEGRITY" },
+        );
+      const files = this.runtime.getService<IFileStorageService>(
+        ServiceType.REMOTE_FILES,
+      );
+      if (!files)
+        throw new ElizaError(
+          "Canonical file storage is unavailable; restore it before checking school sources.",
+          { code: "SCHOOL_CALENDAR_FILE_STORE_UNAVAILABLE" },
+        );
+      const bytes = await files.read(`${digest}.pdf`);
+      if (!bytes || sha256(bytes) !== digest)
+        throw new ElizaError(
+          "A historical school PDF is missing or changed; recover its original bytes before continuing.",
+          { code: "SCHOOL_CALENDAR_SOURCE_INTEGRITY" },
+        );
+      await this.retainSourceReference(url, digest);
+    }
+  }
+
+  private async retainSourceReference(
+    url: string,
+    digest: string,
+  ): Promise<void> {
+    const documents = this.runtime.getService<DocumentService>(
+      DocumentService.serviceType,
+    );
+    if (!documents)
+      throw new ElizaError(
+        "The document service is unavailable; school source retention could not be recorded.",
+        { code: "SCHOOL_CALENDAR_DOCUMENT_STORE_UNAVAILABLE" },
+      );
+    const owner = resolveOwnerEntityIdOrDefault(this.runtime);
+    // This is an explicit source-link record, not a replacement transcription.
+    // Original PDF bytes remain in the canonical media store; metadata.mediaUrl
+    // makes their durable document reference visible to its existing collector.
+    await documents.addDocument({
+      agentId: this.runtime.agentId,
+      worldId: this.runtime.agentId,
+      roomId: this.runtime.agentId,
+      entityId: this.runtime.agentId,
+      clientDocumentId: stringToUuid(
+        `school-source:${this.runtime.agentId}:${digest}`,
+      ),
+      contentType: "text/plain",
+      originalFilename: "School calendar source.txt",
+      content: `Original school calendar PDF reference\n${url}\nSHA-256: ${digest}`,
+      metadata: {
+        title: "School calendar source",
+        source: "school-calendar",
+        mediaUrl: url,
+        contentSha256: digest,
+      },
+      scope: "owner-private",
+      scopedToEntityId: owner,
+      addedBy: owner,
+      addedByRole: "OWNER",
+      addedFrom: "lifeops",
+    });
   }
 
   private async extract(
@@ -1212,7 +1484,7 @@ export class SchoolCalendarWorkflow {
     );
     const rows = await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_school_calendar_sources SET lease_token = ${sqlQuote(token)}, lease_expires_at = ${sqlQuote(expires)}, config_json = ${sqlQuote(canonicalJson(config))}, updated_at = ${sqlQuote(at)} WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND source_id = ${sqlQuote(config.sourceId)} AND (lease_token IS NULL OR lease_expires_at < ${sqlQuote(at)}) RETURNING source_id`,
+      `UPDATE app_lifeops.life_school_calendar_sources SET lease_token = ${sqlQuote(token)}, lease_expires_at = ${sqlQuote(expires)}, last_content_sha256 = CASE WHEN config_json <> ${sqlQuote(canonicalJson(config))} THEN NULL ELSE last_content_sha256 END, config_json = ${sqlQuote(canonicalJson(config))}, updated_at = ${sqlQuote(at)} WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND source_id = ${sqlQuote(config.sourceId)} AND (lease_token IS NULL OR lease_expires_at < ${sqlQuote(at)}) RETURNING source_id`,
     );
     return rows.length === 1;
   }
@@ -1357,6 +1629,9 @@ function parseApprovalPlan(
 ): SchoolCalendarApprovalPlan {
   if (
     value.version !== 1 ||
+    (value.sourceConfigSha256 !== undefined &&
+      (typeof value.sourceConfigSha256 !== "string" ||
+        !/^[a-f0-9]{64}$/u.test(value.sourceConfigSha256))) ||
     (value.calendarContractVersion !== undefined &&
       value.calendarContractVersion !== SCHOOL_CALENDAR_CONTRACT_VERSION) ||
     typeof value.sourceId !== "string" ||
@@ -1377,5 +1652,8 @@ function parseApprovalPlan(
     contentSha256: value.contentSha256,
     mediaUrl: value.mediaUrl,
     changes: parseJsonArray(value.changes) as SchoolCalendarChange[],
+    ...(typeof value.sourceConfigSha256 === "string"
+      ? { sourceConfigSha256: value.sourceConfigSha256 }
+      : {}),
   };
 }

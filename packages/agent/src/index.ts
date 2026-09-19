@@ -183,6 +183,7 @@ export {
 // exported through `./api/server.js`.
 export {
   getConfiguredApiToken,
+  isCredentialedCorsOrigin,
   isTrustedLocalRequest,
 } from "./api/server-helpers-auth.ts";
 // `server-types.ts` is the canonical source for conversation/server type
@@ -311,6 +312,9 @@ export {
   APPROVAL_SERVICE,
   type ApprovalAction,
   type ApprovalChannel,
+  type ApprovalDispatchControl,
+  type ApprovalDispatchControlMutation,
+  ApprovalDispatchControlStore,
   type ApprovalEnqueueInput,
   type ApprovalEnqueueResult,
   type ApprovalExecution,
@@ -332,6 +336,7 @@ export {
   ApprovalStateTransitionError,
   type ApprovalTravelCalendarSync,
   type ApprovalTravelPassenger,
+  approvalDispatchAdmissionCte,
   createApprovalQueue,
   PgApprovalQueue,
   resolveApprovalService,
@@ -375,6 +380,11 @@ export {
 // re-export to mirror the relationships-graph surface and avoid colliding
 // with the broad services barrel.
 export {
+  archiveCoreRelationshipsInventory,
+  type CoreRelationshipsInventoryDatabase,
+  type CoreRelationshipsInventoryReport,
+  type CoreRelationshipsInventorySession,
+  type CoreRelationshipsSourceKind,
   EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   KnowledgeGraphService,

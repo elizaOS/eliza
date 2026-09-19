@@ -37,7 +37,9 @@ This package owns the triage domain carved out of `plugin-personal-assistant`: t
   - `life_email_unsubscribes` — email unsubscribe attempts + outcomes.
   Registered via the plugin `schema` field; `InboxMigrationService`
   (`src/inbox/migration.ts`) does the non-destructive `app_lifeops -> app_inbox`
-  copy (skip if source missing / target non-empty, never drop the source) and
+  import into empty owner tables without completed migration claims. Fresh
+  imports verify the full projection; established owner rows and deletions remain
+  authoritative, and legacy sources are never dropped. The service also
   repairs older `app_inbox.life_inbox_triage_entries` tables by adding
   `snoozed_until` if missing. PA
   auto-registers this plugin (`ensureLifeOpsInboxPluginRegistered`) so the schema

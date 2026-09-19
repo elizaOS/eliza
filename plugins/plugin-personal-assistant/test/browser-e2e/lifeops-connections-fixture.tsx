@@ -4,6 +4,7 @@
  * stays inside this deterministic adapter.
  */
 
+import "./lifeops-connections-fixture.css";
 import type {
   LifeOpsCalendarSourceHealth,
   LifeOpsCalendarSummary,
@@ -12,11 +13,16 @@ import type {
   PermissionStatus,
 } from "@elizaos/shared";
 import { createRoot } from "react-dom/client";
+import { FamilyDeletionPanel } from "../../src/components/family-operations/FamilyDeletionPanel.js";
+import { FamilyOperationsView } from "../../src/components/family-operations/FamilyOperationsView.js";
 import { LifeOpsConnectionsView } from "../../src/components/lifeops-connections/LifeOpsConnectionsView.js";
 import type {
   LifeOpsConnectionsAdapter,
   LifeOpsConnectionsSnapshot,
 } from "../../src/components/lifeops-connections/types.js";
+import { createFamilyDeletionFixture } from "./family-deletion-fixture.js";
+import { createFamilyIntakeFixture } from "./family-intake-fixture.js";
+import { createFamilyPacketFixture } from "./family-packet-fixture.js";
 
 const GRANT_ID = "connector-account:fixture-account";
 const ACCOUNT_ID = "fixture-account";
@@ -180,14 +186,27 @@ function source(item: LifeOpsCalendarSummary): LifeOpsCalendarSourceHealth {
 function snapshot(): LifeOpsConnectionsSnapshot {
   const connected = isConnected();
   const appleOnly = scenario === "apple-only";
+  const builtInOnly = scenario === "built-in-only";
   const multiAccount = scenario === "multi-account";
   const calendars = [
     calendar("google"),
     ...(multiAccount ? [secondGoogleCalendar()] : []),
     calendar("apple_calendar"),
   ];
-  const visibleCalendars =
-    connected && !appleOnly
+  const visibleCalendars: LifeOpsCalendarSummary[] = builtInOnly
+    ? [
+        {
+          ...calendar("google"),
+          provider: "eliza",
+          grantId: "eliza-calendar",
+          connectorAccountId: "eliza-calendar",
+          accountEmail: null,
+          calendarId: "eliza-calendar",
+          summary: "Eliza Calendar",
+          accessRole: "owner",
+        },
+      ]
+    : connected && !appleOnly
       ? calendars
       : calendars.filter((item) => item.provider === "apple_calendar");
   const requestedPermission = params.get(
@@ -196,25 +215,26 @@ function snapshot(): LifeOpsConnectionsSnapshot {
   const permissionStatus =
     permissionOverride ?? requestedPermission ?? "denied";
   return {
-    googleAccounts: appleOnly
-      ? []
-      : [
-          googleStatus(connected),
-          ...(multiAccount && connected ? [secondGoogleStatus()] : []),
-        ],
+    googleAccounts:
+      appleOnly || builtInOnly
+        ? []
+        : [
+            googleStatus(connected),
+            ...(multiAccount && connected ? [secondGoogleStatus()] : []),
+          ],
     calendars: visibleCalendars,
     calendarFeed: {
       calendarId: "all",
       events: [],
       source: "cache",
-      state: healthRecovered ? "complete" : "partial",
+      state: builtInOnly || healthRecovered ? "complete" : "partial",
       sources: visibleCalendars.map(source),
       timeMin: "2026-07-23T00:00:00.000Z",
       timeMax: "2026-11-20T00:00:00.000Z",
       syncedAt: "2026-08-22T08:00:00.000Z",
     },
     gmailHealthByGrantId:
-      connected && !appleOnly
+      connected && !appleOnly && !builtInOnly
         ? {
             [GRANT_ID]: {
               provider: "google",
@@ -263,7 +283,56 @@ function snapshot(): LifeOpsConnectionsSnapshot {
   };
 }
 
+let syncControl: import("@elizaos/shared").LifeOpsLinkedCalendarControl = {
+  revision: 0,
+  paused: true,
+  destination: params.has("pending-sync")
+    ? { connectorAccountId: ACCOUNT_ID, providerCalendarId: "primary" }
+    : null,
+  pendingDispatch: params.has("pending-sync")
+    ? { linkId: "fixture-pending" }
+    : null,
+};
 const adapter: LifeOpsConnectionsAdapter = {
+  async getLinkedCalendarControl() {
+    return syncControl;
+  },
+  async updateLinkedCalendarControl(request) {
+    if (request.expectedRevision !== syncControl.revision)
+      throw new Error("Calendar sync changed; refresh the review.");
+    if (request.operation === "select") {
+      if (!syncControl.paused)
+        throw new Error(
+          "Pause synchronization before selecting a destination.",
+        );
+      syncControl = {
+        ...syncControl,
+        destination: request.destination,
+        revision: syncControl.revision + 1,
+      };
+    } else if (request.operation === "recover") {
+      if (failure === "recover")
+        throw new Error(
+          "Provider outcome is still uncertain. Sync remains paused.",
+        );
+      if (!syncControl.paused || !syncControl.pendingDispatch)
+        throw new Error("Pause and load a pending operation before recovery.");
+      syncControl = {
+        ...syncControl,
+        pendingDispatch: null,
+        revision: syncControl.revision + 1,
+      };
+    } else {
+      if (request.operation === "resume" && !syncControl.destination)
+        throw new Error("Select a destination before resuming.");
+      syncControl = {
+        ...syncControl,
+        paused: request.operation === "pause",
+        revision: syncControl.revision + 1,
+      };
+    }
+    return syncControl;
+  },
   async load({ forceSync = false } = {}) {
     if (failure === "load" && !initialLoadFailed) {
       initialLoadFailed = true;
@@ -373,4 +442,23 @@ const adapter: LifeOpsConnectionsAdapter = {
 
 const root = document.getElementById("root");
 if (!root) throw new Error("LifeOps fixture requires #root.");
-createRoot(root).render(<LifeOpsConnectionsView adapter={adapter} />);
+createRoot(root).render(
+  scenario === "family-deletion" ? (
+    <main style={{ padding: 20, maxWidth: 900, margin: "auto" }}>
+      <FamilyDeletionPanel
+        adapter={createFamilyDeletionFixture()}
+        onChange={async () => undefined}
+      />
+    </main>
+  ) : scenario === "family-packet" ? (
+    <FamilyOperationsView
+      intakeAdapter={createFamilyIntakeFixture()}
+      adapter={createFamilyPacketFixture(
+        failure === "revision",
+        failure === "decision",
+      )}
+    />
+  ) : (
+    <LifeOpsConnectionsView adapter={adapter} />
+  ),
+);

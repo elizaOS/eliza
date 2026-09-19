@@ -293,12 +293,16 @@ describe("listActiveResources fail-closed", () => {
     expect(out[0].totalBilled).toBe(0);
   });
 
-  test("null hourly_rate falls back to computed unitPrice (no throw)", async () => {
-    agentRows = [baseAgent({ hourly_rate: null })];
-    const out = await activeBillingService.listActiveResources(ORG);
-    // running agent → RUNNING_HOURLY_RATE (0.01)
-    expect(out[0].metadata.hourlyRate).toBe(0.01);
-  });
+  test.each(["running", "stopped"])(
+    "null hourly_rate uses the computed %s resource price",
+    async (status) => {
+      agentRows = [baseAgent({ status, hourly_rate: null })];
+      const [resource] = await activeBillingService.listActiveResources(ORG);
+      expect(Number.isFinite(resource.unitPrice)).toBe(true);
+      expect(resource.unitPrice).toBeGreaterThan(0);
+      expect(resource.metadata.hourlyRate).toBe(resource.unitPrice);
+    },
+  );
 
   test("corrupt container.total_billed THROWS instead of fabricating $NaN", async () => {
     containerRows = [baseContainer({ total_billed: "NaN" })];

@@ -5,6 +5,16 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 import { defineConfig } from "vitest/config";
+import sharedConfig from "../../packages/scripts/vitest/default.config";
+
+const sharedTestPolicy = sharedConfig.test;
+const sharedAliases = sharedConfig.resolve?.alias;
+if (!Array.isArray(sharedAliases)) {
+	throw new Error("The shared repository source aliases are required");
+}
+if (!sharedTestPolicy) {
+	throw new Error("The shared repository test policy is required");
+}
 
 const sharedSrc = path.resolve(__dirname, "../../packages/shared/src");
 const coreSrc = path.resolve(__dirname, "../../packages/core/src");
@@ -32,6 +42,10 @@ export default defineConfig({
 		// @elizaos/ui agent-surface hook share one renderer under jsdom.
 		dedupe: ["react", "react-dom"],
 		alias: [
+			{
+				find: /^@elizaos\/ui$/,
+				replacement: path.join(uiSrc, "index.ts"),
+			},
 			{
 				// @elizaos/ui DynamicViewLoader statically imports this plugin-health
 				// subpath; anchor it to source (no built plugin-health dist in the
@@ -131,10 +145,6 @@ export default defineConfig({
 				replacement: path.join(sharedSrc, "steward-session-client/index.ts"),
 			},
 			{
-				find: "@elizaos/shared/contracts",
-				replacement: path.join(sharedSrc, "contracts/index.ts"),
-			},
-			{
 				find: "@elizaos/shared/elizacloud/domain-contract",
 				replacement: path.join(sharedSrc, "elizacloud/domain-contract.ts"),
 			},
@@ -144,6 +154,10 @@ export default defineConfig({
 				// like steward-session-client above.
 				find: /^@elizaos\/shared\/elizacloud$/,
 				replacement: path.join(sharedSrc, "elizacloud/index.ts"),
+			},
+			{
+				find: /^@elizaos\/shared\/local-inference$/,
+				replacement: path.join(sharedSrc, "local-inference/index.ts"),
 			},
 			{
 				find: /^@elizaos\/shared\/contracts$/,
@@ -163,6 +177,10 @@ export default defineConfig({
 			},
 			{
 				find: /^@elizaos\/core\/(.*)\.js$/,
+				replacement: path.join(coreSrc, "$1.ts"),
+			},
+			{
+				find: /^@elizaos\/core\/(.*)$/,
 				replacement: path.join(coreSrc, "$1.ts"),
 			},
 			// Bare subpath exports must be pinned before the plain string alias
@@ -207,9 +225,13 @@ export default defineConfig({
 				find: "@elizaos/logger",
 				replacement: path.join(loggerSrc, "index.ts"),
 			},
+			...sharedAliases,
 		],
 	},
 	test: {
+		// These source-backed lifecycle tests share the repository startup budget.
+		testTimeout: sharedTestPolicy.testTimeout,
+		hookTimeout: sharedTestPolicy.hookTimeout,
 		globals: false,
 		environment: "node",
 		include: ["src/**/*.test.{ts,tsx}"],

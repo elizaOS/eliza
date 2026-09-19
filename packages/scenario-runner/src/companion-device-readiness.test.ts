@@ -35,7 +35,8 @@ beforeAll(async () => {
     default: ScenarioDefinition;
   };
   companionScenario = loaded.default;
-});
+  // Cold transformation loads the production plugin graph before the readiness assertions.
+}, 120_000);
 
 function readinessPredicate(): (
   ctx: ScenarioContext,

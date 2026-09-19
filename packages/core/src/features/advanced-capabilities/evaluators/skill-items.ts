@@ -20,8 +20,12 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { stringify as stringifyYaml } from "yaml";
 import { logger } from "../../../logger.ts";
+import {
+	DEFAULT_FRONTMATTER_MAX_DEPTH,
+	parseFrontmatterDocument,
+} from "../../../markdown/frontmatter.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import type {
 	Evaluator,
@@ -50,7 +54,7 @@ const MAX_AUTO_REFINEMENTS = 3;
  * origin/develop). Reject before that walk; real frontmatter is a handful of
  * keys (`name`, `description`, `provenance`).
  */
-export const MAX_SKILL_FRONTMATTER_YAML_DEPTH = 32;
+export const MAX_SKILL_FRONTMATTER_YAML_DEPTH = DEFAULT_FRONTMATTER_MAX_DEPTH;
 const PROPOSED_SUBDIR = ["skills", "curated", "proposed"] as const;
 const LOG_SRC = "plugin:advanced-capabilities:evaluator:skill_learning";
 
@@ -164,119 +168,29 @@ function normalizeNewlines(text: string): string {
 		.join("\n");
 }
 
-function yamlTextExceedsNestBound(
-	text: string,
-	maxDepth: number = MAX_SKILL_FRONTMATTER_YAML_DEPTH,
-): boolean {
-	let flow = 0;
-	let inSingle = false;
-	let inDouble = false;
-	let escaped = false;
-	for (let i = 0; i < text.length; i += 1) {
-		const ch = text[i];
-		if (inSingle) {
-			if (ch === "'") {
-				if (text[i + 1] === "'") {
-					i += 1;
-					continue;
-				}
-				inSingle = false;
-			}
-			continue;
-		}
-		if (inDouble) {
-			if (escaped) {
-				escaped = false;
-				continue;
-			}
-			if (ch === "\\") {
-				escaped = true;
-				continue;
-			}
-			if (ch === '"') inDouble = false;
-			continue;
-		}
-		if (ch === "'") {
-			inSingle = true;
-			continue;
-		}
-		if (ch === '"') {
-			inDouble = true;
-			continue;
-		}
-		if (ch === "{" || ch === "[") {
-			flow += 1;
-			if (flow > maxDepth) return true;
-			continue;
-		}
-		if (ch === "}" || ch === "]") {
-			flow = Math.max(0, flow - 1);
-		}
-	}
-
-	let blockScalarParentIndent: number | null = null;
-	for (const line of text.split("\n")) {
-		const trimmed = line.trim();
-		let indent = 0;
-		while (
-			indent < line.length &&
-			(line[indent] === " " || line[indent] === "\t")
-		) {
-			indent += 1;
-		}
-		if (blockScalarParentIndent !== null) {
-			if (trimmed === "" || indent > blockScalarParentIndent) continue;
-			blockScalarParentIndent = null;
-		}
-		if (trimmed === "" || trimmed.startsWith("#")) continue;
-		if (Math.floor(indent / 2) > maxDepth) return true;
-		if (/[|>](?:[1-9][+-]?|[+-][1-9]?)?\s*(?:#.*)?$/.test(trimmed)) {
-			blockScalarParentIndent = indent;
-		}
-	}
-	return false;
-}
-
 type FrontmatterRejectReason = "nest-bound" | "parse-error";
 
 function splitFrontmatter(
 	content: string,
 	onReject?: (reason: FrontmatterRejectReason, error?: unknown) => void,
 ): ParsedSkillFile | null {
-	const normalized = normalizeNewlines(content);
-	const lines = normalized.split("\n");
-	if (lines[0] !== "---") return null;
-	let endIndex = -1;
-	for (let index = 1; index < lines.length; index += 1) {
-		if (lines[index] === "---") {
-			endIndex = index;
-			break;
+	const parsed = parseFrontmatterDocument(content, {
+		maxDepth: MAX_SKILL_FRONTMATTER_YAML_DEPTH,
+	});
+	if (parsed.kind !== "parsed") {
+		if (parsed.kind === "invalid") {
+			onReject?.(
+				parsed.code === "nest-bound" ? "nest-bound" : "parse-error",
+				parsed.cause,
+			);
 		}
-	}
-	if (endIndex === -1) return null;
-	const yamlText = lines.slice(1, endIndex).join("\n");
-	const body = lines
-		.slice(endIndex + 1)
-		.join("\n")
-		.replaceAll("\u0000", "");
-	if (yamlTextExceedsNestBound(yamlText)) {
-		onReject?.("nest-bound");
 		return null;
 	}
-	let parsed: unknown;
-	try {
-		parsed = parseYaml(yamlText);
-	} catch (error) {
-		// error-policy:J3 SKILL.md frontmatter is untrusted; a parser overflow or
-		// malformed block is a skipped skill, never an evaluator crash.
-		onReject?.("parse-error", error);
-		return null;
-	}
-	const frontmatter =
-		parsed && typeof parsed === "object" && !Array.isArray(parsed)
-			? (parsed as Record<string, unknown>)
-			: {};
-	return { frontmatter, body: body.startsWith("\n") ? body.slice(1) : body };
+	const body = parsed.body.replaceAll("\u0000", "");
+	return {
+		frontmatter: parsed.frontmatter,
+		body: body.startsWith("\n") ? body.slice(1) : body,
+	};
 }
 
 /** Test hook: the refinement evaluator's SKILL.md frontmatter parse. */

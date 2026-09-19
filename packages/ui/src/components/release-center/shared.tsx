@@ -56,7 +56,7 @@ export function DefinitionRow({
   const t = useAppSelector((s) => s.t);
   return (
     <div className="grid grid-cols-[minmax(8rem,1fr)_minmax(0,2fr)] items-start gap-4 py-2.5">
-      <dt className="text-xs text-muted">{label}</dt>
+      <dt className="text-xs text-muted-strong">{label}</dt>
       <dd className="min-w-0 break-words text-right text-xs text-txt">
         {value ??
           emptyFallback ??

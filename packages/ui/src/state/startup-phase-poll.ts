@@ -53,7 +53,10 @@ import {
   isPersonalSharedElizaId,
   resolveCloudEnvironmentBase,
 } from "../utils/cloud-agent-base";
-import { isTerminalDedicatedCloudAgentErrorState as classifyTerminalDedicatedCloudAgentErrorState } from "./dedicated-cloud-agent-error";
+import {
+  isTerminalDedicatedCloudAgentErrorState as classifyTerminalDedicatedCloudAgentErrorState,
+  describeStoppedDedicatedCloudAgent,
+} from "./dedicated-cloud-agent-error";
 import {
   asApiLikeError,
   deriveFirstRunResumeFieldsFromConfig,
@@ -1087,6 +1090,18 @@ export async function runPollingBackend(
       return;
     } catch (err) {
       const ae = asApiLikeError(err);
+      const stopped = describeStoppedDedicatedCloudAgent({
+        status: ae?.status,
+        code: ae?.code,
+        clientBaseUrl: client.getBaseUrl(),
+        phase: "starting-backend",
+      });
+      if (stopped) {
+        deps.setStartupError(stopped);
+        deps.setFirstRunLoading(false);
+        dispatch({ type: "AGENT_STOPPED" });
+        return;
+      }
       tracedPollFailures += 1;
       if (tracedPollFailures <= 5 || tracedPollFailures % 10 === 0) {
         const failureMessage =

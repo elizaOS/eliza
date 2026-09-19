@@ -1234,6 +1234,7 @@ public class ElizaAgentService extends Service {
         if (!bundle.isFile() || bundle.length() <= 0) {
             return false;
         }
+        if (!new File(root, "skills").isDirectory()) return false;
         File launch = new File(root, AGENT_LAUNCH_SCRIPT);
         if (!launch.isFile() || launch.length() <= 0) {
             return false;
@@ -1285,6 +1286,8 @@ public class ElizaAgentService extends Service {
             new File(stagingRoot, "ort-wasm-simd-threaded.wasm"));
         copyAssetIfPresent(assets, "agent/plugins-manifest.json",
             new File(stagingRoot, "plugins-manifest.json"));
+
+        copyBundledSkillAssets(assets, "agent/skills", new File(stagingRoot, "skills"));
 
         // ABI-specific binaries: bun + musl loader + libstdc++ + libgcc.
         String abiAssetDir = "agent/" + abi;
@@ -1673,6 +1676,17 @@ public class ElizaAgentService extends Service {
         }
     }
 
+    /** Copies packaged skill inputs inside the atomic runtime extraction. */
+    private void copyBundledSkillAssets(AssetManager assets, String assetPath, File target) throws IOException {
+        String[] children = assets.list(assetPath);
+        if (children == null || children.length == 0) {
+            copyAssetIfMissing(assets, assetPath, target);
+            return;
+        }
+        if (!target.isDirectory() && !target.mkdirs()) throw new IOException("Could not create " + target);
+        for (String child : children) copyBundledSkillAssets(assets, assetPath + "/" + child, new File(target, child));
+    }
+
     private void copyAssetIfMissing(AssetManager assets, String assetPath, File target) throws IOException {
         if (target.exists() && target.length() > 0) {
             return;
@@ -1942,6 +1956,10 @@ public class ElizaAgentService extends Service {
                 extractAssetsIfNeeded(abi);
                 canonicalStateDir = agentStateDir().getCanonicalPath();
                 canonicalAppDataDir = getDataDir().getCanonicalPath();
+                if (!canonicalStateDir.startsWith(canonicalAppDataDir + File.separator)) {
+                    throw new IOException("Runtime state directory escaped the app data boundary");
+                }
+                RuntimeInstallationIdentity.ensure(new File(canonicalStateDir).toPath());
             } catch (IOException error) {
                 Log.e(TAG, "Failed to extract agent assets for abi=" + abi, error);
                 currentStatus = "extract-failed";
@@ -2073,6 +2091,7 @@ public class ElizaAgentService extends Service {
             agentEnv.put("BUN_PATH", bun.getAbsolutePath());
             agentEnv.put("AGENT_BUNDLE", AGENT_BUNDLE_NAME);
             agentEnv.put("AGENT_BUNDLE_PATH", bundle.getAbsolutePath());
+            agentEnv.put("ELIZAOS_BUNDLED_SKILLS_DIR", new File(root, "skills").getAbsolutePath());
             agentEnv.put("LOG_FILE", new File(root, AGENT_LOG_NAME).getAbsolutePath());
             agentEnv.put(
                 "DIAGNOSTICS_FILE",
@@ -3430,9 +3449,8 @@ public class ElizaAgentService extends Service {
 
     private ElizaAgentWatchdogPolicy.ProbeResult probeHealth() {
         try {
-            JSONObject payload = new JSONObject()
-                .put("method", "GET")
-                .put("path", "/api/health");
+            JSONObject payload = buildRequestPayload(new LocalAgentRequest(
+                "GET", "/api/health", new JSONObject(), null, (int) HEALTH_TIMEOUT_MS));
             JSONObject result = dispatchBufferedOverSocket(payload, (int) HEALTH_TIMEOUT_MS);
             int status = result.optInt("status", 0);
             if (status >= 200 && status < 300) {

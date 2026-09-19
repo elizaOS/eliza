@@ -80,13 +80,16 @@ const dbRead = {
     dbChain([{ organizationId: "agent-org", userId: "agent-user" }]),
   ),
 };
+const writeTransaction = mock(
+  async (operation: (tx: unknown) => Promise<unknown>) => operation({}),
+);
 
 // service-key-hono-worker is deliberately NOT mocked — the REAL requireServiceKey
 // (WebCrypto constant-time compare against c.env.WAIFU_SERVICE_KEY) is under test.
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
 }));
-mock.module("@/db/helpers", () => ({ dbRead }));
+mock.module("@/db/helpers", () => ({ dbRead, writeTransaction }));
 mock.module("@/lib/services/credit-balance-response", () => ({
   getCreditBalanceResponse,
 }));

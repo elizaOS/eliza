@@ -15,7 +15,7 @@ import {
   ServerCog,
 } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Alert } from "../../../components/ui/alert";
+import { Alert, AlertDescription } from "../../../components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -450,7 +450,9 @@ function ResourceCard({
                   role="status"
                   variant="default"
                 >
-                  {cancellationBlockerMessage}
+                  <AlertDescription className="min-w-0 text-inherit">
+                    {cancellationBlockerMessage}
+                  </AlertDescription>
                 </Alert>
               ) : null}
 
@@ -468,7 +470,7 @@ function ResourceCard({
                         : "default"
                   }
                 >
-                  <div className="flex items-start gap-2">
+                  <AlertDescription className="flex min-w-0 items-start gap-2 text-inherit">
                     {isPending ? (
                       <Loader2
                         className="mt-0.5 h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none"
@@ -496,7 +498,7 @@ function ResourceCard({
                         </p>
                       ) : null}
                     </div>
-                  </div>
+                  </AlertDescription>
                 </Alert>
               ) : null}
 
@@ -876,7 +878,7 @@ export function ActiveComputeCardView({
             ) : null}
           </Card>
         ) : (
-          <p className="text-xs font-mono text-muted">
+          <p className="text-xs font-mono text-muted-strong">
             {t("cloud.billing.compute.observedAt", {
               observedAt: observedTimestamp(totalObservation.observedAt),
               defaultValue: "Observed {{observedAt}}",

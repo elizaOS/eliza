@@ -16,38 +16,30 @@ import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
-const WORKFLOW_PATH = path.join(
-  REPO_ROOT,
-  ".github/workflows/merge-candidate-biome.yml",
-);
+const WORKFLOW_PATH = path.join(REPO_ROOT, ".github/workflows/ci.yml");
 
 describe("merge candidate Biome workflow", () => {
   test("checks the exact dispatched candidate with pinned repository commands", () => {
     const workflow = parse(readFileSync(WORKFLOW_PATH, "utf8"));
 
-    expect(workflow.on).toEqual({ workflow_dispatch: null });
-    expect(workflow.concurrency).toEqual({
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: this is the literal GitHub Actions expression the workflow must use.
-      group: "merge-candidate-biome-${{ github.run_id }}",
-      "cancel-in-progress": false,
+    expect(workflow.on).toEqual({
+      workflow_call: null,
+      workflow_dispatch: null,
     });
-    const job = workflow.jobs["candidate-tree"];
+    const job = workflow.jobs.quality;
     const checkout = job.steps.find(
       (step: Record<string, unknown>) =>
         typeof step.uses === "string" &&
         step.uses.startsWith("actions/checkout@"),
     );
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: this is the literal GitHub Actions expression the checkout must use.
-    expect(checkout.with.ref).toBe("${{ github.sha }}");
+    expect(checkout.with.ref).toBeUndefined();
     expect(
       job.steps
         .map((step: Record<string, unknown>) => step.run)
         .filter(Boolean),
-    ).toEqual([
-      "bun run check:biome-version",
-      "bun run lint:check",
-      "bun run format:check",
-    ]);
+    ).toEqual(
+      expect.arrayContaining(["bun run verify", "bun run format:check"]),
+    );
   });
 
   test("the pinned Biome rejects a planted deliberately misformatted candidate", () => {

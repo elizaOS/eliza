@@ -1,49 +1,64 @@
-"""Apply GGUF Q8_0 K-quant to a fine-tuned Eliza-1/Gemma checkpoint.
-
-This is the top rung of the Eliza-1 GGUF ladder. It reuses the same
-llama.cpp conversion path as the Q6_K wrapper, changing only the quantization
-level and sidecar name so the train -> quantize -> publish pipeline stays
-reproducible across Q3_K_M/Q4_K_M/Q5_K_M/Q6_K/Q8_0.
-"""
+"""Compatibility CLI for the canonical Q8_0 GGUF quantization profile."""
 
 from __future__ import annotations
 
-import importlib.util
+import logging
 from pathlib import Path
-from types import ModuleType
+
+from gguf_k_quant import (
+    DEFAULT_LLAMA_CPP_DIR,
+    QuantProfile,
+    find_llama_convert_script,
+    find_llama_quantize_binary,
+    resolve_output_basename,
+    run_command,
+    run_quant_profile,
+    smoke_load_gguf,
+    write_sidecar,
+)
 
 QUANT_LEVEL = "Q8_0"
+_FORK_LLAMA_CPP = DEFAULT_LLAMA_CPP_DIR
+_PROFILE = QuantProfile(
+    level=QUANT_LEVEL,
+    sidecar_name="gguf_q8_0.json",
+    notes=(
+        "Q8_0 is the highest-precision published GGUF rung for workstation "
+        "and Cloud installs that want near-f16 quality."
+    ),
+)
+_LOG = logging.getLogger("gguf_q8_0_apply")
 
 
-def _load_q6_wrapper() -> ModuleType:
-    wrapper = Path(__file__).with_name("gguf-q6_k_apply.py")
-    spec = importlib.util.spec_from_file_location("gguf_q6_k_apply", wrapper)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"unable to load {wrapper}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+def _find_convert_script(llama_cpp_dir: Path | None) -> Path:
+    return find_llama_convert_script(llama_cpp_dir)
+
+
+def _find_quantize_binary(llama_cpp_dir: Path | None) -> Path:
+    return find_llama_quantize_binary(llama_cpp_dir)
+
+
+def _resolve_output_basename(model_id_or_path: str, _output_dir: Path) -> str:
+    return resolve_output_basename(model_id_or_path, QUANT_LEVEL)
+
+
+def _run(command: list[str | Path]) -> None:
+    run_command(command, _LOG)
+
+
+_smoke_load_gguf = smoke_load_gguf
 
 
 def main(argv: list[str] | None = None) -> int:
-    mod = _load_q6_wrapper()
-    mod.QUANT_LEVEL = QUANT_LEVEL
-    original_write_sidecar = mod.write_sidecar
-
-    def write_q8_sidecar(output_dir: Path, _name: str, sidecar: dict[str, object]):
-        q8_sidecar = {
-            **sidecar,
-            "notes": (
-                "Q8_0 is the highest precision published GGUF rung in the "
-                "Eliza-1 ladder. It is useful for workstation/cloud installs "
-                "that want near-f16 quality while keeping the same "
-                "llama.cpp-compatible artifact shape as the smaller K-quants."
-            ),
-        }
-        return original_write_sidecar(output_dir, "gguf_q8_0.json", q8_sidecar)
-
-    mod.write_sidecar = write_q8_sidecar
-    return mod.main(argv)
+    return run_quant_profile(
+        _PROFILE,
+        argv,
+        find_convert_script=_find_convert_script,
+        find_quantize_binary=_find_quantize_binary,
+        write_sidecar=write_sidecar,
+        run=_run,
+        smoke_load=_smoke_load_gguf,
+    )
 
 
 if __name__ == "__main__":

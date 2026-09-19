@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   type BenchmarkTurnObservation,
+  benchmarkBehaviorSummary,
   captureModelInput,
   distribution,
   finalizeBenchmarkReport,
@@ -25,6 +26,7 @@ import {
   promptCacheTelemetry,
   settleBenchmarkChecks,
   sourceRevisionEvidence,
+  verifyBenchmarkBehavior,
   verifyExactResponseParity,
   verifyProofResponse,
 } from "../scripts/cerebras-chat-flow-latency";
@@ -51,6 +53,78 @@ function createCleanRepository(): string {
 }
 
 describe("Cerebras chat-flow latency helpers", () => {
+  it("publishes a behavioral failure when a persisted refusal contains the correct proof token", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "benchmark-behavior-"));
+    const reportPath = join(directory, "report.json");
+    const observations: BenchmarkTurnObservation<{ persistedId: string }>[] =
+      [];
+    const refusal = `I don't know what "SPEED-S-7" refers to, so I can't confirm it's safe to print on a label. If you're referencing a speed-related spec or target, send the actual definition and I'll help you phrase the label correctly.`;
+    const run = (index: number, output: string) =>
+      observeBenchmarkTurn(
+        observations,
+        {
+          phase: "sample",
+          index,
+          proof: `SPEED-S-${index}`,
+          roomId: `room-${index}`,
+        },
+        async (observation) => {
+          observation.output = output;
+          observation.streamedOutput = output;
+          verifyProofResponse(output, observation.context.proof);
+          verifyExactResponseParity(observation.streamedOutput, output);
+          observation.persistedResponse = {
+            id: `assistant-${index}`,
+            entityId: "agent",
+            roomId: observation.context.roomId,
+            text: output,
+            returnedByMessageService: true,
+          };
+          verifyBenchmarkBehavior(observation);
+          return { persistedId: observation.persistedResponse.id };
+        },
+      );
+    try {
+      await run(6, "SPEED-S-6");
+      await expect(run(7, refusal)).rejects.toThrow(
+        "Exact-reference behavior failed",
+      );
+      await finalizeBenchmarkReport(
+        {
+          status: "failed" as const,
+          behavior: benchmarkBehaviorSummary(observations),
+          turnObservations: observations,
+        },
+        async () => {},
+        async (report) => {
+          writeFileSync(reportPath, JSON.stringify(report));
+        },
+      );
+      const report = JSON.parse(readFileSync(reportPath, "utf8"));
+      expect(report.status).toBe("failed");
+      expect(report.behavior).toMatchObject({
+        passed: 1,
+        failed: 1,
+        notEvaluated: 0,
+        errorRatePercent: 50,
+      });
+      expect(report.turnObservations[0].receipt.persistedId).toBe(
+        "assistant-6",
+      );
+      expect(report.turnObservations[1]).toMatchObject({
+        status: "failed",
+        stage: "behavior-validation",
+        behavior: "failed",
+        output: refusal,
+        streamedOutput: refusal,
+        persistedResponse: { text: refusal },
+        receipt: null,
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("withholds a successful receipt until owned shutdown completes", async () => {
     const directory = mkdtempSync(join(tmpdir(), "benchmark-finalization-"));
     const reportPath = join(directory, "report.json");

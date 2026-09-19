@@ -9,16 +9,24 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
+import { CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE } from "@elizaos/plugin-calendar";
 import type { CalendarOwnerMutationGateway } from "@elizaos/plugin-calendar/routes/mutation-gateway";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RawSqlQuery } from "../sql.js";
+import { collectCalendarClaims } from "../family-workflows/calendar-claims.js";
+import { FamilyWorkflowRuntimeService } from "../family-workflows/runtime.js";
+import {
+  ensureFamilyWorkspaceOperationStore,
+  fenceFamilyWorkspace,
+} from "../family-workflows/workspace-operation-store.js";
+import { type RawSqlQuery, withRequiredTransaction } from "../sql.js";
 import {
   CONCORD_SCHOOL_CALENDAR_SOURCE,
   diffSchoolCalendarEvents,
   discoverSchoolCalendarPdf,
   parseSchoolCalendarText,
   SchoolCalendarWorkflow,
+  type SchoolCalendarWorkflowDeps,
   SchoolCalendarWorkflowError,
 } from "./calendar-workflow.js";
 
@@ -244,6 +252,7 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
   let pdfBytes: Buffer;
   let text: string;
   let workflow: SchoolCalendarWorkflow;
+  let workflowDeps: SchoolCalendarWorkflowDeps;
   let gateway: CalendarOwnerMutationGateway;
   let creates: number;
   let createdRanges: Array<{
@@ -268,6 +277,21 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
             db.query(
               query.queryChunks.map((chunk) => chunk.value ?? "").join(""),
             ),
+          transaction: async <T>(
+            fn: (tx: {
+              execute: (query: RawSqlQuery) => Promise<unknown>;
+            }) => Promise<T> | T,
+          ) =>
+            db.transaction(async (transaction) =>
+              fn({
+                execute: async (query) =>
+                  transaction.query(
+                    query.queryChunks
+                      .map((chunk) => chunk.value ?? "")
+                      .join(""),
+                  ),
+              }),
+            ),
         },
       },
     } as unknown as IAgentRuntime;
@@ -290,7 +314,7 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     });
-    const deps = {
+    workflowDeps = {
       lookupFn,
       pinnedFetchImpl: pinnedFetchImpl as never,
       extractPdfText: async () => text,
@@ -300,7 +324,7 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
       }),
       now: () => clock,
     };
-    workflow = new SchoolCalendarWorkflow(runtime, deps);
+    workflow = new SchoolCalendarWorkflow(runtime, workflowDeps);
     gateway = {
       async create(_url, request) {
         creates += 1;
@@ -331,6 +355,437 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
 
   afterEach(async () => {
     await db.close();
+  });
+
+  it.each(["configuration", "run", "application"] as const)(
+    "rejects school %s after the workspace fence and preserves recorded source data",
+    async (kind) => {
+      const initial = await workflow.run();
+      if (initial.state !== "awaiting_approval")
+        throw new Error("Expected a reviewable school run");
+      await ensureFamilyWorkspaceOperationStore(runtime);
+      await withRequiredTransaction(runtime, (tx) =>
+        fenceFamilyWorkspace(tx, runtime.agentId),
+      );
+      const tables = [
+        "life_school_calendar_sources",
+        "life_school_calendar_runs",
+        "life_school_calendar_events",
+        "life_school_calendar_apply_operations",
+      ];
+      const before = await Promise.all(
+        tables.map(
+          async (table) =>
+            (await db.query(`SELECT * FROM app_lifeops.${table}`)).rows,
+        ),
+      );
+      const mutate = () => {
+        switch (kind) {
+          case "configuration":
+            return workflow.configure({
+              ...CONCORD_SCHOOL_CALENDAR_SOURCE,
+              schoolLevel: "elementary",
+              updateMode: "automatic",
+            });
+          case "run":
+            return workflow.run();
+          case "application":
+            return workflow.applyApprovedPlan({
+              runId: initial.runId,
+              gateway,
+              requestUrl: new URL("http://localhost"),
+            });
+        }
+      };
+      await expect(mutate()).rejects.toMatchObject({
+        code: "FAMILY_WORKSPACE_FENCED",
+      });
+      const after = await Promise.all(
+        tables.map(
+          async (table) =>
+            (await db.query(`SELECT * FROM app_lifeops.${table}`)).rows,
+        ),
+      );
+      expect(after).toEqual(before);
+      expect(creates).toBe(0);
+      expect(updatedRanges).toEqual([]);
+    },
+  );
+
+  it("holds deletion through PDF extraction and settles only after the review is persisted", async () => {
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const held = new SchoolCalendarWorkflow(runtime, {
+      ...workflowDeps,
+      extractPdfText: async () => {
+        entered();
+        await pending;
+        return text;
+      },
+    });
+    const work = held.run();
+    await started;
+    try {
+      await expect(
+        withRequiredTransaction(runtime, (tx) =>
+          fenceFamilyWorkspace(tx, runtime.agentId),
+        ),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
+    } finally {
+      release();
+    }
+    expect((await work).state).toBe("awaiting_approval");
+    await withRequiredTransaction(runtime, (tx) =>
+      fenceFamilyWorkspace(tx, runtime.agentId),
+    );
+    await expect(
+      new SchoolCalendarWorkflow(runtime, workflowDeps).run(),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+  });
+
+  it("settles an acknowledged fetch failure without leaving a permanent deletion claim", async () => {
+    const failed = new SchoolCalendarWorkflow(runtime, {
+      ...workflowDeps,
+      lookupFn: async () => {
+        throw new Error("DNS fixture unavailable");
+      },
+    });
+    await expect(failed.run()).rejects.toThrow();
+    const rows = await db.query(
+      "SELECT state FROM app_lifeops.life_school_calendar_runs",
+    );
+    expect(rows.rows).toEqual([{ state: "failed" }]);
+    await withRequiredTransaction(runtime, (tx) =>
+      fenceFamilyWorkspace(tx, runtime.agentId),
+    );
+  });
+
+  it("preserves the PDF identity and durable claim when storage acknowledgement is lost", async () => {
+    const failed = new SchoolCalendarWorkflow(runtime, {
+      ...workflowDeps,
+      retainPdf: async () => {
+        throw new Error("storage acknowledgement lost");
+      },
+    });
+    await expect(failed.run()).rejects.toThrow("storage acknowledgement lost");
+    const rows = await db.query(
+      "SELECT state,content_sha256,media_url FROM app_lifeops.life_school_calendar_runs",
+    );
+    expect(rows.rows).toEqual([
+      {
+        state: "failed",
+        content_sha256: hash(pdfBytes),
+        media_url: `/api/media/${hash(pdfBytes)}.pdf`,
+      },
+    ]);
+    await expect(
+      withRequiredTransaction(runtime, (tx) =>
+        fenceFamilyWorkspace(tx, runtime.agentId),
+      ),
+    ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
+  });
+
+  it("holds deletion through calendar delivery and its final receipt", async () => {
+    const result = await workflow.run();
+    if (result.state !== "awaiting_approval")
+      throw new Error("Expected a reviewable school run");
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const heldGateway: CalendarOwnerMutationGateway = {
+      ...gateway,
+      create: async (url, request) => {
+        entered();
+        await pending;
+        return gateway.create(url, request);
+      },
+    };
+    const work = workflow.applyApprovedPlan({
+      runId: result.runId,
+      gateway: heldGateway,
+      requestUrl: new URL("http://localhost"),
+    });
+    await started;
+    try {
+      await expect(
+        withRequiredTransaction(runtime, (tx) =>
+          fenceFamilyWorkspace(tx, runtime.agentId),
+        ),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
+    } finally {
+      release();
+    }
+    await work;
+    const rows = await db.query(
+      "SELECT state,receipt_json FROM app_lifeops.life_school_calendar_apply_operations",
+    );
+    expect(rows.rows.length).toBeGreaterThan(0);
+    for (const row of rows.rows) {
+      expect(row.state).toBe("applied");
+      expect(row.receipt_json).not.toBeNull();
+    }
+    await withRequiredTransaction(runtime, (tx) =>
+      fenceFamilyWorkspace(tx, runtime.agentId),
+    );
+  });
+
+  it("retains application identity when the provider outcome is unknown", async () => {
+    const result = await workflow.run();
+    if (result.state !== "awaiting_approval")
+      throw new Error("Expected a reviewable school run");
+    const failedGateway: CalendarOwnerMutationGateway = {
+      ...gateway,
+      create: async () => {
+        throw new Error("provider acknowledgement lost");
+      },
+    };
+    await expect(
+      workflow.applyApprovedPlan({
+        runId: result.runId,
+        gateway: failedGateway,
+        requestUrl: new URL("http://localhost"),
+      }),
+    ).rejects.toThrow("provider acknowledgement lost");
+    const rows = await db.query(
+      "SELECT target_json FROM app_lifeops.life_family_workspace_operations",
+    );
+    expect(rows.rows).toEqual([
+      {
+        target_json: {
+          kind: "school-calendar-work",
+          sourceId: CONCORD_SCHOOL_CALENDAR_SOURCE.sourceId,
+          runId: result.runId,
+          phase: "apply",
+        },
+      },
+    ]);
+    await expect(
+      withRequiredTransaction(runtime, (tx) =>
+        fenceFamilyWorkspace(tx, runtime.agentId),
+      ),
+    ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
+  });
+
+  it("uses saved elementary auto-apply settings and does not duplicate on a hash-equal rerun", async () => {
+    text = [
+      "2026-09-07 | Labor Day - no school",
+      "2026-09-16 | CCHS early release",
+      "2026-09-17 | CMS early release",
+      "2026-11-06 | Elementary conferences",
+      "2026-08-28 | 9th Grade Orientation",
+      "2026-11-05 | PreK Conferences",
+      "2027-06-05 | Graduation",
+      "2026-10-28 | PreK-12 Early Release",
+    ].join("\n");
+    runtime.getService = ((name: string) =>
+      name === CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE
+        ? gateway
+        : null) as IAgentRuntime["getService"];
+    const service = new FamilyWorkflowRuntimeService(runtime, {
+      schoolWorkflow: workflow,
+    });
+    await service.configureSchool({
+      ...CONCORD_SCHOOL_CALENDAR_SOURCE,
+      schoolLevel: "elementary",
+      updateMode: "automatic",
+    });
+    expect((await service.runSchool("scheduled")).state).toBe("applied");
+    expect(createdRanges.map((range) => range.title)).toEqual([
+      "Labor Day - no school",
+      "PreK-12 Early Release",
+      "Elementary conferences",
+    ]);
+    expect((await service.runSchool("scheduled")).state).toBe("unchanged");
+    expect(creates).toBe(3);
+    const imported = await workflow.listImportedEvents();
+    expect(imported.map((record) => record.event.title)).toEqual(
+      createdRanges.map((range) => range.title),
+    );
+    expect(imported.every((record) => record.providerEventId.length > 0)).toBe(
+      true,
+    );
+    const projectionFeed = {
+      calendarId: "all",
+      events: imported.map((record) => ({
+        ...event(record.providerEventId, "Private calendar title"),
+        grantId: record.grantId,
+        calendarId: record.calendarId,
+      })),
+      state: "complete" as const,
+      source: "synced" as const,
+      sources: [],
+      timeMin: "2026-09-01T00:00:00.000Z",
+      timeMax: "2026-12-01T00:00:00.000Z",
+      syncedAt: "2026-08-30T12:00:00.000Z",
+    };
+    const sharedClaims = collectCalendarClaims(projectionFeed, [], imported);
+    expect(sharedClaims.map((claim) => claim.statement)).toEqual(
+      createdRanges.map((range) => range.title),
+    );
+    expect(
+      sharedClaims.every((claim) => claim.visibility === "guest_shareable"),
+    ).toBe(true);
+    await workflow.configure({
+      ...CONCORD_SCHOOL_CALENDAR_SOURCE,
+      schoolLevel: "elementary",
+      updateMode: "automatic",
+      packetVisibility: "owner_only",
+    });
+    const privateClaims = collectCalendarClaims(
+      projectionFeed,
+      [],
+      await workflow.listImportedEvents(),
+    );
+    expect(
+      privateClaims.every((claim) => claim.visibility === "owner_only"),
+    ).toBe(true);
+    expect(
+      privateClaims.every(
+        (claim) => claim.statement === "Private calendar title",
+      ),
+    ).toBe(true);
+    const otherAgent = new SchoolCalendarWorkflow({
+      ...runtime,
+      agentId: "other-agent" as IAgentRuntime["agentId"],
+    });
+    expect(await otherAgent.listImportedEvents()).toEqual([]);
+  });
+
+  it("removes previously imported other-grade events despite identical PDF bytes", async () => {
+    text = "2026-08-28 | 9th Grade Orientation\n2026-09-07 | Labor Day";
+    const initial = await workflow.run();
+    if (initial.state !== "awaiting_approval")
+      throw new Error("expected initial plan");
+    await workflow.applyApprovedPlan({
+      runId: initial.runId,
+      requestUrl: new URL("http://localhost"),
+      gateway,
+    });
+    const config = {
+      ...CONCORD_SCHOOL_CALENDAR_SOURCE,
+      schoolLevel: "elementary" as const,
+    };
+    await workflow.configure(config);
+    await db.query(
+      "UPDATE app_lifeops.life_school_calendar_sources SET calendar_contract_version=2,last_content_sha256=$1",
+      [hash(pdfBytes)],
+    );
+    const correction = await workflow.run(config, "scheduled");
+    if (correction.state !== "awaiting_approval")
+      throw new Error("expected correction despite equal hash");
+    expect(correction.plan.changes.map((change) => change.kind).sort()).toEqual(
+      ["cancel", "unchanged"],
+    );
+    const cancel = vi.spyOn(gateway, "cancel");
+    await workflow.applyApprovedPlan({
+      runId: correction.runId,
+      config,
+      requestUrl: new URL("http://localhost"),
+      gateway,
+    });
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(updatedRanges).toEqual([]);
+    expect(creates).toBe(2);
+    expect(
+      (await workflow.listImportedEvents()).map((record) => record.event.title),
+    ).toEqual(["Labor Day"]);
+    expect((await workflow.run(config, "scheduled")).state).toBe("unchanged");
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("reprocesses unchanged PDF bytes when school selection changes", async () => {
+    text =
+      "2026-09-07 | Labor Day - no school\n2026-09-16 | CCHS early release";
+    const first = await workflow.run();
+    if (first.state !== "awaiting_approval") throw new Error("expected plan");
+    await workflow.applyApprovedPlan({
+      runId: first.runId,
+      requestUrl: new URL("http://localhost"),
+      gateway,
+    });
+    const config = {
+      ...CONCORD_SCHOOL_CALENDAR_SOURCE,
+      schoolLevel: "elementary" as const,
+    };
+    await workflow.configure(config);
+    const second = await workflow.run(config);
+    expect(second.state).toBe("awaiting_approval");
+    if (second.state !== "awaiting_approval") throw new Error("expected plan");
+    expect(second.plan.changes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "cancel",
+          event: expect.objectContaining({ title: "CCHS early release" }),
+        }),
+      ]),
+    );
+    await expect(
+      workflow.applyApprovedPlan({
+        runId: second.runId,
+        requestUrl: new URL("http://localhost"),
+        gateway,
+      }),
+    ).rejects.toMatchObject({ code: "SCHOOL_CALENDAR_CONFIG_CHANGED" });
+  });
+
+  it("retrieves an identified school client through redirects and preserves PDF hash no-ops", async () => {
+    const originalTransport = workflowDeps.pinnedFetchImpl;
+    if (!originalTransport)
+      throw new Error("Expected the pinned fixture transport");
+    const seen = new Set<string>();
+    const identified = new SchoolCalendarWorkflow(runtime, {
+      ...workflowDeps,
+      pinnedFetchImpl: async (request) => {
+        const headers = new Headers(request.init.headers);
+        const userAgent = headers.get("user-agent");
+        if (!userAgent?.startsWith("elizaOS-")) {
+          return new Response("An application identity is required", {
+            status: 403,
+          });
+        }
+        seen.add(request.url.pathname);
+        if (
+          request.url.pathname === "/district-resources/school-year-calendars"
+        ) {
+          return new Response(null, {
+            status: 302,
+            headers: { location: "/district-resources/calendar-source" },
+          });
+        }
+        return originalTransport(request);
+      },
+    });
+    const first = await identified.run();
+    expect(first.state).toBe("awaiting_approval");
+    if (first.state !== "awaiting_approval")
+      throw new Error("Expected a school plan");
+    expect(first.plan.mediaUrl).toBe(`/api/media/${hash(pdfBytes)}.pdf`);
+    await identified.applyApprovedPlan({
+      runId: first.runId,
+      requestUrl: new URL("http://localhost/api/lifeops/calendar/events"),
+      gateway,
+    });
+    expect(creates).toBe(2);
+    await expect(identified.run(undefined, "scheduled")).resolves.toMatchObject(
+      {
+        state: "unchanged",
+        contentSha256: hash(pdfBytes),
+      },
+    );
+    expect(creates).toBe(2);
+    expect(seen.has("/district-resources/calendar-source")).toBe(true);
+    expect([...seen].some((path) => path.endsWith(".pdf"))).toBe(true);
   });
 
   it("runs source to retained hash to approval plan, applies through the gateway, then records hash-equal no-op", async () => {
@@ -439,7 +894,7 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     if (migration.state !== "awaiting_approval") {
       throw new Error("expected migration plan");
     }
-    expect(migration.plan.calendarContractVersion).toBe(2);
+    expect(migration.plan.calendarContractVersion).toBe(3);
     expect(migration.plan.changes.map((change) => change.kind)).toEqual([
       "update",
       "update",
@@ -495,6 +950,12 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
         gateway,
       }),
     ).rejects.toMatchObject({ code: "SCHOOL_CALENDAR_APPLY_IN_PROGRESS" });
+    await expect(
+      workflow.configure({
+        ...CONCORD_SCHOOL_CALENDAR_SOURCE,
+        schoolLevel: "elementary",
+      }),
+    ).rejects.toMatchObject({ code: "SCHOOL_CALENDAR_CONFIG_BUSY" });
     release();
     await applying;
   });

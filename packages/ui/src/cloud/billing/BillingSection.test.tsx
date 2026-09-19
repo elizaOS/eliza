@@ -40,6 +40,10 @@ vi.mock("./data/billing-data", () => ({
   },
 }));
 
+vi.mock("./components/subscription-plans", () => ({
+  SubscriptionPlans: () => <div>Subscription comparison</div>,
+}));
+
 vi.mock("./components/billing-tab", () => ({
   BillingTab: ({ user }: { user: { id: string } }) => (
     <div>Billing content for {user.id}</div>

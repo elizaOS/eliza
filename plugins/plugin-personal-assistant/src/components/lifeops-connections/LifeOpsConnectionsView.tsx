@@ -1,6 +1,7 @@
 /** Focused onboarding and ongoing-management UI for Gmail and calendar sources. */
 
 import type {
+  LifeOpsCalendarProvider,
   LifeOpsCalendarSourceHealth,
   LifeOpsCalendarSummary,
   LifeOpsGoogleCapability,
@@ -38,7 +39,10 @@ import {
   useRef,
   useState,
 } from "react";
+import { AccountTransitionPanel } from "./AccountTransitionPanel.js";
 import { defaultLifeOpsConnectionsAdapter } from "./adapter.js";
+import { CalendarSyncPanel } from "./CalendarSyncPanel.js";
+import type { AccountHandoffAdapter } from "./handoff-adapter.js";
 import type {
   LifeOpsConnectionsAdapter,
   LifeOpsConnectionsSnapshot,
@@ -47,6 +51,14 @@ import type {
   LifeOpsSeedRangeDays,
   LifeOpsSeedReceipt,
 } from "./types.js";
+
+const CALENDAR_PROVIDER_LABELS: Record<LifeOpsCalendarProvider, string> = {
+  eliza: "Eliza Calendar",
+  google: "Google Calendar",
+  microsoft: "Microsoft Calendar",
+  apple_calendar: "Apple Calendar",
+  ics: "Calendar subscription",
+};
 
 const GOOGLE_CAPABILITY_OPTIONS: Array<{
   capability: LifeOpsGoogleCapability;
@@ -73,8 +85,7 @@ const GOOGLE_CAPABILITY_OPTIONS: Array<{
     capability: "google.gmail.send",
     title: "Send approved email",
     scope: "gmail.send",
-    detail:
-      "Every send still requires confirmation immediately before it runs.",
+    detail: "Send email using your approval and automation settings.",
     defaultOn: false,
   },
   {
@@ -96,7 +107,7 @@ const GOOGLE_CAPABILITY_OPTIONS: Array<{
     capability: "google.calendar.write",
     title: "Change Google Calendar",
     scope: "calendar.events",
-    detail: "Create, update, invite, or delete only after confirmation.",
+    detail: "Sync events and run calendar changes you authorize.",
     defaultOn: false,
   },
 ];
@@ -304,10 +315,12 @@ function permissionPresentation(permission: PermissionState): {
 
 export interface LifeOpsConnectionsViewProps {
   adapter?: LifeOpsConnectionsAdapter;
+  handoffAdapter?: AccountHandoffAdapter;
 }
 
 export function LifeOpsConnectionsView({
   adapter = defaultLifeOpsConnectionsAdapter,
+  handoffAdapter,
 }: LifeOpsConnectionsViewProps) {
   const [snapshot, setSnapshot] = useState<LifeOpsConnectionsSnapshot | null>(
     null,
@@ -610,6 +623,24 @@ export function LifeOpsConnectionsView({
     );
   }
 
+  if (!snapshot) {
+    return (
+      <main style={ROOT_STYLE}>
+        <div className="lifeops-shell">
+          <h1>Connections are unavailable</h1>
+          <div className="lifeops-banner lifeops-banner-error" role="alert">
+            <AlertTriangle size={18} aria-hidden />
+            <span>{error}</span>
+          </div>
+          <Button type="button" onClick={() => void refresh(false)}>
+            Retry
+          </Button>
+        </div>
+        <LifeOpsStyles />
+      </main>
+    );
+  }
+
   return (
     <main style={ROOT_STYLE}>
       <div className="lifeops-shell">
@@ -618,15 +649,15 @@ export function LifeOpsConnectionsView({
             <p className="lifeops-eyebrow">LifeOps connections</p>
             <h1>Bring your inbox and calendars into one trustworthy view.</h1>
             <p>
-              You choose accounts, calendars, history, and permissions. Eliza
-              keeps provider provenance and asks again before any external
-              change.
+              You choose accounts, calendars, history, and permissions. Calendar
+              synchronization uses the destination and settings you approve.
             </p>
           </div>
           <Button
             type="button"
             onClick={() => void refresh(true)}
             disabled={loading || busy !== null}
+            className="lifeops-primary"
             aria-label="Retry all connection checks and synchronization"
           >
             <RefreshCw size={16} aria-hidden /> Refresh health
@@ -651,6 +682,18 @@ export function LifeOpsConnectionsView({
             </div>
           ) : null}
         </div>
+
+        {snapshot ? (
+          <CalendarSyncPanel adapter={adapter} calendars={snapshot.calendars} />
+        ) : null}
+
+        {snapshot ? (
+          <AccountTransitionPanel
+            snapshot={snapshot}
+            api={handoffAdapter}
+            refresh={() => refresh(false)}
+          />
+        ) : null}
 
         <div className="lifeops-grid">
           <Section
@@ -892,18 +935,22 @@ export function LifeOpsConnectionsView({
                 <CalendarDays size={20} aria-hidden />
                 <div>
                   <strong>
-                    {source.key.provider === "apple_calendar"
-                      ? "Apple Calendar"
-                      : "Google Calendar"}
-                    {source.summary ? ` · ${source.summary}` : ""}
+                    {CALENDAR_PROVIDER_LABELS[source.key.provider]}
+                    {source.summary &&
+                    source.summary !==
+                      CALENDAR_PROVIDER_LABELS[source.key.provider]
+                      ? ` · ${source.summary}`
+                      : ""}
                   </strong>
                   <span>Last sync {formatTime(source.syncedAt)}</span>
                   <small>
                     {source.changeDelivery
                       ? `${source.changeDelivery.mode} updates · ${source.changeDelivery.status}`
-                      : source.key.provider === "apple_calendar"
-                        ? "EventKit store-change updates with polling recovery"
-                        : "Polling recovery available"}
+                      : source.key.provider === "eliza"
+                        ? "Stored in Eliza"
+                        : source.key.provider === "apple_calendar"
+                          ? "EventKit store-change updates with polling recovery"
+                          : "Polling recovery available"}
                   </small>
                   {source.error ? (
                     <small className="lifeops-error-copy">
@@ -1052,7 +1099,7 @@ function LifeOpsStyles() {
       .lifeops-options,.lifeops-range{margin:16px 0;border:0;padding:0}.lifeops-options legend,.lifeops-range legend{margin-bottom:10px;font-size:12px;font-weight:750;color:var(--muted)}
       .lifeops-check-row{display:flex;align-items:flex-start;gap:12px;padding:12px;border-radius:14px;background:var(--bg-accent);margin-bottom:7px;cursor:pointer}.lifeops-check-row.compact{align-items:center}.lifeops-check-row input{width:20px;height:20px;margin:1px 0 0;accent-color:var(--accent);flex:0 0 auto}.lifeops-check-row span{display:grid;gap:3px;min-width:0}.lifeops-check-row small{color:var(--muted);line-height:1.4}.lifeops-check-row code{width:max-content;max-width:100%;overflow-wrap:anywhere;color:var(--accent);font-size:11px}
       .lifeops-field{display:grid;gap:7px;font-size:12px;font-weight:700}.lifeops-field select{min-height:44px;border:1px solid var(--border);border-radius:13px;padding:0 12px;background:var(--card);color:inherit;font:inherit}.lifeops-range-choices{display:flex;flex-wrap:wrap;gap:8px}.lifeops-range legend{width:100%}
-      .lifeops-primary,.lifeops-danger-confirm{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;border:0;border-radius:13px;padding:0 17px;background:var(--accent);color:var(--accent-foreground);font:inherit;font-weight:800;cursor:pointer}.lifeops-primary:hover{background:var(--accent-muted,#c94400);color:var(--brand-white,#fdfaf7)}.lifeops-primary:disabled,button:disabled{opacity:.48;cursor:not-allowed}.lifeops-danger-confirm{background:var(--destructive);color:var(--destructive-foreground)}.lifeops-danger-confirm:hover{background:color-mix(in srgb, var(--destructive) 82%, black)}
+      .lifeops-primary,.lifeops-danger-confirm{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;border:0;border-radius:13px;padding:0 17px;background:var(--accent);color:var(--accent-foreground);font:inherit;font-weight:800;cursor:pointer}.lifeops-primary:hover{background:var(--accent-muted,#c94400);color:var(--brand-white,#fdfaf7)}.lifeops-primary:disabled,button:disabled{opacity:.48;cursor:not-allowed}.lifeops-danger-confirm{background:var(--destructive-solid);color:var(--destructive-foreground)}.lifeops-danger-confirm:hover{background:var(--destructive-solid-hover)}
       .lifeops-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:14px}.lifeops-actions button{display:inline-flex;align-items:center;justify-content:center;gap:8px}.lifeops-empty{padding:14px;border:1px dashed var(--border-strong);border-radius:13px;color:var(--muted)}
       .lifeops-status-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px}.lifeops-status-row div{display:grid;gap:4px}.lifeops-status-row span{color:var(--muted);font-size:13px;line-height:1.4}
       .lifeops-calendar-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:14px}.lifeops-progress{color:var(--status-warning);text-transform:capitalize}.lifeops-receipt{display:flex;align-items:flex-start;gap:9px;margin:12px 0 0;padding:12px;border-radius:12px;background:var(--status-success-bg);color:var(--txt);font-size:13px;line-height:1.45}

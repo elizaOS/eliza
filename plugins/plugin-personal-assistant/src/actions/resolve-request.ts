@@ -947,7 +947,12 @@ async function revalidateSchedulingApproval(args: {
       detail: "counterparty delivery target is no longer available",
     };
   }
-  const currentPayload = schedulingApprovalPayloadForDraft(draft);
+  const currentPayload = schedulingApprovalPayloadForDraft(
+    draft,
+    args.request.payload.action === "send_email"
+      ? args.request.payload.grantId
+      : undefined,
+  );
   const current = verifySchedulingApprovalContent(currentPayload);
   if (
     !current ||
@@ -1129,14 +1134,21 @@ export async function executeApprovedRequest(args: {
   }
   if (calendarCard) {
     if (
-      args.request.channel !== "imessage" ||
-      args.request.subjectUserId !== calendarCard.correlation.recipientEntityId
+      args.request.channel !==
+        (calendarCard.correlation.version !== 1
+          ? calendarCard.correlation.channel
+          : "imessage") ||
+      args.request.subjectUserId !==
+        (calendarCard.correlation.version === 3 ||
+        calendarCard.correlation.version === 4
+          ? calendarCard.correlation.ownerEntityId
+          : calendarCard.correlation.recipientEntityId)
     ) {
       return preflightFailureResult(
         args.request,
         new ApprovalConnectorPreflightError(
           "CALENDAR_CARD_IDENTITY_MISMATCH",
-          "Calendar card approval is not bound to this iMessage recipient identity",
+          "Calendar card approval is not bound to this channel and recipient identity",
         ),
       );
     }
@@ -1284,6 +1296,22 @@ export async function executeApprovedRequest(args: {
         },
       };
     }
+    if (claim.kind === "blocked" && claim.reason === "paused") {
+      const text =
+        "Scheduling delivery is paused for an account switch. Finish the handoff before sending this approved draft.";
+      await args.callback?.({ text });
+      return {
+        text,
+        success: false,
+        data: {
+          error: "APPROVAL_DISPATCH_PAUSED",
+          requestId: args.request.id,
+          state: args.request.state,
+          sent: false,
+          attempt: claim.attempt,
+        },
+      };
+    }
     if (claim.kind === "blocked") {
       const error =
         claim.reason === "ambiguous"
@@ -1359,6 +1387,9 @@ export async function executeApprovedRequest(args: {
       payload.action === "send_email"
         ? {
             subject: payload.subject,
+            ...(payload.grantId === undefined
+              ? {}
+              : { grantId: payload.grantId }),
             cc: [...payload.cc],
             bcc: [...payload.bcc],
           }
@@ -1479,7 +1510,19 @@ export async function executeApprovedRequest(args: {
         `[approval] action/payload mismatch: action=send_email, payload.action=${payload.action}`,
       );
     }
+    const familyWorkflow = getFamilyWorkflowRuntimeService(args.runtime);
+    const familyPackets = familyWorkflow?.packets;
+    let familyPacketDraft = null;
+    let senderGrantId: string;
     try {
+      if (payload.familyPacketId && !familyWorkflow)
+        throw new ApprovalConnectorPreflightError(
+          "FAMILY_PACKET_SERVICE_UNAVAILABLE",
+          "Family authorization is unavailable. Retry after the family workflow service is ready.",
+        );
+      familyPacketDraft =
+        (await familyPackets?.validateApprovedDraftIfBound(args.request)) ??
+        null;
       if (payload.body.trim().length === 0) {
         throw new ApprovalConnectorPreflightError(
           "INVALID_EMAIL_PAYLOAD",
@@ -1495,9 +1538,16 @@ export async function executeApprovedRequest(args: {
           "A new email requires at least one recipient",
         );
       }
-      await service.requireGoogleGmailSendGrant(INTERNAL_URL, "local", "owner");
+      const senderGrant = await service.requireGoogleGmailSendGrant(
+        INTERNAL_URL,
+        "local",
+        "owner",
+        payload.grantId,
+      );
+      senderGrantId = senderGrant.id;
       if (payload.replyToMessageId) {
         await service.readGmailMessage(INTERNAL_URL, {
+          grantId: senderGrantId,
           mode: "local",
           side: "owner",
           messageId: payload.replyToMessageId,
@@ -1513,8 +1563,15 @@ export async function executeApprovedRequest(args: {
       prepared: {
         provider: "gmail",
         dispatch: async () => {
+          let sentEmail: { messageId: string; threadId: string | null } | null =
+            null;
+          if (familyPacketDraft && familyPackets && familyWorkflow) {
+            await familyPackets.validateApprovedDraft(args.request);
+            await familyWorkflow.validateRecipientIdentity(familyPacketDraft);
+          }
           if (payload.replyToMessageId) {
             await service.sendGmailReply(INTERNAL_URL, {
+              grantId: senderGrantId,
               messageId: payload.replyToMessageId,
               bodyText: payload.body,
               subject: payload.subject || undefined,
@@ -1523,7 +1580,8 @@ export async function executeApprovedRequest(args: {
               confirmSend: true,
             });
           } else {
-            await service.sendGmailMessage(INTERNAL_URL, {
+            sentEmail = await service.sendGmailMessage(INTERNAL_URL, {
+              grantId: senderGrantId,
               to: [...payload.to],
               cc: [...payload.cc],
               bcc: [...payload.bcc],
@@ -1538,6 +1596,12 @@ export async function executeApprovedRequest(args: {
               provider: "gmail",
               accepted: true,
               replyToMessageId: payload.replyToMessageId ?? null,
+              ...(sentEmail
+                ? {
+                    messageId: sentEmail.messageId,
+                    threadId: sentEmail.threadId,
+                  }
+                : {}),
             },
           };
         },
@@ -1583,11 +1647,15 @@ export async function executeApprovedRequest(args: {
         `[approval] action/payload mismatch: action=send_message, payload.action=${payload.action}`,
       );
     }
-    const familyPackets = getFamilyWorkflowRuntimeService(
-      args.runtime,
-    )?.packets;
+    const familyWorkflow = getFamilyWorkflowRuntimeService(args.runtime);
+    const familyPackets = familyWorkflow?.packets;
     let familyPacketDraft = null;
     try {
+      if (payload.familyPacketId && !familyWorkflow)
+        throw new ApprovalConnectorPreflightError(
+          "FAMILY_PACKET_SERVICE_UNAVAILABLE",
+          "Family authorization is unavailable. Retry after the family workflow service is ready.",
+        );
       familyPacketDraft =
         (await familyPackets?.validateApprovedDraftIfBound(args.request)) ??
         null;
@@ -1608,6 +1676,9 @@ export async function executeApprovedRequest(args: {
         channel,
         target: payload.recipient,
         body: payload.body,
+        ...(calendarCard?.correlation.version === 4
+          ? { sender: calendarCard.correlation.sender }
+          : {}),
       });
     } catch (error) {
       return preflightFailureResult(args.request, error);
@@ -1619,10 +1690,11 @@ export async function executeApprovedRequest(args: {
       prepared: {
         provider: prepared.provider,
         dispatch: async (providerIdempotencyKey) => {
-          if (familyPacketDraft && familyPackets) {
+          if (familyPacketDraft && familyPackets && familyWorkflow) {
             // Re-check the immutable draft, latest-version guard, recipient
             // ACL, and live agreement grant at the final pre-provider edge.
             await familyPackets.validateApprovedDraft(args.request);
+            await familyWorkflow.validateRecipientIdentity(familyPacketDraft);
           }
           return {
             value: undefined,
@@ -2260,6 +2332,58 @@ async function resolveApprovalRequest(
       },
     };
   }
+  return settleApprovalRequest(
+    runtime,
+    queue,
+    subjectUserId,
+    intent,
+    params,
+    {
+      requestId: extracted.requestId,
+      reason: extracted.reason,
+    },
+    callback,
+  );
+}
+
+/**
+ * Resolve an explicit decision from an authenticated owner transport without
+ * model inference. The caller supplies its verified owner identity, never an
+ * identity from the request body; canonical subject and dispatch checks remain
+ * in the same settlement path used by the owner action.
+ */
+export async function resolveExplicitOwnerApproval(
+  runtime: IAgentRuntime,
+  input: {
+    subjectUserId: string;
+    requestId: string;
+    decision: "approve" | "reject";
+    reason: string;
+  },
+): Promise<ActionResult> {
+  if (!input.subjectUserId.trim() || !input.requestId.trim())
+    return denied("MISSING_APPROVAL_IDENTITY");
+  const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+  return settleApprovalRequest(
+    runtime,
+    queue,
+    input.subjectUserId,
+    input.decision,
+    { requestId: input.requestId, reason: input.reason },
+    { requestId: input.requestId, reason: input.reason },
+    undefined,
+  );
+}
+
+async function settleApprovalRequest(
+  runtime: IAgentRuntime,
+  queue: ApprovalQueue,
+  subjectUserId: string,
+  intent: ResolveSubaction,
+  params: ResolveRequestParameters,
+  extracted: { requestId: string; reason: string | null },
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
   const resolution = {
     resolvedBy: subjectUserId,
     resolutionReason: extracted.reason ?? `user ${intent}d`,

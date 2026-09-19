@@ -298,6 +298,24 @@ export interface AccountBillingLimitsV2 {
   };
 }
 
+/** Email submission evidence for the current canceled revision; acceptance is not recipient delivery. */
+export interface SubscriptionCancellationNoticeSnapshot {
+  sourceLifecycleRevision: string;
+  state:
+    | "policy_unavailable"
+    | "scheduled"
+    | "dispatching"
+    | "accepted"
+    | "rejected"
+    | "uncertain"
+    | "unavailable"
+    | "superseded"
+    | "reconciliation_required";
+  updatedAt: string;
+  channel: "email";
+  delivery: "not_observed";
+}
+
 /** Organization infrastructure billing only; never an app subscriber's merchant account. */
 export interface OrganizationSubscriptionSnapshot {
   planKey: "plus_monthly" | "pro_monthly";
@@ -320,6 +338,7 @@ export interface OrganizationSubscriptionSnapshot {
   /** These are persisted lifecycle timestamps, not a forecast of the next charge or access. */
   graceExpiresAt: string | null;
   dunningStartedAt: string | null;
+  cancellationNotice: Observed<SubscriptionCancellationNoticeSnapshot>;
   allowance: Observed<{
     sourceLifecycleRevision: string;
     periodStart: string;

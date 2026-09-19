@@ -1,5 +1,6 @@
 /** Displays passive shell feedback, including long recovery messages and pending work. */
 import type { Meta, StoryObj } from "@storybook/react";
+import { assert } from "../../storybook/home-widget-decorator";
 import { ActionNoticeToast } from "./ActionNoticeToast";
 
 const meta = {
@@ -31,4 +32,15 @@ export const Pending: Story = {
   },
 };
 
-export const Hidden: Story = { args: { actionNotice: null } };
+export const Hidden: Story = {
+  tags: ["story-gate-expect-blank"],
+  args: { actionNotice: null },
+  play: async ({ canvasElement }) => {
+    assert(
+      canvasElement.ownerDocument.querySelector(
+        '[data-testid="shell-action-notice"]',
+      ) === null,
+      "an absent notice creates no toast portal",
+    );
+  },
+};

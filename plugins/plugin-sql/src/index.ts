@@ -27,6 +27,7 @@ export {
   type SQL,
   sql,
 } from "drizzle-orm";
+export * from "./carve-out-migration";
 
 import {
   createAdapterReadinessError,

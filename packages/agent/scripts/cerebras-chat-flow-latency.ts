@@ -66,9 +66,12 @@ export async function finalizeBenchmarkReport<
     report: Omit<T, "status"> & {
       status: "success" | "failed";
       teardown: BenchmarkTeardown;
+      finalization: BenchmarkTeardown;
     },
   ) => Promise<void>,
+  finalize?: (report: T) => void,
 ): Promise<void> {
+  let finalizationFailure: ElizaError | null = null;
   let failure: ElizaError | null = null;
   try {
     await shutdown();
@@ -79,9 +82,27 @@ export async function finalizeBenchmarkReport<
       cause,
     });
   }
+  try {
+    finalize?.(report);
+  } catch (cause) {
+    // error-policy:J1 Publish all settled observations before rejecting invalid final evidence.
+    finalizationFailure = new ElizaError(
+      "Benchmark final evidence validation failed",
+      {
+        code: "BENCHMARK_FINALIZATION_FAILED",
+        cause,
+      },
+    );
+  }
   await publish({
     ...report,
-    status: failure ? "failed" : report.status,
+    status: failure || finalizationFailure ? "failed" : report.status,
+    finalization: {
+      status: finalizationFailure ? "failed" : "success",
+      error: finalizationFailure
+        ? `${finalizationFailure.message}: ${finalizationFailure.cause instanceof Error ? finalizationFailure.cause.message : String(finalizationFailure.cause)}`
+        : null,
+    },
     teardown: {
       status: failure ? "failed" : "success",
       error: failure
@@ -90,6 +111,42 @@ export async function finalizeBenchmarkReport<
     },
   });
   if (failure) throw failure;
+  if (finalizationFailure) throw finalizationFailure;
+}
+
+/** Account for the complete settled wire inventory before validating its cache policy. */
+export function finalizeBenchmarkWireEvidence<
+  T extends { status: "success" | "failed" },
+>(
+  report: T,
+  evidence: readonly ProviderWireEvidence[],
+  mode: CacheExperimentMode,
+  keyCapabilityConfirmed: boolean,
+): void {
+  const wireEvidence = [...evidence];
+  const cacheExperiment: {
+    mode: CacheExperimentMode;
+    keyCapabilityConfirmed: boolean;
+    validatedWireRequests: number | null;
+  } = {
+    mode,
+    keyCapabilityConfirmed,
+    validatedWireRequests: null,
+  };
+  Object.assign(report, {
+    wireEvidence,
+    wireAttemptStats: {
+      total: wireEvidence.length,
+      http429: wireEvidence.filter((wire) => wire.status === 429).length,
+      transportErrors: wireEvidence.filter((wire) => wire.outcome === "error")
+        .length,
+    },
+    cacheExperiment,
+  });
+  cacheExperiment.validatedWireRequests = verifyCacheExperimentWire(
+    wireEvidence,
+    mode,
+  );
 }
 const IMPORTABLE_SOURCE_EXTENSIONS: readonly string[] = [
   ".ts",
@@ -217,6 +274,7 @@ export interface BenchmarkTurnObservation<T> {
     | "post-delivery"
     | "usage-validation"
     | "persistence-validation"
+    | "behavior-validation"
     | "complete";
   elapsedMs: number | null;
   observedIdleMs: number | null;
@@ -227,6 +285,7 @@ export interface BenchmarkTurnObservation<T> {
   output: string | null;
   streamedOutput: string;
   persistedResponse: PersistedTurnResponse | null;
+  behavior: "not-evaluated" | "passed" | "failed";
   receipt: T | null;
   error: string | null;
 }
@@ -251,6 +310,7 @@ export async function observeBenchmarkTurn<T>(
     output: null,
     streamedOutput: "",
     persistedResponse: null,
+    behavior: "not-evaluated",
     receipt: null,
     error: null,
   };
@@ -592,6 +652,57 @@ export function verifyProofResponse(response: string, proof: string): void {
   }
 }
 
+/** Validate the explicit exact-reference task after preserving the complete delivered record. */
+export function verifyBenchmarkBehavior<T>(
+  observation: BenchmarkTurnObservation<T>,
+): void {
+  observation.stage = "behavior-validation";
+  const persisted = observation.persistedResponse;
+  if (
+    !persisted ||
+    persisted.text !== observation.output ||
+    observation.streamedOutput !== observation.output
+  ) {
+    throw new Error(
+      "Behavior validation requires matching returned, streamed and persisted responses",
+    );
+  }
+  observation.behavior =
+    observation.output?.trim() === observation.context.proof
+      ? "passed"
+      : "failed";
+  if (observation.behavior === "failed") {
+    throw new Error(
+      `Exact-reference behavior failed: ${JSON.stringify({ proof: observation.context.proof, response: observation.output })}`,
+    );
+  }
+}
+
+/** Report measured task compliance independently from proof-token and transport integrity. */
+export function benchmarkBehaviorSummary<T>(
+  observations: BenchmarkTurnObservation<T>[],
+) {
+  const samples = observations.filter(
+    (observation) => observation.context.phase === "sample",
+  );
+  const passed = samples.filter(
+    (observation) => observation.behavior === "passed",
+  ).length;
+  const failed = samples.filter(
+    (observation) => observation.behavior === "failed",
+  ).length;
+  return {
+    contract: "exact-reference-v1",
+    scope:
+      "Measured samples must answer with only the exact reference, ignoring surrounding whitespace; this does not certify general conversational behavior",
+    passed,
+    failed,
+    notEvaluated: samples.length - passed - failed,
+    errorRatePercent:
+      passed + failed === 0 ? null : (100 * failed) / (passed + failed),
+  };
+}
+
 export function verifyExactResponseParity(
   streamedResponse: string,
   finalResponse: string,
@@ -662,6 +773,29 @@ async function main(): Promise<void> {
     "ELIZA_CEREBRAS_CHAT_WARMUPS",
     DEFAULT_WARMUPS,
   );
+  const interTurnPacingMs = positiveIntegerSetting(
+    "ELIZA_CEREBRAS_CHAT_PACING_MS",
+    0,
+  );
+  const isolationCooldownMs = positiveIntegerSetting(
+    "ELIZA_CEREBRAS_ISOLATION_COOLDOWN_MS",
+    0,
+  );
+  const pacingWaits: Array<{
+    phase: string;
+    requestedMs: number;
+    elapsedMs: number;
+  }> = [];
+  const pace = async (phase: string, requestedMs: number) => {
+    if (!requestedMs) return;
+    const startedAt = performance.now();
+    await new Promise((resolve) => setTimeout(resolve, requestedMs));
+    pacingWaits.push({
+      phase,
+      requestedMs,
+      elapsedMs: performance.now() - startedAt,
+    });
+  };
   const sourceRevision = sourceRevisionEvidence();
   const nativeEmbedding =
     process.env.ELIZA_CEREBRAS_EMBEDDING_MODE === "native";
@@ -793,6 +927,7 @@ async function main(): Promise<void> {
   const originalFetch = globalThis.fetch;
   const wireEvidence: ProviderWireEvidence[] = [];
   const modelContext = new AsyncLocalStorage<ModelInputContext>();
+  let cancelAtProviderDispatch: (() => void) | undefined;
   globalThis.fetch = measuredProviderFetch(
     originalFetch,
     {
@@ -801,6 +936,10 @@ async function main(): Promise<void> {
     },
     () => modelContext.getStore() ?? null,
     (evidence) => wireEvidence.push(evidence),
+    (kind, context) => {
+      if (kind === "text" && context?.phase === "cancellation")
+        cancelAtProviderDispatch?.();
+    },
   );
   const returnedChatResponses: Array<{
     context: ModelInputContext;
@@ -955,9 +1094,7 @@ async function main(): Promise<void> {
       fixture?: { proof: string; prompt: string },
     ) => {
       const proof = fixture?.proof ?? `SPEED-${warmup ? "W" : "S"}-${index}`;
-      const prompt =
-        fixture?.prompt ??
-        `I am labelling a parcel. Its reference is ${proof}. What exact reference should I write on the label?`;
+      const prompt = `${fixture?.prompt ?? `I am labelling a parcel. Its reference is ${proof}. What exact reference should I write on the label?`} Reply with only the exact reference, without commentary, quotes, or formatting.`;
       const message = createMessageMemory({
         id: randomUUID() as UUID,
         entityId,
@@ -1113,6 +1250,7 @@ async function main(): Promise<void> {
               )}`,
             );
           }
+          verifyBenchmarkBehavior(observation);
           lastRoomCompletion.set(turnRoomId, performance.now());
           return {
             index,
@@ -1161,7 +1299,10 @@ async function main(): Promise<void> {
       idleMs,
       initialRoom: roomId,
       prepareRoom,
-      runTurn,
+      runTurn: async (index, prime, room) => {
+        await pace(prime ? "priming" : "sample", interTurnPacingMs);
+        return runTurn(index, prime, room);
+      },
       wait: async (milliseconds) => {
         process.stderr.write(
           `Waiting ${milliseconds}ms before resuming ${sampleCount} separately primed rooms.\n`,
@@ -1183,6 +1324,7 @@ async function main(): Promise<void> {
       );
     }
 
+    await pace("before-isolation", isolationCooldownMs);
     const isolationRooms = await Promise.all([prepareRoom(), prepareRoom()]);
     const isolationProofs = [
       `PARCEL-A-${randomUUID()}`,
@@ -1235,12 +1377,15 @@ async function main(): Promise<void> {
     );
     cancellationReason.name = "AbortError";
     const originalUseModel = runtime.useModel.bind(runtime);
-    let cancellationTimer: ReturnType<typeof setTimeout> | undefined;
+    let liveProviderDispatchObserved = false;
+    cancelAtProviderDispatch = () => {
+      liveProviderDispatchObserved = true;
+      cancellationController.abort(cancellationReason);
+    };
     let liveModelInvocationObserved = false;
     let invokedModelType: string | null = null;
     let modelSignalWasAlreadyAborted = false;
     runtime.useModel = (async (modelType, params, provider) => {
-      const pending = originalUseModel(modelType, params, provider);
       if (
         !liveModelInvocationObserved &&
         modelType === ModelType.RESPONSE_HANDLER
@@ -1253,11 +1398,8 @@ async function main(): Promise<void> {
           "signal" in params &&
           params.signal instanceof AbortSignal &&
           params.signal.aborted;
-        cancellationTimer = setTimeout(() => {
-          cancellationController.abort(cancellationReason);
-        }, 25);
       }
-      return await pending;
+      return await originalUseModel(modelType, params, provider);
     }) as typeof runtime.useModel;
 
     const cancellationStartedAt = performance.now();
@@ -1281,12 +1423,17 @@ async function main(): Promise<void> {
       cancellationError = error;
     } finally {
       runtime.useModel = originalUseModel;
-      if (cancellationTimer) clearTimeout(cancellationTimer);
+      cancelAtProviderDispatch = undefined;
     }
     const cancellationWallMs = performance.now() - cancellationStartedAt;
     if (!liveModelInvocationObserved) {
       throw new Error(
         "Cancellation probe aborted before a live RESPONSE_HANDLER invocation",
+      );
+    }
+    if (!liveProviderDispatchObserved) {
+      throw new Error(
+        "Cancellation probe did not reach actual provider fetch dispatch",
       );
     }
     if (!cancellationController.signal.aborted) {
@@ -1328,8 +1475,9 @@ async function main(): Promise<void> {
     const cancellationProbe = {
       proof: cancellationProof,
       execution:
-        "production generateChatResponse path; owner abort scheduled after the live RESPONSE_HANDLER invocation began",
+        "production generateChatResponse path; owner aborted immediately after actual SDK fetch dispatch began",
       liveModelInvocationObserved,
+      liveProviderDispatchObserved,
       invokedModelType,
       modelSignalWasAlreadyAborted,
       ownerSignalAborted: cancellationController.signal.aborted,
@@ -1414,10 +1562,6 @@ async function main(): Promise<void> {
       }
     }
     runStage = "wire-verification";
-    const validatedWireRequests = verifyCacheExperimentWire(
-      wireEvidence,
-      cacheMode,
-    );
     const report = {
       status: "success" as const,
       turnObservations,
@@ -1429,11 +1573,6 @@ async function main(): Promise<void> {
       reasoningEffort:
         process.env.OPENAI_REASONING_EFFORT?.trim() || "provider-default",
       embedding: { ...embedding, nativeProvenance },
-      cacheExperiment: {
-        mode: cacheMode,
-        keyCapabilityConfirmed,
-        validatedWireRequests,
-      },
       workload: {
         condition,
         requestedIdleMs: idleMs,
@@ -1442,7 +1581,8 @@ async function main(): Promise<void> {
       },
       errorRatePercent: 0,
       errorRateScope:
-        "All samples passed; any failure aborts this command and cannot produce a successful report",
+        "All measured samples passed transport, persistence, proof-token integrity and the explicit exact-reference task; this is not a general behavioral error rate",
+      behavior: benchmarkBehaviorSummary(turnObservations),
       wireEvidence,
       modelExecutions,
       path: {
@@ -1463,18 +1603,19 @@ async function main(): Promise<void> {
         "production generateChatResponse path with streaming, persistence, and distinct proof validation",
       warmups: warmupCount,
       samples: sampleCount,
+      pacing: {
+        interTurnPacingMs,
+        isolationCooldownMs,
+        waits: pacingWaits,
+        boundary:
+          "Explicit workload waits occur before timed turns; all foreground and post-delivery model usage remains included in per-turn modelUsages.",
+      },
       registeredProviders: registeredProviderNames,
       wallMs: distribution(turns.map((turn) => turn.wallMs)),
       wallMsBoundary:
         "generateChatResponse command return including its room post-delivery drain",
       backgroundQuiescenceBoundary:
         "additional residual drain after generateChatResponse already drained room tasks",
-      wireAttemptStats: {
-        total: wireEvidence.length,
-        http429: wireEvidence.filter((wire) => wire.status === 429).length,
-        transportErrors: wireEvidence.filter((wire) => wire.outcome === "error")
-          .length,
-      },
       backgroundQuiescenceMs: distribution(
         turns.map((turn) => turn.backgroundQuiescenceMs),
       ),
@@ -1528,9 +1669,11 @@ async function main(): Promise<void> {
       modelExecutions,
       returnedChatResponses,
       turnObservations,
+      pacing: { interTurnPacingMs, isolationCooldownMs, waits: pacingWaits },
       requestedSamples: sampleCount,
       requestedWarmups: warmupCount,
       requestedIdleMs: idleMs,
+      behavior: benchmarkBehaviorSummary(turnObservations),
       failedStage: runStage,
       elapsedMs: rounded(performance.now() - runStartedAt),
       error: error instanceof Error ? error.message : String(error),
@@ -1551,6 +1694,13 @@ async function main(): Promise<void> {
             });
           process.stdout.write(json);
         },
+        (report) =>
+          finalizeBenchmarkWireEvidence(
+            report,
+            wireEvidence,
+            cacheMode,
+            keyCapabilityConfirmed,
+          ),
       );
     } finally {
       globalThis.fetch = originalFetch;

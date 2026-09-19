@@ -42,11 +42,15 @@ export interface AccountTestResult {
   latencyMs?: number;
   status?: number;
   error?: string;
+  /** Complete official provider catalog returned by a successful catalog probe. */
+  modelIds?: string[];
+  modelCatalogTruncated?: boolean;
+  modelCatalogUnavailable?: boolean;
 }
 
 export interface AccountRefreshUsageResult {
   account: LinkedAccountConfig;
-  source: "pool" | "inline-probe";
+  source: "pool" | "inline-probe" | "direct-probe" | "coding-plan-probe";
 }
 
 export interface AccountOAuthStartResult {

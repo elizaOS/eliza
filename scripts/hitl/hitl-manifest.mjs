@@ -96,11 +96,7 @@ export const HITL_DECISION_POINTS = [
     mark: "frame",
     why: "gesture feel",
     suites: ["app"],
-    scripts: [
-      "test:chat-scroll-web-e2e",
-      "test:chat-sheet-e2e",
-      "test:chatux-gesture-e2e",
-    ],
+    scripts: ["test:chat-scroll-web-e2e", "test:chat-sheet-e2e"],
     issues: [14380],
   },
 

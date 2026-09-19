@@ -1197,20 +1197,22 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(
 			evaluatorParams?.providerOptions?.eliza?.segmentHashes?.length,
 		).toBeGreaterThan(0);
-		expect(plannerParams?.providerOptions?.cerebras?.prompt_cache_key).toMatch(
-			/^v5:/,
-		);
-		expect(evaluatorParams?.providerOptions?.cerebras?.prompt_cache_key).toBe(
+		expect(
 			plannerParams?.providerOptions?.cerebras?.prompt_cache_key,
-		);
+		).toBeTruthy();
+		expect(
+			evaluatorParams?.providerOptions?.cerebras?.prompt_cache_key,
+		).toBeTruthy();
+		expect(
+			evaluatorParams?.providerOptions?.cerebras?.prompt_cache_key,
+		).not.toBe(plannerParams?.providerOptions?.cerebras?.prompt_cache_key);
 		// Local/model-runner affinity is stable across turns but stage-scoped so
-		// planner and evaluator KV state cannot collide. The shared provider
-		// prefix hash above intentionally remains identical across both stages.
+		// planner and evaluator KV state cannot collide across agents or stages.
 		expect(plannerParams?.providerOptions?.eliza?.conversationId).toBe(
-			`${ROOM_ID}:planner`,
+			`${JSON.stringify([AGENT_ID, ROOM_ID])}:planner`,
 		);
 		expect(evaluatorParams?.providerOptions?.eliza?.conversationId).toBe(
-			`${ROOM_ID}:evaluator`,
+			`${JSON.stringify([AGENT_ID, ROOM_ID])}:evaluator`,
 		);
 
 		// Trajectory recording wrote a JSON file
@@ -2322,6 +2324,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						response: "The action did not return a confirmed result.",
 					}),
 				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"Controlled review accepts the fixture uncertainty without asserting an effect.",
+					}),
+				},
 			],
 		});
 		const calls: import("../types/streaming").StreamingToolCallPayload[] = [];
@@ -2471,6 +2482,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						response: "The action did not return a confirmed result.",
 					}),
 				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"Controlled review accepts the fixture uncertainty without asserting an effect.",
+					}),
+				},
 			],
 		});
 		const calls: import("../types/streaming").StreamingToolCallPayload[] = [];
@@ -2537,6 +2557,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						response: "The action did not return a confirmed result.",
 					}),
 				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"Controlled review accepts the fixture uncertainty without asserting an effect.",
+					}),
+				},
 			],
 		});
 		const infrastructureError = new Error("account storage unavailable");
@@ -2585,6 +2614,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		handlerResult: ActionResult,
 		options: {
 			stageOneReply?: string;
+			stageOneEffectStatus?: string;
 			postToolReply?: string;
 		} = {},
 	): Promise<string | undefined> => {
@@ -2633,6 +2663,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						contexts: ["general"],
 						candidateActionNames: ["VIEWS"],
 						replyText: stageOneReply,
+						extra: options.stageOneEffectStatus
+							? { replyEffectStatus: options.stageOneEffectStatus }
+							: undefined,
 						thought: "The view switch is deterministic.",
 					}),
 				},
@@ -2652,6 +2685,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 										response: "The action did not return a confirmed result.",
 									}),
 								},
+								{
+									expectModelType: ModelType.TEXT_SMALL,
+									body: JSON.stringify({
+										grounded: true,
+										completedChangeClaim: false,
+										reason:
+											"Controlled review accepts the fixture uncertainty without asserting an effect.",
+									}),
+								},
 							]),
 			],
 		});
@@ -2667,117 +2709,339 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				? [ModelType.RESPONSE_HANDLER, ModelType.ACTION_PLANNER]
 				: handlerResult.text || handlerResult.userFacingText
 					? [ModelType.RESPONSE_HANDLER]
-					: [ModelType.RESPONSE_HANDLER, ModelType.TEXT_SMALL],
+					: [
+							ModelType.RESPONSE_HANDLER,
+							ModelType.TEXT_SMALL,
+							ModelType.TEXT_SMALL,
+						],
 		);
 		return result.kind === "planned_reply"
 			? result.result.responseContent?.text
 			: undefined;
 	};
 
-	it("releases the model-authored view reply after the accepted effect receipt without another inference", async () => {
-		const text = await runDeterministicViewsTurn({
-			success: true,
-			text: JSON.stringify({
-				effect: "view_navigation",
-				status: "accepted",
-				viewId: "chat",
-				label: "Home",
-				path: "/",
-			}),
-			transcriptVisibility: "internal",
-			modelReplyRequired: true,
-		});
-		expect(text).toBe("Opening Home now.");
-	});
+	it.each(["accepted", "delivered"])(
+		"releases the model-authored view reply after the %s effect receipt without another inference",
+		async (status) => {
+			const text = await runDeterministicViewsTurn({
+				success: true,
+				text: JSON.stringify({
+					effect: "view_navigation",
+					status,
+					viewId: "chat",
+					label: "Home",
+					path: "/",
+				}),
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+			});
+			expect(text).toBe("Opening Home now.");
+		},
+	);
 
-	it("keeps a natural navigation acknowledgement through reply egress when the label is a tracked-work noun", async () => {
+	it.each(["accepted", "delivered"])(
+		"keeps a natural %s navigation acknowledgement through reply egress when the label is a tracked-work noun",
+		async (status) => {
+			const text = await runDeterministicViewsTurn(
+				{
+					success: true,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status,
+						viewId: "settings",
+						label: "Settings",
+						path: "/settings",
+					}),
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+				},
+				{
+					stageOneReply: "You're in Settings now.",
+					stageOneEffectStatus: status === "delivered" ? "pending" : undefined,
+				},
+			);
+			expect(text).toBe("You're in Settings now.");
+		},
+	);
+
+	it.each(["accepted", "delivered"])(
+		"uses post-tool synthesis for %s navigation when Stage 1 supplied no user-facing prose",
+		async (status) => {
+			const text = await runDeterministicViewsTurn(
+				{
+					success: true,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status,
+						viewId: "notes",
+						label: "Notes",
+						path: "/notes",
+					}),
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+				},
+				{
+					stageOneReply: "",
+					postToolReply: "Notes are open whenever you're ready.",
+				},
+			);
+			expect(text).toBe("Notes are open whenever you're ready.");
+		},
+	);
+
+	it.each(["accepted", "delivered"])(
+		"uses post-tool synthesis for %s navigation when the Stage 1 reply omits the destination",
+		async (status) => {
+			const text = await runDeterministicViewsTurn(
+				{
+					success: true,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status,
+						viewId: "notes",
+						label: "Notes",
+						path: "/notes",
+					}),
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+				},
+				{
+					stageOneReply: "On it.",
+					stageOneEffectStatus: "pending",
+					postToolReply: "Notes are open.",
+				},
+			);
+			expect(text).toBe("Notes are open.");
+		},
+	);
+
+	it.each(["accepted", "delivered"])(
+		"uses post-tool synthesis for %s navigation instead of releasing an unrelated mutation claim",
+		async (status) => {
+			const text = await runDeterministicViewsTurn(
+				{
+					success: true,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status,
+						viewId: "notes",
+						label: "Notes",
+						path: "/notes",
+					}),
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+				},
+				{
+					stageOneReply: "Done — I saved your note and opened Notes.",
+					stageOneEffectStatus: "pending",
+					postToolReply: "Notes are open. I didn't change any of them.",
+				},
+			);
+			expect(text).toBe("Notes are open. I didn't change any of them.");
+		},
+	);
+
+	it("reuses the delivered view's canonical name when its display label differs", async () => {
+		const draft = "Back in the chat view.";
 		const text = await runDeterministicViewsTurn(
 			{
 				success: true,
 				text: JSON.stringify({
 					effect: "view_navigation",
-					status: "accepted",
-					viewId: "settings",
-					label: "Settings",
-					path: "/settings",
+					status: "delivered",
+					viewId: "chat",
+					label: "Home",
 				}),
 				transcriptVisibility: "internal",
 				modelReplyRequired: true,
 			},
-			{ stageOneReply: "You're in Settings now." },
+			{ stageOneReply: draft, stageOneEffectStatus: "pending" },
 		);
-		expect(text).toBe("You're in Settings now.");
+		expect(text).toBe(draft);
 	});
 
-	it("uses post-tool synthesis when Stage 1 supplied no user-facing prose", async () => {
-		const text = await runDeterministicViewsTurn(
-			{
-				success: true,
-				text: JSON.stringify({
-					effect: "view_navigation",
-					status: "accepted",
-					viewId: "notes",
-					label: "Notes",
-					path: "/notes",
-				}),
-				transcriptVisibility: "internal",
-				modelReplyRequired: true,
-			},
-			{
-				stageOneReply: "",
-				postToolReply: "Notes are open whenever you're ready.",
-			},
-		);
-		expect(text).toBe("Notes are open whenever you're ready.");
-	});
-
-	it("uses post-tool synthesis when the Stage 1 navigation reply omits the destination", async () => {
-		const text = await runDeterministicViewsTurn(
-			{
-				success: true,
-				text: JSON.stringify({
-					effect: "view_navigation",
-					status: "accepted",
-					viewId: "notes",
-					label: "Notes",
-					path: "/notes",
-				}),
-				transcriptVisibility: "internal",
-				modelReplyRequired: true,
-			},
-			{
-				stageOneReply: "On it.",
-				postToolReply: "Notes are open.",
-			},
-		);
-		expect(text).toBe("Notes are open.");
-	});
-
-	it("uses post-tool synthesis instead of releasing an unrelated mutation claim", async () => {
-		const text = await runDeterministicViewsTurn(
-			{
-				success: true,
-				text: JSON.stringify({
-					effect: "view_navigation",
-					status: "accepted",
-					viewId: "notes",
-					label: "Notes",
-					path: "/notes",
-				}),
-				transcriptVisibility: "internal",
-				modelReplyRequired: true,
-			},
-			{
-				stageOneReply: "Done — I saved your note and opened Notes.",
-				postToolReply: "Notes are open. I didn't change any of them.",
-			},
-		);
-		expect(text).toBe("Notes are open. I didn't change any of them.");
-	});
+	it.each([
+		{ status: "accepted", viewId: "chat", reply: "Back in the chat view." },
+		{ status: "delivered", viewId: "notes", reply: "Back in the chat view." },
+		{ status: "delivered", viewId: "chat", reply: "Chatter is open." },
+		{
+			status: "delivered",
+			viewId: "chat",
+			reply: "Chat is open. I saved your note.",
+		},
+	])(
+		"keeps reply synthesis for ungrounded canonical-name prose: %j",
+		async ({ status, viewId, reply }) => {
+			const text = await runDeterministicViewsTurn(
+				{
+					success: true,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status,
+						viewId,
+						label: "Home",
+					}),
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+				},
+				{
+					stageOneReply: reply,
+					stageOneEffectStatus: "pending",
+					postToolReply: "The navigation request returned its current status.",
+				},
+			);
+			expect(text).toBe("The navigation request returned its current status.");
+		},
+	);
 
 	it("uses a model reply for a deterministic success without a reportable result", async () => {
 		const text = await runDeterministicViewsTurn({ success: true });
 		expect(text).toBe("The action did not return a confirmed result.");
+	});
+
+	it("keeps a pending navigation confirmation held when the receipt only says accepted", async () => {
+		const text = await runDeterministicViewsTurn(
+			{
+				success: true,
+				text: JSON.stringify({
+					effect: "view_navigation",
+					status: "accepted",
+					label: "Home",
+				}),
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+			},
+			{
+				stageOneReply: "Home is open.",
+				stageOneEffectStatus: "pending",
+				postToolReply: "The request to open Home was accepted.",
+			},
+		);
+		expect(text).toBe("The request to open Home was accepted.");
+	});
+
+	it.each(["accepted", "delivered"])(
+		"does not reuse a pre-execution denial after %s navigation succeeds",
+		async (status) => {
+			const text = await runDeterministicViewsTurn(
+				{
+					success: true,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status,
+						label: "Calendar",
+					}),
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+				},
+				{
+					stageOneReply:
+						"Just a note, your Calendar permission is still pending on your end. If I try to open it now, it'll hit a wall unless you grant it first in Settings.",
+					stageOneEffectStatus: "non_applied",
+					postToolReply: "Calendar is open. I didn't change any events.",
+				},
+			);
+			expect(text).toBe("Calendar is open. I didn't change any events.");
+		},
+	);
+
+	it("does not reuse a navigation confirmation without a destination in the receipt", async () => {
+		const text = await runDeterministicViewsTurn(
+			{
+				success: true,
+				text: JSON.stringify({
+					effect: "view_navigation",
+					status: "delivered",
+				}),
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+			},
+			{
+				stageOneReply: "Home is open.",
+				stageOneEffectStatus: "pending",
+				postToolReply: "I couldn't confirm which destination was opened.",
+			},
+		);
+		expect(text).toBe("I couldn't confirm which destination was opened.");
+	});
+
+	it.each([
+		"not-delivered",
+		"malformed",
+		"unconfirmed",
+		"cancelled",
+		"http-error",
+	])(
+		"does not reuse a navigation confirmation for a %s receipt",
+		async (status) => {
+			const text = await runDeterministicViewsTurn(
+				{
+					success: true,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status,
+						viewId: "chat",
+						label: "Home",
+					}),
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+				},
+				{
+					stageOneReply: "Home is open.",
+					stageOneEffectStatus: "pending",
+					postToolReply: "The navigation request was not confirmed.",
+				},
+			);
+			expect(text).toBe("The navigation request was not confirmed.");
+		},
+	);
+
+	it.each([
+		'{"action":"VIEWS_SHOW","params":{"view":"Home"}}',
+		'{"shouldRespond":"RESPOND","contexts":["Home"]}',
+	])(
+		"does not release a pending navigation control envelope: %s",
+		async (reply) => {
+			const text = await runDeterministicViewsTurn(
+				{
+					success: true,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status: "delivered",
+						viewId: "chat",
+						label: "Home",
+					}),
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+				},
+				{
+					stageOneReply: reply,
+					stageOneEffectStatus: "pending",
+					postToolReply: "Home is open.",
+				},
+			);
+			expect(text).toBe("Home is open.");
+		},
+	);
+
+	it("does not apply navigation's delivered status to an unrelated effect", async () => {
+		const text = await runDeterministicViewsTurn(
+			{
+				success: true,
+				text: JSON.stringify({
+					effect: "app_launch",
+					status: "delivered",
+					label: "Home",
+				}),
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+			},
+			{
+				stageOneReply: "Home is open.",
+				postToolReply: "The launcher returned its current status.",
+			},
+		);
+		expect(text).toBe("The launcher returned its current status.");
 	});
 
 	it("lets the model write the final reply after a deterministic tool completes", async () => {
@@ -3086,6 +3350,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						response: "The action did not return a confirmed result.",
 					}),
 				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"Controlled review accepts the fixture uncertainty without asserting an effect.",
+					}),
+				},
 			],
 		});
 
@@ -3099,6 +3372,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(calls).toBe(0);
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_SMALL,
 			ModelType.TEXT_SMALL,
 		]);
 		expect(result.kind).toBe("planned_reply");
@@ -3182,6 +3456,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.TEXT_SMALL,
 					body: JSON.stringify({
 						response: "The action did not return a confirmed result.",
+					}),
+				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"Controlled review accepts the fixture uncertainty without asserting an effect.",
 					}),
 				},
 			],
@@ -3359,6 +3642,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						response: "The action did not return a confirmed result.",
 					}),
 				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"Controlled review accepts the fixture uncertainty without asserting an effect.",
+					}),
+				},
 			],
 		});
 
@@ -3372,6 +3664,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(calls).toBe(0);
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_SMALL,
 			ModelType.TEXT_SMALL,
 		]);
 		expect(result.kind).toBe("planned_reply");
@@ -3468,6 +3761,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						response: "The action did not return a confirmed result.",
 					}),
 				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"Controlled review accepts the fixture uncertainty without asserting an effect.",
+					}),
+				},
 			],
 		});
 
@@ -3480,6 +3782,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_SMALL,
 			ModelType.TEXT_SMALL,
 		]);
 		expect(result.kind).toBe("planned_reply");

@@ -87,7 +87,7 @@ const imessagePlugin: Plugin = {
   connectorSources: [
     {
       source: "imessage",
-      aliases: ["imessage", "messages"],
+      aliases: ["imessage", "messages", "blooio"],
       sourceKind: "passive",
       isPassive: true,
     },
@@ -99,12 +99,11 @@ const imessagePlugin: Plugin = {
   routes: [...imessageSetupRoutes, ...imessageDataRoutes],
   tests: [],
 
-  // Self-declared auto-enable: activate when the "imessage" connector is
-  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
-  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  // The integrated plugin owns both connector identities: native Messages uses
+  // `imessage`, while hosted installations are commonly authored as `blooio`.
   autoEnable: {
     envKeys: ["IMESSAGE_TRANSPORT", "IMESSAGE_ENABLED"],
-    connectorKeys: ["imessage"],
+    connectorKeys: ["imessage", "blooio"],
   },
 
   init: async (config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {

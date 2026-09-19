@@ -225,6 +225,7 @@ mock.module("../../db/helpers", () => ({
 }));
 mock.module("../../db/repositories/organization-policy-generation", () => ({
   lockOrganizationPolicy: async () => undefined,
+  lockOrganizationPolicyForRead: async () => undefined,
 }));
 mock.module("./organization-quota-policy", () => ({
   readOrganizationQuotaPolicyInTransaction: readPolicy,

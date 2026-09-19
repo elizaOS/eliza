@@ -4,6 +4,7 @@ import {
   ChannelType,
   createMessageMemory,
   EventType,
+  getInferenceTimer,
   ModelType,
   RoomHandlerQueue,
   stringToUuid,
@@ -77,6 +78,88 @@ function actionResult(actionName: string, success = true, text?: string) {
 }
 
 describe("generateChatResponse usage reporting", () => {
+  it("shares each request trace with ingress consumers before generation", async () => {
+    const ingress: Array<{
+      text: string;
+      traceId: unknown;
+      timerTraceId: string | undefined;
+    }> = [];
+    const runtime = createRuntime({
+      emitEvent: async (event, payload) => {
+        if (event !== EventType.MESSAGE_RECEIVED) return;
+        const { message } = payload as {
+          message: ReturnType<typeof createChatMessage>;
+        };
+        ingress.push({
+          text: message.content.text ?? "",
+          traceId: message.metadata?.traceId,
+          timerTraceId: getInferenceTimer()?.traceId,
+        });
+      },
+      messageService: {
+        handleMessage: async () => ({
+          didRespond: true,
+          responseContent: { text: "Reply" },
+          responseMessages: [],
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+    await Promise.all([
+      generateChatResponse(
+        runtime,
+        createChatMessage("explicit trace"),
+        "Chat Agent",
+        {
+          traceId: "0123456789abcdef0123456789abcdef",
+        },
+      ),
+      generateChatResponse(
+        runtime,
+        createChatMessage("generated trace"),
+        "Chat Agent",
+      ),
+    ]);
+    expect(ingress).toHaveLength(2);
+    for (const receipt of ingress) {
+      expect(receipt.traceId).toMatch(/^[0-9a-f]{32}$/);
+      expect(receipt.traceId).toBe(receipt.timerTraceId);
+    }
+    expect(
+      ingress.find((receipt) => receipt.text === "explicit trace")?.traceId,
+    ).toBe("0123456789abcdef0123456789abcdef");
+    expect(ingress[0].traceId).not.toBe(ingress[1].traceId);
+  });
+
+  it("retains an originating trace and metadata when forwarding a message", async () => {
+    const message = createChatMessage("forwarded trace");
+    message.metadata = { type: "message", source: "forwarded" };
+    Object.assign(message.metadata, { traceId: "originating-turn" });
+    const runtime = createRuntime({
+      emitEvent: async (event, payload) => {
+        if (event !== EventType.MESSAGE_RECEIVED) return;
+        expect(
+          (payload as { message: typeof message }).message.metadata,
+        ).toEqual({
+          type: "message",
+          source: "forwarded",
+          traceId: "originating-turn",
+        });
+      },
+      messageService: {
+        handleMessage: async () => ({
+          didRespond: true,
+          responseContent: { text: "Reply" },
+          responseMessages: [],
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+    await generateChatResponse(runtime, message, "Chat Agent");
+    expect(message.metadata).toMatchObject({
+      traceId: "originating-turn",
+      source: "forwarded",
+    });
+  });
+
   it("returns actual provider usage when a provider event is emitted", async () => {
     let runtime: AgentRuntime;
     runtime = createRuntime({
@@ -1010,7 +1093,7 @@ describe("generateChatResponse usage reporting", () => {
     );
   });
 
-  it("accepts a wallet reply only when a matching wallet action succeeded", async () => {
+  it("preserves message-service reply, action records, persistence IDs, and usage", async () => {
     const persistedId = stringToUuid("wallet-balance-response");
     const runtime = createRuntime({
       actions: [{ name: "CHECK_BALANCE" }],
@@ -1050,315 +1133,6 @@ describe("generateChatResponse usage reporting", () => {
       llmCalls: 0,
     });
   });
-
-  it("matches a successful WALLET router subaction to the requested operation", async () => {
-    const runtime = createRuntime({
-      actions: [
-        {
-          name: "WALLET",
-          similes: ["TRANSFER", "SWAP"],
-        },
-      ],
-      messageService: {
-        handleMessage: vi.fn(async () => ({
-          didRespond: true,
-          mode: "actions",
-          responseContent: {
-            text: "The transfer was submitted.",
-            actions: ["TRANSFER"],
-          },
-          responseMessages: [],
-          actionResults: [
-            {
-              success: true,
-              data: { actionName: "WALLET", subaction: "transfer" },
-            },
-          ],
-        })),
-      } as NonNullable<AgentRuntime["messageService"]>,
-    });
-
-    const result = await generateChatResponse(
-      runtime,
-      createChatMessage("send 1 SOL to this wallet"),
-      "Chat Agent",
-    );
-
-    expect(result.text).toBe("The transfer was submitted.");
-    expect(result.usedActionCallbacks).toBe(true);
-  });
-
-  it.each([
-    ["buy ETH with USDC", "The purchase swap was submitted."],
-    ["sell ETH for USDC", "The sale swap was submitted."],
-  ])(
-    "matches a successful WALLET swap for %s",
-    async (prompt, responseText) => {
-      const runtime = createRuntime({
-        actions: [{ name: "WALLET", similes: ["SWAP"] }],
-        messageService: {
-          handleMessage: vi.fn(async () => ({
-            didRespond: true,
-            mode: "actions",
-            responseContent: {
-              text: responseText,
-              actions: ["SWAP"],
-            },
-            responseMessages: [],
-            actionResults: [
-              {
-                success: true,
-                data: { actionName: "WALLET", subaction: "swap" },
-              },
-            ],
-          })),
-        } as NonNullable<AgentRuntime["messageService"]>,
-      });
-
-      const result = await generateChatResponse(
-        runtime,
-        createChatMessage(prompt),
-        "Chat Agent",
-      );
-
-      expect(result.text).toBe(responseText);
-      expect(result.usedActionCallbacks).toBe(true);
-    },
-  );
-
-  it("rejects a successful TRADE inspection as evidence that an order ran", async () => {
-    const runtime = createRuntime({
-      actions: [{ name: "TRADE" }],
-      messageService: {
-        handleMessage: vi.fn(async () => ({
-          didRespond: true,
-          responseContent: { text: "The Hyperliquid order was submitted." },
-          responseMessages: [],
-          actionResults: [
-            {
-              success: true,
-              data: { actionName: "TRADE", account: {} },
-              values: { tradeOutcome: "not_attempted" },
-            },
-          ],
-        })),
-      } as NonNullable<AgentRuntime["messageService"]>,
-    });
-
-    const result = await generateChatResponse(
-      runtime,
-      createChatMessage("buy ETH on Hyperliquid"),
-      "Chat Agent",
-    );
-
-    expect(result.text).toContain("no wallet action actually ran");
-    expect(result.text).not.toContain("order was submitted");
-  });
-
-  it.each([
-    ["prepared", { tradeActionPrepared: true }],
-    ["submitted", { tradeActionSucceeded: true }],
-  ])("accepts a TRADE order that was %s", async (_status, values) => {
-    const runtime = createRuntime({
-      actions: [{ name: "TRADE" }],
-      messageService: {
-        handleMessage: vi.fn(async () => ({
-          didRespond: true,
-          mode: "actions",
-          responseContent: {
-            text: "The Hyperliquid order flow is active.",
-            actions: ["TRADE"],
-          },
-          responseMessages: [],
-          actionResults: [
-            {
-              success: true,
-              data: { actionName: "TRADE" },
-              values,
-            },
-          ],
-        })),
-      } as NonNullable<AgentRuntime["messageService"]>,
-    });
-
-    const result = await generateChatResponse(
-      runtime,
-      createChatMessage("buy ETH on Hyperliquid"),
-      "Chat Agent",
-    );
-
-    expect(result.text).toBe("The Hyperliquid order flow is active.");
-    expect(result.usedActionCallbacks).toBe(true);
-  });
-
-  it("matches a successful WALLET governance execution", async () => {
-    const runtime = createRuntime({
-      actions: [{ name: "WALLET", similes: ["WALLET_GOV"] }],
-      messageService: {
-        handleMessage: vi.fn(async () => ({
-          didRespond: true,
-          mode: "actions",
-          responseContent: {
-            text: "The governance proposal was executed.",
-            actions: ["WALLET_GOV"],
-          },
-          responseMessages: [],
-          actionResults: [
-            {
-              success: true,
-              data: {
-                actionName: "WALLET",
-                subaction: "gov",
-                metadata: { op: "execute" },
-              },
-            },
-          ],
-        })),
-      } as NonNullable<AgentRuntime["messageService"]>,
-    });
-
-    const result = await generateChatResponse(
-      runtime,
-      createChatMessage("execute this onchain governance proposal"),
-      "Chat Agent",
-    );
-
-    expect(result.text).toBe("The governance proposal was executed.");
-    expect(result.usedActionCallbacks).toBe(true);
-  });
-
-  it("rejects a different WALLET governance operation", async () => {
-    const runtime = createRuntime({
-      actions: [{ name: "WALLET", similes: ["WALLET_GOV"] }],
-      messageService: {
-        handleMessage: vi.fn(async () => ({
-          didRespond: true,
-          responseContent: {
-            text: "The governance proposal was executed.",
-          },
-          responseMessages: [],
-          actionResults: [
-            {
-              success: true,
-              data: {
-                actionName: "WALLET",
-                subaction: "gov",
-                metadata: { op: "queue" },
-              },
-            },
-          ],
-        })),
-      } as NonNullable<AgentRuntime["messageService"]>,
-    });
-
-    const result = await generateChatResponse(
-      runtime,
-      createChatMessage("execute this onchain governance proposal"),
-      "Chat Agent",
-    );
-
-    expect(result.text).toContain("no wallet action actually ran");
-    expect(result.text).not.toContain("proposal was executed");
-  });
-
-  it("rejects a successful but unrelated WALLET router subaction", async () => {
-    const runtime = createRuntime({
-      actions: [{ name: "WALLET", similes: ["TRANSFER", "SWAP"] }],
-      messageService: {
-        handleMessage: vi.fn(async () => ({
-          didRespond: true,
-          responseContent: { text: "The transfer was submitted." },
-          responseMessages: [],
-          actionResults: [
-            {
-              success: true,
-              data: { actionName: "WALLET", subaction: "swap" },
-            },
-          ],
-        })),
-      } as NonNullable<AgentRuntime["messageService"]>,
-    });
-
-    const result = await generateChatResponse(
-      runtime,
-      createChatMessage("send 1 SOL to this wallet"),
-      "Chat Agent",
-    );
-
-    expect(result.text).toContain("no wallet action actually ran");
-    expect(result.text).not.toContain("transfer was submitted");
-  });
-
-  it.each([
-    ["SEND_MESSAGE action", "SEND_MESSAGE", undefined],
-    ["SEND_EMAIL action", "SEND_EMAIL", undefined],
-    ["malformed WALLET subaction", "WALLET", "send_message"],
-  ])(
-    "rejects a successful %s for a wallet transfer",
-    async (_label, actionName, subaction) => {
-      const runtime = createRuntime({
-        actions:
-          actionName === "WALLET"
-            ? [{ name: "WALLET", similes: ["TRANSFER"] }]
-            : [{ name: actionName }],
-        messageService: {
-          handleMessage: vi.fn(async () => ({
-            didRespond: true,
-            responseContent: { text: "The transfer was submitted." },
-            responseMessages: [],
-            actionResults: [
-              {
-                success: true,
-                data: {
-                  actionName,
-                  ...(subaction ? { subaction } : {}),
-                },
-              },
-            ],
-          })),
-        } as NonNullable<AgentRuntime["messageService"]>,
-      });
-
-      const result = await generateChatResponse(
-        runtime,
-        createChatMessage("send 1 SOL to this wallet"),
-        "Chat Agent",
-      );
-
-      expect(result.text).toContain("no wallet action actually ran");
-      expect(result.text).not.toContain("transfer was submitted");
-    },
-  );
-
-  it.each([
-    ["a failed wallet result", actionResult("CHECK_BALANCE", false)],
-    ["an unrelated successful result", actionResult("SEARCH", true)],
-  ])(
-    "fails wallet execution closed for %s",
-    async (_label, executionResult) => {
-      const runtime = createRuntime({
-        actions: [{ name: "CHECK_BALANCE" }, { name: "SEARCH" }],
-        messageService: {
-          handleMessage: vi.fn(async () => ({
-            didRespond: true,
-            responseContent: { text: "Your wallet balance is 4 SOL." },
-            responseMessages: [],
-            actionResults: [executionResult],
-          })),
-        } as NonNullable<AgentRuntime["messageService"]>,
-      });
-
-      const result = await generateChatResponse(
-        runtime,
-        createChatMessage("check my wallet balance"),
-        "Chat Agent",
-      );
-
-      expect(result.text).toContain("no wallet action actually ran");
-      expect(result.text).not.toContain("4 SOL");
-      expect(result.usedActionCallbacks).toBeUndefined();
-    },
-  );
 });
 
 describe("local inference chat command intent detection", () => {

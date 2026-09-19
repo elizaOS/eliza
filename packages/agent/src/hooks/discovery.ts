@@ -6,7 +6,11 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { logger, resolveStateDir } from "@elizaos/core";
+import {
+  logger,
+  parseFrontmatterDocument,
+  resolveStateDir,
+} from "@elizaos/core";
 import type {
   ElizaHookMetadata,
   Hook,
@@ -25,53 +29,57 @@ const HANDLER_NAMES = [
   "index",
 ];
 
-function parseFrontmatter(content: string): ParsedHookFrontmatter | null {
-  const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
-  if (!fmMatch) return null;
-
-  const fmBlock = fmMatch[1];
+function decodeLegacyHookFrontmatter(
+  raw: string,
+): ParsedHookFrontmatter | null {
   const result: ParsedHookFrontmatter = { name: "", description: "" };
-
-  for (const line of fmBlock.split("\n")) {
-    const kvMatch = line.match(/^(\w+):\s*(.+)/);
-    if (!kvMatch) continue;
-    const [, key, rawValue] = kvMatch;
+  for (const line of raw.split("\n")) {
+    const match = line.match(/^(\w+):\s*(.+)/);
+    if (!match) continue;
+    const [, key, rawValue] = match;
     const value = rawValue.replace(/^["']|["']$/g, "").trim();
-
-    switch (key) {
-      case "name":
-        result.name = value;
-        break;
-      case "description":
-        result.description = value;
-        break;
-      case "homepage":
-        result.homepage = value;
-        break;
-      case "metadata":
+    if (key === "name") result.name = value;
+    else if (key === "description") result.description = value;
+    else if (key === "homepage") result.homepage = value;
+    else if (key === "metadata") {
+      const metadataText = raw.slice(raw.indexOf(line) + line.indexOf(":") + 1);
+      const json = metadataText.match(/\{[\s\S]*\}/)?.[0];
+      if (json) {
         try {
-          const metaStart = fmBlock.indexOf("metadata:");
-          if (metaStart !== -1) {
-            const metaRest = fmBlock
-              .slice(metaStart + "metadata:".length)
-              .trim();
-            const jsonMatch = metaRest.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-              result.metadata = JSON.parse(jsonMatch[0]);
-            }
-          }
+          result.metadata = JSON.parse(
+            json,
+          ) as ParsedHookFrontmatter["metadata"];
         } catch {
-          try {
-            result.metadata = JSON.parse(value);
-          } catch {
-            logger.warn(`[hooks] Failed to parse metadata in HOOK.md`);
-          }
+          // error-policy:J3 legacy malformed metadata stays explicitly absent.
         }
-        break;
+      }
     }
   }
-
   return result.name ? result : null;
+}
+
+function parseFrontmatter(content: string): ParsedHookFrontmatter | null {
+  const parsed = parseFrontmatterDocument(content);
+  if (parsed.kind === "invalid") {
+    return parsed.raw ? decodeLegacyHookFrontmatter(parsed.raw) : null;
+  }
+  if (parsed.kind === "none") return null;
+  const { name, description, homepage, metadata } = parsed.frontmatter;
+  if (typeof name !== "string" || !name.trim()) return null;
+  if (typeof description !== "string") return null;
+  const result: ParsedHookFrontmatter = {
+    name: name.trim(),
+    description: description.trim(),
+  };
+  if (typeof homepage === "string") result.homepage = homepage.trim();
+  if (
+    typeof metadata === "object" &&
+    metadata !== null &&
+    !Array.isArray(metadata)
+  ) {
+    result.metadata = metadata as ParsedHookFrontmatter["metadata"];
+  }
+  return result;
 }
 
 function extractMetadata(

@@ -822,6 +822,9 @@ export async function executeBrowserWorkspaceCommand(
       return {
         mode: getBrowserWorkspaceMode(env),
         subaction: command.subaction,
+        ...(!isBrowserWorkspaceBridgeConfigured(env)
+          ? { pageContentObserved: false }
+          : {}),
         tab,
       };
     }
@@ -833,6 +836,9 @@ export async function executeBrowserWorkspaceCommand(
       return {
         mode: getBrowserWorkspaceMode(env),
         subaction: command.subaction,
+        ...(!isBrowserWorkspaceBridgeConfigured(env)
+          ? { pageContentObserved: false }
+          : {}),
         tab: await navigateBrowserWorkspaceTab(
           {
             id,

@@ -296,6 +296,25 @@ export async function injectFullCapabilityHost(page: Page): Promise<void> {
 // network boundary (the single `persistFirstRun` funnel in first-run-finish.ts).
 export interface OnboardingRouteState {
   firstRunPosts: unknown[];
+  /**
+   * Bodies of every `PUT /api/config` the page issued. Remote adoption completes
+   * first-run on the host with a `meta.firstRunComplete` patch (see
+   * `adopt-remote-first-run.ts`) instead of `POST /api/first-run`, so the
+   * first-run status route derives completion from both writes.
+   */
+  configWrites: Record<string, unknown>[];
+}
+
+/** True once a config write carried the host first-run completion marker. */
+export function hostFirstRunCompleted(state: OnboardingRouteState): boolean {
+  return state.configWrites.some((write) => {
+    const meta = write.meta;
+    return (
+      typeof meta === "object" &&
+      meta !== null &&
+      (meta as { firstRunComplete?: unknown }).firstRunComplete === true
+    );
+  });
 }
 
 async function routeFirstRunIncomplete(
@@ -328,7 +347,7 @@ async function routeFirstRunIncomplete(
       return;
     }
     await fulfillJson(route, {
-      complete: state.firstRunPosts.length > 0,
+      complete: state.firstRunPosts.length > 0 || hostFirstRunCompleted(state),
       cloudProvisioned: false,
     });
   });
@@ -349,22 +368,32 @@ async function routeFirstRunIncomplete(
 export async function installHomeRoutes(
   page: Page,
 ): Promise<OnboardingRouteState> {
-  const state: OnboardingRouteState = { firstRunPosts: [] };
+  const state: OnboardingRouteState = { firstRunPosts: [], configWrites: [] };
   await installDefaultAppRoutes(page);
   await routeFirstRunIncomplete(page, state);
 
+  const homeConfig = {
+    cloud: { enabled: false },
+    media: {},
+    plugins: { entries: {} },
+    ui: { avatarIndex: 1 },
+    wallet: {},
+  };
   await page.route("**/api/config", async (route) => {
-    if (route.request().method() !== "GET") {
+    const method = route.request().method();
+    if (method === "PUT") {
+      // The real route merges the patch into the host config; the harness only
+      // needs the completion marker to become visible to /api/first-run/status.
+      const patch = route.request().postDataJSON() as Record<string, unknown>;
+      state.configWrites.push(patch);
+      await fulfillJson(route, { ...homeConfig, ...patch });
+      return;
+    }
+    if (method !== "GET") {
       await route.fallback();
       return;
     }
-    await fulfillJson(route, {
-      cloud: { enabled: false },
-      media: {},
-      plugins: { entries: {} },
-      ui: { avatarIndex: 1 },
-      wallet: {},
-    });
+    await fulfillJson(route, homeConfig);
   });
 
   await page.route("**/api/stream/settings", async (route) => {
@@ -998,7 +1027,7 @@ export async function completeOnboardingToHome(
   page: Page,
   click: (locator: Locator) => Promise<void>,
   opts: { state: OnboardingRouteState; tutorial?: "start" | "skip" } = {
-    state: { firstRunPosts: [] },
+    state: { firstRunPosts: [], configWrites: [] },
   },
 ): Promise<{ surface: Locator }> {
   const { state, tutorial = "skip" } = opts;
@@ -1151,11 +1180,9 @@ async function expectCloudOnlyCompletion(
   expectedDetent: "full" | "collapsed" = "full",
 ): Promise<{ surface: Locator }> {
   // Completion fires at provisioning success and returns the user to the home
-  // surface. Cloud-only completion rides the SAME full→half falling-edge settle
-  // as chooser mode (ChatOverlay's wasFirstRunOpenRef effect →
-  // goToDetent("half"); ChatOverlay.firstrun.test), so the sheet rests
-  // at the half detent with the home revealed behind it and the composer
-  // unlocked. The durable contract is asserted on that settle, the onboarded
+  // surface. An interactive sign-in retains the completed turn at full height;
+  // silent session restoration may close it immediately. Both are completed,
+  // unlocked home states. The durable contract is asserted on that settle, the onboarded
   // home, the absent tutorial gate, and the exactly-once POST. The wrap-up copy
   // is covered by the conductor unit suite.
   await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
@@ -1341,9 +1368,34 @@ export async function connectRemoteFirstRunToHome(
 
   await expectChatFirstOnboarding(page);
 
+  // The device starts unconfigured, but the adopted host is already ready.
+  // Switch this endpoint before connecting; adoption must not configure it again.
+  await page.route("**/api/first-run/status", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await fulfillJson(route, { complete: true, cloudProvisioned: false });
+  });
+
   const apiBase =
     opts.apiBase ??
     (await page.evaluate(() => window.location.origin.toString()));
+
+  // Adoption probes the host before writing its completion marker and refuses
+  // one that is not running and able to respond; the default smoke status
+  // omits `canRespond`, so present the adopted host as ready. Later routes win.
+  await page.route("**/api/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, {
+      state: "running",
+      canRespond: true,
+      agentName: "Playwright Smoke",
+      model: "ui-smoke",
+      startedAt: Date.now() - 60_000,
+      uptime: 60_000,
+    });
+  });
 
   await page.evaluate((gatewayUrl) => {
     document.dispatchEvent(
@@ -1357,12 +1409,18 @@ export async function connectRemoteFirstRunToHome(
     );
   }, apiBase);
 
+  // Remote adoption opens the completed conversation at full height. Reveal
+  // Home through the normal dismissal gesture before checking its contents.
+  await expectOnboardingSettleToFull(page);
+  await dismissPermissionPrimingIfShown(page);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
+    "data-detent",
+    "collapsed",
+  );
   const surface = page.getByTestId("home-launcher-surface");
   await expect(surface).toBeVisible({ timeout: 60_000 });
   await expect(surface).toHaveAttribute("data-page", "home");
-  // Remote adoption flips firstRunComplete too — same settle-to-half edge.
-  await expectOnboardingSettleToFull(page);
-  await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -1379,9 +1437,9 @@ export async function connectRemoteFirstRunToHome(
   ).toBe("1");
 
   expect(
-    state.firstRunPosts.length <= 1,
-    "remote first-run adoption must not double-submit first-run setup",
-  ).toBe(true);
+    state.firstRunPosts.length,
+    "adopting a configured remote must not submit first-run setup",
+  ).toBe(0);
 
   const activeServer = await page.evaluate(() =>
     localStorage.getItem("elizaos:active-server"),

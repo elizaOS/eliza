@@ -1,8 +1,15 @@
 /** Verifies the manual workflow that owns the protected staging re-review boundary. */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { parse } from "yaml";
 
 type Step = {
@@ -40,6 +47,38 @@ const step = (name: string) => {
 };
 
 describe("personal Dedicated staging re-review workflow", () => {
+  test.each([0, 7])(
+    "replays complete contract output and preserves runner exit %i",
+    (exitCode) => {
+      const directory = mkdtempSync(join(tmpdir(), "preview-contract-output-"));
+      const runner = join(directory, "bun");
+      const output = "contract output\n".repeat(20000);
+      const command = step("Validate operator contracts").run;
+      if (!command) throw new Error("Contract validation command is missing");
+      try {
+        writeFileSync(
+          runner,
+          `#!${process.execPath}\nimport { writeFileSync } from "node:fs";\nwriteFileSync(1, "contract start\\n");\nwriteFileSync(2, ${JSON.stringify(output)});\nprocess.exit(${exitCode});\n`,
+        );
+        chmodSync(runner, 0o755);
+        const result = Bun.spawnSync(["bash", "-e", "-c", command], {
+          env: {
+            ...process.env,
+            PATH: `${directory}:${process.env.PATH}`,
+            TMPDIR: directory,
+          },
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        expect(result.exitCode).toBe(exitCode);
+        expect(result.stdout.toString()).toBe(`contract start\n${output}`);
+        expect(result.stderr.toString()).toBe("");
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   test("is manual, staging protected, serialized, and GitHub read-only", () => {
     expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
     expect(workflow.permissions).toEqual({ contents: "read" });
@@ -91,7 +130,7 @@ describe("personal Dedicated staging re-review workflow", () => {
         cmd: ["bash", "-c", guard.run],
         env: {
           ...process.env,
-          REF_NAME: "refs/heads/develop",
+          REF_NAME: "refs/heads/staging",
           EXPECTED_COMMIT: "a".repeat(40),
           CHECKED_OUT_COMMIT: "a".repeat(40),
           MODE: "execute",

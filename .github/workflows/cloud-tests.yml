@@ -1,10 +1,15 @@
 name: Cloud Tests
 
-# Runs cloud's lint/typecheck/unit/integration/playwright suite when cloud-* packages or tests change.
-# Source: cloud/.github/workflows/tests.yml in the original elizaOS/cloud repo.
+# Cloud owns deterministic database, service and browser contracts.
+# Full branch callers delegate duplicate source checks to canonical CI.
 
 on:
   workflow_call:
+    inputs:
+      source_checks_in_canonical_ci:
+        description: The caller also requires canonical CI, which owns full workspace lint/typecheck
+        type: boolean
+        default: false
   workflow_dispatch:
 
 # Develop Full owns latest-tip cancellation for called runs.
@@ -31,6 +36,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/cloud-setup-test-env
       - name: Lint and typecheck cloud workspaces
+        if: ${{ !inputs.source_checks_in_canonical_ci }}
         run: bun run verify:cloud
 
       - name: Tenant-scope gate (no unscoped pk-only reads of apps data-plane) (#9853)
@@ -56,26 +62,34 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/cloud-setup-test-env
+      # Runner self-tests exercise the complete supervisor contract independently
+      # of the selected cloud shard; shard 1 owns them for this workflow call.
       # Guards the batch runner's output-flush contract: a failing batch must
       # surface its diagnostic instead of being swallowed by a process.exit()
       # that truncates buffered stdout (the #16062 silent exit-1 regression).
       - name: Batch runner flush-integrity self-test
+        if: matrix.shard == 1
         run: node packages/scripts/test-cloud-run-flush.self-test.mjs
       - name: Batch runner helper self-test
+        if: matrix.shard == 1
         run: node packages/scripts/test-cloud-run-helpers.self-test.mjs
       - name: Batch runner shard execution self-test
+        if: matrix.shard == 1
         run: node packages/scripts/test-cloud-run-shards.self-test.mjs
       - name: Batch runner unit tests
+        if: matrix.shard == 1
         run: bun test packages/scripts/__tests__/test-cloud-run.test.mjs
       # Guards the wall-clock watchdog (#17245): a wedged child and its
       # descendants must be terminated without stalling the remaining batches.
       - name: Batch runner process-tree watchdog self-test
+        if: matrix.shard == 1
         run: node packages/scripts/test-cloud-run-watchdog.self-test.mjs
       # Guards the clean-install preflight (#16187): `bun run test:cloud` must
       # build the missing @elizaos/core dist / generated keyword modules itself
       # instead of dying in `Cannot find module` cascades after a frozen
       # install that skipped lifecycle scripts.
       - name: Batch runner clean-install preflight self-test
+        if: matrix.shard == 1
         run: node packages/scripts/test-cloud-run-preflight.self-test.mjs
       - name: Run cloud unit tests
         run: bun run test:cloud

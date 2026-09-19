@@ -113,6 +113,7 @@ import type {
   SandboxExactRestoreCreateConfig,
   SandboxExactRestoreTarget,
   SandboxHandle,
+  SandboxHealthContext,
   SandboxHealthOutcome,
   SandboxProvider,
   SandboxReplacementCleanupLocator,
@@ -2157,6 +2158,7 @@ export async function registerAgentWithSteward(
 // ---------------------------------------------------------------------------
 
 export class DockerSandboxProvider implements SandboxProvider {
+  readonly computeFundingCapability = "host-lease-v1" as const;
   readonly replacementCreateSettlementCapability = "exact-success" as const;
   readonly exactRestoreCreateCapability = "stopped-quarantine-v1" as const;
 
@@ -2260,6 +2262,20 @@ export class DockerSandboxProvider implements SandboxProvider {
           severity: "fatal",
         },
       );
+    }
+
+    // Customer runtime must enter through committed funding, including image
+    // replacements. Reject before node selection, autoscale or SSH effects.
+    // Exact restore returned above with a stopped, network-isolated candidate;
+    // the explicit platform pool remains separately operator-controlled.
+    if (
+      config.organizationId !== WARM_POOL_ORG_ID &&
+      typeof config.startFundedContainer !== "function"
+    ) {
+      throw new ElizaError("Dedicated container creation requires committed runtime funding", {
+        code: "SANDBOX_COMPUTE_FUNDING_REQUIRED",
+        context: { agentId: config.agentId, organizationId: config.organizationId },
+      });
     }
 
     // Freeze one attempt identity at the public boundary. It is one-shot: an
@@ -3236,6 +3252,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         {
           image: resolvedImage,
           platform: imagePlatform,
+          requiredMemoryMb: containerMemoryMb,
         },
         remoteCompletionTracker,
       );
@@ -3819,35 +3836,34 @@ export class DockerSandboxProvider implements SandboxProvider {
             );
           },
         }),
+        { requireFullId: Boolean(config.startFundedContainer) },
       );
       createdContainerId = containerId;
-      const persistCreatedReplacement = config.onReplacementCreated;
-      if (persistCreatedReplacement) {
-        await persistCreatedReplacement({
-          sandboxId: containerName,
-          bridgeUrl: `http://${hostname}:${bridgePort}`,
-          healthUrl: `http://${hostname}:${webUiPort}/api`,
-          metadata: {
-            provider: "docker",
-            nodeId,
-            hostname,
-            ...replacementPlacementMetadata,
-            containerName,
-            bridgePort,
-            webUiPort,
-            agentId,
-            volumePath,
-            dockerImage: resolvedImage,
-            imageDigest: null,
-            replacementAttemptId,
-            containerId,
-            allocationCounted: Boolean(dbNode),
-            vpnNodeName: vpnEnvVars.TS_HOSTNAME,
-            vpnRegistrationStartedAt,
-            previousVpnNodeId,
-          } satisfies DockerSandboxMetadata,
-        });
-      }
+      const createdHandle: SandboxHandle = {
+        sandboxId: containerName,
+        bridgeUrl: `http://${hostname}:${bridgePort}`,
+        healthUrl: `http://${hostname}:${webUiPort}/api`,
+        metadata: {
+          provider: "docker",
+          nodeId,
+          hostname,
+          ...replacementPlacementMetadata,
+          containerName,
+          bridgePort,
+          webUiPort,
+          agentId,
+          volumePath,
+          dockerImage: resolvedImage,
+          imageDigest: null,
+          replacementAttemptId,
+          containerId,
+          allocationCounted: Boolean(dbNode),
+          vpnNodeName: vpnEnvVars.TS_HOSTNAME,
+          vpnRegistrationStartedAt,
+          previousVpnNodeId,
+        } satisfies DockerSandboxMetadata,
+      };
+      await config.onReplacementCreated?.(createdHandle);
 
       // Pre-seed the cloud runtime config on the HOST side of the
       // `${volumePath}/eliza:/root/.eliza` mount BEFORE starting the container,
@@ -3871,7 +3887,11 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
 
-      await ssh.exec(`docker start ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+      if (config.startFundedContainer) {
+        await config.startFundedContainer(createdHandle);
+      } else {
+        await ssh.exec(`docker start ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+      }
       logger.info(
         `[docker-sandbox] Container created on ${nodeId}: ${containerId} (${containerName})`,
       );
@@ -4358,6 +4378,9 @@ export class DockerSandboxProvider implements SandboxProvider {
       nodeId,
       hostname,
       ...replacementPlacementMetadata,
+      nodeSshPort: sshPort,
+      nodeSshUser: sshUser,
+      nodeHostKeyFingerprint: hostKeyFingerprint,
       containerName,
       bridgePort,
       webUiPort,
@@ -4400,9 +4423,11 @@ export class DockerSandboxProvider implements SandboxProvider {
     {
       image,
       platform,
+      requiredMemoryMb,
     }: {
       image: string;
       platform?: string;
+      requiredMemoryMb: number;
     },
     remoteCompletionTracker?: RemoteCompletionTracker,
   ): Promise<DockerNode | null> {
@@ -4441,6 +4466,7 @@ export class DockerSandboxProvider implements SandboxProvider {
           node &&
           (await dockerNodeManager.ensureNodeReady(node, {
             requiredPlatform: platform,
+            ...(requiredMemoryMb > 0 ? { requiredMemoryMb } : {}),
           }))
         ) {
           logger.info("[docker-sandbox] Autoscaled Docker node is ready", {
@@ -5299,13 +5325,14 @@ export class DockerSandboxProvider implements SandboxProvider {
    * abandonment policy. The old container may resume when its node returns, so
    * an unresolved stop must retain the database fence and block replacement.
    */
-  async stopForReplacement(sandboxId: string): Promise<void> {
-    // Suspend, shutdown, sleep, warm-claim retire and ghost cleanup all route
-    // here. None has a durable generation to own the slot, and each stops
-    // exactly once under a fence, so the provider still releases capacity for
-    // them — the same per-operation ownership `stopOnSpecificNodeWithPolicy`
-    // already declares.
-    await this.stopWithPolicy(sandboxId, false, true);
+  async stopForReplacement(
+    sandboxId: string,
+    options?: { readonly releaseCapacity?: false },
+  ): Promise<void> {
+    // Legacy callers retain provider-owned slot release. Paid sleep opts out:
+    // its database transaction recounts remaining workloads so a retry after
+    // physical removal cannot decrement a live sibling's allocation.
+    await this.stopWithPolicy(sandboxId, false, options?.releaseCapacity !== false);
   }
 
   private async stopWithPolicy(
@@ -5751,8 +5778,58 @@ export class DockerSandboxProvider implements SandboxProvider {
     return false;
   }
 
-  async checkHealth(handle: SandboxHandle): Promise<boolean> {
-    return (await this.checkHealthDetailed(handle)).ready;
+  /** Resolve only the candidate handle; canonical placement may still name its predecessor. */
+  private candidateHealthPlacement(handle: SandboxHandle): ContainerMeta {
+    const meta = handle.metadata;
+    const validPort = (value: unknown): value is number =>
+      typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= 65_535;
+    if (
+      !meta ||
+      meta.provider !== "docker" ||
+      typeof meta.nodeId !== "string" ||
+      !meta.nodeId.trim() ||
+      typeof meta.hostname !== "string" ||
+      !meta.hostname.trim() ||
+      typeof meta.agentId !== "string" ||
+      typeof meta.containerName !== "string" ||
+      meta.containerName !== handle.sandboxId ||
+      !validPort(meta.bridgePort) ||
+      !validPort(meta.webUiPort) ||
+      !validPort(meta.nodeSshPort) ||
+      typeof meta.nodeSshUser !== "string" ||
+      !meta.nodeSshUser.trim() ||
+      (meta.nodeHostKeyFingerprint !== undefined && typeof meta.nodeHostKeyFingerprint !== "string")
+    ) {
+      throw new ElizaError("Candidate health requires complete matching Docker placement", {
+        code: "SANDBOX_CANDIDATE_HEALTH_PLACEMENT_INVALID",
+      });
+    }
+    try {
+      if (meta.containerName !== getContainerName(meta.agentId)) {
+        throw new Error("Candidate container does not match its agent");
+      }
+    } catch (cause) {
+      // error-policy:J3 invalid candidate identity must not fall back to canonical placement.
+      throw new ElizaError("Candidate health requires a matching Docker identity", {
+        code: "SANDBOX_CANDIDATE_HEALTH_PLACEMENT_INVALID",
+        cause,
+      });
+    }
+    return {
+      nodeId: meta.nodeId,
+      hostname: meta.hostname,
+      containerName: meta.containerName,
+      agentId: meta.agentId,
+      bridgePort: meta.bridgePort,
+      webUiPort: meta.webUiPort,
+      sshPort: meta.nodeSshPort,
+      sshUser: meta.nodeSshUser,
+      hostKeyFingerprint: meta.nodeHostKeyFingerprint,
+    };
+  }
+
+  async checkHealth(handle: SandboxHandle, context?: SandboxHealthContext): Promise<boolean> {
+    return (await this.checkHealthDetailed(handle, context)).ready;
   }
 
   /**
@@ -5761,8 +5838,14 @@ export class DockerSandboxProvider implements SandboxProvider {
    * reached the container as RETRYABLE rather than a terminal failure. See
    * {@link SandboxHealthVerdict}.
    */
-  async checkHealthDetailed(handle: SandboxHandle): Promise<SandboxHealthOutcome> {
-    const meta = await this.resolveContainer(handle.sandboxId);
+  async checkHealthDetailed(
+    handle: SandboxHandle,
+    context: SandboxHealthContext = { kind: "canonical" },
+  ): Promise<SandboxHealthOutcome> {
+    const meta =
+      context.kind === "candidate"
+        ? this.candidateHealthPlacement(handle)
+        : await this.resolveContainer(handle.sandboxId);
     const deadline = Date.now() + HEALTH_CHECK_TIMEOUT_MS;
 
     // When the agent is reachable over the headscale mesh, validate THAT
@@ -5788,11 +5871,12 @@ export class DockerSandboxProvider implements SandboxProvider {
       const nodeHealth = await this.pollSshDockerHealth(
         meta,
         Date.now() + HEALTH_CHECK_SSH_FALLBACK_TIMEOUT_MS,
+        context,
       );
       return nodeHealth.ready ? { ready: false, verdict: "ingress_unresolved" } : nodeHealth;
     }
 
-    return this.pollSshDockerHealth(meta, deadline);
+    return this.pollSshDockerHealth(meta, deadline, context);
   }
 
   /**
@@ -5805,6 +5889,7 @@ export class DockerSandboxProvider implements SandboxProvider {
   private async pollSshDockerHealth(
     meta: ContainerMeta,
     deadline: number,
+    context: SandboxHealthContext = { kind: "canonical" },
   ): Promise<SandboxHealthOutcome> {
     // The budget varies by caller (full window standalone, short window as the
     // tailnet fallback), so log the actual one instead of a constant.
@@ -5823,9 +5908,9 @@ export class DockerSandboxProvider implements SandboxProvider {
     let reachedContainer = false;
 
     const runOneProbe = async (): Promise<"ready" | "not_ready" | "transport"> => {
-      // Placement-affecting jobs can overlap the health wait, so each probe
-      // reads the current node before dialing docker on that host.
-      current = await this.refreshNodeMeta(current);
+      // Established probes follow committed placement changes. A pre-cutover
+      // candidate must retain its captured node while the predecessor is canonical.
+      if (context.kind === "canonical") current = await this.refreshNodeMeta(current);
       const ssh = DockerSSHClient.getClient(
         current.hostname,
         current.sshPort,

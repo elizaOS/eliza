@@ -278,9 +278,11 @@ describe("LifeOps raw route owner/admin gate", () => {
   it("mounts every agreement mutation and preview behind the owner gate", () => {
     const agreementRoutes = [
       ["GET", "/api/lifeops/agreements"],
-      ["POST", "/api/lifeops/agreements"],
       ["GET", "/api/lifeops/agreements/:id"],
       ["GET", "/api/lifeops/agreements/:id/guest-projection"],
+      ["GET", "/api/lifeops/agreements/:id/guest-options"],
+      ["GET", "/api/lifeops/agreements/:id/review"],
+      ["POST", "/api/lifeops/agreements/:id/review"],
       ["GET", "/api/lifeops/agreements/:id/download"],
       ["POST", "/api/lifeops/agreements/:id/obligations"],
       ["GET", "/api/lifeops/agreements/:id/pins"],
@@ -333,6 +335,41 @@ describe("LifeOps raw route owner/admin gate", () => {
       expect(findRoute(type, path).public).not.toBe(true);
     }
   });
+
+  it.each([
+    ["POST", "/api/lifeops/account-handoffs"],
+    ["GET", "/api/lifeops/account-handoffs/active"],
+    ["GET", "/api/lifeops/account-handoffs/:operationId"],
+    ["POST", "/api/lifeops/account-handoffs/:operationId/cancel"],
+    ["POST", "/api/lifeops/agreements/:id/export"],
+    ["GET", "/api/lifeops/agreements/pin-targets"],
+    ["GET", "/api/lifeops/family-workflows/email-options"],
+    [
+      "POST",
+      "/api/lifeops/family-workflows/packets/:packetId/drafts/:draftVersion/revision",
+    ],
+    ["GET", "/api/lifeops/agreements/:id/review"],
+    ["POST", "/api/lifeops/agreements/:id/review"],
+  ] as const)(
+    "denies unauthenticated %s %s before accessing family data",
+    async (method, path) => {
+      const route = findRoute(method, path);
+      const res = createResponse();
+      await route.handler(
+        createRequest(
+          path.replace(":packetId", "packet-1").replace(":draftVersion", "1"),
+          {
+            "x-eliza-entity-id": "owner-1",
+          },
+          { method },
+        ) as never,
+        res as never,
+        createRuntime() as never,
+      );
+      expect(res.statusCode).toBe(401);
+      expect(JSON.parse(res.body)).toEqual({ error: "Unauthorized" });
+    },
+  );
 
   it("does not wrap public OAuth callback routes with the owner/admin gate", async () => {
     const route = findRoute("GET", "/api/connectors/google/oauth/callback");

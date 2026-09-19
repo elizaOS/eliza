@@ -1,8 +1,13 @@
 /** Reply generation can fail independently of an action's committed effects. */
+import { getActionRoutingContext } from "../runtime/action-routing-context";
 import type { ActionResult } from "./components";
 
 export interface ActionReplyFailure {
-	kind: "provider_issue" | "rate_limited" | "no_provider";
+	kind:
+		| "provider_issue"
+		| "rate_limited"
+		| "no_provider"
+		| "reply_generation_error";
 	code: string;
 	/** System status, never action-owned conversational fallback prose. */
 	message: string;
@@ -12,7 +17,19 @@ export interface ActionReplyFailure {
 
 export type GroundedActionReply =
 	| { kind: "model"; text: string }
+	/** Complete action-specific model input, not user-facing prose. */
+	| { kind: "deferred"; grounding: string }
 	| { kind: "unavailable"; failure: ActionReplyFailure };
+
+/** Explicit execution ownership. Direct/background callers keep local rendering. */
+export function getActionReplyOwner(
+	messageId: string | undefined,
+): "planner" | undefined {
+	const context = getActionRoutingContext();
+	return messageId && context?.messageId === messageId
+		? context.replyOwner
+		: undefined;
+}
 
 export function createUnavailableGroundedActionReply(
 	args: Pick<ActionReplyFailure, "kind" | "code">,
@@ -38,7 +55,8 @@ export function normalizeActionReplyFailure(
 	if (
 		(record.kind !== "provider_issue" &&
 			record.kind !== "rate_limited" &&
-			record.kind !== "no_provider") ||
+			record.kind !== "no_provider" &&
+			record.kind !== "reply_generation_error") ||
 		typeof record.code !== "string" ||
 		!record.code.trim() ||
 		typeof record.message !== "string" ||
@@ -75,6 +93,25 @@ export function applyGroundedActionReply(
 	reply: GroundedActionReply,
 ): ActionResult {
 	const settled = { ...result };
+	if (reply.kind === "deferred") {
+		settled.data = { ...settled.data, replyGrounding: reply.grounding };
+		if (settled.promptDataMode === "replace-data") {
+			settled.promptData = {
+				...settled.promptData,
+				replyGrounding: reply.grounding,
+			};
+		}
+		settled.transcriptVisibility = "internal";
+		settled.turnComplete = false;
+		delete settled.userFacingText;
+		delete settled.verifiedUserFacing;
+		delete settled.userFacingEffectReceiptIds;
+		delete settled.replyFailure;
+		delete settled.modelReplyRequired;
+		delete settled.modelReplyFallback;
+		delete settled.continueChain;
+		return settled;
+	}
 	if (reply.kind === "model") {
 		settled.text = reply.text;
 		if (settled.userFacingText !== undefined)

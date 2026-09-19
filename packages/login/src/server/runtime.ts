@@ -166,6 +166,10 @@ async function startOwnedLogin(options: {
     const server = Bun.serve({
       hostname: options.hostname,
       port,
+      // OAuth can consume its one-time state before account provisioning
+      // finishes. Keep the response socket alive beyond the Cloud proxy's
+      // 25-second deadline so a dropped connection cannot provoke a replay.
+      idleTimeout: 30,
       fetch(request, listener) {
         return app.fetch(request, {
           [SOCKET_PEER_ENV_KEY]: listener.requestIP(request)?.address ?? null,

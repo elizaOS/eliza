@@ -1,4 +1,8 @@
-/** Real-PGlite proofs for the v2 backup catalogue and exact-key GC outbox. */
+/**
+ * Real-PGlite proofs for the v2 backup catalogue and exact-key GC outbox.
+ * Settlement expiry uses a controlled post-validation clock; claim-time expiry
+ * separately exercises real database delay and rollback.
+ */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { Buffer } from "node:buffer";
@@ -21,6 +25,7 @@ import {
   createAgentBackupManifestV3,
 } from "@elizaos/shared";
 import { eq, sql } from "drizzle-orm";
+import * as primaryDatabaseClock from "../primary-database-clock";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -3516,13 +3521,24 @@ describe("agent backup catalogue on primary PGlite", () => {
     const [claim] = await claimAgentBackupGc({
       ownerId: "expiry-gc-worker",
       limit: 1,
-      leaseMs: 20,
+      leaseMs: 60_000,
     });
     expect(claim).toBeDefined();
+    let validationFinished = false;
+    const originalReadClock = primaryDatabaseClock.readPostLockDatabaseNow;
+    const clockSpy = spyOn(primaryDatabaseClock, "readPostLockDatabaseNow").mockImplementation(
+      async (tx) => {
+        const databaseNow = await originalReadClock(tx);
+        return validationFinished
+          ? new Date(claim!.outbox.lease_expires_at!.getTime() + 1)
+          : databaseNow;
+      },
+    );
     const originalDigest = crypto.subtle.digest.bind(crypto.subtle);
     const digestSpy = spyOn(crypto.subtle, "digest").mockImplementation(async (algorithm, data) => {
-      await Bun.sleep(40);
-      return originalDigest(algorithm, data);
+      const digest = await originalDigest(algorithm, data);
+      validationFinished = true;
+      return digest;
     });
     try {
       await expect(
@@ -3535,6 +3551,7 @@ describe("agent backup catalogue on primary PGlite", () => {
       ).rejects.toThrow("execution lease expired");
     } finally {
       digestSpy.mockRestore();
+      clockSpy.mockRestore();
     }
     const [intent] = await dbWrite
       .select()

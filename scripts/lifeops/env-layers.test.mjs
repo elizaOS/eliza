@@ -24,7 +24,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   applyLayeredEnvToProcess,
   atomicWriteEnvFile,
@@ -38,7 +38,7 @@ import {
   writeSecret,
 } from "./env-layers.mjs";
 
-const ROOT = resolve(new URL("../..", import.meta.url).pathname);
+const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 // realpath so git-canonicalized paths (macOS /var -> /private/var) compare equal.
 function tempDir(prefix) {

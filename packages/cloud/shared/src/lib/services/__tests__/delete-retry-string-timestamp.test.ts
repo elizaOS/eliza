@@ -14,11 +14,15 @@ process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
+import { agentComputeFunding } from "../../../db/schemas/agent-compute-funding";
+import { agentComputeSubjects } from "../../../db/schemas/agent-compute-subjects";
 import { agentSandboxes } from "../../../db/schemas/agent-sandboxes";
 import { apiKeys } from "../../../db/schemas/api-keys";
+import { billingFundingReservations } from "../../../db/schemas/billing-funding-reservations";
 import { generations } from "../../../db/schemas/generations";
 import { jobs } from "../../../db/schemas/jobs";
 import { organizations } from "../../../db/schemas/organizations";
+import { sharedRuntimeHistory } from "../../../db/schemas/shared-runtime-history";
 import { usageRecords } from "../../../db/schemas/usage-records";
 import { userCharacters } from "../../../db/schemas/user-characters";
 import { users } from "../../../db/schemas/users";
@@ -63,6 +67,8 @@ beforeAll(async () => {
       users,
       userCharacters,
       agentSandboxes,
+      agentComputeSubjects,
+      billingFundingReservations,
       apiKeys,
       generations,
       usageRecords,
@@ -70,6 +76,12 @@ beforeAll(async () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    // The reservation's composite unique index must exist before funding adds its tenant FK.
+    const fundingSchema = await pushSchema(
+      { ...schema, agentComputeFunding, sharedRuntimeHistory } as never,
+      dbWrite as never,
+    );
+    await fundingSchema.apply();
   } catch (error) {
     pgliteReady = false;
     console.error(

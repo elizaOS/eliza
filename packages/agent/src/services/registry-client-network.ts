@@ -10,6 +10,8 @@
  * supply the local-workspace / node-module overlay hooks that merge on-disk
  * plugins into the result.
  */
+
+import { decodeRuntimeRegistry } from "@elizaos/registry";
 import { isCloudReachable } from "@elizaos/shared";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 import type { RegistryPluginInfo } from "./registry-client-types.ts";
@@ -89,144 +91,46 @@ async function fetchGeneratedRegistry(
   try {
     const resp = await fetch(generatedRegistryUrl, createRegistryFetchInit());
     if (resp.ok) {
-      const data = (await resp.json()) as {
-        registry: Record<
-          string,
-          {
-            git: {
-              repo: string;
-              v0: { branch: string | null };
-              v1: { branch: string | null };
-              v2: { branch: string | null };
-            };
-            npm: {
-              repo: string;
-              v0: string | null;
-              v1: string | null;
-              v2: string | null;
-            };
-            supports: { v0: boolean; v1: boolean; v2: boolean };
-            description: string;
-            homepage: string | null;
-            topics: string[];
-            stargazers_count: number;
-            language: string;
-            origin?: string;
-            source?: string;
-            support?: string;
-            builtIn?: boolean;
-            firstParty?: boolean;
-            thirdParty?: boolean;
-            status?: string;
-            kind?: string;
-            registryKind?: string;
-            directory?: string | null;
-            app?: {
-              displayName: string;
-              category: string;
-              launchType: string;
-              launchUrl: string | null;
-              icon: string | null;
-              heroImage?: string | null;
-              capabilities: string[];
-              minPlayers: number | null;
-              maxPlayers: number | null;
-              runtimePlugin?: string;
-              bridgeExport?: string;
-              uiExtension?: {
-                detailPanelId: string;
-              };
-              viewer?: {
-                url: string;
-                embedParams?: Record<string, string>;
-                postMessageAuth?: boolean;
-                sandbox?: string;
-              };
-              session?: {
-                mode: "viewer" | "spectate-and-steer" | "external";
-                features?: Array<
-                  "commands" | "telemetry" | "pause" | "resume" | "suggestions"
-                >;
-              };
-              developerOnly?: boolean;
-              visibleInAppStore?: boolean;
-              mainTab?: boolean;
-              catalogSection?: string;
-              featured?: boolean;
-              defaultHidden?: boolean;
-              scope?: string;
-            };
-          }
-        >;
-      };
+      const normalized = decodeRuntimeRegistry(await resp.json(), {
+        sanitizeSandbox,
+      });
       const plugins = new Map<string, RegistryPluginInfo>();
-      for (const [name, e] of Object.entries(data.registry)) {
+      for (const [name, entry] of normalized) {
         const info: RegistryPluginInfo = {
-          name,
-          gitRepo: e.git.repo,
-          gitUrl: `https://github.com/${e.git.repo}.git`,
-          directory: e.directory ?? null,
-          description: e.description || "",
-          homepage: e.homepage,
-          topics: e.topics || [],
-          stars: e.stargazers_count || 0,
-          language: e.language || "TypeScript",
+          ...entry,
           npm: {
-            package: e.npm.repo,
-            v0Version: e.npm.v0,
-            v1Version: e.npm.v1,
-            v2Version: e.npm.v2,
+            package: entry.npm.package,
+            v0Version: entry.npm.v0Version,
+            v1Version: entry.npm.v1Version,
+            v2Version: entry.npm.v2Version,
           },
-          git: {
-            v0Branch: e.git.v0.branch ?? null,
-            v1Branch: e.git.v1.branch ?? null,
-            v2Branch: e.git.v2.branch ?? null,
-          },
-          supports: e.supports,
-          origin: e.origin,
-          source: e.source,
-          support: e.support,
-          builtIn: e.builtIn,
-          firstParty: e.firstParty,
-          thirdParty: e.thirdParty,
-          status: e.status,
-          registryKind: e.registryKind,
         };
-
-        if (e.kind) {
-          info.kind = e.kind;
-        }
-        if (e.kind === "app" || e.app) {
+        if (entry.kind === "app" || entry.app) {
           info.kind = "app";
         }
-        if (e.app) {
+        if (entry.app) {
           info.appMeta = {
-            displayName: e.app.displayName,
-            category: e.app.category,
-            launchType: e.app.launchType,
-            launchUrl: e.app.launchUrl,
-            icon: e.app.icon,
-            heroImage: e.app.heroImage ?? null,
-            capabilities: e.app.capabilities || [],
-            minPlayers: e.app.minPlayers ?? null,
-            maxPlayers: e.app.maxPlayers ?? null,
-            runtimePlugin: e.app.runtimePlugin,
-            bridgeExport: e.app.bridgeExport,
-            uiExtension: e.app.uiExtension,
-            viewer: e.app.viewer
-              ? {
-                  ...e.app.viewer,
-                  sandbox: sanitizeSandbox(e.app.viewer.sandbox),
-                }
-              : undefined,
-            session: e.app.session,
-            developerOnly: e.app.developerOnly,
-            visibleInAppStore: e.app.visibleInAppStore,
-            mainTab: e.app.mainTab,
-            catalogSection: e.app.catalogSection,
-            featured: e.app.featured,
-            defaultHidden: e.app.defaultHidden,
-            scope: e.app.scope,
+            displayName: entry.app.displayName ?? name,
+            category: entry.app.category ?? "other",
+            launchType: entry.app.launchType ?? "url",
+            launchUrl: entry.app.launchUrl ?? null,
+            icon: entry.app.icon ?? null,
+            heroImage: entry.app.heroImage ?? null,
+            capabilities: entry.app.capabilities ?? [],
+            minPlayers: entry.app.minPlayers ?? null,
+            maxPlayers: entry.app.maxPlayers ?? null,
+            runtimePlugin: entry.app.runtimePlugin,
+            bridgeExport: entry.app.bridgeExport,
+            uiExtension: entry.app.uiExtension,
+            viewer: entry.app.viewer,
+            session: entry.app.session,
+            developerOnly: entry.app.developerOnly,
+            visibleInAppStore: entry.app.visibleInAppStore,
+            mainTab: entry.app.mainTab,
+            catalogSection: entry.app.catalogSection,
+            featured: entry.app.featured,
+            defaultHidden: entry.app.defaultHidden,
+            scope: entry.app.scope,
           };
         }
 

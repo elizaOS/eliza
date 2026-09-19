@@ -32,6 +32,7 @@ import {
   handleRuntimeModeRemoteForward,
   isAllowedHost,
   isAuthorized,
+  isCredentialedCorsOrigin,
   loadEffectiveElizaConfig,
   loadElizaConfig,
   normalizeWsClientId,
@@ -48,6 +49,7 @@ import {
 import { isDevCloudConfigAuthorityView } from "@elizaos/agent/config/dev-cloud-env-authority";
 import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-status";
 import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/account-storage";
+import { DIRECT_ACCOUNT_PROVIDER_ENV } from "@elizaos/auth/types";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
@@ -55,7 +57,8 @@ import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/first-r
 import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
 import { AuthStore } from "../services/auth-store";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
-import { findActiveSession } from "./auth/sessions";
+import { readCookie, resolveSessionTokenRole } from "./auth";
+import { findActiveSession, SESSION_COOKIE_NAME } from "./auth/sessions";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
@@ -246,6 +249,11 @@ function hydrateWalletOsStoreFlagFromConfig(): void {
   const raw = persistedEnv?.ELIZA_WALLET_OS_STORE;
   if (typeof raw === "string" && raw.trim()) {
     process.env.ELIZA_WALLET_OS_STORE = raw.trim();
+    return;
+  }
+
+  if (process.env.ELIZA_WALLET_OS_STORE_DEV_DEFAULT?.trim() === "0") {
+    process.env.ELIZA_WALLET_OS_STORE = "0";
     return;
   }
 
@@ -818,13 +826,25 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
         logger.info(
           "[eliza][reset] Skipping loopback API cleanup; runtime stop plus PGlite data-dir removal clears conversations, knowledge, and trajectories without re-entering the HTTP server.",
         );
-        await clearCompatPgliteDataDir(state.current, config);
+        const runtimeBeforeReset = state.current;
+        await clearCompatPgliteDataDir(runtimeBeforeReset, config);
         state.current = null;
         clearPersistedFirstRunConfig(
           config,
           createRuntimeAccountStoragePolicy(resolveStateDir()),
         );
         resetDefaultAccountPoolAfterCredentialReset();
+        if (runtimeBeforeReset) {
+          for (const key of new Set([
+            ...Object.values(DIRECT_ACCOUNT_PROVIDER_ENV),
+            "Z_AI_API_KEY",
+            "KIMI_API_KEY",
+            "OPENAI_API_KEY",
+          ])) {
+            runtimeBeforeReset.setSetting(key, null, true);
+          }
+          runtimeBeforeReset.setSetting("OPENAI_BASE_URL", null);
+        }
         saveElizaConfig(config);
         clearCloudSecrets();
         await deleteWalletSecretsFromOsStore();
@@ -1117,6 +1137,11 @@ export async function startApiServer(
   const upstreamStart = Date.now();
   const server = await upstreamStartApiServer({
     ...callerOptions,
+    onRuntimeActivated: async (previousRuntime, activeRuntime) => {
+      compatState.current = activeRuntime;
+      clearCompatRuntimeRestart(compatState);
+      await callerOptions?.onRuntimeActivated?.(previousRuntime, activeRuntime);
+    },
     requestMiddleware: async (req, res, next) => {
       await runCompatRequestPipeline(req, res, compatState, async () => {
         if (callerOptions?.requestMiddleware) {
@@ -1127,6 +1152,20 @@ export async function startApiServer(
       });
     },
     authorizeWebSocket: async (request, url) => {
+      const cookie = readCookie(request, SESSION_COOKIE_NAME);
+      const origin =
+        typeof request.headers.origin === "string"
+          ? request.headers.origin
+          : undefined;
+      // Ambient browser credentials require the narrower credentialed-origin
+      // policy; wildcard/cloud CORS reachability alone does not authorize them.
+      if (cookie && isCredentialedCorsOrigin(origin)) {
+        const session = await resolveSessionTokenRole(cookie, {
+          state: compatState,
+          scope: "appCore.webSocketCookieAuth",
+        });
+        if (session?.role === "OWNER") return true;
+      }
       const sessionToken =
         url.searchParams.get("token")?.trim() ||
         url.searchParams.get("apiKey")?.trim() ||
@@ -1169,6 +1208,9 @@ export async function startApiServer(
   logger.info(
     `[eliza-api] upstreamStartApiServer took ${Date.now() - upstreamStart}ms`,
   );
+
+  compatState.runtimeOperations = server.runtimeOperations;
+  compatState.reloadConfigFromDisk = server.reloadConfigFromDisk;
 
   const originalUpdateRuntime = server.updateRuntime as (
     runtime: AgentRuntime,

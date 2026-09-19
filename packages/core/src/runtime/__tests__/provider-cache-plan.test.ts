@@ -2,7 +2,7 @@
  * Unit coverage for prompt-cache planning — `buildProviderCachePlan` and
  * `buildPromptCacheKey` — verifying the per-provider `providerOptions` (OpenAI
  * retention, Anthropic breakpoints, Cerebras/OpenRouter, Gemini, Gateway, and
- * the eliza sidecar) and the 1024-char cache-key cap. Deterministic; no live
+ * the eliza sidecar) and the 64-character wire identifier limit. Deterministic; no live
  * provider call.
  */
 import { describe, expect, it } from "vitest";
@@ -22,15 +22,26 @@ describe("ProviderCachePlan", () => {
 		expect(plan.providerOptions.openai).toEqual({
 			promptCacheKey: "v5:abc123",
 		});
-		expect(plan.providerOptions.cerebras).toEqual({
-			promptCacheKey: "v5:abc123",
-			prompt_cache_key: "v5:abc123",
-		});
+		expect(plan.providerOptions.cerebras).toEqual({});
 		expect(plan.providerOptions.openrouter).toEqual({
 			promptCacheKey: "v5:abc123",
 			prompt_cache_key: "v5:abc123",
 		});
 		expect(plan.providerOptions.gateway).toEqual({ caching: "auto" });
+	});
+
+	it("keeps Cerebras workflow affinity through prompt evolution and separates resumed workflows", () => {
+		const identity = `agent-a:room:${"x".repeat(2000)}`;
+		const plan = (conversationId: string, prefixHash: string) =>
+			buildProviderCachePlan({ conversationId, prefixHash }).providerOptions;
+		const first = plan(identity, "before");
+		const resumed = plan(identity, "after");
+		const other = plan(`${identity}:other`, "before");
+		expect(first.cerebras).toEqual(resumed.cerebras);
+		expect(first.cerebras).not.toEqual(other.cerebras);
+		expect(first.openai).not.toEqual(resumed.openai);
+		expect(first.eliza).toMatchObject({ conversationId: identity });
+		expect(JSON.stringify(first.cerebras)).not.toContain(identity);
 	});
 
 	it("only emits OpenAI 24h retention for documented extended-retention models", () => {
@@ -162,8 +173,13 @@ describe("ProviderCachePlan", () => {
 		expect(plan.warnings[0]).toContain("Gemini explicit caching is disabled");
 	});
 
-	it("caps prompt cache keys at 1024 characters", () => {
-		expect(buildPromptCacheKey("x".repeat(2000))).toHaveLength(1024);
+	it("preserves complete identity when reducing long cache identifiers", () => {
+		const prefix = "x".repeat(2000);
+		expect(buildPromptCacheKey(prefix)).toHaveLength(64);
+		expect(buildPromptCacheKey(prefix)).toBe(buildPromptCacheKey(prefix));
+		expect(buildPromptCacheKey(`${prefix}a`)).not.toBe(
+			buildPromptCacheKey(`${prefix}b`),
+		);
 	});
 
 	it("emits conversationId on providerOptions.eliza when provided", () => {
@@ -187,6 +203,50 @@ describe("ProviderCachePlan", () => {
 			conversationId: "",
 		});
 		expect(empty.providerOptions.eliza).not.toHaveProperty("conversationId");
+	});
+
+	it("scopes Cerebras routing by conversation across prefix changes without changing other providers", () => {
+		const first = buildProviderCachePlan({
+			prefixHash: "shared-instructions",
+			conversationId: "private-room-1",
+		});
+		const same = buildProviderCachePlan({
+			prefixHash: "shared-instructions",
+			conversationId: "private-room-1",
+			segmentHashes: ["new-turn"],
+		});
+		const otherRoom = buildProviderCachePlan({
+			prefixHash: "shared-instructions",
+			conversationId: "private-room-2",
+		});
+		const otherPrefix = buildProviderCachePlan({
+			prefixHash: "different-instructions",
+			conversationId: "private-room-1",
+		});
+		const key = (first.providerOptions.cerebras as { promptCacheKey: string })
+			.promptCacheKey;
+		expect(key).toMatch(/^eliza-workflow-v1:[0-9a-f]{64}$/);
+		expect(key).not.toContain("private-room-1");
+		expect(same.providerOptions.cerebras).toEqual(
+			first.providerOptions.cerebras,
+		);
+		expect(otherRoom.providerOptions.cerebras).not.toEqual(
+			first.providerOptions.cerebras,
+		);
+		expect(otherPrefix.providerOptions.cerebras).toEqual(
+			first.providerOptions.cerebras,
+		);
+		expect(first.providerOptions.cerebras).toEqual({
+			promptCacheKey: key,
+			prompt_cache_key: key,
+		});
+		const unscoped = buildProviderCachePlan({
+			prefixHash: "shared-instructions",
+		});
+		for (const name of ["openai", "openrouter", "anthropic", "gateway"])
+			expect(first.providerOptions[name]).toEqual(
+				unscoped.providerOptions[name],
+			);
 	});
 
 	it("forwards stable promptSegments on providerOptions.eliza for local backends", () => {

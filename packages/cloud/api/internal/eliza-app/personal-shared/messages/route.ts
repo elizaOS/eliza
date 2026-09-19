@@ -234,10 +234,7 @@ const sharedMessageSchema = z.union([
       .trim()
       .min(1)
       .max(GROUP_SOURCE_MESSAGE_ID_MAX_LENGTH),
-    providerMessageIds: z
-      .array(z.string().trim().min(1).max(160))
-      .min(1)
-      .max(8),
+    providerMessageIds: z.array(z.string().trim().min(1).max(160)).min(1),
     leaseToken: z.string().uuid(),
     authority: groupDeliveryAuthoritySchema,
   }),
@@ -1700,45 +1697,7 @@ app.post("/", async (c) => {
     if (dedicated) {
       stage = "dedicated_runtime";
       const dedicatedStartedAt = performance.now();
-      const preparation = await preparePersonalDedicatedDelivery(
-        dedicated,
-        {
-          organizationId: account.organizationId,
-          userId: account.userId,
-        },
-        c.env,
-        worker.executionCtx,
-      );
-      if (preparation.state === "blocked") {
-        return c.json(
-          {
-            success: false,
-            code: preparation.code,
-            error: preparation.error,
-            retryable: false,
-            currentBalance: preparation.currentBalance,
-          },
-          402,
-        );
-      }
-      if (preparation.state === "starting") {
-        return c.json(
-          {
-            success: false,
-            code: "dedicated_starting",
-            error: "Dedicated Eliza is waking up. Retry this turn shortly.",
-            retryable: true,
-            data: {
-              action: preparation.action,
-              activeAgentId: dedicated.id,
-              alreadyInProgress: !preparation.created,
-              jobId: preparation.jobId,
-            },
-          },
-          503,
-          { "Retry-After": String(preparation.retryAfterSeconds) },
-        );
-      }
+      const preparation = await preparePersonalDedicatedDelivery(dedicated);
       if (preparation.state === "unavailable") {
         return c.json(
           {

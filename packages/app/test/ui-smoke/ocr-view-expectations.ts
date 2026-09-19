@@ -113,6 +113,10 @@ export const VIEW_OCR_POLICIES = {
   "builtin-character": expected({
     requireAny: ["Personality", "Relationships", "Knowledge", "Skills"],
   }),
+  "builtin-relationships": expected({
+    requireAll: ["Relationships"],
+    requireAny: ["People", "Organizations"],
+  }),
   "builtin-character-select": expected({
     requireAny: [
       "Name",
@@ -194,7 +198,9 @@ export const VIEW_OCR_POLICIES = {
       "Filter by type",
     ],
   }),
-  "builtin-rolodex": expected(VIEW_UNAVAILABLE_FALLBACK),
+  "builtin-rolodex": expected({
+    requireAny: ["People", "Organizations", "Graph"],
+  }),
   "builtin-runtime": expected({
     requireAny: ["Plugins", "Actions", "Providers"],
   }),
@@ -228,13 +234,13 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Ocean Deep", "Alpine Dawn", "Ember Night"],
   }),
   "plugin-cloud-gui": expected({
-    requireAll: ["Eliza Cloud"],
-    requireAny: ["Credits", "Hosted agents", "API keys", "Connected"],
+    requireAll: ["Connected", "Credits"],
+    requireAny: ["Hosted agents", "API keys"],
   }),
   // Preserve the disconnected state as a separate production-bundle capture;
   // connected account fixtures must not erase sign-in recovery coverage.
   "plugin-cloud-signed-out-gui": expected({
-    requireAll: ["Eliza Cloud", "Connect in Settings"],
+    requireAll: ["Connect to view credits", "Connect in Settings"],
     requireAny: [
       "credits",
       "hosted agents",
@@ -263,6 +269,17 @@ export const VIEW_OCR_POLICIES = {
       "October",
       "November",
       "December",
+    ],
+  }),
+  "plugin-family-interview-gui": expected({
+    requireAny: [
+      "Your update",
+      "Fill missing information",
+      "School and activities",
+    ],
+    forbid: [
+      "Sources are unavailable",
+      "Could not load selected correspondence",
     ],
   }),
   "plugin-family-operations-gui": expected({

@@ -34,7 +34,7 @@ specific guide that must be read before editing it.
 ## Deployment
 
 `.github/workflows/cloud-cf-deploy.yml` is authoritative. It deploys staging
-from `develop` and production from `main` or an approved production dispatch.
+from `staging` and production from `main` or an approved production dispatch.
 Non-preview deployments are gated on the `migrate-db` job, and every deploy job
 must fail closed when migration fails. Keep the workflow on the repository's
 pinned Bun version and preserve its environment and concurrency guards.

@@ -11,7 +11,9 @@ import {
   KNOWLEDGE_GRAPH_SERVICE,
   resolveKnowledgeGraphService,
 } from "@elizaos/agent";
+import { createZipArchive } from "@elizaos/agent/api/zip-utils";
 import {
+  ChannelType,
   DocumentService,
   ElizaError,
   type IAgentRuntime,
@@ -19,9 +21,11 @@ import {
   Service,
   ServiceType,
   type UUID,
+  withStandaloneTrajectory,
 } from "@elizaos/core";
 import type { PdfCompleteDocument, PdfService } from "@elizaos/plugin-pdf";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { z } from "zod";
 import {
   executeRawSql,
   executeRawSqlTx,
@@ -32,6 +36,14 @@ import {
   toText,
   withTransaction,
 } from "../sql.js";
+import { agreementMutationSql } from "./agreement-audit.js";
+import {
+  type AgreementReviewProposal,
+  type AgreementReviewSource,
+  type GeneratedAgreementReview,
+  generateAgreementReview,
+  validateAgreementReviewProposal,
+} from "./agreement-review.js";
 import {
   getHouseholdCoordinationService,
   HOUSEHOLD_COORDINATION_SERVICE,
@@ -40,8 +52,45 @@ import {
 import {
   DEFAULT_HOUSEHOLD_ID,
   HouseholdCoordinationError,
+  type HouseholdRole,
   normalizeHouseholdIdentifier,
 } from "./types.js";
+
+const agreementExtractionSchema = z.strictObject({
+  complete: z.literal(true),
+  pageCount: z.number().int().positive(),
+  text: z.string(),
+  pages: z.array(
+    z.strictObject({
+      pageNumber: z.number().int().positive(),
+      width: z.number().nonnegative(),
+      height: z.number().nonnegative(),
+      method: z.enum(["native", "native+vision", "vision", "blank"]),
+      nativeText: z.string(),
+      nativePositionedText: z.array(
+        z.strictObject({
+          page: z.number().int().positive(),
+          text: z.string(),
+          x: z.number(),
+          y: z.number(),
+          width: z.number(),
+          height: z.number(),
+        }),
+      ),
+      ocrText: z.string().nullable(),
+      visionText: z.string().nullable(),
+      text: z.string(),
+      hasVisualContent: z.boolean(),
+    }),
+  ),
+});
+
+import {
+  assertFamilyWorkspaceReadable,
+  beginFamilyWorkspaceOperation,
+  settleFamilyWorkspaceOperation,
+  withActiveFamilyWorkspaceTransaction,
+} from "../family-workflows/workspace-operation-store.js";
 
 export const HOUSEHOLD_AGREEMENT_KNOWLEDGE_SERVICE =
   "lifeops_household_agreement_knowledge";
@@ -71,6 +120,34 @@ async function resolveAgreementOcr(): Promise<AgreementOcrService | null> {
 
 export type AgreementObligationStatus = "proposed" | "approved" | "rejected";
 export type KnowledgePinTargetType = "agent" | "chat";
+
+/** Current destinations an owner can select without entering technical identifiers. */
+export interface AgreementPinTargets {
+  agent: { id: string; name: string | null };
+  chats: Array<{ id: string; name: string | null; source: string }>;
+}
+
+/** Owner-visible choices retain exact permission identities behind human-readable labels. */
+export interface AgreementGuestAccessOptions {
+  candidates: Array<{
+    principalEntityId: string;
+    householdGrantId: string;
+    displayName: string | null;
+    identityLabel: string;
+    role: HouseholdRole;
+    expiresAt: string | null;
+    issuedAt: string;
+  }>;
+  grants: Array<{
+    grantId: string;
+    principalEntityId: string;
+    householdGrantId: string;
+    displayName: string | null;
+    issuedAt: string;
+    canRead: boolean;
+    denial: string | null;
+  }>;
+}
 
 export interface ParentingAgreementArtifact {
   id: string;
@@ -108,6 +185,41 @@ export interface ParentingAgreementObligation {
   decidedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+const preparedReviewSchema = z.strictObject({
+  artifactId: z.string(),
+  sourceSha256: z.string(),
+  extractionSha256: z.string(),
+  generatedAt: z.string(),
+  explanation: z.string().min(1),
+  obligationIds: z.array(z.string()),
+});
+
+type PreparedReviewRecord = z.infer<typeof preparedReviewSchema>;
+
+function preparedReviewFromJson(value: unknown): PreparedReviewRecord {
+  try {
+    return preparedReviewSchema.parse(
+      JSON.parse(requiredText(value, "decision_json")),
+    );
+  } catch (cause) {
+    // error-policy:J2 A corrupt durable review is unavailable, not a reason to regenerate it.
+    throw new AgreementKnowledgeError(
+      "Prepared agreement review is invalid",
+      "AGREEMENT_INVALID_CONTRACT",
+      undefined,
+      cause,
+    );
+  }
+}
+
+export interface PreparedAgreementReview {
+  artifactId: string;
+  generatedAt: string;
+  explanation: string;
+  outcome: "proposals" | "no_proposals";
+  obligations: ParentingAgreementObligation[];
 }
 
 export interface HouseholdKnowledgePin {
@@ -191,7 +303,10 @@ type AgreementKnowledgeErrorCode =
   | "AGREEMENT_DUPLICATE_CONTENT"
   | "AGREEMENT_INVALID_CONTRACT"
   | "AGREEMENT_OBLIGATION_CONFLICT"
-  | "AGREEMENT_STORAGE_UNAVAILABLE";
+  | "AGREEMENT_STORAGE_UNAVAILABLE"
+  | "AGREEMENT_EXTRACTION_UNAVAILABLE"
+  | "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED"
+  | "AGREEMENT_INGESTION_CLEANUP_FAILED";
 
 export class AgreementKnowledgeError extends ElizaError {
   override readonly name = "AgreementKnowledgeError";
@@ -210,6 +325,9 @@ export class AgreementKnowledgeError extends ElizaError {
     });
   }
 }
+
+/** An ingestion failure whose operation settled before any source persistence began. */
+export class AgreementSourceUnchangedError extends AgreementKnowledgeError {}
 
 function requiredText(value: unknown, field: string): string {
   const text = toText(value).trim();
@@ -350,7 +468,144 @@ export class AgreementKnowledgeRepository {
     private readonly agentId: string,
   ) {}
 
-  async insertArtifact(input: Omit<ParentingAgreementArtifact, "version">) {
+  private async executeAgreementMutation(statement: string) {
+    return withActiveFamilyWorkspaceTransaction(
+      this.runtime,
+      [
+        "app_lifeops.life_audit_events",
+        "app_lifeops.life_household_agreement_artifacts",
+        "app_lifeops.life_household_agreement_obligations",
+        "app_lifeops.life_household_knowledge_pins",
+        "app_lifeops.life_household_knowledge_grants",
+      ],
+      (tx) => executeRawSqlTx(tx, statement),
+    );
+  }
+
+  /** All mutable export records are read from one PostgreSQL statement snapshot. */
+  async readExportSnapshot(artifactId: string) {
+    const scoped = `agent_id = ${sqlQuote(this.agentId)}`;
+    const artifact = sqlQuote(artifactId);
+    const linkedHouseholdGrants = `SELECT household_grant_id FROM app_lifeops.life_household_knowledge_grants
+      WHERE ${scoped} AND artifact_id = ${artifact}
+      UNION SELECT decision_json::jsonb->>'household_grant_id' FROM app_lifeops.life_audit_events
+      WHERE ${scoped} AND owner_type = 'parenting_agreement' AND owner_id = ${artifact}
+        AND event_type IN ('agreement_granted', 'agreement_revoked')`;
+    const queries = [
+      ["artifact", "life_household_agreement_artifacts", `id = ${artifact}`],
+      [
+        "obligation",
+        "life_household_agreement_obligations",
+        `artifact_id = ${artifact}`,
+      ],
+      ["pin", "life_household_knowledge_pins", `artifact_id = ${artifact}`],
+      ["grant", "life_household_knowledge_grants", `artifact_id = ${artifact}`],
+      [
+        "householdGrant",
+        "life_household_access_grants",
+        `id IN (${linkedHouseholdGrants})`,
+      ],
+      [
+        "householdAudit",
+        "life_audit_events",
+        `owner_type = 'household_grant' AND owner_id IN (${linkedHouseholdGrants})`,
+      ],
+      [
+        "audit",
+        "life_audit_events",
+        `owner_type = 'parenting_agreement' AND owner_id = ${artifact}`,
+      ],
+    ];
+    const rows = await executeRawSql(
+      this.runtime,
+      queries
+        .map(
+          ([kind, table, condition]) =>
+            `SELECT ${sqlQuote(kind)} AS kind, to_jsonb(record)::text AS payload
+       FROM app_lifeops.${table} AS record WHERE ${scoped} AND ${condition}`,
+        )
+        .join(" UNION ALL "),
+    );
+    const records = rows.map((row) => {
+      try {
+        return {
+          kind: requiredText(row.kind, "kind"),
+          row: z
+            .record(z.string(), z.json())
+            .parse(JSON.parse(requiredText(row.payload, "payload"))),
+        };
+      } catch (error) {
+        // error-policy:J2 A corrupt snapshot cannot become a partial export.
+        throw new AgreementKnowledgeError(
+          "Agreement export snapshot is invalid",
+          "AGREEMENT_INVALID_CONTRACT",
+          { artifactId },
+          error,
+        );
+      }
+    });
+    const source = records.find((record) => record.kind === "artifact");
+    if (!source)
+      throw new AgreementKnowledgeError(
+        "Parenting-agreement artifact was not found",
+        "AGREEMENT_ARTIFACT_NOT_FOUND",
+        { artifactId },
+      );
+    const ofKind = (kind: string) =>
+      records
+        .filter((record) => record.kind === kind)
+        .map((record) => record.row)
+        .sort((left, right) => String(left.id).localeCompare(String(right.id)));
+    return {
+      artifact: artifactFromRow(source.row),
+      obligations: ofKind("obligation").map(obligationFromRow),
+      pins: ofKind("pin").map(pinFromRow),
+      grants: ofKind("grant").map(grantFromRow),
+      householdGrants: ofKind("householdGrant"),
+      householdGrantAudit: ofKind("householdAudit"),
+      audit: ofKind("audit").sort(
+        (left, right) =>
+          String(left.created_at).localeCompare(String(right.created_at)) ||
+          String(left.id).localeCompare(String(right.id)),
+      ),
+    };
+  }
+
+  async recordExport(input: {
+    artifact: ParentingAgreementArtifact;
+    exportId: string;
+    ownerEntityId: string;
+    createdAt: string;
+    manifestSha256: string;
+    archiveSha256: string;
+  }) {
+    const rows = await withActiveFamilyWorkspaceTransaction(
+      this.runtime,
+      ["app_lifeops.life_audit_events"],
+      (tx) =>
+        executeRawSqlTx(
+          tx,
+          `INSERT INTO app_lifeops.life_audit_events (
+      id, agent_id, event_type, owner_type, owner_id, reason, inputs_json, decision_json, actor, created_at
+    ) VALUES (${sqlQuote(input.exportId)}, ${sqlQuote(this.agentId)}, 'agreement_export_prepared', 'parenting_agreement', ${sqlQuote(input.artifact.id)},
+      'Verified archive prepared for owner download; client receipt is not asserted',
+      ${sqlQuote(JSON.stringify({ schemaVersion: 1, actorEntityId: input.ownerEntityId, source: { id: input.artifact.id, version: input.artifact.version, content_sha256: input.artifact.contentSha256 } }))},
+      ${sqlQuote(JSON.stringify({ manifestSha256: input.manifestSha256, archiveSha256: input.archiveSha256 }))}, 'owner', ${sqlQuote(input.createdAt)}) RETURNING id`,
+        ),
+      this.agentId,
+    );
+    if (rows.length !== 1)
+      throw new AgreementKnowledgeError(
+        "Agreement export audit was not persisted",
+        "AGREEMENT_INVALID_CONTRACT",
+      );
+  }
+
+  async insertArtifact(
+    input: Omit<ParentingAgreementArtifact, "version"> & {
+      extractionSha256: string;
+    },
+  ) {
     return await withTransaction(this.runtime, async (tx) => {
       const previousRows = await executeRawSqlTx(
         tx,
@@ -375,7 +630,8 @@ export class AgreementKnowledgeRepository {
       const version = (previous?.version ?? 0) + 1;
       const rows = await executeRawSqlTx(
         tx,
-        `INSERT INTO app_lifeops.life_household_agreement_artifacts (
+        agreementMutationSql(
+          `INSERT INTO app_lifeops.life_household_agreement_artifacts (
            id, agent_id, household_id, agreement_key, version,
            supersedes_artifact_id, title, original_filename, document_id, media_url,
            media_file_name, content_sha256, mime_type, byte_size, page_count,
@@ -391,6 +647,15 @@ export class AgreementKnowledgeRepository {
            ${sqlInteger(input.byteSize)}, ${sqlInteger(input.pageCount)},
            ${sqlQuote(input.uploadedByEntityId)}, ${sqlQuote(input.createdAt)}
          ) RETURNING *`,
+          {
+            agentId: this.agentId,
+            kind: "agreement_ingested",
+            actorEntityId: input.uploadedByEntityId,
+            createdAt: input.createdAt,
+            artifactRow: true,
+            extractionSha256: input.extractionSha256,
+          },
+        ),
       );
       const row = rows[0];
       if (!row) {
@@ -443,11 +708,10 @@ export class AgreementKnowledgeRepository {
     return rows[0] ? artifactFromRow(rows[0]) : null;
   }
 
-  async insertObligation(
+  private obligationInsertSql(
     obligation: ParentingAgreementObligation,
-  ): Promise<ParentingAgreementObligation> {
-    const rows = await executeRawSql(
-      this.runtime,
+  ): string {
+    return agreementMutationSql(
       `INSERT INTO app_lifeops.life_household_agreement_obligations (
          id, agent_id, artifact_id, title, obligation_text, page_start,
          page_end, citation_text, status, proposed_by_entity_id,
@@ -461,6 +725,20 @@ export class AgreementKnowledgeRepository {
          ${sqlQuote(obligation.proposedByEntityId)}, NULL, NULL, NULL,
          ${sqlQuote(obligation.createdAt)}, ${sqlQuote(obligation.updatedAt)}
        ) RETURNING *`,
+      {
+        agentId: this.agentId,
+        kind: "agreement_obligation_proposed",
+        actorEntityId: obligation.proposedByEntityId,
+        createdAt: obligation.createdAt,
+      },
+    );
+  }
+
+  async insertObligation(
+    obligation: ParentingAgreementObligation,
+  ): Promise<ParentingAgreementObligation> {
+    const rows = await this.executeAgreementMutation(
+      this.obligationInsertSql(obligation),
     );
     const row = rows[0];
     if (!row) {
@@ -472,6 +750,151 @@ export class AgreementKnowledgeRepository {
     return obligationFromRow(row);
   }
 
+  /** Serializes correction retries with other review writes without resetting a saved decision. */
+  async insertOwnerProposalOnce(
+    obligation: ParentingAgreementObligation,
+  ): Promise<{ obligation: ParentingAgreementObligation; created: boolean }> {
+    return withActiveFamilyWorkspaceTransaction(
+      this.runtime,
+      [
+        "app_lifeops.life_audit_events",
+        "app_lifeops.life_household_agreement_artifacts",
+        "app_lifeops.life_household_agreement_obligations",
+        "app_lifeops.life_household_knowledge_pins",
+        "app_lifeops.life_household_knowledge_grants",
+      ],
+      async (tx) => {
+        const artifacts = await executeRawSqlTx(
+          tx,
+          `SELECT id FROM app_lifeops.life_household_agreement_artifacts
+         WHERE agent_id = ${sqlQuote(this.agentId)} AND id = ${sqlQuote(obligation.artifactId)} FOR UPDATE`,
+        );
+        if (artifacts.length !== 1)
+          throw new AgreementKnowledgeError(
+            "Agreement source is unavailable",
+            "AGREEMENT_ARTIFACT_NOT_FOUND",
+          );
+        const existing = await executeRawSqlTx(
+          tx,
+          `SELECT * FROM app_lifeops.life_household_agreement_obligations
+         WHERE agent_id = ${sqlQuote(this.agentId)} AND artifact_id = ${sqlQuote(obligation.artifactId)} AND id = ${sqlQuote(obligation.id)}`,
+        );
+        if (existing[0])
+          return { obligation: obligationFromRow(existing[0]), created: false };
+        const inserted = await executeRawSqlTx(
+          tx,
+          this.obligationInsertSql(obligation),
+        );
+        if (inserted.length !== 1 || !inserted[0])
+          throw new AgreementKnowledgeError(
+            "Owner proposal did not persist",
+            "AGREEMENT_STORAGE_UNAVAILABLE",
+          );
+        return { obligation: obligationFromRow(inserted[0]), created: true };
+      },
+    );
+  }
+
+  async readPreparedReview(
+    artifactId: string,
+  ): Promise<PreparedReviewRecord | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT decision_json FROM app_lifeops.life_audit_events
+      WHERE agent_id = ${sqlQuote(this.agentId)} AND owner_type = 'parenting_agreement'
+        AND owner_id = ${sqlQuote(artifactId)} AND event_type = 'agreement_review_prepared'`,
+    );
+    if (rows.length === 0) return null;
+    if (rows.length !== 1)
+      throw new AgreementKnowledgeError(
+        "Agreement has conflicting prepared review records",
+        "AGREEMENT_INVALID_CONTRACT",
+      );
+    return preparedReviewFromJson(rows[0]?.decision_json);
+  }
+
+  async commitPreparedReview(
+    record: PreparedReviewRecord,
+    obligations: ParentingAgreementObligation[],
+  ): Promise<PreparedReviewRecord> {
+    if (
+      record.obligationIds.length !== obligations.length ||
+      obligations.some(
+        (item, index) =>
+          item.id !== record.obligationIds[index] ||
+          item.artifactId !== record.artifactId ||
+          item.agentId !== this.agentId ||
+          item.status !== "proposed",
+      )
+    ) {
+      throw new AgreementKnowledgeError(
+        "Prepared review batch does not match its source or proposal identities",
+        "AGREEMENT_INVALID_CONTRACT",
+      );
+    }
+    return withActiveFamilyWorkspaceTransaction(
+      this.runtime,
+      [
+        "app_lifeops.life_audit_events",
+        "app_lifeops.life_household_agreement_artifacts",
+        "app_lifeops.life_household_agreement_obligations",
+        "app_lifeops.life_household_knowledge_pins",
+        "app_lifeops.life_household_knowledge_grants",
+      ],
+      async (tx) => {
+        const artifacts = await executeRawSqlTx(
+          tx,
+          `SELECT id FROM app_lifeops.life_household_agreement_artifacts
+        WHERE agent_id = ${sqlQuote(this.agentId)} AND id = ${sqlQuote(record.artifactId)} FOR UPDATE`,
+        );
+        if (artifacts.length !== 1)
+          throw new AgreementKnowledgeError(
+            "Agreement source is unavailable",
+            "AGREEMENT_ARTIFACT_NOT_FOUND",
+          );
+        const existing = await executeRawSqlTx(
+          tx,
+          `SELECT decision_json FROM app_lifeops.life_audit_events
+        WHERE agent_id = ${sqlQuote(this.agentId)} AND owner_type = 'parenting_agreement'
+          AND owner_id = ${sqlQuote(record.artifactId)} AND event_type = 'agreement_review_prepared'`,
+        );
+        if (existing.length === 1)
+          return preparedReviewFromJson(existing[0]?.decision_json);
+        if (existing.length > 1)
+          throw new AgreementKnowledgeError(
+            "Agreement has conflicting prepared review records",
+            "AGREEMENT_INVALID_CONTRACT",
+          );
+        for (const obligation of obligations) {
+          const inserted = await executeRawSqlTx(
+            tx,
+            this.obligationInsertSql(obligation),
+          );
+          if (inserted.length !== 1)
+            throw new AgreementKnowledgeError(
+              "Review proposal did not persist",
+              "AGREEMENT_STORAGE_UNAVAILABLE",
+            );
+        }
+        const saved = await executeRawSqlTx(
+          tx,
+          `INSERT INTO app_lifeops.life_audit_events
+        (id, agent_id, event_type, owner_type, owner_id, reason, inputs_json, decision_json, actor, created_at)
+        VALUES (${sqlQuote(`agreement_review_${crypto.randomUUID()}`)}, ${sqlQuote(this.agentId)}, 'agreement_review_prepared',
+          'parenting_agreement', ${sqlQuote(record.artifactId)}, 'Unapproved cited proposals prepared for owner review',
+          ${sqlQuote(JSON.stringify({ sourceSha256: record.sourceSha256, extractionSha256: record.extractionSha256 }))},
+          ${sqlQuote(JSON.stringify(record))}, 'owner', ${sqlQuote(record.generatedAt)}) RETURNING id`,
+        );
+        if (saved.length !== 1)
+          throw new AgreementKnowledgeError(
+            "Prepared review did not persist",
+            "AGREEMENT_STORAGE_UNAVAILABLE",
+          );
+        return record;
+      },
+    );
+  }
+
   async decideObligation(input: {
     obligationId: string;
     status: Exclude<AgreementObligationStatus, "proposed">;
@@ -479,9 +902,9 @@ export class AgreementKnowledgeRepository {
     decisionReason: string;
     decidedAt: string;
   }): Promise<ParentingAgreementObligation> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `UPDATE app_lifeops.life_household_agreement_obligations
+    const rows = await this.executeAgreementMutation(
+      agreementMutationSql(
+        `UPDATE app_lifeops.life_household_agreement_obligations
           SET status = ${sqlQuote(input.status)},
               decided_by_entity_id = ${sqlQuote(input.decidedByEntityId)},
               decision_reason = ${sqlQuote(input.decisionReason)},
@@ -491,6 +914,13 @@ export class AgreementKnowledgeRepository {
           AND id = ${sqlQuote(input.obligationId)}
           AND status = 'proposed'
       RETURNING *`,
+        {
+          agentId: this.agentId,
+          kind: "agreement_obligation_decided",
+          actorEntityId: input.decidedByEntityId,
+          createdAt: input.decidedAt,
+        },
+      ),
     );
     const row = rows[0];
     if (!row) {
@@ -534,9 +964,9 @@ export class AgreementKnowledgeRepository {
     pinnedAt: string;
   }): Promise<HouseholdKnowledgePin> {
     const id = `hkpin_${crypto.randomUUID()}`;
-    const rows = await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_household_knowledge_pins (
+    const rows = await this.executeAgreementMutation(
+      agreementMutationSql(
+        `INSERT INTO app_lifeops.life_household_knowledge_pins (
          id, agent_id, artifact_id, target_type, target_id,
          pinned_by_entity_id, pinned_at, unpinned_at
        ) VALUES (
@@ -549,6 +979,13 @@ export class AgreementKnowledgeRepository {
                      pinned_at = EXCLUDED.pinned_at,
                      unpinned_at = NULL
        RETURNING *`,
+        {
+          agentId: this.agentId,
+          kind: "agreement_pinned",
+          actorEntityId: input.pinnedByEntityId,
+          createdAt: input.pinnedAt,
+        },
+      ),
     );
     const row = rows[0];
     if (!row) {
@@ -598,16 +1035,24 @@ export class AgreementKnowledgeRepository {
 
   async removePin(input: {
     pinId: string;
+    unpinnedByEntityId: string;
     unpinnedAt: string;
   }): Promise<HouseholdKnowledgePin> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `UPDATE app_lifeops.life_household_knowledge_pins
+    const rows = await this.executeAgreementMutation(
+      agreementMutationSql(
+        `UPDATE app_lifeops.life_household_knowledge_pins
           SET unpinned_at = ${sqlQuote(input.unpinnedAt)}
         WHERE agent_id = ${sqlQuote(this.agentId)}
           AND id = ${sqlQuote(input.pinId)}
           AND unpinned_at IS NULL
       RETURNING *`,
+        {
+          agentId: this.agentId,
+          kind: "agreement_unpinned",
+          actorEntityId: input.unpinnedByEntityId,
+          createdAt: input.unpinnedAt,
+        },
+      ),
     );
     const row = rows[0];
     if (!row) {
@@ -621,9 +1066,9 @@ export class AgreementKnowledgeRepository {
   }
 
   async upsertGrant(input: HouseholdKnowledgeGrant) {
-    const rows = await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_household_knowledge_grants (
+    const rows = await this.executeAgreementMutation(
+      agreementMutationSql(
+        `INSERT INTO app_lifeops.life_household_knowledge_grants (
          id, agent_id, household_id, artifact_id, principal_entity_id,
          household_grant_id, issued_by_entity_id, revoked_at,
          revoked_by_entity_id, revocation_reason, created_at, updated_at
@@ -642,6 +1087,13 @@ export class AgreementKnowledgeRepository {
                      revocation_reason = NULL,
                      updated_at = EXCLUDED.updated_at
        RETURNING *`,
+        {
+          agentId: this.agentId,
+          kind: "agreement_granted",
+          actorEntityId: input.issuedByEntityId,
+          createdAt: input.updatedAt,
+        },
+      ),
     );
     const row = rows[0];
     if (!row) {
@@ -687,9 +1139,9 @@ export class AgreementKnowledgeRepository {
     reason: string;
     revokedAt: string;
   }): Promise<HouseholdKnowledgeGrant> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `UPDATE app_lifeops.life_household_knowledge_grants
+    const rows = await this.executeAgreementMutation(
+      agreementMutationSql(
+        `UPDATE app_lifeops.life_household_knowledge_grants
           SET revoked_at = ${sqlQuote(input.revokedAt)},
               revoked_by_entity_id = ${sqlQuote(input.revokedByEntityId)},
               revocation_reason = ${sqlQuote(input.reason)},
@@ -698,6 +1150,13 @@ export class AgreementKnowledgeRepository {
           AND id = ${sqlQuote(input.grantId)}
           AND revoked_at IS NULL
       RETURNING *`,
+        {
+          agentId: this.agentId,
+          kind: "agreement_revoked",
+          actorEntityId: input.revokedByEntityId,
+          createdAt: input.revokedAt,
+        },
+      ),
     );
     const row = rows[0];
     if (!row) {
@@ -766,6 +1225,10 @@ function requirePositiveInteger(value: number, field: string): number {
 
 export class AgreementKnowledgeService {
   private readonly now: () => Date;
+  private readonly reviewInFlight = new Map<
+    string,
+    Promise<PreparedAgreementReview>
+  >();
 
   constructor(
     private readonly deps: {
@@ -793,8 +1256,192 @@ export class AgreementKnowledgeService {
     }
   }
 
-  listApprovedObligations(): Promise<ParentingAgreementObligation[]> {
-    return this.deps.repository.listApprovedObligations();
+  async listApprovedObligations(): Promise<ParentingAgreementObligation[]> {
+    await this.requireReadableWorkspace();
+    const obligations = await this.deps.repository.listApprovedObligations();
+    await this.requireReadableWorkspace();
+    return obligations;
+  }
+
+  private requireReadableWorkspace(): Promise<void> {
+    return assertFamilyWorkspaceReadable(this.deps.runtime, this.deps.agentId);
+  }
+
+  async prepareOwnerReview(input: {
+    artifactId: string;
+    ownerEntityId: string;
+  }): Promise<PreparedAgreementReview> {
+    this.requireOwner(input.ownerEntityId);
+    const artifactId = normalizeHouseholdIdentifier(
+      input.artifactId,
+      "artifactId",
+    );
+    const pending = this.reviewInFlight.get(artifactId);
+    if (pending) return pending;
+    const work = this.prepareOwnerReviewOnce(artifactId);
+    this.reviewInFlight.set(artifactId, work);
+    try {
+      return await work;
+    } finally {
+      if (this.reviewInFlight.get(artifactId) === work)
+        this.reviewInFlight.delete(artifactId);
+    }
+  }
+
+  async readOwnerReview(input: {
+    artifactId: string;
+    ownerEntityId: string;
+  }): Promise<PreparedAgreementReview | null> {
+    this.requireOwner(input.ownerEntityId);
+    const artifact = await this.requireArtifact(input.artifactId);
+    const record = await this.deps.repository.readPreparedReview(artifact.id);
+    if (!record) return null;
+    return this.preparedReviewResult(
+      await this.reviewSource(artifact.id),
+      record,
+    );
+  }
+
+  private async reviewSource(
+    artifactId: string,
+  ): Promise<AgreementReviewSource> {
+    const snapshot = await this.deps.repository.readExportSnapshot(artifactId);
+    await this.readOwnerPdf({ artifactId, ownerEntityId: SELF_ENTITY_ID });
+    const documents = this.deps.documents();
+    if (!documents)
+      throw new AgreementKnowledgeError(
+        "Agreement document service is unavailable",
+        "AGREEMENT_STORAGE_UNAVAILABLE",
+      );
+    const document = await documents.getDocumentById(
+      snapshot.artifact.documentId as UUID,
+    );
+    const raw =
+      document?.metadata && "agreementExtractionJson" in document.metadata
+        ? document.metadata.agreementExtractionJson
+        : undefined;
+    const ingestion = snapshot.audit.find(
+      (event) => event.event_type === "agreement_ingested",
+    );
+    try {
+      if (typeof raw !== "string" || !ingestion)
+        throw new Error("Complete recorded extraction is required");
+      const provenance = z
+        .object({ extractionSha256: z.string().regex(/^[a-f0-9]{64}$/) })
+        .parse(JSON.parse(requiredText(ingestion.inputs_json, "inputs_json")));
+      const extractionSha256 = crypto
+        .createHash("sha256")
+        .update(raw)
+        .digest("hex");
+      if (extractionSha256 !== provenance.extractionSha256)
+        throw new Error("Extraction hash differs from ingestion provenance");
+      const extraction = agreementExtractionSchema.parse(JSON.parse(raw));
+      if (
+        extraction.pageCount !== snapshot.artifact.pageCount ||
+        extraction.pages.length !== extraction.pageCount ||
+        extraction.pages.some((page, index) => page.pageNumber !== index + 1)
+      )
+        throw new Error("Extraction page map is incomplete");
+      return {
+        artifactId,
+        sourceSha256: snapshot.artifact.contentSha256,
+        extractionSha256,
+        extraction,
+      };
+    } catch (cause) {
+      // error-policy:J2 Refuse unverifiable source evidence before model dispatch.
+      throw new AgreementKnowledgeError(
+        "Agreement review requires a complete, integrity-verified extraction",
+        "AGREEMENT_INVALID_CONTRACT",
+        { artifactId },
+        cause,
+      );
+    }
+  }
+
+  private async prepareOwnerReviewOnce(
+    artifactId: string,
+  ): Promise<PreparedAgreementReview> {
+    const source = await this.reviewSource(artifactId);
+    let record = await this.deps.repository.readPreparedReview(artifactId);
+    if (!record) {
+      const generated: GeneratedAgreementReview =
+        await withStandaloneTrajectory(
+          this.deps.runtime,
+          {
+            source: "lifeops.agreement-review",
+            metadata: {
+              artifactId,
+              sourceSha256: source.sourceSha256,
+              extractionSha256: source.extractionSha256,
+            },
+          },
+          () => generateAgreementReview(this.deps.runtime, source),
+        );
+      const generatedAt = this.now().toISOString();
+      const obligations: ParentingAgreementObligation[] =
+        generated.proposals.map((proposal) => ({
+          ...proposal,
+          id: `haob_${crypto.randomUUID()}`,
+          agentId: this.deps.agentId,
+          artifactId,
+          status: "proposed",
+          proposedByEntityId: this.deps.agentId,
+          decidedByEntityId: null,
+          decisionReason: null,
+          decidedAt: null,
+          createdAt: generatedAt,
+          updatedAt: generatedAt,
+        }));
+      record = await this.deps.repository.commitPreparedReview(
+        {
+          artifactId,
+          sourceSha256: source.sourceSha256,
+          extractionSha256: source.extractionSha256,
+          generatedAt,
+          explanation: generated.explanation,
+          obligationIds: obligations.map((obligation) => obligation.id),
+        },
+        obligations,
+      );
+    }
+    return this.preparedReviewResult(source, record);
+  }
+
+  private async preparedReviewResult(
+    source: AgreementReviewSource,
+    record: PreparedReviewRecord,
+  ): Promise<PreparedAgreementReview> {
+    const artifactId = source.artifactId;
+    if (
+      record.artifactId !== artifactId ||
+      record.sourceSha256 !== source.sourceSha256 ||
+      record.extractionSha256 !== source.extractionSha256
+    ) {
+      throw new AgreementKnowledgeError(
+        "Prepared review does not match this immutable source",
+        "AGREEMENT_INVALID_CONTRACT",
+        { artifactId },
+      );
+    }
+    const all = await this.deps.repository.listObligations(artifactId);
+    const obligations = record.obligationIds.map((id) => {
+      const obligation = all.find((item) => item.id === id);
+      if (!obligation)
+        throw new AgreementKnowledgeError(
+          "Prepared review obligation is unavailable",
+          "AGREEMENT_STORAGE_UNAVAILABLE",
+          { artifactId, obligationId: id },
+        );
+      return obligation;
+    });
+    return {
+      artifactId,
+      generatedAt: record.generatedAt,
+      explanation: record.explanation,
+      outcome: obligations.length ? "proposals" : "no_proposals",
+      obligations,
+    };
   }
 
   private requireOwnerOrAgent(actorEntityId: string): void {
@@ -810,7 +1457,29 @@ export class AgreementKnowledgeService {
     }
   }
 
+  private async settleIngestionOperation(
+    operationId: string,
+    priorFailure?: unknown,
+  ): Promise<void> {
+    try {
+      await settleFamilyWorkspaceOperation(this.deps.runtime, operationId);
+    } catch (cause) {
+      // error-policy:J2 A failed settlement cannot be reported as a completed upload.
+      const failure = new AgreementKnowledgeError(
+        "The ingestion operation could not be settled. Reconcile its claim before deletion or retry.",
+        "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED",
+        { operationId },
+        priorFailure === undefined
+          ? cause
+          : new AggregateError([priorFailure, cause]),
+      );
+      this.deps.runtime.reportError("AgreementKnowledge.ingestion", failure);
+      throw failure;
+    }
+  }
+
   private async requireArtifact(id: string) {
+    await this.requireReadableWorkspace();
     const artifact = await this.deps.repository.getArtifact(
       normalizeHouseholdIdentifier(id, "artifactId"),
     );
@@ -821,6 +1490,7 @@ export class AgreementKnowledgeService {
         { artifactId: id },
       );
     }
+    await this.requireReadableWorkspace();
     return artifact;
   }
 
@@ -829,16 +1499,19 @@ export class AgreementKnowledgeService {
     householdId?: string;
   }): Promise<ParentingAgreementView[]> {
     this.requireOwner(input.ownerEntityId);
+    await this.requireReadableWorkspace();
     const householdId = input.householdId
       ? normalizeHouseholdIdentifier(input.householdId, "householdId")
       : undefined;
     const artifacts = await this.deps.repository.listArtifacts(householdId);
-    return await Promise.all(
+    const views = await Promise.all(
       artifacts.map(async (artifact) => ({
         artifact,
         obligations: await this.deps.repository.listObligations(artifact.id),
       })),
     );
+    await this.requireReadableWorkspace();
+    return views;
   }
 
   async createAgreementVersion(input: {
@@ -911,6 +1584,12 @@ export class AgreementKnowledgeService {
         },
       );
     }
+    const artifactId = `hag_${crypto.randomUUID()}`;
+    const operationId = await beginFamilyWorkspaceOperation(this.deps.runtime, {
+      kind: "agreement-upload",
+      artifactId,
+      contentSha256: expectedSha256,
+    });
     let extracted: PdfCompleteDocument;
     try {
       const ocr = await resolveAgreementOcr();
@@ -928,7 +1607,24 @@ export class AgreementKnowledgeService {
           : undefined,
       });
     } catch (error) {
-      throw new AgreementKnowledgeError(
+      // error-policy:J2 Extraction has settled without creating persistent sources.
+      await this.settleIngestionOperation(operationId, error);
+      if (
+        error instanceof ElizaError &&
+        error.code === "PDF_PAGE_TRANSCRIPTION_UNAVAILABLE"
+      ) {
+        this.deps.runtime.reportError(
+          "AgreementKnowledge.extractCompleteDocument",
+          error,
+        );
+        throw new AgreementSourceUnchangedError(
+          "Document reading is temporarily unavailable. Check the model service, then retry this upload.",
+          "AGREEMENT_EXTRACTION_UNAVAILABLE",
+          error.context,
+          error,
+        );
+      }
+      throw new AgreementSourceUnchangedError(
         `The complete parenting-agreement PDF could not be extracted: ${error instanceof Error ? error.message : String(error)}`,
         "AGREEMENT_INVALID_CONTRACT",
         undefined,
@@ -936,72 +1632,180 @@ export class AgreementKnowledgeService {
       );
     }
     const pageCount = extracted.pageCount;
-    const artifactId = `hag_${crypto.randomUUID()}`;
-    const stored = await fileStorage.storePrivate(bytes, "application/pdf");
-    if (
-      stored.hash !== expectedSha256 ||
-      !stored.fileName.startsWith(`${expectedSha256}.`) ||
-      stored.size !== bytes.byteLength
-    ) {
-      throw new AgreementKnowledgeError(
-        "File storage returned metadata that does not match the agreement bytes",
-        "AGREEMENT_INVALID_CONTRACT",
-        { expectedSha256, storedHash: stored.hash },
+    const extractionJson = JSON.stringify(extracted);
+    const extractionSha256 = crypto
+      .createHash("sha256")
+      .update(extractionJson)
+      .digest("hex");
+    let stored: Awaited<ReturnType<IFileStorageService["storePrivate"]>>;
+    try {
+      stored = await fileStorage.storePrivate(bytes, "application/pdf");
+    } catch (cause) {
+      // error-policy:J2 A lost acknowledgement may follow a durable write; retain its claim and source.
+      const failure = new AgreementKnowledgeError(
+        "Private PDF persistence could not be confirmed. Reconcile the source identity before retrying or deleting its claim.",
+        "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED",
+        { operationId, artifactId, contentSha256: expectedSha256 },
+        cause,
       );
+      this.deps.runtime.reportError("AgreementKnowledge.ingestion", failure);
+      throw failure;
     }
-    const document = await documents.addDocument({
-      agentId: this.deps.agentId as UUID,
-      worldId: this.deps.agentId as UUID,
-      roomId: this.deps.agentId as UUID,
-      entityId: this.deps.agentId as UUID,
-      clientDocumentId: "" as UUID,
-      contentType: "text/plain",
-      originalFilename: `${stored.hash}.txt`,
-      content: [
-        `Parenting agreement: ${title}`,
-        `Source PDF: ${originalFilename}`,
-        `Content SHA-256: ${stored.hash}`,
-        `Pages: ${pageCount}`,
-        "",
-        extracted.text,
-        "",
-        "Agreement obligations are inactive until the owner approves their page-cited review records.",
-      ].join("\n"),
-      scope: "owner-private",
-      addedBy: this.deps.agentId as UUID,
-      addedByRole: "RUNTIME",
-      addedFrom: "lifeops",
-      pinned: false,
-      metadata: {
-        source: "lifeops.parenting-agreement",
+    let documentId: UUID | null = null;
+    try {
+      if (
+        stored.hash !== expectedSha256 ||
+        !stored.fileName.startsWith(`${expectedSha256}.`) ||
+        stored.size !== bytes.byteLength
+      ) {
+        throw new AgreementKnowledgeError(
+          "File storage returned metadata that does not match the agreement bytes",
+          "AGREEMENT_INVALID_CONTRACT",
+          { expectedSha256, storedHash: stored.hash },
+        );
+      }
+      const document = await documents.addDocument({
+        agentId: this.deps.agentId as UUID,
+        worldId: this.deps.agentId as UUID,
+        roomId: this.deps.agentId as UUID,
+        entityId: this.deps.agentId as UUID,
+        clientDocumentId: "" as UUID,
+        contentType: "text/plain",
+        // Each immutable artifact owns its document lifecycle, even when the
+        // same PDF is uploaded concurrently or into another agreement family.
+        originalFilename: `${stored.hash}.${artifactId}.txt`,
+        content: [
+          `Parenting agreement: ${title}`,
+          `Source PDF: ${originalFilename}`,
+          `Content SHA-256: ${stored.hash}`,
+          `Pages: ${pageCount}`,
+          "",
+          extracted.text,
+          "",
+          "Agreement obligations are inactive until the owner approves their page-cited review records.",
+        ].join("\n"),
+        scope: "owner-private",
+        addedBy: this.deps.agentId as UUID,
+        addedByRole: "RUNTIME",
+        addedFrom: "lifeops",
+        pinned: false,
+        metadata: {
+          source: "lifeops.parenting-agreement",
+          title,
+          originalFilename,
+          contentType: "application/pdf",
+          mediaUrl: `/api/lifeops/agreements/${artifactId}/download`,
+          mediaHash: stored.hash,
+          mediaFileName: stored.fileName,
+          agreementKey,
+          householdId,
+          agreementExtractionJson: extractionJson,
+        },
+      });
+      documentId = document.storedDocumentMemoryId;
+      const artifact = await this.deps.repository.insertArtifact({
+        id: artifactId,
+        agentId: this.deps.agentId,
+        householdId,
+        agreementKey,
+        supersedesArtifactId: null,
         title,
         originalFilename,
-        contentType: "application/pdf",
+        documentId: document.storedDocumentMemoryId,
         mediaUrl: `/api/lifeops/agreements/${artifactId}/download`,
-        mediaHash: stored.hash,
         mediaFileName: stored.fileName,
-        agreementKey,
-        householdId,
-      },
-    });
-    return await this.deps.repository.insertArtifact({
-      id: artifactId,
-      agentId: this.deps.agentId,
-      householdId,
-      agreementKey,
-      supersedesArtifactId: null,
-      title,
-      originalFilename,
-      documentId: document.storedDocumentMemoryId,
-      mediaUrl: `/api/lifeops/agreements/${artifactId}/download`,
-      mediaFileName: stored.fileName,
-      contentSha256: stored.hash,
-      mimeType: stored.mimeType,
-      byteSize: stored.size,
-      pageCount,
-      uploadedByEntityId: input.uploadedByEntityId,
-      createdAt: this.now().toISOString(),
-    });
+        contentSha256: stored.hash,
+        mimeType: stored.mimeType,
+        byteSize: stored.size,
+        pageCount,
+        uploadedByEntityId: input.uploadedByEntityId,
+        extractionSha256,
+        createdAt: this.now().toISOString(),
+      });
+      await this.settleIngestionOperation(operationId);
+      return artifact;
+    } catch (error) {
+      // error-policy:J2 Roll back only this attempt; preserve committed or uncertain sources.
+      if (documentId) {
+        let persisted: ParentingAgreementArtifact | null;
+        try {
+          persisted = await this.deps.repository.getArtifact(artifactId);
+        } catch (reconciliationError) {
+          // error-policy:J2 A failed commit observation cannot authorize source deletion.
+          const failure = new AgreementKnowledgeError(
+            "Upload persistence could not be reconciled. Inspect the artifact before retrying or deleting its sources.",
+            "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED",
+            {
+              artifactId,
+              documentId,
+              mediaFileName: stored.fileName,
+              operationId,
+            },
+            new AggregateError([error, reconciliationError]),
+          );
+          this.deps.runtime.reportError(
+            "AgreementKnowledge.ingestion",
+            failure,
+          );
+          throw failure;
+        }
+        if (persisted) {
+          const failure = new AgreementKnowledgeError(
+            "The agreement was persisted but the upload did not finish normally. Review the existing version before retrying.",
+            "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED",
+            {
+              artifactId,
+              documentId,
+              mediaFileName: stored.fileName,
+              operationId,
+            },
+            error,
+          );
+          this.deps.runtime.reportError(
+            "AgreementKnowledge.ingestion",
+            failure,
+          );
+          throw failure;
+        }
+      }
+      const cleanup = await Promise.allSettled([
+        ...(documentId
+          ? [
+              documents.deleteDocumentWithAccessContext(documentId, {
+                // requireOwner already verified SELF; documents use the runtime UUID.
+                requesterEntityId: this.deps.agentId as UUID,
+                role: "OWNER",
+                isOwner: true,
+              }),
+            ]
+          : []),
+        fileStorage.deletePrivate(stored.fileName),
+      ]);
+      const failures = cleanup.filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      );
+      if (failures.length > 0) {
+        const failure = new AgreementKnowledgeError(
+          "The upload failed and its private-source cleanup is incomplete. Resolve the reported storage failures before retrying.",
+          "AGREEMENT_INGESTION_CLEANUP_FAILED",
+          {
+            artifactId,
+            documentId,
+            mediaFileName: stored.fileName,
+            operationId,
+          },
+          new AggregateError([
+            error,
+            ...failures.map((result) => result.reason),
+          ]),
+        );
+        this.deps.runtime.reportError("AgreementKnowledge.ingestion", failure);
+        throw failure;
+      }
+      await this.settleIngestionOperation(operationId, error);
+      throw error;
+    }
   }
 
   async readOwnerPdf(input: {
@@ -1033,11 +1837,232 @@ export class AgreementKnowledgeService {
         { artifactId: artifact.id },
       );
     }
+    await this.requireReadableWorkspace();
     return {
       bytes,
       mimeType: artifact.mimeType,
       fileName: artifact.originalFilename,
     };
+  }
+
+  async exportOwnerAgreement(input: {
+    artifactId: string;
+    ownerEntityId: string;
+  }): Promise<{ bytes: Buffer; mimeType: string; fileName: string }> {
+    this.requireOwner(input.ownerEntityId);
+    // Verify immutable bytes before recording a prepared export. Mutable review,
+    // pin, and grant state is subsequently captured in a single SQL snapshot.
+    const original = await this.readOwnerPdf(input);
+    const snapshot = await this.deps.repository.readExportSnapshot(
+      input.artifactId,
+    );
+    const documents = this.deps.documents();
+    if (!documents)
+      throw new AgreementKnowledgeError(
+        "Agreement document service is unavailable",
+        "AGREEMENT_STORAGE_UNAVAILABLE",
+      );
+    const document = await documents.getDocumentById(
+      snapshot.artifact.documentId as UUID,
+    );
+    if (!document)
+      throw new AgreementKnowledgeError(
+        "Agreement extraction document is unavailable",
+        "AGREEMENT_STORAGE_UNAVAILABLE",
+        { artifactId: input.artifactId },
+      );
+    const extractionJson =
+      document.metadata && "agreementExtractionJson" in document.metadata
+        ? document.metadata.agreementExtractionJson
+        : undefined;
+    let extractionBytes: Buffer | null = null;
+    let extraction:
+      | {
+          status: "available";
+          path: "extraction.json";
+          sha256: string;
+          pageCount: number;
+        }
+      | { status: "unavailable"; reason: string };
+    const ingestion = snapshot.audit.find(
+      (event) => event.event_type === "agreement_ingested",
+    );
+    let recordedExtractionSha256: string | null = null;
+    if (ingestion) {
+      try {
+        const inputs = z
+          .object({ extractionSha256: z.string().regex(/^[a-f0-9]{64}$/) })
+          .parse(
+            JSON.parse(requiredText(ingestion.inputs_json, "inputs_json")),
+          );
+        recordedExtractionSha256 = inputs.extractionSha256;
+      } catch (error) {
+        // error-policy:J2 Recorded ingestion provenance must remain verifiable.
+        throw new AgreementKnowledgeError(
+          "Agreement ingestion provenance is invalid",
+          "AGREEMENT_INVALID_CONTRACT",
+          { artifactId: input.artifactId },
+          error,
+        );
+      }
+    }
+    if (
+      recordedExtractionSha256 &&
+      (typeof extractionJson !== "string" ||
+        crypto.createHash("sha256").update(extractionJson).digest("hex") !==
+          recordedExtractionSha256)
+    ) {
+      throw new AgreementKnowledgeError(
+        "Agreement extraction failed integrity verification",
+        "AGREEMENT_INVALID_CONTRACT",
+        { artifactId: input.artifactId },
+      );
+    }
+    if (extractionJson === undefined) {
+      extraction = {
+        status: "unavailable",
+        reason:
+          "This version predates persisted extraction page maps; no historical extraction has been reconstructed.",
+      };
+    } else {
+      try {
+        if (typeof extractionJson !== "string")
+          throw new Error("Extraction metadata is not serialized JSON");
+        const parsed = agreementExtractionSchema.parse(
+          JSON.parse(extractionJson),
+        );
+        if (
+          parsed.pageCount !== snapshot.artifact.pageCount ||
+          parsed.pages.length !== parsed.pageCount ||
+          parsed.pages.some((page, index) => page.pageNumber !== index + 1)
+        )
+          throw new Error("Extraction page map is incomplete");
+        // Export the exact serialized bytes bound at ingestion. Re-encoding
+        // the validated object could change key order and invalidate that hash.
+        extractionBytes = Buffer.from(extractionJson, "utf8");
+        extraction = {
+          status: "available",
+          path: "extraction.json",
+          sha256: crypto
+            .createHash("sha256")
+            .update(extractionBytes)
+            .digest("hex"),
+          pageCount: parsed.pageCount,
+        };
+      } catch (error) {
+        // error-policy:J2 Invalid saved provenance must fail export visibly.
+        throw new AgreementKnowledgeError(
+          "Agreement extraction provenance is invalid",
+          "AGREEMENT_INVALID_CONTRACT",
+          { artifactId: input.artifactId },
+          error,
+        );
+      }
+    }
+    const exportId = `agreement_export_${crypto.randomUUID()}`;
+    const createdAt = this.now().toISOString();
+    const manifest = Buffer.from(
+      `${JSON.stringify(
+        {
+          schema: "elizaos.agreement-export",
+          schemaVersion: 1,
+          exportId,
+          createdAt,
+          original: {
+            path: "original.pdf",
+            sha256: snapshot.artifact.contentSha256,
+            byteSize: snapshot.artifact.byteSize,
+          },
+          ...snapshot,
+          extraction,
+          auditCoverage: {
+            status: snapshot.audit.some(
+              (event) => event.event_type === "agreement_ingested",
+            )
+              ? "recorded_from_ingestion"
+              : "partial_legacy_history",
+            scope:
+              "Persisted agreement events through the database snapshot. Earlier unrecorded activity is unavailable. This export preparation is recorded after archive construction; successful client receipt is not asserted.",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    const manifestSha256 = crypto
+      .createHash("sha256")
+      .update(manifest)
+      .digest("hex");
+    const bytes = createZipArchive([
+      { name: "original.pdf", data: original.bytes },
+      { name: "manifest.json", data: manifest },
+      ...(extractionBytes
+        ? [{ name: "extraction.json", data: extractionBytes }]
+        : []),
+      {
+        name: "SHA256SUMS",
+        data: `${snapshot.artifact.contentSha256}  original.pdf\n${manifestSha256}  manifest.json\n${extraction.status === "available" ? `${extraction.sha256}  extraction.json\n` : ""}`,
+      },
+    ]);
+    await this.deps.repository.recordExport({
+      artifact: snapshot.artifact,
+      exportId,
+      ownerEntityId: input.ownerEntityId,
+      createdAt,
+      manifestSha256,
+      archiveSha256: crypto.createHash("sha256").update(bytes).digest("hex"),
+    });
+    await this.requireReadableWorkspace();
+    return {
+      bytes,
+      mimeType: "application/zip",
+      fileName: `agreement-${snapshot.artifact.id}-v${snapshot.artifact.version}.zip`,
+    };
+  }
+
+  /** Adds an owner correction as an unapproved proposal; identical retries recover its current decision. */
+  async addOwnerReviewProposal(input: {
+    artifactId: string;
+    ownerEntityId: string;
+    proposal: AgreementReviewProposal;
+  }): Promise<{ obligation: ParentingAgreementObligation; created: boolean }> {
+    this.requireOwner(input.ownerEntityId);
+    const artifactId = normalizeHouseholdIdentifier(
+      input.artifactId,
+      "artifactId",
+    );
+    const source = await this.reviewSource(artifactId);
+    const proposal = validateAgreementReviewProposal(input.proposal, source);
+    const identity = crypto
+      .createHash("sha256")
+      .update(
+        JSON.stringify([
+          "owner-agreement-proposal-v1",
+          this.deps.agentId,
+          artifactId,
+          proposal.title,
+          proposal.obligationText,
+          proposal.pageStart,
+          proposal.pageEnd,
+          proposal.citationText,
+        ]),
+      )
+      .digest("hex");
+    const now = this.now().toISOString();
+    return this.deps.repository.insertOwnerProposalOnce({
+      ...proposal,
+      id: `haob_owner_${identity}`,
+      agentId: this.deps.agentId,
+      artifactId,
+      status: "proposed",
+      proposedByEntityId: SELF_ENTITY_ID,
+      decidedByEntityId: null,
+      decisionReason: null,
+      decidedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
   }
 
   async proposeObligation(input: {
@@ -1102,6 +2127,48 @@ export class AgreementKnowledgeService {
     });
   }
 
+  /** Lists only conversations in this agent's current participant set. */
+  async listPinTargets(ownerEntityId: string): Promise<AgreementPinTargets> {
+    this.requireOwner(ownerEntityId);
+    const runtime = this.deps.runtime;
+    const ids = await runtime.getRoomsForParticipant(runtime.agentId);
+    const chats: Array<{ id: string; name: string | null; source: string }> =
+      [];
+    const conversational = new Set<ChannelType>([
+      ChannelType.DM,
+      ChannelType.GROUP,
+      ChannelType.THREAD,
+      ChannelType.VOICE_DM,
+      ChannelType.VOICE_GROUP,
+      ChannelType.API,
+    ]);
+    for (const id of ids) {
+      const room = await runtime.getRoom(id);
+      if (
+        room &&
+        room.agentId === runtime.agentId &&
+        conversational.has(room.type)
+      )
+        chats.push({
+          id: room.id,
+          name: room.name?.trim() || null,
+          source: room.source,
+        });
+    }
+    chats.sort(
+      (left, right) =>
+        (left.name ?? "").localeCompare(right.name ?? "") ||
+        left.id.localeCompare(right.id),
+    );
+    return {
+      agent: {
+        id: runtime.agentId,
+        name: runtime.character.name?.trim() || null,
+      },
+      chats,
+    };
+  }
+
   async pin(input: {
     artifactId: string;
     targetType: KnowledgePinTargetType;
@@ -1110,10 +2177,24 @@ export class AgreementKnowledgeService {
   }): Promise<HouseholdKnowledgePin> {
     this.requireOwner(input.pinnedByEntityId);
     const artifact = await this.requireArtifact(input.artifactId);
+    const targetId = nonEmpty(input.targetId, "targetId");
+    const targets = await this.listPinTargets(input.pinnedByEntityId);
+    const valid =
+      input.targetType === "agent"
+        ? targetId === targets.agent.id
+        : input.targetType === "chat" &&
+          targets.chats.some((chat) => chat.id === targetId);
+    if (!valid) {
+      throw new AgreementKnowledgeError(
+        "This pin destination is unavailable. Refresh the choices and select this agent or one of its current conversations.",
+        "AGREEMENT_INVALID_CONTRACT",
+        { targetType: input.targetType, targetId },
+      );
+    }
     return await this.deps.repository.setPin({
       artifactId: artifact.id,
       targetType: input.targetType,
-      targetId: nonEmpty(input.targetId, "targetId"),
+      targetId,
       pinnedByEntityId: input.pinnedByEntityId,
       pinnedAt: this.now().toISOString(),
     });
@@ -1135,8 +2216,64 @@ export class AgreementKnowledgeService {
     this.requireOwner(input.unpinnedByEntityId);
     return await this.deps.repository.removePin({
       pinId: normalizeHouseholdIdentifier(input.pinId, "pinId"),
+      unpinnedByEntityId: input.unpinnedByEntityId,
       unpinnedAt: this.now().toISOString(),
     });
+  }
+
+  async listGuestAccessOptions(input: {
+    artifactId: string;
+    ownerEntityId: string;
+  }): Promise<AgreementGuestAccessOptions> {
+    this.requireOwner(input.ownerEntityId);
+    const artifact = await this.requireArtifact(input.artifactId);
+    const options: AgreementGuestAccessOptions = { candidates: [], grants: [] };
+    const householdGrants = await this.deps.household.listActiveGrantsForOwner({
+      householdId: artifact.householdId,
+      ownerEntityId: input.ownerEntityId,
+      scope: "knowledge.read",
+    });
+    for (const grant of householdGrants) {
+      if (grant.principalEntityId === SELF_ENTITY_ID) continue;
+      const principal = await this.deps.entityStore.get(
+        grant.principalEntityId,
+      );
+      const identity = principal?.identities.find((item) => item.verified);
+      if (!principal || !identity) continue;
+      options.candidates.push({
+        principalEntityId: grant.principalEntityId,
+        householdGrantId: grant.id,
+        displayName: principal.preferredName || null,
+        identityLabel: `${identity.platform}: ${identity.handle}`,
+        role: grant.role,
+        expiresAt: grant.expiresAt,
+        issuedAt: grant.createdAt,
+      });
+    }
+    for (const grant of await this.deps.repository.listArtifactGrants(
+      artifact.id,
+    )) {
+      if (grant.revokedAt) continue;
+      const principal = await this.deps.entityStore.get(
+        grant.principalEntityId,
+      );
+      const preview = await this.previewGuestRead({
+        artifactId: artifact.id,
+        principalEntityId: grant.principalEntityId,
+        householdGrantId: grant.householdGrantId,
+        ownerEntityId: input.ownerEntityId,
+      });
+      options.grants.push({
+        grantId: grant.id,
+        principalEntityId: grant.principalEntityId,
+        householdGrantId: grant.householdGrantId,
+        displayName: principal?.preferredName || null,
+        issuedAt: grant.createdAt,
+        canRead: preview.allowed,
+        denial: preview.denial?.message ?? null,
+      });
+    }
+    return options;
   }
 
   async previewGuestRead(input: {
@@ -1204,6 +2341,7 @@ export class AgreementKnowledgeService {
     roomId?: string;
   }): Promise<ParentingAgreementView[]> {
     this.requireOwner(input.ownerEntityId);
+    await this.requireReadableWorkspace();
     const targets: Array<{
       targetType: KnowledgePinTargetType;
       targetId: string;
@@ -1224,6 +2362,7 @@ export class AgreementKnowledgeService {
       ).filter((obligation) => obligation.status === "approved");
       if (obligations.length > 0) views.push({ artifact, obligations });
     }
+    await this.requireReadableWorkspace();
     return views;
   }
 
@@ -1238,6 +2377,7 @@ export class AgreementKnowledgeService {
     roomId?: string;
     at?: Date;
   }): Promise<Array<ParentingAgreementView | ParentingAgreementGuestView>> {
+    await this.requireReadableWorkspace();
     const principalEntityId = normalizeHouseholdIdentifier(
       input.principalEntityId,
       "principalEntityId",
@@ -1288,6 +2428,7 @@ export class AgreementKnowledgeService {
         throw error;
       }
     }
+    await this.requireReadableWorkspace();
     return views;
   }
 
@@ -1392,6 +2533,7 @@ export class AgreementKnowledgeService {
     );
     const obligations = await this.deps.repository.listObligations(artifact.id);
     if (principalEntityId === SELF_ENTITY_ID) {
+      await this.requireReadableWorkspace();
       return { artifact, obligations };
     }
     const grants = await this.deps.repository.listGrants(
@@ -1408,6 +2550,7 @@ export class AgreementKnowledgeService {
           scope: "knowledge.read",
           at: input.at ?? this.now(),
         });
+        await this.requireReadableWorkspace();
         return {
           artifact: guestArtifactProjection(artifact),
           obligations: obligations

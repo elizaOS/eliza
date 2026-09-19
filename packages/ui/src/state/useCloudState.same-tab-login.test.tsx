@@ -11,6 +11,7 @@
 // flow. jsdom pinned to a hosted elizacloud origin with the API client mocked.
 
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../api";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
@@ -560,7 +561,53 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     expect(params.setActionNotice).not.toHaveBeenCalled();
   });
 
-  it("claims a hosted staging return without replacing the localhost backend", async () => {
+  it.each([
+    ["/cloud/billing?from=login#receipt", "authenticated", true],
+    ["//evil.example/cloud", "authenticated", false],
+    ["/chat", "authenticated", false],
+    ["/cloudish", "authenticated", false],
+    ["/cloud/agents", "expired", false],
+  ])(
+    "returns to %s only after successful local CLI authentication (%s)",
+    async (destination, status, navigates) => {
+      const replace = vi.fn();
+      const search = `?elizaCloudLogin=complete&elizaCloudLoginSession=account-return&elizaCloudLoginReturnTo=${encodeURIComponent(destination)}`;
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+          href: `http://127.0.0.1:2189/settings${search}`,
+          origin: "http://127.0.0.1:2189",
+          protocol: "http:",
+          hostname: "127.0.0.1",
+          port: "2189",
+          pathname: "/settings",
+          search,
+          assign: assignSpy,
+          replace,
+        },
+      });
+      vi.stubEnv("VITE_STEWARD_API_URL", "https://staging.eliza.app/steward");
+      vi.stubEnv("VITE_STEWARD_TENANT_ID", "elizacloud-staging");
+      setBootConfig({
+        branding: {},
+        cloudApiBase: "https://api-staging.eliza.app",
+      });
+      vi.spyOn(client, "getBaseUrl").mockReturnValue("http://127.0.0.1:31337");
+      cloudLoginPollDirectSpy.mockResolvedValue({
+        status,
+        token: "eliza_account_return_test_key",
+      });
+      const { result } = renderHook(() => useCloudState(makeParams()));
+      await waitFor(() => expect(cloudLoginPollDirectSpy).toHaveBeenCalled());
+      await waitFor(() =>
+        expect(result.current.elizaCloudLoginBusy).toBe(false),
+      );
+      if (navigates) expect(replace).toHaveBeenCalledWith(destination);
+      else expect(replace).not.toHaveBeenCalled();
+    },
+  );
+
+  it("claims a hosted staging return once under Strict Mode without replacing the localhost backend", async () => {
     const search =
       "?elizaCloudLogin=complete&elizaCloudLoginSession=staging-return";
     Object.defineProperty(window, "location", {
@@ -591,7 +638,9 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       userId: "user-staging",
     });
 
-    const { result } = renderHook(() => useCloudState(makeParams()));
+    const { result } = renderHook(() => useCloudState(makeParams()), {
+      wrapper: StrictMode,
+    });
 
     await waitFor(() => {
       expect(localStorage.getItem("steward_session_token")).toBe(
@@ -603,6 +652,8 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       "https://api-staging.eliza.app",
       "staging-return",
     );
+    expect(cloudLoginPollDirectSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.elizaCloudLoginBusy).toBe(false);
     expect(setBaseUrlSpy).not.toHaveBeenCalled();
     expect(setTokenSpy).not.toHaveBeenCalled();
   });

@@ -4,20 +4,23 @@
  * schema enforcement is asserted on the request, not simulated model behavior.
  */
 import { createServer, type Server } from "node:http";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, ToolDefinition } from "@elizaos/core";
 import { jsonSchema, Output } from "ai";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildPlannerToolsFromActions } from "../../../packages/core/src/actions/to-tool";
 import { ExtractorOutputSchema } from "../../../packages/core/src/features/advanced-capabilities/evaluators/factExtractor.schema";
 import { factMemoryEvaluator } from "../../../packages/core/src/features/advanced-capabilities/evaluators/reflection-items";
 import { evaluatorSchema } from "../../../packages/core/src/prompts/evaluator";
+import { withTurnScopeToolArg } from "../../../packages/core/src/runtime/planner-loop";
 import { parseAndValidate } from "../../../packages/core/src/runtime/validated-model-call";
-import { handleActionPlanner, handleTextSmall } from "../models/text";
+import { handleActionPlanner, handleResponseHandler, handleTextSmall } from "../models/text";
 
 interface WireRequest {
   model: string;
   stream?: boolean;
   temperature?: number;
   top_p?: number;
+  reasoning_effort?: string;
   messages: Array<{ role: string; content: string }>;
   tools?: unknown[];
   response_format?: {
@@ -33,6 +36,9 @@ const verdict = {
 };
 const requests: WireRequest[] = [];
 let reply: unknown = verdict;
+let replyToolCall:
+  | { id: string; type: "function"; function: { name: string; arguments: string } }
+  | undefined;
 let rejectSchema = false;
 let baseUrl: string;
 let server: Server;
@@ -85,7 +91,15 @@ beforeAll(async () => {
             ...base,
             object: "chat.completion",
             choices: [
-              { index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" },
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: text,
+                  ...(replyToolCall ? { tool_calls: [replyToolCall] } : {}),
+                },
+                finish_reason: replyToolCall ? "tool_calls" : "stop",
+              },
             ],
             usage: { prompt_tokens: 3, completion_tokens: 4, total_tokens: 7 },
           })
@@ -108,6 +122,7 @@ afterAll(async () => {
 beforeEach(() => {
   requests.length = 0;
   reply = verdict;
+  replyToolCall = undefined;
   rejectSchema = false;
   vi.stubEnv("ELIZA_PROVIDER", "cerebras");
   vi.stubEnv("OPENAI_BASE_URL", baseUrl);
@@ -134,14 +149,23 @@ async function invoke(options: {
   schema?: unknown;
   stream?: boolean;
   model?: string;
-  tools?: Array<{ name: string; description: string; parameters: object; strict: boolean }>;
+  tools?: ToolDefinition[];
   responseFormat?: { type: "json_object" };
   actionPlanner?: boolean;
+  responseHandler?: boolean;
+  providerOptions?: {
+    eliza?: { thinking: "on" | "off" };
+    openai?: { reasoningEffort: "none" | "high" };
+  };
   temperature?: number;
   topP?: number;
 }) {
   const chunks: string[] = [];
-  const handler = options.actionPlanner ? handleActionPlanner : handleTextSmall;
+  const handler = options.actionPlanner
+    ? handleActionPlanner
+    : options.responseHandler
+      ? handleResponseHandler
+      : handleTextSmall;
   const result: unknown = await handler(runtime(), {
     model: options.model ?? "qwen-3.8-27b",
     messages: [
@@ -156,6 +180,7 @@ async function invoke(options: {
     stream: options.stream ?? false,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     ...(options.topP !== undefined ? { topP: options.topP } : {}),
+    ...(options.providerOptions ? { providerOptions: options.providerOptions } : {}),
     onStreamChunk: (chunk: string) => chunks.push(chunk),
   } as never);
   if (!result || typeof result !== "object" || !("text" in result)) {
@@ -173,6 +198,182 @@ async function invoke(options: {
 }
 
 describe("Qwen3.8 response-schema wire contract", () => {
+  it.each([false, true])(
+    "transmits the history-reconciliation reasoning opt-in and explicit overrides (stream=%s)",
+    async (stream) => {
+      vi.stubEnv("OPENAI_REASONING_EFFORT", "none");
+      const cases = [
+        { options: {}, effort: "none" },
+        { options: { eliza: { thinking: "on" } }, effort: "low" },
+        {
+          options: { eliza: { thinking: "on" }, openai: { reasoningEffort: "none" } },
+          effort: "none",
+        },
+        {
+          options: { eliza: { thinking: "on" }, openai: { reasoningEffort: "high" } },
+          effort: "high",
+        },
+      ] as const;
+      for (const { options, effort } of cases) {
+        expect(await invoke({ responseHandler: true, stream, providerOptions: options })).toEqual(
+          verdict
+        );
+        const request = requests.at(-1);
+        expect(request?.reasoning_effort).toBe(effort);
+        expect(request?.messages).toContainEqual({
+          role: "user",
+          content: "Return JSON for the full navigation request; retain this final context marker.",
+        });
+      }
+      expect(requests).toHaveLength(cases.length);
+    }
+  );
+
+  it("restores opted-in aggregator maps after the actual native tool response", async () => {
+    const customFields = { label: "complete value", nested: { id: "task-1", values: [1, false] } };
+    const tools = withTurnScopeToolArg(
+      buildPlannerToolsFromActions([
+        {
+          name: "SAVE_RECORD",
+          description: "Read or update arbitrary record fields.",
+          toolSchemaStrict: false,
+          parameters: [
+            {
+              name: "action",
+              description: "Operation",
+              required: true,
+              schema: { type: "string", enum: ["read", "update"] },
+            },
+            {
+              name: "customFields",
+              description: "Fields when updating",
+              required: false,
+              schema: { type: "object", additionalProperties: true },
+            },
+          ],
+        },
+      ])
+    );
+    replyToolCall = {
+      id: "call-record",
+      type: "function",
+      function: {
+        name: "SAVE_RECORD",
+        arguments: JSON.stringify({
+          action: "update",
+          eliza_turn_scope: "more_work_pending",
+          customFields: {
+            __eliza_record_entries: Object.entries(customFields).map(([key, value]) => ({
+              key,
+              value: JSON.stringify(value),
+            })),
+          },
+        }),
+      },
+    };
+    const result = await handleActionPlanner(runtime(), {
+      model: "qwen-3.8-27b",
+      messages: [{ role: "user", content: "Update the complete record." }],
+      tools,
+    });
+    expect(requests[0].tools).toEqual([
+      expect.objectContaining({
+        function: expect.objectContaining({
+          strict: true,
+          parameters: expect.objectContaining({
+            required: ["action", "eliza_turn_scope"],
+            properties: expect.objectContaining({
+              customFields: expect.objectContaining({
+                additionalProperties: false,
+                properties: expect.objectContaining({
+                  __eliza_record_entries: expect.objectContaining({ type: "array" }),
+                }),
+              }),
+            }),
+          }),
+        }),
+      }),
+    ]);
+    expect(result).toEqual(
+      expect.objectContaining({
+        toolCalls: [
+          expect.objectContaining({
+            toolName: "SAVE_RECORD",
+            input: { action: "update", customFields, eliza_turn_scope: "more_work_pending" },
+          }),
+        ],
+      })
+    );
+  });
+
+  it.each(["cerebras", "openai"])(
+    "retains required planner scope and optional aggregator fields on %s",
+    async (provider) => {
+      vi.stubEnv("ELIZA_PROVIDER", provider);
+      const tools = withTurnScopeToolArg(
+        buildPlannerToolsFromActions([
+          {
+            name: "CALENDAR_PROBE",
+            description: "Read or update the local calendar.",
+            toolSchemaStrict: false,
+            parameters: [
+              {
+                name: "action",
+                description: "Operation",
+                required: true,
+                schema: { type: "string", enum: ["read", "update"] },
+              },
+              {
+                name: "title",
+                description: "Title when updating",
+                required: false,
+                schema: { type: "string", minLength: 1 },
+              },
+            ],
+          },
+        ])
+      );
+      if (!tools?.[0].parameters) throw new Error("missing planner schema");
+      const original = structuredClone(tools);
+      await invoke({ tools, actionPlanner: true });
+      expect(requests[0].tools).toEqual([
+        expect.objectContaining({
+          function: expect.objectContaining({
+            name: "CALENDAR_PROBE",
+            strict: provider === "cerebras",
+            parameters: expect.objectContaining({
+              required: ["action", "eliza_turn_scope"],
+              properties: expect.objectContaining({
+                title:
+                  provider === "cerebras"
+                    ? expect.objectContaining({
+                        description: expect.stringContaining("at least 1 characters"),
+                      })
+                    : expect.objectContaining({ minLength: 1 }),
+              }),
+            }),
+          }),
+        }),
+      ]);
+      expect(
+        parseAndValidate(
+          JSON.stringify({ action: "read", eliza_turn_scope: "more_work_pending" }),
+          tools[0].parameters
+        ).valid
+      ).toBe(true);
+      expect(parseAndValidate(JSON.stringify({ action: "read" }), tools[0].parameters).valid).toBe(
+        false
+      );
+      expect(
+        parseAndValidate(
+          JSON.stringify({ action: "update", title: "", eliza_turn_scope: "final" }),
+          tools[0].parameters
+        ).valid
+      ).toBe(false);
+      expect(tools).toEqual(original);
+    }
+  );
+
   it.each([false, true])(
     "enforces the fact operation contract on the actual provider request (stream=%s)",
     async (stream) => {

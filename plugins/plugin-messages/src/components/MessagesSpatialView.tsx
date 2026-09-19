@@ -108,7 +108,10 @@ export function MessagesSpatialView({
     snapshot.composeBody.trim().length > 0;
 
   return (
-    <div className="min-h-0 overflow-y-auto" data-scroll-cert-scroller>
+    <div
+      className="eliza-chat-scroll min-h-0 overflow-y-auto"
+      data-scroll-cert-scroller
+    >
       <Card gap={1} padding={1}>
         <HStack gap={1} align="center">
           <Text style="caption" tone={roleTone(snapshot)} grow={1}>

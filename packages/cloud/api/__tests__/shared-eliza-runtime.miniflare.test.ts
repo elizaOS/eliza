@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
+import { z } from "zod";
 
 describe("Shared Eliza runtime in Workerd", () => {
   let buildDirectory: string;
@@ -35,6 +36,122 @@ describe("Shared Eliza runtime in Workerd", () => {
       async fetch(request) {
         const body = (await request.json()) as Record<string, unknown>;
         modelRequests.push(body);
+        const reviewPrompt = z
+          .array(
+            z
+              .object({
+                content: z.unknown(),
+              })
+              .passthrough(),
+          )
+          .parse(body.messages)
+          .flatMap((message) =>
+            typeof message.content === "string" &&
+            message.content.startsWith("Review recovered reply grounding.")
+              ? [message.content]
+              : [],
+          );
+        if (reviewPrompt.length > 0) {
+          expect(reviewPrompt).toHaveLength(1);
+          const lines = reviewPrompt[0].split("\n");
+          const field = (prefix: string): unknown => {
+            const matches = lines.filter((line) => line.startsWith(prefix));
+            expect(matches).toHaveLength(1);
+            return JSON.parse(matches[0].slice(prefix.length));
+          };
+          expect(field("Candidate reply: ")).toBe(
+            "I added Buy milk to your todo list.",
+          );
+          const selected = z
+            .array(z.string())
+            .length(1)
+            .parse(field("Selected effect receipt IDs: "));
+          const evidence = z
+            .object({
+              request: z.object({ text: z.string() }).passthrough(),
+              results: z.string(),
+            })
+            .passthrough()
+            .parse(field("Complete turn evidence: "));
+          expect(evidence.request.text).toBe("add buy milk to my todo list");
+          const results = evidence.results
+            .split("\n")
+            .filter((line) => line.startsWith("{"))
+            .map((line): unknown => JSON.parse(line));
+          expect(results).toHaveLength(1);
+          const result = z
+            .object({
+              success: z.literal(true),
+              data: z
+                .object({
+                  actionName: z.literal("TODO"),
+                  action: z.literal("create"),
+                  todo: z
+                    .object({
+                      id: z.string().min(1),
+                      content: z.literal("Buy milk"),
+                      status: z.literal("pending"),
+                    })
+                    .passthrough(),
+                })
+                .passthrough(),
+              effectReceipts: z
+                .array(
+                  z
+                    .object({
+                      receiptId: z.string(),
+                      operation: z.literal("todos.create"),
+                      outcome: z.literal("applied"),
+                      resource: z
+                        .object({
+                          kind: z.literal("todos.todo"),
+                          id: z.string(),
+                        })
+                        .passthrough(),
+                      commit: z
+                        .object({
+                          kind: z.literal("durable"),
+                          id: z.string().min(1),
+                        })
+                        .passthrough(),
+                    })
+                    .passthrough(),
+                )
+                .length(1),
+            })
+            .passthrough()
+            .parse(results[0]);
+          expect(selected).toEqual([result.effectReceipts[0].receiptId]);
+          expect(result.effectReceipts[0].resource.id).toBe(
+            result.data.todo.id,
+          );
+          return Response.json({
+            id: "chatcmpl-workerd-todo-grounding-review",
+            object: "chat.completion",
+            created: 0,
+            model: "shared-runtime-probe",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: JSON.stringify({
+                    grounded: true,
+                    completedChangeClaim: true,
+                    reason:
+                      "The selected durable todos.create receipt identifies the pending Buy milk item in this turn's real action result.",
+                  }),
+                },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 50,
+              completion_tokens: 14,
+              total_tokens: 64,
+            },
+          });
+        }
         if (JSON.stringify(body).includes("add buy milk to my todo list")) {
           todoPlannerRequests += 1;
           if (todoPlannerRequests === 1) {
@@ -79,6 +196,54 @@ describe("Shared Eliza runtime in Workerd", () => {
                 prompt_tokens: 30,
                 completion_tokens: 12,
                 total_tokens: 42,
+              },
+            });
+          }
+          if (todoPlannerRequests > 2) {
+            const receiptIds = [
+              ...new Set(
+                JSON.stringify(body).match(/todos:mutation:[a-zA-Z0-9-]+/g) ??
+                  [],
+              ),
+            ];
+            if (receiptIds.length !== 1)
+              throw new Error(
+                "TODO reply fixture requires the actual applied receipt in its model request",
+              );
+            return Response.json({
+              id: "chatcmpl-workerd-todo-grounded-reply",
+              object: "chat.completion",
+              created: 0,
+              model: "shared-runtime-probe",
+              choices: [
+                {
+                  index: 0,
+                  message: {
+                    role: "assistant",
+                    content: JSON.stringify(
+                      JSON.stringify(body).includes(
+                        "Compose a user-facing response in the assistant character",
+                      )
+                        ? {
+                            response: "I added Buy milk to your todo list.",
+                            effectReceiptIds: receiptIds,
+                          }
+                        : {
+                            success: true,
+                            decision: "FINISH",
+                            thought: "The Todo is stored.",
+                            messageToUser:
+                              "I added Buy milk to your todo list.",
+                          },
+                    ),
+                  },
+                  finish_reason: "stop",
+                },
+              ],
+              usage: {
+                prompt_tokens: 50,
+                completion_tokens: 14,
+                total_tokens: 64,
               },
             });
           }
@@ -776,19 +941,18 @@ describe("Shared Eliza runtime in Workerd", () => {
       storedTodos: Array<Record<string, unknown>>;
     };
     expect(payload.result).toMatchObject({
-      reply: 'Added "Buy milk" to your list.',
+      reply: "I added Buy milk to your todo list.",
       degraded: false,
       usage: {
-        promptTokens: 70,
-        completionTokens: 22,
-        totalTokens: 92,
+        promptTokens: 220,
+        completionTokens: 64,
+        totalTokens: 284,
       },
     });
     expect(payload.result.actionResults).toHaveLength(1);
     expect(payload.result.actionResults?.[0]).toMatchObject({
       success: true,
       text: 'Added "Buy milk" to your list.',
-      verifiedUserFacing: true,
       effectReceipts: [
         {
           operation: "todos.create",
@@ -808,7 +972,12 @@ describe("Shared Eliza runtime in Workerd", () => {
       }),
     ]);
     const todoRequests = modelRequests.slice(requestsBefore);
-    expect(todoRequests).toHaveLength(2);
+    expect(todoRequests).toHaveLength(5);
+    const receipts = payload.result.actionResults?.[0]?.effectReceipts;
+    if (!Array.isArray(receipts) || typeof receipts[0]?.receiptId !== "string")
+      throw new Error("Applied Todo receipt is missing");
+    expect(JSON.stringify(todoRequests[3])).toContain(receipts[0].receiptId);
+    expect(JSON.stringify(todoRequests[4])).toContain(receipts[0].receiptId);
     const todoPlanTools = todoRequests[1]?.tools as
       | Array<{ function?: { name?: string } }>
       | undefined;
@@ -817,7 +986,6 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(todoPlanTools.some((tool) => tool.function?.name === "TODO")).toBe(
       true,
     );
-    expect(todoPlannerRequests).toBe(2);
   }, 120_000);
 
   test("runs the genuine REMINDERS action with a trusted Discord DM inside Workerd", async () => {
@@ -1042,17 +1210,9 @@ describe("Shared Eliza runtime in Workerd", () => {
       mediaRequests: Array<Record<string, unknown>>;
     };
 
-    expect(payload.result.reply).toBe(
-      "I tried to complete that, but the available runtime step failed before it produced a usable result.",
-    );
+    expect(payload.result.reply).toBe("The call is connected and ready.");
     expect(payload.result.history[0]?.role).toBe("system");
-    expect(payload.result.actionResults).toEqual([
-      expect.objectContaining({
-        success: false,
-        error: "Action not found: GENERATE_MEDIA",
-        data: { actionName: "GENERATE_MEDIA" },
-      }),
-    ]);
+    expect(payload.result.actionResults).toBeUndefined();
     expect(payload.mediaRequests).toEqual([]);
 
     const lifecycleRequests = modelRequests.slice(requestsBefore);
@@ -1098,7 +1258,7 @@ describe("Shared Eliza runtime in Workerd", () => {
         | Array<{ function?: { name?: string } }>
         | undefined) ?? []
     ).flatMap((tool) => (tool.function?.name ? [tool.function.name] : []));
-    expect(toolNames).toEqual(["HANDLE_RESPONSE"]);
+    expect(toolNames).toEqual(["HANDLE_RESPONSE", "READ_CONTEXT"]);
   }, 120_000);
 
   test.skipIf(process.env.SHARED_ELIZA_LIVE_WEB_SEARCH !== "1")(

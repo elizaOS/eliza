@@ -32,7 +32,10 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
 }));
 
-vi.mock("@elizaos/ui/api", () => ({
+vi.mock("@elizaos/ui/api", async () => ({
+  ApiError: (
+    await import("../../../../packages/ui/src/api/client-types-core.js")
+  ).ApiError,
   client: {
     listCodingAgentTaskThreads: (...a: unknown[]) =>
       listCodingAgentTaskThreads(...a),
@@ -116,13 +119,6 @@ vi.mock("@elizaos/ui/api", () => ({
 
 vi.mock("@elizaos/ui", () => {
   return {
-    ApiError: class ApiError extends Error {
-      status: number;
-      constructor(message: string, status: number) {
-        super(message);
-        this.status = status;
-      }
-    },
     client: {
       listCodingAgentTaskThreads: (...a: unknown[]) =>
         listCodingAgentTaskThreads(...a),

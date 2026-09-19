@@ -70,7 +70,7 @@ describe("ElizaClient account replacement transport", () => {
     await expect(accountsClient(body).listAccounts()).resolves.toEqual(body);
   });
 
-  it("rejects server metadata that advertises an unspawnable account provider", async () => {
+  it("rejects a supported account provider assigned to an incompatible coding backend", async () => {
     const body = {
       providers: [
         {
@@ -92,7 +92,7 @@ describe("ElizaClient account replacement transport", () => {
     await expect(accountsClient(body).listAccounts()).rejects.toMatchObject({
       code: ACCOUNTS_RESPONSE_INVALID_CODE,
       context: {
-        path: "response.providers[0].runtimeEligibility.codingAgent.available",
+        path: "response.providers[0].runtimeEligibility.codingAgent.backend",
       },
     });
   });

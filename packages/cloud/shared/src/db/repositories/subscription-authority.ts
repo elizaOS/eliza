@@ -285,155 +285,165 @@ export class SubscriptionAuthorityRepository {
     source: BillingSubscriptionRevisionSource,
     expectedAccountSubscriptionId: string | null,
   ): Promise<SubscriptionMutationResult> {
-    return writeTransaction(async (tx) => {
-      const [organization] = await tx
-        .select({
-          id: organizations.id,
-          account_lifecycle_state: organizations.account_lifecycle_state,
-          paid_work_fenced_at: organizations.paid_work_fenced_at,
-          stripe_customer_id: organizations.stripe_customer_id,
-        })
-        .from(organizations)
-        .where(eq(organizations.id, values.organization_id))
+    return writeTransaction((tx) =>
+      this.createInTransaction(tx, values, source, expectedAccountSubscriptionId),
+    );
+  }
+
+  /** Shares the authority lock and rollback boundary with first-payment publication. */
+  async createInTransaction(
+    tx: DbTransaction,
+    values: SubscriptionCreateValues,
+    source: BillingSubscriptionRevisionSource,
+    expectedAccountSubscriptionId: string | null,
+  ): Promise<SubscriptionMutationResult> {
+    const [organization] = await tx
+      .select({
+        id: organizations.id,
+        account_lifecycle_state: organizations.account_lifecycle_state,
+        paid_work_fenced_at: organizations.paid_work_fenced_at,
+        stripe_customer_id: organizations.stripe_customer_id,
+      })
+      .from(organizations)
+      .where(eq(organizations.id, values.organization_id))
+      .limit(1)
+      .for("update");
+    if (!organization) {
+      throw new ElizaError("Subscription organization does not exist", {
+        code: SUBSCRIPTION_AUTHORITY_TENANT_NOT_FOUND,
+        context: { organizationId: values.organization_id },
+      });
+    }
+    const accountAuthority = await readAccountAuthority(tx, values.organization_id);
+    requireActivationAllowed(organization, values);
+
+    const [currentForOrganization] = await tx
+      .select({ id: billingSubscriptions.id })
+      .from(billingSubscriptions)
+      .where(
+        and(
+          eq(billingSubscriptions.organization_id, values.organization_id),
+          inArray(billingSubscriptions.status, [
+            "pending",
+            "incomplete",
+            "active",
+            "grace",
+            "past_due",
+            "unpaid",
+          ]),
+        ),
+      )
+      .limit(1)
+      .for("update");
+    if (currentForOrganization) {
+      const [existing] = await tx
+        .select()
+        .from(billingSubscriptions)
+        .where(eq(billingSubscriptions.id, currentForOrganization.id))
         .limit(1)
         .for("update");
-      if (!organization) {
-        throw new ElizaError("Subscription organization does not exist", {
-          code: SUBSCRIPTION_AUTHORITY_TENANT_NOT_FOUND,
-          context: { organizationId: values.organization_id },
+      if (!existing || !isExactCreateReplay(existing, values)) {
+        conflict("Organization already has a live subscription authority", {
+          organizationId: values.organization_id,
+          subscriptionId: currentForOrganization.id,
         });
       }
-      const accountAuthority = await readAccountAuthority(tx, values.organization_id);
-      requireActivationAllowed(organization, values);
+      const [revision] = await tx
+        .select()
+        .from(billingSubscriptionRevisions)
+        .where(
+          and(
+            eq(billingSubscriptionRevisions.subscription_id, existing.id),
+            eq(billingSubscriptionRevisions.revision, existing.lifecycle_revision),
+          ),
+        )
+        .limit(1);
+      if (!revision) {
+        conflict("Subscription replay has no immutable revision", {
+          subscriptionId: existing.id,
+          revision: existing.lifecycle_revision,
+        });
+      }
+      requireCurrentAccountAuthority(accountAuthority, existing.id);
+      return { subscription: existing, revision, replayed: true };
+    }
 
-      const [currentForOrganization] = await tx
-        .select({ id: billingSubscriptions.id })
+    const inserted = await tx
+      .insert(billingSubscriptions)
+      .values({ ...values, lifecycle_revision: 1 })
+      .onConflictDoNothing()
+      .returning();
+    let subscription = inserted.at(0);
+    if (!subscription) {
+      [subscription] = await tx
+        .select()
         .from(billingSubscriptions)
         .where(
           and(
-            eq(billingSubscriptions.organization_id, values.organization_id),
-            inArray(billingSubscriptions.status, [
-              "pending",
-              "incomplete",
-              "active",
-              "grace",
-              "past_due",
-              "unpaid",
-            ]),
+            eq(billingSubscriptions.provider, values.provider),
+            eq(billingSubscriptions.provider_environment, values.provider_environment),
+            eq(billingSubscriptions.stripe_subscription_id, values.stripe_subscription_id),
           ),
         )
         .limit(1)
         .for("update");
-      if (currentForOrganization) {
-        const [existing] = await tx
-          .select()
-          .from(billingSubscriptions)
-          .where(eq(billingSubscriptions.id, currentForOrganization.id))
-          .limit(1)
-          .for("update");
-        if (!existing || !isExactCreateReplay(existing, values)) {
-          conflict("Organization already has a live subscription authority", {
-            organizationId: values.organization_id,
-            subscriptionId: currentForOrganization.id,
-          });
-        }
-        const [revision] = await tx
-          .select()
-          .from(billingSubscriptionRevisions)
-          .where(
-            and(
-              eq(billingSubscriptionRevisions.subscription_id, existing.id),
-              eq(billingSubscriptionRevisions.revision, existing.lifecycle_revision),
-            ),
-          )
-          .limit(1);
-        if (!revision) {
-          conflict("Subscription replay has no immutable revision", {
-            subscriptionId: existing.id,
-            revision: existing.lifecycle_revision,
-          });
-        }
-        requireCurrentAccountAuthority(accountAuthority, existing.id);
-        return { subscription: existing, revision, replayed: true };
-      }
-
-      const inserted = await tx
-        .insert(billingSubscriptions)
-        .values({ ...values, lifecycle_revision: 1 })
-        .onConflictDoNothing()
-        .returning();
-      let subscription = inserted.at(0);
-      if (!subscription) {
-        [subscription] = await tx
-          .select()
-          .from(billingSubscriptions)
-          .where(
-            and(
-              eq(billingSubscriptions.provider, values.provider),
-              eq(billingSubscriptions.provider_environment, values.provider_environment),
-              eq(billingSubscriptions.stripe_subscription_id, values.stripe_subscription_id),
-            ),
-          )
-          .limit(1)
-          .for("update");
-        if (
-          !subscription ||
-          subscription.organization_id !== values.organization_id ||
-          !isExactCreateReplay(subscription, values)
-        ) {
-          conflict("Subscription create idempotency key conflicts with different state", {
-            organizationId: values.organization_id,
-            stripeSubscriptionId: values.stripe_subscription_id,
-          });
-        }
-        const [revision] = await tx
-          .select()
-          .from(billingSubscriptionRevisions)
-          .where(
-            and(
-              eq(billingSubscriptionRevisions.subscription_id, subscription.id),
-              eq(billingSubscriptionRevisions.revision, subscription.lifecycle_revision),
-            ),
-          )
-          .limit(1);
-        if (!revision) {
-          conflict("Subscription replay has no immutable revision", {
-            subscriptionId: subscription.id,
-            revision: subscription.lifecycle_revision,
-          });
-        }
-        requireCurrentAccountAuthority(accountAuthority, subscription.id);
-        return { subscription, revision, replayed: true };
-      }
-
       if (
-        accountAuthority.state === "unavailable" ||
-        accountAuthority.subscription_id !== expectedAccountSubscriptionId
+        !subscription ||
+        subscription.organization_id !== values.organization_id ||
+        !isExactCreateReplay(subscription, values)
       ) {
-        conflict("Subscription creation account authority changed since the command was accepted", {
+        conflict("Subscription create idempotency key conflicts with different state", {
           organizationId: values.organization_id,
-          expectedAccountSubscriptionId,
-          currentAccountSubscriptionId: accountAuthority.subscription_id,
-          authorityState: accountAuthority.state,
+          stripeSubscriptionId: values.stripe_subscription_id,
         });
       }
-
       const [revision] = await tx
-        .insert(billingSubscriptionRevisions)
-        .values(revisionInsert(subscription, source))
-        .returning();
+        .select()
+        .from(billingSubscriptionRevisions)
+        .where(
+          and(
+            eq(billingSubscriptionRevisions.subscription_id, subscription.id),
+            eq(billingSubscriptionRevisions.revision, subscription.lifecycle_revision),
+          ),
+        )
+        .limit(1);
       if (!revision) {
-        conflict("Subscription revision insert returned no row", {
+        conflict("Subscription replay has no immutable revision", {
           subscriptionId: subscription.id,
-          revision: 1,
+          revision: subscription.lifecycle_revision,
         });
       }
-      await tx
-        .update(organizationSubscriptionAuthorities)
-        .set({ subscription_id: subscription.id, state: "current" })
-        .where(eq(organizationSubscriptionAuthorities.organization_id, values.organization_id));
-      return { subscription, revision, replayed: false };
-    });
+      requireCurrentAccountAuthority(accountAuthority, subscription.id);
+      return { subscription, revision, replayed: true };
+    }
+
+    if (
+      accountAuthority.state === "unavailable" ||
+      accountAuthority.subscription_id !== expectedAccountSubscriptionId
+    ) {
+      conflict("Subscription creation account authority changed since the command was accepted", {
+        organizationId: values.organization_id,
+        expectedAccountSubscriptionId,
+        currentAccountSubscriptionId: accountAuthority.subscription_id,
+        authorityState: accountAuthority.state,
+      });
+    }
+
+    const [revision] = await tx
+      .insert(billingSubscriptionRevisions)
+      .values(revisionInsert(subscription, source))
+      .returning();
+    if (!revision) {
+      conflict("Subscription revision insert returned no row", {
+        subscriptionId: subscription.id,
+        revision: 1,
+      });
+    }
+    await tx
+      .update(organizationSubscriptionAuthorities)
+      .set({ subscription_id: subscription.id, state: "current" })
+      .where(eq(organizationSubscriptionAuthorities.organization_id, values.organization_id));
+    return { subscription, revision, replayed: false };
   }
 
   /** Release the subscription identity only inside irreversible account erasure. */

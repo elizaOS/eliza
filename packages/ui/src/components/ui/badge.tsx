@@ -18,7 +18,7 @@ const badgeVariants = cva(
           "border-transparent bg-primary text-primary-fg hover:bg-primary/80",
         secondary: "border-transparent bg-bg-accent text-txt hover:bg-bg-hover",
         destructive:
-          "border-transparent bg-destructive text-destructive-fg hover:bg-destructive/80",
+          "border-transparent bg-destructive-solid text-destructive-fg hover:bg-destructive-solid-hover",
         outline: "text-txt border-border",
         ownerOverlay:
           "absolute -right-0.5 -top-0.5 border-0 bg-bg/90 p-0.5 text-accent shadow",
@@ -50,7 +50,7 @@ const badgeVariants = cva(
         keyHint:
           "border-border/50 bg-card px-1.5 py-0.5 text-2xs font-medium text-muted",
         adminMono:
-          "rounded-sm border-border bg-bg-hover px-1.5 py-0.5 font-mono text-2xs font-normal text-muted",
+          "rounded-sm border-border bg-bg-hover px-1.5 py-0.5 font-mono text-2xs font-normal text-muted-strong",
         vaultAccent:
           "rounded-full border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent",
         vaultInfo:

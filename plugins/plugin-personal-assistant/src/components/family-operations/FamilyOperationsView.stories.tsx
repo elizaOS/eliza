@@ -6,6 +6,10 @@ import { FamilyOperationsView } from "./FamilyOperationsView.js";
 import type { FamilyOperationsAdapter } from "./types.js";
 
 const adapter = {
+  listRecipientContacts: async () => [],
+  confirmEmailRecipient: async () => {
+    throw new Error("This preview does not save contacts.");
+  },
   load: async () => ({
     agreements: { status: "ready", data: [] },
     calendarLinks: { status: "ready", data: [] },
@@ -14,17 +18,34 @@ const adapter = {
       message: "School workflow API has not been installed on this runtime.",
     },
     packets: { status: "ready", data: [] },
+    emailOptions: { status: "ready", data: { accounts: [], recipients: [] } },
   }),
+  readAgreementReview: async () => null,
+  addAgreementProposal: async () => {
+    throw new Error("Owner correction is unavailable in this fixture");
+  },
+  prepareAgreementReview: async () => {
+    throw new Error("Review generation is not available in this story");
+  },
+  downloadWorkspace: async () => {
+    throw new Error("This preview has no stored workspace to export.");
+  },
   decideObligation: async (obligation: never) => obligation,
+  listPinTargets: async () => ({
+    agent: { id: "fixture-agent", name: "Family assistant" },
+    chats: [{ id: "fixture-chat", name: "Family planning", source: "test" }],
+  }),
   listPins: async () => [],
   pin: async () => null,
   unpin: async () => null,
+  listGuestAccessOptions: async () => ({ candidates: [], grants: [] }),
   previewGrant: async () => null,
   issueGrant: async () => null,
   revokeGrant: async () => null,
   resolveCalendarConflict: async () => undefined,
   disconnectCalendar: async () => undefined,
   runSchoolWorkflow: async () => undefined,
+  configureSchool: async () => undefined,
   approveSchoolDiff: async () => undefined,
   generatePacket: async () => undefined,
 } as unknown as FamilyOperationsAdapter;

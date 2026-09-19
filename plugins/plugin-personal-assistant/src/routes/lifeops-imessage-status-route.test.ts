@@ -65,6 +65,56 @@ class BlooioIMessageService extends Service {
   }
 }
 
+interface NativeStatusOverrides {
+  connected: boolean;
+  chatDbAvailable: boolean;
+  permissionAction: {
+    type: "full_disk_access";
+    label: string;
+    url: string;
+    instructions: string[];
+  } | null;
+}
+
+class NativeIMessageService extends Service {
+  static override serviceType = "imessage";
+  capabilityDescription = "native iMessage test transport";
+  connected = true;
+  chatDbAvailable = true;
+  permissionAction: NativeStatusOverrides["permissionAction"] = null;
+
+  static override async start(
+    runtime: IAgentRuntime,
+  ): Promise<NativeIMessageService> {
+    return new NativeIMessageService(runtime);
+  }
+
+  override async stop(): Promise<void> {}
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  getStatus() {
+    return {
+      transport: "native" as const,
+      available: true,
+      connected: this.connected,
+      chatDbAvailable: this.chatDbAvailable,
+      sendOnly: this.connected && !this.chatDbAvailable,
+      chatDbPath: "/Users/owner/Library/Messages/chat.db",
+      reason: null,
+      permissionAction: this.permissionAction,
+      webhookPath: null,
+      channelId: null,
+    };
+  }
+
+  async sendMessage(): Promise<{ success: true; messageId: string }> {
+    return { success: true, messageId: "message-test" };
+  }
+}
+
 function routeContext(runtime: AgentRuntime): {
   context: LifeOpsRouteContext;
   response: CapturedResponse;
@@ -148,6 +198,7 @@ describe("LifeOps iMessage runtime status projection", () => {
   });
 
   it("reports Blooio provider API instead of native AppleScript", async () => {
+    runtime.setSetting("ELIZA_IMESSAGE_BACKEND", "none");
     const { context, response } = routeContext(runtime);
 
     await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
@@ -181,4 +232,147 @@ describe("LifeOps iMessage runtime status projection", () => {
     expect(response.body).not.toContain("native_bridge_not_connected");
     expect(response.body).not.toContain("full_disk_access_required");
   });
+});
+
+describe("LifeOps iMessage native transport projection", () => {
+  let nativeRuntime: AgentRuntime;
+  let nativeService: NativeIMessageService;
+
+  beforeEach(async () => {
+    nativeRuntime = new AgentRuntime({
+      agentId: stringToUuid(`imessage-native-${crypto.randomUUID()}`),
+      character: createCharacter({ name: "iMessage native projection" }),
+      disableBasicCapabilities: true,
+      enableAutonomy: false,
+      logLevel: "fatal",
+    });
+    await nativeRuntime.initialize({
+      allowNoDatabase: true,
+      skipMigrations: true,
+    });
+    Object.defineProperty(nativeRuntime, "adapter", {
+      value: null,
+      configurable: true,
+    });
+    await nativeRuntime.registerService(NativeIMessageService);
+    const loaded = await nativeRuntime.getServiceLoadPromise(
+      NativeIMessageService.serviceType,
+    );
+    if (!(loaded instanceof NativeIMessageService)) {
+      throw new Error("Native iMessage test service did not start.");
+    }
+    nativeService = loaded;
+  });
+
+  afterEach(async () => {
+    await nativeRuntime.stop();
+  });
+
+  it("reports a connected native transport with chat.db details", async () => {
+    const { context, response } = routeContext(nativeRuntime);
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      available: true,
+      connected: true,
+      bridgeType: "native",
+      sendMode: "apple-script",
+      diagnostics: [],
+      error: null,
+      chatDbAvailable: true,
+      sendOnly: false,
+      chatDbPath: "/Users/owner/Library/Messages/chat.db",
+      permissionAction: null,
+    });
+    expect(response.body).not.toContain("provider-api");
+    expect(response.body).not.toContain("blooio_transport_not_connected");
+  });
+
+  it("keeps full_disk_access_required diagnostics for a gated native transport", async () => {
+    nativeService.connected = false;
+    nativeService.chatDbAvailable = false;
+    nativeService.permissionAction = {
+      type: "full_disk_access",
+      label: "Grant Full Disk Access",
+      url: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
+      instructions: [
+        "Open System Settings > Privacy & Security > Full Disk Access",
+      ],
+    };
+    const { context, response } = routeContext(nativeRuntime);
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      connected: false,
+      bridgeType: "native",
+      sendMode: "none",
+      diagnostics: ["full_disk_access_required", "native_bridge_not_connected"],
+      chatDbAvailable: false,
+      sendOnly: false,
+      permissionAction: { type: "full_disk_access" },
+    });
+    expect(response.body).not.toContain("blooio_transport_not_connected");
+  });
+
+  it("falls back to chat_db_unavailable when no permission action is present", async () => {
+    nativeService.connected = true;
+    nativeService.chatDbAvailable = false;
+    nativeService.permissionAction = null;
+    const { context, response } = routeContext(nativeRuntime);
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      connected: true,
+      bridgeType: "native",
+      sendMode: "apple-script",
+      diagnostics: ["chat_db_unavailable"],
+      chatDbAvailable: false,
+      sendOnly: true,
+    });
+    expect(response.body).not.toContain("full_disk_access_required");
+  });
+});
+
+describe("isolated host iMessage status", () => {
+  it.each(["none", "disabled"])(
+    "does not admit native plugins when backend is %s",
+    async (backend) => {
+      const runtime = new AgentRuntime({
+        character: createCharacter({ name: "Isolated iMessage status" }),
+        disableBasicCapabilities: true,
+        enableAutonomy: false,
+        settings: { ELIZA_IMESSAGE_BACKEND: backend },
+        logLevel: "fatal",
+      });
+      await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+      Object.defineProperty(runtime, "adapter", {
+        value: null,
+        configurable: true,
+      });
+      // The sentinel rejects admission before any external plugin initializer runs.
+      let nativeAdmissions = 0;
+      runtime.registerPlugin = async () => {
+        nativeAdmissions += 1;
+        throw new Error("Native plugin admission is forbidden in this test");
+      };
+      try {
+        const { context, response } = routeContext(runtime);
+        await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+        expect(response.statusCode).toBe(200);
+        expect(JSON.parse(response.body)).toMatchObject({
+          available: false,
+          connected: false,
+          bridgeType: "none",
+          sendMode: "none",
+        });
+        expect(nativeAdmissions).toBe(0);
+        expect(runtime.getService("imessage")).toBeNull();
+      } finally {
+        await runtime.stop();
+      }
+    },
+  );
 });

@@ -4,6 +4,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../api";
+import { savePersistedActiveServer } from "./persistence";
 
 const bridgeState = vi.hoisted(() => ({ electrobun: false }));
 
@@ -16,6 +17,22 @@ import { useCloudState } from "./useCloudState";
 
 const DEDICATED_AGENT_BASE =
   "https://11111111-1111-4111-8111-111111111111.elizacloud.ai";
+const originalLocation = window.location;
+
+function setPageOrigin(origin: string) {
+  const url = new URL(origin);
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: {
+      ...originalLocation,
+      hostname: url.hostname,
+      host: url.host,
+      protocol: url.protocol,
+      origin: url.origin,
+      href: `${url.origin}/settings`,
+    },
+  });
+}
 
 function makeParams() {
   return {
@@ -50,8 +67,42 @@ describe("useCloudState — dedicated-agent status polling gate", () => {
 
   afterEach(() => {
     localStorage.clear();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: originalLocation,
+    });
     vi.restoreAllMocks();
   });
+
+  it.each([
+    "https://cloud-staging.eliza.app",
+    "http://localhost:21484",
+    "http://127.0.0.1:21484",
+  ])(
+    "restores account status after a Dedicated switch on %s",
+    async (origin) => {
+      setPageOrigin(origin);
+      expect(
+        savePersistedActiveServer({
+          id: "dedicated",
+          kind: "remote",
+          label: "Dedicated",
+          apiBase: DEDICATED_AGENT_BASE,
+        }),
+      ).toBe(true);
+      const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+
+      await act(async () => {
+        expect(await result.current.pollCloudCredits()).toBe(true);
+      });
+
+      expect(getCloudStatusSpy).toHaveBeenCalledTimes(1);
+      expect(getCloudCreditsSpy).toHaveBeenCalledTimes(1);
+      expect(result.current.elizaCloudConnected).toBe(true);
+      expect(result.current.elizaCloudUserId).toBe("desktop-user");
+      unmount();
+    },
+  );
 
   it("polls through the supported direct Cloud transport in Electrobun", async () => {
     bridgeState.electrobun = true;
@@ -71,6 +122,7 @@ describe("useCloudState — dedicated-agent status polling gate", () => {
   });
 
   it("keeps a plain web page on a dedicated agent outside the full-shell polling boundary", async () => {
+    setPageOrigin("https://agent.example.test");
     const { result, unmount } = renderHook(() => useCloudState(makeParams()));
 
     let connected = true;

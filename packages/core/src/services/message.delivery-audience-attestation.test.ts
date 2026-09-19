@@ -22,6 +22,7 @@ import type { Room, World } from "../types/environment";
 import type { IAgentRuntime, Memory, UUID } from "../types/index";
 import { ChannelType } from "../types/primitives";
 import { DefaultMessageService } from "./message";
+import { resolvePlannedReplyEgress } from "./message/egress-policy";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
 const OWNER_ID = "00000000-0000-0000-0000-0000000000c1" as UUID;
@@ -229,4 +230,31 @@ describe("DefaultMessageService — central delivery-audience attestation", () =
 			reason: "participant_mismatch",
 		});
 	});
+});
+
+it("rejects saved owner-exclusive recovery before model dispatch after audience revocation", async () => {
+	const seed = {
+		room: room(ChannelType.DM),
+		participants: [OWNER_ID, AGENT_ID],
+	};
+	const { runtime } = makeRuntime(seed);
+	const message = inbound();
+	await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
+	expect(evaluateOwnerExclusiveDisclosure(message).allowed).toBe(true);
+	seed.participants.push(GUEST_ID);
+	await expect(
+		resolvePlannedReplyEgress({
+			runtime,
+			message,
+			reply: "Deleted your dentist appointment from the calendar.",
+			actionResults: [],
+			recovery: {
+				context: "Complete owner-private appointment details.",
+				pendingToolCalls: [],
+				evaluatorOutputs: [],
+				ownerExclusiveDisclosureUsed: true,
+			},
+		}),
+	).rejects.toMatchObject({ code: "REPLY_RECOVERY_AUDIENCE_DENIED" });
+	expect(runtime.useModel).not.toHaveBeenCalled();
 });

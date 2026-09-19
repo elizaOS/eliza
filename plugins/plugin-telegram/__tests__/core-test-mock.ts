@@ -138,6 +138,7 @@ vi.mock("@elizaos/core", async () => {
     BaseMessageAdapter,
     ChannelType,
     CommandRegistryService,
+    DEFAULT_CONNECTOR_ACCOUNT_ID: "default",
     ElizaError,
     EventType,
     checkPairingAllowed,
@@ -153,6 +154,8 @@ vi.mock("@elizaos/core", async () => {
         : stringToUuid(`${baseUserId}:${runtime.agentId}`),
     lifeOpsPassiveConnectorsEnabled,
     logger,
+    selectDefaultConnectorAccountId: (accountIds: readonly string[]) =>
+      accountIds.includes("default") ? "default" : (accountIds[0] ?? "default"),
     stringToUuid,
     toWellFormedUnicode,
     truncateWellFormed,

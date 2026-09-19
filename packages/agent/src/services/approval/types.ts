@@ -108,12 +108,18 @@ type ApprovalCalendarSourceBinding = {
 export type ApprovalPayload =
   | {
       action: "send_message";
+      /** Requires family draft authorization immediately before delivery. */
+      familyPacketId?: string;
       recipient: string;
       body: string;
       replyToMessageId: string | null;
     }
   | {
       action: "send_email";
+      /** Requires family draft authorization immediately before delivery. */
+      familyPacketId?: string;
+      /** Binds a reviewed send to one account; legacy approvals may omit it. */
+      grantId?: string;
       to: ReadonlyArray<string>;
       cc: ReadonlyArray<string>;
       bcc: ReadonlyArray<string>;
@@ -478,7 +484,10 @@ export interface ApprovalQueue {
   reconcileExecution(
     reconciliation: ApprovalExecutionReconciliation,
   ): Promise<ApprovalRequest>;
-  /** Terminally invalidate a pending or approved request without dispatch. */
+  /**
+   * Retire pending, approved, or confirmed-undelivered retryable requests.
+   * Executing and uncertain deliveries require reconciliation, not expiry.
+   */
   markExpired(id: string, subjectUserId: string): Promise<ApprovalRequest>;
   removePending(id: string, subjectUserId: string): Promise<void>;
   purgeExpired(now: Date): Promise<ReadonlyArray<string>>;

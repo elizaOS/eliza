@@ -118,11 +118,18 @@ export function buildFalSfxInput(request: AudioGenRequest): Record<string, unkno
   return { ...input, ...(request.extraInput ?? {}) };
 }
 
-export async function generateFalAudio(request: AudioGenRequest): Promise<GeneratedAudio> {
+export async function generateFalAudioWithFetch(
+  request: AudioGenRequest,
+  fetchImpl: typeof fetch,
+): Promise<GeneratedAudio> {
   const options = falQueueOptionsFromApiKeys(request.apiKeys);
   const input = request.kind === "sfx" ? buildFalSfxInput(request) : buildFalMusicInput(request);
-  const { requestId, payload } = await runFalQueueJob(request.model, input, options);
+  const { requestId, payload } = await runFalQueueJob(request.model, input, options, fetchImpl);
   return normalizeFalAudioResult(payload, requestId);
+}
+
+export async function generateFalAudio(request: AudioGenRequest): Promise<GeneratedAudio> {
+  return generateFalAudioWithFetch(request, globalThis.fetch);
 }
 
 export const falAudioProvider: AudioProvider = {

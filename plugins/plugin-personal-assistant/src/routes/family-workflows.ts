@@ -3,9 +3,20 @@
  * family packet generation, review, drafting, and canonical approval enqueue.
  */
 
-import type { FamilyPacketPeriod } from "../lifeops/family-coordination/index.js";
+import { ElizaError } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { ZodError } from "zod";
+import type {
+  FamilyPacketEmailDelivery,
+  FamilyPacketPeriod,
+} from "../lifeops/family-coordination/index.js";
 import { getFamilyWorkflowRuntimeService } from "../lifeops/family-workflows/index.js";
+import { selectedFamilyPacketPeriod } from "../lifeops/family-workflows/period.js";
+
+import { exportFamilyWorkspace } from "../lifeops/family-workflows/workspace-export.js";
 import { CONCORD_SCHOOL_CALENDAR_SOURCE } from "../lifeops/school/calendar-workflow.js";
+import { handleFamilyDeletionRoutes } from "./family-deletion.js";
+import { handleFamilyIntakeRoutes } from "./family-intake.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
 function service(ctx: LifeOpsRouteContext) {
@@ -27,17 +38,97 @@ export async function handleFamilyWorkflowRoutes(
 ): Promise<boolean> {
   const { method, pathname, req, res, json, readJsonBody, url } = ctx;
   if (!pathname.startsWith("/api/lifeops/family-workflows")) return false;
+  if (await handleFamilyDeletionRoutes(ctx)) return true;
   const runtimeService = service(ctx);
   if (!runtimeService) return true;
   try {
+    if (await handleFamilyIntakeRoutes(ctx)) return true;
+    if (
+      method === "POST" &&
+      pathname === "/api/lifeops/family-workflows/export"
+    ) {
+      const runtime = ctx.state.runtime;
+      if (!runtime) throw new Error("Agent runtime is unavailable");
+      const file = await exportFamilyWorkspace(runtime, SELF_ENTITY_ID);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", file.mimeType);
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+      );
+      res.setHeader("Content-Length", String(file.bytes.length));
+      res.end(file.bytes);
+      return true;
+    }
+    if (
+      method === "GET" &&
+      pathname === "/api/lifeops/family-workflows/email-options"
+    ) {
+      json(res, { options: await runtimeService.emailOptions() });
+      return true;
+    }
+    if (
+      method === "POST" &&
+      pathname === "/api/lifeops/family-workflows/email-recipients/confirm"
+    ) {
+      const body = await readJsonBody<{
+        entityId?: unknown;
+        name?: unknown;
+        address?: unknown;
+        confirmed?: unknown;
+      }>(req, res);
+      if (!body) return true;
+      if (
+        body.confirmed !== true ||
+        typeof body.name !== "string" ||
+        typeof body.address !== "string" ||
+        (body.entityId !== null && typeof body.entityId !== "string")
+      ) {
+        ctx.error(
+          res,
+          "Review and confirm the exact contact name and email address.",
+          400,
+        );
+        return true;
+      }
+      json(res, {
+        recipient: await runtimeService.confirmEmailRecipient({
+          entityId: body.entityId,
+          name: body.name,
+          address: body.address,
+          confirmedBy: String(ctx.state.adminEntityId ?? "self"),
+        }),
+      });
+      return true;
+    }
     if (
       method === "PUT" &&
       pathname === "/api/lifeops/family-workflows/school/source"
     ) {
-      json(
-        res,
-        await runtimeService.configureSchool(CONCORD_SCHOOL_CALENDAR_SOURCE),
-      );
+      const body = await readJsonBody<{
+        schoolLevel?: unknown;
+        updateMode?: unknown;
+      }>(req, res);
+      if (!body) return true;
+      if (
+        (body.schoolLevel !== undefined &&
+          body.schoolLevel !== "all" &&
+          body.schoolLevel !== "elementary") ||
+        (body.updateMode !== undefined &&
+          body.updateMode !== "review" &&
+          body.updateMode !== "automatic")
+      ) {
+        ctx.error(res, "Choose a valid school level and update mode", 400);
+        return true;
+      }
+      const status = await runtimeService.configureSchool({
+        ...CONCORD_SCHOOL_CALENDAR_SOURCE,
+        schoolLevel: body.schoolLevel ?? "elementary",
+        updateMode: body.updateMode ?? "review",
+      });
+      await runtimeService.ensureMonthlySchedule();
+      json(res, status);
       return true;
     }
     if (
@@ -99,10 +190,19 @@ export async function handleFamilyWorkflowRoutes(
           packets.map(async (packet) => {
             const draft = await runtimeService.packets.readLatestDraft(
               packet.packetId,
+              packet.version,
             );
             return {
               packetId: packet.packetId,
+              internalVersion: packet.version,
               draft,
+              approval: draft
+                ? await runtimeService.readDraftApprovalStatus(
+                    packet.packetId,
+                    draft.draftVersion,
+                    String(ctx.state.adminEntityId ?? "self"),
+                  )
+                : null,
               approvalId: draft
                 ? await runtimeService.packets.readDraftApprovalId(
                     packet.packetId,
@@ -119,12 +219,26 @@ export async function handleFamilyWorkflowRoutes(
       method === "POST" &&
       pathname === "/api/lifeops/family-workflows/packets"
     ) {
-      const body = await readJsonBody<{ period?: FamilyPacketPeriod }>(
-        req,
-        res,
-      );
+      const body = await readJsonBody<{
+        period?: FamilyPacketPeriod;
+        periodKey?: string;
+      }>(req, res);
       if (body === null) return true;
-      json(res, await runtimeService.generatePacket(body.period));
+      if (
+        body.periodKey !== undefined &&
+        (typeof body.periodKey !== "string" || body.period !== undefined)
+      ) {
+        ctx.error(res, "Select one packet month", 400);
+        return true;
+      }
+      json(
+        res,
+        await runtimeService.generatePacket(
+          body.periodKey === undefined
+            ? body.period
+            : selectedFamilyPacketPeriod(body.periodKey),
+        ),
+      );
       return true;
     }
     const packetMatch = pathname.match(
@@ -143,11 +257,39 @@ export async function handleFamilyWorkflowRoutes(
     );
     if (method === "POST" && draftMatch) {
       const body = await readJsonBody<{
+        expectedPacketVersion?: unknown;
         recipient?: unknown;
         recipientEntityId?: unknown;
         calendarPrivacyMode?: unknown;
+        email?: unknown;
       }>(req, res);
       if (!body) return true;
+      if (
+        typeof body.expectedPacketVersion !== "number" ||
+        !Number.isSafeInteger(body.expectedPacketVersion) ||
+        body.expectedPacketVersion < 1
+      ) {
+        ctx.error(res, "expectedPacketVersion must be a positive integer", 400);
+        return true;
+      }
+      let email: FamilyPacketEmailDelivery | undefined;
+      if (body.email !== undefined) {
+        if (
+          !body.email ||
+          typeof body.email !== "object" ||
+          !("subject" in body.email) ||
+          typeof body.email.subject !== "string" ||
+          !("senderGrantId" in body.email) ||
+          typeof body.email.senderGrantId !== "string"
+        ) {
+          ctx.error(res, "Email subject and sender account are required", 400);
+          return true;
+        }
+        email = {
+          subject: body.email.subject,
+          senderGrantId: body.email.senderGrantId,
+        };
+      }
       if (typeof body.recipient !== "string" || !body.recipient.trim()) {
         ctx.error(res, "recipient is required", 400);
         return true;
@@ -171,8 +313,10 @@ export async function handleFamilyWorkflowRoutes(
         await runtimeService.createDraft(
           decodeURIComponent(draftMatch[1] ?? ""),
           {
+            expectedPacketVersion: body.expectedPacketVersion,
             recipient: body.recipient.trim(),
             recipientEntityId: body.recipientEntityId.trim(),
+            ...(email ? { email } : {}),
             calendarPrivacyMode: body.calendarPrivacyMode as
               | "full"
               | "times_only"
@@ -180,6 +324,71 @@ export async function handleFamilyWorkflowRoutes(
           },
         ),
         201,
+      );
+      return true;
+    }
+    const revisionMatch = pathname.match(
+      /^\/api\/lifeops\/family-workflows\/packets\/([^/]+)\/drafts\/(\d+)\/revision$/u,
+    );
+    if (method === "POST" && revisionMatch) {
+      const body = await readJsonBody<{ body?: unknown; subject?: unknown }>(
+        req,
+        res,
+      );
+      if (!body) return true;
+      if (typeof body.body !== "string" || typeof body.subject !== "string") {
+        ctx.error(res, "Email body and subject are required", 400);
+        return true;
+      }
+      json(
+        res,
+        await runtimeService.reviseDraft({
+          packetId: decodeURIComponent(revisionMatch[1] ?? ""),
+          expectedDraftVersion: Number(revisionMatch[2]),
+          body: body.body,
+          subject: body.subject,
+        }),
+        201,
+      );
+      return true;
+    }
+    const decisionMatch = pathname.match(
+      /^\/api\/lifeops\/family-workflows\/packets\/([^/]+)\/drafts\/(\d+)\/decision$/u,
+    );
+    if (method === "POST" && decisionMatch) {
+      const body = await readJsonBody<{
+        approvalId?: unknown;
+        bodySha256?: unknown;
+        decision?: unknown;
+      }>(req, res);
+      if (!body) return true;
+      const draftVersion = Number(decisionMatch[2]);
+      if (
+        typeof body.approvalId !== "string" ||
+        !body.approvalId.trim() ||
+        typeof body.bodySha256 !== "string" ||
+        !/^[a-f0-9]{64}$/u.test(body.bodySha256) ||
+        (body.decision !== "approve" && body.decision !== "reject") ||
+        !Number.isSafeInteger(draftVersion) ||
+        draftVersion < 1
+      ) {
+        ctx.error(
+          res,
+          "A reviewed draft, approval, and explicit decision are required",
+          400,
+        );
+        return true;
+      }
+      json(
+        res,
+        await runtimeService.decideDraftApproval({
+          packetId: decodeURIComponent(decisionMatch[1] ?? ""),
+          draftVersion,
+          approvalId: body.approvalId,
+          bodySha256: body.bodySha256,
+          decision: body.decision,
+          ownerUserId: String(ctx.state.adminEntityId ?? "self"),
+        }),
       );
       return true;
     }
@@ -215,6 +424,51 @@ export async function handleFamilyWorkflowRoutes(
     return true;
   } catch (error) {
     // error-policy:J1 HTTP boundary returns a structured failure.
+    if (error instanceof ZodError) {
+      json(
+        res,
+        {
+          error: {
+            code: "FAMILY_INPUT_INVALID",
+            message: "Review the input fields and try again",
+          },
+        },
+        400,
+      );
+      return true;
+    }
+    if (
+      error instanceof ElizaError &&
+      error.code.startsWith("FAMILY_INTAKE_")
+    ) {
+      const status =
+        error.code.endsWith("CONFLICT") ||
+        error.code === "FAMILY_INTAKE_SOURCE_CHANGED"
+          ? 409
+          : error.code === "FAMILY_INTAKE_OWNER_REQUIRED"
+            ? 403
+            : error.code.endsWith("_UNAVAILABLE")
+              ? 503
+              : 400;
+      json(
+        res,
+        { error: { code: error.code, message: error.message } },
+        status,
+      );
+      return true;
+    }
+
+    if (
+      error instanceof ElizaError &&
+      [
+        "FAMILY_PACKET_VERSION_STALE",
+        "FAMILY_PACKET_INTERNAL_STALE",
+        "FAMILY_PACKET_DRAFT_STALE",
+      ].includes(error.code)
+    ) {
+      json(res, { error: { code: error.code, message: error.message } }, 409);
+      return true;
+    }
     ctx.error(res, error instanceof Error ? error.message : String(error), 400);
     return true;
   }

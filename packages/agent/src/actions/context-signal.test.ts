@@ -162,6 +162,47 @@ describe("hasContextSignalSync", () => {
 });
 
 describe("hasContextSignalSyncForKey", () => {
+  it("rechecks edited, replaced and removed evidence on the same message", () => {
+    const message = messageWith("hello");
+    const state = stateWithRecent("nothing relevant");
+    const check = (expected: boolean) => {
+      // Parent and promoted children may share both objects.
+      for (let child = 0; child < 7; child++) {
+        expect(hasContextSignalSyncForKey(message, state, "gmail")).toBe(
+          expected,
+        );
+      }
+    };
+    check(false);
+    state.values.recentMessages = "please check my email";
+    check(true);
+    state.values.recentMessages = "nothing relevant";
+    check(false);
+    message.content.text = "please check my email";
+    check(true);
+    message.content.text = "hello";
+    check(false);
+    expect(
+      hasContextSignalSyncForKey(message, stateWithRecent("email"), "gmail"),
+    ).toBe(true);
+    check(false);
+    state.values.recentMessages = "email";
+    check(true);
+    delete state.values.recentMessages;
+    check(false);
+    const historical = messageWith("email");
+    state.data.providers = {
+      RECENT_MESSAGES: { data: { recentMessages: [historical] } },
+    };
+    check(true);
+    historical.content.text = "nothing relevant";
+    check(false);
+    historical.content.text = "email";
+    check(true);
+    delete state.data.providers;
+    check(false);
+  });
+
   it("activates on a gmail lexicon strong term", () => {
     expect(
       hasContextSignalSyncForKey(

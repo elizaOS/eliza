@@ -34,6 +34,7 @@ import {
   type AgentBackupRestoreV3CandidateReceipt,
   type AgentBackupRestoreV3CandidateSealAuthority,
   type AgentBackupRestoreV3IsolatedCandidateStaging,
+  type AgentBackupRestoreV3OperationControl,
   type AgentBackupRestoreV3SourceAuthority,
   type AgentBackupRestoreV3SourceAuthorityObject,
   type AgentBackupRestoreV3StagingSession,
@@ -44,6 +45,7 @@ import {
   serializeAgentBackupRecordStreamV1Record,
 } from "@elizaos/shared";
 import { type ExactObjectRead, ObjectLocatorReceipt } from "../storage/object-store";
+import { AgentBackupRestoreV3ControlError } from "./agent-backup-restore-v3-control";
 import {
   type AgentBackupRestoreV3KeyBundleProvider,
   type AgentBackupRestoreV3OperationKeyBundleAuthority,
@@ -193,7 +195,6 @@ interface EncryptedComponentFixture {
 }
 
 interface FixtureOptions {
-  readonly deadlineEpochMs?: number;
   readonly loseAuthorityAtFinalRead?: boolean;
   readonly loseSealResponse?: boolean;
   readonly hangSealResponse?: boolean;
@@ -240,8 +241,27 @@ interface RestoreFixture {
 }
 
 async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixture> {
-  const deadlineEpochMs = options.deadlineEpochMs ?? DEADLINE_EPOCH_MS;
+  const deadlineEpochMs = DEADLINE_EPOCH_MS;
+  let nowEpochMs = NOW_EPOCH_MS;
   const events: string[] = [];
+  const hangPastSealDeadline = (
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+  ): Promise<AgentBackupRestoreV3CandidateReceipt> => {
+    if (!("assertActive" in control) || typeof control.assertActive !== "function") {
+      throw new Error("The stream must pass its real operation control to staging");
+    }
+    // Reach the committed or pending seal before expiring the real control;
+    // crypto and stream work must not race a short wall-clock test budget.
+    nowEpochMs = deadlineEpochMs;
+    events.push("staging:deadline");
+    const assertActive = control.assertActive;
+    expect(() => assertActive("Synthetic seal boundary")).toThrow(AgentBackupRestoreV3ControlError);
+    expect(control.signal.aborted).toBe(true);
+    expect(control.signal.reason).toMatchObject({
+      code: "AGENT_BACKUP_RESTORE_V3_DEADLINE_EXCEEDED",
+    });
+    return new Promise<AgentBackupRestoreV3CandidateReceipt>(() => undefined);
+  };
   const counts = {
     begin: 0,
     revalidate: 0,
@@ -643,7 +663,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixtu
       if (options.hangSealBeforeCommit && !lostSealResponse) {
         lostSealResponse = true;
         events.push("staging:seal-pending-before-commit");
-        return new Promise<AgentBackupRestoreV3CandidateReceipt>(() => undefined);
+        return hangPastSealDeadline(operationControl);
       }
       if (operationControl.signal.aborted) {
         events.push("staging:seal-replay-rejected-before-commit");
@@ -657,7 +677,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixtu
       durableSealedReceipt = receipt;
       if (options.hangSealResponse && !lostSealResponse) {
         lostSealResponse = true;
-        return new Promise<AgentBackupRestoreV3CandidateReceipt>(() => undefined);
+        return hangPastSealDeadline(operationControl);
       }
       if (options.loseSealResponse && !lostSealResponse) {
         lostSealResponse = true;
@@ -786,7 +806,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixtu
     signal: abortController.signal,
     deadlineEpochMs,
     reportDetachedFailure: () => undefined,
-    now: () => NOW_EPOCH_MS,
+    now: () => nowEpochMs,
   };
   return {
     input,
@@ -1088,7 +1108,6 @@ describe("streamAgentBackupRestoreV3", () => {
 
   test("recovers a durable seal whose first response hangs past the operation deadline", async () => {
     const fixture = await createFixture({
-      deadlineEpochMs: NOW_EPOCH_MS + 100,
       hangSealResponse: true,
     });
 
@@ -1105,7 +1124,6 @@ describe("streamAgentBackupRestoreV3", () => {
 
   test("does not create a seal after cancellation when the first request never committed", async () => {
     const fixture = await createFixture({
-      deadlineEpochMs: NOW_EPOCH_MS + 100,
       hangSealBeforeCommit: true,
     });
 

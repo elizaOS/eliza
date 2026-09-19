@@ -26,6 +26,7 @@ import {
   type ServiceRoutingConfig,
 } from "@elizaos/shared";
 import { resolveProviderCredential } from "./credential-resolver";
+import type { FirstRunConfigWriteObserver } from "./first-run-rollback";
 
 // ---------------------------------------------------------------------------
 // First-run API key persistence
@@ -100,6 +101,8 @@ export function hasDeprecatedFirstRunRequestFields(
  */
 export async function extractAndPersistFirstRunApiKey(
   body: Record<string, unknown>,
+  onConfigWrite?: FirstRunConfigWriteObserver,
+  observeEnvironmentMutation?: <T>(mutation: () => T) => T,
 ): Promise<string | null> {
   const credentialInputs = normalizeFirstRunCredentialInputs(
     body.credentialInputs,
@@ -183,12 +186,15 @@ export async function extractAndPersistFirstRunApiKey(
   }
 
   const config = loadElizaConfig();
+  const before = structuredClone(config);
   const result = await applyFirstRunCredentialPersistence(config, {
     credentialInputs: effectiveCredentialInputs,
     deploymentTarget: explicitDeploymentTarget,
     serviceRouting: effectiveServiceRouting,
+    observeEnvironmentMutation,
   });
   saveElizaConfig(config);
+  onConfigWrite?.(before, config);
 
   if (result) {
     logger.info(`[first-run] Persisted ${result} from first-run credentials`);
@@ -198,6 +204,7 @@ export async function extractAndPersistFirstRunApiKey(
 
 export function persistFirstRunDefaults(
   body: Record<string, unknown>,
+  onConfigWrite?: FirstRunConfigWriteObserver,
 ): string | null {
   const name = typeof body.name === "string" ? body.name.trim() : "";
   if (!name) {
@@ -205,6 +212,7 @@ export function persistFirstRunDefaults(
   }
 
   const config = loadElizaConfig();
+  const before = structuredClone(config);
   const language = normalizeCharacterLanguage(body.language);
   const stylePreset = resolveCompatFirstRunStyle(body, language);
   if (!config.agents || typeof config.agents !== "object") {
@@ -306,6 +314,7 @@ export function persistFirstRunDefaults(
 
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
   saveElizaConfig(config);
+  onConfigWrite?.(before, config);
   return adminEntityId;
 }
 

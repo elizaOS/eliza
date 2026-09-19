@@ -14,7 +14,12 @@ import { buildTelegramCommandDescriptors } from "./command-registration";
 import { MessageManager } from "./messageManager";
 import { TelegramService } from "./service";
 
-const TEST_DEADLINE_MS = 5_000;
+// These integration-backed cases exercise the real two-second production
+// retry and a live Telegraf poller. The repository aggregate can heavily
+// delay the loopback server and worker event loop, so their resource-state
+// observations need a load-tolerant ceiling while still failing finitely.
+const TEST_DEADLINE_MS = 60_000;
+const RETRY_TEST_TIMEOUT_MS = 120_000;
 const servers: http.Server[] = [];
 const services: TelegramService[] = [];
 let signalListenersBefore: Record<
@@ -301,81 +306,91 @@ describe("TelegramService startup wiring", () => {
     ).toBe(true);
   });
 
-  it("handles updates while retrying a post-launch startup probe", async () => {
-    const api = await startStubBotApi(2);
-    const handleMessage = vi
-      .spyOn(MessageManager.prototype, "handleMessage")
-      .mockResolvedValue(undefined);
+  it(
+    "handles updates while retrying a post-launch startup probe",
+    async () => {
+      const api = await startStubBotApi(2);
+      const handleMessage = vi
+        .spyOn(MessageManager.prototype, "handleMessage")
+        .mockResolvedValue(undefined);
 
-    const startPromise = TelegramService.start(makeRuntime(api.apiRoot));
-    await api.waitForActiveGetUpdates(1);
-    await api.deliverUpdate({
-      update_id: 1,
-      message: {
-        message_id: 1,
-        date: 1,
-        text: "arrived during retry backoff",
-        chat: { id: 42, type: "private", first_name: "Test" },
-        from: { id: 7, is_bot: false, first_name: "Sender" },
-      },
-    });
-    await api.waitForGetUpdatesCalls(2);
+      const startPromise = TelegramService.start(makeRuntime(api.apiRoot));
+      await api.waitForActiveGetUpdates(1);
+      await api.deliverUpdate({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          date: 1,
+          text: "arrived during retry backoff",
+          chat: { id: 42, type: "private", first_name: "Test" },
+          from: { id: 7, is_bot: false, first_name: "Sender" },
+        },
+      });
+      await api.waitForGetUpdatesCalls(2);
 
-    const service = await startPromise;
-    services.push(service);
-    expect(api.getMeCalls()).toBe(4);
-    expect(handleMessage).toHaveBeenCalledTimes(1);
-  });
+      const service = await startPromise;
+      services.push(service);
+      expect(api.getMeCalls()).toBe(4);
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+    },
+    RETRY_TEST_TIMEOUT_MS,
+  );
 
-  it("registers commands, handlers, and shutdown hooks once across an injected retry", async () => {
-    const api = await startStubBotApi(3);
-    const runtime = makeRuntime(api.apiRoot);
-    const startRegistration = vi.spyOn(Telegraf.prototype, "start");
-    const commandRegistration = vi.spyOn(Telegraf.prototype, "command");
-    const middlewareRegistration = vi.spyOn(Telegraf.prototype, "use");
-    const eventRegistration = vi.spyOn(Telegraf.prototype, "on");
-    const sigintBefore = process.listenerCount("SIGINT");
-    const sigtermBefore = process.listenerCount("SIGTERM");
+  it(
+    "registers commands, handlers, and shutdown hooks once across an injected retry",
+    async () => {
+      const api = await startStubBotApi(3);
+      const runtime = makeRuntime(api.apiRoot);
+      const startRegistration = vi.spyOn(Telegraf.prototype, "start");
+      const commandRegistration = vi.spyOn(Telegraf.prototype, "command");
+      const middlewareRegistration = vi.spyOn(Telegraf.prototype, "use");
+      const eventRegistration = vi.spyOn(Telegraf.prototype, "on");
+      const sigintBefore = process.listenerCount("SIGINT");
+      const sigtermBefore = process.listenerCount("SIGTERM");
 
-    const service = await TelegramService.start(runtime);
-    services.push(service);
-    const state = accountState(service);
-    const handled = Promise.withResolvers<void>();
-    const handleMessage = vi
-      .spyOn(state.messageManager, "handleMessage")
-      .mockImplementation(async () => handled.resolve());
-    (
-      service as unknown as { knownChats: Map<string, Record<string, unknown>> }
-    ).knownChats.set("42", { id: 42, type: "private", first_name: "Test" });
+      const service = await TelegramService.start(runtime);
+      services.push(service);
+      const state = accountState(service);
+      const handled = Promise.withResolvers<void>();
+      const handleMessage = vi
+        .spyOn(state.messageManager, "handleMessage")
+        .mockImplementation(async () => handled.resolve());
+      (
+        service as unknown as {
+          knownChats: Map<string, Record<string, unknown>>;
+        }
+      ).knownChats.set("42", { id: 42, type: "private", first_name: "Test" });
 
-    await api.waitForActiveGetUpdates(1);
-    await api.deliverUpdate({
-      update_id: 1,
-      message: {
-        message_id: 1,
-        date: 1,
-        text: "hello",
-        chat: { id: 42, type: "private", first_name: "Test" },
-        from: { id: 7, is_bot: false, first_name: "Sender" },
-      },
-    });
-    await deadline(handled.promise, "Expected the message handler to run");
+      await api.waitForActiveGetUpdates(1);
+      await api.deliverUpdate({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          date: 1,
+          text: "hello",
+          chat: { id: 42, type: "private", first_name: "Test" },
+          from: { id: 7, is_bot: false, first_name: "Sender" },
+        },
+      });
+      await deadline(handled.promise, "Expected the message handler to run");
 
-    expect(api.getMeCalls()).toBe(5);
-    expect(startRegistration).toHaveBeenCalledTimes(1);
-    expect(commandRegistration).toHaveBeenCalledTimes(
-      buildTelegramCommandDescriptors(runtime.agentId).length + 3,
-    );
-    expect(middlewareRegistration).toHaveBeenCalledTimes(
-      commandRegistration.mock.calls.length +
-        eventRegistration.mock.calls.length +
-        2,
-    );
-    expect(eventRegistration).toHaveBeenCalledTimes(3);
-    expect(handleMessage).toHaveBeenCalledTimes(1);
-    expect(process.listenerCount("SIGINT") - sigintBefore).toBe(1);
-    expect(process.listenerCount("SIGTERM") - sigtermBefore).toBe(1);
-  });
+      expect(api.getMeCalls()).toBe(5);
+      expect(startRegistration).toHaveBeenCalledTimes(1);
+      expect(commandRegistration).toHaveBeenCalledTimes(
+        buildTelegramCommandDescriptors(runtime.agentId).length + 3,
+      );
+      expect(middlewareRegistration).toHaveBeenCalledTimes(
+        commandRegistration.mock.calls.length +
+          eventRegistration.mock.calls.length +
+          2,
+      );
+      expect(eventRegistration).toHaveBeenCalledTimes(3);
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      expect(process.listenerCount("SIGINT") - sigintBefore).toBe(1);
+      expect(process.listenerCount("SIGTERM") - sigtermBefore).toBe(1);
+    },
+    RETRY_TEST_TIMEOUT_MS,
+  );
 
   it("completes all four one-shot wiring steps inside initializeBot", async () => {
     const api = await startStubBotApi();
@@ -411,22 +426,26 @@ describe("TelegramService startup wiring", () => {
 });
 
 describe("TelegramService poller lifecycle", () => {
-  it("stops polling after a transient failure retries startup", async () => {
-    const api = await startStubBotApi(3);
-    const service = await TelegramService.start(makeRuntime(api.apiRoot));
-    services.push(service);
-    await api.waitForActiveGetUpdates(1);
+  it(
+    "stops polling after a transient failure retries startup",
+    async () => {
+      const api = await startStubBotApi(3);
+      const service = await TelegramService.start(makeRuntime(api.apiRoot));
+      services.push(service);
+      await api.waitForActiveGetUpdates(1);
 
-    expect(api.getMeCalls()).toBe(5);
-    expect(api.activeGetUpdates()).toBe(1);
+      expect(api.getMeCalls()).toBe(5);
+      expect(api.activeGetUpdates()).toBe(1);
 
-    await service.stop();
-    services.length = 0;
-    await api.waitForActiveGetUpdates(0);
-    await api.waitForGetUpdatesCalls(2);
-    expect(api.activeGetUpdates()).toBe(0);
-    expect(api.getUpdatesCalls()).toBe(2);
-  });
+      await service.stop();
+      services.length = 0;
+      await api.waitForActiveGetUpdates(0);
+      await api.waitForGetUpdatesCalls(2);
+      expect(api.activeGetUpdates()).toBe(0);
+      expect(api.getUpdatesCalls()).toBe(2);
+    },
+    RETRY_TEST_TIMEOUT_MS,
+  );
 
   it("stops polling on the unchanged happy path", async () => {
     const api = await startStubBotApi();

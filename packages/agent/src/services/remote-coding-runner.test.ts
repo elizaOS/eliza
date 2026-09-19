@@ -1328,14 +1328,19 @@ describe("RemoteCodingCapabilityRouterService", () => {
       expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
         true,
       );
-      trajectorySteps.push(steps[4]);
       expect(remoteUnchanged?.data?.workspaceDeltaReceipt).toMatchObject({
         outcome: "unchanged",
         scope: changedReceipt.scope,
       });
-      expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
-        false,
-      );
+      const verifiedRemoteTrajectory = {
+        steps: [steps[0], steps[4]],
+        archivedSteps: [],
+      } as unknown as Parameters<
+        typeof __codingMutationRequiresVerificationForTests
+      >[0];
+      expect(
+        __codingMutationRequiresVerificationForTests(verifiedRemoteTrajectory),
+      ).toBe(false);
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }

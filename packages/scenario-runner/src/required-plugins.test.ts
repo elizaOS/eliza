@@ -4,17 +4,104 @@
  * Real package imports against a fake runtime.
  */
 
-import { type AgentRuntime, ElizaError, type Plugin } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  ElizaError,
+  getTurnActionConstraint,
+  type Plugin,
+  type ResponseHandlerEvaluatorContext,
+  ResponseHandlerFieldRegistry,
+  runWithStreamingContext,
+  stringToUuid,
+} from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/core/testing";
 import { describe, expect, it, vi } from "vitest";
 import {
   assertScenarioPluginPackageSpecifier,
   assertSharedRuntimePluginBatchSafe,
+  loadScenarioRequiredPlugin,
   registerScenarioRequiredPlugins,
   resolveRequiredFixturePlugins,
   resolveRequiredPluginPackages,
 } from "./required-plugins.ts";
 
 describe("scenario required plugin registration", () => {
+  it("binds a simulated app-control navigation prohibition through the real Stage1 field handler", async () => {
+    const plugin = await loadScenarioRequiredPlugin(
+      "@elizaos/plugin-app-control",
+      "simulated",
+    );
+    if (!plugin) throw new Error("App-control plugin did not load");
+    const runtime = createMockRuntime({ actions: plugin.actions });
+    const messageId = stringToUuid("navigation-field-turn");
+    const ctx: ResponseHandlerEvaluatorContext = {
+      runtime,
+      message: {
+        id: messageId,
+        roomId: stringToUuid("navigation-field-room"),
+        entityId: stringToUuid("navigation-field-user"),
+        agentId: runtime.agentId,
+        content: {
+          text: "Search views without navigating",
+          source: "client_chat",
+          channelType: "DM",
+        },
+      },
+      state: { values: {}, data: {}, text: "" },
+      messageHandler: {
+        processMessage: "RESPOND",
+        thought: "Search the catalog without navigation.",
+        plan: {
+          contexts: ["settings"],
+          candidateActions: ["VIEWS"],
+          reply: "Searching views.",
+        },
+      },
+      availableContexts: [],
+      userRoles: ["USER"],
+    };
+    const registry = new ResponseHandlerFieldRegistry();
+    for (const field of plugin.responseHandlerFieldEvaluators ?? [])
+      registry.register(field);
+    const reason = "The user explicitly requires staying on the current view.";
+    await runWithStreamingContext({ messageId }, async () => {
+      const dispatched = await registry.dispatch({
+        runtime,
+        message: ctx.message,
+        state: ctx.state,
+        senderRole: "USER",
+        turnSignal: new AbortController().signal,
+        rawParsed: {
+          visualContinuation: {
+            disposition: "forbidden",
+            viewId: "",
+            singleViewOnly: false,
+            navigationOnly: false,
+            reason,
+          },
+        },
+      });
+      expect(dispatched.fieldErrors).toEqual({});
+      // Require a real field dispatch before evaluating, avoiding network fallback
+      // when the loader drops the handler that binds this decision.
+      expect(dispatched.traces.length).toBeGreaterThan(0);
+      for (const evaluator of plugin.responseHandlerEvaluators ?? []) {
+        if (await evaluator.shouldRun(ctx)) await evaluator.evaluate(ctx);
+      }
+      expect(
+        getTurnActionConstraint(
+          {
+            messageId,
+            roomId: ctx.message.roomId,
+            actorId: ctx.message.entityId,
+            action: "VIEWS",
+          },
+          "show",
+        ),
+      ).toMatchObject({ disposition: "deny", reason });
+    });
+  });
+
   it("loads and registers Maps for a simulated live-model runtime", async () => {
     const plugins: Plugin[] = [];
     const registerPlugin = vi.fn(async (plugin: Plugin) => {

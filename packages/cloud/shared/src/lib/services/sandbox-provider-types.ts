@@ -55,6 +55,9 @@ export type SandboxHealthVerdict =
   | "transport_unresolved"
   | "ingress_unresolved";
 
+/** Candidate probes retain pre-cutover placement; canonical probes follow committed placement. */
+export type SandboxHealthContext = { kind: "candidate" } | { kind: "canonical" };
+
 export interface SandboxHealthOutcome {
   ready: boolean;
   verdict: SandboxHealthVerdict;
@@ -253,6 +256,8 @@ export class SandboxReplacementCreateSettlementCleanupUnresolvedError extends Sa
 }
 
 export interface SandboxProvider {
+  /** Remote paid compute supports a caller-owned, committed-funding start instead of raw Docker start. */
+  readonly computeFundingCapability?: "host-lease-v1";
   /**
    * Declares support for caller-owned replacement identity, a pre-effect start
    * marker, and an exact success-only completion signal. Callers must check
@@ -282,7 +287,11 @@ export interface SandboxProvider {
    * cannot prove the old workload is no longer running; abandoning an
    * unreachable container would create two live agents after the node returns.
    */
-  stopForReplacement?(sandboxId: string): Promise<void>;
+  stopForReplacement?(
+    sandboxId: string,
+    /** A lifecycle caller that transactionally recounts capacity owns its release. */
+    options?: { readonly releaseCapacity?: false },
+  ): Promise<void>;
   /**
    * Reclaims a replacement candidate from its durable placement record. This
    * bypasses sandbox-id lookup because the routed agent row may still point at
@@ -306,7 +315,7 @@ export interface SandboxProvider {
       "sandboxId" | "nodeId" | "containerName" | "vpnNodeId"
     >,
   ): Promise<void>;
-  checkHealth(handle: SandboxHandle): Promise<boolean>;
+  checkHealth(handle: SandboxHandle, context?: SandboxHealthContext): Promise<boolean>;
   /**
    * Richer readiness probe that distinguishes a genuine `not_ready` from a
    * unresolved transport/managed-ingress exhaustion (see
@@ -314,7 +323,10 @@ export interface SandboxProvider {
    * Optional so providers that cannot fail at a transport layer (memory/local)
    * need not implement it; callers fall back to `checkHealth` when absent.
    */
-  checkHealthDetailed?(handle: SandboxHandle): Promise<SandboxHealthOutcome>;
+  checkHealthDetailed?(
+    handle: SandboxHandle,
+    context?: SandboxHealthContext,
+  ): Promise<SandboxHealthOutcome>;
   runCommand?(sandboxId: string, cmd: string, args?: string[]): Promise<string>;
   /** Tail container logs from the sandbox runtime (e.g. `docker logs --tail N`). */
   fetchLogs?(sandboxId: string, tail: number): Promise<string>;
@@ -444,6 +456,14 @@ export interface SandboxCreateConfig {
   onReplacementCreateIntent?: (handle: SandboxHandle) => Promise<void>;
   /** CAS-enriches a persisted intent with Docker's exact container id. */
   onReplacementCreated?: (handle: SandboxHandle) => Promise<void>;
+  /**
+   * Starts the exact created container only after its funding binding commits.
+   * Called after host configuration is prepared. A rejection must never fall
+   * through to an ordinary provider start. Required for runnable remote Docker
+   * customer containers, including replacements and test organizations. Local,
+   * stopped exact-restore candidates and explicit pool capacity are exempt.
+   */
+  startFundedContainer?: (handle: SandboxHandle) => Promise<void>;
   /**
    * Enriches the durable candidate fence with the exact Headscale identity as
    * soon as registration completes. The initial placement remains authoritative

@@ -19,6 +19,7 @@ import type { AgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { formatErrorWithStack } from "@elizaos/shared";
 import type { SecretsManager } from "@elizaos/vault";
+import { reconcileDirectTextModelSettings } from "../runtime-settings.ts";
 import type {
   OperationIntent,
   OperationPhase,
@@ -37,7 +38,10 @@ export interface HotStrategyDeps {
    * existing first-run env-pump. The wrapper must be idempotent: same intent
    * in → same env state out.
    */
-  applyProviderEnv: (intent: ProviderSwitchIntent) => Promise<void>;
+  applyProviderEnv: (
+    intent: ProviderSwitchIntent,
+    runtime: AgentRuntime,
+  ) => Promise<void>;
   /**
    * Best-effort plugin notify. Called after env mutation. Implementations
    * iterate `runtime.plugins` and call each plugin's `applyConfig` hook (the
@@ -114,8 +118,11 @@ function describeIntent(intent: OperationIntent): {
  */
 function makeDefaultApplyProviderEnv(
   secrets: SecretsManager,
-): (intent: ProviderSwitchIntent) => Promise<void> {
-  return async (intent: ProviderSwitchIntent): Promise<void> => {
+): (intent: ProviderSwitchIntent, runtime: AgentRuntime) => Promise<void> {
+  return async (
+    intent: ProviderSwitchIntent,
+    runtime: AgentRuntime,
+  ): Promise<void> => {
     const { applyFirstRunConnectionConfig, createProviderSwitchConnection } =
       await import("../../api/provider-switch-config.ts");
     const { loadElizaConfig, saveElizaConfig } = await import(
@@ -140,8 +147,10 @@ function makeDefaultApplyProviderEnv(
     }
 
     const config = loadElizaConfig();
+    const previous = structuredClone(config);
     await applyFirstRunConnectionConfig(config, connection);
     saveElizaConfig(config);
+    reconcileDirectTextModelSettings(runtime, previous, config);
   };
 }
 
@@ -219,7 +228,7 @@ export function createHotStrategy(
         );
       } else {
         try {
-          await applyProviderEnv(ctx.intent);
+          await applyProviderEnv(ctx.intent, ctx.runtime);
           await ctx.reportPhase(
             buildPhase("apply-env", "succeeded", envStarted, Date.now(), {
               detail: { provider: ctx.intent.provider },

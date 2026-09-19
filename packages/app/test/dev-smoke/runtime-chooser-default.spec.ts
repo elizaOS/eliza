@@ -11,6 +11,7 @@ import {
   installRenderTelemetryGuard,
   seedAppStorage,
 } from "../ui-smoke/helpers";
+import { installDesktopBridgeFixture } from "../ui-smoke/helpers/desktop-bridge";
 
 test.skip(
   process.env.ELIZA_DEV_SMOKE_OFFLINE !== "1",
@@ -54,11 +55,11 @@ test("explicit local development offers cloud, local, and remote", async ({
   await installRenderTelemetryGuard(page);
   await installDefaultAppRoutes(page);
   await routeFreshFirstRun(page);
+  await installDesktopBridgeFixture(page);
   await page.addInitScript(() => {
     const win = window as unknown as Record<string, unknown>;
     win.__ELIZA_APP_API_BASE__ = window.location.origin;
     win.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: window.location.origin };
-    win.__electrobunWindowId = 1;
   });
   await seedAppStorage(page, {
     "eliza:first-run-complete": "",

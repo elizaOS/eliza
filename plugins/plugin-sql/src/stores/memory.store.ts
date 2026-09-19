@@ -309,7 +309,7 @@ export class MemoryStore implements Store {
       }
     }
 
-    const contentToInsert = serializeJsonb(memory.content);
+    const contentToInsert = serializeJsonb(memory.content, { memoryContent: true });
 
     const metadataToInsert = serializeJsonb(memory.metadata ?? {});
 
@@ -348,7 +348,7 @@ export class MemoryStore implements Store {
       try {
         await this.db.transaction(async (tx) => {
           if (memory.content) {
-            const contentToUpdate = serializeJsonb(memory.content);
+            const contentToUpdate = serializeJsonb(memory.content, { memoryContent: true });
 
             const metadataToUpdate = serializeJsonb(memory.metadata ?? {});
 

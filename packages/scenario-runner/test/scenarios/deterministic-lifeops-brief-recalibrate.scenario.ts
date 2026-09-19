@@ -30,11 +30,11 @@
  * acted-on class.
  */
 
-import { ModelType } from "@elizaos/core";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-  type StrictActionRouteFixture,
+import type { UUID } from "@elizaos/core";
+import { type AgentRuntime, ModelType } from "@elizaos/core";
+import type {
+  RuntimeWithScenarioModelFixtures,
+  StrictActionRouteFixture,
 } from "@elizaos/core/testing";
 import type {
   CapturedAction,
@@ -42,6 +42,13 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+
+import {
+  matchesTypedTurnInput,
+  typedTurnEvaluationFixtures,
+} from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
+
+import { registerLifeOpsActionFixtures } from "./_lifeops-action-fixtures";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -253,7 +260,65 @@ async function seedIgnorePattern(
   }
 
   const fixturesRuntime = runtime as RuntimeWithScenarioModelFixtures;
-  registerStrictActionRouteFixtures(fixturesRuntime, strictRoutes);
+  registerLifeOpsActionFixtures(fixturesRuntime, strictRoutes);
+  // The repeated complaint expresses a lasting content preference. Resetting
+  // one class is a task-scoped correction, not a blanket dislike of newsletters.
+  for (const route of strictRoutes) {
+    fixturesRuntime.scenarioModelFixtures?.register(
+      ...typedTurnEvaluationFixtures(runtime as AgentRuntime, ctx, {
+        name: `brief-${route.input}`,
+        input: route.input,
+        action: route.actionName,
+        goal: { goalFound: false, goal: "", confidence: 0 },
+        memory: ({ sourceMessageIds }) => ({
+          factMemory: { ops: [] },
+          relationships: { relationships: [] },
+          identities: { identities: [] },
+          preferences: {
+            ops:
+              sourceMessageIds.length === 0
+                ? []
+                : route.input === recalibrateText
+                  ? [
+                      {
+                        op: "add_preference_fact",
+                        scope: "across_conversations",
+                        claim: "Prefers briefs focused on things they act on.",
+                        keywords: ["brief", "actionable", "recalibrate"],
+                        confidence: 0.9,
+                        evidence: recalibrateText,
+                        sourceMessageIds,
+                      },
+                    ]
+                  : route.input === resetText
+                    ? [
+                        {
+                          op: "add_preference_fact",
+                          scope: "task",
+                          claim:
+                            "Wants the brief recalibration for newsletter digests reset.",
+                          keywords: [
+                            "brief",
+                            "newsletter",
+                            "recalibration",
+                            "reset",
+                          ],
+                          confidence: 1,
+                          evidence: resetText,
+                          sourceMessageIds,
+                        },
+                      ]
+                    : [],
+          },
+          experiencePatterns: { experiences: [] },
+          success: {
+            completed: true,
+            reason: `The requested ${route.actionName} operation succeeded.`,
+          },
+        }),
+      }),
+    );
+  }
   fixturesRuntime.scenarioModelFixtures?.register({
     name: `${SCENARIO_ID}-morning-narrative`,
     match: {
@@ -492,6 +557,47 @@ export default scenario({
     },
   ],
   finalChecks: [
+    {
+      type: "custom",
+      name: "typed evaluator persisted the declared fact with original user evidence",
+      predicate: async (ctx) => {
+        if (!ctx.primaryRoomId || !ctx.primaryUserId)
+          return "Fact assertion requires scenario identities";
+        const runtime = ctx.runtime as AgentRuntime;
+        const facts = await runtime.getMemories({
+          tableName: "facts",
+          roomId: ctx.primaryRoomId,
+          entityId: ctx.primaryUserId,
+          unique: false,
+        });
+        const fact = facts.find(
+          (entry) =>
+            entry.content.text ===
+            "Prefers briefs focused on things they act on.",
+        );
+        if (
+          fact?.metadata?.category !== "preference" ||
+          fact.metadata?.kind !== "durable"
+        )
+          return "Typed evaluator did not persist the declared fact";
+        const revisions = fact.metadata?.extractionSourceRevisions;
+        if (
+          !revisions ||
+          typeof revisions !== "object" ||
+          Array.isArray(revisions)
+        )
+          return "Extracted fact lacks source revisions";
+        for (const id of Object.keys(revisions)) {
+          const source = await runtime.getMemoryById(id as UUID);
+          if (
+            source?.entityId === ctx.primaryUserId &&
+            matchesTypedTurnInput(source.content.text, recalibrateText)
+          )
+            return undefined;
+        }
+        return "Extracted fact does not cite its original user message";
+      },
+    },
     {
       type: "actionCalled",
       actionName: "BRIEF_RECALIBRATE",

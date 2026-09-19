@@ -4,6 +4,7 @@
  * auto-migrate all of them at startup.
  */
 export { agentTable } from "./agent";
+export { approvalDispatchControlTable } from "./approvalDispatchControl";
 export { approvalRequestTable } from "./approvalRequests";
 export type { AuthAuditOutcome } from "./authAuditEvent";
 export { authAuditEventTable } from "./authAuditEvent";
@@ -60,6 +61,7 @@ export { participantTable } from "./participant";
 export { relationshipTable } from "./relationship";
 export { roomTable } from "./room";
 export { serverTable } from "./server";
+export { sessionSummaries } from "./sessionSummaries";
 export { taskTable } from "./tasks";
 export { worldTable } from "./world";
 export { worldRoleAuditTable } from "./worldRoleAudit";
