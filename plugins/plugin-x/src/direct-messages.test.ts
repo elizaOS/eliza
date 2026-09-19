@@ -38,6 +38,26 @@ function authenticatedTwitterClient(
   };
 }
 
+function dmRuntime<T>(cache: Map<string, string>, handleMessage: T) {
+  return {
+    agentId: "00000000-0000-0000-0000-000000000001",
+    getCache: async (key: string) => cache.get(key),
+    setCache: async (key: string, value: string) => {
+      cache.set(key, value);
+    },
+    deleteCache: async (key: string) => cache.delete(key),
+    getMemoryById: async () => null,
+    createMemory: vi.fn(async () => undefined),
+    ensureWorldExists: vi.fn(async () => undefined),
+    updateWorld: vi.fn(async () => undefined),
+    ensureRoomExists: vi.fn(async () => undefined),
+    ensureConnection: vi.fn(async () => undefined),
+    messageService: { handleMessage },
+    reportError: vi.fn(),
+    getSetting: vi.fn(() => null),
+  };
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((settle) => {
@@ -277,20 +297,7 @@ describe("TwitterDirectMessageClient", () => {
     ]);
     const handleMessage = vi.fn();
     const runtime = {
-      agentId: "00000000-0000-0000-0000-000000000001",
-      getCache: async (key: string) => cache.get(key),
-      setCache: async (key: string, value: string) => {
-        cache.set(key, value);
-      },
-      deleteCache: async (key: string) => cache.delete(key),
-      getMemoryById: async () => null,
-      createMemory: vi.fn(async () => undefined),
-      ensureWorldExists: vi.fn(async () => undefined),
-      updateWorld: vi.fn(async () => undefined),
-      ensureRoomExists: vi.fn(async () => undefined),
-      ensureConnection: vi.fn(async () => undefined),
-      messageService: { handleMessage },
-      reportError: vi.fn(),
+      ...dmRuntime(cache, handleMessage),
       getSetting: vi.fn((key: string) =>
         key === "TWITTER_BROKER_TOKEN" ? "test-broker-token" : null,
       ),
@@ -351,25 +358,11 @@ describe("TwitterDirectMessageClient", () => {
       event_type: "MessageCreate",
     };
     const sendA = vi.fn();
-    const sendB = vi.fn();
     const cache = new Map<string, string>([
       ["twitter/agent/account-a/dm_cursor", "600"],
     ]);
     const runtime = {
-      agentId: "00000000-0000-0000-0000-000000000001",
-      getCache: async (key: string) => cache.get(key),
-      setCache: async (key: string, value: string) => {
-        cache.set(key, value);
-      },
-      deleteCache: async (key: string) => cache.delete(key),
-      getMemoryById: async () => null,
-      createMemory: vi.fn(async () => undefined),
-      ensureWorldExists: vi.fn(async () => undefined),
-      updateWorld: vi.fn(async () => undefined),
-      ensureRoomExists: vi.fn(async () => undefined),
-      ensureConnection: vi.fn(async () => undefined),
-      messageService: { handleMessage: vi.fn() },
-      reportError: vi.fn(),
+      ...dmRuntime(cache, vi.fn()),
       getSetting: vi.fn((key: string) =>
         key === "TWITTER_BROKER_TOKEN" ? "test-broker-token" : null,
       ),
@@ -410,7 +403,6 @@ describe("TwitterDirectMessageClient", () => {
     await start;
 
     expect(sendA).not.toHaveBeenCalled();
-    expect(sendB).not.toHaveBeenCalled();
     expect(cache.get("twitter/agent/account-a/dm_cursor")).toBe("600");
     expect(runtime.reportError).toHaveBeenCalledWith(
       "XDirectMessages.poll",
@@ -488,21 +480,9 @@ describe("TwitterDirectMessageClient", () => {
       },
     );
     const runtime = {
-      agentId: "00000000-0000-0000-0000-000000000001",
-      getCache: async (key: string) => cache.get(key),
-      setCache: async (key: string, value: string) => {
-        cache.set(key, value);
-      },
-      deleteCache: async (key: string) => cache.delete(key),
+      ...dmRuntime(cache, handleMessage),
       getMemoryById: async (id: string) => memories.get(id) ?? null,
       createMemory,
-      ensureWorldExists: vi.fn(async () => undefined),
-      updateWorld: vi.fn(async () => undefined),
-      ensureRoomExists: vi.fn(async () => undefined),
-      ensureConnection: vi.fn(async () => undefined),
-      messageService: { handleMessage },
-      reportError: vi.fn(),
-      getSetting: vi.fn(() => null),
     } as unknown as IAgentRuntime;
     const client = {
       accountId: "agent",
@@ -612,23 +592,7 @@ describe("TwitterDirectMessageClient", () => {
         await callback({ text: `echo:${memory.content.text}` });
       },
     );
-    const runtime = {
-      agentId: "00000000-0000-0000-0000-000000000001",
-      getCache: async (key: string) => cache.get(key),
-      setCache: async (key: string, value: string) => {
-        cache.set(key, value);
-      },
-      deleteCache: async (key: string) => cache.delete(key),
-      getMemoryById: async () => null,
-      createMemory: vi.fn(async () => undefined),
-      ensureWorldExists: vi.fn(async () => undefined),
-      updateWorld: vi.fn(async () => undefined),
-      ensureRoomExists: vi.fn(async () => undefined),
-      ensureConnection: vi.fn(async () => undefined),
-      messageService: { handleMessage },
-      reportError: vi.fn(),
-      getSetting: vi.fn(() => null),
-    } as unknown as IAgentRuntime;
+    const runtime = dmRuntime(cache, handleMessage) as unknown as IAgentRuntime;
     const client = {
       accountId: "agent",
       profile: { id: "agent-user-id", username: "elizamakesmagic" },
@@ -691,21 +655,9 @@ describe("TwitterDirectMessageClient", () => {
       },
     );
     const runtime = {
-      agentId: "00000000-0000-0000-0000-000000000001",
-      getCache: async (key: string) => cache.get(key),
-      setCache: async (key: string, value: string) => {
-        cache.set(key, value);
-      },
-      deleteCache: async (key: string) => cache.delete(key),
+      ...dmRuntime(cache, handleMessage),
       getMemoryById: async (id: string) => memories.get(id) ?? null,
       createMemory,
-      ensureWorldExists: vi.fn(async () => undefined),
-      updateWorld: vi.fn(async () => undefined),
-      ensureRoomExists: vi.fn(async () => undefined),
-      ensureConnection: vi.fn(async () => undefined),
-      messageService: { handleMessage },
-      reportError: vi.fn(),
-      getSetting: vi.fn(() => null),
     } as unknown as IAgentRuntime;
     const client = {
       accountId: "agent",
@@ -784,23 +736,7 @@ describe("TwitterDirectMessageClient", () => {
         callback: (response: { text: string }) => Promise<Memory[]>,
       ) => callback({ text: `echo:${memory.content.text}` }),
     );
-    const runtime = {
-      agentId: "00000000-0000-0000-0000-000000000001",
-      getCache: async (key: string) => cache.get(key),
-      setCache: async (key: string, value: string) => {
-        cache.set(key, value);
-      },
-      deleteCache: async (key: string) => cache.delete(key),
-      getMemoryById: async () => null,
-      createMemory: vi.fn(async () => undefined),
-      ensureWorldExists: vi.fn(async () => undefined),
-      updateWorld: vi.fn(async () => undefined),
-      ensureRoomExists: vi.fn(async () => undefined),
-      ensureConnection: vi.fn(async () => undefined),
-      messageService: { handleMessage },
-      reportError: vi.fn(),
-      getSetting: vi.fn(() => null),
-    } as unknown as IAgentRuntime;
+    const runtime = dmRuntime(cache, handleMessage) as unknown as IAgentRuntime;
     const client = {
       accountId: "agent",
       profile: { id: "agent-user-id", username: "elizamakesmagic" },
@@ -854,21 +790,9 @@ describe("TwitterDirectMessageClient", () => {
       },
     );
     const runtime = {
-      agentId: "00000000-0000-0000-0000-000000000001",
-      getCache: async (key: string) => cache.get(key),
-      setCache: async (key: string, value: string) => {
-        cache.set(key, value);
-      },
-      deleteCache: async (key: string) => cache.delete(key),
+      ...dmRuntime(cache, handleMessage),
       getMemoryById: async (id: string) => memories.get(id) ?? null,
       createMemory,
-      ensureWorldExists: vi.fn(async () => undefined),
-      updateWorld: vi.fn(async () => undefined),
-      ensureRoomExists: vi.fn(async () => undefined),
-      ensureConnection: vi.fn(async () => undefined),
-      messageService: { handleMessage },
-      reportError: vi.fn(),
-      getSetting: vi.fn(() => null),
     } as unknown as IAgentRuntime;
     const client = {
       accountId: "agent",
@@ -922,23 +846,7 @@ describe("TwitterDirectMessageClient", () => {
         callback: (response: { text: string }) => Promise<Memory[]>,
       ) => callback({ text: "one attempt" }).catch(() => []),
     );
-    const runtime = {
-      agentId: "00000000-0000-0000-0000-000000000001",
-      getCache: async (key: string) => cache.get(key),
-      setCache: async (key: string, value: string) => {
-        cache.set(key, value);
-      },
-      deleteCache: async (key: string) => cache.delete(key),
-      getMemoryById: async () => null,
-      createMemory: vi.fn(async () => undefined),
-      ensureWorldExists: vi.fn(async () => undefined),
-      updateWorld: vi.fn(async () => undefined),
-      ensureRoomExists: vi.fn(async () => undefined),
-      ensureConnection: vi.fn(async () => undefined),
-      messageService: { handleMessage },
-      reportError: vi.fn(),
-      getSetting: vi.fn(() => null),
-    } as unknown as IAgentRuntime;
+    const runtime = dmRuntime(cache, handleMessage) as unknown as IAgentRuntime;
     const client = {
       accountId: "agent",
       profile: { id: "agent-user-id", username: "elizamakesmagic" },
@@ -991,23 +899,7 @@ describe("TwitterDirectMessageClient", () => {
         callbackResults.push(await callback({ text: "evaluator delivery" }));
       },
     );
-    const runtime = {
-      agentId: "00000000-0000-0000-0000-000000000001",
-      getCache: async (key: string) => cache.get(key),
-      setCache: async (key: string, value: string) => {
-        cache.set(key, value);
-      },
-      deleteCache: async (key: string) => cache.delete(key),
-      getMemoryById: async () => null,
-      createMemory: vi.fn(async () => undefined),
-      ensureWorldExists: vi.fn(async () => undefined),
-      updateWorld: vi.fn(async () => undefined),
-      ensureRoomExists: vi.fn(async () => undefined),
-      ensureConnection: vi.fn(async () => undefined),
-      messageService: { handleMessage },
-      reportError: vi.fn(),
-      getSetting: vi.fn(() => null),
-    } as unknown as IAgentRuntime;
+    const runtime = dmRuntime(cache, handleMessage) as unknown as IAgentRuntime;
     const client = {
       accountId: "agent",
       profile: { id: "agent-user-id", username: "elizamakesmagic" },
@@ -1065,23 +957,7 @@ describe("TwitterDirectMessageClient", () => {
         ]);
       },
     );
-    const runtime = {
-      agentId: "00000000-0000-0000-0000-000000000001",
-      getCache: async (key: string) => cache.get(key),
-      setCache: async (key: string, value: string) => {
-        cache.set(key, value);
-      },
-      deleteCache: async (key: string) => cache.delete(key),
-      getMemoryById: async () => null,
-      createMemory: vi.fn(async () => undefined),
-      ensureWorldExists: vi.fn(async () => undefined),
-      updateWorld: vi.fn(async () => undefined),
-      ensureRoomExists: vi.fn(async () => undefined),
-      ensureConnection: vi.fn(async () => undefined),
-      messageService: { handleMessage },
-      reportError: vi.fn(),
-      getSetting: vi.fn(() => null),
-    } as unknown as IAgentRuntime;
+    const runtime = dmRuntime(cache, handleMessage) as unknown as IAgentRuntime;
     const client = {
       accountId: "agent",
       profile: { id: "agent-user-id", username: "elizamakesmagic" },
@@ -1130,23 +1006,7 @@ describe("TwitterDirectMessageClient", () => {
         await callback({ text: "same-turn retry" }).catch(() => []);
       },
     );
-    const runtime = {
-      agentId: "00000000-0000-0000-0000-000000000001",
-      getCache: async (key: string) => cache.get(key),
-      setCache: async (key: string, value: string) => {
-        cache.set(key, value);
-      },
-      deleteCache: async (key: string) => cache.delete(key),
-      getMemoryById: async () => null,
-      createMemory: vi.fn(async () => undefined),
-      ensureWorldExists: vi.fn(async () => undefined),
-      updateWorld: vi.fn(async () => undefined),
-      ensureRoomExists: vi.fn(async () => undefined),
-      ensureConnection: vi.fn(async () => undefined),
-      messageService: { handleMessage },
-      reportError: vi.fn(),
-      getSetting: vi.fn(() => null),
-    } as unknown as IAgentRuntime;
+    const runtime = dmRuntime(cache, handleMessage) as unknown as IAgentRuntime;
     const client = {
       accountId: "agent",
       profile: { id: "agent-user-id", username: "elizamakesmagic" },
@@ -1213,21 +1073,8 @@ describe("TwitterDirectMessageClient DM access gate (TWITTER_DM_POLICY)", () => 
       claimPairingReply: vi.fn(() => true),
     };
     const runtime = {
-      agentId: "00000000-0000-0000-0000-000000000001",
-      getCache: async (key: string) => cache.get(key),
-      setCache: async (key: string, value: string) => {
-        cache.set(key, value);
-      },
-      deleteCache: async (key: string) => cache.delete(key),
-      getMemoryById: async () => null,
+      ...dmRuntime(cache, handleMessage),
       createMemory,
-      ensureWorldExists: vi.fn(async () => undefined),
-      updateWorld: vi.fn(async () => undefined),
-      ensureRoomExists: vi.fn(async () => undefined),
-      ensureConnection: vi.fn(async () => undefined),
-      messageService: { handleMessage },
-      reportError: vi.fn(),
-      getSetting: vi.fn(() => null),
       getService: vi.fn(() => pairingService),
     } as unknown as IAgentRuntime;
     const client = {
