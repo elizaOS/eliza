@@ -304,6 +304,24 @@ type LocalGrantInventoryEntry = Readonly<{
 export const ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY: readonly LocalGrantInventoryEntry[] =
   Object.freeze([
     {
+      table: "agent_billing_records",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "agent_compute_funding",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "agent_compute_subjects",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
       table: "subscription_allowance_transactions",
       column: "organization_id",
       subject: "organization",
@@ -522,6 +540,47 @@ async function countLocalRestrictiveRows(context: AccountDeletionProviderContext
 async function deleteLocalRestrictiveRows(context: AccountDeletionProviderContext): Promise<void> {
   await dbWrite.transaction(async (tx) => {
     await subscriptionAuthorityRepository.releaseForAccountDeletion(tx, context.organizationId);
+    // Retirement preserves financial history until this irreversible, organization-locked erasure.
+    const subjects = await tx.execute(sql`SELECT subject.agent_id
+      FROM agent_compute_subjects subject
+      WHERE subject.organization_id=${context.organizationId}
+        AND (subject.retired_at IS NULL OR EXISTS (
+          SELECT 1 FROM agent_sandboxes agent WHERE agent.id=subject.agent_id
+            AND agent.organization_id=subject.organization_id))
+      FOR UPDATE OF subject`);
+    // Renewal predecessors settle without stopping; only a continuous same-provider chain inherits a later stop.
+    const funding = await tx.execute(sql`WITH RECURSIVE stopped_chain AS (
+      SELECT id, previous_funding_id, organization_id, agent_id, provider_node_id,
+        provider_container_id, period_start
+      FROM agent_compute_funding
+      WHERE organization_id=${context.organizationId}
+        AND settled_at IS NOT NULL AND provider_stopped_at IS NOT NULL
+        AND provider_stop_receipt IS NOT NULL
+      UNION
+      SELECT prior.id, prior.previous_funding_id, prior.organization_id, prior.agent_id,
+        prior.provider_node_id, prior.provider_container_id, prior.period_start
+      FROM agent_compute_funding prior JOIN stopped_chain successor
+        ON successor.previous_funding_id=prior.id
+        AND successor.organization_id=prior.organization_id AND successor.agent_id=prior.agent_id
+        AND successor.provider_node_id=prior.provider_node_id
+        AND successor.provider_container_id=prior.provider_container_id
+        AND successor.period_start=prior.settled_through
+      WHERE prior.settled_at IS NOT NULL
+    ) SELECT funding.id
+      FROM agent_compute_funding funding
+      JOIN billing_funding_reservations reservation ON reservation.id=funding.funding_reservation_id
+        AND reservation.organization_id=funding.organization_id
+      WHERE funding.organization_id=${context.organizationId}
+        AND (funding.settled_at IS NULL OR reservation.status <> 'finalized'
+          OR (funding.provider_container_id IS NOT NULL AND
+            NOT EXISTS (SELECT 1 FROM stopped_chain proof WHERE proof.id=funding.id)))
+      FOR UPDATE OF funding, reservation`);
+    if (subjects.rows.length > 0 || funding.rows.length > 0) {
+      throw new ElizaError("Account erasure requires retired and settled Dedicated compute", {
+        code: "ACCOUNT_DELETION_COMPUTE_UNRECONCILED",
+        context: { organizationId: context.organizationId },
+      });
+    }
     await tx.execute(
       sql`SELECT set_config('eliza.subscription_account_deletion_authority', 'on', true)`,
     );

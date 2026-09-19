@@ -40,7 +40,7 @@ beforeAll(async () => {
     CREATE TABLE users (id uuid PRIMARY KEY);
     CREATE TABLE org_storage_quota (organization_id uuid PRIMARY KEY REFERENCES organizations(id), bytes_used bigint NOT NULL DEFAULT 0, bytes_limit bigint NOT NULL DEFAULT 5368709120);
     CREATE TABLE agent_sandboxes (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id));
-    CREATE TABLE credit_transactions (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id), CONSTRAINT credit_transactions_id_org_idx UNIQUE(id, organization_id));
+    CREATE TABLE credit_transactions (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE, CONSTRAINT credit_transactions_id_org_idx UNIQUE(id, organization_id));
   `);
   for (const name of [
     "0373_subscription_authority.sql",
@@ -51,6 +51,32 @@ beforeAll(async () => {
     "0383_subscription_cancellation_result.sql",
     "0384_subscription_cancellation_undo.sql",
     "0385_subscription_reconciliation.sql",
+  ]) {
+    const migration = await readFile(
+      new URL(`../../db/migrations/${name}`, import.meta.url),
+      "utf8",
+    );
+    await getPgliteClientForTests().transaction(async (tx) => {
+      await tx.exec(migration);
+    });
+  }
+
+  await getPgliteClientForTests().exec(
+    "ALTER TABLE agent_sandboxes ADD CONSTRAINT erasure_agent_tenant UNIQUE(id,organization_id)",
+  );
+  const billingDDL = (
+    await readFile(
+      new URL("../../db/migrations/0265_compute_billing_recovery.sql", import.meta.url),
+      "utf8",
+    )
+  ).match(/CREATE TABLE agent_billing_records \([\s\S]*?\n\);/);
+  if (!billingDDL) throw new Error("Canonical billing receipt DDL unavailable");
+  await getPgliteClientForTests().exec(billingDDL[0]);
+  for (const name of [
+    "0387_agent_compute_funding.sql",
+    "0388_agent_compute_funded_receipts.sql",
+    "0389_agent_compute_stop_receipts.sql",
+    "0391_agent_compute_subjects.sql",
   ]) {
     const migration = await readFile(
       new URL(`../../db/migrations/${name}`, import.meta.url),
@@ -127,6 +153,134 @@ describe("account deletion restrictive-grant terminal absence", () => {
     await dbWrite.execute(
       sql`UPDATE organizations SET account_lifecycle_state='deletion_irreversible' WHERE id=${ORGANIZATION_ID}`,
     );
+    const agentId = crypto.randomUUID();
+    const reservationId = crypto.randomUUID();
+    const fundingId = crypto.randomUUID();
+    await getPgliteClientForTests().query(
+      "INSERT INTO agent_sandboxes(id,organization_id) VALUES($1,$2)",
+      [agentId, ORGANIZATION_ID],
+    );
+    await getPgliteClientForTests().query(
+      `INSERT INTO billing_funding_reservations(id,organization_id,logical_operation_id,request_digest,funding_class,requested_amount,reserved_amount,expires_at)
+      VALUES($1,$2,'erasure.compute.hold',$3,'cash_only',0.15,0.15,now()+interval '1 hour')`,
+      [reservationId, ORGANIZATION_ID, "a".repeat(64)],
+    );
+    await getPgliteClientForTests().query(
+      `INSERT INTO agent_compute_funding(id,organization_id,agent_id,funding_reservation_id,period_start,period_end,hourly_rate)
+      VALUES($1,$2,$3,$4,date_trunc('milliseconds',now()-interval '2 hours'),now()+interval '1 hour',0.15)`,
+      [fundingId, ORGANIZATION_ID, agentId, reservationId],
+    );
+    const openFunding = (
+      await getPgliteClientForTests().query("SELECT * FROM agent_compute_funding ORDER BY id")
+    ).rows;
+    await expect(adapter.execute(context, "unsettled-compute-erasure")).rejects.toMatchObject({
+      code: "ACCOUNT_DELETION_COMPUTE_UNRECONCILED",
+    });
+    expect(
+      (await getPgliteClientForTests().query("SELECT * FROM agent_compute_funding ORDER BY id"))
+        .rows,
+    ).toEqual(openFunding);
+    // Import terminal funding state; the test exercises erasure, not provider settlement.
+    await getPgliteClientForTests().query(
+      "UPDATE agent_compute_funding SET settled_at=now(),settled_through=period_start WHERE id=$1",
+      [fundingId],
+    );
+    await getPgliteClientForTests().query(
+      "UPDATE billing_funding_reservations SET status='finalized',finalized_at=now(),settlement_key='erasure.compute.settlement',settlement_digest=$2 WHERE id=$1",
+      [reservationId, "b".repeat(64)],
+    );
+    await expect(adapter.execute(context, "live-compute-erasure")).rejects.toMatchObject({
+      code: "ACCOUNT_DELETION_COMPUTE_UNRECONCILED",
+    });
+    // A settled renewal predecessor retains the same provider but has no stop of its own.
+    await getPgliteClientForTests().query(
+      `UPDATE agent_compute_funding SET provider_node_id='node-erasure',provider_container_id=$2,provider_bound_at=period_start,settled_through=date_trunc('milliseconds',now()-interval '1 hour') WHERE id=$1`,
+      [fundingId, "d".repeat(64)],
+    );
+    const secondReservation = crypto.randomUUID();
+    const secondFunding = crypto.randomUUID();
+    const creditId = crypto.randomUUID();
+    await getPgliteClientForTests().query(
+      "INSERT INTO credit_transactions(id,organization_id) VALUES($1,$2)",
+      [creditId, ORGANIZATION_ID],
+    );
+    await getPgliteClientForTests().query(
+      `INSERT INTO billing_funding_reservations(id,organization_id,logical_operation_id,request_digest,funding_class,requested_amount,reserved_amount,expires_at,status,finalized_at,settlement_key,settlement_digest)
+      VALUES($1,$2,'erasure.compute.next',$3,'cash_only',0.15,0.15,now()+interval '1 hour','finalized',now(),'erasure.next.settled',$3)`,
+      [secondReservation, ORGANIZATION_ID, "c".repeat(64)],
+    );
+    await getPgliteClientForTests().query(
+      `INSERT INTO billing_funding_allocations(organization_id,reservation_id,sequence,source,purchased_credit_reservation_transaction_id,reserved_amount,finalized_amount,released_amount)
+      VALUES($1,$2,1,'purchased_credit',$3,0.15,0.075,0.075)`,
+      [ORGANIZATION_ID, secondReservation, creditId],
+    );
+    await getPgliteClientForTests().query(
+      `INSERT INTO agent_compute_funding(id,organization_id,agent_id,funding_reservation_id,previous_funding_id,period_start,period_end,hourly_rate,provider_node_id,provider_container_id,provider_bound_at,settled_at,settled_through)
+      SELECT $1,$2,$3,$4,$5,settled_through,now()+interval '1 hour',0.15,'node-erasure',$6,settled_through,now(),date_trunc('milliseconds',now()) FROM agent_compute_funding WHERE id=$5`,
+      [secondFunding, ORGANIZATION_ID, agentId, secondReservation, fundingId, "d".repeat(64)],
+    );
+    await getPgliteClientForTests().query("DELETE FROM agent_sandboxes WHERE id=$1", [agentId]);
+    // A settled database window alone cannot claim that allocated provider compute stopped.
+    await expect(adapter.execute(context, "unconfirmed-provider-erasure")).rejects.toMatchObject({
+      code: "ACCOUNT_DELETION_COMPUTE_UNRECONCILED",
+    });
+    await getPgliteClientForTests().query(
+      `UPDATE agent_compute_funding SET provider_stopped_at=settled_through,
+      provider_stop_receipt=jsonb_build_object('fundingId',id::text,'containerId',provider_container_id,'stoppedAtMs',extract(epoch FROM settled_through)*1000,'bootId','fixture-boot') WHERE id=$1`,
+      [secondFunding],
+    );
+    await getPgliteClientForTests().query(
+      `INSERT INTO agent_billing_records(organization_id,sandbox_id,sandbox_status,billing_period_start,billing_period_end,hourly_rate,amount,compute_funding_id)
+      SELECT organization_id,agent_id,'running',period_start,settled_through,hourly_rate,0.075,id FROM agent_compute_funding WHERE id=$1`,
+      [secondFunding],
+    );
+    await getPgliteClientForTests().query(
+      "UPDATE agent_compute_funding SET provider_node_id='unrelated-node' WHERE id=$1",
+      [fundingId],
+    );
+    await expect(adapter.execute(context, "foreign-provider-chain-erasure")).rejects.toMatchObject({
+      code: "ACCOUNT_DELETION_COMPUTE_UNRECONCILED",
+    });
+    await getPgliteClientForTests().query(
+      "UPDATE agent_compute_funding SET provider_node_id='node-erasure',settled_through=settled_through-interval '1 millisecond' WHERE id=$1",
+      [fundingId],
+    );
+    await expect(adapter.execute(context, "broken-period-chain-erasure")).rejects.toMatchObject({
+      code: "ACCOUNT_DELETION_COMPUTE_UNRECONCILED",
+    });
+    await getPgliteClientForTests().query(
+      "UPDATE agent_compute_funding prior SET settled_through=successor.period_start FROM agent_compute_funding successor WHERE prior.id=$1 AND successor.id=$2",
+      [fundingId, secondFunding],
+    );
+    // Retired terminal unbound admissions legitimately have no provider stop receipt.
+    const unboundAgent = crypto.randomUUID();
+    const unboundReservation = crypto.randomUUID();
+    await getPgliteClientForTests().query(
+      "INSERT INTO agent_sandboxes(id,organization_id) VALUES($1,$2)",
+      [unboundAgent, ORGANIZATION_ID],
+    );
+    await getPgliteClientForTests().query(
+      `INSERT INTO billing_funding_reservations(id,organization_id,logical_operation_id,request_digest,funding_class,requested_amount,reserved_amount,expires_at,status,finalized_at,settlement_key,settlement_digest)
+      VALUES($1,$2,'erasure.unbound.hold',$3,'cash_only',0.15,0.15,now()+interval '1 hour','finalized',now(),'erasure.unbound.settled',$3)`,
+      [unboundReservation, ORGANIZATION_ID, "e".repeat(64)],
+    );
+    await getPgliteClientForTests().query(
+      `INSERT INTO agent_compute_funding(organization_id,agent_id,funding_reservation_id,period_start,period_end,hourly_rate,settled_at,settled_through)
+      VALUES($1,$2,$3,now(),now()+interval '1 hour',0.15,now(),now())`,
+      [ORGANIZATION_ID, unboundAgent, unboundReservation],
+    );
+    await getPgliteClientForTests().query("DELETE FROM agent_sandboxes WHERE id=$1", [
+      unboundAgent,
+    ]);
+    const retiredFunding = (
+      await getPgliteClientForTests().query("SELECT * FROM agent_compute_funding ORDER BY id")
+    ).rows;
+    const retiredSubjects = (
+      await getPgliteClientForTests().query(
+        "SELECT * FROM agent_compute_subjects ORDER BY agent_id",
+      )
+    ).rows;
+    expect(retiredSubjects[0]).toMatchObject({ retired_at: expect.any(Date) });
     const recoveryBefore = (
       await getPgliteClientForTests().query("SELECT * FROM subscription_reconciliation_attempts")
     ).rows;
@@ -203,6 +357,17 @@ describe("account deletion restrictive-grant terminal absence", () => {
       (await getPgliteClientForTests().query("SELECT * FROM subscription_reconciliation_scans"))
         .rows,
     ).toEqual(scanBefore);
+    expect(
+      (await getPgliteClientForTests().query("SELECT * FROM agent_compute_funding ORDER BY id"))
+        .rows,
+    ).toEqual(retiredFunding);
+    expect(
+      (
+        await getPgliteClientForTests().query(
+          "SELECT * FROM agent_compute_subjects ORDER BY agent_id",
+        )
+      ).rows,
+    ).toEqual(retiredSubjects);
     await getPgliteClientForTests().exec("DROP TABLE notice_erasure_restrict_probe");
     await adapter.execute(context, "delete-local-grants-once");
     await expect(adapter.inspect(context)).resolves.toMatchObject({ state: "complete" });

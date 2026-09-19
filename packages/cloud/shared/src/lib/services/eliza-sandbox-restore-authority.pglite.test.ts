@@ -362,6 +362,7 @@ async function durableGeneration(agentId: string): Promise<{
 function installRestoreFetch(
   options: {
     expectedState?: AgentBackupStateData;
+    expectedUrl?: string;
     status?: number;
     body?: string;
     beforeResponse?: () => Promise<void> | void;
@@ -369,7 +370,7 @@ function installRestoreFetch(
 ) {
   return mock(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    expect(url).toBe("http://127.0.0.1:3000/api/restore");
+    expect(url).toBe(options.expectedUrl ?? "http://100.64.0.20:21060/api/restore");
     expect(init?.method).toBe("POST");
     if (options.expectedState) {
       expect(JSON.parse(String(init?.body))).toEqual(options.expectedState);
@@ -984,7 +985,10 @@ describe("ElizaSandboxService stopped restore-point pinning", () => {
       },
       "transferReplacementToPrimary",
     ).mockResolvedValue(running);
-    const fetchMock = installRestoreFetch({ expectedState: chain.state });
+    const fetchMock = installRestoreFetch({
+      expectedState: chain.state,
+      expectedUrl: "http://127.0.0.1:3000/api/restore",
+    });
     globalThis.fetch = fetchMock;
 
     const result = await service.provision(sandbox.id, sandbox.organization_id, chain.directive);
@@ -1561,7 +1565,11 @@ describe("ElizaSandboxService stopped restore-point pinning", () => {
       stopForReplacement,
       buildProvisioningRetryHandle,
     } = await armStoppedExactRestore("stopped-custom-404", state("stopped-custom-404"));
-    const fetchMock = installRestoreFetch({ status: 404, body: "restore endpoint missing" });
+    const fetchMock = installRestoreFetch({
+      status: 404,
+      body: "restore endpoint missing",
+      expectedUrl: "http://127.0.0.1:3000/api/restore",
+    });
     globalThis.fetch = fetchMock;
 
     await expect(
