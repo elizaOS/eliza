@@ -44,6 +44,7 @@ import type { Memory } from "../../types/memory";
 import type { GenerateTextResult } from "../../types/model";
 import { ModelType } from "../../types/model";
 import { ChannelType } from "../../types/primitives";
+import { getUserMessageText } from "../../utils/message-text";
 import { getEvaluatorProgressState } from "../evaluator-progress.ts";
 import { HISTORY_RETENTION_EVALUATOR } from "../history-retention.ts";
 import { CODING_SUB_AGENT_CONTEXTS } from "./action-surface.js";
@@ -64,6 +65,7 @@ import {
 	isSubAgentCompletionArtifact,
 	resolveContinuationInferenceMessageText,
 } from "./dialogue-context.js";
+import { evaluatePlannedReplyEgress } from "./egress-policy.js";
 import {
 	canRepairHistoryIdentity,
 	canRepairIncompleteHistorySelection,
@@ -79,6 +81,7 @@ import {
 } from "./history-discovery.js";
 import { withInactiveArrayFields } from "./inactive-field-schema.js";
 import { composeResponseState } from "./provider-state.js";
+import { restorePiiInUserReplyText } from "./reply-policy.js";
 import {
 	createSourceReplySnapshot,
 	resolveSourceReply,
@@ -175,6 +178,16 @@ export async function generateStage1Decision(
 ) {
 	const voiceDirectMessageChannel =
 		args.message.content?.channelType === ChannelType.VOICE_DM;
+	// Reads precede the routing/addressing decision. Only direct text may
+	// publish progress here; ambient and voice turns retain their later gates.
+	const contextReadProgressEnabled = Boolean(
+		directMessageChannel &&
+			!voiceDirectMessageChannel &&
+			!args.codingMode &&
+			!args.stage1DecisionOnly &&
+			args.onPlanningAcknowledgment,
+	);
+	let contextReadAcknowledgmentSent = false;
 	const messageHandlerStartedAt = Date.now();
 	const stage1TurnSignal =
 		getStreamingContext()?.abortSignal ?? new AbortController().signal;
@@ -304,7 +317,7 @@ export async function generateStage1Decision(
 				: fieldSchema;
 		const readTool =
 			discoveryEnabled && discovery.available.size > 0
-				? createContextReadTool(referenceSchema)
+				? createContextReadTool(referenceSchema, contextReadProgressEnabled)
 				: undefined;
 		// A ready native decision and a missing-context read are separate
 		// operations. Preserve custom schemas and all legacy runtime fallbacks.
@@ -889,6 +902,34 @@ export async function generateStage1Decision(
 				historyReadEvidence = read.evidence;
 			}
 
+			// Publish only a validated native read's dedicated progress field,
+			// after fresh authority/state restoration and before the next inference.
+			// This never dispatches extraction, actions, or a durable response.
+			if (
+				contextReadProgressEnabled &&
+				!contextReadAcknowledgmentSent &&
+				nativeRead?.acknowledgment
+			) {
+				const progress = sanitizeUserVisibleModelOutput(
+					nativeRead.acknowledgment,
+				);
+				if (
+					progress.kind === "text" &&
+					evaluatePlannedReplyEgress({
+						providers: args.state.data.providers,
+						request: getUserMessageText(args.message),
+						reply: progress.text,
+						actionResults: [],
+						actions: args.runtime.actions,
+					}).verdict !== "reject"
+				) {
+					stage1TurnSignal.throwIfAborted();
+					args.onPlanningAcknowledgment?.(
+						restorePiiInUserReplyText(progress.text),
+					);
+					contextReadAcknowledgmentSent = true;
+				}
+			}
 			if (historyRequested.length) historyReadForDecision = true;
 			discovery = projectDiscoverableContext(
 				context,
@@ -1302,6 +1343,7 @@ export async function generateStage1Decision(
 						sourceSetId: providerReviewSourceSetId,
 					} as JsonValue)
 				: undefined,
+		contextReadAcknowledgmentSent,
 		providerDiscoveryEnabled: discoveryEnabled,
 		loadedContextProviders: [...loadedContext],
 		historyReadEvidence,

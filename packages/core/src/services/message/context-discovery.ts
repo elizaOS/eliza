@@ -16,6 +16,7 @@ export const READ_CONTEXT_TOOL_NAME = "READ_CONTEXT";
 /** Offer the read-only control without changing the legacy response envelope. */
 export function createContextReadTool(
 	schema: JSONSchema,
+	includeAcknowledgment = false,
 ): ToolDefinition | undefined {
 	const requests = schema.properties?.contextRequests;
 	const items = requests?.items;
@@ -38,6 +39,15 @@ export function createContextReadTool(
 			type: "object",
 			additionalProperties: false,
 			properties: {
+				...(includeAcknowledgment
+					? {
+							acknowledgment: {
+								type: "string" as const,
+								description:
+									"Brief natural progress about the lookup you are starting, or empty when unnecessary. No answer, result, internal reference labels, reasoning, or claims of completed work. This is transient progress, never the final reply.",
+							},
+						}
+					: {}),
 				contextRequests: {
 					...requests,
 					minItems: Math.max(
@@ -46,7 +56,9 @@ export function createContextReadTool(
 					),
 				},
 			},
-			required: ["contextRequests"],
+			required: includeAcknowledgment
+				? ["contextRequests", "acknowledgment"]
+				: ["contextRequests"],
 		},
 	};
 }
@@ -55,7 +67,7 @@ export function createContextReadTool(
 export function extractContextRead(
 	raw: string | GenerateTextResult,
 	enabled: boolean,
-): { contextRequests: string[] } | undefined {
+): { contextRequests: string[]; acknowledgment?: string } | undefined {
 	if (!raw || typeof raw !== "object" || !Array.isArray(raw.toolCalls))
 		return undefined;
 	const nameOf = (entry: (typeof raw.toolCalls)[number]) =>
@@ -80,7 +92,11 @@ export function extractContextRead(
 	);
 	if (
 		!args ||
-		Object.keys(args).length !== 1 ||
+		Object.keys(args).some(
+			(key) => key !== "contextRequests" && key !== "acknowledgment",
+		) ||
+		(args.acknowledgment !== undefined &&
+			typeof args.acknowledgment !== "string") ||
 		!Array.isArray(args.contextRequests) ||
 		!args.contextRequests.length ||
 		args.contextRequests.some(
@@ -88,10 +104,15 @@ export function extractContextRead(
 		)
 	)
 		throw new ElizaError(
-			"A context read requires only a nonempty contextRequests array.",
+			"A context read requires a nonempty contextRequests array and optional string acknowledgment.",
 			{ code: "CONTEXT_DISCOVERY_INVALID_READ" },
 		);
-	return { contextRequests: args.contextRequests as string[] };
+	return {
+		contextRequests: args.contextRequests as string[],
+		...(typeof args.acknowledgment === "string"
+			? { acknowledgment: args.acknowledgment }
+			: {}),
+	};
 }
 
 /** Match native reference choices to the validator when every legal name is

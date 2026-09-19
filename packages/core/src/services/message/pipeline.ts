@@ -365,6 +365,7 @@ export async function runV5MessageRuntimeStage1(
 			loadedContextProviders,
 			historyReadEvidence,
 			contextCatalogRead,
+			contextReadAcknowledgmentSent,
 		} = await generateStage1Decision(
 			args,
 			{
@@ -877,6 +878,7 @@ export async function runV5MessageRuntimeStage1(
 		getStreamingContext()?.abortSignal?.throwIfAborted();
 		if (
 			args.onPlanningAcknowledgment &&
+			!contextReadAcknowledgmentSent &&
 			!addressedToOtherParticipant &&
 			messageHandler.processMessage === "RESPOND" &&
 			prePatchStageOneReplyEffectStatus === "pending" &&

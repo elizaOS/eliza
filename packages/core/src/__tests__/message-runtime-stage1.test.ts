@@ -2084,6 +2084,10 @@ describe("runV5MessageRuntimeStage1", () => {
 
 	it.each([
 		"target",
+		"progress",
+		"repeated-progress",
+		"cancel-refresh",
+		"cancel",
 		"literal",
 		"full",
 		"changed",
@@ -2100,11 +2104,23 @@ describe("runV5MessageRuntimeStage1", () => {
 				runtime.responseHandlerFieldRegistry,
 				"dispatch",
 			);
+			const progress = vi.fn();
+			const abort = new AbortController();
 			let calls = 0;
+			const compose = runtime.composeState.bind(runtime);
+			runtime.composeState = vi.fn(
+				async (...args: Parameters<IAgentRuntime["composeState"]>) => {
+					const refreshed = await compose(...args);
+					if (mode === "cancel-refresh" && calls > 0)
+						abort.abort(new Error("cancelled during context refresh"));
+					return refreshed;
+				},
+			);
 			runtime.useModel = vi.fn(
 				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
 					calls++;
-					if (calls > 2) throw new Error("Unexpected extra context-read call");
+					if (calls > (mode === "repeated-progress" ? 3 : 2))
+						throw new Error("Unexpected extra context-read call");
 					expect(dispatch).not.toHaveBeenCalled();
 					const input = args[1] as {
 						messages: Array<{ content: string }>;
@@ -2112,6 +2128,8 @@ describe("runV5MessageRuntimeStage1", () => {
 					};
 					const text = input.messages.map((m) => m.content).join("\n");
 					if (calls === 1) {
+						if (mode === "cancel")
+							abort.abort(new Error("cancelled before context read"));
 						expect(JSON.stringify(input.tools)).toContain(
 							'"name":"READ_CONTEXT"',
 						);
@@ -2134,6 +2152,7 @@ describe("runV5MessageRuntimeStage1", () => {
 									toolName: "READ_CONTEXT",
 									input: {
 										contextRequests,
+										acknowledgment: "Checking your earlier messages.",
 										...(mode === "extra"
 											? { facts: ["Never persist this"] }
 											: {}),
@@ -2150,13 +2169,35 @@ describe("runV5MessageRuntimeStage1", () => {
 							],
 						};
 					}
+					expect(progress).toHaveBeenCalledTimes(
+						["progress", "repeated-progress"].includes(mode) ? 1 : 0,
+					);
+					if (mode === "repeated-progress" && calls === 2)
+						return {
+							text: "",
+							toolCalls: [
+								{
+									toolName: "READ_CONTEXT",
+									input: {
+										contextRequests: ["history:h3"],
+										acknowledgment:
+											"Another progress label must not replace the first.",
+									},
+								},
+							],
+						};
 					expect(text).toContain(rows[1].content.text?.trim());
-					if (["full", "changed"].includes(mode))
+					if (["full", "changed", "repeated-progress"].includes(mode))
 						expect(text).toContain(rows[2].content.text);
 					else expect(text).not.toContain(rows[2].content.text);
 					return stage1Response({
 						replyText: "Read original evidence.",
-						replyParts: ["target", "literal"].includes(mode),
+						replyParts: [
+							"target",
+							"literal",
+							"progress",
+							"repeated-progress",
+						].includes(mode),
 						extra: {
 							completionContext: {
 								mode: "relevant_prior_dialogue",
@@ -2174,20 +2215,41 @@ describe("runV5MessageRuntimeStage1", () => {
 				},
 			) as IAgentRuntime["useModel"];
 			const run = () =>
-				runV5MessageRuntimeStage1({
-					runtime,
-					message,
-					state,
-					responseId: message.id as UUID,
-					stage1DecisionOnly: true,
-				});
-			if (["mixed", "extra", "unknown"].includes(mode)) {
+				runWithStreamingContext({ abortSignal: abort.signal }, () =>
+					runV5MessageRuntimeStage1({
+						runtime,
+						message,
+						state,
+						responseId: message.id as UUID,
+						stage1DecisionOnly: ![
+							"progress",
+							"repeated-progress",
+							"cancel",
+							"cancel-refresh",
+						].includes(mode),
+						onPlanningAcknowledgment: progress,
+					}),
+				);
+			if (
+				["mixed", "extra", "unknown", "cancel", "cancel-refresh"].includes(mode)
+			) {
 				await expect(run()).rejects.toThrow();
 				expect(dispatch).not.toHaveBeenCalled();
 				expect(calls).toBe(1);
+				expect(progress).not.toHaveBeenCalled();
 			} else {
-				await run();
-				expect(calls).toBe(2);
+				const result = await run();
+				if (["progress", "repeated-progress"].includes(mode)) {
+					expect(result.kind).toBe("direct_reply");
+					if (result.kind === "direct_reply")
+						expect(result.result.responseContent?.text).toBe(
+							"Read original evidence.",
+						);
+					expect(progress).toHaveBeenCalledExactlyOnceWith(
+						"Checking your earlier messages.",
+					);
+				}
+				expect(calls).toBe(mode === "repeated-progress" ? 3 : 2);
 				expect(dispatch).toHaveBeenCalledTimes(1);
 				expect(dispatch.mock.calls[0]?.[0].rawParsed.replyText).toBe(
 					"Read original evidence.",

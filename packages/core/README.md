@@ -66,6 +66,13 @@ that planning stopped. The default reports incomplete work without asserting
 that no action completed. Settled or uncertain effects still take the caller's
 receipt-aware recovery path before this failure boundary.
 
+Direct text context reads may supply a short model-authored acknowledgment in
+that existing inference. It is transient progress, published only after read
+validation and fresh state restoration through the normal output/egress checks.
+It neither delivers a final answer nor executes response fields. Subsequent
+read/planning acknowledgments are suppressed once it is sent. Voice, ambient
+turns, coding and decision-only callers retain their existing delivery gates.
+
 ## Key concepts
 
 - **AgentRuntime:** Central orchestrator for the agent lifecycle, plugin loading, and the message loop.
