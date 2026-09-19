@@ -18,6 +18,7 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { AgentRuntime } from "@elizaos/core";
+import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { tryHandleRuntimePluginRoute } from "../../../../packages/agent/src/api/runtime-plugin-routes.ts";
@@ -113,11 +114,12 @@ function makeRuntime(
 ): AgentRuntime {
   const { withService = true, state } = options;
   const service = state ? fakeService(state) : null;
-  return {
-    routes: computerUsePlugin.routes,
+  const runtime = {
     getService: (key: string) =>
       withService && key === "computeruse" ? service : null,
   } as unknown as AgentRuntime;
+  registerHttpPluginRoutes(runtime, computerUsePlugin);
+  return runtime;
 }
 
 async function startServer(
