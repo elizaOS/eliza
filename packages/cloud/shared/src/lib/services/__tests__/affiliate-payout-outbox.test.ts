@@ -5,6 +5,8 @@
  */
 
 import { afterAll, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const originalCacheEnabled = process.env.CACHE_ENABLED;
 process.env.CACHE_ENABLED = "true";
@@ -135,6 +137,19 @@ beforeAll(async () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    // pushSchema derives DDL from the drizzle schema, which cannot express the
+    // 0177 balance-revision trigger. Apply the real migration file (its
+    // statements are IF NOT EXISTS / OR REPLACE safe on top of pushSchema) so
+    // the fenced settlement is proven against the same trigger production
+    // deploys, and a real credit_balance debit advances balance_revision.
+    const migration0177 = readFileSync(
+      join(import.meta.dir, "../../../db/migrations/0177_organization_balance_revision.sql"),
+      "utf8",
+    );
+    for (const statement of migration0177.split("--> statement-breakpoint")) {
+      const trimmed = statement.trim();
+      if (trimmed) await dbWrite.execute(trimmed);
+    }
   } catch (error) {
     pgliteReady = false;
     console.error("[affiliate-payout-outbox.test] PGlite schema initialization failed", error);
@@ -348,7 +363,7 @@ describe("affiliate payout outbox", () => {
     expect(await balance(attribution.affiliateUserId)).toBeCloseTo(0.05, 6);
   });
 
-  test("fenced affiliate settlement stays warm and lowers before its authoritative republish", async () => {
+  test("fenced affiliate settlement publishes its committed debit result without a balance readback", async () => {
     if (!pgliteReady) return;
     const attribution = await seedAttribution();
     const [payerOrg] = await dbWrite
@@ -370,19 +385,18 @@ describe("affiliate payout outbox", () => {
     const initial = await creditsService.getOrganizationBalanceSnapshot(payerOrg.id);
     await writeOrgBalanceHint(payerOrg.id, initial.balanceUsd, Date.now(), initial.revision);
 
-    const snapshotStarted = Promise.withResolvers<void>();
-    const releaseSnapshot = Promise.withResolvers<void>();
-    const originalSnapshot = creditsService.getOrganizationBalanceSnapshot.bind(creditsService);
-    const snapshotSpy = spyOn(creditsService, "getOrganizationBalanceSnapshot").mockImplementation(
-      async (organizationId) => {
-        snapshotStarted.resolve();
-        await releaseSnapshot.promise;
-        return await originalSnapshot(organizationId);
-      },
-    );
+    // The settlement path must publish the atomic debit's returned
+    // balance/revision and issue NO balance readback. Count every snapshot read
+    // and pause on the fence publication instead of the removed readback.
+    const snapshotSpy = spyOn(creditsService, "getOrganizationBalanceSnapshot");
+    const publicationStarted = Promise.withResolvers<void>();
+    const releasePublication = Promise.withResolvers<void>();
     const inferenceBalanceFence = {
       lowerCommittedBalance: mock(async () => undefined),
-      publishAuthoritativeBalance: mock(async () => undefined),
+      publishAuthoritativeBalance: mock(async () => {
+        publicationStarted.resolve();
+        await releasePublication.promise;
+      }),
     };
     const params = {
       organizationId: payerOrg.id,
@@ -399,47 +413,159 @@ describe("affiliate payout outbox", () => {
 
     try {
       const settlement = creditsService.collectAffiliateInferenceFallback(params);
-      await snapshotStarted.promise;
+      await publicationStarted.promise;
       expect(inferenceBalanceFence.lowerCommittedBalance).toHaveBeenCalledWith(
         0.1,
         expect.stringMatching(/^(0|[1-9]\d*)$/),
       );
 
-      // The debit committed, but its revisioned snapshot is deliberately
-      // paused. A concurrent admission sees the committed lower balance, not
-      // the old $1 projection and not an absent warming key.
+      // The debit committed and its authoritative publication is already in
+      // flight, yet the settlement never issued a balance snapshot read. A
+      // concurrent admission sees the committed lower balance, not the old $1
+      // projection and not an absent warming key.
       expect(await readOrgBalanceHint(payerOrg.id)).toMatchObject({
         balanceUsd: 0.1,
         balanceRevision: initial.revision,
       });
+      expect(snapshotSpy).not.toHaveBeenCalled();
 
-      releaseSnapshot.resolve();
+      releasePublication.resolve();
       await expect(settlement).resolves.toMatchObject({
         actualCost: 0.9,
         collectedAmount: 0.9,
         adjustmentType: "none",
       });
-      const published = await readOrgBalanceHint(payerOrg.id);
-      const authoritative = await originalSnapshot(payerOrg.id);
-      expect(published?.balanceUsd).toBeCloseTo(0.1, 6);
-      expect(published?.balanceRevision).toBe(authoritative.revision);
-      expect(inferenceBalanceFence.lowerCommittedBalance).toHaveBeenCalledWith(
+
+      // The debit advanced the revision atomically. The published balance and
+      // revision come straight from that transaction result: the lower and the
+      // publish must carry the same committed revision, and it must be strictly
+      // newer than the pre-debit revision.
+      const publishCall = inferenceBalanceFence.publishAuthoritativeBalance.mock.calls[0] as [
+        number,
+        string,
+      ];
+      const committedRevision = publishCall[1];
+      expect(publishCall[0]).toBeCloseTo(0.1, 6);
+      expect(BigInt(committedRevision) > BigInt(initial.revision)).toBe(true);
+      expect(inferenceBalanceFence.lowerCommittedBalance).toHaveBeenLastCalledWith(
         0.1,
-        authoritative.revision,
+        committedRevision,
       );
-      expect(inferenceBalanceFence.publishAuthoritativeBalance).toHaveBeenCalledWith(
-        authoritative.balanceUsd,
-        authoritative.revision,
-      );
+      const published = await readOrgBalanceHint(payerOrg.id);
+      expect(published?.balanceUsd).toBeCloseTo(0.1, 6);
+      expect(published?.balanceRevision).toBe(committedRevision);
+      // Zero balance readbacks across the entire settlement.
+      expect(snapshotSpy).not.toHaveBeenCalled();
     } finally {
-      releaseSnapshot.resolve();
+      releasePublication.resolve();
       snapshotSpy.mockRestore();
     }
 
+    // The published revision matches the true authoritative DB revision,
+    // confirming the transaction result was itself authoritative.
+    const authoritative = await creditsService.getOrganizationBalanceSnapshot(payerOrg.id);
+    expect((await readOrgBalanceHint(payerOrg.id))?.balanceRevision).toBe(authoritative.revision);
+
     // Alarm/live replay of the same identity retains a present authoritative
-    // hint instead of repeating the post-stream billing_cache_warming flap.
-    await creditsService.collectAffiliateInferenceFallback(params);
+    // hint instead of repeating the post-stream billing_cache_warming flap, and
+    // still performs no balance readback.
+    const replaySpy = spyOn(creditsService, "getOrganizationBalanceSnapshot");
+    try {
+      await creditsService.collectAffiliateInferenceFallback(params);
+      expect(replaySpy).not.toHaveBeenCalled();
+    } finally {
+      replaySpy.mockRestore();
+    }
     expect((await readOrgBalanceHint(payerOrg.id))?.balanceUsd).toBeCloseTo(0.1, 6);
+  });
+
+  test("concurrent newer-revision debit cannot leak into a fenced affiliate publication", async () => {
+    if (!pgliteReady) return;
+    const attribution = await seedAttribution();
+    const [payerOrg] = await dbWrite
+      .insert(organizations)
+      .values({
+        name: "Affiliate revision-fence payer",
+        slug: uniq("affiliate-revision-fence"),
+        credit_balance: "1.000000",
+      })
+      .returning();
+    const [payer] = await dbWrite
+      .insert(users)
+      .values({
+        steward_user_id: uniq("affiliate-revision-user"),
+        organization_id: payerOrg.id,
+      })
+      .returning();
+    const { writeOrgBalanceHint } = await import("../inference-auth-cache");
+    // Bind the real snapshot before spying so the test's own reads never count
+    // against the settlement's must-be-zero readback budget.
+    const originalSnapshot = creditsService.getOrganizationBalanceSnapshot.bind(creditsService);
+    const initial = await originalSnapshot(payerOrg.id);
+    await writeOrgBalanceHint(payerOrg.id, initial.balanceUsd, Date.now(), initial.revision);
+
+    const snapshotSpy = spyOn(creditsService, "getOrganizationBalanceSnapshot");
+    const publicationStarted = Promise.withResolvers<void>();
+    const releasePublication = Promise.withResolvers<void>();
+    const inferenceBalanceFence = {
+      lowerCommittedBalance: mock(async () => undefined),
+      publishAuthoritativeBalance: mock(async () => {
+        publicationStarted.resolve();
+        await releasePublication.promise;
+      }),
+    };
+    const params = {
+      organizationId: payerOrg.id,
+      userId: payer.id,
+      requestId: uniq("affiliate-revision-request"),
+      model: "openai/test-model",
+      provider: "openai",
+      billingSource: "cloud",
+      actualCost: 0.9,
+      reservationMetadata: reservationMetadata(uniq("affiliate-revision-source"), attribution),
+      preserveInferenceBalanceHint: true,
+      inferenceBalanceFence,
+    };
+
+    try {
+      const settlement = creditsService.collectAffiliateInferenceFallback(params);
+      await publicationStarted.promise;
+      const committedRevision = (
+        inferenceBalanceFence.lowerCommittedBalance.mock.calls[0] as [number, string]
+      )[1];
+
+      // An unrelated debit commits while the fenced publication is paused,
+      // advancing the organization to a strictly newer revision and a different
+      // balance. A balance readback would observe this newer state; the pinned
+      // transaction result must not.
+      await dbWrite
+        .update(organizations)
+        .set({ credit_balance: "0.030000" })
+        .where(eq(organizations.id, payerOrg.id));
+      const concurrent = await originalSnapshot(payerOrg.id);
+      expect(BigInt(concurrent.revision) > BigInt(committedRevision)).toBe(true);
+      expect(concurrent.balanceUsd).toBeCloseTo(0.03, 6);
+
+      releasePublication.resolve();
+      await settlement;
+
+      // The publication carried this debit's own committed balance/revision,
+      // never the concurrent newer revision or its 0.03 balance.
+      expect(inferenceBalanceFence.publishAuthoritativeBalance).toHaveBeenCalledWith(
+        0.1,
+        committedRevision,
+      );
+      expect(inferenceBalanceFence.publishAuthoritativeBalance).not.toHaveBeenCalledWith(
+        concurrent.balanceUsd,
+        concurrent.revision,
+      );
+      // Removing the readback is precisely what keeps the concurrent revision
+      // out of the publication: the settlement issued zero snapshot reads.
+      expect(snapshotSpy).not.toHaveBeenCalled();
+    } finally {
+      releasePublication.resolve();
+      snapshotSpy.mockRestore();
+    }
   });
 
   test("alarm and late-settlement races retain the first committed affiliate amount", async () => {
