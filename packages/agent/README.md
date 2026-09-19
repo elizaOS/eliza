@@ -68,11 +68,14 @@ keyword query intentionally searches all records within the other filters;
 `snapshot` for further pages. Legacy `MEMORY action=search` keeps these fields
 optional. Mutation parameters and permission checks are unchanged.
 
-For an exact quotation, `queryMode=literal` matches the supplied `query` as a
+For already-known source wording, `queryMode=literal` matches `query` as a
 case-sensitive substring of source text, including punctuation, whitespace and
 Unicode. It preserves all other filters and returns every match through the same
 pagination contract. Omitted `queryMode` or `keywords` keeps ranked keyword
-recall. Literal queries cannot be empty, and invalid modes fail explicitly.
+recall. Recover an unknown quotation with a distinctive keyword search first,
+then quote the returned original exactly. Literal coverage alone cannot prove a
+topic or original is absent. Literal queries cannot be empty, and invalid modes
+fail explicitly.
 
 The default test command runs isolated Vitest batches. The repository runner
 requests `--reporter=default --reporter=junit --outputFile.junit=<path>` and the

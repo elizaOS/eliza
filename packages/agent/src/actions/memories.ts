@@ -1389,6 +1389,11 @@ async function doSearch(
     text: [
       `${renderNote} (filters: ${describeSearchScope(scope)}).`,
       describeCompleteScan(scan),
+      ...(scope.queryMode === "literal"
+        ? [
+            "Literal coverage proves only occurrence of the supplied substring, not absence of the topic or original. For an unknown earlier quotation, search distinctive keywords before concluding no record exists.",
+          ]
+        : []),
       "Counts cover only the searched tables and filters, not all forms of agent memory. The memories table includes reflections; facts contains saved facts/preferences; messages contains dialogue; documents contains document records. Report these categories separately. totalMatches is the authoritative total for this search scope and snapshot. Searches can overlap: a facts-only read is a subset of an earlier all-table search, not additional memories. Never add overlapping search totals or count retrieved records twice. Notes, personality settings and other stores are outside this search.",
       `Timestamp display zone: ${timeZone}. createdAtIso is UTC (Z); createdAtLocal is already converted to the display zone. Never relabel UTC clock digits as local time.`,
       ...(items.some((item) => item.type === "messages")
@@ -2212,7 +2217,7 @@ export const memoryAction: Action = {
     {
       name: "queryMode",
       description:
-        "search: literal finds a case-sensitive substring of source text, preserving punctuation, whitespace and Unicode. Use literal for an exact quotation; copy only its text into query, without adding quote delimiters. keywords (default) ranks related terms for conceptual recall. Literal searches require a nonempty query and still honor every other filter and pagination.",
+        "search: literal finds a case-sensitive substring of source text, preserving punctuation, whitespace and Unicode. Use literal only when the source wording to find is already supplied; copy it without quote delimiters. To recover an unknown original quotation, use keywords (default) with a distinctive subject, then quote the returned source exactly. Literal searches require a nonempty query and still honor every other filter and pagination.",
       required: false,
       subactions: ["search"],
       schema: { type: "string" as const, enum: ["keywords", "literal"] },
