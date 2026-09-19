@@ -61,6 +61,12 @@ describe("outbound URL SSRF validation", () => {
     "64:ff9b::a9fe:a9fe", // NAT64 (RFC 6052) for 169.254.169.254
     "64:ff9b::169.254.169.254", // NAT64 dotted-quad tail
     "64:ff9b::7f00:1", // NAT64 for 127.0.0.1
+    "64:ff9b:1::a9fe:a9fe", // RFC 8215 local-use NAT64 prefix for 169.254.169.254
+    "64:ff9b:1::7f00:1", // local-use prefix for 127.0.0.1
+    "64:ff9b:1:abcd::7f00:1", // local-use prefix with a site subnet
+    "64:ff9b:1:0:a:0:100:0", // local-use /64 translator embedding 10.0.0.1
+    "64:ff9b:1:0:7f:0:100:0", // local-use /64 translator embedding 127.0.0.1
+    "64:ff9b:1::808:808", // local-use space is never globally routable, even for a public embedding
     "2002:a9fe:a9fe::", // 6to4 (RFC 3056) for 169.254.169.254
     "2002:ac10:1::", // 6to4 for 172.16.0.1
     "2001:0::5601:5601", // Teredo (RFC 4380) for 169.254.169.254
