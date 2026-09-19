@@ -11,18 +11,37 @@ import {
   sendChat,
   warmUpModel,
 } from "./live-onboarding";
+import { resolveLiveProviderLaneVerdict } from "./required-live-provider";
 
 const RESPONSE_MARKER = "BUN_DEV_SMOKE_OK";
 
-test.skip(
-  process.env.ELIZA_DEV_SMOKE_OFFLINE !== "1",
-  "runs only through test:dev-smoke:local",
-);
+const offlineLane = process.env.ELIZA_DEV_SMOKE_OFFLINE === "1";
+const laneVerdict = resolveLiveProviderLaneVerdict({
+  providerConfigured: Boolean(LIVE_PROVIDER),
+  offlineLane,
+  required: process.env.CI === "1" || process.env.CI === "true",
+});
+
+test.skip(!offlineLane, "runs only through test:dev-smoke:local");
+
+// The required hosted local lane must not pass by skipping. Register an explicit
+// failing test when no supported provider credential is available; a local
+// keyless developer keeps the optional skip below.
+if (laneVerdict.action === "fail") {
+  test("requires a supported live provider credential", () => {
+    throw new Error(laneVerdict.reason);
+  });
+}
 
 test.describe("bun run dev onboarding chat smoke", () => {
   test.describe.configure({ retries: process.env.CI ? 1 : 0 });
 
-  test.skip(!LIVE_PROVIDER, "set a supported live provider key for dev smoke");
+  test.skip(
+    laneVerdict.action !== "run",
+    laneVerdict.action === "skip"
+      ? laneVerdict.reason
+      : "live provider unavailable",
+  );
 
   test("starts dev, completes onboarding, and sends a chat message", async ({
     page,
