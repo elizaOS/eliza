@@ -413,7 +413,7 @@
       "runInvocationTemplate": "ELIZA_SAVE_TRAJECTORIES=1 ELIZA_TRAJECTORY_DIR=<dir> bun --conditions eliza-source vitest run <testFile>",
       "trajectoryWiring": "These vitest lanes drive a real AgentRuntime via createScenarioRuntime/real-runtime helpers. The runtime's JsonFileTrajectoryRecorder writes RecordedTrajectory JSON when ELIZA_SAVE_TRAJECTORIES=1 + ELIZA_TRAJECTORY_DIR are set. Convert with scenario-runner native-export. Verdict = vitest pass/fail per file (coarser than per-scenario).",
       "providerSeam": "Same ELIZA_CHAT_VIA_CLI=codex seam; the live-provider helper (packages/app-core/test/helpers/live-provider.ts) already recognizes CLI backends.",
-      "liveLaneCount": 52,
+      "liveLaneCount": 50,
       "lanes": [
         "packages/app-core/test/app/chat-streaming-telemetry.real.e2e.test.ts",
         "packages/app-core/test/app/memory-relationships.real.e2e.test.ts",
@@ -449,7 +449,6 @@
         "plugins/plugin-computeruse/src/__tests__/runtime.live.e2e.test.ts",
         "plugins/plugin-computeruse/test/computeruse.real.e2e.test.ts",
         "plugins/plugin-documents/test/documents-api.live.e2e.test.ts",
-        "plugins/plugin-form/test/form-plugin.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/assistant-user-journeys.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/journey-cerebras-eval.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/knowledge-graph-service.real.e2e.test.ts",
