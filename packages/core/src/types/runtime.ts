@@ -81,7 +81,12 @@ import type {
 import type { Service, ServiceTypeName } from "./service";
 import type { ShortcutDefinition } from "./shortcut";
 import type { State } from "./state";
-import type { Task, TaskWorker } from "./task";
+import type {
+	Task,
+	TaskMetadataPatch,
+	TaskMetadataPatchOutcome,
+	TaskWorker,
+} from "./task";
 import type { ToolPolicyConfig, ToolProfileId } from "./tools";
 
 export {
@@ -641,6 +646,9 @@ type RuntimeDatabaseAdapterSurface = Omit<
 	| "replaceDocumentRevision"
 	| "deleteDocumentWithSnapshot"
 	| "compareAndSwapWorldMetadata"
+	// The runtime exposes patchTaskMetadata with a typed outcome instead of the
+	// adapter's optional boolean, so the adapter member is excluded here.
+	| "patchTaskMetadata"
 >;
 
 export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
@@ -1426,6 +1434,15 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	createTask(task: Task): Promise<UUID>;
 	getTask(id: UUID): Promise<Task | null>;
 	updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean>;
+	/**
+	 * Applies a key-level metadata patch through the adapter's atomic merge.
+	 * Resolves `unsupported` when the adapter cannot patch atomically, so the
+	 * caller can fall back to `updateTask` with a merged object.
+	 */
+	patchTaskMetadata(
+		id: UUID,
+		patch: TaskMetadataPatch,
+	): Promise<TaskMetadataPatchOutcome>;
 	updateTask(id: UUID, task: Partial<Task>): Promise<void>;
 	deleteTask(id: UUID): Promise<void>;
 

@@ -24,7 +24,7 @@ import type {
 	PairingRequestQuery,
 } from "./pairing";
 import type { JsonValue, Metadata, UUID } from "./primitives";
-import type { Task } from "./task";
+import type { Task, TaskMetadataPatch } from "./task";
 
 /** A vector is valid only for this exact persisted source snapshot. */
 export interface MemoryEmbeddingUpdate {
@@ -1727,6 +1727,13 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * are evaluated by storage in the same mutation that applies `task`.
 	 */
 	updatePendingTask?(id: UUID, task: Partial<Task>): Promise<boolean>;
+	/**
+	 * Atomically merges `patch.set` into the task's metadata and removes
+	 * `patch.unset` keys in the same storage mutation. Returns false when no
+	 * task matched. Adapters without an atomic merge leave this undefined and
+	 * callers fall back to a whole-metadata update.
+	 */
+	patchTaskMetadata?(id: UUID, patch: TaskMetadataPatch): Promise<boolean>;
 	updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void>;
 	deleteTasks(taskIds: UUID[]): Promise<void>;
 

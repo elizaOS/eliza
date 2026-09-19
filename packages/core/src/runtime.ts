@@ -11,6 +11,7 @@ import {
 	type ServiceRejecter,
 	type ServiceResolver,
 } from "./runtime/service-lifecycle.js";
+import type { TaskMetadataPatch, TaskMetadataPatchOutcome } from "./types/task";
 
 export {
 	EMBEDDING_STORE_ACCEPT_MODEL_SETTING,
@@ -5528,6 +5529,20 @@ export class AgentRuntime implements IAgentRuntime {
 			this._notifyCompanionTasksDirty();
 		}
 		return updated;
+	}
+
+	async patchTaskMetadata(
+		id: UUID,
+		patch: TaskMetadataPatch,
+	): Promise<TaskMetadataPatchOutcome> {
+		const patcher = this.adapter.patchTaskMetadata;
+		if (typeof patcher !== "function") return "unsupported";
+		const patched = await patcher.call(this.adapter, id, patch);
+		if (patched) {
+			this._markLocalTasksDirty();
+			this._notifyCompanionTasksDirty();
+		}
+		return patched ? "patched" : "missing";
 	}
 
 	async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
