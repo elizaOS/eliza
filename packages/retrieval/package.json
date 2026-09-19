@@ -19,7 +19,7 @@
     }
   },
   "scripts": {
-    "build": "bun run build.ts && node ../scripts/prepare-package-dist.mjs packages/retrieval",
+    "build": "tsup src/index.ts --format esm --platform neutral --target es2022 --dts --no-splitting --clean && node ../scripts/prepare-package-dist.mjs packages/retrieval",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "lint:check": "biome check src"
