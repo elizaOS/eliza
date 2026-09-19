@@ -13,7 +13,7 @@
  *
  * The DB-backed cases run against in-process PGlite so the real SQL (FOR UPDATE,
  * the JSONB-keyed lookup, and the partial unique indexes from migration 0139)
- * executes. They fail loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a silent skip.
+ * executes. Initialization failures reject beforeAll directly.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -34,160 +34,154 @@ let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let redeemableEarningsService: typeof import("../redeemable-earnings").redeemableEarningsService;
 let containerBillingRepository: typeof import("../../../db/repositories/container-billing").containerBillingRepository;
-let pgliteReady = true;
 
 beforeAll(async () => {
-  try {
-    ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
-    ({ redeemableEarningsService } = await import("../redeemable-earnings"));
-    ({ containerBillingRepository } = await import("../../../db/repositories/container-billing"));
+  ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
+  ({ redeemableEarningsService } = await import("../redeemable-earnings"));
+  ({ containerBillingRepository } = await import("../../../db/repositories/container-billing"));
 
-    // Minimal schema: the columns these code paths touch + the unique indexes
-    // from migration 0139. FKs are omitted (single-table seams under test).
-    // drizzle's execute() uses the extended protocol — one statement per call.
-    const ddl = [
-      `CREATE TABLE IF NOT EXISTS redeemable_earnings (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id uuid NOT NULL,
-        total_earned numeric(18,4) NOT NULL DEFAULT '0',
-        total_redeemed numeric(18,4) NOT NULL DEFAULT '0',
-        total_pending numeric(18,4) NOT NULL DEFAULT '0',
-        available_balance numeric(18,4) NOT NULL DEFAULT '0',
-        earned_from_miniapps numeric(18,4) NOT NULL DEFAULT '0',
-        earned_from_agents numeric(18,4) NOT NULL DEFAULT '0',
-        earned_from_mcps numeric(18,4) NOT NULL DEFAULT '0',
-        earned_from_affiliates numeric(18,4) NOT NULL DEFAULT '0',
-        earned_from_app_owner_shares numeric(18,4) NOT NULL DEFAULT '0',
-        earned_from_creator_shares numeric(18,4) NOT NULL DEFAULT '0',
-        total_converted_to_credits numeric(18,4) NOT NULL DEFAULT '0',
-        last_earning_at timestamp,
-        last_redemption_at timestamp,
-        version numeric(10,0) NOT NULL DEFAULT '0',
-        created_at timestamp NOT NULL DEFAULT now(),
-        updated_at timestamp NOT NULL DEFAULT now()
-      )`,
-      `CREATE TABLE IF NOT EXISTS redeemable_earnings_ledger (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id uuid NOT NULL,
-        entry_type text NOT NULL,
-        amount numeric(18,4) NOT NULL,
-        balance_after numeric(18,4) NOT NULL,
-        earnings_source text,
-        source_id uuid,
-        redemption_id uuid,
-        description text NOT NULL,
-        metadata jsonb NOT NULL DEFAULT '{}',
-        created_at timestamp NOT NULL DEFAULT now()
-      )`,
-      `CREATE UNIQUE INDEX IF NOT EXISTS redeemable_earnings_ledger_conversion_idempotency_idx
-        ON redeemable_earnings_ledger ((metadata ->> 'idempotency_key'))
-        WHERE entry_type = 'credit_conversion' AND (metadata ->> 'idempotency_key') IS NOT NULL`,
-      `CREATE TABLE IF NOT EXISTS organizations (
-        id uuid PRIMARY KEY,
-        credit_balance numeric(20,6) NOT NULL DEFAULT '0',
-        balance_revision bigint NOT NULL DEFAULT 0,
-        updated_at timestamp NOT NULL DEFAULT now()
-      )`,
-      `CREATE TABLE IF NOT EXISTS users (
-        id uuid PRIMARY KEY,
-        organization_id uuid NOT NULL
-      )`,
-      `CREATE TABLE IF NOT EXISTS credit_transactions (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        organization_id uuid NOT NULL,
-        user_id uuid,
-        amount numeric(16,6) NOT NULL,
-        type text NOT NULL,
-        description text,
-        metadata jsonb NOT NULL DEFAULT '{}',
-        stripe_payment_intent_id text,
-        created_at timestamp NOT NULL DEFAULT now(),
-        settled_at timestamp
-      )`,
-      `CREATE TABLE IF NOT EXISTS containers (
-        id uuid PRIMARY KEY,
-        name text NOT NULL,
-        project_name text NOT NULL,
-        organization_id uuid NOT NULL,
-        user_id uuid NOT NULL,
-        status text NOT NULL,
-        billing_status text NOT NULL,
-        desired_count integer NOT NULL DEFAULT 1,
-        cpu integer NOT NULL DEFAULT 1,
-        memory integer NOT NULL DEFAULT 1024,
-        shutdown_warning_sent_at timestamp,
-        scheduled_shutdown_at timestamp,
-        lifecycle_revision bigint NOT NULL DEFAULT 0,
-        total_billed numeric(18,6) NOT NULL DEFAULT '0',
-        last_billed_at timestamp,
-        next_billing_at timestamp,
-        created_at timestamp NOT NULL DEFAULT now(),
-        updated_at timestamp NOT NULL DEFAULT now()
-      )`,
-      `CREATE TABLE IF NOT EXISTS jobs (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        type text NOT NULL,
-        status text NOT NULL DEFAULT 'pending',
-        data jsonb NOT NULL DEFAULT '{}',
-        data_storage text NOT NULL DEFAULT 'inline',
-        data_key text,
-        organization_id uuid NOT NULL,
-        created_at timestamp NOT NULL DEFAULT now(),
-        updated_at timestamp NOT NULL DEFAULT now()
-      )`,
-      `CREATE TABLE IF NOT EXISTS container_compute_stop_intents (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        organization_id uuid NOT NULL,
-        container_id uuid NOT NULL,
-        lifecycle_revision bigint NOT NULL,
-        "authorization" text NOT NULL DEFAULT 'billing_request',
-        status text NOT NULL DEFAULT 'pending',
-        job_id uuid,
-        attempts integer NOT NULL DEFAULT 0,
-        last_error text,
-        next_attempt_at timestamp NOT NULL DEFAULT now(),
-        provider_started_at timestamp,
-        provider_confirmed_at timestamp,
-        provider_node_id text,
-        slot_released_at timestamp,
-        superseded_at timestamp,
-        created_at timestamp NOT NULL DEFAULT now(),
-        updated_at timestamp NOT NULL DEFAULT now()
-      )`,
-      `CREATE TABLE IF NOT EXISTS container_billing_records (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        container_id uuid NOT NULL,
-        organization_id uuid NOT NULL,
-        amount numeric(16,6) NOT NULL,
-        rate_segments jsonb NOT NULL DEFAULT '[]',
-        billing_period_start timestamp NOT NULL,
-        billing_period_end timestamp NOT NULL,
-        status text NOT NULL DEFAULT 'success',
-        credit_transaction_id uuid,
-        error_message text,
-        created_at timestamp NOT NULL DEFAULT now()
-      )`,
-      `CREATE UNIQUE INDEX IF NOT EXISTS container_billing_records_period_unique
-        ON container_billing_records (container_id, billing_period_start)
-        WHERE status IN ('success', 'uncollected')`,
-      `CREATE TABLE IF NOT EXISTS compute_billing_rate_segments (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        organization_id uuid NOT NULL,
-        workload_kind text NOT NULL,
-        workload_id uuid NOT NULL,
-        lifecycle_revision bigint NOT NULL,
-        billing_state text NOT NULL,
-        rate_per_hour numeric(16,6) NOT NULL,
-        effective_at timestamp NOT NULL,
-        created_at timestamp NOT NULL DEFAULT now()
-      )`,
-    ];
-    for (const stmt of ddl) {
-      await dbWrite.execute(stmt);
-    }
-  } catch (error) {
-    pgliteReady = false;
-    console.warn("[container-billing-idempotency] PGlite unavailable, skipping DB cases:", error);
+  // Minimal schema: the columns these code paths touch + the unique indexes
+  // from migration 0139. FKs are omitted (single-table seams under test).
+  // drizzle's execute() uses the extended protocol — one statement per call.
+  const ddl = [
+    `CREATE TABLE IF NOT EXISTS redeemable_earnings (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id uuid NOT NULL,
+      total_earned numeric(18,4) NOT NULL DEFAULT '0',
+      total_redeemed numeric(18,4) NOT NULL DEFAULT '0',
+      total_pending numeric(18,4) NOT NULL DEFAULT '0',
+      available_balance numeric(18,4) NOT NULL DEFAULT '0',
+      earned_from_miniapps numeric(18,4) NOT NULL DEFAULT '0',
+      earned_from_agents numeric(18,4) NOT NULL DEFAULT '0',
+      earned_from_mcps numeric(18,4) NOT NULL DEFAULT '0',
+      earned_from_affiliates numeric(18,4) NOT NULL DEFAULT '0',
+      earned_from_app_owner_shares numeric(18,4) NOT NULL DEFAULT '0',
+      earned_from_creator_shares numeric(18,4) NOT NULL DEFAULT '0',
+      total_converted_to_credits numeric(18,4) NOT NULL DEFAULT '0',
+      last_earning_at timestamp,
+      last_redemption_at timestamp,
+      version numeric(10,0) NOT NULL DEFAULT '0',
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS redeemable_earnings_ledger (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id uuid NOT NULL,
+      entry_type text NOT NULL,
+      amount numeric(18,4) NOT NULL,
+      balance_after numeric(18,4) NOT NULL,
+      earnings_source text,
+      source_id uuid,
+      redemption_id uuid,
+      description text NOT NULL,
+      metadata jsonb NOT NULL DEFAULT '{}',
+      created_at timestamp NOT NULL DEFAULT now()
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS redeemable_earnings_ledger_conversion_idempotency_idx
+      ON redeemable_earnings_ledger ((metadata ->> 'idempotency_key'))
+      WHERE entry_type = 'credit_conversion' AND (metadata ->> 'idempotency_key') IS NOT NULL`,
+    `CREATE TABLE IF NOT EXISTS organizations (
+      id uuid PRIMARY KEY,
+      credit_balance numeric(20,6) NOT NULL DEFAULT '0',
+      balance_revision bigint NOT NULL DEFAULT 0,
+      updated_at timestamp NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS users (
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS credit_transactions (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL,
+      user_id uuid,
+      amount numeric(16,6) NOT NULL,
+      type text NOT NULL,
+      description text,
+      metadata jsonb NOT NULL DEFAULT '{}',
+      stripe_payment_intent_id text,
+      created_at timestamp NOT NULL DEFAULT now(),
+      settled_at timestamp
+    )`,
+    `CREATE TABLE IF NOT EXISTS containers (
+      id uuid PRIMARY KEY,
+      name text NOT NULL,
+      project_name text NOT NULL,
+      organization_id uuid NOT NULL,
+      user_id uuid NOT NULL,
+      status text NOT NULL,
+      billing_status text NOT NULL,
+      desired_count integer NOT NULL DEFAULT 1,
+      cpu integer NOT NULL DEFAULT 1,
+      memory integer NOT NULL DEFAULT 1024,
+      shutdown_warning_sent_at timestamp,
+      scheduled_shutdown_at timestamp,
+      lifecycle_revision bigint NOT NULL DEFAULT 0,
+      total_billed numeric(18,6) NOT NULL DEFAULT '0',
+      last_billed_at timestamp,
+      next_billing_at timestamp,
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS jobs (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      type text NOT NULL,
+      status text NOT NULL DEFAULT 'pending',
+      data jsonb NOT NULL DEFAULT '{}',
+      data_storage text NOT NULL DEFAULT 'inline',
+      data_key text,
+      organization_id uuid NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS container_compute_stop_intents (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL,
+      container_id uuid NOT NULL,
+      lifecycle_revision bigint NOT NULL,
+      "authorization" text NOT NULL DEFAULT 'billing_request',
+      status text NOT NULL DEFAULT 'pending',
+      job_id uuid,
+      attempts integer NOT NULL DEFAULT 0,
+      last_error text,
+      next_attempt_at timestamp NOT NULL DEFAULT now(),
+      provider_started_at timestamp,
+      provider_confirmed_at timestamp,
+      provider_node_id text,
+      slot_released_at timestamp,
+      superseded_at timestamp,
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS container_billing_records (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      container_id uuid NOT NULL,
+      organization_id uuid NOT NULL,
+      amount numeric(16,6) NOT NULL,
+      rate_segments jsonb NOT NULL DEFAULT '[]',
+      billing_period_start timestamp NOT NULL,
+      billing_period_end timestamp NOT NULL,
+      status text NOT NULL DEFAULT 'success',
+      credit_transaction_id uuid,
+      error_message text,
+      created_at timestamp NOT NULL DEFAULT now()
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS container_billing_records_period_unique
+      ON container_billing_records (container_id, billing_period_start)
+      WHERE status IN ('success', 'uncollected')`,
+    `CREATE TABLE IF NOT EXISTS compute_billing_rate_segments (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL,
+      workload_kind text NOT NULL,
+      workload_id uuid NOT NULL,
+      lifecycle_revision bigint NOT NULL,
+      billing_state text NOT NULL,
+      rate_per_hour numeric(16,6) NOT NULL,
+      effective_at timestamp NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now()
+    )`,
+  ];
+  for (const stmt of ddl) {
+    await dbWrite.execute(stmt);
   }
 }, PGLITE_TIMEOUT);
 
@@ -221,7 +215,6 @@ describe("convertToCredits idempotency", () => {
   test(
     "same idempotencyKey debits earnings exactly once",
     async () => {
-      if (!pgliteReady) return;
       await dbWrite.execute(`DELETE FROM redeemable_earnings_ledger;`);
       await dbWrite.execute(`DELETE FROM redeemable_earnings;`);
       await dbWrite.execute(
@@ -269,7 +262,6 @@ describe("convertToCredits idempotency", () => {
   test(
     "a different key (next period) debits again",
     async () => {
-      if (!pgliteReady) return;
       const next = await redeemableEarningsService.convertToCredits({
         userId: USER_ID,
         amount: 0.67,
@@ -293,7 +285,6 @@ describe("reduceEarnings money-out guard", () => {
   test(
     "requireSufficientBalance fails closed without writing when live balance is short",
     async () => {
-      if (!pgliteReady) return;
       await dbWrite.execute(`DELETE FROM redeemable_earnings_ledger;`);
       await dbWrite.execute(`DELETE FROM redeemable_earnings;`);
       await dbWrite.execute(
@@ -333,7 +324,6 @@ describe("reduceEarnings money-out guard", () => {
   test(
     "default reconciliation mode keeps legacy floor-to-zero behavior",
     async () => {
-      if (!pgliteReady) return;
       await dbWrite.execute(`DELETE FROM redeemable_earnings_ledger;`);
       await dbWrite.execute(`DELETE FROM redeemable_earnings;`);
       await dbWrite.execute(
@@ -373,7 +363,6 @@ describe("container billing gate + row-lock guard", () => {
   test(
     "gates by next_billing_at, records -fromCredits, and is idempotent on re-run",
     async () => {
-      if (!pgliteReady) return;
       await dbWrite.execute(`DELETE FROM container_billing_records;`);
       await dbWrite.execute(`DELETE FROM compute_billing_rate_segments;`);
       await dbWrite.execute(`DELETE FROM credit_transactions;`);
@@ -451,7 +440,6 @@ describe("container billing gate + row-lock guard", () => {
   test(
     "atomic decrement preserves a concurrent debit that lands after the caller's read (no lost update)",
     async () => {
-      if (!pgliteReady) return;
       await dbWrite.execute(`DELETE FROM container_billing_records;`);
       await dbWrite.execute(`DELETE FROM compute_billing_rate_segments;`);
       await dbWrite.execute(`DELETE FROM credit_transactions;`);
@@ -516,7 +504,6 @@ describe("container billing gate + row-lock guard", () => {
   test(
     "a late receipt failure rolls earnings and both ledgers back; retry commits exactly once",
     async () => {
-      if (!pgliteReady) return;
       await dbWrite.execute(`DELETE FROM container_billing_records;`);
       await dbWrite.execute(`DELETE FROM compute_billing_rate_segments;`);
       await dbWrite.execute(`DELETE FROM credit_transactions;`);
@@ -601,14 +588,6 @@ describe("container billing gate + row-lock guard", () => {
   );
 });
 
-// Loud guard: PGlite is in-process (no network), so `pgliteReady` must be true.
-// If pushSchema/PGlite ever fails to init, the DB-dependent tests above
-// early-return; this turns that silent no-op into a hard CI failure so a
-// money-path proof can never masquerade as a vacuous green.
-test("pglite schema applied — never a silent skip", () => {
-  expect(pgliteReady).toBe(true);
-});
-
 /**
  * Earnings-first settlement order (#22951).
  *
@@ -674,16 +653,67 @@ describe("earnings-first settlement order (#22951)", () => {
     };
   }
 
+  test.each(["credits", "earnings", "non-billable", "writeback"] as const)(
+    "%s corruption rejects settlement without changing rows or ledgers",
+    async (failure) => {
+      await seedEarnFirstCase(
+        failure === "credits" || failure === "non-billable" ? "NaN" : "50",
+        failure === "earnings" ? "NaN" : "0.3",
+      );
+      if (failure === "non-billable") {
+        await dbWrite.execute(
+          `UPDATE containers SET status = 'stopped' WHERE id = '${CONTAINER_ID}'`,
+        );
+      }
+      if (failure === "writeback") {
+        await dbWrite.execute(`CREATE FUNCTION corrupt_billing_balance() RETURNS trigger AS $$
+          BEGIN NEW.credit_balance := 'NaN'::numeric; RETURN NEW; END;
+        $$ LANGUAGE plpgsql`);
+        await dbWrite.execute(`CREATE TRIGGER corrupt_billing_balance BEFORE UPDATE ON organizations
+          FOR EACH ROW EXECUTE FUNCTION corrupt_billing_balance()`);
+      }
+      const snapshot = async () => {
+        const rows = [];
+        for (const table of [
+          "organizations",
+          "containers",
+          "redeemable_earnings",
+          "credit_transactions",
+          "redeemable_earnings_ledger",
+          "container_billing_records",
+        ]) {
+          rows.push((await dbWrite.execute(`SELECT * FROM ${table} ORDER BY id`)).rows);
+        }
+        return rows;
+      };
+      try {
+        const before = await snapshot();
+        await expect(
+          containerBillingRepository.recordSuccessfulDailyBilling(earnFirstInput(true)),
+        ).rejects.toThrow(
+          `Unable to read container billing ${failure === "earnings" ? "available_balance" : "credit_balance"}`,
+        );
+        expect(await snapshot()).toEqual(before);
+      } finally {
+        if (failure === "writeback") {
+          await dbWrite.execute("DROP TRIGGER corrupt_billing_balance ON organizations");
+          await dbWrite.execute("DROP FUNCTION corrupt_billing_balance()");
+        }
+      }
+    },
+    PGLITE_TIMEOUT,
+  );
+
   test(
     "toggle on, mixed pools: earnings absorb first, credits only cover the remainder",
     async () => {
-      if (!pgliteReady) return;
       await seedEarnFirstCase("50", "0.3");
 
       const result = await containerBillingRepository.recordSuccessfulDailyBilling(
         earnFirstInput(true),
       );
 
+      expect(result.alreadyBilled).toBe(false);
       expect(result.insufficient).toBe(false);
       expect(result.fromEarnings).toBeCloseTo(0.3, 6);
 
@@ -719,6 +749,26 @@ describe("earnings-first settlement order (#22951)", () => {
       expect(Number(debit.metadata.paid_from_earnings)).toBeCloseTo(0.3, 6);
       expect(Number(debit.metadata.paid_from_credits)).toBeCloseTo(CHARGE - 0.3, 6);
       expect(Number(debit.metadata.earnings_converted)).toBeCloseTo(0.3, 6);
+      const replay = await containerBillingRepository.recordSuccessfulDailyBilling(
+        earnFirstInput(true),
+      );
+      expect(replay.alreadyBilled).toBe(true);
+      expect(replay.transactionId).toBeNull();
+
+      expect(
+        (await dbWrite.execute(`SELECT count(*)::int AS n FROM redeemable_earnings_ledger;`))
+          .rows[0],
+      ).toMatchObject({ n: 1 });
+      expect(
+        (await dbWrite.execute(`SELECT count(*)::int AS n FROM credit_transactions;`)).rows[0],
+      ).toMatchObject({ n: 2 });
+      expect(
+        (
+          await dbWrite.execute(
+            `SELECT count(*)::int AS n FROM container_billing_records WHERE status = 'success';`,
+          )
+        ).rows[0],
+      ).toMatchObject({ n: 1 });
     },
     PGLITE_TIMEOUT,
   );
@@ -726,7 +776,6 @@ describe("earnings-first settlement order (#22951)", () => {
   test(
     "toggle on, earnings-rich: the whole charge converts from earnings, purchased credits untouched",
     async () => {
-      if (!pgliteReady) return;
       await seedEarnFirstCase("50", "1");
 
       const result = await containerBillingRepository.recordSuccessfulDailyBilling(
@@ -768,7 +817,6 @@ describe("earnings-first settlement order (#22951)", () => {
   test(
     "toggle off: credits only — earnings never locked, converted, or ledgered",
     async () => {
-      if (!pgliteReady) return;
       await seedEarnFirstCase("50", "1");
 
       const result = await containerBillingRepository.recordSuccessfulDailyBilling(
@@ -804,7 +852,6 @@ describe("earnings-first settlement order (#22951)", () => {
   test(
     "insufficient combined pools: fails closed with no writes to any ledger",
     async () => {
-      if (!pgliteReady) return;
       await seedEarnFirstCase("0.2", "0.1");
 
       const result = await containerBillingRepository.recordSuccessfulDailyBilling(
@@ -834,7 +881,6 @@ describe("earnings-first settlement order (#22951)", () => {
   test(
     "terminal lifecycle settlement records uncollected debt and advances only the cursor",
     async () => {
-      if (!pgliteReady) return;
       await seedEarnFirstCase("0.2", "0.1");
 
       const result = await dbWrite.transaction((tx) =>
@@ -893,7 +939,6 @@ describe("earnings-first settlement order (#22951)", () => {
   test(
     "rounding boundary: 4dp earnings exactly covering the applied portion leave an 8e-6 credit remainder",
     async () => {
-      if (!pgliteReady) return;
       // earnings 0.6700 (4dp max) vs 0.670008 debt: earningsApplied = 0.67,
       // conversion = 0.67 (no round-up needed), credits absorb 0.000008.
       await seedEarnFirstCase("50", "0.67");
@@ -919,48 +964,6 @@ describe("earnings-first settlement order (#22951)", () => {
         50 + 0.67 - CHARGE,
         6,
       );
-    },
-    PGLITE_TIMEOUT,
-  );
-
-  test(
-    "concurrent replay of the mixed case: already-billed fence, no second conversion or debit",
-    async () => {
-      if (!pgliteReady) return;
-      await seedEarnFirstCase("50", "0.3");
-
-      const first = await containerBillingRepository.recordSuccessfulDailyBilling(
-        earnFirstInput(true),
-      );
-      expect(first.alreadyBilled).toBe(false);
-
-      const replay = await containerBillingRepository.recordSuccessfulDailyBilling(
-        earnFirstInput(true),
-      );
-      expect(replay.alreadyBilled).toBe(true);
-      expect(replay.transactionId).toBeNull();
-
-      expect(
-        (await dbWrite.execute(`SELECT count(*)::int AS n FROM redeemable_earnings_ledger;`))
-          .rows[0],
-      ).toMatchObject({ n: 1 });
-      expect(
-        (await dbWrite.execute(`SELECT count(*)::int AS n FROM credit_transactions;`)).rows[0],
-      ).toMatchObject({ n: 2 });
-      expect(
-        (
-          await dbWrite.execute(
-            `SELECT count(*)::int AS n FROM container_billing_records WHERE status = 'success';`,
-          )
-        ).rows[0],
-      ).toMatchObject({ n: 1 });
-
-      const earnings = await dbWrite.execute(
-        `SELECT available_balance FROM redeemable_earnings WHERE user_id = '${USER_ID}';`,
-      );
-      expect(
-        Number((earnings.rows[0] as { available_balance: string }).available_balance),
-      ).toBeCloseTo(0, 4);
     },
     PGLITE_TIMEOUT,
   );

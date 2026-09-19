@@ -127,6 +127,7 @@ function makeRuntime(): IAgentRuntime {
   return {
     agentId: "00000000-0000-0000-0000-000000000003" as UUID,
     getRoom: vi.fn(async () => null),
+    getTasks: vi.fn(async () => []),
     useModel: vi.fn(async () => ""),
     getCache: vi.fn(async () => null),
     setCache: vi.fn(async () => true),

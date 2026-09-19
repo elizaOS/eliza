@@ -11,7 +11,13 @@
  * generators are single-use), no network; the live Cerebras failure this
  * fences rode the incident log.
  */
-import { EventType, InferenceTurnTimer, logger, runWithInferenceTiming } from "@elizaos/core";
+import {
+  EventType,
+  InferenceTurnTimer,
+  logger,
+  MODEL_PROVIDER_ATTEMPTS,
+  runWithInferenceTiming,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const aiMocks = vi.hoisted(() => ({
@@ -110,6 +116,51 @@ async function collect(stream: { textStream: AsyncIterable<string> }) {
 }
 
 describe("live-stream start retry", () => {
+  it("does not restart an exhausted server retry budget through another tier", async () => {
+    const failure = { statusCode: 503, message: "Service unavailable" };
+    aiMocks.streamText.mockImplementation((args: { onError: (a: { error: unknown }) => void }) =>
+      Promise.resolve(emptyErroredResult(args.onError, failure))
+    );
+    const runtime = createRuntime();
+    const { handleTextSmall, handleTextLarge } = await import("../models/text");
+    const params = {
+      prompt: "Complete original request",
+      model: "shared-model",
+      stream: true,
+      [MODEL_PROVIDER_ATTEMPTS]: [],
+    };
+    const first = await handleTextSmall(runtime, params);
+    await expect(collect(first as { textStream: AsyncIterable<string> })).rejects.toMatchObject(
+      failure
+    );
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(6);
+    await expect(handleTextLarge(runtime, params)).rejects.toMatchObject(failure);
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(6);
+
+    aiMocks.streamText.mockImplementation(() => Promise.resolve(successResult(["ok"])));
+    // Distinct concrete models and independent model calls retain their chance.
+    await collect(
+      (await handleTextLarge(runtime, { ...params, model: "different-model" })) as {
+        textStream: AsyncIterable<string>;
+      }
+    );
+    await collect(
+      (await handleTextSmall(runtime, { ...params, [MODEL_PROVIDER_ATTEMPTS]: [] })) as {
+        textStream: AsyncIterable<string>;
+      }
+    );
+    // The endpoint identity also includes credentials, never only provider name.
+    vi.stubEnv("OPENAI_API_KEY", "another-fixture-key");
+    await collect(
+      (await handleTextLarge(runtime, params)) as { textStream: AsyncIterable<string> }
+    );
+    vi.stubEnv("OPENAI_BASE_URL", "https://another.example/v1");
+    await collect(
+      (await handleTextLarge(runtime, params)) as { textStream: AsyncIterable<string> }
+    );
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(10);
+  }, 30_000);
+
   beforeEach(() => {
     // The plugin intentionally falls back to process.env when the runtime has
     // no setting. Pin the provider so a developer's live Cerebras key cannot

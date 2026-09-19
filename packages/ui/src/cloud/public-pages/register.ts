@@ -19,6 +19,8 @@ import {
   registerCloudRoute,
 } from "../shell/cloud-route-registry";
 
+const PricingPage = lazy(() => import("../billing/PricingPage"));
+
 const PaymentRequestPage = lazy(
   () => import("./pages/payment/payment-request-page"),
 );
@@ -73,6 +75,13 @@ const PUBLIC_ROUTE_ACCESS = {
 export function registerPublicPages(): void {
   if (registered) return;
   registered = true;
+
+  registerCloudRoute({
+    path: "pricing",
+    element: PricingPage,
+    ...PUBLIC_ROUTE_ACCESS,
+    group: "marketing",
+  });
 
   // ── Payment (external/unauthenticated payers; the id IS the link) ──
   registerCloudRoute({

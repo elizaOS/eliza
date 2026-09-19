@@ -1,10 +1,4 @@
-# This manual workflow is the general credential-backed product smoke
-# dispatcher. Specialized app and voice live-evidence flows
-# (`app-live-e2e.yml`, `voice-live-e2e.yml`) also run on schedule or dispatch.
-# Live integrations do not run on pull requests, so missing credentials cannot
-# make normal repository health red.
 name: Live Smoke
-
 on:
   workflow_dispatch:
     inputs:
@@ -13,9 +7,19 @@ on:
         required: true
         default: all
         type: choice
-        options: [all, app, scenarios, group-chat, live-information, cloud, voice, dedicated, pi-linked-account]
+        options:
+          - all
+          - app
+          - scenarios
+          - group-chat
+          - live-information
+          - cloud
+          - voice
+          - dedicated
+          - pi-linked-account
+          - remote-capabilities
       pi_source_sha:
-        description: "Exact reviewed head for the opt-in Pi linked-account check; must equal the dispatch ref SHA"
+        description: Exact reviewed head for the opt-in Pi linked-account check; must equal the dispatch ref SHA
         required: false
         type: string
         default: ""
@@ -24,33 +28,30 @@ on:
         required: true
         default: openai
         type: choice
-        options: [openai, anthropic, openrouter]
+        options:
+          - openai
+          - anthropic
+          - openrouter
       stale_canary_suffix:
-        description: "Exact prior dedicated-canary suffix (r<run-id>a<attempt>) to verify and delete before the fresh canary"
+        description: Exact prior dedicated-canary suffix (r<run-id>a<attempt>) to verify and delete before the fresh canary
         required: false
         type: string
         default: ""
       diagnose_canary_suffix:
-        description: "Read-only staging diagnosis for one exact failed dedicated-canary suffix; performs no lifecycle mutation"
+        description: Read-only staging diagnosis for one exact failed dedicated-canary suffix; performs no lifecycle mutation
         required: false
         type: string
         default: ""
       cleanup_only:
-        description: "Delete only the exact prior dedicated canary; never create a replacement"
+        description: Delete only the exact prior dedicated canary; never create a replacement
         required: false
         type: boolean
         default: false
-
 concurrency:
-  # The shared smoke credential must remain attached to an empty organization.
-  # Serialize every manual live suite so an `all` and `cloud` dispatch cannot
-  # race between the read-only preflight and fresh create.
   group: live-smoke
   cancel-in-progress: false
-
 permissions:
   contents: read
-
 jobs:
   pi-linked-account:
     name: Pi linked account (real OpenRouter response)
@@ -86,11 +87,14 @@ jobs:
           submodules: false
       - uses: ./.github/actions/setup-bun-workspace
         with:
-          bun-version: "1.3.14"
-          node-version: "24.15.0"
+          bun-version: 1.3.14
+          node-version: 24.15.0
           install-command: bun install --frozen-lockfile
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+          setup-python: "true"
+          install-protoc: "true"
+          install-native-deps: "true"
       - name: Install pinned Pi executables in disposable tool directory
         run: |
           set -euo pipefail
@@ -121,12 +125,9 @@ jobs:
           path: artifacts/pi-linked-account/receipt.json
           if-no-files-found: error
           retention-days: 14
-
   smoke:
     name: ${{ inputs.suite }}
-    # cleanup_only is an exclusive destructive-recovery mode. Never run an
-    # unrelated live suite under the same dispatch, regardless of suite input.
-    if: ${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated' && inputs.suite != 'pi-linked-account' }}
+    if: ${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated' && inputs.suite != 'pi-linked-account' && inputs.suite != 'remote-capabilities' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -142,7 +143,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
-
       - name: Require exact independently judged scenario credentials
         if: inputs.suite == 'live-information' || inputs.suite == 'group-chat'
         shell: bash
@@ -168,34 +168,28 @@ jobs:
             exit 1
           fi
           unset planner_key planner_key_without_whitespace judge_key judge_key_without_whitespace
-
       - uses: ./.github/actions/setup-bun-workspace
         with:
-          bun-version: "1.3.14"
-          node-version: "24.15.0"
+          bun-version: 1.3.14
+          node-version: 24.15.0
           install-command: bun install --frozen-lockfile --ignore-scripts
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-
+          setup-python: "true"
+          install-protoc: "true"
+          install-native-deps: "true"
       - name: Install Chromium
         if: inputs.suite == 'all' || inputs.suite == 'app'
         run: .github/scripts/install-playwright-browsers.sh chromium
-
       - name: App walkthrough
         if: inputs.suite == 'all' || inputs.suite == 'app'
         run: bun run --cwd packages/app test:e2e:walkthrough:live
-
-      # Both the scenario graph and cloud API load the compiled
-      # @elizaos/core/edge export. The lean install above skips lifecycle
-      # scripts, so build that contract before either consumer starts.
       - name: Build core runtime contract
         if: inputs.suite == 'all' || inputs.suite == 'scenarios' || inputs.suite == 'group-chat' || inputs.suite == 'live-information' || inputs.suite == 'cloud'
         run: bun run build:core
-
       - name: Live scenarios
         if: inputs.suite == 'all' || inputs.suite == 'scenarios'
         run: bun run --cwd packages/scenario-runner test:live:e2e
-
       - name: Group-chat evaluation
         if: inputs.suite == 'group-chat'
         id: group-chat-evaluation
@@ -203,25 +197,10 @@ jobs:
         env:
           SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
           SCENARIO_TURN_TIMEOUT_MS: "300000"
-        run: >-
-          bun packages/scripts/run-scenarios-isolated.mjs
-          packages/test/scenarios/group-chat
-          --lane live-only
-          --provider ${{ inputs.planner_provider }}
-          --workers 4
-          --timeout-ms 900000
-          --report reports/group-chat-evaluation/aggregate.json
-          --artifacts-dir reports/group-chat-evaluation/scenarios
-
+        run: bun packages/scripts/run-scenarios-isolated.mjs packages/test/scenarios/group-chat --lane live-only --provider ${{ inputs.planner_provider }} --workers 4 --timeout-ms 900000 --report reports/group-chat-evaluation/aggregate.json --artifacts-dir reports/group-chat-evaluation/scenarios
       - name: Validate complete independently judged group-chat evidence
         if: inputs.suite == 'group-chat'
-        run: >-
-          bun packages/scripts/validate-group-chat-eval-report.ts
-          --report reports/group-chat-evaluation/aggregate.json
-          --artifacts-dir reports/group-chat-evaluation/scenarios
-          --scenario-dir packages/test/scenarios/group-chat
-          --provider ${{ inputs.planner_provider }}
-
+        run: bun packages/scripts/validate-group-chat-eval-report.ts --report reports/group-chat-evaluation/aggregate.json --artifacts-dir reports/group-chat-evaluation/scenarios --scenario-dir packages/test/scenarios/group-chat --provider ${{ inputs.planner_provider }}
       - name: Upload group-chat evaluation evidence
         if: always() && inputs.suite == 'group-chat'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -230,21 +209,12 @@ jobs:
           path: reports/group-chat-evaluation
           if-no-files-found: error
           retention-days: 14
-
       - name: Live information routing
         if: inputs.suite == 'live-information'
         env:
           SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
           SCENARIO_TURN_TIMEOUT_MS: "300000"
-        run: >-
-          bun --conditions eliza-source --tsconfig-override tsconfig.json
-          packages/scenario-runner/src/cli.ts run packages/test/scenarios
-          --scenario cross.live-information-routing --lane live-only
-          --provider ${{ inputs.planner_provider }}
-          --run-dir reports/scenarios/live-information/run
-          --report-dir reports/scenarios/live-information/report
-          --export-native reports/scenarios/live-information/native.jsonl
-
+        run: bun --conditions eliza-source --tsconfig-override tsconfig.json packages/scenario-runner/src/cli.ts run packages/test/scenarios --scenario cross.live-information-routing --lane live-only --provider ${{ inputs.planner_provider }} --run-dir reports/scenarios/live-information/run --report-dir reports/scenarios/live-information/report --export-native reports/scenarios/live-information/native.jsonl
       - name: Upload live information evidence
         if: always() && inputs.suite == 'live-information'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -253,15 +223,12 @@ jobs:
           path: reports/scenarios/live-information
           if-no-files-found: warn
           retention-days: 14
-
       - name: Cloud end-to-end
         if: inputs.suite == 'all' || inputs.suite == 'cloud'
         run: bun run test:cloud:e2e
-
       - name: Voice service
         if: inputs.suite == 'all' || inputs.suite == 'voice'
         run: bun run --cwd packages/scenario-runner test:real-service:voice
-
       - name: Railway voice contract
         if: inputs.suite == 'all' || inputs.suite == 'voice'
         env:
@@ -270,30 +237,21 @@ jobs:
           WHISPER_STT_URL: ${{ vars.ELIZA_VOICE_WHISPER_STT_URL }}
           WHISPER_STT_MODEL: ${{ vars.ELIZA_VOICE_WHISPER_STT_MODEL }}
         run: bun test packages/cloud/api/__tests__/voice-kokoro-whisper-live.test.ts
-
   dedicated:
     name: Managed dedicated staging canary
     if: inputs.suite != 'pi-linked-account' && inputs.diagnose_canary_suffix == '' && (inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated')
     runs-on: ubuntu-24.04
     environment: staging
-    # Serialize this live lifecycle even when an `all` run overlaps a
-    # `dedicated` run. Cleanup must finish before another canary starts.
     concurrency:
       group: managed-dedicated-staging-canary
       cancel-in-progress: false
-    # Absolute script deadlines stay below this cap and reserve time for the
-    # finally cleanup before Actions can terminate the job.
     timeout-minutes: 45
     env:
       CLOUD_DEDICATED_CANARY_BASE_URL: https://api-staging.eliza.app
       CLOUD_DEDICATED_CANARY_EVIDENCE_PATH: reports/managed-dedicated-canary.json
       CLOUD_DEDICATED_CANARY_STALE_CANARY_SUFFIX: ${{ inputs.stale_canary_suffix || '' }}
       CLOUD_DEDICATED_CANARY_CLEANUP_ONLY: ${{ inputs.cleanup_only && 'true' || 'false' }}
-      # Conditional identity checks and lifecycle locking first shipped here.
-      # Cleanup-only may run from a newer workflow branch, so bind it to this
-      # minimum deployed API contract instead of incorrectly requiring HEAD.
       CLOUD_DEDICATED_CANARY_MINIMUM_CLEANUP_API_SHA: aada8198bc10045c8c841ea4d6dab974ac2a3319
-      # Keep this identical to App Live's accepted repository-secret contract.
       ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
     steps:
       - name: Require real Cloud credential
@@ -307,7 +265,6 @@ jobs:
             exit 1
           fi
           unset cloud_key_without_whitespace
-
       - name: Require exact staging target
         shell: bash
         run: |
@@ -333,7 +290,6 @@ jobs:
             );
           }
           NODE
-
       - name: Bind stale-recovery intent
         id: recovery_intent
         shell: bash
@@ -356,13 +312,11 @@ jobs:
             `requested=${requested ? "true" : "false"}\n`,
           );
           NODE
-
       - name: Checkout exact run commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           submodules: false
-
       - name: Preflight cleanup API ancestry
         id: cleanup_api_preflight
         if: inputs.cleanup_only
@@ -404,22 +358,18 @@ jobs:
             exit 1
           fi
           echo "deployed_commit=$deployed_commit" >> "$GITHUB_OUTPUT"
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: "1.3.14"
-
+          bun-version: 1.3.14
       - name: Install contract dependencies
         run: bun install --frozen-lockfile --ignore-scripts
-
       - name: Validate canary and workflow contracts
         run: |
           bun test \
             packages/cloud/scripts/admin/bridge-reply-verdict.test.ts \
             packages/cloud/scripts/admin/managed-dedicated-canary.test.ts \
             packages/cloud/scripts/admin/managed-dedicated-canary-workflow.test.ts
-
       - name: Run bounded managed dedicated canary
         id: live
         if: ${{ success() && (!inputs.cleanup_only || steps.cleanup_api_preflight.outcome == 'success') }}
@@ -433,7 +383,6 @@ jobs:
           status=$?
           set -e
           echo "status=$status" >> "$GITHUB_OUTPUT"
-
       - name: Validate privacy-safe evidence artifact
         id: privacy
         if: ${{ always() }}
@@ -466,7 +415,6 @@ jobs:
             renameSync(canonicalPath, evidencePath);
           '
           echo "validated=true" >> "$GITHUB_OUTPUT"
-
       - name: Upload privacy-safe timing and path evidence
         if: ${{ always() && steps.privacy.outputs.validated == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -475,7 +423,6 @@ jobs:
           path: reports/managed-dedicated-canary.json
           if-no-files-found: warn
           retention-days: 14
-
       - name: Enforce live proof, deployed SHA, and cleanup
         if: ${{ always() }}
         env:
@@ -582,7 +529,6 @@ jobs:
           else
             echo "Managed dedicated canary passed with exact cleanup."
           fi
-
   dedicated-diagnostic:
     name: Read-only managed dedicated provision diagnosis
     if: inputs.suite != 'pi-linked-account' && inputs.diagnose_canary_suffix != ''
@@ -603,18 +549,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: "1.3.14"
-
+          bun-version: 1.3.14
       - name: Validate provision diagnostic contract
-        run: >-
-          bun test
-          packages/cloud/scripts/admin/managed-dedicated-provision-diagnostic.test.ts
-          packages/scripts/__tests__/staging-worker-journal-diagnostic.test.ts
-
+        run: bun test packages/cloud/scripts/admin/managed-dedicated-provision-diagnostic.test.ts packages/scripts/__tests__/staging-worker-journal-diagnostic.test.ts
       - name: Classify recent provisioning worker failures
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
@@ -678,7 +618,6 @@ jobs:
                             functions[name] += 1
             print(json.dumps({"schemaVersion": 1, "scope": "staging-worker-two-hours", "records": records, "signals": dict(counts), "timeoutDurationsMs": dict(durations), "timeoutFunctions": dict(functions)}, sort_keys=True))
             '
-
       - name: Classify exact canary journal by suffix
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         env:
@@ -788,7 +727,6 @@ jobs:
             fi
             unset expected_name journal ids id_count agent_id block lower observation target category \
               observation_present provision_failed provision_completed CANARY_DIAGNOSTIC_SUFFIX
-
       - name: Query exact failed canary read-only
         shell: bash
         env:
@@ -927,7 +865,6 @@ jobs:
           COMMIT;
           SQL
           raw_ready=true
-
       - name: Classify privacy-safe provision diagnostic
         shell: bash
         run: |
@@ -937,7 +874,6 @@ jobs:
             "$CANARY_DIAGNOSTIC_SUFFIX" \
             "$CANARY_DIAGNOSTIC_RAW_PATH" \
             "$CANARY_DIAGNOSTIC_EVIDENCE_PATH"
-
       - name: Diagnose activated target job origin
         shell: bash
         env:
@@ -1034,7 +970,6 @@ jobs:
           );
           COMMIT;
           SQL
-
       - name: Summarize replacement cleanup reconciliation eligibility
         id: cleanup_reconciliation
         shell: bash
@@ -1256,7 +1191,6 @@ jobs:
             "- older eligible fences: `" + (.olderEligibleFences | tostring) + "`\n" +
             "- total eligible fences: `" + (.totalEligibleFences | tostring) + "`"
           ' <<<"$summary" | tee -a "$GITHUB_STEP_SUMMARY"
-
       - name: Inspect control-plane route to exact canary peer
         if: steps.cleanup_reconciliation.outputs.headscale_ip != ''
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
@@ -1353,7 +1287,6 @@ jobs:
               suffix_peer_ip suffix_ip_matches_database suffix_route_device suffix_route_tailnet \
               suffix_ping_reachable suffix_health_status suffix_health_reachable CANARY_HEADSCALE_IP \
               CANARY_DIAGNOSTIC_SUFFIX
-
       - name: Classify control-plane replacement cleanup failure
         if: steps.cleanup_reconciliation.outputs.fence_present == 'true'
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
@@ -1451,7 +1384,6 @@ jobs:
             unset block lower
             echo "replacement_cleanup_failure_category=$category"
             echo "replacement_cleanup_failure_signals=${signals:-none}"
-
       - name: Classify private mesh observation failure
         if: steps.cleanup_reconciliation.outputs.agent_id != ''
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
@@ -1569,7 +1501,6 @@ jobs:
               done
             fi
             unset observation observation_present CANARY_AGENT_ID
-
       - name: Inspect exact private mesh candidate
         if: steps.cleanup_reconciliation.outputs.fence_present == 'true' || steps.cleanup_reconciliation.outputs.inspectable_candidate_present == 'true'
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
@@ -1664,7 +1595,6 @@ jobs:
               "private_mesh_application_api_expose_port=" + (.application.apiExposePortEnabled | tostring)
             ' <<<"$diagnostic"
             unset diagnostic
-
       - name: Classify exact Headscale API inventory
         if: steps.cleanup_reconciliation.outputs.agent_id != ''
         shell: bash
@@ -1695,7 +1625,6 @@ jobs:
             | .[]
           ' <<<"$inventory"
           unset inventory HEADSCALE_API_KEY CANARY_DIAGNOSTIC_SUFFIX
-
       - name: Classify exact Headscale registration exchange
         if: steps.cleanup_reconciliation.outputs.agent_id != ''
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
@@ -1805,7 +1734,6 @@ jobs:
             echo "headscale_tag_rejection_seen=$tag_rejected"
             printf '%s\n' "$inventory_summary"
             unset inventory_summary
-
       - name: Summarize Headscale ingress protocol
         if: steps.cleanup_reconciliation.outputs.agent_id != ''
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
@@ -1864,7 +1792,6 @@ jobs:
             echo "headscale_version=$version"
             printf '%s\n' "$summary"
             unset version summary
-
       - name: Summarize recent agent pre-auth key state
         if: steps.cleanup_reconciliation.outputs.agent_id != ''
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
@@ -1921,7 +1848,6 @@ jobs:
               "headscale_recent_agent_key_expired=" + (.expired | tostring)
             ' <<<"$summary"
             unset summary
-
       - name: Classify exact dedicated lifecycle journal
         if: steps.cleanup_reconciliation.outputs.agent_id != ''
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
@@ -2116,7 +2042,6 @@ jobs:
             echo "dedicated_teardown_absence_probe_unavailable=$teardown_absence_probe_unavailable"
             echo "dedicated_teardown_stop_failed=$teardown_stop_failed"
             echo "dedicated_teardown_remove_failed=$teardown_remove_failed"
-
       - name: Upload privacy-safe provision diagnostic
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -2124,7 +2049,6 @@ jobs:
           path: reports/managed-dedicated-provision-diagnostic.json
           if-no-files-found: error
           retention-days: 14
-
       - name: Summarize classified provision result
         shell: bash
         run: |
@@ -2151,7 +2075,6 @@ jobs:
             console.log("- replacement Docker id present: `" + evidence.sandbox.replacementLocator.containerIdPresent + "`");
             console.log("- replacement VPN id present: `" + evidence.sandbox.replacementLocator.vpnNodeIdPresent + "`");
           ' >> "$GITHUB_STEP_SUMMARY"
-
   shared-staging-onboarding:
     name: Shared staging onboarding
     needs: smoke
@@ -2161,8 +2084,6 @@ jobs:
     timeout-minutes: 20
     env:
       CI: "true"
-      # The runner contract uses ELIZAOS_CLOUD_API_KEY; ELIZACLOUD_API_KEY is
-      # the repository's established staging smoke credential.
       ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
       CLOUD_SHARED_STAGING_SMOKE_EVIDENCE_PATH: reports/live-smoke/shared-staging-onboarding.json
     steps:
@@ -2170,15 +2091,16 @@ jobs:
         with:
           submodules: false
           fetch-depth: 0
-
       - uses: ./.github/actions/setup-bun-workspace
         with:
-          bun-version: "1.3.14"
-          node-version: "24.15.0"
+          bun-version: 1.3.14
+          node-version: 24.15.0
           install-command: bun install --frozen-lockfile --ignore-scripts
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-
+          setup-python: "true"
+          install-protoc: "true"
+          install-native-deps: "true"
       - name: Require isolated staging credential
         shell: bash
         run: |
@@ -2190,11 +2112,9 @@ jobs:
             exit 1
           fi
           unset key_without_whitespace
-
       - name: Run shared staging onboarding smoke
         id: shared_live
         run: bun run cloud:shared-onboarding:live
-
       - name: Upload privacy-safe shared staging evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -2203,7 +2123,6 @@ jobs:
           path: reports/live-smoke/shared-staging-onboarding.json
           if-no-files-found: error
           retention-days: 7
-
       - name: Enforce shared live proof, deployed SHA, and cleanup
         if: ${{ always() }}
         env:
@@ -2253,3 +2172,204 @@ jobs:
             echo "::error::Staging deploy does not contain this shared-smoke source commit."
             exit 1
           fi
+  cloud-live-e2e:
+    name: Cloud Live E2E (Eliza Cloud)
+    if: ${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite == 'remote-capabilities' }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 60
+    steps:
+      - name: Check cloud secrets
+        id: cloud
+        env:
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+          ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED: ${{ vars.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED != '' && vars.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED || secrets.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ELIZAOS_CLOUD_API_KEY}" ]; then
+            echo "::error::Requested live cloud certification requires an API key."
+            exit 1
+          fi
+          if [ "${ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED}" != "1" ]; then
+            echo "::error::Requested live cloud certification requires ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED=1."
+            exit 1
+          fi
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+          setup-node: "false"
+          setup-python: "true"
+          install-protoc: "true"
+      - name: Run Cloud tests
+        shell: bash
+        run: bun run --cwd packages/cloud/sdk test:e2e
+        env:
+          ELIZA_LIVE_TEST: "1"
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+          ELIZA_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+          ELIZAOS_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
+          ELIZA_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
+          ELIZA_CLOUD_API_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_API_BASE_URL }}
+      - name: Prepare remote capability cloud live report directory
+        run: |
+          node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/cloud
+          mkdir -p reports/remote-capabilities/cloud
+      - name: Remote capability cloud sandbox live smoke
+        run: bun run --cwd packages/agent test:remote-capabilities:cloud-live
+        env:
+          ELIZA_LIVE_TEST: "1"
+          ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR: reports/remote-capabilities/cloud
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+          ELIZAOS_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
+          ELIZA_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
+      - name: Validate remote capability cloud live report
+        run: bun run test:remote-capabilities:validate-live-reports --kind cloud --expect-count 1 --max-age-minutes 90 --max-future-minutes 5 --require-ci --require-file-identity --match-github-env reports/remote-capabilities/cloud
+      - name: Upload remote capability cloud live report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: remote-capability-cloud-live-report
+          path: reports/remote-capabilities/cloud/*.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Prune remote capability cloud report
+        if: always() && steps.checkout.outcome == 'success'
+        run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/cloud
+  provider-live-e2e:
+    name: Remote Capability Provider Live E2E
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 45
+    steps:
+      - name: Check provider endpoint secrets
+        id: providers
+        env:
+          HOME_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL }}
+          MOBILE_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL }}
+          DESKTOP_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_URL }}
+        run: |
+          set -euo pipefail
+          missing_required=()
+          [ -n "${HOME_URL}" ] || missing_required+=(ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL)
+          [ -n "${MOBILE_URL}" ] || missing_required+=(ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL)
+          if [ "${#missing_required[@]}" -gt 0 ]; then
+            echo "::error::Requested live certification requires endpoint secrets: ${missing_required[*]}"
+            exit 1
+          fi
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+          setup-node: "false"
+          setup-python: "true"
+          install-protoc: "true"
+      - name: Prepare remote capability provider live report directory
+        run: |
+          node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/providers
+          mkdir -p reports/remote-capabilities/providers
+      - name: Remote capability URL-backed provider live smoke
+        run: bun run --cwd packages/agent test:remote-capabilities:provider-live
+        env:
+          ELIZA_LIVE_TEST: "1"
+          ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR: reports/remote-capabilities/providers
+          ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL }}
+          ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_TOKEN: ${{ secrets.ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_TOKEN }}
+          ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_ENDPOINT_ID: ${{ secrets.ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_ENDPOINT_ID }}
+          ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_MODULES: ${{ secrets.ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_MODULES }}
+          ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL }}
+          ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_TOKEN: ${{ secrets.ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_TOKEN }}
+          ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_ENDPOINT_ID: ${{ secrets.ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_ENDPOINT_ID }}
+          ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_MODULES: ${{ secrets.ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_MODULES }}
+          ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_URL }}
+          ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_TOKEN: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_TOKEN }}
+          ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_ENDPOINT_ID: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_ENDPOINT_ID }}
+          ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_MODULES: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_MODULES }}
+      - name: Validate remote capability provider live reports
+        run: bun run test:remote-capabilities:validate-live-reports --kind provider --expect-count 2..3 --max-age-minutes 90 --max-future-minutes 5 --allowed-providers home-machine,mobile-companion,desktop-companion --require-providers home-machine,mobile-companion --require-ci --require-file-identity --match-github-env reports/remote-capabilities/providers
+      - name: Upload remote capability provider live report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: remote-capability-provider-live-report
+          path: reports/remote-capabilities/providers/*.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Prune remote capability provider reports
+        if: always() && steps.checkout.outcome == 'success'
+        run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/providers
+    if: ${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite == 'remote-capabilities' }}
+  github-live-artifact-validate:
+    name: Remote Capability GitHub Live Artifact Validator
+    needs:
+      - cloud-live-e2e
+      - provider-live-e2e
+    if: ${{ always() && !cancelled() && inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite == 'remote-capabilities' }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Require live producers
+        env:
+          CLOUD_RESULT: ${{ needs.cloud-live-e2e.result }}
+          PROVIDER_RESULT: ${{ needs.provider-live-e2e.result }}
+        run: test "$CLOUD_RESULT" = success && test "$PROVIDER_RESULT" = success
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+          setup-python: "true"
+          install-protoc: "true"
+      - name: Download cloud + provider live report artifacts
+        run: |
+          mkdir -p reports/remote-capabilities/cloud reports/remote-capabilities/providers
+          gh run download "$GITHUB_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name remote-capability-cloud-live-report \
+            --dir reports/remote-capabilities/cloud || echo "::notice::remote-capability-cloud-live-report artifact not present"
+          gh run download "$GITHUB_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name remote-capability-provider-live-report \
+            --dir reports/remote-capabilities/providers || echo "::notice::remote-capability-provider-live-report artifact not present"
+      - name: Re-validate cloud live report from downloaded artifact
+        run: bun run test:remote-capabilities:validate-live-reports --kind cloud --expect-count 1 --max-age-minutes 120 --max-future-minutes 5 --require-ci --require-file-identity reports/remote-capabilities/cloud
+      - name: Re-validate provider live reports from downloaded artifacts
+        run: bun run test:remote-capabilities:validate-live-reports --kind provider --expect-count 2..3 --max-age-minutes 120 --max-future-minutes 5 --allowed-providers home-machine,mobile-companion,desktop-companion --require-providers home-machine,mobile-companion --require-ci --require-file-identity reports/remote-capabilities/providers
+env:
+  CI: "true"
+  BUN_VERSION: 1.3.14
+  NODE_VERSION: 24.15.0
+  NODE_NO_WARNINGS: "1"
+  NODE_OPTIONS: --max-old-space-size=8192
+  ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"

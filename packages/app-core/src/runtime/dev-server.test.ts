@@ -697,9 +697,41 @@ describe.sequential("dev-server process entry", () => {
     const opts = startApiServer.mock.calls[0]?.[0] as {
       onRestart: () => Promise<AgentRuntime | null>;
     };
-    const returned = await opts.onRestart();
-    expect(returned).toBe(restarted);
-    expect(loaded.updateRuntime).toHaveBeenCalledWith(restarted);
+    const sendDescriptor = Object.getOwnPropertyDescriptor(process, "send");
+    const connectedDescriptor = Object.getOwnPropertyDescriptor(
+      process,
+      "connected",
+    );
+    const send = vi.fn(
+      (_message: unknown, callback: (error: Error | null) => void) => {
+        callback(null);
+        return true;
+      },
+    );
+    Object.defineProperty(process, "send", { configurable: true, value: send });
+    Object.defineProperty(process, "connected", {
+      configurable: true,
+      value: true,
+    });
+    try {
+      const returned = await opts.onRestart();
+      expect(returned).toBe(restarted);
+      expect(loaded.updateRuntime).toHaveBeenCalledWith(restarted);
+      expect(send).toHaveBeenCalledWith(
+        { type: "eliza:runtime-restart" },
+        expect.any(Function),
+      );
+      expect(send.mock.invocationCallOrder[0]).toBeLessThan(
+        startEliza.mock.invocationCallOrder[1],
+      );
+    } finally {
+      if (sendDescriptor)
+        Object.defineProperty(process, "send", sendDescriptor);
+      else Reflect.deleteProperty(process, "send");
+      if (connectedDescriptor)
+        Object.defineProperty(process, "connected", connectedDescriptor);
+      else Reflect.deleteProperty(process, "connected");
+    }
   });
 
   it("rejects restart after shutdown and exits 0 once even if SIGINT fires twice", async () => {

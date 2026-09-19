@@ -75,9 +75,15 @@ describe("normalizeEntityMatches", () => {
 	});
 
 	it("throws on a cyclic match wrapper without hanging", () => {
-		const cyclic: { match?: unknown } = {};
-		cyclic.match = cyclic;
-		const started = performance.now();
+		let inspections = 0;
+		const target: { match?: unknown } = {};
+		const cyclic = new Proxy(target, {
+			getOwnPropertyDescriptor(object, key) {
+				if (key === "match") inspections += 1;
+				return Reflect.getOwnPropertyDescriptor(object, key);
+			},
+		});
+		target.match = cyclic;
 		try {
 			normalizeEntityMatches(cyclic);
 			expect.unreachable("unwrap should fail closed on a cycle");
@@ -85,7 +91,7 @@ describe("normalizeEntityMatches", () => {
 			expect(error).toBeInstanceOf(ElizaError);
 			expect((error as ElizaError).code).toBe(ENTITY_MATCH_UNBOUNDED);
 		}
-		expect(performance.now() - started).toBeLessThan(50);
+		expect(inspections).toBe(1);
 	});
 
 	it("does not invoke accessors while unwrapping", () => {
@@ -223,16 +229,29 @@ describe("normalizeEntityMatches", () => {
 		]);
 	});
 
-	it("fails closed on an 8k match wrap in under 50ms instead of RangeError", () => {
-		const started = performance.now();
+	it("rejects an 8k match wrap before traversing it instead of RangeError", () => {
+		let inspections = 0;
+		let value: object = { name: "Ada" };
+		for (let index = 0; index < 8_000; index += 1) {
+			value = new Proxy(
+				{ match: value },
+				{
+					getOwnPropertyDescriptor(object, key) {
+						if (key === "match") inspections += 1;
+						return Reflect.getOwnPropertyDescriptor(object, key);
+					},
+				},
+			);
+		}
 		try {
-			normalizeEntityMatches(nestMatch(8_000));
+			normalizeEntityMatches(value);
 			expect.unreachable("unwrap should fail closed on an 8k nest");
 		} catch (error) {
 			expect(error).toBeInstanceOf(ElizaError);
 			expect((error as ElizaError).code).toBe(ENTITY_MATCH_UNBOUNDED);
 			expect((error as Error).name).not.toBe("RangeError");
 		}
-		expect(performance.now() - started).toBeLessThan(50);
+		expect(inspections).toBeGreaterThan(0);
+		expect(inspections).toBeLessThanOrEqual(MAX_ENTITY_MATCH_DEPTH + 1);
 	});
 });

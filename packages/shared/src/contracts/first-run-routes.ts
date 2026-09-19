@@ -127,3 +127,17 @@ export type FirstRunStyle = z.infer<typeof FirstRunStyleSchema>;
 export type InventoryProviderEntry = z.infer<
   typeof InventoryProviderEntrySchema
 >;
+
+/** A lifecycle receipt; setup acceptance does not imply activation. */
+export const FirstRunActivationSchema = z.object({
+  operationId: z.string().uuid(),
+  status: z.enum(["pending", "running", "succeeded", "failed", "rolled-back"]),
+  error: z.string().nullable(),
+});
+export type FirstRunActivation = z.infer<typeof FirstRunActivationSchema>;
+
+/** Older embedded kernels finish synchronously and omit the activation receipt. */
+export const PostFirstRunResponseSchema = z.object({
+  ok: z.literal(true),
+  activation: FirstRunActivationSchema.optional(),
+});

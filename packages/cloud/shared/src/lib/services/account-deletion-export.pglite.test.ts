@@ -1,4 +1,4 @@
-/** Executes every explicit portable-export join against isolated real PGlite tables. */
+/** Executes portable exports against isolated PGlite tables, including migrated retained compute identities and real tenant FK authority. */
 
 import { afterAll, beforeAll, expect, mock, test } from "bun:test";
 import { installOrganizationPolicyTestSchema } from "../../db/repositories/organization-policy-test-fixture";
@@ -6,40 +6,27 @@ import { installOrganizationPolicyTestSchema } from "../../db/repositories/organ
 process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV = "test";
 
+const actualPolicy = await import("../../db/account-deletion-foreign-key-policy");
+const subjectDescriptor = actualPolicy
+  .listAccountDeletionForeignKeys()
+  .find(({ sourceTable }) => sourceTable === "agent_compute_subjects");
+if (!subjectDescriptor) throw new Error("Retained compute subject is absent from export authority");
+const classifySubject = () => actualPolicy.classifyAccountDeletionForeignKey(subjectDescriptor);
+const fixtureInventory = actualPolicy
+  .listAccountDeletionForeignKeys()
+  .filter(
+    ({ sourceTable, sourceColumns }) =>
+      [
+        "organization_policy_audit",
+        "organization_subscription_authorities",
+        "agent_compute_subjects",
+        "conversations",
+      ].includes(sourceTable) ||
+      (sourceTable === "apps" && sourceColumns === "organization_id"),
+  );
 mock.module("../../db/account-deletion-foreign-key-policy", () => ({
-  ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256: "f".repeat(64),
-  listAccountDeletionForeignKeys: () => [
-    ...["organization_policy_audit", "organization_subscription_authorities"].map(
-      (sourceTable) => ({
-        sourceTable,
-        sourceColumns: "organization_id",
-        targetTable: "organizations",
-        targetColumns: "id",
-        onDelete: "cascade",
-      }),
-    ),
-    {
-      sourceTable: "apps",
-      sourceColumns: "organization_id",
-      targetTable: "organizations",
-      targetColumns: "id",
-      onDelete: "restrict",
-    },
-    {
-      sourceTable: "conversations",
-      sourceColumns: "organization_id",
-      targetTable: "organizations",
-      targetColumns: "id",
-      onDelete: "cascade",
-    },
-    {
-      sourceTable: "conversations",
-      sourceColumns: "user_id",
-      targetTable: "users",
-      targetColumns: "id",
-      onDelete: "cascade",
-    },
-  ],
+  ...actualPolicy,
+  listAccountDeletionForeignKeys: () => fixtureInventory,
 }));
 
 const { closeDatabaseConnectionsForTests, getPgliteClientForTests } = await import(
@@ -117,6 +104,27 @@ beforeAll(async () => {
   ]) {
     await dbWrite.execute(statement);
   }
+  await getPgliteClientForTests().exec(`
+    INSERT INTO agent_sandboxes(id,organization_id) VALUES
+      ('99999999-9999-4999-8999-999999999991','${ORGANIZATION_ID}'),
+      ('99999999-9999-4999-8999-999999999992','${FOREIGN_ORGANIZATION_ID}');
+    INSERT INTO billing_funding_reservations(id,organization_id,logical_operation_id,
+      request_digest,funding_class,requested_amount,reserved_amount,status,settlement_key,
+      settlement_digest,expires_at,finalized_at)
+      SELECT id,organization_id,'export-funded-agent:' || id,repeat('a',64),'cash_only',1,1,
+        'finalized','export-settled:' || id,repeat('b',64),now()+interval '1 hour',now()
+      FROM agent_sandboxes;
+    INSERT INTO agent_compute_funding(id,agent_id,organization_id,funding_reservation_id,
+      period_start,period_end,hourly_rate,settled_through,settled_at)
+      SELECT id,id,organization_id,id,now()-interval '1 hour',now(),1,now(),now()
+      FROM agent_sandboxes;
+  `);
+  const subjectMigration = await Bun.file(
+    new URL("../../db/migrations/0391_agent_compute_subjects.sql", import.meta.url),
+  ).text();
+  await getPgliteClientForTests().exec(`BEGIN; ${subjectMigration} COMMIT;`);
+  await getPgliteClientForTests().exec("DELETE FROM agent_sandboxes");
+
   const migration = await Bun.file(
     new URL("../../db/migrations/0381_app_billing_registration.sql", import.meta.url),
   ).text();
@@ -204,6 +212,20 @@ test("exports transitive owned rows and excludes cross-tenant rows through real 
     tables: Array<{ table: string; policy?: string; rows: Array<Record<string, unknown>> }>;
   };
   const table = (name: string) => artifact.tables.find((entry) => entry.table === name);
+
+  expect(table("agent_compute_subjects")?.rows).toEqual([
+    expect.objectContaining({
+      agent_id: "99999999-9999-4999-8999-999999999991",
+      organization_id: ORGANIZATION_ID,
+      retired_at: expect.any(String),
+    }),
+  ]);
+  expect(classifySubject()).toBe("anonymize_retained_record");
+  await expect(
+    getPgliteClientForTests().exec(
+      "DELETE FROM agent_compute_subjects WHERE agent_id='99999999-9999-4999-8999-999999999991'",
+    ),
+  ).rejects.toThrow("agent_compute_funding_agent_tenant_fk");
 
   expect(table("conversations")?.rows).toEqual([
     expect.objectContaining({ title: "Owned conversation" }),

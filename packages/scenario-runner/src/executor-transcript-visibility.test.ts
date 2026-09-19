@@ -32,6 +32,7 @@ function createRuntime(actions: Action[]): AgentRuntime {
     plugins: [],
     routes: [],
     ensureConnection: vi.fn(async () => undefined),
+    getTasksByName: async () => [],
     getService: vi.fn(() => null),
     setSetting: vi.fn(),
     logger: {

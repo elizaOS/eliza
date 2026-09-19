@@ -3304,6 +3304,7 @@ jobs:
           # local desktop model adds an unrelated network dependency.
           ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
         with:
+          setup-python: "true"
           bun-version: "1.3.14"
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"

@@ -118,6 +118,18 @@ or floating-chat clearance inside the plugin; the shell owns those layers.
 See [notification-policy.md](notification-policy.md) for shared native delivery,
 viewport fallback ownership, interactive popup exceptions, and platform limits.
 
+The separate `/dev` chat polls recent foreground trajectory summaries for the
+active room. Background activity cannot displace those token counts. Opening
+Inspect retrieves all runs linked to that message, including background work;
+the advanced inspector retains global pagination. Raw payloads remain on demand.
+Token attribution requires a recorded reply link; unlinked legacy messages and
+background notices never borrow the preceding request's counts.
+
+The Home weather tile distinguishes location denial, timeout/unavailability, and
+forecast failure. An explicit retry shows loading while coordinates are pending;
+a temporary location failure does not erase a remembered successful grant.
+Automatic Home loading still never requests location permission.
+
 ## Development
 
 ```bash

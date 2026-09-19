@@ -182,6 +182,14 @@ beforeAll(async () => {
       usageRecords,
     });
 
+    const { installOrganizationPolicyTestSchema } = await import(
+      "@/db/repositories/organization-policy-test-fixture"
+    );
+    const { getPgliteClientForTests } = await import("@/db/client");
+    await installOrganizationPolicyTestSchema((query) =>
+      getPgliteClientForTests().exec(query),
+    );
+
     clearJobs = async () => {
       await dbWrite.delete(jobs);
     };
@@ -201,13 +209,12 @@ beforeAll(async () => {
     await dbWrite.insert(organizations).values([
       { id: ORG_A, name: "Org A", slug: "wake-org-a", credit_balance: "25" },
       { id: ORG_B, name: "Org B", slug: "wake-org-b", credit_balance: "25" },
-      // Exactly the MINIMUM_DEPOSIT boundary: the gate requires balance to
-      // EXCEED the minimum, so 0.1 is denied.
+      // Below the minimum deposit: no funded admission may be created.
       {
         id: ORG_POOR,
         name: "Org Poor",
         slug: "wake-org-poor",
-        credit_balance: "0.1",
+        credit_balance: "0.09",
       },
     ]);
     await dbWrite.insert(users).values([
@@ -356,9 +363,14 @@ afterAll(async () => {
 
 async function wake(
   agentId: string,
-  init: { key?: string; body?: BodyInit } = {},
+  init: { key?: string; body?: BodyInit; acceptance?: string | null } = {},
 ): Promise<Response> {
   const headers = new Headers();
+  if (init.acceptance !== null)
+    headers.set(
+      "X-Eliza-Dedicated-Price",
+      init.acceptance ?? "dedicated-compute-v1:USD:0.010000:0.020000",
+    );
   if (init.key !== undefined) headers.set("X-API-Key", init.key);
   if (init.body !== undefined) headers.set("Content-Type", "application/json");
   return app.request(`/api/v1/eliza/agents/${agentId}/wake`, {
@@ -367,6 +379,31 @@ async function wake(
     ...(init.body === undefined ? {} : { body: init.body }),
   });
 }
+
+describe("Dedicated price acceptance", () => {
+  test.each([AGENT_SHARED, AGENT_RUNNING])(
+    "keeps the no-op path for %s without new acceptance",
+    async (agentId) => {
+      const res = await wake(agentId, { key: KEY_A, acceptance: null });
+      expect(res.status).toBe(200);
+      if (!countWakeJobs) throw new Error("harness not initialized");
+      expect(await countWakeJobs(agentId)).toBe(0);
+    },
+  );
+
+  test.each([null, "dedicated-compute-v1:USD:0.150000:0.300000", "invalid"])(
+    "rejects %s without creating a paid job",
+    async (acceptance) => {
+      const res = await wake(AGENT_A, { key: KEY_A, acceptance });
+      expect(res.status).toBe(428);
+      expect(await res.json()).toMatchObject({
+        code: "DEDICATED_PRICE_CONFIRMATION_REQUIRED",
+      });
+      if (!countWakeJobs) throw new Error("harness not initialized");
+      expect(await countWakeJobs(AGENT_A)).toBe(0);
+    },
+  );
+});
 
 describe("authentication", () => {
   test("no credentials at all is a 401, not an enqueued job", async () => {
@@ -486,7 +523,7 @@ describe("backup ownership", () => {
 });
 
 describe("credit gate", () => {
-  test("an org at the minimum deposit boundary is denied with the canonical 402 body", async () => {
+  test("an org below the minimum deposit boundary is denied with the canonical 402 body", async () => {
     const res = await wake(AGENT_POOR, { key: KEY_POOR });
     expect(res.status).toBe(402);
     const body = z
@@ -498,7 +535,7 @@ describe("credit gate", () => {
         currentBalance: z.number(),
       })
       .parse(await res.json());
-    expect(body.currentBalance).toBe(0.1);
+    expect(body.currentBalance).toBe(0.09);
     if (!countWakeJobs) throw new Error("harness not initialized");
     expect(await countWakeJobs(AGENT_POOR)).toBe(0);
   });
@@ -630,6 +667,9 @@ describe("CORS preflight", () => {
       method: "OPTIONS",
     });
     expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Headers")).toContain(
+      "X-Eliza-Dedicated-Price",
+    );
     expect(res.headers.get("Access-Control-Allow-Methods")).toBe(
       "POST, OPTIONS",
     );

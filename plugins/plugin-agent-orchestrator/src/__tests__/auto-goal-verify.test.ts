@@ -6,7 +6,7 @@
  * Deterministic — the only stub is the judge model response.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -1415,7 +1415,7 @@ describe("deterministic completion-residuals gate", () => {
     );
   });
 
-  it("a MISSING workspace on a repo-bound task is unverifiable: stays validating WITHOUT burning an attempt (fail closed, F5a)", async () => {
+  it("a MISSING workspace on a repo-bound task is unverifiable: reopens without burning an attempt", async () => {
     const fake = makeFakeAcp();
     const store = new OrchestratorTaskStore({ backend: "memory" });
     const { taskId, sessionId } = await seedTaskWithSession(
@@ -1435,18 +1435,16 @@ describe("deterministic completion-residuals gate", () => {
     await until(
       async () =>
         (await store.getTask(taskId))?.events.some(
-          (e) => e.eventType === "residuals_unverifiable",
-        ) === true,
+          (event) => event.eventType === "auto_verify_inconclusive",
+        ) === true && (await store.getTask(taskId))?.task.status === "active",
     );
 
-    // An inspection failure is not a finding: no model spend, no corrective
-    // send, no attempt burn — the task parks in `validating` for a manual
-    // /validate or the next task_complete, and the failure is reported.
+    // An inspection failure reopens verification without judging the worker.
     expect(useModel).not.toHaveBeenCalled();
-    expect(fake.service.sendToSession).not.toHaveBeenCalled();
+    expect(fake.service.sendToSession).toHaveBeenCalledTimes(1);
     expect(reportError).toHaveBeenCalled();
     const doc = await store.getTask(taskId);
-    expect(doc?.task.status).toBe("validating");
+    expect(doc?.task.status).toBe("active");
     expect(doc?.task.metadata.autoVerifyAttempts).toBeUndefined();
     const snapshot = doc?.task.metadata.completionResiduals as
       | { status: string; unverifiableKind?: string }
@@ -1454,6 +1452,76 @@ describe("deterministic completion-residuals gate", () => {
     expect(snapshot?.status).toBe("unverifiable");
     expect(snapshot?.unverifiableKind).toBe("missing_dir");
   });
+
+  it.each([false, true])(
+    "real residual git inspection failure retries or escalates without spending attempts (delivery fails: %s)",
+    async (deliveryFails) => {
+      const fake = makeFakeAcp();
+      const store = new OrchestratorTaskStore({ backend: "memory" });
+      const { taskId, sessionId, workdir } = await seedTaskWithSession(
+        store,
+        [],
+        { repo: "acme/site" },
+      );
+      const seeded = await store.getTask(taskId);
+      if (!seeded) throw new Error("Fixture task is missing");
+      await store.updateTask(taskId, {
+        metadata: { ...seeded.task.metadata, autoVerifyAttempts: 2 },
+      });
+      const indexPath = join(workdir, ".git", "index");
+      const index = readFileSync(indexPath);
+      // The actual git executable can still identify this worktree, but status
+      // cannot inspect it until the temporarily damaged index is restored.
+      writeFileSync(indexPath, "unavailable index");
+      if (deliveryFails) {
+        fake.service.sendToSession.mockRejectedValueOnce(
+          new Error("Worker transport unavailable"),
+        );
+      }
+      const { runtime, useModel } = makeSpyRuntime(fake.service, () => "{}");
+      const service = new OrchestratorTaskService(runtime as never, { store });
+      await service.start();
+      fake.emit(sessionId, "task_complete", { response: "done with evidence" });
+      const expected = deliveryFails ? "waiting_on_user" : "active";
+      await until(
+        async () =>
+          (await store.getTask(taskId))?.events.some(
+            (event) => event.eventType === "auto_verify_inconclusive",
+          ) === true && (await store.getTask(taskId))?.task.status === expected,
+      );
+      const doc = await store.getTask(taskId);
+      expect(doc?.task.status).toBe(expected);
+      expect(doc?.task.metadata.autoVerifyAttempts).toBe(2);
+      expect(doc?.task.metadata.completionResiduals).toMatchObject({
+        status: "unverifiable",
+        unverifiableKind: "git_failed",
+      });
+      expect(
+        doc?.events.some(
+          (event) => event.eventType === "auto_verify_inconclusive",
+        ),
+      ).toBe(true);
+      expect(
+        doc?.events.some((event) => event.eventType === "validation_passed"),
+      ).toBe(false);
+      expect(fake.service.sendToSession).toHaveBeenCalledTimes(1);
+      expect(useModel).not.toHaveBeenCalled();
+      writeFileSync(indexPath, index);
+      if (!deliveryFails) {
+        fake.emit(sessionId, "task_complete", {
+          response: "done with the same evidence",
+        });
+        await until(
+          async () => (await store.getTask(taskId))?.task.status === "done",
+        );
+        const recovered = await store.getTask(taskId);
+        expect(recovered?.task.metadata.autoVerifyAttempts).toBe(2);
+        expect(recovered?.task.metadata.completionResiduals).toMatchObject({
+          status: "clean",
+        });
+      }
+    },
+  );
 
   it("self-reported residual risks do NOT block promotion; they land on the snapshot and the validation evidence (F2)", async () => {
     const fake = makeFakeAcp();

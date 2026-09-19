@@ -41,7 +41,11 @@ function normalizedScalar(
 ): JsonValue {
 	const normalized =
 		typeof value === "string" ? normalizeTrajectoryString(value) : value;
-	reserveBytes(state, jsonByteLength(normalized));
+	// The default budget is unlimited; avoid encoding strings only to subtract
+	// their size from Infinity. Preserve accounting for caller-supplied budgets.
+	if (state.remainingBytes !== Number.POSITIVE_INFINITY) {
+		reserveBytes(state, jsonByteLength(normalized));
+	}
 	return normalized;
 }
 
@@ -51,6 +55,7 @@ function reserveContainer(state: SanitizationState): JsonValue | undefined {
 }
 
 function reserveObjectKey(state: SanitizationState, key: string): boolean {
+	if (state.remainingBytes === Number.POSITIVE_INFINITY) return true;
 	return reserveBytes(
 		state,
 		utf8Encoder.encode(JSON.stringify(key)).byteLength + 2,

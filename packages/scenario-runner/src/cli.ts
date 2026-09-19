@@ -830,6 +830,15 @@ export async function runCli(
         `[eliza-scenarios] ${report.status === "passed" ? "✓" : report.status === "skipped" ? "∼" : "✗"} ${scenario.id} ${report.status} (${report.durationMs}ms)${report.skipReason ? ` — ${report.skipReason}` : ""}`,
       );
       writeCheckpoint();
+      // A failed lifecycle boundary leaves work owned by this scenario. Do not
+      // replace its fixture registry with another scenario while that work lives.
+      if (
+        report.failedAssertions.some(
+          ({ label }) =>
+            label === "postDeliveryTasks" || label === "runtimeIsolation",
+        )
+      )
+        break;
     }
   } finally {
     process.off("SIGINT", onInterrupt);

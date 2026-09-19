@@ -412,6 +412,8 @@ export interface BrowserWorkspaceCommandResult {
   targetId?: string;
   mode: BrowserWorkspaceMode;
   subaction: BrowserWorkspaceSubaction;
+  /** False when navigation only updates tab metadata without reading the page. */
+  pageContentObserved?: boolean;
   tab?: BrowserWorkspaceTab;
   tabs?: BrowserWorkspaceTab[];
   closed?: boolean;

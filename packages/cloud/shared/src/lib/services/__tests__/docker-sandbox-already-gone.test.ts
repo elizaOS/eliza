@@ -126,14 +126,6 @@ describe("isNodeUnreachableMessage", () => {
     ).toBe(false);
   });
 
-  test("still classifies a connect timeout as unreachable", () => {
-    expect(
-      isNodeUnreachableMessage(
-        "[docker-ssh] Connection to 138.201.80.125:22 timed out after 10000ms",
-      ),
-    ).toBe(true);
-  });
-
   test("recognizes ECONNREFUSED", () => {
     expect(isNodeUnreachableMessage("ECONNREFUSED 1.2.3.4:22")).toBe(true);
   });

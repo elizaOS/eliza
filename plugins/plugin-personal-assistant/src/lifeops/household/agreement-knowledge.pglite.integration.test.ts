@@ -1,7 +1,8 @@
 /**
  * Real-PGlite behavioral coverage for immutable agreement knowledge. The
  * runtime uses the production graph, household authorization, migrations, and
- * content-addressed file service, with deterministic PDF extraction and provider fixtures.
+ * content-addressed file service. PDF extraction is a deterministic boundary
+ * fixture, including explicit transcription failures; this is not live OCR proof.
  */
 
 import crypto from "node:crypto";
@@ -11,6 +12,8 @@ import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { resolveKnowledgeGraphService } from "@elizaos/agent";
+import { createLocalAgentBackup } from "@elizaos/agent/services/agent-backup";
+import { withAgentBackupAuthority } from "@elizaos/agent/services/agent-backup-authority";
 import { AuthStore } from "@elizaos/app-core/services/auth-store";
 import {
   type AgentRuntime,
@@ -18,9 +21,11 @@ import {
   ChannelType,
   DocumentService,
   documentsPluginCore,
+  ElizaError,
   type IAgentRuntime,
   type IFileStorageService,
   type Memory,
+  ModelType,
   type Plugin,
   Service,
   ServiceType,
@@ -32,8 +37,10 @@ import {
   registerScheduledTaskChannelDispatcher,
 } from "@elizaos/plugin-scheduling";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { collectReferencedMedia } from "../../../../../packages/agent/src/api/media-runtime.ts";
+import { gcUnreferencedMedia } from "../../../../../packages/agent/src/api/media-store.ts";
 import { tryHandleRuntimePluginRoute } from "../../../../../packages/agent/src/api/runtime-plugin-routes.ts";
 import { LocalFileStorageService } from "../../../../../packages/agent/src/services/file-storage.js";
 import {
@@ -41,17 +48,33 @@ import {
   createMachineSession,
 } from "../../../../../packages/app-core/src/api/auth/sessions.ts";
 import { composeResponseState } from "../../../../../packages/core/src/services/message/provider-state.js";
+import { TrajectoriesService } from "../../../../../packages/core/src/services/trajectories.ts";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.js";
+import { agreementPinsProvider } from "../../providers/agreement-pins.js";
 import { bindMachineAuthIdentityToEntity } from "../../routes/authenticated-entity-principal.js";
 import { CalendarCardAccessStore } from "../calendar-card.js";
+import { importFamilyCorrespondence } from "../family-coordination/intake-import.js";
+import { FamilyIntakeReviewStore } from "../family-coordination/intake-review.js";
 import { MonthlyFamilyPacketService } from "../family-coordination/monthly-packet.js";
+import {
+  ensureFamilyBackupCleanupSchedule,
+  FAMILY_BACKUP_CLEANUP_OPERATION,
+} from "../family-workflows/backup-cleanup-schedule.js";
 import {
   previewFamilyDeletionDatabase,
   withReviewedFamilyDeletionDatabase,
 } from "../family-workflows/deletion-database-snapshot.js";
+import {
+  admitFamilyBackupCleanup,
+  beginFamilyWorkspaceDeletion,
+  previewFamilyBackupCleanup,
+  purgeFamilyBackupCleanup,
+  purgeFamilyWorkspaceFiles,
+  readFamilyDeletionJob,
+} from "../family-workflows/workspace-deletion.js";
 import { exportFamilyWorkspace } from "../family-workflows/workspace-export.js";
 import {
   beginFamilyWorkspaceOperation,
@@ -59,7 +82,10 @@ import {
   fenceFamilyWorkspace,
   settleFamilyWorkspaceOperation,
 } from "../family-workflows/workspace-operation-store.js";
-import { SchoolCalendarWorkflow } from "../school/calendar-workflow.js";
+import {
+  CONCORD_SCHOOL_CALENDAR_SOURCE,
+  SchoolCalendarWorkflow,
+} from "../school/calendar-workflow.js";
 import { executeRawSql, executeRawSqlTx, sqlQuote } from "../sql.js";
 import {
   previewAgreementDeletion,
@@ -106,7 +132,10 @@ class AgreementTestPdfService extends Service {
 
   async stop(): Promise<void> {}
 
+  transcriptionFailure: Error | null = null;
+
   async extractCompleteDocument(bytes: Buffer | Uint8Array) {
+    if (this.transcriptionFailure) throw this.transcriptionFailure;
     const text = Buffer.from(bytes).toString("utf8");
     return {
       complete: true as const,
@@ -162,6 +191,19 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   let artifact: ParentingAgreementArtifact;
   let guestHouseholdGrantId: string;
   let mediaStateDir: string;
+  const familyRoomId = crypto.randomUUID() as UUID;
+
+  async function createPinRoom(id: UUID): Promise<void> {
+    await runtime.createRoom({
+      id,
+      agentId: runtime.agentId,
+      name: "Family planning",
+      source: "test",
+      type: ChannelType.GROUP,
+      worldId: runtime.agentId,
+    });
+    await runtime.addParticipant(runtime.agentId, id);
+  }
   let syntheticSchedulerDispatches = 0;
 
   beforeAll(async () => {
@@ -173,6 +215,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       plugins: [fileStoragePlugin, documentsPluginCore],
     });
     runtime = runtimeResult.runtime;
+    await createPinRoom(familyRoomId);
     runtime.services.set(ServiceType.PDF, [
       new AgreementTestPdfService(runtime),
     ]);
@@ -425,7 +468,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     await service.pin({
       artifactId: artifact.id,
       targetType: "chat",
-      targetId: "family-chat",
+      targetId: familyRoomId,
       pinnedByEntityId: SELF_ENTITY_ID,
     });
     await expect(
@@ -442,7 +485,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
 
     const pinned = await service.activePinnedContext({
       ownerEntityId: SELF_ENTITY_ID,
-      roomId: "family-chat",
+      roomId: familyRoomId,
     });
     expect(pinned).toHaveLength(1);
     expect(pinned[0]?.obligations).toHaveLength(1);
@@ -562,7 +605,8 @@ describe("parenting-agreement knowledge — real PGlite", () => {
 
   it("persists pin provenance atomically and rolls back when the audit ledger rejects it", async () => {
     const service = createAgreementKnowledgeService(runtime);
-    const targetId = crypto.randomUUID();
+    const targetId = crypto.randomUUID() as UUID;
+    await createPinRoom(targetId);
     const pin = await service.pin({
       artifactId: artifact.id,
       targetType: "chat",
@@ -607,7 +651,8 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       WHEN (NEW.event_type = 'agreement_pinned')
       EXECUTE FUNCTION app_lifeops.reject_agreement_audit_test()`,
     );
-    const rejectedTarget = crypto.randomUUID();
+    const rejectedTarget = crypto.randomUUID() as UUID;
+    await createPinRoom(rejectedTarget);
     try {
       await expect(
         service.pin({
@@ -718,6 +763,121 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     });
   });
 
+  it("exports selected correspondence and its review history, excluding other tenants and rejecting changed or deleted originals", async () => {
+    const documents = runtime.getService<DocumentService>(
+      DocumentService.serviceType,
+    );
+    if (!documents) throw new Error("Canonical documents are unavailable");
+    const text =
+      "Synthetic correspondence: Please confirm the library pickup.\nNo agreement has been reached.";
+    const selected = await importFamilyCorrespondence(runtime, {
+      id: crypto.randomUUID(),
+      periodKey: "2026-12",
+      title: "Synthetic export source",
+      text,
+    });
+    const foreignId = crypto.randomUUID();
+    const store = new FamilyIntakeReviewStore(runtime);
+    const access = {
+      requesterEntityId: selected.selectedByEntityId,
+      role: "OWNER" as const,
+      isOwner: true,
+    };
+    try {
+      const fact = {
+        id: crypto.randomUUID(),
+        section: "unanswered" as const,
+        statement: "Library pickup remains unconfirmed.",
+        sourceQuote: "Please confirm the library pickup.",
+        dates: [],
+        requests: ["Confirm pickup"],
+        commitments: [],
+        accountability: [],
+        urgency: null,
+        unanswered: true,
+        recipientEntityIds: [],
+      };
+      const proposed = await store.propose({
+        id: selected.id,
+        expectedRevision: selected.revision,
+        sourceSha256: selected.source.contentSha256,
+        facts: [fact],
+      });
+      const reviewed = await store.review({
+        id: selected.id,
+        expectedRevision: proposed.revision,
+        reviewerEntityId: selected.selectedByEntityId,
+        facts: [
+          {
+            ...fact,
+            statement: "Owner reviewed: pickup is still unconfirmed.",
+          },
+        ],
+      });
+      await executeRawSql(
+        runtime,
+        `INSERT INTO app_lifeops.life_family_intake_reviews
+        (agent_id,id,period_key,document_id,revision,status,review_json)
+        SELECT ${sqlQuote(crypto.randomUUID())},${sqlQuote(foreignId)},period_key,document_id,revision,status,review_json
+        FROM app_lifeops.life_family_intake_reviews
+        WHERE agent_id=${sqlQuote(runtime.agentId)} AND id=${sqlQuote(selected.id)}`,
+      );
+      const files = readStoredZip(
+        (await exportFamilyWorkspace(runtime, SELF_ENTITY_ID)).bytes,
+      );
+      const manifestBytes = files.get("manifest.json");
+      if (!manifestBytes) throw new Error("Workspace manifest is missing");
+      const manifest = JSON.parse(manifestBytes.toString("utf8"));
+      expect(manifest.records.intakeReviews).toEqual(
+        expect.arrayContaining(
+          [selected, proposed, reviewed].map((review) =>
+            expect.objectContaining({
+              id: selected.id,
+              revision: review.revision,
+              review_json: review,
+            }),
+          ),
+        ),
+      );
+      expect(
+        manifest.records.intakeReviews.some(
+          (row: { id: string }) => row.id === foreignId,
+        ),
+      ).toBe(false);
+      const sources = manifest.intakeSources.filter(
+        (source: { documentId: string }) =>
+          source.documentId === selected.source.documentId,
+      );
+      expect(sources).toHaveLength(1);
+      const original = files.get(sources[0].path);
+      if (!original) throw new Error("Selected correspondence is missing");
+      expect(original.toString("utf8")).toBe(text);
+      expect(crypto.createHash("sha256").update(original).digest("hex")).toBe(
+        selected.source.contentSha256,
+      );
+      await documents.updateDocument({
+        documentId: selected.source.documentId as UUID,
+        content: "Changed correspondence",
+        accessContext: access,
+      });
+      await expect(
+        exportFamilyWorkspace(runtime, SELF_ENTITY_ID),
+      ).rejects.toMatchObject({ code: "FAMILY_EXPORT_SOURCE_INTEGRITY" });
+      await documents.deleteDocumentWithAccessContext(
+        selected.source.documentId as UUID,
+        access,
+      );
+      await expect(
+        exportFamilyWorkspace(runtime, SELF_ENTITY_ID),
+      ).rejects.toMatchObject({ code: "FAMILY_EXPORT_SOURCE_UNAVAILABLE" });
+    } finally {
+      await executeRawSql(
+        runtime,
+        `DELETE FROM app_lifeops.life_family_intake_reviews WHERE id IN (${sqlQuote(selected.id)},${sqlQuote(foreignId)})`,
+      );
+    }
+  });
+
   it("exports retained school bytes without executor leases or another agent's records and fails on missing source bytes", async () => {
     await new SchoolCalendarWorkflow(runtime).ensureSchema();
     const storage = runtime.getService<IFileStorageService>(
@@ -740,6 +900,37 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         `INSERT INTO app_lifeops.life_school_calendar_runs (agent_id,run_id,source_id,state,trigger_kind,content_sha256,media_url,apply_lease_token,created_at,updated_at) VALUES (${sqlQuote(agentId)},${sqlQuote(runId)},${sqlQuote(sourceId)},'unchanged','manual',${sqlQuote(stored.hash)},${sqlQuote(stored.url)},'internal-executor-lease-canary',${sqlQuote(at)},${sqlQuote(at)})`,
       );
     }
+    await new SchoolCalendarWorkflow(runtime).retainRecordedSources();
+    await new SchoolCalendarWorkflow(runtime).retainRecordedSources();
+    const references = (await runtime.getAllMemories()).filter(
+      (memory) => memory.metadata?.mediaUrl === stored.url,
+    );
+    expect(references).toHaveLength(1);
+    const orphan = await storage.store(
+      pdf("Unreferenced source control"),
+      "application/pdf",
+    );
+    const stateDirectory = process.env.ELIZA_STATE_DIR;
+    if (!stateDirectory) throw new Error("Test state directory is unavailable");
+    const sourcePath = path.join(stateDirectory, "media", stored.fileName);
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    fs.utimesSync(sourcePath, old, old);
+    fs.utimesSync(
+      path.join(stateDirectory, "media", orphan.fileName),
+      old,
+      old,
+    );
+    try {
+      gcUnreferencedMedia(
+        collectReferencedMedia(await runtime.getAllMemories(), runtime),
+      );
+      expect(await storage.read(stored.fileName)).toEqual(bytes);
+      expect(await storage.read(orphan.fileName)).toBeNull();
+    } finally {
+      // Restore the fixture even when the retention regression fails, so later
+      // export tests do not inherit a missing source from this diagnostic.
+      await storage.store(bytes, "application/pdf");
+    }
     const exported = readStoredZip(
       (await exportFamilyWorkspace(runtime, SELF_ENTITY_ID)).bytes,
     );
@@ -761,6 +952,9 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     try {
       await storage.delete(stored.url.replace("/api/media/", ""));
       await expect(
+        new SchoolCalendarWorkflow(runtime).retainRecordedSources(),
+      ).rejects.toMatchObject({ code: "SCHOOL_CALENDAR_SOURCE_INTEGRITY" });
+      await expect(
         exportFamilyWorkspace(runtime, SELF_ENTITY_ID),
       ).rejects.toMatchObject({ code: "FAMILY_EXPORT_SOURCE_INTEGRITY" });
       expect(await auditCount()).toEqual(before);
@@ -769,6 +963,54 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         runtime,
         `UPDATE app_lifeops.life_school_calendar_runs SET apply_lease_token = NULL WHERE run_id = ${sqlQuote(runId)}`,
       );
+      await storage.store(bytes, "application/pdf");
+    }
+  });
+
+  it("retains a newly retrieved school PDF through the real source workflow and garbage collector", async () => {
+    const bytes = pdf("Newly retrieved synthetic school calendar");
+    const workflow = new SchoolCalendarWorkflow(runtime, {
+      lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+      pinnedFetchImpl: async ({ url }) =>
+        url.pathname.endsWith(".pdf")
+          ? new Response(new Uint8Array(bytes), {
+              headers: { "content-type": "application/pdf" },
+            })
+          : new Response(
+              '<a href="https://resources.finalsite.net/CPSCCRSD2026-2027SchoolCalendar.pdf">Calendar</a>',
+              {
+                headers: { "content-type": "text/html" },
+              },
+            ),
+      extractPdfText: async () => "2026-09-01 | First day of school",
+    });
+    const result = await workflow.run({
+      ...CONCORD_SCHOOL_CALENDAR_SOURCE,
+      sourceId: "new-source-retention",
+    });
+    if (result.state !== "awaiting_approval")
+      throw new Error("Expected a source plan");
+    const stateDirectory = process.env.ELIZA_STATE_DIR;
+    if (!stateDirectory) throw new Error("Test state directory is unavailable");
+    const fileName = `${result.plan.contentSha256}.pdf`;
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    fs.utimesSync(path.join(stateDirectory, "media", fileName), old, old);
+    const storage = runtime.getService<IFileStorageService>(
+      ServiceType.REMOTE_FILES,
+    );
+    if (!storage) throw new Error("Canonical file storage is unavailable");
+    try {
+      gcUnreferencedMedia(
+        collectReferencedMedia(await runtime.getAllMemories(), runtime),
+      );
+      const exported = readStoredZip(
+        (await exportFamilyWorkspace(runtime, SELF_ENTITY_ID)).bytes,
+      );
+      expect(exported.get(`school/${fileName}`)).toEqual(bytes);
+      expect(
+        (await workflow.status("new-source-retention")).lastRun?.state,
+      ).toBe("awaiting_approval");
+    } finally {
       await storage.store(bytes, "application/pdf");
     }
   });
@@ -981,7 +1223,8 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       runtime,
       runtime.agentId,
     );
-    const targetId = crypto.randomUUID();
+    const targetId = crypto.randomUUID() as UUID;
+    await createPinRoom(targetId);
     const mutate = async () => {
       for (let iteration = 0; iteration < 8; iteration += 1) {
         const pin = await service.pin({
@@ -1031,13 +1274,13 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     await service.pin({
       artifactId: artifact.id,
       targetType: "chat",
-      targetId: "family-chat",
+      targetId: familyRoomId,
       pinnedByEntityId: SELF_ENTITY_ID,
     });
     await expect(
       service.activePinnedContextForPrincipal({
         principalEntityId: "verified-co-parent",
-        roomId: "family-chat",
+        roomId: familyRoomId,
       }),
     ).resolves.toEqual([]);
     const unverifiedGrant = await household.issueGrant({
@@ -1125,7 +1368,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     }
     const guestPinned = await service.activePinnedContextForPrincipal({
       principalEntityId: "verified-co-parent",
-      roomId: "family-chat",
+      roomId: familyRoomId,
     });
     expect(guestPinned).toEqual([guestView]);
 
@@ -1151,7 +1394,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     await expect(
       restartedService.activePinnedContextForPrincipal({
         principalEntityId: "verified-co-parent",
-        roomId: "family-chat",
+        roomId: familyRoomId,
       }),
     ).resolves.toEqual([]);
     const exported = await restartedService.exportOwnerAgreement({
@@ -1342,11 +1585,24 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       expect(payload.agreement.obligations[0]).not.toHaveProperty(
         "decisionReason",
       );
+      const ownerOptions = await fetch(`${base}/guest-options`);
+      expect(ownerOptions.status, await ownerOptions.clone().text()).toBe(200);
+      expect(ownerOptions.headers.get("cache-control")).toContain("no-store");
+      expect((await ownerOptions.json()).grants).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            grantId: grant.id,
+            principalEntityId: "verified-co-parent",
+            canRead: true,
+          }),
+        ]),
+      );
       for (const [suffix, method] of [
         ["", "GET"],
         ["/download", "GET"],
         ["/export", "POST"],
         ["/guest-projection?principalEntityId=self", "GET"],
+        ["/guest-options", "GET"],
       ]) {
         expect(
           (await fetch(`${base}${suffix}`, { method, headers })).status,
@@ -1393,6 +1649,612 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       }),
     ).rejects.toMatchObject({ code: "AGREEMENT_INVALID_CONTRACT" });
   });
+  it("keeps a transcription outage out of persisted agreements and retries the same bytes", async () => {
+    const previous = runtime.services.get(ServiceType.PDF);
+    if (!previous) throw new Error("PDF test service is unavailable");
+    const transcription = new AgreementTestPdfService(runtime);
+    const failure = new ElizaError("Transcription dependency failed", {
+      code: "PDF_PAGE_TRANSCRIPTION_UNAVAILABLE",
+      context: { pageNumber: 2, pageCount: 2 },
+      cause: new Error("upstream unavailable"),
+    });
+    transcription.transcriptionFailure = failure;
+    runtime.services.set(ServiceType.PDF, [transcription]);
+    try {
+      const service = createAgreementKnowledgeService(runtime);
+      const before = await service.listOwnerAgreements({
+        ownerEntityId: SELF_ENTITY_ID,
+      });
+      const input = {
+        agreementKey: "transcription-retry",
+        title: "Synthetic retry agreement",
+        originalFilename: "retry.pdf",
+        mimeType: "application/pdf",
+        bytes: pdf("distinct retry fixture"),
+        uploadedByEntityId: SELF_ENTITY_ID,
+      };
+      await expect(service.createAgreementVersion(input)).rejects.toMatchObject(
+        {
+          code: "AGREEMENT_EXTRACTION_UNAVAILABLE",
+          context: { pageNumber: 2, pageCount: 2 },
+          cause: failure,
+        },
+      );
+      expect(runtime.getRecentReportedErrors()).toContainEqual(
+        expect.objectContaining({
+          scope: "AgreementKnowledge.extractCompleteDocument",
+          code: "PDF_PAGE_TRANSCRIPTION_UNAVAILABLE",
+          context: { pageNumber: 2, pageCount: 2 },
+        }),
+      );
+      expect(
+        await service.listOwnerAgreements({ ownerEntityId: SELF_ENTITY_ID }),
+      ).toEqual(before);
+      transcription.transcriptionFailure = null;
+      const saved = await service.createAgreementVersion(input);
+      expect(
+        (
+          await service.readOwnerPdf({
+            artifactId: saved.id,
+            ownerEntityId: SELF_ENTITY_ID,
+          })
+        ).bytes,
+      ).toEqual(input.bytes);
+      await expect(service.createAgreementVersion(input)).rejects.toMatchObject(
+        { code: "AGREEMENT_DUPLICATE_CONTENT" },
+      );
+      expect(
+        await service.listOwnerAgreements({ ownerEntityId: SELF_ENTITY_ID }),
+      ).toHaveLength(before.length + 1);
+    } finally {
+      runtime.services.set(ServiceType.PDF, previous);
+    }
+  });
+  it("lists only verified scoped permissions and retains unavailable bindings for owner revocation", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const source = await service.createAgreementVersion({
+      agreementKey: "guest-choice-contract",
+      title: "Guest choice contract",
+      originalFilename: "guest-choices.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf("guest choice filtering"),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    const input = {
+      principalEntityId: "verified-co-parent",
+      role: "co_parent" as const,
+      subjectEntityIds: ["child-one"],
+      issuedByEntityId: SELF_ENTITY_ID,
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    };
+    const active = await household.issueGrant({
+      ...input,
+      scopes: ["knowledge.read"],
+    });
+    const calendar = await household.issueGrant({
+      ...input,
+      scopes: ["calendar.freebusy"],
+    });
+    const expired = await household.issueGrant({
+      ...input,
+      scopes: ["knowledge.read"],
+    });
+    await executeRawSql(
+      runtime,
+      `UPDATE app_lifeops.life_household_access_grants SET expires_at = '2000-01-01T00:00:00.000Z' WHERE agent_id = ${sqlQuote(runtime.agentId)} AND id = ${sqlQuote(expired.id)}`,
+    );
+    const unverified = await household.issueGrant({
+      ...input,
+      principalEntityId: "unverified-guest",
+      role: "caregiver",
+      scopes: ["knowledge.read"],
+    });
+    const otherHousehold = `other-choices-${crypto.randomUUID()}`;
+    await household.bindRole({
+      householdId: otherHousehold,
+      entityId: input.principalEntityId,
+      role: input.role,
+      subjectEntityIds: input.subjectEntityIds,
+      evidence: "Separate synthetic household",
+      boundByEntityId: SELF_ENTITY_ID,
+    });
+    const other = await household.issueGrant({
+      ...input,
+      householdId: otherHousehold,
+      scopes: ["knowledge.read"],
+    });
+    const options = await service.listGuestAccessOptions({
+      artifactId: source.id,
+      ownerEntityId: SELF_ENTITY_ID,
+    });
+    expect(options.candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          householdGrantId: active.id,
+          principalEntityId: input.principalEntityId,
+          displayName: "Verified Co-parent",
+        }),
+      ]),
+    );
+    const ids = options.candidates.map((item) => item.householdGrantId);
+    for (const excluded of [calendar, expired, unverified, other])
+      expect(ids).not.toContain(excluded.id);
+    const binding = await service.grantGuestRead({
+      artifactId: source.id,
+      principalEntityId: input.principalEntityId,
+      householdGrantId: active.id,
+      issuedByEntityId: SELF_ENTITY_ID,
+    });
+    await household.revokeGrant({
+      grantId: active.id,
+      revokedByEntityId: SELF_ENTITY_ID,
+      reason: "Permission removed after selection",
+    });
+    const after = await service.listGuestAccessOptions({
+      artifactId: source.id,
+      ownerEntityId: SELF_ENTITY_ID,
+    });
+    expect(after.candidates.map((item) => item.householdGrantId)).not.toContain(
+      active.id,
+    );
+    expect(after.grants).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ grantId: binding.id, canRead: false }),
+      ]),
+    );
+    await expect(
+      service.grantGuestRead({
+        artifactId: source.id,
+        principalEntityId: input.principalEntityId,
+        householdGrantId: active.id,
+        issuedByEntityId: SELF_ENTITY_ID,
+      }),
+    ).rejects.toMatchObject({ code: "HOUSEHOLD_GRANT_REVOKED" });
+    await service.revokeGuestRead({
+      grantId: binding.id,
+      revokedByEntityId: SELF_ENTITY_ID,
+      reason: "Remove unavailable resource binding",
+    });
+    expect(
+      (
+        await service.listGuestAccessOptions({
+          artifactId: source.id,
+          ownerEntityId: SELF_ENTITY_ID,
+        })
+      ).grants,
+    ).toEqual([]);
+    await expect(
+      service.listGuestAccessOptions({
+        artifactId: source.id,
+        ownerEntityId: input.principalEntityId,
+      }),
+    ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
+  });
+
+  it("rejects a previously listed conversation after the agent leaves it", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const roomId = crypto.randomUUID() as UUID;
+    await createPinRoom(roomId);
+    expect(
+      (await service.listPinTargets(SELF_ENTITY_ID)).chats.some(
+        (chat) => chat.id === roomId,
+      ),
+    ).toBe(true);
+    const source = await service.createAgreementVersion({
+      agreementKey: "stale-pin-destination",
+      title: "Stale pin destination",
+      originalFilename: "stale-pin.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf("stale pin destination"),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    await runtime.removeParticipant(runtime.agentId, roomId);
+    await expect(
+      service.pin({
+        artifactId: source.id,
+        targetType: "chat",
+        targetId: roomId,
+        pinnedByEntityId: SELF_ENTITY_ID,
+      }),
+    ).rejects.toMatchObject({ code: "AGREEMENT_INVALID_CONTRACT" });
+    await expect(
+      service.listPins({
+        artifactId: source.id,
+        ownerEntityId: SELF_ENTITY_ID,
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it.each(["agent", "chat"] as const)(
+    "rejects a nonexistent %s pin target without saving a phantom pin",
+    async (targetType) => {
+      const service = createAgreementKnowledgeService(runtime);
+      const source = await service.createAgreementVersion({
+        agreementKey: `pin-target-${targetType}`,
+        title: "Pin target validation",
+        originalFilename: "pin-target.pdf",
+        mimeType: "application/pdf",
+        bytes: pdf(`pin target validation ${targetType}`),
+        uploadedByEntityId: SELF_ENTITY_ID,
+      });
+      await expect(
+        service.pin({
+          artifactId: source.id,
+          targetType,
+          targetId: crypto.randomUUID(),
+          pinnedByEntityId: SELF_ENTITY_ID,
+        }),
+      ).rejects.toMatchObject({ code: "AGREEMENT_INVALID_CONTRACT" });
+      await expect(
+        service.listPins({
+          artifactId: source.id,
+          ownerEntityId: SELF_ENTITY_ID,
+        }),
+      ).resolves.toEqual([]);
+    },
+  );
+  it("validates owner corrections, commits concurrent retries once, and preserves a decision across restart", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const citation = "Share school notices within 24 hours.";
+    const source = await service.createAgreementVersion({
+      agreementKey: "owner-review-correction",
+      title: "Owner correction",
+      originalFilename: "owner-review.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf(citation),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    const input = {
+      artifactId: source.id,
+      ownerEntityId: SELF_ENTITY_ID,
+      proposal: {
+        title: "School notices",
+        obligationText: citation,
+        citationText: citation,
+        pageStart: 1,
+        pageEnd: 1,
+      },
+    };
+    await expect(
+      service.addOwnerReviewProposal({
+        ...input,
+        ownerEntityId: "verified-co-parent",
+      }),
+    ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
+    await expect(
+      service.addOwnerReviewProposal({
+        ...input,
+        proposal: { ...input.proposal, citationText: "Silence is consent." },
+      }),
+    ).rejects.toMatchObject({ code: "AGREEMENT_REVIEW_CITATION_INVALID" });
+    await expect(
+      service.readFor({
+        artifactId: source.id,
+        principalEntityId: SELF_ENTITY_ID,
+      }),
+    ).resolves.toMatchObject({ obligations: [] });
+    const second = createAgreementKnowledgeService(runtime);
+    const receipts = await Promise.all([
+      service.addOwnerReviewProposal(input),
+      second.addOwnerReviewProposal(input),
+    ]);
+    expect(receipts.filter((receipt) => receipt.created)).toHaveLength(1);
+    expect(receipts[0]?.obligation.id).toBe(receipts[1]?.obligation.id);
+    const obligation = receipts[0]?.obligation;
+    if (!obligation) throw new Error("Expected saved owner proposal");
+    expect(obligation.status).toBe("proposed");
+    await expect(
+      service.listPins({
+        artifactId: source.id,
+        ownerEntityId: SELF_ENTITY_ID,
+      }),
+    ).resolves.toEqual([]);
+    await service.decideObligation({
+      obligationId: obligation.id,
+      decision: "approve",
+      decidedByEntityId: SELF_ENTITY_ID,
+      reason: "Checked the original quote",
+    });
+    const restarted = createAgreementKnowledgeService(runtime);
+    await expect(
+      restarted.addOwnerReviewProposal(input),
+    ).resolves.toMatchObject({
+      created: false,
+      obligation: {
+        id: obligation.id,
+        status: "approved",
+        decisionReason: "Checked the original quote",
+      },
+    });
+    const readback = await restarted.readFor({
+      artifactId: source.id,
+      principalEntityId: SELF_ENTITY_ID,
+    });
+    expect(readback.obligations).toHaveLength(1);
+    expect(readback.obligations[0]?.status).toBe("approved");
+    await expect(
+      restarted.readOwnerReview({
+        artifactId: source.id,
+        ownerEntityId: SELF_ENTITY_ID,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("prepares cited proposals once, preserves owner decisions across restart, and never activates them implicitly", async () => {
+    runtime.setSetting("ELIZA_TRAJECTORY_LOGGING", "1");
+    if (!runtime.getService("trajectories"))
+      await runtime.registerService(TrajectoriesService);
+    await runtime.getServiceLoadPromise("trajectories");
+    const trajectories =
+      runtime.getService<TrajectoriesService>("trajectories");
+    if (!trajectories) throw new Error("Trajectory service unavailable");
+    expect(trajectories.isEnabled()).toBe(true);
+    const service = createAgreementKnowledgeService(runtime);
+    const citation = "Each parent must share school notices within 24 hours.";
+    const source = await service.createAgreementVersion({
+      agreementKey: "review-generation-retry",
+      title: "Review generation",
+      originalFilename: "review.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf(citation),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    let calls = 0;
+    let modelPrompt = "";
+    let modelOutput = "";
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async (_runtime, params) => {
+        calls += 1;
+        expect(typeof params.prompt).toBe("string");
+        expect(params.prompt).toContain(citation);
+        expect(params.prompt).toContain('"pageNumber":12');
+        modelPrompt = String(params.prompt);
+        modelOutput = JSON.stringify({
+          complete: true,
+          reviewedPages: Array.from({ length: 12 }, (_, index) => index + 1),
+          explanation:
+            "School notice requirement identified in the synthetic source.",
+          proposals: [
+            {
+              title: "Share school notices",
+              obligationText: citation,
+              pageStart: 1,
+              pageEnd: 1,
+              citationText: citation,
+            },
+          ],
+        });
+        return modelOutput;
+      },
+      "agreement-review-test",
+      100001,
+    );
+    const input = { artifactId: source.id, ownerEntityId: SELF_ENTITY_ID };
+    await expect(service.readOwnerReview(input)).resolves.toBeNull();
+    await expect(
+      service.prepareOwnerReview({
+        ...input,
+        ownerEntityId: "verified-co-parent",
+      }),
+    ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
+    expect(calls).toBe(0);
+    const [first, concurrent] = await Promise.all([
+      service.prepareOwnerReview(input),
+      service.prepareOwnerReview(input),
+    ]);
+    expect(concurrent).toEqual(first);
+    expect(calls).toBe(1);
+    expect(first.obligations).toHaveLength(1);
+    expect(first.obligations[0]?.status).toBe("proposed");
+    const recorded = (
+      await trajectories.listTrajectories({
+        source: "lifeops.agreement-review",
+      })
+    ).trajectories.filter((row) => row.metadata.artifactId === source.id);
+    expect(recorded).toHaveLength(1);
+    const entry = recorded[0];
+    if (!entry)
+      throw new Error("Owner review has no recorded model trajectory");
+    const detail = await trajectories.getTrajectoryDetail(entry.id);
+    if (!detail) throw new Error("Owner review trajectory cannot be read");
+    expect(entry.status).toBe("completed");
+    const modelCalls = detail.steps.flatMap((step) => step.llmCalls);
+    expect(modelCalls).toHaveLength(1);
+    expect(modelCalls[0]?.userPrompt).toBe(modelPrompt);
+    expect(modelCalls[0]?.response).toBe(modelOutput);
+
+    await expect(service.listPins(input)).resolves.toEqual([]);
+    const obligation = first.obligations[0];
+    if (!obligation) throw new Error("Expected persisted proposal");
+    await service.decideObligation({
+      obligationId: obligation.id,
+      decision: "reject",
+      decidedByEntityId: SELF_ENTITY_ID,
+      reason: "Owner rejected this synthetic proposal",
+    });
+    const restarted = createAgreementKnowledgeService(runtime);
+    const replay = await restarted.prepareOwnerReview(input);
+    expect(calls).toBe(1);
+    expect(
+      (
+        await trajectories.listTrajectories({
+          source: "lifeops.agreement-review",
+        })
+      ).trajectories.filter((row) => row.metadata.artifactId === source.id),
+    ).toHaveLength(1);
+    expect(
+      replay.obligations.map((item) => ({ id: item.id, status: item.status })),
+    ).toEqual([{ id: obligation.id, status: "rejected" }]);
+    expect(
+      (
+        await restarted.readFor({
+          artifactId: source.id,
+          principalEntityId: SELF_ENTITY_ID,
+        })
+      ).obligations,
+    ).toHaveLength(1);
+  });
+
+  it("rejects a fabricated model citation without committing a partial review and allows a valid retry", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const source = await service.createAgreementVersion({
+      agreementKey: "review-invalid-citation",
+      title: "Citation rejection",
+      originalFilename: "citation.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf("A travel request remains unresolved until answered."),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () =>
+        JSON.stringify({
+          complete: true,
+          reviewedPages: Array.from({ length: 12 }, (_, index) => index + 1),
+          explanation: "Invalid output fixture",
+          proposals: [
+            {
+              title: "Await travel response",
+              obligationText:
+                "A travel request remains unresolved until answered.",
+              pageStart: 1,
+              pageEnd: 1,
+              citationText:
+                "A travel request remains unresolved until answered.",
+            },
+            {
+              title: "Travel",
+              obligationText: "Silence is consent",
+              pageStart: 1,
+              pageEnd: 1,
+              citationText: "Silence is consent",
+            },
+          ],
+        }),
+      "agreement-review-test",
+      100002,
+    );
+    const input = { artifactId: source.id, ownerEntityId: SELF_ENTITY_ID };
+    await expect(service.prepareOwnerReview(input)).rejects.toMatchObject({
+      code: "AGREEMENT_REVIEW_CITATION_INVALID",
+    });
+    await expect(service.readOwnerReview(input)).resolves.toBeNull();
+    expect(
+      (
+        await service.readFor({
+          artifactId: source.id,
+          principalEntityId: SELF_ENTITY_ID,
+        })
+      ).obligations,
+    ).toEqual([]);
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () =>
+        JSON.stringify({
+          complete: true,
+          reviewedPages: Array.from({ length: 12 }, (_, index) => index + 1),
+          explanation:
+            "No clear commitments identified; owner review remains necessary.",
+          proposals: [],
+        }),
+      "agreement-review-test",
+      100003,
+    );
+    const empty = await service.prepareOwnerReview(input);
+    expect(empty.outcome).toBe("no_proposals");
+    const restarted = createAgreementKnowledgeService(runtime);
+    await expect(restarted.readOwnerReview(input)).resolves.toEqual(empty);
+  });
+  it("commits one review across service instances and rolls back the entire batch when its audit fails", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const citation = "Each parent must acknowledge receipt of school notices.";
+    const source = await service.createAgreementVersion({
+      agreementKey: "review-transaction-recovery",
+      title: "Transactional review",
+      originalFilename: "transaction.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf(citation),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    let calls = 0;
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => {
+        calls += 1;
+        return JSON.stringify({
+          complete: true,
+          reviewedPages: Array.from({ length: 12 }, (_, index) => index + 1),
+          explanation: "Synthetic notice receipt requirement.",
+          proposals: [
+            {
+              title: "Acknowledge notice",
+              obligationText: citation,
+              citationText: citation,
+              pageStart: 1,
+              pageEnd: 1,
+            },
+          ],
+        });
+      },
+      "agreement-review-test",
+      100004,
+    );
+    const input = { artifactId: source.id, ownerEntityId: SELF_ENTITY_ID };
+    await executeRawSql(
+      runtime,
+      `CREATE FUNCTION app_lifeops.reject_prepared_review_test() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RAISE EXCEPTION 'Prepared review audit unavailable'; END $$`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE TRIGGER reject_prepared_review_test BEFORE INSERT ON app_lifeops.life_audit_events
+      FOR EACH ROW WHEN (NEW.event_type = 'agreement_review_prepared') EXECUTE FUNCTION app_lifeops.reject_prepared_review_test()`,
+    );
+    try {
+      await expect(service.prepareOwnerReview(input)).rejects.toThrow();
+      await expect(service.readOwnerReview(input)).resolves.toBeNull();
+      const readback = await service.readFor({
+        artifactId: source.id,
+        principalEntityId: SELF_ENTITY_ID,
+      });
+      expect(readback.obligations).toEqual([]);
+      const audit = await executeRawSql(
+        runtime,
+        `SELECT id FROM app_lifeops.life_audit_events
+        WHERE owner_id = '${source.id}' AND event_type = 'agreement_obligation_proposed'`,
+      );
+      expect(audit).toEqual([]);
+    } finally {
+      await executeRawSql(
+        runtime,
+        "DROP TRIGGER reject_prepared_review_test ON app_lifeops.life_audit_events",
+      );
+      await executeRawSql(
+        runtime,
+        "DROP FUNCTION app_lifeops.reject_prepared_review_test()",
+      );
+    }
+    const second = createAgreementKnowledgeService(runtime);
+    const [first, concurrent] = await Promise.all([
+      service.prepareOwnerReview(input),
+      second.prepareOwnerReview(input),
+    ]);
+    expect(first).toEqual(concurrent);
+    expect(first.obligations).toHaveLength(1);
+    expect(calls).toBeGreaterThanOrEqual(2);
+    const readback = await service.readFor({
+      artifactId: source.id,
+      principalEntityId: SELF_ENTITY_ID,
+    });
+    expect(readback.obligations.map((item) => item.id)).toEqual(
+      first.obligations.map((item) => item.id),
+    );
+    await expect(
+      createAgreementKnowledgeService(runtime).readOwnerReview(input),
+    ).resolves.toEqual(first);
+  });
+
   it.each(["artifact", "document", "fragment"] as const)(
     "removes private sources when %s persistence rejects the upload",
     async (boundary) => {
@@ -2230,6 +3092,124 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       (await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID)).sha256,
     ).toBe(settled.sha256);
   });
+  it.each([false, true])(
+    "retries retained staged bytes after settled extraction failure (modelUnavailable=%s)",
+    async (modelUnavailable) => {
+      const agreementKey = modelUnavailable
+        ? "settled-model-outage-retry"
+        : "settled-extraction-retry";
+      const bytes = pdf(
+        "retry complete extraction without duplicating sources",
+      );
+      const hash = crypto.createHash("sha256").update(bytes).digest("hex");
+      const upload = await beginAgreementUpload(runtime, {
+        agreementKey,
+        title: "Settled extraction retry",
+        originalFilename: "retry.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: bytes.length,
+      });
+      const staged = await acceptAgreementChunk({
+        runtime,
+        uploadId: upload.uploadId,
+        index: 0,
+        bytes,
+        sha256: hash,
+      });
+      const contentIdentity = crypto
+        .createHash("sha256")
+        .update(
+          [
+            "agreement-upload-content-v1",
+            String(bytes.length),
+            String(staged.chunkSizeBytes),
+            `0:${bytes.length}:${hash}`,
+          ].join("\n"),
+        )
+        .digest("hex");
+      const service = createAgreementKnowledgeService(runtime);
+      const repository = new AgreementKnowledgeRepository(
+        runtime,
+        runtime.agentId,
+      );
+      const input = {
+        runtime,
+        uploadId: upload.uploadId,
+        contentIdentity,
+        createArtifact: async ({ bytes: assembled }: { bytes: Buffer }) =>
+          service.createAgreementVersion({
+            agreementKey,
+            title: "Settled extraction retry",
+            originalFilename: "retry.pdf",
+            mimeType: "application/pdf",
+            bytes: assembled,
+            uploadedByEntityId: SELF_ENTITY_ID,
+          }),
+        readArtifact: async (id: string) => {
+          const artifact = await repository.getArtifact(id);
+          if (!artifact) throw new Error("Committed artifact is missing");
+          return artifact;
+        },
+      };
+      const extraction = vi
+        .spyOn(AgreementTestPdfService.prototype, "extractCompleteDocument")
+        .mockRejectedValueOnce(
+          modelUnavailable
+            ? new ElizaError("Transcription dependency unavailable", {
+                code: "PDF_PAGE_TRANSCRIPTION_UNAVAILABLE",
+              })
+            : new Error("Transcription dependency unavailable"),
+        );
+      try {
+        await expect(commitAgreementUpload(input)).rejects.toMatchObject({
+          code: modelUnavailable
+            ? "AGREEMENT_EXTRACTION_UNAVAILABLE"
+            : "AGREEMENT_INVALID_CONTRACT",
+          cause: { message: "Transcription dependency unavailable" },
+        });
+      } finally {
+        extraction.mockRestore();
+      }
+      const pending = await readAgreementUpload(runtime, upload.uploadId);
+      expect(pending.status).toBe("uploading");
+      expect(
+        await repository.getArtifactByContent({
+          householdId: DEFAULT_HOUSEHOLD_ID,
+          agreementKey,
+          contentSha256: hash,
+        }),
+      ).toBeNull();
+      const storage = runtime.getService<IFileStorageService>(
+        ServiceType.REMOTE_FILES,
+      );
+      if (!storage) throw new Error("Canonical storage is unavailable");
+      expect(await storage.readPrivate(pending.chunks[0].fileName)).toEqual(
+        bytes,
+      );
+      const preview = await previewFamilyDeletionDatabase(
+        runtime,
+        SELF_ENTITY_ID,
+      );
+      expect(
+        preview.records.filter((row) => row.kind === "workspaceOperations"),
+      ).toEqual([]);
+      const committed = await commitAgreementUpload(input);
+      expect(committed.created).toBe(true);
+      const replay = await commitAgreementUpload(input);
+      expect(replay.created).toBe(false);
+      expect(replay.artifact.id).toBe(committed.artifact.id);
+      expect(
+        (
+          await service.readOwnerPdf({
+            artifactId: committed.artifact.id,
+            ownerEntityId: SELF_ENTITY_ID,
+          })
+        ).bytes,
+      ).toEqual(bytes);
+      expect(await storage.readPrivate(pending.chunks[0].fileName)).toBeNull();
+    },
+  );
+
   it("holds durable admission through staged chunk persistence and real artifact commit", async () => {
     const bytes = pdf(
       "staged mutation guarded across private persistence and ingestion",
@@ -2941,6 +3921,164 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     );
   });
 
+  it("revokes retained agreement reads and pinned context when workspace deletion starts", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const bytes = pdf("private agreement read revocation");
+    const source = await service.createAgreementVersion({
+      agreementKey: "read-revocation",
+      title: "Read revocation",
+      originalFilename: "read-revocation.pdf",
+      mimeType: "application/pdf",
+      bytes,
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    expect(
+      (
+        await service.readOwnerPdf({
+          artifactId: source.id,
+          ownerEntityId: SELF_ENTITY_ID,
+        })
+      ).bytes,
+    ).toEqual(bytes);
+    await ensureFamilyWorkspaceOperationStore(runtime);
+    await executeRawSql(
+      runtime,
+      `UPDATE app_lifeops.life_family_workspace_state SET state='revoking' WHERE agent_id=${sqlQuote(runtime.agentId)}`,
+    );
+    try {
+      for (const read of [
+        () =>
+          service.readOwnerPdf({
+            artifactId: source.id,
+            ownerEntityId: SELF_ENTITY_ID,
+          }),
+        () =>
+          service.readFor({
+            artifactId: source.id,
+            principalEntityId: SELF_ENTITY_ID,
+          }),
+        () => service.listOwnerAgreements({ ownerEntityId: SELF_ENTITY_ID }),
+        () => service.listApprovedObligations(),
+        () => service.activePinnedContext({ ownerEntityId: SELF_ENTITY_ID }),
+        () =>
+          service.activePinnedContextForPrincipal({
+            principalEntityId: "verified-co-parent",
+          }),
+        () =>
+          service.exportOwnerAgreement({
+            artifactId: source.id,
+            ownerEntityId: SELF_ENTITY_ID,
+          }),
+      ])
+        await expect(read()).rejects.toMatchObject({
+          code: "FAMILY_WORKSPACE_FENCED",
+        });
+      const context = await agreementPinsProvider.get(runtime, {
+        id: crypto.randomUUID() as UUID,
+        agentId: runtime.agentId,
+        entityId: runtime.agentId,
+        roomId: runtime.agentId,
+        content: {
+          text: "What agreement context remains?",
+          source: "eliza-client",
+        },
+      });
+      expect(context.data).toEqual({ agreementContext: { status: "revoked" } });
+      expect(context.text).not.toContain(source.title);
+      await expect(
+        new AgreementKnowledgeRepository(runtime, runtime.agentId).recordExport(
+          {
+            artifact: source,
+            exportId: crypto.randomUUID(),
+            ownerEntityId: SELF_ENTITY_ID,
+            createdAt: new Date().toISOString(),
+            manifestSha256: "a".repeat(64),
+            archiveSha256: "b".repeat(64),
+          },
+        ),
+      ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+      const storage = runtime.getService<IFileStorageService>(
+        ServiceType.REMOTE_FILES,
+      );
+      if (!storage) throw new Error("Real file storage unavailable");
+      expect(await storage.readPrivate(source.mediaFileName)).toEqual(bytes);
+      expect(
+        await runtime.getMemoryById(source.documentId as UUID),
+      ).not.toBeNull();
+    } finally {
+      await executeRawSql(
+        runtime,
+        `UPDATE app_lifeops.life_family_workspace_state SET state='active' WHERE agent_id=${sqlQuote(runtime.agentId)}`,
+      );
+    }
+  });
+
+  it("rejects an owner PDF response when revocation commits during its storage read", async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    const source = await service.createAgreementVersion({
+      agreementKey: "read-revocation-race",
+      title: "Read race",
+      originalFilename: "race.pdf",
+      mimeType: "application/pdf",
+      bytes: pdf("private bytes read before revocation"),
+      uploadedByEntityId: SELF_ENTITY_ID,
+    });
+    const storage = runtime.getService<IFileStorageService>(
+      ServiceType.REMOTE_FILES,
+    );
+    if (!storage) throw new Error("Real file storage unavailable");
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const original = storage.readPrivate;
+    storage.readPrivate = async (fileName) => {
+      const bytes = await original.call(storage, fileName);
+      if (fileName === source.mediaFileName) {
+        entered();
+        await gate;
+      }
+      return bytes;
+    };
+    const pending = service.readOwnerPdf({
+      artifactId: source.id,
+      ownerEntityId: SELF_ENTITY_ID,
+    });
+    const rejected = expect(pending).rejects.toMatchObject({
+      code: "FAMILY_WORKSPACE_FENCED",
+    });
+    try {
+      await started;
+      await executeRawSql(
+        runtime,
+        `UPDATE app_lifeops.life_family_workspace_state SET state='revoking' WHERE agent_id=${sqlQuote(runtime.agentId)}`,
+      );
+      release();
+      await rejected;
+      await executeRawSql(
+        runtime,
+        `UPDATE app_lifeops.life_family_workspace_state SET state='deleted' WHERE agent_id=${sqlQuote(runtime.agentId)}`,
+      );
+      await expect(
+        createAgreementKnowledgeService(runtime).readOwnerPdf({
+          artifactId: source.id,
+          ownerEntityId: SELF_ENTITY_ID,
+        }),
+      ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    } finally {
+      release();
+      storage.readPrivate = original;
+      await executeRawSql(
+        runtime,
+        `UPDATE app_lifeops.life_family_workspace_state SET state='active' WHERE agent_id=${sqlQuote(runtime.agentId)}`,
+      );
+    }
+  });
+
   it("holds deletion behind real in-flight ingestion and durably fences subsequent uploads", async () => {
     const storage = runtime.getService<IFileStorageService>(
       ServiceType.REMOTE_FILES,
@@ -3131,6 +4269,39 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       SELF_ENTITY_ID,
     );
     await expect(
+      service.addOwnerReviewProposal({
+        artifactId: artifact.id,
+        ownerEntityId: SELF_ENTITY_ID,
+        proposal: {
+          title: "Late owner correction",
+          obligationText: "in-flight source before durable fence",
+          citationText: "in-flight source before durable fence",
+          pageStart: 1,
+          pageEnd: 1,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    const reviewRepository = new AgreementKnowledgeRepository(
+      runtime,
+      runtime.agentId,
+    );
+    await expect(
+      reviewRepository.commitPreparedReview(
+        {
+          artifactId: artifact.id,
+          sourceSha256: artifact.contentSha256,
+          extractionSha256: crypto
+            .createHash("sha256")
+            .update("Synthetic rejected review")
+            .digest("hex"),
+          generatedAt: new Date().toISOString(),
+          explanation: "Review completed after deletion began",
+          obligationIds: [],
+        },
+        [],
+      ),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    await expect(
       service.proposeObligation({
         artifactId: artifact.id,
         title: "Too late",
@@ -3303,5 +4474,627 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         `SELECT id FROM memories WHERE agent_id=${sqlQuote(runtime.agentId)} AND type IN ('documents','document_fragments') ORDER BY id`,
       ),
     ).toEqual(documents);
+  });
+});
+
+describe("reviewed workspace deletion — real database and disk", () => {
+  it("authorizes owner HTTP deletion and exposes stale, pending, and retry states", async () => {
+    const previousKmsBackend = process.env.ELIZA_KMS_BACKEND;
+    process.env.ELIZA_KMS_BACKEND = "memory";
+    const mediaDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "family-delete-http-"),
+    );
+    process.env.ELIZA_STATE_DIR = mediaDir;
+    const result = await createLifeOpsTestRuntime({
+      pgliteDir: path.join(mediaDir, "pglite"),
+      plugins: [fileStoragePlugin, documentsPluginCore],
+    });
+    const runtime = result.runtime;
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      const handled = await tryHandleRuntimePluginRoute({
+        req,
+        res,
+        url,
+        pathname: url.pathname,
+        method: req.method ?? "GET",
+        runtime,
+        isAuthorized: () => true,
+      });
+      if (!handled && !res.headersSent) {
+        res.statusCode = 404;
+        res.end("not found");
+      }
+    });
+    try {
+      runtime.services.set(ServiceType.PDF, [
+        new AgreementTestPdfService(runtime),
+      ]);
+      const graph = resolveKnowledgeGraphService(runtime);
+      if (!graph) throw new Error("Real graph unavailable");
+      await graph.getEntityStore(runtime.agentId).ensureSelf();
+      await new CalendarCardAccessStore(runtime).ensureSchema();
+      await new SchoolCalendarWorkflow(runtime).ensureSchema();
+      await new MonthlyFamilyPacketService(runtime).list();
+      const service = createAgreementKnowledgeService(runtime);
+      const source = await service.createAgreementVersion({
+        agreementKey: "http-delete",
+        title: "HTTP deletion fixture",
+        originalFilename: "http.pdf",
+        mimeType: "application/pdf",
+        bytes: pdf("HTTP deletion source"),
+        uploadedByEntityId: SELF_ENTITY_ID,
+      });
+      const oldBackup = await createLocalAgentBackup(runtime, {});
+      const db = (
+        runtime as AgentRuntime & {
+          adapter: { db: ConstructorParameters<typeof AuthStore>[0] };
+        }
+      ).adapter.db;
+      const auth = new AuthStore(db);
+      const ownerId = crypto.randomUUID();
+      const guestId = crypto.randomUUID();
+      for (const identity of [
+        { id: ownerId, kind: "owner" as const },
+        { id: guestId, kind: "machine" as const },
+      ]) {
+        await auth.createIdentity({
+          ...identity,
+          displayName: "Deletion fixture",
+          createdAt: Date.now(),
+          passwordHash: null,
+          cloudUserId: null,
+        });
+      }
+      const { session: owner } = await createBrowserSession(auth, {
+        identityId: ownerId,
+        ip: null,
+        userAgent: null,
+        rememberDevice: false,
+      });
+      const { session: guest } = await createMachineSession(auth, {
+        identityId: guestId,
+        scopes: [],
+      });
+      server.listen(0, "127.0.0.1");
+      await once(server, "listening");
+      const address = server.address();
+      if (!address || typeof address === "string")
+        throw new Error("Missing HTTP address");
+      const base = `http://127.0.0.1:${address.port}/api/lifeops/family-workflows/deletion`;
+      const headers = {
+        Host: "deletion.example.test",
+        "x-forwarded-for": "203.0.113.20",
+        Authorization: `Bearer ${owner.id}`,
+        "Content-Type": "application/json",
+        // Physical snapshot work can outlast an idle keep-alive socket between requests.
+        Connection: "close",
+      };
+      for (const [suffix, method] of [
+        ["", "GET"],
+        ["/preview", "GET"],
+        ["", "POST"],
+        ["/resume", "POST"],
+        ["/backups/preview", "GET"],
+        ["/backups", "POST"],
+        ["/backups/resume", "POST"],
+      ]) {
+        const denied = await fetch(`${base}${suffix}`, {
+          method,
+          headers: {
+            ...headers,
+            Authorization: `Bearer ${guest.id}`,
+            "x-eliza-entity-id": "self",
+          },
+        });
+        expect(denied.status, await denied.text()).toBe(403);
+      }
+      const previewResponse = await fetch(`${base}/preview`, { headers });
+      expect(previewResponse.status).toBe(200);
+      const preview = await previewResponse.json();
+      const stale = await fetch(base, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          expectedSha256: "0".repeat(64),
+          backupRetention: "immediate",
+        }),
+      });
+      expect(stale.status, await stale.clone().text()).toBe(409);
+      expect(await stale.json()).toMatchObject({
+        code: "FAMILY_DELETION_PREVIEW_STALE",
+      });
+      const started = await fetch(base, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          expectedSha256: preview.sha256,
+          backupRetention: "7-days",
+        }),
+      });
+      expect(started.status, await started.clone().text()).toBe(202);
+      const { job } = await started.json();
+      expect(job.state).toBe("backup_pending");
+      const status = await fetch(base, { headers });
+      expect(status.headers.get("cache-control")).toBe("no-store");
+      expect(await status.json()).toEqual({ job });
+      const resumed = await fetch(`${base}/resume`, {
+        method: "POST",
+        headers,
+      });
+      expect(resumed.status, await resumed.clone().text()).toBe(202);
+      expect(await resumed.json()).toEqual({ job });
+      const currentBackup = await createLocalAgentBackup(runtime, {});
+      const currentBackupBytes = fs.readFileSync(currentBackup.path);
+      const backupResponse = await fetch(`${base}/backups/preview`, {
+        headers,
+      });
+      expect(backupResponse.status).toBe(200);
+      expect(backupResponse.headers.get("cache-control")).toBe("no-store");
+      const backupReview = await backupResponse.json();
+      expect(
+        backupReview.archives.map(
+          (archive: { fileName: string }) => archive.fileName,
+        ),
+      ).toEqual([oldBackup.fileName]);
+      const unacknowledged = await fetch(`${base}/backups`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ expectedSha256: backupReview.sha256 }),
+      });
+      expect(unacknowledged.status).toBe(400);
+      expect(fs.existsSync(oldBackup.path)).toBe(true);
+      expect(
+        (await readFamilyDeletionJob(runtime, SELF_ENTITY_ID))?.state,
+      ).toBe("backup_pending");
+      await executeRawSql(
+        runtime,
+        "CREATE FUNCTION app_scheduling.reject_cleanup_schedule() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.metadata_json::jsonb->>'systemOperation' = 'agent.familyBackupCleanup' THEN RAISE EXCEPTION 'schedule storage unavailable'; END IF; RETURN NEW; END; $$",
+      );
+      await executeRawSql(
+        runtime,
+        "CREATE TRIGGER reject_cleanup_schedule BEFORE INSERT ON app_scheduling.life_scheduled_tasks FOR EACH ROW EXECUTE FUNCTION app_scheduling.reject_cleanup_schedule()",
+      );
+      const scheduleInterrupted = await fetch(`${base}/backups`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          expectedSha256: backupReview.sha256,
+          acknowledgeWholeArchiveHistory: true,
+        }),
+      });
+      expect(scheduleInterrupted.status).toBe(500);
+      expect(
+        (await readFamilyDeletionJob(runtime, SELF_ENTITY_ID))?.backupCleanup
+          ?.sha256,
+      ).toBe(backupReview.sha256);
+      expect(fs.existsSync(oldBackup.path)).toBe(true);
+      await executeRawSql(
+        runtime,
+        "DROP TRIGGER reject_cleanup_schedule ON app_scheduling.life_scheduled_tasks",
+      );
+      await ensureFamilyBackupCleanupSchedule(runtime);
+      const retained = await fetch(`${base}/backups`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          expectedSha256: backupReview.sha256,
+          acknowledgeWholeArchiveHistory: true,
+        }),
+      });
+      expect(retained.status, await retained.clone().text()).toBe(202);
+      await expect(
+        purgeFamilyBackupCleanup(runtime, SELF_ENTITY_ID, {
+          jobId: backupReview.jobId,
+          sha256: backupReview.sha256,
+        }),
+      ).rejects.toMatchObject({ code: "AGENT_BACKUP_RETENTION_PENDING" });
+      expect(fs.existsSync(oldBackup.path)).toBe(true);
+      await expect(
+        purgeFamilyBackupCleanup(runtime, SELF_ENTITY_ID, {
+          jobId: crypto.randomUUID(),
+          sha256: backupReview.sha256,
+        }),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_PREVIEW_STALE" });
+      const afterRetention = Date.parse(backupReview.notBefore) + 1000;
+      vi.spyOn(Date, "now").mockReturnValue(afterRetention);
+      const { session: renewedOwner } = await createBrowserSession(auth, {
+        identityId: ownerId,
+        ip: null,
+        userAgent: null,
+        rememberDevice: false,
+      });
+      headers.Authorization = `Bearer ${renewedOwner.id}`;
+      await executeRawSql(
+        runtime,
+        "CREATE FUNCTION app_lifeops.reject_backup_completion() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.job_json->>'state' = 'complete' THEN RAISE EXCEPTION 'completion storage unavailable'; END IF; RETURN NEW; END; $$",
+      );
+      await executeRawSql(
+        runtime,
+        "CREATE TRIGGER reject_backup_completion BEFORE UPDATE ON app_lifeops.life_family_workspace_deletions FOR EACH ROW EXECUTE FUNCTION app_lifeops.reject_backup_completion()",
+      );
+      const interrupted = await fetch(`${base}/backups`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          expectedSha256: backupReview.sha256,
+          acknowledgeWholeArchiveHistory: true,
+        }),
+      });
+      expect(interrupted.status).toBe(500);
+      expect(fs.existsSync(oldBackup.path)).toBe(false);
+      expect(
+        fs.readFileSync(currentBackup.path).equals(currentBackupBytes),
+      ).toBe(true);
+      expect(
+        (await readFamilyDeletionJob(runtime, SELF_ENTITY_ID))?.state,
+      ).toBe("backup_pending");
+      await executeRawSql(
+        runtime,
+        "DROP TRIGGER reject_backup_completion ON app_lifeops.life_family_workspace_deletions",
+      );
+      await ensureFamilyBackupCleanupSchedule(runtime);
+      await ensureFamilyBackupCleanupSchedule(runtime);
+      const runner = getScheduledTaskRunner(runtime, {
+        agentId: runtime.agentId,
+        now: () => new Date(afterRetention),
+      });
+      const cleanupTasks = (await runner.list()).filter(
+        (task) =>
+          task.metadata?.systemOperation === FAMILY_BACKUP_CLEANUP_OPERATION,
+      );
+      expect(cleanupTasks).toHaveLength(1);
+      const cleanupTask = cleanupTasks[0];
+      if (!cleanupTask) throw new Error("Admitted cleanup was not scheduled");
+      expect((await runner.fireWithResult(cleanupTask.taskId)).kind).toBe(
+        "fired",
+      );
+      expect(
+        (await readFamilyDeletionJob(runtime, SELF_ENTITY_ID))?.state,
+      ).toBe("complete");
+      const completed = await fetch(`${base}/backups/resume`, {
+        method: "POST",
+        headers,
+      });
+      expect(completed.status, await completed.clone().text()).toBe(200);
+      const complete = await completed.json();
+      expect(complete.job.state).toBe("complete");
+      const replay = await fetch(`${base}/backups/resume`, {
+        method: "POST",
+        headers,
+      });
+      expect(replay.status, await replay.clone().text()).toBe(200);
+      expect(await replay.json()).toEqual(complete);
+      expect(
+        fs.readFileSync(currentBackup.path).equals(currentBackupBytes),
+      ).toBe(true);
+      const storage = runtime.getService<IFileStorageService>(
+        ServiceType.REMOTE_FILES,
+      );
+      if (!storage) throw new Error("Missing real file storage");
+      expect(await storage.readPrivate(source.mediaFileName)).toBeNull();
+      await expect(
+        service.readOwnerPdf({
+          artifactId: source.id,
+          ownerEntityId: SELF_ENTITY_ID,
+        }),
+      ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    } finally {
+      vi.restoreAllMocks();
+      if (previousKmsBackend === undefined)
+        delete process.env.ELIZA_KMS_BACKEND;
+      else process.env.ELIZA_KMS_BACKEND = previousKmsBackend;
+      server.closeAllConnections();
+      if (server.listening)
+        await new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        );
+      await result.cleanup();
+      delete process.env.ELIZA_STATE_DIR;
+      fs.rmSync(mediaDir, { recursive: true, force: true });
+    }
+  });
+
+  it("atomically removes private database projections and journals remaining files", async () => {
+    const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), "family-delete-"));
+    process.env.ELIZA_STATE_DIR = mediaDir;
+    const result = await createLifeOpsTestRuntime({
+      plugins: [fileStoragePlugin, documentsPluginCore],
+    });
+    const runtime = result.runtime;
+    try {
+      runtime.services.set(ServiceType.PDF, [
+        new AgreementTestPdfService(runtime),
+      ]);
+      const graph = resolveKnowledgeGraphService(runtime);
+      if (!graph) throw new Error("Real graph unavailable");
+      await graph.getEntityStore(runtime.agentId).ensureSelf();
+      await new CalendarCardAccessStore(runtime).ensureSchema();
+      await new SchoolCalendarWorkflow(runtime).ensureSchema();
+      await new MonthlyFamilyPacketService(runtime).list();
+      const service = createAgreementKnowledgeService(runtime);
+      const bytes = pdf("synthetic source to delete");
+      const first = await service.createAgreementVersion({
+        agreementKey: "delete-atomic",
+        title: "Delete atomic",
+        originalFilename: "atomic.pdf",
+        mimeType: "application/pdf",
+        bytes,
+        uploadedByEntityId: SELF_ENTITY_ID,
+      });
+      const storage = runtime.getService<IFileStorageService>(
+        ServiceType.REMOTE_FILES,
+      );
+      const documents = runtime.getService<DocumentService>(
+        DocumentService.serviceType,
+      );
+      if (!storage || !documents)
+        throw new Error("Real document and file services required");
+      const context = {
+        requesterEntityId: runtime.agentId,
+        role: "OWNER" as const,
+      };
+      expect(
+        await documents.getDocumentByIdWithAccessContext(
+          first.documentId as UUID,
+          context,
+        ),
+      ).not.toBeNull();
+      const foreignId = `hag_${crypto.randomUUID()}`;
+      await executeRawSql(
+        runtime,
+        `INSERT INTO app_lifeops.life_household_agreement_artifacts SELECT (jsonb_populate_record(NULL::app_lifeops.life_household_agreement_artifacts, to_jsonb(source) || ${sqlQuote(JSON.stringify({ id: foreignId, agent_id: "foreign-workspace" }))}::jsonb)).* FROM app_lifeops.life_household_agreement_artifacts source WHERE id=${sqlQuote(first.id)}`,
+      );
+      const preview = await previewFamilyDeletionDatabase(
+        runtime,
+        SELF_ENTITY_ID,
+      );
+      expect(preview.unavailable).toEqual([]);
+      await expect(
+        beginFamilyWorkspaceDeletion(runtime, {
+          ownerEntityId: "guest",
+          expectedSha256: preview.sha256,
+          backupRetention: "immediate",
+        }),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_ACCESS_DENIED" });
+      await expect(
+        beginFamilyWorkspaceDeletion(runtime, {
+          ownerEntityId: SELF_ENTITY_ID,
+          expectedSha256: preview.sha256,
+          backupRetention: "immediate",
+        }),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_SHARED_SOURCE" });
+      const foreignBytes = pdf("independent foreign source");
+      const foreignFile = await storage.storePrivate(
+        foreignBytes,
+        "application/pdf",
+      );
+      await executeRawSql(
+        runtime,
+        `UPDATE app_lifeops.life_household_agreement_artifacts SET media_file_name=${sqlQuote(foreignFile.fileName)}, document_id=${sqlQuote(crypto.randomUUID())}, content_sha256=${sqlQuote(crypto.createHash("sha256").update(foreignBytes).digest("hex"))} WHERE id=${sqlQuote(foreignId)}`,
+      );
+      await readFamilyDeletionJob(runtime, SELF_ENTITY_ID);
+      await executeRawSql(
+        runtime,
+        `CREATE FUNCTION app_lifeops.reject_delete_journal() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'journal storage unavailable'; END; $$`,
+      );
+      await executeRawSql(
+        runtime,
+        `CREATE TRIGGER reject_delete_journal BEFORE INSERT ON app_lifeops.life_family_workspace_deletions FOR EACH ROW EXECUTE FUNCTION app_lifeops.reject_delete_journal()`,
+      );
+      await expect(
+        beginFamilyWorkspaceDeletion(runtime, {
+          ownerEntityId: SELF_ENTITY_ID,
+          expectedSha256: preview.sha256,
+          backupRetention: "immediate",
+        }),
+      ).rejects.toMatchObject({
+        code: "FAMILY_DELETION_TRANSACTION_FAILED",
+        cause: { cause: { message: "journal storage unavailable" } },
+      });
+      expect(
+        (
+          await service.readOwnerPdf({
+            artifactId: first.id,
+            ownerEntityId: SELF_ENTITY_ID,
+          })
+        ).bytes,
+      ).toEqual(bytes);
+      expect(
+        await documents.getDocumentByIdWithAccessContext(
+          first.documentId as UUID,
+          context,
+        ),
+      ).not.toBeNull();
+      expect(await readFamilyDeletionJob(runtime, SELF_ENTITY_ID)).toBeNull();
+      await expect(
+        withAgentBackupAuthority(mediaDir, (authority) =>
+          authority.generation(runtime.agentId),
+        ),
+      ).rejects.toMatchObject({ code: "AGENT_BACKUP_RETIREMENT_PENDING" });
+      await executeRawSql(
+        runtime,
+        "DROP TRIGGER reject_delete_journal ON app_lifeops.life_family_workspace_deletions",
+      );
+      await executeRawSql(
+        runtime,
+        "DROP FUNCTION app_lifeops.reject_delete_journal()",
+      );
+      const job = await beginFamilyWorkspaceDeletion(runtime, {
+        ownerEntityId: SELF_ENTITY_ID,
+        expectedSha256: preview.sha256,
+        backupRetention: "immediate",
+      });
+      expect(job.files).toContainEqual({
+        fileName: first.mediaFileName,
+        sha256: first.contentSha256,
+      });
+      expect(await readFamilyDeletionJob(runtime, SELF_ENTITY_ID)).toEqual(job);
+      expect(
+        await beginFamilyWorkspaceDeletion(runtime, {
+          ownerEntityId: SELF_ENTITY_ID,
+          expectedSha256: preview.sha256,
+          backupRetention: "immediate",
+        }),
+      ).toEqual(job);
+      expect(
+        await withAgentBackupAuthority(mediaDir, (authority) =>
+          authority.pendingRetirement(runtime.agentId),
+        ),
+      ).toEqual({
+        operationId: job.backupOperationId,
+        generation: job.backupGeneration,
+      });
+      expect(
+        await documents.getDocumentByIdWithAccessContext(
+          first.documentId as UUID,
+          context,
+        ),
+      ).toBeNull();
+      expect(
+        await executeRawSql(
+          runtime,
+          `SELECT id FROM app_lifeops.life_household_agreement_artifacts WHERE agent_id=${sqlQuote(runtime.agentId)}`,
+        ),
+      ).toEqual([]);
+      expect(
+        await executeRawSql(
+          runtime,
+          `SELECT id FROM app_lifeops.life_household_agreement_artifacts WHERE id=${sqlQuote(foreignId)}`,
+        ),
+      ).toEqual([{ id: foreignId }]);
+      expect(await storage.readPrivate(first.mediaFileName)).toEqual(bytes);
+      await expect(
+        service.readOwnerPdf({
+          artifactId: first.id,
+          ownerEntityId: SELF_ENTITY_ID,
+        }),
+      ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+      const originalDelete = storage.deletePrivate.bind(storage);
+      const privatePath = path.join(mediaDir, "media", first.mediaFileName);
+      const changedBytes = Buffer.alloc(bytes.length, 0);
+      try {
+        fs.writeFileSync(privatePath, changedBytes);
+        await expect(
+          purgeFamilyWorkspaceFiles(runtime, SELF_ENTITY_ID),
+        ).rejects.toMatchObject({ code: "FAMILY_DELETION_FILE_CHANGED" });
+        expect(fs.readFileSync(privatePath)).toEqual(changedBytes);
+        expect(await readFamilyDeletionJob(runtime, SELF_ENTITY_ID)).toEqual(
+          job,
+        );
+      } finally {
+        fs.writeFileSync(privatePath, bytes);
+      }
+      storage.deletePrivate = async () => true;
+      try {
+        await expect(
+          purgeFamilyWorkspaceFiles(runtime, SELF_ENTITY_ID),
+        ).rejects.toMatchObject({ code: "FAMILY_DELETION_FILE_PURGE_FAILED" });
+        expect(await storage.readPrivate(first.mediaFileName)).toEqual(bytes);
+        expect(await readFamilyDeletionJob(runtime, SELF_ENTITY_ID)).toEqual(
+          job,
+        );
+      } finally {
+        storage.deletePrivate = originalDelete;
+      }
+      storage.deletePrivate = async (fileName) => {
+        await originalDelete(fileName);
+        throw new Error("Lost private-delete acknowledgement");
+      };
+      try {
+        await expect(
+          purgeFamilyWorkspaceFiles(runtime, SELF_ENTITY_ID),
+        ).rejects.toMatchObject({ code: "FAMILY_DELETION_FILE_PURGE_FAILED" });
+      } finally {
+        storage.deletePrivate = originalDelete;
+      }
+      expect(await storage.readPrivate(first.mediaFileName)).toBeNull();
+      expect(
+        (await readFamilyDeletionJob(runtime, SELF_ENTITY_ID))?.state,
+      ).toBe("purge_pending");
+      await expect(
+        withAgentBackupAuthority(mediaDir, (authority) =>
+          authority.generation(runtime.agentId),
+        ),
+      ).rejects.toMatchObject({ code: "AGENT_BACKUP_RETIREMENT_PENDING" });
+      const cleaned = await purgeFamilyWorkspaceFiles(runtime, SELF_ENTITY_ID);
+      expect(cleaned.state).toBe("backup_pending");
+      expect(
+        await withAgentBackupAuthority(mediaDir, (authority) =>
+          authority.generation(runtime.agentId),
+        ),
+      ).toBe(job.backupGeneration);
+      expect(await purgeFamilyWorkspaceFiles(runtime, SELF_ENTITY_ID)).toEqual(
+        cleaned,
+      );
+      expect(await storage.readPrivate(foreignFile.fileName)).toEqual(
+        foreignBytes,
+      );
+      await expect(
+        previewFamilyBackupCleanup(runtime, "guest"),
+      ).rejects.toMatchObject({ code: "FAMILY_DELETION_ACCESS_DENIED" });
+      await expect(
+        purgeFamilyBackupCleanup(runtime, SELF_ENTITY_ID),
+      ).rejects.toMatchObject({
+        code: "FAMILY_DELETION_BACKUP_REVIEW_REQUIRED",
+      });
+      const backupReview = await previewFamilyBackupCleanup(
+        runtime,
+        SELF_ENTITY_ID,
+      );
+      await executeRawSql(
+        runtime,
+        "CREATE FUNCTION app_lifeops.reject_backup_admission() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'backup admission unavailable'; END; $$",
+      );
+      await executeRawSql(
+        runtime,
+        "CREATE TRIGGER reject_backup_admission BEFORE UPDATE ON app_lifeops.life_family_workspace_deletions FOR EACH ROW EXECUTE FUNCTION app_lifeops.reject_backup_admission()",
+      );
+      await expect(
+        admitFamilyBackupCleanup(runtime, {
+          ownerEntityId: SELF_ENTITY_ID,
+          expectedSha256: backupReview.sha256,
+          acknowledgeWholeArchiveHistory: true,
+        }),
+      ).rejects.toThrow();
+      expect(
+        (await readFamilyDeletionJob(runtime, SELF_ENTITY_ID))?.backupCleanup,
+      ).toBeUndefined();
+      await expect(
+        purgeFamilyBackupCleanup(runtime, SELF_ENTITY_ID),
+      ).rejects.toMatchObject({
+        code: "FAMILY_DELETION_BACKUP_REVIEW_REQUIRED",
+      });
+      await executeRawSql(
+        runtime,
+        "DROP TRIGGER reject_backup_admission ON app_lifeops.life_family_workspace_deletions",
+      );
+      const admission = await admitFamilyBackupCleanup(runtime, {
+        ownerEntityId: SELF_ENTITY_ID,
+        expectedSha256: backupReview.sha256,
+        acknowledgeWholeArchiveHistory: true,
+      });
+      expect(
+        (await readFamilyDeletionJob(runtime, SELF_ENTITY_ID))?.backupCleanup,
+      ).toEqual(admission.backupCleanup);
+      const complete = await purgeFamilyBackupCleanup(runtime, SELF_ENTITY_ID);
+      expect(complete.state).toBe("complete");
+      expect(await purgeFamilyBackupCleanup(runtime, SELF_ENTITY_ID)).toEqual(
+        complete,
+      );
+      expect(
+        await executeRawSql(
+          runtime,
+          `SELECT state FROM app_lifeops.life_family_workspace_state WHERE agent_id=${sqlQuote(runtime.agentId)}`,
+        ),
+      ).toEqual([{ state: "deleted" }]);
+      expect(await storage.readPrivate(foreignFile.fileName)).toEqual(
+        foreignBytes,
+      );
+    } finally {
+      await result.cleanup();
+      delete process.env.ELIZA_STATE_DIR;
+      fs.rmSync(mediaDir, { recursive: true, force: true });
+    }
   });
 });

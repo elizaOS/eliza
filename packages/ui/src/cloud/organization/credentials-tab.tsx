@@ -154,7 +154,7 @@ export function CredentialsTab({
           )}
           <Button
             type="button"
-            variant="default"
+            variant="accentDarkHover"
             onClick={() => setIsContributeOpen(true)}
             className="font-mono text-sm md:text-base w-full sm:w-auto"
           >

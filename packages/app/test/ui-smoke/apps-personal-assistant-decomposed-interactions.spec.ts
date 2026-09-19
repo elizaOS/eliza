@@ -5,7 +5,7 @@
  */
 
 import type { Locator, Page } from "@playwright/test";
-import { expect, test } from "@playwright/test";
+import { test as base, expect } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -13,8 +13,22 @@ import {
 } from "./helpers";
 import { installRemoteConnectionsView } from "./remote-connections-fixture";
 
-test.beforeEach(async ({ page }) => {
-  await seedAppStorage(page);
+const test = base.extend<{ calendarTheme: "light" | undefined }>({
+  calendarTheme: [undefined, { option: true }],
+});
+
+test.beforeEach(async ({ page, calendarTheme }) => {
+  await seedAppStorage(
+    page,
+    calendarTheme
+      ? {
+          "eliza:ui-theme": calendarTheme,
+          "eliza:ui-theme-mode": calendarTheme,
+          "elizaos:ui-theme": calendarTheme,
+          "elizaos:ui-theme-mode": calendarTheme,
+        }
+      : {},
+  );
   await installDefaultAppRoutes(page);
 });
 
@@ -52,54 +66,129 @@ async function openPopulatedCalendar(page: Page): Promise<void> {
   });
 }
 
-test("calendar inherits the host accent for current and selected days after a preference change", async ({
-  page,
-}) => {
-  await page.addInitScript(() => {
-    localStorage.setItem("eliza:ui-accent", "green");
+test.describe("calendar legacy appearance", () => {
+  test.use({ calendarTheme: "light" });
+  test("calendar normalizes legacy light preference to curated dark action and selection colors", async ({
+    page,
+  }) => {
+    await openPopulatedCalendar(page);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    expect(
+      await page.evaluate(() => localStorage.getItem("eliza:ui-theme-mode")),
+    ).toBe("dark");
+    await page.getByRole("button", { name: "Month", exact: true }).click();
+    const grid = page.getByTestId("calendar-month-grid");
+    const current = grid.locator('button[aria-current="date"]');
+    const selected = grid
+      .locator(
+        'button[data-agent-id^="calendar-day-"]:not([aria-current="date"])',
+      )
+      .first();
+    await selected.click();
+    await expect(selected).toHaveAttribute("aria-pressed", "true");
+    await page.mouse.move(0, 0);
+    const readColors = () =>
+      page.evaluate(() => {
+        const today = document.querySelector(
+          '[data-testid="calendar-month-grid"] button[aria-current="date"]',
+        );
+        const selection = document.querySelector(
+          '[data-testid="calendar-month-grid"] button[aria-pressed="true"]',
+        );
+        if (!today || !selection)
+          throw new Error("Calendar day controls missing");
+        const probe = document.createElement("span");
+        document.body.append(probe);
+        const resolve = (
+          token: string,
+          owner: Element = document.documentElement,
+        ) => {
+          probe.style.backgroundColor =
+            getComputedStyle(owner).getPropertyValue(token);
+          return getComputedStyle(probe).backgroundColor;
+        };
+        const luminance = (color: string) => {
+          const channels = color
+            .match(/[\d.]+/g)
+            ?.slice(0, 3)
+            .map(Number);
+          if (channels?.length !== 3)
+            throw new Error(`Unsupported computed color: ${color}`);
+          const linear = channels.map((value) => {
+            const c = value / 255;
+            return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+          });
+          return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+        };
+        const style = getComputedStyle(today);
+        const background = luminance(style.backgroundColor);
+        const foreground = luminance(style.color);
+        const result = {
+          current: style.backgroundColor,
+          currentText: style.color,
+          selected: getComputedStyle(selection).backgroundColor,
+          selectedState: selection.getAttribute("data-state"),
+          action: resolve("--accent-action"),
+          actionText: resolve("--accent-action-foreground"),
+          hover: resolve("--accent-action-hover"),
+          hoverText: resolve("--accent-action-hover-foreground"),
+          subtle: resolve("--accent-subtle", selection),
+          surfaceLuminance: luminance(resolve("--bg")),
+          actionLuminance: luminance(resolve("--accent-action")),
+          currentLuminance: background,
+          contrast:
+            (Math.max(background, foreground) + 0.05) /
+            (Math.min(background, foreground) + 0.05),
+        };
+        probe.remove();
+        return result;
+      });
+    await test.info().attach("calendar-colors", {
+      body: JSON.stringify(await readColors()),
+      contentType: "application/json",
+    });
+    const expected = await readColors();
+    await expect.poll(readColors).toMatchObject({
+      current: expected.action,
+      currentText: expected.actionText,
+      selected: expected.subtle,
+    });
+    const resting = await readColors();
+    expect(resting.contrast).toBeGreaterThanOrEqual(4.5);
+    expect(resting.surfaceLuminance).toBeLessThan(0.1);
+    if (await page.evaluate(() => matchMedia("(hover: hover)").matches)) {
+      await current.hover();
+      await expect
+        .poll(async () => {
+          const colors = await readColors();
+          return (
+            colors.current === colors.hover &&
+            colors.currentText === colors.hoverText
+          );
+        })
+        .toBe(true);
+      const hovering = await readColors();
+      expect(hovering.currentLuminance).toBeLessThan(hovering.actionLuminance);
+      expect(hovering.contrast).toBeGreaterThanOrEqual(4.5);
+    } else {
+      await current.tap();
+      await expect(current).toHaveAttribute("aria-pressed", "true");
+      const tapped = await readColors();
+      expect(tapped.current).toBe(tapped.action);
+      expect(tapped.contrast).toBeGreaterThanOrEqual(4.5);
+      await selected.tap();
+      await expect(selected).toHaveAttribute("aria-pressed", "true");
+    }
+    await page.mouse.move(0, 0);
+    await expect
+      .poll(async () => {
+        const colors = await readColors();
+        return (
+          colors.current === colors.action && colors.selected === colors.subtle
+        );
+      })
+      .toBe(true);
   });
-  await openPopulatedCalendar(page);
-  await page.getByRole("button", { name: "Month", exact: true }).click();
-  const grid = page.getByTestId("calendar-month-grid");
-  const selected = grid
-    .locator(
-      'button[data-agent-id^="calendar-day-"]:not([aria-current="date"])',
-    )
-    .first();
-  await selected.click();
-  await expect(selected).toHaveAttribute("aria-pressed", "true");
-  await page.mouse.move(0, 0);
-  await page.waitForTimeout(300);
-  const colors = await page.evaluate(() => {
-    const root = getComputedStyle(document.documentElement);
-    const current = document.querySelector(
-      '[data-testid="calendar-month-grid"] button[aria-current="date"]',
-    );
-    const selection = document.querySelector(
-      '[data-testid="calendar-month-grid"] button[aria-pressed="true"]',
-    );
-    if (!current || !selection)
-      throw new Error("Calendar day controls missing");
-    const probe = document.createElement("span");
-    document.body.append(probe);
-    const resolve = (value: string) => {
-      probe.style.backgroundColor = value;
-      return getComputedStyle(probe).backgroundColor;
-    };
-    const result = {
-      current: getComputedStyle(current).backgroundColor,
-      selected: getComputedStyle(selection).backgroundColor,
-      expectedCurrent: resolve(root.getPropertyValue("--accent")),
-      expectedSelected: resolve(root.getPropertyValue("--accent-subtle")),
-      preferenceApplied:
-        document.documentElement.style.getPropertyValue("--accent") !== "",
-    };
-    probe.remove();
-    return result;
-  });
-  expect(colors.preferenceApplied).toBe(true);
-  expect(colors.current).toBe(colors.expectedCurrent);
-  expect(colors.selected).toBe(colors.expectedSelected);
 });
 
 test("calendar decomposed view: responsive modes and event creation", async ({
@@ -469,6 +558,9 @@ for (const width of [1280, 390]) {
         },
       });
     });
+    await page.route("**/api/lifeops/account-handoffs/active", (route) =>
+      route.fulfill({ json: { handoff: null } }),
+    );
     await openAppPath(page, "/lifeops/connections");
     const refresh = page.getByRole("button", {
       name: "Retry all connection checks and synchronization",

@@ -176,33 +176,6 @@ describe("composeCanonicalBootContext", () => {
       composeCanonicalBootContext(manifest(), { fs, log: false }),
     ).toThrow(/Required canonical file missing or empty: SOUL\.md/);
   });
-
-  it("CANARY: a changed line in an allowed file appears in composed context", () => {
-    const before = composeCanonicalBootContext(manifest(), {
-      fs: fakeFs({
-        "/ws/SOUL.md": "SYNTHETIC SOUL canary=BEFORE-VALUE",
-        "/ws/IDENTITY.md": idBody,
-      }),
-      log: false,
-    });
-    expect(before.text).toContain("canary=BEFORE-VALUE");
-    expect(before.text).not.toContain("canary=AFTER-VALUE");
-
-    // "edit the file + reboot" == recompose from the mutated fs
-    const after = composeCanonicalBootContext(manifest(), {
-      fs: fakeFs({
-        "/ws/SOUL.md": "SYNTHETIC SOUL canary=AFTER-VALUE",
-        "/ws/IDENTITY.md": idBody,
-      }),
-      log: false,
-    });
-    expect(after.text).toContain("canary=AFTER-VALUE");
-    expect(after.text).not.toContain("canary=BEFORE-VALUE");
-    // the sha256 changed too, proving byte-exact tracking
-    const beforeSha = before.audit.find((a) => a.label === "SOUL.md")?.sha256;
-    const afterSha = after.audit.find((a) => a.label === "SOUL.md")?.sha256;
-    expect(beforeSha).not.toBe(afterSha);
-  });
 });
 
 describe("applyCanonicalFileBootToConfig", () => {
@@ -294,6 +267,11 @@ describe("real-disk round trip (synthetic tmpdir fixtures + canary reboot)", () 
     if (!m1) throw new Error("expected canonical manifest for boot root");
     const c1 = composeCanonicalBootContext(m1, { log: false });
     expect(c1.text).toContain("canary=DISK-V1");
+    expect(c1.text).not.toContain("canary=DISK-V2");
+    const beforeHash = c1.audit.find(
+      (entry) => entry.label === "SOUL.md",
+    )?.sha256;
+    expect(beforeHash).toBe(sha256("SOUL canary=DISK-V1"));
 
     // "restart" after editing the file
     writeFileSync(join(dir, "SOUL.md"), "SOUL canary=DISK-V2");
@@ -304,5 +282,10 @@ describe("real-disk round trip (synthetic tmpdir fixtures + canary reboot)", () 
     });
     expect(c2.text).toContain("canary=DISK-V2");
     expect(c2.text).not.toContain("canary=DISK-V1");
+    const afterHash = c2.audit.find(
+      (entry) => entry.label === "SOUL.md",
+    )?.sha256;
+    expect(afterHash).toBe(sha256("SOUL canary=DISK-V2"));
+    expect(afterHash).not.toBe(beforeHash);
   });
 });

@@ -48,6 +48,7 @@
  */
 
 import {
+  type ActionParameterSchema,
   composePrompt,
   type IAgentRuntime,
   logger,
@@ -66,7 +67,7 @@ export interface ParamSchemaDescriptor {
   name: string;
   description: string;
   required?: boolean;
-  schema?: { type?: string; enum?: readonly string[] | string[] };
+  schema?: Omit<ActionParameterSchema, "enum"> & { enum?: readonly string[] };
 }
 
 export interface ExtractActionParamsArgs<
@@ -261,7 +262,11 @@ function buildExtractionPrompt(args: {
         : "";
       const typePart = p.schema?.type ? ` (${p.schema.type})` : "";
       const requiredPart = missingFields.includes(p.name) ? " [REQUIRED]" : "";
-      return `  - ${p.name}${typePart}${enumPart}${requiredPart}: ${p.description}`;
+      const schemaPart =
+        p.schema === undefined
+          ? ""
+          : `\n    Schema: ${JSON.stringify(p.schema)}`;
+      return `  - ${p.name}${typePart}${enumPart}${requiredPart}: ${p.description}${schemaPart}`;
     })
     .join("\n");
 

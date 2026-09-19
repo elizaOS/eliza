@@ -40,6 +40,8 @@ export interface BatchQueueOptions<T> {
 	name: string;
 	batchSize: number;
 	drainIntervalMs: number;
+	/** Cadence while idle; defaults to max(5 s, 5 × drainIntervalMs). See TaskDrainOptions.idleIntervalMs. */
+	idleDrainIntervalMs?: number;
 	getPriority: (item: T) => QueuePriority;
 	process: (item: T) => Promise<void>;
 	/**
@@ -135,15 +137,19 @@ export class BatchQueue<T> {
 	 * Run one drain cycle (typically from the repeat task worker).
 	 */
 	async drain(): Promise<void> {
+		await this.drainBatch();
+	}
+
+	private async drainBatch(): Promise<number> {
 		if (this.disposed || this.isDraining) {
-			return;
+			return 0;
 		}
 		this.isDraining = true;
 		const started = Date.now();
 		try {
 			const batch = this.priorityQueue.dequeueBatch(this.batchSize);
 			if (batch.length === 0) {
-				return;
+				return 0;
 			}
 			// Prefer the batched processor when provided; on ANY batch-wide failure
 			// fall back to the per-item path so retry / onExhausted still apply.
@@ -186,6 +192,7 @@ export class BatchQueue<T> {
 				});
 				// Keep hook failures from failing a completed batch
 			}
+			return batch.length;
 		} finally {
 			this.isDraining = false;
 		}
@@ -210,11 +217,10 @@ export class BatchQueue<T> {
 				intervalMs: this.options.drainIntervalMs,
 				taskMetadata: this.options.taskMetadata,
 				skipRegisterWorker: skip,
-				onDrain: skip
-					? undefined
-					: async () => {
-							await this.drain();
-						},
+				idleIntervalMs:
+					this.options.idleDrainIntervalMs ??
+					Math.max(5_000, this.options.drainIntervalMs * 5),
+				onDrain: skip ? undefined : async () => this.drainBatch(),
 			},
 			this.options.drainIntervalMs,
 		);

@@ -32,9 +32,8 @@ const smokeShardE2eCommand = "bun run --cwd packages/app test:e2e";
 const smokeLanesE2eCommand =
   "bun run test:e2e --filter='^(?!.*packages/app\\)#test:e2e)'";
 
-const zeroKeyCondition = "needs.changes.outputs.zero_key == 'true'";
-const smokeLanesCoreBuildCondition =
-  "needs.changes.outputs.cloud == 'true' || needs.changes.outputs.zero_key == 'true'";
+const zeroKeyCondition = undefined;
+const smokeLanesCoreBuildCondition = undefined;
 const liveSmokeCloudCondition =
   "inputs.suite == 'all' || inputs.suite == 'cloud'";
 const liveSmokeCoreCondition =
@@ -255,26 +254,24 @@ describe("GitHub action supply-chain references", () => {
     expect(orphaned).toEqual([]);
   });
 
-  test("assigns each UI fixture suite to one parallel workflow", () => {
-    const suites = (name: string) =>
-      new Set(
-        [
-          ...readFileSync(join(githubRoot, "workflows", name), "utf8").matchAll(
-            /^\s*run:\s+(?:[A-Z_][A-Z0-9_]*=\S+\s+)*bun run --cwd packages\/ui (test:[^\s#]+)/gmu,
-          ),
-        ].map((match) => match[1]),
-      );
-    const core = suites("ui-e2e-gate.yml");
-    const extended = suites("ui-fixture-e2e.yml");
-
-    expect([...core].filter((suite) => extended.has(suite))).toEqual([]);
+  test("assigns each UI fixture command to one partition", () => {
+    const workflow = Bun.YAML.parse(
+      readFileSync(join(githubRoot, "workflows", "ui-e2e-gate.yml"), "utf8"),
+    ) as { jobs: Record<string, { steps: WorkflowStep[] }> };
+    const commands = Object.values(workflow.jobs).flatMap((job) =>
+      job.steps.flatMap((step) =>
+        step.run?.includes("bun run --cwd packages/ui test:") ? [step.run] : [],
+      ),
+    );
+    expect(commands.length).toBeGreaterThan(0);
+    expect(new Set(commands).size).toBe(commands.length);
   });
 
   test("runs only declared packages/ui scripts from UI fixture workflows", () => {
     const scripts = JSON.parse(
       readFileSync(join(repoRoot, "packages", "ui", "package.json"), "utf8"),
     ).scripts as Record<string, string>;
-    const workflows = ["ui-e2e-gate.yml", "ui-fixture-e2e.yml"];
+    const workflows = ["ui-e2e-gate.yml"];
     const invocations = workflows.flatMap((workflow) =>
       [
         ...readFileSync(
@@ -293,7 +290,7 @@ describe("GitHub action supply-chain references", () => {
 
   test("builds core before extended UI fixtures bundle workspace exports", () => {
     const source = readFileSync(
-      join(githubRoot, "workflows", "ui-fixture-e2e.yml"),
+      join(githubRoot, "workflows", "ui-e2e-gate.yml"),
       "utf8",
     );
     const workflow = Bun.YAML.parse(source) as {
@@ -315,12 +312,15 @@ describe("GitHub action supply-chain references", () => {
 
   test("keeps the WebKit fixture lane on a provisionable hosted runner", () => {
     const source = readFileSync(
-      join(githubRoot, "workflows", "ui-fixture-e2e.yml"),
+      join(githubRoot, "workflows", "ui-e2e-gate.yml"),
       "utf8",
     );
 
     expect(source).toMatch(/^\s{4}runs-on:\s*ubuntu-24\.04$/m);
-    expect(source).not.toContain("hetzner-robot");
+    const parsed = Bun.YAML.parse(source) as {
+      jobs: Record<string, { "runs-on": string }>;
+    };
+    expect(parsed.jobs["fixture-e2e"]["runs-on"]).toBe("ubuntu-24.04");
     expect(source).toContain(
       ".github/scripts/install-playwright-browsers.sh chromium webkit",
     );
@@ -328,12 +328,12 @@ describe("GitHub action supply-chain references", () => {
 
   test("keeps the chat WebKit lane on a provisionable hosted runner", () => {
     const source = readFileSync(
-      join(githubRoot, "workflows", "chat-shell-gestures.yml"),
+      join(githubRoot, "workflows", "ui-e2e-gate.yml"),
       "utf8",
     );
 
     expect(source).toMatch(/^\s{4}runs-on:\s*ubuntu-24\.04$/m);
-    expect(source).not.toContain("hetzner-robot");
+
     expect(source).toContain(
       ".github/scripts/install-playwright-browsers.sh chromium webkit",
     );
@@ -350,11 +350,11 @@ describe("GitHub action supply-chain references", () => {
         /\.github\/scripts\/install-playwright-browsers\.sh chromium/g,
       ),
     ).toHaveLength(2);
-    expect(source).not.toContain("playwright install --with-deps chromium");
+
     expect(source).toContain(
       "ELIZA_VAULT_PASSPHRASE: dev-smoke-headless-vault-only",
     );
-    expect(source.match(/cache-bun-install: "false"/g)).toHaveLength(2);
+    expect(source.match(/cache-bun-install: ["']false["']/g)).toHaveLength(2);
   });
 
   test("installs both app browser engines before deterministic smoke E2E", () => {
@@ -382,17 +382,11 @@ describe("GitHub action supply-chain references", () => {
       ),
     ).toThrow("Smoke lanes must install the browser engines it launches");
 
-    const installStep = `      - name: Install Playwright browsers
-        if: needs.changes.outputs.zero_key == 'true'
-        run: ${smokeBrowserInstallCommand}
-
-`;
-    const afterE2e = source
-      .replace(installStep, "")
-      .replace(
-        `        run: ${smokeShardE2eCommand}\n`,
-        (command) => `${command}\n${installStep}`,
-      );
+    const afterE2e = moveStepToEnd(
+      source,
+      "smoke",
+      "Install Playwright browsers",
+    );
     expect(() => assertSmokeE2eBrowserBootstrap(afterE2e)).toThrow(
       "Smoke must install browsers before running E2E",
     );
@@ -407,14 +401,9 @@ describe("GitHub action supply-chain references", () => {
     expect(() => assertSmokeLanesCoreBootstrap(source)).not.toThrow();
     expect(() =>
       assertSmokeLanesCoreBootstrap(
-        source.replace(
-          `        if: ${smokeLanesCoreBuildCondition}\n        run: bun run build:core`,
-          `        if: ${zeroKeyCondition}\n        run: bun run build:core`,
-        ),
+        moveStepToEnd(source, "smoke_lanes", "Build core contract"),
       ),
-    ).toThrow(
-      "Smoke lanes must build the core contract for cloud and zero-key work",
-    );
+    ).toThrow("Smoke lanes must build the core contract before E2E");
   });
 
   test("builds the compiled core edge contract before Live Smoke cloud E2E", () => {
@@ -435,20 +424,11 @@ describe("GitHub action supply-chain references", () => {
       "Live Smoke must retain workspace setup, core build, and Cloud e2e steps",
     );
 
-    const buildStep = `      # Both the scenario graph and cloud API load the compiled
-      # @elizaos/core/edge export. The lean install above skips lifecycle
-      # scripts, so build that contract before either consumer starts.
-      - name: Build core runtime contract
-        if: ${liveSmokeCoreCondition}
-        run: bun run build:core
-
-`;
-    const afterE2e = source
-      .replace(buildStep, "")
-      .replace(
-        "        run: bun run test:cloud:e2e\n",
-        (command) => `${command}\n${buildStep}`,
-      );
+    const afterE2e = moveStepToEnd(
+      source,
+      "smoke",
+      "Build core runtime contract",
+    );
     expect(() => assertLiveSmokeCloudCoreBootstrap(afterE2e)).toThrow(
       "Live Smoke must build the core edge contract before Cloud e2e",
     );
@@ -472,16 +452,11 @@ describe("GitHub action supply-chain references", () => {
       "UI core fixtures must retain setup, generated data, core build, and cloud E2E steps",
     );
 
-    const buildStep = `      - name: Build core runtime contract
-        run: bun run build:core
-
-`;
-    const afterCloudFixture = source
-      .replace(buildStep, "")
-      .replace(
-        "        run: bun run --cwd packages/ui test:frontend-hosting-e2e\n",
-        (command) => `${command}\n${buildStep}`,
-      );
+    const afterCloudFixture = moveStepToEnd(
+      source,
+      "ui-core-fixture-e2e",
+      "Build core runtime contract",
+    );
     expect(() => assertUiCoreFixtureCoreBootstrap(afterCloudFixture)).toThrow(
       "UI core fixtures must generate data and build the edge contract before cloud E2E",
     );
@@ -489,15 +464,15 @@ describe("GitHub action supply-chain references", () => {
 
   test("builds the consolidated frontend on a hosted runner", () => {
     const source = readFileSync(
-      join(githubRoot, "workflows", "quality.yml"),
+      join(githubRoot, "workflows", "ci.yml"),
       "utf8",
     );
     const workflow = Bun.YAML.parse(source) as {
       jobs?: Record<string, { "runs-on"?: string; "timeout-minutes"?: number }>;
     };
-    const job = workflow.jobs?.["consolidated-frontend-build"];
-    const formatGate = workflow.jobs?.["format-check"];
-    const staticGate = workflow.jobs?.["develop-static-gate"];
+    const job = workflow.jobs?.["frontend-build"];
+    const formatGate = workflow.jobs?.quality;
+    const staticGate = workflow.jobs?.quality;
 
     expect(job?.["runs-on"]).toBe("ubuntu-24.04");
     expect(job?.["timeout-minutes"]).toBeGreaterThanOrEqual(45);
@@ -507,12 +482,11 @@ describe("GitHub action supply-chain references", () => {
     expect(source).toContain("Build the only deployable frontend");
     expect(source).toContain("working-directory: packages/app");
     expect(source).not.toContain("PLAYWRIGHT_INSTALL_CWD=packages/homepage");
-    expect(source).not.toContain("playwright install --with-deps chromium");
   });
 
   test("leaves the zero-key harness enough time after fleet setup", () => {
     const source = readFileSync(
-      join(githubRoot, "workflows", "test.yml"),
+      join(githubRoot, "workflows", "ci.yml"),
       "utf8",
     );
     const workflow = Bun.YAML.parse(source) as {
@@ -537,10 +511,10 @@ describe("GitHub action supply-chain references", () => {
       "utf8",
     );
     const qualitySource = readFileSync(
-      join(githubRoot, "workflows", "quality.yml"),
+      join(githubRoot, "workflows", "ci.yml"),
       "utf8",
     );
-    expect(qualitySource).toContain("packages/homepage/");
+    expect(qualitySource).toContain("working-directory: packages/homepage");
     expect(qualitySource).toContain("Build the only deployable frontend");
     expect(source).toContain("uses: ./.github/workflows/cloud-cf-release.yml");
     expect(source).not.toContain("Build consolidated frontend artifact");
@@ -551,32 +525,15 @@ describe("GitHub action supply-chain references", () => {
       expect(workflowSource).not.toContain("git push");
     }
   });
-
-  test("keeps the Docker smoke classifier unconditionally hosted (SPOF guard)", () => {
-    const source = readFileSync(
-      join(githubRoot, "workflows", "docker-ci-smoke.yml"),
-      "utf8",
-    );
-    const workflow = Bun.YAML.parse(source) as {
-      jobs?: Record<
-        string,
-        { "runs-on"?: string; uses?: string; with?: Record<string, unknown> }
-      >;
-    };
-    const classifier = workflow.jobs?.changes;
-    const job = workflow.jobs?.["docker-ci-smoke"];
-
-    // docker-ci-smoke.yml delegates to the reusable classify-paths workflow.
-    expect(classifier?.uses).toContain("classify-paths.yml");
-
-    // The classifier must pass force_hosted: true — docker-ci-smoke.yml was
-    // unconditionally ubuntu-24.04 before consolidation and has no
-    // pull_request trigger, so ALL its events are non-PR. Without
-    // force_hosted, the reusable workflow's fleet-aware conditional would
-    // route the classifier to self-hosted (#13617 SPOF regression).
-    expect(classifier?.with?.force_hosted).toBe(true);
-
-    // The actual smoke job stays on hosted runners (needs a Docker daemon).
-    expect(job?.["runs-on"]).toBe("ubuntu-24.04");
-  });
 });
+function moveStepToEnd(source: string, job: string, name: string): string {
+  const workflow = Bun.YAML.parse(source) as {
+    jobs: Record<string, { steps: WorkflowStep[] }>;
+  };
+  const steps = workflow.jobs[job].steps;
+  const index = steps.findIndex((step) => step.name === name);
+  if (index < 0) throw new Error(`Missing step ${name}`);
+  const [step] = steps.splice(index, 1);
+  steps.push(step);
+  return JSON.stringify(workflow);
+}

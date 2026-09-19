@@ -370,6 +370,15 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     return ids;
   }
 
+  async updateMemoryEmbedding(
+    update: import("@elizaos/core").MemoryEmbeddingUpdate
+  ): Promise<boolean> {
+    const written = await super.updateMemoryEmbedding(update);
+    if (written)
+      this.notifyWrite("memories", "upsert", { id: update.id, embedding: update.embedding });
+    return written;
+  }
+
   async updateMemory(
     memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }
   ): Promise<boolean> {

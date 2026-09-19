@@ -841,8 +841,8 @@ function TriggerKindSection({
           onClick={() => setField("kind", "text")}
           variant="choice"
           size="compact"
-          data-state={form.kind === "text" ? "on" : "off"}
           {...promptKindButton.agentProps}
+          data-state={form.kind === "text" ? "on" : "off"}
         >
           {t("triggerform.prompt", { defaultValue: "Prompt" })}
         </Button>
@@ -852,8 +852,8 @@ function TriggerKindSection({
           onClick={() => setField("kind", "workflow")}
           variant="choice"
           size="compact"
-          data-state={form.kind === "workflow" ? "on" : "off"}
           {...workflowKindButton.agentProps}
+          data-state={form.kind === "workflow" ? "on" : "off"}
         >
           {t("triggerform.workflow", { defaultValue: "Workflow" })}
         </Button>

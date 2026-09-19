@@ -231,6 +231,24 @@ function exactFence(row: SubscriptionBillingFence, input: AdvanceSubscriptionFen
 }
 
 export class SubscriptionBillingOperationsRepository {
+  /** Lets a current billing manager resume the single pending checkout across devices. */
+  async findPendingCheckout(
+    organizationId: string,
+  ): Promise<BillingSubscriptionCommand | undefined> {
+    const [command] = await dbWrite
+      .select()
+      .from(billingSubscriptionCommands)
+      .where(
+        and(
+          eq(billingSubscriptionCommands.organization_id, organizationId),
+          eq(billingSubscriptionCommands.kind, "checkout"),
+          inArray(billingSubscriptionCommands.status, ["PREPARED", "OUTCOME_UNKNOWN", "SUCCEEDED"]),
+        ),
+      )
+      .limit(1);
+    return command;
+  }
+
   async findCommand(
     organizationId: string,
     commandId: string,

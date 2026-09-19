@@ -562,6 +562,7 @@ export class MessageTurnLifetime {
 					message,
 					callback,
 					recordDeliveredVisibleText,
+					async () => opts.prepareReplyRecovery?.(),
 				);
 
 				// A host route may open the timer before calling the message service so

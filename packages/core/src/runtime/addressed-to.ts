@@ -5,14 +5,16 @@
  * agent is merely overhearing and should not act on it). All name/id resolution
  * runs against the room's entity list, without an LLM call.
  */
+
+import type { RelationshipsService } from "../services/relationships.ts";
 import type { Entity, UUID } from "../types/index";
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 
 /**
  * Post-parse persistence for the messageHandler's `extract.addressedTo`
- * field. No LLM call: each entry is either a UUID (validated) or a
- * participant name resolved against the room's entity list. For each
+ * field. No LLM call: each UUID or participant name is resolved against
+ * the room's entity list and the known conversation identities. For each
  * resolved target we upsert an "addressed" relationship edge from the
  * speaker to the target.
  *
@@ -86,6 +88,21 @@ export async function applyAddressedTo(
 		);
 
 		if (existing) {
+			const service =
+				typeof runtime.getService === "function"
+					? (runtime.getService("relationships") as RelationshipsService | null)
+					: null;
+			if (service?.supportsRelationshipEvidence?.()) {
+				await service.mergeIndependentRelationshipFields(existing.id, {
+					tags: [...ADDRESSED_RELATIONSHIP_TAGS],
+					metadata: {
+						lastInteractionAt: nowIso,
+						source: ADDRESSED_METADATA_SOURCE,
+					},
+				});
+				updated += 1;
+				continue;
+			}
 			const existingMetadata =
 				(existing.metadata as Record<string, unknown> | undefined) ?? {};
 			await runtime.updateRelationship({
@@ -232,19 +249,28 @@ export async function resolveAddressedTargets(
 		return [];
 	}
 
-	// Direct UUID hits don't require room lookups.
+	// A syntactically valid model-generated UUID is not evidence that an entity
+	// exists or participates in this room. Resolve it at the same boundary as names.
 	const uuids = new Set<UUID>();
 	const names: string[] = [];
 	for (const entry of cleaned) {
 		if (UUID_PATTERN.test(entry)) {
-			uuids.add(entry as UUID);
+			uuids.add(entry.toLowerCase() as UUID);
 		} else {
 			names.push(entry);
 		}
 	}
 
-	if (names.length > 0) {
+	if (names.length > 0 || uuids.size > 0) {
 		const participants = await runtime.getEntitiesForRoom(message.roomId);
+		const participantIds = new Set([
+			runtime.agentId,
+			message.entityId,
+			...participants.map((entity) => entity.id),
+		]);
+		for (const id of uuids) {
+			if (!participantIds.has(id)) uuids.delete(id);
+		}
 		const normalize = (value: string) => value.trim().toLowerCase();
 		const byName = new Map<string, UUID>();
 		const agentName = runtime.character.name;
