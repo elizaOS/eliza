@@ -15,6 +15,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import { identityClaimTable } from "@elizaos/plugin-sql";
 import { createTestRuntime } from "@elizaos/testing";
 import { Auth } from "googleapis";
@@ -102,7 +103,7 @@ describe("canonical principal to Gmail delivery", () => {
 
     const harness = await createTestRuntime({
       characterName: "CanonicalDeliveryAgent",
-      plugins: [googlePlugin],
+      plugins: [createAssistantPlugin(), googlePlugin],
     });
     runtime = harness.runtime;
     cleanup = harness.cleanup;
