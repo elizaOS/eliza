@@ -117,6 +117,116 @@ describe("atomic-json", () => {
 			expect((await fsp.readdir(tempDir)).sort()).toEqual(["concurrent.json"]);
 		});
 
+		it("rejects top-level undefined and preserves a good file", async () => {
+			const target = path.join(tempDir, "undefined-value.json");
+			// A pre-existing good file must survive the rejected write untouched.
+			await fsp.writeFile(target, '{"ok":true}\n', "utf-8");
+
+			await expect(
+				writeJsonAtomic(
+					target,
+					undefined as unknown as Record<string, unknown>,
+				),
+			).rejects.toThrow(new TypeError("Cannot serialize undefined to JSON"));
+
+			// The trailingNewline variant rejects the same way; default
+			// trailingNewline is false (atomic-json.ts normalizeOptions).
+			await expect(
+				writeJsonAtomic(
+					target,
+					undefined as unknown as Record<string, unknown>,
+					{ trailingNewline: true },
+				),
+			).rejects.toThrow(new TypeError("Cannot serialize undefined to JSON"));
+
+			expect(await fsp.readFile(target, "utf-8")).toBe('{"ok":true}\n');
+			expect(await fsp.readdir(tempDir)).toEqual(["undefined-value.json"]);
+
+			await expect(readJsonFile(target)).resolves.toEqual({ ok: true });
+		});
+
+		it("rejects undefined under a nonexistent parent without creating it", async () => {
+			const parent = path.join(tempDir, "no-such-parent-async");
+			const target = path.join(parent, "data.json");
+
+			await expect(
+				writeJsonAtomic(target, undefined as unknown as string),
+			).rejects.toThrow(new TypeError("Cannot serialize undefined to JSON"));
+
+			// Serialization happens before mkdir, so the parent must not exist.
+			await expect(fsp.access(parent)).rejects.toMatchObject({
+				code: "ENOENT",
+			});
+			expect(await fsp.readdir(tempDir)).toEqual([]);
+		});
+
+		it("rejects undefined synchronously and preserves a good file", () => {
+			const target = path.join(tempDir, "undefined-sync.json");
+			fs.writeFileSync(target, '{"ok":true}\n', "utf-8");
+
+			expect(() =>
+				writeJsonAtomicSync(
+					target,
+					undefined as unknown as Record<string, unknown>,
+				),
+			).toThrow(new TypeError("Cannot serialize undefined to JSON"));
+
+			// Synchronous trailingNewline variant rejects without touching bytes.
+			expect(() =>
+				writeJsonAtomicSync(
+					target,
+					undefined as unknown as Record<string, unknown>,
+					{ trailingNewline: true },
+				),
+			).toThrow(new TypeError("Cannot serialize undefined to JSON"));
+
+			expect(fs.readFileSync(target, "utf-8")).toBe('{"ok":true}\n');
+			expect(fs.readdirSync(tempDir)).toEqual(["undefined-sync.json"]);
+		});
+
+		it("rejects undefined synchronously without creating a missing parent", () => {
+			const parent = path.join(tempDir, "no-such-parent-sync");
+			const target = path.join(parent, "data.json");
+
+			expect(() =>
+				writeJsonAtomicSync(target, undefined as unknown as string),
+			).toThrow(new TypeError("Cannot serialize undefined to JSON"));
+
+			expect(() => fs.accessSync(parent)).toThrow();
+			expect(fs.readdirSync(tempDir)).toEqual([]);
+		});
+
+		it("rejects only top-level function/symbol without creating a parent", async () => {
+			const parent = path.join(tempDir, "no-such-parent-fn");
+			const fnTarget = path.join(parent, "fn.json");
+			const symTarget = path.join(parent, "sym.json");
+
+			await expect(
+				writeJsonAtomic(fnTarget, () => "unserializable" as unknown as string),
+			).rejects.toThrow(new TypeError("Cannot serialize function to JSON"));
+			await expect(
+				writeJsonAtomic(symTarget, Symbol("s") as unknown as string),
+			).rejects.toThrow(new TypeError("Cannot serialize symbol to JSON"));
+
+			// Neither rejected write may create the missing parent.
+			await expect(fsp.access(parent)).rejects.toMatchObject({
+				code: "ENOENT",
+			});
+			expect(await fsp.readdir(tempDir)).toEqual([]);
+
+			// Nested function properties keep JSON semantics (omitted), proving
+			// the guard does not broaden to ordinary optional properties.
+			const nestedTarget = path.join(tempDir, "nested-fn.json");
+			await writeJsonAtomic(nestedTarget, {
+				a: 1,
+				f: (() => "x") as unknown as string,
+			});
+			expect(await fsp.readFile(nestedTarget, "utf-8")).toContain('"a": 1');
+			expect(await readJsonFile<{ a: number }>(nestedTarget)).toEqual({
+				a: 1,
+			});
+		});
+
 		it("rejects non-string or empty file paths", async () => {
 			await expect(
 				writeJsonAtomic("" as unknown as string, {}),
