@@ -441,7 +441,7 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
   private plugin: LlamaCppPluginLike | null = null;
   private lifecycleQueue: Promise<void> = Promise.resolve();
 
-  private serializeLifecycle(operation: () => Promise<void>): Promise<void> {
+  private serializeLifecycle<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.lifecycleQueue.then(operation);
     this.lifecycleQueue = result.then(
       () => undefined,
@@ -1259,6 +1259,11 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
   }
 
   async embed(options: EmbedOptions): Promise<EmbedResult> {
+    // Admission and inference must finish before a queued unload releases their context.
+    return this.serializeLifecycle(() => this.embedContext(options));
+  }
+
+  private async embedContext(options: EmbedOptions): Promise<EmbedResult> {
     if (this.bgeContext) {
       const prepared = prepareBgeEmbeddingInput(
         options.input,

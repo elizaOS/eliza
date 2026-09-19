@@ -92,3 +92,61 @@ it.each(["android", "ios"])(
     expect(release).toHaveBeenCalledTimes(1);
   },
 );
+
+it.each(["tokenize", "embedding"])(
+  "keeps the BGE context alive when unload arrives during %s",
+  async (phase) => {
+    vi.resetModules();
+    Object.defineProperty(globalThis, "Capacitor", {
+      configurable: true,
+      value: { isNativePlatform: () => true, getPlatform: () => "android" },
+    });
+    const started = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    const release = vi.fn(async () => undefined);
+    const pause = async (operation: string) => {
+      if (phase === operation) {
+        started.resolve();
+        await resume.promise;
+      }
+    };
+    vi.doMock("llama-cpp-capacitor", () => ({
+      initBgeEmbedding: async () => ({
+        tokenize: async (text: string) => {
+          await pause("tokenize");
+          return { tokens: prepareBgeEmbeddingInput(text).tokenIds };
+        },
+        embedding: async (text: string) => {
+          await pause("embedding");
+          const tokenIds = prepareBgeEmbeddingInput(text).tokenIds;
+          return {
+            embedding: [1, ...Array(383).fill(0)],
+            tokens: tokenIds.length,
+            tokenIds,
+            embeddingSpace: BGE_SMALL_VECTOR_SPACE,
+          };
+        },
+        release,
+      }),
+    }));
+    const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
+    const adapter = new CapacitorLlamaAdapter();
+    await adapter.load({ modelPath: "/models/bge-small-en-v1.5-f16.gguf" });
+    const pending = adapter.embed({ input: "preserve this embedding request" });
+    const observed = Promise.allSettled([pending]);
+    await started.promise;
+    const unloading = adapter.unload();
+    try {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      expect(release).not.toHaveBeenCalled();
+    } finally {
+      resume.resolve();
+      await observed;
+      await unloading;
+    }
+    expect(getEmbeddingVectorSpace((await pending).embedding)).toBe(
+      BGE_SMALL_VECTOR_SPACE,
+    );
+    expect(release).toHaveBeenCalledTimes(1);
+  },
+);
