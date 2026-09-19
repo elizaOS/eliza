@@ -14,20 +14,28 @@ const ROOM_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" as UUID;
 const ROOM_C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as UUID;
 
 describe("fetchChatMessages room resolution", () => {
-  it("reads every participant room through one batched lookup", async () => {
+  it("preserves participant room order and repetitions while filtering batch results", async () => {
     const batchReads: UUID[][] = [];
     const singleReads: UUID[] = [];
-    const rooms: Room[] = [ROOM_A, ROOM_B].map((id) => ({
+    const scannedRooms: UUID[][] = [];
+    const missingRoom = "dddddddd-dddd-4ddd-8ddd-dddddddddddd" as UUID;
+    const rooms: Room[] = [ROOM_C, ROOM_B, ROOM_A].map((id) => ({
       id,
       name: `room-${id.slice(0, 2)}`,
-      source: "discord",
+      source: id === ROOM_C ? "telegram" : "discord",
       type: ChannelType.GROUP,
       channelId: `chan-${id.slice(0, 2)}`,
       serverId: "guild",
     }));
     const runtime = {
       agentId: AGENT,
-      getRoomsForParticipant: async () => [ROOM_A, ROOM_B, ROOM_C],
+      getRoomsForParticipant: async () => [
+        ROOM_A,
+        ROOM_B,
+        ROOM_A,
+        ROOM_C,
+        missingRoom,
+      ],
       getRoomsByIds: async (ids: UUID[]) => {
         batchReads.push([...ids]);
         return rooms.filter((room) => ids.includes(room.id));
@@ -36,19 +44,24 @@ describe("fetchChatMessages room resolution", () => {
         singleReads.push(id);
         return rooms.find((room) => room.id === id) ?? null;
       },
-      getMemoriesByRoomIds: async () => [],
+      getMemoriesByRoomIds: async ({ roomIds }: { roomIds: UUID[] }) => {
+        scannedRooms.push(roomIds);
+        return [];
+      },
+      getParticipantsForRoom: async () => [AGENT],
       getWorld: async () => null,
     } as unknown as IAgentRuntime;
 
-    // A source filter no room matches ends the scan right after the room
-    // read, which is the only step this pin is about.
+    // SQL may return rows in any order, omit missing IDs and deduplicate.
+    // The message scan must retain the original eligible room sequence.
     const messages = await fetchChatMessages(runtime, {
-      sources: ["telegram"],
+      sources: ["discord"],
       limit: 10,
     });
 
     expect(messages).toEqual([]);
-    expect(batchReads).toEqual([[ROOM_A, ROOM_B, ROOM_C]]);
+    expect(batchReads).toEqual([[ROOM_A, ROOM_B, ROOM_A, ROOM_C, missingRoom]]);
+    expect(scannedRooms).toEqual([[ROOM_A, ROOM_B, ROOM_A]]);
     expect(singleReads).toEqual([]);
   });
 });
