@@ -94,9 +94,9 @@ describe.each([false, true])(
         ],
         normalized.recordArgTransformsByTool,
       );
-      expect(validateToolArgs(workThreadAction, restored[0].input).valid).toBe(
-        true,
-      );
+      expect(
+        validateToolArgs(workThreadAction, restored[0].arguments).valid,
+      ).toBe(true);
       // The observed live failure must be rejected before handler execution.
       expect(
         errorsFor([{ ...nativeCreate, type: "create_thread" }]).length,

@@ -25,6 +25,7 @@ import {
   DEFAULT_SCENARIO_EXECUTION_PROFILE,
   type ScenarioExecutionProfile,
 } from "@elizaos/scenario-runner/schema";
+import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
 import {
   createDeterministicModelPlugin,
   type DeterministicModelDiagnostics,
@@ -983,6 +984,7 @@ export async function createScenarioRuntime(
     // deterministic. Provider-qualified runs inherit the production defaults.
     settings: scenarioRuntimeSettings,
   });
+  installHttpPluginLifecycle(runtime);
   const registeredPluginPackages = new Set<string>();
 
   const { default: pluginSql } = (await import("@elizaos/plugin-sql")) as {
