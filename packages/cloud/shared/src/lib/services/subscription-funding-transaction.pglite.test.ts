@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getDedicatedComputePriceAcceptance } from "@elizaos/cloud-sdk/browser-contracts";
 import { sql } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { z } from "zod";
@@ -2300,6 +2301,131 @@ if (postgresTestUrl) {
       }
     }
   });
+
+  // Suspend routing (#31364) consults the LATEST funding window's retirement
+  // binding through latestAgentComputeFundingWindow. These cases pin the real
+  // query's ordering against PostgreSQL itself — adversarial physical heap
+  // order and an exact period_start tie — where the simulated suite can only
+  // prove branch selection.
+  test("suspend routing reads the latest funding window under adversarial physical order (#31364)", async () => {
+    const { latestAgentComputeFundingWindow } = await import("./eliza-sandbox/lifecycle/power");
+    for (const boundFirstInHeap of [true, false]) {
+      const agentId = crypto.randomUUID();
+      await fixture.query(
+        "INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision) VALUES($1,$2,'stopped','dedicated-always',1)",
+        [agentId, organizationId],
+      );
+      const [heldBound, heldUnbound] = await Promise.all([
+        helpers.writeTransaction((tx) =>
+          funding.subscriptionFundingService.reserveInTransaction(
+            tx,
+            input(`compute.routing-order.bound.${boundFirstInHeap}.${agentId}`, "0.010000"),
+          ),
+        ),
+        helpers.writeTransaction((tx) =>
+          funding.subscriptionFundingService.reserveInTransaction(
+            tx,
+            input(`compute.routing-order.unbound.${boundFirstInHeap}.${agentId}`, "0.010000"),
+          ),
+        ),
+      ]);
+      // Older window: committed funded stop, retirement-bound (settled,
+      // provider-stopped, bound — the 0392 CHECK shape). Newer window:
+      // expiry's settled, unbound stop-in-place.
+      const boundId = crypto.randomUUID();
+      const insertBound = () =>
+        fixture.query(
+          `INSERT INTO agent_compute_funding(id,agent_id,organization_id,funding_reservation_id,
+             period_start,period_end,hourly_rate,settled_at,settled_through,
+             provider_node_id,provider_container_id,provider_bound_at,
+             provider_stopped_at,provider_stop_receipt,retirement_backup_id)
+           VALUES($5::uuid,$1,$2,$3,now()-interval '3 days',now()-interval '2 days',0.15,
+             now()-interval '2 days',now()-interval '2 days',
+             'node-routing-order','abababababababababababababababababababababababababababababababab',now()-interval '3 days',
+             now()-interval '2 days',
+             jsonb_build_object('fundingId',$5::text,'containerId','abababababababababababababababababababababababababababababababab','stoppedAtMs',1757894400000,'bootId','boot-routing-order'),
+             $4)`,
+          [agentId, organizationId, heldBound.reservation.id, crypto.randomUUID(), boundId],
+        );
+      const insertUnbound = () =>
+        fixture.query(
+          `INSERT INTO agent_compute_funding(id,agent_id,organization_id,funding_reservation_id,
+             period_start,period_end,hourly_rate,settled_at,settled_through)
+           VALUES(gen_random_uuid(),$1,$2,$3,now()-interval '1 day',now(),0.15,now(),now())`,
+          [agentId, organizationId, heldUnbound.reservation.id],
+        );
+      if (boundFirstInHeap) {
+        await insertBound();
+        await insertUnbound();
+      } else {
+        await insertUnbound();
+        await insertBound();
+      }
+      const latest = await latestAgentComputeFundingWindow(
+        helpers.dbWrite,
+        agentId,
+        organizationId,
+      );
+      expect(latest).toEqual({ retirementBackupId: null });
+    }
+  });
+
+  test("an exact period_start tie breaks to the higher id, matching the sleep path's read (#31364)", async () => {
+    const { latestAgentComputeFundingWindow } = await import("./eliza-sandbox/lifecycle/power");
+    for (const boundIsHigherId of [true, false]) {
+      const agentId = crypto.randomUUID();
+      await fixture.query(
+        "INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision) VALUES($1,$2,'stopped','dedicated-always',1)",
+        [agentId, organizationId],
+      );
+      const [heldBound, heldUnbound] = await Promise.all([
+        helpers.writeTransaction((tx) =>
+          funding.subscriptionFundingService.reserveInTransaction(
+            tx,
+            input(`compute.routing-tie.bound.${boundIsHigherId}.${agentId}`, "0.010000"),
+          ),
+        ),
+        helpers.writeTransaction((tx) =>
+          funding.subscriptionFundingService.reserveInTransaction(
+            tx,
+            input(`compute.routing-tie.unbound.${boundIsHigherId}.${agentId}`, "0.010000"),
+          ),
+        ),
+      ]);
+      const backupId = crypto.randomUUID();
+      const lowId = `00000000-0000-4000-8000-${agentId.slice(-12)}`;
+      const highId = `ffffffff-ffff-4fff-8fff-${agentId.slice(-12)}`;
+      const boundId = boundIsHigherId ? highId : lowId;
+      await fixture.query(
+        `INSERT INTO agent_compute_funding(id,agent_id,organization_id,funding_reservation_id,
+           period_start,period_end,hourly_rate,settled_at,settled_through,
+           provider_node_id,provider_container_id,provider_bound_at,
+           provider_stopped_at,provider_stop_receipt,retirement_backup_id)
+         VALUES($5::uuid,$1,$2,$3,timestamptz '2026-09-13T00:00:00Z',timestamptz '2026-09-14T00:00:00Z',0.15,
+           timestamptz '2026-09-14T00:00:00Z',timestamptz '2026-09-14T00:00:00Z',
+           'node-routing-tie','cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd',timestamptz '2026-09-13T00:00:00Z',
+           timestamptz '2026-09-14T00:00:00Z',
+           jsonb_build_object('fundingId',$5::text,'containerId','cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd','stoppedAtMs',1757894400000,'bootId','boot-routing-tie'),
+           $4)`,
+        [agentId, organizationId, heldBound.reservation.id, backupId, boundId],
+      );
+      await fixture.query(
+        `INSERT INTO agent_compute_funding(id,agent_id,organization_id,funding_reservation_id,
+           period_start,period_end,hourly_rate,settled_at,settled_through)
+         VALUES($4,$1,$2,$3,timestamptz '2026-09-13T00:00:00Z',timestamptz '2026-09-14T00:00:00Z',0.15,
+           timestamptz '2026-09-14T00:00:00Z',timestamptz '2026-09-14T00:00:00Z')`,
+        [agentId, organizationId, heldUnbound.reservation.id, boundIsHigherId ? lowId : highId],
+      );
+      const latest = await latestAgentComputeFundingWindow(
+        helpers.dbWrite,
+        agentId,
+        organizationId,
+      );
+      expect(latest).toEqual({
+        retirementBackupId: boundIsHigherId ? backupId : null,
+      });
+    }
+  });
 }
 
 if (sshFixturePath) {
@@ -2314,6 +2440,8 @@ if (sshFixturePath) {
       | "user-suspend"
       | "user-suspend-stale"
       | "user-suspend-backup-failure"
+      | "user-suspend-expiry-stopped"
+      | "user-suspend-settled-running"
       | "shutdown"
       | "restart"
       | "deletion"
@@ -2328,8 +2456,13 @@ if (sshFixturePath) {
       scenario === "user-suspend" ||
       scenario === "user-suspend-stale" ||
       scenario === "user-suspend-backup-failure";
-    const stopIntentScenario = billingScenario || userStopScenario;
-    const sleepScenario = scenario === "sleep" || stopIntentScenario;
+    // The two states low-level expiry reconciliation deliberately produces;
+    // a user suspend arriving on either must settle through the legacy paths
+    // without entering paid retirement (#31312 follow-up).
+    const expiryScenario =
+      scenario === "user-suspend-expiry-stopped" || scenario === "user-suspend-settled-running";
+    const stopIntentScenario = billingScenario || userStopScenario || expiryScenario;
+    const sleepScenario = scenario === "sleep" || (stopIntentScenario && !expiryScenario);
     const target = z
       .object({
         hostname: z.ipv4(),
@@ -2349,31 +2482,35 @@ if (sshFixturePath) {
     const rootSSH = guard.dockerComputeRootSSH(ssh, target.username);
     const docker = target.username === "root" ? "docker" : "sudo --non-interactive docker";
     const suffix =
-      scenario === "user-suspend-backup-failure"
-        ? "000000000067"
-        : scenario === "user-suspend-stale"
-          ? "000000000066"
-          : scenario === "user-suspend"
-            ? "000000000065"
-            : scenario === "billing-held"
-              ? "000000000064"
-              : scenario === "billing-topup"
-                ? "000000000048"
-                : scenario === "billing-stale"
-                  ? "000000000049"
-                  : scenario === "billing-sleep"
-                    ? "000000000047"
-                    : scenario === "worker"
-                      ? "000000000041"
-                      : sleepScenario
-                        ? "000000000042"
-                        : scenario === "shutdown"
-                          ? "000000000043"
-                          : scenario === "restart"
-                            ? "000000000044"
-                            : scenario === "deletion"
-                              ? "000000000045"
-                              : "000000000046";
+      scenario === "user-suspend-settled-running"
+        ? "000000000069"
+        : scenario === "user-suspend-expiry-stopped"
+          ? "000000000068"
+          : scenario === "user-suspend-backup-failure"
+            ? "000000000077"
+            : scenario === "user-suspend-stale"
+              ? "000000000076"
+              : scenario === "user-suspend"
+                ? "000000000075"
+                : scenario === "billing-held"
+                  ? "000000000064"
+                  : scenario === "billing-topup"
+                    ? "000000000048"
+                    : scenario === "billing-stale"
+                      ? "000000000049"
+                      : scenario === "billing-sleep"
+                        ? "000000000047"
+                        : scenario === "worker"
+                          ? "000000000041"
+                          : sleepScenario
+                            ? "000000000042"
+                            : scenario === "shutdown"
+                              ? "000000000043"
+                              : scenario === "restart"
+                                ? "000000000044"
+                                : scenario === "deletion"
+                                  ? "000000000045"
+                                  : "000000000046";
     const agentId = `63000000-0000-4000-8000-${suffix}`;
     const org = `61000000-0000-4000-8000-${suffix}`;
     const name = `agent-${agentId}`;
@@ -2513,9 +2650,9 @@ if (sshFixturePath) {
           containerId,
         },
       );
-      if (scenario === "billing-sleep" || scenario === "billing-stale") {
+      if (scenario === "billing-sleep" || scenario === "billing-stale" || expiryScenario) {
         // Start with enough paid time for the real host's admission margin,
-        // then let this same lease reach retirement naturally below.
+        // then let this same lease reach retirement (or full expiry) naturally.
         await fixture.query(
           "UPDATE agent_compute_funding SET period_end=clock_timestamp()+interval '150 seconds' WHERE id=$1",
           [provider.fundingId],
@@ -2552,6 +2689,9 @@ if (sshFixturePath) {
               organizationId: org,
               userId: "64000000-0000-4000-8000-000000000041",
               restoreBackupId: backupId,
+              // Priced start jobs must carry the caller's price acceptance;
+              // dispatch rejects a wake whose admitted price is stale.
+              admittedComputePrice: getDedicatedComputePriceAcceptance(),
             }),
             org,
             agentId,
@@ -2724,13 +2864,309 @@ if (sshFixturePath) {
             expect(waitMs).toBeLessThanOrEqual(30_000);
             await Bun.sleep(Math.ceil(waitMs) + 50);
           }
+          if (!expiryScenario) {
+            const suspended = await new ProvisioningJobService().enqueueAgentSuspendOnce({
+              agentId,
+              organizationId: org,
+              userId: `64000000-0000-4000-8000-${suffix}`,
+              authorization: userStopScenario ? "user_request" : "billing_request",
+            });
+            billingJobId = suspended.job.id;
+          }
+        }
+        if (expiryScenario) {
+          // Both expiry states are produced by the real reconciliation path on
+          // the live host: the guard revokes the expired lease, stops the
+          // container, and returns the durable receipt that settles the window.
+          // No funding row is hand-written.
+          const { reconcileExpiredAgentCompute } = await import("./agent-compute-recovery");
+          // Opt-in acceptance record. A reviewer without this rig cannot watch
+          // the lifecycle move, so when COMPUTE_FUNDING_EVIDENCE_DIR is set each
+          // phase writes the same rows the assertions read, plus the live host's
+          // view of the container, into one inspectable document.
+          const evidenceDir = process.env.COMPUTE_FUNDING_EVIDENCE_DIR;
+          const phases: Array<Record<string, unknown>> = [];
+          const recordPhase = async (phase: string) => {
+            if (!evidenceDir) return;
+            const q = async (text: string, params: unknown[] = []) =>
+              (await fixture.query(text, params)).rows;
+            phases.push({
+              phase,
+              funding: await q(
+                `SELECT id, period_start, period_end, settled_at, settled_through,
+                   provider_stopped_at, retirement_backup_id, provider_node_id,
+                   provider_container_id, runtime_ready_at,
+                   provider_stop_receipt IS NOT NULL AS has_stop_receipt
+                 FROM agent_compute_funding WHERE agent_id=$1 ORDER BY period_start, id`,
+                [agentId],
+              ),
+              sandbox: await q(
+                `SELECT status, billing_status, sandbox_id, node_id, last_backup_at,
+                   lifecycle_revision, total_billed, bridge_url, health_url
+                 FROM agent_sandboxes WHERE id=$1`,
+                [agentId],
+              ),
+              stop_intents: await q(
+                `SELECT job_id, "authorization", status, attempts, last_error,
+                   retained_backup_billing, provider_confirmed_at IS NOT NULL AS confirmed
+                 FROM agent_compute_stop_intents WHERE agent_id=$1 ORDER BY created_at`,
+                [agentId],
+              ),
+              backups: await q(
+                `SELECT id, snapshot_type, state_data_storage, verification_status,
+                   size_bytes, sandbox_record_id,
+                   state_data->>'algorithm' AS encryption_algorithm
+                 FROM agent_sandbox_backups WHERE sandbox_record_id=$1 ORDER BY created_at`,
+                [agentId],
+              ),
+              organization: await q("SELECT credit_balance FROM organizations WHERE id=$1", [org]),
+              node_allocation: await q(
+                "SELECT node_id, allocated_count FROM docker_nodes WHERE node_id LIKE $1 ORDER BY node_id",
+                [`${nodeId}%`],
+              ),
+              host_container: {
+                exists:
+                  (
+                    await ssh.exec(`${docker} ps -aq --no-trunc --filter id=${containerId}`)
+                  ).trim() === containerId,
+                running:
+                  (
+                    await ssh.exec(
+                      `${docker} inspect --format '{{.State.Running}}' ${containerId} 2>/dev/null || echo absent`,
+                    )
+                  ).trim() === "true",
+              },
+            });
+          };
+          await recordPhase("1-funded-running-before-expiry");
+          if (scenario === "user-suspend-settled-running") {
+            // A re-placed agent: the canonical row points at a successor node
+            // while the expired window still binds the original placement, so
+            // reconciliation settles the window but leaves the row running.
+            await fixture.query(
+              "INSERT INTO docker_nodes(id,node_id,hostname,ssh_port,ssh_user,host_key_fingerprint,allocated_count,capacity,enabled,placement_state,status) VALUES(gen_random_uuid(),$1,$2,$3,$4,$5,1,2,true,'open','healthy')",
+              [
+                `${nodeId}-moved`,
+                target.hostname,
+                target.port,
+                target.username,
+                target.hostKeyFingerprint,
+              ],
+            );
+            await fixture.query("UPDATE agent_sandboxes SET node_id=$2 WHERE id=$1", [
+              agentId,
+              `${nodeId}-moved`,
+            ]);
+          }
+          // Wait for the granted lease's real expiry: the guard stops unpaid
+          // CPU on its own at the stop margin, and only a genuinely expired
+          // window may be settled. Mutating period_end after the grant would
+          // desynchronize the durable lease and be refused as a replay.
+          const { rows: waitRows } = await fixture.query<{ wait_ms: number }>(
+            "SELECT GREATEST(0, EXTRACT(EPOCH FROM (period_end-clock_timestamp()))*1000)::float8 AS wait_ms FROM agent_compute_funding WHERE id=$1",
+            [provider.fundingId],
+          );
+          expect(waitRows[0]!.wait_ms).toBeLessThanOrEqual(150_000);
+          process.stdout.write(
+            `Waiting ${Math.ceil(waitRows[0]!.wait_ms)}ms for actual funding expiry\n`,
+          );
+          await Bun.sleep(Math.ceil(waitRows[0]!.wait_ms) + 250);
+          const settled = await reconcileExpiredAgentCompute({
+            agentId,
+            organizationId: org,
+            fundingId: provider.fundingId,
+          });
+          expect(settled).toBeTruthy();
+          await recordPhase("2-after-real-expiry-reconciliation");
+          expect(
+            (
+              await ssh.exec(`${docker} inspect --format '{{.State.Running}}' ${containerId}`)
+            ).trim(),
+          ).toBe("false");
+          const expiryState = await renewalState(org);
+          expect(expiryState.windows).toHaveLength(1);
+          expect(expiryState.windows[0]).toMatchObject({
+            settled_at: expect.any(Date),
+            provider_stop_receipt: expect.any(Object),
+            retirement_backup_id: null,
+          });
+          expect(
+            (
+              await fixture.query("SELECT status,last_backup_at FROM agent_sandboxes WHERE id=$1", [
+                agentId,
+              ])
+            ).rows[0],
+          ).toMatchObject(
+            scenario === "user-suspend-expiry-stopped"
+              ? { status: "stopped", last_backup_at: null }
+              : { status: "running", last_backup_at: null },
+          );
           const suspended = await new ProvisioningJobService().enqueueAgentSuspendOnce({
             agentId,
             organizationId: org,
             userId: `64000000-0000-4000-8000-${suffix}`,
-            authorization: userStopScenario ? "user_request" : "billing_request",
+            authorization: "user_request",
           });
-          billingJobId = suspended.job.id;
+          const suspendJobId = suspended.job.id;
+          const { rows: intentRows } = await fixture.query<{ lifecycle_revision: number }>(
+            "SELECT lifecycle_revision FROM agent_compute_stop_intents WHERE job_id=$1",
+            [suspendJobId],
+          );
+          const capture = spyOn(
+            service as unknown as {
+              fetchSnapshotState: () => Promise<{
+                stateData: typeof state;
+                sizeBytes: number;
+                bridgeUrl: string;
+              }>;
+            },
+            "fetchSnapshotState",
+          ).mockImplementation(async () => {
+            if (scenario === "user-suspend-expiry-stopped")
+              throw new Error("expiry-stopped suspend must not attempt a live capture");
+            // The stopped container's data is read for real; only the snapshot
+            // transport is this suite's explicit fixture.
+            expect(
+              (
+                await ssh.exec(`${docker} cp ${containerId}:/tmp/worker-marker - | tar -xOf -`)
+              ).trim(),
+            ).toBe(marker);
+            return {
+              stateData: state,
+              sizeBytes: JSON.stringify(state).length,
+              bridgeUrl: `http://${target.hostname}:2138`,
+            };
+          });
+          // Observed, NOT substituted: the real persistence path runs here, so
+          // the backup row is written by production code — real encryption at
+          // rest, real inline/offload decision, real sandbox metadata update.
+          // Only the snapshot transport above is a fixture, because the tiny
+          // fixture image serves no Eliza state endpoint to read from.
+          const persist = spyOn(
+            service as unknown as {
+              persistSnapshotWithinTransaction: import("./eliza-sandbox/backup/service").SandboxBackup["persistSnapshotWithinTransaction"];
+            },
+            "persistSnapshotWithinTransaction",
+          );
+          try {
+            const result = await service.executeSuspend(
+              agentId,
+              org,
+              suspendJobId,
+              // A stale queue hint must not override the persisted user intent.
+              "billing_request",
+              Number(intentRows[0]!.lifecycle_revision),
+            );
+            if (scenario === "user-suspend-expiry-stopped") {
+              expect(result).toEqual({ success: true, containerStopped: true });
+              expect(capture).not.toHaveBeenCalled();
+              expect(persist).not.toHaveBeenCalled();
+              // The stopped fast path never touches the host: the expiry-stopped
+              // container and its unbacked data are retained.
+              expect(
+                (await ssh.exec(`${docker} ps -aq --no-trunc --filter id=${containerId}`)).trim(),
+              ).toBe(containerId);
+              expect(
+                (
+                  await ssh.exec(`${docker} cp ${containerId}:/tmp/worker-marker - | tar -xOf -`)
+                ).trim(),
+              ).toBe(marker);
+            } else {
+              expect(result).toMatchObject({ success: true, containerStopped: true });
+              expect(capture).toHaveBeenCalledTimes(1);
+              expect(persist).toHaveBeenCalledTimes(1);
+              // Production code minted this id inside the stop transaction.
+              const persistedBackupId = (result as { backupId?: string }).backupId;
+              expect(persistedBackupId).toMatch(
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+              );
+              // The legacy in-place replacement stop removed the container on
+              // the real host after its backup gate committed.
+              expect(
+                (await ssh.exec(`${docker} ps -aq --no-trunc --filter id=${containerId}`)).trim(),
+              ).toBe("");
+              // Stored encrypted, read back through the hydrating repository:
+              // the row on disk is not plaintext, and it still decrypts to the
+              // exact captured state.
+              const storedBackup = await agentSandboxesRepository.getStoredBackupById(
+                persistedBackupId!,
+              );
+              expect(storedBackup?.state_data).toMatchObject({ algorithm: "kms-aes-256-gcm" });
+              expect(
+                (await agentSandboxesRepository.getBackupById(persistedBackupId!))?.state_data,
+              ).toEqual(state);
+            }
+            expect(
+              (
+                await fixture.query(
+                  "SELECT status,retained_backup_billing FROM agent_compute_stop_intents WHERE job_id=$1",
+                  [suspendJobId],
+                )
+              ).rows[0],
+            ).toMatchObject({
+              status: "provider_confirmed",
+              retained_backup_billing: scenario === "user-suspend-settled-running",
+            });
+            const final = await renewalState(org);
+            expect(final.windows).toHaveLength(1);
+            expect(final.windows[0]).toMatchObject({ retirement_backup_id: null });
+            expect(
+              (await fixture.query("SELECT status FROM agent_sandboxes WHERE id=$1", [agentId]))
+                .rows[0],
+            ).toMatchObject({ status: "stopped" });
+            expect(
+              (
+                await fixture.query(
+                  "SELECT o.credit_balance+a.total_billed=1.000000::numeric AS reconciled FROM organizations o JOIN agent_sandboxes a ON a.organization_id=o.id WHERE a.id=$1",
+                  [agentId],
+                )
+              ).rows[0]?.reconciled,
+            ).toBe(true);
+            await recordPhase("3-after-user-suspend");
+            // A crash retry replays the confirmed intent as a terminal no-op.
+            expect(
+              await service.executeSuspend(
+                agentId,
+                org,
+                suspendJobId,
+                "billing_request",
+                Number(intentRows[0]!.lifecycle_revision),
+              ),
+            ).toEqual({ success: true, containerStopped: true });
+            await recordPhase("4-after-crash-retry-replay");
+            if (evidenceDir) {
+              await writeFile(
+                join(evidenceDir, `${scenario}.evidence.json`),
+                `${JSON.stringify(
+                  {
+                    scenario,
+                    agentId,
+                    organizationId: org,
+                    containerId,
+                    real: [
+                      "SSH transport and the systemd compute guard on the host",
+                      "Docker container lifecycle (create, start, guard stop, teardown)",
+                      "lease grant/revocation and the durable provider stop receipt",
+                      "PostgreSQL 17 lifecycle transactions, settlement and refunds",
+                      "reconcileExpiredAgentCompute, executeSuspend and the stop-intent machine",
+                      "backup persistence: encryption at rest, storage decision, metadata update",
+                    ],
+                    substituted: [
+                      "fetchSnapshotState (the bridge HTTP read): the stand-in container image is a bare node:22-alpine http server, not an Eliza runtime, so it serves no state endpoint",
+                    ],
+                    phases,
+                  },
+                  null,
+                  2,
+                )}\n`,
+                { mode: 0o600 },
+              );
+            }
+          } finally {
+            capture.mockRestore();
+            persist.mockRestore();
+          }
+          return;
         }
         const finalStatus = sleepScenario ? "sleeping" : "stopped";
         const retire = async () => {
@@ -2998,9 +3434,14 @@ if (sshFixturePath) {
             );
             return;
           }
-          if (sleepScenario) {
+          if (sleepScenario && !billingJobId) {
             // A restorable backup alone cannot authorize deleting a retained
             // container: its latest writes may have happened after that backup.
+            // Only the direct executeSleep path still owns this refusal: for
+            // intent-routed suspends, a stopped record whose latest window is
+            // unbound now settles through the legacy stopped fast path by
+            // design (the dedicated expiry-state scenarios pin that contract),
+            // so probing it here would terminate the intent mid-scenario.
             const removals = remove.mock.calls.length;
             await fixture.query(
               "UPDATE agent_compute_funding SET retirement_backup_id=NULL WHERE id=$1",
@@ -3335,6 +3776,18 @@ if (sshFixturePath) {
   );
 
   test(
+    "user suspend of an expiry-stopped, unbacked agent confirms through the stopped fast path on the real host",
+    () => runPaidContainerScenario("user-suspend-expiry-stopped"),
+    300_000,
+  );
+
+  test(
+    "user suspend of a running agent with only settled funding stops in place on the real host",
+    () => runPaidContainerScenario("user-suspend-settled-running"),
+    300_000,
+  );
+
+  test(
     "unfunded Dedicated suspension reclaims compute from its bound backup across removal failure and rollback",
     () => runPaidContainerScenario("billing-sleep"),
     180_000,
@@ -3657,7 +4110,11 @@ if (sshFixturePath) {
       expect(totals.rows[0]).toMatchObject({
         status: "stopped",
         sandbox_id: name,
-        ledger_count: 2,
+        // One ledger row: the activation-minimum debit taken by the funding
+        // reservation. Since the #31504 billing integration the settle path
+        // emits no second row when the whole hold was consumed as the
+        // minimum; the reconciled predicate below still proves the money.
+        ledger_count: 1,
         receipt_count: 1,
         reconciled: true,
       });
