@@ -26,6 +26,20 @@ export type TaskStatus = (typeof TaskStatus)[keyof typeof TaskStatus];
  * Task workers are registered with the `AgentRuntime` and are invoked when a `Task` of their designated `name` needs processing.
  * WHY two gates: shouldRun (scheduler) has no message/state; canExecute (actions) has full context for auth (e.g. approval roles).
  */
+/**
+ * Key-level change to a task's metadata applied as one storage mutation.
+ * `set` merges keys over the stored object and `unset` removes keys, so two
+ * writers touching different keys (an operator pause and a run's bookkeeping)
+ * cannot overwrite each other the way whole-object read-modify-write does.
+ */
+export interface TaskMetadataPatch {
+	set?: Partial<TaskMetadata>;
+	unset?: readonly (keyof TaskMetadata)[];
+}
+
+/** Result of `IAgentRuntime.patchTaskMetadata`. `unsupported` means the adapter has no atomic patch. */
+export type TaskMetadataPatchOutcome = "patched" | "missing" | "unsupported";
+
 export interface TaskWorker {
 	/** The unique name of the task type this worker handles. This name links `Task` instances to this worker. */
 	name: string;

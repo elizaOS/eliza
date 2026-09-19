@@ -91,6 +91,7 @@ import { MemoryType } from "../types";
 import { ROLE_WRITE_AUDIT_LOG_TYPE } from "../types/database";
 import { normalizePairingPageOptions } from "../types/pairing";
 import { DEFAULT_UUID } from "../types/primitives";
+import type { TaskMetadataPatch } from "../types/task";
 import { createHash } from "../utils/crypto-compat";
 import { isPlainObject } from "../utils/type-guards";
 import {
@@ -2343,6 +2344,24 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			return false;
 		}
 		this.tasks.set(String(id), { ...existing, ...task, id });
+		return true;
+	}
+
+	async patchTaskMetadata(
+		id: UUID,
+		patch: TaskMetadataPatch,
+	): Promise<boolean> {
+		const existing = this.tasks.get(String(id));
+		if (!existing) return false;
+		const metadata: Record<string, unknown> = {
+			...(existing.metadata ?? {}),
+			...(patch.set ?? {}),
+		};
+		for (const key of patch.unset ?? []) delete metadata[key];
+		this.tasks.set(String(id), {
+			...existing,
+			metadata: metadata as Task["metadata"],
+		});
 		return true;
 	}
 
