@@ -1,19 +1,11 @@
 /**
- * Pins the DOCUMENT action's context-gate membership against the runtime's
- * real action gate, mirroring provider-context-gate.test.ts so the provider
- * and action cannot drift apart again (the post-#19701 hole: the DOCUMENTS
- * provider composed on knowledge-routed turns and advertised document IDs for
- * follow-up reads while the DOCUMENT action was context-gate rejected).
- *
- * The `knowledge` context is retrieval-only, so the action's admission there
- * is paired with a handler-level operation gate: read-only subactions (list,
- * search, read) run on knowledge-routed turns; mutating subactions (write,
- * edit, delete, import_file, import_url) require `documents` routing. Both
- * directions of that gate are pinned here with a deterministic stubbed
- * runtime — no live model or DB.
+ * Exercises provider/action admission and read-only knowledge routing through
+ * the real gates and document handler with controlled storage collaborators.
+ * Message and merged app-state routing retain their separate entry contracts.
  */
 import { describe, expect, it, vi } from "vitest";
 import { actionGateRejection } from "../../runtime/action-gate.ts";
+import { filterByContextGate } from "../../runtime/context-gates.ts";
 import type {
 	AgentContext,
 	HandlerOptions,
@@ -37,12 +29,18 @@ const ROOM_ID = "00000000-0000-0000-0000-00000000d00d" as UUID;
 const WORLD_ID = "00000000-0000-4000-8000-00000000face" as UUID;
 const DOC_ID = "11111111-2222-3333-4444-555555555555" as UUID;
 
-function gateRejectionFor(activeContexts: AgentContext[]) {
-	return actionGateRejection(documentAction, {
+function expectAdmission(activeContexts: AgentContext[], allowed: boolean) {
+	expect(
+		filterByContextGate([documentsProvider], activeContexts, ["USER"])
+			.length === 1,
+	).toBe(allowed);
+	const rejection = actionGateRejection(documentAction, {
 		message: { content: {} } as Memory,
 		activeContexts,
 		userRoles: ["USER"],
 	});
+	if (allowed) expect(rejection).toBeUndefined();
+	else expect(rejection?.kind).toBe("context");
 }
 
 function makeMessage(text: string, routedContext?: AgentContext): Memory {
@@ -145,33 +143,18 @@ function options(parameters: Record<string, unknown>): HandlerOptions {
 	return { parameters } as HandlerOptions;
 }
 
-describe("DOCUMENT action context gating", () => {
-	it("is admitted in both exact stored-document contexts", () => {
-		expect(gateRejectionFor(["documents"])).toBeUndefined();
-		// The mismatch this file pins closed: the DOCUMENTS provider composes
-		// on knowledge-routed turns and hands the model document IDs "for
-		// follow-up reads" — the action gate must admit DOCUMENT there too.
-		expect(gateRejectionFor(["knowledge"])).toBeUndefined();
-		expect(gateRejectionFor(["knowledge", "general"])).toBeUndefined();
+describe("DOCUMENT provider and action admission", () => {
+	it("admits the provider and action in exact stored-document contexts", () => {
+		expectAdmission(["documents"], true);
+		expectAdmission(["knowledge"], true);
+		expectAdmission(["knowledge", "general"], true);
+		expectAdmission(["simple", "knowledge"], true);
 	});
 
-	it("does not expand into unrelated contexts", () => {
-		expect(gateRejectionFor(["web"])?.kind).toBe("context");
-		expect(gateRejectionFor(["wallet"])?.kind).toBe("context");
-		expect(gateRejectionFor(["simple"])?.kind).toBe("context");
-	});
-
-	it("keeps provider and action context membership identical", () => {
-		// The drift guard: whatever contexts compose the DOCUMENTS provider must
-		// also admit the DOCUMENT action, or the model is handed IDs it cannot
-		// dereference. `research` (the remaining taxonomy hole) is deliberately
-		// excluded from both until it gets its own decision.
-		expect([...(documentAction.contexts ?? [])].sort()).toEqual(
-			[...(documentsProvider.contexts ?? [])].sort(),
-		);
-		expect([...(documentAction.contextGate?.anyOf ?? [])].sort()).toEqual(
-			[...(documentsProvider.contextGate?.anyOf ?? [])].sort(),
-		);
+	it("rejects both surfaces in unrelated contexts", () => {
+		expectAdmission(["web"], false);
+		expectAdmission(["wallet"], false);
+		expectAdmission(["simple"], false);
 	});
 });
 
@@ -306,19 +289,4 @@ describe("DOCUMENT handler operation gate on app-path merged routing", () => {
 			expect(service.deleteDocument).not.toHaveBeenCalled();
 		},
 	);
-
-	it("proves the app-path gate via the real handler, not a copied boolean", async () => {
-		const service = makeService();
-		const runtime = makeRuntime(service);
-		const state = makeKnowledgeState();
-		const message = makeMessage("delete the launch doc", "general");
-		const res = await documentAction.handler?.(
-			runtime,
-			message,
-			state,
-			options({ action: "delete", id: DOC_ID }),
-		);
-		expect(res?.values).toMatchObject({ error: "knowledge_context_read_only" });
-		expect(service.deleteDocument).not.toHaveBeenCalled();
-	});
 });
