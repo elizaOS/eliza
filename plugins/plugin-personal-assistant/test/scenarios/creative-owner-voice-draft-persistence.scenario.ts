@@ -5,6 +5,8 @@
  * edit while revising only the targeted section.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
+import { DocumentService, documentsPlugin } from "@elizaos/plugin-assistant";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -127,6 +129,17 @@ export default scenario({
       source: "dashboard",
       channelType: "DM",
       title: "Owner Voice Draft",
+    },
+  ],
+  seed: [
+    {
+      type: "custom",
+      name: "start document storage for the draft lifecycle",
+      async apply(ctx) {
+        const runtime = ctx.runtime as IAgentRuntime;
+        await runtime.registerPlugin(documentsPlugin);
+        await runtime.getServiceLoadPromise(DocumentService.serviceType);
+      },
     },
   ],
   turns: [
