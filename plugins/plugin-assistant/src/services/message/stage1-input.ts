@@ -6,7 +6,6 @@ import type {
   ContextObject,
   IAgentRuntime,
   Memory,
-  OptimizedPromptTask,
   PromptSegment,
   UUID,
 } from "@elizaos/core";
@@ -25,6 +24,7 @@ import {
 import { messageHandlerTemplate } from "@elizaos/prompts";
 import { composePrompt } from "@elizaos/prompts/rendering";
 import { v4 } from "uuid";
+import type { OptimizedPromptTask } from "../optimized-prompt.ts";
 import {
   listAvailableContextsForRole,
   resolveStage1SenderRole,

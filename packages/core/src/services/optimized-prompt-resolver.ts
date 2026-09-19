@@ -1,30 +1,25 @@
-/**
- * Helper that resolves the system prompt for one of the five core decision
- * tasks. Each runtime call site already constructs a baseline prompt; this
- * resolver consults `OptimizedPromptService` first and falls back to the
- * baseline when no artifact has been loaded.
- *
- * Two public entry points:
- *
- *   - `resolveOptimizedPrompt(service, task, baseline)` — pure function;
- *     test-friendly. The caller passes the service it already resolved.
- *   - `resolveOptimizedPromptForRuntime(runtime, task, baseline)` — runtime
- *     helper that looks up the service via `runtime.getService`. Each call
- *     site for one of the five tasks goes through this single entry point,
- *     keyed only on the task name + baseline. There is no per-task code
- *     branching anywhere in the runtime — the service holds the
- *     task→artifact map and the operator's `OPTIMIZED_PROMPT_DISABLE`
- *     allowlist gates substitution uniformly.
- */
+/** Resolves complete prompt text through an optional registered service without owning artifacts or task catalogs. */
 
 import { ElizaError } from "../errors.ts";
 import { toWellFormedUnicode } from "../utils/well-formed.ts";
-import {
-	OPTIMIZED_PROMPT_SERVICE,
-	type OptimizedPromptFewShotExample,
-	type OptimizedPromptService,
-	type OptimizedPromptTask,
-} from "./optimized-prompt.js";
+export const OPTIMIZED_PROMPT_SERVICE = "optimized_prompt";
+
+/** Complete demonstration content supplied by the registered prompt service. */
+export interface RuntimePromptDemonstration {
+	input: { system?: string; user: string };
+	expectedOutput: string;
+}
+
+/** Storage-independent prompt substitution contract. */
+export interface RuntimePromptResolver {
+	getPrompt(
+		task: string,
+		baseline?: string,
+	): {
+		prompt: string;
+		fewShotExamples?: RuntimePromptDemonstration[];
+	} | null;
+}
 
 /**
  * Minimal shape of `IAgentRuntime` we need to look up the
@@ -47,8 +42,8 @@ export interface OptimizedPromptRuntimeLike {
  * site.
  */
 export function resolveOptimizedPrompt(
-	service: OptimizedPromptService | null | undefined,
-	task: OptimizedPromptTask,
+	service: RuntimePromptResolver | null | undefined,
+	task: string,
 	baseline: string,
 ): string {
 	if (!service) return baseline;
@@ -78,7 +73,7 @@ function completeDemonstrationText(value: string): string {
 
 function injectDemonstrations(
 	prompt: string,
-	examples: OptimizedPromptFewShotExample[],
+	examples: RuntimePromptDemonstration[],
 ): string {
 	const lines: string[] = [
 		completeDemonstrationText(prompt),
@@ -101,31 +96,15 @@ function injectDemonstrations(
 	return lines.join("\n");
 }
 
-/**
- * Runtime-aware entry point. Each call site that builds a prompt for one of
- * the five core tasks calls this helper, passing only the runtime, the task
- * name, and the baseline string. The helper:
- *
- *   1. Looks up `OptimizedPromptService` from the runtime (returns baseline
- *      if the service is not registered — important during early-boot or in
- *      stripped-down test runtimes).
- *   2. Asks the service for the resolved prompt for that task. The service
- *      honours `OPTIMIZED_PROMPT_DISABLE`, so a disabled task returns null
- *      from `getPrompt` and we fall back to the baseline here.
- *   3. Inlines few-shot demonstrations into the artifact prompt when present.
- *
- * No call site needs to know which task names exist or how the service is
- * registered; they pass a `task: OptimizedPromptTask` literal and the strong
- * type catches typos at compile time.
- */
+/** Looks up the optional service; an absent registration preserves the supplied baseline. */
 export function resolveOptimizedPromptForRuntime(
 	runtime: OptimizedPromptRuntimeLike,
-	task: OptimizedPromptTask,
+	task: string,
 	baseline: string,
 ): string {
 	const service =
 		(runtime.getService?.(OPTIMIZED_PROMPT_SERVICE) as
-			| OptimizedPromptService
+			| RuntimePromptResolver
 			| null
 			| undefined) ?? null;
 	return resolveOptimizedPrompt(service, task, baseline);
