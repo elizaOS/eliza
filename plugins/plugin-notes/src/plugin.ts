@@ -28,7 +28,7 @@ const NOTES_CONTEXT: ContextDefinition = {
   id: "notes",
   label: "Notes",
   description:
-    "The user's saved Notes records, including temporary or titled notes. All Notes record operations use context notes and a promoted action candidate: create -> NOTES_CREATE; read an exact ID -> NOTES_GET; search, list, or count -> NOTES_LIST; edit fields or substitute literal text -> NOTES_PATCH; legacy whole-note replacement -> NOTES_UPDATE; remove -> NOTES_DELETE. Name the matching child instead of the NOTES umbrella so its required fields reach the planner. Explicit Notes records belong here; generic requests to remember durable facts or preferences use memory, and document/file work uses documents. A note is not a todo or calendar event. Add a navigation candidate only when opening the view is also requested: prefer VIEWS_SHOW when available; use VIEWS for layouts or discovery.",
+    "The user's saved Notes records, including temporary or titled notes. All Notes record operations use context notes and a promoted action candidate: create -> NOTES_CREATE; read an exact ID -> NOTES_GET; search, list, or count -> NOTES_LIST; date or period search -> NOTES_LIST with dateRange; edit fields or substitute literal text -> NOTES_PATCH; legacy whole-note replacement -> NOTES_UPDATE; remove -> NOTES_DELETE. Name the matching child instead of the NOTES umbrella so its required fields reach the planner. Explicit Notes records belong here; generic requests to remember durable facts or preferences use memory, and document/file work uses documents. A note is not a todo or calendar event. Add a navigation candidate only when opening the view is also requested: prefer VIEWS_SHOW when available; use VIEWS for layouts or discovery.",
   descriptionCompressed:
     "User's saved notes: write down, read back, search, update, delete",
   sensitivity: "personal",
@@ -49,7 +49,7 @@ export const notesPlugin: Plugin = {
       overrides: {
         list: {
           description:
-            "Read current saved notes, including their IDs, exact titles/bodies and timestamps. Use content for a title/topic filter, noteId for an exact ID, and dateRange for creation/update date bounds. Filters combine; omit all for the full list. The result contains every matching note and the applied date window. Saved-note provider text has no timestamps; restoring it cannot answer a date question. This operation does not change notes or open their view.",
+            "Read current saved notes, including their IDs, exact titles/bodies and timestamps. Use content for a title/topic filter, noteId for an exact ID, and dateRange whenever the user requests creation/update date bounds. Pass that window in this read rather than listing all notes and filtering in the reply. Filters combine; omit all for the full list. The result contains every matching note and the applied date window. Saved-note provider text has no timestamps; restoring it cannot answer a date question. This operation does not change notes or open their view.",
           parameters: notesAction.parameters?.map((parameter) =>
             parameter.name === "content"
               ? {
