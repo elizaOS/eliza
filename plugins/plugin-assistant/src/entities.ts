@@ -438,15 +438,22 @@ export async function findEntityByName(
   const relationships = await runtime.getRelationships({
     entityIds: [message.entityId],
   });
-  const relationshipEntities = await Promise.all(
-    relationships.map(async (rel) => {
-      const entityId =
-        rel.sourceEntityId === message.entityId
-          ? rel.targetEntityId
-          : rel.sourceEntityId;
-      return runtime.getEntityById(entityId);
-    }),
+  const counterpartIds = relationships.map((rel) =>
+    rel.sourceEntityId === message.entityId
+      ? rel.targetEntityId
+      : rel.sourceEntityId,
   );
+  const counterpartById = new Map(
+    (counterpartIds.length > 0
+      ? await runtime.getEntitiesByIds([...new Set(counterpartIds)])
+      : []
+    ).map((entity) => [entity.id, entity]),
+  );
+  // Batch results have no ordering contract; preserve relationship order and repetitions.
+  const relationshipEntities = counterpartIds.flatMap((id) => {
+    const entity = counterpartById.get(id);
+    return entity ? [entity] : [];
+  });
 
   const filteredEntities = await Promise.all(
     entitiesInRoom.map((entity) =>
@@ -454,11 +461,9 @@ export async function findEntityByName(
     ),
   );
   const filteredRelationshipEntities = await Promise.all(
-    relationshipEntities
-      .filter((entity): entity is Entity => entity !== null)
-      .map((entity) =>
-        withVisibleComponents(runtime, world, entity, message.entityId),
-      ),
+    relationshipEntities.map((entity) =>
+      withVisibleComponents(runtime, world, entity, message.entityId),
+    ),
   );
 
   const allEntities = uniqueEntitiesById([

@@ -305,10 +305,17 @@ export async function fetchChatMessages(
   const allRoomIds = await runtime.getRoomsForParticipant(runtime.agentId);
   if (allRoomIds.length === 0) return [];
 
-  const roomIds = allRoomIds as UUID[];
-  const rooms = await Promise.all(roomIds.map((id) => runtime.getRoom(id)));
+  // One batched read: the agent's room list is unbounded, so a per-room
+  // `getRoom` fan-out would admit one database read per room at once.
+  const roomsById = new Map(
+    (await runtime.getRoomsByIds(allRoomIds as UUID[])).map((room) => [
+      room.id,
+      room,
+    ]),
+  );
   const sourceRooms: Room[] = [];
-  for (const room of rooms) {
+  for (const roomId of allRoomIds) {
+    const room = roomsById.get(roomId as UUID);
     if (!room) continue;
     const roomSource = extractRoomSource(room);
     if (sourceMatchesFilter(roomSource, sourceTags)) {
