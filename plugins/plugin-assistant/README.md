@@ -39,3 +39,9 @@ agent-scoped IDs. Template rendering is imported from prompts.
 See the [recovery disposition](../../docs/design/runtime-consolidation/RECOVERY.md)
 for deleted retry/compatibility paths, consolidated miss handling, retained
 boundaries and the remaining workflow review.
+
+Signed prompt artifacts, activation/rollback and the fixed optimization task catalog
+are owned by `src/services/optimized-prompt.ts`. Import artifact types and
+`OptimizedPromptService` from this package. Core only resolves complete text
+through the optional `RuntimePromptResolver` contract; it owns no artifact files
+or domain task names. Persisted files, MACs and activation links are unchanged.

@@ -160,3 +160,13 @@ Algorithm tests moved with the implementation. Real runtime tests cover both
 in-memory adapters and SQL query/no-query ordering, semantic-only and empty
 text retention, and pagination. Custom adapters own their query ranking; import
 `rerankMemories` from the new package if that policy is wanted.
+
+## Prompt artifact ownership
+
+Assistant owns signed prompt files, version activation, rollback, provenance and
+the optimization task catalog. Core retains a structural prompt lookup contract
+and complete demonstration rendering; alternative hosts can supply that contract
+without installing assistant. Scheduling owns its three task-slot literals.
+Artifact formats and stored paths are unchanged. The service and its existing
+persistence/provenance/planner tests move together; this is relocation, not
+whole-repository deletion. Packed core rejects the retired artifact exports.
