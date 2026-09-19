@@ -4,12 +4,18 @@ import { ElizaTasksWeb } from "./web";
 
 it("keeps background wakes unsupported after scheduling and cancellation", async () => {
   const plugin = new ElizaTasksWeb();
+  await expect(plugin.scheduleNext()).resolves.toMatchObject({
+    scheduled: false,
+    identifier: "ai.eliza.tasks.refresh",
+    earliestBeginAtMs: null,
+  });
   await expect(
     plugin.scheduleNext({ earliestBeginSec: 900, alsoProcessing: true }),
   ).resolves.toMatchObject({ scheduled: false, earliestBeginAtMs: null });
   await expect(plugin.cancelAll()).resolves.toEqual({ cancelled: false });
   await expect(plugin.getStatus()).resolves.toMatchObject({
     supported: false,
+    platform: "web",
     refreshScheduled: false,
     processingScheduled: false,
     lastWakeFiredAtMs: null,
