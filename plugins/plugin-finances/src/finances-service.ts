@@ -36,6 +36,10 @@ import {
   resolveCloudApiBaseUrl,
 } from "@elizaos/plugin-elizacloud/cloud/managed-payment-clients";
 import {
+  type CalendarTimeZoneResolution,
+  calendarDateKey,
+  LifeOpsServiceError,
+  resolveCalendarTimeZone,
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
 } from "@elizaos/shared";
@@ -44,6 +48,7 @@ import {
   PlaidSyncCursorConflictError,
 } from "./db/finances-repository.ts";
 import {
+  FinancesServiceError,
   fail,
   normalizeOptionalString,
   requireAgentId,
@@ -518,6 +523,30 @@ export class FinancesService {
   ) {
     this.repository = new FinancesRepository(runtime);
     this.ownerEntityId = normalizeOptionalString(options.ownerEntityId) ?? null;
+  }
+
+  /**
+   * The owner's calendar zone at `now`, through the runtime-scoped owner in
+   * `@elizaos/shared`. Resolution failures and invalid configured zones are
+   * rethrown as `FinancesServiceError` so both route and action surfaces
+   * report them instead of classifying in a substitute zone.
+   */
+  async resolveCalendarTimeZone(
+    now: Date,
+  ): Promise<CalendarTimeZoneResolution> {
+    try {
+      return await resolveCalendarTimeZone(this.runtime, now);
+    } catch (error) {
+      // error-policy:J2 preserve the shared error's status and code under the
+      // finances error type every consumer of this service already maps.
+      if (error instanceof LifeOpsServiceError) {
+        throw Object.assign(
+          new FinancesServiceError(error.status, error.message, error.code),
+          { cause: error },
+        );
+      }
+      throw error;
+    }
   }
 
   agentId(): string {
@@ -1003,7 +1032,14 @@ export class FinancesService {
       },
     );
     const now = args.now ?? new Date();
-    const todayIso = now.toISOString().slice(0, 10);
+    // Bill due dates are bare calendar days the owner reads in their own
+    // zone, so "today" is the owner's calendar day, not the UTC day. The zone
+    // comes from the runtime's single calendar-time-zone owner, so the
+    // FINANCES action and the HTTP routes classify identically (#31062).
+    const todayIso = calendarDateKey(
+      now,
+      (await this.resolveCalendarTimeZone(now)).timeZone,
+    );
     const bills: LifeOpsUpcomingBill[] = [];
     for (const transaction of transactions) {
       const metadata = transaction.metadata;
