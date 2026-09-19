@@ -17,9 +17,9 @@
 import crypto from "node:crypto";
 import {
   type OptimizedPromptRuntimeLike,
-  type OptimizedPromptTask,
   resolveOptimizedPromptForRuntime,
 } from "@elizaos/core";
+import type { OptimizedPromptTask } from "@elizaos/plugin-assistant";
 
 /**
  * OptimizedPromptService task id for owner-voice drafting. The inline

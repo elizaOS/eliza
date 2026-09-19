@@ -157,6 +157,7 @@ export {
   normalizeActionIdentifier,
 } from "./services/message/direct-action-heuristics.ts";
 export * from "./services/message.ts";
+export * from "./services/optimized-prompt.ts";
 export { RelationshipsService } from "./services/relationships.ts";
 export * from "./services/relationships-graph-builder.ts";
 export * from "./services/trajectories.ts";
