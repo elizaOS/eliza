@@ -111,6 +111,7 @@
     "@elizaos/plugin-zerollama",
     "@elizaos/prompts",
     "@elizaos/registry",
+    "@elizaos/retrieval",
     "@elizaos/scenario-runner",
     "@elizaos/shared",
     "@elizaos/skills",
