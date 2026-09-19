@@ -335,7 +335,7 @@ static int spk_compute_fbank(const struct voice_speaker_session *s,
 
         /* DC offset removal. */
         double dc = 0.0;
-        for (int i = 0; i < SPK_WINDOW_LEN; ++i) dc += frame[i];
+        for (int i = 0; i < SPK_WINDOW_LEN; ++i) dc += (double)frame[i];
         dc /= (double)SPK_WINDOW_LEN;
         for (int i = 0; i < SPK_WINDOW_LEN; ++i) frame[i] -= (float)dc;
 
@@ -370,7 +370,7 @@ static int spk_compute_fbank(const struct voice_speaker_session *s,
     /* Per-utterance CMN. */
     for (int m = 0; m < SPK_N_MELS; ++m) {
         double mean = 0.0;
-        for (int t = 0; t < frames; ++t) mean += feats_out[t * SPK_N_MELS + m];
+        for (int t = 0; t < frames; ++t) mean += (double)feats_out[t * SPK_N_MELS + m];
         mean /= (double)frames;
         for (int t = 0; t < frames; ++t) feats_out[t * SPK_N_MELS + m] -= (float)mean;
     }
@@ -572,7 +572,7 @@ int voice_speaker_embed(voice_speaker_handle h,
         for (int oh = 0; oh < 10; ++oh) {
             const float *slot = cur + ((size_t)oc * 10 + oh) * T_pool;
             double mean = 0.0;
-            for (int t = 0; t < T_pool; ++t) mean += slot[t];
+            for (int t = 0; t < T_pool; ++t) mean += (double)slot[t];
             mean /= (double)T_pool;
             double var = 0.0;
             for (int t = 0; t < T_pool; ++t) {

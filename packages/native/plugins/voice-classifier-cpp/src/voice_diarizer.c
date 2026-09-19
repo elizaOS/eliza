@@ -116,11 +116,11 @@ static void inst_norm_1d_inplace(float *buf, int C, int L,
     for (int c = 0; c < C; ++c) {
         float *row = buf + (size_t)c * L;
         double sum = 0.0, sq = 0.0;
-        for (int i = 0; i < L; ++i) sum += row[i];
+        for (int i = 0; i < L; ++i) sum += (double)row[i];
         const float mean = (float)(sum / L);
         for (int i = 0; i < L; ++i) {
             const float d = row[i] - mean;
-            sq += (double)d * d;
+            sq += (double)d * (double)d;
         }
         const float var = (float)(sq / L);
         const float invstd = 1.0f / sqrtf(var + eps);
