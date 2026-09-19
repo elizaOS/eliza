@@ -92,6 +92,34 @@ async function ownerRows(domain: string, table: string) {
   ).rows;
 }
 
+it.each(["source-missing", "target-non-empty"] as const)(
+  "preserves reminder owner rows when migration returns %s",
+  async (outcome) => {
+    const table = "life_reminder_plans";
+    const database = await fixture("reminders", table);
+    if (outcome === "source-missing") {
+      await db.exec(`DROP TABLE app_lifeops.${table}`);
+    } else {
+      await db.exec(
+        `INSERT INTO app_reminders.${table} VALUES ('owner-created', 'owner', 'keep mine')`,
+      );
+    }
+    const before = await ownerRows("reminders", table);
+    expect(await migrateReminderTables(database)).toContainEqual({
+      table,
+      outcome,
+    });
+    expect(await ownerRows("reminders", table)).toEqual(before);
+    if (outcome === "target-non-empty") {
+      expect(
+        (await db.query(`SELECT id FROM app_lifeops.${table} ORDER BY id`))
+          .rows,
+      ).toEqual([{ id: "deleted" }, { id: "retained" }]);
+    }
+  },
+  120_000,
+);
+
 describe.each(domains)(
   "$domain owner adoption",
   ({ domain, table, migrate }) => {
