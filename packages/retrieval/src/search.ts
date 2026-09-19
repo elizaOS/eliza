@@ -47,7 +47,7 @@
 // SOFTWARE.
 
 /**
- * In-memory keyword search for `@elizaos/core`: a vendored Porter2 (Snowball
+ * In-memory keyword search for optional retrieval consumers: a vendored Porter2 (Snowball
  * English) stemmer, a Unicode-aware {@link Tokenizer}, an Okapi {@link BM25}
  * ranker, and the hybrid-search utilities (`buildFtsQuery`, `bm25RankToScore`,
  * `mergeHybridResults`) that fuse BM25 keyword hits with vector-similarity hits.
