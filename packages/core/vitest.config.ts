@@ -30,9 +30,7 @@ export default defineConfig({
 			},
 
 			{
-				// Core's src re-exports `@elizaos/prompts`, which ships no dist in
-				// this lane — anchor it to source so suites importing core prompts
-				// load (same fix the agent and plugin-app-control configs carry).
+				// Retained prompt contract tests exercise the owning package's source.
 				find: /^@elizaos\/prompts$/,
 				replacement: path.join(
 					getElizaWorkspaceRoot(repoRoot),
