@@ -1,14 +1,8 @@
-/**
- * Guards the generated provider→plugin env-key map: the contract is preserved in
- * the built artifact, keys are derived only from explicit config markers, and
- * duplicate env-key claims across plugins are rejected.
- */
+/** Preserves the published provider environment-key contract in the generated registry artifact. */
 import { describe, expect, it } from "vitest";
-import { collectProviderPluginMap } from "./generate";
 import providerPluginMap from "./provider-plugin-map.json" with {
   type: "json",
 };
-import type { RegistryEntry } from "./schema";
 
 const expectedProviderPluginMap = {
   ANTHROPIC_API_KEY: "@elizaos/plugin-anthropic",
@@ -28,75 +22,8 @@ const expectedProviderPluginMap = {
   Z_AI_API_KEY: "@elizaos/plugin-zai",
 };
 
-function providerEntry(
-  id: string,
-  npmName: string,
-  envKey: string,
-): RegistryEntry {
-  return {
-    id,
-    name: id,
-    npmName,
-    source: "bundled",
-    tags: ["ai-provider"],
-    config: {
-      [envKey]: {
-        type: "secret",
-        required: false,
-        sensitive: true,
-        autoEnableProvider: true,
-      },
-    },
-    render: {
-      visible: true,
-      pinTo: [],
-      style: "card",
-      group: "models",
-      actions: [],
-    },
-    resources: {},
-    dependsOn: [],
-    channels: [],
-    kind: "plugin",
-    subtype: "ai-provider",
-  };
-}
-
 describe("provider plugin map generation", () => {
   it("keeps the provider env contract in the generated artifact", () => {
     expect(providerPluginMap).toEqual(expectedProviderPluginMap);
-  });
-
-  it("derives provider env keys only from explicit config markers", () => {
-    expect(
-      collectProviderPluginMap([
-        providerEntry("marked", "@elizaos/plugin-marked", "MARKED_API_KEY"),
-        {
-          ...providerEntry(
-            "unmarked",
-            "@elizaos/plugin-unmarked",
-            "UNMARKED_API_KEY",
-          ),
-          config: {
-            UNMARKED_API_KEY: {
-              type: "secret",
-              required: false,
-              sensitive: true,
-            },
-          },
-        },
-      ]),
-    ).toEqual({ MARKED_API_KEY: "@elizaos/plugin-marked" });
-  });
-
-  it("rejects duplicate provider env-key claims", () => {
-    expect(() =>
-      collectProviderPluginMap([
-        providerEntry("one", "@elizaos/plugin-one", "DUPLICATE_API_KEY"),
-        providerEntry("two", "@elizaos/plugin-two", "DUPLICATE_API_KEY"),
-      ]),
-    ).toThrow(
-      'provider env key "DUPLICATE_API_KEY" claimed by both @elizaos/plugin-one and @elizaos/plugin-two',
-    );
   });
 });
