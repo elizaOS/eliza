@@ -21,7 +21,7 @@ flowchart TD
     S --> S2[S2 pg or PGlite manager / migrations]
     G --> O[M4 OpenAI plugin\nregistered model handlers]
     G --> V[K3 services, actions, providers, events]
-    V --> MS[T1 DefaultMessageService (assistant)]
+    V --> MS["T1 DefaultMessageService (assistant)"]
     V --> TS[B1 TaskService]
     G --> R[H5 host HTTP server / connectors]
     R --> READY[Accept input]
