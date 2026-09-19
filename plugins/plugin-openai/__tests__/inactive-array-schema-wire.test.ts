@@ -3,11 +3,12 @@
  * AI SDK transport. The rejecting provider fixture reproduces the structured-enum
  * admission failure; accepted calls preserve the complete prompt and tool result.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../packages/core/src/database/inMemoryAdapter";
 import { AgentRuntime } from "../../../packages/core/src/runtime";
-import { withInactiveArrayFields } from "../../../packages/core/src/services/message/inactive-field-schema";
 import type { JSONSchema } from "../../../packages/core/src/types/model";
+import { withInactiveArrayFields } from "../../plugin-assistant/src/services/message/inactive-field-schema";
 import { handleResponseHandler } from "../models/text";
 
 afterEach(() => vi.restoreAllMocks());
@@ -112,7 +113,11 @@ it("admits an inactive array without losing the prompt or weakening the active t
     expect(typeof result).not.toBe("string");
     if (typeof result === "string") throw new Error("Expected native tool result");
     expect(await result.toolCalls).toEqual([
-      expect.objectContaining({ toolName: "HANDLE_RESPONSE", input: returned }),
+      expect.objectContaining({
+        id: "call-response",
+        name: "HANDLE_RESPONSE",
+        arguments: returned,
+      }),
     ]);
     expect(bodies).toHaveLength(2);
     for (const body of bodies)
