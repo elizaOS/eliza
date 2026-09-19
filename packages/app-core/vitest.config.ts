@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases";
 
 const fileDir = path.dirname(fileURLToPath(import.meta.url));
 const monorepoRoot = path.resolve(fileDir, "../..");
@@ -585,6 +586,9 @@ export default defineConfig({
         find: "node-llama-cpp",
         replacement: path.join(fileDir, "test-stubs/node-llama-cpp.ts"),
       },
+      // Resolve remaining workspace plugins from source in a clean checkout.
+      // Keep explicit host aliases and test doubles above these fallbacks.
+      ...buildWorkspaceSourceAliases(monorepoRoot),
     ],
   },
 });
