@@ -1914,14 +1914,14 @@
         "repo": "plugin-nilyo",
         "v0": null,
         "v1": null,
-        "v2": "0.1.0"
+        "v2": "0.1.1"
       },
       "supports": {
         "v0": false,
         "v1": false,
         "v2": true
       },
-      "description": "Give the agent access to the user's own LinkedIn, WhatsApp, Instagram, Telegram, Email and Calendar accounts through Nilyo.",
+      "description": "Give the agent send/reply/invite access - plus account and billing management - on the user's own LinkedIn, WhatsApp, Instagram, Telegram, Email and Calendar accounts through Nilyo.",
       "homepage": "https://nilyo.com/setup-for-agents",
       "topics": [
         "nilyo",

@@ -2,8 +2,8 @@
   "package": "plugin-nilyo",
   "repository": "github:arnaudh458/plugin-nilyo",
   "kind": "plugin",
-  "description": "Give the agent access to the user's own LinkedIn, WhatsApp, Instagram, Telegram, Email and Calendar accounts through Nilyo.",
+  "description": "Give the agent send/reply/invite access - plus account and billing management - on the user's own LinkedIn, WhatsApp, Instagram, Telegram, Email and Calendar accounts through Nilyo.",
   "homepage": "https://nilyo.com/setup-for-agents",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "tags": ["nilyo", "linkedin", "whatsapp", "instagram", "telegram", "email", "mcp"]
 }
