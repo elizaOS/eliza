@@ -3402,7 +3402,17 @@ function resolveCalendarReadWindow(
   // Ground the reply in the actual read bounds, not a planner-authored label
   // that can name a different day from the supplied timestamps.
   if (resolved.request.timeMin && resolved.request.timeMax) {
-    resolved.label = `from ${formatLocalDateTimeInZone(new Date(resolved.request.timeMin), timeZone)} to ${formatLocalDateTimeInZone(new Date(resolved.request.timeMax), timeZone)} (end exclusive; ${timeZone})`;
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    });
+    resolved.label = `from ${formatter.format(new Date(resolved.request.timeMin))} to ${formatter.format(new Date(resolved.request.timeMax))} (end exclusive; ${timeZone})`;
   }
   return resolved;
 }

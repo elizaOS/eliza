@@ -195,7 +195,7 @@ describe("CALENDAR search_events call shape", () => {
     expect(result.data?.replyContext).toMatchObject({
       context: {
         label:
-          "from 2026-09-16T00:00:00 to 2026-09-17T00:00:00 (end exclusive; UTC)",
+          "from Wednesday, September 16, 2026 at 12:00 AM UTC to Thursday, September 17, 2026 at 12:00 AM UTC (end exclusive; UTC)",
       },
     });
     expect(service.getCalendarFeed).toHaveBeenCalledTimes(1);
