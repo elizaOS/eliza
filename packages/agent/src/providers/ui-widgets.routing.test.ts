@@ -7,7 +7,8 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { afterEach, describe, expect, it } from "vitest";
 import { createV5MessageContextObject } from "../../../../plugins/plugin-assistant/src/services/message/context-assembly.ts";
 import {
   selectV5PlannerStateProviderNames,
@@ -19,6 +20,14 @@ import {
   uiWidgetCapabilitiesProvider,
   uiWidgetsProvider,
 } from "./ui-catalog.ts";
+
+const activeRuntimes: AgentRuntime[] = [];
+afterEach(async () => {
+  for (const runtime of activeRuntimes.splice(0)) {
+    await runtime.stop();
+    await runtime.close();
+  }
+});
 
 const runtime = {
   providers: [
@@ -38,7 +47,10 @@ describe("production widget provider routing", () => {
     async (role) => {
       const actual = new AgentRuntime({
         character: { name: "widget-routing" },
+        adapter: new InMemoryDatabaseAdapter(),
       });
+      activeRuntimes.push(actual);
+      await actual.initialize({ skipMigrations: true });
       actual.registerProvider(uiGenerativeProvider);
       const turn: Memory = {
         ...message,
