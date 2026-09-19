@@ -20,6 +20,7 @@ import {
 	parseInteractionBlocks,
 	stripDashboardOnlyMarkers,
 	toNeutralLayout,
+	truncateWellFormed,
 } from "@elizaos/core";
 import type { DiscordActionRow, DiscordComponentOptions } from "./types";
 
@@ -27,6 +28,7 @@ import type { DiscordActionRow, DiscordComponentOptions } from "./types";
 const MAX_BUTTONS_PER_ROW = 5;
 const MAX_ROWS = 5;
 const MAX_CUSTOM_ID_BYTES = 100;
+const MAX_BUTTON_LABEL_LENGTH = 80;
 
 /** discord.js ButtonStyle numeric values. */
 const BUTTON_STYLE = { primary: 1, secondary: 2, danger: 4 } as const;
@@ -54,7 +56,7 @@ function toComponent(button: NeutralButton): DiscordComponentOptions | null {
 		return {
 			type: 2,
 			custom_id: "",
-			label: button.label,
+			label: truncateWellFormed(button.label, MAX_BUTTON_LABEL_LENGTH),
 			style: LINK_STYLE,
 			url: button.url,
 		};
@@ -63,7 +65,7 @@ function toComponent(button: NeutralButton): DiscordComponentOptions | null {
 		return {
 			type: 2,
 			custom_id: button.callbackData,
-			label: button.label,
+			label: truncateWellFormed(button.label, MAX_BUTTON_LABEL_LENGTH),
 			style: BUTTON_STYLE[button.style ?? "secondary"],
 		};
 	}
