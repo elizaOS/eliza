@@ -183,6 +183,13 @@ beforeAll(async () => {
   };
   runtime = {
     agentId: AGENT_ID,
+    getRoom: vi.fn(async () => ({ worldId: "world-id" })),
+    getWorld: vi.fn(async () => ({
+      metadata: {
+        roles: { [ENTITY_ID]: "OWNER" },
+        roleSources: { [ENTITY_ID]: "manual" },
+      },
+    })),
     adapter: { db },
     getService: (serviceType: string) =>
       serviceType === SECRETS_SERVICE_TYPE

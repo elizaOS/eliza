@@ -63,6 +63,13 @@ function stubService() {
 function fakeRuntime(service: ReturnType<typeof stubService>): IAgentRuntime {
   return {
     agentId: "agent-1",
+    getRoom: vi.fn(async () => ({ worldId: "world-id" })),
+    getWorld: vi.fn(async () => ({
+      metadata: {
+        roles: { [message("").entityId]: "OWNER" },
+        roleSources: { [message("").entityId]: "manual" },
+      },
+    })),
     logger: {
       info: () => undefined,
       warn: () => undefined,
