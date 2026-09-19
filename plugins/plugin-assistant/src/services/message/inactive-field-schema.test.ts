@@ -23,24 +23,24 @@ describe("inactive array field schema", () => {
     expect(errors).toEqual([]);
     validateSchema(inactive, { ops: [{ action: "stop" }] }, "", errors);
     expect(errors.length).toBeGreaterThan(0);
-		const nonemptyStrings: string[] = [];
-		const rejected = { ops: ["stop", "retain the complete invalid value"] };
-		validateSchema(inactive, rejected, "", nonemptyStrings);
-		expect(rejected.ops).toEqual(["stop", "retain the complete invalid value"]);
-		expect(nonemptyStrings.length).toBeGreaterThan(0);
+    const nonemptyStrings: string[] = [];
+    const rejected = { ops: ["stop", "retain the complete invalid value"] };
+    validateSchema(inactive, rejected, "", nonemptyStrings);
+    expect(rejected.ops).toEqual(["stop", "retain the complete invalid value"]);
+    expect(nonemptyStrings.length).toBeGreaterThan(0);
     const missing: string[] = [];
     validateSchema(inactive, {}, "", missing);
     expect(missing.length).toBeGreaterThan(0);
-		const activeValue = {
-			ops: Array.from({ length: 500 }, (_, index) => ({
-				action: `complete operation ${index}`,
-			})),
-		};
-		const activeErrors: string[] = [];
-		expect(validateSchema(schema, activeValue, "", activeErrors)).toEqual(
-			activeValue,
-		);
-		expect(activeErrors).toEqual([]);
+    const activeValue = {
+      ops: Array.from({ length: 500 }, (_, index) => ({
+        action: `complete operation ${index}`,
+      })),
+    };
+    const activeErrors: string[] = [];
+    expect(validateSchema(schema, activeValue, "", activeErrors)).toEqual(
+      activeValue,
+    );
+    expect(activeErrors).toEqual([]);
     expect(JSON.stringify(schema)).toBe(before);
     expect(withInactiveArrayFields(schema, [])).toBe(schema);
   });
