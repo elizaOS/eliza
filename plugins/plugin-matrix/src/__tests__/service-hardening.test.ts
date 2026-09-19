@@ -231,6 +231,79 @@ describe("Matrix service hardening", () => {
     );
   });
 
+  it("does not treat a word containing the localpart as a required mention", () => {
+    // userId "@ai:example" -> localpart "ai". The bounded gate must match a
+    // genuine mention, not the "ai" inside "wait" / "again" / "email".
+    const { runtime, service, state } = createService({
+      settings: {
+        accountId: "work",
+        homeserver: "https://matrix.example",
+        userId: "@ai:example",
+        accessToken: "token",
+        rooms: [],
+        autoJoin: false,
+        encryption: false,
+        requireMention: true,
+        enabled: true,
+      },
+    });
+    const handleRoomMessage = (
+      service as unknown as {
+        handleRoomMessage: (state: TestState, event: unknown, room: unknown) => void;
+      }
+    ).handleRoomMessage.bind(service);
+
+    for (const body of ["can you wait for the build", "try again later", "check your email"]) {
+      handleRoomMessage(state, createEvent({ msgtype: "m.text", body }), createRoom());
+    }
+    expect(runtime.emitEvent).not.toHaveBeenCalled();
+
+    handleRoomMessage(
+      state,
+      createEvent({ msgtype: "m.text", body: "hey @ai can you help" }),
+      createRoom()
+    );
+    expect(runtime.emitEvent).toHaveBeenCalledWith(
+      MatrixEventTypes.MESSAGE_RECEIVED,
+      expect.objectContaining({
+        message: expect.objectContaining({ content: "hey @ai can you help" }),
+      })
+    );
+  });
+
+  it("still matches a whole-word mention without the @ sigil", () => {
+    const { runtime, service, state } = createService({
+      settings: {
+        accountId: "work",
+        homeserver: "https://matrix.example",
+        userId: "@ai:example",
+        accessToken: "token",
+        rooms: [],
+        autoJoin: false,
+        encryption: false,
+        requireMention: true,
+        enabled: true,
+      },
+    });
+    const handleRoomMessage = (
+      service as unknown as {
+        handleRoomMessage: (state: TestState, event: unknown, room: unknown) => void;
+      }
+    ).handleRoomMessage.bind(service);
+
+    handleRoomMessage(
+      state,
+      createEvent({ msgtype: "m.text", body: "ai, take this one" }),
+      createRoom()
+    );
+    expect(runtime.emitEvent).toHaveBeenCalledWith(
+      MatrixEventTypes.MESSAGE_RECEIVED,
+      expect.objectContaining({
+        message: expect.objectContaining({ content: "ai, take this one" }),
+      })
+    );
+  });
+
   it("trims room aliases before resolving and sending messages", async () => {
     const { runtime, service, state } = createService();
     const getRoomIdForAlias = vi.fn().mockResolvedValue({ room_id: "!resolved:example" });

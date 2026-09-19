@@ -76,6 +76,19 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * True when a group-room message genuinely mentions the bot localpart. The
+ * localpart must appear as a whole token (optionally `@`-prefixed) rather than
+ * as a substring of an unrelated word: a bot whose localpart is `ai` must not
+ * treat "wait for the build" as a mention. Metacharacters in the localpart are
+ * escaped, so a localpart like `bot.name` matches its literal text.
+ */
+function hasMatrixMention(content: string, localpart: string): boolean {
+  if (!localpart) return false;
+  const escaped = escapeRegExp(localpart);
+  return new RegExp(`(^|[^\\p{L}\\p{N}_])@?${escaped}(?=$|[^\\p{L}\\p{N}_])`, "iu").test(content);
+}
+
 function matrixRoomSearchText(room: MatrixRoom): string {
   return [room.roomId, room.name, room.topic, room.canonicalAlias]
     .filter((value): value is string => typeof value === "string" && value.length > 0)
@@ -1275,8 +1288,7 @@ export class MatrixService extends Service implements IMatrixService {
     const isDirectRoom = room.getJoinedMemberCount() <= 2;
     if (state.settings.requireMention && !isDirectRoom) {
       const localpart = getMatrixLocalpart(state.settings.userId);
-      const mentionPattern = new RegExp(`@?${escapeRegExp(localpart)}`, "i");
-      if (!mentionPattern.test(message.content)) {
+      if (!hasMatrixMention(message.content, localpart)) {
         return;
       }
     }
