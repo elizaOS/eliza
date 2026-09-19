@@ -94,7 +94,7 @@ describe("consolidated Android release AAB authority", () => {
     ).toContain("needs.android_aab.result");
   });
 
-  test("builds the prompts package before the clean-checkout mobile app bundle", () => {
+  test("builds the linked runtime before the clean-checkout mobile app bundle", () => {
     const android = requireJob("android_aab");
     const dependencies = requireStep(
       android,
@@ -106,9 +106,7 @@ describe("consolidated Android release AAB authority", () => {
     );
     const steps = android.steps ?? [];
 
-    expect(dependencies.run).toContain(
-      "bun run --cwd packages/prompts build:package",
-    );
+    expect(dependencies.run).toContain("bun run build:core");
     expect(steps.indexOf(dependencies)).toBeLessThan(steps.indexOf(build));
   });
 
