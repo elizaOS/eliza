@@ -29,10 +29,7 @@ import { FinancesRepository } from "../src/db/finances-repository.ts";
 import { executeRawSql } from "../src/db/sql.ts";
 import { FinancesService } from "../src/finances-service.ts";
 import financesPlugin from "../src/plugin.ts";
-import {
-  FinancesMigrationService,
-  scrubLegacyPlaidCredentials,
-} from "../src/services/migration.ts";
+import { FinancesMigrationService } from "../src/services/migration.ts";
 
 function plaidTransaction(
   transactionId: string,
@@ -115,7 +112,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
     ).not.toContain("access-secret-sentinel");
   });
 
-  it("startup credential sweep scrubs dormant Plaid tokens in the real database", async () => {
+  it("startup scrubs both Plaid credential schemas, preserves metadata and requires relinking", async () => {
     const secret = "access-dormant-startup-sentinel";
     const now = new Date().toISOString();
     const sourceId = crypto.randomUUID();
@@ -129,7 +126,14 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
       status: "active",
       lastSyncedAt: null,
       transactionCount: 0,
-      metadata: { plaid: { accessToken: secret, cursor: "old" } },
+      metadata: {
+        unrelated: "preserved",
+        plaid: {
+          accessToken: secret,
+          cursor: "old",
+          institutionId: "legacy-institution",
+        },
+      },
       createdAt: now,
       updatedAt: now,
     });
@@ -144,25 +148,31 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
       `INSERT INTO app_lifeops.life_payment_sources
        SELECT * FROM app_finances.life_payment_sources WHERE id = '${sourceId}'`,
     );
-    await scrubLegacyPlaidCredentials((statement) =>
-      executeRawSql(runtime, statement),
-    );
+    await FinancesMigrationService.start(runtime);
     const stored = await repository.getPaymentSource(runtime.agentId, sourceId);
-    expect(stored).toMatchObject({
-      status: "needs_attention",
-      metadata: {
-        plaid: { cursor: "old", migrationStatus: "relink_required" },
-      },
-    });
-    expect(JSON.stringify(stored)).not.toContain(secret);
+    expect(stored?.status).toBe("needs_attention");
     const retainedRows = await executeRawSql(
       runtime,
       `SELECT status, metadata_json FROM app_lifeops.life_payment_sources
        WHERE id = '${sourceId}'`,
     );
     expect(retainedRows[0]?.status).toBe("needs_attention");
-    expect(String(retainedRows[0]?.metadata_json)).toContain("relink_required");
-    expect(JSON.stringify(retainedRows)).not.toContain(secret);
+    for (const metadata of [
+      stored?.metadata,
+      JSON.parse(String(retainedRows[0]?.metadata_json)),
+    ]) {
+      expect(metadata).toEqual({
+        unrelated: "preserved",
+        plaid: {
+          cursor: "old",
+          institutionId: "legacy-institution",
+          migrationStatus: "relink_required",
+        },
+      });
+    }
+    await expect(
+      service.syncPlaidTransactions({ sourceId }),
+    ).rejects.toMatchObject({ status: 409 });
   });
 
   it("persists only an opaque Plaid connection and revokes it before deletion", async () => {
@@ -433,51 +443,6 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
       fetchSpy.mockRestore();
       service.plaidManagedClientCache = null;
     }
-  });
-
-  it("scrubs dormant legacy Plaid secrets during startup migration without API access", async () => {
-    const secret = "access-sandbox-adversarial-do-not-retain";
-    const now = new Date().toISOString();
-    const sourceId = crypto.randomUUID();
-    await repository.upsertPaymentSource({
-      id: sourceId,
-      agentId: runtime.agentId,
-      kind: "plaid",
-      label: "Legacy Plaid source",
-      institution: "Legacy Bank",
-      accountMask: "9999",
-      status: "active",
-      lastSyncedAt: null,
-      transactionCount: 0,
-      metadata: {
-        unrelated: "preserved",
-        plaid: {
-          accessToken: secret,
-          cursor: "legacy-cursor",
-          institutionId: "legacy-institution",
-        },
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    await FinancesMigrationService.start(runtime);
-
-    const persisted = await repository.getPaymentSource(
-      runtime.agentId,
-      sourceId,
-    );
-    expect(persisted?.status).toBe("needs_attention");
-    expect(persisted?.metadata.plaid).toEqual({
-      cursor: "legacy-cursor",
-      institutionId: "legacy-institution",
-      migrationStatus: "relink_required",
-    });
-    expect(persisted?.metadata.unrelated).toBe("preserved");
-    expect(JSON.stringify(persisted)).not.toContain(secret);
-    await expect(
-      service.syncPlaidTransactions({ sourceId }),
-    ).rejects.toMatchObject({ status: 409 });
   });
 
   it("keeps distinct Plaid ids even when every legacy uniqueness field matches", async () => {
