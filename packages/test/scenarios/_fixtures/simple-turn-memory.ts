@@ -45,6 +45,7 @@ function typedTurnInputRepresentations(input: string): string[] {
   // Storage may omit the canonical warning while retaining the complete envelope.
   return [
     input,
+    wrapExternalContent(input, { source: "api", purpose: "incoming_message" }),
     wrapExternalContent(input, { source: "api" }),
     wrapExternalContent(input, { source: "api", includeWarning: false }),
   ];
