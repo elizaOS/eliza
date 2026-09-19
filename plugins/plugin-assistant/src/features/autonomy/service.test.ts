@@ -8,18 +8,18 @@
  * private methods are reached through `unknown` casts.
  */
 
+import {
+  type IAgentRuntime,
+  type Memory,
+  OPTIMIZED_PROMPT_SERVICE,
+  type UUID,
+} from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { describe, expect, test, vi } from "vitest";
 import {
-  OPTIMIZED_PROMPT_SERVICE,
   type OptimizedPromptArtifact,
   OptimizedPromptService,
-} from "../../../../../packages/core/src/services/optimized-prompt.ts";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../../packages/core/src/types/index.ts";
+} from "../../services/optimized-prompt.ts";
 import { AutonomyService } from "./service.ts";
 
 function makeOptimizedAutonomyService(prompt: string): OptimizedPromptService {
