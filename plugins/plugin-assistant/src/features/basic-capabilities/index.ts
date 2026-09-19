@@ -60,7 +60,6 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   MemoryType,
   ModelType,
-  OptimizedPromptService,
   PiiScrubService,
   type RolesWorldMetadata,
   recordOwnerGrant,
@@ -81,6 +80,7 @@ import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { v4 } from "uuid";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes.ts";
 import { EvaluatorService } from "../../services/evaluator.ts";
+import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
 // Direct leaf imports — see comment in
 // ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
 // requires bypassing barrels here too.

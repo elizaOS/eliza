@@ -224,9 +224,10 @@ export * from "./services/approval";
 export * from "./services/channel-topics";
 export * from "./services/hook";
 export * from "./services/notification";
-export * from "./services/optimized-prompt";
 export {
+	OPTIMIZED_PROMPT_SERVICE,
 	type OptimizedPromptRuntimeLike,
+	type RuntimePromptResolver,
 	resolveOptimizedPromptForRuntime,
 } from "./services/optimized-prompt-resolver";
 export * from "./services/pairing";

@@ -9,7 +9,6 @@ import {
   ElizaError,
   type IAgentRuntime,
   ModelType,
-  type OptimizedPromptTask,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
@@ -99,7 +98,7 @@ export function buildDeterministicDispatchTitle(
 /** Select the tunable body slot from typed task semantics. */
 export function scheduledDispatchPromptTask(
   record: Partial<Pick<ScheduledTaskDispatchRecord, "kind" | "contextRequest">>,
-): OptimizedPromptTask {
+): "approval_notice" | "checkin_followup" | "scheduled_task_dispatch" {
   if (record.kind === "approval") return "approval_notice";
   if (
     record.kind === "followup" &&
