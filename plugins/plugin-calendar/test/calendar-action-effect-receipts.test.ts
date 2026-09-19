@@ -148,6 +148,13 @@ function runtime(
   return {
     actions: [action],
     agentId: AGENT_ID,
+    getRoom: vi.fn(async () => ({ worldId: "world-id" })),
+    getWorld: vi.fn(async () => ({
+      metadata: {
+        roles: { [ENTITY_ID]: "OWNER" },
+        roleSources: { [ENTITY_ID]: "manual" },
+      },
+    })),
     logger: {
       debug: vi.fn(),
       info: vi.fn(),
