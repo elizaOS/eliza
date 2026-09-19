@@ -14,6 +14,7 @@ import { createHmac } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { AgentRuntime, IAgentRuntime, UUID } from "@elizaos/core";
+import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { tryHandleRuntimePluginRoute } from "../../../packages/agent/src/api/runtime-plugin-routes";
 import { whatsappSetupRoutes } from "../src/setup-routes";
@@ -31,9 +32,13 @@ async function mountAndRequest(
   requestPath: string,
   init: { method?: string; body?: string; headers?: Record<string, string> } = {}
 ): Promise<RoundTrip> {
+  registerHttpPluginRoutes(runtime, {
+    name: "whatsapp",
+    routes: whatsappSetupRoutes,
+  });
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    await tryHandleRuntimePluginRoute({
+    const handled = await tryHandleRuntimePluginRoute({
       req,
       res,
       method: req.method ?? "GET",
@@ -42,6 +47,10 @@ async function mountAndRequest(
       runtime: runtime as AgentRuntime,
       isAuthorized: () => true,
     });
+    if (!handled) {
+      res.writeHead(404);
+      res.end("not found");
+    }
   });
 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -83,7 +92,6 @@ function makeRuntime(options: {
 }): IAgentRuntime {
   return {
     agentId: "agent-1" as UUID,
-    routes: whatsappSetupRoutes,
     getSetting: vi.fn((key: string) => (key === "WHATSAPP_APP_SECRET" ? APP_SECRET : undefined)),
     getService: vi.fn((serviceName: string) =>
       serviceName === "whatsapp" ? options : null
@@ -127,7 +135,6 @@ describe("WhatsApp webhook GET verification round trip", () => {
   it("returns 503 with a JSON error envelope when the service is unavailable", async () => {
     const runtime = {
       agentId: "agent-1" as UUID,
-      routes: whatsappSetupRoutes,
       getService: vi.fn(() => null),
     } as never as IAgentRuntime;
 
