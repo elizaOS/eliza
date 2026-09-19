@@ -207,60 +207,18 @@ Body content`;
     );
   });
 
-  it("returns empty frontmatter for non-object YAML frontmatter blocks", () => {
-    const scalarContent = `---
-"just a string scalar"
----
-Body content`;
-    const scalarResult = parseFrontmatter(scalarContent);
-    assert.deepStrictEqual(scalarResult.frontmatter, {});
-    assert.strictEqual(scalarResult.body, "Body content");
-
-    const arrayContent = `---
-- item1
-- item2
----
-Body content`;
-    const arrayResult = parseFrontmatter(arrayContent);
-    assert.deepStrictEqual(arrayResult.frontmatter, {});
-    assert.strictEqual(arrayResult.body, "Body content");
-  });
-
-  it("returns empty frontmatter for YAML Set and Map collection roots", () => {
-    const setContent = `---
-!!set
-? alpha
-? beta
----
-Body content`;
-    const setResult = parseFrontmatter(setContent);
-    assert.deepStrictEqual(setResult.frontmatter, {});
-    assert.strictEqual(setResult.body, "Body content");
-    assert.ok(!(setResult.frontmatter instanceof Set));
-
-    const omapContent = `---
-!!omap
-- alpha: 1
-- beta: 2
----
-Body content`;
-    const omapResult = parseFrontmatter(omapContent);
-    assert.deepStrictEqual(omapResult.frontmatter, {});
-    assert.strictEqual(omapResult.body, "Body content");
-    assert.ok(!(omapResult.frontmatter instanceof Map));
-  });
-
-  it("accepts plain and null-prototype-equivalent mapping roots", () => {
-    const content = `---
-name: plain-skill
-description: mapping root
----
-Body`;
-    const result = parseFrontmatter<SkillFrontmatter>(content);
-    assert.strictEqual(result.frontmatter.name, "plain-skill");
-    assert.strictEqual(result.frontmatter.description, "mapping root");
-    assert.strictEqual(result.body, "Body");
-  });
+  for (const [label, yaml] of [
+    ["scalar", '"just a string scalar"'],
+    ["array", "- item1\n- item2"],
+    ["Set", "!!set\n? alpha\n? beta"],
+    ["Map", "!!omap\n- alpha: 1\n- beta: 2"],
+  ]) {
+    it(`returns empty frontmatter for a YAML ${label} root and preserves the body`, () => {
+      const result = parseFrontmatter(`---\n${yaml}\n---\nBody content`);
+      assert.deepStrictEqual(result.frontmatter, {});
+      assert.strictEqual(result.body, "Body content");
+    });
+  }
 });
 
 describe("stripFrontmatter", () => {
@@ -297,30 +255,29 @@ name: test
 });
 
 describe("resolveSkillMetadata", () => {
-  it("resolves primary environment", () => {
-    const metadata = resolveSkillMetadata({ "primary-env": "node" });
-    assert.strictEqual(metadata.primaryEnv, "node");
+  it("resolves required environment variables independently", () => {
+    assert.deepStrictEqual(
+      resolveSkillMetadata({ "required-env": ["API_KEY"] }),
+      {
+        requiredEnv: ["API_KEY"],
+      },
+    );
   });
 
-  it("resolves required OS", () => {
-    const metadata = resolveSkillMetadata({
-      "required-os": ["macos", "linux"],
+  it("resolves all runtime requirements from parsed frontmatter", () => {
+    const { frontmatter } = parseFrontmatter(`---
+primary-env: node
+required-os: [macos, linux]
+required-bins: [git, node]
+required-env: [API_KEY, SECRET]
+---
+Body`);
+    assert.deepStrictEqual(resolveSkillMetadata(frontmatter), {
+      primaryEnv: "node",
+      requiredOs: ["macos", "linux"],
+      requiredBins: ["git", "node"],
+      requiredEnv: ["API_KEY", "SECRET"],
     });
-    assert.deepStrictEqual(metadata.requiredOs, ["macos", "linux"]);
-  });
-
-  it("resolves required binaries", () => {
-    const metadata = resolveSkillMetadata({
-      "required-bins": ["git", "node"],
-    });
-    assert.deepStrictEqual(metadata.requiredBins, ["git", "node"]);
-  });
-
-  it("resolves required environment variables", () => {
-    const metadata = resolveSkillMetadata({
-      "required-env": ["API_KEY", "SECRET"],
-    });
-    assert.deepStrictEqual(metadata.requiredEnv, ["API_KEY", "SECRET"]);
   });
 
   it("returns empty metadata for empty frontmatter", () => {
