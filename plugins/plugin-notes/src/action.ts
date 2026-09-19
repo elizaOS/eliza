@@ -367,9 +367,6 @@ export const notesAction: Action = {
         "For full rewrites only: the COMPLETE updated note, including its first-line label and every unedited line. Read the note first if its full content is unknown. For an exact substitution use textEdit instead; omit replacementContent. Supply exactly one of these two update forms.",
       subactions: ["update"],
       required: false,
-      // Old callers used body/newText for the complete replacement. Keep
-      // their wire contract while exposing an unambiguous name to planners.
-      aliases: ["body", "newText"],
       schema: { type: "string" },
     },
     {

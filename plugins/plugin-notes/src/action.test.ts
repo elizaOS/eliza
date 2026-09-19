@@ -78,7 +78,13 @@ async function executorHarness(): Promise<IAgentRuntime> {
   Object.assign(runtime, {
     actions: notesPlugin.actions,
     agentId: "agent-id" as UUID,
-    getRoom: vi.fn(async () => null),
+    getRoom: vi.fn(async () => ({ worldId: "world-id" })),
+    getWorld: vi.fn(async () => ({
+      metadata: {
+        roles: { "owner-id": "OWNER" },
+        roleSources: { "owner-id": "manual" },
+      },
+    })),
     reportError: vi.fn(),
     logger: {
       debug: vi.fn(),
@@ -185,21 +191,7 @@ describe("promoted Notes execution", () => {
     expect(getNotesService(runtime).listNotes()).toEqual(before);
   });
 
-  it("exposes complete replacement content separately from the create-only body", async () => {
-    const update = notesPlugin.actions?.find(
-      (action) => action.name === "NOTES_UPDATE",
-    );
-    expect(
-      update?.parameters?.map((parameter) => parameter.name),
-    ).not.toContain("body");
-    expect(
-      update?.parameters?.find(
-        (parameter) => parameter.name === "replacementContent",
-      ),
-    ).toMatchObject({
-      required: false,
-      aliases: ["body", "newText"],
-    });
+  it("updates the complete note through the declared replacement field", async () => {
     const runtime = await executorHarness();
     await execute(runtime, {
       name: "NOTES_CREATE",
@@ -237,7 +229,8 @@ describe("promoted Notes execution", () => {
       name: "NOTES_UPDATE",
       params: {
         content: "Conversation context QA",
-        body: "Conversation context QA\nBring only the blue notebook.",
+        replacementContent:
+          "Conversation context QA\nBring only the blue notebook.",
       },
     });
     expect(updated.success).toBe(true);
@@ -371,7 +364,7 @@ describe("promoted Notes execution", () => {
     [
       "NOTES_UPDATE",
       { content: "Existing note", body: "" },
-      "replacementContent",
+      "Unexpected argument 'body'",
     ],
     ["NOTES_DELETE", {}, "content"],
     ["NOTES_DELETE", { content: "" }, "content"],
@@ -584,7 +577,13 @@ describe("NOTES operation parsing", () => {
     Object.assign(runtime, {
       actions: [notesAction],
       agentId: "agent-id" as UUID,
-      getRoom: vi.fn(async () => null),
+      getRoom: vi.fn(async () => ({ worldId: "world-id" })),
+      getWorld: vi.fn(async () => ({
+        metadata: {
+          roles: { "owner-id": "OWNER" },
+          roleSources: { "owner-id": "manual" },
+        },
+      })),
       reportError: vi.fn(),
       logger: {
         debug: vi.fn(),
