@@ -172,6 +172,7 @@ export function registerCloudEmbeddingModels(runtime: IAgentRuntime): void {
       modelType,
       handler: handler as Parameters<IAgentRuntime["registerModel"]>[1],
       priority: elizaOSCloudPlugin.priority,
+      metadata: { displayModelSetting: "ELIZAOS_CLOUD_EMBEDDING_MODEL" },
     }))
   );
 }
