@@ -397,6 +397,135 @@ describe("live 2026-08-22 Discord incident regression (nubilio test server)", ()
 	});
 });
 
+describe("stored @-prefixed platform handles (#29168)", () => {
+	it("resolves a participant's stored @handle from either spelling", async () => {
+		const runtime = makeRuntime({
+			getEntitiesForRoom: vi.fn(async () => [
+				{ id: HUMAN_X, names: ["@sol_eth", "Sol"] },
+			]),
+		} as unknown as Partial<IAgentRuntime>);
+		await expect(
+			resolveAddressedTargets({
+				runtime,
+				message: makeMessage(),
+				addressedTo: ["@sol_eth"],
+			}),
+		).resolves.toEqual([HUMAN_X]);
+		await expect(
+			resolveAddressedTargets({
+				runtime,
+				message: makeMessage(),
+				addressedTo: ["sol_eth"],
+			}),
+		).resolves.toEqual([HUMAN_X]);
+	});
+
+	it("resolves the agent's stored @alias to agentId and does not gate the turn", async () => {
+		const runtime = makeRuntime({
+			getEntitiesForRoom: vi.fn(async () => [
+				{ id: AGENT_ID, names: ["@samantha_ai_bot", "Samantha"] },
+			]),
+		} as unknown as Partial<IAgentRuntime>);
+		await expect(
+			resolveAddressedTargets({
+				runtime,
+				message: makeMessage(),
+				addressedTo: ["@samantha_ai_bot"],
+			}),
+		).resolves.toEqual([AGENT_ID]);
+		await expect(
+			resolveAddressedTargets({
+				runtime,
+				message: makeMessage(),
+				addressedTo: ["samantha_ai_bot"],
+			}),
+		).resolves.toEqual([AGENT_ID]);
+		await expect(
+			messageAddressedToOtherParticipant({
+				runtime,
+				message: makeMessage(
+					undefined,
+					undefined,
+					"hey @samantha_ai_bot what is the weather?",
+				),
+				addressedTo: ["@samantha_ai_bot"],
+			}),
+		).resolves.toBe(false);
+	});
+
+	it("keeps the agent's character name over a participant alias that collapses to it", async () => {
+		// "@Eliza" and "Eliza" normalize to one key; the agent must win whichever
+		// order the room lists them in, so "Eliza" is never a participant address.
+		const participant = { id: OTHER_BOT, names: ["@Eliza"] };
+		const agentEntity = { id: AGENT_ID, names: ["Eliza"] };
+		for (const order of [
+			[agentEntity, participant],
+			[participant, agentEntity],
+		]) {
+			const runtime = makeRuntime({
+				character: { name: "Eliza" },
+				getEntitiesForRoom: vi.fn(async () => order),
+			} as unknown as Partial<IAgentRuntime>);
+			await expect(
+				resolveAddressedTargets({
+					runtime,
+					message: makeMessage(),
+					addressedTo: ["Eliza"],
+				}),
+			).resolves.toEqual([AGENT_ID]);
+			await expect(
+				resolveAddressedTargets({
+					runtime,
+					message: makeMessage(),
+					addressedTo: ["@Eliza"],
+				}),
+			).resolves.toEqual([AGENT_ID]);
+		}
+	});
+
+	it("trims whitespace before the @ and ignores handles that normalize to empty", async () => {
+		const runtime = makeRuntime({
+			getEntitiesForRoom: vi.fn(async () => [
+				{ id: HUMAN_X, names: [" @sol_eth ", "@"] },
+			]),
+		} as unknown as Partial<IAgentRuntime>);
+		await expect(
+			resolveAddressedTargets({
+				runtime,
+				message: makeMessage(),
+				addressedTo: [" @sol_eth "],
+			}),
+		).resolves.toEqual([HUMAN_X]);
+		await expect(
+			resolveAddressedTargets({
+				runtime,
+				message: makeMessage(),
+				addressedTo: ["@"],
+			}),
+		).resolves.toEqual([]);
+	});
+
+	it("gates a turn addressed to another participant's stored @handle instead of failing open", async () => {
+		const runtime = makeRuntime({
+			getEntitiesForRoom: vi.fn(async () => [
+				{ id: SENDER_ID, names: ["nubs"] },
+				{ id: HUMAN_X, names: ["@sol_eth", "Sol"] },
+			]),
+		} as unknown as Partial<IAgentRuntime>);
+		await expect(
+			messageAddressedToOtherParticipant({
+				runtime,
+				message: makeMessage(
+					undefined,
+					undefined,
+					"hey @sol_eth, can you take this one",
+				),
+				addressedTo: ["@sol_eth"],
+			}),
+		).resolves.toBe(true);
+	});
+});
+
 describe("messageVocativelyAddressesOtherParticipant (structural vocative)", () => {
 	const room = (): Partial<IAgentRuntime> =>
 		({
