@@ -524,3 +524,134 @@ describe("PlanningService.executePlan action settlement", () => {
 		);
 	});
 });
+
+/**
+ * #30732: `executeParallel` previously built one promise for every step and
+ * handed the full list to a single `Promise.all`, so a large parallel plan
+ * admitted an input-proportional number of action handlers before any settled.
+ * The bound must hold no matter how many steps the model/preferences produce,
+ * while every step still runs and aggregates into the result.
+ */
+describe("PlanningService.executePlan parallel admission bound (#30732)", () => {
+	const PARALLEL_CAP = 8;
+
+	it("never exceeds the concurrency cap yet completes every step", async () => {
+		const stepCount = 64;
+		let inFlight = 0;
+		let peakInFlight = 0;
+		let completed = 0;
+
+		const action = {
+			name: "PARALLEL_STEP",
+			description:
+				"Records peak concurrency while a barrier holds it in flight",
+			tags: ["capability:read"],
+			validate: async () => true,
+			handler: async () => {
+				inFlight += 1;
+				peakInFlight = Math.max(peakInFlight, inFlight);
+				// Yield so co-admitted handlers overlap before any releases; a broken
+				// unbounded fan-out would drive `peakInFlight` to `stepCount`.
+				await new Promise((resolve) => setTimeout(resolve, 5));
+				inFlight -= 1;
+				completed += 1;
+				return { success: true, text: "step done" };
+			},
+		} satisfies Action;
+
+		const runtime = planningRuntime(action);
+		const service = new PlanningService(runtime);
+		const plan = {
+			id: "11111111-1111-4111-8111-111111111111",
+			goal: "exercise bounded parallel admission",
+			thought: "fan out many steps",
+			totalSteps: stepCount,
+			currentStep: 0,
+			executionModel: "parallel" as const,
+			steps: Array.from({ length: stepCount }, (_unused, index) => ({
+				id: `2222${String(index).padStart(4, "0")}-1111-4111-8111-111111111111`,
+				actionName: action.name,
+				retryPolicy: {
+					maxRetries: 0,
+					backoffMs: 0,
+					backoffMultiplier: 1,
+					onError: "continue" as const,
+				},
+			})),
+		};
+
+		const execution = await service.executePlan(
+			runtime,
+			plan as unknown as Parameters<PlanningService["executePlan"]>[1],
+			msg("run them all"),
+		);
+
+		expect(peakInFlight).toBeLessThanOrEqual(PARALLEL_CAP);
+		expect(peakInFlight).toBe(PARALLEL_CAP);
+		expect(completed).toBe(stepCount);
+		expect(inFlight).toBe(0);
+		expect(execution.success).toBe(true);
+		expect(execution.results).toHaveLength(stepCount);
+		expect(execution.errors).toBeUndefined();
+	});
+
+	it("aggregates results in step order even when completion order differs", async () => {
+		const stepCount = 24;
+		// Each step owns a distinct action whose result text is intrinsic to its
+		// step index, so the assertion depends only on aggregation order and not on
+		// which handler happened to be admitted first. Within every worker batch the
+		// higher-index step sleeps least, so completion order provably diverges from
+		// step order; only the position-indexed `outcomes` array can keep
+		// `execution.results` in plan order. Reversing the aggregation loop makes
+		// this the sole failing test.
+		const actions: Action[] = Array.from(
+			{ length: stepCount },
+			(_unused, index) =>
+				({
+					name: `ORDERED_STEP_${index}`,
+					description: "Finishes out of step order within its batch",
+					tags: ["capability:read"],
+					validate: async () => true,
+					handler: async () => {
+						// Later steps in each batch of PARALLEL_CAP finish first.
+						await new Promise((resolve) =>
+							setTimeout(resolve, 40 - (index % PARALLEL_CAP) * 5),
+						);
+						return { success: true, text: `step-${index}` };
+					},
+				}) satisfies Action,
+		);
+
+		const runtime = planningRuntime(actions[0], { actions });
+		const service = new PlanningService(runtime);
+		const plan = {
+			id: "33333333-3333-4333-8333-333333333333",
+			goal: "preserve aggregation order under a bounded pool",
+			thought: "fan out steps that finish out of order",
+			totalSteps: stepCount,
+			currentStep: 0,
+			executionModel: "parallel" as const,
+			steps: Array.from({ length: stepCount }, (_unused, index) => ({
+				id: `4444${String(index).padStart(4, "0")}-3333-4333-8333-333333333333`,
+				actionName: `ORDERED_STEP_${index}`,
+				retryPolicy: {
+					maxRetries: 0,
+					backoffMs: 0,
+					backoffMultiplier: 1,
+					onError: "continue" as const,
+				},
+			})),
+		};
+
+		const execution = await service.executePlan(
+			runtime,
+			plan as unknown as Parameters<PlanningService["executePlan"]>[1],
+			msg("run them in order"),
+		);
+
+		expect(execution.success).toBe(true);
+		expect(execution.results.map((result) => result.text)).toEqual(
+			Array.from({ length: stepCount }, (_unused, index) => `step-${index}`),
+		);
+	});
+});
