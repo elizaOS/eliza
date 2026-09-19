@@ -445,14 +445,35 @@ function buildMatrixMessage(event: sdk.MatrixEvent, room: sdk.Room): MatrixMessa
   const threadId = relatesTo?.rel_type === "m.thread" ? relatesTo.event_id : undefined;
   const replyTo = relatesTo?.["m.in_reply_to"]?.event_id;
 
+  // An edit's top-level body is the "* ..." fallback for clients that do not
+  // understand m.replace; the corrected text lives in m.new_content. Surface
+  // only that text, and drop edits whose replacement is not plain text.
+  let body = content.body;
+  let formattedBody =
+    typeof content.formatted_body === "string" ? content.formatted_body : undefined;
+  if (isEdit) {
+    const replacement = content["m.new_content"];
+    if (
+      !replacement ||
+      typeof replacement !== "object" ||
+      replacement.msgtype !== "m.text" ||
+      typeof replacement.body !== "string"
+    ) {
+      return null;
+    }
+    body = replacement.body;
+    formattedBody =
+      typeof replacement.formatted_body === "string" ? replacement.formatted_body : undefined;
+  }
+
   return {
     eventId: event.getId() || "",
     roomId,
     sender: sender || "",
     senderInfo,
-    content: content.body,
+    content: body,
     msgType,
-    formattedBody: typeof content.formatted_body === "string" ? content.formatted_body : undefined,
+    formattedBody,
     timestamp: event.getTs(),
     threadId,
     replyTo,
@@ -1267,6 +1288,17 @@ export class MatrixService extends Service implements IMatrixService {
     const message = buildMatrixMessage(event, room);
     if (!message) return;
 
+    // An m.replace edit corrects a message the agent already has; it is not a
+    // new request. Patch the stored original instead of dispatching again.
+    if (message.isEdit) {
+      void this.applyMessageEdit(message).catch((err) =>
+        logger.error(
+          `Matrix edit apply failed: ${err instanceof Error ? err.message : String(err)}`
+        )
+      );
+      return;
+    }
+
     const roomId = message.roomId;
 
     // Check mention requirement. Skipped in 1:1 DMs: a direct message is
@@ -1313,6 +1345,28 @@ export class MatrixService extends Service implements IMatrixService {
         `Matrix dispatchToAgent failed: ${err instanceof Error ? err.message : String(err)}`
       )
     );
+  }
+
+  /**
+   * Rewrite the stored text of the message an m.replace edit targets. The
+   * original memory id is derived from the replaced event id exactly as
+   * matrixMessageToMemory derives it, so recall reads the corrected text. An
+   * edit for an event this agent never stored is ignored rather than invented.
+   */
+  private async applyMessageEdit(message: MatrixMessage): Promise<void> {
+    if (!message.replacesEventId) return;
+    const originalId = createUniqueUuid(this.runtime, message.replacesEventId);
+    const original = await this.runtime.getMemoryById(originalId);
+    if (!original) {
+      logger.debug(
+        `Matrix edit ${message.eventId} targets ${message.replacesEventId}, which is not stored; ignoring`
+      );
+      return;
+    }
+    await this.runtime.updateMemory({
+      id: originalId,
+      content: { ...original.content, text: message.content },
+    });
   }
 
   /**
