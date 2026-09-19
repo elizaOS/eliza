@@ -1155,12 +1155,19 @@ describe("planner source selection and restoration", () => {
 				});
 				const before = JSON.stringify(full);
 				const calls: string[] = [];
+				const restoreTools: Array<ToolDefinition | undefined> = [];
 				const execute = vi.fn();
 				const restore = vi.fn(async (original: ContextObject) => original);
 				const runtime = {
 					restoreProviderContext: restore,
-					useModel: async (_type: unknown, params: { messages?: unknown }) => {
+					useModel: async (
+						_type: unknown,
+						params: { messages?: unknown; tools?: ToolDefinition[] },
+					) => {
 						calls.push(JSON.stringify(params.messages));
+						restoreTools.push(
+							params.tools?.find((tool) => tool.name === "RESTORE_CONTEXT"),
+						);
 						if (stage === "completion")
 							return JSON.stringify(
 								calls.length === 1
@@ -1230,6 +1237,26 @@ describe("planner source selection and restoration", () => {
 					calls[1]?.includes("Old completed unrelated weather request."),
 				).toBe(scope === "history");
 				expect(restore).toHaveBeenCalledTimes(scope === "providers" ? 1 : 0);
+				if (stage === "planner") {
+					// Once a scope is inline, the next native request must not offer
+					// that invalid operation merely because the other scope is deferred.
+					const next = restoreTools[1];
+					expect(next?.parameters).toBeDefined();
+					for (const requested of ["history", "providers", "full"]) {
+						const errors: string[] = [];
+						validateSchema(
+							next?.parameters ?? {},
+							{
+								reason: "Need missing context",
+								scope: requested,
+								eliza_turn_scope: "final",
+							},
+							"restore",
+							errors,
+						);
+						expect(errors.length > 0, requested).toBe(requested === scope);
+					}
+				}
 				expect(execute).not.toHaveBeenCalled();
 				expect(JSON.stringify(full)).toBe(before);
 			}

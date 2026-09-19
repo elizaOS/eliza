@@ -2919,7 +2919,7 @@ const RESTORE_CONTEXT_TOOL: ToolDefinition = {
 	// required turn-scope arguments on the surrounding action tools.
 	strict: true,
 	description:
-		"Read missing context: scope=history restores original dialogue and retrieval diagnostics, scope=providers reads deferred provider bodies, scope=full (default) restores both. Use history for missing corrections or referents; a note-read tool already supplies note bodies. This reads the complete in-memory turn context once, performs no domain action and emits no user reply. Call it alone before planning effects; other calls in the same response will not execute.",
+		"Read context that remains deferred using an offered scope: history restores original dialogue and retrieval diagnostics, providers reads deferred provider bodies, full (default) restores all remaining context. This cannot fetch new facts absent from those sources; use a domain read tool for current records and timestamps. No domain action or user reply occurs. Call it alone before planning effects; other calls in the same response will not execute.",
 	parameters: {
 		type: "object",
 		additionalProperties: false,
@@ -2930,6 +2930,19 @@ const RESTORE_CONTEXT_TOOL: ToolDefinition = {
 		required: ["reason"],
 	},
 };
+
+function scopedRestoreContextTool(scopes: string[]): ToolDefinition {
+	return {
+		...RESTORE_CONTEXT_TOOL,
+		parameters: {
+			...RESTORE_CONTEXT_TOOL.parameters,
+			properties: {
+				reason: { type: "string" },
+				scope: { type: "string", enum: scopes },
+			},
+		},
+	};
+}
 
 function renderPlannerModelInput(params: {
 	context: ContextObject;
@@ -2945,6 +2958,7 @@ function renderPlannerModelInput(params: {
 	promptSegments: PromptSegment[];
 	cacheKeySegments: PromptSegment[];
 	sourceSelectionApplied: boolean;
+	restoreScopes: string[];
 } {
 	const original = params.trajectory.modelBaseContext ?? params.context;
 	const selected =
@@ -3087,6 +3101,15 @@ function renderPlannerModelInput(params: {
 			selected.applied ||
 			diagnosticProjection.applied ||
 			deferred.available.length > 0,
+		restoreScopes: [
+			...(selected.applied || diagnosticProjection.applied ? ["history"] : []),
+			...(deferred.available.length ? ["providers"] : []),
+			...(selected.applied ||
+			diagnosticProjection.applied ||
+			deferred.available.length
+				? ["full"]
+				: []),
+		],
 	};
 }
 
@@ -3131,7 +3154,10 @@ export function buildInitialPlannerModelInputBudget(params: {
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
 		tools: renderedInput.sourceSelectionApplied
-			? [...(params.tools ?? []), RESTORE_CONTEXT_TOOL]
+			? [
+					...(params.tools ?? []),
+					scopedRestoreContextTool(renderedInput.restoreScopes),
+				]
 			: params.tools,
 		modelName: config.contextWindowModelName,
 		...(config.contextWindowTokens
@@ -3741,8 +3767,7 @@ async function dispatchPlannerModelCall(params: {
 		// schema can still request a read, intercepted before synthesis consumes
 		// the output. Missing context therefore never requires action replay.
 		const instruction = {
-			content:
-				'Reply-only context access: if original dialogue or deferred provider details are needed, return toolCalls=[{"name":"RESTORE_CONTEXT","params":{"scope":"history","reason":"what is missing"}}], using scope=providers or scope=full when needed, with an empty messageToUser and completed=false. No other action can execute in this round. Otherwise answer from the supplied evidence and settled receipts with toolCalls=[] and completed=true.',
+			content: `Reply-only context access: available restoration scopes are ${JSON.stringify(renderedInput.restoreScopes)}. If deferred details are needed, return toolCalls=[{"name":"RESTORE_CONTEXT","params":{"scope":"${renderedInput.restoreScopes[0]}","reason":"what is missing"}}], choosing an available scope, with an empty messageToUser and completed=false. No other action can execute in this round. Otherwise answer from the supplied evidence and settled receipts with toolCalls=[] and completed=true.`,
 			stable: false,
 		};
 		renderedInput.messages.push({ role: "user", content: instruction.content });
@@ -3801,7 +3826,10 @@ async function dispatchPlannerModelCall(params: {
 		// strips it before dispatch.
 		modelParams.tools = withTurnScopeToolArg(
 			renderedInput.sourceSelectionApplied
-				? [...(params.tools ?? []), RESTORE_CONTEXT_TOOL]
+				? [
+						...(params.tools ?? []),
+						scopedRestoreContextTool(renderedInput.restoreScopes),
+					]
 				: params.tools,
 			renderedInput.messages[0]?.role === "system" &&
 				typeof renderedInput.messages[0].content === "string"
@@ -3848,6 +3876,12 @@ async function dispatchPlannerModelCall(params: {
 							"The unresolved source dependency requiring complete context",
 						required: true,
 						schema: { type: "string" },
+					},
+					{
+						name: "scope",
+						description: "The remaining deferred context to restore",
+						required: false,
+						schema: { type: "string", enum: renderedInput.restoreScopes },
 					},
 				],
 				allowAdditionalParameters: false,

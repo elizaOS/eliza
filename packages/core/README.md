@@ -14,6 +14,12 @@ or by a current room ADMIN for global and user-private documents. Every grantee
 must be an entity in the current agent tenant. Invalid or duplicate grant arrays
 fail closed.
 
+Planner context restoration advertises only scopes that remain deferred. After
+provider bodies are restored, a still-available history read must not expose a
+second provider-only restore. Native tools, reply-only instructions and local
+action grammars use the same available scopes; invalid repeated reads still
+fail before any accompanying effects execute.
+
 Foreground completion returns its decision, grounded reply, and receipt/context
 selections without regenerating an additional prose evidence summary. The full
 request and tool evidence remain supplied. Legacy evaluator outputs may still
