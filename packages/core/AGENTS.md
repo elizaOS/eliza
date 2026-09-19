@@ -16,6 +16,7 @@ exports or route table. Hosts use shared HTTP contracts and their own registrati
 - `plugins/plugin-sql`: PGlite/PostgreSQL, schemas, migrations and concrete stores.
 - `plugins/plugin-openai`: OpenAI-compatible inference protocol, including configured compatible endpoints.
 - `packages/credentials`: provider login/account storage and scoped vault implementations.
+- `packages/retrieval`: optional search algorithms and result reranking, consumed by adapters and hosts; core only delegates search.
 - `packages/agent` and `packages/app-core`: authentication at transport ingress, HTTP, process configuration, desktop/native policy and application composition.
 - `packages/testing`: private strict inference fixtures and real-runtime test harnesses; never a production dependency.
 
@@ -143,7 +144,7 @@ visible.
 - `runtime.ts` is intentionally large and load-bearing; navigate by symbol and
   ownership boundary rather than reading it top to bottom or adding another
   unrelated responsibility.
-- `src/generated/` and parts of `src/i18n/generated/` are build artifacts; regenerate via prebuild rather than editing.
+- Build output belongs only in package-root `dist/`. Core has no source-generation prebuild; do not recreate generated TypeScript or declarations under `src/`.
 - Repository-wide rules and evidence requirements are inherited from the root
   [`CLAUDE.md`](../../CLAUDE.md).
 
@@ -156,8 +157,8 @@ changes, additionally capture and inspect:
   path, including raw model output and every tool result;
 - structured logs and the resulting memory, entity, relationship, task,
   trajectory, or database artifacts; and
-- both the Node-only build and the full multi-target build whenever a shared
-  export or runtime dependency changes.
+- the Node build and packed-consumer verification whenever a shared export or
+  runtime dependency changes. Core has no browser or edge build.
 
 Post-turn evaluators may provide `resolveOutput` only when their prepared runtime evidence determines the result without model judgment. These sections bypass model prompts, retain normal parse/process/progress handling, and isolate failures. Link extraction uses this after capture; its guarded page summary remains, while the redundant full-room processed acknowledgment is removed. Incremental memory checkpoints and room ordering remain unchanged.
 

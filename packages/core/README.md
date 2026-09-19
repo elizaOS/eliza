@@ -214,26 +214,25 @@ fields remain compatible through a service-level bounded fallback.
     bun run build
     ```
 
-## Build targets (Node, Browser, Edge)
+## Node distribution
 
-`@elizaos/core` builds to three targets via conditional exports:
-
-- **Node.js Build**: Full API surface with all features including server utilities (`index.ts`)
-- **Browser Build**: Browser-safe subset, no fs/process-bound modules (`index.browser.ts`)
-- **Edge Build**: Edge-runtime subset (`index.edge.ts`)
+`build.ts` bundles `src/index.ts` into `dist/index.js` and one declaration,
+`dist/index.d.ts`. Only the root barrel is public. Compilation does not generate
+source files, routes, browser or edge variants. Verify the installed tarball with
+`node packages/core/scripts/verify-package.mjs` from the repository root.
 
 Core runs in Node.js and exposes one root barrel. Hosts supply a database adapter or a persistence plugin explicitly; ephemeral hosts can use `@elizaos/plugin-inmemorydb/runtime`. There is no environment-controlled storage fallback.
 
 ## Configuration
 
-The following environment variables are used by `@elizaos/core`. Configure them in a `.env` file at your project root.
+The following settings are consumed by core or the explicitly registered assistant. Hosts load environment files and pass resolved configuration; core does not load `.env` files.
 
 - `LOG_LEVEL`: Logging verbosity (e.g., 'debug', 'info', 'error').
 - `LOG_JSON_FORMAT`: Output logs in JSON format (`true`/`false`).
 - `SECRET_SALT`: Encryption salt, read by `getSalt()` in `src/settings.ts`. In production it must be set to a non-default value unless `ELIZA_ALLOW_DEFAULT_SECRET_SALT=true`.
 - `LOG_FILE`: When set to `true`/`1` or a path, enables file logging: `output.log`, `prompts.log`, and `chat.log` (in cwd or at the given path). **Why:** Lets you inspect full prompts and chat flow without scraping console; ANSI is stripped so files stay grep-friendly.
 - `BASIC_CAPABILITIES_KEEP_RESP`: When `true`, the message service does not discard a response when a newer message is being processed (avoids "stale reply" race). **Why:** Some deployments want to keep or display every response; this is the config equivalent of passing `keepExistingResponses: true` in options.
-- `SHOULD_RESPOND_MODEL`: Which model size to use for the "should I respond?" decision (`small` or `large`, read in `src/services/message.ts`). Defaults from runtime settings if not set in options.
+- `SHOULD_RESPOND_MODEL`: Which model size to use for the "should I respond?" decision (`small` or `large`, read in `plugins/plugin-assistant/src/services/message.ts`). Defaults from runtime settings if not set in options.
 - `AUTONOMY_INTERVAL_MS`: Autonomy loop cadence as a canonical positive decimal integer in milliseconds. Values are clamped to 5,000–600,000; malformed or unset values use 30,000.
 - `AUTONOMY_MODEL_SIZE`: Model tier for autonomy background reasoning, exactly `small` or `large`. Malformed or unset values use `large`.
 - `ELIZA_TRAJECTORY_LOGGING`: Canonical trajectory persistence knob. Truthy values (`1`, `true`, `yes`, `on`) enable file and DB trajectory recording; non-empty falsey values disable it; blank is treated as unset. When unset, recording is on for local/dev and unset `NODE_ENV`, but off for `NODE_ENV=test` and `NODE_ENV=production` unless explicitly enabled.
@@ -471,7 +470,15 @@ Why batcher-only:
 
 ### AgentRuntime
 
-The `AgentRuntime` (`src/runtime.ts`, `class AgentRuntime implements IAgentRuntime`) is the heart of the system. It manages the agent's lifecycle, loads plugins, orchestrates the message loop, and is the central point for actions, providers, and evaluators. It is initialized with a set of `Plugin`s; foundational actions, providers, evaluators, and services ship as the `basicCapabilities` bundle (`src/features/basic-capabilities/index.ts`).
+`AgentRuntime` (`src/runtime.ts`) manages lifecycle, plugin registration and
+authorized execution. Hosts explicitly register `createAssistantPlugin()` from
+`@elizaos/plugin-assistant` for the message loop, planner, actions, providers and
+evaluators described below. Its contributions live in that plugin; a bare
+runtime does not install assistant behavior.
+
+Storage adapters own retrieval. `searchMemories` delegates to the registered
+adapter; SQL and in-memory adapters use `@elizaos/retrieval` for optional keyword
+reranking after scoped vector pagination. Search algorithms are not core exports.
 
 ### Actions
 
