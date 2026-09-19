@@ -294,6 +294,37 @@ function assertStableAmbiguousInventory(
   return retained;
 }
 
+/**
+ * Bound and locate the retained candidate for an explicit operator re-review.
+ * Unlike the initial selection, a re-review does not require ambiguity: once a
+ * stale receipt exists, the owner is trapped between selection-required and
+ * unavailable until the receipt is reconciled, and deleting all but one
+ * duplicate is the ordinary way that inventory evolves (#30050). Automatic
+ * request-serving paths never take this branch; only the super-admin
+ * re-review boundary does.
+ */
+function assertStableRereviewInventory(
+  params: PersonalDedicatedSelectionRereviewInput,
+  candidates: AgentSandbox[],
+): AgentSandbox {
+  if (candidates.length > MAX_REVIEWABLE_CANDIDATES) {
+    throw selectionError(
+      "PERSONAL_DEDICATED_SELECTION_CONFLICT",
+      "The Dedicated inventory exceeds the bounded review limit",
+      params,
+    );
+  }
+  const retained = candidates.find((candidate) => candidate.id === params.retainedAgentId);
+  if (!retained) {
+    throw selectionError(
+      "PERSONAL_DEDICATED_SELECTION_NOT_FOUND",
+      "The retained Dedicated candidate was not found",
+      params,
+    );
+  }
+  return retained;
+}
+
 function previewFromSelection(
   params: PersonalDedicatedSelectionInput,
   selection: typeof personalDedicatedAdoptionSelections.$inferSelect,
@@ -811,7 +842,7 @@ export async function previewPersonalDedicatedSelectionRereview(
     .where(rereviewCandidateWhere(params.organizationId, params.userId, receipt.id))
     .orderBy(asc(agentSandboxes.id))
     .limit(MAX_REVIEWABLE_CANDIDATES + 1);
-  const retained = assertStableAmbiguousInventory(params, candidates);
+  const retained = assertStableRereviewInventory(params, candidates);
   const activeJob = await findActiveCandidateLifecycleJob(
     dbWrite,
     params.organizationId,
@@ -936,7 +967,7 @@ export async function executePersonalDedicatedSelectionRereview(
       .orderBy(asc(agentSandboxes.id))
       .limit(MAX_REVIEWABLE_CANDIDATES + 1)
       .for("update");
-    const retained = assertStableAmbiguousInventory(params, candidates);
+    const retained = assertStableRereviewInventory(params, candidates);
     const backups = await readBackupProvenanceInTx(
       tx,
       candidates.map((candidate) => candidate.id),
@@ -988,6 +1019,10 @@ export async function executePersonalDedicatedSelectionRereview(
       );
     }
 
+    // The original selection audit (selected_by_user_id, selected_at,
+    // created_at) is preserved; the re-reviewing operator and time are
+    // recorded alongside it so the receipt names who last reconciled it.
+    const rereviewedAt = new Date();
     await tx
       .update(personalDedicatedAdoptionSelections)
       .set({
@@ -996,7 +1031,9 @@ export async function executePersonalDedicatedSelectionRereview(
         ...personalDedicatedActivationAuthorityReceiptColumns(activationAuthority),
         inventory_fingerprint: inventoryFingerprint,
         candidate_count: candidates.length,
-        updated_at: new Date(),
+        rereviewed_by_user_id: params.selectedByUserId,
+        rereviewed_at: rereviewedAt,
+        updated_at: rereviewedAt,
       })
       .where(eq(personalDedicatedAdoptionSelections.id, receipt.id));
     return preview;

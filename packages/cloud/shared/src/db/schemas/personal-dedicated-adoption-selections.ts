@@ -35,6 +35,12 @@ export const personalDedicatedAdoptionSelections = pgTable(
     restore_fence_started_at: timestamp("restore_fence_started_at", { withTimezone: true }),
     inventory_fingerprint: text("inventory_fingerprint").notNull(),
     candidate_count: integer("candidate_count").notNull(),
+    // Set by the explicit super-admin re-review boundary; the original
+    // selection audit above is never rewritten by a re-review.
+    rereviewed_by_user_id: uuid("rereviewed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    rereviewed_at: timestamp("rereviewed_at", { withTimezone: true }),
     schema_version: integer("schema_version").notNull().default(1),
     selected_at: timestamp("selected_at", { withTimezone: true }).notNull().defaultNow(),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -95,9 +101,16 @@ export const personalDedicatedAdoptionSelections = pgTable(
         AND ${table.restore_fence_started_at} IS NOT NULL
       )`,
     ),
+    // The initial selection requires an ambiguous inventory (two or more
+    // candidates, enforced in the service); a re-review may record the honest
+    // count of one when only a single eligible candidate remains.
     candidate_count_check: check(
       "personal_dedicated_adoption_selections_candidate_count_check",
-      sql`${table.candidate_count} >= 2`,
+      sql`${table.candidate_count} >= 1`,
+    ),
+    rereview_audit_check: check(
+      "personal_dedicated_adoption_selections_rereview_audit_check",
+      sql`${table.rereviewed_by_user_id} IS NULL OR ${table.rereviewed_at} IS NOT NULL`,
     ),
   }),
 );

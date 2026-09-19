@@ -1,0 +1,6 @@
+ALTER TABLE "personal_dedicated_adoption_selections" DROP CONSTRAINT "personal_dedicated_adoption_selections_candidate_count_check";--> statement-breakpoint
+ALTER TABLE "personal_dedicated_adoption_selections" ADD COLUMN "rereviewed_by_user_id" uuid;--> statement-breakpoint
+ALTER TABLE "personal_dedicated_adoption_selections" ADD COLUMN "rereviewed_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "personal_dedicated_adoption_selections" ADD CONSTRAINT "personal_dedicated_adoption_selections_rereviewed_by_user_id_users_id_fk" FOREIGN KEY ("rereviewed_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "personal_dedicated_adoption_selections" ADD CONSTRAINT "personal_dedicated_adoption_selections_rereview_audit_check" CHECK ("personal_dedicated_adoption_selections"."rereviewed_by_user_id" IS NULL OR "personal_dedicated_adoption_selections"."rereviewed_at" IS NOT NULL);--> statement-breakpoint
+ALTER TABLE "personal_dedicated_adoption_selections" ADD CONSTRAINT "personal_dedicated_adoption_selections_candidate_count_check" CHECK ("personal_dedicated_adoption_selections"."candidate_count" >= 1);
