@@ -64,7 +64,6 @@ export default defineConfig({
       ELIZA_DEV_CLOUD_TARGET: "offline",
       // Keep the API process watcher off (HMR under test is Vite's, not the
       // API's), quiet logs, and skip optional camera deps in CI.
-      ELIZA_DEV_CLOUD_TARGET: "offline",
       ELIZA_DEV_NO_WATCH: "1",
       ELIZA_DEV_QUIET_LOGS: "1",
       ELIZA_NO_VISION_DEPS: "1",
@@ -79,7 +78,12 @@ export default defineConfig({
       FORCE_COLOR: "0",
       NODE_NO_WARNINGS: "1",
     },
-    port: uiPort,
+    // Readiness must mean "Vite is serving its client", not "something accepted
+    // a TCP connection": a bare `port` probe can be satisfied by a transient
+    // listener that reuses the reserved port before Vite binds it, and Playwright
+    // then runs the specs into ERR_CONNECTION_REFUSED (#31762). Polling a path
+    // only Vite serves waits for the real dev client instead.
+    url: `http://127.0.0.1:${uiPort}/@vite/client`,
     reuseExistingServer: false,
     timeout: 120_000,
   },
