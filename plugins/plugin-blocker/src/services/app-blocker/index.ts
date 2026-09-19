@@ -11,6 +11,7 @@ export {
   type NativeAppBlockerBackend,
   registerNativeAppBlockerBackend,
   requestAppBlockerPermission,
+  resetAppBlockerStatusCache,
   selectAppsForBlocking,
   startAppBlock,
   stopAppBlock,
