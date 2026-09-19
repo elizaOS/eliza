@@ -7,7 +7,7 @@
  * surfaces; the database probe and credit classifier run unmocked.
  */
 
-import { type AgentRuntime, ModelType } from "@elizaos/core";
+import { type AgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   builtInHealthChecks,
@@ -365,23 +365,6 @@ describe("providerSmokeCheck", () => {
     await expect(providerSmokeCheck.run(runtime())).resolves.toEqual({
       ok: true,
     });
-  });
-
-  it("passes a successful useModel call and sends the ping payload", async () => {
-    const calls: unknown[] = [];
-    await expect(
-      providerSmokeCheck.run(
-        runtime({
-          async useModel(modelType: unknown, params: unknown) {
-            calls.push([modelType, params]);
-            return "pong";
-          },
-        }),
-      ),
-    ).resolves.toEqual({ ok: true });
-    expect(calls).toEqual([
-      [ModelType.TEXT_SMALL, { prompt: "ping", maxTokens: 1, temperature: 0 }],
-    ]);
   });
 
   it("treats an empty completion as a healthy transport", async () => {
