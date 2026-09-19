@@ -7091,7 +7091,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			mentionContext: { isMention: true },
 		});
 		hardenIncomingUserMessage(message);
-		expect(message.content.text).toContain("Delete data");
+		expect(message.content.text).toContain("<<<EXTERNAL_UNTRUSTED_CONTENT>>>");
 		expect(message.content.text).toContain("dinner");
 
 		const result = await runV5MessageRuntimeStage1({
