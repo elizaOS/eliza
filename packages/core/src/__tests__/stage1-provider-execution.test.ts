@@ -2,14 +2,13 @@
  * character preferences reach Stage 1, domain providers wait for planning, and
  * cached planning context cannot leak back into a later response decision.
  * Uses an in-memory runtime and counting providers; no model or network. */
-import { describe, expect, it } from "vitest";
+
 import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { describe, expect, it } from "vitest";
 import { userPersonalityProvider } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/providers/user-personality";
 import { PersonalityStore } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/services/personality-store";
 import { botAwarenessProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/botAwareness";
 import { choiceProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/choice";
-import { createInitializedRuntime } from "./initialized-runtime";
-import { renderContextObject } from "../runtime/context-renderer";
 import { stage1ResponseStateProviderNames } from "../../../../plugins/plugin-assistant/src/services/message";
 import { createV5MessageContextObject } from "../../../../plugins/plugin-assistant/src/services/message/context-assembly";
 import {
@@ -17,8 +16,10 @@ import {
 	selectV5PlannerStateProviderNames,
 } from "../../../../plugins/plugin-assistant/src/services/message/provider-state";
 import { renderMessageHandlerModelInput } from "../../../../plugins/plugin-assistant/src/services/message/stage1-input";
+import { renderContextObject } from "../runtime/context-renderer";
 import type { Character, Content, Memory, Provider, UUID } from "../types";
 import { ChannelType } from "../types";
+import { createInitializedRuntime } from "./initialized-runtime";
 
 const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
 const ENTITY_ID = "22222222-2222-2222-2222-222222222222" as UUID;

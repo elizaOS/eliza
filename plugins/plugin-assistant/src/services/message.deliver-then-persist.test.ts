@@ -1,5 +1,3 @@
-import { createAssistantPlugin } from "../index.ts";
-
 /**
  * Reply delivery and durable storage on the simple fast path run concurrently,
  * so connector latency and the response-memory write do not add serially. Both
@@ -35,6 +33,7 @@ import {
   ChannelType,
   type UUID,
 } from "../../../../packages/core/src/types/primitives.ts";
+import { createAssistantPlugin } from "../index.ts";
 import {
   DefaultMessageService,
   enforceTrustedDeliveryAudienceOnResult,
@@ -306,6 +305,7 @@ describe("simple-path deliver-then-persist ordering", () => {
     h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
     h.runtime.registerProvider({
       name: "userPersonalityPreferences",
+      override: true,
       disclosureGate: { require: "owner_exclusive" },
       alwaysInResponseState: true,
       get: async () => ({ text: "OWNER_PRIVATE_PROVIDER_CANARY" }),

@@ -4,8 +4,8 @@
  * Message and merged app-state routing retain their separate entry contracts.
  */
 import { describe, expect, it, vi } from "vitest";
-import { filterByContextGate } from "../../../../../packages/core/src/runtime/context-gates.ts";
 import { actionGateRejection } from "../../../../../packages/core/src/runtime/action-gate.ts";
+import { filterByContextGate } from "../../../../../packages/core/src/runtime/context-gates.ts";
 import type {
   AgentContext,
   HandlerOptions,
