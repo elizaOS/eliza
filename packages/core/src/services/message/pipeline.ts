@@ -271,7 +271,7 @@ export async function runV5MessageRuntimeStage1(
 				directMessageChannel &&
 				args.message.content?.channelType !== ChannelType.VOICE_DM &&
 				!args.codingMode
-					? "reference"
+					? "index"
 					: true,
 			userRoles: [senderRole],
 			availableContexts,
