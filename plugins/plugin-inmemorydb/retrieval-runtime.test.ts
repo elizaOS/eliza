@@ -1,3 +1,4 @@
+/** Verifies real in-memory adapters preserve scoped vector pages and query ranking through the runtime. */
 import { randomUUID } from "node:crypto";
 import { AgentRuntime, type Memory, type UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";

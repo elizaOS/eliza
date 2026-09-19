@@ -1,3 +1,4 @@
+/** Reranks an already scoped vector page while preserving every semantic-only result. */
 import { BM25 } from "./search.js";
 
 /** Rank a scoped vector result page without discarding semantic-only hits. */

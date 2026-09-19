@@ -1,3 +1,4 @@
+/** Exercises SQL-owned query ranking and pagination through the runtime against an isolated real database. */
 import { randomUUID } from "node:crypto";
 import { ChannelType, type Memory, type UUID } from "@elizaos/core";
 import { expect, it } from "vitest";
