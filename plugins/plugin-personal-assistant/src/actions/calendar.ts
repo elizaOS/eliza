@@ -47,6 +47,7 @@ import {
   isMicrosoftCalendarGrantId,
 } from "@elizaos/plugin-calendar";
 import {
+  CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
@@ -2174,6 +2175,18 @@ const calendarMutationTargetParameters: NonNullable<Action["parameters"]> = [
 export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
   overrides: {
     create_event: {
+      parameters: calendarAction.parameters?.map((parameter) =>
+        parameter.name === "details"
+          ? {
+              ...parameter,
+              schema: CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
+              description:
+                "New event fields. Use start/end as local wall-clock ISO timestamps with the IANA timeZone, or durationMinutes for its length. Supply only requested details; title is top-level. No existing-event lookup or rename fields belong here.",
+              descriptionCompressed:
+                "New event fields; start/end local ISO with IANA timeZone, or durationMinutes. Only requested details; title top-level.",
+            }
+          : parameter,
+      ),
       description:
         "Create an authorized event at the requested or accepted time. This action validates scheduling details and checks fresh availability before writing; a conflict or incomplete coverage prevents creation and returns the reason and checked alternatives when available. Use it directly for 'book this if I am free'; a separate availability call is unnecessary. Missing timing needs clarification. Do not book a suggested alternative until the user accepts it or explicitly delegates choosing a time.",
     },

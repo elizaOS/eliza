@@ -25,6 +25,63 @@ const domainCalendarAction = createCalendarActionRunner({
   recentConversationTexts: async () => [],
 });
 
+it("keeps create arguments canonical while preserving the legacy umbrella and event capabilities", () => {
+  const create = promoteSubactionsToActions(
+    calendarAction,
+    calendarActionPromotionOptions,
+  ).find((action) => action.name === "CALENDAR_CREATE_EVENT");
+  if (!create) throw new Error("Missing create action");
+  const tools = normalizeNativeToolsForCall(
+    buildPlannerToolsFromActions([create]),
+    { cerebrasMode: true },
+  ).tools;
+  if (!tools) throw new Error("Missing native tools");
+  const schema = (
+    tools[create.name] as { inputSchema: { jsonSchema: ActionParameterSchema } }
+  ).inputSchema.jsonSchema;
+  const input = {
+    title: "Workshop",
+    details: {
+      start: "2026-09-21T10:00:00",
+      end: "2026-09-21T11:00:00",
+      timeZone: "America/Los_Angeles",
+      calendarId: "selected-calendar",
+      grantId: "selected-grant",
+      side: "owner",
+      description: "Bring the drawings.",
+      location: "Studio",
+      travelOriginAddress: "Office",
+      recurrence: ["RRULE:FREQ=WEEKLY;COUNT=3"],
+      attendees: [
+        { email: "guest@example.com", displayName: "Guest", optional: true },
+      ],
+      notifyAttendees: true,
+    },
+  };
+  const errors: string[] = [];
+  validateSchema(schema, input, "", errors);
+  expect(errors).toEqual([]);
+  expect(validateToolArgs(create, input)).toMatchObject({
+    valid: true,
+    args: input,
+  });
+  for (const details of [
+    { oldTitle: "Coffee" },
+    { end_time: "2026-09-21T11:00:00" },
+    { queries: ["coffee"] },
+  ]) {
+    const invalidErrors: string[] = [];
+    validateSchema(schema, { title: "Workshop", details }, "", invalidErrors);
+    expect(invalidErrors.length).toBeGreaterThan(0);
+    expect(validateToolArgs(create, { title: "Workshop", details }).valid).toBe(
+      false,
+    );
+    expect(
+      validateToolArgs(calendarAction, { title: "Workshop", details }).valid,
+    ).toBe(true);
+  }
+});
+
 describe.each([
   ["personal-assistant calendar", calendarAction],
   ["domain calendar", domainCalendarAction],
@@ -272,7 +329,6 @@ it.each(["feed", "search_events"])(
     for (const action of family.filter((action) =>
       [
         "CALENDAR",
-        "CALENDAR_CREATE_EVENT",
         "CALENDAR_UPDATE_EVENT",
         "CALENDAR_DELETE_EVENT",
         "CALENDAR_TRIP_WINDOW",

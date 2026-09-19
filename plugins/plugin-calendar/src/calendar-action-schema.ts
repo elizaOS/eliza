@@ -247,6 +247,37 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
   additionalProperties: false,
 };
 
+/** Creation advertises one spelling per field and no existing-event selectors.
+ * The umbrella schema and runtime normalizer retain legacy aliases. All source
+ * dialogue remains available; this changes argument syntax, not user context. */
+export const CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
+  type: "object",
+  properties: Object.fromEntries(
+    Object.entries(CALENDAR_DETAILS_PARAMETER_SCHEMA.properties ?? {}).filter(
+      ([key]) =>
+        [
+          "calendarId",
+          "timeZone",
+          "start",
+          "end",
+          "durationMinutes",
+          "windowPreset",
+          "description",
+          "location",
+          "mode",
+          "side",
+          "grantId",
+          "travelOriginAddress",
+          "allowPast",
+          "notifyAttendees",
+          "recurrence",
+          "attendees",
+        ].includes(key),
+    ),
+  ),
+  additionalProperties: false,
+};
+
 /** The next-event reader consumes only calendar selection and timezone.
  * Keep every accepted spelling of those fields; mutation and range arguments
  * remain on the complete CALENDAR contract and their corresponding operations. */
