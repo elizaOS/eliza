@@ -16,7 +16,11 @@ describe("CONTACT persisted creation", () => {
     harness = await createTestRuntime({
       characterName: "ContactPersistenceProof",
       plugins: [
-        { name: "contact-persistence", services: [RelationshipsService] },
+        {
+          name: "contact-persistence",
+          description: "Real relationship persistence for CONTACT",
+          services: [RelationshipsService],
+        },
       ],
     });
     service = (await harness.runtime.getServiceLoadPromise(

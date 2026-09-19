@@ -1,5 +1,9 @@
 /** The agent host's ordinary assistant composition. Core loads only supplied plugins. */
-import type { Character, Plugin } from "@elizaos/core";
+import {
+  type Character,
+  ConnectorAccountManager,
+  type Plugin,
+} from "@elizaos/core";
 import {
   autonomyCapabilities,
   createAdvancedMemoryPlugin,
@@ -20,6 +24,11 @@ export function createAssistantPlugins(character: Character): Plugin[] {
   const settings = character.settings ?? {};
   return [
     createAssistantPlugin(),
+    {
+      name: "connector-accounts",
+      description: "Canonical connector account registry and storage",
+      services: [ConnectorAccountManager],
+    },
     identityHttpPlugin,
     documentsPlugin,
     trajectoriesPlugin,
