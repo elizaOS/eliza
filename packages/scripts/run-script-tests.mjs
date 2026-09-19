@@ -455,7 +455,7 @@ export function runScriptTests(options = {}) {
     cwd: REPO_ROOT,
     env: process.env,
     stdio: "inherit",
-    timeout: 20 * 60_000,
+    timeout: Math.min(2_147_483_647, inventory.files.length * 120_000 + 60_000),
   });
   if (result.error) {
     if (normalizedReportPath) {

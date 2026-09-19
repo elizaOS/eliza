@@ -70,11 +70,6 @@ const EXPECTED_SOURCE_ONLY_WORKFLOW = {
           run: "bun test packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs",
         },
         {
-          name: "Generate source keyword modules",
-          "working-directory": ".",
-          run: "bun run --cwd packages/shared build:i18n",
-        },
-        {
           name: "Run service tests",
           "working-directory": "packages/cloud/services/gateway-discord",
           run: "bun --conditions=eliza-source test tests/ --timeout 60000",
