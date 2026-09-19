@@ -52,11 +52,22 @@ bun run --cwd plugins/plugin-notes test
 Read a specific saved ID with `NOTES_GET { noteId }`; IDs match exactly and
 case-sensitively. Use `content` for title/body search, or neither field to list
 all notes. Mixed ID and text filters fail explicitly. Read results record
-`lookupMode` (`exact_id`, `text`, or `all`) so an empty text search is not
+`lookupMode` (`exact_id`, `text`, `date`, or `all`) so an empty text search is not
 mistaken for proof that an ID is absent. Reads do not mutate notes.
 The `NOTES_GET_NOTE` retrieval hint resolves to `NOTES_GET`. This promoted
 operation requires noteId and has no text-search field. Both reads use the
 existing Notes service; `NOTES_LIST { noteId }` also retains exact-ID support.
+
+`NOTES_LIST` accepts `dateRange: { field: "createdAt" | "updatedAt", startAt,
+endAt }`, combined with either the text filter or exact ID. Bounds are ISO
+timestamps with explicit offsets: start is inclusive, end exclusive. Invalid,
+unqualified or inverted bounds fail instead of returning an unfiltered list.
+The result echoes the applied range and includes every matching complete
+record, with `filterApplied: true`; an empty period does not mean the whole
+store is empty. Relative dates are resolved by the planner using the user's
+timezone; the read contract defines an otherwise-unspecified "last week" as
+the previous Monday-to-Monday week and requires the answer to state the window.
+This filters stored creation/edit timestamps, not dates mentioned in note text.
 
 The fresh saved-note discovery index pairs every exact ID with its complete
 title in a JSON row `[ID, title]`, with the row format declared once. It

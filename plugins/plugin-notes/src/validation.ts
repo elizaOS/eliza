@@ -168,6 +168,55 @@ function parseTimestamp(value: unknown, field: string): string {
   return value;
 }
 
+/** Read bounds must identify instants; never interpret a clock in server time. */
+export function parseNoteDateRange(value: unknown): {
+  field: "createdAt" | "updatedAt";
+  startAt: string;
+  endAt: string;
+} {
+  const range = requireRecord(value, "dateRange");
+  assertOnlyKeys(range, ["field", "startAt", "endAt"], "dateRange");
+  if (range.field !== "createdAt" && range.field !== "updatedAt") {
+    throw validationError(
+      "dateRange.field must be createdAt or updatedAt.",
+      "dateRange.field",
+    );
+  }
+  const bound = (value: unknown, name: string): string => {
+    if (
+      typeof value !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(
+        value,
+      ) ||
+      !Number.isFinite(Date.parse(value))
+    ) {
+      throw validationError(
+        `${name} must be an ISO timestamp with Z or an explicit offset.`,
+        name,
+      );
+    }
+    // Date.parse normalizes impossible dates such as February 30. Compare
+    // the wall-clock components before applying the supplied offset.
+    const wallClock = `${value.slice(0, 19)}.000Z`;
+    if (new Date(wallClock).toISOString() !== wallClock) {
+      throw validationError(
+        `${name} must be a real calendar date and clock time.`,
+        name,
+      );
+    }
+    return value;
+  };
+  const startAt = bound(range.startAt, "dateRange.startAt");
+  const endAt = bound(range.endAt, "dateRange.endAt");
+  if (Date.parse(endAt) <= Date.parse(startAt)) {
+    throw validationError(
+      "dateRange.endAt must follow startAt.",
+      "dateRange.endAt",
+    );
+  }
+  return { field: range.field, startAt, endAt };
+}
+
 function parseRevision(value: unknown): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
     throw validationError(

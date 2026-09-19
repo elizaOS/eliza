@@ -40,11 +40,12 @@ afterEach(async () => {
   }
 });
 
-async function harness(): Promise<IAgentRuntime> {
+async function harness(now?: () => Date): Promise<IAgentRuntime> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "notes-action-"));
   tmpDirs.push(dir);
   const service = new NotesService(undefined, {
     store: new NotesStore({ filePath: path.join(dir, "notes.json") }),
+    ...(now ? { now } : {}),
   });
   await service.initialize();
   return {
@@ -73,8 +74,8 @@ async function run(
   return result;
 }
 
-async function executorHarness(): Promise<IAgentRuntime> {
-  const runtime = await harness();
+async function executorHarness(now?: () => Date): Promise<IAgentRuntime> {
+  const runtime = await harness(now);
   Object.assign(runtime, {
     actions: notesPlugin.actions,
     agentId: "agent-id" as UUID,
@@ -115,6 +116,136 @@ function execute(
 }
 
 describe("promoted Notes execution", () => {
+  it("filters creation/update dates at exact boundaries across a DST week without changing notes", async () => {
+    let instant = "2026-03-02T07:59:59.999Z";
+    const runtime = await executorHarness(() => new Date(instant));
+    const service = getNotesService(runtime);
+    const beforeWeek = await service.createNote({
+      title: "Fern before",
+      body: "keep",
+      color: "yellow",
+    });
+    instant = "2026-03-02T08:00:00.000Z";
+    const first = await service.createNote({
+      title: "Fern first",
+      body: "exact  body",
+      color: "yellow",
+    });
+    await service.createNote({
+      title: "Other topic",
+      body: "untouched",
+      color: "yellow",
+    });
+    instant = "2026-03-09T06:59:59.999Z";
+    const last = await service.createNote({
+      title: "Fern last",
+      body: "last instant",
+      color: "yellow",
+    });
+    await service.updateNote(beforeWeek.id, { body: "edited in the week" });
+    instant = "2026-03-09T07:00:00.000Z";
+    await service.createNote({
+      title: "Fern after",
+      body: "excluded end",
+      color: "yellow",
+    });
+    const before = await fs.readFile(service.store.filePath, "utf8");
+    const dateRange = {
+      field: "createdAt",
+      startAt: "2026-03-02T00:00:00-08:00",
+      endAt: "2026-03-09T00:00:00-07:00",
+    };
+    const created = await execute(runtime, {
+      name: "NOTES_LIST",
+      params: { content: "Fern", dateRange },
+    });
+    expect(created).toMatchObject({
+      success: true,
+      data: {
+        count: 2,
+        total: 5,
+        filterApplied: true,
+        dateRange,
+      },
+    });
+    expect(
+      ((created.data?.notes ?? []) as Array<{ id: string }>)
+        .map((note) => note.id)
+        .sort(),
+    ).toEqual([first.id, last.id].sort());
+    expect(created.data?.notes).toEqual(expect.arrayContaining([first, last]));
+    const edited = await execute(runtime, {
+      name: "NOTES_LIST",
+      params: {
+        content: "Fern",
+        dateRange: { ...dateRange, field: "updatedAt" },
+      },
+    });
+    expect(edited).toMatchObject({ success: true, data: { count: 3 } });
+    const absent = await execute(runtime, {
+      name: "NOTES_LIST",
+      params: {
+        dateRange: {
+          field: "createdAt",
+          startAt: "2026-02-01T00:00:00Z",
+          endAt: "2026-03-01T00:00:00Z",
+        },
+      },
+    });
+    expect(absent).toMatchObject({
+      success: true,
+      data: { count: 0, total: 5, filterApplied: true, notes: [] },
+    });
+    expect(await fs.readFile(service.store.filePath, "utf8")).toBe(before);
+  });
+
+  it.each([
+    {},
+    {
+      field: "title",
+      startAt: "2026-03-01T00:00:00Z",
+      endAt: "2026-04-01T00:00:00Z",
+    },
+    {
+      field: "createdAt",
+      startAt: "2026-03-01T00:00:00",
+      endAt: "2026-04-01T00:00:00Z",
+    },
+    {
+      field: "createdAt",
+      startAt: "2026-02-30T00:00:00Z",
+      endAt: "2026-04-01T00:00:00Z",
+    },
+    {
+      field: "createdAt",
+      startAt: "2026-04-01T00:00:00Z",
+      endAt: "2026-03-01T00:00:00Z",
+    },
+    {
+      field: "createdAt",
+      startAt: "2026-03-01T00:00:00Z",
+      endAt: "2026-03-01T00:00:00Z",
+    },
+  ])(
+    "rejects an invalid date filter instead of silently listing all notes: %j",
+    async (dateRange) => {
+      const runtime = await executorHarness();
+      const service = getNotesService(runtime);
+      await service.createNote({
+        title: "Keep me",
+        body: "unchanged",
+        color: "yellow",
+      });
+      const before = await fs.readFile(service.store.filePath, "utf8");
+      const result = await execute(runtime, {
+        name: "NOTES_LIST",
+        params: { dateRange },
+      });
+      expect(result.success).toBe(false);
+      expect(result.data).not.toHaveProperty("notes");
+      expect(await fs.readFile(service.store.filePath, "utf8")).toBe(before);
+    },
+  );
   it.each(["literal", "replacement"])(
     "updates an exact ID with %s input despite duplicate titles and ID text decoys",
     async (kind) => {

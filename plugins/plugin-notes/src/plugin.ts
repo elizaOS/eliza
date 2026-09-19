@@ -49,7 +49,7 @@ export const notesPlugin: Plugin = {
       overrides: {
         list: {
           description:
-            "Read current saved notes, including their IDs, exact titles/bodies and createdAt/updatedAt timestamps. Use content for a title/topic filter or noteId for an exact ID; omit both for all notes, counts or date/recency comparisons. Compare returned timestamps for date questions. Saved-note provider text has no timestamps; restoring that context cannot answer a date question. This operation does not change notes or open their view.",
+            "Read current saved notes, including their IDs, exact titles/bodies and timestamps. Use content for a title/topic filter, noteId for an exact ID, and dateRange for creation/update date bounds. Filters combine; omit all for the full list. The result contains every matching note and the applied date window. Saved-note provider text has no timestamps; restoring it cannot answer a date question. This operation does not change notes or open their view.",
           parameters: notesAction.parameters?.map((parameter) =>
             parameter.name === "content"
               ? {

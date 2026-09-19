@@ -26,7 +26,11 @@ import {
 } from "@elizaos/core";
 
 import { getNotesService, type NotesService } from "./service.js";
-import { parseNoteContent, parseNoteFieldPatch } from "./validation.js";
+import {
+  parseNoteContent,
+  parseNoteDateRange,
+  parseNoteFieldPatch,
+} from "./validation.js";
 
 const NOTES_OPS = [
   "create",
@@ -274,6 +278,12 @@ export const notesAction: Action = {
     }
     const op: NotesOp = parsed?.op ?? "list";
     const service = getNotesService(runtime);
+    if (params.dateRange !== undefined && op !== "list") {
+      return failure(
+        "dateRange is only supported for list reads.",
+        "NOTES_INVALID_DATE_FILTER",
+      );
+    }
     if (op === "patch") {
       if (
         Object.keys(params).some(
@@ -332,8 +342,12 @@ export const notesAction: Action = {
         );
       }
       const notes = service.listNotes();
+      const dateRange =
+        params.dateRange === undefined
+          ? undefined
+          : parseNoteDateRange(params.dateRange);
       const normalizedTopic = topic?.toLocaleLowerCase();
-      const matches = noteId
+      const candidates = noteId
         ? notes.filter((note) => note.id === noteId)
         : normalizedTopic
           ? notes.filter((note) =>
@@ -342,15 +356,34 @@ export const notesAction: Action = {
                 .includes(normalizedTopic),
             )
           : notes;
+      const matches = dateRange
+        ? candidates.filter((note) => {
+            const instant = Date.parse(note[dateRange.field]);
+            return (
+              instant >= Date.parse(dateRange.startAt) &&
+              instant < Date.parse(dateRange.endAt)
+            );
+          })
+        : candidates;
       return committed({
         op,
         readOnlyOperation: true,
         count: matches.length,
         total: notes.length,
-        filterApplied: noteId !== undefined || topic !== undefined,
-        lookupMode: noteId ? "exact_id" : topic ? "text" : "all",
+        filterApplied:
+          noteId !== undefined ||
+          topic !== undefined ||
+          dateRange !== undefined,
+        lookupMode: noteId
+          ? "exact_id"
+          : topic
+            ? "text"
+            : dateRange
+              ? "date"
+              : "all",
         ...(noteId ? { requestedNoteId: noteId } : {}),
         ...(topic ? { topic } : {}),
+        ...(dateRange ? { dateRange } : {}),
         notes: matches,
       });
     }
@@ -455,6 +488,29 @@ export const notesAction: Action = {
     );
   },
   parameters: [
+    {
+      name: "dateRange",
+      description:
+        "Optional timestamp filter, combined with content/noteId. For notes written in a period use createdAt; for edits use updatedAt. Start is inclusive, end exclusive. Use ISO timestamps with the user's timezone offsets, including any DST change. Unless the user specifies otherwise, 'last week' means the previous Monday-to-Monday calendar week, not the trailing seven days. State the actual date window in the answer.",
+      required: false,
+      subactions: ["list"],
+      schema: {
+        type: "object",
+        properties: {
+          field: { type: "string", enum: ["createdAt", "updatedAt"] },
+          startAt: {
+            type: "string",
+            description: "Inclusive ISO timestamp with explicit offset.",
+          },
+          endAt: {
+            type: "string",
+            description: "Exclusive ISO timestamp with explicit offset.",
+          },
+        },
+        required: ["field", "startAt", "endAt"],
+        additionalProperties: false,
+      },
+    },
     {
       name: "target",
       description:
