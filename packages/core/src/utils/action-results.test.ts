@@ -35,6 +35,47 @@ describe("getActionResultActionName", () => {
 		).toBe("Unknown Action");
 		expect(getActionResultActionName(result({}))).toBe("Unknown Action");
 	});
+
+	it("falls back to the sibling data.action set by multi-op actions", () => {
+		// LINEAR / BROWSER / MANAGE_PLUGINS report `{ actionName, action }`;
+		// an executor that omits actionName must not lose the action entirely.
+		expect(
+			getActionResultActionName(result({ data: { action: "SEARCH_WEB" } })),
+		).toBe("SEARCH_WEB");
+	});
+
+	it("resolves a top-level actionName or action carrier", () => {
+		expect(
+			getActionResultActionName(
+				result({ actionName: "SEARCH_WEB" } as Partial<ActionResult>),
+			),
+		).toBe("SEARCH_WEB");
+		expect(
+			getActionResultActionName(
+				result({ action: "SEARCH_WEB" } as Partial<ActionResult>),
+			),
+		).toBe("SEARCH_WEB");
+	});
+
+	it("prefers data.actionName over the other carriers", () => {
+		expect(
+			getActionResultActionName(
+				result({
+					data: { actionName: "CANONICAL", action: "sibling" },
+					actionName: "top",
+				} as Partial<ActionResult>),
+			),
+		).toBe("CANONICAL");
+	});
+
+	it("ignores non-string and blank carriers instead of stringifying them", () => {
+		expect(
+			getActionResultActionName(result({ data: { actionName: 42 } as never })),
+		).toBe("Unknown Action");
+		expect(getActionResultActionName(result({ data: { action: "   " } }))).toBe(
+			"Unknown Action",
+		);
+	});
 });
 
 describe("stringifyActionResultError", () => {
