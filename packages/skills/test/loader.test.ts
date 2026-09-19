@@ -452,7 +452,7 @@ describe("state skill namespace selection", () => {
       mkdirSync(join(directory, name), { recursive: true });
       writeFileSync(
         join(directory, name, "SKILL.md"),
-        `---\nname: ${name}\ndescription: Selected fixture\n---\nbody`,
+        `---\nname: ${name}\ndescription: Selected fixture\nprovenance:\n  source: agent-generated\n  createdAt: 2025-01-01T00:00:00Z\n  refinedCount: 0\n---\nbody`,
       );
     };
     const managed = join(root, "skills");
@@ -474,6 +474,11 @@ describe("state skill namespace selection", () => {
           { name: "active-skill", source: "curated" },
           { name: "managed-skill", source: "managed" },
         ],
+      );
+      assert.strictEqual(
+        result.skills.find((skill) => skill.name === "active-skill")?.provenance
+          ?.source,
+        "agent-generated",
       );
       const explicit = loadSkills({ ...options, skillPaths: [proposed] });
       assert.ok(
