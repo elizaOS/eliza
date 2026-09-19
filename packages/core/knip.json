@@ -8,15 +8,7 @@
 	"ignore": [
 		"e2e/**",
 		"test/**",
-		"src/testing/**",
 		"src/__tests__/**",
-		"src/index.browser.ts",
-		"src/streaming-context.browser.ts",
-		"src/index.edge.ts",
-		"src/features/working-memory/attachmentContext.ts",
-		"src/features/working-memory/readAttachmentAction.ts",
-		"src/features/working-memory/taskClipboardPersistence.ts",
-		"src/features/working-memory/taskClipboardService.ts",
 		"src/services/triggerScheduling.ts"
 	]
 }
