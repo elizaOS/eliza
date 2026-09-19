@@ -13,20 +13,23 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { readFile } from "node:fs/promises";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 
-const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
-const CAN_USE_ISOLATED_PGLITE =
-  AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
-process.env.DATABASE_URL ||= "pglite://memory";
-process.env.TEST_DATABASE_URL ||= "pglite://memory";
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
-import { closeDatabaseConnectionsForTests, dbWrite } from "@/db/client";
+import {
+  closeDatabaseConnectionsForTests,
+  dbWrite,
+  getPgliteClientForTests,
+} from "@/db/client";
 import { agentBillingRunRepository } from "@/db/repositories/agent-billing-runs";
+import { installOrganizationPolicyTestSchema } from "@/db/repositories/organization-policy-test-fixture";
 import { agentComputeStopIntents } from "@/db/schemas/agent-compute-stop-intents";
 import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
 import { apiKeys } from "@/db/schemas/api-keys";
@@ -59,7 +62,6 @@ const SCHEDULE = "0 * * * *";
 const SCHEDULED_TIME = Date.UTC(2026, 7, 20, 19, 0, 0);
 const CRON_SECRET = "full-flow-cron-secret";
 const PGLITE_TIMEOUT = 60_000;
-let pgliteReady = true;
 
 function mountRoute(): Hono {
   const app = new Hono();
@@ -100,85 +102,55 @@ async function dispatchScheduledBilling(app: Hono): Promise<Response> {
 }
 
 beforeAll(async () => {
-  if (!CAN_USE_ISOLATED_PGLITE) {
-    pgliteReady = false;
-    console.warn(
-      "[agent-billing full-flow] DATABASE_URL is not isolated PGlite; refusing to mutate it.",
+  const { apply } = await pushSchema(
+    {
+      organizations,
+      users,
+      apiKeys,
+      usageRecords,
+      generations,
+      userCharacters,
+      agentSandboxes,
+      jobs,
+      agentComputeStopIntents,
+      creditTransactions,
+      agentBillingRuns,
+      agentBillingRunItems,
+      computeBillingRateSegments,
+    } as never,
+    dbWrite as never,
+  );
+  await apply();
+  await installOrganizationPolicyTestSchema((query) =>
+    getPgliteClientForTests().exec(query),
+  );
+  // Funding's tenant indexes must exist before installing the receipt FK.
+  const migration = (name: string) =>
+    readFile(
+      new URL(`../../../shared/src/db/migrations/${name}`, import.meta.url),
+      "utf8",
     );
-    return;
+  const receiptDDL = await migration("0265_compute_billing_recovery.sql");
+  const receiptTable = receiptDDL.match(
+    /CREATE TABLE agent_billing_records \([\s\S]*?\n\);/,
+  );
+  if (!receiptTable)
+    throw new Error("Missing canonical agent billing receipt DDL");
+  await getPgliteClientForTests().exec(receiptTable[0]);
+  for (const index of receiptDDL.matchAll(
+    /CREATE (?:UNIQUE )?INDEX agent_billing_records_[\s\S]*?;/g,
+  )) {
+    await getPgliteClientForTests().exec(index[0]);
   }
-  try {
-    const { apply } = await pushSchema(
-      {
-        organizations,
-        users,
-        apiKeys,
-        usageRecords,
-        generations,
-        userCharacters,
-        agentSandboxes,
-        jobs,
-        agentComputeStopIntents,
-        creditTransactions,
-        agentBillingRecords,
-        agentBillingRuns,
-        agentBillingRunItems,
-        computeBillingRateSegments,
-      } as never,
-      dbWrite as never,
-    );
-    await apply();
-    await dbWrite.execute(
-      sql.raw(`
-      CREATE TABLE IF NOT EXISTS jobs (
-        id uuid PRIMARY KEY,
-        type text NOT NULL,
-        status text NOT NULL,
-        organization_id uuid NOT NULL,
-        agent_id text,
-        user_id uuid,
-        data_storage text NOT NULL DEFAULT 'inline',
-        data_key text,
-        data jsonb NOT NULL DEFAULT '{}'::jsonb
-      )
-    `),
-    );
-    await dbWrite.execute(
-      sql.raw(`
-      CREATE TABLE IF NOT EXISTS agent_compute_stop_intents (
-        id uuid PRIMARY KEY,
-        organization_id uuid NOT NULL,
-        agent_id uuid NOT NULL,
-        lifecycle_revision bigint NOT NULL,
-        "authorization" text NOT NULL DEFAULT 'billing_request',
-        status text NOT NULL DEFAULT 'pending',
-        job_id uuid,
-        attempts integer NOT NULL DEFAULT 0,
-        last_error text,
-        next_attempt_at timestamptz NOT NULL DEFAULT now(),
-        provider_started_at timestamptz,
-        provider_confirmed_at timestamptz,
-        retained_backup_billing boolean NOT NULL DEFAULT false,
-        retained_backup_rate_per_hour numeric(18, 6),
-        superseded_at timestamptz,
-        created_at timestamptz NOT NULL DEFAULT now(),
-        updated_at timestamptz NOT NULL DEFAULT now()
-      )
-    `),
-    );
-  } catch (error) {
-    // error-policy:J1 isolated test-harness setup boundary; dependent tests
-    // fail through the explicit readiness assertion with this diagnostic.
-    pgliteReady = false;
-    console.error(
-      "[agent-billing full-flow] PGlite schema setup failed",
-      error,
-    );
-  }
+  await getPgliteClientForTests().exec(
+    await migration("0388_agent_compute_funded_receipts.sql"),
+  );
+  await getPgliteClientForTests().exec(
+    await migration("0394_agent_billing_activation_minimum.sql"),
+  );
 }, PGLITE_TIMEOUT);
 
 beforeEach(async () => {
-  expect(pgliteReady).toBe(true);
   await dbWrite.delete(computeBillingRateSegments);
   await dbWrite.delete(agentComputeStopIntents);
   await dbWrite.delete(jobs);

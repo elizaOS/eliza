@@ -152,10 +152,20 @@ describe("plugin-sql advanced memory storage", () => {
 
     expect(memoryStorage).toBeTruthy();
     expect(memory).toBeTruthy();
-    expect(runtime.providers.some((provider) => provider.name === "LONG_TERM_MEMORY")).toBe(true);
-    expect(runtime.providers.some((provider) => provider.name === "SUMMARIZED_CONTEXT")).toBe(true);
-    expect(runtime.evaluators.some((evaluator) => evaluator.name === "summary")).toBe(true);
-    expect(runtime.evaluators.some((evaluator) => evaluator.name === "longTermMemory")).toBe(true);
+    const entityId = uuidv4() as UUID;
+    await createEntities(runtime, [entityId]);
+    const memoryService = memory as unknown as RuntimeMemoryService;
+    const content = "Preserve this complete semantic memory across the SQL storage boundary.";
+    const stored = await memoryService.storeLongTermMemory({
+      agentId: runtime.agentId,
+      entityId,
+      category: "semantic",
+      content,
+      confidence: 0.91,
+    });
+    const retrieved = await memoryService.getLongTermMemories(entityId, "semantic");
+    expect(retrieved).toHaveLength(1);
+    expect(retrieved[0]).toMatchObject({ id: stored.id, entityId, content });
   });
 
   it("stores long-term memories in SQL and retrieves them across confirmed identity links", async () => {
@@ -192,7 +202,7 @@ describe("plugin-sql advanced memory storage", () => {
     const viaLinkedIdentity = await memoryService.getLongTermMemories(entityB, undefined, 10);
 
     expect(viaLinkedIdentity).toHaveLength(1);
-    expect(viaLinkedIdentity[0]?.content).toContain("short emails");
+    expect(viaLinkedIdentity[0]?.content).toBe("Chris prefers short emails and fast follow-ups.");
     expect(viaLinkedIdentity[0]?.entityId).toBe(entityA);
   });
 });

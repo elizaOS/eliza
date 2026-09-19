@@ -281,30 +281,32 @@ async function loadRegistryPlugins(
     return memoryCache.plugins;
   }
 
-  if (!skipFileCache) {
-    const fileReadGeneration = registryGeneration;
-    const fromFile = await readFileCache();
-    if (fromFile) {
-      await applyLocalWorkspaceApps(fromFile);
-      await applyNodeModulePlugins(fromFile);
-      await mergeCustomEndpoints(fromFile, getConfiguredEndpoints());
-
-      // A refresh can unlink the cache while an earlier read still owns an open
-      // file handle. Return that snapshot only to its original caller; publishing
-      // it would replace the post-refresh memory cache with stale disk state.
-      if (fileReadGeneration !== registryGeneration) return fromFile;
-
-      memoryCache = { plugins: fromFile, fetchedAt: Date.now() };
-      return fromFile;
-    }
-  }
-
   if (registryLoadPromise) {
     return registryLoadPromise;
   }
 
   const generation = registryGeneration;
+  // Disk snapshots also require workspace discovery. Share the entire load so
+  // concurrent callers do not repeat those scans before memory is populated.
   const load: Promise<Map<string, RegistryPluginInfo>> = (async () => {
+    if (!skipFileCache) {
+      const fileReadGeneration = registryGeneration;
+      const fromFile = await readFileCache();
+      if (fromFile) {
+        await applyLocalWorkspaceApps(fromFile);
+        await applyNodeModulePlugins(fromFile);
+        await mergeCustomEndpoints(fromFile, getConfiguredEndpoints());
+
+        // A refresh can unlink the cache while an earlier read still owns an open
+        // file handle. Return that snapshot only to its original caller; publishing
+        // it would replace the post-refresh memory cache with stale disk state.
+        if (fileReadGeneration !== registryGeneration) return fromFile;
+
+        memoryCache = { plugins: fromFile, fetchedAt: Date.now() };
+        return fromFile;
+      }
+    }
+
     logger.info("[registry-client] Fetching plugin registry...");
     let plugins: Map<string, RegistryPluginInfo>;
     let usedLocalFallback = false;

@@ -156,7 +156,7 @@ describe("CI fused inference setup ownership", () => {
 
   test("desktop artifact owners enter the installer", () => {
     for (const [workflow, job] of [
-      [".github/workflows/test.yml", "desktop-contract"],
+      [".github/workflows/ci.yml", "desktop-contract"],
       [".github/workflows/electrobun-contract.yml", "flatpak-e2e"],
     ]) {
       const input = workspaceSetup(workflow, job).with?.[

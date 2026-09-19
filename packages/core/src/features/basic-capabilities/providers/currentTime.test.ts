@@ -44,13 +44,30 @@ describe("currentTimeProvider", () => {
 			{} as never,
 		);
 
-		expect(result.data).toMatchObject({
+		expect(result.data).toEqual({
+			iso: "2026-08-05T02:41:04.618Z",
 			date: "2026-08-04",
+			time: "19:41:04",
+			dayOfWeek: "Tuesday",
+			humanReadable: "Tuesday, August 4, 2026 at 7:41:04 PM PDT",
+			unixTimestamp: 1785897664,
 			timeZone: "America/Los_Angeles",
 			userTimeZone: "America/Los_Angeles",
 			timeZoneOrigin: "device",
 		});
-		expect(result.text).toContain("User local time:");
+		expect(result.values).toEqual({
+			currentTime: "2026-08-05T02:41:04.618Z",
+			currentDate: "2026-08-04",
+			dayOfWeek: "Tuesday",
+			unixTimestamp: 1785897664,
+			timeZone: "America/Los_Angeles",
+			userTimeZone: "America/Los_Angeles",
+			timeZoneOrigin: "device",
+		});
+		expect(result.text).toContain(
+			"User local time: Tuesday, August 4, 2026 at 7:41:04 PM PDT",
+		);
+		expect(result.text).toContain("ISO (UTC): 2026-08-05T02:41:04.618Z");
 		expect(result.text).toContain("from the active device");
 		expect(result.text).not.toContain("Europe/Paris");
 	});

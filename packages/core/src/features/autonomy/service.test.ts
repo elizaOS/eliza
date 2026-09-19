@@ -29,7 +29,7 @@ function makeOptimizedAutonomyService(prompt: string): OptimizedPromptService {
 		artifact: {
 			task: "autonomy",
 			optimizer: "gepa",
-			baseline: "BASELINE {{targetRoomContext}} {{lastThought}}",
+			baseline: "baseline {{targetRoomContext}} {{lastThought}}",
 			prompt,
 			score: 0.9,
 			baselineScore: 0.5,

@@ -23,10 +23,100 @@ import {
   MAX_SQL_JSON_SANITIZE_STRING_BYTES,
   SQL_JSON_SANITIZE_UNBOUNDED,
   sanitizeJsonObject,
+  serializeDocumentJsonb,
   serializeJsonb,
 } from "../../sanitize-json";
 
 describe("sanitizeJsonObject", () => {
+  it("preserves only declared memory source text paths beyond the metadata budget", () => {
+    const text = 'complete \\"🌍\n'.repeat(150_000);
+    const content = {
+      text,
+      attachments: [
+        { id: "a", text },
+        { id: "b", text: `${text}tail` },
+      ],
+    };
+    expect(JSON.parse(serializeJsonb(content, { memoryContent: true })!)).toEqual(content);
+    for (const metadata of [
+      { nested: { text } },
+      { items: [{ text }] },
+      { title: text },
+      { attachments: { 0: { text } } },
+      { attachments: [[{ text }]] },
+      { attachments: [{ nested: { text } }] },
+      { content: { text } },
+    ]) {
+      expect(() => serializeJsonb(metadata, { memoryContent: true })).toThrowError();
+    }
+    expect(() => serializeJsonb(content)).toThrowError();
+    // Many individually valid metadata strings must still obey the total budget.
+    expect(() =>
+      serializeJsonb({ text, metadata: Array(200).fill("m".repeat(6000)) }, { memoryContent: true })
+    ).toThrowError();
+  });
+
+  it("retains NUL, accessor, structural and key checks on memory source paths", () => {
+    for (const content of [{ text: "bad\0text" }, { attachments: [{ text: "bad\0text" }] }]) {
+      expect(() => serializeJsonb(content, { memoryContent: true })).toThrowError(/NUL/);
+    }
+    let invoked = false;
+    const attachment = {
+      get text() {
+        invoked = true;
+        return "hidden";
+      },
+    };
+    expect(() =>
+      serializeJsonb({ attachments: [attachment] }, { memoryContent: true })
+    ).toThrowError();
+    expect(invoked).toBe(false);
+    expect(() =>
+      serializeJsonb(
+        { attachments: Array(MAX_SQL_JSON_SANITIZE_NODES).fill({ text: "x" }) },
+        { memoryContent: true }
+      )
+    ).toThrowError();
+    expect(() =>
+      serializeJsonb(
+        { attachments: [{ ["k".repeat(MAX_SQL_JSON_SANITIZE_KEY_BYTES + 1)]: "x" }] },
+        { memoryContent: true }
+      )
+    ).toThrowError();
+    let deep: unknown = "leaf";
+    for (let index = 0; index <= MAX_SQL_JSON_SANITIZE_DEPTH; index++) deep = { nested: deep };
+    expect(() =>
+      serializeJsonb({ attachments: [{ text: deep }] }, { memoryContent: true })
+    ).toThrowError();
+    const cyclic: { text: string; self?: unknown } = { text: "complete" };
+    cyclic.self = cyclic;
+    expect(JSON.parse(serializeJsonb({ attachments: [cyclic] }, { memoryContent: true })!)).toEqual(
+      { attachments: [{ text: "complete", self: null }] }
+    );
+  });
+
+  it("preserves large document source text without relaxing other JSON budgets", () => {
+    const text = 'source \\"🌍\n'.repeat(200_000);
+    const document = { text, title: "Complete source" };
+    expect(JSON.parse(serializeJsonb(document, { documentText: true })!)).toEqual(document);
+    expect(() => serializeJsonb(document)).toThrowError();
+    expect(() => serializeJsonb({ text, nested: { text } }, { documentText: true })).toThrowError();
+    expect(() => serializeJsonb({ text, title: text }, { documentText: true })).toThrowError();
+    expect(() => serializeJsonb({ text: `${text}\0` }, { documentText: true })).toThrowError();
+  });
+
+  it("does not invoke a document source accessor while serializing", () => {
+    let invoked = false;
+    const document = {
+      get text() {
+        invoked = true;
+        return "source";
+      },
+    };
+    expect(() => serializeJsonb(document, { documentText: true })).toThrowError();
+    expect(invoked).toBe(false);
+  });
+
   it("preserves backslashes exactly (no double-escaping)", () => {
     // "C:\Users\dev" — backslash followed by chars outside ["\/bfnrtu]
     const windowsPath = "C:\\Users\\dev";
@@ -381,6 +471,27 @@ describe("legacy jsonb lexical preservation", () => {
   it("rejects sanitized key collisions instead of silently overwriting durable data", () => {
     const input = JSON.stringify({ key: "first", "k\u0000ey": "second" });
     expect(() => serializeJsonb(input)).toThrowError(
+      expect.objectContaining({ code: "SQL_JSON_UNSUPPORTED_NUL" })
+    );
+  });
+});
+
+describe("document content serialization", () => {
+  it("preserves a complete large Unicode source without widening ordinary JSON writes", () => {
+    const text = "😀\\\n".repeat(350_000) + "END-OF-DOCUMENT";
+    expect(JSON.parse(serializeDocumentJsonb({ text }) as string)).toEqual({ text });
+    expect(() => serializeJsonb({ text })).toThrowError(
+      expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED })
+    );
+    const legacy = JSON.stringify({ text });
+    expect(serializeDocumentJsonb(legacy)).toBe(legacy);
+  });
+
+  it("rejects unsupported document bytes and NUL without a partial result", () => {
+    expect(() => serializeDocumentJsonb({ text: "x".repeat(32 * 1024 * 1024) })).toThrowError(
+      expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED })
+    );
+    expect(() => serializeDocumentJsonb({ text: "private\u0000tail" })).toThrowError(
       expect.objectContaining({ code: "SQL_JSON_UNSUPPORTED_NUL" })
     );
   });

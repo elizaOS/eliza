@@ -198,6 +198,16 @@ app.post("/", async (c) => {
         "validation_error",
         { supportedModels: SUPPORTED_VIDEO_MODEL_IDS },
       );
+    } else if (
+      definitions.every((definition) => definition.requiresReferenceImage) &&
+      !requestResult.data.referenceUrl
+    ) {
+      pendingResponse = jsonError(
+        c,
+        400,
+        "referenceUrl is required for image-to-video generation",
+        "validation_error",
+      );
     } else if (providerCandidates.length === 0) {
       const message = requestedDefinition
         ? `${providerDisplayName(requestedDefinition)} video generation is not configured`

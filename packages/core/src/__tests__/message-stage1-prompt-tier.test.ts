@@ -10,6 +10,7 @@ import {
 } from "../actions/to-tool";
 import {
 	BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+	candidateActionNamesFieldEvaluator,
 	shouldRespondFieldEvaluator,
 } from "../runtime/builtin-field-evaluators";
 import { ContextRegistry } from "../runtime/context-registry";
@@ -26,7 +27,8 @@ import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
-const FULL_TEMPLATE_MARKER = "Domain routing (when context is available):";
+const FULL_TEMPLATE_MARKER =
+	"Domain routing (examples apply only when available, not a list to copy):";
 const FULL_SHOULD_RESPOND_DOCS = "DM usually RESPOND unless explicit stop.";
 
 const LONG_CONTEXT_DESCRIPTION =
@@ -228,9 +230,12 @@ describe("isUnaddressedTextGroupTurn", () => {
 });
 
 describe("Stage-1 complete prompt rendering", () => {
-	it("keeps the production and compatibility shouldRespond schemas aligned", () => {
-		expect(shouldRespondFieldEvaluator.schema.description).toBe(
-			SHOULD_RESPOND_SCHEMA_DESCRIPTION,
+	it("keeps shouldRespond values aligned and guidance in the field prompt", () => {
+		expect(shouldRespondFieldEvaluator.schema.enum).toEqual(
+			HANDLE_RESPONSE_SCHEMA.properties?.shouldRespond?.enum,
+		);
+		expect(shouldRespondFieldEvaluator.description).toContain(
+			FULL_SHOULD_RESPOND_DOCS,
 		);
 		expect(HANDLE_RESPONSE_SCHEMA.properties?.shouldRespond?.description).toBe(
 			SHOULD_RESPOND_SCHEMA_DESCRIPTION,
@@ -297,7 +302,9 @@ describe("Stage-1 complete prompt rendering", () => {
 		expect(systemContent).toContain(
 			"Read, create, update, delete, search, and list sticky notes.",
 		);
-		expect(systemContent).toContain("Sticky Notes -> NOTES");
+		expect(systemContent).toContain(
+			candidateActionNamesFieldEvaluator.description,
+		);
 	});
 
 	it.each([
@@ -360,13 +367,13 @@ describe("Stage-1 complete prompt rendering", () => {
 		);
 		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
 		expect(systemContent).toContain(LONG_CONTEXT_DESCRIPTION);
+		expect(systemContent).toContain("One known view -> VIEWS_SHOW.");
 		expect(systemContent).toContain(
-			"UI navigation and native-device operations -> VIEWS",
+			"Long-horizon goals use OWNER_GOALS, not work threads.",
 		);
 		expect(systemContent).toContain(
-			"Owner goals/habits/routines/todos/reminders are never simple",
+			candidateActionNamesFieldEvaluator.description,
 		);
-		expect(systemContent).toContain("calendar-event reads/writes -> CALENDAR");
 	});
 
 	it("ignores the retired compact-tier setting and renders the full rule block", async () => {

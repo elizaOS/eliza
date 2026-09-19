@@ -2842,6 +2842,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/v1/voice/session/health") {
+    // This keyless harness exercises batch voice and has no realtime transport.
+    sendJson(req, res, 200, { ready: false });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/health") {
     sendJson(req, res, 200, { status: "ok" });
     return;

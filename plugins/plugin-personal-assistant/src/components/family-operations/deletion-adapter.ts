@@ -2,8 +2,10 @@
 import { client } from "@elizaos/ui/api";
 import { z } from "zod";
 import {
+  type FamilyBackupCleanupReview,
   type FamilyDeletionJob,
   type FamilyDeletionPreview,
+  familyBackupCleanupReviewSchema,
   familyDeletionJobSchema,
   familyDeletionPreviewSchema,
 } from "../../lifeops/family-workflows/deletion-contracts.js";
@@ -16,6 +18,12 @@ export interface FamilyDeletionAdapter {
     backupRetention: FamilyDeletionJob["backupRetention"];
   }): Promise<FamilyDeletionJob>;
   resume(): Promise<FamilyDeletionJob>;
+  previewBackups(): Promise<FamilyBackupCleanupReview>;
+  admitBackups(input: {
+    expectedSha256: string;
+    acknowledgeWholeArchiveHistory: true;
+  }): Promise<FamilyDeletionJob>;
+  resumeBackups(): Promise<FamilyDeletionJob>;
 }
 const prefix = "/api/lifeops/family-workflows/deletion";
 const statusSchema = z.strictObject({
@@ -66,5 +74,13 @@ export const defaultFamilyDeletionAdapter: FamilyDeletionAdapter = {
   },
   async resume() {
     return (await request(`${prefix}/resume`, jobSchema, {})).job;
+  },
+  previewBackups: () =>
+    request(`${prefix}/backups/preview`, familyBackupCleanupReviewSchema),
+  async admitBackups(input) {
+    return (await request(`${prefix}/backups`, jobSchema, input)).job;
+  },
+  async resumeBackups() {
+    return (await request(`${prefix}/backups/resume`, jobSchema, {})).job;
   },
 };

@@ -5,6 +5,11 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import { resolveStateDir } from "@elizaos/agent/config/paths";
+import {
+  purgeAdmittedRetiredLocalAgentBackups,
+  type RetiredLocalAgentBackup,
+  withReviewedRetiredLocalAgentBackups,
+} from "@elizaos/agent/services/agent-backup";
 import { withAgentBackupAuthority } from "@elizaos/agent/services/agent-backup-authority";
 import {
   ElizaError,
@@ -22,6 +27,7 @@ import {
 } from "../sql.js";
 import {
   familyDeletionJobSchema as deletionJob,
+  type FamilyBackupCleanupReview,
   type FamilyDeletionJob,
   familyBackupRetentionSchema as retention,
 } from "./deletion-contracts.js";
@@ -201,7 +207,7 @@ export async function purgeFamilyWorkspaceFiles(
       pending.operationId !== job.backupOperationId
     ) {
       if (
-        job.state === "backup_pending" &&
+        job.state !== "purge_pending" &&
         (await authority.generation(runtime.agentId)) === job.backupGeneration
       )
         return job;
@@ -248,7 +254,7 @@ async function purgeFamilyWorkspaceFilesLocked(
           code: "FAMILY_DELETION_NOT_FOUND",
         });
       const job = deletionJob.parse(rows[0].job_json);
-      if (job.state === "backup_pending") return job;
+      if (job.state !== "purge_pending") return job;
       for (const file of job.files) {
         const references = await executeRawSqlTx(
           tx,
@@ -289,4 +295,185 @@ async function purgeFamilyWorkspaceFilesLocked(
       { code: "FAMILY_DELETION_FILE_PURGE_FAILED", cause },
     );
   }
+}
+
+function buildBackupCleanupReview(
+  job: FamilyDeletionJob,
+  inventory: { generation: string; archives: RetiredLocalAgentBackup[] },
+): FamilyBackupCleanupReview {
+  if (
+    job.state === "purge_pending" ||
+    job.backupGeneration !== inventory.generation
+  )
+    throw new ElizaError(
+      "[FamilyDeletion] Reconcile primary deletion before reviewing backup cleanup",
+      {
+        code: "FAMILY_DELETION_BACKUP_MISMATCH",
+      },
+    );
+  const days = { immediate: 0, "7-days": 7, "30-days": 30 }[
+    job.backupRetention
+  ];
+  const payload = {
+    jobId: job.id,
+    generation: inventory.generation,
+    notBefore: new Date(
+      Date.parse(job.startedAt) + days * 86_400_000,
+    ).toISOString(),
+    archives: inventory.archives,
+  };
+  return {
+    ...payload,
+    sha256: createHash("sha256").update(JSON.stringify(payload)).digest("hex"),
+  };
+}
+
+async function requireDeletionJob(
+  runtime: IAgentRuntime,
+  ownerEntityId: string,
+) {
+  const job = await readFamilyDeletionJob(runtime, ownerEntityId);
+  if (!job)
+    throw new ElizaError("[FamilyDeletion] No deletion is pending", {
+      code: "FAMILY_DELETION_NOT_FOUND",
+    });
+  return job;
+}
+
+/** Whole-agent archive removal has its own complete owner review and acknowledgement. */
+export async function previewFamilyBackupCleanup(
+  runtime: IAgentRuntime,
+  ownerEntityId: string,
+): Promise<FamilyBackupCleanupReview> {
+  requireOwner(ownerEntityId);
+  return withReviewedRetiredLocalAgentBackups(
+    runtime.agentId,
+    async (inventory) =>
+      buildBackupCleanupReview(
+        await requireDeletionJob(runtime, ownerEntityId),
+        inventory,
+      ),
+  );
+}
+
+/** Persist exact archive identities before physical removal can begin. */
+export async function admitFamilyBackupCleanup(
+  runtime: IAgentRuntime,
+  input: {
+    ownerEntityId: string;
+    expectedSha256: string;
+    acknowledgeWholeArchiveHistory: true;
+  },
+): Promise<FamilyDeletionJob> {
+  requireOwner(input.ownerEntityId);
+  z.literal(true).parse(input.acknowledgeWholeArchiveHistory);
+  const admitted = await withReviewedRetiredLocalAgentBackups(
+    runtime.agentId,
+    async (inventory) => {
+      const job = await requireDeletionJob(runtime, input.ownerEntityId);
+      if (job.backupCleanup?.sha256 === input.expectedSha256) return job;
+      const review = buildBackupCleanupReview(job, inventory);
+      if (job.state === "complete" || review.sha256 !== input.expectedSha256)
+        throw new ElizaError(
+          "[FamilyDeletion] Backup copies changed; review their complete history again",
+          {
+            code: "FAMILY_DELETION_PREVIEW_STALE",
+          },
+        );
+      const updated: FamilyDeletionJob = {
+        ...job,
+        backupCleanup: review,
+        backupCleanupHistory: job.backupCleanup
+          ? [...(job.backupCleanupHistory ?? []), job.backupCleanup]
+          : [],
+      };
+      await withTransaction(runtime, async (tx) => {
+        await executeRawSqlTx(
+          tx,
+          `UPDATE ${table} SET job_json=${sqlQuote(JSON.stringify(updated))}::jsonb WHERE agent_id=${sqlQuote(runtime.agentId)}`,
+        );
+      });
+      return updated;
+    },
+  );
+  const { ensureFamilyBackupCleanupSchedule } = await import(
+    "./backup-cleanup-schedule.js"
+  );
+  await ensureFamilyBackupCleanupSchedule(runtime);
+  return admitted;
+}
+
+/** Load admitted identities under the backup lock, then durably acknowledge verified removal. */
+export async function purgeFamilyBackupCleanup(
+  runtime: IAgentRuntime,
+  ownerEntityId: string,
+  expected?: { jobId: string; sha256: string },
+): Promise<FamilyDeletionJob> {
+  requireOwner(ownerEntityId);
+  const admittedJob = await requireDeletionJob(runtime, ownerEntityId);
+  if (
+    expected &&
+    (admittedJob.id !== expected.jobId ||
+      admittedJob.backupCleanup?.sha256 !== expected.sha256)
+  )
+    throw new ElizaError(
+      "[FamilyDeletion] Scheduled cleanup no longer matches the admitted review",
+      { code: "FAMILY_DELETION_PREVIEW_STALE" },
+    );
+  if (admittedJob.state === "complete") return admittedJob;
+  const review = admittedJob.backupCleanup;
+  if (!review || admittedJob.state !== "backup_pending")
+    throw new ElizaError(
+      "[FamilyDeletion] Review and acknowledge the whole backup history before cleanup",
+      {
+        code: "FAMILY_DELETION_BACKUP_REVIEW_REQUIRED",
+      },
+    );
+  await purgeAdmittedRetiredLocalAgentBackups(runtime.agentId, async () => {
+    const current = await requireDeletionJob(runtime, ownerEntityId);
+    if (
+      current.id !== admittedJob.id ||
+      current.backupCleanup?.sha256 !== review.sha256
+    )
+      throw new ElizaError(
+        "[FamilyDeletion] Backup admission changed; reload its status",
+        {
+          code: "FAMILY_DELETION_PREVIEW_STALE",
+        },
+      );
+    return current.backupCleanup;
+  });
+  return withAgentBackupAuthority(resolveStateDir(), async (authority) => {
+    const current = await requireDeletionJob(runtime, ownerEntityId);
+    if (
+      current.id !== admittedJob.id ||
+      current.backupCleanup?.sha256 !== review.sha256 ||
+      (await authority.generation(runtime.agentId)) !== review.generation
+    )
+      throw new ElizaError(
+        "[FamilyDeletion] Backup acknowledgement no longer matches its journal",
+        {
+          code: "FAMILY_DELETION_BACKUP_MISMATCH",
+        },
+      );
+    const updated: FamilyDeletionJob = { ...current, state: "complete" };
+    await withTransaction(runtime, async (tx) => {
+      const states = await executeRawSqlTx(
+        tx,
+        `UPDATE app_lifeops.life_family_workspace_state SET state='deleted',updated_at=${sqlQuote(new Date().toISOString())} WHERE agent_id=${sqlQuote(runtime.agentId)} AND state IN ('revoking','deleted') RETURNING state`,
+      );
+      if (states.length !== 1)
+        throw new ElizaError(
+          "[FamilyDeletion] Workspace revocation is unavailable",
+          {
+            code: "FAMILY_DELETION_BACKUP_MISMATCH",
+          },
+        );
+      await executeRawSqlTx(
+        tx,
+        `UPDATE ${table} SET job_json=${sqlQuote(JSON.stringify(updated))}::jsonb WHERE agent_id=${sqlQuote(runtime.agentId)}`,
+      );
+    });
+    return updated;
+  });
 }

@@ -12,15 +12,19 @@
  */
 
 import type { AgentRuntime, Plugin } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import {
+  type DeterministicModelFixture,
+  strictActionRouteFixtures,
+} from "@elizaos/core/testing";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { simpleTurnMemoryFixtures } from "../_fixtures/simple-turn-memory";
 import { echoTestPlugin } from "./_fixtures/echo-test-plugin.ts";
 
 const ECHO_INPUT = "Please echo this message back to me: hello world";
 
 type RuntimeWithScenarioModelFixtures = AgentRuntime & {
   scenarioModelFixtures?: {
-    register: (...fixtures: Array<Record<string, unknown>>) => void;
+    register: (...fixtures: DeterministicModelFixture[]) => void;
   };
 };
 
@@ -33,58 +37,14 @@ function asRuntime(value: unknown): RuntimeWithScenarioModelFixtures {
   return value as RuntimeWithScenarioModelFixtures;
 }
 
-/**
- * Under the deterministic model provider (`SCENARIO_USE_DETERMINISTIC_MODEL=1`) the provider has
- * no model intelligence to pick `ECHO_TEST` over a plain reply, so we register
- * the two routing fixtures that force the selection: the stage-1 response
- * handler nominates `ECHO_TEST` as the only candidate, and the action planner
- * emits the matching tool call. This is what makes the scenario genuinely
- * keyless-deterministic (lane `pr-deterministic`).
- */
-function echoRouteFixtures(): Array<Record<string, unknown>> {
-  const inputMatches = (value: string) => value.includes(ECHO_INPUT);
-  return [
-    {
-      name: "route-echo-stage1",
-      match: {
-        modelType: ModelType.RESPONSE_HANDLER,
-        input: inputMatches,
-        toolName: "HANDLE_RESPONSE",
-      },
-      response: {
-        contexts: ["general"],
-        intents: ["echo"],
-        replyText: "On it.",
-        threadOps: [],
-        candidateActionNames: ["ECHO_TEST"],
-      },
-      times: 1,
-    },
-    {
-      name: "route-echo-planner",
-      match: {
-        modelType: ModelType.ACTION_PLANNER,
-        input: inputMatches,
-        toolName: "ECHO_TEST",
-      },
-      response: {
-        text: "",
-        thought: "Call ECHO_TEST to echo the user's message.",
-        messageToUser: "On it.",
-        completed: true,
-        finishReason: "tool-calls",
-        toolCalls: [
-          {
-            id: "call-echo-test",
-            name: "ECHO_TEST",
-            type: "function",
-            arguments: {},
-          },
-        ],
-      },
-      times: 1,
-    },
-  ];
+/** Declare the route and receipt-bound completion for the real echo action. */
+function echoRouteFixtures(): DeterministicModelFixture[] {
+  return strictActionRouteFixtures({
+    actionName: "ECHO_TEST",
+    args: {},
+    input: ECHO_INPUT,
+    messageToUser: "Echo: hello world",
+  });
 }
 
 export default scenario({
@@ -96,6 +56,7 @@ export default scenario({
   // deterministic model provider. No external service, no secret. Verified passing
   // under SCENARIO_USE_DETERMINISTIC_MODEL=1.
   lane: "pr-deterministic",
+  modelFixtures: { mode: "fixtures", fixtures: [] },
   tags: ["smoke", "convo", "self-test"],
   description:
     "Registers a trivial ECHO_TEST plugin and verifies the scripted runner captures the action call with success=true.",
@@ -112,7 +73,10 @@ export default scenario({
       apply: async (ctx) => {
         const runtime = asRuntime(ctx.runtime);
         await runtime.registerPlugin(echoTestPlugin satisfies Plugin);
-        runtime.scenarioModelFixtures?.register(...echoRouteFixtures());
+        runtime.scenarioModelFixtures?.register(
+          ...echoRouteFixtures(),
+          ...simpleTurnMemoryFixtures(runtime, ctx, "echo"),
+        );
       },
     },
   ],

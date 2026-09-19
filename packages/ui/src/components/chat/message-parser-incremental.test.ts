@@ -221,6 +221,16 @@ const FIXTURES: Array<{ name: string; text: string; analysis?: boolean }> = [
 ];
 
 describe("parseSegmentsStreaming differential (byte-identical to full parse)", () => {
+  it.each([
+    " *<think>hidden</think>smiles*",
+    " _<analysis>hidden</analysis>nods_",
+  ])("normalizes cached prose when hidden content reveals %s", (suffix) => {
+    const first = "a  b\nx";
+    const complete = first + suffix;
+    assertDifferential(false, [first, complete]);
+    assertDifferential(false, prefixesByChunk(complete, 1));
+  });
+
   for (const { name, text, analysis } of FIXTURES) {
     for (const chunk of [1, 3]) {
       it(`${name} — ${chunk}-char chunks`, () => {

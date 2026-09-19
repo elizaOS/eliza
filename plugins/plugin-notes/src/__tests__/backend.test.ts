@@ -523,6 +523,11 @@ describe("Notes capabilities", () => {
       service,
     );
     const note = (first.data as { note: StickyNote }).note;
+    const beforeReplay = service.snapshot();
+    const persistedBeforeReplay = await fs.readFile(
+      service.store.filePath,
+      "utf8",
+    );
 
     const replay = await interact(
       "create-note",
@@ -540,6 +545,10 @@ describe("Notes capabilities", () => {
       ],
     });
     expect(service.listNotes()).toHaveLength(1);
+    expect(service.snapshot()).toEqual(beforeReplay);
+    expect(await fs.readFile(service.store.filePath, "utf8")).toBe(
+      persistedBeforeReplay,
+    );
 
     await service.store.transact((draft) => {
       draft.notes.push(

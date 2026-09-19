@@ -14,21 +14,26 @@
  * is answered by the same mock so the plugin boots fully offline.
  */
 import type { AgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import {
+  type DeterministicModelFixture,
+  strictActionRouteFixtures,
+} from "@elizaos/core/testing";
 import {
   describeCalls,
   successfulActionData,
 } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { simpleTurnMemoryFixtures } from "../_fixtures/simple-turn-memory";
 
 const CLOUD_ACCOUNT_STATUS = "CLOUD_ACCOUNT_STATUS";
+const BALANCE_INPUT = "How many Eliza Cloud credits do I have left?";
 const CLOUD_BASE_URL = "https://cloud.test.invalid/api/v1";
 const MOCK_BALANCE = 12.5;
 
 type R = AgentRuntime & {
   setSetting?: (k: string, v: string, secret?: boolean) => void;
   scenarioModelFixtures?: {
-    register: (...f: Array<Record<string, unknown>>) => void;
+    register: (...f: DeterministicModelFixture[]) => void;
   };
 };
 
@@ -44,6 +49,7 @@ let balanceMockHit = false;
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: { mode: "fixtures", fixtures: [] },
   id: "elizacloud.account-status",
   title: "Eliza Cloud: read credit balance against a mocked cloud API",
   domain: "elizacloud",
@@ -131,47 +137,14 @@ export default scenario({
         });
 
         runtime.scenarioModelFixtures?.register(
-          {
-            name: "elizacloud-stage1",
-            match: {
-              modelType: ModelType.RESPONSE_HANDLER,
-              input: (v: string) => v.includes("credit") || v.includes("cloud"),
-              toolName: "HANDLE_RESPONSE",
-            },
-            response: {
-              contexts: ["cloud", "finance"],
-              intents: ["check my cloud credits"],
-              replyText: "",
-              threadOps: [],
-              candidateActionNames: [CLOUD_ACCOUNT_STATUS],
-            },
-            times: 1,
-          },
-          {
-            name: "elizacloud-planner",
-            match: (call: { modelType: string; toolNames: string[] }) =>
-              call.modelType === ModelType.ACTION_PLANNER &&
-              call.toolNames.includes(CLOUD_ACCOUNT_STATUS),
-            response: {
-              text: "",
-              thought: "Check the Eliza Cloud credit balance.",
-              messageToUser: "",
-              completed: true,
-              finishReason: "tool-calls",
-              toolCalls: [
-                {
-                  id: "call-cloud",
-                  name: CLOUD_ACCOUNT_STATUS,
-                  type: "function",
-                  arguments: {},
-                },
-              ],
-            },
-            times: 1,
-          },
-          // No post-action decision fixture: CLOUD_ACCOUNT_STATUS's verified
-          // read is turnComplete (#18119), so the planner-loop finishes on the
-          // action's own ack and never issues the FINISH decision call.
+          ...simpleTurnMemoryFixtures(runtime, ctx, "balance"),
+          ...strictActionRouteFixtures({
+            actionName: CLOUD_ACCOUNT_STATUS,
+            args: {},
+            input: BALANCE_INPUT,
+            contextIds: ["cloud", "finance"],
+            messageToUser: "",
+          }),
         );
         return undefined;
       },
@@ -203,7 +176,7 @@ export default scenario({
     {
       kind: "message",
       name: "balance",
-      text: "How many Eliza Cloud credits do I have left?",
+      text: BALANCE_INPUT,
       timeoutMs: 120_000,
       assertTurn: (turn) => {
         const call = turn.actionsCalled.find(

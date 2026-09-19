@@ -89,3 +89,146 @@ describe("calendar configured timezone", () => {
     );
   });
 });
+
+describe("calendar action explicit read windows", () => {
+  it.each([
+    [
+      "UTC",
+      "2026-09-16T00:00:00",
+      "2026-09-17T00:00:00",
+      "2026-09-16T00:00:00.000Z",
+      "2026-09-17T00:00:00.000Z",
+    ],
+    [
+      "Asia/Tokyo",
+      "2026-09-16T00:00:00",
+      "2026-09-17T00:00:00",
+      "2026-09-15T15:00:00.000Z",
+      "2026-09-16T15:00:00.000Z",
+    ],
+    [
+      "America/New_York",
+      "2026-03-08T00:00:00",
+      "2026-03-09T00:00:00",
+      "2026-03-08T05:00:00.000Z",
+      "2026-03-09T04:00:00.000Z",
+    ],
+    [
+      "America/New_York",
+      "2026-11-01T00:00:00",
+      "2026-11-02T00:00:00",
+      "2026-11-01T04:00:00.000Z",
+      "2026-11-02T05:00:00.000Z",
+    ],
+    [
+      "Asia/Tokyo",
+      "2026-09-16T00:00:00Z",
+      "2026-09-17T00:00:00Z",
+      "2026-09-16T00:00:00.000Z",
+      "2026-09-17T00:00:00.000Z",
+    ],
+  ])(
+    "passes the correct window to the service in %s",
+    async (timeZone, timeMin, timeMax, expectedMin, expectedMax) => {
+      for (const explicitZone of [true, false]) {
+        const service = stubService();
+        const action = createCalendarActionRunner(deps);
+        const result = await action.handler(
+          fakeRuntime(service, {
+            TIMEZONE: explicitZone ? "Pacific/Honolulu" : timeZone,
+          }),
+          {
+            content: {
+              text: "Read this calendar window without changing anything.",
+            },
+          } as Memory,
+          undefined,
+          {
+            parameters: {
+              subaction: "feed",
+              details: {
+                timeMin,
+                timeMax,
+                ...(explicitZone ? { timeZone } : {}),
+              },
+            },
+          },
+          vi.fn(async () => []),
+        );
+        expect(result?.success).toBe(true);
+        expect(service.getCalendarFeed).toHaveBeenCalledWith(
+          expect.any(URL),
+          expect.objectContaining({
+            timeZone,
+            timeMin: expectedMin,
+            timeMax: expectedMax,
+          }),
+        );
+      }
+    },
+  );
+});
+
+describe("calendar extracted read windows", () => {
+  it.each([
+    [
+      "2026-09-16T00:00:00",
+      "2026-09-17T00:00:00",
+      "2026-09-15T15:00:00.000Z",
+      "2026-09-16T15:00:00.000Z",
+    ],
+    [
+      "2026-09-16T00:00:00Z",
+      "2026-09-17T00:00:00Z",
+      "2026-09-16T00:00:00.000Z",
+      "2026-09-17T00:00:00.000Z",
+    ],
+    [
+      "2026-09-16T00:00:00Z",
+      "2026-09-16T23:59:59Z",
+      "2026-09-16T00:00:00.000Z",
+      "2026-09-16T23:59:59.000Z",
+    ],
+  ])(
+    "preserves the extracted bound semantics for %s",
+    async (timeMin, timeMax, expectedMin, expectedMax) => {
+      const service = stubService();
+      const plan = {
+        subaction: "feed",
+        shouldAct: true,
+        queries: [],
+        timeMin,
+        timeMax,
+      };
+      const modelDeps: CalendarActionDeps = {
+        ...deps,
+        runJsonModel: async () => ({
+          rawResponse: JSON.stringify(plan),
+          parsed: null,
+        }),
+        runTextModel: async () => JSON.stringify(plan),
+      };
+      const action = createCalendarActionRunner(modelDeps);
+      const result = await action.handler(
+        fakeRuntime(service, { TIMEZONE: "Asia/Tokyo" }),
+        {
+          content: {
+            text: "Show my calendar events for the requested window.",
+          },
+        } as Memory,
+        undefined,
+        undefined,
+        vi.fn(async () => []),
+      );
+      expect(result?.success).toBe(true);
+      expect(service.getCalendarFeed).toHaveBeenCalledWith(
+        expect.any(URL),
+        expect.objectContaining({
+          timeZone: "Asia/Tokyo",
+          timeMin: expectedMin,
+          timeMax: expectedMax,
+        }),
+      );
+    },
+  );
+});

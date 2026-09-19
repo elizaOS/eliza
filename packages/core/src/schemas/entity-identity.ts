@@ -84,6 +84,10 @@ export const entityIdentitySchema: SchemaTable = {
 			name: "evidence_message_ids",
 			type: "jsonb",
 		},
+		extraction_evidence: {
+			name: "extraction_evidence",
+			type: "jsonb",
+		},
 		created_at: {
 			name: "created_at",
 			type: "timestamp",

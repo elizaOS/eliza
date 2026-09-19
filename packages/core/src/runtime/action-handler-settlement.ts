@@ -34,6 +34,10 @@ import {
 	tagsMayProduceEffects,
 	tagsRequireEffectReceipts,
 } from "../types/effects";
+import {
+	isProviderContextOverflowFailure,
+	PROVIDER_CONTEXT_OVERFLOW,
+} from "../utils/model-errors";
 import { bindEffectDelivery } from "./effect-delivery";
 
 type BufferedActionCallback = {
@@ -48,6 +52,8 @@ export interface SettleActionHandlerOptions {
 	runtime: IAgentRuntime;
 	action: Action;
 	callback?: HandlerCallback;
+	/** Executor-owned observation after normalization, before buffered delivery. */
+	beforeCallbacks?: (result: ActionResult) => void;
 	invoke: (callback?: HandlerCallback) => unknown | Promise<unknown>;
 	/**
 	 * Retry-owning callers need the original exception. Top-level executors use
@@ -378,18 +384,25 @@ export async function settleActionHandler(
 		if (options.handlerError === "rethrow") {
 			throw error;
 		}
-		const failureProvenance =
-			readActionFailureProvenance(error) ??
-			({
-				kind: "handler_error",
-				boundary: "handler",
-				code: "ACTION_HANDLER_FAILED",
-				retryable: true,
-			} satisfies ActionFailureProvenance);
+		const contextOverflow = isProviderContextOverflowFailure(error);
+		const failureProvenance = contextOverflow
+			? ({
+					kind: "handler_error",
+					boundary: "handler",
+					code: PROVIDER_CONTEXT_OVERFLOW,
+					retryable: false,
+				} satisfies ActionFailureProvenance)
+			: (readActionFailureProvenance(error) ??
+				({
+					kind: "handler_error",
+					boundary: "handler",
+					code: "ACTION_HANDLER_FAILED",
+					retryable: true,
+				} satisfies ActionFailureProvenance));
 		return actionFailureResult(
 			options.action.name,
 			stringifyActionError(error),
-			{ error },
+			{ error, ...(contextOverflow ? { retryable: false } : {}) },
 			failureProvenance,
 		);
 	}
@@ -454,6 +467,8 @@ export async function settleActionHandler(
 			},
 		);
 	}
+
+	options.beforeCallbacks?.(settledResult);
 
 	// No action-owned prose is an acceptable substitute for unavailable model
 	// presentation. Keep the settled effect and let the turn emit system status.

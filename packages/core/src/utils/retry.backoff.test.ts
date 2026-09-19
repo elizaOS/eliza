@@ -1,9 +1,10 @@
 /**
  * Tests for the restart/retry backoff math. computeBackoff drives crash-recovery
  * and retry delays; these cover the exponential growth, the attempt clamp, the
- * maxMs cap, and the jitter bounds.
+ * maxMs cap, and the jitter bounds. Retry-After scheduling uses a controlled
+ * timer clock with the real retry loop and sleep implementation.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { type BackoffPolicy, computeBackoff, sleepWithAbort } from "./retry";
 import {
 	type RetryInfo,
@@ -316,33 +317,50 @@ describe("retryAsync options style", () => {
 	it("honors retryAfterMs in place of the exponential schedule", async () => {
 		let calls = 0;
 		const delays: number[] = [];
-		const started = Date.now();
-		await retryAsync(
-			async () => {
-				calls += 1;
-				if (calls < 3) {
-					const err = new Error("rate limited") as Error & {
-						status?: number;
-					};
-					err.status = 429;
-					throw err;
-				}
-				return "ok";
-			},
-			{
-				attempts: 3,
-				minDelayMs: 5,
-				retryAfterMs: (err) =>
-					typeof err === "object" &&
-					err !== null &&
-					(err as { status?: number }).status === 429
-						? 30
-						: undefined,
-				onRetry: (info) => delays.push(info.delayMs),
-			},
-		);
-		expect(delays).toEqual([30, 30]);
-		expect(Date.now() - started).toBeGreaterThanOrEqual(60);
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			const result = retryAsync(
+				async () => {
+					calls += 1;
+					if (calls < 3) {
+						const err = new Error("rate limited") as Error & {
+							status?: number;
+						};
+						err.status = 429;
+						throw err;
+					}
+					return "ok";
+				},
+				{
+					attempts: 3,
+					minDelayMs: 5,
+					retryAfterMs: (err) =>
+						typeof err === "object" &&
+						err !== null &&
+						(err as { status?: number }).status === 429
+							? 30
+							: undefined,
+					onRetry: (info) => delays.push(info.delayMs),
+				},
+			);
+			// Timer boundaries exercise the actual sleep, independent of wall-clock rounding.
+			await vi.advanceTimersByTimeAsync(0);
+			expect(calls).toBe(1);
+			expect(delays).toEqual([30]);
+			await vi.advanceTimersByTimeAsync(29);
+			expect(calls).toBe(1);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(calls).toBe(2);
+			expect(delays).toEqual([30, 30]);
+			await vi.advanceTimersByTimeAsync(29);
+			expect(calls).toBe(2);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(calls).toBe(3);
+			await expect(result).resolves.toBe("ok");
+		} finally {
+			vi.clearAllTimers();
+			vi.useRealTimers();
+		}
 	});
 
 	it("caps successive delays at maxDelayMs and exhausts all attempts", async () => {

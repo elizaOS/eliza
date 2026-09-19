@@ -3,6 +3,7 @@
  * active-thread capping, plus multi-user/multi-channel thread-boundary enforcement with
  * current-channel merge. Real scheduler over a mocked runtime.
  */
+import * as agentAccess from "@elizaos/agent";
 import type {
   ActionResult,
   HandlerOptions,
@@ -13,9 +14,14 @@ import type {
   State,
 } from "@elizaos/core";
 import { ChannelType, setEntityRole, stringToUuid } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { hasOwnerAccess } from "../../../packages/agent/src/security/access.ts";
+import { runWithActionRoutingContext } from "../../../packages/core/src/runtime/action-routing-context.js";
+import { AgentEventService } from "../../../packages/core/src/services/agentEvent.js";
 import { workThreadAction } from "../src/actions/work-thread.ts";
+import { registerLifeOpsScheduledTaskRunnerDeps } from "../src/lifeops/scheduled-task/runtime-wiring.js";
 import { processDueScheduledTasks } from "../src/lifeops/scheduled-task/scheduler.ts";
+import { ScheduledTaskRunnerService } from "../src/lifeops/scheduled-task/service.js";
 import {
   type ThreadOp,
   threadOpsFieldEvaluator,
@@ -28,7 +34,13 @@ let cleanupRuntime: (() => Promise<void>) | undefined;
 
 vi.setConfig({ testTimeout: 120_000 });
 
+beforeEach(() => {
+  // The unit alias grants every caller access; these cases exercise stored roles.
+  vi.spyOn(agentAccess, "hasOwnerAccess").mockImplementation(hasOwnerAccess);
+});
+
 afterEach(async () => {
+  vi.restoreAllMocks();
   await cleanupRuntime?.();
   cleanupRuntime = undefined;
 });
@@ -42,6 +54,14 @@ async function createRuntime(): Promise<IAgentRuntime> {
     withLLM: false,
   });
   cleanupRuntime = mocked.cleanup;
+  // Production loads the scheduling service; this minimal fixture must too.
+  await mocked.runtime.registerService(AgentEventService);
+  await mocked.runtime.getServiceLoadPromise(AgentEventService.serviceType);
+  registerLifeOpsScheduledTaskRunnerDeps(mocked.runtime);
+  await mocked.runtime.registerService(ScheduledTaskRunnerService);
+  await mocked.runtime.getServiceLoadPromise(
+    ScheduledTaskRunnerService.serviceType,
+  );
   return mocked.runtime;
 }
 
@@ -184,6 +204,68 @@ async function applyThreadOpsField(
 }
 
 describe("LifeOps work threads", () => {
+  it("defers only the owning message's reply while retaining complete durable results", async () => {
+    const runtime = await createRuntime();
+    for (const owner of ["direct", "planner", "other-message"] as const) {
+      const msg = message(
+        runtime,
+        "reply-owner-room",
+        "Record a QA thread only",
+      );
+      const callback = vi.fn(async () => []);
+      const result = await runWithActionRoutingContext(
+        {
+          actionName: "WORK_THREAD",
+          modelClass: undefined,
+          ...(owner === "direct" ? {} : { replyOwner: "planner" as const }),
+          messageId: owner === "other-message" ? "different-message" : msg.id,
+        },
+        () =>
+          workThreadAction.handler?.(
+            runtime,
+            msg,
+            { values: {}, data: {}, text: "" } as State,
+            {
+              parameters: {
+                operations: [
+                  {
+                    type: "create",
+                    title: `QA ${owner}`,
+                    instruction: "Record only",
+                  },
+                ],
+              },
+            } as HandlerOptions,
+            callback,
+          ),
+      );
+      expect(result).toMatchObject({
+        success: true,
+        data: { operations: [{ type: "create", success: true }] },
+      });
+      const created = operationResults(result as ActionResult)[0];
+      expect(
+        await createWorkThreadStore(runtime).get(
+          created.workThreadId as string,
+        ),
+      ).toMatchObject({
+        title: `QA ${owner}`,
+        currentPlanSummary: "Record only",
+      });
+      if (owner === "planner") {
+        expect(callback).not.toHaveBeenCalled();
+        expect(result).toMatchObject({
+          transcriptVisibility: "internal",
+          modelReplyRequired: true,
+          turnComplete: false,
+        });
+      } else {
+        expect(callback).toHaveBeenCalledOnce();
+        expect(result).not.toHaveProperty("transcriptVisibility");
+      }
+    }
+  });
+
   it("routes, guards, follows up, and caps active thread work", async () => {
     const runtime = await createRuntime();
     const idleRoom = message(runtime, "room-idle", "hello there");

@@ -3,7 +3,7 @@
  * independent Bun processes, including collision, expiry, and write rollback.
  */
 
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
@@ -278,34 +278,48 @@ describe("SqliteSyntheticEnvironmentLeaseStore", () => {
       await holder.exited;
 
       const store = new SqliteSyntheticEnvironmentLeaseStore(databasePath);
-      await expect(
-        store.acquire({
+      const clock = spyOn(Date, "now");
+      try {
+        const persisted = await store.read("recovery:killed");
+        if (persisted === null || persisted.expiresAt === null) {
+          throw new Error("killed holder did not persist a lease expiry");
+        }
+        const expiresAtMs = Date.parse(persisted.expiresAt);
+        expect(Number.isFinite(expiresAtMs)).toBe(true);
+        // Process shutdown and SQLite setup may outlast the short lease on CI.
+        // Check both sides of the stored boundary without racing the scheduler.
+        clock.mockReturnValue(expiresAtMs - 1);
+        await expect(
+          store.acquire({
+            namespace: "recovery:killed",
+            owner: {
+              ownerId: "too-early",
+              processId: process.pid,
+              host: hostname(),
+            },
+            leaseDurationMs: 5_000,
+          }),
+        ).rejects.toMatchObject({ code: "SYNTHETIC_LEASE_COLLISION" });
+        clock.mockReturnValue(expiresAtMs);
+        const recovered = await store.acquire({
           namespace: "recovery:killed",
           owner: {
-            ownerId: "too-early",
+            ownerId: "recovery-owner",
             processId: process.pid,
             host: hostname(),
           },
           leaseDurationMs: 5_000,
-        }),
-      ).rejects.toMatchObject({ code: "SYNTHETIC_LEASE_COLLISION" });
-      await Bun.sleep(160);
-      const recovered = await store.acquire({
-        namespace: "recovery:killed",
-        owner: {
-          ownerId: "recovery-owner",
-          processId: process.pid,
-          host: hostname(),
-        },
-        leaseDurationMs: 5_000,
-      });
-      expect(recovered).toEqual(
-        expect.objectContaining({
-          operation: "recover",
-          authority: expect.objectContaining({ generation: 2 }),
-        }),
-      );
-      store.close();
+        });
+        expect(recovered).toEqual(
+          expect.objectContaining({
+            operation: "recover",
+            authority: expect.objectContaining({ generation: 2 }),
+          }),
+        );
+      } finally {
+        clock.mockRestore();
+        store.close();
+      }
     },
   );
 

@@ -32,6 +32,8 @@ const DEFAULT_KILL_ESCALATE_MS = 4_000;
  * @property {(child: import("node:child_process").ChildProcess) => void} [onSpawn]
  *   Optional callback after each spawn (e.g. push child into a tracking array,
  *   wire log prefixers).
+ * @property {() => void} [onRuntimeRestart]
+ *   Enter bounded boot recovery for an admitted in-process runtime replacement.
  * @property {(child: import("node:child_process").ChildProcess) => void} [onExit]
  *   Optional callback before backoff/relaunch decision (e.g. remove child
  *   from a tracking array, clear handle).
@@ -57,6 +59,7 @@ export function createApiSupervisor(opts) {
   const {
     spawnChild,
     onSpawn,
+    onRuntimeRestart,
     onExit,
     onGiveUp,
     isShuttingDown,
@@ -103,6 +106,17 @@ export function createApiSupervisor(opts) {
     const child = spawnChild();
     currentChild = child;
     if (onSpawn) onSpawn(child);
+    child.on("message", (message) => {
+      if (
+        child === currentChild &&
+        !isShuttingDown() &&
+        message !== null &&
+        typeof message === "object" &&
+        message.type === "eliza:runtime-restart"
+      ) {
+        onRuntimeRestart?.();
+      }
+    });
     child.on("exit", (code) => {
       if (onExit) onExit(child);
       if (child === currentChild) currentChild = null;
