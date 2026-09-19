@@ -27,14 +27,7 @@ jobs:
         shell: powershell
         env:
           BUN_INSTALL_CACHE_DIR: ${{ runner.temp }}/bun-install-cache
-        run: |
-          bun pm cache
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          bun install --frozen-lockfile --ignore-scripts
-      - name: Inspect installed package link count
-        shell: powershell
-        run: |
-          node -e "const fs = require('node:fs'); const p = require.resolve('vitest/package.json'); console.log(JSON.stringify({path:p,nlink:fs.statSync(p).nlink}));"
+        run: bun install --frozen-lockfile --ignore-scripts
       - name: Execute Windows PowerShell 5.1 security helpers
         shell: powershell
         run: .\packages/app-core/platforms/electrobun/scripts/test-browser-bridge-windows-security.ps1
