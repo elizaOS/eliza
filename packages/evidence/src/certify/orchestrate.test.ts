@@ -110,111 +110,64 @@ function reviewerDoc(
   return { schema: 1, reviewer: REVIEWER, verdicts };
 }
 
-describe("orchestrateCertify — matrix args forwarding", () => {
-  it("forwards options.matrixArgs to the matrix runner", async () => {
-    const repoRoot = tmpGitRepo();
-    let seenArgs: readonly string[] | undefined;
-    const runMatrix: MatrixRunner = async ({ args }) => {
-      seenArgs = args;
-      return {
-        command: "fake-matrix",
-        lanes: [
-          { lane: "matrix", passed: 1, failed: 0, skipped: 0, log: "ok\n" },
-        ],
-      };
-    };
-    const result = await orchestrateCertify({
-      tier: "cpu",
-      repoRoot,
-      outDir: tmpDir("evidence-orch-out-"),
-      signingKey: KEYPAIR.privateKeyPem,
-      reviewer: REVIEWER,
-      runMatrix,
-      matrixArgs: ["--only=test", "--no-cloud"],
-      env: {},
-      now: NOW,
-    });
-
-    expect(result.overallVerdict).toBe("green");
-    expect(seenArgs).toEqual(["--only=test", "--no-cloud"]);
-  });
-
-  it("defaults the runner's args to an empty list", async () => {
-    const repoRoot = tmpGitRepo();
-    let seenArgs: readonly string[] | undefined;
-    const runMatrix: MatrixRunner = async ({ args }) => {
-      seenArgs = args;
-      return {
-        command: "fake-matrix",
-        lanes: [
-          { lane: "matrix", passed: 1, failed: 0, skipped: 0, log: "ok\n" },
-        ],
-      };
-    };
-    await orchestrateCertify({
-      tier: "cpu",
-      repoRoot,
-      outDir: tmpDir("evidence-orch-out-"),
-      signingKey: KEYPAIR.privateKeyPem,
-      reviewer: REVIEWER,
-      runMatrix,
-      env: {},
-      now: NOW,
-    });
-
-    expect(seenArgs).toEqual([]);
-  });
-});
-
 describe("orchestrateCertify — fresh bundle green path", () => {
-  it("captures a passing matrix lane, signs, and self-verifies green", async () => {
-    const repoRoot = tmpGitRepo();
-    const runMatrix: MatrixRunner = async () => ({
-      command: "fake-matrix",
-      lanes: [
-        { lane: "matrix", passed: 42, failed: 0, skipped: 0, log: "ok\n" },
-      ],
-    });
-    const result = await orchestrateCertify({
-      tier: "cpu",
-      repoRoot,
-      outDir: tmpDir("evidence-orch-out-"),
-      signingKey: KEYPAIR.privateKeyPem,
-      reviewer: REVIEWER,
-      runMatrix,
-      env: {},
-      now: NOW,
-    });
+  it.each([undefined, ["--only=test", "--no-cloud"]])(
+    "forwards matrix args %j and produces a verifiable fresh bundle",
+    async (matrixArgs) => {
+      const repoRoot = tmpGitRepo();
+      let seenArgs: readonly string[] | undefined;
+      const runMatrix: MatrixRunner = async ({ args }) => {
+        seenArgs = args;
+        return {
+          command: "fake-matrix",
+          lanes: [
+            { lane: "matrix", passed: 42, failed: 0, skipped: 0, log: "ok\n" },
+          ],
+        };
+      };
+      const result = await orchestrateCertify({
+        tier: "cpu",
+        repoRoot,
+        outDir: tmpDir("evidence-orch-out-"),
+        signingKey: KEYPAIR.privateKeyPem,
+        reviewer: REVIEWER,
+        runMatrix,
+        ...(matrixArgs === undefined ? {} : { matrixArgs }),
+        env: {},
+        now: NOW,
+      });
 
-    expect(result.overallVerdict).toBe("green");
-    expect(result.verify.ok).toBe(true);
-    expect(fs.existsSync(result.certPath)).toBe(true);
-    // The lane the matrix produced is present as a mechanical pass verdict.
-    expect(
-      result.certification.verdicts.some(
-        (verdict) =>
-          verdict.subject === "lane:matrix" && verdict.verdict === "pass",
-      ),
-    ).toBe(true);
-    // The lane result.json is actually in the bundle the cert is bound to.
-    const manifest = JSON.parse(
-      fs.readFileSync(path.join(result.bundleDir, "manifest.json"), "utf8"),
-    );
-    expect(
-      manifest.artifacts.some(
-        (a: { path: string }) => a.path === "lanes/matrix/result.json",
-      ),
-    ).toBe(true);
+      expect(seenArgs).toEqual(matrixArgs ?? []);
+      expect(result.overallVerdict).toBe("green");
+      expect(result.verify.ok).toBe(true);
+      expect(fs.existsSync(result.certPath)).toBe(true);
+      // The lane the matrix produced is present as a mechanical pass verdict.
+      expect(
+        result.certification.verdicts.some(
+          (verdict) =>
+            verdict.subject === "lane:matrix" && verdict.verdict === "pass",
+        ),
+      ).toBe(true);
+      // The lane result.json is actually in the bundle the cert is bound to.
+      const manifest = JSON.parse(
+        fs.readFileSync(path.join(result.bundleDir, "manifest.json"), "utf8"),
+      );
+      expect(
+        manifest.artifacts.some(
+          (a: { path: string }) => a.path === "lanes/matrix/result.json",
+        ),
+      ).toBe(true);
 
-    // Re-verify from disk with the trusted public key — the CI-gate contract.
-    const reverify = await verifyCertification(result.certPath, {
-      publicKeyPem: KEYPAIR.publicKeyPem,
-      bundleDir: result.bundleDir,
-      now: NOW,
-    });
-    expect(reverify.ok).toBe(true);
-    expect(reverify.failures).toEqual([]);
-  });
+      // Re-verify from disk with the trusted public key — the CI-gate contract.
+      const reverify = await verifyCertification(result.certPath, {
+        publicKeyPem: KEYPAIR.publicKeyPem,
+        bundleDir: result.bundleDir,
+        now: NOW,
+      });
+      expect(reverify.ok).toBe(true);
+      expect(reverify.failures).toEqual([]);
+    },
+  );
 });
 
 describe("orchestrateCertify — pre-built bundle", () => {
@@ -357,13 +310,9 @@ const PNG_1X1 = Buffer.from(
 
 /** A throwaway git repo with one screenshot in an ingestable silo. */
 function tmpGitRepoWithScreenshot(): string {
-  const dir = tmpDir("evidence-orch-gitshot-");
+  const dir = tmpGitRepo();
   const git = (...args: string[]) =>
     execFileSync("git", args, { cwd: dir, stdio: "pipe" });
-  git("init", "-q");
-  git("config", "user.email", "test@example.com");
-  git("config", "user.name", "Test");
-  git("config", "commit.gpgsign", "false");
   const shotDir = path.join(dir, "e2e-recordings", "login", "desktop");
   fs.mkdirSync(shotDir, { recursive: true });
   fs.writeFileSync(path.join(shotDir, "shot.png"), PNG_1X1);
@@ -493,7 +442,8 @@ describe("orchestrateCertify — gpu queue wiring (#14543 acceptance)", () => {
       const analyzeStep = result.steps.find((s) => s.step === "analyze");
       expect(analyzeStep?.detail).toMatch(/via queue worker/);
     } finally {
-      process.env.ELIZA_GPU_VISION_URL = prevUrl;
+      if (prevUrl === undefined) delete process.env.ELIZA_GPU_VISION_URL;
+      else process.env.ELIZA_GPU_VISION_URL = prevUrl;
       controller.abort();
       stub.server.close();
     }
@@ -525,7 +475,8 @@ describe("orchestrateCertify — gpu queue wiring (#14543 acceptance)", () => {
       expect("data" in (record ?? {})).toBe(false);
       expect(fs.existsSync(result.certPath)).toBe(true);
     } finally {
-      if (prevUrl !== undefined) process.env.ELIZA_GPU_VISION_URL = prevUrl;
+      if (prevUrl === undefined) delete process.env.ELIZA_GPU_VISION_URL;
+      else process.env.ELIZA_GPU_VISION_URL = prevUrl;
     }
   });
 });
@@ -607,94 +558,58 @@ describe("certify CLI subcommand", () => {
     };
   }
 
-  it("exits 0 and writes a verifiable cert over an existing bundle", async () => {
-    const bundleDir = await fixtureBundle({
-      matrix: { passed: 3, failed: 0, skipped: 0 },
-    });
-    const keyFile = path.join(tmpDir("evidence-orch-key-"), "key.pem");
-    fs.writeFileSync(keyFile, KEYPAIR.privateKeyPem);
-    const verdictsFile = path.join(tmpDir("evidence-orch-rv-"), "rv.json");
-    fs.writeFileSync(
-      verdictsFile,
-      JSON.stringify(
-        reviewerDoc([{ subject: "view:home", verdict: "pass", notes: "ok" }]),
-      ),
-    );
-    const certOut = path.join(
-      tmpDir("evidence-orch-cert-"),
-      "certification.json",
-    );
-    const { io } = captureIo();
-    const code = await runCli(
-      [
-        "certify",
-        "--tier",
-        "cpu",
-        "--bundle",
-        bundleDir,
-        "--reviewer-id",
-        "cli-agent",
-        "--reviewer-kind",
-        "agent",
-        "--key-file",
-        keyFile,
-        "--reviewer-verdicts",
+  it.each([false, true])(
+    "writes a verifiable cert using explicit reviewer=%s",
+    async (explicitReviewer) => {
+      const bundleDir = await fixtureBundle({
+        matrix: { passed: 3, failed: 0, skipped: 0 },
+      });
+      const keyFile = path.join(tmpDir("evidence-orch-key-"), "key.pem");
+      fs.writeFileSync(keyFile, KEYPAIR.privateKeyPem);
+      const verdictsFile = path.join(tmpDir("evidence-orch-rv-"), "rv.json");
+      fs.writeFileSync(
         verdictsFile,
-        "--cert-out",
-        certOut,
-      ],
-      io,
-    );
-    expect(code).toBe(0);
-    expect(fs.existsSync(certOut)).toBe(true);
-    const reverify = await verifyCertification(certOut, {
-      publicKeyPem: KEYPAIR.publicKeyPem,
-      bundleDir,
-    });
-    expect(reverify.ok).toBe(true);
-  });
-
-  it("accepts reviewer identity from the reviewer-verdicts file", async () => {
-    const bundleDir = await fixtureBundle({
-      matrix: { passed: 3, failed: 0, skipped: 0 },
-    });
-    const keyFile = path.join(tmpDir("evidence-orch-key-"), "key.pem");
-    fs.writeFileSync(keyFile, KEYPAIR.privateKeyPem);
-    const verdictsFile = path.join(tmpDir("evidence-orch-rv-"), "rv.json");
-    fs.writeFileSync(
-      verdictsFile,
-      JSON.stringify(
-        reviewerDoc([{ subject: "view:home", verdict: "pass", notes: "ok" }]),
-      ),
-    );
-    const certOut = path.join(
-      tmpDir("evidence-orch-cert-"),
-      "certification.json",
-    );
-    const { io } = captureIo();
-    const code = await runCli(
-      [
-        "certify",
-        "--tier",
-        "cpu",
-        "--bundle",
+        JSON.stringify(
+          reviewerDoc([{ subject: "view:home", verdict: "pass", notes: "ok" }]),
+        ),
+      );
+      const certOut = path.join(
+        tmpDir("evidence-orch-cert-"),
+        "certification.json",
+      );
+      const { io } = captureIo();
+      const code = await runCli(
+        [
+          "certify",
+          "--tier",
+          "cpu",
+          "--bundle",
+          bundleDir,
+          ...(explicitReviewer
+            ? ["--reviewer-id", "cli-agent", "--reviewer-kind", "agent"]
+            : []),
+          "--key-file",
+          keyFile,
+          "--reviewer-verdicts",
+          verdictsFile,
+          "--cert-out",
+          certOut,
+        ],
+        io,
+      );
+      expect(code).toBe(0);
+      expect(fs.existsSync(certOut)).toBe(true);
+      const reverify = await verifyCertification(certOut, {
+        publicKeyPem: KEYPAIR.publicKeyPem,
         bundleDir,
-        "--key-file",
-        keyFile,
-        "--reviewer-verdicts",
-        verdictsFile,
-        "--cert-out",
-        certOut,
-      ],
-      io,
-    );
-    expect(code).toBe(0);
-    const cert = JSON.parse(fs.readFileSync(certOut, "utf8"));
-    expect(cert.reviewer).toMatchObject({
-      kind: "agent",
-      id: "orch-test",
-    });
-  });
+      });
+      expect(reverify.ok).toBe(true);
+      expect(reverify.certification?.reviewer).toMatchObject({
+        kind: "agent",
+        id: explicitReviewer ? "cli-agent" : "orch-test",
+      });
+    },
+  );
 
   it("exits 1 on a red bundle without waivers", async () => {
     const bundleDir = await fixtureBundle({

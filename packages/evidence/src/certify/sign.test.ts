@@ -495,12 +495,15 @@ describe("verifyCertification — tamper matrix", () => {
     });
   });
 
-  it("schema-invalid: waived-without-notes signed by hand cannot verify clean", async () => {
+  it.each([
+    { subject: "x", verdict: "waived" as const, evidence: [] },
+    { subject: "x", verdict: "pass" as const, evidence: ["../../secrets.pem"] },
+  ])("rejects an invalid hand-signed verdict: %j", async (verdict) => {
     const fixture = await fixtureBundle();
     const keypair = generateCertificationKeypair();
     // Bypass signCertification's validation to simulate a hostile signer.
     const rawPayload = payloadFor(fixture, {
-      verdicts: [{ subject: "x", verdict: "waived", evidence: [] }],
+      verdicts: [verdict],
     });
     const key = toPrivateKey(keypair.privateKeyPem);
     const value = cryptoSign(
@@ -538,35 +541,6 @@ describe("verifyCertification — tamper matrix", () => {
     });
     expect(codes(report)).toContain("schema-invalid");
     expect(report.ok).toBe(false);
-  });
-
-  it("schema-invalid: evidence path traversal in a hand-signed certification", async () => {
-    const fixture = await fixtureBundle();
-    const keypair = generateCertificationKeypair();
-    const rawPayload = payloadFor(fixture, {
-      verdicts: [
-        { subject: "x", verdict: "pass", evidence: ["../../secrets.pem"] },
-      ],
-    });
-    const key = toPrivateKey(keypair.privateKeyPem);
-    const value = cryptoSign(
-      null,
-      canonicalJsonBytes(rawPayload),
-      key,
-    ).toString("base64");
-    const cert = {
-      ...rawPayload,
-      signature: {
-        alg: "ed25519",
-        publicKeyFingerprint: keypair.fingerprint,
-        value,
-      },
-    };
-    const report = await verifyCertification(writeCert(cert), {
-      publicKeyPem: keypair.publicKeyPem,
-      now: NOW,
-    });
-    expect(codes(report)).toContain("schema-invalid");
   });
 
   it("unsigned: signature field missing entirely", async () => {
