@@ -1,6 +1,6 @@
 /**
- * Unit coverage for `installProcessCrashGuards` (`process-guards.ts`) and the
- * `shouldIgnoreUnhandledRejection` classifier: idempotent install, non-fatal
+ * Exercises real process-guard installation through captured process listeners:
+ * idempotent install, non-fatal
  * handling of background unhandled rejections, credit-exhaustion downgrade to warn,
  * and the uncaught-exception policies (default supervised restart / keep-alive /
  * exit). Listeners are captured by stubbing `process.on` so a deliberately triggered
@@ -8,7 +8,6 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { shouldIgnoreUnhandledRejection } from "./error-classification.js";
 import {
   installProcessCrashGuards,
   resetProcessCrashGuardsForTest,
@@ -109,62 +108,5 @@ describe("installProcessCrashGuards", () => {
     listeners.uncaughtException?.(new Error("boom"));
 
     expect(exit).toHaveBeenCalledWith(1);
-  });
-});
-
-describe("shouldIgnoreUnhandledRejection", () => {
-  it("ignores AI provider credit-exhaustion errors", () => {
-    expect(
-      shouldIgnoreUnhandledRejection(
-        new Error("AI_NoOutputGeneratedError: No output generated"),
-      ),
-    ).toBe(false); // no credit signal → surfaced
-
-    const credit = Object.assign(
-      new Error("AI_APICallError: payment required"),
-      { statusCode: 402 },
-    );
-    expect(shouldIgnoreUnhandledRejection(credit)).toBe(true);
-  });
-
-  it("does not ignore ordinary runtime errors", () => {
-    expect(
-      shouldIgnoreUnhandledRejection(new Error("TypeError: x is undefined")),
-    ).toBe(false);
-  });
-
-  it("finds provider credit exhaustion inside a generic AggregateError", () => {
-    const credit = Object.assign(new Error("AI_APICallError: request failed"), {
-      statusCode: 402,
-    });
-
-    expect(
-      shouldIgnoreUnhandledRejection(
-        new AggregateError([credit], "All provider attempts failed"),
-      ),
-    ).toBe(true);
-    expect(
-      shouldIgnoreUnhandledRejection(
-        new AggregateError(
-          [
-            Object.assign(new Error("ordinary request failed"), {
-              statusCode: 402,
-            }),
-          ],
-          "All requests failed",
-        ),
-      ),
-    ).toBe(false);
-  });
-
-  it("preserves provider credit classification for string rejection reasons", () => {
-    const creditReason = "AI_APICallError: payment required";
-
-    expect(shouldIgnoreUnhandledRejection(creditReason)).toBe(true);
-    expect(
-      shouldIgnoreUnhandledRejection(
-        new AggregateError([creditReason], "All provider attempts failed"),
-      ),
-    ).toBe(true);
   });
 });

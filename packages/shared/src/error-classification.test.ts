@@ -61,6 +61,11 @@ describe("error-classification", () => {
         statusCode: 402,
       });
       expect(shouldIgnoreUnhandledRejection(err)).toBe(true);
+      expect(
+        shouldIgnoreUnhandledRejection(
+          new AggregateError([err], "All provider attempts failed"),
+        ),
+      ).toBe(true);
     });
 
     it("returns true for provider error with insufficient credits in responseBody", () => {
@@ -88,6 +93,27 @@ describe("error-classification", () => {
         "Multiple failures",
       );
       expect(shouldIgnoreUnhandledRejection(aggregate)).toBe(true);
+    });
+
+    it("classifies string credit errors directly and inside aggregates", () => {
+      const reason = "AI_APICallError: payment required";
+      expect(shouldIgnoreUnhandledRejection(reason)).toBe(true);
+      expect(
+        shouldIgnoreUnhandledRejection(
+          new AggregateError([reason], "All provider attempts failed"),
+        ),
+      ).toBe(true);
+    });
+
+    it("does not suppress an ordinary 402 inside an aggregate", () => {
+      const ordinary = Object.assign(new Error("ordinary request failed"), {
+        statusCode: 402,
+      });
+      expect(
+        shouldIgnoreUnhandledRejection(
+          new AggregateError([ordinary], "All requests failed"),
+        ),
+      ).toBe(false);
     });
 
     it("handles circular cause references without hanging and returns true if matching", () => {
@@ -120,6 +146,11 @@ describe("error-classification", () => {
     it("returns false for provider errors without credit exhaustion signals", () => {
       const err = new Error("AI_APICallError: 500 Internal Server Error");
       expect(shouldIgnoreUnhandledRejection(err)).toBe(false);
+      expect(
+        shouldIgnoreUnhandledRejection(
+          new Error("AI_NoOutputGeneratedError: No output generated"),
+        ),
+      ).toBe(false);
     });
   });
 });
