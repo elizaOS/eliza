@@ -208,6 +208,16 @@ export class TurnControllerRegistry {
 		return this.active.has(roomId);
 	}
 
+	/** Whether abortTurn could stop work in this room, excluding its caller.
+	 * Without async-context support this conservatively includes every live turn,
+	 * matching abortTurn's existing fallback. */
+	hasAbortableTurn(roomId: string): boolean {
+		const self = getCurrentTurnStorage()?.getStore();
+		return (this.active.get(roomId) ?? []).some(
+			(turn) => turn !== self && !turn.controller.signal.aborted,
+		);
+	}
+
 	/**
 	 * Snapshot of the currently-active turn room ids. Useful for diagnostic
 	 * endpoints that want to surface "what's running" without holding a

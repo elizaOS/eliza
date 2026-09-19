@@ -28,6 +28,23 @@ function nestContent(depth: number): unknown {
 	return value;
 }
 
+/** Observes production reflection without replacing the renderer or its input data. */
+function observeInspections<T extends object>(
+	value: T,
+	inspections: { count: number },
+): T {
+	return new Proxy(value, {
+		getOwnPropertyDescriptor(target, key) {
+			inspections.count += 1;
+			// Stop a regressed walk deterministically before it can exhaust the stack.
+			if (inspections.count > 1_000) {
+				throw new Error("renderer inspected an excessive input prefix");
+			}
+			return Reflect.getOwnPropertyDescriptor(target, key);
+		},
+	});
+}
+
 describe("normalizeDiscordMessageText", () => {
 	it("renders honest scalars, lists, and nested content keys", () => {
 		expect(normalizeDiscordMessageText("hello")).toBe("hello");
@@ -92,9 +109,12 @@ describe("normalizeDiscordMessageText", () => {
 	it("skips cycles without hanging", () => {
 		const cyclic: { content?: unknown } = {};
 		cyclic.content = cyclic;
-		const started = performance.now();
-		expect(normalizeDiscordMessageText(cyclic)).toBe("");
-		expect(performance.now() - started).toBeLessThan(50);
+		const inspections = { count: 0 };
+		const observed = observeInspections(cyclic, inspections);
+		cyclic.content = observed;
+		expect(normalizeDiscordMessageText(observed)).toBe("");
+		expect(inspections.count).toBeGreaterThan(0);
+		expect(inspections.count).toBeLessThanOrEqual(1_000);
 	});
 
 	it("does not invoke accessors while walking", () => {
@@ -189,30 +209,39 @@ describe("normalizeDiscordMessageText", () => {
 		expect(normalizeDiscordMessageText([shared, shared])).toBe("once");
 	});
 
-	it("fails closed on a 20k nest in under 50ms instead of RangeError", () => {
-		const started = performance.now();
-		try {
-			normalizeDiscordMessageText(nestArray(20_000));
-			expect.unreachable("walk should fail closed on a 20k nest");
-		} catch (error) {
-			expect(error).toBeInstanceOf(ElizaError);
-			expect((error as ElizaError).code).toBe(
-				DISCORD_STRUCTURED_TEXT_UNBOUNDED,
-			);
-			expect((error as Error).name).not.toBe("RangeError");
-		}
-		expect(performance.now() - started).toBeLessThan(50);
+	it.each(["array", "content"] as const)(
+		"rejects deep %s input after bounded inspection without returning partial text",
+		(kind) => {
+			const inspections = { count: 0 };
+			let value: unknown = "complete leaf";
+			const depth = kind === "array" ? 20_000 : 8_000;
+			for (let index = 0; index < depth; index += 1) {
+				value = observeInspections(
+					kind === "array" ? [value] : { content: value },
+					inspections,
+				);
+			}
+			try {
+				normalizeDiscordMessageText(["valid prefix", value]);
+				expect.unreachable("over-depth input must reject the entire message");
+			} catch (error) {
+				expect(error).toBeInstanceOf(ElizaError);
+				expect((error as ElizaError).code).toBe(
+					DISCORD_STRUCTURED_TEXT_UNBOUNDED,
+				);
+				expect((error as Error).name).not.toBe("RangeError");
+			}
+			expect(inspections.count).toBeGreaterThan(0);
+			expect(inspections.count).toBeLessThanOrEqual(1_000);
+		},
+	);
 
-		const contentStarted = performance.now();
-		try {
-			normalizeDiscordMessageText(nestContent(8_000));
-			expect.unreachable("walk should fail closed on an 8k content nest");
-		} catch (error) {
-			expect(error).toBeInstanceOf(ElizaError);
-			expect((error as ElizaError).code).toBe(
-				DISCORD_STRUCTURED_TEXT_UNBOUNDED,
-			);
-		}
-		expect(performance.now() - contentStarted).toBeLessThan(50);
+	it("preserves the complete supported leaf regardless of its text length", () => {
+		const text = `${"complete content ".repeat(10_000)}END`;
+		expect(
+			normalizeDiscordMessageText(
+				nestArray(MAX_DISCORD_STRUCTURED_TEXT_DEPTH, text),
+			),
+		).toBe(text);
 	});
 });

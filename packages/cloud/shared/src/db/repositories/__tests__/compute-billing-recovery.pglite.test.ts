@@ -4,6 +4,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq, sql } from "drizzle-orm";
 import { getPgliteClientForTests } from "../../client";
@@ -63,7 +64,6 @@ beforeAll(async () => {
       agentSandboxes,
       apiKeys,
       creditTransactions,
-      agentBillingRecords,
       agentBillingRuns,
       agentBillingRunItems,
       computeBillingRateSegments,
@@ -77,6 +77,25 @@ beforeAll(async () => {
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
     await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
+    // Install the dependent tables from migrations after their referenced
+    // unique indexes exist; pushSchema emits those indexes after foreign keys.
+    const migration = (name: string) =>
+      readFile(new URL(`../../migrations/${name}`, import.meta.url), "utf8");
+    await getPgliteClientForTests().exec(await migration("0387_agent_compute_funding.sql"));
+    await getPgliteClientForTests().exec(await migration("0389_agent_compute_stop_receipts.sql"));
+    const receiptDDL = await migration("0265_compute_billing_recovery.sql");
+    const receiptTable = receiptDDL.match(/CREATE TABLE agent_billing_records \([\s\S]*?\n\);/);
+    if (!receiptTable) throw new Error("Missing canonical agent billing receipt DDL");
+    await getPgliteClientForTests().exec(receiptTable[0]);
+    for (const index of receiptDDL.matchAll(
+      /CREATE (?:UNIQUE )?INDEX agent_billing_records_[\s\S]*?;/g,
+    )) {
+      await getPgliteClientForTests().exec(index[0]);
+    }
+    await getPgliteClientForTests().exec(await migration("0388_agent_compute_funded_receipts.sql"));
+    await getPgliteClientForTests().exec(
+      await migration("0394_agent_billing_activation_minimum.sql"),
+    );
     await dbWrite.execute(
       sql.raw(`CREATE TABLE jobs (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -797,6 +816,98 @@ describe("compute billing recovery", () => {
 
     expect(result).toMatchObject({ status: "billed", amount: 0.01 });
   });
+
+  test.each([5_157, 45_000])(
+    "slow initial transaction (%i ms) still bills only funded runtime once",
+    async (creationDelayMs) => {
+      const { org, user, sandbox, lastBilledAt } = await seed();
+      await dbWrite.delete(computeBillingRateSegments);
+      const runningAt = new Date(lastBilledAt.getTime() + 60_000);
+      const now = new Date(runningAt.getTime() + 60 * 60_000);
+      await dbWrite.insert(computeBillingRateSegments).values([
+        {
+          organization_id: org.id,
+          workload_kind: "agent",
+          workload_id: sandbox.id,
+          lifecycle_revision: 0,
+          billing_state: "not_billable",
+          rate_per_hour: "0.000000",
+          effective_at: new Date(lastBilledAt.getTime() + creationDelayMs),
+        },
+        {
+          organization_id: org.id,
+          workload_kind: "agent",
+          workload_id: sandbox.id,
+          lifecycle_revision: 2,
+          billing_state: "running",
+          rate_per_hour: "0.010000",
+          effective_at: runningAt,
+        },
+      ]);
+      const input = {
+        ...(await claimBillingRun(now)),
+        sandboxId: sandbox.id,
+        organizationId: org.id,
+        userId: user.id,
+        agentName: "slow-created-agent",
+        hourlyRate: 999,
+        billingDescription: "slow creation recovery",
+        lowCreditWarningAmount: 1,
+        now,
+      };
+      await expect(agentBillingRepository.recordHourlyBilling(input)).resolves.toMatchObject({
+        status: "billed",
+        amount: 0.01,
+      });
+      await expect(agentBillingRepository.recordHourlyBilling(input)).resolves.toMatchObject({
+        status: "already_billed_recently",
+      });
+      const [receipt] = await dbWrite.select().from(agentBillingRecords);
+      expect(receipt.rate_segments).toMatchObject([
+        { state: "not_billable", amount: "0.000000", endedAt: runningAt.toISOString() },
+        { state: "running", amount: "0.010000", startedAt: runningAt.toISOString() },
+      ]);
+      expect(await dbWrite.select().from(creditTransactions)).toHaveLength(1);
+      const [updatedOrg] = await dbWrite
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, org.id));
+      expect(updatedOrg.credit_balance).toBe("9.990000");
+    },
+  );
+
+  test.each([
+    { revision: 1, state: "not_billable", rate: "0.000000" },
+    { revision: 0, state: "running", rate: "0.010000" },
+  ])(
+    "incomplete initial rate history remains rejected ($state, revision $revision)",
+    async ({ revision, state, rate }) => {
+      const { org, sandbox, lastBilledAt } = await seed();
+      await dbWrite.delete(computeBillingRateSegments);
+      await dbWrite.insert(computeBillingRateSegments).values({
+        organization_id: org.id,
+        workload_kind: "agent",
+        workload_id: sandbox.id,
+        lifecycle_revision: revision,
+        billing_state: state,
+        rate_per_hour: rate,
+        effective_at: new Date(lastBilledAt.getTime() + 45_000),
+      });
+      await expect(
+        agentBillingRepository.settleAccruedBillingBeforeLifecycle(
+          sandbox.id,
+          org.id,
+          new Date(lastBilledAt.getTime() + 60 * 60_000),
+        ),
+      ).rejects.toThrow("Compute billing rate history is missing");
+      expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
+      const [updatedOrg] = await dbWrite
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, org.id));
+      expect(updatedOrg.credit_balance).toBe("10.000000");
+    },
+  );
 
   test("a mismatched tenant cannot charge another tenant's workload", async () => {
     const { user, sandbox } = await seed();

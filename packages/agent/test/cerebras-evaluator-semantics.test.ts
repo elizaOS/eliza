@@ -43,21 +43,42 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
       }
       const requestBody = JSON.parse(body) as {
         messages: Array<{ role: string; content: string }>;
+        response_format?: { type?: string; json_schema?: { schema?: unknown } };
       };
       const prompt = requestBody.messages.find(
         (message) => message.role === "user",
       )?.content;
+      // Every request carries the complete prompt contract; constrained requests
+      // additionally carry the same contract in the provider schema.
+      const structural = requestBody.response_format?.type === "json_schema";
       const schemaMatch =
         prompt &&
         /## Output JSON Schema\n([\s\S]*?)\n\nEvaluate just-finished turn/.exec(
           prompt,
         );
-      if (!schemaMatch?.[1]) {
+      const contract = (
+        structural
+          ? requestBody.response_format?.json_schema?.schema
+          : schemaMatch?.[1]
+            ? JSON.parse(schemaMatch[1])
+            : undefined
+      ) as
+        | {
+            required: string[];
+            properties: {
+              identities: {
+                properties: { identities: { items: { required: string[] } } };
+              };
+            };
+          }
+        | undefined;
+      // The complete contract is visible in the prompt on every rung; the
+      // structural request also carries it on the wire.
+      if (!contract || !schemaMatch) {
         response.writeHead(400);
         response.end("Complete output contract missing");
         return;
       }
-      const contract = JSON.parse(schemaMatch[1]);
       const handleField =
         contract.properties.identities.properties.identities.items.required.find(
           (field: string) => field === "handle",
@@ -104,6 +125,7 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
               entityId: fixture.entityId,
               platform: "github",
               [handleField]: fixture.handle,
+              sourceMessageId: fixture.messageId,
               confidence: 0.99,
             },
           ],

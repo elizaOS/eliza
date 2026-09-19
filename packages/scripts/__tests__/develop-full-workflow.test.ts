@@ -1,7 +1,10 @@
 /** Verifies the sole develop-push workflow delegates and aggregates every read-only validation family. */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const workflowPath = fileURLToPath(
@@ -29,15 +32,13 @@ const workflow = Bun.YAML.parse(readFileSync(workflowPath, "utf8")) as {
   >;
 };
 const qualityWorkflow = readFileSync(
-  fileURLToPath(
-    new URL("../../../.github/workflows/quality.yml", import.meta.url),
-  ),
+  fileURLToPath(new URL("../../../.github/workflows/ci.yml", import.meta.url)),
   "utf8",
 );
 const testWorkflow = Bun.YAML.parse(
   readFileSync(
     fileURLToPath(
-      new URL("../../../.github/workflows/test.yml", import.meta.url),
+      new URL("../../../.github/workflows/ci.yml", import.meta.url),
     ),
     "utf8",
   ),
@@ -90,18 +91,13 @@ const surfaceGraph = JSON.parse(
 
 const delegatedJobs = [
   "canonical",
-  "chat-shell",
-  "cloud-gateway-discord",
   "cloud",
+  "cloud-gateway-discord",
   "dev-smoke",
   "docker",
   "secrets",
-  "quality",
   "platform-smoke",
-  "scenarios",
-  "tests",
   "ui-core",
-  "ui-extended",
   "ui-stories",
 ];
 
@@ -151,12 +147,12 @@ describe("Develop Full workflow authority", () => {
   test("routes guides and documentation through real quality validation", () => {
     expect(surfaceGraph.knownNonValidationInputs ?? []).toEqual([]);
     const quality = surfaceGraph.surfaces.find(
-      (surface) => surface.id === "quality",
+      (surface) => surface.id === "canonical",
     );
     expect(quality?.inputs).toEqual(
       expect.arrayContaining(["*.md", "**/*.md", "packages/docs/**"]),
     );
-    expect(qualityWorkflow).toContain("bun run check:agents-claude");
+    expect(qualityWorkflow).toContain("bun run verify");
     expect(qualityWorkflow).toContain("node scripts/check-markdown-links.mjs");
   });
 
@@ -175,12 +171,7 @@ describe("Develop Full workflow authority", () => {
   });
 
   test("guards every develop-reachable always job against cancellation", () => {
-    const nonPushOnlyAlwaysJobs = new Map([
-      [
-        ".github/workflows/test.yml#github-live-artifact-validate",
-        "always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && (needs.cloud-live-e2e.outputs.capability_skip != 'true' || needs.provider-live-e2e.outputs.skip != 'true')",
-      ],
-    ]);
+    const nonPushOnlyAlwaysJobs = new Map<string, string>();
     const expressionBody = (condition: string) =>
       condition
         .replace(/^\$\{\{\s*/, "")
@@ -293,28 +284,60 @@ describe("Develop Full workflow authority", () => {
     expect(offenders).toEqual([]);
   });
 
-  test("uses exact digest cache keys and publishes the manifest artifact", () => {
-    const plan = workflow.jobs?.plan;
-    const complete = workflow.jobs?.complete;
-    const planCaches = plan?.steps?.filter((step) =>
-      step.uses?.startsWith("actions/cache/restore@"),
+  test("publishes current-run evidence without restoring reusable certificates", () => {
+    const steps = [
+      ...(workflow.jobs?.plan?.steps ?? []),
+      ...(workflow.jobs?.complete?.steps ?? []),
+    ];
+    expect(steps.some((step) => step.uses?.startsWith("actions/cache"))).toBe(
+      false,
     );
-    const completeCaches = complete?.steps?.filter((step) =>
-      step.uses?.startsWith("actions/cache@"),
-    );
-    expect(planCaches).toHaveLength(delegatedJobs.length);
-    expect(completeCaches).toHaveLength(delegatedJobs.length);
-    for (const step of [...(planCaches ?? []), ...(completeCaches ?? [])]) {
-      expect(step.with?.key).toMatch(
-        /^develop-evidence-v1-.+-\$\{\{ .+\.outputs\.digest_/,
-      );
-      expect(step.with?.["restore-keys"]).toBeUndefined();
-    }
     expect(
-      complete?.steps?.some((step) =>
+      workflow.jobs?.complete?.steps?.some((step) =>
         step.uses?.startsWith("actions/upload-artifact@"),
       ),
     ).toBe(true);
+  });
+
+  test("preserves failed and skipped results without creating a green manifest", () => {
+    const source = workflow.jobs?.complete?.steps?.find(
+      (step) => step.name === "Preserve validation results",
+    )?.run;
+    if (!source) throw new Error("Missing result evidence writer");
+    const directory = mkdtempSync(join(tmpdir(), "eliza-ci-results-"));
+    const results = { canonical: "failure", cloud: "skipped" };
+    try {
+      const result = spawnSync("bash", ["-c", source], {
+        cwd: directory,
+        encoding: "utf8",
+        env: {
+          PATH: process.env.PATH,
+          GITHUB_SHA: "a".repeat(40),
+          GITHUB_RUN_ID: "123",
+          GITHUB_RUN_ATTEMPT: "2",
+          SURFACE_RESULTS: JSON.stringify(results),
+        },
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(
+        JSON.parse(
+          readFileSync(
+            join(directory, ".develop-evidence/results.json"),
+            "utf8",
+          ),
+        ),
+      ).toEqual({
+        headSha: "a".repeat(40),
+        runId: "123",
+        runAttempt: "2",
+        results,
+      });
+      expect(() =>
+        readFileSync(join(directory, ".develop-evidence/observed.json")),
+      ).toThrow();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   test("hands only the successful exact aggregate to durable reconciliation", () => {

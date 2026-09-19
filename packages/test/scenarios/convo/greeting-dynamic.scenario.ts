@@ -18,15 +18,19 @@
  */
 
 import type { AgentRuntime, Plugin } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import {
+  type DeterministicModelFixture,
+  strictActionRouteFixtures,
+} from "@elizaos/core/testing";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { simpleTurnMemoryFixtures } from "../_fixtures/simple-turn-memory";
 import { greetTestPlugin } from "./_fixtures/greet-test-plugin.ts";
 
 const GREETING_INPUT = "Hello!";
 
 type RuntimeWithScenarioModelFixtures = AgentRuntime & {
   scenarioModelFixtures?: {
-    register: (...fixtures: Array<Record<string, unknown>>) => void;
+    register: (...fixtures: DeterministicModelFixture[]) => void;
   };
 };
 
@@ -39,54 +43,18 @@ function asRuntime(value: unknown): RuntimeWithScenarioModelFixtures {
   return value as RuntimeWithScenarioModelFixtures;
 }
 
-function greetingRouteFixtures(): Array<Record<string, unknown>> {
-  const inputMatches = (value: string) => value.includes(GREETING_INPUT);
-  return [
-    {
-      name: "route-greeting-stage1",
-      match: {
-        modelType: ModelType.RESPONSE_HANDLER,
-        input: inputMatches,
-        toolName: "HANDLE_RESPONSE",
-      },
-      response: {
-        contexts: ["general"],
-        intents: ["greeting"],
-        replyText: "Hello there.",
-        threadOps: [],
-        candidateActionNames: ["GREET_USER"],
-      },
-      times: 1,
-    },
-    {
-      name: "route-greeting-planner",
-      match: {
-        modelType: ModelType.ACTION_PLANNER,
-        input: inputMatches,
-        toolName: "GREET_USER",
-      },
-      response: {
-        text: "",
-        thought: "Call GREET_USER to welcome the user.",
-        messageToUser: "Hello there.",
-        completed: true,
-        finishReason: "tool-calls",
-        toolCalls: [
-          {
-            id: "call-greet-user",
-            name: "GREET_USER",
-            type: "function",
-            arguments: {},
-          },
-        ],
-      },
-      times: 1,
-    },
-  ];
+function greetingRouteFixtures(): DeterministicModelFixture[] {
+  return strictActionRouteFixtures({
+    actionName: "GREET_USER",
+    args: {},
+    input: GREETING_INPUT,
+    messageToUser: "Hello there.",
+  });
 }
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: { mode: "fixtures", fixtures: [] },
   id: "convo.greeting-dynamic",
   title: "Convo framework: greeting routes to GREET_USER",
   domain: "convo",
@@ -109,7 +77,10 @@ export default scenario({
       apply: async (ctx) => {
         const runtime = asRuntime(ctx.runtime);
         await runtime.registerPlugin(greetTestPlugin satisfies Plugin);
-        runtime.scenarioModelFixtures?.register(...greetingRouteFixtures());
+        runtime.scenarioModelFixtures?.register(
+          ...greetingRouteFixtures(),
+          ...simpleTurnMemoryFixtures(runtime, ctx, "greeting"),
+        );
       },
     },
   ],

@@ -16,7 +16,7 @@ const releaseWorkflowPath = path.join(
   workflowsDirectory,
   "cloud-cf-release.yml",
 );
-const qualityWorkflowPath = path.join(workflowsDirectory, "quality.yml");
+const qualityWorkflowPath = path.join(workflowsDirectory, "ci.yml");
 const contactPath = path.join(
   repositoryRoot,
   "packages/homepage/src/lib/contact.ts",
@@ -534,9 +534,11 @@ describe("homepage deployment workflow", () => {
       "TELEGRAM_IDENTITY_AUTHORITY_SHA256",
     );
     for (const name of reusableEnvironmentSecrets) {
-      // GitHub requires the caller binding to expose the selected Environment
-      // secret in the called job. An empty literal cannot forward repo values.
-      expect(callerSecretMap[name], name).toBe("");
+      // Explicit expressions let the called job resolve its protected
+      // Environment secrets; empty literals produced blank deploy credentials.
+      expect(callerSecretMap[name], name).toBe(
+        githubExpression(`secrets.${name}`),
+      );
       expect(
         parsedReleaseWorkflow.on?.workflow_call?.secrets?.[name],
         name,
@@ -1253,7 +1255,7 @@ describe("homepage deployment workflow", () => {
     expect(appPackage.scripts?.["prebuild:web"]).toBe(
       "bun run --cwd ../cloud/sdk build && bun run prebuild",
     );
-    expect(qualityWorkflow).toContain("packages/homepage/");
+    expect(qualityWorkflow).toContain("working-directory: packages/homepage");
     expect(qualityWorkflow).toContain("Build the only deployable frontend");
     expect(workflow).not.toContain("Build consolidated frontend artifact");
     expect(workflow).not.toContain("Upload consolidated frontend artifact");
@@ -1267,11 +1269,11 @@ describe("homepage deployment workflow", () => {
   });
 
   it("validates homepage source while building only packages/app in quality CI", () => {
-    expect(qualityWorkflow).toContain("consolidated-frontend-build:");
+    expect(qualityWorkflow).toContain("frontend-build:");
     expect(qualityWorkflow).toContain("Validate homepage source contracts");
     expect(qualityWorkflow).toContain("working-directory: packages/homepage");
     expect(qualityWorkflow).toContain(
-      "run: bun run typecheck && bun run lint:check && bun run test && bun run check:snapshot-inventory",
+      "run: bun run test && bun run check:snapshot-inventory",
     );
     expect(qualityWorkflow).toContain("Build the only deployable frontend");
     expect(qualityWorkflow).toContain("working-directory: packages/app");
@@ -1292,7 +1294,10 @@ describe("homepage deployment workflow", () => {
     const promptsBuildIndex = qualityWorkflow.indexOf(
       "bun run --cwd packages/prompts build:package",
     );
-    const coreBuildIndex = qualityWorkflow.indexOf("bun run build:core");
+    const coreBuildIndex = qualityWorkflow.indexOf(
+      "bun run build:core",
+      promptsBuildIndex,
+    );
     const uiBuildIndex = qualityWorkflow.indexOf(
       "bun run --cwd packages/ui build",
     );

@@ -391,18 +391,24 @@ function warmPoolGenerationConditions(expected: WarmPoolRuntimeGeneration): SQL[
 /** Keep generic and restore-fenced provisioning transitions byte-equivalent. */
 function provisioningAdmissionUpdatePayload() {
   const permanentProvisionFailure = sql`${agentSandboxes.status} = 'error' AND ${agentSandboxes.error_message} LIKE 'Provisioning permanently failed%'`;
+  // Stop retains the retired locator while the agent is off. Once explicit
+  // provisioning is admitted, keeping that node would count the new
+  // `provisioning` row against its own freed slot before placement can run.
+  // Recovery data stays on the row; unresolved and sleeping generations keep
+  // their existing handle semantics.
+  const retiredPlacement = sql`${agentSandboxes.status} = 'stopped' OR (${permanentProvisionFailure})`;
   return {
     status: "provisioning" as const,
     updated_at: new Date(),
     error_message: null,
-    sandbox_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.sandbox_id} END`,
-    bridge_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_url} END`,
-    health_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.health_url} END`,
-    node_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.node_id} END`,
-    container_name: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.container_name} END`,
-    bridge_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_port} END`,
-    web_ui_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.web_ui_port} END`,
-    headscale_ip: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.headscale_ip} END`,
+    sandbox_id: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.sandbox_id} END`,
+    bridge_url: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.bridge_url} END`,
+    health_url: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.health_url} END`,
+    node_id: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.node_id} END`,
+    container_name: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.container_name} END`,
+    bridge_port: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.bridge_port} END`,
+    web_ui_port: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.web_ui_port} END`,
+    headscale_ip: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.headscale_ip} END`,
   };
 }
 
@@ -1458,6 +1464,52 @@ export class AgentSandboxesRepository {
       else if (updated) swept.push(updated);
     }
     return { updated: swept, deferred };
+  }
+
+  /** Failed asynchronous work may only mark its own execution, or its exact unleased generation. */
+  async markProvisionFailed(
+    expected: AgentSandbox,
+    message: string,
+  ): Promise<AgentSandbox | undefined> {
+    await ensureAgentSandboxSchema();
+    const execution =
+      expected.lifecycle_job_id !== null && expected.lifecycle_execution_generation !== null;
+    const [updated] = await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "error",
+        error_message: message,
+        error_count: sql`COALESCE(${agentSandboxes.error_count}, 0) + 1`,
+        bridge_url: null,
+        health_url: null,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(agentSandboxes.id, expected.id),
+          eq(agentSandboxes.organization_id, expected.organization_id),
+          inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+          inArray(agentSandboxes.status, ["provisioning", "running"]),
+          eq(agentSandboxes.environment_revision, expected.environment_revision),
+          isNull(agentSandboxes.deletion_attempt_id),
+          isNull(agentSandboxes.deleted_at),
+          execution
+            ? and(
+                eq(agentSandboxes.lifecycle_job_id, expected.lifecycle_job_id!),
+                eq(
+                  agentSandboxes.lifecycle_execution_generation,
+                  expected.lifecycle_execution_generation!,
+                ),
+              )
+            : and(
+                isNull(agentSandboxes.lifecycle_job_id),
+                isNull(agentSandboxes.lifecycle_execution_generation),
+                eq(agentSandboxes.lifecycle_revision, expected.lifecycle_revision),
+              ),
+        ),
+      )
+      .returning();
+    return updated;
   }
 
   async update(

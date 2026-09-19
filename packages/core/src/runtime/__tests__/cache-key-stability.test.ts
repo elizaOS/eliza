@@ -123,7 +123,11 @@ describe("cache-key stability — Anthropic prompt-cache invariants", () => {
 			prefixHash,
 			promptSegments: STAGE_1_CANONICAL_SEGMENTS,
 		});
-		expect(plan.promptCacheKey).toBe(`v5:${prefixHash}`);
+		expect(plan.promptCacheKey.length).toBeLessThanOrEqual(64);
+		expect(plan.providerOptions.eliza).toMatchObject({ prefixHash });
+		expect(buildProviderCachePlan({ prefixHash }).promptCacheKey).toBe(
+			plan.promptCacheKey,
+		);
 	});
 });
 

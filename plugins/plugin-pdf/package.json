@@ -81,5 +81,13 @@
       "browser": "Browser-compatible build available via exports.browser",
       "node": "Node.js build available via exports.node"
     }
+  },
+  "elizaos": {
+    "scripts": {
+      "buildOnInstall": {
+        "sentinel": "dist/node/index.node.js",
+        "order": 4
+      }
+    }
   }
 }

@@ -53,7 +53,7 @@ export function OwnerOnlyNotice({
   return (
     <Card variant="insetPadded" flow="row" gap="compact">
       <Lock className="size-3.5 shrink-0" aria-hidden />
-      <span className="text-xs text-muted">{message}</span>
+      <span className="text-xs text-muted-strong">{message}</span>
     </Card>
   );
 }

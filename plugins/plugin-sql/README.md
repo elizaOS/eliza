@@ -191,3 +191,13 @@ Default Postgres pool configuration (`src/pg/manager.ts`):
 
 - Node.js or Bun
 - PostgreSQL with vector extension (for Postgres mode)
+
+## Conditional embedding persistence
+
+Background embedding results use `updateMemoryEmbedding({id, expected, embedding})`.
+The adapter must atomically compare the stored source text, agent, author and room
+with `expected` before writing. A changed or deleted source returns `false` and
+receives no vector or completion event; database failures throw. Custom database
+adapters must implement this contract when upgrading core. A separate read followed
+by an unconditional update is insufficient. Vector-only runtime writes retain the
+existing reconciliation-lease bypass and invalidate the room cache on success.

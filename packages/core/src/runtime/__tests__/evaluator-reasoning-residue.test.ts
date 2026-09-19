@@ -137,49 +137,70 @@ describe("shared reasoning-tag grammar", () => {
 		expect(hasReasoningResidue(run)).toBe(true);
 	});
 
-	it("scans in roughly linear time, not quadratically, on unterminated candidates", () => {
-		// A regression for the backtracking `[^>]*>` / `\s*>` terminator search:
-		// on unclosed candidates it re-walked the remaining string from every
-		// candidate's start, so cost grew with candidateCount * remainingLength
-		// (quadratic). A fixed input that merely "finishes" would not catch a
-		// regression back to that shape — this measures the SAME construction at
-		// two sizes an order of magnitude apart and asserts the growth is
-		// roughly proportional to size, not to size squared.
+	it.each([
+		["residue detection", hasReasoningResidue],
+		["block stripping", stripReasoningBlocks],
+	] as const)("%s scales without repeated suffix rescanning", (_name, scan) => {
 		const buildRun = (n: number) =>
 			`${"<reasoning ".repeat(n)}xtrailing text with no closing bracket at all`;
 		const small = buildRun(1_600);
 		const large = buildRun(16_000);
-
-		const timeOf = (fn: () => void): number => {
+		const expectedSmall = scan(small);
+		const expectedLarge = scan(large);
+		const measure = (
+			input: string,
+			count: number,
+			expected: boolean | string,
+		) => {
+			let result: boolean | string = false;
 			const start = performance.now();
-			fn();
-			return performance.now() - start;
+			for (let i = 0; i < count; i++) result = scan(input);
+			const elapsed = performance.now() - start;
+			expect(result).toBe(expected);
+			return elapsed;
 		};
 
-		// Warm up the JIT on both sizes before taking the measurement that gates
-		// the assertion, so tiering effects don't masquerade as growth.
-		timeOf(() => hasReasoningResidue(small));
-		timeOf(() => hasReasoningResidue(large));
-		timeOf(() => stripReasoningBlocks(small));
-		timeOf(() => stripReasoningBlocks(large));
-
-		const smallMs = Math.max(
-			timeOf(() => hasReasoningResidue(small)),
-			timeOf(() => stripReasoningBlocks(small)),
-			0.05, // floor so a sub-millisecond small run can't force a false ratio failure
-		);
-		const largeMs = Math.max(
-			timeOf(() => hasReasoningResidue(large)),
-			timeOf(() => stripReasoningBlocks(large)),
-		);
-
-		// Input grew 10x. Quadratic cost would grow ~100x; allow generous slack
-		// over linear (25x) to absorb GC/scheduler noise without masking a real
-		// regression back to superlinear behavior.
+		// Calibrate on the larger input so even a regressed slow scanner uses
+		// one call per batch. Calibration is excluded from the fixed sample set.
+		let iterations = 1;
+		while (
+			measure(large, iterations, expectedLarge) < 20 &&
+			iterations < 1_048_576
+		)
+			iterations *= 2;
+		const smallSamples: number[] = [];
+		const largeSamples: number[] = [];
+		for (let pair = 0; pair < 7; pair++) {
+			const takeSmall = () =>
+				smallSamples.push(
+					measure(small, iterations, expectedSmall) / iterations,
+				);
+			const takeLarge = () =>
+				largeSamples.push(
+					measure(large, iterations, expectedLarge) / iterations,
+				);
+			// Alternate order to avoid consistently assigning JIT/GC drift to one size.
+			if (pair % 2 === 0) {
+				takeSmall();
+				takeLarge();
+			} else {
+				takeLarge();
+				takeSmall();
+			}
+		}
+		// A fixed median tolerates isolated scheduler stalls without retrying a
+		// failed assertion or mixing the costs of two different functions.
+		const median = (samples: number[]) => {
+			const sorted = [...samples].sort((a, b) => a - b);
+			const middle = sorted[3];
+			if (middle === undefined) throw new Error("Missing fixed timing samples");
+			return middle;
+		};
+		const smallMs = Math.max(median(smallSamples), 0.05);
+		const largeMs = median(largeSamples);
+		// Retain the original growth and absolute guards: 10x input must not
+		// approach quadratic 100x cost, and each large scan stays below 500ms.
 		expect(largeMs).toBeLessThan(smallMs * 25);
-		// An absolute ceiling independent of the ratio: the pre-fix backtracking
-		// regex took multiple seconds at this size (a maintainer measured ~3.9s
-		// at 16k candidates); a linear scan finishes in single-digit ms.
 		expect(largeMs).toBeLessThan(500);
 	});
 });

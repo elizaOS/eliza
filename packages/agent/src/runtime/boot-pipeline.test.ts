@@ -1,16 +1,13 @@
 /**
- * Exercises the typed boot boundary with deterministic phase doubles, including
- * ordering, immutable environment capture, policy parsing, and reverse cleanup.
+ * Exercises the active boot context and plan with deterministic environment
+ * snapshots, phase transitions, policy parsing, and host-mode selection.
  */
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  BOOT_PHASES,
-  type BootPhase,
   captureAgentEnvironment,
   createBootContext,
   resolveBootPlan,
   resolveBootPolicy,
-  runBootPhases,
 } from "./boot-pipeline.ts";
 
 describe("boot pipeline", () => {
@@ -30,64 +27,16 @@ describe("boot pipeline", () => {
     });
   });
 
-  it("runs phases once in declared order and disposes in reverse order", async () => {
-    const events: string[] = [];
+  it("records admitted phases and rejects duplicate or backward transitions", () => {
+    const observed: string[] = [];
     const context = createBootContext({
       environment: captureAgentEnvironment({}),
-      observePhase: (phase) => events.push(`enter:${phase}`),
-    });
-    const phases: BootPhase[] = BOOT_PHASES.slice(0, 3).map((name) => ({
-      name,
-      run: () => {
-        events.push(`run:${name}`);
-      },
-      dispose: () => {
-        events.push(`dispose:${name}`);
-      },
-    }));
-
-    const dispose = await runBootPhases(context, phases);
-    await dispose();
-
-    expect(context.completedPhases).toEqual(BOOT_PHASES.slice(0, 3));
-    expect(events).toEqual([
-      "enter:load-config",
-      "run:load-config",
-      "enter:resolve-settings",
-      "run:resolve-settings",
-      "enter:resolve-plugin-plan",
-      "run:resolve-plugin-plan",
-      "dispose:resolve-plugin-plan",
-      "dispose:resolve-settings",
-      "dispose:load-config",
-    ]);
-  });
-
-  it("cleans completed phases when a later phase fails", async () => {
-    const disposeFirst = vi.fn();
-    const context = createBootContext({
-      environment: captureAgentEnvironment({}),
-    });
-
-    await expect(
-      runBootPhases(context, [
-        { name: "load-config", run: vi.fn(), dispose: disposeFirst },
-        {
-          name: "resolve-settings",
-          run: () => {
-            throw new Error("settings failed");
-          },
-        },
-      ]),
-    ).rejects.toThrow("settings failed");
-    expect(disposeFirst).toHaveBeenCalledOnce();
-  });
-
-  it("rejects duplicate or backward phase transitions", () => {
-    const context = createBootContext({
-      environment: captureAgentEnvironment({}),
+      observePhase: (phase) => observed.push(phase),
     });
     context.enterPhase("resolve-settings");
+    expect(context.completedPhases).toEqual(["resolve-settings"]);
+    expect(observed).toEqual(["resolve-settings"]);
+    expect(() => context.enterPhase("resolve-settings")).toThrow();
     expect(() => context.enterPhase("load-config")).toThrow(
       "cannot follow resolve-settings",
     );

@@ -3,6 +3,10 @@
  * provider. Runs on the pr-deterministic lane under the model provider.
  */
 import { type IAgentRuntime, stringToUuid } from "@elizaos/core";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -92,7 +96,7 @@ const WRONG_OWNER_PARAMETERS: JsonRecord = {
 // run, so the seed fills these shared parameter objects with the ids returned
 // by the same production store boundary the TODO handler consumes.
 
-type RuntimeWithPlugins = {
+type RuntimeWithPlugins = RuntimeWithScenarioModelFixtures & {
   agentId?: string;
   evaluators: IAgentRuntime["evaluators"];
   adapter?: {
@@ -193,6 +197,21 @@ async function ensureTodosPlugin(runtime: RuntimeWithPlugins): Promise<void> {
 async function seedTodos(ctx: ScenarioContext): Promise<string | undefined> {
   try {
     const runtime = ctx.runtime as RuntimeWithPlugins;
+    registerStrictActionRouteFixtures(runtime, [
+      {
+        actionName: "TODO",
+        input: "Add a todo to cover natural language routing",
+        contextIds: ["todos"],
+        messageToUser:
+          "Added Prove TODO natural language routing to your todos.",
+        args: {
+          action: "create",
+          content: "Prove TODO natural language routing",
+          activeForm: "Proving TODO natural language routing",
+          status: "pending",
+        },
+      },
+    ]);
     scenarioRuntime = runtime;
     scenarioAgentId =
       typeof runtime.agentId === "string" && runtime.agentId.length > 0
@@ -333,119 +352,7 @@ async function finalTodosCheck(
 export default scenario({
   id: "deterministic-todos-actions",
   lane: "pr-deterministic",
-  modelFixtures: {
-    mode: "fixtures",
-    fixtures: [
-      {
-        name: "route-todo-stage1-natural-language-create",
-        match: {
-          modelType: "RESPONSE_HANDLER",
-          input: {
-            pattern:
-              "Add a todo to cover natural language routing(?![\\s\\S]*message:user:\\n)",
-          },
-          toolNames: ["HANDLE_RESPONSE"],
-        },
-        response: {
-          json: {
-            contexts: ["todos"],
-            intents: ["add a todo to cover natural language routing"],
-            replyText: "On it.",
-            threadOps: [],
-            candidateActionNames: ["TODO"],
-          },
-        },
-      },
-      {
-        name: "route-todo-planner-natural-language-create",
-        match: {
-          modelType: "ACTION_PLANNER",
-          input: {
-            pattern:
-              "Add a todo to cover natural language routing(?![\\s\\S]*message:user:\\n)",
-          },
-          // `toolNames` is set equality against the planner's ACTUAL tool
-          // surface, and retrieval ranks the catalog without ever narrowing it
-          // ("Retrieval ranks every parent; it never limits availability" —
-          // core/src/runtime/action-retrieval.ts). On this lane the runner
-          // registers the whole personal-assistant + goals roster, so the
-          // planner is offered every OWNER_* family, not just the todos one.
-          // Listing a subset matches nothing and the turn dies as an unmatched
-          // model call. Keep this list in sync with the plugins
-          // scenario-runner/src/runtime-factory.ts registers for the simulated
-          // profile.
-          toolNames: [
-            "OWNER_REMINDERS",
-            "OWNER_REMINDERS_CREATE",
-            "OWNER_REMINDERS_UPDATE",
-            "OWNER_REMINDERS_DELETE",
-            "OWNER_REMINDERS_COMPLETE",
-            "OWNER_REMINDERS_SKIP",
-            "OWNER_REMINDERS_SNOOZE",
-            "OWNER_REMINDERS_REVIEW",
-            "OWNER_ALARMS",
-            "OWNER_ALARMS_CREATE",
-            "OWNER_ALARMS_UPDATE",
-            "OWNER_ALARMS_DELETE",
-            "OWNER_ALARMS_COMPLETE",
-            "OWNER_ALARMS_SKIP",
-            "OWNER_ALARMS_SNOOZE",
-            "OWNER_ALARMS_REVIEW",
-            "OWNER_GOALS",
-            "OWNER_GOALS_CREATE",
-            "OWNER_GOALS_UPDATE",
-            "OWNER_GOALS_DELETE",
-            "OWNER_GOALS_REVIEW",
-            "OWNER_TODOS",
-            "OWNER_TODOS_CREATE",
-            "OWNER_TODOS_UPDATE",
-            "OWNER_TODOS_DELETE",
-            "OWNER_TODOS_COMPLETE",
-            "OWNER_TODOS_SKIP",
-            "OWNER_TODOS_SNOOZE",
-            "OWNER_TODOS_REVIEW",
-            "OWNER_ROUTINES",
-            "OWNER_ROUTINES_CREATE",
-            "OWNER_ROUTINES_UPDATE",
-            "OWNER_ROUTINES_DELETE",
-            "OWNER_ROUTINES_COMPLETE",
-            "OWNER_ROUTINES_SKIP",
-            "OWNER_ROUTINES_SNOOZE",
-            "OWNER_ROUTINES_REVIEW",
-            "OWNER_ROUTINES_SCHEDULE_SUMMARY",
-            "OWNER_ROUTINES_SCHEDULE_INSPECT",
-            "TODO",
-            "REPLY",
-            "IGNORE",
-            "STOP",
-          ],
-        },
-        response: {
-          json: {
-            text: "",
-            thought:
-              "Call TODO for Add a todo to cover natural language routing.",
-            messageToUser: "Added TODO scenario natural-language coverage.",
-            completed: true,
-            finishReason: "tool-calls",
-            toolCalls: [
-              {
-                id: "call-todo-create-nl",
-                name: "TODO",
-                type: "function",
-                arguments: {
-                  action: "create",
-                  content: "Prove TODO natural language routing",
-                  activeForm: "Proving TODO natural language routing",
-                  status: "pending",
-                },
-              },
-            ],
-          },
-        },
-      },
-    ],
-  },
+  modelFixtures: { mode: "fixtures", fixtures: [] },
   title: "Deterministic TODO action and CURRENT_TODOS provider coverage",
   domain: "todos",
   status: "active",

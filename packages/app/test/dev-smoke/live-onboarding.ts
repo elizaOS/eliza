@@ -1,7 +1,7 @@
-// Shared harness for the dev-smoke live lane: boots against `bun run dev` (real
-// API + vite renderer), completes a real local-runtime first-run using the
-// selected live provider, and drives the real chat UI. Used by every
-// bun-dev-*.spec.ts so the onboarding/chat plumbing lives in one place.
+/**
+ * Runs live onboarding and chat against the actual development API and renderer.
+ * Shared by dev-smoke specs; setup awaits the selected provider activation receipt.
+ */
 
 import { expect, type Locator, type Page } from "@playwright/test";
 import { buildFirstRunRuntimeConfig } from "../../../app-core/src/first-run/first-run-config";
@@ -9,6 +9,7 @@ import {
   getFirstRunProviderForLiveProvider,
   selectLiveProvider,
 } from "../../../app-core/test/helpers/live-provider";
+import { waitForFirstRunActivation } from "../../../ui/src/api/first-run-activation";
 import {
   ExpectedDevSmokeFailureMatcher,
   isExpectedDevSmokeConsoleError,
@@ -206,6 +207,9 @@ export async function submitFirstRun(
       `First-run submission failed with ${response.status}: ${await response.text()}`,
     );
   }
+  await waitForFirstRunActivation(await response.json(), (id) =>
+    fetchJson(`${API_BASE}/api/first-run/activation/${encodeURIComponent(id)}`),
+  );
 }
 
 /** Boot the real runtime and complete onboarding once (idempotent across specs). */

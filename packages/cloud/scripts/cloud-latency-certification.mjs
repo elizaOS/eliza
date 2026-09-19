@@ -505,7 +505,7 @@ async function runPaired({ deploySha, sourceSha, outputDir, env }) {
         "--direct-api-key-env",
         "CEREBRAS_API_KEY",
         "--case",
-        "gemma-4-31b@omit@512",
+        "qwen-3.8-27b@omit@512",
         "--repeat",
         "20",
         "--idle-ms",

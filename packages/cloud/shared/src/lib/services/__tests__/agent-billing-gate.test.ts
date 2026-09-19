@@ -6,9 +6,10 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const findById = mock();
 
-mock.module("../../../db/repositories", () => ({
-  organizationsRepository: {
-    findById,
+mock.module("../agent-funding-account", () => ({
+  readAgentFundingAccount: async (id: string) => {
+    const account = await findById(id);
+    return account ? { eligible_subscription_allowance: "0.000000", ...account } : null;
   },
 }));
 
@@ -64,6 +65,14 @@ describe("parseGateCreditBalance", () => {
 });
 
 describe("checkAgentCreditGate", () => {
+  test.each([
+    ["0.099999", false],
+    ["0.100000", true],
+  ] as const)("the minimum funding threshold admits balance %s: %s", async (balance, allowed) => {
+    findById.mockResolvedValue({ credit_balance: balance });
+    expect((await checkAgentCreditGate("org-exact-threshold")).allowed).toBe(allowed);
+  });
+
   test("allows an org with a healthy balance above the minimum deposit", async () => {
     findById.mockResolvedValue({ credit_balance: "25.00" });
 
@@ -74,7 +83,7 @@ describe("checkAgentCreditGate", () => {
     expect(result.error).toBeUndefined();
   });
 
-  test("denies an org at or below the minimum deposit with a funding message", async () => {
+  test("denies an org below the minimum deposit with a funding message", async () => {
     findById.mockResolvedValue({ credit_balance: "0.05" });
 
     const result = await checkAgentCreditGate("org-broke");
@@ -206,11 +215,31 @@ describe("checkAgentTierUpgradeCreditGate", () => {
     expect(result.error).toContain("$0.22");
   });
 
-  test("allows an upgrade only above the dedicated-hosting threshold", async () => {
-    findById.mockResolvedValue({ credit_balance: "0.73" });
+  test("allows an upgrade at the dedicated-hosting threshold", async () => {
+    findById.mockResolvedValue({ credit_balance: "0.72" });
 
     const result = await checkAgentTierUpgradeCreditGate("org-funded-upgrade");
 
-    expect(result).toEqual({ allowed: true, balance: 0.73 });
+    expect(result).toEqual({ allowed: true, balance: 0.72 });
   });
+});
+
+test("admits a subscriber with no purchased credits using eligible hosting allowance", async () => {
+  findById.mockResolvedValue({
+    credit_balance: "0.000000",
+    eligible_subscription_allowance: "25.000000",
+  });
+  expect(await checkAgentTierUpgradeCreditGate("org-subscriber")).toEqual({
+    allowed: true,
+    balance: 25,
+  });
+});
+test("denies an exhausted subscriber and reports the remaining funding deficit", async () => {
+  findById.mockResolvedValue({
+    credit_balance: "0.200000",
+    eligible_subscription_allowance: "0.100000",
+  });
+  const result = await checkAgentTierUpgradeCreditGate("org-exhausted");
+  expect(result.allowed).toBe(false);
+  expect(result.error).toContain("$0.42");
 });

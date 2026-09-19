@@ -11,6 +11,20 @@ title = "elizaOS gitleaks config"
 # Pull in upstream default ruleset.
 useDefault = true
 
+# Provider trajectory tests intentionally repeat this invented credential to
+# verify that full recorded text still redacts configured secrets. Match only
+# this fixture in its owning test; all other values remain scanned.
+[[allowlists]]
+description = "Provider trajectory recording synthetic redaction canary"
+condition = "AND"
+paths = [
+  '''(^|/)packages/core/src/__tests__/compose-state-trajectory-recording\.test\.ts$''',
+]
+regexTarget = "secret"
+regexes = [
+  '''^sk-trajectory-recording-secret-canary-1234567890$''',
+]
+
 # Android routing audits pin the SHA-256 of the complete public analytics script
 # shipped by @coinbase/wallet-sdk 4.3.6. This is an integrity digest, not an access
 # token. Match only this digest in its owning file; other values remain scanned.
@@ -360,3 +374,22 @@ regexTarget = "line"
 regexes = [
   '''^\s*(?:process\.env\.STRIPE_SECRET_KEY\s*=\s*|STRIPE_SECRET_KEY:\s*)"(?:sk_test_cancellationfixture|sk_test_renewalfixture|sk_test_terminalfixture|sk_test_validfixture)"[;,]?\s*$''',
 ]
+
+# These fixed sentinels select the controlled Stripe transport in checkout tests.
+[[allowlists]]
+description = "Checkout controlled-transport fixture sentinel"
+condition = "AND"
+paths = [
+  '''(^|/)packages/cloud/shared/src/db/repositories/subscription-checkout\.pglite\.test\.ts$''',
+  '''(^|/)packages/cloud/shared/src/lib/services/subscription-checkout\.pglite\.test\.ts$''',
+]
+regexTarget = "line"
+regexes = ['''^\s*process\.env\.STRIPE_SECRET_KEY = "sk_test_checkoutfixture";\s*$''']
+
+# The generic-key heuristic reads a platform store name in prose as a credential.
+[[allowlists]]
+description = "Native credential store names in startup ordering comment"
+condition = "AND"
+paths = ['''(^|/)packages/app-core/src/api/server\.ts$''']
+regexTarget = "line"
+regexes = ['''^\s*// Bind before consulting native credential stores: Keychain/libsecret may\s*$''']

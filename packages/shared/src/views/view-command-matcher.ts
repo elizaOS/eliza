@@ -1232,6 +1232,7 @@ const COMPANION_ACTION_TARGETS = new Set([
 
 interface CompiledView {
   viewId: string;
+  noun: RegExp;
   re: RegExp;
 }
 
@@ -1398,6 +1399,7 @@ const COMPILED: CompiledView[] = VIEW_PRIORITY.filter(
   ].join("|");
   return {
     viewId,
+    noun: new RegExp(N, "iu"),
     re: new RegExp(
       `^${COMMAND_EDGE}${COMMAND_PREFIX}(?:${patterns})${COMMAND_SUFFIX}${COMMAND_EDGE}$`,
       "iu",
@@ -1477,9 +1479,11 @@ export function matchViewCommand(text: string | undefined): string | null {
   // "documentation") hijack it into an unrelated deterministic view.
   if (variants.some((variant) => CLOUD_APPS_MENTION_RE.test(variant)))
     return null;
-  for (const { viewId, re } of COMPILED) {
+  for (const { viewId, noun, re } of COMPILED) {
     for (const v of variants) {
-      if (re.test(v)) return viewId;
+      // Every full pattern requires this exact noun expression. Avoid compiling
+      // unrelated large command grammars on the first ordinary chat message.
+      if (noun.test(v) && re.test(v)) return viewId;
     }
   }
   return null;

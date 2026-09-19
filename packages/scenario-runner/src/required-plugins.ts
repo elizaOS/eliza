@@ -201,6 +201,8 @@ async function loadSimulatedAppControlPlugin(): Promise<Plugin | null> {
       mod.settingsAction,
     ],
     responseHandlerEvaluators: mod.appControlPlugin?.responseHandlerEvaluators,
+    responseHandlerFieldEvaluators:
+      mod.appControlPlugin?.responseHandlerFieldEvaluators,
   };
 }
 

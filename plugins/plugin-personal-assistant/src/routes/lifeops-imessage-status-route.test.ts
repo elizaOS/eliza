@@ -198,6 +198,7 @@ describe("LifeOps iMessage runtime status projection", () => {
   });
 
   it("reports Blooio provider API instead of native AppleScript", async () => {
+    runtime.setSetting("ELIZA_IMESSAGE_BACKEND", "none");
     const { context, response } = routeContext(runtime);
 
     await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
@@ -333,4 +334,45 @@ describe("LifeOps iMessage native transport projection", () => {
     });
     expect(response.body).not.toContain("full_disk_access_required");
   });
+});
+
+describe("isolated host iMessage status", () => {
+  it.each(["none", "disabled"])(
+    "does not admit native plugins when backend is %s",
+    async (backend) => {
+      const runtime = new AgentRuntime({
+        character: createCharacter({ name: "Isolated iMessage status" }),
+        disableBasicCapabilities: true,
+        enableAutonomy: false,
+        settings: { ELIZA_IMESSAGE_BACKEND: backend },
+        logLevel: "fatal",
+      });
+      await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+      Object.defineProperty(runtime, "adapter", {
+        value: null,
+        configurable: true,
+      });
+      // The sentinel rejects admission before any external plugin initializer runs.
+      let nativeAdmissions = 0;
+      runtime.registerPlugin = async () => {
+        nativeAdmissions += 1;
+        throw new Error("Native plugin admission is forbidden in this test");
+      };
+      try {
+        const { context, response } = routeContext(runtime);
+        await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+        expect(response.statusCode).toBe(200);
+        expect(JSON.parse(response.body)).toMatchObject({
+          available: false,
+          connected: false,
+          bridgeType: "none",
+          sendMode: "none",
+        });
+        expect(nativeAdmissions).toBe(0);
+        expect(runtime.getService("imessage")).toBeNull();
+      } finally {
+        await runtime.stop();
+      }
+    },
+  );
 });

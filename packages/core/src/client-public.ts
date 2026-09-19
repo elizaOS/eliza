@@ -19,4 +19,5 @@ export {
 	settingsDebugCloudSummary,
 } from "./settings-debug.ts";
 export { sanitizeSpeechText } from "./spoken-text.ts";
+export { normalizeEffectReceipts } from "./types/effects.ts";
 export { formatError } from "./utils/format-error.ts";

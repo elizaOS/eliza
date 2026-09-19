@@ -362,7 +362,7 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
     expect(spec).toContain("renderer-source");
   });
 
-  test("uploads only allowlisted closed staging artifacts", () => {
+  test("uploads only allowlisted closed Cloud diagnostics", () => {
     expect(cloudJob?.env?.ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV).toBe("production");
     const prodUploads = cloudJob?.steps?.filter((step) =>
       step.uses?.startsWith("actions/upload-artifact"),
@@ -370,7 +370,9 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
     const stagingUpload = stagingJob?.steps?.find((step) =>
       step.uses?.startsWith("actions/upload-artifact"),
     );
-    expect(prodUploads).toEqual([]);
+    expect(prodUploads?.map((step) => step.with?.path)).toEqual([
+      "packages/app/test-results/**/privacy-safe-trajectory-history-network-diagnostics.json",
+    ]);
     expect(stagingUpload?.with?.name).toBe("app-live-e2e-cloud-staging");
     const uploadedPaths = stagingUpload?.with?.path
       ?.split("\n")

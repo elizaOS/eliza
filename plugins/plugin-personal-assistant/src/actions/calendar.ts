@@ -22,6 +22,7 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  PromoteSubactionsOptions,
   State,
 } from "@elizaos/core";
 import {
@@ -44,7 +45,12 @@ import {
   isElizaCalendarGrant,
   isMicrosoftCalendarGrantId,
 } from "@elizaos/plugin-calendar";
-import { CALENDAR_DETAILS_PARAMETER_SCHEMA } from "@elizaos/plugin-calendar/calendar-action-schema";
+import {
+  CALENDAR_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
+} from "@elizaos/plugin-calendar/calendar-action-schema";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -1728,7 +1734,8 @@ export const calendarAction: Action & {
     {
       name: "action",
       description:
-        "Calendar op. feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, check_availability, propose_times, update_preferences.",
+        "Calendar op. feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, check_availability, propose_times, update_preferences. " +
+        "update_event and delete_event need a target in the same call: top-level query (the event in its own words) or details.eventId/details.oldTitle; without one the call fails with CALENDAR_TARGET_UNRESOLVED. create_event needs details.start.",
       required: false,
       schema: {
         type: "string" as const,
@@ -1789,7 +1796,7 @@ export const calendarAction: Action & {
       description:
         "For feed/search_events: details.timeMin/timeMax bound the date range and details.timeZone supplies its IANA timezone. For a full agenda use feed without query/queries. " +
         "Structured fields for create_event/update_event/delete_event. " +
-        "`start`/`end`: local wall-clock ISO-8601 WITHOUT any offset or Z (e.g. 2026-09-10T18:00:00 for 6pm); never convert to UTC. When supplying the owner's local new start/end, explicitly include `details.timeZone` with the owner's configured IANA timezone; an update otherwise interprets them in the existing event's timezone, which may differ. If the user names another timezone, use that IANA zone for these values. Aliases `startAt`/`endAt` and `startTime`/`endTime` accepted. " +
+        "`start`/`end`: local wall-clock ISO-8601 WITHOUT any offset or Z (e.g. 2026-09-10T18:00:00 for 6pm); never convert to UTC. When supplying the owner's local new start/end, explicitly include `details.timeZone` with the owner's configured IANA timezone; an update otherwise interprets them in the existing event's timezone, which may differ. If the user names another timezone, use that IANA zone for these values. " +
         "For a move or reschedule the time the user names ('to 6pm') is the new `start`; keep the event's previous duration for `end` unless the user gives a new end. " +
         "`details.date` selects the target event's current day, never the destination day of a move. " +
         "create_event: `{ subaction: 'create_event', title: 'Dentist', details: { calendarId: 'cal_primary', start: '...', end: '...', location: '...' } }`. " +
@@ -2059,4 +2066,45 @@ export const calendarAction: Action & {
       },
     ],
   ] as ActionExample[][],
+};
+
+/** Author the read contract at the domain boundary; promotion still owns
+ * discriminator pinning, delegation and the inherited authorization gates. */
+export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
+  overrides: {
+    ...Object.fromEntries(
+      (
+        [
+          ["feed", CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA],
+          ["search_events", CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA],
+        ] as const
+      ).map(([name, schema]) => [
+        name,
+        {
+          parameters: calendarAction.parameters?.map((parameter) =>
+            parameter.name === "details"
+              ? {
+                  ...parameter,
+                  description:
+                    "Optional calendar read bounds, IANA timezone, exact connector/calendar scope and refresh controls. Omit unknown values. Feed reads use selected calendars; searches include hidden calendars unless explicitly restricted.",
+                  schema,
+                }
+              : parameter,
+          ),
+        },
+      ]),
+    ),
+    next_event: {
+      parameters: calendarAction.parameters?.map((parameter) =>
+        parameter.name === "details"
+          ? {
+              ...parameter,
+              description:
+                "Optional exact calendar selection and IANA timezone for the next-event read. Omit unknown values; the configured timezone and selected calendar feed are the defaults.",
+              schema: CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
+            }
+          : parameter,
+      ),
+    },
+  },
 };

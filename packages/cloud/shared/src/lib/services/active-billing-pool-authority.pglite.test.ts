@@ -89,6 +89,7 @@ beforeAll(async () => {
       "authorization" text NOT NULL DEFAULT 'billing_request',
       status text NOT NULL DEFAULT 'pending',
       job_id uuid,
+      prepared_backup jsonb,
       attempts integer NOT NULL DEFAULT 0,
       last_error text,
       next_attempt_at timestamptz NOT NULL DEFAULT now(),

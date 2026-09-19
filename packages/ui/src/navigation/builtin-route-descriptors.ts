@@ -26,7 +26,21 @@ interface CanonicalBuiltinRouteDescriptor {
   /** Retired browser paths that redirect to this canonical route. */
   readonly legacyPaths?: readonly string[];
   readonly surface?: BuiltinRouteSurfaceDeclaration;
+  /** Dynamic children composed by this builtin's host-owned renderer. */
+  readonly dynamicChildren?: readonly BuiltinDynamicViewDescriptor[];
 }
+
+interface BuiltinDynamicViewDescriptor {
+  readonly viewId: string;
+  readonly bundleUrl: string;
+  readonly componentExport: string;
+}
+
+export const DATABASE_VECTOR_VIEW = Object.freeze({
+  viewId: "vector-browser",
+  bundleUrl: "/api/views/vector-browser/bundle.js",
+  componentExport: "VectorBrowserView",
+});
 
 interface BuiltinRouteAliasDescriptor {
   readonly aliasOf: string;
@@ -177,7 +191,11 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
   skills: { path: "/apps/skills", layout: WORKSPACE_LAYOUT },
   trajectories: { path: "/apps/trajectories", layout: WORKSPACE_LAYOUT },
   transcripts: { path: "/apps/transcripts", layout: CONTENT_LAYOUT },
-  relationships: { path: "/apps/relationships", layout: WORKSPACE_LAYOUT },
+  relationships: {
+    path: "/apps/relationships",
+    layout: WORKSPACE_LAYOUT,
+    legacyPaths: ["/rolodex"],
+  },
   experience: { path: "/character/experience", layout: FRAMED_PAGE_LAYOUT },
   "character-skills": {
     path: "/character/skills",
@@ -188,9 +206,13 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
     layout: FRAMED_PAGE_LAYOUT,
     surface: { background: "opaque" },
   },
-  rolodex: { path: "/rolodex", layout: CONTENT_LAYOUT },
+  rolodex: { aliasOf: "relationships" },
   runtime: { path: "/apps/runtime", layout: WORKSPACE_LAYOUT },
-  database: { path: "/apps/database", layout: FRAMED_PAGE_LAYOUT },
+  database: {
+    path: "/apps/database",
+    layout: FRAMED_PAGE_LAYOUT,
+    dynamicChildren: [DATABASE_VECTOR_VIEW],
+  },
   desktop: { path: "/desktop", layout: FULL_WORKSPACE_LAYOUT },
   settings: { path: "/settings", layout: FULL_WORKSPACE_LAYOUT },
   vault: { path: "/vault", layout: FRAMED_PAGE_LAYOUT },
