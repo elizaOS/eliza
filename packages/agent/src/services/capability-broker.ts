@@ -23,11 +23,12 @@
  * record. The file is truncated at broker boot if it exceeds 50MB.
  */
 
-import { appendFileSync, mkdirSync, statSync, truncateSync } from "node:fs";
+import { mkdirSync, statSync, truncateSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import {
+  appendJsonlRecord,
   type DistributionProfile,
   type RuntimeExecutionMode,
   resolveDistributionProfile,
@@ -461,7 +462,9 @@ export class CapabilityBroker {
       this.recent.splice(0, this.recent.length - RECENT_DECISION_BUFFER);
     }
     try {
-      appendFileSync(this.auditFilePath, `${JSON.stringify(record)}\n`, "utf8");
+      // Isolates a line torn by an interrupted earlier append so this decision
+      // stays readable on its own line of the audit trail.
+      appendJsonlRecord(this.auditFilePath, record);
     } catch (err) {
       // The audit boundary is the only place we tolerate a catch — but we
       // surface the failure structurally rather than swallowing it. A broken

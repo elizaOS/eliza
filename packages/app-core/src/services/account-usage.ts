@@ -10,13 +10,14 @@
  *
  * The probes throw on HTTP error so the caller can decide whether to mark
  * the account as `rate-limited` / `needs-reauth` / `invalid`. The counters
- * are best-effort and synchronous — at our scale appendFileSync is fine.
+ * are best-effort and synchronous — at our scale a synchronous append is fine.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fetchCodexUsage } from "@elizaos/auth/codex-usage";
 import { ElizaError, resolveStateDir } from "@elizaos/core";
+import { appendJsonlRecord } from "@elizaos/shared";
 import type { LinkedAccountUsage } from "@elizaos/shared/contracts/service-routing";
 
 /**
@@ -348,10 +349,9 @@ export function recordCall(
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
-  appendFileSync(file, `${JSON.stringify(line)}\n`, {
-    flag: "a",
-    mode: 0o600,
-  });
+  // Isolates a line torn by an interrupted earlier append; otherwise this
+  // record would land on that line and readTodayCounters would drop both.
+  appendJsonlRecord(file, line, { mode: 0o600 });
 }
 
 export interface DailyCounters {

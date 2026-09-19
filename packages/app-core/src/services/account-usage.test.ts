@@ -660,6 +660,26 @@ describe("local JSONL usage counters", () => {
     expect(readTodayCounters("anthropic", "acct-1").tokens).toBe(5);
   });
 
+  it("counts the record written after a crash-torn line", () => {
+    recordCall("anthropic", "acct-1", { ok: true, tokens: 10 });
+    const dir = path.join(stateDir, "usage", "anthropic", "acct-1");
+    const [file] = readdirSync(dir);
+    // An append interrupted before its trailing newline. A plain append would
+    // put the next record on this same line and the reader would skip both.
+    appendFileSync(path.join(dir, file), '{"ts":1,"tokens":');
+
+    recordCall("anthropic", "acct-1", { ok: true, tokens: 7 });
+
+    const lines = readFileSync(path.join(dir, file), "utf-8").split("\n");
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe('{"ts":1,"tokens":');
+    expect(readTodayCounters("anthropic", "acct-1")).toEqual({
+      calls: 2,
+      tokens: 17,
+      errors: 0,
+    });
+  });
+
   it("creates the day directory on demand and writes a real file", () => {
     expect(existsSync(path.join(stateDir, "usage"))).toBe(false);
     recordCall("anthropic", "acct-1", { ok: true });
