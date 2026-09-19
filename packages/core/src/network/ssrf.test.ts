@@ -279,9 +279,13 @@ describe("isPrivateIpAddress: IPv6 transition ranges embedding IPv4 (SSRF bypass
 		for (const addr of [
 			"64:ff9b::a9fe:a9fe", // 169.254.169.254
 			"64:ff9b::169.254.169.254", // dotted tail form
-			"64:ff9b:1::a9fe:a9fe", // RFC 8215 local-use prefix, same embedding
-			"64:ff9b:1::7f00:1", // local-use prefix for 127.0.0.1
+			"64:ff9b:1::a9fe:a9fe", // RFC 8215 local-use prefix, /96 embedding
+			"64:ff9b:1::7f00:1", // local-use prefix for 127.0.0.1 (/96 embedding)
 			"64:ff9b:1:abcd::a9fe:a9fe", // local-use prefix with a site subnet
+			"64:ff9b:1:0:a:0:100:0", // local-use /64 translator embedding 10.0.0.1
+			"64:ff9b:1:0:7f:0:100:0", // local-use /64 translator embedding 127.0.0.1
+			"64:ff9b:1:a00:1::", // local-use /48 translator embedding 10.0.0.1
+			"64:ff9b:1::808:808", // local-use space is never globally routable, even for a public embedding
 			"64:ff9b::7f00:1", // 127.0.0.1
 			"64:ff9b::a00:1", // 10.0.0.1
 			"64:ff9b::c0a8:101", // 192.168.1.1

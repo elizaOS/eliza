@@ -94,11 +94,6 @@ function embeddedIpv4ForPolicy(hextets: number[]): number[] | null {
       return low32ToIpv4();
     }
   }
-  // NAT64 local-use prefix 64:ff9b:1::/48 (RFC 8215) — a site-local translator
-  // maps the same low 32 bits, so it screens like the well-known prefix.
-  if (h0 === 0x64 && h1 === 0xff9b && h2 === 0x1) {
-    return low32ToIpv4();
-  }
   // 6to4 2002::/16 — embedded IPv4 sits in bits 16..48.
   if (h0 === 0x2002) {
     return [(h1 >> 8) & 0xff, h1 & 0xff, (h2 >> 8) & 0xff, h2 & 0xff];
@@ -145,6 +140,18 @@ function isForbiddenIpv4(address: string): boolean {
   return false;
 }
 
+/**
+ * NAT64 local-use prefix 64:ff9b:1::/48 (RFC 8215). A site translator carves
+ * its own RFC 6052 network-specific prefix out of it (/48 through /96), each
+ * placing the embedded IPv4 at a different bit offset, so the literal alone
+ * does not say which IPv4 the packet reaches. The range is not globally
+ * routable, so every address in it is forbidden rather than decoding one
+ * embedding and letting the others through. Ported from core ssrf.ts.
+ */
+function isNat64LocalUsePrefix(hextets: number[]): boolean {
+  return hextets[0] === 0x64 && hextets[1] === 0xff9b && hextets[2] === 0x1;
+}
+
 function isForbiddenIpv6(address: string): boolean {
   const normalized = normalizeHostname(address);
 
@@ -156,6 +163,7 @@ function isForbiddenIpv6(address: string): boolean {
     if ((first & 0xfe00) === 0xfc00) return true; // fc00::/7 unique-local
     if ((first & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
     if (first === 0x2001 && second === 0x0db8) return true; // 2001:db8::/32 documentation
+    if (isNat64LocalUsePrefix(hextets)) return true;
 
     // Transition ranges (IPv4-mapped/compatible, NAT64, 6to4, Teredo) embed an
     // IPv4 the network may translate the literal to — e.g. a daemon on a

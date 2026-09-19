@@ -302,12 +302,6 @@ function embeddedIpv4ForPolicy(hextets: number[]): number[] | null {
 			return low32ToIpv4();
 		}
 	}
-	// NAT64 local-use prefix 64:ff9b:1::/48 (RFC 8215) — a site-local
-	// translator maps the same low 32 bits, so it screens like the well-known
-	// prefix. Bits 48..96 carry the deployment's own subnet and are ignored.
-	if (h0 === 0x64 && h1 === 0xff9b && h2 === 0x1) {
-		return low32ToIpv4();
-	}
 	// 6to4 2002::/16 — embedded IPv4 sits in bits 16..48.
 	if (h0 === 0x2002) {
 		return [(h1 >> 8) & 0xff, h1 & 0xff, (h2 >> 8) & 0xff, h2 & 0xff];
@@ -322,6 +316,18 @@ function embeddedIpv4ForPolicy(hextets: number[]): number[] | null {
 		];
 	}
 	return null;
+}
+
+/**
+ * NAT64 local-use prefix 64:ff9b:1::/48 (RFC 8215). A site translator carves
+ * its own RFC 6052 network-specific prefix out of it (/48 through /96), and
+ * each length places the embedded IPv4 at a different bit offset, so the
+ * literal alone does not say which IPv4 the packet reaches. The range is
+ * defined as not globally routable, so every address in it is treated as
+ * internal rather than decoding one embedding and letting the others through.
+ */
+function isNat64LocalUsePrefix(hextets: number[]): boolean {
+	return hextets[0] === 0x64 && hextets[1] === 0xff9b && hextets[2] === 0x1;
 }
 
 function isPrivateIpv6(address: string): boolean {
@@ -344,6 +350,7 @@ function isPrivateIpv6(address: string): boolean {
 	// also covers leading-"::" spellings the first-hextet scan above can't see.
 	const hextets = parseIpv6Hextets(address);
 	if (hextets) {
+		if (isNat64LocalUsePrefix(hextets)) return true;
 		const embedded = embeddedIpv4ForPolicy(hextets);
 		if (embedded && isPrivateIpv4(embedded)) {
 			return true;
