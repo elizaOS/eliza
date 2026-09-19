@@ -50,6 +50,7 @@ export const codingSessionChangesProvider: Provider = {
   // into the always-on response state set without core naming the plugin.
   // Self-limiting: emits empty text unless a recent change set exists.
   alwaysInResponseState: true,
+  stage1ResponseState: true,
   cacheStable: false,
   cacheScope: "turn",
 

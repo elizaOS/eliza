@@ -911,6 +911,16 @@ export interface Provider {
 	 */
 	alwaysInResponseState?: boolean;
 
+	/**
+	 * Typed opt-in for providers whose state must inform the Stage-1 response
+	 * decision itself — a pending choice, approval, permission, or correction
+	 * the routing turn has to see before contexts are selected. Composed on
+	 * every Stage-1 turn regardless of selected contexts, under the same role,
+	 * privacy, and disclosure gates as the core Stage-1 list. Distinct from
+	 * {@link alwaysInResponseState}, which is planning-only.
+	 */
+	stage1ResponseState?: boolean;
+
 	/** Optional role gate checked before including this provider. */
 	roleGate?: RoleGate;
 

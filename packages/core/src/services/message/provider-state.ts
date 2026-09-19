@@ -72,6 +72,37 @@ export function alwaysOnResponseStateProviderNames(
 }
 
 /**
+ * Names of authorized providers that explicitly opt into the Stage-1 response
+ * decision through the typed `stage1ResponseState` flag. A pending choice,
+ * approval, or permission must be visible on the turn where the decision
+ * arrives, before context routing has run; the legacy planning-only flag is not
+ * enough. Every admission runs the same privacy and role gates as the core
+ * Stage-1 list, so the opt-in cannot widen disclosure.
+ */
+export function stage1OptInProviderNames(
+	runtime: IAgentRuntime,
+	userRoles?: readonly RoleGateRole[],
+): string[] {
+	const providers = Array.isArray(runtime.providers)
+		? (runtime.providers as Provider[])
+		: [];
+	const names: string[] = [];
+	for (const provider of providers) {
+		const name = provider.name?.trim();
+		if (
+			provider.stage1ResponseState &&
+			name &&
+			!provider.private &&
+			satisfiesRoleGate(userRoles, provider.roleGate) &&
+			satisfiesRoleGate(userRoles, provider.contextGate?.roleGate)
+		) {
+			names.push(name);
+		}
+	}
+	return names;
+}
+
+/**
  * Provider names that must NEVER be rendered as text blocks in the v5
  * ContextObject because they're already conveyed through another channel:
  *   - ACTIONS / PROVIDERS / ACTION_STATE: meta-listings — the planner sees
@@ -295,10 +326,12 @@ export function stage1ResponseStateProviderNames(
 	userRoles?: readonly RoleGateRole[],
 ): string[] {
 	// Explicit benchmark evidence is part of this incoming request, not retrieved domain state.
-	return [
+	const candidates = [
 		...STAGE1_RESPONSE_STATE_PROVIDERS,
+		...stage1OptInProviderNames(runtime, userRoles),
 		...(hasInboundBenchmarkContext(message) ? ["CONTEXT_BENCH"] : []),
-	].filter((name) => {
+	];
+	return [...new Set(candidates)].filter((name) => {
 		const provider = runtime.providers?.find((entry) => entry.name === name);
 		return (
 			!provider ||
@@ -316,7 +349,8 @@ export async function composeResponseState(
 ): Promise<State> {
 	const needsRole = runtime.providers?.some(
 		(provider) =>
-			STAGE1_RESPONSE_STATE_PROVIDERS.some((name) => name === provider.name) &&
+			(STAGE1_RESPONSE_STATE_PROVIDERS.some((name) => name === provider.name) ||
+				provider.stage1ResponseState) &&
 			(provider.roleGate || provider.contextGate?.roleGate),
 	);
 	const roles = needsRole

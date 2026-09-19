@@ -17,6 +17,7 @@ export const agreementPinsProvider: Provider = {
     "Owner-approved, page-cited parenting-agreement obligations from active pins.",
   dynamic: true,
   alwaysInResponseState: true,
+  stage1ResponseState: true,
   position: -8,
   cacheScope: "turn",
 

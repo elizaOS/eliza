@@ -107,8 +107,8 @@ async function expectPendingRowSurfaced(
   const runtime = requireRuntime(ctx);
   const requestId = seededApprovalRequestId(ctx);
   const provider = findPendingApprovalsProvider(runtime);
-  if (provider.alwaysInResponseState !== true) {
-    return "pendingApprovals must be alwaysInResponseState so Stage-1 routing sees the queue before contexts are selected";
+  if (provider.stage1ResponseState !== true) {
+    return "pendingApprovals must declare stage1ResponseState so Stage-1 routing sees the queue before contexts are selected";
   }
   const result = await provider.get(
     runtime,

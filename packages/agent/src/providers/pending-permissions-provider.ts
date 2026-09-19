@@ -126,6 +126,7 @@ export const pendingPermissionsProvider: Provider = {
   // on the very turn that needs it instead of being materialized as `general`
   // and filtered out before the model call.
   alwaysInResponseState: true,
+  stage1ResponseState: true,
   disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   position: -5,
   cacheStable: false,

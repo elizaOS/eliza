@@ -13,6 +13,7 @@ export const pendingAppControlChoicesProvider: Provider = {
 	description:
 		"Pending app, view, and model-target choices in this conversation.",
 	alwaysInResponseState: true,
+	stage1ResponseState: true,
 	cacheStable: false,
 	cacheScope: "turn",
 	roleGate: { minRole: "OWNER" },

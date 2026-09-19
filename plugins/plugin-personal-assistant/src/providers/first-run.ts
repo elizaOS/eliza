@@ -105,6 +105,7 @@ export const firstRunProvider: Provider = {
   // it self-gates on owner access and surface (same shape as
   // `pendingApprovals`).
   alwaysInResponseState: true,
+  stage1ResponseState: true,
   contexts: ["general", "settings", "system"],
   contextGate: { anyOf: ["general", "settings", "system"] },
   roleGate: { minRole: "OWNER" },

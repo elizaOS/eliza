@@ -211,6 +211,58 @@ describe("stage1ResponseStateProviderNames", () => {
 		},
 	);
 
+	it("admits a typed Stage-1 opt-in before context selection but keeps the legacy flag planning-only", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "stage1-opt-in" } as Character,
+		});
+		const optedIn = countingProvider("pending-approvals");
+		optedIn.provider.stage1ResponseState = true;
+		// A provider that declares BOTH flags must still respect role/private gates.
+		const privateOptedIn = countingProvider("pending-permissions");
+		privateOptedIn.provider.stage1ResponseState = true;
+		privateOptedIn.provider.private = true;
+		const ownerGated = countingProvider("owner-only-choices");
+		ownerGated.provider.stage1ResponseState = true;
+		ownerGated.provider.roleGate = { minRole: "OWNER" };
+		// Legacy planning-only providers must NOT expand Stage 1.
+		const planningOnly = countingProvider("uiWidgetCapabilities");
+		planningOnly.provider.alwaysInResponseState = true;
+		for (const item of [optedIn, privateOptedIn, ownerGated, planningOnly])
+			runtime.registerProvider(item.provider);
+
+		const message = makeMessage(
+			"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb7",
+			"approve that for now",
+			{
+				channelType: ChannelType.DM,
+				mentionContext: { isMention: true, isReply: false, isThread: false },
+			},
+		);
+		const names = stage1ResponseStateProviderNames(runtime, message, ["OWNER"]);
+		expect(names).toContain("pending-approvals");
+		expect(names).toContain("owner-only-choices");
+		expect(names).not.toContain("pending-permissions");
+		expect(names).not.toContain("uiWidgetCapabilities");
+
+		const state = await composeResponseState(runtime, message);
+		const context = await createV5MessageContextObject({
+			runtime,
+			message,
+			state,
+			userRoles: ["OWNER"],
+		});
+		const wire = JSON.stringify(
+			renderMessageHandlerModelInput(runtime, context).messages,
+		);
+		expect(wire).toContain("pending-approvals#1");
+		expect(optedIn.calls()).toBe(1);
+		expect(planningOnly.calls()).toBe(0);
+		// The disclosure gate still applies to the typed opt-in.
+		expect(
+			stage1ResponseStateProviderNames(runtime, message, ["GUEST"]),
+		).not.toContain("owner-only-choices");
+	});
+
 	it("renders stored pending choices and incoming selected values before a reply decision", async () => {
 		const runtime = new AgentRuntime({
 			character: { name: "choices" } as Character,

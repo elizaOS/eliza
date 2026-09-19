@@ -7,11 +7,11 @@
  * Without this live view the model has no in-prompt signal that a queue row
  * exists: an owner saying "don't send it, reject that for now" reads like
  * conversation, the reply confirms a hold, and the approval stays `pending`
- * forever (#14630). The provider is `alwaysInResponseState` because Stage-1
- * routing names candidate actions before context routing has run — the queue
- * must be visible on the turn where the decision arrives, whatever contexts
- * that turn classifies into. The happy-path render is empty and the read is
- * one bounded SQL, per the always-on provider contract.
+ * forever (#14630). The provider declares `stage1ResponseState` because
+ * Stage-1 routing names candidate actions before context routing has run — the
+ * queue must be visible on the turn where the decision arrives, whatever
+ * contexts that turn classifies into. The happy-path render is empty and the
+ * read is one bounded SQL, per the always-on provider contract.
  */
 import { hasOwnerAccess } from "@elizaos/agent";
 import type {
@@ -69,6 +69,7 @@ export const pendingApprovalsProvider: Provider = {
   // Stage-1 grounding (see header): bypass context routing so the queue is
   // visible on the very turn the owner's decision arrives.
   alwaysInResponseState: true,
+  stage1ResponseState: true,
   // Just ahead of the lifeops capability provider (12) so the live queue
   // state precedes the routing prose.
   position: 11,
