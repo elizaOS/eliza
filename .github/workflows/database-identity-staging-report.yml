@@ -65,9 +65,7 @@ jobs:
 
       - name: Build required linked runtime
         run: |
-          bun run --cwd packages/prompts build:package
-          bun run --cwd packages/shared build
-          bun run --cwd packages/core build
+          bun run build:core
 
       - name: Probe fixed runtime dependencies
         run: bun run packages/cloud/scripts/admin/preflight-database-identity.ts --probe-dependencies
