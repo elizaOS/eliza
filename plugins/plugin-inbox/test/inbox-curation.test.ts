@@ -204,6 +204,71 @@ describe("InboxService.triageWithCuration", () => {
   });
 });
 
+describe("policy add_reason projection (#29532)", () => {
+  const candidate = (id: string): EmailCurationCandidate => ({
+    id,
+    threadId: null,
+    subject: "Hello",
+    snippet: "hi",
+    body: { text: "Hello world", contentType: "text/plain" as const },
+    from: "Alice Example <alice@example.com>",
+    fromEmail: "alice@example.com",
+    to: [],
+    cc: [],
+    labels: [],
+    headers: {},
+  });
+
+  it("projects an add_reason policy effect into decision reasons and rationale", () => {
+    const policyHook: EmailCurationPolicyHook = (_ctx) => [
+      {
+        kind: "add_reason",
+        code: "vip_retention",
+        message: "VIP sender is under a retention policy.",
+        citation: {
+          id: "policy-cite",
+          source: "policy",
+          label: "retention policy",
+        },
+      },
+    ];
+    const out = curateEmailCandidates({
+      candidates: [candidate("reason-msg")],
+      now: "2026-08-23T00:00:00.000Z",
+      policyHook,
+    });
+
+    const decision = out.decisions.find((d) => d.candidateId === "reason-msg");
+    expect(decision).toBeDefined();
+    // The effect is recorded verbatim.
+    expect(
+      decision?.policyEffects.some((e) => e.code === "vip_retention"),
+    ).toBe(true);
+    // ...and reaches the reviewer-facing reasons.
+    const reason = decision?.reasons.find((r) => r.code === "policy");
+    expect(reason?.reviewText).toBe("VIP sender is under a retention policy.");
+    expect(reason?.citations.map((c) => c.id)).toEqual(["policy-cite"]);
+    // Because a reason now exists, the rationale no longer claims "insufficient signal".
+    expect(decision?.bulkReview.rationale).toContain("retention policy");
+    expect(decision?.bulkReview.rationale).not.toContain("insufficient signal");
+  });
+
+  it("omits policy reasons when the hook adds none", () => {
+    const policyHook: EmailCurationPolicyHook = () => [
+      { kind: "force_review", code: "no_reason", message: "forced" },
+    ];
+    const out = curateEmailCandidates({
+      candidates: [candidate("no-policy-reason")],
+      now: "2026-08-23T00:00:00.000Z",
+      policyHook,
+    });
+    const decision = out.decisions.find(
+      (d) => d.candidateId === "no-policy-reason",
+    );
+    expect(decision?.reasons.every((r) => r.code !== "policy")).toBe(true);
+  });
+});
+
 describe("email curation safe sort (NaN + tiebreak)", () => {
   it("orders via curateEmailCandidates with NaN confidence tiebreak by candidateId", () => {
     const baseCandidates: EmailCurationCandidate[] = [
