@@ -25,7 +25,7 @@
 		},
 		"incremental": false
 	},
-	"include": ["src/**/*.ts", "../@schemas/**/*.ts"],
+	"include": ["src/**/*.ts"],
 	"exclude": [
 		"vitest.config.ts",
 		"node_modules",
