@@ -1,8 +1,7 @@
-// Diff analyzers on synthetic before/after pairs. diff.change: identical → 0,
-// different → high. diff.region: a known changed rectangle clusters to one box
-// whose normalized position is within tolerance of where it was drawn, and the
-// per-region expectations (change / static) evaluate to the right pass/fail.
-// Baseline is supplied via a caller ctx.baselineResolver — no hardcoded dir.
+/**
+ * Image-diff analyzers evaluate real synthetic before/after images and normalized
+ * region expectations, including unavailable baselines and invalid boxes.
+ */
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -80,18 +79,39 @@ describe("diffRegionAnalyzer", () => {
     return { before, after };
   };
 
-  it("finds the changed rectangle as a region within tolerance", async () => {
+  it("locates a changed rectangle and evaluates change/static expectations", async () => {
     const { before, after } = await buildPair();
-    const ctx: AnalyzerContext = {
+    const result = await diffRegionAnalyzer.analyze(inputFor(after), {
       tier: "cpu",
       baselineResolver: () => before,
-    };
-    const result = await diffRegionAnalyzer.analyze(inputFor(after), ctx);
+      expectations: {
+        "visual/x/after.png": {
+          regions: [
+            {
+              kind: "change",
+              label: "banner",
+              region: { x: 0.2, y: 0.35, w: 0.6, h: 0.3 },
+            },
+            {
+              kind: "static",
+              label: "header",
+              region: { x: 0, y: 0, w: 1, h: 0.2 },
+            },
+            {
+              kind: "static",
+              label: "should-not-move",
+              region: { x: 0.2, y: 0.35, w: 0.6, h: 0.3 },
+            },
+          ],
+        },
+      },
+    });
     expect(result.status).toBe("ran");
     if (result.status !== "ran") return;
     const data = result.data as {
       changed_fraction: number;
       regions: { x: number; y: number; w: number; h: number }[];
+      assertions: { label: string; ok: boolean }[];
     };
     expect(data.changed_fraction).toBeGreaterThan(0);
     expect(data.regions.length).toBeGreaterThanOrEqual(1);
@@ -103,65 +123,13 @@ describe("diffRegionAnalyzer", () => {
     expect(top.y).toBeGreaterThanOrEqual(0.28);
     expect(top.y).toBeLessThanOrEqual(0.48);
     expect(top.w).toBeGreaterThan(0.3);
-  });
-
-  it("passes a change-expected region and a static-expected region correctly", async () => {
-    const { before, after } = await buildPair();
-    const ctx: AnalyzerContext = {
-      tier: "cpu",
-      baselineResolver: () => before,
-      expectations: {
-        "visual/x/after.png": {
-          regions: [
-            // The rect band is expected to change.
-            {
-              kind: "change",
-              label: "banner",
-              region: { x: 0.2, y: 0.35, w: 0.6, h: 0.3 },
-            },
-            // The top strip is expected to stay static.
-            {
-              kind: "static",
-              label: "header",
-              region: { x: 0, y: 0, w: 1, h: 0.2 },
-            },
-          ],
-        },
-      },
-    };
-    const result = await diffRegionAnalyzer.analyze(inputFor(after), ctx);
-    if (result.status !== "ran") throw new Error("expected ran");
-    const data = result.data as {
-      assertions: { label: string; ok: boolean }[];
-    };
-    const byLabel = Object.fromEntries(
-      data.assertions.map((a) => [a.label, a.ok]),
-    );
-    expect(byLabel.banner).toBe(true);
-    expect(byLabel.header).toBe(true);
-  });
-
-  it("fails a static-expected region that actually changed", async () => {
-    const { before, after } = await buildPair();
-    const ctx: AnalyzerContext = {
-      tier: "cpu",
-      baselineResolver: () => before,
-      expectations: {
-        "visual/x/after.png": {
-          regions: [
-            {
-              kind: "static",
-              label: "should-not-move",
-              region: { x: 0.2, y: 0.35, w: 0.6, h: 0.3 },
-            },
-          ],
-        },
-      },
-    };
-    const result = await diffRegionAnalyzer.analyze(inputFor(after), ctx);
-    if (result.status !== "ran") throw new Error("expected ran");
-    const data = result.data as { assertions: { ok: boolean }[] };
-    expect(data.assertions[0].ok).toBe(false);
+    expect(
+      Object.fromEntries(data.assertions.map((a) => [a.label, a.ok])),
+    ).toEqual({
+      banner: true,
+      header: true,
+      "should-not-move": false,
+    });
   });
 
   it("skips honestly when no baseline resolves", async () => {
