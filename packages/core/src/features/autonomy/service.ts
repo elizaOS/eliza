@@ -659,16 +659,25 @@ export class AutonomyService extends Service {
 	private async buildEntityNameLookup(
 		entityIds: Set<UUID>,
 	): Promise<Map<UUID, string>> {
-		const entries = await Promise.all(
-			Array.from(entityIds).map(async (entityId) => {
-				if (!this.runtime.getEntityById) {
-					return [entityId, String(entityId)] as const;
-				}
-				const entity = await this.runtime.getEntityById(entityId);
-				return [entityId, this.readEntityName(entity, entityId)] as const;
-			}),
+		const ids = Array.from(entityIds);
+		// One batched read for every distinct sender; a per-sender lookup would
+		// fan out one database read per participant on every loop tick.
+		const entities =
+			typeof this.runtime.getEntitiesByIds === "function" && ids.length > 0
+				? await this.runtime.getEntitiesByIds(ids)
+				: [];
+		const entityById = new Map(
+			entities.map((entity) => [entity.id, entity] as const),
 		);
-		return new Map(entries);
+		return new Map(
+			ids.map(
+				(entityId) =>
+					[
+						entityId,
+						this.readEntityName(entityById.get(entityId) ?? null, entityId),
+					] as const,
+			),
+		);
 	}
 
 	private readEntityName(entity: Entity | null, entityId: UUID): string {
