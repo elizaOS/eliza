@@ -23,7 +23,7 @@ vi.mock("@elizaos/ui/bridge", () => ({
   isElectrobunRuntime: () => platformState.isElectrobun,
 }));
 
-vi.mock("@elizaos/shared", () => ({
+vi.mock("@elizaos/shared/utils/eliza-globals", () => ({
   setElizaApiBase: platformState.setElizaApiBase,
 }));
 

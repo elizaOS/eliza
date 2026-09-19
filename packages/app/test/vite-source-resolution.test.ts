@@ -38,14 +38,6 @@ function appAliases(config: UserConfig): Alias[] {
   return aliases;
 }
 
-function firstMatchingAlias(aliases: readonly Alias[], specifier: string) {
-  return aliases.find((alias) =>
-    typeof alias.find === "string"
-      ? alias.find === specifier
-      : alias.find.test(specifier),
-  );
-}
-
 async function createAppResolutionServer(
   command: ConfigEnv["command"],
 ): Promise<{
@@ -172,51 +164,31 @@ describe("workspace package resolution", () => {
   });
 
   test.each(["serve", "build"] as const)(
-    "binds client-public to its browser-safe source leaf while %s config resolves",
+    "resolves shared environment utilities through the common owner while %s config resolves",
     async (command) => {
-      const { config, server } = await createAppResolutionServer(command);
-      const aliases = appAliases(config);
-      const clientPublicTarget = normalizePath(
-        path.resolve(appRoot, "../core/src/client-public.ts"),
-      );
-      const importer = path.resolve(appRoot, "../shared/src/env-utils.ts");
-
+      const { server } = await createAppResolutionServer(command);
       try {
-        const clientPublic =
+        const resolved =
           await server.environments.client.pluginContainer.resolveId(
+            "@elizaos/common",
+            path.resolve(appRoot, "../shared/src/env-utils.ts"),
+          );
+        expect(resolved?.id).toBe(
+          normalizePath(
+            path.resolve(
+              appRoot,
+              command === "serve"
+                ? "../common/src/index.ts"
+                : "../common/dist/index.js",
+            ),
+          ),
+        );
+        await expect(
+          server.environments.client.pluginContainer.resolveId(
             "@elizaos/core/client-public",
-            importer,
-          );
-        expect(clientPublic?.id).toBe(clientPublicTarget);
-        expect(clientPublic?.id).not.toContain("/dist/node/");
-
-        const clientPublicAlias = firstMatchingAlias(
-          aliases,
-          "@elizaos/core/client-public",
-        );
-        const bareCoreAlias = firstMatchingAlias(aliases, "@elizaos/core");
-        expect(clientPublicAlias?.replacement).toBe(clientPublicTarget);
-        expect(bareCoreAlias).toBeDefined();
-        expect(aliases.indexOf(clientPublicAlias as Alias)).toBeLessThan(
-          aliases.indexOf(bareCoreAlias as Alias),
-        );
-
-        const bareCore =
-          await server.environments.client.pluginContainer.resolveId(
-            "@elizaos/core",
-            importer,
-          );
-        expect(normalizePath(bareCore?.id ?? "")).toBe(
-          normalizePath(bareCoreAlias?.replacement ?? ""),
-        );
-
-        for (const subpath of [
-          "@elizaos/testing",
-          "@elizaos/core/roles",
-          "@elizaos/core/client-public-extra",
-        ]) {
-          expect(firstMatchingAlias(aliases, subpath)).toBeUndefined();
-        }
+            path.join(appRoot, "src/main.tsx"),
+          ),
+        ).rejects.toThrow();
       } finally {
         await server.close();
       }

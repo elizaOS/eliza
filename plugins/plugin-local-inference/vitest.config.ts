@@ -4,132 +4,14 @@
  * Real-FFI / real-model `*.real.test.ts` files run only in the post-merge lane
  * (`TEST_LANE=post-merge`).
  */
-import { fileURLToPath } from "node:url";
+
 import { defineConfig } from "vitest/config";
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases";
 
 export default defineConfig({
 	resolve: {
 		extensions: [".ts", ".tsx", ".mts", ".js", ".mjs", ".json"],
-		alias: Object.entries({
-			// Pin every core subpath reachable through shared before the bare core
-			// alias; Vite treats string aliases as prefix matches and would otherwise
-			// rewrite them to `index.node.ts/<subpath>` and fail with ENOTDIR.
-			"@elizaos/core/client-public": fileURLToPath(
-				new URL("../../packages/core/src/client-public.ts", import.meta.url),
-			),
-			"@elizaos/core/contracts/cloud-topology": fileURLToPath(
-				new URL(
-					"../../packages/core/src/contracts/cloud-topology.ts",
-					import.meta.url,
-				),
-			),
-			"@elizaos/core/contracts/first-run-options": fileURLToPath(
-				new URL(
-					"../../packages/core/src/contracts/first-run-options.ts",
-					import.meta.url,
-				),
-			),
-			"@elizaos/core/contracts/service-routing": fileURLToPath(
-				new URL(
-					"../../packages/core/src/contracts/service-routing.ts",
-					import.meta.url,
-				),
-			),
-			"@elizaos/core/contracts/wallet": fileURLToPath(
-				new URL("../../packages/core/src/contracts/wallet.ts", import.meta.url),
-			),
-			"@elizaos/core/runtime-env": fileURLToPath(
-				new URL("../../packages/core/src/runtime-env.ts", import.meta.url),
-			),
-			"@elizaos/core/edge": fileURLToPath(
-				new URL("../../packages/core/src/index.edge.ts", import.meta.url),
-			),
-			"@elizaos/core": fileURLToPath(
-				new URL("../../packages/core/src/index.ts", import.meta.url),
-			),
-			// Core's source entry re-exports the cloud-routing package. A clean
-			// workspace has not built that package's dist entry yet, so source-mode
-			// tests must keep this transitive dependency on the source graph too.
-			"@elizaos/cloud-routing": fileURLToPath(
-				new URL("../../packages/cloud/routing/src/index.ts", import.meta.url),
-			),
-
-			"@elizaos/agent": fileURLToPath(
-				new URL("../../packages/agent/src/index.ts", import.meta.url),
-			),
-			// Deep subpath must precede the bare alias — the bare entry
-			// prefix-matches and would rewrite this to `src/index.ts/<subpath>`.
-			"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap":
-				fileURLToPath(
-					new URL(
-						"../plugin-capacitor-bridge/src/mobile-device-bridge-bootstrap.ts",
-						import.meta.url,
-					),
-				),
-			"@elizaos/plugin-capacitor-bridge": fileURLToPath(
-				new URL("../plugin-capacitor-bridge/src/index.ts", import.meta.url),
-			),
-			"@elizaos/plugin-computeruse": fileURLToPath(
-				new URL("../plugin-computeruse/src/index.ts", import.meta.url),
-			),
-			"@elizaos/shared/local-inference/routing-preferences": fileURLToPath(
-				new URL(
-					"../../packages/shared/src/local-inference/routing-preferences.ts",
-					import.meta.url,
-				),
-			),
-			"@elizaos/shared/local-inference/verify": fileURLToPath(
-				new URL(
-					"../../packages/shared/src/local-inference/verify.ts",
-					import.meta.url,
-				),
-			),
-			"@elizaos/shared/local-inference": fileURLToPath(
-				new URL(
-					"../../packages/shared/src/local-inference/index.ts",
-					import.meta.url,
-				),
-			),
-			"@elizaos/shared/voice/voice-cancellation-token": fileURLToPath(
-				new URL(
-					"../../packages/shared/src/voice/voice-cancellation-token.ts",
-					import.meta.url,
-				),
-			),
-			"@elizaos/shared/voice/respond-gate": fileURLToPath(
-				new URL(
-					"../../packages/shared/src/voice/respond-gate.ts",
-					import.meta.url,
-				),
-			),
-			"@elizaos/shared/voice/owner-inference": fileURLToPath(
-				new URL(
-					"../../packages/shared/src/voice/owner-inference.ts",
-					import.meta.url,
-				),
-			),
-			"@elizaos/shared/voice/aec": fileURLToPath(
-				new URL(
-					"../../packages/shared/src/voice/aec/index.ts",
-					import.meta.url,
-				),
-			),
-			"@elizaos/shared/voice-wer": fileURLToPath(
-				new URL("../../packages/shared/src/voice-wer.ts", import.meta.url),
-			),
-			"@elizaos/shared/voice-eot": fileURLToPath(
-				new URL("../../packages/shared/src/voice-eot.ts", import.meta.url),
-			),
-			"@elizaos/shared/transcripts": fileURLToPath(
-				new URL("../../packages/shared/src/transcripts.ts", import.meta.url),
-			),
-			"@elizaos/shared": fileURLToPath(
-				new URL("../../packages/shared/src/index.ts", import.meta.url),
-			),
-		}).map(([find, replacement]) => ({
-			find: find === "@elizaos/shared" ? /^@elizaos\/shared$/ : find,
-			replacement,
-		})),
+		alias: buildWorkspaceSourceAliases(),
 	},
 	test: {
 		globals: true,

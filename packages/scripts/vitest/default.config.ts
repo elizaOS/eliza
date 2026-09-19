@@ -27,6 +27,7 @@ import { defineConfig } from "vitest/config";
 import { coverageSummaryReporters } from "../../app-core/scripts/coverage-policy.mjs";
 import { dependencySourcemapLoggerPlugin } from "./dependency-sourcemap-logger";
 import { repoRoot } from "./repo-root";
+import { buildWorkspaceSourceAliases } from "./source-aliases";
 import {
   getAgentSourceAliases,
   getAppCoreBridgeStubPath,
@@ -366,17 +367,6 @@ const vitestResolveAlias: ModuleAlias[] = [
     replacement: appCoreModuleFallbackPath,
   },
   {
-    find: "@elizaos/capacitor-llama",
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "packages",
-      "native-plugins",
-      "llama",
-      "src",
-      "index.ts",
-    ),
-  },
-  {
     find: "@elizaos/plugin-telegram",
     replacement: path.join(
       elizaWorkspaceRoot,
@@ -442,6 +432,7 @@ const vitestResolveAlias: ModuleAlias[] = [
     includeElizaAlias: true,
   }),
   ...getUiSourceAliases(uiSourceRoot),
+  ...buildWorkspaceSourceAliases(elizaWorkspaceRoot),
 ];
 
 export default defineConfig({
