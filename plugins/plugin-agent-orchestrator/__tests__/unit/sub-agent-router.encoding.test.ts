@@ -1,9 +1,5 @@
 /** Mapped sub-agent route paths reject malformed percent-encoding. */
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("@elizaos/core/client-public", () => ({
-  resolveAliasedEnvValue: (value: unknown) => value,
-}));
+import { describe, expect, it } from "vitest";
 
 import { decodeMappedRelativePath } from "../../src/services/sub-agent-router.js";
 
