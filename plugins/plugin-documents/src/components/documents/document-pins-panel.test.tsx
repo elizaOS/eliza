@@ -100,17 +100,14 @@ it("requires a new read and review after a conflict", async () => {
       expectedPinRevision: "revision-2",
     }),
   );
+  await screen.findByText("Pins saved. Current settings are shown below.");
 });
 it("hides the old review while readback is pending and does not confirm a failed readback", async () => {
   await selectPins();
-  let rejectReadback!: (reason: Error) => void;
-  api.getDocumentPins.mockImplementationOnce(
-    () =>
-      new Promise((_, reject) => {
-        rejectReadback = reject;
-      }),
-  );
+  const readback = Promise.withResolvers<never>();
+  api.getDocumentPins.mockReturnValueOnce(readback.promise);
   fireEvent.click(screen.getByRole("button", { name: "Save reviewed pins" }));
+  await waitFor(() => expect(api.getDocumentPins).toHaveBeenCalledTimes(2));
   await screen.findByText("Loading document pins…");
   expect(
     screen.queryByRole("button", { name: "Save reviewed pins" }),
@@ -119,7 +116,7 @@ it("hides the old review while readback is pending and does not confirm a failed
     screen.queryByText("Pins saved. Current settings are shown below."),
   ).toBeNull();
   await act(async () => {
-    rejectReadback(new Error("offline"));
+    readback.reject(new Error("offline"));
   });
   await screen.findByRole("alert");
   expect(
