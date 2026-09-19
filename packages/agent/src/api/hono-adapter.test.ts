@@ -9,6 +9,8 @@ import type {
   IAgentRuntime,
   Route,
   RouteHandlerContext,
+  RouteRequest,
+  RouteResponse,
 } from "@elizaos/core";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
@@ -307,6 +309,29 @@ describe("hono-adapter", () => {
     expect(response.headers.get("x-adapter")).toBe("kept");
     expect(await response.json()).toEqual({ ok: false });
   });
+
+  it.each([204, 205, 304])(
+    "drops a legacy handler body for null-body status %i",
+    async (status) => {
+      const app = buildHonoAppForRuntime(
+        runtimeWith([
+          {
+            type: "GET",
+            path: "/api/null-body-status",
+            handler: async (_req: RouteRequest, res: RouteResponse) => {
+              res.status(status).json({ ignored: true });
+            },
+          },
+        ]),
+        { isAuthorized: () => true },
+      );
+
+      const response = await app.request("/api/null-body-status");
+
+      expect(response.status).toBe(status);
+      expect(await response.text()).toBe("");
+    },
+  );
 
   it("streams text and bytes through the mounted Hono response", async () => {
     async function* chunks(): AsyncGenerator<string | Uint8Array> {
