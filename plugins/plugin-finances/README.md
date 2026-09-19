@@ -44,6 +44,7 @@ bun run --cwd plugins/plugin-finances clean
 | `ELIZA_TOKEN_ENCRYPTION_KEY` | No | 32-byte (base64/hex) key encrypting PayPal tokens at rest. Plaid Item tokens remain in organization-bound Cloud credentials; the local source stores only an opaque connection id. Falls back to a lazily-generated file under `<oauth-dir>/lifeops/payments/.encryption-key` (mode 0600). |
 | `ELIZAOS_CLOUD_API_KEY` | No | Eliza Cloud API key for the managed Plaid / PayPal bridges. |
 | `ELIZAOS_CLOUD_BASE_URL` | No | Eliza Cloud base URL override for the managed bridges. |
+| `TIMEZONE` | No | Agent setting used for bill dueness ("today" as a calendar day) when no owner zone is registered through `registerCalendarTimeZoneResolver` from `@elizaos/shared`. An invalid zone, or an owner resolver that fails, is a `FinancesServiceError` on every surface, never a silent fallback zone. With neither configured the host zone is used. |
 
 ## Conventions
 

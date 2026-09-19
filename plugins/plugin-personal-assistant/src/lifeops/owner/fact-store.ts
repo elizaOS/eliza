@@ -1079,3 +1079,22 @@ export async function resolveOwnerTimeZone(
     return resolveDefaultTimeZone();
   }
 }
+
+/**
+ * Strict owner-zone resolver for the shared calendar time zone owner
+ * (`registerCalendarTimeZoneResolver`). Unlike {@link resolveOwnerTimeZone},
+ * it never substitutes the host zone: a fact-store read failure propagates so
+ * the shared resolver fails closed, an invalid stored zone is returned as-is
+ * for the shared resolver to reject, and "no owner zone configured" is `null`
+ * so the caller can distinguish absent configuration from a failed read.
+ * Calendar judgments (bill dueness, day boundaries) must not be made in a
+ * silently substituted zone.
+ */
+export async function resolveConfiguredOwnerTimeZone(
+  runtime: IAgentRuntime,
+  now: Date,
+): Promise<string | null> {
+  const facts = await resolveOwnerFactStore(runtime).read();
+  const view = ownerFactsToView(facts, now);
+  return view.timezone ?? null;
+}
