@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases";
 
 const packageRoot = fileURLToPath(new URL("./", import.meta.url));
 const monorepoRoot = resolve(packageRoot, "../..");
@@ -240,6 +241,7 @@ export default defineConfig({
           "packages/cloud/sdk/src/cloud-setup-session/$1",
         ),
       },
+      ...buildWorkspaceSourceAliases(monorepoRoot),
     ],
   },
   test: {

@@ -1,18 +1,8 @@
 {
   "//": [
-    "Resolution override for the accounts-UI e2e API server (bun --tsconfig-override).",
-    "packages/app-core has no `bun`/`eliza-source` export condition, so the accounts",
-    "routes' dynamic import of @elizaos/app-core/account-pool would resolve to a",
-    "possibly-stale dist build. This paths mapping pins app-core and its workspace",
-    "dependencies to current source so the e2e always tests the tree it runs from.",
-    "@elizaos/core/src pins force every transitive workspace dep core's source",
-    "reaches to be pinned too (e.g. cloud-routing, imported by core/src/cloud-routing.ts",
-    "since #14459): otherwise it resolves to the package's `dist/index.js`, which does",
-    "not exist on the CI --ignore-scripts install, and the API server crashes at boot.",
-    "Core subpath exports need their own mapping because the exact root path does not",
-    "cover imports such as @elizaos/core/atomic-json. Core and auth also reach logger",
-    "and vault source during this clean-install lane, so neither may fall through to",
-    "an absent dist build."
+    "Source resolution for the accounts UI browser fixture API server.",
+    "The real account pool, credentials, and shared runtime dependencies must",
+    "resolve to this checkout during a clean install with no dist artifacts."
   ],
   "compilerOptions": {
     "baseUrl": "../../../..",
@@ -21,13 +11,14 @@
         "packages/app-core/src/services/account-pool.ts"
       ],
       "@elizaos/core": ["packages/core/src/index.ts"],
-      "@elizaos/core/atomic-json": ["packages/core/src/utils/atomic-json.ts"],
       "@elizaos/cloud-routing": ["packages/cloud/routing/src/index.ts"],
       "@elizaos/cloud-routing/*": ["packages/cloud/routing/src/*"],
       "@elizaos/shared": ["packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["packages/shared/src/*"],
       "@elizaos/credentials/vault": ["packages/credentials/src/vault/index.ts"],
-      "@elizaos/credentials/vault/*": ["packages/credentials/src/vault/*"]
+      "@elizaos/credentials/vault/*": ["packages/credentials/src/vault/*"],
+      "@elizaos/credentials/auth": ["packages/credentials/src/auth/index.ts"],
+      "@elizaos/credentials/auth/*": ["packages/credentials/src/auth/*"]
     }
   }
 }
