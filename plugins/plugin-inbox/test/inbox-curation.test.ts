@@ -28,6 +28,7 @@ import type {
   EmailCurationPolicyHook,
 } from "../src/inbox/email-curation.ts";
 import {
+  calibrateEmailCurationConfidence,
   compareCurationDecisions,
   curateEmailCandidates,
 } from "../src/inbox/email-curation.ts";
@@ -201,6 +202,142 @@ describe("InboxService.triageWithCuration", () => {
       item.curation.action,
     );
     expect(result.curation.decisions).toHaveLength(1);
+  });
+});
+
+describe("policy-effect amount validation (#29309)", () => {
+  const baseCandidate = (
+    id: string,
+    headers: Record<string, string> = {},
+  ): EmailCurationCandidate => ({
+    id,
+    threadId: null,
+    subject: "Hello",
+    snippet: "hi",
+    body: { text: "Hello world", contentType: "text/plain" as const },
+    from: "Alice Example <alice@example.com>",
+    fromEmail: "alice@example.com",
+    to: [],
+    cc: [],
+    labels: [],
+    headers,
+  });
+
+  it("omitted amount keeps the documented 0.1 default", () => {
+    const withoutEffect = calibrateEmailCurationConfidence({
+      action: "archive",
+      scores: { save: 0, archive: 2, delete: 0, review: 0 },
+      evidence: [],
+      degraded: false,
+      blockedDelete: false,
+      threadConflict: false,
+      policyEffects: [],
+    });
+    const withOmittedAmount = calibrateEmailCurationConfidence({
+      action: "archive",
+      scores: { save: 0, archive: 2, delete: 0, review: 0 },
+      evidence: [],
+      degraded: false,
+      blockedDelete: false,
+      threadConflict: false,
+      policyEffects: [{ kind: "lower_confidence", code: "t", message: "t" }],
+    });
+    expect(withoutEffect - withOmittedAmount).toBeCloseTo(0.1, 5);
+  });
+
+  it("a finite nonnegative supplied amount is applied exactly", () => {
+    const apply = (amount: number) =>
+      calibrateEmailCurationConfidence({
+        action: "archive",
+        scores: { save: 0, archive: 2, delete: 0, review: 0 },
+        evidence: [],
+        degraded: false,
+        blockedDelete: false,
+        threadConflict: false,
+        policyEffects: [
+          { kind: "lower_confidence", amount, code: "t", message: "t" },
+        ],
+      });
+    expect(apply(0) - apply(0.25)).toBeCloseTo(0.25, 5);
+  });
+
+  it.each([
+    ["NaN", Number.NaN],
+    ["positive Infinity", Number.POSITIVE_INFINITY],
+    ["negative Infinity", Number.NEGATIVE_INFINITY],
+    ["a negative boost", -0.5],
+  ])("a supplied %s amount never reaches the confidence", (_label, amount) => {
+    const confidence = calibrateEmailCurationConfidence({
+      action: "archive",
+      scores: { save: 0, archive: 2, delete: 0, review: 0 },
+      evidence: [],
+      degraded: false,
+      blockedDelete: false,
+      threadConflict: false,
+      policyEffects: [
+        { kind: "lower_confidence", amount, code: "t", message: "t" },
+      ],
+    });
+    expect(Number.isFinite(confidence)).toBe(true);
+    // Skipped without fabricating a 0.1 penalty: identical to no effect at all.
+    const noEffects = calibrateEmailCurationConfidence({
+      action: "archive",
+      scores: { save: 0, archive: 2, delete: 0, review: 0 },
+      evidence: [],
+      degraded: false,
+      blockedDelete: false,
+      threadConflict: false,
+      policyEffects: [],
+    });
+    expect(confidence).toBe(noEffects);
+  });
+
+  it("rejects a non-finite hook amount end to end and records why", () => {
+    const policyHook: EmailCurationPolicyHook = () => [
+      {
+        kind: "lower_confidence",
+        amount: Number.NaN,
+        code: "bad_amount",
+        message: "malformed hook effect",
+      },
+    ];
+    const out = curateEmailCandidates({
+      candidates: [baseCandidate("hook-nan")],
+      now: "2026-08-23T00:00:00.000Z",
+      policyHook,
+    });
+
+    const decision = out.decisions.find((d) => d.candidateId === "hook-nan");
+    expect(decision).toBeDefined();
+    expect(Number.isFinite(decision?.confidence)).toBe(true);
+    expect(["low", "medium", "high"]).toContain(decision?.confidenceBand);
+    // The malformed effect is preserved with a truthful reason, not dropped.
+    const effect = decision?.policyEffects.find((e) => e.code === "bad_amount");
+    expect(effect?.invalidReason).toMatch(/finite nonnegative/);
+    // The reviewer-facing rationale can never carry the literal "NaN".
+    expect(decision?.bulkReview.rationale).not.toMatch(/NaN/);
+  });
+
+  it("still applies a finite hook amount end to end", () => {
+    const policyHook = (): ReturnType<EmailCurationPolicyHook> => [
+      {
+        kind: "lower_confidence",
+        amount: 0.3,
+        code: "ok_amount",
+        message: "bounded penalty",
+      },
+    ];
+    const out = curateEmailCandidates({
+      candidates: [baseCandidate("hook-ok")],
+      now: "2026-08-23T00:00:00.000Z",
+      policyHook,
+    });
+    const decision = out.decisions.find((d) => d.candidateId === "hook-ok");
+    expect(Number.isFinite(decision?.confidence)).toBe(true);
+    expect(
+      decision?.policyEffects.find((e) => e.code === "ok_amount")
+        ?.invalidReason,
+    ).toBeUndefined();
   });
 });
 
