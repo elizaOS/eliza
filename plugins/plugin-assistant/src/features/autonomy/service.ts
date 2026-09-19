@@ -662,9 +662,7 @@ export class AutonomyService extends Service {
     // One batched read for every distinct sender; a per-sender lookup would
     // fan out one database read per participant on every loop tick.
     const entities =
-      typeof this.runtime.getEntitiesByIds === "function" && ids.length > 0
-        ? await this.runtime.getEntitiesByIds(ids)
-        : [];
+      ids.length > 0 ? await this.runtime.getEntitiesByIds(ids) : [];
     const entityById = new Map(
       entities.map((entity) => [entity.id, entity] as const),
     );

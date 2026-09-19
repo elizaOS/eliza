@@ -51,6 +51,28 @@ describe("AutonomyService sender name lookup", () => {
     );
   });
 
+  test("rejects a runtime missing its required batch lookup", async () => {
+    const runtime = createMockRuntime();
+    Object.defineProperty(runtime, "getEntitiesByIds", { value: undefined });
+
+    await expect(
+      serviceWith(runtime).buildEntityNameLookup(new Set([ALICE])),
+    ).rejects.toThrow(TypeError);
+  });
+
+  test("propagates database failure instead of returning fallback names", async () => {
+    const failure = new Error("Entity store unavailable");
+    const runtime = createMockRuntime({
+      getEntitiesByIds: async () => {
+        throw failure;
+      },
+    });
+
+    await expect(
+      serviceWith(runtime).buildEntityNameLookup(new Set([ALICE])),
+    ).rejects.toBe(failure);
+  });
+
   test("skips the read entirely when no sender needs a name", async () => {
     let reads = 0;
     const runtime = createMockRuntime({
