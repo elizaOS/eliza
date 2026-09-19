@@ -1,6 +1,6 @@
 # Runtime flow atlas
 
-Ownership/path update at `fc576976a9`, based on the source audit attached to [issue 31532](https://github.com/elizaOS/eliza/issues/31532). Paths below resolve in the current checkout; obsolete line anchors are removed. Read alongside [implementation status](STATUS.md). This is a flow map, not a claim that every issue acceptance criterion has passed.
+Ownership/path update at `8f4010546b`, based on the source audit attached to [issue 31532](https://github.com/elizaOS/eliza/issues/31532). Paths below resolve in the current checkout; obsolete line anchors are removed. Read alongside [implementation status](STATUS.md). This is a flow map, not a claim that every issue acceptance criterion has passed.
 
 This atlas traces the central runtime entry points and all major categories of exit: provider requests, tool effects, storage, user delivery, events, background work, credentials and shutdown. Plugin contributions are dynamic; no static chart can enumerate arbitrary plugin code. Telegram is a concrete connector example. HTTP chat is traced separately because emitting `MESSAGE_RECEIVED` is **not** the call that runs inference. The basic event handler bridges observability; the host/connector calls `messageService.handleMessage` directly.
 
@@ -72,6 +72,13 @@ Admission and nonresponse branches matter: muted rooms, preemption, cancellation
 ```mermaid
 flowchart LR
     C[Assistant / evaluator / embedding worker / direct caller] --> M1[runtime.useModel]
+    C -. optional prompt lookup .-> M8[M8 core structural prompt resolver]
+    M8 --> M9[M9 assistant cached artifact\ntask, baseline and target binding]
+    M9 --> TEXT[Complete prompt and demonstrations]
+    TEXT --> M1
+    CONFIG[Host artifact activation / rollback] --> M10[M10 assistant signed artifact store]
+    M10 --> FILES[Version JSON + MAC sidecars\nactivation links / baseline record]
+    FILES -. startup / explicit refresh .-> M9
     M1 --> M2[RuntimeModelDispatch.useModel\nrouting, budgets, context]
     M2 --> PREP[Prepare immutable request\nsecret/PII and stream policy]
     PREP --> M3[Registered model handler]
@@ -93,7 +100,7 @@ flowchart LR
 
 Provider transport retries and assistant semantic retries are different. Provider-level retry must stop after externally visible stream output; tool effects cannot be retried because reply delivery failed. A structured response must be parsed before it authorizes a tool. Model/provider objects contain untrusted content even when fixture tests return perfect known values.
 
-Core's dispatcher currently mixes feature-specific routing/trajectory/secret plumbing with these generic steps. The target kernel uses model-registration metadata for limits, opaque credential access where required, and optional instrumentation hooks. No pricing catalog, cloud account topology, or SDK-specific result type belongs in its contract.
+Core uses model-registration metadata for context limits and optional instrumentation hooks. Provider pricing and file-based trajectory recording belong to assistant; provider protocols and credential backends stay outside the kernel. Optional prompt lookup returns the caller's baseline when no service is registered. Assistant owns signed artifacts, task names, activation and rollback; core neither reads artifact files nor selects domain tasks.
 
 ## 4. Tool effects, authorization and delivery
 
@@ -232,6 +239,9 @@ A row names the primary owner and important adjacent files; it does not assert t
 | M5 | Streaming/ordinary provider response | [plugins/plugin-openai/models/text.ts](../../../plugins/plugin-openai/models/text.ts) → transient retry + stream consumption | Text/tool calls/usage/errors/chunks | OpenAI plugin; no retry after visible output |
 | M6 | Structured prompt + state | [plugins/plugin-assistant/src/runtime/structured-prompt/executor.ts](../../../plugins/plugin-assistant/src/runtime/structured-prompt/executor.ts); `stream-extractor.ts` | Parsed schema result or bounded recovery failure | assistant structured-output implementation, explicitly registered with core; do not truncate required context |
 | M7 | Fixture-matched request | [packages/testing/src/deterministic-model-plugin.ts](../../../packages/testing/src/deterministic-model-plugin.ts); [packages/testing/src/deterministic-action-fixtures.ts](../../../packages/testing/src/deterministic-action-fixtures.ts) | Known response/events/errors, consumption diagnostics | private testing package; reject unexpected calls |
+| M8 | Task identifier + complete baseline | [core prompt resolver](../../../packages/core/src/services/optimized-prompt-resolver.ts) → `resolveOptimizedPromptForRuntime` | Registered service lookup, complete prompt/demonstrations or unchanged baseline | Core structural contract; no filesystem or fixed task taxonomy |
+| M9 | Cached artifact + baseline + host target binding | [assistant artifact service](../../../plugins/plugin-assistant/src/services/optimized-prompt.ts) → `getPrompt`; [provenance validation](../../../plugins/plugin-assistant/src/services/optimized-prompt-provenance.ts) | Bound prompt or explicit baseline/target rejection | Assistant; reject stale baseline and mismatched evaluated target before model dispatch |
+| M10 | Host `setPrompt`, `rollback`, `restoreBaseline`, startup/refresh | [assistant artifact service](../../../plugins/plugin-assistant/src/services/optimized-prompt.ts); host [vault bridge](../../../packages/agent/src/runtime/operations/vault-bridge.ts) supplies integrity key | Version JSON/MAC files, activation links, authenticated baseline record and cache reload | Assistant storage; serialized version claims, retained history and signature checks; core does not perform these writes |
 | A1 | Planned tool name/args | [plugins/plugin-assistant/src/services/message/planned-tool.ts](../../../plugins/plugin-assistant/src/services/message/planned-tool.ts) → `executeV5PlannedToolCall` | Executor context and dispatched tool | assistant adapter only |
 | A2 | Tool invocation | [packages/core/src/runtime/execute-planned-tool-call.ts](../../../packages/core/src/runtime/execute-planned-tool-call.ts) | Explicit success/failure result; handler invocation | core; args + role + context + approval + audience |
 | A3 | Handler + callback candidates | [packages/core/src/runtime/action-handler-settlement.ts](../../../packages/core/src/runtime/action-handler-settlement.ts) | Canonical result, committed effect receipts, settled callbacks | core; effect and delivery outcomes distinct |
