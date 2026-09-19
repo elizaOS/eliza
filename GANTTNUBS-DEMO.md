@@ -1,7 +1,7 @@
 # Text demo: short handoff
 
-Candidate: `ganttnubs`, source `5c1510bd654`. Post-call fixes are committed;
-bounded browser checks, fixture cleanup and final-source repository verification passed. The latency goal remains active.
+Candidate: `ganttnubs`, source `d502d12aad7`. Post-call fixes are committed;
+bounded browser checks, fixture cleanup and final-source repository verification passed. The scoped text cleanup and audit are complete; the three-second target remains unmet for some flows.
 This is not merged develop or a release certificate.
 
 ## What is fixed
@@ -13,7 +13,9 @@ This is not merged develop or a release certificate.
 - One-day agenda reads take a date/timezone; code computes the day boundaries.
 - Calendar supplies actual date/weekday evidence, and the evaluator compares
   current saved fields instead of repeating an old failure.
-- Calendar search requires a query in the native tool, avoiding empty-call repair.
+- Calendar search requires a query and does not repeat a settled no-match lookup.
+- Whole-date reads compute exact timezone/DST boundaries from date/endDate.
+- Completion checks read coverage; corrected pre-read errors no longer force an extra failure reply.
 - Conditional booking is routed to Calendar's existing conflict-safe create;
   its fresh availability check still runs before writing.
 
@@ -41,7 +43,8 @@ stages do not guarantee exactly three calls.
 | Calendar day agenda after repair | 3 | 4.48 | Correct saved event |
 | Duration extension | 5 | 6.55 | Correct write; unnecessary history restore |
 | Conditional booking, final path | 4 | 4.05 | One create, built-in conflict check, correct saved event |
-| Calendar topic/date search, final path | 4 | 4.15 | Correct descriptions/weekday; one semantic matching call |
+| Calendar topic/date search | 4 | 4.15 | Correct descriptions/weekday; one semantic matching call |
+| Whole-date search, final source | 4 | 4.08 | Exact three-day coverage; no retries or extra reply call |
 
 **Multi-step Calendar is still above the roughly three-second target.** These
 are individual runs, not guarantees. Cache reads are included in input token
@@ -60,10 +63,13 @@ REPLY or an extra model call. Implementation remains separate.
 Voice, broad browser/attachment work, reminders/alarms, messaging integrations,
 full PRD work and combining with current develop remain deferred.
 
-Owning checks: Calendar 998 passed / 4 existing skips; Notes 191 passed;
+Final owning checks: Calendar 1,008 passed / 4 existing skips; host Calendar schema 20 passed; core completion/pending/failure 415 passed. Unchanged earlier evidence: Notes 191 passed;
 Personal Assistant 2,781 passed / 6 existing skips; core planner/reply 238 passed; routing fields 50
 passed and stage-one 399 passed. Final root verification passed 373/373 tasks.
 All three temporary Calendar fixtures were removed; all 41 original notes are unchanged.
 Rollback before this follow-up: `codex/ganttnubs-text-demo-20260918`.
 
 Saved code checkpoint: local tag `codex/ganttnubs-shaw-text-20260918`.
+
+
+The app is left running at http://127.0.0.1:5248/chat. All 41 notes and the three existing events in the latest read window are unchanged. Rollback tags preserve code, not a reset of conversation/database state. This is suitable for a text rehearsal with the measured latency limits above; it is not a claim that every scenario is perfect or under three seconds.

@@ -1,6 +1,8 @@
 # ganttnubs: context, latency and scenario QA
 
-Status: ACTIVE latency goal after the Shaw call. This Notes/Calendar correctness pass and its selected scenario matrix are verified and saved; consistent roughly-three-second Calendar performance remains OPEN. Owner: Nubs. Start: 2026-09-18.
+Status: COMPLETE for the scoped Notes/Calendar text implementation, evidence audit and verified handoff at source `d502d12aad7`. The approximately-three-second performance target is NOT consistently met; current measured limits are disclosed, not certified away. Owner: Nubs. Updated: 2026-09-18.
+
+The final acceptance at the end of GANTTNUBS-SCENARIO-RESULTS.md supersedes earlier checkpoint status notes below. No universal language, voice, external-provider, merge or release acceptance is claimed.
 
 ## Current finish checklist
 
@@ -213,28 +215,16 @@ be omitted for direct navigation. Voice playback/caching remains a separate
 acceptance task. This phase records the design and preserves current final
 reply ownership; it does not ship the meeting's proposed acknowledgment UI.
 
-## Remaining latency goal (after this saved correctness pass)
+## Performance audit disposition
 
-The overall goal stays active because Calendar is not consistently near/under
-three seconds. Freeze the verified correctness changes before further tuning.
-Next inspect existing traces and code, without another broad paid sweep:
+The scoped audit is complete; consistent three-second Calendar performance is not established. The four follow-up investigations were resolved as follows:
 
-1. Attribute the roughly 0.30s before message handling and 0.30s between
-   routing and planning in the final conditional-booking trace. Determine
-   whether they are necessary message-stacking/interrupt barriers or duplicate
-   waits before changing anything.
-2. Check the actual provider wire behavior for the configured reasoning policy
-   and per-stage generation. Do not change model/provider or claim Wi-Fi as the
-   cause from aggregate timers.
-3. Inspect title/topic matching and context-restore decisions. Keep legitimate
-   semantic matching and historical constraints; only remove demonstrably
-   redundant work with a general contract and regression evidence.
-4. Independent-read batching requires explicit effect/dependency guarantees.
-   Do not skip evaluation across arbitrary queued actions or trade write
-   correctness for fewer calls.
+1. Provider receipts attribute most routing gaps to concurrent initial context reads and newly selected Calendar context. Existing providers mostly hit the turn cache. No fixed sleep or safely removable provider was established.
+2. Saved options and provider wire tests confirm low routing reasoning for original-history reconciliation and reasoning off for planning/extraction/completion. No model/provider policy was changed; aggregate timers do not identify Wi-Fi delay.
+3. Duplicate semantic no-match grounding and invalid read recovery were reproduced and fixed. Valid semantic matching and original-context recovery remain; disabling them would weaken correctness. Whole-date reads now use code-derived date/endDate boundaries.
+4. Arbitrary queued actions cannot be batched by skipping evaluation. That needs a separately validated effect/dependency contract; no speculative batching was shipped.
 
-Voice and broad feature/integration work remain deferred. A code checkpoint
-and passing selected scenarios are not completion of this remaining latency goal.
+The final browser read uses four calls with correct full coverage and no recovery. Its 4.080 seconds exceeds the target, and more complex writes/recovery can take longer. The goal's measured-target requirement is reported honestly; it is not a promise that every request runs under three seconds.
 
 Code rollback checkpoint for this pass: local tag
 `codex/ganttnubs-shaw-text-20260918`. This preserves code, not a reset of the
@@ -252,3 +242,17 @@ One proven redundant search path was fixed: an explicit no-match grounding resul
 The single bounded browser follow-up confirms one semantic-grounding call and a correct no-match answer with no writes, but exposes an OPEN read-argument recovery issue: native planner supplied both date and a range, requiring rejection, replanning and reply recovery (7 calls / 6.294 s). Next work is the exclusive day/range schema and safe pre-read coaching classification; do not silently pick one conflicting scope. No broad paid sweep is needed.
 
 Final gates for this duplicate-grounding patch: Calendar 1,000 passed / four existing skips; provider wire/shape 77 passed; repository verification 373/373 successful with final audits passing. The running local API loaded this source before the bounded browser check. No model settings or user records were changed.
+
+
+### Read recovery and whole-date range follow-up
+
+The proposed exclusive day/range schema was rejected after real-model checks: first JSON-string arguments, then a plausible reply after reading only one day. It was removed rather than retained as another compatibility path. The compact original object schema remains.
+
+Kept changes: pre-read invalid/conflicting date errors retain their receipts and evaluation but no longer force failure synthesis after a correct retry; the existing evaluator explicitly checks read coverage; and whole-day ranges use date plus optional inclusive endDate, with code-derived next-midnight/DST boundaries. This avoids asking the planner to approximate a whole day with 23:59:59. No explicit timestamp is silently rounded and no mutation validation was removed. The original duplicate semantic-search fix remains saved at 97d0e360e2f.
+
+Calendar tests: 1,008 passed, four existing skips. Core completion/pending/failure tests: 415 passed. Host Calendar schema contract: 20 passed. Final root and exact live date-range acceptance are the remaining gates for this patch. The full scoped evidence audit is in GANTTNUBS-SCENARIO-RESULTS.md; repeated historical checkpoint paragraphs above are evidence history, not current acceptance status.
+
+
+### Final handoff
+
+Source `d502d12aad7`: all required final gates and the exact full-date browser acceptance passed. The same read request now covers September 18–20 in America/New_York through September 21 midnight, with four model calls and no recovery. Final comparison proves all 41 notes and the three original events unchanged. The rejected schema-union experiment is absent from source. See GANTTNUBS-DEMO.md for the concise user handoff and GANTTNUBS-SCENARIO-RESULTS.md for the full requirement/evidence audit.
