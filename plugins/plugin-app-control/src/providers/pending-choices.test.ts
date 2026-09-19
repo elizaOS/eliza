@@ -1,6 +1,6 @@
 /**
- * Exercises persisted-choice prompt delivery and the registered response-handler
- * boundary with an in-memory task store and a deterministic registered model;
+ * Exercises persisted-choice privacy and real planner/action resolution
+ * with an in-memory task store and deterministic registered models;
  * no live model or external effects run here.
  */
 import { randomUUID } from "node:crypto";
@@ -88,10 +88,11 @@ async function context(runtime: IAgentRuntime, inbound = message) {
 }
 
 describe("model-owned app-control choices", () => {
-	it("includes only the current room's choices in the production Stage-1 model input", async () => {
+	it("resolves owner choices through planning without exposing private task bodies in Stage 1", async () => {
 		const ownerId = asUUID(randomUUID());
+		const otherEntityId = asUUID(randomUUID());
 		const runtime = new AgentRuntime({
-			character: createCharacter({ name: "AppChoiceStage1" }),
+			character: createCharacter({ name: "AppChoicePlanning" }),
 			adapter: new InMemoryDatabaseAdapter(),
 			plugins: [createAssistantPlugin()],
 			settings: { ELIZA_ADMIN_ENTITY_ID: ownerId },
@@ -109,7 +110,9 @@ describe("model-owned app-control choices", () => {
 				throw new Error("app_control_choices is not registered by app-control");
 			runtime.registerProvider(provider);
 			const rooms = [asUUID(randomUUID()), asUUID(randomUUID())];
-			for (const currentRoom of rooms) {
+			const ownerTasks: UUID[] = [];
+			const privateIntents = ["PRIVATE_ROOM_A_CHOICE", "PRIVATE_ROOM_B_CHOICE"];
+			for (const [index, currentRoom] of rooms.entries()) {
 				await runtime.ensureConnection({
 					entityId: ownerId,
 					roomId: currentRoom,
@@ -119,60 +122,85 @@ describe("model-owned app-control choices", () => {
 					source: "client_chat",
 					type: ChannelType.DM,
 				});
+				ownerTasks.push(
+					await runtime.createTask({
+						...pending("APP"),
+						id: asUUID(randomUUID()),
+						agentId: runtime.agentId,
+						entityId: ownerId,
+						roomId: currentRoom,
+						metadata: {
+							...pending("APP").metadata,
+							roomId: currentRoom,
+							intent: privateIntents[index],
+						},
+					}),
+				);
 			}
-			const roomATask = await runtime.createTask({
-				...pending("APP"),
-				id: asUUID(randomUUID()),
-				agentId: runtime.agentId,
-				metadata: {
-					...pending("APP").metadata,
-					roomId: rooms[0],
-					intent: "STAGE1_ROOM_A_PRIVATE_CHOICE",
+			const foreignTasks: UUID[] = [];
+			for (const binding of [
+				{
+					agentId: asUUID(randomUUID()),
+					entityId: ownerId,
+					intent: "PRIVATE_OTHER_AGENT_CHOICE",
 				},
-			});
-			await runtime.createTask({
-				...pending("VIEWS"),
-				id: asUUID(randomUUID()),
-				agentId: runtime.agentId,
-				roomId: rooms[1],
-				metadata: {
-					...pending("VIEWS").metadata,
-					roomId: rooms[1],
-					intent: "STAGE1_ROOM_B_PRIVATE_CHOICE",
+				{
+					agentId: runtime.agentId,
+					entityId: otherEntityId,
+					intent: "PRIVATE_OTHER_ENTITY_CHOICE",
 				},
-			});
-			await runtime.createTask({
-				...pending("MODEL_SWITCH"),
-				id: asUUID(randomUUID()),
-				agentId: asUUID(randomUUID()),
-				roomId: rooms[0],
-				metadata: {
-					...pending("MODEL_SWITCH").metadata,
-					roomId: rooms[0],
-					intent: "STAGE1_OTHER_AGENT_PRIVATE_CHOICE",
-				},
-			});
-			const modelInputs: string[] = [];
-			// Only the model is deterministic. Stage-1 selection, state composition,
-			// task reads, role resolution, and message delivery are production code.
+			]) {
+				foreignTasks.push(
+					await runtime.createTask({
+						...pending("APP"),
+						id: asUUID(randomUUID()),
+						agentId: binding.agentId,
+						entityId: binding.entityId,
+						roomId: rooms[0],
+						metadata: {
+							...pending("APP").metadata,
+							roomId: rooms[0],
+							intent: binding.intent,
+						},
+					}),
+				);
+			}
+			let stage1Pending = true;
+			let selectedTask = ownerTasks[0];
+			let stage1Inputs: string[] = [];
+			let plannerInputs: string[] = [];
+			// Only model decisions are deterministic. Provider admission, task reads,
+			// planner dispatch, APP cancellation and persisted deletion are real.
 			runtime.registerModel(
 				ModelType.RESPONSE_HANDLER,
 				async (_runtime, params) => {
-					modelInputs.push(JSON.stringify(params));
+					if (!stage1Pending)
+						return JSON.stringify({
+							success: true,
+							decision: "FINISH",
+							thought:
+								"The APP result confirms the pending creation was canceled.",
+							messageToUser: "Canceled. No app changes made.",
+							effectReceiptIds: [],
+						});
+					stage1Pending = false;
+					stage1Inputs.push(JSON.stringify(params));
 					return {
 						text: "",
 						finishReason: "tool_calls",
 						toolCalls: [
 							{
-								id: `stage1-${modelInputs.length}`,
+								id: "stage1-choice",
 								name: "HANDLE_RESPONSE",
 								arguments: {
 									shouldRespond: "RESPOND",
-									thought: "Clarify without taking an action.",
-									contexts: ["simple"],
-									intents: [],
-									candidateActionNames: [],
-									replyText: "Which choice would you like to discuss?",
+									thought: "Resolve the pending app choice through its action.",
+									contexts: ["automation"],
+									intents: ["cancel pending app creation"],
+									candidateActionNames: ["APP"],
+									requiresTool: true,
+									replyText: "",
+									replyEffectStatus: "pending",
 									facts: [],
 									relationships: [],
 									addressedTo: [],
@@ -181,10 +209,46 @@ describe("model-owned app-control choices", () => {
 						],
 					};
 				},
-				"deterministic-stage1-test",
+				"deterministic-choice-test",
+			);
+			runtime.registerModel(
+				ModelType.ACTION_PLANNER,
+				async (_runtime, params) => {
+					plannerInputs.push(JSON.stringify(params));
+					return {
+						text: "",
+						toolCalls: [
+							{
+								id: "cancel-choice",
+								name: "APP",
+								arguments: {
+									action: "create",
+									taskId: selectedTask,
+									choice: "cancel",
+									eliza_turn_scope: "final",
+								},
+							},
+						],
+					};
+				},
+				"deterministic-choice-test",
+			);
+			runtime.registerModel(
+				ModelType.TEXT_SMALL,
+				async () =>
+					JSON.stringify({
+						response: "Canceled. No app changes made.",
+						effectReceiptIds: [],
+					}),
+				"deterministic-choice-test",
 			);
 			const service = new DefaultMessageService();
-			for (const currentRoom of rooms) {
+			for (const [index, currentRoom] of rooms.entries()) {
+				stage1Pending = true;
+				selectedTask = ownerTasks[index];
+				stage1Inputs = [];
+				plannerInputs = [];
+				const deliveredTexts: string[] = [];
 				const result = await service.handleMessage(
 					runtime,
 					{
@@ -194,27 +258,46 @@ describe("model-owned app-control choices", () => {
 						roomId: currentRoom,
 						createdAt: Date.now(),
 						content: {
-							text: "Can we discuss the pending choice?",
+							text: "Cancel my pending app creation.",
 							source: "client_chat",
 							channelType: ChannelType.DM,
 						},
 					},
-					async () => [],
+					async (content) => {
+						if (content.text) deliveredTexts.push(content.text);
+						return [];
+					},
 				);
-				expect(result.didRespond).toBe(true);
-				expect(result.mode).toBe("simple");
+				expect(deliveredTexts).toContain("Canceled. No app changes made.");
+				expect(result.actionResults).toContainEqual(
+					expect.objectContaining({
+						success: true,
+						values: { mode: "create", subMode: "cancel" },
+					}),
+				);
+				expect(stage1Inputs.length).toBeGreaterThan(0);
+				expect(plannerInputs.length).toBeGreaterThan(0);
+				expect(plannerInputs.join("\n")).toContain(privateIntents[index]);
+				expect(plannerInputs.join("\n")).toContain(selectedTask);
+				for (const intent of privateIntents)
+					expect(stage1Inputs.join("\n")).not.toContain(intent);
+				expect(plannerInputs.join("\n")).not.toContain(
+					privateIntents[1 - index],
+				);
+				for (const foreign of [
+					"PRIVATE_OTHER_AGENT_CHOICE",
+					"PRIVATE_OTHER_ENTITY_CHOICE",
+				])
+					expect([...stage1Inputs, ...plannerInputs].join("\n")).not.toContain(
+						foreign,
+					);
+				// This checks the actual action outcome, not a model's cancellation claim.
+				expect(await runtime.getTask(selectedTask)).toBeNull();
+				if (index === 0)
+					expect(await runtime.getTask(ownerTasks[1])).not.toBeNull();
+				for (const taskId of foreignTasks)
+					expect(await runtime.getTask(taskId)).not.toBeNull();
 			}
-			expect(modelInputs).toHaveLength(2);
-			expect(modelInputs[0]).toContain("Pending app-control choices");
-			expect(modelInputs[0]).toContain("STAGE1_ROOM_A_PRIVATE_CHOICE");
-			expect(modelInputs[0]).not.toContain("STAGE1_ROOM_B_PRIVATE_CHOICE");
-			expect(modelInputs[1]).toContain("STAGE1_ROOM_B_PRIVATE_CHOICE");
-			expect(modelInputs[1]).not.toContain("STAGE1_ROOM_A_PRIVATE_CHOICE");
-			expect(modelInputs.join("\n")).not.toContain(
-				"STAGE1_OTHER_AGENT_PRIVATE_CHOICE",
-			);
-			// Neither the provider nor Stage 1 silently consumed the pending pick.
-			expect(await runtime.getTask(roomATask)).not.toBeNull();
 		} finally {
 			await runtime.stop();
 			await runtime.close();
