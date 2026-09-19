@@ -204,6 +204,7 @@ export const ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS = [
 export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "BatteryOptimizationPlugin.java",
   "BgeEmbeddingSession.java",
+  "ElizaBgePlugin.java",
   "BionicDecodeLoop.java",
   "DeviceRamTierPolicy.java",
   "ElizaQuickActionsWidgetProvider.java",
@@ -262,6 +263,7 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
 export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
   "BgeEmbeddingSessionTest.java",
   "BionicEmbeddingInstrumentedTest.java",
+  "CapacitorBgeInstrumentedTest.java",
   "BionicDecodeLoopTest.java",
   "DeviceRamTierPolicyTest.java",
   "ElizaAgentAutostartPolicyTest.java",

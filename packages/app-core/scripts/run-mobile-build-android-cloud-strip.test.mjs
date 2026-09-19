@@ -162,10 +162,12 @@ it("removes BGE runtime and its instrumented tests from an actual cloud source t
 
     const files = [
       ["main", "BgeEmbeddingSession.java"],
+      ["main", "ElizaBgePlugin.java"],
       ["main", "ElizaVoiceNative.java"],
       ["main", "ElizaBionicInferenceServer.java"],
       ["test", "BgeEmbeddingSessionTest.java"],
       ["androidTest", "BionicEmbeddingInstrumentedTest.java"],
+      ["androidTest", "CapacitorBgeInstrumentedTest.java"],
     ];
     for (const [sourceSet, name] of files) {
       const relative = path.join(
