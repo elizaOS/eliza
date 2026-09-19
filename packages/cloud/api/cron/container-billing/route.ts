@@ -204,11 +204,16 @@ async function processContainerBilling(
           organizationName: org.name,
           containerName: containerName,
           projectName: container.project_name,
-          dailyCost,
-          monthlyCost: CONTAINER_PRICING.MONTHLY_BASE_COST,
+          // The email advertises a per-day rate ("billed daily at $X/day"), so
+          // both display figures derive from the canonical scaled dailyRate —
+          // not the prorated period amount — and the monthly reference is
+          // dailyRate x 30 (#22957 removed the static MONTHLY_BASE_COST ghost
+          // constant, which ignored CPU/memory/count scaling).
+          dailyCost: dailyRate,
+          monthlyCost: Math.round(dailyRate * 30 * 100) / 100,
           currentBalance: totalAvailable,
           requiredCredits: dailyCost,
-          minimumRecommended: dailyCost * 7, // 1 week
+          minimumRecommended: Math.round(dailyRate * 7 * 100) / 100, // 1 week
           shutdownTime: shutdownTime.toLocaleString("en-US", {
             weekday: "long",
             year: "numeric",
