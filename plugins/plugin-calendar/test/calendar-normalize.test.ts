@@ -90,18 +90,34 @@ describe("normalizeCalendarDateTimeInTimeZone", () => {
     ).toBeUndefined();
   });
 
-  it("passes through an explicit UTC ISO instant", () => {
-    expect(
-      normalizeCalendarDateTimeInTimeZone(
-        "2026-03-04T15:30:00.000Z",
-        "startAt",
-        "America/New_York",
-      ),
-    ).toBe("2026-03-04T15:30:00.000Z");
-  });
+  it.each([
+    ["2026-03-04T15:30:00.000Z", "2026-03-04T15:30:00.000Z"],
+    ["2026-06-15T09:00:00Z", "2026-06-15T09:00:00.000Z"],
+    ["2026-06-15T09:00:00.123Z", "2026-06-15T09:00:00.123Z"],
+    ["2026-06-15T11:00:00+02:00", "2026-06-15T09:00:00.000Z"],
+    ["2024-02-29T09:00:00Z", "2024-02-29T09:00:00.000Z"],
+    ["2026-06-15T09:00:00+0200", "2026-06-15T07:00:00.000Z"],
+  ])(
+    "normalizes the explicit instant %s without applying the default zone",
+    (value, expected) => {
+      expect(
+        normalizeCalendarDateTimeInTimeZone(
+          value,
+          "startAt",
+          "America/New_York",
+        ),
+      ).toBe(expected);
+    },
+  );
 
   it.each([
     "2026-02-30T09:00:00Z",
+    "2026-02-30T09:00:00+00:00",
+    "2026-02-29T09:00:00Z",
+    "2026-04-31T09:00:00-05:00",
+    "2026-02-30T09:00:00-0500",
+    "2026-13-15T09:00:00Z",
+    "2026-01-32T09:00:00Z",
     "2026-02-29T09:00:00+00:00",
     "2026-04-31T09:00:00Z",
     "2026-02-30Z",
@@ -116,6 +132,9 @@ describe("normalizeCalendarDateTimeInTimeZone", () => {
     expect(() =>
       normalizeCalendarDateTimeInTimeZone(value, "startAt", "UTC"),
     ).toThrow(CalendarServiceError);
+    expect(() =>
+      normalizeCalendarDateTimeInTimeZone(value, "startAt", "UTC"),
+    ).toThrow(expect.objectContaining({ status: 400 }));
   });
 
   it.each([
@@ -318,53 +337,60 @@ describe("resolveCalendarEventRange", () => {
   });
 });
 
+type FeedSource = Parameters<
+  typeof mergeAggregatedCalendarFeedEvents
+>[0][number];
+
+function feedSource(
+  events: LifeOpsCalendarEvent[],
+  calendar: Partial<FeedSource["calendar"]> = {},
+): FeedSource {
+  return {
+    calendar: {
+      accessRole: "reader",
+      accountEmail: null,
+      calendarId: "primary",
+      connectorAccountId: "account",
+      grantId: "grant",
+      provider: "google",
+      side: "owner",
+      summary: "Calendar",
+      ...calendar,
+    },
+    feed: {
+      calendarId: calendar.calendarId ?? "primary",
+      source: "synced",
+      state: "complete",
+      sources: [],
+      timeMin: "2026-03-04T00:00:00.000Z",
+      timeMax: "2026-03-12T00:00:00.000Z",
+      syncedAt: "2026-03-04T10:00:00.000Z",
+      events,
+    },
+  };
+}
+
 describe("mergeAggregatedCalendarFeedEvents", () => {
   it("dedupes by id, sorts by start, and backfills calendar metadata", () => {
+    const calendar = {
+      accessRole: "owner",
+      accountEmail: "me@example.com",
+      connectorAccountId: "account-1",
+      grantId: "grant-1",
+      summary: "Personal",
+    };
     const merged = mergeAggregatedCalendarFeedEvents([
-      {
-        calendar: {
-          accessRole: "owner",
-          accountEmail: "me@example.com",
-          calendarId: "primary",
-          connectorAccountId: "account-1",
-          grantId: "grant-1",
-          provider: "google",
-          side: "owner",
-          summary: "Personal",
-        },
-        feed: {
-          calendarId: "primary",
-          source: "synced",
-          timeMin: "2026-03-04T00:00:00.000Z",
-          timeMax: "2026-03-05T00:00:00.000Z",
-          syncedAt: "2026-03-04T00:00:00.000Z",
-          events: [
-            makeEvent({ id: "b", startAt: "2026-03-04T16:00:00.000Z" }),
-            makeEvent({ id: "a", startAt: "2026-03-04T09:00:00.000Z" }),
-          ],
-        },
-      },
-      {
-        calendar: {
-          accessRole: "owner",
-          accountEmail: "me@example.com",
-          calendarId: "primary",
-          connectorAccountId: "account-1",
-          grantId: "grant-1",
-          provider: "google",
-          side: "owner",
-          summary: "Personal",
-        },
-        feed: {
-          calendarId: "primary",
-          source: "synced",
-          timeMin: "2026-03-04T00:00:00.000Z",
-          timeMax: "2026-03-05T00:00:00.000Z",
-          syncedAt: "2026-03-04T00:00:00.000Z",
-          // Duplicate id "a" must be dropped.
-          events: [makeEvent({ id: "a", startAt: "2026-03-04T09:00:00.000Z" })],
-        },
-      },
+      feedSource(
+        [
+          makeEvent({ id: "b", startAt: "2026-03-04T16:00:00.000Z" }),
+          makeEvent({ id: "a", startAt: "2026-03-04T09:00:00.000Z" }),
+        ],
+        calendar,
+      ),
+      feedSource(
+        [makeEvent({ id: "a", startAt: "2026-03-04T09:00:00.000Z" })],
+        calendar,
+      ),
     ]);
 
     expect(merged.map((e) => e.id)).toEqual(["a", "b"]);
@@ -376,70 +402,50 @@ describe("mergeAggregatedCalendarFeedEvents", () => {
   it("uses portable occurrence identity and retains the newest source revision", () => {
     const startAt = "2026-03-04T09:00:00.000Z";
     const merged = mergeAggregatedCalendarFeedEvents([
-      {
-        calendar: {
-          accessRole: "reader",
-          accountEmail: null,
+      feedSource(
+        [
+          makeEvent({
+            id: "ics-copy",
+            externalId: "ics-copy",
+            provider: "ics",
+            calendarId: "school-feed",
+            connectorAccountId: "ics-source-1",
+            grantId: "ics-source-1",
+            startAt,
+            endAt: "2026-03-04T10:00:00.000Z",
+            title: "Corrected school title",
+            metadata: { icsUid: "shared-event@example.test" },
+            updatedAt: "2026-03-04T10:00:00.000Z",
+          }),
+        ],
+        {
           calendarId: "school-feed",
           connectorAccountId: "ics-source-1",
           grantId: "ics-source-1",
           provider: "ics",
-          side: "owner",
           summary: "School feed",
         },
-        feed: {
-          calendarId: "school-feed",
-          source: "synced",
-          timeMin: "2026-03-04T00:00:00.000Z",
-          timeMax: "2026-03-05T00:00:00.000Z",
-          syncedAt: "2026-03-04T10:00:00.000Z",
-          events: [
-            makeEvent({
-              id: "ics-copy",
-              externalId: "ics-copy",
-              provider: "ics",
-              calendarId: "school-feed",
-              connectorAccountId: "ics-source-1",
-              grantId: "ics-source-1",
-              startAt,
-              endAt: "2026-03-04T10:00:00.000Z",
-              title: "Corrected school title",
-              metadata: { icsUid: "shared-event@example.test" },
-              updatedAt: "2026-03-04T10:00:00.000Z",
-            }),
-          ],
-        },
-      },
-      {
-        calendar: {
+      ),
+      feedSource(
+        [
+          makeEvent({
+            id: "google-copy",
+            externalId: "google-copy",
+            startAt,
+            endAt: "2026-03-04T10:00:00.000Z",
+            title: "Updated school title",
+            metadata: { iCalUID: "shared-event@example.test" },
+            updatedAt: "2026-03-04T09:30:00.000Z",
+          }),
+        ],
+        {
           accessRole: "writer",
           accountEmail: "me@example.com",
-          calendarId: "primary",
           connectorAccountId: "google-account-1",
           grantId: "google-grant-1",
-          provider: "google",
-          side: "owner",
           summary: "Personal",
         },
-        feed: {
-          calendarId: "primary",
-          source: "synced",
-          timeMin: "2026-03-04T00:00:00.000Z",
-          timeMax: "2026-03-05T00:00:00.000Z",
-          syncedAt: "2026-03-04T09:30:00.000Z",
-          events: [
-            makeEvent({
-              id: "google-copy",
-              externalId: "google-copy",
-              startAt,
-              endAt: "2026-03-04T10:00:00.000Z",
-              title: "Updated school title",
-              metadata: { iCalUID: "shared-event@example.test" },
-              updatedAt: "2026-03-04T09:30:00.000Z",
-            }),
-          ],
-        },
-      },
+      ),
     ]);
 
     expect(merged).toHaveLength(1);
@@ -478,36 +484,26 @@ describe("mergeAggregatedCalendarFeedEvents", () => {
   });
 
   it("keeps provider-local id collisions independent across exact sources", () => {
-    const startAt = "2026-03-04T09:00:00.000Z";
-    const source = (provider: "google" | "microsoft", account: string) => ({
-      calendar: {
-        accessRole: "owner",
-        accountEmail: `${account}@example.test`,
-        calendarId: "primary",
-        connectorAccountId: account,
-        grantId: `grant-${account}`,
-        provider,
-        side: "owner" as const,
-        summary: provider,
-      },
-      feed: {
-        calendarId: "primary",
-        source: "synced" as const,
-        timeMin: "2026-03-04T00:00:00.000Z",
-        timeMax: "2026-03-05T00:00:00.000Z",
-        syncedAt: "2026-03-04T10:00:00.000Z",
-        events: [
+    const source = (provider: "google" | "microsoft", account: string) =>
+      feedSource(
+        [
           makeEvent({
             id: "provider-local-id",
             provider,
             connectorAccountId: account,
             grantId: `grant-${account}`,
-            startAt,
+            startAt: "2026-03-04T09:00:00.000Z",
           }),
         ],
-      },
-    });
-
+        {
+          accessRole: "owner",
+          accountEmail: `${account}@example.test`,
+          connectorAccountId: account,
+          grantId: `grant-${account}`,
+          provider,
+          summary: provider,
+        },
+      );
     const merged = mergeAggregatedCalendarFeedEvents([
       source("google", "personal"),
       source("microsoft", "work"),
@@ -521,55 +517,24 @@ describe("mergeAggregatedCalendarFeedEvents", () => {
   });
 
   it("normalizes equivalent timed offsets before portable deduplication", () => {
-    const baseCalendar = {
-      accessRole: "reader",
-      accountEmail: null,
-      calendarId: "primary",
-      connectorAccountId: "account",
-      grantId: "grant",
-      provider: "google" as const,
-      side: "owner" as const,
-      summary: "Calendar",
-    };
-    const feed = {
-      calendarId: "primary",
-      source: "synced" as const,
-      timeMin: "2026-03-04T00:00:00.000Z",
-      timeMax: "2026-03-05T00:00:00.000Z",
-      syncedAt: "2026-03-04T10:00:00.000Z",
-    };
-
     const merged = mergeAggregatedCalendarFeedEvents([
-      {
-        calendar: baseCalendar,
-        feed: {
-          ...feed,
-          events: [
-            makeEvent({
-              id: "offset-a",
-              startAt: "2026-03-04T09:00:00-05:00",
-              metadata: { iCalUID: "offset-event@example.test" },
-            }),
-          ],
-        },
-      },
-      {
-        calendar: {
-          ...baseCalendar,
-          connectorAccountId: "account-2",
-          grantId: "grant-2",
-        },
-        feed: {
-          ...feed,
-          events: [
-            makeEvent({
-              id: "offset-b",
-              startAt: "2026-03-04T14:00:00.000Z",
-              metadata: { iCalUID: "offset-event@example.test" },
-            }),
-          ],
-        },
-      },
+      feedSource([
+        makeEvent({
+          id: "offset-a",
+          startAt: "2026-03-04T09:00:00-05:00",
+          metadata: { iCalUID: "offset-event@example.test" },
+        }),
+      ]),
+      feedSource(
+        [
+          makeEvent({
+            id: "offset-b",
+            startAt: "2026-03-04T14:00:00.000Z",
+            metadata: { iCalUID: "offset-event@example.test" },
+          }),
+        ],
+        { connectorAccountId: "account-2", grantId: "grant-2" },
+      ),
     ]);
 
     expect(merged).toHaveLength(1);
@@ -577,63 +542,32 @@ describe("mergeAggregatedCalendarFeedEvents", () => {
 
   it("uses original recurrence identity for a moved cross-provider exception", () => {
     const originalStart = "2026-03-04T14:00:00.000Z";
-    const baseCalendar = {
-      accessRole: "reader",
-      accountEmail: null,
-      calendarId: "primary",
-      connectorAccountId: "account",
-      grantId: "grant",
-      provider: "google" as const,
-      side: "owner" as const,
-      summary: "Calendar",
-    };
-    const feed = {
-      calendarId: "primary",
-      source: "synced" as const,
-      timeMin: "2026-03-04T00:00:00.000Z",
-      timeMax: "2026-03-05T00:00:00.000Z",
-      syncedAt: "2026-03-04T10:00:00.000Z",
-    };
-
     const merged = mergeAggregatedCalendarFeedEvents([
-      {
-        calendar: baseCalendar,
-        feed: {
-          ...feed,
-          events: [
-            makeEvent({
-              id: "stale-occurrence",
-              startAt: originalStart,
-              metadata: {
-                iCalUID: "moved-event@example.test",
-                originalStartTime: originalStart,
-              },
-              updatedAt: "2026-03-04T09:00:00.000Z",
-            }),
-          ],
-        },
-      },
-      {
-        calendar: {
-          ...baseCalendar,
-          connectorAccountId: "account-2",
-          grantId: "grant-2",
-        },
-        feed: {
-          ...feed,
-          events: [
-            makeEvent({
-              id: "moved-occurrence",
-              startAt: "2026-03-04T16:00:00.000Z",
-              metadata: {
-                iCalUID: "moved-event@example.test",
-                icsRecurrenceId: originalStart,
-              },
-              updatedAt: "2026-03-04T10:00:00.000Z",
-            }),
-          ],
-        },
-      },
+      feedSource([
+        makeEvent({
+          id: "stale-occurrence",
+          startAt: originalStart,
+          metadata: {
+            iCalUID: "moved-event@example.test",
+            originalStartTime: originalStart,
+          },
+          updatedAt: "2026-03-04T09:00:00.000Z",
+        }),
+      ]),
+      feedSource(
+        [
+          makeEvent({
+            id: "moved-occurrence",
+            startAt: "2026-03-04T16:00:00.000Z",
+            metadata: {
+              iCalUID: "moved-event@example.test",
+              icsRecurrenceId: originalStart,
+            },
+            updatedAt: "2026-03-04T10:00:00.000Z",
+          }),
+        ],
+        { connectorAccountId: "account-2", grantId: "grant-2" },
+      ),
     ]);
 
     expect(merged).toHaveLength(1);
@@ -649,76 +583,39 @@ describe("mergeAggregatedCalendarFeedEvents", () => {
 
   it("does not collapse coincident events without a shared portable uid", () => {
     const startAt = "2026-03-04T09:00:00.000Z";
-    const baseCalendar = {
-      accessRole: "reader",
-      accountEmail: null,
-      calendarId: "primary",
-      connectorAccountId: "account-1",
-      grantId: "grant-1",
-      provider: "google" as const,
-      side: "owner" as const,
-      summary: "Calendar",
-    };
-    const feed = {
-      calendarId: "primary",
-      source: "synced" as const,
-      timeMin: "2026-03-04T00:00:00.000Z",
-      timeMax: "2026-03-05T00:00:00.000Z",
-      syncedAt: "2026-03-04T10:00:00.000Z",
-    };
-
     const merged = mergeAggregatedCalendarFeedEvents([
-      {
-        calendar: baseCalendar,
-        feed: { ...feed, events: [makeEvent({ id: "one", startAt })] },
-      },
-      {
-        calendar: {
-          ...baseCalendar,
-          connectorAccountId: "account-2",
-          grantId: "grant-2",
-        },
-        feed: { ...feed, events: [makeEvent({ id: "two", startAt })] },
-      },
+      feedSource([makeEvent({ id: "one", startAt })], {
+        accessRole: "owner",
+        connectorAccountId: "account-1",
+        grantId: "grant-1",
+      }),
+      feedSource([makeEvent({ id: "two", startAt })], {
+        accessRole: "owner",
+        connectorAccountId: "account-2",
+        grantId: "grant-2",
+      }),
     ]);
 
     expect(merged.map((event) => event.id)).toEqual(["one", "two"]);
   });
 
   it("keeps separate recurring occurrences that share a series uid", () => {
-    const calendar = {
-      accessRole: "reader",
-      accountEmail: null,
-      calendarId: "primary",
-      connectorAccountId: "account-1",
-      grantId: "grant-1",
-      provider: "google" as const,
-      side: "owner" as const,
-      summary: "Calendar",
-    };
     const merged = mergeAggregatedCalendarFeedEvents([
-      {
-        calendar,
-        feed: {
-          calendarId: "primary",
-          source: "synced",
-          timeMin: "2026-03-04T00:00:00.000Z",
-          timeMax: "2026-03-12T00:00:00.000Z",
-          syncedAt: "2026-03-04T10:00:00.000Z",
-          events: [
-            makeEvent({
-              id: "week-1",
-              startAt: "2026-03-04T09:00:00.000Z",
-              metadata: { iCalUID: "weekly@example.test" },
-            }),
-            makeEvent({
-              id: "week-2",
-              startAt: "2026-03-11T09:00:00.000Z",
-              metadata: { iCalUID: "weekly@example.test" },
-            }),
-          ],
-        },
-      },
+      feedSource(
+        [
+          makeEvent({
+            id: "week-1",
+            startAt: "2026-03-04T09:00:00.000Z",
+            metadata: { iCalUID: "weekly@example.test" },
+          }),
+          makeEvent({
+            id: "week-2",
+            startAt: "2026-03-11T09:00:00.000Z",
+            metadata: { iCalUID: "weekly@example.test" },
+          }),
+        ],
+        { connectorAccountId: "account-1", grantId: "grant-1" },
+      ),
     ]);
 
     expect(merged.map((event) => event.id)).toEqual(["week-1", "week-2"]);
