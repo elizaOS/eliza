@@ -344,8 +344,7 @@ export async function createV5MessageContextObject(args: {
 				stable: false,
 				content: referenceOnly
 					? "For a known operation, name its exact action in candidateActionNames; the planner validates availability and loads its schema. Do not add DISCOVER_TOOLS when those hints already identify the operation. When descriptions or aliases are needed to identify or explain an unfamiliar capability, put DISCOVER_TOOLS in candidateActionNames with a non-simple context, never in contextRequests (which is only for provider/history reads): the planner can read authorized descriptions with names=[] and load schemas by exact name. No catalog is preloaded here; its absence does not imply missing capability. Hints and discovery never establish execution or permission. A conversational reply needs no discovery."
-					: args.includeActionDiscovery === "index" &&
-							index.length < fullCatalog.length
+					: args.includeActionDiscovery === "index"
 						? index
 						: fullCatalog,
 			},

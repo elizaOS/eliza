@@ -1875,96 +1875,110 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(dispatch).not.toHaveBeenCalled();
 	});
 
-	it("defers the complete action catalog for a greeting without mutating registered capabilities", async () => {
-		const description =
-			"Complete action reference: exact Unicode Ω and instructions. ".repeat(
-				30,
+	it.each([1, 360])(
+		"exposes %i authorized names without descriptions and rechecks permissions",
+		async (count) => {
+			const description =
+				count === 1
+					? "Action reference Ω."
+					: "Complete action reference: exact Unicode Ω and instructions. ".repeat(
+							30,
+						);
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["simple"],
+					replyText: "Hi.",
+					extra: { replyEffectStatus: "none" },
+				}),
+				stage1Response({
+					contexts: ["simple"],
+					replyText: "Hello again.",
+					extra: { replyEffectStatus: "none" },
+				}),
+				stage1Response({
+					contexts: ["simple"],
+					replyText: "Hi again.",
+					extra: { replyEffectStatus: "none" },
+				}),
+			]);
+			const actions: Action[] = Array.from({ length: count }, (_, index) => ({
+				name: `CUSTOM_OPERATION_${index}`,
+				description,
+				contexts: ["general"],
+			}));
+			runtime.actions = [
+				...actions,
+				{ name: "PRIVATE_OPERATION", description, private: true },
+				{
+					name: "OWNER_OPERATION",
+					description,
+					roleGate: { minRole: "OWNER" },
+				},
+			];
+			const before = structuredClone(runtime.actions);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "hi", channelType: ChannelType.DM }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			const calls = useModelCalls(runtime);
+			expect(calls).toHaveLength(1);
+			const request = calls[0][1] as { messages: Array<{ content: string }> };
+			const wire = request.messages.map(({ content }) => content).join("\n");
+			for (const action of actions)
+				expect(wire).toContain(JSON.stringify(action.name));
+			expect(wire).not.toContain("PRIVATE_OPERATION");
+			expect(wire).not.toContain("OWNER_OPERATION");
+			expect(wire).not.toContain(description);
+			expect(wire).toContain("DISCOVER_TOOLS");
+			expect(wire).toContain("names=[]");
+			expect(runtime.actions).toEqual(before);
+			expect(result.kind).toBe("direct_reply");
+			expect(
+				request.messages[1].content.startsWith("available_actions:\n"),
+			).toBe(true);
+			// Each turn rechecks the index instead of caching authorization.
+			actions[0].validate = async () => false;
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "hi again", channelType: ChannelType.DM }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+			});
+			const next = useModelCalls(runtime)[1][1] as {
+				messages: Array<{ content: string }>;
+			};
+			expect(next.messages[0].content).toBe(request.messages[0].content);
+			expect(next.messages[1].content.startsWith("available_actions:\n")).toBe(
+				true,
 			);
-		const runtime = makeRuntime([
-			stage1Response({
-				contexts: ["simple"],
-				replyText: "Hi.",
-				extra: { replyEffectStatus: "none" },
-			}),
-			stage1Response({
-				contexts: ["simple"],
-				replyText: "Hello again.",
-				extra: { replyEffectStatus: "none" },
-			}),
-			stage1Response({
-				contexts: ["simple"],
-				replyText: "Hi again.",
-				extra: { replyEffectStatus: "none" },
-			}),
-		]);
-		const actions: Action[] = Array.from({ length: 360 }, (_, index) => ({
-			name: `CUSTOM_OPERATION_${index}`,
-			description,
-			contexts: ["general"],
-		}));
-		runtime.actions = [
-			...actions,
-			{ name: "PRIVATE_OPERATION", description, private: true },
-		];
-		const before = structuredClone(runtime.actions);
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({ text: "hi", channelType: ChannelType.DM }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-		const calls = useModelCalls(runtime);
-		expect(calls).toHaveLength(1);
-		const request = calls[0][1] as { messages: Array<{ content: string }> };
-		const wire = request.messages.map(({ content }) => content).join("\n");
-		for (const action of actions) expect(wire).not.toContain(action.name);
-		expect(wire).not.toContain("PRIVATE_OPERATION");
-		expect(wire).not.toContain(description);
-		expect(wire).toContain("DISCOVER_TOOLS");
-		expect(wire).toContain("names=[]");
-		expect(runtime.actions).toEqual(before);
-		expect(result.kind).toBe("direct_reply");
-		expect(request.messages[1].content.startsWith("available_actions:\n")).toBe(
-			true,
-		);
-		// A reference is not cached authorization; planner discovery rechecks actions.
-		actions[0].validate = async () => false;
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({ text: "hi again", channelType: ChannelType.DM }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
-		});
-		const next = useModelCalls(runtime)[1][1] as {
-			messages: Array<{ content: string }>;
-		};
-		expect(next.messages[0].content).toBe(request.messages[0].content);
-		expect(next.messages[1].content.startsWith("available_actions:\n")).toBe(
-			true,
-		);
-		expect(next.messages[1].content).not.toContain('"CUSTOM_OPERATION_0"');
-		expect(next.messages[1].content).not.toContain("PRIVATE_OPERATION");
-		for (const action of actions.slice(1))
-			expect(next.messages[1].content).not.toContain(action.name);
-		const rankedActions = [...runtime.actions].reverse();
-		runtime.actions = rankedActions;
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				text: "hi once more",
-				channelType: ChannelType.DM,
-			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000007" as UUID,
-		});
-		const reordered = useModelCalls(runtime)[2][1] as {
-			messages: Array<{ content: string }>;
-		};
-		expect(reordered.messages[1].content.split("\n\n")[0]).toBe(
-			next.messages[1].content.split("\n\n")[0],
-		);
-		expect(runtime.actions).toEqual(rankedActions);
-	});
+			expect(next.messages[1].content).not.toContain('"CUSTOM_OPERATION_0"');
+			expect(next.messages[1].content).not.toContain("PRIVATE_OPERATION");
+			expect(next.messages[1].content).not.toContain("OWNER_OPERATION");
+			expect(next.messages[1].content).not.toContain(description);
+			for (const action of actions.slice(1))
+				expect(next.messages[1].content).toContain(JSON.stringify(action.name));
+			const rankedActions = [...runtime.actions].reverse();
+			runtime.actions = rankedActions;
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "hi once more",
+					channelType: ChannelType.DM,
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000007" as UUID,
+			});
+			const reordered = useModelCalls(runtime)[2][1] as {
+				messages: Array<{ content: string }>;
+			};
+			expect(reordered.messages[1].content.split("\n\n")[0]).toBe(
+				next.messages[1].content.split("\n\n")[0],
+			);
+			expect(runtime.actions).toEqual(rankedActions);
+		},
+	);
 
 	it("reads the complete context catalog before dispatch without changing the stable prefix", async () => {
 		const description =
@@ -2074,7 +2088,12 @@ describe("runV5MessageRuntimeStage1", () => {
 					runtime.contexts = new ContextRegistry([
 						{ id: "current_context", description: retained },
 					]);
-					runtime.actions = [{ name: "CURRENT_ACTION", description: retained }];
+					runtime.actions = [
+						{
+							name: "CURRENT_ACTION",
+							description: "Current action-only reference body Ω.",
+						},
+					];
 				}
 				return result;
 			},
@@ -2092,7 +2111,8 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(wire).toContain(retained.trim());
 		expect(wire).not.toContain(removed.trim());
 		expect(wire).not.toContain("removed_context");
-		expect(wire).not.toContain("CURRENT_ACTION");
+		expect(wire).toContain("CURRENT_ACTION");
+		expect(wire).not.toContain("Current action-only reference body Ω.");
 		expect(wire).toContain("DISCOVER_TOOLS");
 		expect(wire).not.toContain("REVOKED_ACTION");
 	});
@@ -7071,7 +7091,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			mentionContext: { isMention: true },
 		});
 		hardenIncomingUserMessage(message);
-		expect(message.content.text).toContain("Delete data");
+		expect(message.content.text).toContain("<<<EXTERNAL_UNTRUSTED_CONTENT>>>");
 		expect(message.content.text).toContain("dinner");
 
 		const result = await runV5MessageRuntimeStage1({

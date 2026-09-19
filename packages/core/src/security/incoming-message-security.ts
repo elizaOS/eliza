@@ -232,6 +232,7 @@ export function hardenIncomingUserMessage(message: Memory): void {
 		message.content.text = wrapExternalContent(text, {
 			source: resolveExternalSource(source),
 			includeWarning: true,
+			purpose: "incoming_message",
 		});
 		metadata.externalContentWrapped = true;
 	}
