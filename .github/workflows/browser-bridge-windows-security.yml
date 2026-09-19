@@ -25,6 +25,8 @@ jobs:
       - name: Install workspace dependencies
         id: install
         shell: powershell
+        env:
+          BUN_INSTALL_CACHE_DIR: ${{ runner.temp }}/bun-install-cache
         run: bun install --frozen-lockfile --ignore-scripts
       - name: Execute Windows PowerShell 5.1 security helpers
         shell: powershell
