@@ -213,6 +213,9 @@ or generative-UI formatting guides in context. The shared renderer remains for
 existing onboarding and tool-owned approval flows; do not remove those flows
 when changing model-facing context. Tests that explicitly register the legacy
 providers cover their isolated contracts, not default runtime availability.
+When explicitly registered, widget references belong to planning/completion;
+Stage 1 retains incoming choices and routes presentation-only requests without
+requiring external effects. Provider restoration must use planning admission.
 Always-on response providers bypass context selection only, never role or
 private-provider gates.
 

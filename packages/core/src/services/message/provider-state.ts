@@ -21,36 +21,32 @@ import {
 } from "./addressing.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 
+/** Stage 1 owns interpretation and disclosure context; domain state and output grammars wait for planning. */
+export const STAGE1_RESPONSE_STATE_PROVIDERS = [
+	"RECENT_MESSAGES",
+	"CHARACTER_GATE_NOTICE",
+	"userPersonalityPreferences",
+	"recent-conversations",
+	"relevant-conversations",
+	"BOT_AWARENESS",
+	"CHOICE",
+] as const;
+
 export const CORE_RESPONSE_STATE_PROVIDERS = [
+	"RECENT_MESSAGES",
 	"RUNTIME_MODEL_CONTEXT",
 	"UI_CONTEXT",
 	"ENTITIES",
-	"RECENT_MESSAGES",
 	"ATTACHMENTS",
 	"PLATFORM_CHAT_CONTEXT",
 	"PLATFORM_USER_CONTEXT",
-	// FACTS is dynamic and would otherwise never run during response
-	// composition. Stage 1 keeps it rendered so durable user facts
-	// ("my dog's name is Jeff", "my car is named Bertha") persisted by the
-	// facts-and-relationships stage can be recalled on a later turn — even a
-	// simple-path turn after the source message has scrolled out of the
-	// RECENT_MESSAGES window. Without this, stored facts are written but
-	// never retrieved into the answer. FACTS is cacheStable:false /
-	// cacheScope:"turn" and BM25-ranked against the current message, so its
-	// rendered text varies per turn (like CURRENT_TIME); we accept that
-	// prefix-cache churn and token cost as the price of cross-turn recall.
 	"FACTS",
-	// CURRENT_TIME is dynamic and would otherwise be filtered out before
-	// reaching the response handler. The wall-clock time is a baseline
-	// signal for nearly every routing decision (scheduling, freshness of
-	// recent messages, "today/tomorrow" parsing), so it's always-on here.
 	"CURRENT_TIME",
 ];
 
 /**
- * Names of registered providers that opted into always-on Stage-1 response
- * state via `alwaysInResponseState`. Composed regardless of selected contexts,
- * so a plugin's dynamic provider reaches Stage 1 without core naming it.
+ * Names of authorized providers that opt into every planning turn through
+ * the legacy `alwaysInResponseState` flag. The flag cannot expand Stage 1.
  */
 export function alwaysOnResponseStateProviderNames(
 	runtime: IAgentRuntime,
@@ -292,21 +288,25 @@ export function uiViewActionPriority(
 		: 2;
 }
 
-/**
- * The provider include list for Stage-1 response-state composition: the core
- * response providers plus always-on plugin providers. Exported for tests.
- */
+/** Select authorized evidence needed to interpret the turn before direct delivery. */
 export function stage1ResponseStateProviderNames(
 	runtime: IAgentRuntime,
 	message: Memory,
 	userRoles?: readonly RoleGateRole[],
 ): string[] {
-	const excluded = new Set(ambientTurnProviderExclusions(runtime, message));
+	// Explicit benchmark evidence is part of this incoming request, not retrieved domain state.
 	return [
-		...CORE_RESPONSE_STATE_PROVIDERS,
-		...alwaysOnResponseStateProviderNames(runtime, userRoles),
+		...STAGE1_RESPONSE_STATE_PROVIDERS,
 		...(hasInboundBenchmarkContext(message) ? ["CONTEXT_BENCH"] : []),
-	].filter((name) => !excluded.has(name));
+	].filter((name) => {
+		const provider = runtime.providers?.find((entry) => entry.name === name);
+		return (
+			!provider ||
+			(!provider.private &&
+				satisfiesRoleGate(userRoles, provider.roleGate) &&
+				satisfiesRoleGate(userRoles, provider.contextGate?.roleGate))
+		);
+	});
 }
 
 export async function composeResponseState(
@@ -314,26 +314,20 @@ export async function composeResponseState(
 	message: Memory,
 	skipCache = false,
 ): Promise<State> {
-	// Always-on is a context opt-in, never a role-gate bypass. Resolve only
-	// when a registered always-on provider needs a role decision.
 	const needsRole = runtime.providers?.some(
 		(provider) =>
-			provider.alwaysInResponseState &&
+			STAGE1_RESPONSE_STATE_PROVIDERS.some((name) => name === provider.name) &&
 			(provider.roleGate || provider.contextGate?.roleGate),
 	);
 	const roles = needsRole
 		? [await resolveStage1SenderRole(runtime, message)]
 		: undefined;
-	const providers = stage1ResponseStateProviderNames(runtime, message, roles);
-	if (hasPageScopedRoutingMetadata(message)) {
-		return runtime.composeState(
-			message,
-			[...providers, "page-scoped-context"],
-			true,
-			skipCache,
-		);
-	}
-	return runtime.composeState(message, providers, true, skipCache);
+	return runtime.composeState(
+		message,
+		stage1ResponseStateProviderNames(runtime, message, roles),
+		true,
+		skipCache,
+	);
 }
 
 export function selectV5PlannerStateProviderNames(args: {
@@ -343,6 +337,8 @@ export function selectV5PlannerStateProviderNames(args: {
 	userRoles: readonly RoleGateRole[];
 }): string[] {
 	const providerNames = new Set<string>(CORE_RESPONSE_STATE_PROVIDERS);
+	if (hasPageScopedRoutingMetadata(args.message))
+		providerNames.add("page-scoped-context");
 	if (hasInboundBenchmarkContext(args.message)) {
 		providerNames.add("CONTEXT_BENCH");
 	}
@@ -350,10 +346,7 @@ export function selectV5PlannerStateProviderNames(args: {
 	const providers = Array.isArray(args.runtime.providers)
 		? (args.runtime.providers as Provider[])
 		: [];
-	// Always-on response-state providers opt in via `alwaysInResponseState` and
-	// are composed regardless of the turn's selected contexts (like the core
-	// FACTS / CURRENT_TIME signals) — so a plugin's dynamic provider can reach
-	// Stage 1 without core naming it.
+	// Legacy always-on providers are deferred until the turn needs planning.
 	for (const name of alwaysOnResponseStateProviderNames(
 		args.runtime,
 		args.userRoles,

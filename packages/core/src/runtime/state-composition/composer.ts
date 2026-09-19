@@ -150,15 +150,9 @@ export class ProviderStateComposer {
 			message,
 		);
 		const providerNames = new Set<string>();
-		if (filterList && filterList.length > 0) {
-			// The onlyInclude path honors the explicit name list without enforcing
-			// provider roleGates: the Stage-1 response state deliberately
-			// force-includes recall providers like FACTS for every sender, and
-			// unassigned senders (ordinary humans AND relay/webhook bridges
-			// carrying human conversation) resolve to GUEST by default (roles.ts
-			// getEntityRole), so gate enforcement here would silently strip
-			// cross-turn recall from exactly the turns that need it. Callers that
-			// name a provider explicitly own that inclusion decision.
+		if (filterList) {
+			// Explicit stage selection owns role/context admission. Hooks may narrow
+			// that selection but cannot expand it into another stage's providers.
 			for (const name of filterList) {
 				providerNames.add(name);
 			}
@@ -217,6 +211,13 @@ export class ProviderStateComposer {
 				);
 			}
 		}
+		if (filterList) {
+			const allowed = new Set(filterList);
+			for (const name of providerNames) {
+				if (!allowed.has(name)) providerNames.delete(name);
+			}
+		}
+
 		const providersToGet: Provider[] = [];
 		const deniedSensitiveProviderNames = new Set<string>();
 		let ownerDisclosureDecision:
@@ -254,6 +255,15 @@ export class ProviderStateComposer {
 				(a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name),
 		);
 
+		const selectedProviderNames = providersToGet.map(
+			(provider) => provider.name,
+		);
+		const providerSelectionKey = JSON.stringify(
+			[...selectedProviderNames].sort(),
+		);
+		const selectionChanged =
+			cachedState.data.__providerSelectionKey !== providerSelectionKey;
+
 		// `refreshProviders` lets a caller reuse cached provider results and re-run
 		// only the named providers, plus providers not yet cached for this
 		// message. An empty array requests maximum reuse. `null` preserves the
@@ -274,6 +284,7 @@ export class ProviderStateComposer {
 		const providersToRun = refreshSet
 			? providersToGet.filter(
 					(p) =>
+						selectionChanged ||
 						p.disclosureGate?.require === "owner_exclusive" ||
 						refreshSet.has(p.name) ||
 						!cachedProviderNames?.has(p.name),
@@ -316,7 +327,7 @@ export class ProviderStateComposer {
 				const providerRuntime: IAgentRuntime = this.runtime;
 				const inFlightKey =
 					message.id && !refreshSet?.has(provider.name)
-						? `${message.id}\u0000${message.roomId}\u0000${provider.name}\u0000${
+						? `${message.id}\u0000${message.roomId}\u0000${providerSelectionKey}\u0000${provider.name}\u0000${
 								provider.disclosureGate?.require === "owner_exclusive"
 									? trustedDeliveryAudienceCacheKey(message)
 									: "public"
@@ -355,6 +366,7 @@ export class ProviderStateComposer {
 										withProviderStep(providerRuntime, provider.name, () =>
 											provider.get(providerRuntime, message, cachedState, {
 												signal: workController.signal,
+												selectedProviderNames,
 											}),
 										),
 									),
@@ -806,6 +818,7 @@ export class ProviderStateComposer {
 			data: {
 				...cachedState.data,
 				__roomId: message.roomId,
+				__providerSelectionKey: providerSelectionKey,
 				__conversationSeed: conversationSeed,
 				__trustedDeliveryAudienceCacheKey: audienceCacheKey,
 				providerOrder: providerOrderNames,
@@ -869,6 +882,7 @@ export class ProviderStateComposer {
 					values: { ...publicValues, providers: publicText },
 					data: {
 						__roomId: message.roomId,
+						__providerSelectionKey: providerSelectionKey,
 						__conversationSeed: conversationSeed,
 						__trustedDeliveryAudienceCacheKey: audienceCacheKey,
 						providerOrder: publicProviders.map((provider) => provider.name),

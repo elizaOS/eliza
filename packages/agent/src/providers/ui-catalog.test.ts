@@ -222,14 +222,13 @@ describe("relevance keyword separation", () => {
 });
 
 describe("widget guide progressive discovery", () => {
-  it("supports direct controls without forcing another model call", async () => {
+  it("provides the complete control grammar for later reply composition", async () => {
     const hint = await uiWidgetCapabilitiesProvider.get(
       makeRuntime(),
       makeMessage(ChannelType.API, "hi"),
       {} as State,
     );
     expect(hint.text).toContain("[CHOICE:scope]");
-    expect(hint.text).toContain('contexts=["simple"]');
     expect(hint.text).toContain("never secrets/API keys");
     expect(hint.text).toContain("[FORM]");
     expect(hint.text).toContain("[CONFIG:pluginId]");

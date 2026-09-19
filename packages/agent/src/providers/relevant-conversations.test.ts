@@ -371,7 +371,8 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
       EMPTY_STATE,
     );
 
-    expect(result).toEqual({ text: "", values: {}, data: {} });
+    expect(result.data?.recallUnavailable).toBe(true);
+    expect(result.text).toContain("retrieval failed");
     expect(getMemories).not.toHaveBeenCalled();
     expect(embedRecallQuery).not.toHaveBeenCalled();
     expect(searchCanonicalConversationMemories).not.toHaveBeenCalled();

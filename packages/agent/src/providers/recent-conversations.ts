@@ -247,15 +247,16 @@ export const recentConversationsProvider: Provider = {
         data: { rooms },
       };
     } catch (error) {
-      // error-policy:J4 recall failure degrades to no recent-conversations text,
-      // but must be distinguishable from a legit-empty recall: reportError
-      // surfaces the broken pipeline to the agent via RECENT_ERRORS instead of
-      // it reading as "no recent history".
+      // error-policy:J4 expose retrieval failure before a direct response can mistake it for empty history.
       runtime.reportError("RecentConversationsProvider", error, {
         entityId: message.entityId,
         roomId: message.roomId,
       });
-      return { text: "", values: {}, data: {} };
+      return {
+        text: "Cross-room history is unavailable because retrieval failed. Do not infer that no prior discussion exists; use an authorized recall tool if available or state the gap.",
+        values: {},
+        data: { recallUnavailable: true },
+      };
     }
   },
 };

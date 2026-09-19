@@ -811,6 +811,8 @@ export interface ProviderResult {
  */
 export interface ProviderExecutionContext {
 	signal: AbortSignal;
+	/** Providers admitted to this composition, including reused results; registration alone does not establish ownership. */
+	selectedProviderNames?: readonly string[];
 }
 
 /**
@@ -902,17 +904,10 @@ export interface Provider {
 	registerByDefault?: boolean;
 
 	/**
-	 * When true, this provider is always composed into the Stage-1 response
-	 * state regardless of the turn's selected contexts (like the built-in
-	 * FACTS / CURRENT_TIME signals). Lets a plugin opt a dynamic provider into
-	 * always-on Stage-1 rendering without core having to name it — keeping the
-	 * core → plugin dependency direction inward-only.
-	 *
-	 * This is the explicit opt-in for FACTS/CURRENT_TIME-class always-on
-	 * signals; it bypasses context routing entirely, so keep the provider's
-	 * happy-path render empty/cheap (e.g. RECENT_ERRORS renders nothing when
-	 * healthy). Providers whose relevance is turn-scoped should declare
-	 * `contexts`/`contextGate` instead.
+	 * Legacy name for an always-on planning provider. Composed on planning turns
+	 * regardless of selected contexts, subject to role and disclosure gates.
+	 * Stage 1 admits only its explicit dialogue/character provider list; this
+	 * flag cannot add domain state to the response decision.
 	 */
 	alwaysInResponseState?: boolean;
 

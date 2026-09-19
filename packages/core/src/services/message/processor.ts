@@ -586,6 +586,7 @@ export class MessageProcessor {
 				state,
 				userRoles: [responseRole],
 				includeTools: false,
+				providerPhase: "completion",
 			}),
 		);
 		opts.prepareReplyRecovery = async () => originalReplyRecovery;

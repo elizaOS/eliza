@@ -176,6 +176,7 @@ export async function runShortcutGate(args: {
 						state: resultState,
 						userRoles: [args.senderRole],
 						includeTools: false,
+						providerPhase: "completion",
 					}),
 				),
 		});

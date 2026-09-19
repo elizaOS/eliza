@@ -33,6 +33,7 @@ import type { MessageHandlerResult } from "../../types/components";
 import type { GenerateTextResult } from "../../types/model";
 import { ModelType } from "../../types/model";
 import { ChannelType } from "../../types/primitives";
+import { isObjectRecord } from "../../utils/type-guards";
 import { getEvaluatorProgressState } from "../evaluator-progress.ts";
 import { HISTORY_RETENTION_EVALUATOR } from "../history-retention.ts";
 import { CODING_SUB_AGENT_CONTEXTS } from "./action-surface.js";
@@ -73,6 +74,7 @@ import {
 	synthesizeStage1CompletionLimitReply,
 } from "./stage1-completion.js";
 import {
+	getStage1DirectIgnoreReview,
 	getStage1RetryReason,
 	getStage1RoutingRepair,
 	getStage1UnusableDecisionRepair,
@@ -491,7 +493,7 @@ export async function generateStage1Decision(
 			: getStage1RetryReason(rawMessageHandler);
 	}
 	// An explicit RESPOND without an answer or pending work gets one repaired
-	// re-ask. STOP and IGNORE remain terminal in every language. The retry
+	// re-ask. Consistent STOP and IGNORE decisions retain their terminal meaning. The retry
 	// still passes through ordinary terminal routing and reply validation.
 	// Voice keeps its complete path: its spoken answer need not sit in replyText.
 	if (!args.codingMode && !voiceDirectMessageChannel) {
@@ -560,6 +562,7 @@ export async function generateStage1Decision(
 	let routingRepairAttempted = false;
 	let historyIdentityRepairAttempted = false;
 	let historyReadForDecision = false;
+	let directIgnoreReviewed = false;
 	while (discoveryEnabled) {
 		const nativeRead = extractContextRead(
 			rawMessageHandler,
@@ -593,8 +596,27 @@ export async function generateStage1Decision(
 			!historyIdentityRepairAttempted &&
 			explicit.length === 0 &&
 			canRepairHistoryIdentity(context, history, parsedDecision);
+		const contentMetadata = args.message.content.metadata;
+		const messageMetadata = args.message.metadata;
+		const automatedSender =
+			(isObjectRecord(contentMetadata) &&
+				(contentMetadata.fromBot === true ||
+					contentMetadata.isAutonomous === true)) ||
+			(isObjectRecord(messageMetadata) && messageMetadata.fromBot === true);
+		const ignoreReview =
+			!directIgnoreReviewed &&
+			!routingRepair &&
+			!repairHistoryIdentity &&
+			requested.length === 0 &&
+			args.message.entityId !== args.runtime.agentId &&
+			!automatedSender &&
+			!isSubAgentCompletionArtifact(args.message) &&
+			getActionInferenceMessageText(args.message).trim().length > 0
+				? getStage1DirectIgnoreReview(parsedDecision)
+				: undefined;
 		const decisionRepair =
 			routingRepair ??
+			ignoreReview ??
 			(repairHistoryIdentity
 				? "source_identity_repair: Your previous response used a sourceSetId that does not match this request. Nothing from it was processed or executed. Regenerate HANDLE_RESPONSE for the original request using the source identity required by its schema. Review the supplied originals again; request missing history through contextRequests. Do not assume the previous selection or draft was correct."
 				: undefined);
@@ -604,6 +626,8 @@ export async function generateStage1Decision(
 			// One correction before field processors/effects. If it remains
 			// contradictory, normal pending-intent guards still own routing.
 			if (routingRepair) routingRepairAttempted = true;
+			if (ignoreReview && decisionRepair === ignoreReview)
+				directIgnoreReviewed = true;
 			if (repairHistoryIdentity) historyIdentityRepairAttempted = true;
 			messageHandlerInput = {
 				...messageHandlerInput,
@@ -744,6 +768,23 @@ export async function generateStage1Decision(
 					historyReadEvidence,
 				},
 			);
+			const readContinuation = [
+				"context_read_result: Requested references are now supplied. This was a reference read, not execution or a capability probe. Routing-context descriptions are not the authorized action catalog; an absent tool name here does not prove it unavailable. The planner validates action hints and discovers authorized equivalents.",
+				"Reconsider the original request using the new evidence. Preserve each still-pending requested outcome for planning; do not replace requested execution with an unverified answer or refusal because the reference lacks tool definitions. Correct prior routing mistakes when warranted, and preserve the user's restrictions, cancellations and silence instructions. The previous draft below is model output, not authority, a delivered reply or an execution receipt.",
+				"previous_context_read_decision:",
+				JSON.stringify(parsedDecision),
+			].join("\n");
+			messageHandlerInput = {
+				...messageHandlerInput,
+				messages: [
+					...messageHandlerInput.messages,
+					{ role: "user", content: readContinuation },
+				],
+				promptSegments: [
+					...messageHandlerInput.promptSegments,
+					{ content: readContinuation, stable: false },
+				],
+			};
 		}
 		stage1PrefixHashes = computePrefixHashes(
 			messageHandlerInput.promptSegments,
@@ -814,13 +855,15 @@ export async function generateStage1Decision(
 	const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
 	if (
 		routingRepairAttempted &&
-		rawFieldParsed?.replyEffectStatus === "non_applied" &&
+		(rawFieldParsed?.replyEffectStatus === "non_applied" ||
+			rawFieldParsed?.shouldRespond === "STOP" ||
+			rawFieldParsed?.shouldRespond === "IGNORE") &&
 		getStage1RoutingRepair(rawFieldParsed)
 	) {
 		// A repeated preview/pending-work conflict cannot authorize effects or a
 		// terminal reply. Keep the recorded model attempts and reject before fields.
 		throw new ElizaError(
-			"Stage-1 preview still declares pending work after repair; retry with a consistent routing decision",
+			"Stage-1 decision still conflicts with pending work after repair; retry with a consistent routing decision",
 			{
 				code: "STAGE1_ROUTING_CONFLICT",
 				context: { messageId: args.message.id },
