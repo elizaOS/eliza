@@ -79,7 +79,7 @@ try {
 		const pkg = JSON.parse(readFileSync(canonical, "utf8"));
 		dependencyNames.add(pkg.name);
 		assert.ok(
-			!/^@elizaos\/(?:cloud(?:-|$)|registry(?:-|$)|credentials$|vault$|testing$|prompts$|plugin-)/.test(
+			!/^@elizaos\/(?:cloud(?:-|$)|registry(?:-|$)|credentials$|vault$|testing$|prompts$|retrieval$|plugin-)/.test(
 				pkg.name,
 			) &&
 				!/^(?:@ai-sdk\/|@anthropic-ai\/|@openrouter\/|@aws-sdk\/|@google\/(?:genai|generative-ai)|@electric-sql\/|@napi-rs\/keyring$|ai$|openai$|file-type$|json5$|handlebars$|drizzle-orm$|pg$|postgres$|keytar$)/.test(
@@ -141,6 +141,7 @@ try {
   await runtime.initialize({ skipMigrations: true });
   assert.equal(runtime.messageService, null);
   assert.equal("routes" in runtime, false);
+  assert.equal("rerankMemories" in runtime, false);
   assert.equal("companionUrl" in runtime, false);
   assert.equal(runtime.actions.length, 0);
   assert.equal(runtime.providers.length, 0);
@@ -153,7 +154,7 @@ try {
   assert.equal(calls, 1);
   assert.equal(typeof createLogger().info, 'function');
   const publicApi = await import('@elizaos/core');
-  for (const hostApi of ['waitForServerReady', 'pingServer', 'ServerHealthError', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION', 'searchKeylessWeb', 'fetchRemoteMedia', 'detectMime', 'describeImageCached', 'resolveAttachmentBytes', 'ManagedProviderHttpClient', 'resolveProviderConnection', 'buildBaseTables', 'createJsonFileTrajectoryRecorder', 'resolveTrajectoryDir', 'computeCallCostUsd', 'MODEL_PRICES_USD_PER_M_TOKENS', 'InMemoryDatabaseAdapter', 'trajectoryToPlaintext', 'buildWalletRpcUpdateRequest', 'assertPublicRouteIntent', 'messageHandlerTemplate', 'sendJson', 'readJsonBody', 'registerCuratedApp', 'drainAppRoutePluginLoaders', 'getRuntimeRouteHostContext', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
+  for (const hostApi of ['BM25', 'Tokenizer', 'rankMessageSearch', 'rerankMemories', 'waitForServerReady', 'pingServer', 'ServerHealthError', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION', 'searchKeylessWeb', 'fetchRemoteMedia', 'detectMime', 'describeImageCached', 'resolveAttachmentBytes', 'ManagedProviderHttpClient', 'resolveProviderConnection', 'buildBaseTables', 'createJsonFileTrajectoryRecorder', 'resolveTrajectoryDir', 'computeCallCostUsd', 'MODEL_PRICES_USD_PER_M_TOKENS', 'InMemoryDatabaseAdapter', 'trajectoryToPlaintext', 'buildWalletRpcUpdateRequest', 'assertPublicRouteIntent', 'messageHandlerTemplate', 'sendJson', 'readJsonBody', 'registerCuratedApp', 'drainAppRoutePluginLoaders', 'getRuntimeRouteHostContext', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
     assert.equal(hostApi in publicApi, false, hostApi + ' must be owned outside core');
   }
   for (const subpath of ['node', 'browser', 'edge', 'testing', 'runtime', 'client-public']) {

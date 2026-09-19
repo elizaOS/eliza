@@ -145,3 +145,18 @@ built before packing; a view-only dist directory is insufficient.
 The reduction preserves stored-role freshness, encrypted AAD, cancellation,
 exact evidence provenance and lossless model context. No production maintenance,
 registry publication, paid compute or model upload is part of this cleanup.
+
+## Retrieval ownership completion
+
+The former `packages/core/src/search.ts` is now the optional dependency-free
+`@elizaos/retrieval` package. Core no longer exports search algorithms or owns
+BM25 reranking. SQL and both in-memory adapters apply the shared helper after
+scoped vector pagination. Agent message search and Cloud MCP indexing import
+the new owner directly. Assistant document retrieval already owns its separate
+algorithm; its tuning is unchanged. This is implementation relocation, not
+2,024 lines of repository deletion. The linguistic stemmer is preserved.
+
+Algorithm tests moved with the implementation. Real runtime tests cover both
+in-memory adapters and SQL query/no-query ordering, semantic-only and empty
+text retention, and pagination. Custom adapters own their query ranking; import
+`rerankMemories` from the new package if that policy is wanted.
