@@ -3340,6 +3340,73 @@ function resolveCalendarWindow(
   };
 }
 
+function resolveCalendarReadWindow(
+  intent: string,
+  details: Record<string, unknown> | undefined,
+  forSearch: boolean,
+  llmPlan: CalendarLlmPlan,
+  timeZone: string,
+): ReturnType<typeof resolveCalendarWindow> {
+  const date = details?.date;
+  if (date !== undefined) {
+    const parsed =
+      typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)
+        ? parseExplicitLocalDate(date, timeZone)
+        : null;
+    const check = new Date(0);
+    if (parsed) check.setUTCFullYear(parsed.year, parsed.month - 1, parsed.day);
+    if (!parsed || check.toISOString().slice(0, 10) !== date) {
+      throw new CalendarServiceError(
+        400,
+        "date must be a valid YYYY-MM-DD calendar date.",
+        "CALENDAR_READ_DATE_INVALID",
+      );
+    }
+    if (
+      [
+        "timeMin",
+        "timemin",
+        "time_min",
+        "timeMax",
+        "timemax",
+        "time_max",
+        "windowDays",
+        "windowdays",
+        "window_days",
+      ].some((key) => details?.[key] !== undefined)
+    ) {
+      throw new CalendarServiceError(
+        400,
+        "Supply either date for a whole local day or explicit range bounds, not both.",
+        "CALENDAR_READ_DATE_CONFLICT",
+      );
+    }
+    return {
+      request: {
+        calendarId: calendarIdDetail(details),
+        timeZone,
+        forceSync: detailBoolean(details, "forceSync"),
+        ...buildLocalDateRange(timeZone, parsed, addDaysToLocalDate(parsed, 1)),
+      },
+      label: `on ${formatExplicitCalendarDateLabel({ date: parsed, timeZone })} (${timeZone})`,
+      explicitWindow: true,
+    };
+  }
+  const resolved = resolveCalendarWindow(
+    intent,
+    details,
+    forSearch,
+    llmPlan,
+    timeZone,
+  );
+  // Ground the reply in the actual read bounds, not a planner-authored label
+  // that can name a different day from the supplied timestamps.
+  if (resolved.request.timeMin && resolved.request.timeMax) {
+    resolved.label = `from ${formatLocalDateTimeInZone(new Date(resolved.request.timeMin), timeZone)} to ${formatLocalDateTimeInZone(new Date(resolved.request.timeMax), timeZone)} (end exclusive; ${timeZone})`;
+  }
+  return resolved;
+}
+
 function resolveTripWindowRequest(
   details: Record<string, unknown> | undefined,
   llmPlan?: CalendarLlmPlan,
@@ -6561,7 +6628,7 @@ const calendarAction: CalendarHandlerAction = {
       // events" returns "no events today" even when the calendar has
       // dozens of upcoming items. We apply this regardless of whether the
       // chat LLM picked feed or search_events because both subactions go
-      const baseResolved = resolveCalendarWindow(
+      const baseResolved = resolveCalendarReadWindow(
         intent,
         details,
         subaction === "search_events",

@@ -130,6 +130,51 @@ describe("CALENDAR search_events call shape", () => {
     },
   );
 
+  it.each([
+    ["2026-09-20", "2026-09-20T04:00:00.000Z", "2026-09-21T04:00:00.000Z"],
+    ["2026-03-08", "2026-03-08T05:00:00.000Z", "2026-03-09T04:00:00.000Z"],
+    ["2026-11-01", "2026-11-01T04:00:00.000Z", "2026-11-02T05:00:00.000Z"],
+  ])(
+    "reads the complete local day %s without model timezone arithmetic",
+    async (date, timeMin, timeMax) => {
+      const { result, service, runJsonModel, runTextModel } = await runSearch({
+        subaction: "feed",
+        details: { date, timeZone: "America/New_York" },
+      });
+      expect(result.success).toBe(true);
+      expect(service.getCalendarFeed).toHaveBeenCalledExactlyOnceWith(
+        expect.any(URL),
+        expect.objectContaining({
+          timeMin,
+          timeMax,
+          timeZone: "America/New_York",
+        }),
+      );
+      expect(runJsonModel).not.toHaveBeenCalled();
+      expect(runTextModel).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { date: "2026-02-30" },
+    { date: "tomorrow" },
+    {
+      date: "2026-09-20",
+      timeMin: "2026-09-19T00:00:00",
+      timeMax: "2026-09-20T00:00:00",
+    },
+  ])(
+    "rejects invalid or conflicting date bounds before reading: %j",
+    async (details) => {
+      const { result, service } = await runSearch({
+        subaction: "feed",
+        details: { ...details, timeZone: "America/New_York" },
+      });
+      expect(result.success).toBe(false);
+      expect(service.getCalendarFeed).not.toHaveBeenCalled();
+    },
+  );
+
   it("reads an unfiltered date range through feed without query extraction", async () => {
     const {
       result,
@@ -143,9 +188,16 @@ describe("CALENDAR search_events call shape", () => {
         timeMin: "2026-09-16T00:00:00",
         timeMax: "2026-09-17T00:00:00",
         timeZone: "UTC",
+        label: "on September 17",
       },
     });
     expect(result.success).toBe(true);
+    expect(result.data?.replyContext).toMatchObject({
+      context: {
+        label:
+          "from 2026-09-16T00:00:00 to 2026-09-17T00:00:00 (end exclusive; UTC)",
+      },
+    });
     expect(service.getCalendarFeed).toHaveBeenCalledTimes(1);
     expect(runJsonModel).not.toHaveBeenCalled();
     expect(runTextModel).not.toHaveBeenCalled();

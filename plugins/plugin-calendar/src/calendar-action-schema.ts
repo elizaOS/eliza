@@ -297,6 +297,11 @@ const CALENDAR_READ_DETAIL_KEYS = [
 export const CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
   type: "object",
   properties: {
+    date: {
+      type: "string",
+      description:
+        "For a single-day agenda, supply the requested local calendar date as YYYY-MM-DD and timeZone. Code calculates both midnight boundaries, including DST. Do not also supply timeMin/timeMax or windowDays.",
+    },
     ...Object.fromEntries(
       Object.entries(CALENDAR_DETAILS_PARAMETER_SCHEMA.properties ?? {}).filter(
         ([key]) => CALENDAR_READ_DETAIL_KEYS.some((name) => name === key),
