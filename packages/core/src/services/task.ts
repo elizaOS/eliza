@@ -286,6 +286,11 @@ export class TaskService extends Service {
 		const errors: ElizaError[] = [];
 
 		for (const task of tasks) {
+			// Admission can close while an earlier task's async shouldRun/worker
+			// lookup was pending (prepareStop cordons before the runtime drains).
+			// Stop validating so no quarantine/resume write or execution is
+			// selected after shutdown begins.
+			if (this.stopped) break;
 			const context = { taskId: task.id, taskName: task.name };
 			const metadata = task.metadata as TaskMetadata | undefined;
 			if (task.tags?.includes("repeat") && metadata?.paused) {
@@ -624,10 +629,18 @@ export class TaskService extends Service {
 	async runTick(tasks: Task[]): Promise<void> {
 		if (this.stopped) return;
 		const validation = await this.validateTasks(tasks);
+		// A pending `shouldRun` can resolve after prepareStop() cordoned the
+		// service. Re-check admission before selecting any task so a tick that
+		// started before shutdown cannot begin work (or record a failure/backoff)
+		// after the runtime drained it.
+		if (this.stopped) return;
 		const failures: ElizaError[] = [...validation.errors];
 		const now = this.clock.now();
 
 		for (const task of validation.tasks) {
+			// Between tasks, stop admitting new work once the service is cordoned.
+			// Already-executing tasks still drain through executingTaskPromises.
+			if (this.stopped) break;
 			// Non-repeat tasks: run when due (or immediately if no dueAt/scheduledAt). WHY: one-shot "run at time X" (e.g. follow-up) uses dueAt or metadata.scheduledAt.
 			if (!task.tags?.includes("repeat")) {
 				// A paused one-shot must not run and must not reach the
@@ -1117,6 +1130,17 @@ export class TaskService extends Service {
 			nextRunAt,
 			lastError: (task.metadata as TaskMetadata)?.lastError,
 		};
+	}
+
+	/**
+	 * Synchronously cordons task admission during the runtime's prepareStop
+	 * phase, before any asynchronous teardown. A tick whose `shouldRun` is still
+	 * pending then cannot begin execution — or record an artificial
+	 * failure/backoff — after shutdown starts. Draining already-executing work
+	 * stays the job of {@link stop}, which the runtime calls after this.
+	 */
+	prepareStop(_reason: string): void {
+		this.stopped = true;
 	}
 
 	/**

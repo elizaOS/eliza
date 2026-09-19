@@ -1112,3 +1112,97 @@ describe("explicit retry deadlines", () => {
 		},
 	);
 });
+
+describe("TaskService shutdown admission", () => {
+	function makeShutdownService(runtime: IAgentRuntime) {
+		return new TaskService(runtime, {
+			now: () => T0,
+			setInterval: () => {
+				throw Error("Manual ticks only");
+			},
+			clearInterval: () => undefined,
+		});
+	}
+
+	it("does not execute a task whose shouldRun resolves after prepareStop", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		let releaseShouldRun: () => void = () => undefined;
+		const shouldRunGate = new Promise<void>((resolve) => {
+			releaseShouldRun = resolve;
+		});
+		workers.set("shutdown-gated", {
+			name: "shutdown-gated",
+			shouldRun: async () => {
+				await shouldRunGate;
+				return true;
+			},
+			execute,
+		});
+		tasks.set("shutdown-gated" as UUID, {
+			id: "shutdown-gated" as UUID,
+			name: "shutdown-gated",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+		});
+		const service = makeShutdownService(runtime);
+
+		const tick = service.runTick(Array.from(tasks.values()));
+		service.prepareStop("runtime-stop");
+		releaseShouldRun();
+		await tick;
+
+		expect(execute).not.toHaveBeenCalled();
+		expect(tasks.get("shutdown-gated")).toMatchObject({
+			id: "shutdown-gated",
+			tags: ["queue"],
+		});
+	});
+
+	it("drains an executing task but does not admit the next one after prepareStop", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		let releaseFirst: () => void = () => undefined;
+		const firstGate = new Promise<void>((resolve) => {
+			releaseFirst = resolve;
+		});
+		const firstExecute = vi.fn(async () => {
+			await firstGate;
+		});
+		const secondExecute = vi.fn(async () => undefined);
+		workers.set("shutdown-first", {
+			name: "shutdown-first",
+			execute: firstExecute,
+		});
+		workers.set("shutdown-second", {
+			name: "shutdown-second",
+			execute: secondExecute,
+		});
+		tasks.set("shutdown-first" as UUID, {
+			id: "shutdown-first" as UUID,
+			name: "shutdown-first",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+		});
+		tasks.set("shutdown-second" as UUID, {
+			id: "shutdown-second" as UUID,
+			name: "shutdown-second",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+		});
+		const service = makeShutdownService(runtime);
+
+		const tick = service.runTick(Array.from(tasks.values()));
+		await vi.waitFor(() => expect(firstExecute).toHaveBeenCalledTimes(1));
+		service.prepareStop("runtime-stop");
+		releaseFirst();
+		await tick;
+
+		expect(firstExecute).toHaveBeenCalledTimes(1);
+		expect(secondExecute).not.toHaveBeenCalled();
+		expect(tasks.has("shutdown-first")).toBe(false);
+		expect(tasks.get("shutdown-second")).toMatchObject({
+			id: "shutdown-second",
+			tags: ["queue"],
+		});
+	});
+});
