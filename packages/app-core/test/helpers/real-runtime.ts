@@ -6,7 +6,12 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { configureLocalEmbeddingPlugin } from "@elizaos/agent/runtime/eliza";
 import type { Plugin } from "@elizaos/core";
-import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
+import {
+  AgentRuntime,
+  createCharacter,
+  logger,
+  OPTIMIZED_PROMPT_SERVICE,
+} from "@elizaos/core";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
@@ -520,8 +525,8 @@ export async function createRealTestRuntime(
     // lazy (via basicServices) and the first N planner calls fall back to
     // the baseline template before lazy start completes.
     try {
-      const { OptimizedPromptService, OPTIMIZED_PROMPT_SERVICE } = await import(
-        "@elizaos/core"
+      const { OptimizedPromptService } = await import(
+        "@elizaos/plugin-assistant"
       );
       const existing = runtime.getService(OPTIMIZED_PROMPT_SERVICE);
       if (!existing) {
