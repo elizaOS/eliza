@@ -25,19 +25,13 @@ const coreMock = vi.hoisted(() => ({
 
 vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
-	return {
-		...coreMock,
-		resolveStateDir: actual.resolveStateDir,
-		// Target extraction routes through the security-envelope unwrap seam;
-		// it must run against the real core implementations.
-		getStreamingContext: actual.getStreamingContext,
-		getTurnActionConstraint: actual.getTurnActionConstraint,
-		setTurnActionConstraint: actual.setTurnActionConstraint,
-		getUserMessageText: actual.getUserMessageText,
-		unwrapUserMessageText: actual.unwrapUserMessageText,
-		containsExternalEnvelopeMaterial: actual.containsExternalEnvelopeMaterial,
-		completeUserReferenceView: actual.completeUserReferenceView,
-	};
+	return { ...actual, ...coreMock };
+});
+
+vi.mock("@elizaos/shared/runtime-env", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("@elizaos/shared/runtime-env")>();
+	return { ...actual, resolveServerOnlyPort: coreMock.resolveServerOnlyPort };
 });
 
 import type { ViewSummary } from "./views-client.js";
