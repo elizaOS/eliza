@@ -21,11 +21,14 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
     await next();
   },
 }));
+// The route calls `service.create`; the mock throws so a request that reaches
+// it is visible as a 500 with exactly one recorded call, never a fabricated
+// success.
 const createPaymentRequest = mock(async () => {
   throw new Error("service must not be reached");
 });
 mock.module("@/lib/services/payment-requests-default", () => ({
-  getPaymentRequestsService: () => ({ createPaymentRequest }),
+  getPaymentRequestsService: () => ({ create: createPaymentRequest }),
 }));
 
 const { default: route } = await import("../v1/payment-requests/route");
@@ -86,6 +89,31 @@ describe("payment-requests unstorable strings", () => {
       details: Array<{ path: (string | number)[] }>;
     };
     expect(payload.details[0]?.path).toEqual(["reason"]);
+    expect(createPaymentRequest).not.toHaveBeenCalled();
+  });
+
+  test("a large but storable metadata is not reported as unstorable", async () => {
+    const response = await post({
+      ...base,
+      metadata: { ints: Array.from({ length: 40_000 }, (_, i) => i) },
+    });
+    expect(response.status).not.toBe(400);
+    // Validation passed: the request reached the (throwing) service mock once.
+    expect(createPaymentRequest).toHaveBeenCalledTimes(1);
+  });
+
+  test("metadata over the JSON value bound is a 400 naming the bound, not U+0000", async () => {
+    const response = await post({
+      ...base,
+      metadata: { ints: Array.from({ length: 50_010 }, (_, i) => i) },
+    });
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as {
+      details: Array<{ path: (string | number)[]; message: string }>;
+    };
+    expect(payload.details[0]?.path).toEqual(["metadata"]);
+    expect(payload.details[0]?.message).toContain("50000");
+    expect(payload.details[0]?.message).not.toContain("U+0000");
     expect(createPaymentRequest).not.toHaveBeenCalled();
   });
 });

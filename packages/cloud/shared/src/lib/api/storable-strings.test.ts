@@ -3,7 +3,9 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import {
   findUnstorableJsonPath,
+  inspectStorableJson,
   isStorableString,
+  MAX_JSON_NODES,
   storableJsonRecord,
   storableString,
 } from "./storable-strings";
@@ -34,6 +36,22 @@ describe("findUnstorableJsonPath", () => {
   });
 });
 
+describe("inspectStorableJson", () => {
+  test("keeps a clean payload at the bound storable and reports exhaustion distinctly", () => {
+    // The record itself is one node, so this array fills the budget exactly.
+    const atBound = { metadata: Array.from({ length: MAX_JSON_NODES - 2 }, (_, i) => i) };
+    expect(inspectStorableJson(atBound)).toEqual({ kind: "storable" });
+    const over = { metadata: Array.from({ length: MAX_JSON_NODES + 10 }, (_, i) => i) };
+    expect(inspectStorableJson(over)).toEqual({ kind: "too-large", limit: MAX_JSON_NODES });
+    expect(() => findUnstorableJsonPath(over)).toThrow(RangeError);
+  });
+
+  test("reports an unstorable string found before the bound as unstorable", () => {
+    const value = { items: [`x${NUL}`, ...Array.from({ length: MAX_JSON_NODES + 10 }, () => 1)] };
+    expect(inspectStorableJson(value)).toEqual({ kind: "unstorable", path: ["items", 0] });
+  });
+});
+
 describe("zod schemas", () => {
   test("storableString keeps chained constraints and reports the field path", () => {
     const schema = z.object({ reason: storableString().max(500).optional() });
@@ -54,5 +72,20 @@ describe("zod schemas", () => {
     expect(bad.success).toBe(false);
     if (!bad.success) expect(bad.error.issues[0]?.path).toEqual(["metadata", "order", "note"]);
     expect(schema.safeParse({ metadata: { [`k${NUL}`]: 1 } }).success).toBe(false);
+  });
+
+  test("storableJsonRecord accepts a large clean record and names the bound when exceeded", () => {
+    const schema = z.object({ metadata: storableJsonRecord() });
+    const large = { metadata: { ints: Array.from({ length: 40_000 }, (_, i) => i) } };
+    expect(schema.safeParse(large).success).toBe(true);
+    const over = schema.safeParse({
+      metadata: { ints: Array.from({ length: MAX_JSON_NODES + 10 }, (_, i) => i) },
+    });
+    expect(over.success).toBe(false);
+    if (!over.success) {
+      expect(over.error.issues[0]?.path).toEqual(["metadata"]);
+      expect(over.error.issues[0]?.message).toContain(String(MAX_JSON_NODES));
+      expect(over.error.issues[0]?.message).not.toMatch(/U\+0000/);
+    }
   });
 });
