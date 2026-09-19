@@ -62,30 +62,31 @@ export class EmbeddingDimensionProbeError extends Error {
 }
 
 export class RuntimeEmbeddings {
-	/**
-	 * Best-effort model label for a pinned TEXT_EMBEDDING provider, read from
-	 * the settings that provider documents. Null when the provider exposes no
-	 * model setting; the identity guard then compares provider + width only.
-	 */
-	private embeddingModelLabelForProvider(provider: string): string | null {
+	/** Resolve provider-owned model identity without reading another provider's settings. */
+	private embeddingModelLabelForRegistration(
+		registration: ResolvedModelRegistration,
+	): string | null {
 		const read = (key: string): string | null => {
 			const value = this.runtime.getSetting(key);
 			return typeof value === "string" && value.trim().length > 0
 				? value.trim()
 				: null;
 		};
-		switch (provider) {
-			case "embeddings":
-				return read("EMBEDDING_MODEL");
-			case "openai":
-				return read("OPENAI_EMBEDDING_MODEL") ?? "text-embedding-3-small";
-			case "elizacloud":
-				return read("ELIZAOS_CLOUD_EMBEDDING_MODEL");
-			default:
-				return LOCAL_EMBEDDING_PROVIDERS.has(provider)
-					? (read("LOCAL_EMBEDDING_MODEL") ?? read("EMBEDDING_MODEL"))
-					: null;
+		const metadata = registration.metadata;
+		if (metadata?.displayModel?.trim()) return metadata.displayModel.trim();
+		for (const key of [
+			...(metadata?.displayModelSettings ?? []),
+			metadata?.displayModelSetting,
+		]) {
+			const value = key ? read(key) : null;
+			if (value) return value;
 		}
+		if (metadata?.displayModelDefault?.trim()) {
+			return metadata.displayModelDefault.trim();
+		}
+		return LOCAL_EMBEDDING_PROVIDERS.has(registration.provider)
+			? (read("LOCAL_EMBEDDING_MODEL") ?? read("EMBEDDING_MODEL"))
+			: null;
 	}
 
 	/**
@@ -98,10 +99,11 @@ export class RuntimeEmbeddings {
 	 * that model. Returns the active model label for the pin log.
 	 */
 	private async guardEmbeddingStoreIdentity(
-		provider: string,
+		registration: ResolvedModelRegistration,
 		dimension: number,
 	): Promise<string | null> {
-		const modelLabel = this.embeddingModelLabelForProvider(provider);
+		const { provider } = registration;
+		const modelLabel = this.embeddingModelLabelForRegistration(registration);
 		const next: EmbeddingStoreIdentity = {
 			provider,
 			modelLabel,
@@ -394,7 +396,7 @@ export class RuntimeEmbeddings {
 
 			await this.runtime.adapter.ensureEmbeddingDimension(embedding.length);
 			const modelLabel = await this.guardEmbeddingStoreIdentity(
-				registration.provider,
+				registration,
 				embedding.length,
 			);
 			this.pinnedEmbeddingProvider = registration.provider;
