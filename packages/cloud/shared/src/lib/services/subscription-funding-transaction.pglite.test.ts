@@ -3152,7 +3152,7 @@ if (sshFixturePath) {
                       "backup persistence: encryption at rest, storage decision, metadata update",
                     ],
                     substituted: [
-                      "fetchSnapshotState (the bridge HTTP read): the fixture image is a bare node http server, not an Eliza runtime, so it serves no state endpoint",
+                      "fetchSnapshotState (the bridge HTTP read): the stand-in container image is a bare node:22-alpine http server, not an Eliza runtime, so it serves no state endpoint",
                     ],
                     phases,
                   },
