@@ -386,7 +386,8 @@
     "@elizaos/credentials": "workspace:*",
     "@elizaos/cloud-routing": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
-    "@elizaos/prompts": "workspace:*"
+    "@elizaos/prompts": "workspace:*",
+    "@elizaos/retrieval": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/plugin-calendar": "workspace:*",

@@ -152,6 +152,7 @@
         "@elizaos/plugin-zerollama": "workspace:*",
         "@elizaos/prompts": "workspace:*",
         "@elizaos/registry": "workspace:*",
+        "@elizaos/retrieval": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/skills": "workspace:*",
         "@noble/curves": "2.2.0",
@@ -740,6 +741,7 @@
         "@elizaos/plugin-todos": "workspace:*",
         "@elizaos/plugin-web-search": "workspace:*",
         "@elizaos/prompts": "workspace:*",
+        "@elizaos/retrieval": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@fal-ai/client": "^1.10.1",
         "@modelcontextprotocol/sdk": "^1.29.0",
@@ -1034,6 +1036,17 @@
       "devDependencies": {
         "@types/node": "^24.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
+      },
+    },
+    "packages/retrieval": {
+      "name": "@elizaos/retrieval",
+      "version": "2.0.3-beta.7",
+      "devDependencies": {
+        "@biomejs/biome": "2.5.8",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.10",
       },
     },
     "packages/scenario-runner": {
@@ -2188,6 +2201,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/retrieval": "workspace:*",
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.8",
@@ -3225,6 +3239,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@electric-sql/pglite": "^0.4.0",
+        "@elizaos/retrieval": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@noble/hashes": "2.2.0",
         "dotenv": "^17.2.3",
@@ -4431,6 +4446,8 @@
     "@elizaos/prompts": ["@elizaos/prompts@workspace:packages/prompts"],
 
     "@elizaos/registry": ["@elizaos/registry@workspace:packages/registry"],
+
+    "@elizaos/retrieval": ["@elizaos/retrieval@workspace:packages/retrieval"],
 
     "@elizaos/scenario-runner": ["@elizaos/scenario-runner@workspace:packages/scenario-runner"],
 

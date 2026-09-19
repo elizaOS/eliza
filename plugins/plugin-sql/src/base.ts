@@ -102,6 +102,7 @@ import {
   type WorldMetadataMutationResult,
   worldMetadataValueEquals,
 } from "@elizaos/core";
+import { rerankMemories } from "@elizaos/retrieval";
 import { sanitizeJsonObject, serializeDocumentJsonb, serializeJsonb } from "./sanitize-json";
 import { worldRoleAuditTable } from "./schema/worldRoleAudit";
 import {
@@ -3914,7 +3915,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     entityId?: UUID;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
-    return await this.searchMemoriesByEmbedding(params.embedding, {
+    const memories = await this.searchMemoriesByEmbedding(params.embedding, {
       match_threshold: params.match_threshold,
       // `limit` is the IDatabaseAdapter contract param; honour it (with `count`
       // as a legacy alias) instead of silently ignoring it and capping the
@@ -3929,6 +3930,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       tableName: params.tableName,
       accessContext: params.accessContext,
     });
+    return rerankMemories(params.query, memories);
   }
 
   /**

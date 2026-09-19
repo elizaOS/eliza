@@ -1390,6 +1390,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		entityId?: UUID;
 	}): Promise<AgentRunSummaryResult>;
 
+	/** Adapters own retrieval and optional query reranking. Scope and paginate
+	 * vector candidates before reranking; retain semantic-only candidates. */
 	searchMemories(params: {
 		embedding: number[];
 		match_threshold?: number;
