@@ -408,6 +408,68 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     );
   });
 
+  it("preserves supplied note content when scheduling extraction rewrites the description", async () => {
+    const description = "Bring the green notebook at 4:30.\nKeep  two spaces.";
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async ({ actionType }) =>
+        actionType === "lifeops.calendar.extract_create_event"
+          ? {
+              rawResponse: "{}",
+              parsed: {
+                startAt: "2026-09-20T10:00:00-04:00",
+                endAt: "2026-09-20T10:15:00-04:00",
+                timeZone: "America/New_York",
+                description:
+                  "Bring the green notebook at 4:30. Keep two spaces",
+              },
+            }
+          : null,
+      ),
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const result = await action.handler(
+      runtime,
+      {
+        id: "00000000-0000-0000-0000-000000000450",
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse("2026-09-18T12:00:00.000Z"),
+        content: {
+          text: "Create a local event Sunday September 20 at 10 AM America/New_York for 15 minutes using the note's exact body as its description. No guests.",
+        },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          subaction: "create_event",
+          title: "Shaw flow QA",
+          details: {
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            timeZone: "America/New_York",
+            // Scheduling extraction must still override a mistaken planner time.
+            start: "2026-09-20T16:30:00-04:00",
+            end: "2026-09-20T16:45:00-04:00",
+            description,
+          },
+        },
+      },
+    );
+    expect(result?.success, JSON.stringify(result)).toBe(true);
+    const created = result?.data?.event as LifeOpsCalendarEvent;
+    expect(created).toMatchObject({
+      description,
+      startAt: "2026-09-20T14:00:00.000Z",
+      endAt: "2026-09-20T14:15:00.000Z",
+      attendees: [],
+    });
+    const rows = await pg.query<{ description: string }>(
+      "SELECT description FROM app_calendar.life_calendar_events",
+    );
+    expect(rows.rows).toEqual([{ description }]);
+  });
+
   it("keeps the create self-verified when the planner's description only repeats the title (live 2026-09-16)", async () => {
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),

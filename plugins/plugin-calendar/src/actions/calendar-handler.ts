@@ -3911,8 +3911,11 @@ export function buildCreateEventRequest(
         calendarIdDetail(args.details) ??
         sanitizeCalendarId(args.fallbackRequest?.calendarId),
       title: title ?? "",
+      // Scheduling extraction validates timing; it must not paraphrase content
+      // already supplied by the caller (for example an exact saved note body).
       description:
-        pickCreateEventStringField(args, "description") ??
+        detailString(args.details, "description") ??
+        detailString(args.extractedDetails, "description") ??
         args.fallbackRequest?.description,
       location:
         pickCreateEventStringField(args, "location") ??
