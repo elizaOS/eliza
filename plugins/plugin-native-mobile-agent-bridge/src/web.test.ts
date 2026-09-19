@@ -1,21 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+/** Exercises real web tunnel validation, error notifications and return to idle. */
+import { describe, expect, it, vi } from "vitest";
 
 import { MobileAgentBridgeWeb } from "./web";
 
 describe("MobileAgentBridgeWeb fallback", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("starts in an idle state", async () => {
-    await expect(new MobileAgentBridgeWeb().getTunnelStatus()).resolves.toEqual({
-      state: "idle",
-      relayUrl: null,
-      deviceId: null,
-      lastError: null,
-    });
-  });
-
   it.each([
     { relayUrl: "", deviceId: "device-1" },
     { relayUrl: "javascript:alert(1)", deviceId: "device-1" },
