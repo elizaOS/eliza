@@ -7,7 +7,7 @@
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, readFile } from "node:fs/promises";
+import { mkdir, open, readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,7 @@ import {
   type AgentRuntime,
   ChannelType,
   createMessageMemory,
+  ElizaError,
   MemoryType,
   ModelType,
   type State,
@@ -27,6 +28,7 @@ import {
   getTaskCompletionCacheKey,
   type TaskCompletionAssessment,
 } from "../../core/src/features/advanced-capabilities/evaluators/task-completion.ts";
+import { stableJsonStringify } from "../../core/src/runtime/context-hash.ts";
 import { EvaluatorService } from "../../core/src/services/evaluator.ts";
 import { RelationshipsService } from "../../core/src/services/relationships.ts";
 import { shutdownRuntime } from "../src/runtime/eliza.ts";
@@ -418,6 +420,160 @@ export async function runSemanticFixture(
   return { fixture, messages, before, result, after };
 }
 
+const retainedEvidenceSchema = z.object({
+  status: z.literal("success"),
+  processId: z.number().int().positive(),
+  // Runtime character IDs are deterministic UUID-shaped hashes, not RFC versioned UUIDs.
+  agentId: z
+    .string()
+    .regex(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i),
+  characterName: z.string().min(1),
+  databaseDirectory: z.string().min(1),
+  retainedDatabase: z.literal(true),
+  fixtures: z.array(semanticFixtureSchema).length(2),
+  finalReadbacks: z
+    .array(
+      z.object({
+        fixtureId: semanticFixtureSchema.shape.id,
+        effects: z.object({
+          facts: z.array(z.record(z.string(), z.unknown())),
+          reflections: z.array(z.record(z.string(), z.unknown())),
+          identities: z.array(z.record(z.string(), z.unknown())),
+          relationships: z.array(z.record(z.string(), z.unknown())),
+          completion: z.unknown(),
+        }),
+      }),
+    )
+    .length(2),
+});
+
+/** Compare complete SQL result sets without imposing an unspecified row order. */
+function semanticEffectBytes(
+  effects:
+    | z.infer<
+        typeof retainedEvidenceSchema
+      >["finalReadbacks"][number]["effects"]
+    | SemanticEffects,
+): string {
+  const serializeRow = (row: object) =>
+    stableJsonStringify(JSON.parse(JSON.stringify(row)));
+  return stableJsonStringify({
+    facts: effects.facts.map(serializeRow).sort(),
+    reflections: effects.reflections.map(serializeRow).sort(),
+    identities: effects.identities.map(serializeRow).sort(),
+    relationships: effects.relationships.map(serializeRow).sort(),
+    completion: effects.completion,
+  });
+}
+
+/** Reopens retained effects in a distinct process without regenerating any model output. */
+export async function readRetainedSemanticEvidence(sourcePath: string) {
+  const bytes = await readFile(sourcePath);
+  const source = retainedEvidenceSchema.parse(
+    JSON.parse(bytes.toString("utf8")),
+  );
+  if (source.processId === process.pid)
+    throw new ElizaError("Restart evidence requires a distinct process", {
+      code: "SEMANTIC_RESTART_PROCESS_REUSED",
+    });
+  if (
+    !(await stat(source.databaseDirectory).then((entry) => entry.isDirectory()))
+  )
+    throw new ElizaError("Retained database directory is unavailable", {
+      code: "SEMANTIC_RESTART_DATABASE_UNAVAILABLE",
+    });
+  const fixtureIds = source.fixtures.map((fixture) => fixture.id);
+  if (
+    new Set(fixtureIds).size !== 2 ||
+    new Set(source.finalReadbacks.map((entry) => entry.fixtureId)).size !== 2 ||
+    source.finalReadbacks.some((entry) => !fixtureIds.includes(entry.fixtureId))
+  )
+    throw new ElizaError(
+      "Retained evidence must identify each fixture exactly once",
+      { code: "SEMANTIC_RESTART_INVALID_FIXTURES" },
+    );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    throw new ElizaError("Restart readback forbids network requests", {
+      code: "SEMANTIC_RESTART_NETWORK_FORBIDDEN",
+    });
+  }) as typeof fetch;
+  let owned: Awaited<ReturnType<typeof createTestRuntime>> | undefined;
+  try {
+    owned = await createTestRuntime({
+      characterName: source.characterName,
+      embeddingDimensions: 384,
+      pgliteDir: source.databaseDirectory,
+      removePgliteDirOnCleanup: false,
+    });
+    const runtime = owned.runtime;
+    if (runtime.agentId !== source.agentId)
+      throw new ElizaError("Restart changed the evidence agent identity", {
+        code: "SEMANTIC_RESTART_AGENT_CHANGED",
+      });
+    const relationships = await prepareSemanticEvaluators(runtime);
+    const readbacks = [];
+    for (const fixture of source.fixtures) {
+      const effects = await readSemanticEffects(
+        runtime,
+        relationships,
+        fixture,
+      );
+      readbacks.push({ fixtureId: fixture.id, effects });
+      try {
+        assertSemanticEffects(
+          fixture,
+          effects,
+          runtime.agentId,
+          source.fixtures,
+        );
+      } catch (cause) {
+        // error-policy:J2 Retain actual persisted effects with the failed semantic contract.
+        throw new ElizaError(
+          cause instanceof Error ? cause.message : String(cause),
+          {
+            code: "SEMANTIC_RESTART_EFFECTS_INVALID",
+            cause,
+            context: { readbacks },
+          },
+        );
+      }
+      const previous = source.finalReadbacks.find(
+        (entry) => entry.fixtureId === fixture.id,
+      );
+      if (
+        !previous ||
+        semanticEffectBytes(previous.effects) !== semanticEffectBytes(effects)
+      )
+        throw new ElizaError(
+          `${fixture.id}: retained effects changed across restart`,
+          {
+            code: "SEMANTIC_RESTART_EFFECTS_CHANGED",
+            context: { readbacks },
+          },
+        );
+    }
+    return {
+      mode: "fresh-process-persistence-readback" as const,
+      parentEvidenceSha256: createHash("sha256").update(bytes).digest("hex"),
+      parentProcessId: source.processId,
+      processId: process.pid,
+      agentId: runtime.agentId,
+      databaseDirectory: source.databaseDirectory,
+      readbacks,
+    };
+  } finally {
+    try {
+      await shutdownRuntime(
+        owned?.runtime,
+        "retained semantic evidence readback",
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+}
+
 const replaySchema = z.object({
   status: z.literal("success"),
   sourceRevision: z.object({
@@ -480,6 +636,36 @@ async function main() {
   );
   const output = argumentsByName.get("--output");
   const directory = argumentsByName.get("--pglite-dir");
+  const resumePath = argumentsByName.get("--resume");
+  if (resumePath) {
+    if (
+      !output ||
+      directory ||
+      argumentsByName.has("--replay") ||
+      argumentsByName.has("--finish")
+    )
+      throw new Error("Resume uses only --resume=REPORT --output=NEW_PATH");
+    const sourceRevision = sourceRevisionEvidence(
+      fileURLToPath(new URL("../../..", import.meta.url)),
+    );
+    const handle = await open(output, "wx", 0o600);
+    try {
+      const receipt = await readRetainedSemanticEvidence(resumePath);
+      await handle.writeFile(
+        `${JSON.stringify(jsonEvidence({ status: "success", sourceRevision, ...receipt }), null, 2)}\n`,
+      );
+    } catch (cause) {
+      // error-policy:J1 Failed persistence readback is published before the CLI rejects.
+      await handle.writeFile(
+        `${JSON.stringify(jsonEvidence({ status: "failed", sourceRevision, parentEvidence: resumePath, error: cause instanceof Error ? cause.message : String(cause), partialReadbacks: cause instanceof ElizaError ? cause.context : null }), null, 2)}\n`,
+      );
+      throw cause;
+    } finally {
+      await handle.close();
+    }
+    return;
+  }
+
   if (!output || !directory)
     throw new Error("Explicit --output and a new --pglite-dir are required");
   const replayPath = argumentsByName.get("--replay");
@@ -801,6 +987,9 @@ async function main() {
               : null,
             replayConsumerBaseline: replay?.sourceRevision ?? null,
             replayFinish: finish,
+            processId: process.pid,
+            agentId: runtimeResult?.runtime.agentId ?? null,
+            characterName: "BuiltinEvaluatorSemanticAudit",
             databaseDirectory: resolve(directory),
             retainedDatabase: true,
             fixtureDefinition:

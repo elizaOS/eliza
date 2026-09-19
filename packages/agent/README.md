@@ -365,8 +365,19 @@ readbacks, and explicit failures. Checks reject foreign-fixture claims and
 contradictory same-message completion rows even alongside valid results. Full
 reasons and relationship descriptions still require semantic inspection; a
 nonempty explanation alone is not proof of grounded reasoning. The database is retained after canonical
-runtime shutdown; this command does not certify restart durability. It makes
-nominally two merged evaluator calls, with every actual attempt recorded.
+runtime shutdown. Verify those exact effects in a fresh process with:
+
+```bash
+bun --conditions=eliza-source packages/agent/scripts/cerebras-evaluator-semantics.ts --resume=/tmp/evaluator-live.json --output=/tmp/evaluator-resumed.json
+```
+
+Resume requires a successful report containing the original process and agent
+identities. It reopens the existing database, forbids network requests, and
+compares complete persisted effects with the original readbacks without running
+evaluators again. Missing or changed records, a changed agent, the same process,
+and failed shutdown reject the receipt. This proves retained semantic effects;
+it does not certify resumed chat routing, real tool execution or app latency.
+The original live command makes nominally two merged evaluator calls, with every actual attempt recorded.
 Inspect and scan artifacts before publishing.
 
 Replay a successful report through the actual SDK and the current evaluator
