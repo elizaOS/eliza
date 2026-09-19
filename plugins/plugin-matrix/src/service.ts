@@ -1113,6 +1113,12 @@ export class MatrixService extends Service implements IMatrixService {
     // Room timeline events (messages)
     state.client.on(sdk.RoomEvent.Timeline, (event, room, toStartOfTimeline) => {
       if (toStartOfTimeline) return;
+      // The SDK replays the initial /sync history (initialSyncLimit events per
+      // room) as live Timeline events before it reaches PREPARED, so every
+      // process start would hand yesterday's messages to the agent again. The
+      // Sync listener above flips `syncing` on PREPARED, and it is registered
+      // first, so nothing from the initial batch passes this gate (#31765).
+      if (!state.syncing) return;
       if (event.getSender() === state.settings.userId) return;
 
       // In E2EE rooms the event surfaces as m.room.encrypted until the crypto
