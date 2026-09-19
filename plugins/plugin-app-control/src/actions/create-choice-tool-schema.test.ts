@@ -100,14 +100,20 @@ describe.each([
 			if (!wire.parsed)
 				throw new Error("Valid wire arguments were not returned");
 			const restored = restoreRecordArgToolCalls(
-				[{ toolName: registeredName, input: wire.parsed }],
+				[
+					{
+						toolCallId: "create-choice",
+						toolName: registeredName,
+						input: wire.parsed,
+					},
+				],
 				normalized.recordArgTransformsByTool,
 			)?.[0];
-			if (!isObjectRecord(restored) || !isObjectRecord(restored.input)) {
+			if (!isObjectRecord(restored) || !isObjectRecord(restored.arguments)) {
 				throw new Error("Provider arguments were not restored");
 			}
-			expect(restored.input).toEqual(args);
-			expect(validateToolArgs(action, restored.input)).toMatchObject({
+			expect(restored.arguments).toEqual(args);
+			expect(validateToolArgs(action, restored.arguments)).toMatchObject({
 				valid: true,
 				args,
 			});

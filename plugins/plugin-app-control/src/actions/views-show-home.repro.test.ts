@@ -27,7 +27,6 @@ import { runViewsShow } from "./views-show.js";
 
 const coreMock = vi.hoisted(() => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-	ModelType: { TEXT_SMALL: "TEXT_SMALL" },
 	resolveServerOnlyPort: vi.fn(() => 3456),
 	formatError: (error: unknown): string =>
 		error instanceof Error ? error.message : String(error),
@@ -46,10 +45,13 @@ const coreMock = vi.hoisted(() => ({
 
 vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
-	return {
-		...actual,
-		...coreMock,
-	};
+	return { ...actual, ...coreMock };
+});
+
+vi.mock("@elizaos/shared/runtime-env", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("@elizaos/shared/runtime-env")>();
+	return { ...actual, resolveServerOnlyPort: coreMock.resolveServerOnlyPort };
 });
 
 function message(text: string, roomId = "room-1") {

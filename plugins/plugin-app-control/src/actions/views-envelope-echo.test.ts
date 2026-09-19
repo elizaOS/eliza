@@ -38,18 +38,13 @@ const coreMock = vi.hoisted(() => ({
 // unwrapUserMessageText/getUserMessageText are the seam the fix routes through.
 vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
-	return {
-		...coreMock,
-		getStreamingContext: actual.getStreamingContext,
-		getTurnActionConstraint: actual.getTurnActionConstraint,
-		setTurnActionConstraint: actual.setTurnActionConstraint,
-		getUserMessageText: actual.getUserMessageText,
-		hardenIncomingUserMessage: actual.hardenIncomingUserMessage,
-		unwrapUserMessageText: actual.unwrapUserMessageText,
-		completeUserReferenceView: actual.completeUserReferenceView,
-		containsExternalEnvelopeMaterial: actual.containsExternalEnvelopeMaterial,
-		wrapExternalContent: actual.wrapExternalContent,
-	};
+	return { ...actual, ...coreMock };
+});
+
+vi.mock("@elizaos/shared/runtime-env", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("@elizaos/shared/runtime-env")>();
+	return { ...actual, resolveServerOnlyPort: coreMock.resolveServerOnlyPort };
 });
 
 import { hardenIncomingUserMessage, wrapExternalContent } from "@elizaos/core";
