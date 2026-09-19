@@ -991,6 +991,11 @@ function getRecoverableProviderErrorStatus(error: unknown): number | null {
   }
 
   if (APICallError.isInstance(providerError)) {
+    if (providerError.statusCode === 402) {
+      // Platform provider funding is not the caller's Cloud credit balance.
+      return 503;
+    }
+
     const providerCode =
       getProviderErrorCode(providerError.data) ??
       getProviderErrorCode(parseJsonObject(providerError.responseBody));
@@ -1006,10 +1011,6 @@ function getRecoverableProviderErrorStatus(error: unknown): number | null {
       message.includes("insufficient_quota")
     ) {
       return 429;
-    }
-
-    if (providerError.statusCode === 402) {
-      return 402;
     }
 
     // A provider 400 is the CALLER's fault (invalid parameters / a response
@@ -2280,13 +2281,15 @@ export async function handleChatCompletionsPOST(
       rawMessage.includes("select from");
     const errorMessage = isDbError ? "Internal server error" : rawMessage;
 
+    const providerStatus = getRecoverableProviderErrorStatus(error);
     const isInsufficientCredits =
       error instanceof InsufficientCreditsError ||
-      errorMessage.includes("Insufficient") ||
-      errorMessage.includes("credits");
+      (providerStatus === null &&
+        (errorMessage.includes("Insufficient") ||
+          errorMessage.includes("credits")));
     const status = isInsufficientCredits
       ? 402
-      : (getRecoverableProviderErrorStatus(error) ?? getErrorStatusCode(error));
+      : (providerStatus ?? getErrorStatusCode(error));
     const errorType = openAiErrorTypeForStatus(status);
 
     return attachPreforwardTelemetry(
@@ -2539,12 +2542,12 @@ function qualifiesForPassthroughStreaming(request: ChatRequest): boolean {
 /**
  * Client-facing status for a pass-through upstream error response — the same
  * classification getRecoverableProviderErrorStatus applies to AI-SDK errors:
- * caller-fault statuses pass through; 401/403 are OUR provider-key state
+ * caller-fault statuses pass through; 401/402/403 are OUR provider-account state
  * (never the caller's fault) and everything else means the upstream is
  * unavailable, both surfaced as 503.
  */
 function mapPassthroughUpstreamStatus(status: number): number {
-  if (status === 400 || status === 402 || status === 404 || status === 429) {
+  if (status === 400 || status === 404 || status === 429) {
     return status;
   }
   return 503;

@@ -491,7 +491,7 @@ describe("passthrough streaming — qualification predicate", () => {
 
   test("upstream status mapping mirrors the SDK path's classification", () => {
     expect(mapPassthroughUpstreamStatus(400)).toBe(400);
-    expect(mapPassthroughUpstreamStatus(402)).toBe(402);
+    expect(mapPassthroughUpstreamStatus(402)).toBe(503);
     expect(mapPassthroughUpstreamStatus(404)).toBe(404);
     expect(mapPassthroughUpstreamStatus(429)).toBe(429);
     // Upstream auth state is OUR key, never the caller's fault.
@@ -1038,6 +1038,26 @@ describe("passthrough streaming — client abort cancels upstream and settles th
 });
 
 describe("passthrough streaming — upstream errors settle by provable outcome", () => {
+  test("provider billing failure is unavailable, not caller credit exhaustion, and refunds the hold", async () => {
+    const ledger = makeLedgerReservation(100, 0.9);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    fetchImpl = async () =>
+      Response.json(
+        { error: { message: "Payment Required: platform billing details" } },
+        { status: 402 },
+      );
+    const res = await callStreaming(settle, {});
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as {
+      error: { type: string; message: string };
+    };
+    expect(body.error.type).toBe("service_unavailable");
+    expect(body.error.message).not.toContain("platform billing details");
+    expect(ledger.actualCosts).toEqual([0]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+    expect(billUsage).not.toHaveBeenCalled();
+  });
+
   test("upstream 429 surfaces as 429 rate_limit_error with the upstream message; hold refunded", async () => {
     const ledger = makeLedgerReservation(100, 0.9);
     const settle = createCreditReservationSettler(ledger.reservation);
