@@ -12,13 +12,13 @@ import {
 	type State,
 	type Task,
 } from "@elizaos/core";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "@elizaos/core/runtime/builtin-field-evaluators.js";
 import { ResponseHandlerFieldRegistry } from "@elizaos/core/runtime/response-handler-field-registry.js";
 import {
 	runV5MessageRuntimeStage1,
 	wrapSingleTurnVisibleCallback,
 } from "@elizaos/plugin-assistant";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import { createShowViewAction, createViewsAction } from "./views.js";
 import type { ViewSummary } from "./views-client.js";
 
@@ -91,7 +91,13 @@ function makeRuntime(
 		character: { name: "Eliza", system: "Be concise." },
 		actions: [action],
 		providers: [],
-		getRoom: vi.fn(async () => null),
+		getRoom: vi.fn(async () => ({ worldId: "world-id" })),
+		getWorld: vi.fn(async () => ({
+			metadata: {
+				roles: { [message("").entityId]: "USER" },
+				roleSources: { [message("").entityId]: "manual" },
+			},
+		})),
 		getService: vi.fn(() => null),
 		getSetting: vi.fn(() => undefined),
 		emitEvent: vi.fn(async () => undefined),
@@ -476,7 +482,7 @@ describe("VIEWS action ownership after planner selection", () => {
 						{
 							id: "views-call",
 							name: "VIEWS",
-							args: {
+							arguments: {
 								action: "show",
 								view: "notes",
 								eliza_turn_scope: "final",

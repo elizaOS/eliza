@@ -20,7 +20,10 @@ import {
 import { createCharacter } from "@elizaos/core/character.js";
 import { runResponseHandlerEvaluators } from "@elizaos/core/runtime/response-handler-evaluators.js";
 import { AgentRuntime } from "@elizaos/core/runtime.js";
-import { DefaultMessageService } from "@elizaos/core/services/message.js";
+import {
+	createAssistantPlugin,
+	DefaultMessageService,
+} from "@elizaos/plugin-assistant";
 import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { appControlPlugin } from "../index.js";
@@ -90,6 +93,7 @@ describe("model-owned app-control choices", () => {
 		const runtime = new AgentRuntime({
 			character: createCharacter({ name: "AppChoiceStage1" }),
 			adapter: new InMemoryDatabaseAdapter(),
+			plugins: [createAssistantPlugin()],
 			settings: { ELIZA_ADMIN_ENTITY_ID: ownerId },
 			logLevel: "fatal",
 			enableAutonomy: false,
