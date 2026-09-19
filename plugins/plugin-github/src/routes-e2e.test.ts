@@ -1,19 +1,7 @@
 /**
- * Route-level e2e for plugin-github (issue #8802).
- *
- * Boots the plugin's declared `Route[]` (`githubRoutes`, the GET/POST/DELETE
- * `/api/github/token` PAT-management endpoints) through the real production
- * dispatcher (`tryHandleRuntimePluginRoute`) over a loopback
- * `http.createServer` — exercising the real auth gate, body parsing, and
- * handler dispatch. Every assertion is on a real HTTP response: no mocked
- * `json`/`error` functions, no shape-only checks.
- *
- * The route handlers have no `runtime.getService(...)` dependency (the runtime
- * arg is ignored); their only external dependencies are:
- *   - the on-disk credential store under `<state-dir>/credentials/github.json`
- *     (pinned to a per-test temp dir via `ELIZA_STATE_DIR`), and
- *   - GitHub's `/user` endpoint via the global `fetch` (stubbed — we never
- *     call GitHub).
+ * Exercises the shipped GitHub routes through a real runtime, host registry and
+ * loopback HTTP dispatcher. Credentials use isolated temporary storage; GitHub
+ * fetch responses are deterministic and no external requests are sent.
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -22,9 +10,9 @@ import http_ from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { Route } from "@elizaos/shared/api/http-plugin";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { AgentRuntime, type IAgentRuntime } from "@elizaos/core";
+import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 // Pin the credential store to an isolated temp dir BEFORE importing any module
 // that resolves the state dir, so the real `loadMetadata`/`saveCredentials`/
@@ -36,58 +24,13 @@ process.env.ELIZA_STATE_DIR = stateDir;
 const { tryHandleRuntimePluginRoute } = await import(
   "../../../packages/agent/src/api/runtime-plugin-routes.ts"
 );
-const { handleGitHubRoutes } = await import("./routes/github-routes.ts");
+const { githubPlugin } = await import("./index.ts");
 const {
   clearCredentials,
   loadMetadata,
   buildCredentialsFromUserResponse,
   saveCredentials,
 } = await import("./github-credentials.ts");
-
-// Mirror the plugin's route wiring from src/index.ts exactly: each route is a
-// thin `(req, res, runtime)` adapter over the real `handleGitHubRoutes`
-// dispatcher, declared `rawPath`. Importing the full plugin object instead
-// would drag in the entire (unrelated) action graph; the route declaration
-// itself is what we exercise.
-function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
-  return async (
-    req: unknown,
-    res: unknown,
-    runtime: unknown,
-  ): Promise<void> => {
-    const httpReq = req as http.IncomingMessage;
-    const httpRes = res as http.ServerResponse;
-    const url = new URL(httpReq.url ?? "/api/github/token", "http://localhost");
-    void runtime;
-    await handleGitHubRoutes({
-      req: httpReq,
-      res: httpRes,
-      method,
-      pathname: url.pathname,
-    });
-  };
-}
-
-const githubRoutes: Route[] = [
-  {
-    type: "GET",
-    path: "/api/github/token",
-    rawPath: true,
-    handler: createGitHubRouteHandler("GET"),
-  },
-  {
-    type: "POST",
-    path: "/api/github/token",
-    rawPath: true,
-    handler: createGitHubRouteHandler("POST"),
-  },
-  {
-    type: "DELETE",
-    path: "/api/github/token",
-    rawPath: true,
-    handler: createGitHubRouteHandler("DELETE"),
-  },
-];
 
 const servers: http.Server[] = [];
 const realFetch = globalThis.fetch;
@@ -113,21 +56,13 @@ afterAll(() => {
   rmSync(stateDir, { recursive: true, force: true });
 });
 
-beforeAll(() => {
-  // The plugin must really declare the three token routes we test against.
-  expect(githubRoutes.map((r) => `${r.type} ${r.path}`)).toEqual([
-    "GET /api/github/token",
-    "POST /api/github/token",
-    "DELETE /api/github/token",
-  ]);
-});
-
 function makeRuntime(): IAgentRuntime {
-  return {
-    routes: githubRoutes,
-    // The token routes ignore the runtime arg; getService is never consulted.
-    getService: () => null,
-  } as unknown as IAgentRuntime;
+  const runtime = new AgentRuntime({
+    character: { name: "GitHub route fixture" },
+    logLevel: "fatal",
+  });
+  registerHttpPluginRoutes(runtime, githubPlugin);
+  return runtime;
 }
 
 async function startServer(
