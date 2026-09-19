@@ -3,7 +3,7 @@
  * PGlite, including complete field persistence and a database write fault.
  */
 import { type Memory, stringToUuid, type UUID } from "@elizaos/core";
-import type { RelationshipsService } from "@elizaos/plugin-assistant";
+import { RelationshipsService } from "@elizaos/plugin-assistant";
 import { createTestRuntime, type TestRuntimeResult } from "@elizaos/testing";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -15,6 +15,9 @@ describe("CONTACT persisted creation", () => {
   beforeAll(async () => {
     harness = await createTestRuntime({
       characterName: "ContactPersistenceProof",
+      plugins: [
+        { name: "contact-persistence", services: [RelationshipsService] },
+      ],
     });
     service = (await harness.runtime.getServiceLoadPromise(
       "relationships",
