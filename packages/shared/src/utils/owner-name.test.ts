@@ -18,10 +18,16 @@ describe("normalizeOwnerName", () => {
   });
 
   it("preserves long names completely", () => {
-    const longName = `${"a".repeat(100)}complete-owner-name-tail`;
+    const longName = `${"a".repeat(59)}😀${"b".repeat(40)}complete-owner-name-tail`;
     const normalized = normalizeOwnerName(longName);
     expect(normalized).toBe(longName);
-    expect(normalized).toContain("complete-owner-name-tail");
+  });
+
+  it("repairs malformed Unicode without losing trailing content", () => {
+    const tail = "x".repeat(100);
+    expect(
+      normalizeOwnerName(`owner ${String.fromCharCode(0xd800)} name${tail}`),
+    ).toBe(`owner � name${tail}`);
   });
 
   it("trims without shortening", () => {
