@@ -3075,6 +3075,23 @@
         "react-dom": "^19.0.0",
       },
     },
+    "plugins/plugin-security-gate": {
+      "name": "@elizaos/plugin-security-gate",
+      "version": "2.0.4",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.8",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.10",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+    },
     "plugins/plugin-slack": {
       "name": "@elizaos/plugin-slack",
       "version": "2.0.3-beta.7",

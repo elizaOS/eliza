@@ -1,0 +1,66 @@
+{
+  "name": "@elizaos/plugin-security-gate",
+  "version": "2.0.4",
+  "description": "Deterministic local prompt injection defense, dangerous code pattern detection, and autonomous agent safety guardrails for ElizaOS",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "format": "bunx @biomejs/biome format --write ."
+  },
+  "keywords": [
+    "elizaos",
+    "eliza",
+    "ai-agent",
+    "security",
+    "prompt-injection",
+    "guardrails",
+    "x402",
+    "safety"
+  ],
+  "author": "Security Gate Team",
+  "license": "MIT",
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.8",
+    "@elizaos/agent": "workspace:*",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  }
+}
