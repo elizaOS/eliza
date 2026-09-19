@@ -127,7 +127,7 @@ final class BgeEmbeddingSession {
         int[] tokens = tokenize(requestedBundle, text, limit);
         if (tokens.length > contextLimit) {
             throw new Failure("EMBEDDING_INPUT_TOO_LARGE", "Complete embedding input has " + tokens.length
-                + " tokens; limit is " + contextLimit + ". Split the source into explicit lossless chunks.");
+                + " tokens; limit is " + contextLimit + ". Prepare a verified source suffix before dispatch.");
         }
         if (tokens.length != expectedIds.length()) {
             throw new Failure("EMBEDDING_TOKENIZER_MISMATCH", "Native BGE token count differs from the admitted source suffix");

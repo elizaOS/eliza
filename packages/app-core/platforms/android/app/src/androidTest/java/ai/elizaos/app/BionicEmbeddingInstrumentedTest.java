@@ -115,10 +115,13 @@ public class BionicEmbeddingInstrumentedTest {
             Files.delete(other); Files.delete(nested);
             assertCanonical(request(name, root.toString(), input));
             Arrays.sort(warm);
-            Log.i("BionicEmbeddingProof", new JSONObject().put("modelSha256", BgeEmbeddingSession.SHA256)
+            JSONObject proof = new JSONObject().put("modelSha256", BgeEmbeddingSession.SHA256)
                 .put("space", BgeEmbeddingSession.SPACE).put("samples", warm.length)
                 .put("medianMs", (warm[14] + warm[15]) / 2e6).put("p95Ms", warm[28] / 1e6)
-                .put("tokens", first.getInt("tokens")).put("vector", reference).toString());
+                .put("tokens", first.getInt("tokens")).put("vector", reference);
+            Path artifact = app.getFilesDir().toPath().resolve("bionic-embedding-proof.json");
+            Files.write(artifact, proof.toString().getBytes(StandardCharsets.UTF_8));
+            Log.i("BionicEmbeddingProof", "Saved complete embedding proof to " + artifact);
         } finally {
             host.stop();
             try (var files = Files.walk(root)) {
