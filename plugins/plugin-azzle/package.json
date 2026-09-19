@@ -1,0 +1,51 @@
+{
+  "name": "@elizaos/plugin-azzle",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "AZZLE V2 task lifecycle actions for Base",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc6 --noCheck -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "test": "vitest run --config ./vitest.config.ts"
+  },
+  "dependencies": {
+    "@azzle/agents": "^0.5.1",
+    "@elizaos/core": "workspace:*",
+    "ethers": "^6.16.0",
+    "viem": "^2.48.8"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.8",
+    "@types/node": "^25.0.6",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "elizaos": {
+    "plugin": {
+      "displayName": "AZZLE",
+      "category": "finance"
+    }
+  }
+}
