@@ -1,37 +1,69 @@
 # Text demo: short handoff
 
-Candidate: `ganttnubs`. Current runtime repair: `21b137ececf`. Scoped text checks and root verification passed; this is not merged develop or a release certificate.
+Candidate: `ganttnubs`, source `5c1510bd654`. Post-call fixes are committed;
+bounded browser checks, fixture cleanup and final-source repository verification passed. The latency goal remains active.
+This is not merged develop or a release certificate.
 
-## How it works
+## What is fixed
 
-- Chat/navigation: usually one model call.
-- Notes changes: route, plan/execute, final reply.
-- Calendar writes: the same flow plus request-grounded field extraction and a fresh conflict check.
-- Missing details: ask before writing. Missing context: retrieve it before proceeding.
-- Final replies use actual action results. Extra recovery calls are conditional.
+- Notes date searches now use a real creation/update-date filter; ordinary
+  topic lookup, exact edits and stored-note preservation retain their checks.
+- Repeated context restoration cannot request a scope already restored.
+- Calendar keeps supplied descriptions while separately validating time.
+- One-day agenda reads take a date/timezone; code computes the day boundaries.
+- Calendar supplies actual date/weekday evidence, and the evaluator compares
+  current saved fields instead of repeating an old failure.
+- Calendar search requires a query in the native tool, avoiding empty-call repair.
+- Conditional booking is routed to Calendar's existing conflict-safe create;
+  its fresh availability check still runs before writing.
 
-## Fresh observations
+## What each request does
 
-| Scenario | Calls | Seconds |
-|---|---:|---:|
-| Open Notes | 1 | 2.08 |
-| Go Home | 1 | 2.89 |
-| Read current note | 1 | 1.47 |
-| Ask for missing event time | 1 | 1.45 |
-| Create after receiving time | 4 | 3.57 |
-| Conflict plus checked alternative, repaired path | 4 | 6.85 |
-| Explicit permission to choose a free time | 5 | 6.66 |
+| Request | Model path |
+|---|---|
+| Greeting / open Notes / go Home | Usually routing only: one call |
+| Notes read or change | Route → planner/tool → final answer |
+| Calendar create/update | Same, plus scheduling-field extraction |
+| Missing details | Ask before writing |
+| Missing context | Restore original context, then resume |
+| Several queued reads | May evaluate between reads before the final answer |
 
-These are individual observations, not guarantees. Under three seconds is demonstrated for the direct cases, still open for multi-step work. The repaired conflict run overlapped local test/build activity.
+A service/tool check is not necessarily a model call. Three architectural
+stages do not guarantee exactly three calls.
 
-## What changed in this follow-up
+## Measured performance
 
-One Calendar tool description now retains its required search filter and distinguishes event search from availability. The replay used real availability checks, avoided the invalid search, and made no unwanted booking; one replay does not prove universal routing reliability. General system prompts, providers and storage behavior are unchanged.
+| Scenario | Calls | Seconds | Status |
+|---|---:|---:|---|
+| Open Notes (earlier unchanged path) | 1 | 2.08 | Correct view |
+| Go Home (earlier unchanged path) | 1 | 2.89 | Correct view |
+| Notes last-week filter | 3 | 2.74 | Correct bounded read |
+| Calendar day agenda after repair | 3 | 4.48 | Correct saved event |
+| Duration extension | 5 | 6.55 | Correct write; unnecessary history restore |
+| Conditional booking, final path | 4 | 4.05 | One create, built-in conflict check, correct saved event |
+| Calendar topic/date search, final path | 4 | 4.15 | Correct descriptions/weekday; one semantic matching call |
 
-## Demo scope
+**Multi-step Calendar is still above the roughly three-second target.** These
+are individual runs, not guarantees. Cache reads are included in input token
+counts. The traces do not isolate airplane Wi-Fi delay.
 
-Show navigation, current note recall, a missing-time question, a calendar write and a conflict explanation. Prior saved evidence covers exact note create/edit and calendar move/restore. Temporary events from this rehearsal have been removed.
+[Scenario evidence and per-call inputs/cache/timing](GANTTNUBS-SCENARIO-RESULTS.md)
+provides the detail. [The plan](GANTTNUBS-PLAN.md) lists remaining gates.
 
-Voice, PRD, acknowledgments and combining with current develop are later work. See [the detailed plan](GANTTNUBS-PLAN.md) for evidence and remaining gates.
+## Meeting alignment
 
-Verified: 2,780 personal-assistant tests passed (six skipped), 373/373 root verification tasks passed. Checkpoint tag: `codex/ganttnubs-text-demo-20260918`. The app is open and healthy; multi-step speed remains the main open item.
+This phase covers Notes/Calendar reads, writes, follow-ups, conflicts, duration,
+note-to-event transfer and their model paths. Acknowledgments were reviewed:
+use a separate progress event from an existing model response, not a terminal
+REPLY or an extra model call. Implementation remains separate.
+
+Voice, broad browser/attachment work, reminders/alarms, messaging integrations,
+full PRD work and combining with current develop remain deferred.
+
+Owning checks: Calendar 998 passed / 4 existing skips; Notes 191 passed;
+Personal Assistant 2,781 passed / 6 existing skips; core planner/reply 238 passed; routing fields 50
+passed and stage-one 399 passed. Final root verification passed 373/373 tasks.
+All three temporary Calendar fixtures were removed; all 41 original notes are unchanged.
+Rollback before this follow-up: `codex/ganttnubs-text-demo-20260918`.
+
+Saved code checkpoint: local tag `codex/ganttnubs-shaw-text-20260918`.

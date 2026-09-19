@@ -1,25 +1,48 @@
 # ganttnubs: context, latency and scenario QA
 
-Status: ACTIVE follow-up after the Shaw call. The earlier bounded text-demo checkpoint passed; the broader Notes/Calendar scenario matrix and multi-step latency target remain OPEN. Owner: Nubs. Start: 2026-09-18.
+Status: ACTIVE latency goal after the Shaw call. This Notes/Calendar correctness pass and its selected scenario matrix are verified and saved; consistent roughly-three-second Calendar performance remains OPEN. Owner: Nubs. Start: 2026-09-18.
 
 ## Current finish checklist
 
 The new call confirms Notes and Calendar correctness first, then acknowledgment design. This checklist extends the previous checkpoint rather than treating its selected examples as complete product acceptance. Private meeting transcripts and trajectories stay local.
 
 - [x] Repair the Notes CRUD scenario to verify structured results and persisted content instead of obsolete response prose; run with no paid model calls. The real action/store round trip now passes create, topic lookup, field patch, readback and delete. Added the missing scenario-runner Notes development dependency. These direct-action checks do not prove language routing.
-- [ ] Audit Notes topic/date searches and exact edits against existing coverage. Date questions currently return all notes for the model to inspect; determine whether a typed date filter is needed before changing the read contract.
-- [ ] Verify Calendar agenda/week/history/topic reads, time changes, duration extensions, missing-time follow-ups, and conflict alternatives. Distinguish finding a matching event from proving an entire window is free.
-- [ ] Verify note-to-event transfer preserves the source note and asks for missing scheduling details; never silently book a suggested alternative without authorization.
-- [ ] For each uncovered conversational path, use one bounded real rehearsal after local checks, inspect the visible result and stored state, and record routing/planning/extraction/completion calls, input/cache tokens and timing.
-- [ ] Identify demonstrated redundant calls or context. Keep safety extraction and full-context recovery unless an equivalent validated contract replaces them. Approximately three seconds remains a measured target, not a guarantee.
-- [ ] Review planner acknowledgment delivery last: avoid an extra model call, duplicate final replies, premature success, and extra planning on direct navigation.
-- [ ] Run required owning/repository checks for changes, commit small verified units, retain rollback checkpoints, and finish with an explicit pass/open/deferred handoff.
+- [x] Audit Notes topic/date searches and exact edits. Typed creation/update bounds now filter in the store read, with exact boundary/DST/unchanged-store tests. Both explicit dates and “last week” used the filter in the browser; the latter took 3 calls / 2.741 seconds. Topic/patch behavior retains direct-action and earlier browser evidence.
+- [x] Verify Calendar agenda/week/history/topic reads, duration editing and note-to-event behavior against stored records. Existing missing-time, move and conflict checks remain covered by the owning suite and earlier live receipts. A filtered search never proves availability. Final search returned all fixtures correctly; two known model-wording failures are recorded with their fixes and evidence.
+- [x] Verify note-to-event transfer: missing date asked; saved description and source-note preservation verified. The repaired evaluator passed a saved-input replay and final live readback was exact. All 41 original notes remain unchanged; all three created Calendar fixtures were removed.
+- [x] Capture bounded rehearsals and follow-up checks after demonstrated failures. Inspect visible replies and saved records, and record every routing/planning/domain-extraction/completion call plus input/cache/timing in GANTTNUBS-SCENARIO-RESULTS.md.
+- [x] Identify demonstrated redundant calls or context. Keep safety extraction and full-context recovery unless an equivalent validated contract replaces them. Approximately three seconds remains a measured target, not a guarantee.
+- [x] Review planner acknowledgment delivery last: avoid an extra model call, duplicate final replies, premature success, and extra planning on direct navigation.
+- [x] Run owning checks and final-source repository verification (373/373), commit verified units and retain a code rollback checkpoint. The handoff separates this correctness pass from the still-active latency goal.
 
 Voice, broad browser/attachments work, reminders/alarms, messaging integrations and develop consolidation remain separate. The call describes those future areas; they are not prerequisites for finishing this text cleanup.
 
 ### Evidence boundaries
 
 Direct-action scenarios prove plugin/store behavior, not natural-language routing. Unit tests do not prove browser acceptance. Cached tokens are a subset of input tokens, not a measured bill. A successful replay does not by itself establish why a prior model choice failed. Network/provider delay and local overhead require separate measurements.
+
+### Post-call findings
+
+- Notes date read failed in the real app: routing selected NOTES_LIST, but the planner restored provider context twice instead. The second restore was invalid and triggered an error-reply call. Total: 4 model calls, 5.523 seconds, 74,700 input tokens; the error reply alone used 47,776 inputs. No Notes read or write executed.
+- `548275ccf6a` makes the recovery schema offer only still-deferred scopes, including native tools, reply-only guidance and the local action grammar. A regression test failed for both scopes before the fix; all 455 focused context tests now pass. Invalid repeated requests still fail before effects.
+- `f6e9bbb412e` gives NOTES_LIST its own read description and removes unrelated write instructions from its content parameter. Existing reads already return timestamps; no date parser, new provider, arbitrary note limit or storage change is needed to make those facts available. The initial 184 Notes tests passed. Subsequent date-filter/routing work brings this to 191; final live results are recorded below.
+- `568cf6c41b3` advertises Calendar create's existing fresh conflict check and blocked-write result. This lets the planner use create directly for an authorized conditional booking. It does not skip field extraction, availability or approval checks. 103 focused Calendar checks pass; any call-count improvement still needs live evidence.
+- `b10faf2caa2` fixes the real Notes scenario and its missing development dependency, plus a stale character-preset prose assertion. The CRUD scenario passes without model calls; the other scenario-runner unit files passed and the corrected preset file passed all 17 tests. Mock adapter suite: 19 passed.
+- The first recovery-fix replay no longer aborted, but is NOT an acceptance pass: it still restored provider context before listing all notes, then the final reply changed the planner's September 7–13 interpretation to a trailing-seven-day window. Four calls, 5.497 seconds, 39,071 inputs. This exposed a missing bounded-date read contract rather than a reason to add more context restoration.
+- `96d97dd5fd4` adds an explicit creation/update date filter to the existing Notes list action. Results preserve the applied inclusive/exclusive window and every matching complete record. Tests cover DST-offset boundaries, exact inclusion/exclusion, topic conjunction, creation versus update dates, invalid bounds, empty-window scope and unchanged persistence. All 191 Notes tests, owning type/lint checks and the 15-test provider check pass. Both live date replays now use the filter correctly. See the post-call scenario results; final-source verification passed 373/373 tasks.
+
+### Latest post-call fixes and acceptance
+
+- `3a272eb7cb8`: Calendar's scheduling extractor changed a supplied description. The create builder now preserves caller-supplied content while retaining authoritative timing extraction. A real-PGlite regression proves punctuation/newline/double-space preservation and timing override. Live creation now stores the exact note body and leaves the source note unchanged.
+- `3b5c666fee0`: Notes date filters existed, but older routing guidance still recommended unfiltered recency reads. Aligning the existing hints produced actual filtered reads in both explicit-date and last-week browser checks. The latter was 3 calls, 2.741 seconds, 26,832 inputs, 19,456 cache reads.
+- `7b21017daeb`: A day agenda requested September 19 for a September 20 question. Calendar now accepts a local date/timezone and computes day boundaries in code. Six new tests cover DST, invalid dates and conflicting bounds; the live replay queried the correct day and found the saved event.
+- `daf6ab783a8`: Weekly queries used correct bounds but the reply named incorrect weekdays. Calendar now formats actual boundary dates and weekdays for reply evidence. The focused label regression and final live topic/date read pass; the final reply named Sunday September 20 correctly.
+- `59aa7ef5589`: A new event was saved correctly but the evaluator repeated an earlier punctuation failure. Replaced a punctuation-specific example with a shorter current-record comparison rule. One saved-input model replay reported the correct stored description, without another write. This is not universal model acceptance.
+- `0650a339e57`: The first routing model did not see create/update's built-in conflict-check capability, even after the planner description was fixed. Updated its existing candidate-action guidance so conditional writes need no separate availability candidate. Fifty field tests and 399 stage-one tests pass; the live conditional booking selected only create, preserved the fresh conflict check and made one correct event in 4 calls / 4.046 seconds.
+- `5c1510bd654`: Calendar search accepted empty arguments at the native schema even though the handler required a content filter. The promoted search now requires canonical query text, while the legacy umbrella retains its aliases. Native-schema and local empty-input checks pass. The final replay had no empty-query repair; it used 4 calls / 4.149 seconds, including a semantic title-matching call. The full Personal Assistant suite passed 2,781 tests with six existing skips; types/lint passed.
+- Calendar owning suite: 998 passed, 4 existing skips. Host Calendar boundary checks: 25 passed within the full Personal Assistant suite. Notes: 191 passed. Core planner/reply checks: 238 passed. Root verification passed 373/373 tasks on final source `5c1510bd654`. One prior attempt hit a compiler SIGSEGV with no source diagnostic and passed on retry.
+
+[Post-call scenario/call-count ledger](GANTTNUBS-SCENARIO-RESULTS.md) records correctness separately from timing. Calendar's longer paths remain above the roughly three-second target. No voice, release, external-provider calendar or develop integration acceptance is claimed.
 
 ## Scope and sequence
 
@@ -174,3 +197,46 @@ The runtime code matches `21b137ececf`; later commits contain the plan and hando
 OPEN: consistent sub-three-second multi-step writes, verified alternatives and context recovery. No additional safe shortcut was established within this checkpoint. The single prompt-routing repair and one replay do not guarantee perfect natural-language interpretation. These are explicit performance/reliability limits, not a hidden correctness PASS for every possible scenario.
 
 DEFERRED: voice, PRD/acknowledgment design and isolated develop integration. The bounded goal is complete when this checkpoint and short handoff are delivered; broader product/release work remains separate.
+
+## Post-call acknowledgment design review
+
+Do not add a generic provider or require a terminal REPLY before every tool.
+The current runtime treats the final reply as the authoritative outcome, and
+its completion guard may synthesize a missing final answer after tools. A
+“got it” REPLY can therefore end the plan, trigger recovery, or compete with
+publication. Existing streaming suppression tests cover that distinction.
+
+A future acknowledgment should be a separate progress event, authored in an
+already-required routing/planning response, with no extra model call. It must
+never claim a write succeeded, never replace the final response, and should
+be omitted for direct navigation. Voice playback/caching remains a separate
+acceptance task. This phase records the design and preserves current final
+reply ownership; it does not ship the meeting's proposed acknowledgment UI.
+
+## Remaining latency goal (after this saved correctness pass)
+
+The overall goal stays active because Calendar is not consistently near/under
+three seconds. Freeze the verified correctness changes before further tuning.
+Next inspect existing traces and code, without another broad paid sweep:
+
+1. Attribute the roughly 0.30s before message handling and 0.30s between
+   routing and planning in the final conditional-booking trace. Determine
+   whether they are necessary message-stacking/interrupt barriers or duplicate
+   waits before changing anything.
+2. Check the actual provider wire behavior for the configured reasoning policy
+   and per-stage generation. Do not change model/provider or claim Wi-Fi as the
+   cause from aggregate timers.
+3. Inspect title/topic matching and context-restore decisions. Keep legitimate
+   semantic matching and historical constraints; only remove demonstrably
+   redundant work with a general contract and regression evidence.
+4. Independent-read batching requires explicit effect/dependency guarantees.
+   Do not skip evaluation across arbitrary queued actions or trade write
+   correctness for fewer calls.
+
+Voice and broad feature/integration work remain deferred. A code checkpoint
+and passing selected scenarios are not completion of this remaining latency goal.
+
+Code rollback checkpoint for this pass: local tag
+`codex/ganttnubs-shaw-text-20260918`. This preserves code, not a reset of the
+continuous conversation or user database. The earlier pre-follow-up tag
+`codex/ganttnubs-text-demo-20260918` also remains available.
