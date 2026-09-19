@@ -1,70 +1,46 @@
-/**
- * Unit coverage for typed evidence pipeline errors in errors.ts.
- *
- * Exercises EvidenceError and EvidenceValidationError across code tagging,
- * context dictionaries, cause propagation, prototype chain integrity,
- * and schema issue tracking.
- */
+/** Exercises evidence error classification, preserved causes and validation issues. */
+import { expect, it } from "vitest";
+import { EvidenceError, EvidenceValidationError } from "./errors.js";
 
-import { describe, expect, it } from "vitest";
-import {
-  EvidenceError,
-  EvidenceValidationError,
-  type ValidationIssue,
-} from "./errors.js";
-
-describe("errors", () => {
-  describe("EvidenceError", () => {
-    it("instantiates with message, code, and context", () => {
-      const err = new EvidenceError("Manifest missing", {
-        code: "MANIFEST_NOT_FOUND",
-        context: { bundleId: "bundle-123" },
-      });
-
-      expect(err).toBeInstanceOf(Error);
-      expect(err).toBeInstanceOf(EvidenceError);
-      expect(err.name).toBe("EvidenceError");
-      expect(err.message).toBe("Manifest missing");
-      expect(err.code).toBe("MANIFEST_NOT_FOUND");
-      expect(err.context).toEqual({ bundleId: "bundle-123" });
-    });
-
-    it("preserves underlying cause when provided", () => {
-      const rootCause = new Error("Disk read failure");
-      const err = new EvidenceError("Failed to load evidence bundle", {
-        code: "BUNDLE_READ_FAILED",
-        cause: rootCause,
-      });
-
-      expect(err.cause).toBe(rootCause);
-    });
+it("preserves classification, context, cause identity and the Error prototype", () => {
+  const cause = new Error("Disk read failure");
+  const error = new EvidenceError("Failed to load evidence bundle", {
+    code: "BUNDLE_READ_FAILED",
+    context: { bundleId: "bundle-123" },
+    cause,
   });
-
-  describe("EvidenceValidationError", () => {
-    it("instantiates with validation issues and maintains prototype hierarchy", () => {
-      const issues: ValidationIssue[] = [
-        { path: "artifacts.0.sha256", message: "Invalid hex hash format" },
-        { path: "timestamp", message: "Must be a finite epoch timestamp" },
-      ];
-
-      const err = new EvidenceValidationError(
-        "Manifest validation failed",
-        issues,
-        {
-          code: "MANIFEST_INVALID",
-          context: { path: "/evidence/manifest.json" },
-        },
-      );
-
-      expect(err).toBeInstanceOf(Error);
-      expect(err).toBeInstanceOf(EvidenceError);
-      expect(err).toBeInstanceOf(EvidenceValidationError);
-      expect(err.name).toBe("EvidenceValidationError");
-      expect(err.message).toBe("Manifest validation failed");
-      expect(err.code).toBe("MANIFEST_INVALID");
-      expect(err.issues).toEqual(issues);
-      expect(err.issues.length).toBe(2);
-      expect(err.context).toEqual({ path: "/evidence/manifest.json" });
-    });
+  expect(error).toBeInstanceOf(Error);
+  expect(error).toBeInstanceOf(EvidenceError);
+  expect(error).toMatchObject({
+    name: "EvidenceError",
+    message: "Failed to load evidence bundle",
+    code: "BUNDLE_READ_FAILED",
+    context: { bundleId: "bundle-123" },
   });
+  expect(error.cause).toBe(cause);
+});
+
+it("retains every validation issue through the evidence error hierarchy", () => {
+  const issues = [
+    { path: "artifacts.0.sha256", message: "Invalid hex hash format" },
+    { path: "timestamp", message: "Must be a finite epoch timestamp" },
+  ];
+  const error = new EvidenceValidationError(
+    "Manifest validation failed",
+    issues,
+    {
+      code: "MANIFEST_INVALID",
+      context: { path: "/evidence/manifest.json" },
+    },
+  );
+  expect(error).toBeInstanceOf(Error);
+  expect(error).toBeInstanceOf(EvidenceError);
+  expect(error).toBeInstanceOf(EvidenceValidationError);
+  expect(error).toMatchObject({
+    name: "EvidenceValidationError",
+    message: "Manifest validation failed",
+    code: "MANIFEST_INVALID",
+    context: { path: "/evidence/manifest.json" },
+  });
+  expect(error.issues).toEqual(issues);
 });
