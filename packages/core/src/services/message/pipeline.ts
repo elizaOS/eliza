@@ -1183,13 +1183,14 @@ export async function runV5MessageRuntimeStage1(
 			canUseProgressiveActions &&
 			(requestsToolDiscovery ||
 				selectedActionFamilies.length < discoveryCatalogActions.length ||
-				stageOneCandidates.some(
-					(name) =>
-						!exposedActionMatches(
-							selectedActionFamilies,
-							normalizeActionIdentifier(name),
-						),
-				))
+				(discoveryCatalogActions.length > 0 &&
+					stageOneCandidates.some(
+						(name) =>
+							!exposedActionMatches(
+								selectedActionFamilies,
+								normalizeActionIdentifier(name),
+							),
+					)))
 				? selectedActionFamilies
 				: undefined;
 		if (progressiveActions) {
