@@ -16,6 +16,7 @@ import type { ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import type { Plugin } from "@elizaos/core";
+import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import {
   type Action,
   AgentRuntime,
@@ -534,15 +535,13 @@ const trajectoryActionPlugin: Plugin = {
 };
 
 beforeAll(async () => {
-  // Mirror @elizaos/testing createTestRuntime inline (the testing subpath
-  // is not aliased in the agent's vitest config). Real PGLite-backed runtime;
-  // trajectories load by default (enableTrajectories defaults on).
+  // The host composes assistant services over real PGlite storage.
   pgliteDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-traj-e2e-"));
   process.env.PGLITE_DATA_DIR = pgliteDir;
 
   runtime = new AgentRuntime({
     character: { name: "TrajCapture" },
-    plugins: [],
+    plugins: [createAssistantPlugin(), trajectoriesPlugin],
     logLevel: "warn",
     enableAutonomy: false,
   });
@@ -556,13 +555,7 @@ beforeAll(async () => {
   await runtime.registerPlugin(trajectoryActionPlugin);
   await runtime.initialize();
 
-  // The "trajectories" native-feature service (enabled by default) starts
-  // asynchronously after DB init — the real boot waits via
-  // waitForTrajectoriesService before installing the bridge.
-  const deadline = Date.now() + 15_000;
-  while (Date.now() < deadline && !runtime.getService("trajectories")) {
-    await new Promise((r) => setTimeout(r, 50));
-  }
+  await runtime.getServiceLoadPromise("trajectories");
 
   // The boot wiring under test (prepareRuntimeForTrajectoryCapture installs this).
   await installDatabaseTrajectoryLogger(runtime);
