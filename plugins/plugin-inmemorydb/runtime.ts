@@ -100,16 +100,15 @@ import {
   queryDocumentFragmentsInMemory,
   queryDocumentsInMemory,
   ROLE_WRITE_AUDIT_LOG_TYPE,
-  rankMessageSearch,
   redactConnectorJsonAudit,
   requireFreshWorldMetadataRevision,
   validateDocumentDirectGrantEntityIds,
   validateDocumentRevisionReplacement,
   validateQueryEntitiesPagination,
   validateTaskQueryPagination,
-  withinCreatedAtWindow,
   worldMetadataValueEquals,
 } from "@elizaos/core";
+import { rankMessageSearch, rerankMemories, withinCreatedAtWindow } from "@elizaos/retrieval";
 
 function asUuid(id: string): UUID {
   return id as UUID;
@@ -1465,7 +1464,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
     }
     scored.sort((left, right) => (right.similarity ?? -1) - (left.similarity ?? -1));
     const offset = params.offset ?? 0;
-    return scored.slice(offset, offset + limit);
+    return rerankMemories(params.query, scored.slice(offset, offset + limit));
   }
 
   // Batch memory methods
