@@ -12,6 +12,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { storableJsonRecord } from "@/lib/api/storable-strings";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -53,7 +54,7 @@ const CreateOAuthIntentSchema = z.object({
     .max(24 * 60 * 60 * 1000)
     .optional(),
   agentId: z.string().min(1).max(256).optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  metadata: storableJsonRecord().optional(),
 });
 
 const ListQuerySchema = z.object({

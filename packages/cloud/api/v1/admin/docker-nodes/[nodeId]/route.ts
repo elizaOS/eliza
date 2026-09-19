@@ -19,6 +19,7 @@ import { z } from "zod";
 import { dbRead } from "@/db/helpers";
 import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
 import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
+import { storableJsonRecord } from "@/lib/api/storable-strings";
 import { requireAdmin } from "@/lib/auth";
 import { logger } from "@/lib/utils/logger";
 
@@ -124,7 +125,7 @@ const updateNodeSchema = z
     // Explicit pin rotation/revocation always clears node_incarnation. A later
     // host-key-verified health probe must re-attest the boot before capture.
     hostKeyFingerprint: z.string().min(1).nullable().optional(),
-    metadata: z.record(z.string(), z.unknown()).optional(),
+    metadata: storableJsonRecord().optional(),
   })
   .refine((d) => Object.keys(d).length > 0, {
     message: "At least one field must be provided for update",
