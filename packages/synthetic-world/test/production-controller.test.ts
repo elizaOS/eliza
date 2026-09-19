@@ -137,6 +137,8 @@ describe("production synthetic-world controller", () => {
     expect(booted.capabilities.unavailable).toContain(
       "atomic-production-domain-command",
     );
+    // Maintain the same live authority across deliberate runtime restarts.
+    await store.heartbeat({ authority, leaseDurationMs: 60_000 });
     await booted.controller.stop();
     await booted.controller.stop();
 
@@ -150,6 +152,7 @@ describe("production synthetic-world controller", () => {
     }
     expect(restarted.proof.agentId).toBe(booted.proof.agentId);
     expect(restarted.proof.agentEntityId).toBe(booted.proof.agentEntityId);
+    await store.heartbeat({ authority, leaseDurationMs: 60_000 });
     await restarted.controller.stop();
 
     store.close();

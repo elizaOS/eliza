@@ -13,6 +13,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { AgentRuntime } from '@elizaos/core';
+import { registerHttpPluginRoutes } from '@elizaos/shared/api/http-plugin-runtime';
 
 import { tryHandleRuntimePluginRoute } from '../../../../packages/agent/src/api/runtime-plugin-routes';
 import { workflowRoutePlugin } from '../../src/plugin-routes';
@@ -124,13 +125,17 @@ function makeRuntime(
 ): AgentRuntime {
   const { withService = true, state = { calls: [] } } = options;
   const service = makeWorkflowService(state);
-  return {
+  const runtime = {
     agentId: 'agent-route-test',
     character: { name: 'Route Test Agent', settings: {} },
-    routes: [...workflowRoutes, ...(workflowRoutePlugin.routes ?? [])],
     getSetting: () => null,
     getService: (key: string) => (withService && key === WORKFLOW_SERVICE_TYPE ? service : null),
   } as unknown as AgentRuntime;
+  registerHttpPluginRoutes(runtime, {
+    name: 'workflow-test',
+    routes: [...workflowRoutes, ...(workflowRoutePlugin.routes ?? [])],
+  });
+  return runtime;
 }
 
 async function startServer(
