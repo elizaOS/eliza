@@ -88,6 +88,7 @@ import {
   type SetConnectorAccountCredentialRefParams,
   type Task,
   type TaskMetadata,
+  type TaskMetadataPatch,
   type UpsertConnectorAccountParams,
   type UUID,
   validateDocumentDirectGrantEntityIds,
@@ -7619,6 +7620,32 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               sql`COALESCE(${taskTable.metadata}->>'status', 'pending') = 'pending'`
             )
           )
+          .returning();
+        return updated.length === 1;
+      });
+    });
+  }
+
+  /**
+   * Key-level metadata patch in one UPDATE: `set` is merged with `||`, then
+   * every `unset` key is removed with `-`, all inside the same statement, so a
+   * concurrent whole-object writer cannot slip between a read and this write.
+   * Returns false when no task row matched (deleted or foreign agent).
+   */
+  async patchTaskMetadata(id: UUID, patch: TaskMetadataPatch): Promise<boolean> {
+    // JSON.stringify drops undefined values, so an `undefined` in `set` never
+    // reaches storage; callers remove keys through `unset`.
+    const merged = JSON.stringify(patch.set ?? {});
+    let metadata = sql`(COALESCE(${taskTable.metadata}, '{}'::jsonb) || ${merged}::jsonb)`;
+    for (const key of patch.unset ?? []) {
+      metadata = sql`(${metadata} - ${String(key)})`;
+    }
+    return this.withRetry(async () => {
+      return this.withDatabase(async () => {
+        const updated = await this.db
+          .update(taskTable)
+          .set({ metadata, updatedAt: new Date() })
+          .where(and(eq(taskTable.id, id), eq(taskTable.agentId, this.agentId)))
           .returning();
         return updated.length === 1;
       });

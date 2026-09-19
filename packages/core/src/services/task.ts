@@ -838,12 +838,11 @@ export class TaskService extends Service {
 				}
 				const meta = latestTask.metadata as TaskMetadata | undefined;
 				const baseInterval = meta?.baseInterval ?? meta?.updateInterval;
-				const newMeta: TaskMetadata = {
-					...meta,
+				const bookkeeping: Partial<TaskMetadata> = {
 					updatedAt: this.clock.now(),
 					failureCount: 0,
-					lastError: undefined,
 				};
+				const cleared: (keyof TaskMetadata)[] = ["lastError"];
 				const nextInterval =
 					result != null &&
 					typeof result === "object" &&
@@ -866,12 +865,12 @@ export class TaskService extends Service {
 					);
 				}
 				if (nextInterval != null) {
-					newMeta.updateInterval = nextInterval;
-					delete newMeta.baseInterval;
+					bookkeeping.updateInterval = nextInterval;
+					cleared.push("baseInterval");
 				} else if (baseInterval != null && typeof baseInterval === "number") {
-					newMeta.updateInterval = baseInterval;
+					bookkeeping.updateInterval = baseInterval;
 				}
-				await this.runtime.updateTask(task.id, { metadata: newMeta });
+				await this.persistTaskMetadata(task.id, meta, bookkeeping, cleared);
 			} else {
 				await this.runtime.deleteTask(task.id);
 				this.runtime.logger.debug(
@@ -904,8 +903,7 @@ export class TaskService extends Service {
 						rawMax === Infinity || (typeof rawMax === "number" && rawMax <= 0);
 					const maxFailures = neverPause ? Infinity : (rawMax ?? 5);
 					const failedAt = this.clock.now();
-					const newMeta: TaskMetadata & Record<string, unknown> = {
-						...(meta ?? {}),
+					const newMeta: Partial<TaskMetadata> = {
 						updatedAt: failedAt,
 						failureCount,
 						lastError: error instanceof Error ? error.message : String(error),
@@ -946,7 +944,7 @@ export class TaskService extends Service {
 							);
 						}
 					}
-					await this.runtime.updateTask(task.id, { metadata: newMeta });
+					await this.persistTaskMetadata(task.id, meta, newMeta);
 				} else if (task.id) {
 					await this.runtime.deleteTask(task.id);
 					this.runtime.logger.debug(
@@ -1039,6 +1037,31 @@ export class TaskService extends Service {
 	}
 
 	/**
+	 * Writes a key-level metadata change. The adapter's atomic patch keeps a
+	 * concurrent writer's keys intact (an operator pause landing during a run's
+	 * bookkeeping, or vice versa); when the adapter has no atomic patch, the
+	 * change is merged over the freshest snapshot the caller read and written
+	 * whole. `unset` keys are removed in both modes.
+	 */
+	private async persistTaskMetadata(
+		taskId: UUID,
+		snapshot: TaskMetadata | undefined,
+		set: Partial<TaskMetadata>,
+		unset: readonly (keyof TaskMetadata)[] = [],
+	): Promise<void> {
+		const outcome = await this.runtime.patchTaskMetadata(taskId, {
+			set,
+			unset,
+		});
+		if (outcome !== "unsupported") return;
+		const merged: Record<string, unknown> = { ...(snapshot ?? {}), ...set };
+		for (const key of unset) delete merged[key];
+		await this.runtime.updateTask(taskId, {
+			metadata: merged as TaskMetadata,
+		});
+	}
+
+	/**
 	 * Pauses a task. Every scheduler tick AFTER the pause is persisted skips
 	 * the task until it is resumed, and a paused task is never deleted by the
 	 * tick loop.
@@ -1058,9 +1081,7 @@ export class TaskService extends Service {
 		if (!task) {
 			throw new Error(`Task ${taskId} not found`);
 		}
-		await this.runtime.updateTask(taskId, {
-			metadata: { ...task.metadata, paused: true } as TaskMetadata,
-		});
+		await this.persistTaskMetadata(taskId, task.metadata, { paused: true });
 	}
 
 	/**
@@ -1072,9 +1093,7 @@ export class TaskService extends Service {
 		if (!task) {
 			throw new Error(`Task ${taskId} not found`);
 		}
-		await this.runtime.updateTask(taskId, {
-			metadata: { ...task.metadata, paused: false } as TaskMetadata,
-		});
+		await this.persistTaskMetadata(taskId, task.metadata, { paused: false });
 		if (runImmediately) {
 			const updated = await this.runtime.getTask(taskId);
 			if (updated) {
