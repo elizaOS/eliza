@@ -1265,12 +1265,6 @@ function shouldBridgeFetchUrl(url: URL): boolean {
   return false;
 }
 
-function localAgentUrlForFetch(url: URL): string {
-  const localAgentPath = mobileLocalAgentPathFromUrl(url.toString());
-  if (localAgentPath) return `${IOS_LOCAL_AGENT_IPC_BASE}${localAgentPath}`;
-  return `${IOS_LOCAL_AGENT_IPC_BASE}${url.pathname || "/"}${url.search}`;
-}
-
 export function installIosLocalAgentFetchBridge(): void {
   installIosLocalAgentRestartRequestListener();
   if (globalFetchBridgeInstalled) return;
@@ -1300,10 +1294,8 @@ export function installIosLocalAgentFetchBridge(): void {
 
     if (!shouldBridgeFetchUrl(url)) return original(input, init);
 
-    const bridgedUrl = localAgentUrlForFetch(url);
     const request = new Request(input instanceof Request ? input : url, init);
-    const bridgedRequest = new Request(bridgedUrl, request);
-    return dispatchIosLocalAgentRequest(bridgedRequest);
+    return dispatchIosLocalAgentRequest(request);
   }) as typeof fetch;
   const nativeFetchWithPreconnect = nativeFetch as FetchWithOptionalPreconnect;
   if (typeof nativeFetchWithPreconnect.preconnect === "function") {
