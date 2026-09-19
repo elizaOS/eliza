@@ -1,29 +1,20 @@
 # Personal-assistant scenario corpus
 
-Every scenario in THIS directory is `lane: "live-only"` (197 files as of
-2026-07): they drive message turns whose behavior (chief-of-staff judgment,
-persona tone, natural-language dismissal) only a real model can produce, so
-none of them can pass under the strict deterministic LLM proxy.
+Maintained definitions use `.scenario.ts` and declare their execution lane.
+`live-only` evaluates model judgment and language; `pr-deterministic` exercises
+real runtime behavior with explicit model fixtures that reject unexpected calls.
 
-The keyless, merge-blocking coverage for PA/LifeOps behavior therefore lives
-outside this directory and is what `bun run test:scenarios` actually runs:
+From the repository root:
 
-- `packages/test/scenarios/reminders/` — the 4 `pr-deterministic` reminder
-  ladder scenarios (`reminder.cross-platform.fires-on-mac-and-phone`,
-  `reminder.cross-platform.acknowledged-syncs`,
-  `reminder.escalation.intensity-up`, `reminder.escalation.silent-dismiss`)
-  driving the REAL `/api/lifeops/reminders/process` endpoint with injected
-  `now` values.
-- `packages/scenario-runner/test/scenarios/deterministic-lifeops-*.scenario.ts`
-  — the ScheduledTask spine (`scheduled-tasks`, `dispatch-retry`,
-  `recurrence`, `concurrent-day`, `multiday-journey`) through the REAL
-  scheduler tick (`executeLifeOpsSchedulerTask`).
+```bash
+bun run --cwd plugins/plugin-personal-assistant test:scenarios:list
+bun run --cwd packages/scenario-runner test:lifeops:pr:e2e
+```
 
-Both run under `SCENARIO_USE_DETERMINISTIC_MODEL=1` — zero
-LLM calls, zero cost, fail-closed on any unfixtured model call.
+The first command lists this corpus; the second executes its deterministic lane.
+The personal-assistant package's separate `test:scenarios` command runs the
+reminder scenarios in `packages/test/scenarios/reminders/` and the scheduled-task
+spine in `packages/scenario-runner/test/scenarios/`.
 
-`bun run test:scenarios:list` prints this live-only corpus (the old
-`test:scenarios` behavior). When a scenario here becomes deterministically
-satisfiable, relabel it `lane: "pr-deterministic"`, add its id to
-`packages/scenario-runner/src/corpus-assertion-guard.test.ts`, and it will be
-picked up by lane filtering automatically.
+Run changed scenarios in their declared lane and inspect their final state and
+receipts. Listing metadata proves discovery, not successful execution.
