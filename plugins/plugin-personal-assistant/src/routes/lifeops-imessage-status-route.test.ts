@@ -1,4 +1,3 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Proves the owner-facing LifeOps iMessage status route projects the active
  * runtime transport. The harness uses the real AgentRuntime service registry,
@@ -15,6 +14,7 @@ import {
   Service,
   stringToUuid,
 } from "@elizaos/core";
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
@@ -338,12 +338,11 @@ describe("isolated host iMessage status", () => {
     async (backend) => {
       const runtime = new AgentRuntime({
         character: createCharacter({ name: "Isolated iMessage status" }),
-        disableBasicCapabilities: true,
         enableAutonomy: false,
         settings: { ELIZA_IMESSAGE_BACKEND: backend },
         logLevel: "fatal",
       });
-      await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+      await initializeTestRuntime(runtime);
       Object.defineProperty(runtime, "adapter", {
         value: null,
         configurable: true,

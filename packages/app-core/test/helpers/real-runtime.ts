@@ -1,4 +1,3 @@
-import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 /** Builds a real AgentRuntime backed by PGLite and optional live plugins. */
 
 import fs from "node:fs";
@@ -8,6 +7,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { configureLocalEmbeddingPlugin } from "@elizaos/agent/runtime/eliza";
 import type { Plugin } from "@elizaos/core";
 import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
+import { createAssistantPlugin } from "@elizaos/plugin-assistant";
+import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import {
   createTestPgliteDataDir,
@@ -329,6 +330,8 @@ export async function createRealTestRuntime(
       logLevel: "warn",
       enableAutonomy: false,
     });
+
+    installHttpPluginLifecycle(runtime);
 
     // Always register plugin-sql for PGLite database.
     await runtime.registerPlugin(await importPluginSql());
