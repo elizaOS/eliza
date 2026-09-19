@@ -212,10 +212,15 @@ describe("assistant text normalization", () => {
     client = new ElizaClient("https://agent.example.test");
   });
 
-  it("passes ordinary replies through trimmed and whitespace-tidied", () => {
+  it("trims outer reply whitespace while preserving exact quotes and indentation", () => {
     expect(client.normalizeAssistantText("  Hello world.  ")).toBe(
       "Hello world.",
     );
+    const exact = "Keep  two spaces.\n\tSecond line.\n\n    indented code";
+    expect(client.normalizeAssistantText(exact)).toBe(exact);
+    expect(
+      client.normalizeAssistantText(JSON.stringify({ reply: exact })),
+    ).toBe(exact);
   });
 
   it("unwraps a leaked reply-payload object into the user-facing reply", () => {

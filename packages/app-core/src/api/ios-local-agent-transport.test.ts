@@ -142,17 +142,6 @@ describe("iOS local agent transport bridge", () => {
     Reflect.deleteProperty(globalThis, BOOT_CONFIG_STORE_KEY);
   });
 
-  it("installs a native-callable path-only request handler", async () => {
-    const {
-      handleIosLocalAgentNativeRequest,
-      installIosLocalAgentNativeRequestBridge,
-    } = await import("./ios-local-agent-transport");
-    installIosLocalAgentNativeRequestBridge();
-
-    const handler = window.__ELIZA_BRIDGE__?.iosLocalAgentRequest;
-    expect(handler).toBe(handleIosLocalAgentNativeRequest);
-  });
-
   it("does NOT deadlock when the plugin module exports a raw Capacitor proxy (hostile `then`) — #11030 device boot hang", async () => {
     // Faithful reproduction of @capacitor/core's registerPlugin proxy: the
     // get trap fabricates a method wrapper for ANY property — including
@@ -255,48 +244,6 @@ describe("iOS local agent transport bridge", () => {
     );
   }, 30_000);
 
-  it("honors native watchdog restart requests by re-running the full Bun start path", async () => {
-    capacitorState.pluginAvailable = true;
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) =>
-        key === "eliza:mobile-runtime-mode" ? "local" : null,
-    });
-    const eventTarget = new EventTarget();
-    vi.stubGlobal("window", {
-      location: { href: "capacitor://localhost/" },
-      navigator: { userAgent: "vitest" },
-      addEventListener: eventTarget.addEventListener.bind(eventTarget),
-      dispatchEvent: eventTarget.dispatchEvent.bind(eventTarget),
-    });
-    const start = vi.fn(async () => ({ ok: true }));
-    const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
-    const call = vi.fn();
-    vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
-      ElizaBunRuntime: { start, getStatus, call },
-    }));
-
-    const { installIosLocalAgentNativeRequestBridge } = await import(
-      "./ios-local-agent-transport"
-    );
-    installIosLocalAgentNativeRequestBridge();
-
-    const event = new Event("eliza:local-agent-restart-requested");
-    Object.defineProperty(event, "detail", {
-      value: { attempt: 2, source: "ios-watchdog" },
-    });
-    window.dispatchEvent(event);
-
-    await vi.waitFor(() => expect(start).toHaveBeenCalledTimes(1));
-    expect(start).toHaveBeenCalledWith(
-      expect.objectContaining({
-        engine: "bun",
-        argv: expect.arrayContaining(["ios-bridge", "--stdio"]),
-      }),
-    );
-    expect(getStatus).toHaveBeenCalled();
-    expect(call).not.toHaveBeenCalled();
-  });
-
   it("ignores native watchdog restart requests in pure cloud runtime mode", async () => {
     capacitorState.pluginAvailable = true;
     vi.stubGlobal("localStorage", {
@@ -328,7 +275,7 @@ describe("iOS local agent transport bridge", () => {
     expect(getStatus).not.toHaveBeenCalled();
   });
 
-  it.each(["cloud-hybrid", "tunnel-to-mobile"])(
+  it.each(["local", "cloud-hybrid", "tunnel-to-mobile"])(
     "honors native watchdog restart requests in %s runtime mode",
     async (mode) => {
       capacitorState.pluginAvailable = true;
@@ -345,8 +292,9 @@ describe("iOS local agent transport bridge", () => {
       });
       const start = vi.fn(async () => ({ ok: true }));
       const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
+      const call = vi.fn();
       vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
-        ElizaBunRuntime: { start, getStatus, call: vi.fn() },
+        ElizaBunRuntime: { start, getStatus, call },
       }));
 
       const { installIosLocalAgentNativeRequestBridge } = await import(
@@ -357,7 +305,14 @@ describe("iOS local agent transport bridge", () => {
       window.dispatchEvent(new Event("eliza:local-agent-restart-requested"));
 
       await vi.waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+      expect(start).toHaveBeenCalledWith(
+        expect.objectContaining({
+          engine: "bun",
+          argv: expect.arrayContaining(["ios-bridge", "--stdio"]),
+        }),
+      );
       expect(getStatus).toHaveBeenCalled();
+      expect(call).not.toHaveBeenCalled();
     },
   );
 
@@ -440,13 +395,13 @@ describe("iOS local agent transport bridge", () => {
         await import("./ios-local-agent-transport");
       const macRuntimeUrl = "http://127.0.0.1:31337/api/health";
 
-      expect(isIosInProcessLocalAgentUrl(macRuntimeUrl)).toBe(false);
       installIosLocalAgentFetchBridge();
       const response = await fetch(macRuntimeUrl);
 
       await expect(response.json()).resolves.toEqual({
         source: "mac-runtime",
       });
+      expect(isIosInProcessLocalAgentUrl(macRuntimeUrl)).toBe(false);
       expect(originalFetch).toHaveBeenCalledOnce();
       expect(originalFetch).toHaveBeenCalledWith(macRuntimeUrl, undefined);
       expect(kernelMock.handleIosLocalAgentRequest).not.toHaveBeenCalled();
@@ -944,57 +899,34 @@ describe("iOS local agent transport bridge", () => {
     });
   });
 
-  it("bridges direct relative fetch calls when iOS local mode owns the API base", async () => {
-    const originalFetch = vi.fn(async () => {
-      throw new Error("direct fetch should not run");
-    });
-    vi.stubGlobal("fetch", originalFetch);
-    vi.stubGlobal("__ELIZAOS_APP_BOOT_CONFIG__", {
-      apiBase: "http://127.0.0.1:31337",
-    });
-    vi.stubGlobal("window", {
-      location: { href: "capacitor://localhost/" },
-      navigator: { userAgent: "vitest" },
-    });
+  it.each(["http://127.0.0.1:31337", "eliza-local-agent://ipc"])(
+    "bridges relative requests for API identity %s",
+    async (apiBase) => {
+      const originalFetch = vi.fn(async () => {
+        throw new Error("direct fetch should not run");
+      });
+      vi.stubGlobal("fetch", originalFetch);
+      vi.stubGlobal("__ELIZAOS_APP_BOOT_CONFIG__", {
+        apiBase,
+      });
+      vi.stubGlobal("window", {
+        location: { href: "capacitor://localhost/" },
+        navigator: { userAgent: "vitest" },
+      });
 
-    const { installIosLocalAgentFetchBridge } = await import(
-      "./ios-local-agent-transport"
-    );
-    installIosLocalAgentFetchBridge();
+      const { installIosLocalAgentFetchBridge } = await import(
+        "./ios-local-agent-transport"
+      );
+      installIosLocalAgentFetchBridge();
 
-    const response = await fetch("/api/local-agent/capabilities");
+      const response = await fetch("/api/local-agent/capabilities");
 
-    expect(originalFetch).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toMatchObject({
-      mode: "ios-local",
-    });
-  });
-
-  it("bridges direct relative fetch calls when iOS owns the IPC API identity", async () => {
-    const originalFetch = vi.fn(async () => {
-      throw new Error("direct fetch should not run");
-    });
-    vi.stubGlobal("fetch", originalFetch);
-    vi.stubGlobal("__ELIZAOS_APP_BOOT_CONFIG__", {
-      apiBase: "eliza-local-agent://ipc",
-    });
-    vi.stubGlobal("window", {
-      location: { href: "capacitor://localhost/" },
-      navigator: { userAgent: "vitest" },
-    });
-
-    const { installIosLocalAgentFetchBridge } = await import(
-      "./ios-local-agent-transport"
-    );
-    installIosLocalAgentFetchBridge();
-
-    const response = await fetch("/api/local-agent/capabilities");
-
-    expect(originalFetch).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toMatchObject({
-      mode: "ios-local",
-    });
-  });
+      expect(originalFetch).not.toHaveBeenCalled();
+      await expect(response.json()).resolves.toMatchObject({
+        mode: "ios-local",
+      });
+    },
+  );
 
   it("uses an already-running full Bun native bridge when the runtime plugin is available", async () => {
     capacitorState.pluginAvailable = true;
@@ -1013,10 +945,13 @@ describe("iOS local agent transport bridge", () => {
       ElizaBunRuntime: { start, getStatus, call },
     }));
 
-    const { handleIosLocalAgentNativeRequest } = await import(
+    const { installIosLocalAgentNativeRequestBridge } = await import(
       "./ios-local-agent-transport"
     );
-    const response = await handleIosLocalAgentNativeRequest({
+    installIosLocalAgentNativeRequestBridge();
+    const handler = window.__ELIZA_BRIDGE__?.iosLocalAgentRequest;
+    if (!handler) throw new Error("Native request bridge was not installed");
+    const response = await handler({
       method: "POST",
       path: "/api/full-bun-smoke",
       headers: { "content-type": "application/json" },
@@ -1080,89 +1015,59 @@ describe("iOS local agent transport bridge", () => {
     });
   });
 
-  it("passes the native iOS startup trace id into the full Bun runtime env", async () => {
-    capacitorState.pluginAvailable = true;
-    vi.stubEnv("VITE_ELIZA_IOS_FULL_BUN_AVAILABLE", "1");
-    vi.stubGlobal("window", {
-      __ELIZA_STARTUP_TRACE_ID__: "ios-native-trace-123",
-      location: { href: "capacitor://localhost/" },
-      navigator: { userAgent: "vitest" },
-    });
-    const start = vi.fn(async () => ({ ok: true }));
-    const getStatus = vi
-      .fn()
-      .mockResolvedValueOnce({ ready: false })
-      .mockResolvedValueOnce({ ready: true, engine: "bun" });
-    const call = vi.fn(async () => ({
-      result: {
-        status: 200,
-        statusText: "OK",
-        headers: { "content-type": "application/json" },
-        body: '{"ok":true}',
-      },
-    }));
-    vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
-      ElizaBunRuntime: { start, getStatus, call },
-    }));
+  it.each([
+    [
+      { __ELIZA_STARTUP_TRACE_ID__: "ios-native-trace-123" },
+      "ios-native-trace-123",
+    ],
+    [
+      { __ELIZA_STARTUP_TRACE__: { traceId: "ios-renderer-trace-456" } },
+      "ios-renderer-trace-456",
+    ],
+  ] as const)(
+    "passes startup trace %j into the full Bun runtime env",
+    async (trace, expectedTraceId) => {
+      capacitorState.pluginAvailable = true;
+      vi.stubEnv("VITE_ELIZA_IOS_FULL_BUN_AVAILABLE", "1");
+      vi.stubGlobal("window", {
+        ...trace,
+        location: { href: "capacitor://localhost/" },
+        navigator: { userAgent: "vitest" },
+      });
+      const start = vi.fn(async () => ({ ok: true }));
+      const getStatus = vi
+        .fn()
+        .mockResolvedValueOnce({ ready: false })
+        .mockResolvedValueOnce({ ready: true, engine: "bun" });
+      const call = vi.fn(async () => ({
+        result: {
+          status: 200,
+          statusText: "OK",
+          headers: { "content-type": "application/json" },
+          body: '{"ok":true}',
+        },
+      }));
+      vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
+        ElizaBunRuntime: { start, getStatus, call },
+      }));
 
-    const { handleIosLocalAgentNativeRequest } = await import(
-      "./ios-local-agent-transport"
-    );
-    await handleIosLocalAgentNativeRequest({
-      method: "GET",
-      path: "/api/health",
-    });
+      const { handleIosLocalAgentNativeRequest } = await import(
+        "./ios-local-agent-transport"
+      );
+      await handleIosLocalAgentNativeRequest({
+        method: "GET",
+        path: "/api/health",
+      });
 
-    expect(start).toHaveBeenCalledWith(
-      expect.objectContaining({
-        env: expect.objectContaining({
-          ELIZA_STARTUP_TRACE_ID: "ios-native-trace-123",
+      expect(start).toHaveBeenCalledWith(
+        expect.objectContaining({
+          env: expect.objectContaining({
+            ELIZA_STARTUP_TRACE_ID: expectedTraceId,
+          }),
         }),
-      }),
-    );
-  });
-
-  it("falls back to the mirrored renderer startup trace id for iOS full Bun env", async () => {
-    capacitorState.pluginAvailable = true;
-    vi.stubEnv("VITE_ELIZA_IOS_FULL_BUN_AVAILABLE", "1");
-    vi.stubGlobal("window", {
-      __ELIZA_STARTUP_TRACE__: { traceId: "ios-renderer-trace-456" },
-      location: { href: "capacitor://localhost/" },
-      navigator: { userAgent: "vitest" },
-    });
-    const start = vi.fn(async () => ({ ok: true }));
-    const getStatus = vi
-      .fn()
-      .mockResolvedValueOnce({ ready: false })
-      .mockResolvedValueOnce({ ready: true, engine: "bun" });
-    const call = vi.fn(async () => ({
-      result: {
-        status: 200,
-        statusText: "OK",
-        headers: { "content-type": "application/json" },
-        body: '{"ok":true}',
-      },
-    }));
-    vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
-      ElizaBunRuntime: { start, getStatus, call },
-    }));
-
-    const { handleIosLocalAgentNativeRequest } = await import(
-      "./ios-local-agent-transport"
-    );
-    await handleIosLocalAgentNativeRequest({
-      method: "GET",
-      path: "/api/health",
-    });
-
-    expect(start).toHaveBeenCalledWith(
-      expect.objectContaining({
-        env: expect.objectContaining({
-          ELIZA_STARTUP_TRACE_ID: "ios-renderer-trace-456",
-        }),
-      }),
-    );
-  });
+      );
+    },
+  );
 
   it("requires the full Bun bridge during the in-app smoke even if Capacitor platform detection is early", async () => {
     capacitorState.isNative = false;

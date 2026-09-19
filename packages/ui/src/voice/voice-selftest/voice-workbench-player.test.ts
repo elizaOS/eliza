@@ -128,3 +128,97 @@ describe("runVoiceWorkbench diarization scoring", () => {
     });
   });
 });
+
+it.each([
+  "valid",
+  "foreign-terminal",
+  "wrong-buffer",
+  "wrong-turn",
+  "deadline",
+] as const)(
+  "validates playback reply provenance at the workbench consumer boundary: %s",
+  async (caseName) => {
+    vi.mocked(isLocalInferenceAsrReady).mockResolvedValue(true);
+    vi.mocked(transcribeLocalInferenceWav)
+      .mockReset()
+      .mockResolvedValue({ text: "Controlled question", words: [] });
+    const client = createClient();
+    vi.mocked(client.sendConversationMessageStream).mockResolvedValue({
+      text: "Complete reply",
+      completed: true,
+      agentName: "Controlled",
+    });
+    const report = await runVoiceWorkbench({
+      scenario: {
+        id: "provenance",
+        classes: [],
+        participants: [{ label: "owner" }],
+        turns: [
+          {
+            speaker: "owner",
+            text: "Controlled question",
+            expectRespond: true,
+          },
+        ],
+      },
+      platform: "web",
+      ttsRoute: "/api/tts/cloud",
+      client,
+      audioCtx: {} as AudioContext,
+      resolveTurnWav: async () => new Uint8Array([1]),
+      playReply: async (_reply, _index, messageId) => {
+        const common = { taskId: "controlled-task", atMs: 1 };
+        return [
+          {
+            ...common,
+            kind: "queued",
+            generation: 1,
+            text: "Complete reply",
+            segment: "full",
+            provider: "eliza-cloud",
+            telemetry: {
+              messageId: caseName === "wrong-turn" ? "another-turn" : messageId,
+            },
+          },
+          {
+            ...common,
+            kind: "encoded",
+            requestId: null,
+            origin: "cache-unattributed",
+            bytes: new Uint8Array([1, 2, 3]),
+          },
+          {
+            ...common,
+            kind: "decoded",
+            bufferId: 1,
+            sampleRate: 16000,
+            channels: [new Float32Array([0.25, -0.25])],
+          },
+          {
+            ...common,
+            kind: "source-started",
+            bufferId: caseName === "wrong-buffer" ? 2 : 1,
+            audioTime: 0,
+          },
+          {
+            ...common,
+            kind: "terminal",
+            taskId:
+              caseName === "foreign-terminal" ? "another-task" : common.taskId,
+            outcome:
+              caseName === "deadline" ? "audio-clock-deadline" : "source-ended",
+            audioTime: 1,
+          },
+        ];
+      },
+    });
+    expect(report.turns[0]?.status).toBe(
+      caseName === "valid" ? "pass" : "fail",
+    );
+    expect(report.turns[0]?.playbackEvidence).toHaveLength(5);
+    if (caseName !== "valid")
+      expect(report.turns[0]?.error).toContain(
+        "provenance did not confirm this turn",
+      );
+  },
+);

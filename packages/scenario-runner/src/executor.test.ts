@@ -39,6 +39,7 @@ function createRuntime(
     createEntity: vi.fn(async () => true),
     getRelationships: vi.fn(async () => []),
     createRelationship: vi.fn(async () => true),
+    getTasksByName: async () => [],
     getService: vi.fn(() => null),
     reportError: vi.fn(),
     setSetting: vi.fn(),

@@ -6,6 +6,11 @@
  * against the cloud-api worker.
  */
 
+import {
+  DEDICATED_COMPUTE_PRICE_HEADER,
+  getDedicatedComputePriceAcceptance,
+} from "@elizaos/cloud-sdk/browser-contracts";
+
 import { expect } from "@playwright/test";
 import { retrySharedRuntimeWarming } from "./shared-runtime";
 
@@ -138,7 +143,10 @@ export async function startAgentProvisioning(
     `${endpoints.apiUrl}/api/v1/eliza/agents/${sandboxId}/provision`,
     {
       method: "POST",
-      headers: authHeaders(apiKey),
+      headers: {
+        ...authHeaders(apiKey),
+        [DEDICATED_COMPUTE_PRICE_HEADER]: getDedicatedComputePriceAcceptance(),
+      },
     },
   );
   expect(

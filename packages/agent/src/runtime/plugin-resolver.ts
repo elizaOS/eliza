@@ -56,6 +56,10 @@ import {
   resolvePluginPackageAlias,
 } from "./plugin-collector.ts";
 import {
+  collectStagedDirectoryLinks,
+  relocateStagedDirectoryLinks,
+} from "./plugin-staging-links.ts";
+import {
   CUSTOM_PLUGINS_DIRNAME,
   EJECTED_PLUGINS_DIRNAME,
   findRuntimePluginExport,
@@ -158,14 +162,20 @@ export { renderGroundedActionReply } from "./actions/grounded-action-reply.ts";
 export { extractConversationMetadataFromRoom, isPageScopedConversationMetadata } from "./api/conversation-metadata.ts";
 export { handleConnectorAccountRoutes } from "./api/connector-account-routes.ts";
 export { checkRateLimit } from "./api/rate-limiter.ts";
-export { loadElizaConfig, saveElizaConfig } from "./config/config.ts";
+export { loadEffectiveElizaConfig, loadElizaConfig, saveElizaConfig } from "./config/config.ts";
 export { loadOwnerContactRoutingHints, loadOwnerContactsConfig, resolveOwnerContactWithFallback } from "./config/owner-contacts.ts";
 export { resolveOAuthDir, resolveStateDir } from "./config/paths.ts";
 export { createIntegrationTelemetrySpan } from "./diagnostics/integration-observability.ts";
 export { getAgentEventService } from "./runtime/agent-event-service.ts";
 export { resolveOwnerEntityId } from "./runtime/owner-entity.ts";
 export { hasOwnerAccess } from "./security/access.ts";
+export { createLocalAgentBackup, listLocalAgentBackups } from "./services/agent-backup.ts";
 export { gatePluginSessionForHostedApp } from "./services/app-session-gate.ts";
+export { APPROVAL_EXECUTION_CAPABILITY, APPROVAL_EXECUTION_PROTOCOL_VERSION, ApprovalDispatchControlStore, ApprovalIdempotencyConflictError, ApprovalNotFoundError, ApprovalStateTransitionError, approvalDispatchAdmissionCte, createApprovalQueue, PgApprovalQueue, resolveApprovalService } from "./services/approval/index.ts";
+export { createGlobalPauseStore, GLOBAL_PAUSE_CACHE_KEY, resolveGlobalPauseService } from "./services/global-pause/index.ts";
+export { createHandoffStore, describeResumeCondition, evaluateResume, resolveHandoffService } from "./services/handoff/index.ts";
+export { EntityStore, KNOWLEDGE_GRAPH_SERVICE, RelationshipStore, resolveKnowledgeGraphService } from "./services/knowledge-graph/index.ts";
+export { createPendingPromptsStore, resolvePendingPromptsService } from "./services/pending-prompts/index.ts";
 export { registerEscalationChannel } from "./services/escalation.ts";
 export { buildTriggerConfig, buildTriggerMetadata, computeNextCronRunAtMs, normalizeTriggerDraft, parseCronExpression } from "./triggers/scheduling.ts";
 export { getTriggerLimit, listTriggerTasks, readTriggerConfig, taskToTriggerSummary, triggersFeatureEnabled, TRIGGER_TASK_NAME, TRIGGER_TASK_TAGS } from "./triggers/runtime.ts";
@@ -461,15 +471,27 @@ async function ensureStagedPackageDependencies(params: {
   packageName: string;
   packageRoot: string;
   stagedPackageRoot: string;
-  ancestorPackageRoots?: ReadonlySet<string>;
+  stagedGraph?: Map<string, string>;
+  stagedGraphRoot?: string;
+  ancestorPackageIdentities?: ReadonlySet<string>;
+  sourceStaged?: boolean;
 }): Promise<void> {
   const canonicalPackageRoot = await fs.realpath(params.packageRoot);
-  const ancestorPackageRoots = params.ancestorPackageRoots ?? new Set<string>();
-  if (ancestorPackageRoots.has(canonicalPackageRoot)) {
-    return;
-  }
-  const dependencyAncestorRoots = new Set(ancestorPackageRoots);
-  dependencyAncestorRoots.add(canonicalPackageRoot);
+  const packageIdentity = JSON.stringify([
+    canonicalPackageRoot,
+    params.sourceStaged === true,
+  ]);
+  const ancestorPackageIdentities =
+    params.ancestorPackageIdentities ?? new Set<string>();
+  if (ancestorPackageIdentities.has(packageIdentity)) return;
+  const dependencyAncestorIdentities = new Set(ancestorPackageIdentities);
+  dependencyAncestorIdentities.add(packageIdentity);
+  const stagedGraph = params.stagedGraph ?? new Map<string, string>();
+  const stagedGraphRoot =
+    params.stagedGraphRoot ?? (await fs.realpath(params.stagedPackageRoot));
+  // Publish identity before walking edges: cycles and diamonds must resolve to
+  // the same staged module, while distinct physical versions stay distinct.
+  stagedGraph.set(packageIdentity, params.stagedPackageRoot);
 
   const stagedNodeModulesPath = path.join(
     params.stagedPackageRoot,
@@ -509,7 +531,50 @@ async function ensureStagedPackageDependencies(params: {
     }
 
     let stagedSourceRoot: string | null = null;
+    let reusedStagedDependency = false;
     for (const sourceNodeModulesDir of sourceNodeModulesDirs) {
+      const sourceEntry = packageNodeModulesEntryPath(
+        sourceNodeModulesDir,
+        dependency.name,
+      );
+      if (!(await pathEntryExists(sourceEntry))) continue;
+      const canonicalSourceRoot =
+        await resolveSymlinkTargetIfPresent(sourceEntry);
+      if (!canonicalSourceRoot) continue;
+      const stagedIdentity = stagedGraph.get(
+        JSON.stringify([canonicalSourceRoot, shouldStageFromSource]),
+      );
+      if (stagedIdentity) {
+        const sourceManifest =
+          await readPluginPackageManifest(canonicalSourceRoot);
+        const stagedManifest = await readPluginPackageManifest(stagedIdentity);
+        const canonicalStagedIdentity = await fs.realpath(stagedIdentity);
+        if (
+          sourceManifest?.name === dependency.name &&
+          stagedManifest?.name === dependency.name &&
+          isPathInsideRoot(canonicalStagedIdentity, stagedGraphRoot)
+        ) {
+          // These targets were copied and audited by this invocation. Windows
+          // junctions avoid requiring symlink privilege; cold publication
+          // relocates their absolute targets before renaming the generation.
+          await fs.mkdir(path.dirname(stagedDependencyPath), {
+            recursive: true,
+          });
+          await fs.symlink(
+            process.platform === "win32"
+              ? canonicalStagedIdentity
+              : path.relative(
+                  path.dirname(stagedDependencyPath),
+                  stagedIdentity,
+                ),
+            stagedDependencyPath,
+            process.platform === "win32" ? "junction" : "dir",
+          );
+          stagedSourceRoot = canonicalSourceRoot;
+          reusedStagedDependency = true;
+          break;
+        }
+      }
       stagedSourceRoot = shouldStageFromSource
         ? await stageWorkspaceSourceDependencyIntoNodeModules({
             dependencyName: dependency.name,
@@ -533,7 +598,7 @@ async function ensureStagedPackageDependencies(params: {
       continue;
     }
 
-    if (!stagedSourceRoot) continue;
+    if (!stagedSourceRoot || reusedStagedDependency) continue;
     await ensureStagedPackageDependencies({
       installRoot: params.installRoot,
       packageName: dependency.name,
@@ -542,7 +607,10 @@ async function ensureStagedPackageDependencies(params: {
         stagedNodeModulesPath,
         dependency.name,
       ),
-      ancestorPackageRoots: dependencyAncestorRoots,
+      stagedGraph,
+      stagedGraphRoot,
+      ancestorPackageIdentities: dependencyAncestorIdentities,
+      sourceStaged: shouldStageFromSource,
     });
   }
 }
@@ -836,7 +904,9 @@ export async function importPluginModuleFromPath(
     isColdImport &&
     (existsSync(path.join(pkgRoot, "dist")) ||
       (await isWorkspacePluginPackageRoot(pkgRoot)));
+  const selectedEntryPoint = await resolvePackageEntry(pkgRoot, exportSubpath);
   const stageParams = {
+    entryPoint: selectedEntryPoint,
     installRoot: absPath,
     packageRoot: pkgRoot,
     packageRelativePath,
@@ -1235,6 +1305,27 @@ async function removeEscapingStagedSymlinks(
   }
 }
 
+const stagedDirectoryCopyWaiters: (() => void)[] = [];
+let activeStagedDirectoryCopies = 0;
+
+async function withStagedDirectoryCopySlot(
+  copy: () => Promise<void>,
+): Promise<void> {
+  await new Promise<void>((resolve) => {
+    if (activeStagedDirectoryCopies < 4) {
+      activeStagedDirectoryCopies++;
+      resolve();
+    } else stagedDirectoryCopyWaiters.push(resolve);
+  });
+  try {
+    await copy();
+  } finally {
+    const next = stagedDirectoryCopyWaiters.shift();
+    if (next) next();
+    else activeStagedDirectoryCopies--;
+  }
+}
+
 /**
  * Copy a plugin/package tree without materializing host files behind
  * out-of-tree symlinks. `fs.cp({ dereference: true })` followed those links
@@ -1250,27 +1341,102 @@ export async function copyPluginTreeWithoutEscapingSymlinks(
 ): Promise<void> {
   const sourceRoot = await fs.realpath(sourcePath);
   try {
-    await fs.cp(sourceRoot, targetPath, {
-      recursive: true,
-      force: true,
-      dereference: false,
-      verbatimSymlinks: true,
-      filter: async (src) => {
-        const logicalSource = path.join(
-          sourcePath,
-          path.relative(sourceRoot, src),
+    const directories = [{ source: sourceRoot, target: targetPath }];
+    const queued = new Set([sourceRoot]);
+    const selections = new Map<string, boolean>();
+    const restrictiveModes: { target: string; mode: number }[] = [];
+    const copyDirectory = async (directory: {
+      source: string;
+      target: string;
+    }): Promise<void> => {
+      if (!isPathInsideRoot(await fs.realpath(directory.source), sourceRoot)) {
+        throw new ElizaError(
+          "Plugin source directory changed outside its package during staging",
+          {
+            code: "PLUGIN_STAGING_SOURCE_CHANGED",
+            context: { sourceRoot, source: directory.source },
+          },
         );
-        if (options?.filter && !options.filter(logicalSource)) return false;
-        try {
-          const stat = await fs.lstat(src);
-          if (!stat.isSymbolicLink()) return true;
-          return (await confinedTreeSymlinkTarget(src, sourceRoot)) !== null;
-        } catch {
-          // error-policy:J3 broken or unresolvable symlink is skipped, not copied.
-          return false;
-        }
-      },
-    });
+      }
+      const existed = await pathEntryExists(directory.target);
+      let copiedDirectoryMode: number | undefined;
+      await fs.cp(directory.source, directory.target, {
+        recursive: true,
+        force: true,
+        dereference: false,
+        verbatimSymlinks: true,
+        filter: async (src) => {
+          if (options?.filter) {
+            let selected = selections.get(src);
+            if (selected === undefined) {
+              selected = options.filter(
+                path.join(sourcePath, path.relative(sourceRoot, src)),
+              );
+              selections.set(src, selected);
+            }
+            if (!selected) return false;
+          }
+          try {
+            const stat = await fs.lstat(src);
+            if (stat.isSymbolicLink()) {
+              return (
+                (await confinedTreeSymlinkTarget(src, sourceRoot)) !== null
+              );
+            }
+            if (stat.isDirectory()) {
+              if (src === directory.source) copiedDirectoryMode = stat.mode;
+              else {
+                if (!queued.has(src)) {
+                  queued.add(src);
+                  directories.push({
+                    source: src,
+                    target: path.join(
+                      targetPath,
+                      path.relative(sourceRoot, src),
+                    ),
+                  });
+                }
+                return false;
+              }
+            }
+            return true;
+          } catch {
+            // error-policy:J3 broken or unresolvable symlink is skipped, not copied.
+            return false;
+          }
+        },
+      });
+      // fs.cp applies a new directory's final mode before deferred children run.
+      // Keep only those new restrictive parents writable until their children
+      // finish, then restore their original modes from the leaves upward.
+      if (
+        !existed &&
+        copiedDirectoryMode !== undefined &&
+        (copiedDirectoryMode & 0o700) !== 0o700
+      ) {
+        await fs.chmod(directory.target, copiedDirectoryMode | 0o700);
+        restrictiveModes.push({
+          target: directory.target,
+          mode: copiedDirectoryMode,
+        });
+      }
+    };
+    while (directories.length > 0) {
+      // Bound filesystem pressure; await the entire batch before cleanup can
+      // remove a failed tree so no outstanding writer can recreate its files.
+      const batch = directories.splice(0, 4);
+      const results = await Promise.allSettled(
+        batch.map((directory) =>
+          withStagedDirectoryCopySlot(() => copyDirectory(directory)),
+        ),
+      );
+      for (const result of results) {
+        if (result.status === "rejected") throw result.reason;
+      }
+    }
+    for (const directory of restrictiveModes.reverse()) {
+      await fs.chmod(directory.target, directory.mode);
+    }
     await rewriteAbsoluteStagingSymlinks(sourceRoot, targetPath, targetPath);
     await options?.afterCopyBeforeAudit?.();
     const canonicalTargetRoot = await fs.realpath(targetPath);
@@ -1477,10 +1643,13 @@ export async function pruneStalePluginInstances(
   }
 }
 
-function createPluginPackageStageFilter(packageRoot: string) {
+function createPluginPackageStageFilter(
+  packageRoot: string,
+  entryPoint: string,
+) {
   const distPath = path.join(packageRoot, "dist");
   const stageBuiltPackageOnly =
-    existsSync(distPath) && !stageFullPluginPackageEnabled();
+    isPathInsideRoot(entryPoint, distPath) && !stageFullPluginPackageEnabled();
 
   return (src: string): boolean => {
     const relativePath = path.relative(packageRoot, src);
@@ -1552,6 +1721,7 @@ async function linkHoistedNodeModulesPackages(params: {
 }
 
 type StagePluginParams = {
+  entryPoint?: string;
   installRoot: string;
   packageRoot: string;
   packageRelativePath: string[];
@@ -1619,7 +1789,12 @@ async function populateStagedImportRoot(
   await copyPluginTreeWithoutEscapingSymlinks(
     params.packageRoot,
     stagedPackageRoot,
-    { filter: createPluginPackageStageFilter(params.packageRoot) },
+    {
+      filter: createPluginPackageStageFilter(
+        params.packageRoot,
+        params.entryPoint ?? (await resolvePackageEntry(params.packageRoot)),
+      ),
+    },
   );
 
   const installNodeModulesPath = path.join(params.installRoot, "node_modules");
@@ -1705,7 +1880,7 @@ const STAGE_COMPLETE_MARKER = ".eliza-staged-complete";
 // Bump when the staged-tree layout or digest inputs change shape, so caches
 // built by older code are keyed away from (and eventually pruned under) the
 // new scheme instead of being trusted.
-const STAGE_DIGEST_VERSION = "v1";
+const STAGE_DIGEST_VERSION = "v6";
 
 /**
  * Whether `pkgRoot` resolves (through symlinks) to a location inside a
@@ -1764,8 +1939,9 @@ async function isWorkspacePluginPackageRoot(pkgRoot: string): Promise<boolean> {
  */
 async function collectStageDigestEntries(
   packageRoot: string,
+  entryPoint: string,
 ): Promise<string[]> {
-  const filter = createPluginPackageStageFilter(packageRoot);
+  const filter = createPluginPackageStageFilter(packageRoot, entryPoint);
   const entries: string[] = [];
   const walk = async (dir: string): Promise<void> => {
     const dirents = await fs.readdir(dir, { withFileTypes: true });
@@ -1858,6 +2034,8 @@ async function computePluginStageDigest(
   // one ELIZA_STATE_DIR never reuse each other's staged trees (their assembled
   // node_modules symlinks point into different source trees).
   const realInstallRoot = await fs.realpath(params.installRoot);
+  const entryPoint =
+    params.entryPoint ?? (await resolvePackageEntry(params.packageRoot));
   const parts: string[] = [
     STAGE_DIGEST_VERSION,
     params.packageName,
@@ -1865,7 +2043,8 @@ async function computePluginStageDigest(
     `root:${realInstallRoot}`,
     `full:${stageFullPluginPackageEnabled()}`,
     `hoistAll:${stageAllHoistedNodeModulesEnabled()}`,
-    ...(await collectStageDigestEntries(params.packageRoot)),
+    `entry:${path.relative(params.packageRoot, entryPoint)}`,
+    ...(await collectStageDigestEntries(params.packageRoot, entryPoint)),
     `installNM:${await nodeModulesGenerationSignature(path.join(params.installRoot, "node_modules"))}`,
   ];
   if (params.packageRoot !== params.installRoot) {
@@ -1953,6 +2132,13 @@ export async function stageColdPluginImportRoot(
       path.join(stagingBaseDir, STAGE_TMP_DIR_PREFIX),
     );
     await populateStagedImportRoot(tmpDir, params);
+    const directoryLinks =
+      process.platform === "win32"
+        ? await collectStagedDirectoryLinks(tmpDir)
+        : [];
+    if (directoryLinks.length > 0) {
+      await relocateStagedDirectoryLinks(directoryLinks, tmpDir, cacheDir);
+    }
     await fs.writeFile(path.join(tmpDir, STAGE_COMPLETE_MARKER), digest);
     try {
       await fs.rename(tmpDir, cacheDir);
@@ -1982,6 +2168,9 @@ export async function stageColdPluginImportRoot(
         stagingBaseDir,
         `${Date.now()}-${crypto.randomUUID()}-unpublished`,
       );
+      if (directoryLinks.length > 0) {
+        await relocateStagedDirectoryLinks(directoryLinks, tmpDir, fallbackDir);
+      }
       await fs.rename(tmpDir, fallbackDir);
       return stagedPackageRootPath(fallbackDir, params.packageRelativePath);
     }

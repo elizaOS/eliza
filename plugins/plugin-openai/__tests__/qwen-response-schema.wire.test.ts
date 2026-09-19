@@ -13,13 +13,14 @@ import { factMemoryEvaluator } from "../../../packages/core/src/features/advance
 import { evaluatorSchema } from "../../../packages/core/src/prompts/evaluator";
 import { withTurnScopeToolArg } from "../../../packages/core/src/runtime/planner-loop";
 import { parseAndValidate } from "../../../packages/core/src/runtime/validated-model-call";
-import { handleActionPlanner, handleTextSmall } from "../models/text";
+import { handleActionPlanner, handleResponseHandler, handleTextSmall } from "../models/text";
 
 interface WireRequest {
   model: string;
   stream?: boolean;
   temperature?: number;
   top_p?: number;
+  reasoning_effort?: string;
   messages: Array<{ role: string; content: string }>;
   tools?: unknown[];
   response_format?: {
@@ -151,11 +152,20 @@ async function invoke(options: {
   tools?: ToolDefinition[];
   responseFormat?: { type: "json_object" };
   actionPlanner?: boolean;
+  responseHandler?: boolean;
+  providerOptions?: {
+    eliza?: { thinking: "on" | "off" };
+    openai?: { reasoningEffort: "none" | "high" };
+  };
   temperature?: number;
   topP?: number;
 }) {
   const chunks: string[] = [];
-  const handler = options.actionPlanner ? handleActionPlanner : handleTextSmall;
+  const handler = options.actionPlanner
+    ? handleActionPlanner
+    : options.responseHandler
+      ? handleResponseHandler
+      : handleTextSmall;
   const result: unknown = await handler(runtime(), {
     model: options.model ?? "qwen-3.8-27b",
     messages: [
@@ -170,6 +180,7 @@ async function invoke(options: {
     stream: options.stream ?? false,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     ...(options.topP !== undefined ? { topP: options.topP } : {}),
+    ...(options.providerOptions ? { providerOptions: options.providerOptions } : {}),
     onStreamChunk: (chunk: string) => chunks.push(chunk),
   } as never);
   if (!result || typeof result !== "object" || !("text" in result)) {
@@ -187,6 +198,37 @@ async function invoke(options: {
 }
 
 describe("Qwen3.8 response-schema wire contract", () => {
+  it.each([false, true])(
+    "transmits the history-reconciliation reasoning opt-in and explicit overrides (stream=%s)",
+    async (stream) => {
+      vi.stubEnv("OPENAI_REASONING_EFFORT", "none");
+      const cases = [
+        { options: {}, effort: "none" },
+        { options: { eliza: { thinking: "on" } }, effort: "low" },
+        {
+          options: { eliza: { thinking: "on" }, openai: { reasoningEffort: "none" } },
+          effort: "none",
+        },
+        {
+          options: { eliza: { thinking: "on" }, openai: { reasoningEffort: "high" } },
+          effort: "high",
+        },
+      ] as const;
+      for (const { options, effort } of cases) {
+        expect(await invoke({ responseHandler: true, stream, providerOptions: options })).toEqual(
+          verdict
+        );
+        const request = requests.at(-1);
+        expect(request?.reasoning_effort).toBe(effort);
+        expect(request?.messages).toContainEqual({
+          role: "user",
+          content: "Return JSON for the full navigation request; retain this final context marker.",
+        });
+      }
+      expect(requests).toHaveLength(cases.length);
+    }
+  );
+
   it("restores opted-in aggregator maps after the actual native tool response", async () => {
     const customFields = { label: "complete value", nested: { id: "task-1", values: [1, false] } };
     const tools = withTurnScopeToolArg(

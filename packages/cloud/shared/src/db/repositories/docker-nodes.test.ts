@@ -2,9 +2,12 @@
  * Exercises Docker node scheduling filters and metadata stamping without a live database.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { PGlite } from "@electric-sql/pglite";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
+import { drizzle } from "drizzle-orm/pglite";
 import * as realHelpers from "../helpers";
+import { dockerNodes } from "../schemas/docker-nodes";
 
 let capturedWhere: SQL | undefined;
 let capturedUpdateWhere: SQL | undefined;
@@ -146,6 +149,52 @@ describe("DockerNodesRepository environment guard", () => {
     };
     expect(parsed.embeddingSidecar.status).toBe("missing");
     expect(Date.parse(parsed.embeddingSidecar.checkedAt)).toBeGreaterThan(0);
+  });
+
+  test("re-enabling cancels drain intent before a later maintenance cordon", async () => {
+    const pg = new PGlite();
+    try {
+      await pg.exec(`CREATE TABLE docker_nodes (
+        id text PRIMARY KEY, enabled boolean NOT NULL,
+        metadata jsonb NOT NULL DEFAULT '{}', updated_at timestamptz
+      )`);
+      await pg.query(
+        "INSERT INTO docker_nodes (id, enabled, metadata) VALUES ($1, false, $2::jsonb)",
+        [
+          "row-1",
+          JSON.stringify({ autoscaleDeprovisionRequested: true, environment: "staging", keep: 7 }),
+        ],
+      );
+      const database = drizzle(pg);
+      const { DockerNodesRepository } = await import("./docker-nodes");
+      const repository = new DockerNodesRepository();
+      const applyCapturedUpdate = async () => {
+        if (!capturedSet || !capturedUpdateWhere) throw new Error("Missing repository update");
+        const builder = database.update(dockerNodes);
+        return builder
+          .set(capturedSet as Parameters<typeof builder.set>[0])
+          .where(capturedUpdateWhere)
+          .returning({ enabled: dockerNodes.enabled, metadata: dockerNodes.metadata });
+      };
+
+      // Execute the repository's actual update expressions against PostgreSQL
+      // semantics, including sibling metadata preservation across both writes.
+      await repository.update("row-1", { enabled: true });
+      const [enabled] = await applyCapturedUpdate();
+      expect(enabled).toEqual({ enabled: true, metadata: { environment: "staging", keep: 7 } });
+      await repository.update("row-1", { enabled: false });
+      const [cordoned] = await applyCapturedUpdate();
+      expect(cordoned).toEqual({ enabled: false, metadata: { environment: "staging", keep: 7 } });
+
+      await repository.update("row-1", {
+        enabled: true,
+        metadata: { autoscaleDeprovisionRequested: true, replacement: "explicit" },
+      });
+      const [replaced] = await applyCapturedUpdate();
+      expect(replaced).toEqual({ enabled: true, metadata: { replacement: "explicit" } });
+    } finally {
+      await pg.close();
+    }
   });
 
   test("generic update rejects every Docker authority identity field", async () => {

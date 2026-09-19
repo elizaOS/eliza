@@ -1,6 +1,7 @@
 /** Exercises service-agent creation through deterministic Worker route fixtures. */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 
 const requireServiceKey = mock(async () => ({
   organizationId: "service-org",
@@ -8,8 +9,8 @@ const requireServiceKey = mock(async () => ({
 }));
 const findOrCreateUserByWalletAddress = mock(async (walletAddress: string) => ({
   isNewAccount: true,
-  initialCreditsGranted: true,
-  initialFreeCreditsUsd: 5,
+  initialCreditsGranted: false,
+  initialFreeCreditsUsd: 0,
   user: {
     id: "agent-wallet-user",
     organization_id: "agent-wallet-org",
@@ -219,7 +220,7 @@ describe("service agent provisioning route", () => {
           },
           billing: {
             mode: "owner_credits",
-            initialReserveUsd: 5,
+            initialReserveUsd: 0,
           },
           container: {
             image: "registry.example.test/waifu-agent:latest",
@@ -261,8 +262,8 @@ describe("service agent provisioning route", () => {
         organizationId: "agent-wallet-org",
         userId: "agent-wallet-user",
         isNewAccount: true,
-        initialCreditsGranted: true,
-        initialFreeCreditsUsd: 5,
+        initialCreditsGranted: false,
+        initialFreeCreditsUsd: 0,
         welcomeBonusWithheld: false,
       },
     });
@@ -426,8 +427,8 @@ describe("service agent provisioning route", () => {
         organizationId: "agent-wallet-org",
         userId: "agent-wallet-user",
         isNewAccount: true,
-        initialCreditsGranted: true,
-        initialFreeCreditsUsd: 5,
+        initialCreditsGranted: false,
+        initialFreeCreditsUsd: 0,
         welcomeBonusWithheld: false,
       },
     });
@@ -474,7 +475,7 @@ describe("service agent provisioning route", () => {
         agentConfig: expect.objectContaining({
           billing: {
             mode: "owner_credits",
-            initialReserveUsd: 5,
+            initialReserveUsd: 0,
           },
           access: expect.objectContaining({
             guestTokenThreshold: 1000,
@@ -510,7 +511,7 @@ describe("service agent provisioning route", () => {
           character: { name: "Smoke Agent" },
           billing: {
             mode: "owner_credits",
-            initialReserveUsd: 5,
+            initialReserveUsd: 0,
           },
           container: {
             image: "registry.example.test/waifu-agent:latest",
@@ -552,7 +553,7 @@ describe("service agent provisioning route", () => {
           },
           billing: {
             mode: "owner_credits",
-            initialReserveUsd: 5,
+            initialReserveUsd: 0,
           },
           container: {
             image: "registry.example.test/waifu-agent:latest",
@@ -597,7 +598,7 @@ describe("service agent provisioning route", () => {
           },
           billing: {
             mode: "owner_credits",
-            initialReserveUsd: 5,
+            initialReserveUsd: 0,
           },
           container: {
             image: "registry.example.test/waifu-agent:latest",
@@ -644,7 +645,7 @@ describe("service agent provisioning route", () => {
           },
           billing: {
             mode: "owner_credits",
-            initialReserveUsd: 5,
+            initialReserveUsd: 0,
           },
           container: {
             image: "registry.example.test/waifu-agent:latest",
@@ -702,7 +703,7 @@ describe("service agent provisioning route", () => {
           },
           billing: {
             mode: "owner_credits",
-            initialReserveUsd: 5,
+            initialReserveUsd: 0,
           },
           container: {
             image: "registry.example.test/waifu-agent:latest",
@@ -717,7 +718,7 @@ describe("service agent provisioning route", () => {
       success: false,
       code: "insufficient_credits",
       error: "Insufficient credits",
-      requiredBalance: 0.1,
+      requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
       currentBalance: 0,
     });
     expect(checkAgentCreditGate).toHaveBeenCalledWith("agent-wallet-org");

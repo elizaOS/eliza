@@ -20,7 +20,7 @@ import {
 } from "@elizaos/core";
 import {
   collectKeywordTermMatches,
-  collectPreparedKeywordTermMatches,
+  hasPreparedKeywordTermMatch,
   normalizeCharacterLanguage,
   type PreparedKeywordTerm,
   prepareKeywordTerms,
@@ -127,29 +127,30 @@ function hasPreparedContextSignalSync(
   state: State | undefined,
   terms: PreparedContextSignalTerms,
 ): boolean {
-  const texts = [
+  const texts = contextSignalTexts(message, state);
+
+  return hasPreparedKeywordTermMatch(texts, [...terms.strong, ...terms.weak]);
+}
+
+function contextSignalTexts(
+  message: Memory,
+  state: State | undefined,
+): string[] {
+  return [
     ...recentConversationTextsFromState(state),
     messageText(message).trim(),
   ].filter((t) => t.length > 0);
-
-  if (texts.length === 0) return false;
-
-  if (
-    terms.strong.length > 0 &&
-    collectPreparedKeywordTermMatches(texts, terms.strong).size > 0
-  ) {
-    return true;
-  }
-
-  if (
-    terms.weak.length > 0 &&
-    collectPreparedKeywordTermMatches(texts, terms.weak).size > 0
-  ) {
-    return true;
-  }
-
-  return false;
 }
+
+// Promoted children repeat the same pure relevance predicate. Reuse only an
+// identical vocabulary and complete text snapshot for this message object.
+// Re-extract on every call so in-place message/state edits cannot go stale.
+// The weak key releases these references with the message; this is neither a
+// cross-turn cache nor a cached action validation or permission decision.
+const contextSignalMatches = new WeakMap<
+  Memory,
+  Map<PreparedContextSignalTerms, { texts: string[]; matched: boolean }>
+>();
 
 export function hasContextSignalSyncForKey(
   message: Memory,
@@ -162,11 +163,27 @@ export function hasContextSignalSyncForKey(
 ): boolean {
   const locale = resolveContextSignalLocale(null, state, options?.locale);
   const includeAllLocales = options?.includeAllLocales ?? true;
-  return hasPreparedContextSignalSync(
-    message,
-    state,
-    preparedContextSignalTerms(key, locale, includeAllLocales),
-  );
+  const terms = preparedContextSignalTerms(key, locale, includeAllLocales);
+  const texts = contextSignalTexts(message, state);
+  let matches = contextSignalMatches.get(message);
+  const previous = matches?.get(terms);
+  if (
+    previous &&
+    previous.texts.length === texts.length &&
+    previous.texts.every((text, index) => text === texts[index])
+  ) {
+    return previous.matched;
+  }
+  const matched = hasPreparedKeywordTermMatch(texts, [
+    ...terms.strong,
+    ...terms.weak,
+  ]);
+  if (!matches) {
+    matches = new Map();
+    contextSignalMatches.set(message, matches);
+  }
+  matches.set(terms, { texts, matched });
+  return matched;
 }
 
 type PreparedContextSignalTerms = {
@@ -175,7 +192,8 @@ type PreparedContextSignalTerms = {
 };
 
 /**
- * Only static vocabulary is cached, never conversation text or match results.
+ * This cache holds only static vocabulary. Message-scoped matches above use
+ * these prepared objects as vocabulary identities.
  * Canonical locale keys keep this cache finite; all-locale catalogs are shared
  * regardless of the caller's preferred language.
  */

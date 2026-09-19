@@ -41,7 +41,8 @@ const readRequestBody = vi.fn(
   },
 );
 
-vi.mock("@elizaos/core", () => ({
+vi.mock("@elizaos/core", async () => ({
+  ElizaError: (await import("../../../core/src/errors")).ElizaError,
   logger: {
     debug: vi.fn(),
     error: vi.fn(),
@@ -58,8 +59,11 @@ vi.mock("@elizaos/agent", () => ({
   saveElizaConfig,
 }));
 
-vi.mock("@elizaos/shared", () => ({
+vi.mock("@elizaos/shared", async () => ({
+  ...(await import("../../../shared/src/elizacloud/dev-cloud-env-authority")),
   getCloudSecret,
+  getDirectAccountProviderForFirstRunProvider: () => null,
+  normalizeFirstRunCredentialInputs: () => undefined,
   migrateLegacyRuntimeConfig: vi.fn(),
   normalizeDeploymentTargetConfig: () => undefined,
   normalizeFirstRunProviderId: () => null,
@@ -282,10 +286,14 @@ describe("POST /api/first-run JSON body", () => {
         expect(resolveDevCloudAuthorityEnvValue).toHaveBeenCalledWith(
           "ELIZAOS_CLOUD_API_KEY",
         );
-        expect(extractAndPersistFirstRunApiKey).toHaveBeenCalledWith({
-          linkedAccounts: { elizacloud: { status: "linked" } },
-          credentialInputs: { llmApiKey: "direct-provider-key" },
-        });
+        expect(extractAndPersistFirstRunApiKey).toHaveBeenCalledWith(
+          {
+            linkedAccounts: { elizacloud: { status: "linked" } },
+            credentialInputs: { llmApiKey: "direct-provider-key" },
+          },
+          expect.any(Function),
+          expect.any(Function),
+        );
         expect(saveElizaConfig).toHaveBeenCalledTimes(1);
         const persisted = saveElizaConfig.mock.calls[0]?.[0] as {
           cloud?: { apiKey?: string };
@@ -357,11 +365,12 @@ describe("POST /api/first-run JSON body", () => {
         meta: { firstRunComplete: true },
         agents: durableAgents,
         ui: { assistant: { name: "Eliza" } },
+        serviceRouting: { llmText: { transport: "direct", backend: "openai" } },
       });
       expect(patch).not.toHaveProperty("cloud");
       expect(patch).not.toHaveProperty("deploymentTarget");
       expect(patch).not.toHaveProperty("linkedAccounts");
-      expect(patch).not.toHaveProperty("serviceRouting");
+
       const persisted = saveElizaConfig.mock.calls[0]?.[0] as {
         cloud?: Record<string, unknown>;
       };

@@ -275,7 +275,7 @@ describe("strictActionRouteFixtures", () => {
 			args: { to: "a@b.c" },
 			input: "email a",
 		});
-		expect(fixtures).toHaveLength(2);
+		expect(fixtures).toHaveLength(3);
 		expect(fixtures[0].match.modelType).toBe(ModelType.RESPONSE_HANDLER);
 		expect(fixtures[1].match.modelType).toBe(ModelType.ACTION_PLANNER);
 		const planner = fixtures[1].response as { toolCalls: { name: string }[] };
@@ -310,7 +310,7 @@ describe("registerStrictActionRouteFixtures", () => {
 			{ actionName: "B", args: {}, input: "b" },
 		]);
 		expect(register.calls).toHaveLength(1);
-		expect(register.calls[0]).toHaveLength(4); // 2 specs × 2 fixtures
+		expect(register.calls[0]).toHaveLength(6); // Two routes include routing, planning, and evaluation.
 	});
 
 	it("is a no-op when the runtime has no fixture bridge", () => {

@@ -1,16 +1,16 @@
 /**
  * Canonical fixture templates for deterministic message-loop model calls.
  *
- * The agent loop is two model calls: a Stage-1 `RESPONSE_HANDLER` that routes
- * the user message to candidate actions, then an `ACTION_PLANNER` that emits the
- * concrete tool-call. {@link strictActionRouteFixtures} declares the matching
- * pair for one action invocation so the provider has an exact response for each
- * call. The adversarial counterpart emits malformed and incorrect responses.
+ * Stage 1 routes the user message to candidate actions, the planner emits the
+ * concrete tool call, and the evaluator checks its correlated successful result.
+ * Strict action fixtures declare these model calls for one action invocation.
+ * The adversarial counterpart emits malformed and incorrect responses.
  */
 
 import { ModelType } from "../types/model";
 import type { JsonValue } from "../types/primitives";
 import type { DeterministicModelFixture } from "./deterministic-model-plugin";
+import { postToolEvaluatorFixture } from "./post-tool-evaluator-fixture";
 
 type JsonRecord = Record<string, JsonValue>;
 
@@ -286,8 +286,7 @@ export function stage1ResponseHandlerFixture(
 }
 
 /**
- * Declare the matching Stage-1 + planner fixture pair for one action
- * invocation. Mirrors `@elizaos/scenario-runner`'s strict template.
+ * Declare routing, planning, and successful completion evaluation for one action.
  */
 export function strictActionRouteFixtures(
 	spec: StrictActionRouteFixture,
@@ -321,6 +320,7 @@ export function strictActionRouteFixtures(
 			},
 			times: 1,
 		},
+		postToolEvaluatorFixture(spec),
 	];
 }
 

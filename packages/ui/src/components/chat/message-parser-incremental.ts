@@ -19,6 +19,8 @@
  * it identity-memoizes and otherwise full-parses.
  */
 
+import { stripAssistantStageDirections } from "@elizaos/shared";
+
 import {
   collectSegmentRegions,
   interleaveSegments,
@@ -29,6 +31,7 @@ import {
   SEGMENT_TRIGGER_RE,
   type Segment,
   type SegmentRegion,
+  stripHiddenDisplayContent,
 } from "./message-parser-helpers";
 import { getInlineWidgetOpenTokens } from "./widgets/inline-registry";
 
@@ -315,6 +318,17 @@ export function parseSegmentsStreaming(
   }
   if (text === cache.raw) return { segments: cache.segments, cache };
   if (analysisMode) return fullRebuild(text, analysisMode);
+
+  // Removing a stage direction enables whitespace cleanup across the whole
+  // reply, including already cached prose. That normalization is not local.
+  const normalizationTail = text.slice(cache.normRawCut);
+  if (/[*_]/.test(normalizationTail)) {
+    parserWork.normalizedChars += normalizationTail.length;
+    const visibleTail = stripHiddenDisplayContent(normalizationTail);
+    if (stripAssistantStageDirections(visibleTail) !== visibleTail) {
+      return fullRebuild(text, analysisMode);
+    }
+  }
 
   // ── Incremental normalize (clean-seam splice) ─────────────────────
   const normRawCut = computeSafeNormCut(text, cache.normRawCut);

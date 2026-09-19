@@ -172,7 +172,7 @@ export function AccountList({ providerId }: AccountListProps) {
           count: sorted.length,
         })}
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
             <RotationStrategyPicker
               providerId={providerId}
               value={providerEntry?.strategy}

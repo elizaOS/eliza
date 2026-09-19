@@ -36,7 +36,10 @@ function createBootHarness(options: { failScheduling?: boolean } = {}) {
       ) {
         throw new Error("injected scheduling registration failure");
       }
+      // Make registration start and readiness observable across async waves.
+      await Promise.resolve();
       plugins.push(plugin);
+      events.push(`ready:${plugin.name}`);
       runnerRegistered =
         runnerRegistered ||
         Boolean(
@@ -49,6 +52,13 @@ function createBootHarness(options: { failScheduling?: boolean } = {}) {
   };
   const resolvedPlugins: ResolvedPlugin[] = [
     { name: "@elizaos/plugin-scheduling", plugin: schedulingPlugin },
+    {
+      name: "@elizaos/plugin-sql",
+      plugin: {
+        name: "@elizaos/plugin-sql",
+        description: "Bootstrap database",
+      },
+    },
   ];
 
   return {
@@ -88,6 +98,7 @@ describe("blocking core runtime boot", () => {
         label: "deferred",
       });
 
+      expect(harness.events).not.toContain("register:@elizaos/plugin-sql");
       expect(
         harness.events.filter(
           (event) => event === "register:@elizaos/plugin-scheduling",
@@ -131,4 +142,88 @@ describe("blocking core runtime boot", () => {
     expect(harness.events).not.toContain("personal-assistant:start");
     expect(harness.hasRunner()).toBe(false);
   });
+  it("finishes a dependency before starting its dependent and registers no unresolved plugins", async () => {
+    const harness = createBootHarness();
+    const skills = "@elizaos/plugin-agent-skills";
+    const tools = "@elizaos/plugin-coding-tools";
+    await preregisterCorePluginsInDependencyWaves({
+      runtime: harness.runtime as never,
+      resolvedPlugins: [skills, tools].map((name) => ({
+        name,
+        plugin: { name, description: "Dependency-wave fixture" },
+      })),
+      alreadyPreRegistered: new Set(),
+    });
+    expect(harness.events).toEqual([
+      `register:${tools}`,
+      `ready:${tools}`,
+      `register:${skills}`,
+      `ready:${skills}`,
+    ]);
+  });
+
+  it("rejects a missing required plugin before any registration", async () => {
+    const harness = createBootHarness();
+    await expect(
+      preregisterCorePluginsInDependencyWaves({
+        runtime: harness.runtime as never,
+        resolvedPlugins: [],
+        alreadyPreRegistered: new Set(),
+        requiredPluginNames: new Set(["@elizaos/plugin-scheduling"]),
+      }),
+    ).rejects.toMatchObject({
+      code: "REQUIRED_CORE_PLUGIN_REGISTRATION_FAILED",
+      context: { plugin: "@elizaos/plugin-scheduling" },
+    });
+    expect(harness.events).toEqual([]);
+  });
+
+  it("settles an optional registration failure without discarding successful dependencies", async () => {
+    const harness = createBootHarness({ failScheduling: true });
+    await preregisterCorePluginsInDependencyWaves({
+      runtime: harness.runtime as never,
+      resolvedPlugins: harness.resolvedPlugins,
+      alreadyPreRegistered: new Set(),
+    });
+    expect(harness.events).toEqual([
+      "register:@elizaos/plugin-sql",
+      "ready:@elizaos/plugin-sql",
+      "register:@elizaos/plugin-scheduling",
+    ]);
+    expect(harness.hasRunner()).toBe(false);
+    expect(harness.runtime.plugins.map((plugin) => plugin.name)).toEqual([
+      "@elizaos/plugin-sql",
+    ]);
+  });
+
+  for (const phase of ["registration", "initialization"] as const) {
+    it(`aborts before ${phase} has effects`, async () => {
+      const harness = createBootHarness();
+      const controller = new AbortController();
+      const reason = new Error("boot cancelled");
+      controller.abort(reason);
+      const common = {
+        runtime: harness.runtime as never,
+        resolvedPlugins: harness.resolvedPlugins,
+        abortSignal: controller.signal,
+      };
+      const boot =
+        phase === "registration"
+          ? preregisterCorePluginsInDependencyWaves({
+              ...common,
+              alreadyPreRegistered: new Set(),
+            })
+          : initializeBlockingCoreRuntimeForBoot({
+              ...common,
+              blockDeferredPluginImports: false,
+              requiredPluginNames: new Set(["@elizaos/plugin-scheduling"]),
+              waitForBlockingEnvironment: async () => {},
+              initializeCoreRuntime: async () => {
+                harness.events.push("initialized");
+              },
+            });
+      await expect(boot).rejects.toBe(reason);
+      expect(harness.events).toEqual([]);
+    });
+  }
 });

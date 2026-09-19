@@ -193,6 +193,7 @@ describe("two scenarios sharing one runtime", () => {
       plugins: [codingTools, appControl],
       routes: [],
       ensureConnection: vi.fn(async () => undefined),
+      getTasksByName: async () => [],
       getService: vi.fn(() => null),
       setSetting: vi.fn(),
       scenarioModelFixtures: deterministic.fixtures,

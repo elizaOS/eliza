@@ -526,6 +526,51 @@ describe("scenario runtime deterministic model mode", () => {
       expect(JSON.parse(resolved as string)).toEqual({});
     });
 
+    it("accepts the current evaluator instruction layout with its merged schema", () => {
+      const prompt = postTurnEvaluationPrompt.replace(
+        "## Active Evaluators",
+        "## Active Evaluator Instructions",
+      );
+      const params = {
+        ...postTurnEvaluationCall.params,
+        messages: [{ role: "user", content: prompt }] as never,
+      };
+      expect(
+        resolveScenarioDeterministicModelCall({
+          ...postTurnEvaluationCall,
+          params,
+        }),
+      ).toBe("{}");
+      expect(
+        resolveScenarioDeterministicModelCall({
+          ...postTurnEvaluationCall,
+          params: { ...params, responseSchema: undefined },
+        }),
+      ).toBeNull();
+    });
+
+    it("admits the optional historical context cursor but rejects unknown optional schema fields", () => {
+      const schema = postTurnEvaluationCall.params.responseSchema;
+      const resolveWith = (extra: Record<string, unknown>) =>
+        resolveScenarioDeterministicModelCall({
+          ...postTurnEvaluationCall,
+          params: {
+            ...postTurnEvaluationCall.params,
+            responseSchema: {
+              ...schema,
+              properties: { ...schema.properties, ...extra },
+            },
+          },
+        });
+      expect(resolveWith({ restoreContextBefore: { type: "string" } })).toBe(
+        "{}",
+      );
+      expect(
+        resolveWith({ restoreContextBefore: { type: "number" } }),
+      ).toBeNull();
+      expect(resolveWith({ unrecognized: { type: "string" } })).toBeNull();
+    });
+
     it("does not treat user-controlled marker text as an evaluator call without its schema", () => {
       expect(
         resolveScenarioDeterministicModelCall({
@@ -660,6 +705,41 @@ describe("scenario runtime deterministic model mode", () => {
       expect(() => {
         plugin.assertFixturesConsumed();
       }).not.toThrow();
+    });
+
+    it("accepts background evaluation with an optional history cursor but rejects an unrelated optional result", async () => {
+      const plugin = createDeterministicModelPlugin({
+        resolve: (call) => resolveScenarioDeterministicModelCall(call),
+      });
+      const params = {
+        ...postTurnEvaluationCall.params,
+        responseSchema: {
+          ...postTurnEvaluationCall.params.responseSchema,
+          properties: {
+            ...postTurnEvaluationCall.params.responseSchema.properties,
+            restoreContextBefore: { type: "string" },
+          },
+        },
+      };
+      await expect(
+        plugin.models?.[ModelType.TEXT_SMALL]?.({} as never, params as never),
+      ).resolves.toBe("{}");
+      expect(() => plugin.assertFixturesConsumed()).not.toThrow();
+      await expect(
+        plugin.models?.[ModelType.TEXT_SMALL]?.(
+          {} as never,
+          {
+            ...params,
+            responseSchema: {
+              ...params.responseSchema,
+              properties: {
+                ...params.responseSchema.properties,
+                inventedResult: { type: "object" },
+              },
+            },
+          } as never,
+        ),
+      ).rejects.toThrow(/no fixture matched/);
     });
 
     it("still fails closed when no fallback resolver is wired", async () => {

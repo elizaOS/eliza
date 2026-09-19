@@ -185,13 +185,13 @@ export function ApiRouteExplorerClient({
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div className="flex items-center gap-2">
                   <div className="size-2 rounded-full bg-muted" />
-                  <span className="text-xs font-bold uppercase tracking-[0.18em] text-muted">
+                  <span className="text-xs font-bold uppercase tracking-[0.18em] text-muted-strong">
                     Route Explorer
                   </span>
                 </div>
                 <label
                   htmlFor="api-route-explorer-show-all"
-                  className="flex min-h-touch items-center gap-2 text-xs text-muted select-none cursor-pointer hover:text-txt transition-colors"
+                  className="flex min-h-touch items-center gap-2 text-xs text-muted-strong select-none cursor-pointer hover:text-txt transition-colors"
                 >
                   <Input
                     id="api-route-explorer-show-all"
@@ -221,11 +221,11 @@ export function ApiRouteExplorerClient({
                 />
               </div>
 
-              <div className="mt-3 flex items-center justify-between text-xs text-muted">
+              <div className="mt-3 flex items-center justify-between text-xs text-muted-strong">
                 <span>
                   {filtered.length} endpoint{filtered.length === 1 ? "" : "s"}
                 </span>
-                <span className="text-muted">Click to view details</span>
+                <span className="text-muted-strong">Click to view details</span>
               </div>
             </div>
 
@@ -282,7 +282,9 @@ export function ApiRouteExplorerClient({
                                     </span>
                                   ))}
                                 {r.methods.length > 2 && (
-                                  <span className="text-2xs text-muted px-1">
+                                  <span
+                                    className={`text-2xs px-1 ${active ? "text-inherit" : "text-muted"}`}
+                                  >
                                     +{r.methods.length - 2}
                                   </span>
                                 )}
@@ -292,13 +294,15 @@ export function ApiRouteExplorerClient({
                                   className={cn(
                                     "text-sm font-medium truncate transition-colors",
                                     active
-                                      ? "text-txt-strong"
+                                      ? "text-inherit"
                                       : "text-muted-strong",
                                   )}
                                 >
                                   {title}
                                 </div>
-                                <div className="mt-0.5 font-mono text-2xs text-muted truncate">
+                                <div
+                                  className={`mt-0.5 font-mono text-2xs truncate ${active ? "text-inherit" : "text-muted"}`}
+                                >
                                   {r.path}
                                 </div>
                               </div>
