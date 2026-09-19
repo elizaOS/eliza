@@ -110,13 +110,9 @@ function buildFixtureRepo(): string {
   return repo;
 }
 
-async function build(repo: string): Promise<{
-  bundle: EvidenceBundle;
-  results: Awaited<ReturnType<typeof ingestAllSilos>>;
-  artifacts: ArtifactEntry[];
-}> {
-  const bundle = createBundle({
-    rootDir: tmpDir(),
+function fixtureBundle(rootDir = tmpDir()): EvidenceBundle {
+  return createBundle({
+    rootDir,
     provenance: {
       commit: "abcdef0123456789abcdef0123456789abcdef01",
       branch: "feat/test",
@@ -130,6 +126,14 @@ async function build(repo: string): Promise<{
       },
     },
   });
+}
+
+async function build(repo: string): Promise<{
+  bundle: EvidenceBundle;
+  results: Awaited<ReturnType<typeof ingestAllSilos>>;
+  artifacts: ArtifactEntry[];
+}> {
+  const bundle = fixtureBundle();
   const results = await ingestAllSilos(bundle, repo);
   const { manifest } = await bundle.finalize();
   return { bundle, results, artifacts: manifest.artifacts };
@@ -142,16 +146,7 @@ describe("ingestAllSilos", () => {
     write(repo, "packages/app/test-results/reused.log", "same");
     const baseline = captureSiloSnapshot(repo);
     fs.writeFileSync(file, "same");
-    const bundle = createBundle({
-      rootDir: tmpDir(),
-      provenance: {
-        commit: "abcdef0123456789abcdef0123456789abcdef01",
-        branch: "fix/rewrite",
-        runner: "local",
-        tier: "cpu",
-        envFingerprint: { node: "v24" },
-      },
-    });
+    const bundle = fixtureBundle();
     await ingestAllSilos(bundle, repo, baseline);
     expect((await bundle.finalize()).manifest.artifacts).toHaveLength(1);
   });
@@ -172,16 +167,7 @@ describe("ingestAllSilos", () => {
       return count;
     }) as typeof fs.readSync;
     try {
-      const bundle = createBundle({
-        rootDir: tmpDir(),
-        provenance: {
-          commit: "abcdef0123456789abcdef0123456789abcdef01",
-          branch: "fix/race",
-          runner: "local",
-          tier: "cpu",
-          envFingerprint: { node: "v24" },
-        },
-      });
+      const bundle = fixtureBundle();
       await ingestAllSilos(bundle, repo, baseline);
       const finalized = await bundle.finalize();
       expect(finalized.manifest.artifacts).toHaveLength(1);
@@ -260,16 +246,9 @@ describe("ingestAllSilos", () => {
   it("rejects direct-library self-ingest when the bundle is under a producer", async () => {
     const repo = tmpDir();
     write(repo, "packages/app/test-results/current.log", "current");
-    const bundle = createBundle({
-      rootDir: path.join(repo, "packages/app/test-results/evidence-runs"),
-      provenance: {
-        commit: "abcdef0123456789abcdef0123456789abcdef01",
-        branch: "fix/self-ingest",
-        runner: "local",
-        tier: "cpu",
-        envFingerprint: { node: "v24" },
-      },
-    });
+    const bundle = fixtureBundle(
+      path.join(repo, "packages/app/test-results/evidence-runs"),
+    );
 
     await expect(ingestAllSilos(bundle, repo)).rejects.toMatchObject({
       code: "BUNDLE_OUTPUT_UNSAFE",
@@ -284,21 +263,7 @@ describe("ingestAllSilos", () => {
 
     write(repo, "packages/app/test-results/current.log", "new");
     write(repo, "reports/scenarios/stale.jsonl", "changed\n");
-    const bundle = createBundle({
-      rootDir: tmpDir(),
-      provenance: {
-        commit: "abcdef0123456789abcdef0123456789abcdef01",
-        branch: "fix/exact-run",
-        runner: "local",
-        tier: "cpu",
-        envFingerprint: {
-          node: "v24",
-          platform: "linux",
-          arch: "x64",
-          tier: "cpu",
-        },
-      },
-    });
+    const bundle = fixtureBundle();
     const results = await ingestAllSilos(bundle, repo, baseline);
     const { manifest } = await bundle.finalize();
 
@@ -319,21 +284,7 @@ describe("ingestAllSilos", () => {
   it("contributes zero artifacts when every producer file is unchanged", async () => {
     const repo = buildFixtureRepo();
     const baseline = captureSiloSnapshot(repo);
-    const bundle = createBundle({
-      rootDir: tmpDir(),
-      provenance: {
-        commit: "abcdef0123456789abcdef0123456789abcdef01",
-        branch: "fix/skipped-lane",
-        runner: "local",
-        tier: "cpu",
-        envFingerprint: {
-          node: "v24",
-          platform: "linux",
-          arch: "x64",
-          tier: "cpu",
-        },
-      },
-    });
+    const bundle = fixtureBundle();
     const results = await ingestAllSilos(bundle, repo, baseline);
     const { manifest } = await bundle.finalize();
     expect(manifest.artifacts).toEqual([]);
@@ -346,16 +297,7 @@ describe("ingestAllSilos", () => {
     write(repo, "packages/app/test-results/deleted.log", "old");
     const baseline = captureSiloSnapshot(repo);
     fs.rmSync(deleted);
-    const bundle = createBundle({
-      rootDir: tmpDir(),
-      provenance: {
-        commit: "abcdef0123456789abcdef0123456789abcdef01",
-        branch: "fix/delete",
-        runner: "local",
-        tier: "cpu",
-        envFingerprint: { node: "v24" },
-      },
-    });
+    const bundle = fixtureBundle();
     const results = await ingestAllSilos(bundle, repo, baseline);
     expect((await bundle.finalize()).manifest.artifacts).toEqual([]);
     expect(
@@ -363,8 +305,8 @@ describe("ingestAllSilos", () => {
     ).toMatchObject({ status: "ingested", artifactCount: 0 });
   });
 
-  it("ingests every fixture silo with honest per-silo counts", async () => {
-    const { results } = await build(buildFixtureRepo());
+  it("ingests each fixture silo with correct counts, classification and stored bytes", async () => {
+    const { bundle, results, artifacts } = await build(buildFixtureRepo());
     expect(Object.fromEntries(results.map((r) => [r.silo, r]))).toEqual({
       "e2e-recordings": {
         silo: "e2e-recordings",
@@ -417,10 +359,6 @@ describe("ingestAllSilos", () => {
         artifactCount: 2,
       },
     });
-  });
-
-  it("classifies kinds, lanes, and sources per silo", async () => {
-    const { artifacts } = await build(buildFixtureRepo());
     const byPath = Object.fromEntries(
       artifacts.map((entry) => [entry.path, entry]),
     );
@@ -499,19 +437,7 @@ describe("ingestAllSilos", () => {
     expect(artifacts.some((entry) => entry.path.includes("node_modules"))).toBe(
       false,
     );
-  });
-
-  it("copies real bytes into the bundle", async () => {
-    const repo = buildFixtureRepo();
-    const { bundle, artifacts } = await build(repo);
-    const review = artifacts.find(
-      (entry) => entry.path === "misc/aesthetic-audit/manual-review/chat.md",
-    );
-    expect(review).toBeDefined();
-    const stored = path.join(
-      bundle.dir,
-      ...(review as ArtifactEntry).path.split("/"),
-    );
+    const stored = path.join(bundle.dir, ...review.path.split("/"));
     expect(fs.readFileSync(stored, "utf8")).toBe("verdict: good");
   });
 
@@ -543,21 +469,7 @@ describe("ingestAllSilos", () => {
 describe("ingestNamedSilo", () => {
   it("runs a single silo by name", async () => {
     const repo = buildFixtureRepo();
-    const bundle = createBundle({
-      rootDir: tmpDir(),
-      provenance: {
-        commit: "abcdef0123456789abcdef0123456789abcdef01",
-        branch: "feat/test",
-        runner: "local",
-        tier: "cpu",
-        envFingerprint: {
-          node: "v24",
-          platform: "linux",
-          arch: "x64",
-          tier: "cpu",
-        },
-      },
-    });
+    const bundle = fixtureBundle();
     const result = await ingestNamedSilo(bundle, repo, "live-test-runs");
     expect(result).toEqual({
       silo: "live-test-runs",
@@ -567,21 +479,7 @@ describe("ingestNamedSilo", () => {
   });
 
   it("throws a typed error for an unknown silo name", async () => {
-    const bundle = createBundle({
-      rootDir: tmpDir(),
-      provenance: {
-        commit: "abcdef0123456789abcdef0123456789abcdef01",
-        branch: "feat/test",
-        runner: "local",
-        tier: "cpu",
-        envFingerprint: {
-          node: "v24",
-          platform: "linux",
-          arch: "x64",
-          tier: "cpu",
-        },
-      },
-    });
+    const bundle = fixtureBundle();
     await expect(
       ingestNamedSilo(bundle, tmpDir(), "nope"),
     ).rejects.toMatchObject({
