@@ -11,8 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const embedRecallQuery =
   vi.fn<(runtime: IAgentRuntime, text: string) => Promise<number[] | null>>();
 
-vi.mock("@elizaos/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@elizaos/core")>();
+vi.mock("@elizaos/plugin-assistant", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@elizaos/plugin-assistant")>();
   return {
     ...actual,
     embedRecallQuery: (runtime: IAgentRuntime, text: string) =>
