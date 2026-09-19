@@ -8,7 +8,7 @@ import { postToolEvaluatorFixture } from "./post-tool-evaluator-fixture";
 
 function call(
   input = "Draw sunset",
-  args = { prompt: "sunset" },
+  args: Record<string, string> = { prompt: "sunset" },
   success = true,
   receiptId = "call-1",
 ): DeterministicModelCall {
@@ -68,6 +68,34 @@ function registry() {
 }
 
 describe("post-tool evaluator fixture", () => {
+  it("matches the model-visible projection without admitting changed public arguments", () => {
+    const spec = {
+      actionName: "DRAW",
+      args: { prompt: "sunset", idempotencyKey: "fixture-operation" },
+      input: "Draw sunset",
+    };
+    const fixtures = createDeterministicModelFixtureRegistry([
+      postToolEvaluatorFixture(spec),
+    ]);
+    expect(() =>
+      fixtures.resolve(
+        call("Draw sunset", {
+          prompt: "sunrise",
+          idempotencyKey: "[REDACTED]",
+        }),
+      ),
+    ).toThrow(/no fixture matched/);
+    const matched = createDeterministicModelFixtureRegistry([
+      postToolEvaluatorFixture(spec),
+    ]);
+    expect(
+      matched.resolve(
+        call("Draw sunset", { prompt: "sunset", idempotencyKey: "[REDACTED]" }),
+      ).rawResponse,
+    ).toMatchObject({ success: true });
+    matched.assertConsumed();
+  });
+
   it("evaluates the original request despite trailing planner metadata", () => {
     const fixtures = registry();
     expect(fixtures.resolve(call()).rawResponse).toMatchObject({

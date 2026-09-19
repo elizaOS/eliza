@@ -3,6 +3,8 @@
 import type { JsonValue } from "@elizaos/core";
 import {
   activeCommittedEffectReceipts,
+  composeToolDiagnosticRedactor,
+  projectCompleteToolArgsForModel,
   ModelType,
   normalizeEffectReceipts,
 } from "@elizaos/core";
@@ -29,6 +31,10 @@ export function postToolEvaluatorFixture(spec: {
   input: string;
   messageToUser?: string;
 }): DeterministicModelFixture {
+  const modelArgs = projectCompleteToolArgsForModel(
+    spec.args,
+    composeToolDiagnosticRedactor(),
+  );
   return {
     name: `evaluate-${spec.actionName}-${spec.input}`,
     match(call) {
@@ -72,7 +78,7 @@ export function postToolEvaluatorFixture(spec: {
         toolCall.type !== "tool-call" ||
         toolCall.toolName !== spec.actionName ||
         typeof toolCall.toolCallId !== "string" ||
-        canonical(toolCall.input) !== canonical(spec.args)
+        canonical(toolCall.input) !== canonical(modelArgs)
       )
         return false;
       const results = messages
