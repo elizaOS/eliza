@@ -2,8 +2,10 @@
 import { afterAll, beforeAll, expect, mock, setDefaultTimeout, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
+import * as revocationActual from "../../lib/services/inference-credential-revocation";
 import { createBillingSnapshotFixture } from "./account-billing-snapshot-test-fixture";
 
+const revocationSnapshot = { ...revocationActual };
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV = "test";
@@ -20,6 +22,7 @@ mock.module("../../lib/services/inference-api-key-auth", () => ({
   },
 }));
 mock.module("../../lib/services/inference-credential-revocation", () => ({
+  ...revocationSnapshot,
   isInferenceStrongRevocationEnabled: () => true,
   InferenceCredentialRevokedError: class extends Error {},
   assertInferenceCredentialActive: async () => undefined,

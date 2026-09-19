@@ -96,13 +96,13 @@
     "@types/node": "^25.0.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "fast-check": "^4.8.0",
+    "fast-check": "^4.10.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vite": "^8.0.0",
+    "vite": "^8.3.0",
     "vitest": "^4.1.10"
   }
 }

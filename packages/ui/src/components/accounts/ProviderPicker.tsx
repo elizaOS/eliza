@@ -215,7 +215,7 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
                     <span className="truncate text-sm font-medium text-txt-strong">
                       {option.name}
                     </span>
-                    <span className="truncate text-xs-tight text-muted">
+                    <span className="truncate text-xs-tight text-muted-strong">
                       {capabilityLine(option)}
                     </span>
                   </span>

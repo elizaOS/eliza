@@ -4829,6 +4829,24 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  postApiV1SubscriptionsCheckout<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/checkout"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/subscriptions/checkout", TResponse>(
+      "POST /api/v1/subscriptions/checkout",
+      options,
+    );
+  }
+
+  postApiV1SubscriptionsCheckoutConfirm<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/checkout/confirm"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/subscriptions/checkout/confirm", TResponse>(
+      "POST /api/v1/subscriptions/checkout/confirm",
+      options,
+    );
+  }
+
   postApiV1TelegramConnect<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/telegram/connect"> = {},
   ): Promise<TResponse> {
@@ -8793,6 +8811,18 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"POST /api/v1/subscriptions/cancel/undo"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/subscriptions/cancel/undo", options);
+  }
+
+  postApiV1SubscriptionsCheckoutRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/checkout"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/subscriptions/checkout", options);
+  }
+
+  postApiV1SubscriptionsCheckoutConfirmRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/checkout/confirm"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/subscriptions/checkout/confirm", options);
   }
 
   postApiV1TelegramConnectRaw(

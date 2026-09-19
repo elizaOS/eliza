@@ -66,3 +66,13 @@ When the process ends or `close()` is called, all collections are cleared and da
 ## Cross-Platform
 
 Works in Node.js and browsers. The package `exports` map selects the correct build automatically (`dist/node/` for Node/Bun, `dist/browser/` for browsers).
+
+## Conditional embedding persistence
+
+Background embedding results use `updateMemoryEmbedding({id, expected, embedding})`.
+The adapter must atomically compare the stored source text, agent, author and room
+with `expected` before writing. A changed or deleted source returns `false` and
+receives no vector or completion event; database failures throw. Custom database
+adapters must implement this contract when upgrading core. A separate read followed
+by an unconditional update is insufficient. Vector-only runtime writes retain the
+existing reconciliation-lease bypass and invalidate the room cache on success.

@@ -34,6 +34,7 @@ import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { openEventSource } from "../utils/event-source";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { androidNativeAgentLifecycleForUrl } from "./android-native-agent-transport";
+import { waitForFirstRunActivation } from "./first-run-activation";
 import "./client-agent-accounts";
 
 export * from "./client-agent-accounts";
@@ -1532,10 +1533,14 @@ ElizaClient.prototype.submitFirstRun = async function (
   this: ElizaClient,
   data,
 ) {
-  await this.fetch("/api/first-run", {
+  const response = await this.fetch<unknown>("/api/first-run", {
     method: "POST",
+    headers: { "Idempotency-Key": crypto.randomUUID() },
     body: JSON.stringify(data),
   });
+  await waitForFirstRunActivation(response, (id) =>
+    this.fetch(`/api/first-run/activation/${encodeURIComponent(id)}`),
+  );
 };
 
 ElizaClient.prototype.startAnthropicLogin = async function (this: ElizaClient) {

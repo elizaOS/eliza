@@ -1,22 +1,8 @@
 /**
- * Fail-closed coverage for credit-balance READ paths (#12268 fallback-slop sweep).
- *
- * `credit_balance` is a Postgres NUMERIC, so it arrives at the row boundary as
- * a string — and `'NaN'::numeric` is a VALID stored value (it even passes the
- * `>= 0` CHECK, because NaN sorts above every number in Postgres). Two read
- * paths used to coerce it with a bare `Number(...)`:
- *
- *   - `CreditsService.getOrganizationBalanceUsd` — feeds the optimistic-billing
- *     gate and is written back as a KV balance hint.
- *   - `getCreditBalanceResponse` — the DTO returned to the dashboard / API.
- *
- * `Number(null)` becomes a fake $0 and `Number("NaN")` becomes `NaN` that
- * serializes to `balance: null` over JSON. The gate tests here run the REAL
- * boundary: an isolated in-memory PGlite with the real `organizations` table
- * plus the real 0177 balance-revision migration, driving corrupt values
- * through the service's actual SQL read (`getOrganizationBalanceSnapshot`)
- * rather than through repository mocks. The DTO tests keep spying on
- * `organizationsService.getById`, which is that function's live seam.
+ * Exercises credit balance reads, mutations and DTO errors with real PGlite.
+ * Production Drizzle schemas and the 0177 revision trigger own default balances,
+ * ledger writes and no-effect rejection of stored NaN. Only balance nullability
+ * is relaxed to model legacy corruption; DTO cases fake the service boundary.
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
@@ -36,18 +22,20 @@ process.env.MOCK_REDIS = "1";
 import { pushSchema } from "drizzle-kit/api";
 import { sql } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../../db/client";
+import { organizationsRepository } from "../../../db/repositories/organizations";
+import { creditTransactions } from "../../../db/schemas/credit-transactions";
 import {
   type Organization,
   organizationBalanceRevisionSequence,
   organizations,
 } from "../../../db/schemas/organizations";
+import { users } from "../../../db/schemas/users";
 import { ApiError } from "../../api/cloud-worker-errors";
 import { getCreditBalanceResponse } from "../credit-balance-response";
 import { creditsService } from "../credits";
 import { organizationsService } from "../organizations";
 
 const PGLITE_TIMEOUT = 60_000;
-let pgliteReady = true;
 
 let seq = 0;
 function uniq(prefix: string): string {
@@ -64,35 +52,27 @@ async function seedOrg(creditBalance: string): Promise<string> {
 }
 
 beforeAll(async () => {
-  try {
-    const { apply } = await pushSchema(
-      { organizations, organizationBalanceRevisionSequence } as never,
-      dbWrite as never,
-    );
-    await apply();
-    // pushSchema derives DDL from the drizzle schema, which cannot express the
-    // 0177 balance-revision trigger. Apply the real migration file (its
-    // statements are IF NOT EXISTS / OR REPLACE safe on top of pushSchema) so
-    // the snapshot read is proven against the same trigger production deploys.
-    const migration0177 = readFileSync(
-      join(import.meta.dir, "../../../db/migrations/0177_organization_balance_revision.sql"),
-      "utf8",
-    );
-    for (const statement of migration0177.split("--> statement-breakpoint")) {
-      const trimmed = statement.trim();
-      if (trimmed) await dbWrite.execute(trimmed);
-    }
-    // Production DDL is NOT NULL; the proof DB relaxes ONLY nullability so a
-    // corrupt/legacy row can be driven through the service's real read SQL.
-    // The parse gate must fail closed on it rather than serving a fake $0.
-    await dbWrite.execute("ALTER TABLE organizations ALTER COLUMN credit_balance DROP NOT NULL");
-  } catch (error) {
-    pgliteReady = false;
-    console.error(
-      "[credit-balance-fail-closed.test] PGlite/pushSchema unavailable — skipping.",
-      error,
-    );
+  const { apply } = await pushSchema(
+    { organizations, organizationBalanceRevisionSequence, users, creditTransactions } as never,
+    dbWrite as never,
+  );
+  await apply();
+  // pushSchema derives DDL from the drizzle schema, which cannot express the
+  // 0177 balance-revision trigger. Apply the real migration file (its
+  // statements are IF NOT EXISTS / OR REPLACE safe on top of pushSchema) so
+  // the snapshot read is proven against the same trigger production deploys.
+  const migration0177 = readFileSync(
+    join(import.meta.dir, "../../../db/migrations/0177_organization_balance_revision.sql"),
+    "utf8",
+  );
+  for (const statement of migration0177.split("--> statement-breakpoint")) {
+    const trimmed = statement.trim();
+    if (trimmed) await dbWrite.execute(trimmed);
   }
+  // Production DDL is NOT NULL; the proof DB relaxes ONLY nullability so a
+  // corrupt/legacy row can be driven through the service's real read SQL.
+  // The parse gate must fail closed on it rather than serving a fake $0.
+  await dbWrite.execute("ALTER TABLE organizations ALTER COLUMN credit_balance DROP NOT NULL");
 }, PGLITE_TIMEOUT);
 
 afterAll(async () => {
@@ -105,12 +85,7 @@ afterEach(() => {
 });
 
 describe("CreditsService.getOrganizationBalanceUsd fail-closed (real PGlite + 0177)", () => {
-  test("pglite applied (loud, never silent no-op)", () => {
-    expect(pgliteReady).toBe(true);
-  });
-
   test("parses a well-formed numeric balance and reports the trigger-advanced revision", async () => {
-    if (!pgliteReady) return;
     const orgId = await seedOrg("12.500000");
     expect(await creditsService.getOrganizationBalanceUsd(orgId)).toBe(12.5);
 
@@ -129,12 +104,10 @@ describe("CreditsService.getOrganizationBalanceUsd fail-closed (real PGlite + 01
   });
 
   test("missing org returns 0 (documented gate fail-safe -> slow path)", async () => {
-    if (!pgliteReady) return;
     expect(await creditsService.getOrganizationBalanceUsd(crypto.randomUUID())).toBe(0);
   });
 
   test("stored 'NaN'::numeric THROWS instead of poisoning the gate hint", async () => {
-    if (!pgliteReady) return;
     const orgId = await seedOrg("5.000000");
     // 'NaN' is a legal constrained-NUMERIC value and passes the >= 0 CHECK
     // (NaN sorts above all numbers) — the genuine production corruption vector.
@@ -147,13 +120,60 @@ describe("CreditsService.getOrganizationBalanceUsd fail-closed (real PGlite + 01
   });
 
   test("NULL balance on a corrupt/legacy row THROWS instead of coercing to $0", async () => {
-    if (!pgliteReady) return;
     const orgId = await seedOrg("5.000000");
     await dbWrite.execute(sql`UPDATE organizations SET credit_balance = NULL WHERE id = ${orgId}`);
     await expect(creditsService.getOrganizationBalanceUsd(orgId)).rejects.toThrow(
       "[CreditsService] Invalid numeric credit_balance",
     );
   });
+});
+
+test("organization mutations preserve the ledger and reject corrupt or negative balances", async () => {
+  const [org] = await dbWrite
+    .insert(organizations)
+    .values({ name: "Mutation Org", slug: uniq("mutation") })
+    .returning();
+  expect(Number(org.credit_balance)).toBe(0);
+  expect(await organizationsRepository.updateCreditBalance(org.id, 5)).toEqual({
+    success: true,
+    newBalance: 5,
+  });
+  const debit = await organizationsRepository.deductCreditsWithTransaction(org.id, 1, "proof");
+  expect(debit.newBalance).toBe(4);
+  expect(Number(debit.transaction.amount)).toBe(-1);
+  expect(debit.transaction.organization_id).toBe(org.id);
+
+  const snapshot = async () =>
+    (
+      await dbWrite.execute(sql`
+    SELECT credit_balance::text AS balance, balance_revision::text AS revision,
+      (SELECT count(*)::int FROM credit_transactions WHERE organization_id = ${org.id}) AS entries
+    FROM organizations WHERE id = ${org.id}
+  `)
+    ).rows;
+  const settled = await snapshot();
+  expect(Number(settled[0]?.balance)).toBe(4);
+  expect(settled[0]?.entries).toBe(1);
+  await dbWrite.execute(
+    sql`UPDATE organizations SET credit_balance = 'NaN'::numeric WHERE id = ${org.id}`,
+  );
+  const before = await snapshot();
+  expect(before[0]).toMatchObject({ balance: "NaN", entries: 1 });
+  for (const mutate of [
+    () => organizationsRepository.updateCreditBalance(org.id, 1),
+    () => organizationsRepository.deductCreditsWithTransaction(org.id, 1, "denied"),
+  ]) {
+    await expect(mutate()).rejects.toThrow(/Unable to read organization credit_balance/);
+    expect(await snapshot()).toEqual(before);
+  }
+  await expect(
+    Promise.resolve(
+      dbWrite.execute(sql`
+      UPDATE organizations SET credit_balance = -1 WHERE id = ${org.id}
+    `),
+    ),
+  ).rejects.toMatchObject({ cause: { code: "23514", constraint: "credit_balance_non_negative" } });
+  expect(await snapshot()).toEqual(before);
 });
 
 function orgWithBalance(credit_balance: unknown): Organization {

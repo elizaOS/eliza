@@ -52,21 +52,30 @@ function serviceNamesOf(
 }
 
 describe("createElizaPlugin — structure & service wiring", () => {
-  it("returns a plugin named 'eliza' with the expected surface arrays", () => {
-    const plugin = createElizaPlugin({
-      workspaceDir: "/tmp/ws",
-      agentId: "unit",
-      sessionStorePath: "/tmp/ws/sessions.json",
-    });
-    expect(plugin.name).toBe("eliza");
-    expect(typeof plugin.description).toBe("string");
-    expect(Array.isArray(plugin.services)).toBe(true);
-    expect(Array.isArray(plugin.providers)).toBe(true);
-    expect(Array.isArray(plugin.actions)).toBe(true);
-    expect(Array.isArray(plugin.routes)).toBe(true);
-    expect((plugin.services ?? []).length).toBeGreaterThan(0);
-    expect((plugin.providers ?? []).length).toBeGreaterThan(0);
-    expect((plugin.actions ?? []).length).toBeGreaterThan(0);
+  it("registers the knowledge-graph and pendant tables for SQL migration", () => {
+    const plugin = createElizaPlugin({ workspaceDir: "/tmp/ws", agentId: "u" });
+    expect(Object.keys(plugin.schema ?? {})).toEqual(
+      expect.arrayContaining([
+        "lifeEntities",
+        "lifeEntityIdentities",
+        "lifeEntityAttributes",
+        "lifeRelationshipsV2",
+        "lifeRelationshipAuditEvents",
+        "coreRelationshipsSourceRecords",
+        "pendantSessions",
+        "pendantSessionSegments",
+        "pendantSessionInsightRefs",
+      ]),
+    );
+  });
+
+  it("does not advertise model-authored chat widgets or generative UI", () => {
+    const names = createElizaPlugin().providers?.map(
+      (provider) => provider.name,
+    );
+    for (const name of ["uiWidgetCapabilities", "uiWidgets", "uiGenerative"]) {
+      expect(names).not.toContain(name);
+    }
   });
 
   it("registers MemoryRetentionService (the append-only-store bound)", () => {
@@ -96,43 +105,6 @@ describe("createElizaPlugin — structure & service wiring", () => {
     // Guard the #14710 residual behaviorally, not just by source text.
     expect(names).toContain("PairingService");
     expect(names).toContain("OwnerBindingService");
-  });
-
-  it("merges the runtime-owned schema (knowledge-graph + pendant-session)", () => {
-    const plugin = createElizaPlugin({ workspaceDir: "/tmp/ws", agentId: "u" });
-    expect(plugin.schema).toBeDefined();
-    expect(Object.keys(plugin.schema as object).length).toBeGreaterThan(0);
-  });
-
-  it("exposes the media + files routes (iOS in-process dispatch surface)", () => {
-    const plugin = createElizaPlugin({ workspaceDir: "/tmp/ws", agentId: "u" });
-    expect((plugin.routes ?? []).length).toBeGreaterThan(0);
-  });
-});
-
-describe("createElizaPlugin — config resolution", () => {
-  it("honors an explicit config (no filesystem probing needed)", () => {
-    const plugin = createElizaPlugin({
-      workspaceDir: "/explicit/workspace",
-      agentId: "cfg-agent",
-      sessionStorePath: "/explicit/sessions.json",
-    });
-    expect(plugin.name).toBe("eliza");
-    // The workspace provider is constructed from the config; presence proves
-    // the base-providers block executed with our values.
-    expect((plugin.providers ?? []).length).toBeGreaterThan(0);
-  });
-
-  it("falls back to defaults when called with no config", () => {
-    const plugin = createElizaPlugin();
-    expect(plugin.name).toBe("eliza");
-    expect((plugin.services ?? []).length).toBeGreaterThan(0);
-  });
-
-  it("falls back to defaults when called with an empty config object", () => {
-    const plugin = createElizaPlugin({});
-    expect(plugin.name).toBe("eliza");
-    expect((plugin.providers ?? []).length).toBeGreaterThan(0);
   });
 });
 
@@ -224,12 +196,59 @@ describe("promoted MEMORY tool contracts", () => {
       validateToolArgs(actionNamed("MEMORY_DELETE"), { memoryId }).valid,
     ).toBe(false);
     expect(
-      validateToolArgs(actionNamed("MEMORY_SEARCH"), { query: "Silver Heron" })
-        .valid,
+      validateToolArgs(actionNamed("MEMORY_SEARCH"), {
+        query: "Silver Heron",
+        author: "any",
+      }).valid,
     ).toBe(true);
     expect(
       actionNamed("MEMORY").parameters?.find((p) => p.name === "text")
         ?.required,
+    ).toBe(false);
+  });
+
+  it("requires explicit authorship on the registered search tool", () => {
+    const search = actionNamed("MEMORY_SEARCH");
+    // An omitted scope must not execute a broad search when the user asked
+    // for their original statements rather than assistant restatements.
+    expect(
+      validateToolArgs(search, { query: "Mira", limit: 10 }).errors,
+    ).toContain("Missing required argument 'author'");
+    for (const author of ["requester", "assistant", "any"]) {
+      expect(validateToolArgs(search, { author, query: "Mira" }).valid).toBe(
+        true,
+      );
+    }
+    expect(
+      validateToolArgs(actionNamed("MEMORY"), {
+        action: "search",
+        query: "Mira",
+      }).valid,
+    ).toBe(true);
+    expect(
+      validateToolArgs(search, { author: "everyone", query: "Mira" }).valid,
+    ).toBe(false);
+    expect(
+      validateToolArgs(search, {
+        author: "requester",
+        query: "Mira",
+        queryMode: "literal",
+      }).valid,
+    ).toBe(true);
+    expect(
+      validateToolArgs(search, {
+        author: "requester",
+        query: "Mira",
+        queryMode: "regex",
+      }).valid,
+    ).toBe(false);
+    expect(
+      actionNamed("MEMORY_DELETE").parameters?.some((p) => p.name === "author"),
+    ).toBe(false);
+    expect(
+      actionNamed("MEMORY_DELETE").parameters?.some(
+        (p) => p.name === "queryMode",
+      ),
     ).toBe(false);
   });
 

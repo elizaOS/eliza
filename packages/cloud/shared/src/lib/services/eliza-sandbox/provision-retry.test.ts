@@ -577,7 +577,7 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
   // (via the user-facing routes that don't reactivate themselves) cannot run
   // (status='running') permanently excluded from listBillableSandboxes = free
   // dedicated compute. This drives the REAL provision() success path; the writer
-  // itself is proven against a real DB in agent-billing-reactivation.test.ts.
+  // itself is proven against a real DB in agent-billing-safety.pglite.test.ts.
   test("(6) a successful provision re-enters the billable set", async () => {
     const { ElizaSandboxService } = await import("../eliza-sandbox.ts?actual");
     const row = provisioningReadyRow();
@@ -1678,6 +1678,10 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       bridge_port: 3333,
       web_ui_port: 4444,
       headscale_ip: "100.64.0.42",
+      environment_vars: {
+        ELIZAOS_CLOUD_API_KEY: "eliza_live_container_key",
+        ELIZA_API_TOKEN: "agent_live_container_token",
+      },
     };
     const finalRow: AgentSandbox = { ...row, status: "running" };
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
@@ -1720,6 +1724,10 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       expect(res.success).toBe(true);
       expect(create).not.toHaveBeenCalled();
       expect(stop).not.toHaveBeenCalled();
+      expect(apiKeySpy).not.toHaveBeenCalled();
+      expect(updateSpy.mock.calls.some(([, data]) => data.environment_vars !== undefined)).toBe(
+        false,
+      );
       expect(healthInputs).toEqual([{ sandboxId: "sandbox-blue-1" }]);
       const runningWrite = updateSpy.mock.calls.find(
         ([, data]) => (data as { status?: string }).status === "running",

@@ -22,6 +22,7 @@ function createRuntime(routes: Route[]): AgentRuntime {
     plugins: [],
     routes,
     ensureConnection: async () => undefined,
+    getTasksByName: async () => [],
     getService: () => null,
     reportError: () => {},
     setSetting: () => {},

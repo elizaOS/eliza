@@ -26,6 +26,13 @@ import type {
 import type { JsonValue, Metadata, UUID } from "./primitives";
 import type { Task } from "./task";
 
+/** A vector is valid only for this exact persisted source snapshot. */
+export interface MemoryEmbeddingUpdate {
+	id: UUID;
+	embedding: number[];
+	expected: { agentId: UUID; entityId: UUID; roomId: UUID; text: string };
+}
+
 /**
  * One ranked hit from {@link IDatabaseAdapter.searchMessages}. `ftsRank` is the
  * Postgres `ts_rank_cd` relevance from the full-text match (0 when the row
@@ -152,6 +159,8 @@ export interface DocumentFragmentQueryParams extends DocumentRequesterContext {
  * adapters compare them in the same statement that writes or deletes.
  */
 export interface DocumentMutationSnapshot {
+	/** Exact persisted pin state fences metadata edits independently of content revisions. */
+	pinState?: string;
 	scope: DocumentListScope;
 	roomId: UUID;
 	entityId: UUID;
@@ -1437,6 +1446,10 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	updateMemories(
 		memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>,
 	): Promise<void>;
+	/** Atomically compare source identity/text and persist its vector. False means
+	 * the source changed or was deleted; no write occurred. Never implement with
+	 * an unprotected read followed by updateMemories. */
+	updateMemoryEmbedding(update: MemoryEmbeddingUpdate): Promise<boolean>;
 	deleteMemories(memoryIds: UUID[]): Promise<void>;
 
 	/**

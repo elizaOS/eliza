@@ -427,7 +427,31 @@ test("trajectory viewer route refreshes, filters, and changes selected detail", 
     page.getByRole("button", { name: /Plan/i }),
     "plan pipeline stage",
   );
-  await expect(page.getByText(/Showing 1 plan calls/i)).toBeVisible();
+  await expect(page.getByText(/^Showing 1 plan call$/i)).toBeVisible();
+  const callOutputs = page.getByRole("region", {
+    name: "Output (Response)",
+    exact: true,
+  });
+  await expect(callOutputs).toHaveCount(1);
+  await expect(callOutputs).toHaveText(
+    "Alpha response from Playwright trajectory fixture.",
+  );
+  await page
+    .getByRole("button", { name: /Clear (pipeline )?stage filter/i })
+    .click();
+  await expect(callOutputs).toHaveCount(2);
+  await expect(callOutputs).toHaveText([
+    '{"decision":"RESPOND","reasoning":"alpha should respond"}',
+    "Alpha response from Playwright trajectory fixture.",
+  ]);
+  await clickRequired(
+    page.getByRole("button", { name: /Plan/i }),
+    "plan pipeline stage",
+  );
+  await expect(callOutputs).toHaveCount(1);
+  await expect(callOutputs).toHaveText(
+    "Alpha response from Playwright trajectory fixture.",
+  );
 
   await clickRequired(
     page.getByText("orchestrator / scenario-beta / batch-ui-smoke"),

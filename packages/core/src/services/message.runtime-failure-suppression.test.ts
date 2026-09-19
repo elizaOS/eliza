@@ -793,6 +793,12 @@ it.each(["valid", "unknown"])(
 					response: finalText,
 					effectReceiptIds: [receipt.receiptId],
 				}),
+				JSON.stringify({
+					grounded: true,
+					completedChangeClaim: true,
+					reason:
+						"The selected durable receipt supports completion of the requested record.",
+				}),
 			);
 		const modelInputs: unknown[] = [];
 		runtime.useModel = vi.fn(async (type, params) => {
@@ -972,6 +978,12 @@ it.each([
 				JSON.stringify({
 					response: partial,
 					effectReceiptIds: receipts.map((receipt) => receipt.receiptId),
+				}),
+				JSON.stringify({
+					grounded: true,
+					completedChangeClaim: true,
+					reason:
+						"All four completed operations retain their selected receipts; remaining work is incomplete.",
 				}),
 			);
 		const modelInputs: unknown[] = [];

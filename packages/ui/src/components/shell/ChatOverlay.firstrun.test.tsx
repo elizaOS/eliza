@@ -711,6 +711,39 @@ describe("ChatOverlay first-run gating", () => {
     expect(screen.queryByTestId("onboarding-state-probe")).toBeNull();
   });
 
+  it("keeps the ordinary app sign-in continuation visible while a browser login is pending", () => {
+    const controller = makeController({
+      messages: [
+        {
+          id: "first-run:cloud-login-waiting",
+          role: "assistant",
+          content: [
+            "Finish signing in to continue here.",
+            "If the page didn't open, continue sign-in below.",
+            "[CHOICE:first-run id=cloud-login-retry-1]",
+            "__first_run__:cloud-login:continue=Continue sign-in",
+            "__first_run__:cloud-login:retry=Open sign-in again",
+            "[/CHOICE]",
+          ].join("\n"),
+          createdAt: 2,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ChatOverlay controller={controller} firstRunOpen />);
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "half",
+    );
+    expect(
+      screen
+        .getByTestId("choice-__first_run__:cloud-login:continue")
+        .closest('[aria-hidden="true"]'),
+    ).toBeNull();
+    expect(
+      (screen.getByTestId("chat-composer-textarea") as HTMLTextAreaElement)
+        .readOnly,
+    ).toBe(true);
+  });
+
   it("uses the regular compact composer during external sign-in, then opens full on authentication", () => {
     const waitingController = makeController({
       messages: [
@@ -728,6 +761,7 @@ describe("ChatOverlay first-run gating", () => {
       <ChatOverlay
         controller={waitingController}
         firstRunOpen
+        fillHostAtHalf
         onStateChange={onStateChange}
       />,
     );
@@ -784,7 +818,11 @@ describe("ChatOverlay first-run gating", () => {
       messages: [waitingMessage],
     } as unknown as Partial<ShellController>);
     const { rerender } = render(
-      <ChatOverlay controller={waitingController} firstRunOpen />,
+      <ChatOverlay
+        controller={waitingController}
+        firstRunOpen
+        fillHostAtHalf
+      />,
     );
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
@@ -849,7 +887,7 @@ describe("ChatOverlay first-run gating", () => {
       ],
     } as unknown as Partial<ShellController>);
 
-    render(<ChatOverlay controller={controller} firstRunOpen />);
+    render(<ChatOverlay controller={controller} firstRunOpen fillHostAtHalf />);
     expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
       "collapsed",
     );

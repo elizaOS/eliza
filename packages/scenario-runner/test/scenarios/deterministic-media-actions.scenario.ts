@@ -14,6 +14,7 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { transientTurnEvaluationSeed } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
 
 const transparentPngDataUrl =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lbJY7wAAAABJRU5ErkJggg==";
@@ -222,6 +223,15 @@ export default scenario({
   tags: ["pr", "deterministic", "zero-cost", "media"],
   isolation: "shared-runtime",
   seed: [
+    transientTurnEvaluationSeed(
+      strictMediaRoutes.map((route) => ({
+        input: route.input,
+        action: route.actionName,
+        completed: true,
+        reason: `The requested ${route.actionName} operation succeeded.`,
+      })),
+      "The requested scenario sunset image and scenario audio are one-off media artifacts, not evidence of a standing aesthetic preference or personal fact.",
+    ),
     {
       type: "custom",
       name: "register deterministic media model handlers",

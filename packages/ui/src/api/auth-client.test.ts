@@ -20,7 +20,10 @@ import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig } from "../config/boot-config";
 import { clearSharedCloudAccountBinding } from "../state/shared-cloud-account-binding";
-import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
+import {
+  isDedicatedCloudAgentBase,
+  isManagedCloudSharedAgentBase,
+} from "../utils/cloud-agent-base";
 import {
   authChangePassword,
   authListSessions,
@@ -57,6 +60,7 @@ vi.mock("../state/shared-cloud-account-binding", () => ({
   clearSharedCloudAccountBinding: vi.fn(),
 }));
 vi.mock("../utils/cloud-agent-base", () => ({
+  isDedicatedCloudAgentBase: vi.fn(() => false),
   isManagedCloudSharedAgentBase: vi.fn(),
 }));
 vi.mock("./client-cloud", () => ({
@@ -434,6 +438,7 @@ describe("authMe over plain HTTP boundaries", () => {
   beforeEach(() => {
     getBootConfigMock.mockReturnValue({ branding: {} });
     fetchWithCsrfMock.mockReset();
+    vi.mocked(isDedicatedCloudAgentBase).mockReturnValue(false);
     isManagedCloudSharedAgentBaseMock.mockReturnValue(false);
     isDesktopExternalApiBaseUrlMock.mockReturnValue(false);
     invokeDesktopBridgeRequestMock.mockReset();
@@ -612,6 +617,56 @@ describe("authMe over plain HTTP boundaries", () => {
       access,
     });
   });
+
+  it("allows Cloud recovery when the Dedicated edge rejects a saved credential", async () => {
+    getBootConfigMock.mockReturnValue({
+      branding: {},
+      apiBase: "https://c469c32e-aba7-42bd-b834-b64ec0a83727.cloud.eliza.app",
+      apiToken: "expired-cloud-session",
+    });
+    vi.mocked(isDedicatedCloudAgentBase).mockReturnValue(true);
+    fetchWithCsrfMock.mockResolvedValue(
+      jsonResponse(
+        {
+          success: false,
+          code: "cloud_auth_rejected",
+          error: "Cloud authentication failed",
+        },
+        401,
+      ),
+    );
+
+    await expect(authMe()).resolves.toEqual({
+      ok: false,
+      status: 401,
+      reason: "remote_auth_required",
+    });
+    // The proxy has already rejected this bearer. Its protected status route
+    // cannot supply a standalone pairing code; Cloud recovery owns the retry.
+    expect(fetchWithCsrfMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { dedicated: false, code: "cloud_auth_rejected" },
+    { dedicated: true, code: "unknown_auth_error" },
+  ])(
+    "keeps unrelated rejection contracts out of Cloud recovery: %j",
+    async ({ dedicated, code }) => {
+      vi.mocked(isDedicatedCloudAgentBase).mockReturnValue(dedicated);
+      fetchWithCsrfMock
+        .mockResolvedValueOnce(jsonResponse({ code }, 401))
+        .mockResolvedValueOnce(
+          jsonResponse({ required: true, pairingEnabled: false }),
+        );
+
+      await expect(authMe()).resolves.toEqual({
+        ok: false,
+        status: 401,
+        reason: "server_error",
+        access: undefined,
+      });
+    },
+  );
 
   it("prefers pairing when a rich remote 401 reports pairing is enabled", async () => {
     fetchWithCsrfMock

@@ -1,3 +1,9 @@
+/**
+ * Resolves embedding model files and downloads them for runtime warmup.
+ * A completed download replaces the final path only after its file closes;
+ * failed replacements preserve the existing model for concurrent readers.
+ */
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import https from "node:https";
 import path from "node:path";
@@ -323,8 +329,10 @@ function downloadFile(
 	return new Promise<void>((resolve, reject) => {
 		let settled = false;
 		let redirectCount = 0;
+		let activeHop = 0;
 
 		const request = (reqUrl: string) => {
+			const hop = ++activeHop;
 			let validatedUrl: URL;
 			try {
 				validatedUrl = validateDownloadUrl(reqUrl);
@@ -335,21 +343,29 @@ function downloadFile(
 				return;
 			}
 
-			const file = fs.createWriteStream(dest);
+			let file: fs.WriteStream | undefined;
 			let bytesReceived = 0;
 			let expectedBytes: number | null = null;
 			let lastProgressPercent = -1;
 
 			const settleError = (err: Error) => {
-				if (settled) return;
+				if (settled || hop !== activeHop) return;
 				settled = true;
-				file.close();
-				safeUnlink(dest);
-				reject(err);
+				const finish = () => {
+					safeUnlink(dest);
+					reject(err);
+				};
+				if (!file || file.closed) finish();
+				else {
+					// Opening may still be pending. Wait for close before unlinking,
+					// otherwise the later open can recreate a rejected download.
+					file.once("close", finish);
+					file.destroy();
+				}
 			};
 
 			const settleSuccess = () => {
-				if (settled) return;
+				if (settled || hop !== activeHop || !file) return;
 				if (expectedBytes != null && bytesReceived !== expectedBytes) {
 					settleError(
 						new Error(
@@ -360,8 +376,10 @@ function downloadFile(
 					return;
 				}
 				settled = true;
-				file.close();
-				resolve();
+				file.close((error) => {
+					if (error) reject(error);
+					else resolve();
+				});
 			};
 
 			// Gated HuggingFace repos (and ungated ones whose LFS redirects hit
@@ -382,6 +400,9 @@ function downloadFile(
 			}
 			https
 				.get(validatedUrl.toString(), { headers: downloadHeaders }, (res) => {
+					// A response can fail after the request succeeds; pipe does not
+					// forward that failure to the destination file.
+					res.on("error", settleError);
 					expectedBytes = parseContentLength(res.headers["content-length"]);
 					if (
 						res.statusCode &&
@@ -390,8 +411,6 @@ function downloadFile(
 						res.headers.location
 					) {
 						res.resume();
-						file.close();
-						safeUnlink(dest);
 						redirectCount += 1;
 						if (redirectCount > maxRedirects) {
 							settleError(
@@ -426,6 +445,10 @@ function downloadFile(
 						);
 						return;
 					}
+					// Redirect bodies never own the output path. Only the final
+					// admitted response may open or publish downloaded bytes.
+					file = fs.createWriteStream(dest);
+					file.on("error", settleError);
 					res.on("data", (chunk: Buffer) => {
 						bytesReceived += chunk.length;
 						if (onProgress) {
@@ -441,7 +464,6 @@ function downloadFile(
 					});
 					res.pipe(file);
 					file.on("finish", settleSuccess);
-					file.on("error", settleError);
 				})
 				.on("error", settleError);
 		};
@@ -459,11 +481,10 @@ export async function ensureModel(
 	const safeRepo = sanitizeModelRepo(repo);
 	const safeFilename = sanitizeModelFilename(filename);
 	const modelPath = resolveModelPath(modelsDir, safeFilename);
-	if (force) safeUnlink(modelPath);
 
 	onProgress?.("checking", safeFilename);
 
-	if (fs.existsSync(modelPath)) {
+	if (!force && fs.existsSync(modelPath)) {
 		onProgress?.("ready", "model already downloaded");
 		return modelPath;
 	}
@@ -491,7 +512,15 @@ export async function ensureModel(
 			}
 		: undefined;
 
-	await downloadFile(url, modelPath, 5, downloadOnProgress);
+	// A concurrent warmup/probe treats the final path as a ready model. Never
+	// expose in-progress bytes there, or replace a working model on failed refresh.
+	const temporaryPath = `${modelPath}.${randomUUID()}.download`;
+	try {
+		await downloadFile(url, temporaryPath, 5, downloadOnProgress);
+		await fs.promises.rename(temporaryPath, modelPath);
+	} finally {
+		safeUnlink(temporaryPath);
+	}
 	log.info(`${getLogPrefix()} Embedding model downloaded: ${modelPath}`);
 	return modelPath;
 }

@@ -1,8 +1,8 @@
 /**
  * Turns a `SchemaDiff` (from diff-calculator) into an ordered list of raw SQL
- * migration statements — schemas and tables first, foreign keys after all
- * tables exist, then column/index/constraint alterations, mirroring
- * drizzle-kit's own statement ordering. Also runs a pre-flight data-loss
+ * migration statements — schemas and tables first, then column/index/constraint
+ * alterations, and foreign keys after their referenced keys exist.
+ * Also runs a pre-flight data-loss
  * check (`checkForDataLoss`) that flags destructive type changes, dropped
  * tables/columns, and new NOT NULL columns without defaults. `ADD COLUMN` /
  * `DROP COLUMN` statements are emitted with `IF NOT EXISTS` / `IF EXISTS` so
@@ -283,7 +283,7 @@ export async function generateMigrationSQL(
 
   statements.push(...createTableStatements);
 
-  // Phase 3: add foreign keys after all tables exist, deduplicated by
+  // Phase 3: collect foreign keys for the final phase, deduplicated by
   // constraint name to avoid re-adding the same constraint twice.
   const uniqueFKs = new Set<string>();
   const dedupedFKStatements: string[] = [];
@@ -300,8 +300,6 @@ export async function generateMigrationSQL(
       dedupedFKStatements.push(fkSQL);
     }
   }
-
-  statements.push(...dedupedFKStatements);
 
   // Phase 4: table modifications — drops, then column/index/constraint/FK changes.
   for (const tableName of diff.tables.deleted) {
@@ -397,8 +395,12 @@ export async function generateMigrationSQL(
     statements.push(generateDropForeignKeySQL(alteredFK.old));
   }
 
+  // New tables may reference a unique key added to an existing table in this
+  // migration. Install those columns and keys before any new foreign key.
+  statements.push(...dedupedFKStatements);
+
   for (const fk of diff.foreignKeys.created) {
-    // Skip FKs on tables just created above (Phase 3 already added them).
+    // Skip FKs on tables just created above (the collected statements cover them).
     const tableFrom = fk.tableFrom || "";
     const schemaFrom = fk.schemaFrom || "public";
 

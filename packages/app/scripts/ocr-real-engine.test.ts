@@ -139,16 +139,18 @@ describe("real OCR blank-vs-unreadable classification", () => {
     expect(retried.text).toMatch(/Desert Dusk/i);
   }, 90_000);
 
-  it("does not call a populated mobile launcher blank when the first OCR pass is weak", async () => {
+  it("rejects a launcher captured in place of the expected view without calling populated pixels blank", async () => {
     const auditDir = join(dir, "launcher-audit");
     const viewportDir = join(auditDir, "mobile-portrait");
     mkdirSync(viewportDir, { recursive: true });
-    copyFileSync(LAUNCHER_CAPTURE, join(viewportDir, "builtin-rolodex.png"));
+    // The archive filename records its original route, but these pixels are
+    // the launcher and must use the launcher semantic contract.
+    copyFileSync(LAUNCHER_CAPTURE, join(viewportDir, "builtin-views.png"));
     writeFileSync(
       join(auditDir, "report.json"),
       JSON.stringify([
         {
-          slug: "builtin-rolodex",
+          slug: "builtin-views",
           viewport: "mobile-portrait",
           viewType: "gui",
           verdict: "good",
@@ -181,8 +183,12 @@ describe("real OCR blank-vs-unreadable classification", () => {
       true,
     );
     expect(entry.pixelBlank).toBe(false);
-    expect(entry.ocrVerdict).toBe("needs-eyeball");
-    expect(entry.regression).toBe(false);
+    // The historical capture contains launcher icons rather than the requested
+    // view. A successful fallback must retain that semantic mismatch, not turn
+    // a nonblank but wrong screen into accepted product evidence.
+    expect(entry.ocrVerdict).toBe("broken");
+    expect(entry.regression).toBe(true);
+    expect(entry.reasons.join(" ")).toMatch(/missing expected content/i);
     expect(entry.reasons.join(" ")).not.toMatch(/pixels are blank/i);
   }, 90_000);
 

@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const repoRoot = join(import.meta.dir, "../../..");
 const cleanupArrayExpansion = '"$' + '{cleanup_paths[@]}"';
@@ -53,6 +54,105 @@ function workflowStep(
 }
 
 describe("mission workflow diagnostic redaction", () => {
+  for (const scenario of [
+    {
+      name: "accepted JSON",
+      status: 200,
+      contentType: "application/json",
+      exit: 0,
+    },
+    {
+      name: "rejected credential",
+      status: 401,
+      contentType: "application/json",
+      exit: 1,
+    },
+    { name: "HTML response", status: 200, contentType: "text/html", exit: 1 },
+    { name: "transport failure", status: 0, contentType: "", exit: 1 },
+  ]) {
+    test(`production account probe closes diagnostics for ${scenario.name}`, () => {
+      const run = workflowStep(
+        parseWorkflow(".github/workflows/app-live-e2e.yml"),
+        "cloud-live",
+        "Verify production Cloud test credential",
+      ).run;
+      if (!run) throw new Error("Missing production account probe");
+      const directory = mkdtempSync(join(tmpdir(), "closed-account-probe-"));
+      const preload = join(directory, "transport.mjs");
+      const token = "private-probe-bearer";
+      writeFileSync(
+        preload,
+        `
+        globalThis.fetch = async (url, options) => {
+          if (url !== "https://api.eliza.app/api/v1/user" || options.redirect !== "error" ||
+              options.headers.Authorization !== "Bearer private-probe-bearer" || !options.signal) {
+            throw new Error("private-transport-contract-detail");
+          }
+          if (${scenario.status} === 0) throw new Error("private-transport-error");
+          return new Response("private-account-response", {
+            status: ${scenario.status}, headers: { "content-type": ${JSON.stringify(scenario.contentType)} }
+          });
+        };
+      `,
+      );
+      try {
+        const result = spawnSync("bash", ["-c", run], {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            ELIZAOS_CLOUD_API_KEY: token,
+            NODE_OPTIONS: `--import=${pathToFileURL(preload).href}`,
+          },
+        });
+        expect(result.status).toBe(scenario.exit);
+        expect(result.stdout + result.stderr).not.toContain("private-");
+        if (scenario.status !== 0) {
+          expect(result.stdout).toContain(`HTTP status: ${scenario.status}`);
+        }
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    });
+  }
+
+  test("production credential preflight rejects expired sessions without leaking claims", () => {
+    const run = workflowStep(
+      parseWorkflow(".github/workflows/app-live-e2e.yml"),
+      "cloud-live",
+      "Inspect production credential expiry",
+    ).run;
+    if (!run) throw new Error("Missing production credential preflight");
+    const claims = { exp: 1, email: "private-preflight@example.invalid" };
+    const token = `${Buffer.from('{"alg":"HS256"}').toString("base64url")}.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.private-signature`;
+    const result = spawnSync("bash", ["-c", run], {
+      encoding: "utf8",
+      env: { ...process.env, ELIZAOS_CLOUD_API_KEY: token },
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("expired session JWT");
+    expect(result.stdout + result.stderr).not.toContain(token);
+    expect(result.stdout + result.stderr).not.toContain(claims.email);
+    expect(result.stdout + result.stderr).not.toContain("private-signature");
+  });
+
+  test("opaque production credentials still require live authentication", () => {
+    const run = workflowStep(
+      parseWorkflow(".github/workflows/app-live-e2e.yml"),
+      "cloud-live",
+      "Inspect production credential expiry",
+    ).run;
+    if (!run) throw new Error("Missing production credential preflight");
+    const token = "private-opaque-api-credential";
+    const result = spawnSync("bash", ["-c", run], {
+      encoding: "utf8",
+      env: { ...process.env, ELIZAOS_CLOUD_API_KEY: token },
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("cannot be determined locally");
+    expect(result.stdout).toContain("live authentication remains required");
+    expect(result.stdout + result.stderr).not.toContain(token);
+  });
+
   test("app live suppresses credentialed output and uploads only the closed backend receipt", () => {
     const workflow = parseWorkflow(".github/workflows/app-live-e2e.yml");
     const missionSpec =

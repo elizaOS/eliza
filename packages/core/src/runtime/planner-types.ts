@@ -41,6 +41,8 @@ export type EvaluatorModelResult =
 	| (Partial<GenerateTextResult> & { object?: unknown });
 
 export interface EvaluatorRuntime {
+	/** Same fresh provider read used by the planner restoration protocol. */
+	restoreProviderContext?(context: ContextObject): Promise<ContextObject>;
 	/** True when useModel invokes prepareModelAttempt before every provider handler. */
 	supportsModelAttemptPreparation?: boolean;
 	/** Optional model registry access used to resolve evaluator context ceilings. */
@@ -89,6 +91,8 @@ export interface EvaluatorEffects {
 export type EvaluatorOutput = EvaluationResult & {
 	/** Model-selected proof for messageToUser; egress resolves these against this turn's results. */
 	effectReceiptIds?: readonly string[];
+	/** Captured final REPLY text and its own model-selected proof during missing-reply recovery. */
+	plannerReply?: { text: string; effectReceiptIds: readonly string[] };
 	nextTool?: PlannerToolCall;
 	/** The model response violated the evaluator protocol. */
 	protocolFailure?: true;
@@ -98,6 +102,8 @@ export type EvaluatorOutput = EvaluationResult & {
 
 export interface PlannerRuntime {
 	getService?(service: string): unknown;
+	/** Reauthorize deferred provider reads before restoring model context. */
+	restoreProviderContext?(context: ContextObject): Promise<ContextObject>;
 	/** Optional per-agent setting lookup used by guarded runtime features. */
 	getSetting?(key: string): string | boolean | number | null;
 	reportError?(
@@ -131,6 +137,22 @@ export interface PlannerRuntime {
 	};
 }
 
+/**
+ * Evidence that the executor ran an umbrella call which omitted its
+ * discriminator as the promoted child the umbrella's `inferSubaction` named,
+ * pinning `discriminator: value` into the executed arguments instead of
+ * delegating to the sub-planner. The planner's recorded call keeps its
+ * original arguments; the trajectory's tool stage carries this on the result.
+ */
+export interface InferredSubactionDispatch {
+	/** Promoted child the arguments resolved to, e.g. `MEMORY_CREATE`. */
+	child: string;
+	/** Umbrella discriminator parameter that was pinned, e.g. `action`. */
+	discriminator: string;
+	/** Pinned discriminator value, e.g. `create`. */
+	value: string;
+}
+
 export interface PlannerToolResult {
 	success: boolean;
 	/**
@@ -144,6 +166,8 @@ export interface PlannerToolResult {
 		success: boolean;
 		messageToUser?: string;
 	};
+	/** Set when an umbrella call was dispatched through `inferSubaction`. */
+	inferredSubaction?: InferredSubactionDispatch;
 	/**
 	 * Diagnostic / log-shaped projection of the tool's output. Goes into
 	 * the trajectory and the planner's tool-result message. Used by the
@@ -206,6 +230,8 @@ export interface PlannerToolResult {
 	data?: Record<string, unknown>;
 	/** Model-bound projection of `data`; complete data remains on the result. */
 	promptData?: Record<string, unknown>;
+	/** Producer-declared complete model projection; absent preserves both fields. */
+	promptDataMode?: "replace-data";
 	error?: unknown;
 	/** Typed boundary provenance retained through planner retry exhaustion. */
 	failureProvenance?: ActionFailureProvenance;
@@ -271,6 +297,8 @@ export interface PlannerTerminalFailure {
 }
 
 export interface PlannerLoopResult {
+	/** Caller must finish receipt-bound delivery; no planner narration was generated. */
+	replyRecoveryRequired?: true;
 	status: "finished" | "continued";
 	trajectory: PlannerTrajectory;
 	evaluator?: EvaluatorOutput;
@@ -306,6 +334,8 @@ export interface PlannerLoopResult {
 }
 
 export interface PlannerLoopParams {
+	/** Host owns receipt-bound recovery of missing replies after evaluated internal effects. */
+	deferInternalReplyRecoveryToCaller?: boolean;
 	runtime: PlannerRuntime;
 	context: ContextObject;
 	/**
@@ -411,6 +441,8 @@ export interface PlannerLoopParams {
 }
 
 export interface RunEvaluatorParams {
+	/** Runtime failure authority; does not prevent continuation or recovery. */
+	hasUnresolvedToolFailure?: boolean;
 	runtime: EvaluatorRuntime;
 	context: ContextObject;
 	trajectory: PlannerTrajectory;

@@ -34,18 +34,26 @@
  *     Thursday turn fails.
  */
 
-import { type IAgentRuntime, Service, ServiceType } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  type IAgentRuntime,
+  Service,
+  ServiceType,
+} from "@elizaos/core";
+import type {
+  RuntimeWithScenarioModelFixtures,
+  StrictActionRouteFixture,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-  type StrictActionRouteFixture,
-} from "@elizaos/core/testing";
+
+import { typedTurnEvaluationFixtures } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
+
+import { registerLifeOpsActionFixtures } from "./_lifeops-action-fixtures";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -289,7 +297,37 @@ async function seedJourney(ctx: ScenarioContext): Promise<string | undefined> {
   }
 
   scenarioRuntime = ctx.runtime as RuntimeWithScenarioModelFixtures;
-  registerStrictActionRouteFixtures(scenarioRuntime, initialStrictRoutes);
+  registerLifeOpsActionFixtures(scenarioRuntime, initialStrictRoutes);
+  // Reminder CRUD is task state, not evidence of a standing personal goal,
+  // identity, relationship, health condition, or enduring preference.
+  for (const input of [
+    createText,
+    snoozeText,
+    getText,
+    completeText,
+    historyText,
+  ]) {
+    scenarioRuntime.scenarioModelFixtures?.register(
+      ...typedTurnEvaluationFixtures(ctx.runtime as AgentRuntime, ctx, {
+        name: `multiday-journey-${input}`,
+        input,
+        action: "SCHEDULED_TASKS",
+        goal: { goalFound: false, goal: "", confidence: 0 },
+        memory: {
+          factMemory: { ops: [] },
+          relationships: { relationships: [] },
+          identities: { identities: [] },
+          preferences: { ops: [] },
+          experiencePatterns: { experiences: [] },
+          success: {
+            completed: true,
+            reason:
+              "The requested pharmacy reminder operation succeeded; this does not assert a medical condition or complete the recurring schedule forever.",
+          },
+        },
+      }),
+    );
+  }
   return undefined;
 }
 
@@ -371,7 +409,7 @@ function expectCreateTurn(
   if (!scenarioRuntime) {
     return "scenario runtime unavailable for id-dependent strict fixtures";
   }
-  registerStrictActionRouteFixtures(
+  registerLifeOpsActionFixtures(
     scenarioRuntime,
     idDependentStrictRoutes(createdTaskId),
   );

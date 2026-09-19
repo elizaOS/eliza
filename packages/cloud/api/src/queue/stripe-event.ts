@@ -209,6 +209,16 @@ export async function processStripeEvent(
   // Other recurring deliveries remain intact until their policy can be reconciled.
   try {
     if (
+      event.type === "checkout.session.completed" &&
+      event.data.object.mode === "subscription"
+    ) {
+      const { reconcileSubscriptionCheckout } = await import(
+        "@/lib/services/subscription-checkout"
+      );
+      await reconcileSubscriptionCheckout(event.data.object.id);
+      return "ack";
+    }
+    if (
       event.type === "customer.subscription.updated" ||
       event.type === "customer.subscription.deleted"
     ) {

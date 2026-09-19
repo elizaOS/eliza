@@ -2,29 +2,9 @@
  * Unit coverage for session-bridge — Eliza session-key resolution from
  * elizaOS rooms (DM/group/channel/thread) and the provider wrapper.
  */
-import { describe, expect, it, vi } from "vitest";
-
-// Mock @elizaos/core primitives used by session-bridge
-vi.mock("@elizaos/core", () => {
-  const ChannelType = {
-    DM: "dm",
-    SELF: "self",
-    GROUP: "group",
-    FEED: "feed",
-  };
-  return {
-    ChannelType,
-    buildAgentMainSessionKey: ({ agentId }: { agentId: string }) =>
-      `agent:${agentId}:main`,
-    parseAgentSessionKey: (key: string) => {
-      // agent:{agentId}:main
-      const m = /^agent:([^:]+):main$/.exec(key);
-      return m ? { agentId: m[1] } : null;
-    },
-  };
-});
 
 import { ChannelType } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import {
   createSessionKeyProvider,
   resolveSessionKeyFromRoom,

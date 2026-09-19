@@ -110,7 +110,7 @@ export function AccountConnectBlock({
       <div className="font-medium mb-1">
         {t("accounts.connect.heading", { defaultValue: "Add another account" })}
       </div>
-      <div className="text-muted whitespace-pre-wrap mb-3">
+      <div className="text-muted-strong whitespace-pre-wrap mb-3">
         {request.reason?.trim()
           ? request.reason
           : t("accounts.connect.subheading", {
@@ -134,13 +134,13 @@ export function AccountConnectBlock({
                 <div className="truncate font-medium">
                   {providerLabel(providerId, t)}
                 </div>
-                <div className="text-xs text-muted">
+                <div className="text-xs text-muted-strong">
                   {accounts.loading && !accounts.data
                     ? t("accounts.connect.loadingCount", {
                         defaultValue: "Loading accounts…",
                       })
                     : t("accounts.connect.currentCount", {
-                        defaultValue: `${count} connected`,
+                        defaultValue: "{{count}} connected",
                         count,
                       })}
                 </div>

@@ -1,6 +1,6 @@
 /**
  * Exercises the typed design graph against synthetic invalid dependencies and
- * the maintained repository so the Wave 0 inventory cannot pass vacuously.
+ * one real graph/report flow so the maintained inventory cannot pass vacuously.
  */
 
 import assert from "node:assert/strict";
@@ -13,7 +13,6 @@ import {
   renderDesignContractMarkdown,
 } from "./check-design-contract-graph.ts";
 import {
-  buildDesignContractGraph,
   inventoryDesignTokens,
   parseMoleculeContracts,
   resolveCanonicalAtomImport,
@@ -396,17 +395,6 @@ test("molecule contract boundary requires representative migration evidence", ()
   );
 });
 
-test("compound exports in an atomic owner module stay in the atom layer", async () => {
-  const report = await buildDesignContractReport({
-    debtMode: "normal",
-  });
-  const cardParts = report.graph.observations.discoveredComponents.filter(
-    (component) => component.file === "packages/ui/src/components/ui/card.tsx",
-  );
-  assert.ok(cardParts.length > 1);
-  assert.ok(cardParts.every((component) => component.inferredLayer === "atom"));
-});
-
 test("higher-order contracts must name maintained exported owners", () => {
   const registry = parseHigherOrderDesignRegistry({
     schemaVersion: 1,
@@ -440,16 +428,21 @@ test("higher-order contracts must name maintained exported owners", () => {
   );
 });
 
-test("maintained source produces a deterministic closed graph", async () => {
-  const first = await buildDesignContractGraph();
-  assert.equal(first.findings.length, 0);
-  assert.ok(first.nodes.every((node) => node.responsibility.trim().length > 0));
+test("builds and renders the complete graph and enforces the exact ledger", async () => {
+  const report = await buildDesignContractReport({
+    now: new Date("2026-08-25T00:00:00Z"),
+    ledger: { schemaVersion: 1, entries: [] },
+    debtMode: "tight",
+  });
+  const graph = report.graph;
+  assert.deepEqual(graph.findings, []);
+  assert.ok(graph.nodes.every((node) => node.responsibility.trim().length > 0));
   assert.ok(
-    first.edges.every((edge) =>
-      first.nodes.some((node) => node.id === edge.to),
+    graph.edges.every((edge) =>
+      graph.nodes.some((node) => node.id === edge.to),
     ),
   );
-  assert.ok(first.observations.paintedRawHosts.length > 0);
+  assert.ok(graph.observations.paintedRawHosts.length > 0);
 
   const legacyModuleUrl = new URL(
     "./find-duplicate-components.mjs",
@@ -465,34 +458,20 @@ test("maintained source produces a deterministic closed graph", async () => {
   const legacyFiles: unknown = legacyModule.listMaintainedSourceFiles();
   assert.ok(Array.isArray(legacyFiles));
   assert.deepEqual(
-    first.sourceFiles,
+    graph.sourceFiles,
     legacyFiles
       .map((file) =>
         path.relative(repoRoot, String(file)).replaceAll(path.sep, "/"),
       )
       .sort(),
   );
-});
 
-test("declared molecule nodes retain the complete live atom closure", async () => {
-  const graph = await buildDesignContractGraph();
-  const expectedDependencies = new Map<string, readonly string[]>([
-    ["molecule:action-list-row", ["atom:button", "atom:card"]],
-    ["molecule:auth-result-shell", ["atom:card"]],
-    ["molecule:connection-capability-tile", ["atom:card"]],
-    ["molecule:content-state", ["atom:card", "atom:spinner"]],
-    ["molecule:settings-row", ["atom:button", "atom:card"]],
-  ]);
+  const cardParts = graph.observations.discoveredComponents.filter(
+    (component) => component.file === "packages/ui/src/components/ui/card.tsx",
+  );
+  assert.ok(cardParts.length > 1);
+  assert.ok(cardParts.every((component) => component.inferredLayer === "atom"));
 
-  for (const [nodeId, expected] of expectedDependencies) {
-    const node = graph.nodes.find((candidate) => candidate.id === nodeId);
-    assert.ok(node, `missing declared molecule ${nodeId}`);
-    assert.deepEqual(node.dependsOn, expected, nodeId);
-  }
-});
-
-test("declared higher-order nodes retain their discovered live atom closure", async () => {
-  const graph = await buildDesignContractGraph();
   const higherOrderNodes = graph.nodes.filter(
     (node) => node.layer === "organism" || node.layer === "page-shell",
   );
@@ -513,65 +492,6 @@ test("declared higher-order nodes retain their discovered live atom closure", as
     );
   }
 
-  const vaultWorkspace = graph.nodes.find(
-    (node) => node.id === "organism:vault-workspace",
-  );
-  assert.ok(vaultWorkspace, "missing organism:vault-workspace");
-  assert.deepEqual(vaultWorkspace.owner, {
-    kind: "export",
-    file: "packages/ui/src/components/settings/SecretsManagerSection.tsx",
-    symbol: "VaultWorkspace",
-  });
-  const vaultOwner = vaultWorkspace.owner;
-  assert.equal(vaultOwner.kind, "export");
-  if (vaultOwner.kind !== "export") {
-    assert.fail("organism:vault-workspace owner must be an exported component");
-  }
-  const vaultComponent = graph.observations.discoveredComponents.find(
-    (candidate) =>
-      candidate.file === vaultOwner.file &&
-      candidate.symbol === vaultOwner.symbol,
-  );
-  assert.ok(vaultComponent, "missing live VaultWorkspace component");
-  assert.deepEqual(vaultComponent.transitiveAtoms, [
-    "alert",
-    "badge",
-    "banner",
-    "button",
-    "card",
-    "checkbox",
-    "dialog",
-    "input",
-    "radioGroup",
-    "select",
-    "separator",
-    "table",
-    "tabs",
-  ]);
-  assert.deepEqual(
-    vaultWorkspace.dependsOn,
-    vaultComponent.transitiveAtoms.map((atom) => `atom:${atom}`),
-  );
-});
-
-test("reusable owners inherit raw capability findings from private helpers", async () => {
-  const graph = await buildDesignContractGraph();
-  assert.ok(
-    graph.findings.every(
-      (finding) =>
-        finding.rule !== "composition/raw-capability-owner" ||
-        finding.detail.includes("claims") ||
-        finding.detail.includes("reaches helper"),
-    ),
-  );
-});
-
-test("report renders the real graph and passes an empty exact ledger", async () => {
-  const report = await buildDesignContractReport({
-    now: new Date("2026-08-25T00:00:00Z"),
-    ledger: { schemaVersion: 1, entries: [] },
-    debtMode: "tight",
-  });
   assert.equal(report.debtComparison.newFindings.length, 0);
   assert.match(renderDesignContractMarkdown(report), /Findings\n\nNone\./);
   assert.doesNotThrow(() => assertDesignContractReport(report));

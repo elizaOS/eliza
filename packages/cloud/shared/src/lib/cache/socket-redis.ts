@@ -839,6 +839,11 @@ export class SocketRedis {
     return new Pipeline(this.conn);
   }
 
+  /** Release an owned transport without queuing a command behind stalled I/O. */
+  async close(): Promise<void> {
+    await this.conn.close();
+  }
+
   async quit(): Promise<void> {
     try {
       await this.conn.send([["QUIT"]]);

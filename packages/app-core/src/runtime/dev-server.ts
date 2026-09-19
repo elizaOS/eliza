@@ -433,6 +433,28 @@ async function handleRestart(reason?: string): Promise<void> {
       logger.info(
         `${getLogPrefix()} Restart requested${reason ? ` (${reason})` : ""} — bouncing runtime…`,
       );
+      if (process.connected && process.send) {
+        try {
+          process.send({ type: "eliza:runtime-restart" }, (error) => {
+            if (error) {
+              // error-policy:J7 report a parent-channel failure without aborting the admitted restart.
+              logger.warn(
+                `${getLogPrefix()} Parent restart notification failed: ${formatError(error)}`,
+              );
+              currentRuntime?.reportError(
+                "dev-server.restart-notification",
+                error,
+              );
+            }
+          });
+        } catch (error) {
+          // error-policy:J7 a disconnected supervisor must not abort the admitted runtime operation.
+          logger.warn(
+            `${getLogPrefix()} Parent restart notification failed: ${formatError(error)}`,
+          );
+          currentRuntime?.reportError("dev-server.restart-notification", error);
+        }
+      }
       apiUpdateStartup?.({
         phase: "runtime-restart",
         attempt: 0,

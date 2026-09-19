@@ -7,7 +7,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
 	id: "views-voice-navigate",
-	title: "VIEWS action resolves single-word voice input to show mode",
+	title: "Live planner selects Settings from a single-word voice transcript",
 	domain: "app-control",
 	tags: ["app-control", "views", "show", "voice", "intent-routing"],
 	isolation: "per-scenario",
@@ -44,11 +44,12 @@ export default scenario({
 		{
 			type: "selectedActionArguments",
 			actionName: "VIEWS",
-			includesAll: [/show|open/i],
+			includesAll: [/"action"\s*:\s*"(?:show|open)"/i, /"view"\s*:\s*"settings"/i],
 		},
 		{
 			type: "actionCalled",
 			actionName: "VIEWS",
+			status: "success",
 			minCount: 1,
 		},
 	],

@@ -1044,6 +1044,8 @@ export async function applyFirstRunCredentialPersistence(
     credentialInputs?: FirstRunCredentialInputs | null;
     deploymentTarget?: DeploymentTargetConfig | null;
     serviceRouting?: ServiceRoutingConfig | null;
+    /** Observe synchronous environment writes without claiming later concurrent changes. */
+    observeEnvironmentMutation?: <T>(mutation: () => T) => T;
   },
 ): Promise<string | null> {
   const plan = deriveFirstRunCredentialPersistencePlan({
@@ -1055,12 +1057,23 @@ export async function applyFirstRunCredentialPersistence(
   if (plan.llmSelection) {
     const llmConnection = toFirstRunConnectionFromSelection(plan.llmSelection);
     if (llmConnection) {
-      await applyFirstRunConnectionConfig(config, llmConnection);
+      // Direct account providers mutate env before their first await; the
+      // continuation only updates canonical config. Subscription credential
+      // async work is not part of first-run direct-account rollback.
+      await (args.observeEnvironmentMutation
+        ? args.observeEnvironmentMutation(() =>
+            applyFirstRunConnectionConfig(config, llmConnection),
+          )
+        : applyFirstRunConnectionConfig(config, llmConnection));
     }
   }
 
   if (plan.cloudApiKey) {
-    persistLinkedCloudApiKey(config, plan.cloudApiKey);
+    if (args.observeEnvironmentMutation) {
+      args.observeEnvironmentMutation(() =>
+        persistLinkedCloudApiKey(config, plan.cloudApiKey),
+      );
+    } else persistLinkedCloudApiKey(config, plan.cloudApiKey);
   }
 
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);

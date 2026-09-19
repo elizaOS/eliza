@@ -6,6 +6,7 @@ import type { VoiceConfig, VoiceMode } from "../api/client";
 import { resolveApiUrl } from "../utils";
 import { ttsDebug } from "../utils/tts-debug";
 import type { Emotion } from "./emotion";
+import type { VoicePlaybackObserver } from "./voice-playback-evidence";
 
 // ── Speech Recognition types ──────────────────────────────────────────
 
@@ -175,6 +176,8 @@ export interface VoiceTranscriptPreviewEvent {
 }
 
 export interface VoiceChatOptions {
+  /** Opt-in complete buffered-audio provenance; excludes native/browser synthesis and credentials. */
+  onPlaybackEvidence?: VoicePlaybackObserver;
   /** Called when a final transcript is ready to send */
   onTranscript: (text: string, event: VoiceTranscriptEvent) => void;
   /** Called whenever the live transcript buffer changes */

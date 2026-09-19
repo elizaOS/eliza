@@ -1,8 +1,9 @@
 /**
  * Shared jsonb sanitizer for SQL writes. Strips NULs (PostgreSQL rejects
  * JSON.stringify's `\u0000` escape), breaks cycles, and fails closed on
- * hostile nesting and output size so a log/memory body cannot exhaust the
- * adapter before its jsonb bind.
+ * hostile nesting and metadata size before the jsonb bind. Serialization for
+ * memory content preserves complete source text only at declared text paths;
+ * unsupported NUL characters are rejected rather than silently removed.
  *
  * `utils.ts`, `utils.node.ts`, and `utils.browser.ts` re-export this so the
  * three platform builds cannot drift.
@@ -13,10 +14,12 @@ import { ElizaError } from "@elizaos/core";
 export const MAX_SQL_JSON_SANITIZE_DEPTH = 64;
 /** Logical values copied into one jsonb bind before the write fails closed. */
 export const MAX_SQL_JSON_SANITIZE_NODES = 10_000;
-/** Maximum UTF-8 bytes in the JSON text passed to one jsonb bind. */
+/** Maximum serialized UTF-8 bytes outside explicitly admitted source text. */
 export const MAX_SQL_JSON_SANITIZE_BYTES = 1_048_576;
-/** Maximum escaped UTF-8 bytes contributed by one string value. */
+/** Maximum escaped UTF-8 bytes contributed by one generic metadata string. */
 export const MAX_SQL_JSON_SANITIZE_STRING_BYTES = MAX_SQL_JSON_SANITIZE_BYTES;
+/** Document content budget matches the supported 32 MiB upload envelope. */
+const MAX_DOCUMENT_JSON_BYTES = 32 * 1_048_576;
 /** Maximum escaped UTF-8 bytes contributed by one property key. */
 export const MAX_SQL_JSON_SANITIZE_KEY_BYTES = 65_536;
 /** Maximum decimal digits projected from one BigInt value. */
@@ -40,7 +43,12 @@ interface SanitizeContext {
   visits: number;
   bytes: number;
   rejectNul?: boolean;
+  maxBytes?: number;
+  documentText?: boolean;
 }
+
+// These states follow container edges, not arbitrary property names or depths.
+type SourceTextPath = "memory-content" | "attachments" | "attachment" | "source-text";
 
 function rejectUnsupportedNul(value: string, context: SanitizeContext): void {
   if (context.rejectNul && value.includes(NUL)) {
@@ -56,11 +64,12 @@ function chargeBytes(context: SanitizeContext, bytes: number, reason: string): v
     failUnbounded({ reason, bytes: "invalid" });
   }
   context.bytes += bytes;
-  if (context.bytes > MAX_SQL_JSON_SANITIZE_BYTES) {
+  const maxBytes = context.maxBytes ?? MAX_SQL_JSON_SANITIZE_BYTES;
+  if (context.bytes > maxBytes) {
     failUnbounded({
       reason: "serialized-bytes",
       bytes: context.bytes,
-      max: MAX_SQL_JSON_SANITIZE_BYTES,
+      max: maxBytes,
       source: reason,
     });
   }
@@ -139,23 +148,39 @@ export function sanitizeJsonObject(
 }
 
 /** Serialize memory JSON without silently removing unsupported NUL characters. */
-export function serializeJsonb(value: unknown): string | undefined {
+export function serializeJsonb(
+  value: unknown,
+  options: { documentText?: boolean; memoryContent?: boolean } = {}
+): string | undefined {
+  return serializeJsonbWithBudget(value, MAX_SQL_JSON_SANITIZE_BYTES, options);
+}
+
+/** Preserve complete document content within the supported upload envelope. */
+export function serializeDocumentJsonb(value: unknown): string | undefined {
+  return serializeJsonbWithBudget(value, MAX_DOCUMENT_JSON_BYTES);
+}
+
+function serializeJsonbWithBudget(
+  value: unknown,
+  maxBytes: number,
+  options: { documentText?: boolean; memoryContent?: boolean } = {}
+): string | undefined {
   // Decode legacy JSON for structural validation; keep its original numeric
   // tokens so arbitrary-precision jsonb numbers never round through JS Number.
   let decoded = value;
   if (typeof value === "string") {
     // Check before JSON.parse allocates a second tree. The code-unit guard
     // bounds the UTF-8 measurement allocation as well as the decoded input.
-    if (value.length > MAX_SQL_JSON_SANITIZE_BYTES) {
+    if (value.length > maxBytes) {
       failUnbounded({
         reason: "encoded-json-bytes",
         codeUnits: value.length,
-        max: MAX_SQL_JSON_SANITIZE_BYTES,
+        max: maxBytes,
       });
     }
     const bytes = new TextEncoder().encode(value).byteLength;
-    if (bytes > MAX_SQL_JSON_SANITIZE_BYTES) {
-      failUnbounded({ reason: "encoded-json-bytes", bytes, max: MAX_SQL_JSON_SANITIZE_BYTES });
+    if (bytes > maxBytes) {
+      failUnbounded({ reason: "encoded-json-bytes", bytes, max: maxBytes });
     }
     try {
       decoded = JSON.parse(value);
@@ -167,15 +192,43 @@ export function serializeJsonb(value: unknown): string | undefined {
         severity: "fatal",
       });
     }
-    sanitizeJsonValue(decoded, { seen: new WeakSet(), visits: 0, bytes: 0, rejectNul: true }, 0);
+    sanitizeJsonValue(
+      decoded,
+      {
+        seen: new WeakSet(),
+        visits: 0,
+        bytes: 0,
+        rejectNul: true,
+        maxBytes,
+        documentText: options.documentText,
+      },
+      0
+    );
     return value;
   }
   return JSON.stringify(
-    sanitizeJsonValue(decoded, { seen: new WeakSet(), visits: 0, bytes: 0, rejectNul: true }, 0)
+    sanitizeJsonValue(
+      decoded,
+      {
+        seen: new WeakSet(),
+        visits: 0,
+        bytes: 0,
+        rejectNul: true,
+        maxBytes,
+        documentText: options.documentText,
+      },
+      0,
+      options.memoryContent ? "memory-content" : undefined
+    )
   );
 }
 
-function sanitizeJsonValue(value: unknown, context: SanitizeContext, depth: number): unknown {
+function sanitizeJsonValue(
+  value: unknown,
+  context: SanitizeContext,
+  depth: number,
+  sourcePath?: SourceTextPath
+): unknown {
   if (depth > MAX_SQL_JSON_SANITIZE_DEPTH) {
     failUnbounded({ depth, max: MAX_SQL_JSON_SANITIZE_DEPTH });
   }
@@ -195,6 +248,9 @@ function sanitizeJsonValue(value: unknown, context: SanitizeContext, depth: numb
 
   if (typeof value === "string") {
     rejectUnsupportedNul(value, context);
+    // Known source scalars remain complete; visits, depth, keys, accessors and
+    // NUL validation still apply. Only their bytes bypass the metadata budget.
+    if (sourcePath === "source-text") return value;
     // Strips NUL characters: PostgreSQL/PGlite jsonb rejects the `\u0000`
     // escape JSON.stringify emits for them. Nothing else needs rewriting here —
     // the value is serialized with JSON.stringify, which already escapes
@@ -203,7 +259,11 @@ function sanitizeJsonValue(value: unknown, context: SanitizeContext, depth: numb
     // write/read round-trip.
     chargeBytes(
       context,
-      measureJsonStringBytes(value, MAX_SQL_JSON_SANITIZE_STRING_BYTES, "string-bytes"),
+      measureJsonStringBytes(
+        value,
+        context.maxBytes ?? MAX_SQL_JSON_SANITIZE_STRING_BYTES,
+        "string-bytes"
+      ),
       "string"
     );
     return value.includes(NUL) ? value.replaceAll(NUL, "") : value;
@@ -294,7 +354,14 @@ function sanitizeJsonValue(value: unknown, context: SanitizeContext, depth: numb
           if (descriptor && ("get" in descriptor || "set" in descriptor)) {
             failUnbounded({ reason: "array-accessor", index });
           }
-          result.push(sanitizeJsonValue(descriptor?.value, context, depth + 1));
+          result.push(
+            sanitizeJsonValue(
+              descriptor?.value,
+              context,
+              depth + 1,
+              sourcePath === "attachments" ? "attachment" : undefined
+            )
+          );
         }
         return result;
       }
@@ -330,7 +397,21 @@ function sanitizeJsonValue(value: unknown, context: SanitizeContext, depth: numb
         );
         serializedProperties += 1;
         const sanitizedKey = key.includes(NUL) ? key.replaceAll(NUL, "") : key;
-        const sanitizedValue = sanitizeJsonValue(descriptor.value, context, depth + 1);
+        // Exempt only declared source paths: document.text, memory content.text,
+        // and memory content.attachments[array index].text. A nested metadata
+        // property called text or an object posing as the attachments array
+        // remains subject to the generic scalar and aggregate byte limits.
+        const sourceText =
+          key === "text" &&
+          ((context.documentText && depth === 0) ||
+            sourcePath === "memory-content" ||
+            sourcePath === "attachment");
+        const nextPath: SourceTextPath | undefined = sourceText
+          ? "source-text"
+          : sourcePath === "memory-content" && key === "attachments"
+            ? "attachments"
+            : undefined;
+        const sanitizedValue = sanitizeJsonValue(descriptor.value, context, depth + 1, nextPath);
         if (sanitizedKey === "toJSON" && typeof sanitizedValue === "function") {
           failUnbounded({ reason: "custom-toJSON" });
         }

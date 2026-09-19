@@ -34,6 +34,7 @@ import {
   isLocalInferenceAsrReady,
   transcribeLocalInferenceWav,
 } from "../local-asr-transcribe";
+import type { VoicePlaybackEvidenceEvent } from "../voice-playback-evidence";
 import { now, sleep } from "./timing";
 
 export type TurnStatus = "pass" | "fail" | "skipped";
@@ -90,6 +91,8 @@ export interface VoiceWorkbenchTurnReport {
   /** Agent reply text ("" when the agent did not respond / send was skipped). */
   reply: string;
   durationMs: number;
+  /** Present only when the caller explicitly exercised the buffered playback hook. */
+  playbackEvidence?: VoicePlaybackEvidenceEvent[];
   detail: Record<string, string | number | boolean>;
   error?: string;
 }
@@ -122,6 +125,12 @@ export interface VoiceWorkbenchReport {
 }
 
 export interface VoiceWorkbenchOptions {
+  /** Opt-in real playback consumer; the default TTS gate only fetches and decodes. */
+  playReply?: (
+    reply: string,
+    turnIndex: number,
+    messageId: string,
+  ) => Promise<VoicePlaybackEvidenceEvent[]>;
   scenario: WorkbenchScenario;
   platform: VoiceWorkbenchPlatform;
   /**
@@ -383,12 +392,71 @@ async function runTurn(
   let ttsDetail: Record<string, number> = {};
   let ttsOk = true;
   let ttsError: string | undefined;
+  let playbackEvidence: VoicePlaybackEvidenceEvent[] | undefined;
   if (responded) {
     try {
-      const tts = await synthesizeReply(opts, reply);
-      ttsDetail = tts.detail;
-      ttsOk = tts.ok;
-      ttsError = tts.error;
+      if (opts.playReply) {
+        const messageId = `workbench:${opts.scenario.id}:${index}:${crypto.randomUUID()}`;
+        playbackEvidence = await opts.playReply(reply, index, messageId);
+        const queued = playbackEvidence.filter(
+          (event) => event.kind === "queued",
+        );
+        const started = playbackEvidence.filter(
+          (event) => event.kind === "source-started",
+        );
+        const terminals = playbackEvidence.filter(
+          (event) => event.kind === "terminal",
+        );
+        const selectedBuffer = playbackEvidence.find(
+          (event) =>
+            event.kind === "decoded" && event.bufferId === started[0]?.bufferId,
+        );
+        const encoded = playbackEvidence.filter(
+          (event) => event.kind === "encoded",
+        );
+        const taskId = queued[0]?.taskId;
+        let peak = 0;
+        let sumSquares = 0;
+        let sampleCount = 0;
+        if (selectedBuffer?.kind === "decoded") {
+          for (const channel of selectedBuffer.channels)
+            for (const sample of channel) {
+              peak = Math.max(peak, Math.abs(sample));
+              sumSquares += sample * sample;
+              sampleCount += 1;
+            }
+        }
+        ttsDetail = {
+          ttsPeak: peak,
+          ttsRms: sampleCount > 0 ? Math.sqrt(sumSquares / sampleCount) : 0,
+        };
+        ttsOk =
+          queued.length === 1 &&
+          queued[0]?.telemetry?.messageId === messageId &&
+          playbackEvidence.every((event) => event.taskId === taskId) &&
+          started.length === 1 &&
+          terminals.length === 1 &&
+          terminals[0]?.outcome === "source-ended" &&
+          started[0] !== undefined &&
+          selectedBuffer !== undefined &&
+          playbackEvidence[0] === queued[0] &&
+          playbackEvidence.indexOf(started[0]) >
+            playbackEvidence.indexOf(selectedBuffer) &&
+          playbackEvidence.at(-1) === terminals[0] &&
+          encoded.length === 1 &&
+          encoded[0] !== undefined &&
+          playbackEvidence.indexOf(encoded[0]) <
+            playbackEvidence.indexOf(selectedBuffer) &&
+          peak >= 0.02 &&
+          ttsDetail.ttsRms >= 1e-4;
+        if (!ttsOk)
+          ttsError = `Buffered playback provenance did not confirm this turn (${terminals[0]?.outcome ?? "unavailable"})`;
+      } else {
+        const tts = await synthesizeReply(opts, reply);
+        ttsDetail = tts.detail;
+        ttsOk = tts.ok;
+        ttsError = tts.error;
+      }
     } catch (error) {
       // error-policy:J1 stage boundary — failure is recorded on the turn row
       ttsOk = false;
@@ -411,6 +479,7 @@ async function runTurn(
     ttsOk &&
     (!speakerAttributionRan || speakerLabelOk);
   const detail: Record<string, string | number | boolean> = {
+    ttsObservation: opts.playReply ? "buffered-playback" : "decode-only",
     transcript,
     expectedTranscript,
     wer: Number(wer.toFixed(3)),
@@ -433,6 +502,7 @@ async function runTurn(
   if (turn.expectedEntity) detail.expectedEntity = turn.expectedEntity;
 
   return {
+    ...(playbackEvidence ? { playbackEvidence } : {}),
     index,
     speaker: turn.speaker,
     expectedSpeakerLabel,

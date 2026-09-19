@@ -319,7 +319,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       });
       expect(provider.stopForReplacement).not.toHaveBeenCalled();
       expect(writes).toHaveLength(1);
-      expect(provision).toHaveBeenCalledWith(AGENT, ORG);
+      expect(provision).toHaveBeenCalledWith(AGENT, ORG, undefined);
       expect(recoverCredential).toHaveBeenCalledWith(AGENT, ORG);
     } finally {
       sandboxTransactions.implementation = null;
@@ -521,6 +521,14 @@ describe("replacement lifecycle teardown is absence-proof", () => {
   // sleep and delete. These tests drive the real gate with a mocked bridge
   // capture and repository fixtures.
   type SuspendGateSvc = {
+    executeSleep(
+      agentId: string,
+      orgId: string,
+    ): Promise<{
+      success: boolean;
+      containerRemoved: boolean;
+      error?: string;
+    }>;
     executeSuspend(
       agentId: string,
       orgId: string,
@@ -596,7 +604,20 @@ describe("replacement lifecycle teardown is absence-proof", () => {
         false,
       ),
     ];
-    return { svc, restore: () => spies.forEach((s) => s.mockRestore()) };
+    const previousTransaction = sandboxTransactions.implementation;
+    sandboxTransactions.implementation = async (fn) =>
+      fn({
+        execute: async () => {
+          throw new Error("Unexpected write before the backup gate");
+        },
+      });
+    return {
+      svc,
+      restore: () => {
+        sandboxTransactions.implementation = previousTransaction;
+        spies.forEach((s) => s.mockRestore());
+      },
+    };
   }
 
   function stoppableProvider(): SandboxProvider {
@@ -697,7 +718,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     }
   });
 
-  test("a no-snapshot-endpoint image suspends only on a proven existing backup", async () => {
+  test("a no-snapshot-endpoint image refuses to stop even with a verified backup", async () => {
     const { SNAPSHOT_ENDPOINT_UNSUPPORTED } = await import("../eliza-sandbox.ts?actual");
     const rec = bridgedRunningRow();
     const provider = stoppableProvider();
@@ -725,13 +746,12 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     try {
       const result = await svc.executeSuspend(AGENT, ORG, SUSPEND_JOB);
       expect(result).toEqual({
-        success: true,
-        containerStopped: true,
-        backupId: "backup-proven",
+        success: false,
+        containerStopped: false,
+        error: `Refusing to stop without a current backup: ${SNAPSHOT_ENDPOINT_UNSUPPORTED}`,
       });
-      expect(provider.stopForReplacement).toHaveBeenCalledWith(rec.sandbox_id);
-      const rendered = new PgDialect().sqlToQuery(writes[0]).sql;
-      expect(rendered).not.toContain("last_backup_at");
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+      expect(writes).toHaveLength(0);
     } finally {
       sandboxTransactions.implementation = null;
       fetchSpy.mockRestore();
@@ -756,7 +776,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       expect(result).toEqual({
         success: false,
         containerStopped: false,
-        error: "Unable to create or find a durable backup before stopping; agent was left running.",
+        error: `Refusing to stop without a current backup: ${SNAPSHOT_ENDPOINT_UNSUPPORTED}`,
       });
       expect(provider.stopForReplacement).not.toHaveBeenCalled();
     } finally {
@@ -766,46 +786,53 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     }
   });
 
-  test("capture failure falls back to a proven restorable existing backup", async () => {
-    const rec = bridgedRunningRow();
-    const provider = stoppableProvider();
-    const { svc, restore } = await suspendSvc(rec, provider);
-    const fetchSpy = spyOn(svc, "fetchSnapshotState").mockRejectedValue(
-      new Error("bridge reset mid-stream"),
-    );
-    const latestSpy = spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockResolvedValue({
-      id: "backup-proven",
-      sandbox_record_id: rec.id,
-      snapshot_type: "scheduled",
-      created_at: new Date(),
-      verification_status: "verified",
-      verified_at: new Date(),
-      verification_error: null,
-    } as StoredAgentSandboxBackup);
-    const writes: SQL[] = [];
-    sandboxTransactions.implementation = async (fn) =>
-      fn({
-        execute: async (query) => {
-          writes.push(query as SQL);
-          return { rows: [] };
-        },
-      });
-    try {
-      const result = await svc.executeSuspend(AGENT, ORG, SUSPEND_JOB);
-      expect(result).toEqual({
-        success: true,
-        containerStopped: true,
-        backupId: "backup-proven",
-      });
-      const rendered = new PgDialect().sqlToQuery(writes[0]).sql;
-      expect(rendered).not.toContain("last_backup_at");
-    } finally {
-      sandboxTransactions.implementation = null;
-      fetchSpy.mockRestore();
-      latestSpy.mockRestore();
-      restore();
-    }
-  });
+  test.each(["suspend", "sleep"] as const)(
+    "%s capture failure refuses to stop even when an older backup is verified",
+    async (operation) => {
+      const rec = bridgedRunningRow();
+      const provider = stoppableProvider();
+      const { svc, restore } = await suspendSvc(rec, provider);
+      const fetchSpy = spyOn(svc, "fetchSnapshotState").mockRejectedValue(
+        new Error("Snapshot fetch failed: HTTP 500 Snapshot failed"),
+      );
+      const latestSpy = spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockResolvedValue({
+        id: "backup-proven",
+        sandbox_record_id: rec.id,
+        snapshot_type: "scheduled",
+        created_at: new Date(),
+        verification_status: "verified",
+        verified_at: new Date(),
+        verification_error: null,
+      } as StoredAgentSandboxBackup);
+      const writes: SQL[] = [];
+      sandboxTransactions.implementation = async (fn) =>
+        fn({
+          execute: async (query) => {
+            writes.push(query as SQL);
+            return { rows: [] };
+          },
+        });
+      try {
+        const result =
+          operation === "suspend"
+            ? await svc.executeSuspend(AGENT, ORG, SUSPEND_JOB)
+            : await svc.executeSleep(AGENT, ORG);
+        expect(result).toEqual({
+          success: false,
+          ...(operation === "suspend" ? { containerStopped: false } : { containerRemoved: false }),
+          error:
+            "Refusing to stop without a current backup: Snapshot fetch failed: HTTP 500 Snapshot failed",
+        });
+        expect(provider.stopForReplacement).not.toHaveBeenCalled();
+        expect(writes).toHaveLength(0);
+      } finally {
+        sandboxTransactions.implementation = null;
+        fetchSpy.mockRestore();
+        latestSpy.mockRestore();
+        restore();
+      }
+    },
+  );
 
   test("suspend refuses when no durable backup exists and none can be captured", async () => {
     const rec = claimedPendingRow(); // running, no bridge to capture from
@@ -819,7 +846,8 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       expect(result).toEqual({
         success: false,
         containerStopped: false,
-        error: "Unable to create or find a durable backup before stopping; agent was left running.",
+        error:
+          "Refusing to stop without a current backup: the agent has no reachable bridge to capture from",
       });
       expect(provider.stopForReplacement).not.toHaveBeenCalled();
     } finally {
@@ -1059,6 +1087,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
         AGENT,
         ORG,
         expect.any(Date),
+        "billing_recovery",
       );
       expect(updates).toContainEqual(
         expect.objectContaining({ status: "superseded", last_error: "billing_recovered" }),

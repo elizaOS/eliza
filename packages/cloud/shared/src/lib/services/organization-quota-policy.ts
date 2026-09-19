@@ -6,6 +6,7 @@ import { readPrimaryOrganizationSubscription } from "../../db/repositories/accou
 import { deriveSubscriptionEntitlementValues } from "../../db/repositories/subscription-entitlements";
 import {
   billingSubscriptionRevisions,
+  billingSubscriptions,
   organizationSubscriptionAuthorities,
 } from "../../db/schemas/billing-subscriptions";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
@@ -131,42 +132,71 @@ export async function readOrganizationQuotaPolicyInTransaction(
   organizationId: string,
   observedAt?: Date,
 ): Promise<OrganizationQuotaPolicy> {
-  const [org] = await tx
+  // These rows are unique per organization. One statement keeps the policy
+  // inputs together without paying a separate database round trip for each.
+  const [inputs] = await tx
     .select({
-      balance: organizations.credit_balance,
-      revision: sql<string>`${organizations.balance_revision}::text`,
-      settings: organizations.settings,
+      // Legacy policy has no expiry boundary to recheck after further reads.
+      // Observe its database clock with the policy inputs, not another round trip.
+      legacyObservedAt: sql<Date>`clock_timestamp()`,
+      org: {
+        balance: organizations.credit_balance,
+        revision: sql<string>`${organizations.balance_revision}::text`,
+        settings: organizations.settings,
+      },
+      association: organizationSubscriptionAuthorities,
+      override: {
+        // The row can exist with null RPM fields; retain its non-null join identity.
+        id: orgRateLimitOverrides.id,
+        completions_rpm: orgRateLimitOverrides.completions_rpm,
+        embeddings_rpm: orgRateLimitOverrides.embeddings_rpm,
+        standard_rpm: orgRateLimitOverrides.standard_rpm,
+        strict_rpm: orgRateLimitOverrides.strict_rpm,
+      },
+      config: { settings: organizationConfig.settings },
+      storage: {
+        bytes_limit: orgStorageQuota.bytes_limit,
+        limit_override_authorized: orgStorageQuota.limit_override_authorized,
+      },
+      // Correlated selectors preserve one policy row per organization. The
+      // legacy branch still rejects any persisted subscription, including a
+      // terminal one, and uses the same qualifying credits as the rate policy.
+      legacyHasSubscription: sql<
+        boolean | null
+      >`CASE WHEN ${organizationSubscriptionAuthorities.state} = 'none' THEN EXISTS (
+        SELECT 1 FROM ${billingSubscriptions}
+        WHERE ${billingSubscriptions.organization_id} = ${organizations.id}
+      ) END`,
+      legacyCreditTotal: sql<
+        string | null
+      >`CASE WHEN ${organizationSubscriptionAuthorities.state} = 'none' THEN (
+        SELECT COALESCE(SUM(${creditTransactions.amount}),0)::text
+        FROM ${creditTransactions}
+        WHERE ${creditTransactions.organization_id} = ${organizations.id}
+          AND ${creditTransactions.type} = 'credit'
+          AND COALESCE(${creditTransactions.metadata}->>'type','') NOT IN (${sql.join(
+            ORG_TIER_EXCLUDED_CREDIT_METADATA_TYPES.map((value) => sql`${value}`),
+            sql`,`,
+          )})
+      ) END`,
     })
     .from(organizations)
+    .leftJoin(
+      organizationSubscriptionAuthorities,
+      eq(organizationSubscriptionAuthorities.organization_id, organizations.id),
+    )
+    .leftJoin(orgRateLimitOverrides, eq(orgRateLimitOverrides.organization_id, organizations.id))
+    .leftJoin(organizationConfig, eq(organizationConfig.organization_id, organizations.id))
+    .leftJoin(orgStorageQuota, eq(orgStorageQuota.organization_id, organizations.id))
     .where(eq(organizations.id, organizationId));
-  const [association] = await tx
-    .select()
-    .from(organizationSubscriptionAuthorities)
-    .where(eq(organizationSubscriptionAuthorities.organization_id, organizationId));
-  if (!org || !association || association.state === "unavailable")
+  if (!inputs || !inputs.association || inputs.association.state === "unavailable")
     return unavailable(organizationId, "missing_account_authority");
+  const { org, association, override, config, storage } = inputs;
   const balance = Number(org.balance);
   const validBalance =
     typeof org.balance === "string" &&
     /^[+-]?(?:\d+|\d*\.\d+)$/.test(org.balance.trim()) &&
     Number.isFinite(balance);
-  const [override] = await tx
-    .select({
-      completions_rpm: orgRateLimitOverrides.completions_rpm,
-      embeddings_rpm: orgRateLimitOverrides.embeddings_rpm,
-      standard_rpm: orgRateLimitOverrides.standard_rpm,
-      strict_rpm: orgRateLimitOverrides.strict_rpm,
-    })
-    .from(orgRateLimitOverrides)
-    .where(eq(orgRateLimitOverrides.organization_id, organizationId));
-  const [config] = await tx
-    .select({ settings: organizationConfig.settings })
-    .from(organizationConfig)
-    .where(eq(organizationConfig.organization_id, organizationId));
-  const [storage] = await tx
-    .select()
-    .from(orgStorageQuota)
-    .where(eq(orgStorageQuota.organization_id, organizationId));
   const base = {
     overrides: {
       completionsRpm: override?.completions_rpm ?? null,
@@ -179,29 +209,12 @@ export async function readOrganizationQuotaPolicyInTransaction(
       : { status: "unavailable" as const, code: "invalid_balance" },
   };
   if (association.state === "none") {
-    const subscription = await readPrimaryOrganizationSubscription(tx, organizationId);
-    if (subscription.state !== "none")
+    if (inputs.legacyHasSubscription !== false)
       return unavailable(organizationId, "legacy_association_conflict");
-    const [credits] = await tx
-      .select({ total: sql<string>`COALESCE(SUM(${creditTransactions.amount}),0)::text` })
-      .from(creditTransactions)
-      .where(
-        and(
-          eq(creditTransactions.organization_id, organizationId),
-          eq(creditTransactions.type, "credit"),
-          sql`COALESCE(${creditTransactions.metadata}->>'type','') NOT IN (${sql.join(
-            ORG_TIER_EXCLUDED_CREDIT_METADATA_TYPES.map((value) => sql`${value}`),
-            sql`,`,
-          )})`,
-        ),
-      );
-    if (!credits) return unavailable(organizationId, "missing_legacy_selector");
-    const [clock] = await tx
-      .select({ now: sql<Date>`clock_timestamp()` })
-      .from(organizations)
-      .where(eq(organizations.id, organizationId));
-    if (!clock) return unavailable(organizationId, "missing_database_clock");
-    const now = observedAt ?? new Date(clock.now);
+    if (inputs.legacyCreditTotal === null)
+      return unavailable(organizationId, "missing_legacy_selector");
+    const creditTotal = inputs.legacyCreditTotal;
+    const now = observedAt ?? new Date(inputs.legacyObservedAt);
     return {
       ...base,
       observedAt: now.toISOString(),
@@ -216,9 +229,11 @@ export async function readOrganizationQuotaPolicyInTransaction(
         effectiveUntil: null,
       },
       tier: observe(
-        () => resolveOrgTierFromSourceValues(organizationId, credits.total, override).tierData,
+        () =>
+          resolveOrgTierFromSourceValues(organizationId, creditTotal, override ?? undefined)
+            .tierData,
       ),
-      tierSourceCreditTotal: credits.total,
+      tierSourceCreditTotal: creditTotal,
       subscriptionFunded: false,
       limits: {
         characters: resource(() =>
