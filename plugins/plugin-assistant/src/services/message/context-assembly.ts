@@ -14,7 +14,6 @@ import type {
   ToolDefinition,
 } from "@elizaos/core";
 import {
-  satisfiesRoleGate,
   actionToTool,
   buildCanonicalSystemPrompt,
   buildCharacterStyleDirections,
@@ -22,6 +21,7 @@ import {
   canActionRun,
   createContextObject,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
+  satisfiesRoleGate,
 } from "@elizaos/core";
 import { v4 } from "uuid";
 import {
