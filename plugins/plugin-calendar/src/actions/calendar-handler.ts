@@ -1163,6 +1163,8 @@ export function rejectedArgumentForCalendarServiceError(
   code: string | undefined,
 ): string | undefined {
   switch (code) {
+    case "CALENDAR_TARGET_SELECTOR_INVALID":
+      return "target";
     case "ELIZA_CALENDAR_ATTENDEE_NOTIFICATIONS_UNSUPPORTED":
       return "details.notifyAttendees";
     case "ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED":
@@ -1176,7 +1178,10 @@ function buildCalendarServiceErrorFallback(
   error: CalendarServiceError,
   intent: string,
 ): string {
-  if (error.code === "CALENDAR_SEARCH_QUERY_REQUIRED") {
+  if (
+    error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" ||
+    error.code === "CALENDAR_TARGET_SELECTOR_INVALID"
+  ) {
     return error.message;
   }
   const normalized = normalizeText(error.message);
@@ -1656,9 +1661,10 @@ function parseRelativeDayOffset(text: string): number | null {
 export function parseExplicitLocalDate(
   value: string,
   timeZone: string,
+  now = new Date(),
 ): { year: number; month: number; day: number } | null {
   const normalized = normalizeText(value);
-  const localToday = getZonedDateParts(new Date(), timeZone);
+  const localToday = getZonedDateParts(now, timeZone);
 
   const isoMatch = normalized.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
   if (isoMatch) {
@@ -2557,11 +2563,12 @@ const DATE_SEGMENT_SPLIT_PATTERN =
 function distinctStatedLocalDates(
   text: string,
   timeZone: string,
+  now = new Date(),
 ): LocalDateOnly[] {
   const dates: LocalDateOnly[] = [];
   for (const segment of text.split(DATE_SEGMENT_SPLIT_PATTERN)) {
     if (segment.trim().length === 0) continue;
-    const parsed = parseExplicitLocalDate(segment, timeZone);
+    const parsed = parseExplicitLocalDate(segment, timeZone, now);
     if (parsed && !dates.some((d) => compareLocalDates(d, parsed) === 0)) {
       dates.push(parsed);
     }
@@ -2837,11 +2844,11 @@ function verifyAppliedCalendarMutationOrThrow(
     }
   }
 
-  const scopeDates = distinctStatedLocalDates(scope, timeZone);
+  const scopeDates = distinctStatedLocalDates(scope, timeZone, now);
   const messageDates =
     scope === requestText
       ? scopeDates
-      : distinctStatedLocalDates(requestText, timeZone);
+      : distinctStatedLocalDates(requestText, timeZone, now);
   if (scopeDates.length > 1) return null;
   if (scopeDates.length === 0 && messageDates.length > 1) return null;
   const statedDay = scopeDates[0] ?? messageDates[0];
@@ -2910,12 +2917,18 @@ function resolveStatedCreateDate(args: {
   currentMessage: string;
   intent: string;
   timeZone: string;
+  now: Date;
 }): LocalDateOnly | null {
   const messageDates = distinctStatedLocalDates(
     args.currentMessage,
     args.timeZone,
+    args.now,
   );
-  const intentDate = parseExplicitLocalDate(args.intent, args.timeZone);
+  const intentDate = parseExplicitLocalDate(
+    args.intent,
+    args.timeZone,
+    args.now,
+  );
   if (messageDates.length >= 2) {
     return intentDate ?? messageDates[0] ?? null;
   }
@@ -3037,6 +3050,7 @@ function applyStatedDateToCreateRequest(args: {
   currentMessage: string;
   intent: string;
   timeZone: string;
+  now: Date;
 }): { corrected: boolean; fromLocalDate?: string; toLocalDate?: string } {
   const startAtIso = args.request.startAt;
   if (!startAtIso) {
@@ -3050,6 +3064,7 @@ function applyStatedDateToCreateRequest(args: {
     currentMessage: args.currentMessage,
     intent: args.intent,
     timeZone: args.timeZone,
+    now: args.now,
   });
   if (!stated) {
     return { corrected: false };
@@ -3120,6 +3135,7 @@ function suggestCreateEventStartAt(args: {
   intent: string;
   title: string;
   calendarContext: CreateEventCalendarContext | null;
+  now: Date;
 }): { startAt: string; timeZone: string } | null {
   if (!args.calendarContext) {
     return null;
@@ -3129,6 +3145,7 @@ function suggestCreateEventStartAt(args: {
     currentMessage: args.currentMessage,
     intent: args.intent,
     timeZone: args.calendarContext.calendarTimeZone,
+    now: args.now,
   });
   if (!targetDate) {
     return null;
@@ -4102,10 +4119,8 @@ async function inferCreateEventDetails(
 ): Promise<Record<string, unknown>> {
   const recentConversation = formatCreateEventRecentConversation(state);
   const currentMessage = messageText(message).trim();
-  // Anchor the LLM in the present so relative phrases ("tomorrow", "next
-  // friday", "april 15") and explicit-but-yearless dates resolve to the
-  // correct ISO datetime instead of guessing or returning empty.
-  const now = new Date();
+  // Interpretation shares the request clock with date validation and receipts.
+  const now = new Date(calendarMessageObservedAt(message));
   const nowIso = now.toISOString();
   const timeZone = fallbackTimeZone;
   const calendarTimeZone =
@@ -5155,7 +5170,7 @@ const calendarAction: CalendarHandlerAction = {
       | CalendarActionParams
       | undefined;
     const suppliedParams = rawParams ?? ({} as CalendarActionParams);
-    // Promoted updates identify a target explicitly; legacy umbrella lookup
+    // Promoted mutations identify a target explicitly; legacy umbrella lookup
     // fields remain supported without an extra target-inference model call.
     const target = suppliedParams.target;
     const params: CalendarActionParams =
@@ -5436,6 +5451,30 @@ const calendarAction: CalendarHandlerAction = {
     }
 
     try {
+      if (
+        (subaction === "update_event" || subaction === "delete_event") &&
+        (suppliedParams.target !== undefined ||
+          suppliedParams.targetKind !== undefined)
+      ) {
+        const suppliedEventId = detailString(
+          normalizeCalendarDetails(suppliedParams.details, []),
+          "eventId",
+        );
+        if (
+          typeof target !== "string" ||
+          !target.trim() ||
+          !["query", "eventId"].includes(suppliedParams.targetKind ?? "") ||
+          (suppliedEventId &&
+            (suppliedParams.targetKind !== "eventId" ||
+              suppliedEventId !== target.trim()))
+        ) {
+          throw new CalendarServiceError(
+            400,
+            "The event target selectors are missing or contradictory. Supply targetKind=query and the user's event title/source constraints without details.eventId, or targetKind=eventId and an exact ID from a Calendar result. No calendar read or change occurred; do not invent or substitute an ID.",
+            "CALENDAR_TARGET_SELECTOR_INVALID",
+          );
+        }
+      }
       // A typed search is the planner's selected operation. Missing filters
       // belong back at that boundary, not in another full-history model call
       // that can silently reinterpret an agenda range as a title search.
@@ -5520,6 +5559,7 @@ const calendarAction: CalendarHandlerAction = {
           currentMessage: messageText(message).trim(),
           intent,
           timeZone: createTimeZone,
+          now: new Date(calendarMessageObservedAt(message)),
         });
         const travelIntent = createEventBuild.travelIntent;
         if (!title) {
@@ -5558,6 +5598,7 @@ const calendarAction: CalendarHandlerAction = {
                 intent,
                 title,
                 calendarContext,
+                now: new Date(calendarMessageObservedAt(message)),
               })
             : null;
           const fallback = suggestedStartAt
@@ -6668,8 +6709,11 @@ const calendarAction: CalendarHandlerAction = {
       // events" returns "no events today" even when the calendar has
       // dozens of upcoming items. We apply this regardless of whether the
       // chat LLM picked feed or search_events because both subactions go
+      // Typed searches own their date filters. The complete message may also
+      // contain a destination date for a separate move/proposal; borrowing it
+      // here can hide the very event being looked up.
       const baseResolved = resolveCalendarReadWindow(
-        intent,
+        explicitSubaction === "search_events" ? "" : intent,
         details,
         subaction === "search_events",
         llmPlan,
@@ -6990,7 +7034,8 @@ const calendarAction: CalendarHandlerAction = {
           data: {
             // This typed preflight rejection performed no read or effect. Keep
             // its receipt and evaluation while allowing a corrected plan to finish.
-            ...((error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" &&
+            ...(error.code === "CALENDAR_TARGET_SELECTOR_INVALID" ||
+            (error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" &&
               explicitSubaction === "search_events" &&
               searchQueries.length === 0) ||
             ((subaction === "feed" || subaction === "search_events") &&
@@ -7016,9 +7061,10 @@ const calendarAction: CalendarHandlerAction = {
             code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
             retryable: error.status >= 500,
             acceptance:
-              subaction === "create_event" ||
-              subaction === "update_event" ||
-              subaction === "delete_event"
+              error.code !== "CALENDAR_TARGET_SELECTOR_INVALID" &&
+              (subaction === "create_event" ||
+                subaction === "update_event" ||
+                subaction === "delete_event")
                 ? "unknown"
                 : "rejected",
           }),

@@ -1906,14 +1906,16 @@ export const calendarAction: Action & {
     },
     {
       name: "windowStart",
-      description: "propose_times window earliest start. ISO-8601.",
+      description:
+        "propose_times earliest local clock, YYYY-MM-DDTHH:mm:ss without offset or Z. Code applies timeZone; do not convert to UTC.",
       required: false,
       subactions: ["propose_times"],
       schema: { type: "string" as const },
     },
     {
       name: "windowEnd",
-      description: "propose_times window latest end. ISO-8601.",
+      description:
+        "propose_times latest local clock, YYYY-MM-DDTHH:mm:ss without offset or Z. Code applies timeZone; do not convert to UTC.",
       required: false,
       subactions: ["propose_times"],
       schema: { type: "string" as const },
@@ -1947,7 +1949,8 @@ export const calendarAction: Action & {
     },
     {
       name: "timeZone",
-      description: "IANA timeZone for update_preferences hours.",
+      description:
+        "IANA timezone for local proposal bounds and meeting preference hours.",
       required: false,
       subactions: ["check_availability", "propose_times", "update_preferences"],
       schema: { type: "string" as const },
@@ -2140,8 +2143,26 @@ export const calendarAction: Action & {
   ] as ActionExample[][],
 };
 
-/** Author the read contract at the domain boundary; promotion still owns
- * discriminator pinning, delegation and the inherited authorization gates. */
+/** Updates and deletions share one explicit event selector; legacy umbrella
+ * parameters remain available for compatible domain callers. */
+const calendarMutationTargetParameters: NonNullable<Action["parameters"]> = [
+  ...(calendarAction.parameters ?? []),
+  {
+    name: "targetKind",
+    required: true,
+    description:
+      "How target identifies the existing event: query for its current title/subject, eventId for an exact externalId copied from a Calendar result. Do not supply a separate details.eventId for a query target.",
+    schema: { type: "string", enum: ["query", "eventId"] },
+  },
+  {
+    name: "target",
+    required: true,
+    description:
+      "Existing event title/subject with any user-specified source date, or exact externalId, according to targetKind. Preserve source constraints from the dialogue. Never include the destination date/time, replacement title, or a JSON object.",
+    schema: { type: "string", minLength: 1 },
+  },
+];
+
 export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
   overrides: {
     create_event: {
@@ -2163,29 +2184,18 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
         "Read free/busy for one interval; never moves or creates events. Supply the required interval object with startAt plus either durationMinutes or endAt. When the user gives a duration, pass it directly in durationMinutes and omit endAt; code calculates the end. Use the requested local clock with its ISO offset, without also converting the clock to UTC. If inputs are rejected, correct the call from the original request; invalid arguments say nothing about calendar availability or working hours.",
     },
     update_event: {
-      parameters: [
-        ...(calendarAction.parameters ?? []),
-        {
-          name: "targetKind",
-          required: true,
-          description:
-            "How target identifies the existing event: query for its current title/subject, eventId for an exact externalId from a Calendar result.",
-          schema: { type: "string", enum: ["query", "eventId"] },
-        },
-        {
-          name: "target",
-          required: true,
-          description:
-            "Existing event title/subject with any user-specified source date, or exact externalId, according to targetKind. Preserve source constraints from the dialogue. Never include the destination date/time, replacement title, or a JSON object.",
-          schema: { type: "string", minLength: 1 },
-        },
-      ],
+      parameters: calendarMutationTargetParameters,
       description:
         "Apply a specified edit to an existing event. For a morning/afternoon window without an accepted clock time, use CALENDAR_PROPOSE_TIMES first to read current openings; this write tool is for the accepted time or another specified field change. Supply targetKind and target in this call, including follow-ups accepting a suggested time. No separate search is needed when the event is uniquely identified by query. Time changes check the proposed slot for conflicts before writing, excluding the event itself; conflicts or unknown availability pause the move. Use this tool directly for an authorized move conditional on the slot being free. title/details.newTitle are replacement names, not the target.",
     },
+    delete_event: {
+      parameters: calendarMutationTargetParameters,
+      description:
+        "Delete the authorized existing event identified by targetKind and target. A query target resolves the current event within this action; a separate search is unnecessary for a unique title. An eventId target must be copied from a Calendar result. Missing or ambiguous matches never delete another event. Preserve any user-specified source date and recurring-event scope.",
+    },
     propose_times: {
       description:
-        "Read free slots without booking. Supply the requested date/window with explicit ISO offsets. For a move, supply duration.existingEventQuery to resolve the event and preserve its duration in this operation; no separate search is needed. An explicit new duration remains supported. Return choices for the user to accept before any write.",
+        "Read free slots without booking. Supply the requested date/window as local clocks without offsets or Z and the IANA timeZone; code converts to UTC. Morning spans 06:00 to 12:00 local, and meeting preferences further restrict the available slots. For a move, supply duration.existingEventQuery to resolve the event and preserve its duration in this operation; no separate search is needed. An explicit new duration remains supported. Return choices for the user to accept before any write.",
       parameters: calendarAction.parameters?.map((parameter) =>
         ["duration", "windowStart", "windowEnd"].includes(parameter.name)
           ? { ...parameter, required: true }

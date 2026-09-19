@@ -352,6 +352,46 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     },
   );
 
+  it.each([
+    { windowStart: "2027-02-30T09:00:00", windowEnd: "2027-03-01T12:00:00" },
+    { windowStart: "2027-03-14T02:30:00", windowEnd: "2027-03-14T12:00:00" },
+    {
+      windowStart: "2027-01-18T09:00:00−05:00",
+      windowEnd: "2027-01-18T12:00:00-05:00",
+    },
+    { windowStart: "2027-01-18T09:00:00-05:00", windowEnd: "not a date" },
+    {
+      windowStart: "2027-01-18T12:00:00-05:00",
+      windowEnd: "2027-01-18T09:00:00-05:00",
+    },
+    {
+      windowStart: "2027-01-18T09:00:00-05:00",
+      windowEnd: "2027-01-18T09:00:00-05:00",
+    },
+  ])(
+    "rejects an invalid supplied proposal window before reading the calendar: %j",
+    async (window) => {
+      const read = vi.spyOn(calendar, "getCalendarFeed");
+      const { result } = await invoke(
+        message(
+          "00000000-0000-0000-0000-000000009980",
+          "Offer January 18 morning slots.",
+        ),
+        { ...window, timeZone: "America/New_York", duration: { minutes: 15 } },
+        true,
+        "CALENDAR_PROPOSE_TIMES",
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("INVALID_WINDOW");
+      expect(result.effectReceipts?.[0]).toMatchObject({
+        outcome: "failed",
+        failure: { acceptance: "rejected" },
+      });
+      expect(result.data?.slots).toBeUndefined();
+      expect(read).not.toHaveBeenCalled();
+    },
+  );
+
   it("exposes missing interval inputs as a repairable call error, not a calendar finding", async () => {
     const result = await executePlannedToolCall(
       runtime,
@@ -518,48 +558,75 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     },
   );
 
-  it("proposes a new window using the existing event duration without changing it", async () => {
-    const { result } = await invoke(
-      message(
-        "00000000-0000-0000-0000-000000009971",
-        "Move School planning meeting to January 18, 2027 in the morning.",
-      ),
-      {
-        duration: { existingEventQuery: "School planning meeting" },
-        windowStart: "2027-01-18T09:00:00Z",
-        windowEnd: "2027-01-18T12:00:00Z",
-        timeZone: "UTC",
-      },
-      true,
-      "CALENDAR_PROPOSE_TIMES",
-    );
-    expect(result.success).toBe(true);
-    expect(result.data).toMatchObject({
-      durationMinutes: 60,
-      existingEvent: {
-        title: "School planning meeting",
-        startAt: EVENT_START,
-        endAt: EVENT_END,
-      },
-      slots: expect.arrayContaining([
-        expect.objectContaining({ durationMinutes: 60 }),
-      ]),
-      targetSnapshot: expect.any(Object),
-    });
-    const feed = await calendar.getCalendarFeed(
-      new URL("http://internal.local"),
-      {
-        timeMin: WINDOW_START,
-        timeMax: WINDOW_END,
-        includeHiddenCalendars: true,
-      },
-    );
-    expect(
-      feed.events.filter((event) => event.title === "School planning meeting"),
-    ).toEqual([
-      expect.objectContaining({ startAt: EVENT_START, endAt: EVENT_END }),
-    ]);
-  });
+  it.each([undefined, "planner"] as const)(
+    "proposes a new window and awaits selection without changing the event (reply owner %s)",
+    async (replyOwner) => {
+      if (replyOwner === "planner") {
+        // Exercise the real deferred renderer; the package's default collaborator
+        // always returns a standalone model reply and cannot represent this path.
+        const collaborator = await import("@elizaos/agent");
+        const { renderGroundedActionReply } = await import(
+          "../../../packages/agent/src/actions/grounded-action-reply.js"
+        );
+        vi.spyOn(collaborator, "renderGroundedActionReply").mockImplementation(
+          renderGroundedActionReply,
+        );
+      }
+      const { result } = await invoke(
+        message(
+          replyOwner === "planner"
+            ? "00000000-0000-0000-0000-000000009979"
+            : "00000000-0000-0000-0000-000000009971",
+          'Check which times are free January 18, 2027 in the morning for moving "School planning meeting". Do not move it yet.',
+        ),
+        {
+          duration: { existingEventQuery: "School planning meeting" },
+          windowStart: "2027-01-18T09:00:00",
+          windowEnd: "2027-01-18T12:00:00",
+          timeZone: "America/New_York",
+        },
+        replyOwner !== "planner",
+        "CALENDAR_PROPOSE_TIMES",
+        replyOwner,
+      );
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({
+        awaitingUserInput: true,
+        windowStart: "2027-01-18T14:00:00.000Z",
+        windowEnd: "2027-01-18T17:00:00.000Z",
+        durationMinutes: 60,
+        existingEvent: {
+          title: "School planning meeting",
+          startAt: EVENT_START,
+          endAt: EVENT_END,
+        },
+        existingEventDisplay: {
+          localStart: expect.stringMatching(/^Wed, Jul 29(?: at |, )1:00 PM$/),
+          localEnd: expect.stringMatching(/^Wed, Jul 29(?: at |, )2:00 PM$/),
+          timeZone: "America/New_York",
+        },
+        slots: expect.arrayContaining([
+          expect.objectContaining({ durationMinutes: 60 }),
+        ]),
+        targetSnapshot: expect.any(Object),
+      });
+      const feed = await calendar.getCalendarFeed(
+        new URL("http://internal.local"),
+        {
+          timeMin: WINDOW_START,
+          timeMax: WINDOW_END,
+          includeHiddenCalendars: true,
+        },
+      );
+      expect(
+        feed.events.filter(
+          (event) => event.title === "School planning meeting",
+        ),
+      ).toEqual([
+        expect.objectContaining({ startAt: EVENT_START, endAt: EVENT_END }),
+      ]);
+    },
+  );
 
   it("does not substitute a default duration for an unresolved existing event", async () => {
     const { result } = await invoke(

@@ -1,8 +1,8 @@
 # ganttnubs: context, latency and scenario QA
 
-Status: COMPLETE for the scoped Notes/Calendar text implementation, evidence audit and verified handoff at source `d502d12aad7`. The approximately-three-second performance target is NOT consistently met; current measured limits are disclosed, not certified away. Owner: Nubs. Updated: 2026-09-18.
+Status: final original-task browser checks and repository verification PASS. Saved local checkpoint: `codex/ganttnubs-calendar-contracts-20260918`. This pass fixes explicit deletion selectors, proposal completion, source/destination date scoping, local-time conversion and consistent request-date interpretation. The planner-only wording experiment was rejected and removed. Fresh proposal: 3 calls / 3.162s; deletion: 3 / 3.413s; Open Notes: 1 / 1.334s. The approximately-three-second target is NOT consistently met. Updated: 2026-09-18.
 
-The final acceptance at the end of GANTTNUBS-SCENARIO-RESULTS.md supersedes earlier checkpoint status notes below. No universal language, voice, external-provider, merge or release acceptance is claimed.
+The latest dated acceptance at the end of GANTTNUBS-SCENARIO-RESULTS.md supersedes earlier checkpoint status notes below. No universal language, voice, external-provider, merge or release acceptance is claimed.
 
 ## Current finish checklist
 

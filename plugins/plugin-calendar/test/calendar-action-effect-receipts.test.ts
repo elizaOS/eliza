@@ -100,13 +100,16 @@ function requireOrderedCalendarWindow(
   }
 }
 
-function message(text: string): Memory {
+function message(
+  text: string,
+  createdAt = Date.parse("2026-07-27T11:55:00.000Z"),
+): Memory {
   return {
     id: MESSAGE_ID,
     agentId: AGENT_ID,
     entityId: ENTITY_ID,
     roomId: ROOM_ID,
-    createdAt: Date.parse("2026-07-27T11:55:00.000Z"),
+    createdAt,
     content: { text, source: "test" },
   } as Memory;
 }
@@ -726,6 +729,7 @@ describe("CALENDAR effect receipt settlement", () => {
         service,
         actor: message(
           "Create a calendar event titled Full QA Event tomorrow at 4 PM for 30 minutes.",
+          Date.now(),
         ),
         parameters: {
           subaction: "create_event",
@@ -1026,10 +1030,9 @@ describe("CALENDAR effect receipt settlement", () => {
 
   it("uses timezone-grounded calendar extraction instead of a contradictory outer-planner instant", async () => {
     // The fixture's extraction says "tomorrow" is Aug 5, which is only
-    // coherent when today is Aug 4 in the event's zone. The stated-day guard
-    // now enforces exactly that coherence at the create boundary, so an
-    // unpinned clock would (correctly) snap the fixture's date to the real
-    // tomorrow and the assertion would drift with the wall clock.
+    // coherent when the request was authored on Aug 4 in the event's zone.
+    // Keep the fixture's authored and processing clocks consistent here;
+    // delayed-message coverage separately proves request-time interpretation.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-08-04T19:00:00.000Z"));
     try {
@@ -1090,7 +1093,7 @@ describe("CALENDAR effect receipt settlement", () => {
       const result = await execute({
         action,
         service,
-        actor: message("Add demo tomorrow at 9am."),
+        actor: message("Add demo tomorrow at 9am.", Date.now()),
         parameters: {
           subaction: "create_event",
           title: "Demo",

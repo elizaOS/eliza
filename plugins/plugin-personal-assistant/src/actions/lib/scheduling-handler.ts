@@ -77,7 +77,10 @@ import {
   withRequiredTransaction,
 } from "../../lifeops/sql.js";
 import { inferTimeZoneFromLocationText } from "../../lifeops/time/timezone.js";
-import { getZonedDateParts } from "../../lifeops/time.js";
+import {
+  buildUtcDateFromLocalParts,
+  getZonedDateParts,
+} from "../../lifeops/time.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
@@ -476,6 +479,35 @@ function parseOptionalIso(value: unknown): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+/** Local proposal bounds use the requested zone, never the server timezone. */
+function parseProposalBound(value: unknown, timeZone: string): Date | null {
+  if (typeof value !== "string") return null;
+  const local = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(
+    value,
+  );
+  if (!local) return parseOptionalIso(value);
+  const parts = {
+    year: Number(local[1]),
+    month: Number(local[2]),
+    day: Number(local[3]),
+    hour: Number(local[4]),
+    minute: Number(local[5]),
+    second: Number(local[6] ?? 0),
+  };
+  try {
+    const instant = buildUtcDateFromLocalParts(timeZone, parts);
+    const resolved = getZonedDateParts(instant, timeZone);
+    // Reject nonexistent clocks and invalid dates rather than shifting the window.
+    return Object.entries(parts).every(
+      ([key, value]) => resolved[key as keyof typeof resolved] === value,
+    )
+      ? instant
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function getParams<T>(options: HandlerOptions | undefined): Partial<T> {
   const params = (options as HandlerOptions | undefined)?.parameters as
     | Partial<T>
@@ -620,12 +652,33 @@ export async function runProposeMeetingTimesHandler(
       : DEFAULT_DAYS_LOOKAHEAD;
 
   const now = new Date();
-  const explicitStart = parseOptionalIso(params.windowStart);
-  const explicitEnd = parseOptionalIso(params.windowEnd);
+  const explicitStart = parseProposalBound(
+    params.windowStart,
+    effectivePreferences.timeZone,
+  );
+  const explicitEnd = parseProposalBound(
+    params.windowEnd,
+    effectivePreferences.timeZone,
+  );
   const windowStart = explicitStart ?? now;
   const windowEnd =
     explicitEnd ??
     new Date(windowStart.getTime() + daysAhead * 24 * 60 * 60_000);
+  if (
+    (params.windowStart !== undefined && !explicitStart) ||
+    (params.windowEnd !== undefined && !explicitEnd) ||
+    windowEnd <= windowStart
+  ) {
+    return respond({
+      success: false,
+      scenario: "scheduling_invalid_window",
+      error:
+        "INVALID_WINDOW: Supplied windowStart/windowEnd must be valid ISO timestamps, with the end after the start. No calendar read was performed. Correct the arguments from the user request before retrying.",
+      fallback:
+        "The proposed search window is invalid. Supply valid start and end timestamps in the requested timezone.",
+      data: { error: "INVALID_WINDOW" },
+    });
+  }
 
   const { LifeOpsService, LifeOpsServiceError } =
     await loadLifeOpsServiceModule();
@@ -666,7 +719,9 @@ export async function runProposeMeetingTimesHandler(
       action: "update",
       events: targetFeed.events,
       titleHint: existingEventQuery,
-      texts: [getMessageText(message)],
+      // This field identifies the current event. The proposal window and the
+      // surrounding request describe its destination, not its current date.
+      texts: [existingEventQuery],
       timeZone: effectivePreferences.timeZone,
     });
     if (candidates.length !== 1) {
@@ -787,7 +842,27 @@ export async function runProposeMeetingTimesHandler(
       counterparties,
       bundleLocationLabel,
       calendarSnapshot: calendarSnapshotEffectProof(feed),
-      ...(existingEvent ? { existingEvent, targetSnapshot } : {}),
+      // A rescheduling preview has resolved the event and read openings, but
+      // still needs the user to choose a clock time. Success describes the
+      // read, not completion of the requested move.
+      ...(existingEvent
+        ? {
+            existingEvent,
+            existingEventDisplay: {
+              localStart: formatLocalForDisplay(
+                existingEvent.startAt,
+                effectivePreferences.timeZone,
+              ),
+              localEnd: formatLocalForDisplay(
+                existingEvent.endAt,
+                effectivePreferences.timeZone,
+              ),
+              timeZone: effectivePreferences.timeZone,
+            },
+            targetSnapshot,
+            awaitingUserInput: true,
+          }
+        : {}),
     },
   });
 }

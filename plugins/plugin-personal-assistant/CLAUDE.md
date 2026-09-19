@@ -209,7 +209,7 @@ Promoted Calendar update guidance requires the existing event query or exact eve
 
 Rescheduling lookup uses the current event identity, not the destination time window. Promoted search guidance identifies its bounds as current-state filters; an empty filtered search never authorizes creating a replacement. The update handler resolves its own target and requests missing timing.
 
-The promoted CALENDAR_UPDATE_EVENT tool requires targetKind (query or eventId) and a nonempty target string containing a current title/query or an exact external event ID. The Calendar handler maps it to canonical lookup inputs; legacy umbrella query/details.eventId calls remain supported. Required target validation prevents empty update calls before execution.
+The promoted CALENDAR_UPDATE_EVENT and CALENDAR_DELETE_EVENT tools share required targetKind (query or eventId) and a nonempty target string containing a current title/query or an exact external event ID copied from a Calendar result. The Calendar handler maps it to canonical lookup inputs and rejects contradictory ID selectors before effects; legacy umbrella query/details.eventId calls remain supported. Required target validation prevents empty mutation calls before execution.
 
 A successful planner-owned Calendar availability read returns its complete grounded facts as a settled read observation. Deferred prose alone does not force an intermediate completion verdict before dependent planning. Canonical synchronized-snapshot receipts, incomplete-feed failures, access denials and final grounded reply generation remain unchanged.
 
@@ -220,3 +220,13 @@ Calendar create/update field extraction explicitly requests temperature zero thr
 Calendar model runners must preserve both bare-string and native `{ text, ... }` model results. Passing responseSchema can select native result envelopes; discarding their text turns valid extracted changes into empty updates. Host wiring must forward the entire model-call contract.
 
 Calendar time proposals may supply duration.existingEventQuery to preserve a uniquely resolved existing event duration. Reuse Calendar-owned target matching and lookup range, retain complete/fresh source checks and meeting preferences, and exclude only the selected event from busy intervals. Missing or ambiguous targets pause without slots or writes; explicit durations remain supported and every eventual move rechecks availability.
+
+Existing-event scheduling proposals retain successful read/preview receipts but set `awaitingUserInput: true`: resolving the event and finding openings do not select a clock time or apply the move. The completion evaluator can ask for the selection without another planner round; no pending-scope or write guard is bypassed.
+
+Existing-event proposal results include `existingEventDisplay` with code-formatted start/end labels in the proposal display timezone, alongside the unchanged authoritative event record. Use the same timezone-aware formatter as slot labels; the completion model should not need to infer offset arithmetic from raw timestamps.
+
+Proposal windows use defaults only when bounds are omitted. Reject malformed supplied timestamps or non-increasing windows before reading Calendar; never silently broaden an invalid requested window to the default horizon.
+
+- Proposal windows accept local ISO clocks in the explicit IANA timezone (or owner preferences); reuse the LifeOps timezone converter, never server-local Date parsing. Reject invalid dates and nonexistent DST clocks. Offset-bearing legacy inputs remain supported.
+
+- Existing-event proposal matching reads source constraints from `duration.existingEventQuery`, not dates in the surrounding destination request. Ambiguous source queries still require clarification, and the eventual mutation independently validates the authorized target.

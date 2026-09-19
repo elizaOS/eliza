@@ -137,6 +137,7 @@ type StubService = ReturnType<typeof stubService>;
 function fakeRuntime(service: StubService): IAgentRuntime {
   return {
     agentId: "agent-1",
+    reportError: vi.fn(),
     logger: {
       info: () => undefined,
       warn: () => undefined,
@@ -238,6 +239,56 @@ describe("CALENDAR delete_event disambiguation", () => {
   beforeEach(() => {
     service = stubService([LUNCH_MAYA, LUNCH_GRANDMA]);
   });
+
+  it("resolves a promoted delete query without requiring an invented event ID", async () => {
+    const result = await runHandler({
+      service,
+      text: "Delete Lunch with Grandma. Keep all other events.",
+      parameters: {
+        subaction: "delete_event",
+        targetKind: "query",
+        target: "Lunch with Grandma",
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(service.getConditionalCalendarMutationTarget).not.toHaveBeenCalled();
+    expect(service.cancelApproval).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ targetEvent: LUNCH_GRANDMA }),
+    );
+  });
+
+  it.each(["update_event", "delete_event"])(
+    "rejects contradictory %s target selectors before lookup or mutation",
+    async (subaction) => {
+      const result = await runHandler({
+        service,
+        text: "Change only Lunch with Grandma.",
+        parameters: {
+          subaction,
+          targetKind: "query",
+          target: "Lunch with Grandma",
+          details: { eventId: "evt-1" },
+        },
+      });
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({
+        error: "CALENDAR_TARGET_SELECTOR_INVALID",
+        coachingFailure: true,
+      });
+      expect(result.effectReceipts?.[0]).toMatchObject({
+        outcome: "failed",
+        failure: { acceptance: "rejected" },
+      });
+      expect(service.getCalendarFeed).not.toHaveBeenCalled();
+      expect(
+        service.getConditionalCalendarMutationTarget,
+      ).not.toHaveBeenCalled();
+      expect(service.cancelApproval).not.toHaveBeenCalled();
+      expect(service.modifyApproval).not.toHaveBeenCalled();
+      expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
+      expect(service.updateCalendarEvent).not.toHaveBeenCalled();
+    },
+  );
 
   it("uses an explicit source target when a follow-up supplies a different destination date", async () => {
     const result = await runHandler({

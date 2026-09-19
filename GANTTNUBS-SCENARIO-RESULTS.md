@@ -345,3 +345,76 @@ Changed-document file links and git diff whitespace checks passed.
 Saved rollback tag: `codex/ganttnubs-calendar-latency-20260918` (local only).
 The earlier acknowledgment tag remains intact. Code tags do not reset database
 or continuous chat state. No push, PR, merge, deployment or voice acceptance.
+
+## Original-task follow-up: Calendar contracts, September 18
+
+This section supersedes earlier broad completion wording. The original task independently rehearsed ten browser requests at `484d1e9eec1`, then repaired the observed deletion selector failure. Work remains local on `ganttnubs`; peer `e59818bf174` has not been integrated, and voice/develop/deployment remain outside this acceptance.
+
+### Changes and rejected experiment
+
+- Promoted Calendar deletion now uses the explicit `targetKind`/`target` contract already used by updates. Query targets resolve current records. Contradictory selectors reject before any Calendar read or write; a bad ID is never silently dropped in favor of another record.
+- Calendar create extraction/date correction and mutation fact verification use the message timestamp consistently for relative dates. The broad suite found processing-clock dependence that could shift a delayed Friday request by a week.
+- Existing-event time proposals set `awaitingUserInput: true` while retaining successful preview receipts. Reading openings has not selected the new time or moved the event. This uses an existing result contract; the final evaluator, pending-scope enforcement and write guards remain. Generic availability reads and new-meeting slot observations are unchanged.
+- A planner-scope wording experiment failed live and was removed. No planner-loop or planner-template change remains in this patch. The later first-stage candidate hint alignment is described below. The failure is evidence, not a performance pass.
+
+### Intermediate browser results
+
+The existing app on 5248 / API 31372 was restarted onto the candidate. Builds/tests were idle during measurements. These are individual trajectory times, not guaranteed percentiles; summed cache reads are included in summed input tokens.
+
+| Request | Calls | Time | Input / cache read | Result |
+|---|---:|---:|---:|---|
+| Create temporary note and local event together | 4 | 4.889s | 37,826 / 7,168 | Exact note, correct event time/duration, no guests, current view preserved |
+| Move that event to Saturday morning, before the result-contract fix | 7 | 6.146s | 80,034 / 40,960 | Correct options and no mutation; failed latency experiment |
+| Cancel move and delete both fixtures | 3 | 3.528s | 36,761 / 9,216 | Correct query selector, both removed, all original records unchanged |
+
+Creation's model calls: handler 1,376 ms / 9,646 inputs; planner 974 ms / 15,547; Calendar extraction 269 ms / 1,933; final evaluator 747 ms / 10,700. Deletion: handler 862 ms / 9,862; planner 913 ms / 15,944; evaluator 695 ms / 10,955. The failed proposal made one handler call, three planner calls and three evaluator calls for one successful domain preview. These totals do not count ordinary tool/database operations as model calls.
+
+The first cleanup restored the exact original 41 Notes records and 3 Calendar records in the inspected September 18–20 window. A separate final proposal fixture was prepared through the local Calendar API to avoid paying for another setup-model turn. Final proposal acceptance and cleanup are pending below.
+
+### Verification
+
+- Full Calendar suite: 1,012 passed, 4 existing skips, including 22 real-PGlite cases.
+- Promoted target schema: 22 passed; destructive-operation checks: 27 passed.
+- Core planner/pending-scope checks: 398 passed during the experiment; core production changes were subsequently removed.
+- Root verification on the final production changes: 373/373 tasks plus all audits passed.
+- Personal Assistant full initial run: 2,783 passed, 6 existing skips. The new deferred-proposal test initially used a standalone-only renderer stub; corrected to invoke the real renderer for that path. Its complete real-PGlite file now passes 29 cases. The full follow-up run completed with 2,783 passes, six existing skips and that one harness failure; the corrected file then passed all 29 cases using the real deferred renderer. Together these cover all 2,784 cases on the final domain changes. The source typecheck also passed; the failed command remains in the evidence log.
+
+### Integration boundary
+
+Peer e59818bf174 shares base 16e4d711b3c but overlaps 20 changed paths. Its reported history/context work is useful, with an extra-call tradeoff for exact quotation. Keep this checkpoint isolated; assess source ownership, source recovery and planner/evaluator overlap in a separate integration checkout. No blanket August rollback and no tip-only cherry-pick is justified.
+
+A fresh-title proposal replay then exposed stale first-stage candidate guidance: it selected SEARCH_EVENTS and incorrectly applied the destination date to the current-event search. That run took 4 calls/5.309s and did not reach PROPOSE_TIMES or change the fixture. The existing candidate hint is now aligned with the proposal tool's own event/duration lookup capability; final live acceptance is pending.
+
+
+### Final boundary repairs and retained failures
+
+Further live checks exposed real boundaries, rather than proving the first patch complete:
+- 3 calls / 3.838s: direct proposal routing worked, but the reply converted the existing event to the wrong local clock. Proposal results now include code-formatted existing-event labels.
+- 4 calls / 7.432s: a typed search borrowed the destination date from the entire message; a malformed Unicode-minus proposal timestamp silently broadened to seven days. Typed search now takes date bounds from its own arguments, and invalid supplied proposal bounds reject before reading.
+- 3 calls / 4.145s: the current event displayed correctly, but the model supplied a valid UTC range representing the wrong local morning. Proposal arguments now request local ISO clocks plus IANA timezone; Calendar uses its existing timezone converter. Legacy offset-bearing inputs remain accepted. Invalid local dates and nonexistent DST clocks reject.
+- 7 calls / 8.572s: local conversion worked, but proposal target matching reused the destination date in the surrounding request and missed the current event. Matching now scopes source constraints to existingEventQuery; ambiguity still pauses and eventual writes independently validate the target. This run also logged a transient Cerebras connection retry. It ended with a correct availability reply and no mutation, but is a failed latency/path acceptance.
+
+These failures are retained in local owner-*-trace.json files. No planner-loop bypass, per-phrase response, provider switch, history truncation, or extra model call was added. Final acceptance is recorded below.
+
+### Final browser acceptance, 22:38–22:40 PDT
+
+| Request | Calls | Trajectory time | Input tokens | Cache-read tokens | Observed result |
+|---|---:|---:|---:|---:|---|
+| Recheck Saturday availability | 3 | 3.780s | 27,549 | 10,240 | Complete window read; no conflicts and no write |
+| Move to morning without choosing a clock | 1 | 1.570s | 9,838 | 6,144 | Used preceding availability; asked for selection; no write or tool call |
+| Fresh Monday proposal, preserve existing duration | 3 | 3.162s | 28,981 | 13,312 | Direct PROPOSE_TIMES; local clocks converted correctly; three verified 15-minute slots; awaiting selection; no mutation |
+| Cancel QA request and delete temporary event | 3 | 3.413s | 29,746 | 10,240 | Direct DELETE_EVENT with query target; only fixture removed |
+| Open Notes | 1 | 1.334s | 9,612 | 7,168 | Actual browser navigated to /notes, 41 notes visible |
+
+Fresh proposal stages: handler 873ms / 9,921 inputs / 6,144 cache; planner 534ms / 8,342 / 4,096; final evaluator 642ms / 10,718 / 3,072. Cleanup: handler 1,205ms / 10,044 / 8,192; planner 649ms / 11,172 / 0; final evaluator 539ms / 8,530 / 2,048. Navigation: handler 749ms / 9,612 / 7,168. Remaining trajectory time is outside these model-call durations; these are not pure provider-inference or browser-wall percentiles. Cache reads are part of input totals, not additional inputs.
+
+Persistence comparison after cleanup matched all 41 original Notes records and all 3 original Calendar records in the September 18–20 inspected window exactly. The final fixture is gone. Existing prior test records were preserved. No paid broad sweep followed these bounded checks.
+
+Latest owning coverage: complete Calendar suite 1,014 passed / 4 existing skips; final Personal Assistant Calendar PGlite + native schema files 57 passed, including local/DST/date validation; core routing checks 457 passed. The earlier full Personal Assistant suite and corrected-file split coverage are described above; a later whole-suite command was not rerun after these scoped changes. Root verification on the final source is running; final result follows.
+
+Verdict: scoped local text-path acceptance, not universal three-second latency, voice, external Calendar provider, release, deployment, or peer-merge acceptance. Legacy offset proposal inputs remain supported; arbitrary natural-language interpretation and provider latency are not made infallible by this patch.
+
+
+Final-source root `bun run verify` exited zero: **373/373 tasks and all audits passed**, 5m0s for the task graph. The first final command stopped on formatting in one changed test; that test was formatted and the full command passed. Production source hashes still match the accepted browser run. Evidence: `candidate-runtime/latency-audit/owner-accepted-final-verify.log` (local external artifact directory).
+
+Saved local rollback checkpoint: `codex/ganttnubs-calendar-contracts-20260918`. Working source is accepted for this bounded text repair pass. No push, peer/develop merge, deployment or voice acceptance. Remaining limits: variable model/provider latency, no universal under-three-second guarantee, and separately reviewed peer context/history integration. Code tags do not reset application data.

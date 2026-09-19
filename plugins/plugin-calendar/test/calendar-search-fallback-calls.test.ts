@@ -47,16 +47,18 @@ const EVENT: LifeOpsCalendarEvent = {
 
 function stubService() {
   return {
-    getCalendarFeed: vi.fn(async () => ({
-      calendarId: "all",
-      events: [EVENT],
-      source: "cache" as const,
-      state: "complete" as const,
-      sources: [{ status: "fresh" as const }],
-      timeMin: "2026-09-01T00:00:00.000Z",
-      timeMax: "2026-09-30T00:00:00.000Z",
-      syncedAt: null,
-    })),
+    getCalendarFeed: vi.fn(
+      async (_url: URL, _request: Record<string, unknown>) => ({
+        calendarId: "all",
+        events: [EVENT],
+        source: "cache" as const,
+        state: "complete" as const,
+        sources: [{ status: "fresh" as const }],
+        timeMin: "2026-09-01T00:00:00.000Z",
+        timeMax: "2026-09-30T00:00:00.000Z",
+        syncedAt: null,
+      }),
+    ),
   };
 }
 
@@ -97,13 +99,16 @@ function spiedDeps() {
   return { deps, runTextModel, runJsonModel, recentConversationTexts };
 }
 
-async function runSearch(parameters: Record<string, unknown>) {
+async function runSearch(
+  parameters: Record<string, unknown>,
+  text = "whats on my calendar tuesday?",
+) {
   const service = stubService();
   const spies = spiedDeps();
   const action = createCalendarActionRunner(spies.deps);
   const result = await action.handler(
     fakeRuntime(service),
-    message("whats on my calendar tuesday?"),
+    message(text),
     undefined,
     { parameters },
     vi.fn(async () => []),
@@ -113,6 +118,37 @@ async function runSearch(parameters: Record<string, unknown>) {
 }
 
 describe("CALENDAR search_events call shape", () => {
+  it.each([false, true])(
+    "keeps typed source filters separate from a destination date (explicit source day %s)",
+    async (explicitDay) => {
+      const { service } = await runSearch(
+        {
+          subaction: "search_events",
+          query: "Gym session",
+          details: {
+            timeZone: "UTC",
+            ...(explicitDay ? { date: "2026-09-08" } : {}),
+          },
+        },
+        'Find "Gym session" and offer Saturday September 19, 2026 morning options to move it.',
+      );
+      const request = service.getCalendarFeed.mock.calls[0]?.[1] as {
+        timeMin: string;
+        timeMax: string;
+      };
+      if (explicitDay) {
+        expect(request).toMatchObject({
+          timeMin: "2026-09-08T00:00:00.000Z",
+          timeMax: "2026-09-09T00:00:00.000Z",
+        });
+      } else {
+        expect(Date.parse(request.timeMax) - Date.parse(request.timeMin)).toBe(
+          30 * 24 * 60 * 60 * 1000,
+        );
+      }
+    },
+  );
+
   it.each([
     { query: "gym" },
     { queries: ["gym"] },
