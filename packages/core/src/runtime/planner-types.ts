@@ -395,9 +395,8 @@ export interface PlannerLoopParams {
 	 * refusal, the loop finishes with this text (shape-guarded) instead of
 	 * throwing `TrajectoryLimitExceeded` — the router's real answer is
 	 * strictly better than the generic transient-failure apology the caller
-	 * would otherwise substitute for it (observed live: "whats 17 times 23?"
-	 * answered "391" by Stage 1, then discarded for the apology when an
-	 * injected VIEWS candidate deadlocked the required-tool gate).
+	 * would otherwise substitute for it when an injected candidate deadlocks
+	 * the required-tool gate.
 	 */
 	stageOneReplyText?: string;
 	/**

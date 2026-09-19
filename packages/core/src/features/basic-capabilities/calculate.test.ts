@@ -106,8 +106,11 @@ describe("CALCULATE action", () => {
 describe("deterministic arithmetic routing", () => {
 	const actions = [{ name: "CALCULATE", similes: [], tags: [] }];
 
-	it("routes explicit multi-digit arithmetic to CALCULATE", () => {
+	it("routes explicit arithmetic to CALCULATE at any operand width", () => {
 		for (const text of [
+			"whats 17 times 23",
+			"17*23",
+			"whats 17 * 23",
 			"whats 3847 times 292",
 			"3847 * 292?",
 			"1,234 divided by 7 pls",
@@ -124,9 +127,19 @@ describe("deterministic arithmetic routing", () => {
 		}
 	});
 
-	it("leaves two-digit mental math and ordinary prose on the simple path", () => {
+	it("prefers the ** exponent operator over a single *", () => {
+		// "2 ** 10" must read as exponentiation, not as 2 * (*10). The strong
+		// operator alternation lists ** first so the two-character form wins.
+		expect(inferDirectCurrentRequestCandidateActions(actions, "2**10")).toEqual(
+			["CALCULATE"],
+		);
+		expect(
+			inferDirectCurrentRequestCandidateActions(actions, "2 ** 10"),
+		).toEqual(["CALCULATE"]);
+	});
+
+	it("leaves time ranges, dimensions, dates, versions, and prose on the simple path", () => {
 		for (const text of [
-			"whats 17 times 23",
 			"see you at 10 - 11 tomorrow",
 			"i walked 5 x this week",
 			"no math here at all",

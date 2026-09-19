@@ -573,8 +573,9 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		// "times" singularizes to TIME but the "screen-time" tag is a PHRASE:
 		// without SCREEN in the message it must not produce a candidate. This
 		// was the live hijack — arithmetic and cadence turns routed to VIEWS.
+		// Arithmetic text resolves to CALCULATE only when that action is
+		// registered, so this views-only catalog must stay empty.
 		for (const message of [
-			"whats 17 times 23?",
 			"3 times a day",
 			"i need to get the time for the meeting",
 		]) {
