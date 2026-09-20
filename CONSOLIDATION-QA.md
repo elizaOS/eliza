@@ -248,3 +248,16 @@ The review distinguishes intentional routing/terminal repair calls from performa
 16 additional original inventory diffs reviewed in full;234/270 reviewed (230 include,3 upstream-equivalent,1 Calendar handler review-required). Evidence covers initial reply presentation, preparatory versus requested discovery, conflicting native decisions, one final publication, exact proposal whitespace, catalog/schema semantic preservation, failure handling without paid apologies, transcript resync timing, attested reply provenance and205-source real PGlite recall. Historical demo measurements remain explicitly historical.
 
 No production edits, repeated tests or paid calls. Schema/canned-generation checks prove their specific boundaries, not general model accuracy or speed.
+
+## Context and failure-contract source review — 240/270
+
+Reviewed six complete changed-file comparisons against develop ec23d0f670c:
+
+- `GANTTNUBS-ACCEPTANCE-SNAPSHOT.md`: Historical saved acceptance board retained behind explicit current-status banner. Older ports, acceptance and peer-integration state are historical evidence, not current completion claims.
+- `packages/core/src/services/evaluator.test.ts`: Post-turn evaluator transport tests preserve complete extraction schema and source across native, JSON and plain retries, with explicit extraction system precedence over character fallback. Tests compare actual fallback payloads to native payloads.
+- `packages/core/src/__tests__/message-routing-live-regression.test.ts`: Routing tests prevent incidental coding words from escalating a complete simple no-effect reply, while retaining escalation for selected actions, pending intents, progress-only replies, missing/applied effect status and non-simple context. Genuine selected coding work still routes to TASKS.
+- `packages/core/src/runtime/__tests__/completion-context.test.ts`: Selection tests retain exact source events, distinguish reviewed-empty from absent/stale selections and preserve original context. Native restore schema rejects already-restored scopes while allowing still-deferred scopes; restoration executes no effects. Voice source-contract assertions do not establish voice acceptance.
+- `packages/core/src/runtime/__tests__/planner-loop-terminal-finish-without-message.test.ts`: Terminal planner tests retain exact approved text including whitespace, prefer evaluator correction when supplied and finish without an extra terminal continuation. Four canned model responses validate orchestration, not live semantic judgment.
+- `packages/core/src/services/message.runtime-failure-suppression.test.ts`: Transport failure tests emit one nonpersistent classified failure without a model apology for HTTP401/402/403. Failed action callbacks stay private through planner recovery until the final scoped explanation. Deterministic replies do not establish live preference scope interpretation.
+
+Ledger now has240 explicit reviews:236 include,3 upstream-equivalent and1 Calendar handler review-required;30 remain unreviewed and no entries are blanket accepted. This checkpoint changes review/status documentation only. Existing ef88e31918b code/test/live evidence remains applicable; no new paid model calls. Corrected the stale status sentence that still described the superseded3a50ad527d4 runtime as current.
