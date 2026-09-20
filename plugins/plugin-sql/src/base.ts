@@ -3918,9 +3918,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     unique?: boolean;
     query?: string;
     roomId?: UUID;
+    excludeRoomIds?: UUID[];
     worldId?: UUID;
     entityId?: UUID;
     accessContext?: AccessContext;
+    includeEmbedding?: boolean;
   }): Promise<Memory[]> {
     return await this.searchMemoriesByEmbedding(params.embedding, {
       match_threshold: params.match_threshold,
@@ -3929,8 +3931,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       // candidate pool at the default 10.
       count: params.count ?? params.limit,
       offset: params.offset,
+      includeEmbedding: params.includeEmbedding,
       // Pass direct scope fields down
       roomId: params.roomId,
+      excludeRoomIds: params.excludeRoomIds,
       worldId: params.worldId,
       entityId: params.entityId,
       unique: params.unique,
@@ -3959,11 +3963,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       count?: number;
       offset?: number;
       roomId?: UUID;
+      excludeRoomIds?: UUID[];
       worldId?: UUID;
       entityId?: UUID;
       unique?: boolean;
       tableName: string;
       accessContext?: AccessContext;
+      includeEmbedding?: boolean;
     }
   ): Promise<Memory[]> {
     return this.withDatabase(async () => {
@@ -4007,6 +4013,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       if (params.roomId) {
         conditions.push(eq(memoryTable.roomId, params.roomId));
       }
+      if (params.excludeRoomIds?.length) {
+        conditions.push(notInArray(memoryTable.roomId, params.excludeRoomIds));
+      }
       if (params.worldId) {
         conditions.push(eq(memoryTable.worldId, params.worldId));
       }
@@ -4018,7 +4027,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .select({
           memory: memoryTable,
           similarity,
-          embedding: activeColumn,
+          embedding: params.includeEmbedding === false ? sql<null>`null` : activeColumn,
         })
         .from(embeddingTable)
         .innerJoin(memoryTable, eq(memoryTable.id, embeddingTable.memoryId))

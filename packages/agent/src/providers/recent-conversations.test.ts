@@ -143,6 +143,24 @@ describe("recentConversationsProvider", () => {
     );
   });
 
+  it("indexes authorized rooms without claiming their unread message count", async () => {
+    const runtime = makeRuntime({
+      getMemoriesByRoomIds: vi.fn(async () => []),
+    });
+    const result = await recentConversationsProvider.get(
+      runtime,
+      message(),
+      EMPTY_STATE,
+    );
+    expect(result.text).toContain(`roomId=${ROOM_ID}`);
+    expect(result.text).toContain(
+      "not a summary or a claim about what was said",
+    );
+    expect(result.values?.recentConversationCount).toBeUndefined();
+    expect(result.values?.recentConversationRoomCount).toBe(1);
+    expect(runtime.getMemoriesByRoomIds).not.toHaveBeenCalled();
+  });
+
   it.each([
     "what time is it right now?",
     "say hi",
@@ -165,7 +183,8 @@ describe("recentConversationsProvider", () => {
       expect(result.overflowText).toContain(
         `[discord] general roomId=${ROOM_ID}`,
       );
-      expect(result.values?.recentConversationCount).toBe(1);
+      expect(result.values?.recentConversationCount).toBeUndefined();
+      expect(runtime.getMemoriesByRoomIds).not.toHaveBeenCalled();
     },
   );
 
@@ -286,20 +305,14 @@ describe("recentConversationsProvider", () => {
       ALIAS_ENTITY_ID,
     ]);
     expect(getRoomsForParticipant).toHaveBeenCalledWith(AGENT_ID);
-    expect(getMemoriesByRoomIds).toHaveBeenCalledWith({
-      tableName: "messages",
-      roomIds: [ROOM_ID, ALIAS_ROOM_ID],
-      accessContext: expect.objectContaining({
-        authorizedRoomIds: [ROOM_ID, ALIAS_ROOM_ID],
-      }),
-    });
+    expect(getMemoriesByRoomIds).not.toHaveBeenCalled();
     expect(getRoomsByIds).toHaveBeenCalledOnce();
     expect(getRoomsByIds).toHaveBeenCalledWith([ROOM_ID, ALIAS_ROOM_ID]);
-    expect(result.values?.recentConversationCount).toBe(15);
+    expect(result.values?.recentConversationCount).toBeUndefined();
     expect(result.values?.recentConversationRoomCount).toBe(2);
     expect(result.data?.rooms).toHaveLength(2);
     expect(result.overflowText).toContain(
-      "15 stored message(s) across 2 authorized room(s)",
+      "2 authorized room(s); message bodies are retrieved on demand",
     );
     expect(result.overflowText).toContain("discord");
     expect(result.overflowText).toContain("telegram");
@@ -333,11 +346,7 @@ describe("recentConversationsProvider", () => {
       EMPTY_STATE,
     );
 
-    expect(getMemoriesByRoomIds).toHaveBeenCalledWith({
-      tableName: "messages",
-      roomIds: [ALIAS_ROOM_ID],
-      accessContext: expect.any(Object),
-    });
+    expect(getMemoriesByRoomIds).not.toHaveBeenCalled();
     expect(result.overflowText).toContain(`roomId=${ALIAS_ROOM_ID}`);
     expect(result.text).not.toContain("remote-only context");
     expect(result.text).not.toContain(`roomId=${ROOM_ID}`);

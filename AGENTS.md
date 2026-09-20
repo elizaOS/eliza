@@ -214,7 +214,8 @@ executes, and all later planner rounds retain the restored sources. Coding
 and schema-only planners retain full context. Full stored history and the original in-memory context stay
 intact; source selection is a model judgment, not a deterministic proof of
 semantic completeness. No new factual summary, character/token cap or recency
-window is authorized by this contract. Voice retains its complete path.
+window is authorized by this contract. Direct voice uses the same authorized retrieval contract; group voice retains
+its complete path.
 
 The evaluator may also omit known message-service `plan.actionSurface`
 retrieval diagnostics with the source event/omitted field recorded. Unknown

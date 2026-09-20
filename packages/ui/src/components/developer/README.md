@@ -28,6 +28,11 @@ model. Check that model call's input to establish inclusion. Full payloads load
 only for the selected run and refresh on its revision; viewing them makes no
 model requests. Background/recovery runs remain separately selectable.
 
+The selected message's run list refreshes every five seconds while visible,
+including background runs recorded after its foreground reply completed. Hidden
+tabs pause discovery and refresh on return. Reads stay paginated and restricted
+to the exact message and room; authorization failures require explicit retry.
+
 `DeveloperReader.tsx` owns this layout. `trajectory-reader-data.ts` preserves
 complete payloads and lossless text section boundaries. Tests and stories use
 explicitly synthetic records; real traces are read through the same API as `/dev`.

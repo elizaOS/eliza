@@ -21,6 +21,7 @@ import type {
 import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 import { pathForTab } from "../../navigation";
 import "../../styles/developer-workspace.css";
+import { dispatchConversationResync } from "../../state/AppContext.hooks";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { useChatTurnStatus } from "../../state/ChatTurnStatusContext.hooks";
@@ -791,6 +792,23 @@ function DeveloperPanel({
   const [sendStartedAt, setSendStartedAt] = useState<number | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const busy = chatSending || sendStartedAt !== null;
+  const latestChatRun = telemetry.rows.find(
+    (row) =>
+      row.source === "client_chat" && row.roomId === conversation?.roomId,
+  );
+  const transcriptRevision = latestChatRun
+    ? `${latestChatRun.id}:${latestChatRun.status}`
+    : null;
+  // Turns sent directly from the normal app do not use the developer relay.
+  // Reconcile their canonical transcript when a run starts or settles, without
+  // reloading on every token/provider update or overwriting an active relay.
+  useEffect(() => {
+    if (!busy && state.activeConversationId && transcriptRevision) {
+      dispatchConversationResync({
+        conversationId: state.activeConversationId,
+      });
+    }
+  }, [busy, state.activeConversationId, transcriptRevision]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const scrollConversation = useRef(state.activeConversationId);

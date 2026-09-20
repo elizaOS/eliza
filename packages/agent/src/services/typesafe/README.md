@@ -41,8 +41,10 @@ arrays, and custom object serialization are unsupported. Complete accepted JSON
 is sent without slicing or summarization, including unusual dictionary keys.
 Response validation rejects extra/missing question answers, unknown fields or
 types, mismatched labels/levels, invalid usage, and invalid probabilities.
-Probability sums allow an absolute rounding tolerance of 0.0001; this is adapter
-validation policy, not a vendor accuracy guarantee.
+Probability sums allow an absolute tolerance of 0.0001 or a nonzero distribution
+consistent with rounding each value to hundredths, as observed from live Jev
+1.13.0. The adapter preserves the returned values without normalization. This
+is transport validation, not a confidence calibration or accuracy guarantee.
 
 ## Explicit use
 
@@ -88,8 +90,9 @@ On 2026-09-15, TypeSafe advertised **$42 per billion input tokens**
 (**$0.042 per million**) and **free output** in its
 [launch announcement](https://typesafe.ai/blog/introducing-system-one-models-and-jev).
 These are vendor claims at that date, not verified account pricing or a latency
-SLA. SDK installation, credentials, billing, and provider access have not been
-performed or verified here.
+SLA. A synthetic-only live comparison on 2026-09-16 verified credential access and
+returned model `jev-1.13.0`; deployed billing and end-to-end Eliza latency remain
+unverified.
 
 The tests use synthetic HTTP responses and exercise the real client boundary.
 They do not establish real model correctness, confidence calibration, latency,

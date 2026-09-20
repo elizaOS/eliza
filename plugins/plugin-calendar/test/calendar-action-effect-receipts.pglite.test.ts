@@ -398,7 +398,7 @@ describe("CALENDAR receipt grounding over real PGlite", () => {
         {
           operation: "calendar.feed.read",
           outcome: "noop",
-          observedAt: persistedObservedAt,
+          observedAt: result.data?.syncedAt,
           resource: {
             kind: "calendar.feed",
           },
@@ -413,9 +413,15 @@ describe("CALENDAR receipt grounding over real PGlite", () => {
         ],
       },
     });
-    expect(result.effectReceipts?.[0]?.observedAt).toBe(
-      synced.source.updatedAt,
+    expect(result.data?.sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: expect.objectContaining({ provider: "ics" }),
+          syncedAt: persistedObservedAt,
+        }),
+      ]),
     );
+    expect(persistedObservedAt).toBe(synced.source.updatedAt);
     expect(result.data?.replyContext).toMatchObject({
       domain: "calendar",
       intent: actor.content.text,

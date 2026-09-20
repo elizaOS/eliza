@@ -10,6 +10,7 @@
  */
 import type {
 	EmbeddingGenerationPayload,
+	MessagePayload,
 	ModelRegisteredEventPayload,
 } from "../types/events";
 import { EventType } from "../types/events";
@@ -19,6 +20,7 @@ import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 import { type BatchItemOutcome, BatchQueue } from "../utils/batch-queue";
 import { isExpectedLocalEmbeddingUnavailability } from "../utils/expected-local-embedding-unavailability";
+import { shouldSkipResponseMemoryPersistence } from "./message/processor-policy";
 
 interface EmbeddingQueueItem {
 	memory: Memory;
@@ -46,6 +48,60 @@ export class EmbeddingGenerationService extends Service {
 	private readonly embeddingRequestHandler = (
 		payload: EmbeddingGenerationPayload,
 	) => this.handleEmbeddingRequest(payload);
+	private readonly messageSentHandler = async (
+		payload: MessagePayload,
+	): Promise<void> => {
+		if (this.stopped || payload.runtime !== this.runtime) return;
+		const memory = payload.message;
+		if (
+			!memory.id ||
+			memory.entityId !== this.runtime.agentId ||
+			(memory.agentId !== undefined &&
+				memory.agentId !== this.runtime.agentId) ||
+			!memory.content.text?.trim() ||
+			shouldSkipResponseMemoryPersistence(memory)
+		)
+			return;
+		const snapshot = {
+			...memory,
+			content: { ...memory.content },
+			metadata: memory.metadata ? { ...memory.metadata } : undefined,
+		};
+		const runId = this.runtime.getCurrentRunId();
+		// Delivery must not wait for the durable lookup or embedding inference.
+		void this.queueDeliveredReply(snapshot, runId).catch((error) => {
+			this.runtime.reportError(
+				"EmbeddingGenerationService.deliveredReply",
+				error,
+				{ memoryId: snapshot.id },
+			);
+		});
+	};
+
+	private async queueDeliveredReply(
+		delivered: Memory,
+		runId?: string,
+	): Promise<void> {
+		if (!delivered.id) return;
+		const stored = await this.runtime.getMemoryById(delivered.id);
+		if (
+			this.stopped ||
+			!stored ||
+			stored.agentId !== this.runtime.agentId ||
+			stored.entityId !== this.runtime.agentId ||
+			stored.roomId !== delivered.roomId ||
+			stored.content.text !== delivered.content.text ||
+			shouldSkipResponseMemoryPersistence(stored)
+		)
+			return;
+		await this.handleEmbeddingRequest({
+			runtime: this.runtime,
+			memory: stored,
+			priority: "low",
+			runId,
+		});
+	}
+
 	private readonly modelRegistrationHandler = async (
 		payload: ModelRegisteredEventPayload,
 	): Promise<void> => {
@@ -122,6 +178,8 @@ export class EmbeddingGenerationService extends Service {
 			EventType.EMBEDDING_GENERATION_REQUESTED,
 			this.embeddingRequestHandler,
 		);
+
+		this.runtime.registerEvent(EventType.MESSAGE_SENT, this.messageSentHandler);
 
 		// Uses shared `utils/batch-queue` (see `batch-queue.ts` header): same drain/retry/priority
 		// model as other services so we do not maintain another bespoke queue + task stack here.
@@ -498,6 +556,11 @@ export class EmbeddingGenerationService extends Service {
 			EventType.EMBEDDING_GENERATION_REQUESTED,
 			this.embeddingRequestHandler,
 		);
+		this.runtime.unregisterEvent(
+			EventType.MESSAGE_SENT,
+			this.messageSentHandler,
+		);
+
 		await this.initialization;
 		this.runtime.logger.info(
 			{

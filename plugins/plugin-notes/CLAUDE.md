@@ -52,7 +52,7 @@ views or event state to this package.
   a note committed between confirmation and commit aborts the clear instead of
   being wiped. The dispatch-time snapshot check is only a fast path.
 
-Saved-note prompt content is encoded as complete JSON strings with canonical label/newline/body boundaries; never flatten it into a display dash that can corrupt a partial update.
+Saved-note prompt rows are JSON pairs `[exact ID, complete content]`. Keep canonical label/newline/body boundaries inside the content string and bind the ID in the same row; never split IDs into a separate positional list or flatten content into a display dash that can corrupt a partial update.
 
 Direct-text planner/completion context can use the provider-owned exact title/count index. Complete note bodies remain in the authorized provider result and are retrieved through the shared context-restoration protocol or NOTES before body recall or replacement. Never turn labels into inferred body text; keep full JSON-string line boundaries on retrieval.
 
@@ -62,3 +62,22 @@ write barrier. Require a unique current match and preserve every other character
 reject ambiguous, absent, conflicting or normalization-dependent edits without a
 write. Full replacement and legacy caller contracts remain supported. This is
 structured tool input, never a natural-language shortcut or a second write path.
+
+NOTES_PATCH exposes required structured target/changes fields for partial edits. It uses the existing NotesService validation and commit path; omitted fields remain unchanged. NOTES_UPDATE remains compatible with legacy flat arguments.
+
+Literal-edit missing/ambiguous-match and normalization guards return failed prewrite coaching results through chat actions. Preserve the rejection and no-write evidence while allowing a corrected committed edit to finish without stale failure narration. Unexpected storage and post-commit failures retain ordinary failure authority.
+
+The create tool distinguishes request quotation delimiters from literal quote characters and separates app instructions from note content. Preserve the resolved content exactly; uncertain boundaries should be clarified by the planner, never repaired by stripping text in the store. This remains model interpretation and requires live language-boundary checks.
+
+Ambiguous update lookups return `awaitingUserInput` with the matching saved
+records and no effect receipt. They require a user selection, not argument-repair
+retries that choose a record ID. The patch tool must retain the user's identifying
+text when correcting an edit; an index ID alone does not resolve ambiguity.
+
+Chat edits preserve an explicitly named title even when the planner supplies an
+index ID: resolve that title again under the store write barrier, so distinct
+copies pause for selection. An ID explicitly in the user's request remains
+an exact-ID operation; ordinary selected-record follow-ups remain supported.
+NAMED_NOTES supplies Stage 1 with complete fresh records only for titles named
+in the current message, behind the same OWNER gate. It emits no note text for
+unrelated messages and does not replace SAVED_NOTES or its full-store retrieval.

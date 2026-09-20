@@ -23,9 +23,13 @@ import {
   toWellFormedUnicode,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-
+import { stage1ResponseStateProviderNames } from "../../../packages/core/src/services/message/provider-state.js";
 import { notesPlugin } from "./plugin.js";
-import { notesProvider, renderSavedNotesText } from "./provider.js";
+import {
+  namedNotesProvider,
+  notesProvider,
+  renderSavedNotesText,
+} from "./provider.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "./service.js";
 import { NotesStore } from "./store.js";
 import type { StickyNote } from "./types.js";
@@ -133,6 +137,52 @@ function registeredNotesProvider(): Provider {
 const EMPTY_STATE = { values: {}, data: {}, text: "" } satisfies State;
 
 describe("SAVED_NOTES provider", () => {
+  it("grounds named-title clarification in fresh complete records without exposing unrelated notes", async () => {
+    const service = await serviceWithNotes([
+      'Same title\nShe said "silver".\nKeep  spaces.',
+      "Same title\nBring it tomorrow.",
+      "Unrelated\nPrivate unrelated body",
+    ]);
+    const runtime = await runtimeWith(service);
+    runtime.registerProvider(namedNotesProvider);
+    const message = recallMessage(runtime, "Change Same title to amber.");
+    expect(
+      stage1ResponseStateProviderNames(runtime, message, ["OWNER"]),
+    ).toContain("NAMED_NOTES");
+    expect(
+      stage1ResponseStateProviderNames(runtime, message, ["USER"]),
+    ).not.toContain("NAMED_NOTES");
+    const first = service
+      .listNotes()
+      .find((note) => note.body.includes("silver"));
+    if (!first) throw new Error("Missing fixture note");
+    const before = await runtime.composeState(
+      message,
+      ["NAMED_NOTES"],
+      true,
+      true,
+    );
+    expect(before.text).toContain(JSON.stringify(`Same title\n${first.body}`));
+    expect(before.text).toContain("Bring it tomorrow.");
+    expect(before.text).not.toContain("Private unrelated body");
+    await service.updateNote(first.id, { body: "Current green body" });
+    const after = await runtime.composeState(
+      message,
+      ["NAMED_NOTES"],
+      true,
+      true,
+    );
+    expect(after.text).toContain("Current green body");
+    expect(after.text).not.toContain("silver");
+    const greeting = await namedNotesProvider.get(
+      runtime,
+      recallMessage(runtime, "hi"),
+      EMPTY_STATE,
+    );
+    expect(greeting.text).toBe("");
+    expect(greeting.data).toEqual({});
+  });
+
   it("is absent from non-owner context and available to the owner", () => {
     expect(notesProvider.roleGate).toEqual({ minRole: "OWNER" });
     expect(
@@ -153,7 +203,7 @@ describe("SAVED_NOTES provider", () => {
     const body = "Exact body\n  spacing and punctuation!?";
     const service = await serviceWithNotes([
       `Lookup label\n${body}`,
-      "Second label",
+      'Mira’s "旅行" \\ label 📝',
     ]);
     const runtime = await runtimeWith(service);
     const result = await notesProvider.get(
@@ -162,7 +212,9 @@ describe("SAVED_NOTES provider", () => {
       EMPTY_STATE,
     );
     expect(result.discoveryText).toContain('"Lookup label"');
-    expect(result.discoveryText).toContain('"Second label"');
+    expect(result.discoveryText).toContain(
+      JSON.stringify('Mira’s "旅行" \\ label 📝'),
+    );
     expect(result.discoveryText).toContain("Exact note count: 2");
     expect(result.discoveryText).not.toContain("Exact body");
     const identities = service
@@ -172,7 +224,10 @@ describe("SAVED_NOTES provider", () => {
       result.discoveryText
         ?.split("\n")
         .filter((line) => line.startsWith("- "))
-        .map((line) => JSON.parse(line.slice(2))),
+        .map((line) => {
+          const [id, title] = JSON.parse(line.slice(2));
+          return { id, title };
+        }),
     ).toEqual(identities);
     for (const { id } of identities) expect(result.text).toContain(id);
     expect(result.text).toContain(JSON.stringify(`Lookup label\n${body}`));
@@ -297,10 +352,10 @@ describe("SAVED_NOTES provider", () => {
     const text = renderSavedNotesText(notes);
 
     expect(text).toContain("Exact note count: 23.");
-    expect(text).toContain('- "note 0"');
-    expect(text).toContain('- "note 19"');
-    expect(text).toContain('- "note 20"');
-    expect(text).toContain('- "note 22"');
+    expect(text).toContain('- ["note-0","note 0"]');
+    expect(text).toContain('- ["note-19","note 19"]');
+    expect(text).toContain('- ["note-20","note 20"]');
+    expect(text).toContain('- ["note-22","note 22"]');
     expect(text).not.toContain("not shown");
   });
 
@@ -318,7 +373,18 @@ describe("SAVED_NOTES provider", () => {
     const encoded = state.text
       .split("\n")
       .filter((line) => line.startsWith("- "));
-    const decoded = encoded.map((line) => JSON.parse(line.slice(2)));
+    const rows: [string, string][] = encoded.map((line) =>
+      JSON.parse(line.slice(2)),
+    );
+    const decoded = rows.map(([, content]) => content);
+    expect(rows).toEqual(
+      service
+        .listNotes()
+        .map((note) => [
+          note.id,
+          note.body ? `${note.title}\n${note.body}` : note.title,
+        ]),
+    );
     expect(decoded).toContain(content);
     expect(decoded).toContain("Label only");
     expect(
@@ -326,6 +392,43 @@ describe("SAVED_NOTES provider", () => {
         decoded.find((value) => value.startsWith("Packing label")),
       ),
     ).toEqual(parseNoteContent(content));
+  });
+
+  it("keeps duplicate titles bound to their own IDs after note order changes", () => {
+    const base = {
+      color: "yellow" as const,
+      createdAt: "2026-09-16T00:00:00.000Z",
+      updatedAt: "2026-09-16T00:00:00.000Z",
+    };
+    const notes: StickyNote[] = [
+      {
+        ...base,
+        id: "note-Second",
+        title: "Same title",
+        body: "Keep  spaces.\nSecond line.",
+      },
+      {
+        ...base,
+        id: "note-first",
+        title: "Same title",
+        body: 'Different "quoted" body.',
+      },
+      { ...base, id: "note-label", title: "Label only", body: "" },
+    ];
+    const decode = (items: StickyNote[]) =>
+      renderSavedNotesText(items)
+        .split("\n")
+        .filter((line) => line.startsWith("- "))
+        .map((line) => JSON.parse(line.slice(2)));
+    const expected = notes.map((note) => [
+      note.id,
+      note.body ? `${note.title}\n${note.body}` : note.title,
+    ]);
+    expect(decode(notes)).toEqual(expected);
+    expect(decode([...notes].reverse())).toEqual([...expected].reverse());
+    expect(new Map(decode(notes)).get("note-Second")).toBe(
+      "Same title\nKeep  spaces.\nSecond line.",
+    );
   });
 
   it("renders a complete oversized note body", () => {
@@ -360,7 +463,7 @@ describe("SAVED_NOTES provider", () => {
     ]);
     const noteLine = text
       .split("\n")
-      .find((line) => line.startsWith('- "x\\n'));
+      .find((line) => line.startsWith('- ["note-emoji-boundary",'));
     expect(noteLine).toBeDefined();
     if (noteLine) {
       expect(isWellFormedText(noteLine)).toBe(true);
@@ -400,7 +503,7 @@ describe("SAVED_NOTES provider", () => {
     expect(isWellFormedText(text)).toBe(true);
     const noteLine = text
       .split("\n")
-      .find((line) => line.startsWith('- "t\\n'));
+      .find((line) => line.startsWith('- ["note-fitting",'));
     expect(noteLine).toBeDefined();
     if (noteLine) {
       expect(isWellFormedText(noteLine)).toBe(true);

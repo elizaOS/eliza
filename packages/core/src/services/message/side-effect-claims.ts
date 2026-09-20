@@ -32,14 +32,14 @@
 // plan instead of a report. Adjacency keeps denials out: "I have not set"
 // never matches.
 const PERFECTIVE_SIDE_EFFECT_CLAIM_PATTERN =
-	/\bi(?:['’]ve|\s+have|\s+just)\s+(?:(?:just|already|now)\s+)?(?:set|scheduled|created|added|saved|booked|logged|arranged|updated|renamed|deleted|removed|cancell?ed)\b/gi;
+	/\bi(?:['’]ve|\s+have|\s+just)\s+(?:(?:just|already|now)\s+)?(?:set|scheduled|rescheduled|moved|postponed|shifted|created|added|saved|booked|logged|arranged|updated|renamed|deleted|removed|cancell?ed)\b/gi;
 // Bare simple-past claims ("I set a reminder for 9am."). "set" is the one
 // verb here whose past tense equals its base form, so offers ("Should I
 // set…?", "Before I set…") collide with reports on the raw pattern — this
 // branch is additionally gated on the word preceding "I" and on the
 // containing sentence not being a question.
 const BARE_PAST_SIDE_EFFECT_CLAIM_PATTERN =
-	/\bi\s+(?:set|scheduled|created|added|saved|booked|logged|arranged|updated|renamed|deleted|removed|cancell?ed)\b/gi;
+	/\bi\s+(?:set|scheduled|rescheduled|moved|postponed|shifted|created|added|saved|booked|logged|arranged|updated|renamed|deleted|removed|cancell?ed)\b/gi;
 // State-of-the-world completion claims that need no first-person subject
 // ("that's all set", "your reminders are set", "is now set up", "Done —").
 // The "now" forms and the bare completion opener ("Saved!", "Done.") were
@@ -172,7 +172,7 @@ function sideEffectClaimSentenceIsQuestion(
 // bare "set" is deliberately absent — "Set a reminder on your phone…" is a
 // common advisory imperative, not a report.
 const SUBJECTLESS_PAST_SIDE_EFFECT_CLAIM_PATTERN =
-	/(?:^|[.!?]\s+)(?:added|created|saved|scheduled|booked|logged|deleted|removed|renamed|cancell?ed|arranged)\b/gi;
+	/(?:^|[.!?]\s+)(?:added|created|saved|scheduled|rescheduled|moved|postponed|shifted|booked|logged|deleted|removed|renamed|cancell?ed|arranged)\b/gi;
 
 // Noun-first passive headline claims — "todo added: polish the lens",
 // "note saved.", "reminder set: 9am" (live variant that evaded the verb-first
@@ -180,7 +180,7 @@ const SUBJECTLESS_PAST_SIDE_EFFECT_CLAIM_PATTERN =
 // claim punctuation/colon so descriptive prose ("the todo added by you last
 // week…") passes through.
 const NOUN_FIRST_SIDE_EFFECT_CLAIM_PATTERN =
-	/(?:^|[.!?]\s+)(?:todos?|to[- ]dos?|notes?|reminders?|alarms?|tasks?|events?|appointments?|goals?|habits?)\s+(?:added|created|saved|scheduled|booked|logged|deleted|removed|renamed|cancell?ed|set|updated)\s*(?::|[.!…]|$)/gi;
+	/(?:^|[.!?]\s+)(?:todos?|to[- ]dos?|notes?|reminders?|alarms?|tasks?|events?|appointments?|goals?|habits?)\s+(?:added|created|saved|scheduled|rescheduled|moved|postponed|shifted|booked|logged|deleted|removed|renamed|cancell?ed|set|updated)\s*(?::|[.!…]|$)/gi;
 
 /**
  * One locale's fabricated-completion claim tier. `claims` are the
@@ -816,14 +816,16 @@ export function replyClaimsEmptyTrackedWorkState(reply: string): boolean {
 // whole-reply and length-bounded so substantive replies that merely contain a
 // forward-looking clause ("I'll be honest…", "I'll need the event title —
 // what is it?") never fire; questions are exempt like every detector here.
+const PROGRESS_PROMISE_CLAUSE =
+	String.raw`(?:on it|will do|sure thing|you got it|no problem|right away|` +
+	String.raw`one (?:sec|second|moment|min(?:ute)?)|just a (?:sec|second|moment|min(?:ute)?)|hold on|hang (?:on|tight)|gimme a (?:sec|second|minute)|` +
+	String.raw`(?:i(?:['’]m|\s+am)\s+)?(?:checking|looking (?:into|up)|pulling up|grabbing|fetching|getting|working|gathering|running|using|spawning|starting|saving|creating|updating|deleting) (?:it|that|this|on it|(?:[^.!?]|\.(?=\S))+?)(?:\s+now)?|` +
+	String.raw`i(?:['’]ll|\s+will) (?:check|look into|pull(?: that| it)? up|grab|fetch|get|handle|take care of)(?:\s(?:[^.!?]|\.(?=\S))+)?|` +
+	String.raw`let me (?:check|look into|pull(?: that| it)? up|grab|fetch|get)(?:\s(?:[^.!?]|\.(?=\S))+)?)`;
+// Several progress sentences are still only progress. Every clause must match;
+// an acknowledgment followed by an answer or request for input is not enough.
 const PROGRESS_PROMISE_REPLY_PATTERN = new RegExp(
-	String.raw`^[\s"'…–—-]*(?:` +
-		String.raw`on it|will do|sure thing|you got it|no problem|right away|` +
-		String.raw`one (?:sec|second|moment|min(?:ute)?)|just a (?:sec|second|moment|min(?:ute)?)|hold on|hang (?:on|tight)|gimme a (?:sec|second|minute)|` +
-		String.raw`(?:i(?:['’]m|\s+am)\s+)?(?:checking|looking into|pulling up|grabbing|fetching|getting|working) (?:it|that|this|on it|[\w\s]{0,24}?)(?:\s+now)?|` +
-		String.raw`i(?:['’]ll|\s+will) (?:check|look into|pull(?: that| it)? up|grab|fetch|get|handle|take care of)(?:\s[\w\s]{0,24})?|` +
-		String.raw`let me (?:check|look into|pull(?: that| it)? up|grab|fetch|get)(?:\s[\w\s]{0,24})?` +
-		String.raw`)[\s.!…✅👍🫡–—-]*$`,
+	String.raw`^[\s"'…–—-]*${PROGRESS_PROMISE_CLAUSE}(?:[.!…]+\s*${PROGRESS_PROMISE_CLAUSE})*[\s.!…✅👍🫡–—-]*$`,
 	"iu",
 );
 const PROGRESS_PROMISE_MAX_LENGTH = 64;

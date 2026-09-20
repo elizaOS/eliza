@@ -1,3 +1,4 @@
+import { freshCalendarSources } from "./calendar-source-fixture.js";
 /**
  * Recurring-event (RRULE) guardrails for the CALENDAR action handler.
  *
@@ -32,7 +33,18 @@ import {
 function fakeDeps(service: StubService): CalendarActionDeps {
   return {
     runTextModel: vi.fn(async () => null),
-    runJsonModel: vi.fn(async () => null),
+    runJsonModel: vi.fn(async ({ actionType }) =>
+      actionType === "lifeops.calendar.extract_create_event"
+        ? {
+            rawResponse: "{}",
+            parsed: {
+              startAt: "2026-07-06T13:00:00Z",
+              endAt: "2026-07-06T13:30:00Z",
+              timeZone: "UTC",
+            },
+          }
+        : null,
+    ),
     recentConversationTexts: vi.fn(async () => []),
     mutationGateway: {
       schedule: service.scheduleApproval,
@@ -101,7 +113,7 @@ function stubService(feedEvents: LifeOpsCalendarEvent[]) {
       events: feedEvents,
       source: "cache" as const,
       state: "complete" as const,
-      sources: [{ status: "fresh" as const }],
+      sources: freshCalendarSources(feedEvents),
       timeMin: "2026-07-01T00:00:00.000Z",
       timeMax: "2026-07-31T00:00:00.000Z",
       syncedAt: null,
@@ -274,6 +286,7 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
         },
       },
       extractedUpdate: {
+        startAt: "2026-07-08T18:00:00.000Z",
         title: "",
         description: "",
         location: "",
@@ -322,6 +335,7 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
     const result = await runHandler({
       service,
       text: "move just this standup to 10am",
+      extractedUpdate: { startAt: "2026-07-08T10:00:00Z" },
       parameters: { subaction: "update_event", query: "standup" },
     });
     expect(result.success).toBe(true);
@@ -337,7 +351,8 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
   it('"whole series" phrasing → one series-scoped patch', async () => {
     const result = await runHandler({
       service,
-      text: "rename the whole series of my standup",
+      text: "rename the whole series of my standup to Daily Sync",
+      extractedUpdate: { title: "Daily Sync" },
       parameters: {
         subaction: "update_event",
         query: "standup",
@@ -356,7 +371,8 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
   it('"this and following" phrasing → one split-scoped patch', async () => {
     const result = await runHandler({
       service,
-      text: "rename this standup and every following one",
+      text: "rename this standup and every following one to Family Sync",
+      extractedUpdate: { title: "Family Sync" },
       parameters: {
         subaction: "update_event",
         query: "standup",
@@ -374,6 +390,7 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
     const result = await runHandler({
       service,
       text: "move my standup to 10am",
+      extractedUpdate: { startAt: "2026-07-08T10:00:00Z" },
       parameters: {
         subaction: "update_event",
         query: "standup",
@@ -390,6 +407,7 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
     const result = await runHandler({
       service,
       text: "move just this standup to 10am",
+      extractedUpdate: { startAt: "2026-07-08T10:00:00Z" },
       parameters: {
         subaction: "update_event",
         query: "standup",
@@ -441,6 +459,7 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
     const result = await runHandler({
       service,
       text: "move my lunch with maya to 2pm",
+      extractedUpdate: { startAt: "2026-07-08T14:00:00.000Z" },
       parameters: {
         subaction: "update_event",
         query: "lunch",

@@ -10,6 +10,7 @@ import {
 } from "../../runtime/planner-loop";
 import type { Action, MessageHandlerResult } from "../../types/components";
 import type { State } from "../../types/state";
+import { getUserMessageText } from "../../utils/message-text";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
 import {
 	appliedEffectReceiptIdsForReply,
@@ -241,7 +242,7 @@ export async function finalizePlannerReply(
 			? ({ verdict: "allow" } as const)
 			: evaluatePlannedReplyEgress({
 					providers: finalPlannerState.data.providers,
-					request: args.message.content.text,
+					request: getUserMessageText(args.message),
 					reply: effectiveReplyText,
 					actionResults,
 					actions: args.runtime.actions,

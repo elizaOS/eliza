@@ -202,3 +202,31 @@ normal draft classifier. Expired confirmations invalidate the draft and return
 awaitingUserInput so the planner can explain the required restatement directly.
 
 Calendar feed and event-search promoted tools use operation-specific details schemas authored in the calendar leaf module. Preserve all consumed range, timezone, calendar/connector selection, refresh and search-query aliases, plus original optionality and owner gates. Parent, trip and mutation schemas retain their full contracts; never narrow them by applying a read-only schema globally.
+
+Promoted CALENDAR_PROPOSE_TIMES requires a bounded window and duration, while legacy umbrella defaults remain compatible. Calendar read/preview receipt identities include the observed result so distinct same-turn reads cannot collide. Do not infer availability from a title-filtered event search.
+
+Promoted Calendar update guidance requires the existing event query or exact event ID in every call, including accepted-slot follow-ups; replacement titles do not identify the target. A unique query resolves within the update handler without a mandatory preceding search.
+
+Rescheduling lookup uses the current event identity, not the destination time window. Promoted search guidance identifies its bounds as current-state filters; an empty filtered search never authorizes creating a replacement. The update handler resolves its own target and requests missing timing.
+
+The promoted CALENDAR_UPDATE_EVENT and CALENDAR_DELETE_EVENT tools share required targetKind (query or eventId) and a nonempty target string containing a current title/query or an exact external event ID copied from a Calendar result. The Calendar handler maps it to canonical lookup inputs and rejects contradictory ID selectors before effects; legacy umbrella query/details.eventId calls remain supported. Required target validation prevents empty mutation calls before execution.
+
+A successful planner-owned Calendar availability read returns its complete grounded facts as a settled read observation. Deferred prose alone does not force an intermediate completion verdict before dependent planning. Canonical synchronized-snapshot receipts, incomplete-feed failures, access denials and final grounded reply generation remain unchanged.
+
+Promoted availability checks require an interval object containing startAt and either endAt or durationMinutes. The umbrella retains legacy flat start/end/duration callers; mixing nested and flat intervals is rejected. The handler calculates the end from a positive duration and rejects invalid or disagreeing ranges before reading availability; unrelated umbrella operations keep their own optional fields. Update tool guidance exposes the existing write-time conflict check, including exclusion of the moved event, so authorized conditional moves do not require a duplicate availability read. Unknown availability and conflicts still pause mutation.
+
+Calendar create/update field extraction explicitly requests temperature zero through both standalone and host model runners. Other model calls retain their existing sampling defaults. Empty extraction still cannot authorize an empty write; missing timing and write-time conflict checks remain mandatory.
+
+Calendar model runners must preserve both bare-string and native `{ text, ... }` model results. Passing responseSchema can select native result envelopes; discarding their text turns valid extracted changes into empty updates. Host wiring must forward the entire model-call contract.
+
+Calendar time proposals may supply duration.existingEventQuery to preserve a uniquely resolved existing event duration. Reuse Calendar-owned target matching and lookup range, retain complete/fresh source checks and meeting preferences, and exclude only the selected event from busy intervals. Missing or ambiguous targets pause without slots or writes; explicit durations remain supported and every eventual move rechecks availability.
+
+Scheduling proposals retain successful read/preview receipts but set `awaitingUserInput: true`: finding openings does not select a clock time, create an event, or apply a move. The completion evaluator can ask for the selection without another planner round; no pending-scope or write guard is bypassed.
+
+Existing-event proposal results include `existingEventDisplay` with code-formatted start/end labels in the proposal display timezone, alongside the unchanged authoritative event record. Use the same timezone-aware formatter as slot labels; the completion model should not need to infer offset arithmetic from raw timestamps.
+
+Proposal windows use defaults only when bounds are omitted. Reject malformed supplied timestamps or non-increasing windows before reading Calendar; never silently broaden an invalid requested window to the default horizon.
+
+- Proposal windows accept local ISO clocks in the explicit IANA timezone (or owner preferences); reuse the LifeOps timezone converter, never server-local Date parsing. Reject invalid dates and nonexistent DST clocks. Offset-bearing legacy inputs remain supported.
+
+- Existing-event proposal matching reads source constraints from `duration.existingEventQuery`, not dates in the surrounding destination request. Ambiguous source queries still require clarification, and the eventual mutation independently validates the authorized target.

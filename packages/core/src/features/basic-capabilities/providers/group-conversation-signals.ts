@@ -23,6 +23,7 @@ import type {
 	UUID,
 } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";
+import { getUserMessageText } from "../../../utils/message-text.ts";
 
 /**
  * Channel types where more than two parties can hold the floor. Mirrors the
@@ -271,7 +272,12 @@ export function humanDirectlyAddressesAgent(
 	if (mentionContext?.isMention === true || mentionContext?.isReply === true) {
 		return true;
 	}
-	const text = message.content?.text;
+	// The user's own words only: connectors may wrap content.text in an
+	// external-content envelope whose header names the channel and server
+	// ("[Discord #development | Eliza Research] @user …"), and an agent named
+	// Eliza would otherwise count every message in that server as addressed
+	// (live 2026-09-16: an unaddressed question to another member was answered).
+	const text = getUserMessageText(message);
 	if (!text) return false;
 	const names = [runtime.character?.name, runtime.character?.username];
 	for (const name of names) {

@@ -117,7 +117,7 @@ import {
 } from "./addressing.js";
 import { createV5MessageContextObject } from "./context-assembly.js";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
-import { withoutIntermediateVisibleText } from "./delivery.js";
+import { filterIntermediateCallbackContent } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import {
 	captureMessageReplyRecovery,
@@ -268,11 +268,7 @@ export async function runV5MessageRuntimeStage1(
 		createV5MessageContextObject({
 			...args,
 			includeActionDiscovery:
-				directMessageChannel &&
-				args.message.content?.channelType !== ChannelType.VOICE_DM &&
-				!args.codingMode
-					? "index"
-					: true,
+				directMessageChannel && !args.codingMode ? "index" : true,
 			userRoles: [senderRole],
 			availableContexts,
 			ambientTurn,
@@ -364,11 +360,14 @@ export async function runV5MessageRuntimeStage1(
 			fieldRunResult,
 			inferenceMessageText,
 			parsedResponseHandlerReply,
+			sourceReplyReferences,
 			messageHandlerEndedAt,
 			providerDiscoveryEnabled,
+			providerReview,
 			loadedContextProviders,
 			historyReadEvidence,
 			contextCatalogRead,
+			contextReadAcknowledgmentSent,
 		} = await generateStage1Decision(
 			args,
 			{
@@ -822,7 +821,7 @@ export async function runV5MessageRuntimeStage1(
 			}
 			const directReplyEgressDecision = evaluatePlannedReplyEgress({
 				providers: args.state.data.providers,
-				request: args.message.content.text,
+				request: getUserMessageText(args.message),
 				reply,
 				actionResults: [],
 				actions: args.runtime.actions,
@@ -848,6 +847,7 @@ export async function runV5MessageRuntimeStage1(
 					text: reply,
 					thought: messageHandler.thought,
 					agentVoiced: replyIsModelVoice,
+					sourceReplyReferences,
 				}),
 			};
 		}
@@ -882,7 +882,12 @@ export async function runV5MessageRuntimeStage1(
 			messageHandler,
 		)
 			? ""
-			: routedResponseHandlerReply || parsedResponseHandlerReply;
+			: routedResponseHandlerReply ||
+				parsedResponseHandlerReply ||
+				(args.onPlanningAcknowledgment &&
+				prePatchStageOneReplyEffectStatus === "pending"
+					? (fieldRunResult?.parsed.replyText ?? "")
+					: "");
 		// `replyEffectStatus: applied` is the model's prediction, not an effect
 		// receipt. Keep it buffered until the planner either produces a verified
 		// action result or returns the terminal failure; otherwise the client sees a
@@ -891,10 +896,13 @@ export async function runV5MessageRuntimeStage1(
 			earlyReplyText = "";
 		}
 		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
-		if (earlyReplyText.length > 0 && onResponseHandlerEarlyReply) {
+		if (
+			earlyReplyText.length > 0 &&
+			(onResponseHandlerEarlyReply || args.onPlanningAcknowledgment)
+		) {
 			const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
 				providers: args.state.data.providers,
-				request: args.message.content.text,
+				request: getUserMessageText(args.message),
 				reply: earlyReplyText,
 				actionResults: [],
 				actions: args.runtime.actions,
@@ -906,6 +914,21 @@ export async function runV5MessageRuntimeStage1(
 				// (or the final-path ack fallback) owns this turn's delivery.
 				earlyReplyText = "";
 			}
+		}
+		// Progress has its own delivery channel: it must not mark an answer as
+		// sent, persist a reply, or disarm final-answer recovery. The existing
+		// routing call supplies the text and semantic pending-work classification.
+		getStreamingContext()?.abortSignal?.throwIfAborted();
+		if (
+			args.onPlanningAcknowledgment &&
+			!contextReadAcknowledgmentSent &&
+			!addressedToOtherParticipant &&
+			messageHandler.processMessage === "RESPOND" &&
+			prePatchStageOneReplyEffectStatus === "pending" &&
+			!messageHandler.plan.deterministicToolCall &&
+			earlyReplyText.trim().length > 0
+		) {
+			args.onPlanningAcknowledgment(restorePiiInUserReplyText(earlyReplyText));
 		}
 		// The addressing gate above already terminal-routes addressed-to-other
 		// turns to ignored, so a gated turn cannot normally reach this planning
@@ -1197,7 +1220,7 @@ export async function runV5MessageRuntimeStage1(
 			progressiveActions.push(
 				createPlannerToolDiscoveryAction(
 					discoveryCatalogActions,
-					(discoveredActions) => {
+					(discoveredActions, requestedNames) => {
 						// A loaded family's declared contexts join the turn's routing
 						// state so its validate() (hasActionContext) sees them at
 						// dispatch, exactly as the executor gate already merges them.
@@ -1226,6 +1249,7 @@ export async function runV5MessageRuntimeStage1(
 							plannerContextWithDecision,
 							plannerTools,
 							discoveredActions,
+							requestedNames,
 						);
 					},
 					(names) =>
@@ -1332,6 +1356,7 @@ export async function runV5MessageRuntimeStage1(
 		plannerContext.metadata = {
 			...plannerContext.metadata,
 			providerDiscoveryEnabled,
+			providerReview,
 			historyReferenceEncoding: providerDiscoveryEnabled,
 			loadedContextProviders,
 		};
@@ -1390,7 +1415,6 @@ export async function runV5MessageRuntimeStage1(
 									})),
 							}
 						: {}),
-					actionSurface: actionSurface.summary,
 				} as JsonValue,
 				thought: messageHandler.thought,
 			},
@@ -1574,7 +1598,7 @@ export async function runV5MessageRuntimeStage1(
 				})
 			: effectivePlannerContext;
 		const evaluatorEffects: EvaluatorEffects = {
-			copyToClipboard: () => undefined,
+			copyToClipboard: false,
 			messageToUser: () => undefined,
 		};
 
@@ -1620,7 +1644,7 @@ export async function runV5MessageRuntimeStage1(
 			: undefined;
 		const intermediateCallback: HandlerCallback | undefined = recordingCallback
 			? async (content, ...rest) => {
-					const nonTextContent = withoutIntermediateVisibleText(content);
+					const nonTextContent = filterIntermediateCallbackContent(content);
 					return nonTextContent
 						? recordingCallback(nonTextContent, ...rest)
 						: [];
@@ -1822,7 +1846,7 @@ export async function runV5MessageRuntimeStage1(
 					const groundedModelReplyEgress = groundedModelReply
 						? evaluatePlannedReplyEgress({
 								providers: plannerState.data.providers,
-								request: args.message.content.text,
+								request: getUserMessageText(args.message),
 								reply: groundedModelReply,
 								actionResults: [],
 								actions: args.runtime.actions,
@@ -2020,15 +2044,11 @@ export async function runV5MessageRuntimeStage1(
 												ctx.trajectory,
 												exposedPlannerActions,
 											),
-											// A pending batch has not earned transcript prose, but its
-											// media and interactive payloads still belong to the user.
-											...(recordingCallback
-												? {
-														callback:
-															ctx.plannerCompleted === false
-																? intermediateCallback
-																: recordingCallback,
-													}
+											// The planner owns the final prose even when a tool predicts
+											// this is its last batch: evaluation may still retry or continue.
+											// Preserve media and interactive payloads during execution.
+											...(intermediateCallback
+												? { callback: intermediateCallback }
 												: {}),
 										}),
 										plannerRuntime,
@@ -2275,7 +2295,7 @@ export async function runV5MessageRuntimeStage1(
 				? ({ verdict: "allow" } as const)
 				: evaluatePlannedReplyEgress({
 						providers: plannerState.data.providers,
-						request: args.message.content.text,
+						request: getUserMessageText(args.message),
 						reply: String(plannerResult.finalMessage ?? ""),
 						actionResults: egressActionResults,
 						actions: args.runtime.actions,

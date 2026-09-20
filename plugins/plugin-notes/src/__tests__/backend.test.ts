@@ -410,10 +410,8 @@ describe("Notes capabilities", () => {
     });
   });
 
-  it("splits a colon-labelled one-line create-note into title and body", async () => {
+  it("preserves colon punctuation through the create-note capability", async () => {
     const service = await serviceFor(await temporaryStateFile());
-    // Live planner output for "create a note titled Demo Checklist saying
-    // mic, charger, water" arrives as one colon-joined content line.
     const created = await interact(
       "create-note",
       { content: "Demo Checklist: mic, charger, water" },
@@ -421,10 +419,10 @@ describe("Notes capabilities", () => {
     );
     expect(created).toMatchObject({
       success: true,
-      text: "Created note “Demo Checklist”.",
+      text: "Created note “Demo Checklist: mic, charger, water”.",
     });
     expect(service.listNotes()).toMatchObject([
-      { title: "Demo Checklist", body: "mic, charger, water" },
+      { title: "Demo Checklist: mic, charger, water", body: "" },
     ]);
   });
 

@@ -265,6 +265,13 @@ describe("BROWSER action", () => {
   });
 
   it.each([
+    ["get", { selector: "title" }, { subaction: "get", selector: "title" }],
+    ["hover", { selector: "#menu" }, { subaction: "hover", selector: "#menu" }],
+    [
+      "fill",
+      { selector: "#query", text: "two  spaces" },
+      { subaction: "fill", selector: "#query", value: "two  spaces" },
+    ],
     [
       "scroll",
       { direction: "left", pixels: 375 },
@@ -340,6 +347,8 @@ describe("BROWSER action", () => {
     if (!navigate) throw new Error("Missing promoted navigate");
     for (const name of [
       "tabAction",
+      "selector",
+      "text",
       "key",
       "pixels",
       "direction",

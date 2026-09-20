@@ -200,6 +200,35 @@ describe("personalityAction — subactions write structured state", () => {
 		expect(slot.custom_directives).toContain("no emojis");
 	});
 
+	test("adding a personal directive without scope preserves existing preferences", async () => {
+		await run(fake, "be concise", "set_trait", {
+			scope: "user",
+			trait: "verbosity",
+			value: "terse",
+		});
+		await run(fake, "no emojis", "add_directive", {
+			scope: "user",
+			directive: "no emojis",
+		});
+		const globalBefore = fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE);
+		const { result } = await run(
+			fake,
+			"use my name naturally",
+			"add_directive",
+			{
+				directive: "Use my name when natural, not in every reply.",
+			},
+		);
+		expect(result.success).toBe(true);
+		const slot = fake.store.getSlot(TEST_SENDER);
+		expect(slot.custom_directives).toEqual([
+			"no emojis",
+			"Use my name when natural, not in every reply.",
+		]);
+		expect(slot.verbosity).toBe("terse");
+		expect(fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE)).toEqual(globalBefore);
+	});
+
 	test("clear_directives wipes the user list", async () => {
 		await run(fake, "no emojis", "add_directive", {
 			scope: "user",
@@ -498,5 +527,44 @@ describe("personalityAction — audit trail", () => {
 		const meta = audit[0].metadata as Record<string, unknown>;
 		expect(meta.action).toBe("set_trait");
 		expect(meta.personalityScope).toBe("user");
+	});
+});
+
+describe("individual directive removal", () => {
+	test("removes an exact legacy personal directive without clearing unrelated rules", async () => {
+		const fake = makeFakeRuntime({ owner: TEST_SENDER });
+		await initStore(fake);
+		await fake.store.setSlot({
+			...fake.store.getSlot(TEST_SENDER),
+			custom_directives: ["legacy rule", "keep this rule"],
+		});
+		const { result } = await run(
+			fake,
+			"cancel the legacy rule",
+			"remove_directive",
+			{ directive: "legacy rule" },
+		);
+		expect(result.success).toBe(true);
+		expect(fake.store.getSlot(TEST_SENDER).custom_directives).toEqual([
+			"keep this rule",
+		]);
+	});
+	test("does not remove a paraphrase or a global directive", async () => {
+		const fake = makeFakeRuntime({ owner: TEST_SENDER });
+		await initStore(fake);
+		await fake.store.setSlot({
+			...fake.store.getSlot(TEST_SENDER),
+			custom_directives: ["exact rule"],
+		});
+		for (const args of [
+			{ scope: "user", directive: "similar rule" },
+			{ scope: "global", directive: "exact rule" },
+		]) {
+			const { result } = await run(fake, "cancel it", "remove_directive", args);
+			expect(result.success).toBe(false);
+		}
+		expect(fake.store.getSlot(TEST_SENDER).custom_directives).toEqual([
+			"exact rule",
+		]);
 	});
 });

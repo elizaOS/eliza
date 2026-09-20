@@ -155,7 +155,10 @@ const preferenceOpsSchema: JSONSchema = {
 						type: "object",
 						properties: {
 							...preferenceEvidenceProperties,
-							op: { type: "string", enum: ["add_directive"] },
+							op: {
+								type: "string",
+								enum: ["add_directive", "retract_directive"],
+							},
 							text: { type: "string" },
 							confidence: preferenceConfidenceSchema,
 						},
@@ -288,7 +291,9 @@ function formatSlotForPrompt(slot: PersonalitySlot | null): string {
 	if (slot.tone) lines.push(`- tone: ${slot.tone}`);
 	if (slot.formality) lines.push(`- formality: ${slot.formality}`);
 	slot.custom_directives.forEach((directive, index) => {
-		lines.push(`- directive ${index + 1}: ${directive}`);
+		lines.push(
+			`- directive ${index + 1} [source=${slot.directive_sources?.[directive] ?? "unknown"}]: ${directive}`,
+		);
 	});
 	if (lines.length === 0) return "(none set)";
 	lines.push(`- last set by: ${slot.source}`);
@@ -584,6 +589,7 @@ export const preferenceEvaluator: Evaluator<
 			? `- set_trait: reply style that clearly maps to a closed trait value. verbosity: terse|normal|verbose. tone: warm|neutral|direct|cold. formality: casual|professional|formal.
 - add_directive: standing reply-style rule with no trait mapping ("no emojis", "one question at a time", "don't stack messages"). Preserve the complete rule and its qualifiers.
 - retract_trait: the user pushes back on an inferred trait shown below.
+- retract_directive: the speaker explicitly cancels one existing agent_inferred directive. Copy its complete exact text into text; never paraphrase the target or retract user/admin/unknown-source directives. Temporary exceptions do not retract a standing rule.
 `
 			: "";
 		const complaintExample = prepared.slot
@@ -599,7 +605,7 @@ Rules:
 - Classify every operation's scope from its original evidence: across_conversations for a lasting preference; conversation for this chat; task for the current task, reply, example or temporary instruction; uncertain when its applicability is unresolved. Never broaden "for the rest of this conversation" into a lasting preference or treat a task-specific correction as a permanent trait retraction. Only across_conversations operations are persisted. Other instructions remain in their complete original dialogue; do not strip their scope or copy them into a lasting preference fact. General style preferences and passive style complaints may be lasting when no temporary restriction is expressed.
 - In incremental extraction, EVERY operation must include sourceMessageIds citing selected new message IDs authored by this speaker. Never cite reference messages or other speakers. Omit unsupported operations.
 - New evidence must come from this speaker's newly selected messages. Historical reference text and known preferences are context only; do not reinforce them just because they appear.
-${prepared.slot ? "- set_trait and add_directive require numeric confidence from 0 to 1; never omit it. Slot ops below 0.8 are discarded. Confidence is unused for retract_trait.\n" : ""}- Confidence is optional for add_preference_fact; when present it must be an honest number from 0 to 1.
+${prepared.slot ? "- set_trait, add_directive and retract_directive require numeric confidence from 0 to 1; never omit it. Slot ops below 0.8 are discarded. Confidence is unused for retract_trait.\n" : ""}- Confidence is optional for add_preference_fact; when present it must be an honest number from 0 to 1.
 - No preference expressed -> {"ops":[]}.
 - Never emit anything about muting, ignoring, or when ${agentName} may reply.
 
@@ -688,6 +694,7 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 				let traitsSet = 0;
 				let traitsRetracted = 0;
 				let directivesAdded = 0;
+				let directivesRetracted = 0;
 				let factsAdded = 0;
 				let factsStrengthened = 0;
 				let skipped = 0;
@@ -729,6 +736,26 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 						else skipped += 1;
 						continue;
 					}
+					if (op.op === "retract_directive") {
+						if (op.confidence < SLOT_CONFIDENCE_THRESHOLD) {
+							skipped += 1;
+							continue;
+						}
+						const { before, after } = await store.removeDirective({
+							userId,
+							agentId: runtime.agentId,
+							actorId: runtime.agentId,
+							directive: op.text,
+							requiredSource: "agent_inferred",
+							extractionEvidenceId: evidenceId,
+						});
+						if (
+							after.custom_directives.length < before.custom_directives.length
+						)
+							directivesRetracted += 1;
+						else skipped += 1;
+						continue;
+					}
 					if (op.op === "add_directive") {
 						const outcome = await applyAddDirective(
 							store,
@@ -766,6 +793,7 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 					traitsSet,
 					traitsRetracted,
 					directivesAdded,
+					directivesRetracted,
 					factsAdded,
 					factsStrengthened,
 					skipped,

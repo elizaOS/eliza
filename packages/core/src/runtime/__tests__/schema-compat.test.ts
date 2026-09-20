@@ -1,11 +1,94 @@
 /** Covers Cerebras schema normalization across every JSON-schema child form. */
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
 	normalizeSchemaForCerebras,
 	sanitizeFunctionNameForCerebras,
 } from "../schema-compat";
 
 describe("normalizeSchemaForCerebras", () => {
+	it.each(["integer", "number"])(
+		"preserves nullable %s arguments and numeric bounds without string coercion",
+		(type) => {
+			for (const nullFirst of [false, true]) {
+				const numeric = { type, minimum: 1, maximum: 50, multipleOf: 0.5 };
+				const branches = [{ type: "null" }, numeric];
+				const schema = {
+					type: "object",
+					properties: {
+						limit: {
+							description: "Explicit page size or no page size.",
+							anyOf: nullFirst ? branches : [...branches].reverse(),
+						},
+					},
+					additionalProperties: false,
+				};
+				const before = JSON.stringify(schema);
+				const normalized = normalizeSchemaForCerebras(
+					schema,
+					true,
+				) as typeof schema;
+				const originalValidator = z.fromJSONSchema(schema);
+				const normalizedValidator = z.fromJSONSchema(normalized);
+				for (const value of [
+					null,
+					1,
+					1.5,
+					50,
+					51,
+					0,
+					-1,
+					"50",
+					"null",
+					{},
+					[],
+				]) {
+					const original = originalValidator.safeParse({ limit: value });
+					const parsed = normalizedValidator.safeParse({ limit: value });
+					expect(parsed.success).toBe(original.success);
+					if (parsed.success) expect(parsed.data).toEqual({ limit: value });
+				}
+				expect(normalizedValidator.parse({})).toEqual({});
+
+				expect(normalized.properties?.limit).toEqual({
+					...numeric,
+					type: [type, "null"],
+					description: "Explicit page size or no page size.",
+				});
+				expect(JSON.stringify(schema)).toBe(before);
+				expect(normalizeSchemaForCerebras(normalized, true)).toEqual(
+					normalized,
+				);
+				expect(
+					normalizeSchemaForCerebras(schema, true, { strict: false }),
+				).toEqual(schema);
+			}
+		},
+	);
+
+	it("preserves nullable unions with sibling or branch constraints it cannot combine", () => {
+		for (const limit of [
+			{ anyOf: [{ type: "integer", enum: [1, 5] }, { type: "null" }] },
+			{ anyOf: [{ type: "integer", const: 5 }, { type: "null" }] },
+			{ anyOf: [{ type: "integer" }, { type: "null", enum: [] }] },
+			{ anyOf: [{ type: "integer" }, { type: "null" }], not: { const: 5 } },
+			{ anyOf: [{ type: "integer", minimum: "1" }, { type: "null" }] },
+			{
+				anyOf: [
+					{ type: "integer", description: "Only whole records." },
+					{ type: "null" },
+				],
+			},
+		]) {
+			const schema = {
+				type: "object",
+				properties: { limit },
+				additionalProperties: false,
+			};
+			expect(normalizeSchemaForCerebras(schema, true)).toEqual(schema);
+		}
+	});
+
 	it("closes empty-properties object schemas (keeps properties:{} + additionalProperties:false)", () => {
 		const result = normalizeSchemaForCerebras({
 			type: "object",

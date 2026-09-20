@@ -205,18 +205,13 @@ export function renderMessageHandlerModelInput(
 	promptSegments: PromptSegment[];
 } {
 	const rendered = renderContextObject(context);
-	const completionSources = options?.voiceDirectMessage
-		? undefined
-		: completionContextSources(context);
+	const completionSources = completionContextSources(context);
 	const completionSourceIds = new Map(
 		completionSources?.sources.map(({ id, event }) => [event.id, id]),
 	);
-	const directText =
-		options?.directMessage &&
-		!options.voiceDirectMessage &&
-		!options.groupTriage;
+	const directConversation = options?.directMessage && !options.groupTriage;
 	const history =
-		directText &&
+		directConversation &&
 		options.history?.sourceSetId === completionSources?.sourceSetId
 			? options.history
 			: undefined;
@@ -264,7 +259,7 @@ export function renderMessageHandlerModelInput(
 	// Availability validation can change this complete, freshly authorized catalog
 	// on every request. Keep it after the history prefix so an action appearing or
 	// disappearing does not invalidate cached history. Never cache authorization.
-	const actionCatalogSegments = directText
+	const actionCatalogSegments = directConversation
 		? remainingDynamicSegments.filter(
 				(segment) =>
 					segment.id === "available-actions" &&
@@ -281,7 +276,7 @@ export function renderMessageHandlerModelInput(
 	// it with structural-looking text. Providers remain adjacent after that
 	// boundary, preserving their reusable prefix before the current message.
 	const orderedDynamicSegments = [
-		...(directText
+		...(directConversation
 			? shortenHistoryRoleLabels(priorDialogueSegments, completionSourceIds)
 			: priorDialogueSegments),
 		...actionCatalogSegments,
@@ -306,7 +301,8 @@ export function renderMessageHandlerModelInput(
 			: []),
 		...loadedHistorySegments(
 			context,
-			history ?? (directText ? options?.historyReadEvidence : undefined),
+			history ??
+				(directConversation ? options?.historyReadEvidence : undefined),
 			history?.loadedSourceIds.size
 				? new Set(
 						priorDialogueSegments.flatMap((segment) =>

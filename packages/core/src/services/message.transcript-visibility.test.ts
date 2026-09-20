@@ -369,7 +369,7 @@ describe("DefaultMessageService transcript visibility integration", () => {
 		expect(harness.sent[0]?.text).toBe(finalText);
 	});
 
-	it("preserves action attribution through the real message-service callback", async () => {
+	it("preserves result attribution while the planner delivers one final reply", async () => {
 		const visibleSummary = "The available views are ready.";
 		const harness = await createHarness(visibleSummary, visibleSummary);
 		const result = await new DefaultMessageService().handleMessage(
@@ -384,7 +384,8 @@ describe("DefaultMessageService transcript visibility integration", () => {
 				data: expect.objectContaining({ actionName: "VIEWS" }),
 			}),
 		]);
-		expect(harness.callbacks).not.toHaveLength(0);
-		expect(harness.callbackActionNames).toContain("VIEWS");
+		expect(harness.callbacks).toHaveLength(1);
+		expect(harness.callbacks[0]?.text).toBe(visibleSummary);
+		expect(harness.callbackActionNames).toEqual([undefined]);
 	});
 });

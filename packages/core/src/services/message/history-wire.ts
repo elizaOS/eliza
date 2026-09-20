@@ -61,6 +61,7 @@ export function labelHistorySources(
 	segments: ContextObjectPromptSegment[],
 	sourceIds: ReadonlyMap<string, string>,
 	labels: "all" | "referenced" = "all",
+	referenceInstruction = REFERENCE_INSTRUCTION,
 ): ContextObjectPromptSegment[] {
 	const firstSources = new Map<string, string>();
 	const anchors = new Map<string, number>();
@@ -141,13 +142,13 @@ export function labelHistorySources(
 	}
 	// Small histories cost less in their original representation. This compares
 	// complete encodings; it never caps or selects away any source.
-	if (savedCharacters <= REFERENCE_INSTRUCTION.length + 2)
+	if (savedCharacters <= referenceInstruction.length + 2)
 		return labels === "all" ? original : segments;
 	return [
 		{
 			id: "history-encoding",
 			label: "system",
-			content: REFERENCE_INSTRUCTION,
+			content: referenceInstruction,
 			stable: false,
 		},
 		...referenced,

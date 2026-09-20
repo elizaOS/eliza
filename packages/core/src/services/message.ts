@@ -3,6 +3,7 @@
 import { MessageProcessor } from "./message/processor.js";
 import { MessageTurnLifetime } from "./message/turn-lifetime.js";
 
+export { labelHistorySources } from "./message/history-wire.js";
 export { shouldSkipResponseMemoryPersistence } from "./message/processor-policy.js";
 
 import { MessageAttachments } from "./message/attachments.js";

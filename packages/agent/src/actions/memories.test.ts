@@ -4,7 +4,13 @@
  * postgres uuid column (bad ids throw a drizzle-style error carrying the raw
  * SQL) and the relationships service exposes identity-cluster membership.
  */
-import type { ActionResult, IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import type {
+  ActionResult,
+  IAgentRuntime,
+  Memory,
+  State,
+  UUID,
+} from "@elizaos/core";
 import {
   composeToolDiagnosticRedactor,
   normalizeActionIdentifier,
@@ -12,10 +18,18 @@ import {
   renderActionResultsForModel,
   validateToolArgs,
 } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { runWithActionRoutingContext } from "../../../core/src/runtime/action-routing-context";
-import { actionResultToPlannerToolResult } from "../../../core/src/runtime/planner-loop";
+import {
+  actionResultToPlannerToolResult,
+  type PlannerToolCall,
+  runPlannerLoop,
+} from "../../../core/src/runtime/planner-loop";
 import { toolMessageContent } from "../../../core/src/runtime/planner-rendering";
+import {
+  buildV5ExecutorContext,
+  executeV5PlannedToolCall,
+} from "../../../core/src/services/message/planned-tool";
 import {
   MAX_MEMORY_ACTION_RESULT_CHARS,
   MAX_MEMORY_PAGE_ITEMS,
@@ -1543,11 +1557,8 @@ describe("MEMORY op:search terminal recall", () => {
 
 describe("MEMORY uuid validation", () => {
   it("publishes a UUID-only schema for the destructive memoryId and pattern-free schemas for search filters", () => {
-    // memoryId targets a destructive op, so the schema pattern hard-fails a
-    // mangled id at the validate-tool-args boundary. entityId/roomId are
-    // search *filters*: their patterns were removed (matrix F16,
-    // tj-b0c123243cb39e) so a planner-mangled UUID reaches the handler's
-    // per-op policy instead of failing the whole call.
+    // Search filters reach the handler for a typed invalid-scope error;
+    // malformed explicit ids must never become an unfiltered search.
     const memoryId = memoryAction.parameters?.find(
       (candidate) => candidate.name === "memoryId",
     );
@@ -1564,52 +1575,49 @@ describe("MEMORY uuid validation", () => {
     }
   });
 
-  it('search ignores roomId "general" with a note, without running the id-filtered query or leaking SQL', async () => {
-    // The mock getMemories throws a drizzle-style error (raw SQL included)
-    // for any non-uuid id, so a passing test proves the invalid id was
-    // dropped before any query ran with it.
-    const { runtime, rows } = makeRuntime();
-    seedFact(rows, { text: "nubs plays guitar", entityId: USER_ID });
+  it.each([
+    { field: "roomId", value: "general" },
+    { field: "roomId", value: "b9db237-57f1-0d75-ae29-d0988d883b78" },
+    { field: "entityId", value: "0b8db237" },
+    {
+      field: "roomId",
+      value: "fd20f57b6a4d89b27d40a550d48cd841d1612f5cae9fae4ae0579bf7bbfb120d",
+    },
+    {
+      field: "entityId",
+      value: "fd20f57b6a4d89b27d40a550d48cd841d1612f5cae9fae4ae0579bf7bbfb120d",
+    },
+  ])(
+    "rejects invalid $field $value before reading any records",
+    async ({ field, value }) => {
+      const { runtime, rows } = makeRuntime();
+      seedFact(rows, { text: "paris weather note", entityId: USER_ID });
+      seedFact(rows, {
+        text: "paris weather in another room",
+        entityId: OTHER_USER_ID,
+        roomId: SIBLING_ID,
+      });
+      const getMemories = vi.spyOn(runtime, "getMemories");
+      const countMemories = vi.spyOn(runtime, "countMemories");
+      const getMemoryById = vi.spyOn(runtime, "getMemoryById");
 
-    const result = await runAction(runtime, makeMessage(), {
-      action: "search",
-      roomId: "general",
-    });
+      const result = await runAction(runtime, makeMessage(), {
+        action: "search",
+        type: "facts",
+        query: "paris weather",
+        [field]: value,
+      });
 
-    expect(result.success).toBe(true);
-    expect(result.text).toContain('ignored invalid roomId "general"');
-    expect(result.text?.toLowerCase()).not.toContain("failed query");
-    expect(result.text?.toLowerCase()).not.toContain("select");
-  });
-
-  it("search ignores a mangled dropped-character roomId and still finds rows (matrix F16)", async () => {
-    // Live shape: GLM copied the context roomId and dropped a hex char
-    // (seven-character first segment). The unusable filter is ignored —
-    // searching all rooms is a superset of the intended scope.
-    const { runtime, rows } = makeRuntime();
-    seedFact(rows, { text: "paris weather note", entityId: USER_ID });
-
-    const result = await runAction(runtime, makeMessage(), {
-      action: "search",
-      roomId: "b9db237-57f1-0d75-ae29-d0988d883b78",
-      query: "paris weather",
-    });
-
-    expect(result.success).toBe(true);
-    expect(result.text).toContain("ignored invalid roomId");
-    expect(result.text).toContain("paris weather note");
-  });
-
-  it("search ignores a partial-uuid entityId with a note", async () => {
-    const { runtime } = makeRuntime();
-    const result = await runAction(runtime, makeMessage(), {
-      action: "search",
-      entityId: "0b8db237",
-    });
-    expect(result.success).toBe(true);
-    expect(result.text).toContain('ignored invalid entityId "0b8db237"');
-    expect(result.text?.toLowerCase()).not.toContain("failed query");
-  });
+      expect(result.success).toBe(false);
+      expect(result.data).toEqual({ error: "MEMORY_INVALID_UUID" });
+      expect(result.text).toContain(`${field} "${value}" is not a valid UUID`);
+      expect(getMemories).not.toHaveBeenCalled();
+      expect(countMemories).not.toHaveBeenCalled();
+      expect(getMemoryById).not.toHaveBeenCalled();
+      expect(result.text?.toLowerCase()).not.toContain("failed query");
+      expect(result.text?.toLowerCase()).not.toContain("select");
+    },
+  );
 
   it("handles a partial-uuid memoryId on delete cleanly", async () => {
     const { runtime, rows } = makeRuntime();
@@ -1878,6 +1886,48 @@ describe("MEMORY op:delete by query", () => {
     expect(rows).toHaveLength(2);
   });
 
+  it("recovers later user corrections through a complete room read after keyword discovery", async () => {
+    const { runtime, rows } = makeRuntime();
+    const sourceTexts = [
+      "The Willow project code is AMBER.",
+      "The Willow project code is EMBER.",
+      "Actually, it's COBALT now.",
+    ];
+    for (const [index, text] of sourceTexts.entries())
+      rows.push({
+        tableName: "messages",
+        memory: {
+          id: crypto.randomUUID() as UUID,
+          agentId: AGENT_ID,
+          entityId: index === 1 ? AGENT_ID : USER_ID,
+          roomId: ROOM_ID,
+          createdAt: index + 1,
+          content: { text },
+        },
+      });
+    const before = structuredClone(rows);
+    const matches = await runAction(runtime, makeMessage(), {
+      action: "search",
+      type: "messages",
+      query: "Willow",
+      limit: 50,
+    });
+    expect(matches.values?.totalMatches).toBe(2);
+    const originals = await runAction(runtime, makeMessage(), {
+      action: "search",
+      type: "messages",
+      roomId: ROOM_ID,
+      author: "requester",
+      query: "",
+      limit: 50,
+    });
+    expect(originals.values?.totalMatches).toBe(2);
+    expect(JSON.stringify(originals.data)).toContain(sourceTexts[0]);
+    expect(JSON.stringify(originals.data)).toContain(sourceTexts[2]);
+    expect(JSON.stringify(originals.data)).not.toContain(sourceTexts[1]);
+    expect(rows).toEqual(before);
+  });
+
   it("returns a clean not-found when no stored memory matches", async () => {
     const { runtime, rows } = makeRuntime();
     seedFact(rows, { text: "nubs plays guitar", entityId: USER_ID });
@@ -1911,6 +1961,64 @@ describe("MEMORY op:delete by query", () => {
 });
 
 describe("MEMORY op:search complete traversal", () => {
+  it("counts only matching message authors, preserving room/type/author filters and source records", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    for (const [index, entityId] of [
+      USER_ID,
+      USER_ID,
+      AGENT_ID,
+      OTHER_USER_ID,
+    ].entries()) {
+      rows.push({
+        tableName: "messages",
+        memory: {
+          id: crypto.randomUUID() as UUID,
+          agentId: AGENT_ID,
+          entityId,
+          roomId: entityId === OTHER_USER_ID ? SIBLING_ID : ROOM_ID,
+          createdAt: index + 1,
+          content: { text: "Exact matching source 🟣" },
+        },
+      });
+    }
+    seedFact(rows, { text: "Exact matching source 🟣", entityId: USER_ID });
+    seedFact(rows, { text: "Unrelated source", entityId: AGENT_ID });
+    const originals = structuredClone(rows);
+    const search = (filters: TestParams) =>
+      runAction(runtime, message, {
+        action: "search",
+        query: "Exact matching source 🟣",
+        queryMode: "literal",
+        ...filters,
+      });
+    const mixed = await search({ author: "any" });
+    expect(mixed.values?.totalMatches).toBe(5);
+    expect(mixed.data?.messageAuthorCounts).toEqual({
+      matching: { requester: 2, assistant: 1, "other speaker": 1 },
+      returned: { requester: 2, assistant: 1, "other speaker": 1 },
+    });
+    const room = await search({ type: "messages", roomId: ROOM_ID });
+    expect(room.data?.messageAuthorCounts).toEqual({
+      matching: { requester: 2, assistant: 1, "other speaker": 0 },
+      returned: { requester: 2, assistant: 1, "other speaker": 0 },
+    });
+    const user = await search({ author: "requester" });
+    expect(user.data?.messageAuthorCounts).toEqual({
+      matching: { requester: 2, assistant: 0, "other speaker": 0 },
+      returned: { requester: 2, assistant: 0, "other speaker": 0 },
+    });
+    const empty = await search({ type: "messages", query: "Missing phrase" });
+    expect(empty.data?.messageAuthorCounts).toEqual({
+      matching: { requester: 0, assistant: 0, "other speaker": 0 },
+      returned: { requester: 0, assistant: 0, "other speaker": 0 },
+    });
+    const facts = await search({ type: "facts" });
+    expect(facts.values?.totalMatches).toBe(1);
+    expect(facts.data).not.toHaveProperty("messageAuthorCounts");
+    expect(rows).toEqual(originals);
+  });
+
   it("matches literal source text without normalizing it and preserves other filters", async () => {
     const { runtime, rows } = makeRuntime();
     const query = "  Blue mug,\nnot green 🟣  ";
@@ -1949,6 +2057,7 @@ describe("MEMORY op:search complete traversal", () => {
     expect(literal.text).toContain("queryMode=literal");
     const legacy = await runAction(runtime, makeMessage(), parameters);
     expect(legacy.values?.totalMatches).toBe(4);
+    expect(legacy.text).toContain("queryMode=keywords");
     expect(
       await runAction(runtime, makeMessage(), {
         ...parameters,
@@ -2407,6 +2516,259 @@ describe("MEMORY op:search complete traversal", () => {
     expect(JSON.stringify(result).length).toBeLessThan(1_048_576);
   });
 
+  it.each([false, true])(
+    "evaluates search completion only at final scope (pending first: %s)",
+    async (pendingFirst) => {
+      const { runtime, rows } = makeRuntime();
+      seedFact(rows, { text: "Mira’s backpack is orange.", entityId: USER_ID });
+      const before = structuredClone(rows);
+      const message = makeMessage();
+      const useModel = vi
+        .fn()
+        .mockResolvedValueOnce({
+          text: "",
+          toolCalls: [
+            {
+              id: "search-1",
+              name: "MEMORY_SEARCH",
+              arguments: {
+                action: "search",
+                type: "facts",
+                author: "any",
+                query: pendingFirst ? "Mira backpack orange" : "backpack",
+                queryMode: pendingFirst ? "literal" : "keywords",
+                limit: 10,
+                eliza_turn_scope: pendingFirst ? "more_work_pending" : "final",
+              },
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          text: "",
+          toolCalls: [
+            {
+              id: "search-2",
+              name: "MEMORY_SEARCH",
+              arguments: {
+                action: "search",
+                type: "facts",
+                author: "any",
+                query: "backpack",
+                queryMode: "keywords",
+                limit: 10,
+                eliza_turn_scope: "final",
+              },
+            },
+          ],
+        });
+      runtime.actions = [...promoteSubactionsToActions(memoryAction)];
+      runtime.getRoom = vi.fn(async () => null);
+      runtime.reportError = vi.fn();
+      const context = {
+        id: "search-read-contract",
+        events: runtime.actions.map((action) => ({
+          id: `tool:${action.name}`,
+          type: "tool" as const,
+          tool: { name: action.name, action },
+        })),
+      };
+      const executeToolCall = vi.fn(async (toolCall: PlannerToolCall) =>
+        executeV5PlannedToolCall({
+          runtime,
+          toolCall,
+          plannerContext: context,
+          executorCtx: buildV5ExecutorContext({
+            message,
+            state: { values: {}, data: {}, text: "" } as State,
+            selectedContexts: ["memory"],
+            replyOwner: "planner",
+            senderRole: "OWNER",
+            previousResults: [],
+          }),
+          plannerRuntime: { useModel },
+          executorOptions: { actions: runtime.actions },
+        }),
+      );
+      const evaluate = vi.fn().mockResolvedValue({
+        success: true,
+        decision: "FINISH",
+        messageToUser: "Mira’s backpack is orange.",
+      });
+      const result = await runPlannerLoop({
+        runtime: { useModel },
+        context,
+        tools: [
+          { name: "MEMORY_SEARCH", description: "Search stored records." },
+        ],
+        executeToolCall,
+        evaluate,
+      });
+      expect(result.status).toBe("finished");
+      expect(result.finalMessage).toBe("Mira’s backpack is orange.");
+      expect(executeToolCall).toHaveBeenCalledTimes(pendingFirst ? 2 : 1);
+      expect(evaluate).toHaveBeenCalledTimes(1);
+      expect(rows).toEqual(before);
+      if (pendingFirst)
+        expect(result.trajectory.evaluatorOutputs[0]).toMatchObject({
+          decision: "CONTINUE",
+          success: false,
+        });
+    },
+  );
+
+  // Real MEMORY results through the real planner loop; only model decisions
+  // and database transport are deterministic fixtures. A corrected read must
+  // not force another model call, while an unrelated query cannot clear it.
+  it.each([
+    {
+      firstQuery: undefined,
+      retryQuery: "weather",
+      recovered: true,
+      explicitFirst: true,
+    },
+    {
+      firstQuery: "weather",
+      retryQuery: "weather",
+      recovered: true,
+      explicitFirst: true,
+    },
+    {
+      firstQuery: "weather",
+      retryQuery: "travel",
+      recovered: false,
+      explicitFirst: true,
+    },
+    {
+      firstQuery: undefined,
+      retryQuery: "weather",
+      recovered: true,
+      explicitFirst: false,
+    },
+    {
+      firstQuery: "weather",
+      retryQuery: "weather",
+      recovered: true,
+      explicitFirst: false,
+    },
+    {
+      firstQuery: "weather",
+      retryQuery: "travel",
+      recovered: false,
+      explicitFirst: false,
+    },
+  ])(
+    "reconciles pagination retry $firstQuery -> $retryQuery (recovered: $recovered, explicit operation: $explicitFirst)",
+    async ({ firstQuery, retryQuery, recovered, explicitFirst }) => {
+      const { runtime, rows } = makeRuntime();
+      for (let i = 0; i <= MAX_MEMORY_PAGE_ITEMS; i++) {
+        seedFact(rows, { text: `weather record ${i}`, entityId: USER_ID });
+      }
+      seedFact(rows, { text: "unrelated travel record", entityId: USER_ID });
+      const before = structuredClone(rows);
+      const message = makeMessage();
+      const firstParams = {
+        ...(explicitFirst ? { action: "search" } : {}),
+        type: "facts",
+        author: "any",
+        ...(firstQuery ? { query: firstQuery } : {}),
+      };
+      const retryParams = {
+        action: "search",
+        type: "facts",
+        author: "any",
+        query: retryQuery,
+        limit: 20,
+      };
+      const reply = "Here is the first page of matching records; more remain.";
+      const honestFailure = "The original search still needs a matching page.";
+      const useModel = vi
+        .fn()
+        .mockResolvedValueOnce({
+          text: "",
+          toolCalls: [
+            { id: "initial", name: "MEMORY_SEARCH", arguments: firstParams },
+          ],
+        })
+        .mockResolvedValueOnce({
+          text: "",
+          toolCalls: [
+            { id: "retry", name: "MEMORY_SEARCH", arguments: retryParams },
+          ],
+        })
+        .mockResolvedValue({ text: honestFailure, toolCalls: [] });
+      runtime.actions = [...promoteSubactionsToActions(memoryAction)];
+      runtime.getRoom = vi.fn(async () => null);
+      runtime.reportError = vi.fn();
+      const context = {
+        id: "scope-test",
+        events: runtime.actions.map((action) => ({
+          id: `tool:${action.name}`,
+          type: "tool" as const,
+          tool: { name: action.name, action },
+        })),
+      };
+      const executeToolCall = vi.fn(async (toolCall: PlannerToolCall) =>
+        executeV5PlannedToolCall({
+          runtime,
+          toolCall,
+          plannerContext: context,
+          executorCtx: buildV5ExecutorContext({
+            message,
+            state: { values: {}, data: {}, text: "" } as State,
+            selectedContexts: ["memory"],
+            senderRole: "OWNER",
+            previousResults: [],
+          }),
+          plannerRuntime: { useModel },
+          executorOptions: { actions: runtime.actions },
+        }),
+      );
+      const evaluate = vi
+        .fn()
+        .mockResolvedValueOnce({
+          success: false,
+          decision: "CONTINUE",
+          thought: "Add the required page size.",
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          decision: "FINISH",
+          messageToUser: reply,
+        });
+
+      const result = await runPlannerLoop({
+        runtime: { useModel },
+        context,
+        tools: [
+          { name: "MEMORY_SEARCH", description: "Search stored records." },
+        ],
+        executeToolCall,
+        evaluate,
+      });
+
+      expect(
+        result.trajectory.steps
+          .filter((step) => step.toolCall)
+          .map((step) => step.result),
+      ).toMatchObject([
+        {
+          success: false,
+          data: { error: "MEMORY_SEARCH_REQUIRES_PAGINATION" },
+        },
+        { success: true },
+      ]);
+      expect(result.finalMessage).toBe(recovered ? reply : honestFailure);
+      expect(useModel).toHaveBeenCalledTimes(recovered ? 2 : 3);
+      expect(executeToolCall).toHaveBeenCalledTimes(2);
+      expect(
+        result.trajectory.steps
+          .filter((step) => step.toolCall)
+          .map((step) => step.result?.success),
+      ).toEqual([false, true]);
+      expect(rows).toEqual(before);
+    },
+  );
+
   it("keeps the maximum accepted page below the Codex input boundary", async () => {
     const { runtime, rows } = makeRuntime();
     for (let i = 0; i < MAX_MEMORY_PAGE_ITEMS; i++) {
@@ -2731,6 +3093,94 @@ describe("MEMORY routing aliases", () => {
 });
 
 describe("MEMORY op:search rendered text", () => {
+  it.each([false, true])(
+    "reconstructs complete planner sources with shared metadata (mixed=%s)",
+    async (mixed) => {
+      const { runtime, rows } = makeRuntime();
+      const message = makeMessage();
+      for (let index = 0; index < 12; index++) {
+        rows.push({
+          tableName: mixed && index >= 8 ? "facts" : "messages",
+          memory: {
+            id: crypto.randomUUID() as UUID,
+            agentId: AGENT_ID,
+            entityId: mixed && index % 2 ? AGENT_ID : USER_ID,
+            roomId: mixed && index % 3 ? OTHER_USER_ID : ROOM_ID,
+            createdAt: index + 1,
+            content: {
+              text: `  Exact source ${index}: "violet"\r\n🟣e\u0301\\path\t  `,
+            },
+          },
+        });
+      }
+      const before = structuredClone(rows);
+      const parameters = { action: "search", query: "violet", limit: 10 };
+      const standalone = await runAction(runtime, message, parameters);
+      expect(standalone.promptDataMode).toBeUndefined();
+      expect(standalone.transcriptVisibility).toBeUndefined();
+      expect(standalone.modelReplyRequired).toBeUndefined();
+      const frame = {
+        actionName: "MEMORY_SEARCH",
+        modelClass: undefined,
+        messageId: message.id,
+        replyOwner: "planner" as const,
+      };
+      const result = await runWithActionRoutingContext(frame, () =>
+        runAction(runtime, message, parameters),
+      );
+      expect(result.promptDataMode).toBe("replace-data");
+      expect(result.transcriptVisibility).toBe("internal");
+      expect(result.modelReplyRequired).toBe(true);
+      expect(result.data?.readOnlyOperation).toBe(true);
+      const plain = toolMessageContent(
+        actionResultToPlannerToolResult({
+          ...result,
+          promptDataMode: undefined,
+        }),
+      );
+      const encoded = toolMessageContent(
+        actionResultToPlannerToolResult(result),
+      );
+      const wire = JSON.parse(encoded);
+      const reconstructed = wire.data.memories.map(
+        (record: Record<string, unknown>) => ({
+          ...wire.data.sharedMemoryFields,
+          ...record,
+        }),
+      );
+      expect(reconstructed).toEqual(result.data?.memories);
+      expect(encoded.length).toBeLessThan(plain.length);
+      expect(wire).not.toHaveProperty("promptData");
+      expect(wire.data.values).toEqual(result.values);
+      expect(wire.data.messageAuthorCounts).toEqual(
+        result.data?.messageAuthorCounts,
+      );
+      expect(wire.data.nextOffset).toBe(10);
+      expect(result.values).toEqual(standalone.values);
+      expect(rows).toEqual(before);
+      if (mixed) {
+        expect(wire.data.sharedMemoryFields).not.toHaveProperty("entityId");
+        expect(wire.data.sharedMemoryFields).not.toHaveProperty("roomId");
+        expect(wire.data.sharedMemoryFields).not.toHaveProperty("authorRole");
+        expect(wire.data.sharedMemoryFields).not.toHaveProperty("type");
+      }
+      const small = await runWithActionRoutingContext(frame, () =>
+        runAction(runtime, message, { ...parameters, limit: 1 }),
+      );
+      expect(small.promptDataMode).toBeUndefined();
+      const empty = await runWithActionRoutingContext(frame, () =>
+        runAction(runtime, message, { ...parameters, query: "No such source" }),
+      );
+      expect(empty.promptDataMode).toBeUndefined();
+      runtime.redactSecrets = (text) => text.replaceAll(AGENT_ID, "[REDACTED]");
+      const rendered = renderActionResultsForModel([result], {
+        redactText: composeToolDiagnosticRedactor(runtime),
+      }).text;
+      expect(rendered).not.toContain(AGENT_ID);
+      expect(JSON.stringify(result.data)).toContain(AGENT_ID);
+    },
+  );
+
   it("keeps complete paginated sources once in planner results and preserves standalone text", async () => {
     const { runtime, rows } = makeRuntime();
     const message = makeMessage();
@@ -2773,6 +3223,14 @@ describe("MEMORY op:search rendered text", () => {
       }),
     );
     expect(first.values).toEqual(standalone.values);
+    expect(first.data?.messageAuthorCounts).toEqual({
+      matching: { requester: 2, assistant: 1, "other speaker": 0 },
+      returned: { requester: 1, assistant: 1, "other speaker": 0 },
+    });
+    expect(second.data?.messageAuthorCounts).toEqual({
+      matching: { requester: 2, assistant: 1, "other speaker": 0 },
+      returned: { requester: 1, assistant: 0, "other speaker": 0 },
+    });
     expect(first.values).toMatchObject({
       count: 2,
       rendered: 2,
@@ -2883,13 +3341,13 @@ describe("MEMORY op:search rendered text", () => {
     expect(result.success).toBe(true);
     const text = String(result.text ?? "");
     expect(text).toContain(operative);
-    expect(result.promptData).toMatchObject({
+    expect(result.data).toMatchObject({
       actionName: "MEMORY",
       op: "search",
       totalMatches: 1,
       rendered: 1,
     });
-    expect(result.promptData).not.toHaveProperty("memories");
+    expect(result.promptData).toBeUndefined();
   });
 });
 
@@ -3115,6 +3573,7 @@ describe("MEMORY inferSubaction (umbrella call without action)", () => {
     expect(promotedNames).toEqual([
       "MEMORY_CREATE",
       "MEMORY_SEARCH",
+      "MEMORY_COUNT",
       "MEMORY_UPDATE",
       "MEMORY_DELETE",
     ]);
@@ -3230,4 +3689,181 @@ it("does not insert a new row when an update has no existing target", async () =
   );
   expect(result.success).toBe(false);
   expect(rows).toEqual([]);
+});
+
+describe("memory inventory scope and local time", () => {
+  it("keeps matching category counts separate from the page and converts timestamps", async () => {
+    const { runtime, rows } = makeRuntime({ settings: { TIMEZONE: "UTC" } });
+    for (const type of ["facts", "messages", "memories"] as const) {
+      rows.push({
+        tableName: type,
+        memory: {
+          id: crypto.randomUUID() as UUID,
+          entityId: USER_ID,
+          agentId: AGENT_ID,
+          roomId: ROOM_ID,
+          createdAt: Date.parse("2026-09-17T18:17:00Z"),
+          content: { text: `example ${type}` },
+        },
+      });
+    }
+    const message = makeMessage();
+    message.content.metadata = { uiTimeZone: "America/New_York" };
+    const frame = {
+      actionName: "MEMORY_SEARCH",
+      modelClass: undefined,
+      messageId: message.id,
+      replyOwner: "planner" as const,
+    };
+    const result = await runWithActionRoutingContext(frame, () =>
+      runAction(runtime, message, {
+        action: "search",
+        author: "any",
+        limit: 1,
+      }),
+    );
+    expect(result.data).toMatchObject({
+      totalMatches: 3,
+      timeZone: "America/New_York",
+      searchScope: { tables: ["messages", "memories", "facts", "documents"] },
+      countsByType: {
+        matching: { messages: 1, memories: 1, facts: 1, documents: 0 },
+      },
+      memories: [
+        {
+          createdAtIso: "2026-09-17T18:17:00.000Z",
+          createdAtLocal: "Sep 17, 2026, 2:17:00 PM EDT",
+        },
+      ],
+    });
+    const filtered = await runAction(runtime, message, {
+      action: "search",
+      author: "any",
+      type: "memories",
+    });
+    expect(filtered.data).toMatchObject({
+      totalMatches: 1,
+      searchScope: { type: "memories", tables: ["memories"] },
+      countsByType: {
+        matching: { messages: 0, memories: 1, facts: 0, documents: 0 },
+      },
+    });
+  });
+});
+
+describe("MEMORY_COUNT complete aggregates", () => {
+  it("partitions a complete inventory across categories and honors message authorship", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (const tableName of [
+      "messages",
+      "messages",
+      "memories",
+      "facts",
+      "documents",
+    ]) {
+      rows.push({
+        tableName,
+        memory: { ...makeMessage(), content: { text: "Stored source" } },
+      });
+    }
+    rows[0].memory.entityId = AGENT_ID;
+    const result = await runAction(runtime, makeMessage(), {
+      action: "count",
+      author: "any",
+    });
+    expect(result.data).toMatchObject({
+      totalMatches: 5,
+      categories: [
+        expect.objectContaining({ type: "messages", count: 2 }),
+        expect.objectContaining({ type: "memories", count: 1 }),
+        expect.objectContaining({ type: "facts", count: 1 }),
+        expect.objectContaining({ type: "documents", count: 1 }),
+      ],
+    });
+    expect(
+      (
+        await runAction(runtime, makeMessage(), {
+          action: "count",
+          author: "requester",
+        })
+      ).data,
+    ).toMatchObject({ totalMatches: 1 });
+    expect(rows).toHaveLength(5);
+  });
+
+  it("counts beyond the response page limit and reads changes fresh without returning bodies", async () => {
+    const { runtime, rows } = makeRuntime({
+      settings: { TIMEZONE: "America/New_York" },
+    });
+    for (let i = 0; i < MAX_MEMORY_PAGE_ITEMS + 3; i++) {
+      seedFact(rows, { text: `Fact ${i}`, entityId: USER_ID });
+    }
+    const message = makeMessage();
+    const first = await runAction(runtime, message, { action: "count" });
+    expect(first.success).toBe(true);
+    expect(first.data).toMatchObject({
+      totalMatches: MAX_MEMORY_PAGE_ITEMS + 3,
+    });
+    expect(first.data).not.toHaveProperty("memories");
+    const id = seedFact(rows, { text: "Newest fact", entityId: USER_ID });
+    const newestRow = rows.at(-1);
+    if (!newestRow) throw new Error("Missing seeded fact");
+    newestRow.memory.createdAt = Date.parse("2026-12-17T18:16:59Z");
+    const second = await runAction(runtime, message, { action: "count" });
+    expect(second.data).toMatchObject({
+      totalMatches: MAX_MEMORY_PAGE_ITEMS + 4,
+      categories: expect.arrayContaining([
+        {
+          type: "facts",
+          searched: true,
+          count: MAX_MEMORY_PAGE_ITEMS + 4,
+          newest: {
+            id,
+            createdAtIso: "2026-12-17T18:16:59.000Z",
+            createdAtLocal: expect.stringContaining("1:16:59 PM EST"),
+          },
+        },
+      ]),
+    });
+  });
+
+  it("preserves literal, entity and table scope and distinguishes unsearched tables", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "Exact phrase", entityId: USER_ID });
+    seedFact(rows, { text: "Exact phrase", entityId: OTHER_USER_ID });
+    seedFact(rows, { text: "Other fact", entityId: USER_ID });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "count",
+      type: "facts",
+      entityId: USER_ID,
+      query: "Exact phrase",
+      queryMode: "literal",
+    });
+    expect(result.data).toMatchObject({
+      totalMatches: 1,
+      categories: expect.arrayContaining([
+        { type: "messages", searched: false, count: 0, newest: null },
+      ]),
+    });
+  });
+
+  it("rejects invalid filters and pagination rather than silently broadening the count", async () => {
+    const { runtime } = makeRuntime();
+    const invalidParams: TestParams[] = [
+      { type: "bogus" },
+      { entityId: "bogus" },
+      { limit: 20 },
+      { offset: 0 },
+    ];
+    for (const params of invalidParams) {
+      expect(
+        (
+          await runAction(runtime, makeMessage(), {
+            action: "count",
+            ...params,
+          })
+        ).success,
+      ).toBe(false);
+    }
+  });
 });

@@ -90,6 +90,7 @@ describe("personalityAction dispatcher boundaries", () => {
 			"set_reply_gate",
 			"lift_reply_gate",
 			"add_directive",
+			"remove_directive",
 			"clear_directives",
 			"load_profile",
 			"save_profile",

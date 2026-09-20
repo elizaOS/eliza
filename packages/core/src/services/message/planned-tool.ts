@@ -12,6 +12,7 @@ import {
 } from "../../actions/to-tool";
 import { actionGateFailure } from "../../runtime/action-gate";
 import { parentAliasesForCandidateAction } from "../../runtime/action-retrieval";
+import { selectedActionConversation } from "../../runtime/completion-context";
 import type {
 	EvaluatorEffects,
 	EvaluatorOutput,
@@ -254,7 +255,7 @@ export async function executeV5PlannedToolCall(
 	const action = executionActions.find(
 		(candidate) => candidate.name === toolCall.name,
 	);
-	const executorCtx =
+	const routedExecutorCtx =
 		action && args.activateActionContexts !== false
 			? {
 					...args.executorCtx,
@@ -264,6 +265,22 @@ export async function executeV5PlannedToolCall(
 					),
 				}
 			: args.executorCtx;
+	// An action-local snapshot, recomputed for each call; never mutate the cached
+	// provider state or carry a previous turn's selection into a fallback.
+	const executorCtx = {
+		...routedExecutorCtx,
+		state: routedExecutorCtx.state
+			? {
+					...routedExecutorCtx.state,
+					values: {
+						...routedExecutorCtx.state.values,
+						selectedActionConversation: selectedActionConversation(
+							args.plannerContext,
+						),
+					},
+				}
+			: undefined,
+	};
 	if (
 		action &&
 		actionHasSubActions(action) &&
@@ -354,9 +371,21 @@ export async function executeV5PlannedToolCall(
 			args.runtime,
 		),
 	});
+	const parentName = action ? promotedSubactionParent(action) : undefined;
+	const parent = parentName
+		? args.runtime.actions.find((candidate) => candidate.name === parentName)
+		: undefined;
+	const pinned =
+		parent && action
+			? pinnedDiscriminatorForPromotedChild(parent, action.name, (name) =>
+					executionActions.find((candidate) => candidate.name === name),
+				)
+			: undefined;
 	return inferred
 		? { ...plannerResult, inferredSubaction: inferred.record }
-		: plannerResult;
+		: pinned
+			? { ...plannerResult, registeredSubaction: pinned }
+			: plannerResult;
 }
 
 /**

@@ -411,7 +411,12 @@ function ensureTrajectoryLoggerTracking(
         const currentValue = toOptionalNumber(
           readExistingNumeric(latestCall, key),
         );
-        if (currentValue !== undefined && currentValue > 0) return;
+        // Zero is a valid sampling setting, not a missing measurement.
+        if (
+          currentValue !== undefined &&
+          (key === "temperature" || currentValue > 0)
+        )
+          return;
         writeNumeric(latestCall, key, nextValue);
         updated = true;
       };
@@ -1595,10 +1600,10 @@ export function installPromptOptimizations(
       systemPrompt,
       userPrompt: userPromptForTrajectory,
       response: responseText,
-      temperature:
-        typeof payloadRecord.temperature === "number"
-          ? payloadRecord.temperature
-          : 0,
+      // Omission delegates sampling to the provider; it does not mean zero.
+      ...(typeof payloadRecord.temperature === "number"
+        ? { temperature: payloadRecord.temperature }
+        : {}),
       maxTokens:
         toOptionalNumber(payloadRecord.maxTokens) ??
         toOptionalNumber(payloadRecord.maxOutputTokens) ??

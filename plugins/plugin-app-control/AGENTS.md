@@ -215,9 +215,12 @@ artifacts and failure behavior; do not substitute mocked success for the system
 under test.
 
 Contextual navigation preserves the entire original request and keeps domain
-operations in the planner. Both destination selection and its planner handoff
-use the complete authorized view/capability reference with interaction parameter
-schemas deferred; VIEWS list restores those schemas through a fresh authorized read. Planner-owned VIEWS steps pass
+operations in the planner. Destination selection keeps the authorized capability
+reference with interaction parameters deferred. Direct-text DM planner handoffs
+use the proposed destination identity plus the complete authorized identity
+index; a fresh VIEWS list read supplies descriptions and complete capability
+schemas before unfamiliar destinations or interactions. Other handoffs and
+navigation receipts retain their complete capability references. Planner-owned VIEWS steps pass
 `navigationIntent=planner-step` and a `navigationStepId`; each target is resolved
 against the current catalog, preserving registration, availability, and role
 gates. Navigation receipts remain separate from event, note, or task effects.
@@ -268,7 +271,7 @@ The same destination projection is used in pre-planner navigation context and `V
 
 Stage-1 visual continuation records whether all UI work is a single known-view show. Only that explicit same-turn model judgment may replace the VIEWS umbrella hint with VIEWS_SHOW; legacy/missing judgments and compound UI operations retain the parent. Domain candidates, full requests, permissions, discovery and delivery receipts remain authoritative. Explicit navigation does not consume a pending view-creation choice.
 
-A fresh same-turn Stage-1 navigationOnly judgment can select the existing deterministic VIEWS_SHOW executor for a client_chat DM only when the entire request is one requested view switch, the sole intent and all candidates agree, and the destination passes the live authorized catalog. singleViewOnly alone is insufficient: compound questions, domain work, multiple views, optional navigation and missing/stale classifications keep normal planning. The canonical executor retains all admission, receipt, cancellation and reply-recovery gates; post-tool synthesis grounds the visible confirmation. No utterance parser or caller metadata grants this fast path.
+A fresh same-turn Stage-1 navigationOnly judgment can select the existing deterministic VIEWS_SHOW executor for a client_chat DM or VOICE_DM only when the entire request is one requested view switch, the sole intent and all candidates agree, and the destination passes the live authorized catalog. singleViewOnly alone is insufficient: compound questions, domain work, multiple views, optional navigation and missing/stale classifications keep normal planning. The canonical executor retains all admission, receipt, cancellation and reply-recovery gates; post-tool synthesis grounds the visible confirmation. No utterance parser or caller metadata grants this fast path. Voice keeps originating-client delivery and its existing post-tool confirmation when no completed-action delivery receipt is available.
 A none decision remains a navigation denial even if the model also names the current screen; discard the irrelevant destination without a classifier call. This never grants navigation.
 
 The navigation-only reply draft describes the conditional successful destination, not progress or a domain effect. Core may reuse it after the successful matching navigation receipt and egress checks, including when Stage 1 marked the draft pending. Failed/unconfirmed navigation and compound requests retain their normal evaluation/recovery paths.

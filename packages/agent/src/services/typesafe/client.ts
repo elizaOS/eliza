@@ -206,11 +206,28 @@ function validateResponse(
       }
     }
     if (answer.type !== "noul") {
-      const sum = Object.values(answer.probabilities).reduce(
-        (total, value) => total + value,
-        0,
+      const probabilities = Object.values(answer.probabilities);
+      const sum = probabilities.reduce((total, value) => total + value, 0);
+      // Jev 1.13 returns hundredths (a live seven-option answer summed to
+      // 0.99). Accept a nonzero distribution consistent with that rounding;
+      // preserve the provider's values rather than silently normalizing them.
+      const roundedHundredths = probabilities.every(
+        (value) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-10,
       );
-      if (Math.abs(sum - 1) > 0.0001) {
+      const roundingCompatible =
+        roundedHundredths &&
+        sum > 0 &&
+        probabilities.reduce(
+          (total, value) => total + Math.max(0, value - 0.005),
+          0,
+        ) <=
+          1 + 1e-12 &&
+        probabilities.reduce(
+          (total, value) => total + Math.min(1, value + 0.005),
+          0,
+        ) >=
+          1 - 1e-12;
+      if (Math.abs(sum - 1) > 0.0001 && !roundingCompatible) {
         throw failure(
           "INVALID_RESPONSE",
           "TypeSafe probabilities do not form a distribution.",

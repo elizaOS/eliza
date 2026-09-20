@@ -14,7 +14,7 @@ import {
 	plannerSchema,
 	plannerTemplate,
 } from "../../prompts/planner";
-import { ModelType } from "../../types/model";
+import { ModelType, type ToolDefinition } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
 import {
 	__codingMutationRequiresVerificationForTests,
@@ -48,6 +48,62 @@ function renderedMessagePrompt(
 }
 
 describe("v5 planner loop skeleton", () => {
+	it.each([false, true])(
+		"requires initial reply presentation without changing coding=%s or the shared catalog",
+		async (codingMode) => {
+			const tools: ToolDefinition[] = [
+				{
+					name: "REPLY",
+					description: "Reply",
+					parameters: {
+						type: "object",
+						properties: { text: { type: "string" } },
+						additionalProperties: false,
+					},
+				},
+			];
+			const before = structuredClone(tools);
+			const useModel = vi.fn(
+				async (_type: unknown, input: { tools?: ToolDefinition[] }) => {
+					const reply = input.tools?.find((tool) => tool.name === "REPLY");
+					expect(reply).toBeDefined();
+					expect(reply?.parameters.required?.includes("text") ?? false).toBe(
+						!codingMode,
+					);
+					return {
+						text: "",
+						toolCalls: [
+							{
+								name: "REPLY",
+								arguments: {
+									text: "Which source should I check?",
+									eliza_turn_scope: "final",
+								},
+							},
+						],
+					};
+				},
+			);
+			const executeToolCall = vi.fn(async () => ({ success: true }));
+			const evaluate = vi.fn(async () => ({
+				decision: "FINISH" as const,
+				success: true,
+				messageToUser: "Which source should I check?",
+			}));
+			await runPlannerLoop({
+				runtime: { useModel },
+				context: { id: "initial-reply-presentation" },
+				tools,
+				codingMode,
+				executeToolCall,
+				evaluate,
+			});
+			expect(tools).toEqual(before);
+			expect(executeToolCall).not.toHaveBeenCalled();
+			expect(useModel).toHaveBeenCalledTimes(1);
+		},
+	);
+
 	it("records native turn scope without passing it to the action", async () => {
 		const stages: RecordedStage[] = [];
 		const recorder: TrajectoryRecorder = {

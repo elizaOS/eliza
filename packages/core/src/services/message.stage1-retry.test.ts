@@ -11,6 +11,8 @@ import { describe, expect, it } from "vitest";
 import { HANDLE_RESPONSE_TOOL_NAME } from "../actions/to-tool";
 import type { GenerateTextResult } from "../types/index";
 import { getStage1RetryReason, shouldRetryStage1Generation } from "./message";
+import { parseMessageHandlerModelOutput } from "./message/stage1-generation";
+import { extractMessageHandlerRawParsed } from "./message/stage1-output";
 
 function rawWith(opts: {
 	finishReason?: string;
@@ -142,6 +144,68 @@ function toolCallResult(args: string): GenerateTextResult {
 }
 
 describe("getStage1RetryReason duplicate tool-call recovery", () => {
+	it("rejects separate conflicting response decisions", () => {
+		const raw = {
+			toolCalls: [
+				{ name: HANDLE_RESPONSE_TOOL_NAME, arguments: { replyText: "hi" } },
+				{ name: HANDLE_RESPONSE_TOOL_NAME, arguments: { replyText: "bye" } },
+			],
+		} as unknown as GenerateTextResult;
+		expect(getStage1RetryReason(raw)).toBe(
+			"malformed HANDLE_RESPONSE tool call",
+		);
+	});
+
+	it("does not bypass conflicting native decisions through accompanying text", () => {
+		for (const text of [
+			"Already done.",
+			JSON.stringify({ replyText: "Already done.", contexts: ["simple"] }),
+		]) {
+			const raw = {
+				text,
+				toolCalls: [
+					{ name: HANDLE_RESPONSE_TOOL_NAME, arguments: { replyText: "hi" } },
+					{ name: HANDLE_RESPONSE_TOOL_NAME, arguments: { replyText: "bye" } },
+				],
+			} as unknown as GenerateTextResult;
+			expect(parseMessageHandlerModelOutput(raw)).toBeNull();
+			expect(extractMessageHandlerRawParsed(raw)).toBeNull();
+		}
+	});
+
+	it("recovers separate identical decisions regardless of key order", () => {
+		const raw = {
+			toolCalls: [
+				{
+					name: HANDLE_RESPONSE_TOOL_NAME,
+					arguments: { replyText: "hi", intents: [] },
+				},
+				{
+					name: HANDLE_RESPONSE_TOOL_NAME,
+					arguments: { intents: [], replyText: "hi" },
+				},
+			],
+		} as unknown as GenerateTextResult;
+		expect(getStage1RetryReason(raw)).toBeNull();
+	});
+
+	it("rejects a malformed response sibling instead of choosing the valid one", () => {
+		for (const payloads of [
+			[{ replyText: "hi" }, "broken"],
+			["broken", { replyText: "hi" }],
+		]) {
+			const raw = {
+				toolCalls: payloads.map((argumentsValue) => ({
+					name: HANDLE_RESPONSE_TOOL_NAME,
+					arguments: argumentsValue,
+				})),
+			} as unknown as GenerateTextResult;
+			expect(getStage1RetryReason(raw)).toBe(
+				"malformed HANDLE_RESPONSE tool call",
+			);
+		}
+	});
+
 	it("recovers identical double-emitted HANDLE_RESPONSE args", () => {
 		expect(
 			getStage1RetryReason(

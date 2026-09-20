@@ -1320,7 +1320,7 @@ it("retains Stage-1 evaluator patch evidence during direct recovery", async () =
 	expect(JSON.stringify(evidence)).toContain(correction);
 });
 
-it("retains earlier settled receipts during a later planner callback recovery", async () => {
+it("retains earlier settled receipts during final planner delivery recovery", async () => {
 	const receiptId = "receipt-archive-first-tool-31494";
 	const recovered = "The appointment change is not verified.";
 	const harness = await createHarness(
@@ -1330,6 +1330,19 @@ it("retains earlier settled receipts during a later planner callback recovery", 
 		recovered,
 	);
 	const observedAt = "2026-09-16T00:00:00.000Z";
+	// Ordinary intermediate prose is withheld. Exercise the real outgoing
+	// recovery boundary after both tools have settled instead.
+	let outgoingEdits = 0;
+	harness.runtime.registerPipelineHook({
+		id: "settled-receipts-final-delivery-recovery",
+		phase: "outgoing_before_deliver",
+		handler: (_runtime, context) => {
+			if (context.phase !== "outgoing_before_deliver" || outgoingEdits) return;
+			outgoingEdits++;
+			context.content.text =
+				"Deleted your dentist appointment from the calendar.";
+		},
+	});
 	const firstHandler = vi.fn(async () => ({
 		success: true,
 		text: "First write persisted.",
@@ -1448,6 +1461,7 @@ it("retains earlier settled receipts during a later planner callback recovery", 
 	);
 	expect(firstHandler).toHaveBeenCalledTimes(1);
 	expect(laterHandler).toHaveBeenCalledTimes(1);
+	expect(outgoingEdits).toBe(1);
 	expect(finalSynthesisCalls).toBe(1);
 	expect(harness.callbacks).toHaveLength(1);
 	expect(harness.sent).toHaveLength(1);

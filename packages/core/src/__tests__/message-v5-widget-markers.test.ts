@@ -5,14 +5,25 @@ import { describe, expect, it, vi } from "vitest";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import { runV5MessageRuntimeStage1 } from "../services/message";
+import {
+	runV5MessageRuntimeStage1,
+	wrapSingleTurnVisibleCallback,
+} from "../services/message";
+import {
+	filterIntermediateCallbackContent,
+	shouldRewriteActionCallback,
+} from "../services/message/delivery";
 import type {
 	Action,
 	ActionResult,
 	HandlerCallback,
 	HandlerOptions,
 } from "../types/components";
-import type { ChoiceInteraction, FormInteraction } from "../types/interactions";
+import type {
+	ChoiceInteraction,
+	FormInteraction,
+	InteractionBlock,
+} from "../types/interactions";
 import type { Memory } from "../types/memory";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
@@ -172,13 +183,19 @@ function makeAction(opts: {
 }
 
 describe("v5 widget markers — action callback and verified payload channels", () => {
-	it("delivers an action's callback-emitted [CHOICE] block to the connector callback verbatim", async () => {
-		const connectorDeliveries: Array<{ text: string; actionName?: string }> =
-			[];
+	it("preserves tool-owned choice controls and their explanatory question", async () => {
+		const connectorDeliveries: Array<{
+			text: string;
+			interactions?: InteractionBlock[];
+			actionName?: string;
+		}> = [];
 		const connectorCallback: HandlerCallback = vi.fn(
 			async (response, actionName) => {
 				connectorDeliveries.push({
 					text: String(response.text ?? ""),
+					...(response.interactions
+						? { interactions: response.interactions }
+						: {}),
 					...(actionName !== undefined ? { actionName } : {}),
 				});
 				return [];
@@ -212,21 +229,28 @@ describe("v5 widget markers — action callback and verified payload channels", 
 			message: makeMessage("Create a notes app for me."),
 			state: makeState(),
 			responseId: RESPONSE_ID,
-			callback: connectorCallback,
+			callback: wrapSingleTurnVisibleCallback(
+				runtime,
+				makeMessage("Create a notes app for me."),
+				connectorCallback,
+			),
 		});
 
-		// The deterministic code-authored channel: the handler's widget text
-		// reached the connector callback verbatim, attributed to the action.
+		// A tool-owned choice retains its question and payload on the existing
+		// control channel; ordinary action prose is tested separately below.
 		expect(connectorCallback).toHaveBeenCalledTimes(1);
+		expect(runtime.useModel).toHaveBeenCalledTimes(3);
 		expect(connectorDeliveries).toEqual([
-			{ text: CHOICE_BLOCK, actionName: "APP_PICKER" },
+			{
+				text: CHOICE_BLOCK,
+				interactions: parseInteractionBlocks(CHOICE_BLOCK).blocks,
+				actionName: "APP_PICKER",
+			},
 		]);
 
-		// The delivered text parses at the render boundary with the shared
-		// grammar — exactly what the dashboard/Discord/Telegram renderers do.
-		const { blocks, cleanedText } = parseInteractionBlocks(
-			connectorDeliveries[0].text,
-		);
+		// Connector renderers receive the same validated control as the shared
+		// legacy parser, without needing a separate prose callback.
+		const blocks = connectorDeliveries[0].interactions ?? [];
 		expect(blocks).toHaveLength(1);
 		const choice = blocks[0] as ChoiceInteraction;
 		expect(choice.kind).toBe("choice");
@@ -237,9 +261,9 @@ describe("v5 widget markers — action callback and verified payload channels", 
 			"edit-1",
 			"cancel",
 		]);
-		expect(cleanedText).toBe(
-			"I found an installed app named Notes. What would you like to do?",
-		);
+		expect(
+			parseInteractionBlocks(connectorDeliveries[0].text).cleanedText,
+		).toBe("I found an installed app named Notes. What would you like to do?");
 
 		// The evaluator's paraphrase stays the turn's final message; connectors
 		// dedup identical text per turn, so both channels may deliver safely.
@@ -249,6 +273,56 @@ describe("v5 widget markers — action callback and verified payload channels", 
 				"I've listed the app options for you.",
 			);
 		}
+	});
+
+	it.each(["Saved your note.", "[CHOICE:broken]\nyes=Yes\n"])(
+		"does not forward plain or malformed intermediate text: %s",
+		(text) => {
+			expect(filterIntermediateCallbackContent({ text })).toBeNull();
+		},
+	);
+
+	it("preserves legacy form instructions, controls, and media without rewriting", () => {
+		const attachments = [
+			{
+				id: "attachment-1",
+				url: "https://example.com/guide.pdf",
+				title: "Guide",
+			},
+		];
+		const result = filterIntermediateCallbackContent({
+			text: FORM_BLOCK,
+			attachments,
+		});
+		expect(result?.text).toBe(FORM_BLOCK);
+		expect(parseInteractionBlocks(result?.text ?? "").blocks).toEqual(
+			result?.interactions,
+		);
+		expect(shouldRewriteActionCallback(result, "FORM_REQUEST")).toBe(false);
+		expect(result?.attachments).toEqual(attachments);
+		expect(result?.interactions).toMatchObject([
+			{
+				kind: "form",
+				id: "reminder-form",
+				title: "Reminder details",
+				fields: [
+					{ name: "report", required: true },
+					{ name: "day" },
+					{ name: "time" },
+				],
+			},
+		]);
+	});
+
+	it("keeps an explicit structured control authoritative over duplicate text markers", () => {
+		const interactions = parseInteractionBlocks(CHOICE_BLOCK).blocks;
+		const content = { text: CHOICE_BLOCK, interactions };
+		const result = filterIntermediateCallbackContent(content);
+		expect(result?.interactions).toEqual(interactions);
+		expect(result?.interactions).toHaveLength(1);
+		expect(result?.text).toBe(CHOICE_BLOCK);
+		expect(shouldRewriteActionCallback(result, "APP_PICKER")).toBe(false);
+		expect(content.text).toBe(CHOICE_BLOCK);
 	});
 
 	it("prefers an action's verified [CHOICE] payload over the evaluator paraphrase", async () => {

@@ -1392,6 +1392,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 
 	searchMemories(params: {
 		embedding: number[];
+		/** Omit returned vectors when only message content and scores are needed. */
+		includeEmbedding?: boolean;
 		match_threshold?: number;
 		count?: number;
 		limit?: number;
@@ -1400,6 +1402,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		tableName: string;
 		query?: string;
 		roomId?: UUID;
+		/** Exclude these rooms before vector ranking and pagination. */
+		excludeRoomIds?: UUID[];
 		worldId?: UUID;
 		entityId?: UUID;
 		/**

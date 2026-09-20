@@ -33,6 +33,24 @@ Calendar **contract types** (`LifeOpsCalendarEvent`, `LifeOpsCalendarFeed`, …)
 live in `@elizaos/shared/contracts/calendar` because the contract layer is the
 only package both `@elizaos/ui` and the plugins can depend on without a cycle.
 
+## Calendar read arguments
+
+For a single-day `feed` or `search_events` action, pass
+`details: { date: "2026-09-20", timeZone: "America/New_York" }`.
+For several whole days, add `endDate` as the final included local date;
+for example, `date: "2026-09-18", endDate: "2026-09-20"` reads through
+midnight at the start of September 21. Calendar derives both midnight
+boundaries, including daylight-saving changes. Invalid/reversed dates and a
+date combined with timestamp/windowDays bounds are rejected before a read.
+Use `timeMin`/`timeMax` for partial-day ranges; those explicit timestamps
+retain their existing exclusive-end semantics. Results and reply context
+retain the actual queried window; an empty result only describes that window.
+
+The host's promoted `CALENDAR_SEARCH_EVENTS` tool requires nonempty `query`
+text. `queries` may add more content filters; dates remain read bounds, not
+search terms. The legacy umbrella handler still accepts its existing filter
+aliases. An unfiltered agenda belongs to `CALENDAR_FEED`.
+
 ## Microsoft account contract
 
 The host acquires delegated OAuth consent and registers a connected

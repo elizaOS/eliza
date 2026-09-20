@@ -80,10 +80,11 @@ export function getStage1RoutingRepair(
 		!Array.isArray(visual) &&
 		"disposition" in visual &&
 		visual.disposition === "none";
-	if (!simple && !missingRoute) return undefined;
+	if (!simple && !missingRoute && parsed.replyEffectStatus !== "non_applied")
+		return undefined;
 	return [
 		"response_contract_repair:",
-		"Your previous HANDLE_RESPONSE conflicts: a reply with replyEffectStatus=none or non_applied and no actionable route declares a completed conversational answer or a turn-ending preview, but nonempty intents declare pending runtime work. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
+		"Your previous HANDLE_RESPONSE conflicts: replyEffectStatus=non_applied declares a turn-ending preview or blocked outcome even when action candidates are listed; replyEffectStatus=none with no actionable route declares a completed conversational answer. Both conflict with nonempty intents declaring pending runtime work. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
 		'Return HANDLE_RESPONSE with a consistent decision for the original request. If the supplied context and reply complete it, preserve the answer and use intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none". A preview that must wait for the user keeps replyEffectStatus="non_applied" with intents=[]; a directive whose details the user already stated is not waiting on anything. If any action or external-state read remains, retain every pending outcome and route to the applicable planning contexts and known action candidates; mark a promised action reply pending. Do not discard pending actions to make the reply terminal, invent tool names, or claim an unverified effect. Use contextRequests if an advertised reference is needed.',
 		"previous_model_response:",
 		JSON.stringify(parsed),
@@ -98,9 +99,20 @@ export function getStage1RoutingRepair(
  */
 export function getStage1UnusableDecisionRepair(
 	parsed: Record<string, unknown> | null,
+	options?: {
+		/**
+		 * Small-model deployments (ELIZA_STAGE1_TERMINAL_REASK): a STOP or IGNORE
+		 * on a directly addressed turn is also re-asked once; a repeated verdict
+		 * is honored. Off by default: STOP and IGNORE stay terminal as returned.
+		 */
+		reaskTerminal?: boolean;
+	},
 ): string | undefined {
 	if (!parsed) return undefined;
 	const shouldRespond = parsed.shouldRespond;
+	const terminalReask =
+		options?.reaskTerminal === true &&
+		(shouldRespond === "STOP" || shouldRespond === "IGNORE");
 	const replyText =
 		typeof parsed.replyText === "string" ? parsed.replyText.trim() : "";
 	const contexts = Array.isArray(parsed.contexts) ? parsed.contexts : [];
@@ -116,17 +128,20 @@ export function getStage1UnusableDecisionRepair(
 		? parsed.contextRequests
 		: [];
 	const endedWithoutAnswer =
-		shouldRespond === "RESPOND" &&
-		replyText.length === 0 &&
-		parsed.requiresTool !== true &&
-		contexts.every((context) => context === "simple") &&
-		intents.length === 0 &&
-		candidates.length === 0 &&
-		contextRequests.length === 0;
+		terminalReask ||
+		(shouldRespond === "RESPOND" &&
+			replyText.length === 0 &&
+			parsed.requiresTool !== true &&
+			contexts.every((context) => context === "simple") &&
+			intents.length === 0 &&
+			candidates.length === 0 &&
+			contextRequests.length === 0);
 	if (!endedWithoutAnswer) return undefined;
 	return [
 		"response_contract_repair:",
-		"Your previous HANDLE_RESPONSE declared RESPOND but provided neither an answer nor pending work. A simple response must contain the complete nonempty answer. Reconsider the original request and all its instructions. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
+		terminalReask
+			? `Your previous HANDLE_RESPONSE ended a directly addressed turn with ${String(shouldRespond)}. STOP applies only to an explicit request to disengage and IGNORE only to talk that is not meant for you. Reconsider the original request and all its instructions. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.`
+			: "Your previous HANDLE_RESPONSE declared RESPOND but provided neither an answer nor pending work. A simple response must contain the complete nonempty answer. Reconsider the original request and all its instructions. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
 		'Return HANDLE_RESPONSE with a consistent decision for the original request: either answer it simply with a nonempty replyText, intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none", or route it to the applicable planning contexts with the known action candidates and a pending reply. If the original request calls for disengagement or silence, use STOP or IGNORE without a reply or actions. Otherwise do not declare RESPOND with an empty reply and no pending work. Do not invent tool names or claim an unverified effect.',
 		"previous_model_response:",
 		JSON.stringify(parsed),
@@ -180,6 +195,20 @@ export function getStage1RetryReason(
 		return null;
 	}
 	return "malformed HANDLE_RESPONSE tool call";
+}
+
+/**
+ * ELIZA_STAGE1_TERMINAL_REASK: re-ask a STOP/IGNORE once on a directly
+ * addressed turn (small planners answered STOP to plain questions, live
+ * 2026-09-11/15/16). Off by default; a repeated verdict is honored either way.
+ */
+export function readStage1TerminalReaskSetting(
+	runtime: IAgentRuntime,
+): boolean {
+	const raw = runtime.getSetting?.("ELIZA_STAGE1_TERMINAL_REASK");
+	if (raw === undefined || raw === null) return false;
+	if (typeof raw === "boolean") return raw;
+	return /^(?:1|true|yes|on)$/i.test(String(raw).trim());
 }
 
 export function readStage1EmptyRetryLimit(runtime: IAgentRuntime): number {
@@ -276,6 +305,7 @@ export function parseMessageHandlerModelOutput(
 	if (typeof raw !== "string") {
 		const native = parseMessageHandlerNativeToolCall(raw);
 		if (native) return applyBackstops(native);
+		if (hasHandleResponseToolCall(raw)) return null;
 		const text = getV5ModelText(raw);
 		return applyBackstops(
 			parseMessageHandlerOutput(text) ??

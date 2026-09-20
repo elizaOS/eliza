@@ -32,6 +32,7 @@ import {
 	shouldPromoteExplicitReplyToOwnedAction,
 	stripReplyWhenActionOwnsTurn,
 } from "../services/message";
+import { shouldSuppressInferredCandidateEscalation } from "../services/message/stage1-reply-policy";
 import type { UUID } from "../types/primitives";
 
 const logger = {
@@ -1817,5 +1818,113 @@ describe("bare link shares never commit the turn to coding delegation (link-spaw
 		expect(routed.plan.candidateActions ?? []).not.toContain(
 			"TASKS_SPAWN_AGENT",
 		);
+	});
+});
+
+describe("answered simple turns with incidental coding words", () => {
+	const text =
+		"Fictional test facts: Mira's project code is PINE-17. Jonah's project code is COVE-42. These are fictional characters, not me. No note is requested.";
+	const reply =
+		"Noted. Mira = PINE-17, Jonah = COVE-42, both fictional. No notes touched.";
+	const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+		{ name: "REPLY", tags: [] },
+		{
+			name: "TASKS",
+			tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+		},
+	];
+	const answered = {
+		shouldRespond: "RESPOND" as const,
+		contexts: ["simple"],
+		intents: [],
+		replyText: reply,
+		replyEffectStatus: "none" as const,
+		candidateActionNames: [],
+		facts: [],
+		relationships: [],
+		addressedTo: [],
+	};
+	it("does not replace a complete no-effect answer with inferred coding work", () => {
+		const routed = messageHandlerFromFieldResult(answered, undefined, {
+			actions,
+			messageText: text,
+		});
+		expect(routed.plan.simple).toBe(true);
+		expect(routed.plan.requiresTool).toBe(false);
+		expect(routed.plan.candidateActions ?? []).toEqual([]);
+		expect(routed.plan.reply).toBe(reply);
+	});
+	it("does not re-promote that answer in the registered-action evaluator", () => {
+		const gate = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(e) => e.name === "core.simple_registered_action_request",
+		);
+		expect(gate).toBeDefined();
+		expect(
+			gate?.shouldRun({
+				message: messageWithText(text, { source: "client_chat" }),
+				runtime: { actions },
+				messageHandler: {
+					processMessage: "RESPOND",
+					plan: {
+						requiresTool: false,
+						contexts: ["simple"],
+						reply,
+						replyEffectStatus: "none",
+						intents: [],
+						candidateActions: [],
+					},
+				},
+			} as never),
+		).toBe(false);
+	});
+	it.each([
+		{
+			name: "model-selected action",
+			fields: { stageOneCandidateActions: ["TASKS"] },
+		},
+		{
+			name: "pending intent",
+			fields: { stageOneIntents: ["test the project code"] },
+		},
+		{ name: "progress-only reply", fields: { stageOneReplyText: "On it." } },
+		{
+			name: "missing effect classification",
+			fields: { stageOneReplyEffectStatus: undefined },
+		},
+		{
+			name: "unverified applied effect",
+			fields: { stageOneReplyEffectStatus: "applied" as const },
+		},
+		{ name: "non-simple context", fields: { stageOneContexts: ["general"] } },
+	])("does not suppress inferred coding with $name", ({ fields }) => {
+		expect(
+			shouldSuppressInferredCandidateEscalation({
+				inference: { kind: "coding", names: ["TASKS"] },
+				stageOneContexts: ["simple"],
+				stageOneReplyText: reply,
+				stageOneCandidateActions: [],
+				stageOneReplyEffectStatus: "none",
+				stageOneIntents: [],
+				...fields,
+			}),
+		).toBe(false);
+	});
+	it("still routes a genuine coding request selected by the model", () => {
+		const routed = messageHandlerFromFieldResult(
+			{
+				...answered,
+				contexts: ["general"],
+				intents: ["test and fix code"],
+				candidateActionNames: ["TASKS"],
+				replyText: "On it.",
+			},
+			undefined,
+			{
+				actions,
+				messageText: "Test the project code and fix the failing tests.",
+			},
+		);
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("TASKS");
 	});
 });

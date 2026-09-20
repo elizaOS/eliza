@@ -8,7 +8,10 @@
 import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { timeInferenceSpan } from "../inference-timing";
-import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator";
+import {
+	evaluatorSchema,
+	evaluatorTemplateForQueue,
+} from "../prompts/evaluator";
 import {
 	composeToolDiagnosticRedactor,
 	projectToolDiagnosticValue,
@@ -93,6 +96,7 @@ interface RawEvaluatorOutput {
 	nextRecommendedTool?: unknown;
 	messageToUser?: unknown;
 	effectReceiptIds?: unknown;
+	replyEffectStatus?: unknown;
 	copyToClipboard?: unknown;
 	recommendedToolCallId?: unknown;
 	contextRequest?: unknown;
@@ -114,6 +118,7 @@ const EVALUATOR_ENVELOPE_KEYS = new Set([
 	"nextRecommendedTool",
 	"messageToUser",
 	"effectReceiptIds",
+	"replyEffectStatus",
 	"copyToClipboard",
 	"recommendedToolCallId",
 	"contextRequest",
@@ -276,7 +281,7 @@ function finalizeEvaluatorOutput(
 	context: ContextObject,
 	trajectory: PlannerTrajectory,
 ): EvaluatorOutput {
-	return sanitizeOutputMessage(
+	const output = sanitizeOutputMessage(
 		repairFinishWithUnservedDeclaredIntents(
 			repairFinishWithProgressPromise(
 				repairFinishedToolTurnWithoutUserMessage(
@@ -302,6 +307,50 @@ function finalizeEvaluatorOutput(
 			trajectory,
 		),
 	);
+	return enforceEvaluatorEffectClaim(output, trajectory);
+}
+
+/** Completed-change prose needs a committed receipt, regardless of its phrasing. */
+export function enforceEvaluatorEffectClaim(
+	output: EvaluatorOutput,
+	trajectory: PlannerTrajectory,
+): EvaluatorOutput {
+	if (output.replyEffectStatus !== "applied") return output;
+	const available = new Set(
+		activeCommittedEffectReceipts(
+			[...(trajectory.archivedSteps ?? []), ...trajectory.steps].flatMap(
+				(step) => step.result?.effectReceipts ?? [],
+			),
+		).map((receipt) => receipt.receiptId),
+	);
+	if (
+		output.effectReceiptIds?.length &&
+		output.effectReceiptIds.every((id) => available.has(id))
+	)
+		return output;
+	return {
+		...output,
+		success: false,
+		decision: "CONTINUE",
+		messageToUser: undefined,
+		copyToClipboard: undefined,
+		effectReceiptIds: undefined,
+		thought:
+			"The proposed reply claims a completed change without committed receipt evidence. Check the original requested outcomes against recorded results; plan only authorized remaining work, or report the unresolved outcome without claiming completion. Do not repeat settled effects.",
+	};
+}
+
+function evaluatorQueuedCallIds(
+	trajectory: PlannerTrajectory,
+	redactText: ToolDiagnosticTextRedactor,
+): string[] {
+	return [
+		...new Set(
+			trajectory.plannedQueue
+				.map((call) => call.id ?? call.name)
+				.filter((id) => id.trim().length > 0 && redactText(id) === id),
+		),
+	];
 }
 
 export async function runEvaluator(
@@ -324,12 +373,54 @@ export async function runEvaluator(
 	)
 		.map((receipt) => receipt.receiptId)
 		.filter((id) => redactDiagnosticText(id) === id);
+	const queuedCallIds = evaluatorQueuedCallIds(
+		params.trajectory,
+		redactDiagnosticText,
+	);
+	const clipboardAvailable = params.effects?.copyToClipboard !== false;
+	const { recommendedToolCallId, ...baseProperties } =
+		evaluatorSchema.properties ?? {};
+	if (!clipboardAvailable) delete baseProperties.copyToClipboard;
 	// Match the canonical proof boundary without changing the recorded results
 	// or forgiving invalid IDs returned by a provider that ignores its schema.
+	const latestStep = params.trajectory.steps.at(-1);
+	const requiresReplyField =
+		params.trajectory.codingMode === false &&
+		!latestStep?.terminalOnly &&
+		latestStep?.result?.transcriptVisibility === "internal" &&
+		latestStep.result.modelReplyRequired === true &&
+		!latestStep.result.userFacingText?.trim();
 	const responseSchema = {
 		...evaluatorSchema,
+		...(requiresReplyField
+			? { required: [...(evaluatorSchema.required ?? []), "messageToUser"] }
+			: {}),
 		properties: {
-			...evaluatorSchema.properties,
+			...baseProperties,
+			...(requiresReplyField
+				? {
+						messageToUser: {
+							...baseProperties.messageToUser,
+							description:
+								"This internal result requires a model-authored reply. For FINISH, provide the grounded outcome or necessary question here. For CONTINUE or contextRequest, use an empty string; do not publish a progress draft.",
+						},
+					}
+				: {}),
+			// Candidate action names and past calls are not an executable queue.
+			// The planner's existing dispatch/fallback checks remain authoritative.
+			...(queuedCallIds.length
+				? {
+						recommendedToolCallId: {
+							...recommendedToolCallId,
+							enum: queuedCallIds,
+						},
+					}
+				: {
+						decision: {
+							...baseProperties.decision,
+							enum: ["FINISH", "CONTINUE"],
+						},
+					}),
 			// Match terminal failure authority without rewriting the model output.
 			...(params.hasUnresolvedToolFailure
 				? { success: { ...evaluatorSchema.properties?.success, enum: [false] } }
@@ -349,6 +440,7 @@ export async function runEvaluator(
 		context: params.context,
 		trajectory: params.trajectory,
 		redactText: redactDiagnosticText,
+		clipboardAvailable,
 	};
 	const renderedInput = renderEvaluatorModelInput(renderArgs);
 	const modelInputBudget = buildModelInputBudget({
@@ -459,6 +551,7 @@ export async function runEvaluator(
 			context: params.context,
 			trajectory: params.trajectory,
 			redactText: redactDiagnosticText,
+			clipboardAvailable,
 		});
 		const attemptBudget = buildModelInputBudget({
 			messages: attemptInput.messages,
@@ -607,6 +700,13 @@ export async function runEvaluator(
 		throw error;
 	}
 	let output = finalizeEvaluatorOutput(raw, params.context, params.trajectory);
+	if (!clipboardAvailable && output.copyToClipboard) {
+		output = {
+			...output,
+			protocolFailure: true,
+			parseError: "Clipboard output is unavailable in this host",
+		};
+	}
 	const snapshot = selectedCall?.preparedAttempt;
 	const recordOutput = () =>
 		recordEvaluationStage({
@@ -858,6 +958,7 @@ function renderEvaluatorModelInput(params: {
 	trajectory: PlannerTrajectory;
 	template?: string;
 	redactText: ToolDiagnosticTextRedactor;
+	clipboardAvailable?: boolean;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
@@ -890,7 +991,12 @@ function renderEvaluatorModelInput(params: {
 			content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nOnly Stage-1-selected prior dialogue sources are shown. All original sources remain available in this turn. If any constraint, correction, referent or requested historical evidence is missing, request contextRequest=history with decision=CONTINUE, success=false, and no user reply or clipboard effect. The runtime restores complete original dialogue without expanding unrelated provider references for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
 		});
 	}
-	const template = params.template ?? evaluatorTemplate;
+	const template =
+		params.template ??
+		evaluatorTemplateForQueue(
+			evaluatorQueuedCallIds(params.trajectory, params.redactText).length > 0,
+			params.clipboardAvailable,
+		);
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
@@ -953,6 +1059,7 @@ const ACTION_SURFACE_DIAGNOSTIC_FIELDS = new Set([
 	"actionSurfaceHash",
 	"warnings",
 	"queryTokens",
+	"queryTokenCount",
 	"candidateActions",
 	"parentActionHints",
 	"codingActionProfile",
@@ -1060,6 +1167,12 @@ export function parseEvaluatorOutput(
 			parsed.messageToUser.trim().length > 0
 				? parsed.messageToUser
 				: undefined,
+		...(typeof parsed.replyEffectStatus === "string"
+			? {
+					replyEffectStatus:
+						parsed.replyEffectStatus as EvaluatorOutput["replyEffectStatus"],
+				}
+			: {}),
 		...(Array.isArray(parsed.effectReceiptIds)
 			? { effectReceiptIds: parsed.effectReceiptIds as string[] }
 			: {}),
@@ -1075,6 +1188,13 @@ export function parseEvaluatorOutput(
 function evaluatorEnvelopeProtocolError(
 	output: RawEvaluatorOutput,
 ): string | undefined {
+	if (
+		output.replyEffectStatus !== undefined &&
+		!["none", "applied", "non_applied"].includes(
+			String(output.replyEffectStatus),
+		)
+	)
+		return "replyEffectStatus must be none, applied or non_applied";
 	const unknownKey = Object.keys(output).find(
 		(key) => !EVALUATOR_ENVELOPE_KEYS.has(key),
 	);
@@ -1092,8 +1212,8 @@ function evaluatorEnvelopeProtocolError(
 		parseEvaluatorRoute(output.decision) !== parseEvaluatorRoute(output.route)
 	)
 		return 'fields "decision" and legacy "route" must agree';
-	if (typeof output.thought !== "string")
-		return 'required field "thought" must be a string';
+	if (Object.hasOwn(output, "thought") && typeof output.thought !== "string")
+		return 'optional field "thought" must be a string';
 	if (
 		Object.hasOwn(output, "contextRequest") &&
 		(!["full", "history", "providers"].includes(
@@ -1101,10 +1221,10 @@ function evaluatorEnvelopeProtocolError(
 		) ||
 			output.success !== false ||
 			parseEvaluatorRoute(output.decision ?? output.route) !== "CONTINUE" ||
-			Object.hasOwn(output, "messageToUser") ||
+			(Object.hasOwn(output, "messageToUser") && output.messageToUser !== "") ||
 			Object.hasOwn(output, "copyToClipboard"))
 	)
-		return "contextRequest must be full, history or providers with CONTINUE, success=false, and no messageToUser or copyToClipboard";
+		return "contextRequest must be full, history or providers with CONTINUE, success=false, no reply text, and no copyToClipboard";
 	if (
 		Object.hasOwn(output, "messageToUser") &&
 		typeof output.messageToUser !== "string"

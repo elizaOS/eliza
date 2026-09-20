@@ -144,6 +144,93 @@ function harness(args: {
 }
 
 describe("planner-declared pending work", () => {
+	it("does not reuse an unevaluated progress reply as a verified final answer", async () => {
+		const h = harness({
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						call(
+							"REPLY",
+							"more_work_pending",
+							"Let me check how that behaves.",
+						),
+					],
+				},
+				{ text: "", toolCalls: [call("REPLY", "final")] },
+				{ text: "", toolCalls: [call("READ", "final")] },
+			],
+			evaluations: [finish("The recorded value is blue.")],
+			intents: [],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["READ"]);
+		expect(result.finalMessage).toBe("The recorded value is blue.");
+		expect(JSON.stringify(h.useModel.mock.calls[1])).not.toContain(
+			"already verified",
+		);
+		expect(
+			result.trajectory.evaluatorOutputs.some(
+				(output) =>
+					output.success &&
+					output.messageToUser === "Let me check how that behaves.",
+			),
+		).toBe(false);
+	});
+
+	it("continues actual work after an unevaluated pending reply without an extra evaluator", async () => {
+		const h = harness({
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						call(
+							"REPLY",
+							"more_work_pending",
+							"Let me check how that behaves.",
+						),
+					],
+				},
+				{ text: "", toolCalls: [call("READ", "final")] },
+			],
+			evaluations: [finish("The recorded value is blue.")],
+			intents: [],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["READ"]);
+		expect(result.finalMessage).toBe("The recorded value is blue.");
+		expect(
+			h.useModel.mock.calls.filter(
+				([type]) => type === ModelType.RESPONSE_HANDLER,
+			),
+		).toHaveLength(1);
+	});
+
+	it.each([false, true])(
+		"bounds repeated unverified terminal continuations (empty=%s)",
+		async (empty) => {
+			const progress = {
+				text: "",
+				toolCalls: [
+					call("REPLY", "more_work_pending", "Let me check how that behaves."),
+				],
+			};
+			const h = harness({
+				plans: [
+					progress,
+					empty ? { text: "", toolCalls: [call("REPLY", "final")] } : progress,
+				],
+				evaluations: [],
+				intents: [],
+			});
+			await expect(
+				h.run({ config: { maxTerminalOnlyContinuations: 1 } }),
+			).rejects.toMatchObject({ kind: "terminal_only_continuations" });
+			expect(h.useModel).toHaveBeenCalledTimes(2);
+			expect(h.executed).toEqual([]);
+		},
+	);
+
 	it.each(["STOP", "IGNORE", "NONE"])(
 		"preserves explicit silent control %s after pending work",
 		async (name) => {
@@ -325,7 +412,7 @@ describe("planner-declared pending work", () => {
 		async (messageToUser) => {
 			// Recorded live: step-1789215630238-928oz1. The evaluator approved
 			// native REPLY without replacing it, but its thought reached the UI.
-			// The existing Stage-1 draft now reaches that evaluation without planning.
+			// A textless planner REPLY must preserve the existing draft for evaluation.
 			const preview =
 				"Here's the draft, not saved:\n\nTitle: History header QA 20260912\nBody: Bring a green folder and a charger.\n\nTell me when to save it; the app stays where it is.";
 			const thought =
@@ -341,7 +428,7 @@ describe("planner-declared pending work", () => {
 					replyEffectStatus: "none",
 					candidateActions: [],
 				},
-				plans: [],
+				plans: [{ text: "", toolCalls: [call("REPLY", "final")] }],
 				evaluations: [
 					JSON.stringify({
 						thought,
@@ -363,6 +450,7 @@ describe("planner-declared pending work", () => {
 			expect(result.evaluator?.decision).toBe("FINISH");
 			expect(h.executed).toEqual([]);
 			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+				ModelType.ACTION_PLANNER,
 				ModelType.RESPONSE_HANDLER,
 			]);
 		},
@@ -389,7 +477,7 @@ describe("planner-declared pending work", () => {
 					replyEffectStatus,
 					candidateActions: ["NOTES_CREATE"],
 				},
-				plans: [],
+				plans: [{ text: "", toolCalls: [call("REPLY", "final")] }],
 				evaluations: [finish(preview)],
 			});
 			const result = await h.run({
@@ -401,38 +489,44 @@ describe("planner-declared pending work", () => {
 			expect(result.finalMessage).toBe(preview);
 			expect(h.executed).toEqual([]);
 			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+				ModelType.ACTION_PLANNER,
 				ModelType.RESPONSE_HANDLER,
 			]);
 			expect(result.trajectory.evaluatorOutputs).toHaveLength(1);
 		},
 	);
 
-	it("still performs required work when an empty-intent draft fails completion", async () => {
-		const h = harness({
-			userMessage: "Read the current note before answering; do not change it.",
-			intents: [],
-			stageOnePlan: {
-				reply: "I can answer about the note.",
-				replyEffectStatus: "none",
-				candidateActions: ["READ"],
-			},
-			plans: [{ text: "", toolCalls: [call("READ", "final")] }],
-			evaluations: [
-				continueWork("The request requires a current read, which has not run."),
-				finish("The current note says to bring the purple folder."),
-			],
-		});
-		const result = await h.run({
-			tools: [{ name: "READ" }, { name: "REPLY" }],
-			requireNonTerminalToolCall: true,
-		});
-		expect(h.executed).toEqual(["READ"]);
-		expect(h.useModel.mock.calls[0][0]).toBe(ModelType.RESPONSE_HANDLER);
-		expect(result.trajectory.evaluatorOutputs[0].decision).toBe("CONTINUE");
-		expect(result.finalMessage).toBe(
-			"The current note says to bring the purple folder.",
-		);
-	});
+	it.each([{ intents: [] }, { intents: ["read current note"] }])(
+		"plans a current read before evaluation despite a none-status draft (%j)",
+		async ({ intents }) => {
+			const h = harness({
+				userMessage:
+					"Read the current note before answering; do not change it.",
+				intents,
+				stageOnePlan: {
+					reply: "Reading it now.",
+					replyEffectStatus: "none",
+					candidateActions: ["READ"],
+				},
+				plans: [{ text: "", toolCalls: [call("READ", "final")] }],
+				evaluations: [
+					finish("The current note says to bring the purple folder."),
+				],
+			});
+			const result = await h.run({
+				tools: [{ name: "READ" }, { name: "REPLY" }],
+				requireNonTerminalToolCall: true,
+			});
+			expect(h.executed).toEqual(["READ"]);
+			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			expect(result.finalMessage).toBe(
+				"The current note says to bring the purple folder.",
+			);
+		},
+	);
 
 	it.each([true, false])(
 		"evaluates a planner confirmation pause even when Stage 1 incorrectly marked it pending (reply text: %s)",
@@ -484,16 +578,10 @@ describe("planner-declared pending work", () => {
 					candidateActions: ["READ"],
 				},
 				plans: [
-					...(replyEffectStatus === "pending"
-						? [
-								{
-									text: "",
-									toolCalls: [
-										call("REPLY", "final", "I can answer about the note."),
-									],
-								},
-							]
-						: []),
+					{
+						text: "",
+						toolCalls: [call("REPLY", "final", "I can answer about the note.")],
+					},
 					{ text: "", toolCalls: [call("READ", "final")] },
 				],
 				evaluations: [
@@ -508,7 +596,7 @@ describe("planner-declared pending work", () => {
 			expect(result.status).toBe("finished");
 			expect(h.executed).toEqual(["READ"]);
 			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
-				...(replyEffectStatus === "pending" ? [ModelType.ACTION_PLANNER] : []),
+				ModelType.ACTION_PLANNER,
 				ModelType.RESPONSE_HANDLER,
 				ModelType.ACTION_PLANNER,
 				ModelType.RESPONSE_HANDLER,
@@ -650,8 +738,12 @@ describe("planner-declared pending work", () => {
 							artifacts: [],
 							idempotency: { key: null, replayed: false },
 							observedAt: "2026-09-12T07:00:00.000Z",
-							outcome: "noop",
-							reason: "Read snapshot",
+							outcome: "applied",
+							commit: {
+								kind: "durable",
+								id: "n",
+								committedAt: "2026-09-12T07:00:00.000Z",
+							},
 						},
 					],
 				},
@@ -678,65 +770,87 @@ describe("planner-declared pending work", () => {
 		expect(h.executed).toEqual(["READ"]);
 	});
 
-	it("replans a settled preparatory read without intermediate model evaluation", async () => {
-		const body = "Bring a green folder and a charger.";
-		const h = harness({
-			userMessage:
-				"Read the note. Open Calendar only if it contains green. Do not edit records.",
-			plans: [
-				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
-				{ text: "", toolCalls: [call("NAVIGATE", "final")] },
-			],
-			evaluations: [finish(`${body} Calendar is open.`)],
-			results: [
-				{
-					success: true,
-					transcriptVisibility: "internal",
-					modelReplyRequired: true,
-					data: { readOnlyOperation: true, notes: [{ body }] },
+	it.each(["marker", "receipt"] as const)(
+		"replans a settled preparatory read using %s without intermediate model evaluation",
+		async (proof) => {
+			const body = "Bring a green folder and a charger.";
+			const h = harness({
+				userMessage:
+					"Read the note. Open Calendar only if it contains green. Do not edit records.",
+				plans: [
+					{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+					{ text: "", toolCalls: [call("NAVIGATE", "final")] },
+				],
+				evaluations: [finish(`${body} Calendar is open.`)],
+				results: [
+					{
+						success: true,
+						transcriptVisibility: "internal",
+						modelReplyRequired: true,
+						data: {
+							...(proof === "marker" ? { readOnlyOperation: true } : {}),
+							notes: [{ body }],
+						},
+						...(proof === "receipt"
+							? {
+									effectReceipts: [
+										{
+											receiptId: "calendar-read",
+											operation: "calendar.check_availability.read",
+											resource: { kind: "calendar.feed", id: "primary" },
+											artifacts: [],
+											idempotency: { key: null, replayed: false },
+											observedAt: "2026-09-17T12:00:00.000Z",
+											outcome: "noop" as const,
+											reason: "Read synchronized snapshot",
+										},
+									],
+								}
+							: {}),
+					},
+					{
+						success: true,
+						transcriptVisibility: "internal",
+						modelReplyRequired: true,
+						data: { destination: "calendar" },
+					},
+				],
+			});
+			const stages: RecordedStage[] = [];
+			const result = await h.run({
+				recorder: {
+					startTrajectory: () => "pending-read",
+					recordStage: async (_id, stage) => {
+						stages.push(stage);
+					},
+					endTrajectory: async () => undefined,
+					load: async () => null,
+					list: async () => [],
 				},
-				{
-					success: true,
-					transcriptVisibility: "internal",
-					modelReplyRequired: true,
-					data: { destination: "calendar" },
-				},
-			],
-		});
-		const stages: RecordedStage[] = [];
-		const result = await h.run({
-			recorder: {
-				startTrajectory: () => "pending-read",
-				recordStage: async (_id, stage) => {
-					stages.push(stage);
-				},
-				endTrajectory: async () => undefined,
-				load: async () => null,
-				list: async () => [],
-			},
-			trajectoryId: "pending-read",
-		});
-		expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
-			ModelType.ACTION_PLANNER,
-			ModelType.ACTION_PLANNER,
-			ModelType.RESPONSE_HANDLER,
-		]);
-		expect(h.executed).toEqual(["READ", "NAVIGATE"]);
-		expect(result.finalMessage).toBe(`${body} Calendar is open.`);
-		const nextPlanner = h.useModel.mock.calls.filter(
-			([type]) => type === ModelType.ACTION_PLANNER,
-		)[1];
-		expect(JSON.stringify(nextPlanner)).toContain(body);
-		expect(JSON.stringify(nextPlanner)).toContain("Do not edit records.");
-		expect(
-			stages.some(
-				(stage) =>
-					stage.evaluation?.gated === true &&
-					stage.evaluation.reason === "pending_read_replan" &&
-					stage.evaluation.decision === "CONTINUE",
-			),
-		).toBe(true);
-	});
+				trajectoryId: "pending-read",
+			});
+			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+				ModelType.ACTION_PLANNER,
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			expect(h.executed).toEqual(["READ", "NAVIGATE"]);
+			expect(result.finalMessage).toBe(`${body} Calendar is open.`);
+			const nextPlanner = h.useModel.mock.calls.filter(
+				([type]) => type === ModelType.ACTION_PLANNER,
+			)[1];
+			expect(JSON.stringify(nextPlanner)).toContain(body);
+			expect(JSON.stringify(nextPlanner)).toContain("Do not edit records.");
+			expect(
+				stages.some(
+					(stage) =>
+						stage.evaluation?.gated === true &&
+						stage.evaluation.reason === "pending_read_replan" &&
+						stage.evaluation.decision === "CONTINUE",
+				),
+			).toBe(true);
+		},
+	);
 
 	it.each(["final", "more_work_pending"] as const)(
 		"preserves %s scope across discovery and an already queued domain read",
@@ -1555,6 +1669,47 @@ describe("canonical evaluation of grounded internal receipts", () => {
 			).toHaveLength(1);
 		},
 	);
+
+	it("finishes a corrected final-scope write without regenerating an obsolete preflight failure", async () => {
+		const reply = "The event was updated.";
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("CALENDAR_UPDATE_EVENT", "final")] },
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("CALENDAR_UPDATE_EVENT", "final"),
+							arguments: { query: "Gym", eliza_turn_scope: "final" },
+						},
+					],
+				},
+			],
+			evaluations: [
+				continueWork("Supply the target."),
+				finish(reply, true, [appliedReceipt.receiptId]),
+			],
+			results: [
+				{
+					success: false,
+					data: { error: "CALENDAR_TARGET_UNRESOLVED", coachingFailure: true },
+				},
+				{
+					success: true,
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+					effectReceipts: [appliedReceipt],
+				},
+			],
+		});
+		const result = await h.run();
+		expect(result.finalMessage).toBe(reply);
+		expect(modelCalls(h, ModelType.ACTION_PLANNER)).toBe(2);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(2);
+		expect(
+			result.trajectory.steps.filter((step) => step.result?.success === false),
+		).toHaveLength(1);
+	});
 
 	it("does not release a success while an unrelated write failure remains unresolved", async () => {
 		const honestReply = "The read succeeded, but the record was not updated.";

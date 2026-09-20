@@ -136,7 +136,7 @@ describe("lossless history references", () => {
 		expect(labeled).toEqual(before);
 	});
 
-	it("uses the role legend only for direct text input and keeps current-turn boundaries after complete history", () => {
+	it("uses the role legend for direct conversations and keeps current-turn boundaries after complete history", () => {
 		const history = Array.from({ length: 40 }, (_, index) =>
 			source(`source ${index}`, index),
 		);
@@ -236,7 +236,6 @@ describe("lossless history references", () => {
 			undefined,
 			{ directMessage: false },
 			{ directMessage: true, groupTriage: true },
-			{ directMessage: true, voiceDirectMessage: true },
 		]) {
 			const other = renderMessageHandlerModelInput(
 				runtime,
@@ -251,6 +250,12 @@ describe("lossless history references", () => {
 				otherText.indexOf("current_turn_boundary:"),
 			);
 		}
+		const voice = renderMessageHandlerModelInput(runtime, context, [], {
+			directMessage: true,
+			voiceDirectMessage: true,
+		});
+		expect(voice.messages[1]).toEqual(text.messages[1]);
+		expect(voice.messages[0].content).toContain("voice engagement rules:");
 		expect(context).toEqual(before);
 	});
 	it("saves repeated text among hundreds of short unique messages without labeling every unique source", () => {

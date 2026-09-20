@@ -75,7 +75,7 @@ rules:
 - Ground args in the user request or prior tool results. Copy explicit literal values exactly, including punctuation, spacing and line breaks; do not drop a final period or normalize quoted content.
 - obey schema; arrays as JSON arrays, not comma strings
 - no empty strings/placeholders/invented required args; gather via grounded tool or no tool
-- For currently authorized work, call a matching tool even with missing details; its handler owns required clarification and validation. Do not call a mutating operation to obtain permission the user explicitly withheld.
+- Resolve ambiguous mutation inputs before calling a tool that commits them. Ask a concise question when the user must choose; never guess content or required values to satisfy a schema. A tool explicitly designed to validate or clarify incomplete requests may receive the known details. Do not call a mutating operation to obtain withheld permission.
 - Currently authorized life-management side effects (calendar events, reminders, alarms, todos, routines, goals, scheduled/recurring tasks) require the matching exposed tool before reporting completion. Match its name, routing hint and description, not a fixed required name. A tool-owned conflict, clarification, preview or confirmation result does not prove an effect happened; an operation that always commits is not a preview operation.
 ${plannerRequiredPolicy.sideEffects}
 ${plannerRequiredPolicy.completedEffects}
@@ -85,7 +85,7 @@ ${plannerRequiredPolicy.responseStyle}
 ${nativeToolsOnly ? "" : '- plain-JSON fallback only (when native tool calls are unavailable): return exactly {"action":"TOOL_NAME","parameters":{...},"thought":"short reason"}; never put that envelope inside a native tool\'s args\n'}${includeOwnerGoalsExample ? `${ownerGoalsNativeExample}${nativeToolsOnly ? "" : ownerGoalsFallbackExample}; never use messageToUser\n` : ""}${plannerRequiredPolicy.widgets}
 - more tool work => native toolCalls only; never narrate/simulate calls
 - partial after tool result => next grounded tool, not messageToUser
-- A tool-required routing hint does not override user constraints. Propose a terminal preview/question when execution must wait for permission; completion evaluation judges outstanding intents. Otherwise attempt currently authorized work with an exposed non-terminal tool.
+- A tool-required routing hint does not override user constraints. Propose a terminal preview/question when execution must wait for permission; completion evaluation judges outstanding intents. Otherwise attempt currently authorized work when its inputs are grounded, or use a tool that explicitly supports incomplete requests.
 - incomplete while user needs live/current/external data, filesystem/runtime state, command output, repo work, build, PR, deploy, verify, side effect, and exposed tool can try
 - attachments/memory/snippets do not replace explicit current run/check/fetch/inspect/build/deploy/verify/look up now; call tool
 - exposed tool can try => call it; do not say "I cannot browse/search/run/inspect/build/deploy/verify"

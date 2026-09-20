@@ -30,6 +30,7 @@ export const STAGE1_RESPONSE_STATE_PROVIDERS = [
 	"relevant-conversations",
 	"BOT_AWARENESS",
 	"CHOICE",
+	"NAMED_NOTES",
 ] as const;
 
 export const CORE_RESPONSE_STATE_PROVIDERS = [

@@ -13,7 +13,10 @@ State is stored atomically per agent under
 capabilities share one validated mutation path, and mounted views converge
 through the normal runtime update event.
 
-The chat update action identifies the existing note with `content` and takes
+`NOTES_PATCH` edits individual fields with required `target: { kind: "id" | "text", value }` and `changes: [{ field: "title" | "body", value }]`. Supply at least one change, or use `changes: []` with `textEdit` for an exact substring substitution. Never combine both forms; omitted fields remain unchanged. It uses the same owner-only Notes service and rejects ambiguous targets, conflicting edits, and normalization-dependent text.
+
+The legacy `NOTES_UPDATE` chat action identifies the existing note with an exact `noteId` or
+`content` text, never both, and takes
 its complete new text in `replacementContent` (label, newline, then body).
 For literal substitutions, supply `textEdit: { field: "title" | "body", oldText,
 newText }` instead of `replacementContent`. The service requires one unique
@@ -49,13 +52,25 @@ bun run --cwd plugins/plugin-notes test
 Read a specific saved ID with `NOTES_GET { noteId }`; IDs match exactly and
 case-sensitively. Use `content` for title/body search, or neither field to list
 all notes. Mixed ID and text filters fail explicitly. Read results record
-`lookupMode` (`exact_id`, `text`, or `all`) so an empty text search is not
+`lookupMode` (`exact_id`, `text`, `date`, or `all`) so an empty text search is not
 mistaken for proof that an ID is absent. Reads do not mutate notes.
 The `NOTES_GET_NOTE` retrieval hint resolves to `NOTES_GET`. This promoted
 operation requires noteId and has no text-search field. Both reads use the
 existing Notes service; `NOTES_LIST { noteId }` also retains exact-ID support.
 
-The fresh saved-note discovery index retains every current ID and title. It
+`NOTES_LIST` accepts `dateRange: { field: "createdAt" | "updatedAt", startAt,
+endAt }`, combined with either the text filter or exact ID. Bounds are ISO
+timestamps with explicit offsets: start is inclusive, end exclusive. Invalid,
+unqualified or inverted bounds fail instead of returning an unfiltered list.
+The result echoes the applied range and includes every matching complete
+record, with `filterApplied: true`; an empty period does not mean the whole
+store is empty. Relative dates are resolved by the planner using the user's
+timezone; the read contract defines an otherwise-unspecified "last week" as
+the previous Monday-to-Monday week and requires the answer to state the window.
+This filters stored creation/edit timestamps, not dates mentioned in note text.
+
+The fresh saved-note discovery index pairs every exact ID with its complete
+title in a JSON row `[ID, title]`, with the row format declared once. It
 supports exact-ID existence and count checks without exposing note bodies.
-Full context retains IDs in note order alongside unchanged complete content;
+Full context pairs each exact ID with unchanged complete content in one JSON row;
 body retrieval still requires the full reference or an exact read.

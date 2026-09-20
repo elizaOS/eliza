@@ -212,29 +212,30 @@ it.each([
           required: ["store"],
           additionalProperties: false,
         };
-        // Native output carries the complete schema structurally; fallback
-        // includes it in the prompt while preserving the entire turn context.
+        // Exactly one schema contract per rung: the native json_schema request
+        // carries the complete schema in response_format and never repeats it
+        // in the prompt; the JSON-object fallback carries it inline as compact
+        // JSON (never the indented form) ahead of the turn context.
         const schemaMatch =
           user && /## Output JSON Schema\n([\s\S]*?)\n\nEvaluate just-finished turn/.exec(user);
-        if (wire?.response_format?.type === "json_schema") {
-          expect(schemaMatch).toBeNull();
-          const schema = wire.response_format.json_schema?.schema as typeof mergedSchema;
-          expect(schema.properties.store.properties.text.description).toBe(schemaDescription);
-        } else {
-          expect(schemaMatch).toBeTruthy();
-          expect(schemaMatch?.[1]).toBe(JSON.stringify(mergedSchema));
-          expect(JSON.parse(schemaMatch?.[1] ?? "null")).toEqual(mergedSchema);
-          expect(user?.indexOf("## Output JSON Schema")).toBeLessThan(
-            user?.indexOf("Latest message:") ?? -1
-          );
-        }
+        expect(user).not.toContain("## Output Shape");
         if (!rejectSchema) {
           expect(wire?.response_format?.type).toBe("json_schema");
+          expect(schemaMatch).toBeNull();
           if (!nativeSchema) {
             expect(wire?.response_format?.json_schema?.schema).toEqual(mergedSchema);
           }
         } else {
           expect(wire?.response_format?.type).toBe("json_object");
+          expect(schemaMatch).toBeTruthy();
+          expect(schemaMatch?.[1]).toBe(JSON.stringify(mergedSchema));
+          const visibleSchema = JSON.parse(schemaMatch?.[1] ?? "null");
+          expect(visibleSchema.properties.store.properties.text.description).toBe(
+            schemaDescription
+          );
+          expect(user?.indexOf("## Output JSON Schema")).toBeLessThan(
+            user?.indexOf("Latest message:") ?? -1
+          );
         }
         expect(user?.indexOf(stable)).toBeLessThan(user?.indexOf("Latest message:") ?? -1);
         expect(wire?.prompt_cache_key).toBeUndefined();

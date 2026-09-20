@@ -15,6 +15,7 @@ import {
 } from "../actions/promote-subactions";
 import { createContextObject } from "../runtime/context-object";
 import type { PlannerRuntime, PlannerToolCall } from "../runtime/planner-loop";
+import { toolMessageContent } from "../runtime/planner-rendering";
 import { runSubPlanner } from "../runtime/sub-planner";
 import type { Action, IAgentRuntime, Memory, State, UUID } from "../types";
 import {
@@ -142,6 +143,35 @@ describe("executeV5PlannedToolCall umbrella inferSubaction", () => {
 	beforeEach(() => {
 		vi.mocked(runSubPlanner).mockClear();
 	});
+
+	it.each([undefined, "search"])(
+		"records a registered named-child dispatch pin (action: %s)",
+		async (operation) => {
+			const { actions, handled } = ledgerFamily();
+			const toolCall: PlannerToolCall = {
+				name: "LEDGER_SEARCH",
+				params: {
+					query: "weather",
+					...(operation ? { action: operation } : {}),
+				},
+			};
+			const original = structuredClone(toolCall);
+			const { result, useModel } = await execute({ actions, toolCall });
+			expect(result.success).toBe(true);
+			expect(result.registeredSubaction).toEqual({
+				child: "LEDGER_SEARCH",
+				discriminator: "action",
+				value: "search",
+			});
+			expect(result.inferredSubaction).toBeUndefined();
+			expect(toolMessageContent(result)).not.toContain("registeredSubaction");
+			expect(toolMessageContent(result)).toContain("ran search");
+			expect(handled[0]).toMatchObject({ action: "search", query: "weather" });
+			expect(toolCall).toEqual(original);
+			expect(runSubPlanner).not.toHaveBeenCalled();
+			expect(useModel).not.toHaveBeenCalled();
+		},
+	);
 
 	it("runs the umbrella directly with the inferred child's pinned discriminator and no sub-planner model call", async () => {
 		const { actions, handled } = ledgerFamily((params) =>

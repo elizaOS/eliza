@@ -78,6 +78,47 @@ function actionResult(actionName: string, success = true, text?: string) {
 }
 
 describe("generateChatResponse usage reporting", () => {
+  it.each(["Search complete.", "I couldn't read the calendar."])(
+    "keeps acknowledgment separate from the final outcome: %s",
+    async (finalText) => {
+      const onStatus = vi.fn();
+      const onSnapshot = vi.fn();
+      const runtime = createRuntime({
+        messageService: {
+          handleMessage: async (_runtime, _message, callback, options) => {
+            options?.onPlanningAcknowledgment?.("On it—I'll check.");
+            options?.onPlanningAcknowledgment?.("A second acknowledgment.");
+            await callback?.({ actions: ["SEARCH"] }, "SEARCH");
+            return {
+              didRespond: true,
+              responseContent: { text: finalText },
+              responseMessages: [],
+            };
+          },
+        } as NonNullable<AgentRuntime["messageService"]>,
+      });
+      const result = await generateChatResponse(
+        runtime,
+        createChatMessage("check my calendar"),
+        "Chat Agent",
+        { onStatus, onSnapshot },
+      );
+      expect(onStatus.mock.calls[0][0]).toEqual({ kind: "thinking" });
+      const progress = onStatus.mock.calls.slice(1).map(([status]) => status);
+      expect(progress.length).toBeGreaterThan(0);
+      expect(
+        progress.every((status) => status.label === "On it—I'll check."),
+      ).toBe(true);
+      expect(progress.some((status) => status.kind === "running_action")).toBe(
+        true,
+      );
+      expect(result.text).toBe(finalText);
+      expect(onSnapshot.mock.calls.every(([text]) => text === finalText)).toBe(
+        true,
+      );
+    },
+  );
+
   it("shares each request trace with ingress consumers before generation", async () => {
     const ingress: Array<{
       text: string;

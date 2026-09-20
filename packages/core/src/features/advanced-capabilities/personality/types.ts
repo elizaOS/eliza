@@ -104,6 +104,8 @@ export interface PersonalitySlot {
 	formality: FormalityLevel | null;
 	reply_gate: ReplyGateMode | null;
 	custom_directives: string[];
+	/** Per-directive writer. Missing legacy entries are unknown, never inferred. */
+	directive_sources?: Record<string, PersonalitySource>;
 	updated_at: string;
 	/** Last writer of ANY field — display/audit only, never a safety gate. */
 	source: PersonalitySource;

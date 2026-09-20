@@ -29,6 +29,7 @@ export type ResolvedMessageOptions = {
 	continueAfterActions: boolean;
 	keepExistingResponses: boolean;
 	onStreamChunk?: StreamChunkCallback;
+	onPlanningAcknowledgment?: (text: string) => void;
 	shouldRespondModel: ShouldRespondModelType;
 	/**
 	 * Per-turn abort signal threaded into the streaming context so
@@ -74,7 +75,8 @@ export type FailureReplyAttempt =
 	| { kind: "noProvider" }
 	| { kind: "creditsExhausted" }
 	| { kind: "rateLimited" }
-	| { kind: "authFailed" };
+	| { kind: "authFailed" }
+	| { kind: "schemaRejected" };
 
 export type V5MessageRuntimeStage1Result =
 	| {

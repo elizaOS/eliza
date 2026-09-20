@@ -281,6 +281,7 @@ export {
 	registerDirectActionRoutingRule,
 } from "./runtime/direct-action-routing";
 export * from "./runtime/execute-planned-tool-call";
+export { visibleHistoryEventIds } from "./runtime/history-retention";
 export {
 	detectLocaleFromText,
 	type ResolveOwnerLocaleOptions,
@@ -375,6 +376,11 @@ export * from "./services/approval";
 export * from "./services/channel-topics";
 export * from "./services/evaluator";
 export * from "./services/evaluator-priorities";
+export { getEvaluatorProgressState } from "./services/evaluator-progress";
+export {
+	HISTORY_RETENTION_EVALUATOR,
+	historyRetentionContext,
+} from "./services/history-retention";
 export * from "./services/hook";
 export * from "./services/message";
 export {

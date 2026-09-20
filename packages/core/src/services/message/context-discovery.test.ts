@@ -28,6 +28,17 @@ describe("native context reads", () => {
 			createContextReadTool(withAvailableContextRequests(schema(), new Set())),
 		).toBeUndefined();
 	});
+	it("offers progress only when requested by the delivery host", () => {
+		const tool = createContextReadTool(schema(), true);
+		expect(tool?.parameters.required).toEqual([
+			"contextRequests",
+			"acknowledgment",
+		]);
+		expect(tool?.parameters.properties?.acknowledgment?.type).toBe("string");
+		expect(
+			createContextReadTool(schema())?.parameters.properties,
+		).not.toHaveProperty("acknowledgment");
+	});
 	it("extracts a read without treating accompanying prose as a reply", () => {
 		const raw = {
 			text: "This must not be delivered",
@@ -47,6 +58,7 @@ describe("native context reads", () => {
 		{},
 		{ contextRequests: [] },
 		{ contextRequests: [42] },
+		{ contextRequests: ["FACTS"], acknowledgment: 42 },
 		{ contextRequests: ["FACTS"], replyText: "Unaccepted draft" },
 	])(
 		"rejects malformed read arguments without producing a ready decision: %j",

@@ -119,12 +119,18 @@ describe("calendar conversational mutation gateway guardrails", () => {
       getConditionalCalendarMutationTarget: vi.fn(async () => TARGET),
       updateCalendarEvent: vi.fn(),
     };
-    const action = createCalendarActionRunner(deps());
+    const action = createCalendarActionRunner({
+      ...deps(),
+      runJsonModel: vi.fn(async () => ({
+        rawResponse: "{}",
+        parsed: { title: "Pediatrician follow-up" },
+      })),
+    });
     const callback = vi.fn(async () => []);
 
     const result = await action.handler(
       runtime(service),
-      message("rename the pediatrician appointment"),
+      message("rename the pediatrician appointment to Pediatrician follow-up"),
       undefined,
       {
         parameters: {

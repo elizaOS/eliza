@@ -1,3 +1,4 @@
+import { freshCalendarSources } from "./calendar-source-fixture.js";
 /**
  * Regression coverage for target resolution on the CALENDAR mutation branches:
  * a day the user themselves named must narrow the candidate set before the
@@ -96,7 +97,7 @@ function stubService(feedEvents: LifeOpsCalendarEvent[]) {
       events: feedEvents,
       source: "cache" as const,
       state: "complete" as const,
-      sources: [{ status: "fresh" as const }],
+      sources: freshCalendarSources(feedEvents),
       timeMin: "2025-08-12T00:00:00.000Z",
       timeMax: "2031-08-12T00:00:00.000Z",
       syncedAt: null,
@@ -147,7 +148,18 @@ type StubService = ReturnType<typeof stubService>;
 function fakeDeps(service: StubService): CalendarActionDeps {
   return {
     runTextModel: vi.fn(async () => null),
-    runJsonModel: vi.fn(async () => null),
+    runJsonModel: vi.fn(async ({ actionType }) =>
+      actionType === "lifeops.calendar.extract_create_event"
+        ? {
+            rawResponse: "{}",
+            parsed: {
+              startAt: "2026-08-16T10:00:00Z",
+              endAt: "2026-08-16T11:00:00Z",
+              timeZone: "UTC",
+            },
+          }
+        : null,
+    ),
     recentConversationTexts: vi.fn(async () => []),
     mutationGateway: {
       schedule: service.scheduleApproval,
@@ -184,8 +196,26 @@ async function runHandler(args: {
   service: StubService;
   text: string;
   parameters: Record<string, unknown>;
+  extractedUpdate?: Record<string, unknown>;
+  missingTiming?: boolean;
 }) {
-  const action = createCalendarActionRunner(fakeDeps(args.service));
+  const actionDeps = fakeDeps(args.service);
+  if (args.extractedUpdate) {
+    actionDeps.runJsonModel = vi.fn(async ({ actionType }) =>
+      actionType === "lifeops.calendar.extract_update_event"
+        ? {
+            rawResponse: JSON.stringify(args.extractedUpdate),
+            parsed: args.extractedUpdate,
+          }
+        : null,
+    );
+  }
+  if (args.missingTiming)
+    actionDeps.runJsonModel = vi.fn(async () => ({
+      rawResponse: "{}",
+      parsed: {},
+    }));
+  const action = createCalendarActionRunner(actionDeps);
   const callback = vi.fn(async () => []);
   const result = await action.handler(
     fakeRuntime(args.service),
@@ -279,6 +309,7 @@ describe("CALENDAR mutation target honors the day the user stated", () => {
     const result = await runHandler({
       service,
       text: "change my haircut on saturday to 2pm",
+      extractedUpdate: { startAt: "2026-08-15T14:00:00-07:00" },
       parameters: {
         subaction: "update_event",
         query: "haircut",
@@ -387,7 +418,14 @@ describe("CALENDAR mutation target honors the day the user stated", () => {
         const targetService = stubService([projectA, projectB]);
         const result = await runHandler({
           service: targetService,
-          text: `${subaction === "update_event" ? "rename" : "cancel"} Project B on August 15 2026`,
+          text:
+            subaction === "update_event"
+              ? "rename Project B on August 15 2026 to Updated appointment"
+              : "cancel Project B on August 15 2026",
+          extractedUpdate:
+            subaction === "update_event"
+              ? { title: "Updated appointment" }
+              : undefined,
           parameters: {
             subaction,
             query: "Project B August 15 2026 6:00",
@@ -517,6 +555,12 @@ describe("CALENDAR mutation target honors the day the user stated", () => {
       const result = await runHandler({
         service: targetService,
         text,
+        extractedUpdate: {
+          startAt:
+            text === "change that appointment to 2pm"
+              ? "2026-08-14T14:00:00-07:00"
+              : "2026-08-15T14:00:00-07:00",
+        },
         parameters: {
           subaction: "update_event",
           query,
@@ -620,9 +664,10 @@ describe("CALENDAR create honors the day the user stated", () => {
     expect(scheduled?.startAt).toBe("2026-08-16T10:00:00.000Z");
   });
 
-  it("changes nothing when the user named no date", async () => {
+  it("pauses when the user named no date despite complete planner timestamps", async () => {
     const result = await runHandler({
       service,
+      missingTiming: true,
       text: "put coffee with dana on my calendar",
       parameters: {
         subaction: "create_event",
@@ -634,12 +679,8 @@ describe("CALENDAR create honors the day the user stated", () => {
         },
       },
     });
-    expect(result.success).toBe(true);
-    const scheduled = (
-      service.scheduleApproval.mock.calls[0]?.[0] as {
-        request?: { startAt?: string };
-      }
-    )?.request;
-    expect(scheduled?.startAt).toBe("2026-08-17T10:00:00.000Z");
+    expect(result.success).toBe(false);
+    expect(result.data?.requiresInput).toBe(true);
+    expect(service.scheduleApproval).not.toHaveBeenCalled();
   });
 });

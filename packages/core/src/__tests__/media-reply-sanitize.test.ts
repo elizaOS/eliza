@@ -4,7 +4,50 @@
  * newlines untouched. Pure deterministic function test.
  */
 import { describe, expect, it } from "vitest";
+import { collectMediaDeliveryUrls } from "../services/message/media-delivery";
 import { sanitizeReplyTextAfterMediaDelivery } from "../services/message.ts";
+
+describe("media result classification", () => {
+	it("preserves a fetched source URL and the complete surrounding reply", () => {
+		const source =
+			"https://api.example.test/price?ids=bitcoin&vs_currencies=usd";
+		const reply = `Price: 75661 USD.\n\nSource: ${source}\nTimestamp: 1789566220`;
+		const urls = collectMediaDeliveryUrls([
+			{
+				success: true,
+				data: { actionName: "WEB_FETCH", url: source, kind: "json" },
+			},
+		]);
+		expect(urls).toEqual([]);
+		expect(sanitizeReplyTextAfterMediaDelivery(reply, urls)).toBe(reply);
+	});
+
+	it("does not infer media delivery from an arbitrary action's URL", () => {
+		const url = "https://example.test/issues/123";
+		expect(
+			collectMediaDeliveryUrls([{ success: true, data: { url } }]),
+		).toEqual([]);
+	});
+
+	it("keeps explicit media references distinct from a source URL", () => {
+		const image = "https://example.test/image.png";
+		const source = "https://example.test/source";
+		const urls = collectMediaDeliveryUrls([
+			{
+				success: true,
+				data: { mediaUrl: image, imageUrl: image, url: source },
+			},
+			{ success: false, data: { videoUrl: "https://example.test/failed.mp4" } },
+		]);
+		expect(urls).toEqual([image]);
+		expect(
+			sanitizeReplyTextAfterMediaDelivery(
+				`Image: ${image}\nSource: ${source}`,
+				urls,
+			),
+		).toContain(source);
+	});
+});
 
 describe("sanitizeReplyTextAfterMediaDelivery", () => {
 	it("scans a 100k-character failed URL candidate without backtracking", () => {
