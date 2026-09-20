@@ -23,6 +23,7 @@ This plugin adds a `TelegramService` that polls Telegram for incoming messages a
 | GET | `/api/setup/telegram/status` | Bot-token setup state (`idle` / `configuring` / `paired`) |
 | POST | `/api/setup/telegram/start` | Validate + save bot token, probe `getMe`, register escalation channel |
 | POST | `/api/setup/telegram/cancel` | Remove saved token |
+| POST | `/api/setup/telegram/disconnect` | Disable and drain the managed default bot |
 | GET | `/api/setup/telegram-account/status` | GramJS user-account auth state |
 | POST | `/api/setup/telegram-account/start` | Begin GramJS login (phone + optional app credentials) |
 | POST | `/api/setup/telegram-account/submit-code` | Submit provisioning code, Telegram OTP, or 2FA password |

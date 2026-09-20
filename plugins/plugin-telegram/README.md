@@ -107,10 +107,29 @@ The plugin mounts these HTTP routes (no plugin-name prefix) for the dashboard se
 | GET | `/api/setup/telegram/status` | Current pairing state |
 | POST | `/api/setup/telegram/start` | Validate + save bot token |
 | POST | `/api/setup/telegram/cancel` | Remove saved token |
+| POST | `/api/setup/telegram/disconnect` | Disable and drain the managed default bot |
 | GET | `/api/setup/telegram-account/status` | GramJS user-account auth state |
 | POST | `/api/setup/telegram-account/start` | Begin GramJS login |
 | POST | `/api/setup/telegram-account/submit-code` | Submit OTP or 2FA password |
 | POST | `/api/setup/telegram-account/cancel` | Tear down GramJS session |
+
+Explicit bot disconnect persists the disabled connector before draining polling and
+admitted connector delivery. A terminal receipt means the bot is disconnected;
+if credential cleanup fails, it separately reports the credential retained in
+Vault, retaining a disabled reference so cleanup can be retried. Status reads do
+not resolve disabled credentials: an unfinished drain stays configuring; a
+completed disconnect stays idle even if Vault is locked. The setup panel restores saved, connected, and unfinished-disconnect states on
+mount. Bot identity is persisted only after successful `getMe` validation; legacy
+configurations without a verified identity require token revalidation. Successful
+setup clears an earlier unfinished-drain marker. The request requires
+`expectedBotId` from the displayed bot identity and rejects a replaced bot before
+changing configuration. Saved credentials can be removed before a bot service is registered. A registered
+but unfinished startup must settle before disconnect can report completion.
+Setup mutations are serialized within one runtime and
+configuration identity is rechecked after drain. This is a process-local shutdown,
+not revocation of credentials or pollers running on other hosts. Named, personal and standalone sessions
+must use their own account controls; this route rejects those scopes. The cancel
+route retains its saved-token removal contract and is not a shutdown receipt.
 
 ## Sending buttons
 

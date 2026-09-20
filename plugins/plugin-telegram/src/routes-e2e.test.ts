@@ -52,6 +52,7 @@ type ConnectorConfig = Record<string, unknown>;
 interface FakeSetupServiceState {
   config: ConnectorConfig;
   calls: string[];
+  retainCredential?: boolean;
 }
 
 /**
@@ -81,7 +82,7 @@ function makeSetupService(state: FakeSetupServiceState) {
     },
     removeConnectorCredentialReference: async (reference: string) => {
       state.calls.push(`removeConnectorCredentialReference:${reference}`);
-      return reference.startsWith("vault://");
+      return reference.startsWith("vault://") && !state.retainCredential;
     },
   };
 }
@@ -90,6 +91,8 @@ function makeRuntime(
   options: {
     withService?: boolean;
     withTelegram?: boolean;
+    telegramRegistered?: boolean;
+    botService?: { disconnectDefaultBot(token?: string): Promise<void> };
     credentialStore?: { get(reference: string): Promise<string> };
     state?: FakeSetupServiceState;
     settings?: Record<string, string>;
@@ -103,20 +106,35 @@ function makeRuntime(
     calls: [],
   };
   const setupService = makeSetupService(setupState);
+  const telegramService = options.botService
+    ? {
+        assertDefaultBotDisconnect: (token?: string) => token ?? null,
+        ...options.botService,
+      }
+    : withTelegram
+      ? {}
+      : null;
   return {
     agentId: "00000000-0000-4000-8000-000000000123",
     routes: [...telegramSetupRoutes, ...telegramAccountRoutes],
+    reportError: vi.fn(),
     // Only the `connector-setup` service exists in these branches. The live
     // `telegram` / `telegram-account` services are absent (null), which is the
     // state a freshly-configuring user is in.
     getService: (key: string) =>
       key === "connector_credential_store" && options.credentialStore
         ? options.credentialStore
-        : key === "telegram" && withTelegram
-          ? {}
+        : key === "telegram" && telegramService
+          ? telegramService
           : withService && key === "connector-setup"
             ? setupService
             : null,
+    getServiceRegistrationStatus: () => "registered",
+    getServicesByType: (key: string) =>
+      key === "telegram" && telegramService ? [telegramService] : [],
+    hasService: (key: string) =>
+      key === "telegram" &&
+      Boolean(telegramService || options.telegramRegistered),
     // No persisted env settings by default — keeps the missing-phone /
     // missing-token validation branches deterministic. `settings` opts a test
     // into the runtime-setting tier `readSavedToken` falls back to.
@@ -615,4 +633,358 @@ it("does not resolve another agent's configured vault reference", async () => {
   const response = await fetch(`${base}/api/setup/telegram/status`);
   expect(response.status).toBe(503);
   expect(reads).toEqual([]);
+});
+
+describe("explicit default bot disconnect over HTTP", () => {
+  const token = "123456:abcdefghijklmnopqrstuvwxyz123456789";
+  const state = (): FakeSetupServiceState => ({
+    config: { connectors: { telegram: { botToken: token } } },
+    calls: [],
+  });
+
+  it("holds the receipt until drain and rejects overlapping setup writes", async () => {
+    const saved = state();
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const drain = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const botService = {
+      disconnectDefaultBot: vi.fn(async () => {
+        entered();
+        await drain;
+      }),
+    };
+    const base = await startServer(makeRuntime({ state: saved, botService }));
+    const pending = postJson(base, "/api/setup/telegram/disconnect", {
+      expectedBotId: 123456,
+    });
+    await started;
+    expect(
+      await (await fetch(`${base}/api/setup/telegram/status`)).json(),
+    ).toMatchObject({ state: "configuring" });
+    expect(saved.config).toMatchObject({
+      connectors: { telegram: { enabled: false, botToken: token } },
+    });
+    for (const operation of ["start", "cancel", "disconnect"]) {
+      expect(
+        (await postJson(base, `/api/setup/telegram/${operation}`, { token }))
+          .status,
+      ).toBe(409);
+    }
+    release();
+    expect(await (await pending).json()).toMatchObject({
+      state: "disconnected",
+      accountId: "default",
+    });
+    expect(saved.config).toMatchObject({
+      connectors: { telegram: { enabled: false } },
+    });
+    expect(
+      (saved.config.connectors as Record<string, Record<string, unknown>>)
+        .telegram.botToken,
+    ).toBeUndefined();
+    expect(
+      (
+        await postJson(base, "/api/setup/telegram/disconnect", {
+          expectedBotId: 123456,
+        })
+      ).status,
+    ).toBe(200);
+    expect(botService.disconnectDefaultBot).toHaveBeenCalledTimes(2);
+  });
+
+  it("retains the disabled credential when drain fails and allows retry", async () => {
+    const saved = state();
+    const stop = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("polling still active"))
+      .mockResolvedValue(undefined);
+    const base = await startServer(
+      makeRuntime({ state: saved, botService: { disconnectDefaultBot: stop } }),
+    );
+    expect(
+      (
+        await postJson(base, "/api/setup/telegram/disconnect", {
+          expectedBotId: 123456,
+        })
+      ).status,
+    ).toBe(503);
+    expect(saved.config).toMatchObject({
+      connectors: { telegram: { enabled: false, botToken: token } },
+    });
+    expect(
+      (
+        await postJson(base, "/api/setup/telegram/disconnect", {
+          expectedBotId: 123456,
+        })
+      ).status,
+    ).toBe(200);
+  });
+
+  it("remains disconnected after restart despite a stale runtime token", async () => {
+    const saved: FakeSetupServiceState = {
+      config: { connectors: { telegram: { enabled: false } } },
+      calls: [],
+    };
+    const base = await startServer(
+      makeRuntime({ state: saved, settings: { TELEGRAM_BOT_TOKEN: token } }),
+    );
+    expect(
+      (
+        await postJson(base, "/api/setup/telegram/disconnect", {
+          expectedBotId: 123456,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      await (await fetch(`${base}/api/setup/telegram/status`)).json(),
+    ).toMatchObject({
+      state: "idle",
+      detail: { hasToken: false, serviceConnected: false },
+    });
+  });
+
+  it("retains a disabled vault reference for cleanup retry after restart", async () => {
+    const reference =
+      "vault://connector.00000000-0000-4000-8000-000000000123.telegram.123456.bot-token";
+    const saved: FakeSetupServiceState = {
+      config: {
+        connectors: { telegram: { enabled: false, botToken: reference } },
+      },
+      calls: [],
+      retainCredential: true,
+    };
+    const base = await startServer(
+      makeRuntime({
+        state: saved,
+        credentialStore: { get: async () => token },
+      }),
+    );
+    expect(
+      await (
+        await postJson(base, "/api/setup/telegram/disconnect", {
+          expectedBotId: 123456,
+        })
+      ).json(),
+    ).toMatchObject({
+      state: "disconnected",
+      credentialRetained: true,
+    });
+    expect(saved.config).toMatchObject({
+      connectors: { telegram: { enabled: false, botToken: reference } },
+    });
+    const restarted = await startServer(
+      makeRuntime({
+        state: saved,
+        credentialStore: {
+          get: async () => {
+            throw new Error("Vault locked");
+          },
+        },
+      }),
+    );
+    const status = await fetch(`${restarted}/api/setup/telegram/status`);
+    expect(status.status).toBe(200);
+    expect(await status.json()).toMatchObject({
+      state: "idle",
+      detail: {
+        hasToken: false,
+        serviceConnected: false,
+        credentialRetained: true,
+      },
+    });
+    saved.retainCredential = false;
+    expect(
+      await (
+        await postJson(base, "/api/setup/telegram/disconnect", {
+          expectedBotId: 123456,
+        })
+      ).json(),
+    ).toMatchObject({
+      state: "disconnected",
+      credentialRetained: false,
+    });
+    expect(saved.config).toEqual({
+      connectors: { telegram: { enabled: false } },
+    });
+  });
+
+  it("does not overwrite an account replacement made while the old bot drains", async () => {
+    const saved = state();
+    const replacement = { enabled: true, botToken: "replacement-token" };
+    const base = await startServer(
+      makeRuntime({
+        state: saved,
+        botService: {
+          disconnectDefaultBot: async () => {
+            saved.config = { connectors: { telegram: replacement } };
+          },
+        },
+      }),
+    );
+    expect(
+      (
+        await postJson(base, "/api/setup/telegram/disconnect", {
+          expectedBotId: 123456,
+        })
+      ).status,
+    ).toBe(503);
+    expect(saved.config).toEqual({ connectors: { telegram: replacement } });
+    expect(
+      saved.calls.some((call) =>
+        call.startsWith("removeConnectorCredentialReference:"),
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects a stale displayed bot before configuration or drain effects", async () => {
+    const saved = state();
+    const stop = vi.fn();
+    const base = await startServer(
+      makeRuntime({ state: saved, botService: { disconnectDefaultBot: stop } }),
+    );
+    const response = await postJson(base, "/api/setup/telegram/disconnect", {
+      expectedBotId: 999999,
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: { code: "disconnect_target_changed" },
+    });
+    expect(stop).not.toHaveBeenCalled();
+    expect(saved.calls).toEqual([]);
+    expect(saved.config).toEqual(state().config);
+  });
+
+  it("clears a failed drain marker when setup validates a reconnect", async () => {
+    const saved = state();
+    const stop = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("drain failed"))
+      .mockResolvedValue(undefined);
+    const base = await startServer(
+      makeRuntime({ state: saved, botService: { disconnectDefaultBot: stop } }),
+    );
+    expect(
+      (
+        await postJson(base, "/api/setup/telegram/disconnect", {
+          expectedBotId: 123456,
+        })
+      ).status,
+    ).toBe(503);
+    const originalFetch = globalThis.fetch;
+    const upstream = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input, init) => {
+        if (String(input).startsWith("https://api.telegram.org/"))
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                ok: true,
+                result: {
+                  id: 123456,
+                  is_bot: true,
+                  first_name: "Synthetic",
+                  username: "synthetic_bot",
+                },
+              }),
+              { status: 200 },
+            ),
+          );
+        return originalFetch(input, init);
+      });
+    try {
+      expect(
+        (await postJson(base, "/api/setup/telegram/start", { token })).status,
+      ).toBe(200);
+      expect(saved.config).toEqual({
+        connectors: {
+          telegram: {
+            enabled: true,
+            botToken: token,
+            bot: {
+              id: 123456,
+              username: "synthetic_bot",
+              firstName: "Synthetic",
+            },
+          },
+        },
+      });
+      expect(
+        (
+          await postJson(base, "/api/setup/telegram/disconnect", {
+            expectedBotId: 123456,
+          })
+        ).status,
+      ).toBe(200);
+      const restarted = await startServer(makeRuntime({ state: saved }));
+      expect(
+        await (await fetch(`${restarted}/api/setup/telegram/status`)).json(),
+      ).toMatchObject({
+        state: "idle",
+        detail: {
+          disconnectPending: false,
+          credentialRetained: false,
+          bot: { id: 123456 },
+        },
+      });
+    } finally {
+      upstream.mockRestore();
+    }
+  });
+
+  it("removes a saved token before startup but never reports a pending startup disconnected", async () => {
+    const saved = state();
+    const pendingBase = await startServer(
+      makeRuntime({ state: saved, telegramRegistered: true }),
+    );
+    expect(
+      (
+        await postJson(pendingBase, "/api/setup/telegram/disconnect", {
+          expectedBotId: 123456,
+        })
+      ).status,
+    ).toBe(503);
+    expect(saved.config).toEqual(state().config);
+    expect(saved.calls).toEqual([]);
+    const unstartedBase = await startServer(makeRuntime({ state: saved }));
+    expect(
+      await (
+        await postJson(unstartedBase, "/api/setup/telegram/disconnect", {
+          expectedBotId: 123456,
+        })
+      ).json(),
+    ).toMatchObject({ state: "disconnected" });
+    expect(saved.config).toEqual({
+      connectors: { telegram: { enabled: false } },
+    });
+  });
+
+  it("does not alter personal or named accounts", async () => {
+    for (const config of [
+      { botToken: token, personal: { session: "synthetic" } },
+      { accounts: { named: { botToken: token } } },
+    ]) {
+      const saved = { config: { connectors: { telegram: config } }, calls: [] };
+      const stop = vi.fn();
+      const base = await startServer(
+        makeRuntime({
+          state: saved,
+          botService: { disconnectDefaultBot: stop },
+        }),
+      );
+      expect(
+        (
+          await postJson(base, "/api/setup/telegram/disconnect", {
+            expectedBotId: 123456,
+          })
+        ).status,
+      ).toBe(409);
+      expect(stop).not.toHaveBeenCalled();
+      expect(saved.calls).toEqual([]);
+    }
+  });
 });
