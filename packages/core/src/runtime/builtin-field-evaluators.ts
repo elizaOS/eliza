@@ -289,15 +289,15 @@ export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<Repl
 	{
 		name: "replyEffectStatus",
 		description:
-			"Classify what replyText claims about this request, not the actual execution state. A claimed completed change is applied even before any tool runs; it is never execution proof. Include indirect claims in any language. Promised lookup/navigation is pending. A question awaiting missing details is non_applied unless independent work remains executable now. Historical advice/actions or existing facts alone are none.",
+			"Classify replyText's current-request work using the schema, including indirect claims in any language (e.g. 'on the books', 'quedó listo'). An applied-change claim is never execution proof. A newly saved reminder is applied; recall plus promised navigation is pending. A question requesting missing details for a future action is non_applied, not pending; keep pending only for independent work executable now. Historical advice/actions or existing facts alone are none.",
 		descriptionCompressed:
-			"Classify replyText's claim, not execution state: claimed completed change=applied even before tools run; promised work=pending; terminal non_applied outcome; existing facts=none.",
+			"Current-request work status in replyText: pending work (including lookup/navigation), claimed new applied change, terminal non_applied outcome, or none. Recall of earlier advice/actions alone is none; wording and language do not determine routing.",
 		priority: 25,
 		schema: {
 			type: "string",
 			enum: ["none", "applied", "non_applied", "pending"],
 			description:
-				"Classify claims in replyText, not actual execution: applied=claims a newly completed external change, even when no tool has run or other work remains; pending=announces work still to perform this turn without claiming completion, including lookup/navigation; non_applied=terminal failed/unavailable/cancelled/declined outcome or preview/clarification/conditional offer awaiting a later user answer. A save awaiting confirmation is non_applied; independent executable work is pending. none=answer, explanation, general question or existing facts without a current action decision.",
+				"Classify current-request work: pending=unfinished work to perform this turn, including lookup/navigation beside an answer; applied=claimed newly completed external change, not execution proof; non_applied=terminal failed/unavailable/cancelled/declined outcome or an action preview/clarification/conditional offer awaiting a later user answer. A save awaiting separate confirmation is non_applied; other work still to perform this turn is pending. none=answer, explanation or general question without a current action decision. Recalling earlier advice, past actions or existing facts alone is none.",
 		},
 		parse: normalizeReplyEffectStatus,
 	};
