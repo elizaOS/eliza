@@ -202,3 +202,13 @@ Fourteen additional complete test diffs reviewed against ec23d0f670c at candidat
 The tests preserve user-grounded extraction rather than planner timestamp authority, explicit guest-address evidence, original-user follow-up context and current corrections, request-time date anchoring, timezone precedence, distinct proposed slots, and provider write/approval boundaries. Calendar final-response tests now assert model handoff with recorded facts instead of a hard-coded self-verified reply. Aggregate feed and individual ICS source observation timestamps remain distinct.
 
 Limitations: extraction and fresh-source fixtures cannot establish real model accuracy or provider freshness. Recurrence scope tests use service doubles and do not establish local recurrence support. Seven-call clarification and overbroad weekly availability remain open from live evidence. No production edits, new paid calls or repeated test execution in this review batch. Corrected stale current-code wording in status.
+
+## Deferred action presentation contract
+
+The seven-call Calendar trace showed an evaluator CONTINUE with no reply after a successful availability read awaiting user input. Source inspection found the deferred action settlement helper deleting modelReplyRequired, preventing the existing evaluator schema from requesting a mandatory reply field. The CONTINUE itself came from the model, not runtime repair.
+
+Changed the deferred settlement branch to set modelReplyRequired=true, preserving success/failure, awaiting-user-input state, full grounding and receipt metadata. This uses the existing completion contract; it does not force FINISH or treat a proposed time as an authorized write. Documented that contract at ActionResult.
+
+Two new cases exercise real settlement, planner-result serialization and evaluator schema construction for successful and failed clarification outcomes. Both failed before the change, then passed. Focused tests183 passed; planner/message suites1173 passed; Agent executor/deferred-renderer handoff file passed (plus9 mobile workspace entry checks). Scoped Biome passed. Full root verification is running under session77087; log deferred-required-root-verify.log in the external evidence folder. No live restart or paid call yet; UI5268 still uses3a50ad527d4.
+
+No claimed seven-call or latency resolution: the model can still CONTINUE with an empty reply, request needed context or fail output validation. Overbroad weekly availability, speculative history restoration and the Stage-1 routing repair remain separate open observations.

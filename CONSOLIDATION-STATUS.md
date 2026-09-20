@@ -28,6 +28,8 @@ Offline correction committed as `b18ff926bec`: both captured Calendar explanatio
 
 Next committed cleanup `3a50ad527d4` removes a text-only output instruction from structured completion input. Five reply-contract test files, Agent typecheck, lint and full root verification passed. Runtime now runs3a50ad527d4 (API PID27428); clean pre-effect Stop passed. No speed improvement claimed yet.
 
+Pending verification: deferred action settlement now retains `modelReplyRequired`, so completion receives the existing required-presentation contract. Two regressions failed before the fix;183 focused and1173 planner/message tests plus the Agent handoff file pass. Root verification is active (session77087); running UI5268 remains on3a50ad527d4. No latency improvement claimed before live verification.
+
 ## Remaining acceptance checklist
 
 - [ ] Complete semantic source ledger (183/270 entries explicitly reviewed; all implementation diffs inspected, Calendar recipient and follow-up fixes checked deterministically with live Calendar validation still open; review is not acceptance) and reconcile any newer remote work.

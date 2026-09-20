@@ -7,12 +7,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { ElizaError } from "../../errors";
 import { evaluatorSchema, evaluatorTemplate } from "../../prompts/evaluator";
+import { applyGroundedActionReply } from "../../types/action-reply";
 import {
 	type ChatMessage,
 	ModelType,
 	type PromptSegment,
 } from "../../types/model";
 import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
+import { actionResultToPlannerToolResult } from "../planner-loop";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 describe("v5 evaluator skeleton", () => {
@@ -98,6 +100,64 @@ describe("v5 evaluator skeleton", () => {
 			expect(result.messageToUser).toBeUndefined();
 			expect(result.decision).toBe("CONTINUE");
 			expect(evaluatorSchema.required).not.toContain("messageToUser");
+		},
+	);
+
+	it.each([true, false])(
+		"requires presentation after deferred action settlement (success=%s)",
+		async (success) => {
+			const reply =
+				"September 25 has openings at 9 AM and 9:15 AM. Which time works?";
+			const settled = applyGroundedActionReply(
+				{
+					success,
+					data: {
+						awaitingUserInput: true,
+						slots: ["2026-09-25T09:00:00-07:00", "2026-09-25T09:15:00-07:00"],
+					},
+				},
+				{
+					kind: "deferred",
+					grounding:
+						"Only September 25 was checked; ask the user to choose a time.",
+				},
+			);
+			const useModel = vi.fn(async () =>
+				JSON.stringify({
+					success: false,
+					decision: "FINISH",
+					replyEffectStatus: "non_applied",
+					messageToUser: reply,
+				}),
+			);
+			const result = await runEvaluator({
+				runtime: { useModel },
+				context: { id: "deferred-proposal", events: [] },
+				trajectory: {
+					context: { id: "deferred-proposal" },
+					codingMode: false,
+					steps: [
+						{
+							iteration: 1,
+							toolCall: { name: "CALENDAR_PROPOSE_TIMES", params: {} },
+							result: actionResultToPlannerToolResult(settled),
+						},
+					],
+					plannedQueue: [],
+					evaluatorOutputs: [],
+				},
+			});
+			expect(useModel.mock.calls[0][1].responseSchema.required).toContain(
+				"messageToUser",
+			);
+			expect(result).toMatchObject({
+				decision: "FINISH",
+				success: false,
+				messageToUser: reply,
+			});
+			expect(useModel).toHaveBeenCalledTimes(1);
+			expect(settled.data?.awaitingUserInput).toBe(true);
+			expect(settled.success).toBe(success);
 		},
 	);
 

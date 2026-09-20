@@ -1092,15 +1092,17 @@ export interface ActionResult {
 	turnComplete?: boolean;
 
 	/**
-	 * Requests exactly one model-authored reply after this successful action.
-	 * The planner honors this only when the result is the turn's sole completed
+	 * Requires model-authored presentation for an unpublished action outcome,
+	 * including a deferred clarification. The evaluator requests reply text
+	 * without treating this flag as proof of success or completed user work.
+	 * A successful action may use the reply-only path when it is the sole completed
 	 * tool, its queue is empty, and the native call explicitly declared final
 	 * scope. A safe no-tool model reply then completes the turn without a second
 	 * evaluator model call; failures, additional tools, unsafe replies, and
 	 * incomplete planner scope retain the normal evaluator path.
 	 *
-	 * Use for UI effects whose wording must remain model-owned (for example,
-	 * navigation). Do not pair it with canned `userFacingText`; use the narrowly
+	 * Use for deferred action replies and UI effects with model-owned wording
+	 * (for example, navigation). Do not pair it with canned `userFacingText`; use the narrowly
 	 * vetted `modelReplyFallback` only for provider-outage recovery.
 	 */
 	modelReplyRequired?: boolean;

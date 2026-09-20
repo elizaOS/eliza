@@ -107,7 +107,7 @@ export function applyGroundedActionReply(
 		delete settled.verifiedUserFacing;
 		delete settled.userFacingEffectReceiptIds;
 		delete settled.replyFailure;
-		delete settled.modelReplyRequired;
+		settled.modelReplyRequired = true;
 		delete settled.modelReplyFallback;
 		delete settled.continueChain;
 		return settled;
