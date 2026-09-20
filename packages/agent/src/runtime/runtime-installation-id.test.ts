@@ -461,13 +461,14 @@ posixDescribe("runtime installation identity", () => {
       JSON.stringify({ name: "identity-sibling-consumer", type: "module" }),
     );
     const script = [
-      'const specifier = "@elizaos/agent/runtime/runtime-installation-id";',
+      'for (const specifier of ["@elizaos/agent/runtime/runtime-installation-id", "@elizaos/agent/runtime/runtime-installation-id.windows"]) {',
       "try {",
       "  const loaded = await import(specifier);",
       '  if ("__createRuntimeInstallationIdLoaderForTests" in loaded) process.exit(7);',
       "} catch (error) {",
       '  const expected = error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED" || String(error).includes("Cannot find module");',
       "  if (!expected) throw error;",
+      "}",
       "}",
     ].join("\n");
     await expect(

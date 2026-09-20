@@ -139,6 +139,7 @@
       "default": "./dist/runtime/index.js"
     },
     "./runtime/runtime-installation-id": null,
+    "./runtime/runtime-installation-id.windows": null,
     "./runtime/*": {
       "types": "./src/runtime/*.ts",
       "eliza-source": {
