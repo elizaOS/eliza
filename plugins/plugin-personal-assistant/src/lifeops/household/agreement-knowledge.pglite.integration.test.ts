@@ -188,6 +188,33 @@ function createAgreement(
   });
 }
 
+function createAgreementServer(runtime: AgentRuntime) {
+  return createServer(async (req, res) => {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    const handled = await tryHandleRuntimePluginRoute({
+      req,
+      res,
+      url,
+      pathname: url.pathname,
+      method: req.method ?? "GET",
+      runtime,
+      isAuthorized: () => true,
+    });
+    if (!handled && !res.headersSent) {
+      res.statusCode = 404;
+      res.end("not found");
+    }
+  });
+}
+
+async function closeAgreementServer(server: ReturnType<typeof createServer>) {
+  server.closeAllConnections();
+  if (server.listening)
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+}
+
 function readStoredZip(bytes: Buffer): Map<string, Buffer> {
   // Independently read ZIP local records rather than using the archive writer.
   const files = new Map<string, Buffer>();
@@ -393,7 +420,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     mediaStateDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "agreement-knowledge-media-"),
     );
-    process.env.ELIZA_STATE_DIR = mediaStateDir;
+    vi.stubEnv("ELIZA_STATE_DIR", mediaStateDir);
     runtimeResult = await createLifeOpsTestRuntime({
       plugins: [fileStoragePlugin, documentsPluginCore],
     });
@@ -495,9 +522,12 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   afterAll(async () => {
-    await runtimeResult?.cleanup();
-    delete process.env.ELIZA_STATE_DIR;
-    fs.rmSync(mediaStateDir, { recursive: true, force: true });
+    try {
+      await runtimeResult?.cleanup();
+    } finally {
+      vi.unstubAllEnvs();
+      fs.rmSync(mediaStateDir, { recursive: true, force: true });
+    }
   });
 
   it("stores immutable content-addressed versions and rejects duplicate bytes", async () => {
@@ -1661,22 +1691,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       rememberDevice: false,
     });
     const service = createAgreementKnowledgeService(runtime);
-    const server = createServer(async (req, res) => {
-      const url = new URL(req.url ?? "/", "http://127.0.0.1");
-      const handled = await tryHandleRuntimePluginRoute({
-        req,
-        res,
-        url,
-        pathname: url.pathname,
-        method: req.method ?? "GET",
-        runtime,
-        isAuthorized: () => true,
-      });
-      if (!handled && !res.headersSent) {
-        res.statusCode = 404;
-        res.end("not found");
-      }
-    });
+    const server = createAgreementServer(runtime);
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
     const address = server.address();
@@ -1782,10 +1797,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       expect(await auth.revokeSession(session.id)).toBe(true);
       expect((await fetch(`${base}/shared`, { headers })).status).not.toBe(200);
     } finally {
-      server.closeAllConnections();
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      );
+      await closeAgreementServer(server);
       await auth.revokeSession(session.id);
       await auth.revokeSession(ownerSession.id);
     }
@@ -4613,34 +4625,19 @@ describe("parenting-agreement knowledge — real PGlite", () => {
 });
 
 describe("reviewed workspace deletion — real database and disk", () => {
+  afterEach(() => vi.unstubAllEnvs());
   it("authorizes owner HTTP deletion and exposes stale, pending, and retry states", async () => {
-    const previousKmsBackend = process.env.ELIZA_KMS_BACKEND;
-    process.env.ELIZA_KMS_BACKEND = "memory";
+    vi.stubEnv("ELIZA_KMS_BACKEND", "memory");
     const mediaDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "family-delete-http-"),
     );
-    process.env.ELIZA_STATE_DIR = mediaDir;
+    vi.stubEnv("ELIZA_STATE_DIR", mediaDir);
     const result = await createLifeOpsTestRuntime({
       pgliteDir: path.join(mediaDir, "pglite"),
       plugins: [fileStoragePlugin, documentsPluginCore],
     });
     const runtime = result.runtime;
-    const server = createServer(async (req, res) => {
-      const url = new URL(req.url ?? "/", "http://127.0.0.1");
-      const handled = await tryHandleRuntimePluginRoute({
-        req,
-        res,
-        url,
-        pathname: url.pathname,
-        method: req.method ?? "GET",
-        runtime,
-        isAuthorized: () => true,
-      });
-      if (!handled && !res.headersSent) {
-        res.statusCode = 404;
-        res.end("not found");
-      }
-    });
+    const server = createAgreementServer(runtime);
     try {
       runtime.services.set(ServiceType.PDF, [
         new AgreementTestPdfService(runtime),
@@ -4914,23 +4911,15 @@ describe("reviewed workspace deletion — real database and disk", () => {
       ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
     } finally {
       vi.restoreAllMocks();
-      if (previousKmsBackend === undefined)
-        delete process.env.ELIZA_KMS_BACKEND;
-      else process.env.ELIZA_KMS_BACKEND = previousKmsBackend;
-      server.closeAllConnections();
-      if (server.listening)
-        await new Promise<void>((resolve, reject) =>
-          server.close((error) => (error ? reject(error) : resolve())),
-        );
+      await closeAgreementServer(server);
       await result.cleanup();
-      delete process.env.ELIZA_STATE_DIR;
       fs.rmSync(mediaDir, { recursive: true, force: true });
     }
   });
 
   it("atomically removes private database projections and journals remaining files", async () => {
     const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), "family-delete-"));
-    process.env.ELIZA_STATE_DIR = mediaDir;
+    vi.stubEnv("ELIZA_STATE_DIR", mediaDir);
     const result = await createLifeOpsTestRuntime({
       plugins: [fileStoragePlugin, documentsPluginCore],
     });
@@ -5224,7 +5213,6 @@ describe("reviewed workspace deletion — real database and disk", () => {
       );
     } finally {
       await result.cleanup();
-      delete process.env.ELIZA_STATE_DIR;
       fs.rmSync(mediaDir, { recursive: true, force: true });
     }
   });
