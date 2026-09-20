@@ -610,6 +610,32 @@ describe("secret redaction", () => {
     expect(recentLogs()).not.toContain("header-secret-token");
   });
 
+  it("redacts a comma-heavy auth-param remainder in linear time", () => {
+    const logger = redactLogger();
+    // Each extra ", " separator used to multiply the backtracking work once
+    // the trailing lookahead failed on the final "!": 30 separators took
+    // about 20 s under Node before the pattern was linearised.
+    const text = `Authorization: Custom a=b${" ,".repeat(30)}!`;
+    const startedAt = performance.now();
+    logger.info(text);
+    expect(performance.now() - startedAt).toBeLessThan(1000);
+  });
+
+  it("still masks auth-param lists with irregular separators", () => {
+    for (const remainder of [
+      'username="u", realm="r",  response=abc',
+      "a=b , , c=d",
+      "a=b,,c=d,",
+      ", a=b",
+      'a = b ,\tc = "d e"',
+    ]) {
+      const logger = redactLogger();
+      logger.info(`Authorization: Digest ${remainder}`);
+      expect(recentLogs()).toContain("Authorization: Digest ");
+      expect(recentLogs()).not.toContain(remainder);
+    }
+  });
+
   it("masks the extended credential key variants", () => {
     const logger = redactLogger();
     logger.info(

@@ -260,6 +260,30 @@ describe("redactSensitiveText (pattern detection)", () => {
 		expect(output).not.toContain(response);
 	});
 
+	it("redacts a comma-heavy auth-param remainder in linear time", () => {
+		// Each extra ", " separator used to multiply the backtracking work once
+		// the trailing lookahead failed on the final "!": 30 separators took
+		// about 20 s under Node before the pattern was linearised.
+		const input = `Authorization: Custom a=b${" ,".repeat(30)}!`;
+		const startedAt = performance.now();
+		redactSensitiveText(input);
+		expect(performance.now() - startedAt).toBeLessThan(1000);
+	});
+
+	it("still masks auth-param lists with irregular separators", () => {
+		for (const remainder of [
+			'username="u", realm="r",  response=abc',
+			"a=b , , c=d",
+			"a=b,,c=d,",
+			", a=b",
+			'a = b ,\tc = "d e"',
+		]) {
+			const output = redactSensitiveText(`Authorization: Digest ${remainder}`);
+			expect(output).toContain("Authorization: Digest ");
+			expect(output).not.toContain(remainder);
+		}
+	});
+
 	it("masks unquoted Digest auth params with RFC boundary whitespace", () => {
 		const username = ["private", "-user"].join("");
 		const response = ["6629fae49393", "a05397450978507c4ef1"].join("");
