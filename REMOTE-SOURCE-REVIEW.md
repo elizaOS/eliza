@@ -62,8 +62,8 @@ Local text QA, remote/channel acceptance and production release remain distinct.
 
 ## App/domain batch reviewed
 
-51 implementation-file deltas now have explicit local ledger decisions. This
-is not51 accepted changes or completion of all127 files. Paired tests are not
+54 implementation-file deltas now have explicit local ledger decisions. This
+is not54 accepted changes or completion of all127 files. Paired tests are not
 implicitly marked inspected. No runtime code changed in this review batch.
 
 - Keep exact-ID Notes mutation and ID/text pairs. The older branch removes the
@@ -116,6 +116,34 @@ with the corresponding protections checked in candidate `44c1b62cc69`.
   blanket provider exclusions, already rejected above. Do not import that
   restoration helper independently into the current composition contract.
 
-Remaining implementation review: planner-loop, background evaluator service and
-message pipeline. Test and documentation deltas still need explicit disposition.
+The final three implementation deltas are reviewed below. Remaining test and
+documentation deltas still need explicit disposition.
 No runtime code or running demo changed during this batch; no paid calls ran.
+
+## Final implementation batch and paired planner tests
+
+All54 implementation deltas have a recorded disposition; eight paired planner
+and evaluator test deltas were also inspected (62 of127 total paths reviewed).
+This is source review, not acceptance of the remote branch or new runtime QA.
+
+- Do not import the60-percent word-overlap completion gate, argument-subset
+  queue dropping, English word-set reply suppression or whitespace flattening.
+  Matching words and an applied operation family do not establish exact
+  requested values, targets or completion of every clause.
+- Preserve target-bound failure supersession. A failure tied only to a source
+  message does not identify which target a later successful write resolved.
+  The remote message-scoped exception needs explicit target correlation.
+- Keep exact-name discovered schemas and an explicitly unavailable clipboard;
+  replacing it with a no-op callback advertises an effect the host cannot apply.
+- Reject post-turn oldest-history/result-prefix trimming, even when opt-in.
+  Keep the dedicated extraction system contract. A skipped budget call also
+  must not be presented as a successfully completed evaluation.
+- Shared batch-scope placement in custom planner templates is an independent
+  possible optimization, held for focused coverage. The default planner already
+  carries the rule, so this is not a demonstrated missing direct-chat speed fix.
+- Keep the existing tests for queue identity, literal formatting, explicit
+  discovery despite a prior draft, semantic completion and distinct targets.
+  Remote replacements mostly assert the shortcuts rejected above; their green
+  results would not prove equivalence to the requested behavior.
+
+No production source was changed or paid model call made in this review batch.
