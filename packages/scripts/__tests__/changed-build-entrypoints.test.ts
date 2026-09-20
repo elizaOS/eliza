@@ -18,7 +18,6 @@ import path from "node:path";
 
 import { buildPlugin } from "../../../plugins/plugin-build.ts";
 import { buildLocalInferencePlugin } from "../../../plugins/plugin-local-inference/build.ts";
-import { buildPluginSql } from "../../../plugins/plugin-sql/build.ts";
 import { runBuild as runEvmBuild } from "../../../plugins/plugin-wallet/src/chains/evm/build.ts";
 import { buildSolanaChain } from "../../../plugins/plugin-wallet/src/chains/solana/build.ts";
 import { buildCloudSdk } from "../../cloud/sdk/build.ts";
@@ -250,7 +249,18 @@ describe("changed build entrypoints", () => {
   });
 
   test("plugin-sql builds public entries that compose a real parameterized query", async () => {
-    await buildPluginSql();
+    // Use the package's real build entrypoint so tsup's declaration worker
+    // runs outside Bun's test process and its inherited test-only conditions.
+    const build = Bun.spawn([process.execPath, "run", "build"], {
+      cwd: path.join(repoRoot, "plugins/plugin-sql"),
+      stdout: "inherit",
+      stderr: "pipe",
+    });
+    const [buildExit, buildError] = await Promise.all([
+      build.exited,
+      new Response(build.stderr).text(),
+    ]);
+    expect(buildExit, buildError).toBe(0);
     const child = Bun.spawn(
       [
         "node",
