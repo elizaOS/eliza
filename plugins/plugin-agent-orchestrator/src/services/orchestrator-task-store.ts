@@ -44,7 +44,7 @@ export interface InterruptStuckTaskInput {
   taskId: string;
   expectedTaskUpdatedAt: string;
   /** Reclaim a dead verifier instead of an active worker. */
-  expectedVerificationOwner?: { pid: number; hostname: string };
+  expectedVerificationOwner?: { pid: number; scopeId: string };
   expectedSessions: Array<
     Pick<OrchestratorTaskSession, "sessionId" | "status" | "updatedAt">
   >;
@@ -416,7 +416,8 @@ function applyStuckTaskInterrupt(
     if (
       !isRecord(current) ||
       current.pid !== owner.pid ||
-      current.hostname !== owner.hostname
+      !isRecord(current.scope) ||
+      current.scope.id !== owner.scopeId
     )
       return false;
   }

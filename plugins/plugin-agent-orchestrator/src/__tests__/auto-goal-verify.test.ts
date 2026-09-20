@@ -29,6 +29,7 @@ import {
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../services/orchestrator-task-store.js";
 import type { AttemptReflection } from "../services/orchestrator-task-types.js";
+import { getVerifierProcessScope } from "../services/verifier-process-owner.js";
 
 const testServices = new Set<OrchestratorTaskService>();
 function createService(
@@ -2037,7 +2038,7 @@ describe("persisted verification recovery", () => {
         expect(result?.task.metadata.autoVerifyAttempts).toBe(2);
         expect(result?.task.metadata.autoVerifyOwner).toEqual({
           pid: process.pid,
-          hostname: hostname(),
+          scope: await getVerifierProcessScope(),
         });
         expect(result?.task.metadata.attemptReflections).toBeUndefined();
         if (scenario !== "no criteria")
@@ -2058,6 +2059,7 @@ describe("persisted verification recovery", () => {
     "manual",
     "live verifier",
     "remote verifier",
+    "same hostname foreign scope",
     "unknown verifier",
   ] as const)("restart preserves %s work", async (state) => {
     const root = mkdtempSync(join(tmpdir(), "orch-verifier-preserve-"));
@@ -2077,7 +2079,21 @@ describe("persisted verification recovery", () => {
           ? {}
           : {
               autoVerifyOwner: {
-                pid: process.pid,
+                pid:
+                  state === "same hostname foreign scope"
+                    ? Number(
+                        execFileSync(
+                          process.execPath,
+                          ["-e", "console.log(process.pid)"],
+                          { encoding: "utf8" },
+                        ).trim(),
+                      )
+                    : process.pid,
+                scope:
+                  state === "remote verifier" ||
+                  state === "same hostname foreign scope"
+                    ? { id: "foreign-kernel-or-pid-namespace" }
+                    : await getVerifierProcessScope(),
                 hostname:
                   state === "remote verifier"
                     ? `${hostname()}-other`
@@ -2121,6 +2137,8 @@ describe("persisted verification recovery", () => {
   it.each([false, true])(
     "restart conditionally recovers a dead verifier (concurrent new owner: %s)",
     async (concurrentOwner) => {
+      const localScope = await getVerifierProcessScope();
+      const shouldRecover = !concurrentOwner && "id" in localScope;
       const root = mkdtempSync(join(tmpdir(), "orch-verifier-restart-"));
       gitRoots.push(root);
       const stateFile = join(root, "tasks.json");
@@ -2144,7 +2162,7 @@ describe("persisted verification recovery", () => {
                 },
               ).trim(),
             ),
-            hostname: hostname(),
+            scope: await getVerifierProcessScope(),
           },
         },
       });
@@ -2176,7 +2194,10 @@ describe("persisted verification recovery", () => {
           await other.updateTask(taskId, {
             metadata: {
               ...current?.task.metadata,
-              autoVerifyOwner: { pid: process.pid, hostname: hostname() },
+              autoVerifyOwner: {
+                pid: process.pid,
+                scope: await getVerifierProcessScope(),
+              },
             },
           });
           return interrupt(input);
@@ -2195,14 +2216,14 @@ describe("persisted verification recovery", () => {
         const recovered = await disk.getTask(taskId);
         if (!recovered) throw new Error("Persisted task disappeared");
         expect(recovered?.task.status).toBe(
-          concurrentOwner ? "validating" : "interrupted",
+          shouldRecover ? "interrupted" : "validating",
         );
         expect(recovered?.task.metadata.autoVerifyAttempts).toBe(2);
         expect(recovered?.task.metadata.attemptReflections).toBeUndefined();
         const recovery = recovered?.events.find(
           (e) => e.eventType === "auto_verify_inconclusive",
         );
-        if (concurrentOwner) expect(recovery).toBeUndefined();
+        if (!shouldRecover) expect(recovery).toBeUndefined();
         else {
           expect(recovery?.data).toMatchObject({
             retryable: true,

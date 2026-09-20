@@ -27,7 +27,7 @@ import {
   rm,
   stat,
 } from "node:fs/promises";
-import { homedir, hostname } from "node:os";
+import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import {
   ElizaError,
@@ -238,6 +238,7 @@ import {
   subscriptionExecutionAuthorizationFromMetadata,
   TERMINAL_SESSION_STATUSES,
 } from "./types.js";
+import { getVerifierProcessScope } from "./verifier-process-owner.js";
 import {
   WAVE_SUPERVISOR_SERVICE_TYPE,
   WaveConcurrencyCapError,
@@ -1193,6 +1194,7 @@ export class OrchestratorTaskService extends Service {
     try {
       await this.recoverInterruptedVerifications();
     } catch (error) {
+      // error-policy:J2 preserve startup failure after releasing owned timers.
       await this.stop();
       throw error;
     }
@@ -1308,6 +1310,16 @@ export class OrchestratorTaskService extends Service {
       includeArchived: false,
       status: "validating",
     });
+    if (docs.length === 0) return;
+    const localScope = await getVerifierProcessScope();
+    if (!("id" in localScope)) {
+      this.log(
+        "warn",
+        "Verification recovery requires explicit operator review",
+        { reason: localScope.unavailableReason, taskCount: docs.length },
+      );
+      return;
+    }
     for (const candidate of docs) {
       if (this.autoVerifyInFlight.has(candidate.task.id)) continue;
       await this.withTaskWriteLock(candidate.task.id, async () => {
@@ -1318,22 +1330,31 @@ export class OrchestratorTaskService extends Service {
         const owner = doc.task.metadata.autoVerifyOwner;
         if (
           !isRecord(owner) ||
-          owner.hostname !== hostname() ||
+          !isRecord(owner.scope) ||
+          owner.scope.id !== localScope.id ||
           typeof owner.pid !== "number" ||
           !Number.isInteger(owner.pid) ||
           owner.pid <= 0
-        )
+        ) {
+          this.log(
+            "info",
+            "Verification owner locality is unproven; leaving task unchanged for operator review",
+            { taskId: doc.task.id },
+          );
           return;
+        }
         try {
           process.kill(owner.pid, 0);
           return;
         } catch (error) {
+          // error-policy:J4 only ESRCH in the verified local kernel/namespace
+          // proves death; denied or ambiguous probes require operator review.
           if (!isRecord(error) || error.code !== "ESRCH") return;
         }
         const recovered = await this.store.interruptStuckTaskIfUnchanged({
           taskId: doc.task.id,
           expectedTaskUpdatedAt: doc.task.updatedAt,
-          expectedVerificationOwner: { pid: owner.pid, hostname: hostname() },
+          expectedVerificationOwner: { pid: owner.pid, scopeId: localScope.id },
           expectedSessions: doc.sessions.map(
             ({ sessionId, status, updatedAt }) => ({
               sessionId,
@@ -3235,7 +3256,10 @@ export class OrchestratorTaskService extends Service {
         ? {
             metadata: {
               ...doc.task.metadata,
-              autoVerifyOwner: { pid: process.pid, hostname: hostname() },
+              autoVerifyOwner: {
+                pid: process.pid,
+                scope: await getVerifierProcessScope(),
+              },
             },
           }
         : {}),
