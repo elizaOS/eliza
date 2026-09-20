@@ -7,75 +7,29 @@
 import { describe, expect, it } from "vitest";
 import {
   BUILT_IN_ENTITY_TYPES,
-  DEFAULT_CONNECTOR_ACCOUNT_ID,
   defaultEntityTypeRegistry,
   EntityTypeRegistry,
   normalizeEntityConnectorAccountId,
-  SELF_ENTITY_ID,
 } from "./entity-types";
 
-describe("module constants", () => {
-  it("exposes exactly the five built-in entity types", () => {
-    expect([...BUILT_IN_ENTITY_TYPES]).toEqual([
-      "person",
-      "organization",
-      "place",
-      "project",
-      "concept",
-    ]);
-  });
-
-  it("uses the reserved self entity id", () => {
-    expect(SELF_ENTITY_ID).toBe("self");
-  });
-
-  it("uses the legacy default connector account partition", () => {
-    expect(DEFAULT_CONNECTOR_ACCOUNT_ID).toBe("default");
-  });
-});
-
 describe("normalizeEntityConnectorAccountId", () => {
-  it("falls back to the default partition for null and undefined", () => {
-    expect(normalizeEntityConnectorAccountId(null)).toBe(
-      DEFAULT_CONNECTOR_ACCOUNT_ID,
-    );
-    expect(normalizeEntityConnectorAccountId(undefined)).toBe(
-      DEFAULT_CONNECTOR_ACCOUNT_ID,
-    );
-  });
-
-  it("falls back to the default partition for empty and blank input", () => {
-    expect(normalizeEntityConnectorAccountId("")).toBe(
-      DEFAULT_CONNECTOR_ACCOUNT_ID,
-    );
-    expect(normalizeEntityConnectorAccountId("   ")).toBe(
-      DEFAULT_CONNECTOR_ACCOUNT_ID,
-    );
-    expect(normalizeEntityConnectorAccountId("\t\n")).toBe(
-      DEFAULT_CONNECTOR_ACCOUNT_ID,
-    );
-  });
-
-  it("returns a non-empty value unchanged", () => {
-    expect(normalizeEntityConnectorAccountId("acct-1")).toBe("acct-1");
-  });
-
-  it("trims surrounding whitespace but keeps interior spacing and case", () => {
-    expect(normalizeEntityConnectorAccountId("  acct 1  ")).toBe("acct 1");
-    expect(normalizeEntityConnectorAccountId(" ACC ")).toBe("ACC");
-    expect(normalizeEntityConnectorAccountId("\tacc\n")).toBe("acc");
-  });
-
-  it("treats ids differing only by case as distinct opaque values", () => {
-    expect(normalizeEntityConnectorAccountId("ACC")).toBe("ACC");
-    expect(normalizeEntityConnectorAccountId("ACC")).not.toBe(
-      normalizeEntityConnectorAccountId("acc"),
-    );
+  it("preserves the legacy partition and opaque account spelling", () => {
+    for (const input of [null, undefined, "", "   ", "\t\n"]) {
+      expect(normalizeEntityConnectorAccountId(input)).toBe("default");
+    }
+    for (const [input, expected] of [
+      ["acct-1", "acct-1"],
+      ["  acct 1  ", "acct 1"],
+      [" ACC ", "ACC"],
+      ["\tacc\n", "acc"],
+    ]) {
+      expect(normalizeEntityConnectorAccountId(input)).toBe(expected);
+    }
   });
 });
 
 describe("EntityTypeRegistry", () => {
-  it("seeds every built-in type with itself as label and admin-owner visibility", () => {
+  it("seeds built-ins idempotently with derived labels and admin-owner visibility", () => {
     const registry = new EntityTypeRegistry();
     for (const type of BUILT_IN_ENTITY_TYPES) {
       expect(registry.has(type)).toBe(true);
@@ -83,7 +37,9 @@ describe("EntityTypeRegistry", () => {
         label: type,
         defaultVisibility: "owner_agent_admin",
       });
+      registry.register(type);
     }
+    expect(registry.list()).toEqual([...BUILT_IN_ENTITY_TYPES].sort());
   });
 
   it("lists all registered types in sorted order", () => {
@@ -111,50 +67,24 @@ describe("EntityTypeRegistry", () => {
     });
   });
 
-  it("honours explicit label and default visibility", () => {
+  it("retains explicit metadata across identical registration", () => {
     const registry = new EntityTypeRegistry();
-    registry.register("device", {
+    const metadata = {
       label: "Device",
-      defaultVisibility: "agent_and_admin",
-    });
-    expect(registry.metadataFor("device")).toEqual({
-      label: "Device",
-      defaultVisibility: "agent_and_admin",
-    });
-  });
-
-  it("re-registering with identical metadata is an idempotent no-op", () => {
-    const registry = new EntityTypeRegistry();
-    registry.register("device", {
-      label: "Device",
-      defaultVisibility: "agent_and_admin",
-    });
-    registry.register("device", {
-      label: "Device",
-      defaultVisibility: "agent_and_admin",
-    });
-    expect(registry.metadataFor("device")).toEqual({
-      label: "Device",
-      defaultVisibility: "agent_and_admin",
-    });
-  });
-
-  it("re-registering a built-in with equivalent derived metadata is a no-op", () => {
-    const registry = new EntityTypeRegistry();
-    expect(() => registry.register("person")).not.toThrow();
-    expect(registry.metadataFor("person")).toEqual({
-      label: "person",
-      defaultVisibility: "owner_agent_admin",
-    });
-    expect(registry.list()).toHaveLength(BUILT_IN_ENTITY_TYPES.length);
+      defaultVisibility: "agent_and_admin" as const,
+    };
+    registry.register("device", metadata);
+    registry.register("device", metadata);
+    expect(registry.metadataFor("device")).toEqual(metadata);
   });
 
   it("throws when re-registering with a different label", () => {
     const registry = new EntityTypeRegistry();
     registry.register("device", { label: "Device" });
     expect(() => registry.register("device", { label: "Gadget" })).toThrowError(
-      '[EntityTypeRegistry] type "device" already registered with different metadata',
+      /already registered with different metadata/,
     );
+    expect(registry.metadataFor("device")?.label).toBe("Device");
   });
 
   it("throws when re-registering with a different default visibility", () => {

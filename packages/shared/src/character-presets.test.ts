@@ -177,10 +177,10 @@ describe("default Eliza persona safety", () => {
       ].join("\n");
 
       expect(renderedInstructions).toContain(
-        "separate what you know, what you checked, and what you inferred",
+        "Separate what you know, checked and inferred.",
       );
       expect(renderedInstructions).toContain(
-        "never invent memory, use remembered details only when they are actually present",
+        "Never invent memory; use remembered details only when actually present.",
       );
     }
   });

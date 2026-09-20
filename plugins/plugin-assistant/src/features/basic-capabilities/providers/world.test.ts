@@ -3,9 +3,8 @@
  * categorization. The harness uses typed runtime stubs while exercising the
  * real provider formatting and data assembly.
  */
-
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { describe, expect, it, vi } from "vitest";
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import type {
   IAgentRuntime,
   Memory,
@@ -262,21 +261,7 @@ describe("worldProvider", () => {
       currentChannelName: "general",
     });
     expect(result.text).toBe(
-      [
-        "# World Information",
-        "# World: Builders",
-        "Current Channel: general (GROUP)",
-        "Total Channels: 12",
-        "Participants in current channel: 2",
-        "",
-        "Text channels: 3",
-        "Voice channels: 2",
-        "DM channels: 2",
-        "Feed channels: 1",
-        "Thread channels: 1",
-        "Other channels: 1",
-        "",
-      ].join("\n"),
+      "World: Builders; current channel: general (GROUP), participants=2; channels: total=12, text=3, voice=2, DM=2, feed=1, thread=1, other=1",
     );
   });
 
@@ -306,9 +291,7 @@ describe("worldProvider", () => {
       },
       currentRoom: { participantCount: 0 },
     });
-    expect(result.values?.worldInfo).toContain("Total Channels: 0");
-    expect(result.values?.worldInfo).toContain(
-      "Participants in current channel: 0",
-    );
+    expect(result.values?.worldInfo).toContain("total=0");
+    expect(result.values?.worldInfo).toContain("participants=0");
   });
 });

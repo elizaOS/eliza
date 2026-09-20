@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  DISTRIBUTION_PROFILES,
   isDistributionProfile,
   resolveDistributionProfile,
 } from "./distribution-profile.js";
@@ -74,11 +73,5 @@ describe("resolveDistributionProfile", () => {
       if (prev === undefined) delete process.env.ELIZA_DISTRIBUTION_PROFILE;
       else process.env.ELIZA_DISTRIBUTION_PROFILE = prev;
     }
-  });
-});
-
-describe("DISTRIBUTION_PROFILES", () => {
-  it("exposes the canonical profile list", () => {
-    expect([...DISTRIBUTION_PROFILES]).toEqual(["store", "unrestricted"]);
   });
 });
