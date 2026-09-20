@@ -17,12 +17,12 @@ jobs:
         run: git config --global core.longpaths true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 6c4bfa39520e2d2cb6d71226410c0e6aa1c35f2a
+          ref: 86f312ef809022e69d1d8f158f72d088b720bc25
           persist-credentials: false
           submodules: false
       - name: Verify product revision
         run: |
-          if ((git rev-parse HEAD) -ne '6c4bfa39520e2d2cb6d71226410c0e6aa1c35f2a') { throw 'Wrong source revision' }
+          if ((git rev-parse HEAD) -ne '86f312ef809022e69d1d8f158f72d088b720bc25') { throw 'Wrong source revision' }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '24.15.0'
@@ -34,7 +34,7 @@ jobs:
       - name: Apply repository installation patches
         run: bun run postinstall
       - name: Build Windows desktop with canonical command
-        run: node packages/app-core/scripts/desktop-build.mjs build
+        run: node packages/app-core/scripts/desktop-build.mjs build --env=canary
       - name: Exercise real Windows secure identity contracts
         run: node packages/scripts/run-vitest.mjs run --config packages/agent/vitest.config.ts packages/agent/src/runtime/runtime-installation-id.windows.test.ts
       - name: Exercise canonical API and renderer development entry
@@ -84,7 +84,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: script-windows-6c4b
+          name: script-windows-86f312
           path: |
             packages/app/test-results/
             packages/app/playwright-report/
