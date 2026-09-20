@@ -12,7 +12,6 @@
  */
 
 import { createHash } from "node:crypto";
-import { renderGroundedActionReply } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -34,6 +33,7 @@ import {
   stableStringify,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
 import {
   type CalendarActionDeps,
   type CalendarMutationApprovalResult,

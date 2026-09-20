@@ -13,7 +13,6 @@
  *     reach the snooze handler instead of being discarded.
  */
 
-import * as agent from "@elizaos/agent";
 import type {
   HandlerOptions,
   IAgentRuntime,
@@ -21,6 +20,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
+import * as assistant from "@elizaos/plugin-assistant";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import {
@@ -801,7 +801,7 @@ describe("runLifeOperationHandler definition update targeting", () => {
         transient: false as const,
       };
       const renderReply = vi
-        .spyOn(agent, "renderGroundedActionReply")
+        .spyOn(assistant, "renderGroundedActionReply")
         .mockResolvedValue({ kind: "unavailable", failure });
       const callback = vi.fn(async () => []);
       const result = await runLifeOperationHandler(
@@ -1610,7 +1610,7 @@ describe("runLifeOperationHandler clarification contract", () => {
   it("does not deliver a renderer's saved claim for a rejected reminder create", async () => {
     const draft =
       "I've saved the report reminder. Ready to continue when you are.";
-    vi.spyOn(agent, "renderGroundedActionReply").mockResolvedValue({
+    vi.spyOn(assistant, "renderGroundedActionReply").mockResolvedValue({
       kind: "model",
       text: draft,
     });
@@ -1654,7 +1654,7 @@ describe("runLifeOperationHandler clarification contract", () => {
       new LifeOpsServiceError("Definitions are unavailable", 503),
     );
     const draft = "I checked everything and there are no reminders.";
-    vi.spyOn(agent, "renderGroundedActionReply").mockResolvedValue({
+    vi.spyOn(assistant, "renderGroundedActionReply").mockResolvedValue({
       kind: "model",
       text: draft,
     });

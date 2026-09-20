@@ -15,8 +15,8 @@ import { validateToolArgs } from "../../../../packages/core/src/actions/validate
 import { createGoogleConnectorAccountProvider } from "../../../plugin-google-workspace/src/connector-account-provider.js";
 import { connectorAction } from "./connector.js";
 
-vi.mock("@elizaos/agent", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@elizaos/agent")>()),
+vi.mock("@elizaos/plugin-assistant", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/plugin-assistant")>()),
   extractActionParamsViaLlm: async ({
     existingParams,
   }: {

@@ -7,7 +7,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { GroundedActionReply } from "@elizaos/core";
 
 // The LifeOps route dispatcher rate-limits state-changing routes; re-export the
 // real limiter (self-contained, in-memory) so route e2e tests run the genuine
@@ -150,17 +149,6 @@ export async function createLocalAgentBackup(runtime?: {
   return backup;
 }
 
-export async function extractActionParamsViaLlm(): Promise<unknown> {
-  return null;
-}
-
-export async function renderGroundedActionReply(args: {
-  fallback: string;
-}): Promise<GroundedActionReply> {
-  // Deterministic model collaborator; tests of unavailable replies override it.
-  return { kind: "model", text: args.fallback };
-}
-
 // Integration telemetry is self-contained (only the core logger), so the test
 // lane runs the real span: route tests then exercise the genuine
 // success/failure bookkeeping instead of a shape-drifted fake.
@@ -172,16 +160,6 @@ export function extractConversationMetadataFromRoom(): Record<string, unknown> {
 
 export function isPageScopedConversationMetadata(): boolean {
   return false;
-}
-
-export function computeNextCronRunAtMs(): number {
-  return Date.now() + 60_000;
-}
-
-export function parseCronExpression(expression: string): {
-  expression: string;
-} {
-  return { expression };
 }
 
 export function registerEscalationChannel(): void {}

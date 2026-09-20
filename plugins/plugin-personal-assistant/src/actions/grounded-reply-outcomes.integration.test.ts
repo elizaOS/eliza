@@ -3,8 +3,9 @@
  * Actions, receipt validation, and PGlite persistence are real; only reply
  * generation is a deterministic collaborator, so this is not live-model proof.
  */
-import * as agent from "@elizaos/agent";
+
 import type { ActionResult, AgentRuntime, Memory, UUID } from "@elizaos/core";
+import * as assistant from "@elizaos/plugin-assistant";
 import {
   afterAll,
   afterEach,
@@ -74,7 +75,7 @@ describe("grounded reply outcomes — real PGlite", () => {
     "keeps one persisted definition and receipt with %s presentation",
     async (kind) => {
       const renderReply = vi
-        .spyOn(agent, "renderGroundedActionReply")
+        .spyOn(assistant, "renderGroundedActionReply")
         .mockResolvedValue(
           kind === "unavailable"
             ? { kind, failure }
@@ -138,7 +139,7 @@ describe("grounded reply outcomes — real PGlite", () => {
 
   it("keeps one persisted entity contact and its applied receipt after reply failure", async () => {
     const renderReply = vi
-      .spyOn(agent, "renderGroundedActionReply")
+      .spyOn(assistant, "renderGroundedActionReply")
       .mockResolvedValue({ kind: "unavailable", failure });
     const callback = vi.fn(async () => []);
     const result = await entityAction.handler(
@@ -176,7 +177,7 @@ describe("grounded reply outcomes — real PGlite", () => {
 
   it("keeps the scheduling preference write and task evidence after reply failure", async () => {
     const renderReply = vi
-      .spyOn(agent, "renderGroundedActionReply")
+      .spyOn(assistant, "renderGroundedActionReply")
       .mockResolvedValue({ kind: "unavailable", failure });
     const callback = vi.fn(async () => []);
     const result = await runUpdateMeetingPreferencesHandler(
@@ -203,7 +204,7 @@ describe("grounded reply outcomes — real PGlite", () => {
   it("delivers the exact model reply once and keeps its canonical entity receipt", async () => {
     const text = "Your contacts are ready to review.";
     const renderReply = vi
-      .spyOn(agent, "renderGroundedActionReply")
+      .spyOn(assistant, "renderGroundedActionReply")
       .mockResolvedValue({ kind: "model", text });
     const callback = vi.fn(async () => []);
     const result = await entityAction.handler(

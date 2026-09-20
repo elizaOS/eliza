@@ -26,6 +26,17 @@ vi.mock("react-dom/server", () => ({
   default: reactDomServer,
 }));
 
+// Domain tests inject deterministic inference collaborators. The assistant suite
+// exercises the real helpers with complete prompts and provider failures.
+vi.mock("@elizaos/plugin-assistant", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/plugin-assistant")>()),
+  extractActionParamsViaLlm: async () => null,
+  renderGroundedActionReply: async (args: { fallback: string }) => ({
+    kind: "model" as const,
+    text: args.fallback,
+  }),
+}));
+
 vi.mock("@elizaos/agent", async () => import("./stubs/agent.ts"));
 vi.mock("@elizaos/ui", async () => import("./stubs/ui.ts"));
 // jsdom has no layout observer. Radio behavior is exercised here; real geometry

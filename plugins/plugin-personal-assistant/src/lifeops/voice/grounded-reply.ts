@@ -5,13 +5,13 @@
  * visible callbacks only for the model variant.
  */
 
-import { renderGroundedActionReply } from "@elizaos/agent";
 import type {
   GroundedActionReply,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
+import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
 
 export type RenderLifeOpsActionReplyArgs = {
   runtime: IAgentRuntime;

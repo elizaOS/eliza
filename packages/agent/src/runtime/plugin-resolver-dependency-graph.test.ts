@@ -201,8 +201,6 @@ it("keeps full and source-staged package modes distinct through a cycle", async 
     "@elizaos/agent",
   );
   const sourceFiles = [
-    "actions/extract-params.ts",
-    "actions/grounded-action-reply.ts",
     "api/conversation-metadata.ts",
     "api/connector-account-routes.ts",
     "api/rate-limiter.ts",

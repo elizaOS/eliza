@@ -5,14 +5,6 @@ import { defineConfig } from "vitest/config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
-const groundedActionReply = path.join(
-  elizaRoot,
-  "packages",
-  "agent",
-  "src",
-  "actions",
-  "grounded-action-reply.ts",
-);
 const pluginGoogleSrc = path.join(
   elizaRoot,
   "plugins",
@@ -119,10 +111,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-scheduling\/(.+)$/,
         replacement: path.join(pluginSchedulingSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/agent$/,
-        replacement: groundedActionReply,
       },
       {
         find: /^@elizaos\/shared$/,

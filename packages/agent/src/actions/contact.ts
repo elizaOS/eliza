@@ -50,10 +50,13 @@ import type {
   RelationshipsPersonDetail,
   RelationshipsPersonSummary,
 } from "@elizaos/plugin-assistant";
-import { findEntityByName, getEntityDetails } from "@elizaos/plugin-assistant";
+import {
+  extractActionParamsViaLlm,
+  findEntityByName,
+  getEntityDetails,
+} from "@elizaos/plugin-assistant";
 import { resolveRelationshipsGraphService } from "../services/relationships-graph.ts";
 import { hasContextSignalSyncForKey } from "./context-signal.ts";
-import { extractActionParamsViaLlm } from "./extract-params.ts";
 
 // ---------------------------------------------------------------------------
 // Op dispatch
