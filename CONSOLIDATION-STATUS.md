@@ -1,69 +1,30 @@
-# Eliza consolidation checkpoint — September 20, 2026
+# Eliza consolidation status — September 20, 2026
 
-**Integration in progress; not release acceptance.**
+**Combined text candidate verified in part; final acceptance remains open.**
+Results and failures: [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md).
 
-Latest real-text results and open findings: [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md).
-The integration checkpoint and rollback tag are published at `a42679bf08f`.
-Root verification passed at the earlier integration checkpoint; the combined code passed full root verification before the latest Calendar error-message fix. Nine live text turns verified core
-flows but exposed acknowledgment wording and availability-grounding issues;
-these remain open. Existing source demos are unchanged.
+## Exact checkpoints
 
-This branch combines develop `ba04de0e2c1f3e498bd881864fd104e734501142`
-and reviewed develop test-maintenance commit `ec23d0f670c`
-with the saved text candidate `a15525f30fb30b2060331fec2257ebda98911cb6`.
-Both source branches and existing demo instances are preserved.
-The reviewed remote checkpoint `89a476f3d750feb40d7f1aeac99ce2219479d8fd`
-is already an ancestor of the text candidate. Any newer remote work still needs
-an exact source location and review.
+- Current tested code: `c65e5d6bd1a`; `c934787b133` adds QA documentation.
+- Sources: saved Mac text candidate `a15525f30fb` plus develop `ba04de0e2c1`, then reviewed develop test maintenance `ec23d0f670c`.
+- Reviewed remote checkpoint `89a476f3d75` is already an ancestor of the Mac candidate. Any newer remote work still needs its exact source and review.
+- Published rollback tag: `codex/consolidation-checkpoint-20260920` at `a42679bf08f`.
+- Isolated combined app: UI5268/API31392. Original UI5248 and UI5258 demos remain preserved.
 
-## Preserved behavior
+## Verified
 
-- Upstream authorized tool indexes, lazy reply recovery, audience checks,
-  scheduling updates, and Notes argument aliases.
-- Candidate context/history discovery, original-source references, transient
-  acknowledgments, exact Notes editing, and Calendar clarification/conflict checks.
-- Narrow upstream interpretation-provider selection, with owner-gated named Notes
-  context admitted so referring to an existing note continues to work.
-- Intermediate ordinary tool prose stays withheld; final delivery retains effect
-  grounding and earlier settled receipts during recovery.
+- Full repository verification passed after the Calendar fixes.
+- Calendar target boundary: 29 scoped tests and package typecheck passed. Incomplete/foreign local IDs cannot fall through to another provider.
+- Earlier broad suites: Calendar 1,088 passed/four skipped; Notes192 passed; core13,661 passed/two initial failures/three skipped. Both initial core failures were investigated and their affected suites passed after reconciliation, including70 wallet-grounding tests.
+- Follow-up core443, personal-assistant Calendar60, agent recall57, prompt-package20, upstream A2A19 and real SQL vector6 checks passed in their scoped runs. Further package results are recorded in the QA evidence.
+- Fifteen real text turns recorded. Greetings/navigation/recall, exact note create/edit, Calendar timing clarification/create/conflict/move exercised. Latest move3.873s/four calls; exact original-message recall0.915s/one call. These are observations, not latency guarantees.
+- Acknowledgment correction passed one live edit; actual stored text and completion receipts were checked. Generated language is not universally guaranteed correct.
 
-## Checks observed
+## Remaining acceptance checklist
 
-- Root `bun run verify`: passed at the earlier integration checkpoint. Latest-revision verification remains open.
-- Full core run: 13,661 passed, two failed, three skipped. Both failures were
-  investigated: restored the candidate's direct-conversation schema projection;
-  moved the receipt-recovery fixture to final delivery because intermediate prose
-  is intentionally withheld. Targeted schema/Stage-1 tests passed, and all 70
-  wallet-grounding tests passed after the fixture correction.
-- Calendar: 1,088 passed, four skipped. Notes: 192 passed.
-- Personal-assistant Calendar: 60 passed; request idempotency: 37 passed;
-  approval effect receipts: six passed, using their respective integration lanes.
-- Provider wire: eight passed; scheduling: 83 passed; browser: 25 passed.
-- Scenario unit tests: 17 passed. Deterministic Notes create/read/edit/delete
-  scenario passed against real local storage; this is not live-model evidence.
-- All-view capture: 229 passed, one failed with an HTTP 424 bundle diagnostic;
-  focused LifeOps rerun passed all four viewports. Full visual acceptance remains open.
-- Follow-up checks: 443 core, 60 personal-assistant Calendar, 57 agent recall,
-  20 prompt-package, and 19 upstream A2A tests passed in their scoped runs.
+- [ ] Complete semantic source ledger and reconcile any newer remote work.
+- [ ] Finish full visual rerun and inspect remaining flagged views. Initial full run229 passed/one bundle-load failure; focused LifeOps rerun4/4 passed. Full rerun is now running in separate artifacts.
+- [ ] Close remaining combined scenarios: cancellation, memory/preference correction and applicable recovery/persistence checks, using existing evidence before new paid tests.
+- [ ] Record final candidate, source decisions, explicit release gates and handoff.
 
-## Acceptance checklist
-
-- [x] Preserve and identify source checkpoints.
-- [x] Resolve merge conflicts without wholesale source replacement.
-- [x] Run repository verification and affected behavioral suites.
-- [ ] Complete semantic review of combined/overlapping changes and source ledger.
-- [x] Run full combined revision verification after reconciliation.
-- [x] Verify Calendar target/error fixes with scoped tests and a successful live move.
-- [ ] Complete post-fix repository verification.
-- [ ] Finish visual audit and inspect affected desktop/mobile captures.
-- [ ] Exercise combined app navigation, Notes, Calendar, recall, and acknowledgments;
-      inspect actual trajectories, action outcomes, model calls, tokens, and timing.
-- [ ] Confirm whether newer remote work exists beyond the reviewed checkpoint.
-- [ ] Record final acceptance results and rollback instructions.
-
-Fifteen live text turns have been recorded so far; the QA document distinguishes
-which revision each run exercised. Latest acknowledgment change passed one targeted live edit; broader acceptance remains open.
-The full dependency install hit a native prerequisite: Metal compilation requires
-the installed Xcode license/toolchain to be ready. Root verification succeeds;
-native build acceptance is not claimed. No voice testing, develop merge, deployment,
-or production release is included in this checkpoint.
+Native install/build acceptance remains separate: the dependency install encountered the Xcode/Metal prerequisite. No voice acceptance, deployment, source rewrite, or develop push occurred. Publication of this isolated branch was explicitly authorized by the user.
