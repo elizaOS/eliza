@@ -187,4 +187,24 @@ describe("dev API proxy response lifecycle", () => {
     assert(closed);
     await closed;
   });
+  it("releases an admitted upstream request when Stop arrives before response headers", async () => {
+    let resolveAccepted!: () => void;
+    const accepted = new Promise<void>((resolve) => {
+      resolveAccepted = resolve;
+    });
+    let response: ServerResponse | undefined;
+    const url = await serve((req, res) => {
+      response = res;
+      req.resume();
+      req.once("end", resolveAccepted);
+      // Model/runtime admission may be waiting; no SSE headers exist yet.
+    });
+    const pending = request(url);
+    const rejected = expect(pending).rejects.toThrow();
+    await accepted;
+    assert(response);
+    controllers.at(-1)?.abort();
+    await rejected;
+    await expect.poll(() => response?.destroyed, { timeout: 1500 }).toBe(true);
+  });
 });

@@ -18,13 +18,13 @@ Results and failures: [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md).
 - Earlier broad suites: Calendar 1,088 passed/four skipped; Notes192 passed; core13,661 passed/two initial failures/three skipped. Both initial core failures were investigated and their affected suites passed after reconciliation, including70 wallet-grounding tests.
 - Follow-up core443, personal-assistant Calendar60, agent recall57, prompt-package20, upstream A2A19 and real SQL vector6 checks passed in their scoped runs. Further package results are recorded in the QA evidence.
 - Seventeen real text turns recorded. Greetings/navigation/recall, exact note create/edit, Calendar timing clarification/create/conflict/move exercised. Latest move3.873s/four calls; exact original-message recall0.915s/one call. These are observations, not latency guarantees.
-- Acknowledgment correction passed one earlier live edit, but the latest handler again generated premature Done with pending status. Keep acknowledgment correctness open; persisted note text and final receipt were correct.
+- Acknowledgment correction passed one earlier live edit, but the latest handler again generated premature Done with pending status. The early-reply guard reproducibly misses that two-sentence completion claim. Keep acknowledgment correctness open; persisted note text and final receipt were correct.
 
 ## Remaining acceptance checklist
 
 - [ ] Complete semantic source ledger and reconcile any newer remote work.
 - [x] Full visual rerun and flagged screenshot inspection: 230 checks passed; OCR212 verified/zero broken/12 expected fallback exceptions. All23 soft layout flags inspected. Family interview hover remains unverified for three controls across four viewports; native/remote fallback surfaces are not feature acceptance.
-- [ ] Investigate post-restart request arriving after Stop; it eventually edited the QA note. A repeat made no second write.
+- [ ] Investigate post-restart request arriving after Stop; it eventually edited the QA note. A repeat made no second write. Seven real HTTP/Vite lifecycle tests and existing server disconnect suites pass, so a basic proxy cancellation defect is not reproduced.
 - [ ] Close remaining combined scenarios: cancellation, memory/preference correction and applicable recovery/persistence checks, using existing evidence before new paid tests.
 - [ ] Record final candidate, source decisions, explicit release gates and handoff.
 
