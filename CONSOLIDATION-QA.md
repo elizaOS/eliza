@@ -166,3 +166,7 @@ Code3a50ad527d4 removes the standalone “Return only the reply text” instruct
 The real executor/renderer/settlement/serialization test now checks that deferred model input preserves facts and receipts without the text-only format override; standalone calls retain the instruction. Five grounded-reply test files passed, including context preservation, negation, quotation and deferred ownership. Agent typecheck and scoped Biome checks passed. Root verification is running in deferred-reply-format-root-verify.log, session2595. Live runtime remainsb18ff926bec. No paid calls were made in this change.
 
 Character duplication remains unmodified: the normal pipeline supplies its character context, but deleting the action copy based only on reply ownership is not yet justified for every custom caller. The cleanup must prove the final prompt remains complete.
+
+Full root verification for3a50ad527d4 completed exit0 (session2595, deferred-reply-format-root-verify.log). Live runtime stillb18ff926bec; this completion does not claim new live latency evidence.
+
+Source accounting now149/270:145 include decisions,3 exact upstream equivalents,1 review-required Calendar implementation. Latest six test reviews cover exact import repair, SSE/chat acknowledgment separation, retrieval completion timestamps and browser argument forwarding. Their mocked seams are recorded in the local ledger. Two additional files have no remaining diff against reviewed develop. Remaining121 entries are unreviewed; no blanket feature acceptance.

@@ -26,11 +26,11 @@ Latest Calendar follow-up exposed unresolved issues: weekly intent survived, but
 
 Offline correction committed as `b18ff926bec`: both captured Calendar explanations now survive the connection-prerequisite guard, eliminating the extra synthesis in replay.297 relevant tests, Core typecheck and scoped lint passed. Full root verification passed. Live demo now uses b18ff926bec and delivered the clear Calendar limitation; this run still needed recovery because its first model reply contained invalid control characters.4.144s/five calls; no Calendar write.
 
-Next committed cleanup `3a50ad527d4` removes a text-only output instruction from structured completion input. Five reply-contract test files, Agent typecheck and lint passed; root verification is running. Runtime remainsb18ff926bec. No speed improvement claimed yet.
+Next committed cleanup `3a50ad527d4` removes a text-only output instruction from structured completion input. Five reply-contract test files, Agent typecheck, lint and full root verification passed. Runtime remainsb18ff926bec pending restart. No speed improvement claimed yet.
 
 ## Remaining acceptance checklist
 
-- [ ] Complete semantic source ledger (141/270 entries explicitly reviewed; all implementation diffs inspected, Calendar recipient and follow-up fixes checked deterministically with live Calendar validation still open; review is not acceptance) and reconcile any newer remote work.
+- [ ] Complete semantic source ledger (149/270 entries explicitly reviewed; all implementation diffs inspected, Calendar recipient and follow-up fixes checked deterministically with live Calendar validation still open; review is not acceptance) and reconcile any newer remote work.
 - [x] Full visual rerun and flagged screenshot inspection: 230 checks passed; OCR212 verified/zero broken/12 expected fallback exceptions. All23 soft layout flags inspected. Family interview hover remains unverified for three controls across four viewports; native/remote fallback surfaces are not feature acceptance.
 - [ ] Correct and verify Calendar failure explanation delivery, redundant clarification steps and recurring availability claims using the captured traces.
 - [ ] Investigate post-restart request arriving after Stop; it eventually edited the QA note. A repeat made no second write. Seven real HTTP/Vite lifecycle tests and existing server disconnect suites pass, so a basic proxy cancellation defect is not reproduced.
