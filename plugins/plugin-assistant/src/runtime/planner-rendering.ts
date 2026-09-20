@@ -14,18 +14,20 @@ import type {
   PlannerToolResult,
 } from "@elizaos/core";
 import {
-  buildProviderCachePlan,
-  type CacheableSection,
   composeToolDiagnosticRedactor,
   getActionResultActionName,
   isReadView,
-  type ProviderCachePlan,
-  type ProviderCachePlanArgs,
   projectCompleteToolArgsForModel,
   projectCompleteToolValueForModel,
   stringifyForModel,
   type ToolDiagnosticTextRedactor,
 } from "@elizaos/core";
+import {
+  buildProviderCachePlan,
+  type CacheableSection,
+  type ProviderCachePlan,
+  type ProviderCachePlanArgs,
+} from "./provider-cache-plan";
 
 /**
  * Options for {@link trajectoryStepsToMessages}.

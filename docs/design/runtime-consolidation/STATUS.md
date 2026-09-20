@@ -180,3 +180,10 @@ with the implementation, and the provider's actual-handler tests retain their
 existing behavior. Core no longer exports these provider-specific helpers; packed
 kernel verification rejects their return. This removes a dependency direction
 and public surface, not the normalization algorithm or its input protections.
+
+Provider cache planning is likewise assistant-owned: evaluator, planner rendering
+and structured prompts are its only production callers. Cache identifiers,
+conversation affinity, complete prompt segments and provider option shapes stay
+unchanged. Its cache-plan and prefix-stability suites move with it; the OpenAI SDK
+wire test now consumes the assistant implementation. Core retains generic hashing
+and model-option transport, without vendor cache retention or breakpoint policy.

@@ -26,7 +26,6 @@ import type {
 } from "@elizaos/core";
 import {
   Service as BaseService,
-  buildProviderCachePlan,
   ChannelType,
   CONVERSATION_MESSAGES_HEADER_PREFIX,
   composeToolDiagnosticRedactor,
@@ -51,6 +50,7 @@ import {
 import { isMobilePlatform } from "@elizaos/shared/runtime-env";
 import { v4 as uuidv4 } from "uuid";
 import { renderActionResultsForModel } from "../runtime/planner-rendering.ts";
+import { buildProviderCachePlan } from "../runtime/provider-cache-plan";
 import {
   DEFAULT_MEMORY_EVIDENCE_BATCH_BYTES,
   evaluatorEvidenceRecord,
