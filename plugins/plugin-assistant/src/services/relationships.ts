@@ -50,6 +50,7 @@ import {
 } from "./relationship-evidence.ts";
 import {
   createNativeRelationshipsGraphService,
+  drainRelationshipsGraphBuilds,
   type GraphResolvers,
   type RelationshipsGraphQuery,
   type RelationshipsGraphService,
@@ -828,6 +829,7 @@ export class RelationshipsService extends Service {
   }
 
   async stop(): Promise<void> {
+    await drainRelationshipsGraphBuilds(this.runtime);
     // Clean up caches
     this.contactInfoCache.clear();
     this.analyticsCache.clear();
