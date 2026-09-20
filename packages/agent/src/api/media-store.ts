@@ -205,6 +205,104 @@ function extForMime(mimeType: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Atomic file writes
+// ---------------------------------------------------------------------------
+
+/** Temporary sibling an in-flight atomic write keeps beside its final name. */
+const TEMPORARY_MEDIA_FILE_NAME = /\.\d+\.[a-f0-9]{16}\.tmp$/;
+
+function temporarySiblingPath(filePath: string): string {
+  return `${filePath}.${process.pid}.${crypto.randomBytes(8).toString("hex")}.tmp`;
+}
+
+/**
+ * Write bytes to `filePath` through a temporary sibling in the same directory:
+ * write, fsync, then rename over the final name. A content-addressed name is
+ * therefore only ever observed complete, and an interrupted write (ENOSPC, a
+ * crash) leaves nothing under the final name that a later persist of the same
+ * bytes could mistake for the stored file. The temporary file is removed on
+ * every exit; the original failure propagates untouched.
+ */
+function writeFileAtomicSync(filePath: string, data: Buffer | string): void {
+  const temporaryPath = temporarySiblingPath(filePath);
+  const bytes = typeof data === "string" ? Buffer.from(data, "utf8") : data;
+  let descriptor: number | null = null;
+  try {
+    descriptor = fs.openSync(
+      temporaryPath,
+      fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL,
+      0o666,
+    );
+    let offset = 0;
+    while (offset < bytes.length) {
+      offset += fs.writeSync(descriptor, bytes, offset, bytes.length - offset);
+    }
+    fs.fsyncSync(descriptor);
+    fs.closeSync(descriptor);
+    descriptor = null;
+    fs.renameSync(temporaryPath, filePath);
+  } finally {
+    if (descriptor !== null) {
+      try {
+        fs.closeSync(descriptor);
+      } catch (closeError) {
+        // error-policy:J6 best-effort teardown — the descriptor belongs to the
+        // abandoned temporary file; the write failure already propagating is
+        // the one that matters.
+        logger.debug(
+          {
+            file: temporaryPath,
+            error:
+              closeError instanceof Error
+                ? closeError.message
+                : String(closeError),
+          },
+          "[media-store] could not close abandoned temporary media file",
+        );
+      }
+    }
+    try {
+      fs.rmSync(temporaryPath, { force: true });
+    } catch (cleanupError) {
+      // error-policy:J6 best-effort teardown — a stranded temporary sibling is
+      // observable (and swept by the orphan GC) but must not mask the original
+      // write or rename outcome.
+      logger.warn(
+        {
+          file: temporaryPath,
+          error:
+            cleanupError instanceof Error
+              ? cleanupError.message
+              : String(cleanupError),
+        },
+        "[media-store] could not remove temporary media file",
+      );
+    }
+  }
+}
+
+/**
+ * True when the content-addressed name must be (re)written: it is absent, or
+ * it exists with a byte length other than the payload's. The name is the hash
+ * of the full payload, so a length mismatch can only be a truncated leftover
+ * from an interrupted write, never a legitimate different file.
+ */
+function storedFileNeedsWrite(
+  filePath: string,
+  fileName: string,
+  expectedBytes: number,
+): boolean {
+  const stat = fs.statSync(filePath, { throwIfNoEntry: false });
+  if (!stat) return true;
+  if (stat.isFile() && stat.size === expectedBytes) return false;
+  logger.warn(
+    { fileName, existingBytes: stat.size, expectedBytes },
+    `[media-store] stored file ${fileName} holds ${stat.size} byte(s) but its payload is ${expectedBytes}; rewriting the truncated file`,
+  );
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Size-capped eviction
 // ---------------------------------------------------------------------------
 
@@ -350,7 +448,7 @@ export function persistPrivateMediaBytes(
   const nonce = crypto.randomBytes(8).toString("hex");
   const fileName = `${hash}.private-${nonce}.${extForMime(mimeType)}`;
   const filePath = path.join(mediaDir(), fileName);
-  if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, buffer);
+  writeFileAtomicSync(filePath, buffer);
   return { hash, fileName };
 }
 
@@ -397,8 +495,8 @@ export function persistMediaBytes(
   const hash = crypto.createHash("sha256").update(buffer).digest("hex");
   const fileName = `${hash}.${extForMime(effectiveMime)}`;
   const filePath = path.join(mediaDir(), fileName);
-  if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, buffer);
+  if (storedFileNeedsWrite(filePath, fileName, buffer.length)) {
+    writeFileAtomicSync(filePath, buffer);
     maybeEvict();
   }
   return { url: `${MEDIA_URL_PREFIX}${fileName}`, hash, fileName };
@@ -449,7 +547,9 @@ export function writeStoredMediaFile(fileName: string, bytes: Buffer): boolean {
   if (path.dirname(filePath) !== mediaDir()) return false;
   try {
     fs.mkdirSync(mediaDir(), { recursive: true });
-    if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, bytes);
+    if (storedFileNeedsWrite(filePath, fileName, bytes.length)) {
+      writeFileAtomicSync(filePath, bytes);
+    }
     return true;
   } catch (err) {
     // error-policy:J2 context-adding rethrow — a failed restore write is data
@@ -573,7 +673,7 @@ export function pinBackgroundMedia(url: string): void {
   try {
     const pins = readBackgroundPins().filter((existing) => existing !== name);
     pins.push(name);
-    fs.writeFileSync(
+    writeFileAtomicSync(
       backgroundPinsPath(),
       JSON.stringify(pins.slice(-MAX_BACKGROUND_PINS)),
     );
@@ -611,6 +711,31 @@ export function gcUnreferencedMedia(referenced: Set<string>): {
     const now = Date.now();
     const pinned = new Set(readBackgroundPins());
     for (const name of fs.readdirSync(dir)) {
+      if (TEMPORARY_MEDIA_FILE_NAME.test(name)) {
+        // A temporary sibling older than the grace window was stranded by a
+        // process that died mid-write; nothing will ever rename it into place.
+        try {
+          const stat = fs.statSync(path.join(dir, name));
+          if (now - stat.mtimeMs >= GC_MIN_AGE_MS) {
+            fs.unlinkSync(path.join(dir, name));
+            removed += 1;
+          }
+        } catch (sweepError) {
+          // error-policy:J6 best-effort — the writer that owns a live temporary
+          // file may rename or remove it concurrently; skip it and keep scanning.
+          logger.debug(
+            {
+              file: name,
+              error:
+                sweepError instanceof Error
+                  ? sweepError.message
+                  : String(sweepError),
+            },
+            "[media-store] skipped a temporary media file during GC",
+          );
+        }
+        continue;
+      }
       if (!MEDIA_FILE_NAME.test(name)) continue;
       scanned += 1;
       if (referenced.has(name) || pinned.has(name)) continue;
