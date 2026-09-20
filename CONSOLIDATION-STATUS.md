@@ -29,10 +29,11 @@ was preserved verbatim, survived an API restart, and only that QA fact was
 removed. All nine baseline fact records match their original values. This
 verifies MEMORY facts. PERSONALITY directive removal also passed live with a
 durable receipt, preserved other slot fields, and no retry loop.
-Thirty-three paid text QA turns have been recorded in total; no voice testing.
+Thirty-four paid text QA turns have been recorded in total; no voice testing.
 
 | Recorded scenario | Total time | Model calls | Input tokens | Cached input |
 | --- | ---: | ---: | ---: | ---: |
+| Clean post-reload Go home | 0.978s | 1 | 10,658 | 6,144 |
 | Latest morning preview (backend only; UI hot-update delay) | 4.029s | 3 | 27,391 | 3,072 |
 | Personal reply-rule removal | 3.537s | 3 | 27,413 | 9,216 |
 | Exact preference save | 2.780s | 3 | 23,226 | 3,072 |
@@ -88,8 +89,9 @@ application/tool/transport work not separately attributed here.
 - [ ] Finish applicable recovery/persistence review and clean remaining owned
   Calendar/Notes fixtures. Owned Cedar note/event and the temporary QA memory
   and personality directive are now removed; cleanup evidence is saved. Setup-time
-  Stop is corrected, but clean post-reload latency and older delayed arrival need
-  final assessment; the last run encountered a development hot-update failure.
+  Stop is corrected. Clean post-reload navigation passed in0.978s/one call; the
+  preceding Calendar run encountered a development hot-update failure. Historical
+  delayed arrival remains causally unproven, not silently marked fixed.
 - [ ] Produce the final candidate handoff with source decisions and explicit
   release gates.
 

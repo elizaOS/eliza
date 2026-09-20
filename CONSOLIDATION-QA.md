@@ -634,3 +634,14 @@ failure is evidence relevant to the old build-time delay, but does not prove
 its cause. Do not claim4.029s click-to-reply or attribute the whole wait to model
 latency. A clean post-reload send remains the next latency check; avoid repeating
 writes. No voice or external channel tests performed.
+
+
+## Clean post-reload navigation
+
+Paid turn34 on the reloaded UI: "Go home". Trace step-1789944774535-w8z37l:
+978ms backend total,one model call641ms,10,658 input tokens,404 output and6,144
+reported cached input. One successful VIEWS_SHOW, no planner/evaluator call.
+The browser changed from /notes to /chat and showed home-launcher-page:home plus
+"Back to home." This is a successful clean navigation run, not a universal timing
+claim. Evidence: runtime/final-clean-home-{trace,summary,output}.json. The earlier
+Calendar hot-update delay was not reproduced by this clean navigation request.
