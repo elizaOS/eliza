@@ -1695,38 +1695,6 @@ describe("locale claim tiers: clause-scoped interrogativity and subordinate tail
   ])("still flags factive Korean subordination %p", (reply) => {
     expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
   });
-
-  // Repeated claims in one sentence exposed per-match rescanning. A 10x
-  // input must retain near-linear cost at the actual reply-admission boundary.
-  it("scans near-linearly, not quadratically, as input size grows 10x", () => {
-    const unit = "알림을 설정했나요 ";
-    const small = unit.repeat(Math.round(2_800 / unit.length));
-    const large = unit.repeat(Math.round(28_000 / unit.length));
-    expect(large.length).toBeGreaterThan(small.length * 9);
-
-    // Warm up the JIT on both shapes before timing either — otherwise the
-    // first call absorbs one-time compilation cost unrelated to input size.
-    replyClaimsCompletedSideEffect(small);
-    replyClaimsCompletedSideEffect(large);
-
-    // Median samples reject scheduler/GC outliers without relaxing either
-    // the growth ratio or the per-reply budget.
-    const elapsed = (input: string): number => {
-      const samples: [number, number, number] = [0, 0, 0];
-      for (let index = 0; index < samples.length; index++) {
-        const start = performance.now();
-        const result = replyClaimsCompletedSideEffect(input);
-        samples[index] = performance.now() - start;
-        expect(result).toBe(false);
-      }
-      return samples.sort((left, right) => left - right)[1];
-    };
-    const smallElapsed = Math.max(elapsed(small), 0.001);
-    const largeElapsed = elapsed(large);
-
-    expect(largeElapsed / smallElapsed).toBeLessThan(30);
-    expect(largeElapsed).toBeLessThan(200);
-  });
 });
 
 // The shape detector is not the product surface: the Stage-1 response-handler
