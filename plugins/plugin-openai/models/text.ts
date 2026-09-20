@@ -1,3 +1,9 @@
+/**
+ * Text generation model handlers
+ *
+ * Provides text generation using OpenAI's language models.
+ */
+
 import {
   cloneSchemaForBoundedTransport,
   JSON_SCHEMA_ARRAY_KEYWORDS,
@@ -8,12 +14,6 @@ import {
   normalizeSchemaForCerebras,
   sanitizeFunctionNameForCerebras,
 } from "../utils/schema-compat";
-/**
- * Text generation model handlers
- *
- * Provides text generation using OpenAI's language models.
- */
-
 import type {
   GenerateTextParams,
   IAgentRuntime,
