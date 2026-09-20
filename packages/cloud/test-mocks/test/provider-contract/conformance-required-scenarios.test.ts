@@ -31,9 +31,11 @@ async function expectMandatoryScenario(
   capabilities: readonly ProviderContractCapability[],
   omitted: ProviderContractScenario,
   profile: ProviderContractProfile = "outbound-http",
+  additional: readonly ProviderContractScenario[] = [],
 ): Promise<void> {
   const scenarios = Object.fromEntries(
     requiredProviderContractScenarios(capabilities, profile)
+      .concat(additional)
       .filter((scenario) => scenario !== omitted)
       .map((scenario) => [scenario, passingScenario(scenario)]),
   );
@@ -42,7 +44,7 @@ async function expectMandatoryScenario(
       adapterName: `adversarial-${omitted}`,
       profile,
       capabilities,
-      requiredScenarios: ["success"],
+      requiredScenarios: ["success", ...additional],
       scenarios,
     }),
   ).rejects.toThrow(`missing provider contract scenarios: ${omitted}`);
@@ -51,12 +53,20 @@ async function expectMandatoryScenario(
 describe("provider conformance mandatory scenarios", () => {
   test.each([
     [["http-read"] as const, "connection-reset" as const],
-    [["http-read"] as const, "opaque-connection-id" as const],
     [["http-read"] as const, "read-policy" as const],
     [["http-write"] as const, "write-policy-receipt" as const],
     [["irreversible-write"] as const, "irreversible-policy-receipt" as const],
   ])("does not allow %s to omit %s", async (capabilities, scenario) => {
     await expectMandatoryScenario(capabilities, scenario);
+  });
+
+  test("requires an explicitly declared managed connection boundary", async () => {
+    await expectMandatoryScenario(
+      ["http-read"],
+      "opaque-connection-id",
+      "outbound-http",
+      ["opaque-connection-id"],
+    );
   });
 
   test("rejects scenario names outside the canonical catalog", async () => {
