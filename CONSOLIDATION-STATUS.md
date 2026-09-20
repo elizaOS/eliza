@@ -6,9 +6,9 @@ finished release.** Full evidence and historical failures:
 
 ## Current checkpoint
 
-- Tested production code: `04719e2706e`. Full repository verification passed;
-  scoped memory/registered-tool tests, Agent typecheck and lint passed.
-- Isolated app: UI5268/API31392, API PID56036. Restart completed with35 plugins,
+- Tested candidate code: `4283ed4fd1e`. Full repository verification passed;
+  personality413 tests, Core typecheck and lint passed.
+- Isolated app: UI5268/API31392, API PID62532. Restart completed with35 plugins,
   95 services and zero failures; deferred boot settled.
 - Original UI5248/UI5258 demos and their source branches remain preserved.
 - Inputs: Mac `a15525f30fb`, develop `ba04de0e2c1` plus reviewed maintenance
@@ -24,11 +24,13 @@ finished release.** Full evidence and historical failures:
 Exact preference save and natural follow-up removal now pass. The saved text
 was preserved verbatim, survived an API restart, and only that QA fact was
 removed. All nine baseline fact records match their original values. This
-verifies MEMORY facts; PERSONALITY directives are a separate remaining check.
-Thirty-one paid text QA turns have been recorded in total; no voice testing.
+verifies MEMORY facts. PERSONALITY directive removal also passed live with a
+durable receipt, preserved other slot fields, and no retry loop.
+Thirty-two paid text QA turns have been recorded in total; no voice testing.
 
 | Recorded scenario | Total time | Model calls | Input tokens | Cached input |
 | --- | ---: | ---: | ---: | ---: |
+| Personal reply-rule removal | 3.537s | 3 | 27,413 | 9,216 |
 | Exact preference save | 2.780s | 3 | 23,226 | 3,072 |
 | Follow-up preference removal | 3.015s | 3 | 24,523 | 10,240 |
 | Earlier availability preview | 3.604s | 3 | 27,299 | 6,144 |
@@ -64,10 +66,10 @@ application/tool/transport work not separately attributed here.
 - [ ] Close Calendar handler disposition and remaining recurrence/availability
   wording coverage. Local Calendar recurrence is unsupported. Correct failure
   explanation was observed, but one recovered run still took five calls.
-- [ ] Close PERSONALITY directive live acceptance. Adding a QA rule persisted it
-  but ended in a reply error after17 calls because no durable effect receipt was
-  returned. Source correction passes413 tests/typecheck/lint and root verification;
-  live removal remains pending. The temporary greenhouse rule is still saved.
+- [x] Verify PERSONALITY directive removal through the live model path. The
+  temporary greenhouse rule was removed on4283ed4fd1e in three calls with a
+  valid durable receipt. Add/remove deterministic coverage passes413 tests;
+  live add completion on the corrected code was not separately retested.
 - [ ] Reconcile any newer remote work by exact checkout/commit and review scope.
 - [ ] Finish applicable recovery/persistence review and clean remaining owned
   Calendar/Notes fixtures. The temporary QA memory has been removed.

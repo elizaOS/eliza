@@ -498,3 +498,28 @@ Full root verification passed (session87319 exit0 / `personality-receipt-verify.
 No live acceptance of this correction yet; API still runs04719e2706e.
 The change covers add/remove directives; do not generalize this result to
 unexercised trait/profile operations.
+
+
+## Live scoped directive removal — 4283ed4fd1e
+
+Turn32: “Remove only the GREENHOUSE CHECK reply rule I just added for myself.
+Keep my other preferences.” Trace `step-1789941979626-ktmf84` completed in
+3.537s with three model calls,27,413 input tokens,997 output and9,216 cached
+input. Evidence: `runtime/personality-receipt-live-remove-{trace,summary,output}.json`.
+Handler1.531s/11,008 input/7,168 cached; planner0.616s/8,573 input/zero cached;
+completion0.494s/7,832 input/2,048 cached. Remaining0.896s is unattributed
+application/tool/transport work. This is one observed run, not a latency guarantee.
+
+One PERSONALITY_REMOVE_DIRECTIVE executed with the exact saved directive.
+Its before slot matches the prior successful write after restart; its after
+slot has no custom directives or directive provenance entries. Traits,
+reply gate, source, identity and trait provenance remained unchanged. The
+completion referenced the actual durable receipt and visibly confirmed removal.
+No scope clarification, context restoration, retry or extra synthesis occurred.
+The initial handler proposed applied wording before the action; it was not the
+final UI reply. The receipt guard remained enforced. No other preferences were
+removed. Live add completion on the corrected revision was not separately
+retested; both add/remove action-to-evaluator tests pass.
+
+API restarted atPID62532 on4283ed4fd1e, UI5268/API31392,35 plugins and95 services,
+zero failures and deferred boot settled. Original demos were untouched.
