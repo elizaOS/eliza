@@ -58,3 +58,11 @@ Real isolated PGlite vector-contract tests passed 6/6, covering ranking/threshol
 Full repository verification exited successfully before this follow-up. The live request “For the Cedar rehearsal event, Tuesday at 9 AM works. Keep it 15 minutes.” failed in 4.542 seconds across four calls (36,538 input tokens). The planner copied an incomplete internal event ID from the UI, and lookup fell through to disconnected Google Calendar. Only one tool ran; the event was not moved.
 
 The final model received a generic 409 rather than the connection reason, incorrectly described a calendar conflict, and requested repetition. Calendar error facts now identify the disconnected account; three deterministic handler tests passed. Canonical event-target validation/recovery and a successful live move remain required. This failure is not covered by the earlier passing create/clarification scenarios.
+
+## Calendar target boundary and recheck
+
+At `c65e5d6bd1a`, incomplete or foreign internal event IDs are rejected before provider lookup. No automatic ID repair or target substitution was added. The 29 scoped tests and Calendar typecheck passed.
+
+The next live move succeeded in 3.873 seconds with four calls (32,594 input, 1,186 output tokens). The planner used the title query, the handler resolved the existing event and validated the requested interval, and the same event was saved at Tuesday September 22, 9:00–9:15 AM PDT with version2. UI readback matched. This demonstrates the valid query path; deterministic tests demonstrate malformed-ID rejection.
+
+After the restart and later corrections, exact recall of the first move request also passed in 0.915 seconds with one call (11,076 input,526 output tokens). Remaining gates include complete source review, visual acceptance and the remaining combined scenarios.
