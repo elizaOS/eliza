@@ -1022,3 +1022,7 @@ packages/ui/src/components/shell/__e2e__/output-home-locale/
 /eliza/
 .cloud-production-main/
 .mooncycles-latest/
+
+# Renderer assets materialized by app-core avatar preparation.
+/packages/app/public/vrms/
+/packages/app/public/animations/
