@@ -5,21 +5,21 @@
  */
 import { randomUUID } from "node:crypto";
 import {
+	AgentRuntime,
 	asUUID,
 	ChannelType,
+	createCharacter,
 	type IAgentRuntime,
 	type Memory,
 	type MessageHandlerResult,
 	ModelType,
+	runResponseHandlerEvaluators,
 	runWithStreamingContext,
 	type State,
 	type Task,
 	TaskStatus,
 	type UUID,
 } from "@elizaos/core";
-import { createCharacter } from "@elizaos/core/character.js";
-import { runResponseHandlerEvaluators } from "@elizaos/core/runtime/response-handler-evaluators.js";
-import { AgentRuntime } from "@elizaos/core/runtime.js";
 import {
 	createAssistantPlugin,
 	DefaultMessageService,

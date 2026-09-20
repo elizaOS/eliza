@@ -9,10 +9,10 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
+	ResponseHandlerFieldRegistry,
 	type State,
 	type Task,
 } from "@elizaos/core";
-import { ResponseHandlerFieldRegistry } from "@elizaos/core/runtime/response-handler-field-registry.js";
 import {
 	runV5MessageRuntimeStage1,
 	wrapSingleTurnVisibleCallback,

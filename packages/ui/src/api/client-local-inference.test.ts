@@ -2,7 +2,7 @@
  * Covers local-inference client policy helpers: deterministic device-tier
  * classification and the real fetch boundary for atomic text routing.
  */
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { HardwareProbe } from "../services/local-inference/types";
