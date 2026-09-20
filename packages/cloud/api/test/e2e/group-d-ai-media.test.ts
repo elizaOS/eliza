@@ -352,7 +352,10 @@ describeE2E("Group D — /api/elevenlabs/tts", () => {
       { text: "x".repeat(5001) },
       { headers: bearerHeaders() },
     );
-    expect(res.status).toBe(400);
+    expect(
+      res.status,
+      `${res.headers.get("content-type")}: ${await res.clone().text()}`,
+    ).toBe(400);
   });
 
   test("validation: empty body with auth returns 400", async () => {
