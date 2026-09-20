@@ -4,8 +4,9 @@
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { AgentRuntime, type IDatabaseAdapter } from "@elizaos/core";
+import { AgentRuntime, type IAgentRuntime, type IDatabaseAdapter, Service } from "@elizaos/core";
 import { createDatabaseAdapter, plugin } from "@elizaos/plugin-sql";
+import { RuntimeCache } from "../cache";
 import { DbAdapterPool } from "./adapter-pool";
 
 const originalBackend = process.env.DATABASE_ADAPTER;
@@ -233,3 +234,57 @@ test("strict runtime retirement leaves another runtime and its real database usa
     ]);
   }
 }, 30_000);
+
+test.each(["organization", "stale", "mcp"] as const)(
+  "%s runtime eviction cannot retire an adapter created during old service teardown",
+  async (kind) => {
+    const agentId = randomUUID();
+    const organizationId = randomUUID();
+    const key = `${agentId}:${organizationId}:adapter-retirement-test`;
+    const pool = new DbAdapterPool(realFactory);
+    const originalAdapter = await pool.getOrCreate(agentId);
+    const original = new AgentRuntime({ agentId, adapter: originalAdapter, logLevel: "fatal" });
+    const cache = new RuntimeCache();
+    const stopping = Promise.withResolvers<void>();
+    const finish = Promise.withResolvers<void>();
+    class DelayedStop extends Service {
+      static override serviceType = "adapter-retirement-delay";
+      capabilityDescription = "Controlled old-runtime service teardown";
+      static override async start(runtime: IAgentRuntime) {
+        return new DelayedStop(runtime);
+      }
+      override async stop() {
+        stopping.resolve();
+        await finish.promise;
+      }
+    }
+    await original.initialize({ skipMigrations: true });
+    await original.registerService(DelayedStop);
+    await original.getServiceLoadPromise(DelayedStop.serviceType);
+    await cache.set(key, original, "Original", agentId, 0);
+    if (kind === "stale") {
+      const entry = cache.getEntryForTesting(key);
+      if (!entry) throw new Error("Fixture runtime was not cached");
+      entry.createdAt = 0;
+    }
+    const eviction =
+      kind === "organization"
+        ? cache.removeByOrganization(organizationId, pool)
+        : cache.getWithHealthCheck(key, pool, kind === "mcp" ? 1 : undefined);
+    try {
+      await stopping.promise;
+      pool.removeAdapter(agentId);
+      const replacement = await pool.getOrCreate(agentId);
+      expect(replacement).not.toBe(originalAdapter);
+      finish.resolve();
+      await eviction;
+      expect(pool.entriesForTesting().get(agentId)).toBe(replacement);
+      expect(await replacement.getEntitiesByIds([randomUUID()])).toEqual([]);
+    } finally {
+      finish.resolve();
+      await eviction;
+      await original.stop({ requireQuiescence: true });
+    }
+  },
+  30_000,
+);
