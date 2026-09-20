@@ -253,3 +253,20 @@ The following are final exclusions for this candidate, replacing provisional hol
 Calendar already tests literal location/description preservation, and current
 context rendering retains routing metadata; no parity-only duplicate tests added.
 No runtime modifications or additional model calls were needed for these decisions.
+
+
+## Final direct-text dispositions
+
+The remaining sync2 choices are now explicit in REMOTE-SOURCE-DECISIONS.md:
+retain compatible search settings (retirement requires a separately tested config
+migration); retain current planner batch-scope placement (the default includes
+the shared rule once and custom templates already receive the full schema fallback,
+covered in planner-loop.test.ts); and exclude the extra English current-date
+phrase override. These are decisions to retain current behavior, not proof that
+all alternate configurations or model answers are flawless.
+
+Group-channel progressive context, Discord canonical chunk persistence and
+partial-classification reconciliation remain separate integration release gates.
+They are preserved in the fetched group branch and are not represented as merged
+or verified in the direct-text candidate. Fixed context-window limits are rejected.
+No channel messages, paid model calls, deployment or voice tests were performed.

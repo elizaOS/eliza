@@ -10,9 +10,9 @@ All127 changed paths were inspected. Test decisions do not claim tests were run.
 | `packages/agent/src/actions/memories.ts` | Exclude auto-pagination and missing-update create hint. No existing target is not evidence of authorization to create a new record; typed mutations already require explicit target. Preserve failed-update distinction. |
 | `packages/agent/src/api/chat-routes.ts` | Remote delta is comment expansion only; no implementation to integrate. |
 | `packages/agent/src/api/conversation-routes.ts` | Remote delta is comment expansion only; no implementation to integrate. |
-| `packages/agent/src/config/schema.ts` | Hold keyed web-search settings retirement for config consumer/migration review; not a latency fix. |
-| `packages/agent/src/config/schema.web-search-hints.test.ts` | Hold with keyed-search migration; tests cover hidden UI hints and legacy parsing, not all config consumers. |
-| `packages/agent/src/config/zod-schema.agent-runtime.ts` | Comment-only dependency of held search-settings retirement. |
+| `packages/agent/src/config/schema.ts` | Defer keyed-search settings retirement to a config migration change. Retain current compatibility fields; removing exposed settings is not required for the selected text flows. |
+| `packages/agent/src/config/schema.web-search-hints.test.ts` | Defer with keyed-search settings migration; this test alone does not establish compatibility for existing configuration. |
+| `packages/agent/src/config/zod-schema.agent-runtime.ts` | Defer comment change with excluded search-settings migration. |
 | `packages/agent/src/runtime/prompt-optimization.test.ts` | Keep missing/zero/requested/provider temperature distinction tests removed remotely. |
 | `packages/agent/src/runtime/prompt-optimization.ts` | Keep missing-vs-zero temperature telemetry; remote fabricates zero and overwrites explicit zero. |
 | `packages/app-core/scripts/dev-ui.mjs` | Keep force-flag-free local voice probing; voice acceptance remains excluded. |
@@ -48,13 +48,13 @@ All127 changed paths were inspected. Test decisions do not claim tests were run.
 | `packages/core/src/runtime/__tests__/planner-loop-superseded-effect-failure.test.ts` | Exclude message-scoped failure supersession. A source message does not identify the failed target; same mutation parameters after stripping selectors cannot prove the same resource. Preserve target-bound tests. |
 | `packages/core/src/runtime/__tests__/planner-loop-verified-intent-operation.test.ts` | Do not import helper tests for rejected lexical intent-completion shortcut. Operation-family match does not prove requested content or target. |
 | `packages/core/src/runtime/__tests__/planner-loop-verified-prose-restatement.test.ts` | Do not import helper tests for rejected English restatement suppression; word sets and sample values do not prove semantic equivalence. |
-| `packages/core/src/runtime/__tests__/planner-loop.test.ts` | Keep semantic evaluation and targeted second-call expectations; remote changes them to lexical completion and subset queue skipping. Standalone batch-scope description assertion is useful only with held custom-template placement review. |
+| `packages/core/src/runtime/__tests__/planner-loop.test.ts` | Keep semantic evaluation and targeted second-call expectations; remote changes them to lexical completion and subset queue skipping. Current custom-template fallback and default shared-rule coverage already exist; no redundant import. |
 | `packages/core/src/runtime/__tests__/planner-rendering.test.ts` | Do not import result-prefix truncation tests; complete result contract remains. |
 | `packages/core/src/runtime/__tests__/terminal-proposal-whitespace.test.ts` | Keep deleted exact formatting and code indentation regression; remote normalization changes proposal evidence. |
 | `packages/core/src/runtime/action-catalog.test.ts` | Keep removed no-search-metadata work avoidance test with equivalent complete schemas and localized examples. |
 | `packages/core/src/runtime/action-catalog.ts` | Keep exact-name discovery avoiding unused search-index work; remote removes optimization. |
 | `packages/core/src/runtime/evaluator.ts` | Keep executable queue ID schema and clipboard capability validation. Remote removes both; evaluatorBaseContext restoration is coupled to rejected blanket provider exclusions, not an independent fix for current composition. |
-| `packages/core/src/runtime/planner-loop.ts` | Reject 60-percent intent word-overlap completion, argument-subset queue dropping, English restatement suppression and whitespace flattening. Preserve explicit discovery before draft evaluation and target-bound failure supersession. Hold independent shared batch-scope placement for custom-template coverage; default template already states it. Separate evaluator context depends on rejected provider exclusions. |
+| `packages/core/src/runtime/planner-loop.ts` | Reject 60-percent intent word-overlap completion, argument-subset queue dropping, English restatement suppression and whitespace flattening. Preserve explicit discovery before draft evaluation and target-bound failure supersession. Keep current batch-scope placement: default template states it once and custom templates receive the full schema fallback. Separate evaluator context depends on rejected provider exclusions. |
 | `packages/core/src/runtime/planner-rendering.ts` | Reject result-body truncation; complete receipts and outputs required. |
 | `packages/core/src/runtime/planner-types.ts` | Reject context-exclusion prefix and loss of false clipboard capability; no import. |
 | `packages/core/src/runtime/sub-planner.ts` | Comment expansion only; implementation identical. |
@@ -83,15 +83,15 @@ All127 changed paths were inspected. Test decisions do not claim tests were run.
 | `packages/core/src/services/message/stage1-generation.ts` | Keep native decision rejection rather than fallback prose after an invalid HANDLE_RESPONSE. |
 | `packages/core/src/services/message/stage1-input.ts` | Exclude voice-prewarm change from this text candidate; voice remains a separate acceptance gate. |
 | `packages/core/src/services/message/stage1-output.ts` | Keep rejection of inconsistent native decisions; remote accepts first usable decision and prose fallback. |
-| `packages/core/src/services/message/time-observations.test.ts` | Single added English today-date case paired with held lexical shortcut; not broad current-time correctness proof. |
-| `packages/core/src/services/message/time-observations.ts` | Hold extra English current-date phrase shortcut; no demonstrated missing scenario in selected text acceptance. |
+| `packages/core/src/services/message/time-observations.test.ts` | Single English today-date case paired with excluded lexical shortcut; not broad current-time correctness proof. |
+| `packages/core/src/services/message/time-observations.ts` | Exclude extra English current-date phrase shortcut: no selected scenario requires broadening this lexical override; preserve model-owned ordinary responses and the existing clock contract. |
 | `packages/core/src/services/message/tool-discovery.test.ts` | Keep complete named schemas and explicit operation tests. Malformed-input coaching already exists; exclude permission-miss coaching reclassification to preserve admission failure authority. |
-| `packages/core/src/services/message/tool-discovery.ts` | Keep description parameter schemas and requested-operation canonical grouping; remote strips schemas and restores flat expansion. Coaching-marker delta requires separate permission-failure semantics review. |
+| `packages/core/src/services/message/tool-discovery.ts` | Keep description parameter schemas and requested-operation canonical grouping; remote strips schemas and restores flat expansion. Exclude permission-miss coaching: permission denial is not a malformed-input repair. |
 | `packages/core/src/types/evaluator.ts` | Reject shared result character cap. |
 | `packages/core/src/utils/batch-queue.test.ts` | Keep void drain contract with processed-item and error behavior tests; return-count assertions support excluded API-only change. |
 | `packages/core/src/utils/batch-queue/index.ts` | Exclude drain return-count API change. Reviewed production call sites do not consume this count; no demonstrated candidate idle-backoff dependency or behavior benefit. |
 | `packages/prompts/src/index.ts` | Comment-only incident narrative; no runtime prompt change to integrate. |
-| `packages/shared/src/config/types.tools.ts` | Hold search config type removals with settings migration; compatibility needs verification. |
+| `packages/shared/src/config/types.tools.ts` | Defer search configuration type removals with the settings migration; retain compatibility fields. |
 | `packages/ui/scripts/duplicate-molecular-components-report.json` | Full parsed JSON objects equal; formatting only. Keep current generated report. |
 | `packages/ui/src/components/developer/DeveloperReader.test.tsx` | Keep removed late background run, pagination/ownership, visibility, cancellation and explicit auth retry tests. |
 | `packages/ui/src/components/developer/DeveloperTrajectories.tsx` | Keep late background-run polling and visibility/auth guards; remote removes them. |
