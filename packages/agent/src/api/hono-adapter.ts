@@ -204,6 +204,13 @@ export function mountRoutesOnHono(
           headers.set("content-type", "application/json; charset=utf-8");
         }
       }
+      if (
+        result.status === 204 ||
+        result.status === 205 ||
+        result.status === 304
+      ) {
+        bodyOut = null;
+      }
       return new Response(bodyOut, { status: result.status, headers });
     };
 
