@@ -34,7 +34,7 @@ Latest live availability check: **3.604s, three calls,27,299 input tokens;6,144 
 
 ## Remaining acceptance checklist
 
-- [ ] Complete semantic source ledger (240/270 entries explicitly reviewed; all implementation diffs inspected, Calendar recipient and follow-up fixes checked deterministically with live Calendar validation still open; review is not acceptance) and reconcile any newer remote work.
+- [ ] Complete semantic source ledger (245/270 entries explicitly reviewed; all implementation diffs inspected, Calendar recipient and follow-up fixes checked deterministically with live Calendar validation still open; review is not acceptance) and reconcile any newer remote work.
 - [x] Full visual rerun and flagged screenshot inspection: 230 checks passed; OCR212 verified/zero broken/12 expected fallback exceptions. All23 soft layout flags inspected. Family interview hover remains unverified for three controls across four viewports; native/remote fallback surfaces are not feature acceptance.
 - [ ] Correct and verify Calendar failure explanation delivery, redundant clarification steps and recurring availability claims using the captured traces.
 - [x] Clean pre-effect Stop: interrupted before any tool, note unchanged after reload. Earlier incident remains unexplained: post-restart request arrived after Stop; it eventually edited the QA note. A repeat made no second write. Seven real HTTP/Vite lifecycle tests and existing server disconnect suites pass, so a basic proxy cancellation defect is not reproduced.
