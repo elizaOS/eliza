@@ -6,7 +6,7 @@
 import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/shared";
 import {
 	_resetVoiceRevisionMemoForTesting,
@@ -20,7 +20,9 @@ import {
 let tmpRoot: string;
 const openCaches: FirstLineCache[] = [];
 
-function makeCache(opts: Partial<ConstructorParameters<typeof FirstLineCache>[0]> = {}) {
+function makeCache(
+	opts: Partial<ConstructorParameters<typeof FirstLineCache>[0]> = {},
+) {
 	const cache = new FirstLineCache({ rootDir: tmpRoot, ...opts });
 	openCaches.push(cache);
 	return cache;
@@ -54,16 +56,56 @@ afterEach(() => {
 	// blocks rmSync on Windows (EBUSY/EPERM); POSIX tolerates open handles.
 	// close() is idempotent, so double-closing an already-closed cache is safe.
 	for (const cache of openCaches.splice(0)) cache.close();
-	rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+	vi.restoreAllMocks();
+	rmSync(tmpRoot, {
+		recursive: true,
+		force: true,
+		maxRetries: 5,
+		retryDelay: 50,
+	});
 });
 
 describe("hashCacheKey", () => {
+	it.each([
+		[
+			"got it",
+			"fce913f6c62ec95a56db16e450716084252af96dd02057a514a01755680e3a79",
+		],
+		[
+			"café 我知道了",
+			"542f9736a8900dffd80595ad897de6a64c5fd66e59203ebbd2ce0f689710c3d4",
+		],
+	])(
+		"retains the persisted version-one hash for %s",
+		(normalizedText, digest) => {
+			expect(
+				hashCacheKey(
+					makeKey({
+						algoVersion: "1",
+						provider: "kokoro",
+						voiceId: "af_bella",
+						voiceRevision: "revision",
+						sampleRate: 24000,
+						codec: "opus",
+						voiceSettingsFingerprint: "settings",
+						normalizedText,
+					}),
+				),
+			).toBe(digest);
+		},
+	);
+
 	it("changes when any key field changes", () => {
 		const base = makeKey();
 		const baseHash = hashCacheKey(base);
+		expect(hashCacheKey({ ...base, algoVersion: "next" })).not.toBe(baseHash);
 		expect(hashCacheKey({ ...base, voiceId: "other" })).not.toBe(baseHash);
-		expect(hashCacheKey({ ...base, voiceRevision: "rev-bbbb" })).not.toBe(baseHash);
-		expect(hashCacheKey({ ...base, normalizedText: "sure thing" })).not.toBe(baseHash);
+		expect(hashCacheKey({ ...base, voiceRevision: "rev-bbbb" })).not.toBe(
+			baseHash,
+		);
+		expect(hashCacheKey({ ...base, normalizedText: "sure thing" })).not.toBe(
+			baseHash,
+		);
 		expect(hashCacheKey({ ...base, sampleRate: 24000 })).not.toBe(baseHash);
 		expect(hashCacheKey({ ...base, codec: "opus" })).not.toBe(baseHash);
 		expect(hashCacheKey({ ...base, provider: "kokoro" })).not.toBe(baseHash);
@@ -78,9 +120,9 @@ describe("hashCacheKey", () => {
 
 describe("fingerprintVoiceSettings", () => {
 	it("is order-independent", () => {
-		expect(
-			fingerprintVoiceSettings({ stability: 0.5, style: 0.3 }),
-		).toBe(fingerprintVoiceSettings({ style: 0.3, stability: 0.5 }));
+		expect(fingerprintVoiceSettings({ stability: 0.5, style: 0.3 })).toBe(
+			fingerprintVoiceSettings({ style: 0.3, stability: 0.5 }),
+		);
 	});
 	it("differs when values differ", () => {
 		expect(fingerprintVoiceSettings({ stability: 0.5 })).not.toBe(
@@ -186,20 +228,27 @@ describe("FirstLineCache — F3 voice-swap safety", () => {
 		expect(cache.get(elevenLookup)).toBeNull();
 	});
 
-	it("different voiceRevision invalidates the cache (re-published voice pack)", () => {
-		const cache = makeCache();
-		const k1 = makeKey({ voiceRevision: "rev-1" });
-		const k2 = makeKey({ voiceRevision: "rev-2" });
-		cache.put({
-			...k1,
-			bytes: makeBytes(48),
-			rawText: "Got it.",
-			contentType: "audio/mpeg",
-			durationMs: 0,
-		});
-		expect(cache.has(k1)).toBe(true);
-		expect(cache.has(k2)).toBe(false);
-	});
+	it.each(["voiceId", "voiceRevision"] as const)(
+		"keeps independent entries when %s changes",
+		(field) => {
+			const cache = makeCache();
+			const original = makeKey();
+			const changed = makeKey({ [field]: "changed" });
+			const write = (key: FirstLineCacheKey, fill: number) =>
+				cache.put({
+					...key,
+					bytes: makeBytes(48, fill),
+					rawText: "Got it.",
+					contentType: "audio/mpeg",
+					durationMs: 0,
+				});
+			expect(write(original, 1)).toBe(true);
+			expect(cache.has(changed)).toBe(false);
+			expect(write(changed, 2)).toBe(true);
+			expect(cache.get(original)?.bytes[0]).toBe(1);
+			expect(cache.get(changed)?.bytes[0]).toBe(2);
+		},
+	);
 
 	it("different voiceSettingsFingerprint produces miss", () => {
 		const cache = makeCache();
@@ -212,7 +261,9 @@ describe("FirstLineCache — F3 voice-swap safety", () => {
 			contentType: "audio/mpeg",
 			durationMs: 0,
 		});
-		expect(cache.get(makeKey({ voiceSettingsFingerprint: stylised }))).toBeNull();
+		expect(
+			cache.get(makeKey({ voiceSettingsFingerprint: stylised })),
+		).toBeNull();
 	});
 });
 
@@ -258,7 +309,8 @@ describe("FirstLineCache — safety rejections", () => {
 		const cache = makeCache();
 		const ok = cache.put({
 			...makeKey({
-				normalizedText: "one two three four five six seven eight nine ten eleven",
+				normalizedText:
+					"one two three four five six seven eight nine ten eleven",
 			}),
 			bytes: makeBytes(48),
 			rawText: "One two three four five six seven eight nine ten eleven.",
@@ -285,47 +337,79 @@ describe("FirstLineCache — safety rejections", () => {
 });
 
 describe("FirstLineCache — LRU eviction", () => {
-	it("evicts oldest entries when over byte budget", () => {
-		// 5 entries × 64 bytes = 320; budget 200 → must evict at least 2.
-		const cache = makeCache({ maxBytes: 200, maxBytesPerEntry: 1024 });
-		const baseKey = makeKey();
-		const variants = [
-			{ ...baseKey, normalizedText: "okay" },
-			{ ...baseKey, normalizedText: "sure" },
-			{ ...baseKey, normalizedText: "right" },
-			{ ...baseKey, normalizedText: "got it" },
-			{ ...baseKey, normalizedText: "one sec" },
-		];
-		for (const v of variants) {
-			cache.put({
-				...v,
+	it("persists access order across reopen and evicts the least recently used bytes", () => {
+		let now = 1_700_000_000_000;
+		vi.spyOn(Date, "now").mockImplementation(() => now);
+		const keys = ["older", "newer", "third"].map((normalizedText) =>
+			makeKey({ normalizedText }),
+		);
+		const cache = makeCache({ maxBytes: 128 });
+		for (const key of keys.slice(0, 2)) {
+			expect(
+				cache.put({
+					...key,
+					bytes: makeBytes(64),
+					rawText: key.normalizedText,
+					contentType: "audio/mpeg",
+					durationMs: 0,
+				}),
+			).toBe(true);
+			now += 1000;
+		}
+		expect(cache.get(keys[0])?.lastAccessedAtMs).toBe(now);
+		cache.close();
+		now += 1000;
+		const reopened = makeCache({ maxBytes: 128 });
+		expect(
+			reopened.put({
+				...keys[2],
 				bytes: makeBytes(64),
-				rawText: v.normalizedText,
+				rawText: "Third.",
 				contentType: "audio/mpeg",
 				durationMs: 0,
-			});
-		}
-		const stats = cache.stats();
-		expect(stats.bytes).toBeLessThanOrEqual(200);
-		expect(stats.entries).toBeLessThanOrEqual(3);
+			}),
+		).toBe(true);
+		expect(keys.map((key) => reopened.has(key))).toEqual([true, false, true]);
+		expect(reopened.stats()).toMatchObject({ entries: 2, bytes: 128 });
 	});
 });
 
 describe("FirstLineCache — persistence across reopen", () => {
-	it("survives closing and re-opening the index", () => {
-		const cache1 = makeCache();
-		cache1.put({
-			...makeKey(),
-			bytes: makeBytes(48),
-			rawText: "Got it.",
-			contentType: "audio/mpeg",
-			durationMs: 0,
-		});
-		cache1.close();
-		const cache2 = makeCache();
-		const got = cache2.get(makeKey());
-		expect(got).not.toBeNull();
-		expect(got?.bytes.length).toBe(48);
+	it("retains bytes, hit counts and stats through reopen, then expires stored entries", () => {
+		const keys = [makeKey(), makeKey({ normalizedText: "sure thing" })];
+		const bytes = makeBytes(48);
+		const cache = makeCache({ ttlDays: 1 });
+		for (const key of keys) {
+			expect(
+				cache.put({
+					...key,
+					bytes,
+					rawText: key.normalizedText,
+					contentType: "audio/mpeg",
+					durationMs: 0,
+				}),
+			).toBe(true);
+		}
+		cache.close();
+		for (let count = 1; count <= 3; count++) {
+			const reopened = makeCache({ ttlDays: 1 });
+			for (const key of keys) {
+				const hit = reopened.get(key);
+				expect(hit).not.toBeNull();
+				expect(Array.from(hit!.bytes)).toEqual(Array.from(bytes));
+				expect(hit?.hitCount).toBe(count);
+			}
+			expect(reopened.stats()).toMatchObject({
+				dbReady: true,
+				entries: 2,
+				bytes: 96,
+			});
+			reopened.close();
+		}
+		const reopened = makeCache({ ttlDays: 1 });
+		expect(reopened.sweep(Date.now() + 2 * 86_400_000)).toBe(2);
+		expect(keys.map((key) => reopened.has(key))).toEqual([false, false]);
+		expect(reopened.stats()).toMatchObject({ entries: 0, bytes: 0 });
 	});
 
 	it("drops orphan rows when the blob file is missing", () => {
@@ -339,7 +423,8 @@ describe("FirstLineCache — persistence across reopen", () => {
 		});
 		const blobs = path.join(tmpRoot, "blobs");
 		// Find and unlink any .mp3 blob recursively (one entry).
-		const { readdirSync, unlinkSync } = require("node:fs") as typeof import("node:fs");
+		const { readdirSync, unlinkSync } =
+			require("node:fs") as typeof import("node:fs");
 		function purge(dir: string) {
 			for (const ent of readdirSync(dir, { withFileTypes: true })) {
 				const f = path.join(dir, ent.name);
@@ -351,24 +436,6 @@ describe("FirstLineCache — persistence across reopen", () => {
 
 		const got = cache1.get(makeKey());
 		expect(got).toBeNull();
-	});
-});
-
-describe("FirstLineCache — TTL sweep", () => {
-	it("removes entries older than ttlDays", () => {
-		const cache = makeCache({ ttlDays: 1 });
-		cache.put({
-			...makeKey(),
-			bytes: makeBytes(48),
-			rawText: "Got it.",
-			contentType: "audio/mpeg",
-			durationMs: 0,
-		});
-		expect(cache.has(makeKey())).toBe(true);
-		// Sweep with a "now" 2 days in the future → entry past TTL.
-		const removed = cache.sweep(Date.now() + 2 * 86_400_000);
-		expect(removed).toBe(1);
-		expect(cache.has(makeKey())).toBe(false);
 	});
 });
 
