@@ -427,7 +427,7 @@ existing UUID checks; missing confirmation and ambiguous scope still refuse.
 Both scoped Agent test files passed (memory actions and registered plugin
 contracts), including real handler/validator checks for each target kind,
 unrelated-record preservation and invalid/conflicting targets. Agent typecheck
-and package lint passed. Root verification is running as session8685 in
+and package lint passed. Root verification passed (session8685 exit0) in
 `runtime/memory-target-verify.log`. Before/after evidence:
 `memory-target-contract-before.log`, `memory-target-contract-after.log`;
 package checks: `memory-target-typecheck.log`, `memory-target-lint.log`.
@@ -436,3 +436,29 @@ No new live call or restart yet. UI5268/API31392 remains on f210e2f1e3c, and
 QA fact15c9e33d-6d6b-4b0d-bab9-d578128374f3 remains pending removal. Live QA
 count remains29. The next live check should remove only that disposable
 preference and compare the saved baseline, after verification settles.
+
+
+## Live explicit-target deletion on04719e2706e
+
+API31392 restarted cleanly on04719e2706e (PID56036; launch session58563),
+UI5268 reloaded. Readiness and deferred boot settled with35 plugins/95 services,
+zero failures. Previous log: `runtime/server-before-memory-target-04719e2.log`.
+No original demo was restarted. Live QA count now30.
+
+Repeated the exact failed natural request once: “Forget only the QA garden
+preference I just saved. Keep my other preferences.” Trace
+`step-1789941116895-x3r6d5` / `memory-target-live-remove-*`: **3.015s, three
+model calls,24,523 input/1,214 output tokens,10,240 cache-read input tokens**.
+Handler1.112s/10,921 input; planner0.685s/7,690; completion0.445s/5,912.
+One successful MEMORY_DELETE selected query target “For my QA garden, I use
+metric units.” No restore, missing-target retry, separate synthesis or grounding.
+The final visible reply confirmed scoped removal. The committed deletion
+receipt and fresh facts response agree: the QA fact is absent; all nine
+pre-existing fact records equal the pre-create baseline, with no extra pages.
+Snapshots: `memory-target-live-before-facts.json`,
+`memory-target-live-after-facts.json`, baseline
+`memory-exact-live-before-facts.json`. The saved fact surviving restart and
+then being found/deleted also exercises persistence. PERSONALITY slot removal
+is distinct and remains unproven live. These are individual QA observations;
+the retry has additional conversation context, so do not infer a controlled
+speedup or a universal three-call guarantee.
