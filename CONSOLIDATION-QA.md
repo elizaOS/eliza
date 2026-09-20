@@ -96,3 +96,9 @@ The existing completion-claim guard now receives the runtime pending-work phase.
 Validation: 59 focused classifier/egress tests passed; 702 Stage1/claim tests passed, including a runtime fixture proving neither early callback receives the premature claim while the final reply remains delivered with the original two fixture calls. Full root `bun run verify` exited0. Evidence: `pending-ack-guard-tests.log`, `pending-ack-runtime-tests.log`, and `pending-ack-root-verify.log` in the local consolidation evidence folder. No new paid calls.
 
 Runtime remains on9896c239663 until restart; live acceptance of this guard remains open. The delayed-request/Stop concern and other remaining checklist items are unchanged.
+
+## Source review checkpoint after pending acknowledgment correction
+
+100 of the 270 source-ledger entries now have explicit semantic inclusion decisions (previous published accounting was50). This is review coverage, not 100 accepted features. Reviewed additions preserve original-source identity, recent conversation continuity, transient acknowledgment delivery and import provenance; avoid redundant schema text, terminal-provider apology calls and irrelevant action-search metadata; and retain exact schema-only wallet corrections. No additional paid model calls, wallet transactions or voice tests were used.
+
+Full root verification passed for566862405ae. Live runtime remains9896c239663 pending restart. Outstanding work remains the unreviewed source entries, remaining combined scenario checks, the delayed-request/Stop investigation, and final handoff with explicit release gates. Local accounting: `SOURCE-REVIEW-ACCOUNTING.md`, `ledger-revision.json`, and `file-ledger-20260920.json` in the consolidation evidence folder.
