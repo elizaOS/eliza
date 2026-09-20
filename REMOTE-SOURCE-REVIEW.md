@@ -58,3 +58,39 @@ are beside the local inventory. Remaining sync2 files still need disposition.
 These decisions come from implementation diffs, not commit titles. This is a
 partial remote review, not proof that every remote change is represented.
 Local text QA, remote/channel acceptance and production release remain distinct.
+
+
+## App/domain batch reviewed
+
+44 implementation-file deltas now have explicit local ledger decisions. This
+is not44 accepted changes or completion of all127 files. Paired tests are not
+implicitly marked inspected. No runtime code changed in this review batch.
+
+- Keep exact-ID Notes mutation and ID/text pairs. The older branch removes the
+  former and replaces the latter with positional identity lists.
+- Keep Calendar request-grounded extraction and explicit selector conflicts.
+  The older branch adds English token/prefix filters that can discard literal
+  values and silently falls back from a rejected ID to a title-matched target.
+- Keep complete memory-search scope and terminal provider failure handling.
+  Remote automatic first-page selection and extra account-error model attempts
+  do not satisfy current completeness and paid-call discipline.
+- Keep generic source URLs out of media-delivery suppression and keep exact
+  entity metadata. A source link is not proof of media delivery; duplicate-looking
+  identity strings are not interchangeable facts.
+- Keep uncapped action receipts, exact-name discovery optimization and current
+  lightweight direct-chat navigation descriptions.
+- Hold search-settings retirement, connector routing refactor, queue idle-backoff
+  and trajectory-file deletion for their own dependency/compatibility checks.
+  These have not been accepted or silently imported.
+- API chat persistence, sub-planner alias explanation and connector grouping
+  differences inspected here are comments rather than missing implementation.
+
+Complete path-specific findings are in the local `sync2-file-comparison.json`.
+Remaining implementation, test and documentation deltas still require review.
+
+Additional inspected UI/routing deltas preserve the current trajectory stage
+labels, late background-run visibility and transcript resync. The remote version
+removes those behaviors. Current provider-reference guidance and invalid native
+decision rejection also remain. Voice prewarm/eligibility changes are held;
+no force flag or voice behavior was changed. Named-tool descriptions keep their
+parameter schemas and canonical grouping.
