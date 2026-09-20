@@ -5,7 +5,10 @@ import {
   getDeterministicNames,
   replaceIndexedNameTokens,
 } from "@elizaos/common";
-import Handlebars from "handlebars";
+import type Handlebars from "handlebars";
+import { compileTemplate } from "./template-engine.js";
+
+export { compileTemplate } from "./template-engine.js";
 
 type TemplateType = string | ((params: { state: object }) => string);
 interface PromptState {
@@ -57,7 +60,7 @@ function getCompiledTemplate(
   }
 
   const upgraded = upgradeDoubleToTriple(template);
-  const compiled = Handlebars.compile(upgraded);
+  const compiled = compileTemplate(upgraded);
   COMPILED_TEMPLATE_CACHE.set(template, compiled);
   if (COMPILED_TEMPLATE_CACHE.size > COMPILED_TEMPLATE_CACHE_LIMIT) {
     const oldestKey = COMPILED_TEMPLATE_CACHE.keys().next().value;

@@ -2,11 +2,11 @@
  * The compiled-template cache is shared across runtime instances. */
 
 import type { PromptSegment, State } from "@elizaos/core";
-import Handlebars from "handlebars";
+import { compileTemplate } from "@elizaos/prompts/rendering";
 
 const RUNTIME_TEMPLATE_CACHE = new Map<
   string,
-  Handlebars.TemplateDelegate<Record<string, unknown>>
+  ReturnType<typeof compileTemplate>
 >();
 const RUNTIME_TEMPLATE_CACHE_LIMIT = 256;
 const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
@@ -36,14 +36,14 @@ const STABLE_PROMPT_PROVIDER_NAMES = new Set([
 export function getCompiledRuntimeTemplate(
   template: string,
   alreadyUpgraded = false,
-): Handlebars.TemplateDelegate<Record<string, unknown>> {
+): ReturnType<typeof compileTemplate> {
   const source = alreadyUpgraded ? template : upgradeDoubleToTriple(template);
   const cached = RUNTIME_TEMPLATE_CACHE.get(source);
   if (cached) {
     return cached;
   }
 
-  const compiled = Handlebars.compile(source);
+  const compiled = compileTemplate(source);
   RUNTIME_TEMPLATE_CACHE.set(source, compiled);
   if (RUNTIME_TEMPLATE_CACHE.size > RUNTIME_TEMPLATE_CACHE_LIMIT) {
     const oldestKey = RUNTIME_TEMPLATE_CACHE.keys().next().value;
