@@ -244,7 +244,9 @@ describe("planner tool discovery", () => {
       parameters: { names: ["ALLOWED", "REVOKED"], mode: "describe" },
     });
     expect(denied?.success).toBe(false);
-    expect(denied?.data).toBeUndefined();
+    expect(denied?.data?.catalog).toBeUndefined();
+    expect(JSON.stringify(denied)).not.toContain("Private stale description");
+    expect(JSON.stringify(denied)).not.toContain("Fresh complete description");
     const allowed = await discovery.handler?.(runtime, message, undefined, {
       parameters: { names: ["ALLOWED"], mode: "describe" },
     });

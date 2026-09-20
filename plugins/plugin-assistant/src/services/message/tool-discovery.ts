@@ -212,6 +212,7 @@ export function createPlannerToolDiscoveryAction(
             success: false,
             error:
               "Requested descriptions were not admitted by current capability and permission checks. No tools were loaded. Use names=[] to inspect the current authorized catalog.",
+            data: { readOnlyOperation: true, coachingFailure: true },
           };
         }
         const completeCatalog = catalogFor(
