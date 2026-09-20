@@ -9,7 +9,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -206,6 +205,24 @@ describe("effective runner coverage", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test("a workspace without a test script cannot hide a newly added test", async () => {
+    writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ scripts: {} }),
+    );
+    const empty = await inspectPluginTestCoverage(dir);
+    expect(empty.testFiles).toEqual([]);
+    writeFileSync(path.join(dir, "forgotten.test.ts"), "export {};\n");
+    const added = await inspectPluginTestCoverage(dir);
+    expect(
+      computeOrphanedPluginTestFiles({
+        testFiles: added.testFiles,
+        coveredFiles: added.coveredFiles,
+        exceptions: new Map(),
+      }).orphans,
+    ).toEqual(["forgotten.test.ts"]);
+  });
+
   test("subtracts a config's effective excludes from its includes", async () => {
     const included = path.join(dir, "included.test.ts");
     const excluded = path.join(dir, "excluded.test.ts");
@@ -368,14 +385,6 @@ describe("effective runner coverage", () => {
 });
 
 describe("production orphan scan surface", () => {
-  test("inventories JS suites and applies config excludes", () => {
-    const source = readFileSync(SCRIPT, "utf8");
-    expect(source).toContain("**/*.test.{ts,tsx,mts,cts,js,mjs,cjs}");
-    expect(source).toContain("node:test");
-    expect(source).toContain("...exclude");
-    expect(source).not.toMatch(/if \(configPaths\.length === 0\) continue;/);
-  });
-
   test("the library can be imported without launching the repository scan", () => {
     const result = spawnSync(
       process.execPath,
