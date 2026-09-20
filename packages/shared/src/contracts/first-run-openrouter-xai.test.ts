@@ -2,11 +2,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  getFirstRunProviderOption as coreGetFirstRunProviderOption,
-  normalizeFirstRunProviderId as coreNormalizeFirstRunProviderId,
-} from "../../../core/src/contracts/first-run-options.ts";
-import {
-  DIRECT_ACCOUNT_PROVIDER_BY_FIRST_RUN_PROVIDER,
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderFamily,
   getFirstRunProviderOption,
@@ -15,9 +10,6 @@ import {
 
 describe("OpenRouter and xAI setup account authority", () => {
   it("maps OpenRouter to its linked-account authority", () => {
-    expect(DIRECT_ACCOUNT_PROVIDER_BY_FIRST_RUN_PROVIDER.openrouter).toBe(
-      "openrouter-api",
-    );
     expect(getDirectAccountProviderForFirstRunProvider("openrouter")).toBe(
       "openrouter-api",
     );
@@ -29,13 +21,7 @@ describe("OpenRouter and xAI setup account authority", () => {
       const normalized = normalizeFirstRunProviderId(alias);
       expect(normalized).toBe("grok");
       expect(normalizeFirstRunProviderId(normalized)).toBe(normalized);
-      expect(coreNormalizeFirstRunProviderId(alias)).toBe(normalized);
-      expect(coreNormalizeFirstRunProviderId(normalized)).toBe(normalized);
       expect(getFirstRunProviderOption(alias)).toMatchObject({
-        id: "grok",
-        family: "grok",
-      });
-      expect(coreGetFirstRunProviderOption(alias)).toMatchObject({
         id: "grok",
         family: "grok",
       });

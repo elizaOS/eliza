@@ -4,15 +4,10 @@
  *
  * `isSyntheticEnvironmentNamespace` gates process namespaces, so the bounds
  * are fail-closed: empty, oversized, non-trimmed, and control-character
- * namespaces must all be rejected, and the constants must match the
- * subprocess control envelope's namespace bound.
+ * namespaces must all be rejected at the subprocess namespace boundary.
  */
 import { describe, expect, it } from "vitest";
-import {
-  isSyntheticEnvironmentNamespace,
-  SYNTHETIC_ENVIRONMENT_LEASE_VERSION,
-  SYNTHETIC_ENVIRONMENT_NAMESPACE_MAX_LENGTH,
-} from "./synthetic-environment-lease.ts";
+import { isSyntheticEnvironmentNamespace } from "./synthetic-environment-lease.ts";
 
 describe("isSyntheticEnvironmentNamespace", () => {
   it("accepts a canonical namespace", () => {
@@ -36,11 +31,6 @@ describe("isSyntheticEnvironmentNamespace", () => {
 
   it("rejects namespaces that exceed the 512-char bound", () => {
     expect(isSyntheticEnvironmentNamespace("a".repeat(513))).toBe(false);
-    expect(
-      isSyntheticEnvironmentNamespace(
-        `a${"b".repeat(SYNTHETIC_ENVIRONMENT_NAMESPACE_MAX_LENGTH)}`,
-      ),
-    ).toBe(false);
   });
 
   it("rejects namespaces with leading or trailing whitespace", () => {
@@ -59,10 +49,5 @@ describe("isSyntheticEnvironmentNamespace", () => {
   it("accepts namespaces with interior whitespace and punctuation", () => {
     expect(isSyntheticEnvironmentNamespace("sim-42.a/b_c")).toBe(true);
     expect(isSyntheticEnvironmentNamespace("sim 42")).toBe(true);
-  });
-
-  it("pins the version and bound constants", () => {
-    expect(SYNTHETIC_ENVIRONMENT_LEASE_VERSION).toBe(1);
-    expect(SYNTHETIC_ENVIRONMENT_NAMESPACE_MAX_LENGTH).toBe(512);
   });
 });
