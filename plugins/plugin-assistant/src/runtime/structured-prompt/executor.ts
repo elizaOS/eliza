@@ -11,7 +11,6 @@ import type {
   StructuredOutputFailure,
 } from "@elizaos/core";
 import {
-  buildProviderCachePlan,
   cachePrefixSegments,
   computePrefixHashes,
   type GenerateTextParams,
@@ -32,6 +31,7 @@ import {
   stringifyForModel,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import { buildProviderCachePlan } from "../provider-cache-plan";
 import {
   mergeProviderOptionsWithCachePlan,
   resolveDefaultOutputFormat,

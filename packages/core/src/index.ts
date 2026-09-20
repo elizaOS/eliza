@@ -455,12 +455,6 @@ export type {
 	PlannerTrajectory,
 	RunEvaluatorParams,
 } from "./runtime/planner-types.ts";
-export {
-	buildProviderCachePlan,
-	type CacheableSection,
-	type ProviderCachePlan,
-	type ProviderCachePlanArgs,
-} from "./runtime/provider-cache-plan.ts";
 export { projectDeferredProviders } from "./runtime/provider-context.ts";
 export {
 	extractReplyTextFromTranscript,

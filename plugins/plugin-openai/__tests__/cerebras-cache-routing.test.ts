@@ -3,7 +3,7 @@
 import { AgentRuntime, type GenerateTextParams } from "@elizaos/core";
 import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, expect, it, vi } from "vitest";
-import { buildProviderCachePlan } from "../../../packages/core/src/runtime/provider-cache-plan";
+import { buildProviderCachePlan } from "../../plugin-assistant/src/runtime/provider-cache-plan";
 import { handleTextSmall } from "../models/text";
 
 afterEach(() => vi.restoreAllMocks());
