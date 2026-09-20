@@ -36,6 +36,9 @@ import {
   resolveCloudApiBaseUrl,
 } from "@elizaos/plugin-elizacloud/cloud/managed-payment-clients";
 import {
+  type CalendarTimeZoneResolution,
+  calendarDateKey,
+  resolveCalendarTimeZone,
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
 } from "@elizaos/shared";
@@ -518,6 +521,13 @@ export class FinancesService {
   ) {
     this.repository = new FinancesRepository(runtime);
     this.ownerEntityId = normalizeOptionalString(options.ownerEntityId) ?? null;
+  }
+
+  /** Resolves the owner's calendar zone; typed failures reach action and HTTP boundaries. */
+  async resolveCalendarTimeZone(
+    now: Date,
+  ): Promise<CalendarTimeZoneResolution> {
+    return resolveCalendarTimeZone(this.runtime, now);
   }
 
   agentId(): string {
@@ -1003,7 +1013,14 @@ export class FinancesService {
       },
     );
     const now = args.now ?? new Date();
-    const todayIso = now.toISOString().slice(0, 10);
+    // Bill due dates are bare calendar days the owner reads in their own
+    // zone, so "today" is the owner's calendar day, not the UTC day. The zone
+    // comes from the runtime's single calendar-time-zone owner, so the
+    // FINANCES action and the HTTP routes classify identically (#31062).
+    const todayIso = calendarDateKey(
+      now,
+      (await this.resolveCalendarTimeZone(now)).timeZone,
+    );
     const bills: LifeOpsUpcomingBill[] = [];
     for (const transaction of transactions) {
       const metadata = transaction.metadata;

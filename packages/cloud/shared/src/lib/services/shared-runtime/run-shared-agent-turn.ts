@@ -432,6 +432,7 @@ function requiredActionForTurn(
   const intentText = input.capabilityText ?? input.message;
   if (
     actionsEnabled &&
+    input.execution?.authenticatedPersonalSharedUser === true &&
     input.execution?.media &&
     isExplicitSharedMediaGenerationRequest(intentText)
   ) {
@@ -1198,7 +1199,10 @@ export async function runSharedAgentTurn(
               webSearch: Boolean(realtimeRequirement),
               reminders: remindersEnabled,
               todos: todosEnabled,
-              media: actionsEnabled && Boolean(execution.media),
+              media:
+                actionsEnabled &&
+                execution.authenticatedPersonalSharedUser === true &&
+                Boolean(execution.media),
               transport: sharedCapabilityTransportForSource(
                 execution.channel.source,
                 execution.channel.type,
@@ -1431,7 +1435,10 @@ export async function runSharedAgentTurnStream(
             webSearch: false,
             reminders: remindersEnabled,
             todos: todosEnabled,
-            media: actionsEnabled && Boolean(execution.media),
+            media:
+              actionsEnabled &&
+              execution.authenticatedPersonalSharedUser === true &&
+              Boolean(execution.media),
             transport: sharedCapabilityTransportForSource(
               execution.channel.source,
               execution.channel.type,

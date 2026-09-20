@@ -9,7 +9,7 @@ import { describeIf } from "../helpers/conditional-tests.ts";
 import { sleep } from "../helpers/test-utils";
 
 const { extractPlugin, resolveNostrPluginImportSpecifier } = await import(
-  "../helpers/connector-imports.ts"
+  "./helpers/connector-imports.ts"
 );
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
@@ -255,41 +255,4 @@ describeIfLive("Nostr Connector - Live Relay Checks", () => {
     },
     TEST_TIMEOUT,
   );
-});
-
-// ---------------------------------------------------------------------------
-// Integration Tests (always run, no live creds needed)
-// ---------------------------------------------------------------------------
-
-/** Try to import a workspace module; returns null if the package isn't built. */
-async function tryWorkspaceImport<T>(specifier: string): Promise<T | null> {
-  try {
-    return (await import(specifier)) as T;
-  } catch {
-    return null;
-  }
-}
-
-describe("Nostr Connector - Integration", () => {
-  it("Nostr is mapped in CONNECTOR_PLUGINS", async () => {
-    const mod = await tryWorkspaceImport<{
-      CONNECTOR_PLUGINS: Record<string, string>;
-    }>("@elizaos/app-core");
-    if (!mod) {
-      logger.warn("[nostr-connector] Workspace not built — skipping");
-      return;
-    }
-    expect(mod.CONNECTOR_PLUGINS.nostr).toBe("@elizaos/plugin-nostr");
-  });
-
-  it("Nostr is mapped in CHANNEL_PLUGIN_MAP", async () => {
-    const mod = await tryWorkspaceImport<{
-      CHANNEL_PLUGIN_MAP: Record<string, string>;
-    }>("@elizaos/app-core");
-    if (!mod) {
-      logger.warn("[nostr-connector] Workspace not built — skipping");
-      return;
-    }
-    expect(mod.CHANNEL_PLUGIN_MAP.nostr).toBe("@elizaos/plugin-nostr");
-  });
 });

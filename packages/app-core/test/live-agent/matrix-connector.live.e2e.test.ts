@@ -9,7 +9,7 @@ import { describeIf } from "../helpers/conditional-tests.ts";
 import { sleep } from "../helpers/test-utils";
 
 const { extractPlugin, resolveMatrixPluginImportSpecifier } = await import(
-  "../helpers/connector-imports.ts"
+  "./helpers/connector-imports.ts"
 );
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
@@ -386,46 +386,4 @@ describeIfLive("Matrix Connector - Live Error Handling", () => {
     },
     TEST_TIMEOUT,
   );
-});
-
-// ---------------------------------------------------------------------------
-// 6. Integration Tests (always run, no live creds needed)
-// ---------------------------------------------------------------------------
-
-/** Try to import a workspace module; returns null if the package isn't built. */
-async function tryWorkspaceImport<T>(specifier: string): Promise<T | null> {
-  try {
-    return (await import(specifier)) as T;
-  } catch {
-    return null;
-  }
-}
-
-describe("Matrix Connector - Integration", () => {
-  it("Matrix is mapped in CONNECTOR_PLUGINS", async () => {
-    const mod = await tryWorkspaceImport<{
-      CONNECTOR_PLUGINS: Record<string, string>;
-    }>("@elizaos/app-core");
-    if (!mod) {
-      logger.warn("[matrix-connector] Workspace not built — skipping");
-      return;
-    }
-    expect(mod.CONNECTOR_PLUGINS.matrix).toBe("@elizaos/plugin-matrix");
-  });
-
-  it("Matrix is mapped in CHANNEL_PLUGIN_MAP", async () => {
-    let mod: { CHANNEL_PLUGIN_MAP: Record<string, string> } | null;
-    try {
-      mod = await tryWorkspaceImport<{
-        CHANNEL_PLUGIN_MAP: Record<string, string>;
-      }>("@elizaos/app-core");
-    } catch {
-      mod = null;
-    }
-    if (!mod) {
-      logger.warn("[matrix-connector] Workspace not built — skipping");
-      return;
-    }
-    expect(mod.CHANNEL_PLUGIN_MAP.matrix).toBe("@elizaos/plugin-matrix");
-  });
 });

@@ -966,6 +966,39 @@ describe("Shared turn AgentRuntime boundary", () => {
     },
   );
 
+  test.each(["ordinary", "streamed"] as const)(
+    "retains the %s runtime reply when media is unavailable to the caller",
+    async (mode) => {
+      const input: RunSharedAgentTurnInput = {
+        character: { name: "Eliza", system: "You are Eliza." },
+        history: [],
+        message: "Generate an image of an orange lighthouse",
+        execution: {
+          agentKey: "personal:user-1",
+          channel: { type: ChannelType.DM, source: "shared-runtime" },
+          media: {
+            canGenerateMedia: async () => true,
+            generateMedia: async () => {
+              throw new Error("An unavailable media action must not execute");
+            },
+          },
+        },
+      };
+      if (mode === "ordinary") {
+        const result = await runSharedAgentTurn(input);
+        expect(result.reply).toBe("runtime reply");
+        expect(result.actionResults).toBeUndefined();
+      } else {
+        const result = await runSharedAgentTurnStream(input);
+        if (!result.parts) throw new Error("Expected runtime stream");
+        const parts = [];
+        for await (const part of result.parts) parts.push(part);
+        expect(parts.at(-1)).toMatchObject({ type: "finish", text: "runtime reply" });
+        expect(result.actionResults).toBeUndefined();
+      }
+    },
+  );
+
   test("requires a grounded media action result instead of accepting a model-invented tool failure", async () => {
     const mediaInput = {
       character: { name: "Eliza", system: "You are Eliza." },
