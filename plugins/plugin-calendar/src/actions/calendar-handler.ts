@@ -1185,6 +1185,9 @@ function buildCalendarServiceErrorFallback(
     return error.message;
   }
   const normalized = normalizeText(error.message);
+  if (normalized === "google calendar is not connected.") {
+    return "The selected Google Calendar account is not connected. This is a connection problem, not an event overlap; repeating the same request will not connect the account.";
+  }
   if (error.code === "CALENDAR_APPROVAL_GATEWAY_UNAVAILABLE") {
     return "Calendar changes are unavailable because the owner-approval gateway is not running. I did not change the calendar.";
   }

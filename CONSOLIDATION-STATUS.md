@@ -4,7 +4,7 @@
 
 Latest real-text results and open findings: [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md).
 The integration checkpoint and rollback tag are published at `a42679bf08f`.
-Root verification passed at the earlier integration checkpoint; verification of the latest revision remains open. Nine live text turns verified core
+Root verification passed at the earlier integration checkpoint; the combined code passed full root verification before the latest Calendar error-message fix. Nine live text turns verified core
 flows but exposed acknowledgment wording and availability-grounding issues;
 these remain open. Existing source demos are unchanged.
 
@@ -52,14 +52,15 @@ an exact source location and review.
 - [x] Resolve merge conflicts without wholesale source replacement.
 - [x] Run repository verification and affected behavioral suites.
 - [ ] Complete semantic review of combined/overlapping changes and source ledger.
-- [ ] Run final revision verification after reconciliation.
+- [x] Run full combined revision verification after reconciliation.
+- [ ] Verify subsequent Calendar fixes and close the failed move scenario.
 - [ ] Finish visual audit and inspect affected desktop/mobile captures.
 - [ ] Exercise combined app navigation, Notes, Calendar, recall, and acknowledgments;
       inspect actual trajectories, action outcomes, model calls, tokens, and timing.
 - [ ] Confirm whether newer remote work exists beyond the reviewed checkpoint.
 - [ ] Record final acceptance results and rollback instructions.
 
-Twelve live text turns have been recorded so far; the QA document distinguishes
+Thirteen live text turns have been recorded so far; the QA document distinguishes
 which revision each run exercised. Latest acknowledgment change passed one targeted live edit; broader acceptance remains open.
 The full dependency install hit a native prerequisite: Metal compilation requires
 the installed Xcode license/toolchain to be ready. Root verification succeeds;
