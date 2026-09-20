@@ -26,6 +26,10 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import {
+  type DocumentsServiceResult,
+  getDocumentsService,
+} from "@elizaos/plugin-assistant";
 import { memoryContextQaTemplate } from "@elizaos/prompts";
 import { composePrompt } from "@elizaos/prompts/rendering";
 import { BM25 } from "@elizaos/retrieval";
@@ -36,10 +40,6 @@ import {
   parseCanonicalInteger,
   parsePositiveInteger,
 } from "@elizaos/shared";
-import {
-  type DocumentsServiceResult,
-  getDocumentsService,
-} from "./documents-service-loader.ts";
 import { decodePathComponent } from "./server-helpers.ts";
 
 export const HASH_MEMORY_SOURCE = "hash_memory";

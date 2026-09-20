@@ -45,3 +45,7 @@ are owned by `src/services/optimized-prompt.ts`. Import artifact types and
 `OptimizedPromptService` from this package. Core only resolves complete text
 through the optional `RuntimePromptResolver` contract; it owns no artifact files
 or domain task names. Persisted files, MACs and activation links are unchanged.
+
+The documents feature owns the shared access policy and bounded service loader
+used by host knowledge actions and document HTTP routes. Their document scope,
+source and role types come from the same feature contracts.

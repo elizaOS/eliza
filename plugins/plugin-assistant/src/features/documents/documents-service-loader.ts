@@ -15,34 +15,11 @@ import type {
   UUID,
 } from "@elizaos/core";
 
-// Canonical union types for the documents service surface.
-// Plugin packages (e.g. @elizaos/plugin-documents) re-export these so route
-// helpers and presenters share one type vocabulary across the workspace.
-export type DocumentVisibilityScope =
-  | "global"
-  | "owner-private"
-  | "user-private"
-  | "agent-private";
-
-export type DocumentAddedByRole =
-  | "OWNER"
-  | "ADMIN"
-  | "USER"
-  | "GUEST"
-  | "AGENT"
-  | "RUNTIME";
-
-export type DocumentAddedFrom =
-  | "import"
-  | "chat"
-  | "upload"
-  | "url"
-  | "file"
-  | "agent-autonomous"
-  | "runtime-internal"
-  | "lifeops"
-  | "default-seed"
-  | "character";
+import type {
+  DocumentAddedByRole,
+  DocumentAddedFrom,
+  DocumentVisibilityScope,
+} from "./types.ts";
 
 export type DocumentSearchMode = "hybrid" | "vector" | "keyword";
 

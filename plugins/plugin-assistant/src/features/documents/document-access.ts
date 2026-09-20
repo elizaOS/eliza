@@ -1,21 +1,6 @@
-/**
- * Canonical knowledge-document access wall and facet-filter matcher. Both the
- * HTTP route layer (`@elizaos/plugin-documents/routes.ts`) and the agent-callable
- * knowledge actions (`../actions/knowledge.ts`) apply the SAME rules here so an
- * owner-private item can never spill to a public-room actor through either path
- * (the #13593 spill guard), and the room/sender/media-format/tag/time-range
- * facets (#13595) resolve identically for a REST query and an agent SEARCH.
- *
- * Lives in `@elizaos/agent` (the inner layer) rather than the route plugin so
- * the always-loaded agent actions can depend on it without an
- * agent → plugin-documents cycle; the route plugin imports it the same way it
- * imports `documents-service-loader`.
- */
+/** Shared document scope, room visibility and facet policy for host actions and document routes. */
 import { ChannelType, type Memory, type UUID } from "@elizaos/core";
-import type {
-  DocumentAddedByRole,
-  DocumentVisibilityScope,
-} from "./documents-service-loader.ts";
+import type { DocumentAddedByRole, DocumentVisibilityScope } from "./types.ts";
 
 /**
  * Room trust classification — the SINGLE source of truth shared by the ingest

@@ -67,7 +67,7 @@ const service = vi.hoisted(() => ({
   deleteMemory: vi.fn(),
 }));
 
-vi.mock("@elizaos/agent/api/documents-service-loader", () => ({
+vi.mock("./service-loader.ts", () => ({
   getDocumentsService: vi.fn(async () => ({ service })),
 }));
 

@@ -1,6 +1,4 @@
-// Canonical types and the runtime service loader live in @elizaos/agent.
-// Re-export them from one place so route handlers, presenters, and any other
-// consumers in this plugin don't drift from the agent-side definitions.
+/** Re-exports the canonical document service contract from its feature owner. */
 export {
   type DocumentAddedByRole,
   type DocumentAddedFrom,
@@ -11,4 +9,4 @@ export {
   type DocumentVisibilityScope,
   getDocumentsService,
   getDocumentsServiceTimeoutMs,
-} from "@elizaos/agent/api/documents-service-loader";
+} from "@elizaos/plugin-assistant";
