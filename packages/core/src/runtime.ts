@@ -5104,7 +5104,6 @@ export class AgentRuntime implements IAgentRuntime {
 		const patched = await patcher.call(this.adapter, id, patch);
 		if (patched) {
 			this._markLocalTasksDirty();
-			this._notifyCompanionTasksDirty();
 		}
 		return patched ? "patched" : "missing";
 	}
