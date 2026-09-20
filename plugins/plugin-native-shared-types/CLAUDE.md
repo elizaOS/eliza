@@ -43,7 +43,6 @@ bun run --cwd plugins/plugin-native-shared-types lint          # mutating Biome 
 bun run --cwd plugins/plugin-native-shared-types lint:check    # read-only Biome check
 bun run --cwd plugins/plugin-native-shared-types format        # write formatting
 bun run --cwd plugins/plugin-native-shared-types format:check  # read-only formatting check
-bun run --cwd plugins/plugin-native-shared-types test          # run package tests
 ```
 
 ## Config / env vars
