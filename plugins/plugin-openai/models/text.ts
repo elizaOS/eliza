@@ -4,16 +4,6 @@
  * Provides text generation using OpenAI's language models.
  */
 
-import {
-  cloneSchemaForBoundedTransport,
-  JSON_SCHEMA_ARRAY_KEYWORDS,
-  JSON_SCHEMA_MAP_KEYWORDS,
-  JSON_SCHEMA_MIXED_MAP_KEYWORDS,
-  JSON_SCHEMA_SINGLE_KEYWORDS,
-  MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
-  normalizeSchemaForCerebras,
-  sanitizeFunctionNameForCerebras,
-} from "../utils/schema-compat";
 import type {
   GenerateTextParams,
   IAgentRuntime,
@@ -77,6 +67,16 @@ import {
   isCerebrasMode,
 } from "../utils/config";
 import { emitModelUsageEvent, type ModelRetryTelemetry } from "../utils/events";
+import {
+  cloneSchemaForBoundedTransport,
+  JSON_SCHEMA_ARRAY_KEYWORDS,
+  JSON_SCHEMA_MAP_KEYWORDS,
+  JSON_SCHEMA_MIXED_MAP_KEYWORDS,
+  JSON_SCHEMA_SINGLE_KEYWORDS,
+  MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
+  normalizeSchemaForCerebras,
+  sanitizeFunctionNameForCerebras,
+} from "../utils/schema-compat";
 
 // ============================================================================
 // Types
