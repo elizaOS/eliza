@@ -1752,6 +1752,76 @@ export function deleteAccount(
   });
 }
 
+/**
+ * Result of a compare-and-swap credential update. `missing` means no record
+ * exists for the account any more (it was deleted after the caller read it);
+ * `changed` means a record exists but its stored refresh token is no longer
+ * the one the caller started from (a re-login or another writer replaced the
+ * credentials) and carries that current record so the caller can act on it.
+ */
+export type AccountCredentialUpdateOutcome =
+  | { kind: "updated"; record: AccountCredentialRecord }
+  | { kind: "missing" }
+  | { kind: "changed"; record: AccountCredentialRecord };
+
+/**
+ * Keeps the stored OIDC id_token when a token grant re-issues access and
+ * refresh tokens without one. Codex's chatgpt-mode auth loader requires
+ * `tokens.id_token` to be present (a stale one is tolerated, a missing one
+ * fails "Authentication required"), and OAuth refresh grants normally omit it.
+ */
+export function carryForwardIdToken(
+  existing: OAuthCredentials,
+  incoming: OAuthCredentials,
+): OAuthCredentials {
+  return incoming.idToken === undefined && existing.idToken
+    ? { ...incoming, idToken: existing.idToken }
+    : incoming;
+}
+
+/**
+ * Replaces an existing account's credentials only if the record still exists
+ * and still holds `expectedRefresh`. This is the only commit path for a token
+ * refresh: it never creates a record, so a refresh that resolves after the
+ * account was removed cannot resurrect it, and it never overwrites credentials
+ * written by a newer login, whose refresh token belongs to a different family.
+ * Record metadata (label, source, identity, timestamps other than
+ * `updatedAt`) is preserved and the id_token is carried forward.
+ */
+export function updateAccountCredentialsIfUnchanged(
+  provider: AccountCredentialProvider,
+  accountId: string,
+  expectedRefresh: string,
+  credentials: OAuthCredentials,
+  policy: AccountStoragePolicy,
+): AccountCredentialUpdateOutcome {
+  assertCanonicalAccountId(accountId);
+  if (!expectedRefresh) {
+    throw storageError(
+      "AUTH_CREDENTIAL_UPDATE_EXPECTATION_INVALID",
+      "A conditional credential update needs the refresh token it started from",
+      { accountId, provider },
+    );
+  }
+  return withStorageLock(policy, "update-account-credentials", () => {
+    const existing = loadAccountUnlocked(provider, accountId, policy);
+    if (!existing) return { kind: "missing" };
+    if (existing.credentials.refresh !== expectedRefresh) {
+      return { kind: "changed", record: existing };
+    }
+    const next: AccountCredentialRecord = {
+      ...existing,
+      credentials: carryForwardIdToken(existing.credentials, credentials),
+      updatedAt: Date.now(),
+    };
+    writeAccountFile(provider, accountId, policy, next);
+    logger.info(
+      `[auth] Updated ${provider} account "${accountId}" credentials after refresh`,
+    );
+    return { kind: "updated", record: next };
+  });
+}
+
 export function touchAccount(
   provider: AccountCredentialProvider,
   accountId: string,
