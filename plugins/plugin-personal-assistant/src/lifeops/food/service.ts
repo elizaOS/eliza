@@ -3,13 +3,14 @@
  * owner approval queue, durable food repository, and Instacart link boundary.
  * It never treats a generated link as a cart, checkout, order, or delivery.
  */
+
+import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import { type IAgentRuntime, Service } from "@elizaos/core";
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { createApprovalQueue } from "../approval-queue.js";
 import type {

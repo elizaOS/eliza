@@ -20,7 +20,7 @@ import type {
   RelationshipSource,
   RelationshipState,
   RelationshipStatus,
-} from "@elizaos/shared";
+} from "@elizaos/shared/knowledge-graph";
 import {
   executeRawSql,
   parseJsonArray,

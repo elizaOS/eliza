@@ -5,9 +5,9 @@
  * structural state LifeOps schedulers, policies, and relationship tools read.
  */
 
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { hasRoleAccess } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { SELF_ENTITY_ID } from "../entities/types.js";
 import {
   applyExtractedEdges,

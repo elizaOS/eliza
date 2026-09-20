@@ -27,7 +27,7 @@ const agentMocks = vi.hoisted(() => ({
   resolveKnowledgeGraphService: vi.fn(),
 }));
 
-vi.mock("@elizaos/agent", () => ({
+vi.mock("@elizaos/plugin-relationships/knowledge-graph", () => ({
   resolveKnowledgeGraphService: agentMocks.resolveKnowledgeGraphService,
 }));
 

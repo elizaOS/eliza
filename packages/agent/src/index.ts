@@ -376,25 +376,8 @@ export {
   registerJsRuntimeFactory,
   resolveJsRuntimeBridge,
 } from "./services/js-runtime-bridge.ts";
-// Runtime knowledge graph (entity/relationship stores + service). Named
-// re-export to mirror the relationships-graph surface and avoid colliding
-// with the broad services barrel.
-export {
-  archiveCoreRelationshipsInventory,
-  type CoreRelationshipsInventoryDatabase,
-  type CoreRelationshipsInventoryReport,
-  type CoreRelationshipsInventorySession,
-  type CoreRelationshipsSourceKind,
-  EntityStore,
-  KNOWLEDGE_GRAPH_SERVICE,
-  KnowledgeGraphService,
-  knowledgeGraphSchema,
-  RelationshipStore,
-  resolveKnowledgeGraphService,
-} from "./services/knowledge-graph/index.ts";
 // Cache-backed runtime stores promoted from LifeOps (pending-prompts /
-// global-pause / handoff). Named re-exports — same rationale as the knowledge
-// graph above: keep them out of the broad services barrel to avoid TS2308.
+// global-pause / handoff). Named exports avoid collisions in the services barrel.
 export {
   createPendingPromptsStore,
   type ExpectedReplyKind,

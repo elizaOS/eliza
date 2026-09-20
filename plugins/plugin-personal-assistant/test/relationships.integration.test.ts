@@ -2,7 +2,7 @@
  * LifeOps relationship behavior against a real PGLite runtime, including the
  * hard boundary that keeps identity verification and merges out of chat.
  */
-import { KnowledgeGraphService, knowledgeGraphSchema } from "@elizaos/agent";
+
 import type {
   ActionResult,
   AgentRuntime,
@@ -10,6 +10,10 @@ import type {
   IAgentRuntime,
   Plugin,
 } from "@elizaos/core";
+import {
+  KnowledgeGraphService,
+  knowledgeGraphSchema,
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,

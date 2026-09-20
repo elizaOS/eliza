@@ -6,11 +6,6 @@
  */
 
 import crypto from "node:crypto";
-import {
-  type EntityStore,
-  KNOWLEDGE_GRAPH_SERVICE,
-  resolveKnowledgeGraphService,
-} from "@elizaos/agent";
 import { createZipArchive } from "@elizaos/agent/api/zip-utils";
 import {
   ChannelType,
@@ -24,6 +19,11 @@ import {
 } from "@elizaos/core";
 import { DocumentService } from "@elizaos/plugin-assistant";
 import type { PdfCompleteDocument, PdfService } from "@elizaos/plugin-pdf";
+import {
+  type EntityStore,
+  KNOWLEDGE_GRAPH_SERVICE,
+  resolveKnowledgeGraphService,
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { z } from "zod";
 import {

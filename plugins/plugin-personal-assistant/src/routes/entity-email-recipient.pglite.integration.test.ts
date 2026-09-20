@@ -7,9 +7,9 @@
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import { AuthStore } from "@elizaos/app-core/services/auth-store";
 import { resolveOwnerEntityIdOrDefault } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { expect, it } from "vitest";
 import { tryHandleRuntimePluginRoute } from "../../../../packages/agent/src/api/runtime-plugin-routes.ts";
 import { createMachineSession } from "../../../../packages/app-core/src/api/auth/sessions.ts";

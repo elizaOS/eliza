@@ -174,7 +174,6 @@ export { gatePluginSessionForHostedApp } from "./services/app-session-gate.ts";
 export { APPROVAL_EXECUTION_CAPABILITY, APPROVAL_EXECUTION_PROTOCOL_VERSION, ApprovalDispatchControlStore, ApprovalIdempotencyConflictError, ApprovalNotFoundError, ApprovalStateTransitionError, approvalDispatchAdmissionCte, createApprovalQueue, PgApprovalQueue, resolveApprovalService } from "./services/approval/index.ts";
 export { createGlobalPauseStore, GLOBAL_PAUSE_CACHE_KEY, resolveGlobalPauseService } from "./services/global-pause/index.ts";
 export { createHandoffStore, describeResumeCondition, evaluateResume, resolveHandoffService } from "./services/handoff/index.ts";
-export { EntityStore, KNOWLEDGE_GRAPH_SERVICE, RelationshipStore, resolveKnowledgeGraphService } from "./services/knowledge-graph/index.ts";
 export { createPendingPromptsStore, resolvePendingPromptsService } from "./services/pending-prompts/index.ts";
 export { registerEscalationChannel } from "./services/escalation.ts";
 export { buildTriggerConfig, buildTriggerMetadata, computeNextCronRunAtMs, normalizeTriggerDraft, parseCronExpression } from "./triggers/scheduling.ts";

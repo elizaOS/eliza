@@ -1,8 +1,8 @@
 /** Builds isolated real-runtime and loopback HTTP fixtures for account-handoff flows; only external Google discovery is deterministic. */
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import { getConnectorAccountManager, stringToUuid } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { personalAssistantRoutesPlugin } from "../../src/routes/plugin.js";
 import { googleHandoffFixture } from "./handoff-google.js";
 import type { RealTestRuntimeResult } from "./runtime.js";

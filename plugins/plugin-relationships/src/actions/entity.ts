@@ -26,7 +26,6 @@
  * under a distinct name keeps exactly one `ENTITY` action at runtime.
  */
 
-import { resolveKnowledgeGraphService } from "@elizaos/agent/services/knowledge-graph";
 import type {
   Action,
   ActionResult,
@@ -39,6 +38,7 @@ import type {
 import { describeUserReference, hasRoleAccess, logger } from "@elizaos/core";
 import type { Entity } from "@elizaos/shared";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { resolveKnowledgeGraphService } from "../knowledge-graph/index.ts";
 
 import {
   ENTITY_OPS,

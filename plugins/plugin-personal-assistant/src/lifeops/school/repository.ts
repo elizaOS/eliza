@@ -6,7 +6,10 @@
  * supersession, contradictions, child scope, action influence, and C/P/E/M
  * ownership without introducing another graph or a parallel scheduler.
  */
-import type { EntityStore, RelationshipStore } from "@elizaos/agent";
+import type {
+  EntityStore,
+  RelationshipStore,
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import type { Entity, Relationship } from "@elizaos/shared";
 import {
   ACTION_EFFECT_CLASSES,

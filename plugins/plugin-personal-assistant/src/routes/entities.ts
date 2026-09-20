@@ -10,8 +10,11 @@
  *   GET    /api/lifeops/entities/resolve?q=&platform=&handle=&connectorAccountId=
  */
 
-import { type EntityStore, resolveKnowledgeGraphService } from "@elizaos/agent";
 import { type AgentRuntime, ElizaError } from "@elizaos/core";
+import {
+  type EntityStore,
+  resolveKnowledgeGraphService,
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import { reviewLegacyOwnerGraph } from "../lifeops/entities/legacy-owner-graph.js";
 import type {
   Entity,

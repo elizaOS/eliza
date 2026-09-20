@@ -1,8 +1,8 @@
 /**
- * KnowledgeGraphService — the runtime-owned entity/relationship knowledge
+ * KnowledgeGraphService — the plugin-owned entity/relationship knowledge
  * graph, exposed as a registered runtime service.
  *
- * The graph is a runtime primitive: any plugin (LifeOps, relationships
+ * The registered graph service is shared: any plugin (LifeOps, relationships
  * viewer, …) consumes it via `runtime.getService(...)` rather than
  * constructing the DB-backed stores itself. The service is a thin factory
  * over the per-agent {@link EntityStore} / {@link RelationshipStore}; the

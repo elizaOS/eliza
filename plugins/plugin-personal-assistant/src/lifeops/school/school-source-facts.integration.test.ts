@@ -6,12 +6,12 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { AgentRuntime, Memory } from "@elizaos/core";
 import {
   type EntityStore,
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import type { AgentRuntime, Memory } from "@elizaos/core";
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {

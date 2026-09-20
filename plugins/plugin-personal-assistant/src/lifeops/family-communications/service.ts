@@ -4,12 +4,13 @@
  * runner. The service creates proposals and owner-only SLA notices; it never
  * sends a message, mutates a calendar, purchases, or replies automatically.
  */
+
+import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import { type IAgentRuntime, Service } from "@elizaos/core";
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import {
   type ScheduledTask,
   type ScheduledTaskRunnerHandle,

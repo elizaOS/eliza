@@ -5,12 +5,12 @@
  * `owner.profile_extraction` evaluator.
  */
 
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import type {
   ResponseHandlerEvaluator,
   ResponseHandlerPatch,
 } from "@elizaos/core";
 import { hasRoleAccess } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { SELF_ENTITY_ID } from "../entities/types.js";
 import {
   createOwnerFactStore,

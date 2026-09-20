@@ -12,8 +12,11 @@
  * `SubjectStoreView` for `subject_updated`.
  */
 
-import { KNOWLEDGE_GRAPH_SERVICE, KnowledgeGraphService } from "@elizaos/agent";
 import { EventType, type Memory, stringToUuid } from "@elizaos/core";
+import {
+  KNOWLEDGE_GRAPH_SERVICE,
+  KnowledgeGraphService,
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,

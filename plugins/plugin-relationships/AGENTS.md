@@ -10,9 +10,11 @@ the owner's ego-network into the planner each turn, a `/relationships` viewer
 (React component served as a bundled view), and a read-only startup audit for
 the retired `app_relationships` schema.
 
-The graph stores (`EntityStore` / `RelationshipStore`) are owned by
-`@elizaos/agent`'s `KnowledgeGraphService`; this plugin consumes them via
-`resolveKnowledgeGraphService(runtime)`. Contact orchestration (the `ENTITY`
+This package owns `KnowledgeGraphService`, `EntityStore`, and `RelationshipStore`
+under its Node-only `knowledge-graph` entry. The host registers that service and
+its existing `app_lifeops` schema once; plugins resolve it through
+`resolveKnowledgeGraphService(runtime)`. Importing the graph entry does not load
+this package's React views. Contact orchestration (the `ENTITY`
 action with LLM planner + voice-grounded replies) stays in
 `@elizaos/plugin-personal-assistant`.
 
@@ -59,6 +61,7 @@ src/
     entity.ts               entityAction — KNOWLEDGE_GRAPH op dispatch
   providers/
     entity-graph.ts         entityGraphProvider — per-turn context projection
+  knowledge-graph/          Node service, stores, app_lifeops schema, and tests
   services/
     legacy-schema-audit.ts  read-only retired-schema inventory and startup guard
   db/

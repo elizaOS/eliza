@@ -682,6 +682,16 @@
       },
       "import": "./dist/media/index.js",
       "default": "./dist/media/index.js"
+    },
+    "./knowledge-graph": {
+      "types": "./dist/knowledge-graph/index.d.ts",
+      "eliza-source": {
+        "types": "./src/knowledge-graph/index.ts",
+        "import": "./src/knowledge-graph/index.ts",
+        "default": "./src/knowledge-graph/index.ts"
+      },
+      "import": "./dist/knowledge-graph/index.js",
+      "default": "./dist/knowledge-graph/index.js"
     }
   },
   "publishConfig": {
