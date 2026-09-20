@@ -6,7 +6,8 @@ finished release.** Full evidence and historical failures:
 
 ## Current checkpoint
 
-- Tested candidate code: `3f46cd1362d`. Full repository verification passed;
+- Backend candidate code: `3f46cd1362d`; UI Stop correction: `1e230d820a4`.
+  Full repository verification passed again after the UI correction;
   Calendar1,092 tests plus the expanded29-test real-PGlite suite passed;
   Calendar typecheck, lint and declaration build passed.
 - Isolated app: UI5268/API31392, API PID68142. Restart completed with35 plugins,
@@ -28,10 +29,11 @@ was preserved verbatim, survived an API restart, and only that QA fact was
 removed. All nine baseline fact records match their original values. This
 verifies MEMORY facts. PERSONALITY directive removal also passed live with a
 durable receipt, preserved other slot fields, and no retry loop.
-Thirty-two paid text QA turns have been recorded in total; no voice testing.
+Thirty-three paid text QA turns have been recorded in total; no voice testing.
 
 | Recorded scenario | Total time | Model calls | Input tokens | Cached input |
 | --- | ---: | ---: | ---: | ---: |
+| Latest morning preview (backend only; UI hot-update delay) | 4.029s | 3 | 27,391 | 3,072 |
 | Personal reply-rule removal | 3.537s | 3 | 27,413 | 9,216 |
 | Exact preference save | 2.780s | 3 | 23,226 | 3,072 |
 | Follow-up preference removal | 3.015s | 3 | 24,523 | 10,240 |
@@ -67,7 +69,9 @@ application/tool/transport work not separately attributed here.
 
 ## Remaining acceptance checklist
 
-- [ ] Finish remaining recurrence/availability wording acceptance. Calendar
+- [x] Check single-day morning availability wording against actual slot evidence.
+  Latest preview returned three contiguous AM slots and no booking; reply persisted
+  after reload. Local recurring events remain unsupported and are not accepted. Calendar
   source disposition is complete. Date-rewrite removal passes Calendar1,092 tests and29
   real-PGlite tests; root verification and runtime restart passed. Local Calendar recurrence is unsupported. Correct failure
   explanation was observed, but one recovered run still took five calls.
@@ -79,11 +83,13 @@ application/tool/transport work not separately attributed here.
   24 dirty/untracked. September heads d0d478fe7dd (sync2) and4e8feaac096
   (group protocol) are now fetched locally; all127 sync2 file dispositions are in
   [REMOTE-SOURCE-REVIEW.md](REMOTE-SOURCE-REVIEW.md). Saved Mac/merge remote heads are
-  already ancestors. Independent holds/coverage comparisons remain; file inspection
-  alone is not integration acceptance. Unspecified other hosts remain unconfirmed.
+  already ancestors. All sync2 file dispositions are explicit; group-channel/Discord
+  integration remains a separate release gate. Unspecified other hosts remain unconfirmed.
 - [ ] Finish applicable recovery/persistence review and clean remaining owned
   Calendar/Notes fixtures. Owned Cedar note/event and the temporary QA memory
-  and personality directive are now removed; cleanup evidence is saved.
+  and personality directive are now removed; cleanup evidence is saved. Setup-time
+  Stop is corrected, but clean post-reload latency and older delayed arrival need
+  final assessment; the last run encountered a development hot-update failure.
 - [ ] Produce the final candidate handoff with source decisions and explicit
   release gates.
 

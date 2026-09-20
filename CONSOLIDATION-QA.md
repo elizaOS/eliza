@@ -606,3 +606,31 @@ that conversation creation caused the historical build-time late-arrival case,
 or provide rollback for actions already committed before Stop. No paid model
 calls were used. Fresh API31392 /api/health returned ready/canRespond true,
 database healthy,35 loaded plugins,95 services,zero failures and settled boot.
+
+
+## Final morning preview and full verification
+
+Root `bun run verify` completed with exit0 for runtime change1e230d820a4;
+setup-stop-root-verify.log retains the result. No tracked build outputs changed.
+
+Paid turn33: "What's free tomorrow morning for a 15-minute check-in? Don't book
+anything." Trace step-1789944695437-ce6idc completed in4.029s with three calls,
+27,391 input tokens,933 output and3,072 reported cached input. Per-call timing:
+handler1.302s/11,023 inputs; planner0.653s/7,708; completion0.885s/8,660.
+The remaining1.189s is non-model turn time, not further attributed. One successful
+CALENDAR_PROPOSE_TIMES preview, no mutation tools. Its actual tool evidence listed
+September21 9:00–9:15,9:15–9:30 and9:30–9:45 AM America/Los_Angeles. The final
+reply's9–9:45 morning window is covered by those contiguous slots and makes no
+recurring availability claim. Final UI readback matched and survived reload.
+Raw evidence: runtime/final-morning-availability-{trace,summary,output}.json.
+
+This was NOT a clean end-to-end latency sample: the page had received a hot
+update adding a React hook and its console reported hook-order/queue errors and
+a render-loop diagnostic. The request lingered before backend admission; the
+first capture still showed the old PERSONALITY trace and was not counted as
+Calendar evidence. The final capture is the matched Calendar trace above. Reload
+restored the Notes page and persistent conversation. The development hot-update
+failure is evidence relevant to the old build-time delay, but does not prove
+its cause. Do not claim4.029s click-to-reply or attribute the whole wait to model
+latency. A clean post-reload send remains the next latency check; avoid repeating
+writes. No voice or external channel tests performed.
