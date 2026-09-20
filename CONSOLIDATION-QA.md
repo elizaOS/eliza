@@ -548,3 +548,37 @@ universal natural-language date interpretation. Typecheck, lint and declaration
 build passed; root verification is tracked in `calendar-weekday-verify.log`.
 All evidence logs use the `runtime/calendar-weekday-` prefix. No paid model
 calls were added. The running app still uses4283ed4fd1e until restart.
+
+
+Calendar date correction full root verification completed successfully
+(session45338 exit0). Restarted isolated API on3f46cd1362d, PID68142, with
+35 plugins/95 services, no failures, database live, deferred boot settled.
+Original demo ports were not restarted. Remote registered-checkout inventory
+is read-only; unspecified newer source still needs identification.
+
+
+## Owned fixture cleanup and source disposition
+
+On3f46cd1362d, fresh reads identified the exact owned Cedar rehearsal note
+(revision7, note-82a5cbf8-4dd1-4755-9b64-549b951747da) and local Calendar event
+(September22 16:00–16:15Z, version eliza-2, no guests). Deleted only that note
+through the Notes view capability and that event through the versioned Calendar
+mutation API, with a stable cleanup idempotency key and notifyAttendees=false.
+Fresh reads show zero notes (revision8) and zero events in the checked September
+20–27 window. Evidence: runtime/cleanup-{notes,calendar}-before/after.json,
+cleanup-note-result.json and cleanup-calendar-result.json. No paid model calls.
+
+All270 original source dispositions are now complete:267 include,3 upstream
+equivalent. Calendar source review closed after correcting guest-address
+authority, selected original-user follow-up evidence and weekday rewriting.
+This is source inclusion, not blanket live-model or release acceptance.
+
+
+Fresh remote inventory checked44 registered worktrees without changing sources;
+24 report modified/untracked entries. Exact heads, commit dates and status paths
+are saved in `remote-checkout-status-20260920.json` beside the local source
+ledger. Mac f042ddb2ddd and merge89a476f3d75 are candidate ancestors. September
+sync2 d0d478fe7dd and group-protocol4e8feaac096 were not available as local
+commit objects, so their inclusion is unresolved; a read-only remote delta
+inspection is in progress. Old dirty worktrees are preserved, not auto-staged
+or assumed to be recent work. No remote service or branch was modified.

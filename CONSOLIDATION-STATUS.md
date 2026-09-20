@@ -6,9 +6,10 @@ finished release.** Full evidence and historical failures:
 
 ## Current checkpoint
 
-- Tested candidate code: `4283ed4fd1e`. Full repository verification passed;
-  personality413 tests, Core typecheck and lint passed.
-- Isolated app: UI5268/API31392, API PID62532. Restart completed with35 plugins,
+- Tested candidate code: `3f46cd1362d`. Full repository verification passed;
+  Calendar1,092 tests plus the expanded29-test real-PGlite suite passed;
+  Calendar typecheck, lint and declaration build passed.
+- Isolated app: UI5268/API31392, API PID68142. Restart completed with35 plugins,
   95 services and zero failures; deferred boot settled.
 - Original UI5248/UI5258 demos and their source branches remain preserved.
 - Inputs: Mac `a15525f30fb`, develop `ba04de0e2c1` plus reviewed maintenance
@@ -45,8 +46,8 @@ application/tool/transport work not separately attributed here.
 
 ## Verified coverage
 
-- Original source inventory:270 entries reviewed;266 include,3 upstream-equivalent,
-  one Calendar handler disposition still open. Source review is separate from
+- Original source inventory:270 entries reviewed;267 include,3 upstream-equivalent.
+  Calendar handler source disposition is closed after scoped corrections. Source review is separate from
   live acceptance.
 - Existing broad scoped suites include Calendar1,088 passed/four skipped,
   Notes192, personal-assistant Calendar60, recall57 and core13,661 passed with
@@ -63,17 +64,21 @@ application/tool/transport work not separately attributed here.
 
 ## Remaining acceptance checklist
 
-- [ ] Close Calendar handler disposition and remaining recurrence/availability
-  wording coverage. Date-rewrite removal passes Calendar1,092 tests and29
-  real-PGlite tests; root verification and runtime restart remain pending. Local Calendar recurrence is unsupported. Correct failure
+- [ ] Finish remaining recurrence/availability wording acceptance. Calendar
+  source disposition is complete. Date-rewrite removal passes Calendar1,092 tests and29
+  real-PGlite tests; root verification and runtime restart passed. Local Calendar recurrence is unsupported. Correct failure
   explanation was observed, but one recovered run still took five calls.
 - [x] Verify PERSONALITY directive removal through the live model path. The
   temporary greenhouse rule was removed on4283ed4fd1e in three calls with a
   valid durable receipt. Add/remove deterministic coverage passes413 tests;
   live add completion on the corrected code was not separately retested.
-- [ ] Reconcile any newer remote work by exact checkout/commit and review scope.
+- [ ] Reconcile remote work: read-only inventory checked44 registered worktrees,
+  24 dirty/untracked. September heads d0d478fe7dd (sync2) and4e8feaac096
+  (group protocol) require delta review; saved Mac/merge remote heads are
+  already ancestors. Unspecified other hosts remain unconfirmed.
 - [ ] Finish applicable recovery/persistence review and clean remaining owned
-  Calendar/Notes fixtures. The temporary QA memory has been removed.
+  Calendar/Notes fixtures. Owned Cedar note/event and the temporary QA memory
+  and personality directive are now removed; cleanup evidence is saved.
 - [ ] Produce the final candidate handoff with source decisions and explicit
   release gates.
 
