@@ -47,6 +47,7 @@ export async function collectHoverViolations(
   for (let i = 0; i < count; i += 1) {
     const btn = buttons.nth(i);
     if (!(await btn.isVisible().catch(() => false))) continue;
+    if (!(await btn.isEnabled())) continue;
     const rest = await btn
       .evaluate((el) => getComputedStyle(el).backgroundColor)
       .catch(() => "");
