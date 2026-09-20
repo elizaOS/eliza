@@ -62,8 +62,8 @@ Local text QA, remote/channel acceptance and production release remain distinct.
 
 ## App/domain batch reviewed
 
-44 implementation-file deltas now have explicit local ledger decisions. This
-is not44 accepted changes or completion of all127 files. Paired tests are not
+51 implementation-file deltas now have explicit local ledger decisions. This
+is not51 accepted changes or completion of all127 files. Paired tests are not
 implicitly marked inspected. No runtime code changed in this review batch.
 
 - Keep exact-ID Notes mutation and ID/text pairs. The older branch removes the
@@ -94,3 +94,28 @@ removes those behaviors. Current provider-reference guidance and invalid native
 decision rejection also remain. Voice prewarm/eligibility changes are held;
 no force flag or voice behavior was changed. Named-tool descriptions keep their
 parameter schemas and canonical grouping.
+
+## Planner and history boundary review
+
+Seven more implementation deltas were inspected against the saved merge base,
+with the corresponding protections checked in candidate `44c1b62cc69`.
+
+- Keep evaluator routes constrained to actual queued calls and the host's
+  clipboard capability. The remote version removes those schema restrictions.
+- Keep native history read/ready separation, source-label repair, chronological
+  quote dependencies and lossless repeated-text encoding. The remote version
+  removes these newer safeguards and can require additional context reads.
+- Keep field guidance refreshed after every authorized context read and request
+  a single Stage-1 native decision. The remote version weakens both boundaries.
+- Planner prose additions expand explanations of existing rules; shared prompt
+  changes are comments. Neither supplies a missing runtime capability.
+- Hold the alternate inline action catalog for channel-specific review: it
+  omits aliases, declared contexts and promoted child entries. Direct text
+  already uses reference-only discovery, so this is not its missing speed fix.
+- The remote evaluator's separate provider composition is coupled to its
+  blanket provider exclusions, already rejected above. Do not import that
+  restoration helper independently into the current composition contract.
+
+Remaining implementation review: planner-loop, background evaluator service and
+message pipeline. Test and documentation deltas still need explicit disposition.
+No runtime code or running demo changed during this batch; no paid calls ran.
