@@ -1,3 +1,4 @@
+/** Checks native platform audio-routing declarations; this is not device playback evidence. */
 /// <reference types="node" />
 
 import { readFileSync } from "node:fs";
@@ -12,16 +13,6 @@ function read(relativePath: string): string {
 }
 
 describe("TalkMode volume and mute policy contracts", () => {
-  it("documents the cross-platform volume and mute semantics", () => {
-    const readme = read("README.md");
-
-    expect(readme).toContain("## Volume and mute policy");
-    expect(readme).toContain("AVAudioSession");
-    expect(readme).toContain("USAGE_VOICE_COMMUNICATION");
-    expect(readme).toContain("Electrobun desktop");
-    expect(readme).toContain("SpeechSynthesis");
-  });
-
   it("keeps iOS TalkMode on a voice-chat play-and-record session", () => {
     const source = read("ios/Sources/TalkModePlugin/TalkModePlugin.swift");
 

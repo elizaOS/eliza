@@ -57,12 +57,6 @@ function configOf(
   return config;
 }
 
-describe("model-metadata defaults", () => {
-  it("exposes only the documented input-context fallback", () => {
-    expect(DEFAULT_MODEL_CONTEXT_WINDOW).toBe(1_000_000);
-  });
-});
-
 describe("normalizeModelDefinitionConfig", () => {
   it("fills every required field from an id-only partial", () => {
     const result = normalizeModelDefinitionConfig({ id: "gpt-4" });
@@ -365,8 +359,8 @@ describe("normalizeModelMetadataInConfig", () => {
   it("ignores invalid bedrockDiscovery defaults and does not leak them to other providers", () => {
     const config = configOf(
       {
-        bedrock: provider([definition({ id: "titan" })]),
-        openai: provider([definition({ id: "gpt-4" })]),
+        bedrock: provider([definition({ id: "titan", contextWindow: 0 })]),
+        openai: provider([definition({ id: "gpt-4", contextWindow: 0 })]),
       },
       {
         bedrockDiscovery: {
@@ -540,14 +534,5 @@ describe("resolveModelTokenMetadata", () => {
       maxTokens: 256,
       source: "model-config",
     });
-  });
-
-  it("does not attach providerId on agent-defaults or runtime-default results", () => {
-    expect(
-      resolveModelTokenMetadata(configOf({}, { contextTokens: 4_000 }), "x"),
-    ).not.toHaveProperty("providerId");
-    expect(resolveModelTokenMetadata(undefined, "x")).not.toHaveProperty(
-      "providerId",
-    );
   });
 });

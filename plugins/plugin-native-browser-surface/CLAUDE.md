@@ -12,8 +12,8 @@ src/index.ts         registerPlugin("ElizaSurfaceManager", { web })
 src/web.ts           Web fallback — every method REJECTS (web has no native surface)
 src/web.test.ts      Proves the web fallback rejects
 ios/Sources/BrowserSurfacePlugin/BrowserSurfacePlugin.swift   WKWebView pool + data store
-ios/Sources/BrowserSurfaceLifecycleContract/...               executable owner/presentation state
-ios/Tests/BrowserSurfaceLifecycleContractTests/main.swift      macOS lifecycle probe
+ios/Sources/BrowserSurfaceLifecycleContract/...               shared owner identity predicate
+ios/Tests/BrowserSurfaceLifecycleContractTests/main.swift      macOS identity predicate probe
 android/src/main/.../BrowserSurfacePlugin.kt                  WebView + androidx.webkit Profile
 android/src/androidTest/.../BrowserSurfaceIsolationInstrumentedTest.kt  cross-profile isolation
 ```

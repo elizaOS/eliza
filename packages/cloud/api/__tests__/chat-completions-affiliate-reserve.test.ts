@@ -32,6 +32,8 @@ import {
   mock,
   test,
 } from "bun:test";
+import { APICallError } from "ai";
+import { isInsufficientCreditsError } from "../../../core/src/services/message/fallback-reply";
 import { mockNonSubscriberEntitlementLookup } from "./helpers/non-subscriber-entitlement-mock";
 
 // These purchased-credit fixtures have no paid subscription. Keep the real
@@ -228,10 +230,10 @@ mock.module("@/lib/services/redeemable-earnings", () => ({
   ),
 }));
 
-// Settler factory for the reserve path — stub to a no-op so the post-response
-// settle in the catch block needs no ledger (the 402 gate is the observation
-// point, not the settle).
-const createCreditReservationSettler = mock(() => async () => null);
+// Keep real settlement so rejected provider work must release the held amount.
+const createCreditReservationSettler = mock(
+  creditReservationActual.createCreditReservationSettler,
+);
 mock.module("@/lib/utils/credit-reservation", () => ({
   ...creditReservationActual,
   createCreditReservationSettler,
@@ -380,3 +382,41 @@ describe("POST /api/v1/chat/completions — affiliate markup is reserved upfront
     TEST_TIMEOUT_MS,
   );
 });
+
+test.each([
+  "Payment Required",
+  "Insufficient credits",
+  "Insufficient provider credits",
+])(
+  "funded caller receives an unavailable error that cannot trigger add-credits guidance: %s",
+  async (providerMessage) => {
+    generateText.mockImplementationOnce(() => {
+      throw new APICallError({
+        message: providerMessage,
+        url: "https://provider.example/chat/completions",
+        requestBodyValues: {},
+        statusCode: 402,
+        data: { error: { code: "insufficient_quota" } },
+      });
+    });
+    const res = await handleChatCompletionsPOST(makeRequest("PARTNER1000"), {
+      skipOrgRateLimit: true,
+    });
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as {
+      error: { type: string; message: string };
+    };
+    expect(body.error.type).toBe("service_unavailable");
+    const callerError = Object.assign(new Error(body.error.message), {
+      status: res.status,
+      error: body.error,
+    });
+    expect(isInsufficientCreditsError(callerError)).toBe(false);
+    expect(body.error.message).not.toContain(providerMessage);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(addEarnings).not.toHaveBeenCalled();
+  },
+  TEST_TIMEOUT_MS,
+);

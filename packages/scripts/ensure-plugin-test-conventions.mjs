@@ -9,12 +9,12 @@
  * - Python tests failing when pytest is not installed
  *
  * Conventions applied:
- * 1. Vitest: --passWithNoTests is NOT added (every plugin must have tests).
+ * 1. Vitest: --passWithNoTests is NOT added; registered suites must find tests.
  * 2. Rust: test:rs / test:rust runs are wrapped so failure doesn't fail the
  *    task: (cd rust && cargo test) || echo 'Rust tests skipped'
  * 3. Python: test:py / test:python runs guard on pytest when possible so
  *    missing pytest doesn't fail: command -v pytest >/dev/null 2>&1 && ...
- * 4. Top-level plugin workspaces must expose real test/typecheck/lint/format
+ * 4. Top-level plugin workspaces must expose real typecheck/lint/format
  *    scripts so Turbo does not treat them as transit-only graph nodes.
  * 5. Orphaned test files: every on-disk plugin `*.test.*`/`*.spec.*` file
  *    (including `.mjs`/`.js` vitest suites) must be reachable by some
@@ -174,6 +174,9 @@ function validateWorkspaceScriptContract(filePath) {
 
   for (const scriptName of REQUIRED_WORKSPACE_SCRIPTS) {
     const value = scripts[scriptName];
+    // The orphan scan below requires a real runner for every test file.
+    // Type-only workspaces need no empty test command.
+    if (scriptName === "test" && value === undefined) continue;
     if (!value) {
       errors.push(`${rel(filePath)} missing required script "${scriptName}"`);
       continue;

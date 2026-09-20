@@ -9,10 +9,7 @@ type GeoSuccess = (position: GeolocationPosition) => void;
 type GeoError = (error: GeolocationPositionError) => void;
 
 function setNavigator(value: Partial<Navigator>): void {
-  Object.defineProperty(globalThis, "navigator", {
-    configurable: true,
-    value,
-  });
+  vi.stubGlobal("navigator", value);
 }
 
 function position(): GeolocationPosition {
@@ -46,6 +43,7 @@ function geoError(
 describe("LocationWeb", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("maps getCurrentPosition options and normalizes nullable coordinates", async () => {
@@ -228,27 +226,23 @@ describe("LocationWeb", () => {
     });
   });
 
-  it("uses current-position request outcome to infer requested permission", async () => {
-    const granted = new LocationWeb();
-    vi.spyOn(granted, "getCurrentPosition").mockResolvedValue({
-      coords: {
-        latitude: 0,
-        longitude: 0,
-        accuracy: 1,
-        timestamp: 1,
-      },
-      cached: false,
-    });
-    await expect(granted.requestPermissions()).resolves.toEqual({
-      location: "granted",
-    });
-
-    const denied = new LocationWeb();
-    vi.spyOn(denied, "getCurrentPosition").mockRejectedValue({
-      code: "PERMISSION_DENIED",
-    });
-    await expect(denied.requestPermissions()).resolves.toEqual({
-      location: "denied",
-    });
-  });
+  it.each([
+    [true, "granted"],
+    [false, "denied"],
+  ] as const)(
+    "maps a granted=%s position request to %s permission",
+    async (granted, expected) => {
+      setNavigator({
+        geolocation: {
+          getCurrentPosition(success: GeoSuccess, error: GeoError) {
+            if (granted) success(position());
+            else error(geoError(1));
+          },
+        } as unknown as Geolocation,
+      });
+      await expect(new LocationWeb().requestPermissions()).resolves.toEqual({
+        location: expected,
+      });
+    },
+  );
 });

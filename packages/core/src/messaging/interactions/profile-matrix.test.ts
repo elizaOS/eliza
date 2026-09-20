@@ -100,6 +100,8 @@ describe("first-party interaction capability matrix", () => {
 				"utf8",
 			),
 		);
-		expect(`${renderFirstPartyInteractionCapabilityMatrix()}\n`).toBe(golden);
+		const rendered = renderFirstPartyInteractionCapabilityMatrix();
+		expect(`${rendered}\n`).toBe(golden);
+		expect(renderFirstPartyInteractionCapabilityMatrix()).toBe(rendered);
 	});
 });

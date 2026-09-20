@@ -9,6 +9,8 @@
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { APICallError } from "ai";
+import { isInsufficientCreditsError } from "../../../core/src/services/message/fallback-reply";
 
 // Spread the real module so other test files importing from "ai" are not
 // stranded by the process-wide registry replacement; restore in afterAll.
@@ -236,3 +238,47 @@ describe("streaming chat — stream_options.include_usage usage frame", () => {
     }
   });
 });
+
+test.each(["Payment Required", "Insufficient credits"])(
+  "SDK stream provider payment failure cannot trigger caller add-credits guidance: %s",
+  async (providerMessage) => {
+    streamTextImpl = () => ({
+      fullStream: (async function* () {
+        yield {
+          type: "error",
+          error: new APICallError({
+            message: providerMessage,
+            url: "https://provider.example/chat/completions",
+            requestBodyValues: {},
+            statusCode: 402,
+          }),
+        };
+      })(),
+    });
+    const res = await callStreaming({
+      model: MODEL,
+      messages: [{ role: "user", content: "hello" }],
+      stream: true,
+    });
+    const { jsonFrames, dataLines } = await collectJsonFrames(res);
+    const frame = jsonFrames.find((value) => "error" in value);
+    expect(frame).toBeDefined();
+    const error = frame?.error as {
+      message: string;
+      type: string;
+      code: number;
+    };
+    expect(error.code).toBe(503);
+    expect(error.type).toBe("service_unavailable");
+    expect(
+      isInsufficientCreditsError(
+        Object.assign(new Error(error.message), {
+          status: error.code,
+          error,
+        }),
+      ),
+    ).toBe(false);
+    expect(error.message).not.toContain(providerMessage);
+    expect(dataLines.at(-1)).toBe("[DONE]");
+  },
+);
