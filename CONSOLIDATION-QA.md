@@ -46,3 +46,9 @@ Two targeted live rechecks exercised `dc97d77cc5f` without the earlier heavy job
 A separate concrete contradiction was then removed: the shared prompt said only asynchronous work could acknowledge early, despite the synchronous planning acknowledgment path. This short deletion passed the 20 prompt-package checks but has not yet been live-verified. No additional routing step was introduced.
 
 Latest reviewed develop addition `ec23d0f670c` only consolidates A2A tests and makes empty test selections fail. Its 19 tests passed, and an intentionally nonexistent selection correctly exited 1. It was merged at `cc375c20141`. Final revision verification and remaining acceptance items are still open.
+
+## Latest acknowledgment recheck
+
+At `0f4a733f7f3`, one additional exact Notes edit passed in 3.172 seconds with three calls: routing 1.556s, planning 0.540s, completion 0.386s. Input tokens: 23,829; cache-read: 4,096; output: 1,038. Transient acknowledgment arrived at 1.921s and correctly said “On it, swapping red to blue in the Cedar rehearsal note.” The durable note readback retained exact capitalization and punctuation. This supports the prompt deletion for this scenario; it does not prove all generated acknowledgments are semantically correct.
+
+Real isolated PGlite vector-contract tests passed 6/6, covering ranking/threshold identity, room exclusions, and optional vector omission. Calendar mobile and desktop captures were visually inspected. Camera/Cockpit unavailable states are expected harness limitations, not native acceptance.

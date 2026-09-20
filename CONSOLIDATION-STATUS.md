@@ -59,8 +59,8 @@ an exact source location and review.
 - [ ] Confirm whether newer remote work exists beyond the reviewed checkpoint.
 - [ ] Record final acceptance results and rollback instructions.
 
-Eleven live text turns have been recorded so far; the QA document distinguishes
-which revision each run exercised. Latest acknowledgment change awaits live verification.
+Twelve live text turns have been recorded so far; the QA document distinguishes
+which revision each run exercised. Latest acknowledgment change passed one targeted live edit; broader acceptance remains open.
 The full dependency install hit a native prerequisite: Metal compilation requires
 the installed Xcode license/toolchain to be ready. Root verification succeeds;
 native build acceptance is not claimed. No voice testing, develop merge, deployment,
