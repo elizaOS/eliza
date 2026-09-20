@@ -686,12 +686,9 @@ async function doCreate(
   // `query` (a search/delete field that means nothing on create) and left `text`
   // empty, three identical calls in a row until the turn errored. The field
   // name is a structural slip, not a different request: use it, say so.
-  const explicitText =
-    typeof params.text === "string" ? params.text.trim() : "";
+  const explicitText = hasNonEmptyString(params.text) ? params.text : "";
   const queryAsText =
-    !explicitText && typeof params.query === "string"
-      ? params.query.trim()
-      : "";
+    !explicitText && hasNonEmptyString(params.query) ? params.query : "";
   if (queryAsText) {
     logger.warn(
       { queryLength: queryAsText.length },
@@ -1498,7 +1495,7 @@ async function doUpdate(
   if (!memoryParam.ok) return memoryParam.result;
   const memoryId = memoryParam.id;
   const explicitQuery = params.query?.trim();
-  const text = typeof params.text === "string" ? params.text.trim() : "";
+  const text = hasNonEmptyString(params.text) ? params.text : "";
   // A target-less update carrying replacement text is how the planner phrases
   // "remember that …" when it guesses a prior fact exists (live 2026-09-14:
   // three sub-planner rounds before it fell back to create). Resolve the
@@ -2169,7 +2166,7 @@ export const memoryAction: Action = {
     {
       name: "text",
       description:
-        'create: REQUIRED — the content to remember, as a complete third-person sentence about the user ("The user\'s favorite tea is matcha." — not "my", not their name; never leave it empty and never put it in query). update: complete replacement text for the existing record; preserve every unrelated fact. When correcting saved knowledge, search the subject and reconcile all affected records before reporting completion.',
+        "create: REQUIRED content to remember; never leave it empty or put it in query. Preserve explicitly supplied wording verbatim when requested, including perspective, punctuation and whitespace. Otherwise express the fact clearly about the user. update: complete replacement text; honor requested exact wording and preserve unrelated facts. When correcting saved knowledge, search the subject and reconcile all affected records before reporting completion.",
       required: false,
       requiredForSubactions: ["create", "update"],
       schema: { type: "string" as const },

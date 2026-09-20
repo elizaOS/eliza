@@ -3943,3 +3943,52 @@ describe("MEMORY mutation completion ownership", () => {
     },
   );
 });
+
+describe("MEMORY exact supplied text", () => {
+  it.each(["create", "update"])(
+    "round-trips exact %s text through storage and search",
+    async (action) => {
+      const { runtime, rows } = makeRuntime();
+      const message = makeMessage();
+      const saved = await runCreate(runtime, message, {
+        text: "Original preference.",
+      });
+      const text = "  My garden: “metric only.”\r\n\tKeep e\u0301 and 🪴.  ";
+      const result = await runAction(runtime, message, {
+        action,
+        text,
+        memoryId: String(saved.values?.memoryId),
+        confirm: true,
+      });
+      expect(result.success).toBe(true);
+      expect(rows.at(-1)?.memory.content.text).toBe(text);
+      const found = await runAction(runtime, message, {
+        action: "search",
+        type: "facts",
+        query: text,
+        queryMode: "literal",
+      });
+      expect(found.data?.memories).toEqual(
+        expect.arrayContaining([expect.objectContaining({ text })]),
+      );
+    },
+  );
+
+  it("rejects blank replacement text without changing the record", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    const saved = await runCreate(runtime, message, {
+      text: "Keep this preference.",
+    });
+    const before = structuredClone(rows);
+    const result = await runAction(runtime, message, {
+      action: "update",
+      text: " \t\n ",
+      memoryId: String(saved.values?.memoryId),
+      confirm: true,
+    });
+    expect(result.success).toBe(false);
+    expect(result.data?.error).toBe("MEMORY_MISSING_TEXT");
+    expect(rows).toEqual(before);
+  });
+});

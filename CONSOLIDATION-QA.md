@@ -338,8 +338,8 @@ existing path. No new model call, routing rule or system-prompt instruction is
 added. Three real action-to-evaluator regressions failed before this change
 because the completion schema did not require a reply; all153 tests in the
 memory action file passed afterward. Agent typecheck and package lint passed
-(existing15 warnings/two infos); root verification is still running in
-session4904. Guide parity157 and changed-document link checks passed. The model and database are deterministic
+(existing15 warnings/two infos); root verification completed successfully
+(session4904 exit0). Guide parity157 and changed-document link checks passed. The model and database are deterministic
 fixtures, so these tests do not establish live latency or model compliance.
 
 Evidence: external runtime files `memory-completion-before.log`,
@@ -349,3 +349,28 @@ consolidation evidence directory. Live runtime remains on ef88e31918b; no new
 paid calls or runtime restart accompanied this change. The separate exact-text
 issue remains open: MEMORY create's parameter description currently requires
 third-person rewriting and conflicts with an explicit verbatim-save request.
+
+
+## Exact memory text preservation
+
+Create/update trimmed supplied text before storage, independently of the
+planner's rewriting instruction. Two storage/search round-trip tests failed
+on leading/trailing whitespace before correction. Supplied nonblank text is
+now stored intact; blank input still rejects. The tool parameter description
+now honors explicit verbatim requests instead of unconditionally requiring
+third-person rewriting. This replaces the conflicting instruction in the
+existing tool schema, without a global prompt addition or another model call.
+
+All156 memory-action tests, Agent typecheck and package lint passed. Evidence:
+`runtime/memory-exact-before.log`, `memory-exact-after.log`,
+`memory-exact-typecheck.log`, `memory-exact-lint.log` in the external evidence
+directory. Full root verification of this follow-up is running as session16994
+(`memory-exact-verify.log`). Live exact-wording/model compliance and latency
+remain unverified; the running API is still ef88e31918b and live count is27.
+
+Remote recheck: `/home/milady/projects/eliza-wt-merge` remains clean at
+89a476f3d750feb40d7f1aeac99ce2219479d8fd, already included. Its locally cached
+tracking ref says behind one; no fetch or source modification was performed.
+Full registered-worktree output is saved in
+`remote-worktrees-recheck-20260920.txt`; this does not identify which other
+remote checkout, if any, contains the user's latest unreviewed work.

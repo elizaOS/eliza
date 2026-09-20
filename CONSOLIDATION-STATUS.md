@@ -36,7 +36,9 @@ Source follow-up: successful planner-owned memory mutations now use the shared
 deferred-reply contract. Three regressions reproduced the missing required
 completion reply; all153 memory-action tests passed after correction. This
 source change is not yet live-tested; UI5268/API31392 remains on ef88e31918b.
-Exact preference wording and PERSONALITY removal remain open.
+A follow-up preserves exact supplied memory text and removes the tool instruction
+that required rewriting; all156 memory tests, Agent typecheck and lint pass.
+Full verification is running; live exact wording and PERSONALITY removal remain open.
 
 ## Remaining acceptance checklist
 
