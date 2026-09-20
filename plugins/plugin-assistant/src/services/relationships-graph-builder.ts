@@ -18,7 +18,12 @@ import type {
   Room,
   UUID,
 } from "@elizaos/core";
-import { asRecord, logger, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
+import {
+  asRecord,
+  ElizaError,
+  logger,
+  MESSAGE_SOURCE_CLIENT_CHAT,
+} from "@elizaos/core";
 
 /** Aligns with `MergeCandidateEvidence` in `relationships.ts` (kept here to avoid a circular import). */
 export type RelationshipsMergeProposalEvidence = {
@@ -2258,6 +2263,33 @@ const MODEL_CACHE_TTL_MS = 300_000;
 type CachedModel = Awaited<ReturnType<typeof buildGraphModel>>;
 type ModelCache = { model: CachedModel; timestamp: number };
 
+// Runtime ownership survives graph-instance replacement and cache invalidation.
+const pendingGraphBuilds = new WeakMap<
+  IAgentRuntime,
+  Set<Promise<CachedModel>>
+>();
+
+/** Drain graph database reads before the owning runtime closes its adapter. */
+export async function drainRelationshipsGraphBuilds(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  const pending = pendingGraphBuilds.get(runtime);
+  if (!pending) return;
+  const failures: unknown[] = [];
+  while (pending.size > 0) {
+    const results = await Promise.allSettled([...pending]);
+    for (const result of results) {
+      if (result.status === "rejected") failures.push(result.reason);
+    }
+  }
+  if (failures.length > 0)
+    throw new ElizaError("Relationships graph shutdown failed", {
+      code: "RELATIONSHIPS_GRAPH_SHUTDOWN_FAILED",
+      cause: new AggregateError(failures),
+      context: { failedBuilds: failures.length },
+    });
+}
+
 export interface GraphResolvers {
   resolveOwnerExternalIdentity?: (
     runtime: IAgentRuntime,
@@ -2281,10 +2313,10 @@ export function createNativeRelationshipsGraphService(
   let modelCache: ModelCache | null = null;
   let modelBuildPromise: Promise<CachedModel> | null = null;
 
-  async function getCachedModel(): Promise<CachedModel> {
+  function getCachedModel(): Promise<CachedModel> {
     const now = Date.now();
     if (modelCache && now - modelCache.timestamp < MODEL_CACHE_TTL_MS) {
-      return modelCache.model;
+      return Promise.resolve(modelCache.model);
     }
     // Deduplicate concurrent builds.
     if (!modelBuildPromise) {
@@ -2306,22 +2338,33 @@ export function createNativeRelationshipsGraphService(
           modelBuildPromise = null;
           throw err;
         });
-      modelBuildPromise.catch((err) => {
-        // error-policy:J5 Observed once per build here (and by any first-build
-        // awaiter); prevents an unhandled rejection when stale-serving callers
-        // never await the background refresh. The last good snapshot stays.
-        logger.warn(
-          `[RelationshipsGraph] Graph model rebuild failed; last good snapshot retained: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      });
+      const build = modelBuildPromise;
+      let pending = pendingGraphBuilds.get(runtime);
+      if (!pending) {
+        pending = new Set();
+        pendingGraphBuilds.set(runtime, pending);
+      }
+      pending.add(build);
+      const ownedBuilds = pending;
+      void build.then(
+        () => ownedBuilds.delete(build),
+        (err) => {
+          // error-policy:J5 Cold callers and shutdown await this same promise;
+          // stale/prewarm callers retain this rejection observer.
+          ownedBuilds.delete(build);
+          logger.warn(
+            `[RelationshipsGraph] Graph model rebuild failed; last good snapshot retained: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        },
+      );
     }
     // Stale-while-revalidate: an expired snapshot answers the turn
     // immediately while the single-flight rebuild refreshes it in the
     // background. Only the first-ever build (no snapshot at all) awaits.
     if (modelCache) {
-      return modelCache.model;
+      return Promise.resolve(modelCache.model);
     }
     return modelBuildPromise;
   }
