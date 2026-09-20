@@ -4,11 +4,17 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { classifyAuthFailureReason, isTokenExpiryText } from "./token-expiry";
+import {
+  classifyAuthFailureReason,
+  isRefreshTokenExpiryText,
+  isTokenExpiryText,
+} from "./token-expiry";
 
 describe("access-token expiry classification", () => {
   it.each([
     "token expired",
+    "expired token",
+    "oauth token has expired",
     "token has expired",
     "expired_token",
     "token_expired",
@@ -35,6 +41,8 @@ describe("access-token expiry classification", () => {
 
   it.each([
     "401 unauthorized",
+    "unauthorized",
+    "invalid credentials",
     "invalid token",
     "credentials revoked",
     "refresh token expired",
@@ -51,9 +59,28 @@ describe("access-token expiry classification", () => {
 
   it("preserves missing provider detail as an unknown reason", () => {
     expect(isTokenExpiryText(undefined)).toBe(false);
+    expect(isTokenExpiryText(null)).toBe(false);
     expect(classifyAuthFailureReason(undefined)).toBe("unknown");
     expect(classifyAuthFailureReason(null)).toBe("unknown");
     expect(classifyAuthFailureReason("")).toBe("unknown");
     expect(classifyAuthFailureReason("   ")).toBe("unknown");
+  });
+});
+
+describe("refresh-token expiry classification", () => {
+  it("recognizes dead refresh credentials", () => {
+    for (const text of [
+      "refresh token expired",
+      "refresh_token has expired",
+      "Refresh Token Is Expired",
+    ]) {
+      expect(isRefreshTokenExpiryText(text), text).toBe(true);
+      expect(classifyAuthFailureReason(text), text).toBe("needs_reauth");
+    }
+  });
+  it("rejects access expiry, missing detail and unrelated auth text", () => {
+    for (const text of ["access token expired", "", null, "token revoked"]) {
+      expect(isRefreshTokenExpiryText(text), String(text)).toBe(false);
+    }
   });
 });
