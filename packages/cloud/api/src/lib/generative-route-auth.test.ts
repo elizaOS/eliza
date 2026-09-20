@@ -1023,12 +1023,15 @@ describe("requireGenerativeRouteCaller", () => {
     });
     resolveInferenceAuthContext.mockResolvedValueOnce(sessionAuthorized);
 
-    const caller = await requireGenerativeRouteCaller(c as never);
+    const caller = await requireGenerativeRouteCaller(c as never, {
+      awaitWarmingMs: 1500,
+    });
 
     expect(resolveInferenceAuthContext).toHaveBeenCalledWith(c.req.raw, {
       traceId: "trace-1",
       cacheOnly: true,
       executionCtx: c.executionCtx,
+      inlineContinuationDeadlineMs: 1500,
     });
     expect(caller).toMatchObject({
       user: { id: "user-1", organization_id: "org-1" },
@@ -1227,7 +1230,7 @@ describe("requireGenerativeRouteCaller", () => {
     expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
   });
 
-  test("does not await hydration when awaitWarmingMs is zero", async () => {
+  test("forwards a zero continuation deadline and rejects warming", async () => {
     const { c } = workerContext();
     resolveInferenceAuthContext.mockResolvedValueOnce({
       kind: "warming",
@@ -1242,7 +1245,7 @@ describe("requireGenerativeRouteCaller", () => {
     });
   });
 
-  test("fails fast when warming has no hydration promise even with a budget", async () => {
+  test("rejects warming without a hydration promise when a budget is supplied", async () => {
     const { c } = workerContext();
     resolveInferenceAuthContext.mockResolvedValueOnce({ kind: "warming" });
     await expect(
@@ -1282,7 +1285,7 @@ describe("requireGenerativeRouteCaller", () => {
     expect(enforceOrgRateLimit).not.toHaveBeenCalled();
   });
 
-  test("still 503s when the warming budget expires", async () => {
+  test("forwards the continuation deadline and preserves a warming rejection", async () => {
     const { c } = workerContext();
     let release: (() => void) | undefined;
     const hydration = new Promise((resolve) => {
@@ -1347,6 +1350,7 @@ describe("requireGenerativeRouteCaller", () => {
       code: "authentication_required",
       message: "Authentication required",
     });
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
   });
 
   test("returns the cached account-standing reason without another lookup", async () => {

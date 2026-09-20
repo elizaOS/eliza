@@ -197,7 +197,7 @@ afterAll(async () => {
 describe.skipIf(!CAN_USE_ISOLATED_PGLITE)(
   "A2A caller trust boundary integration",
   () => {
-    test("cold Worker lane fail-closes 503 without side effects, then hydration opens the trust boundary", async () => {
+    test("rejects cold dispatch, hydrates, and denies invalid direct-route requests without side effects", async () => {
       const ledgerBefore = await ledgerCount();
 
       // IAC v2 (#17805): a Worker-lifetime request never joins Postgres to
@@ -227,17 +227,6 @@ describe.skipIf(!CAN_USE_ISOLATED_PGLITE)(
       // The scheduled background hydration warms the character projection;
       // the SAME Worker lane then reaches the JSON-RPC parse boundary.
       await Promise.all(backgroundWork.splice(0));
-      const warm = await post(`/api/agents/${AGENT_ID}/a2a`, "{not-json");
-      expect(warm.status).toBe(400);
-      expect(await warm.json()).toMatchObject({
-        error: { code: -32700, message: "Parse error" },
-        id: null,
-      });
-    });
-
-    test("rejects malformed JSON, invalid envelopes, and direct policy roles without side effects", async () => {
-      const ledgerBefore = await ledgerCount();
-
       const malformedJson = await post(
         `/api/agents/${AGENT_ID}/a2a`,
         "{not-json",
