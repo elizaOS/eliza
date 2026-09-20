@@ -180,3 +180,11 @@ Turn22 asked to change the QA note to orange. It completed in2.590s/three calls/
 Turn23 asked for silver. Stop was successfully clicked at1789936727486 after a fresh UI observation in the same browser invocation. UI displayed Response interrupted. Trace step-1789936727260-nmsiy4 terminated at1789936727593, duration333ms, one interrupted model attempt and zero tool events. Its trace status is error rather than a distinct cancellation label. Prompt token count0 has no completed provider usage; do not infer zero billing. Stored note stayed orange at revision7; independent Notes reload confirmed it. No subsequent write was observed.
 
 This passes clean pre-effect cancellation. It does not prove rollback after an already-committed action or explain the older build-time late-arrival incident. No speculative cancellation code change was made. Evidence: runtime/cancellation-{race-completed,clicked}-{trace,summary}.json, cancellation-before-state.json and cancellation-after-state.json.
+
+## Personal preference create/remove through live chat
+
+Turns24–25 on3a50ad527d4 used disposable QA-garden preference. Creation4.843s/five calls/37,389input tokens selected MEMORY_CREATE(kind=preference), not PERSONALITY. It saved record61402f5a-4cad-42f8-a93b-4b74a54010bc. User explicitly asked for exact text; the planner instead paraphrased it as “When discussing the user's QA garden, use metric units.” This is an exact-wording limitation, not a passed verbatim-write case. The source chat message retains the original wording.
+
+Removal4.097s/five calls/42,158input tokens used MEMORY_SEARCH then MEMORY_DELETE with that exact record ID and an applied delete receipt. It asked no redundant scope question and made no broader mutation. A fresh facts browse returned8 rows, no test preference and hasMore=false. No pre-test full-store snapshot was captured, so do not use the final sentence alone to prove every unrelated preference byte-identical. Deterministic per-user/global preservation tests remain the stronger evidence for that invariant.
+
+This passes targeted memory-record removal and cleans the fixture, but does not prove live PERSONALITY remove_directive routing or exact preference text preservation. Evidence runtime/preference-{create,remove}-{trace,summary}.json and runtime/preference-facts-observation.json. No additional paid reruns were made.
