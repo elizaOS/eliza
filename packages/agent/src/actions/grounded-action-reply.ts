@@ -171,6 +171,7 @@ function domainLabel(domain: GroundedReplyDomain): string {
 function groundedReplyInstructions(
   args: RenderGroundedActionReplyArgs,
   characterVoice: string,
+  replyOwner: "action" | "planner",
 ): string[] {
   return [
     `Write the assistant's user-facing reply for a ${domainLabel(args.domain)} interaction.`,
@@ -188,7 +189,7 @@ function groundedReplyInstructions(
         ]
       : []),
     ...(args.additionalRules ?? []),
-    "Return only the reply text.",
+    ...(replyOwner === "action" ? ["Return only the reply text."] : []),
   ];
 }
 
@@ -210,7 +211,7 @@ async function renderGroundedActionReplyText(
     : "";
 
   const prompt = [
-    ...groundedReplyInstructions(args, characterVoice),
+    ...groundedReplyInstructions(args, characterVoice, "action"),
     "",
     `Domain: ${args.domain}`,
     `Scenario: ${args.scenario}`,
@@ -276,7 +277,11 @@ export async function renderGroundedActionReply(
           scenario: args.scenario,
           currentUserMessage: args.message.content.text ?? "",
           intent: args.intent,
-          instructions: groundedReplyInstructions(args, characterVoice),
+          instructions: groundedReplyInstructions(
+            args,
+            characterVoice,
+            "planner",
+          ),
           characterVoice,
           context: args.context ?? {},
           canonicalFallback: args.fallback,

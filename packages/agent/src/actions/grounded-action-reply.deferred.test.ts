@@ -170,6 +170,9 @@ describe("planner-owned LifeOps replies", () => {
       JSON.stringify(actionResultToPlannerToolResult(result)),
     );
     const wire = renderActionResultsForModel([roundTrip]).text;
+    // Deferred facts feed a structured planner/evaluator, not a text-only
+    // renderer. Preserve the facts/rules without overriding that wire format.
+    expect(wire).not.toContain("Return only the reply text.");
     expect(wire).toContain("END");
     expect(wire).toContain("same");
     expect(roundTrip.data.replyGrounding).toBe(h.grounding());
@@ -187,6 +190,9 @@ describe("planner-owned LifeOps replies", () => {
       expect(h.getMemories).toHaveBeenCalledTimes(1);
       expect(result.text).toBe("Model-authored reply.");
       expect(JSON.stringify(h.useModel.mock.calls)).toContain("correction");
+      expect(JSON.stringify(h.useModel.mock.calls)).toContain(
+        "Return only the reply text.",
+      );
     }
   });
 
