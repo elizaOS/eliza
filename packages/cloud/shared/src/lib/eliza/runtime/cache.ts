@@ -1,4 +1,4 @@
-// Wires hosted Eliza agent cache behavior for cloud runtime services.
+/** Owns hosted runtime reuse and revokes an exact cache entry before awaiting its service teardown. Replacement runtimes and adapters must survive completion of an older eviction; shared-pool closure remains restricted to full shutdown. */
 import { createHash } from "node:crypto";
 import { type UUID } from "@elizaos/common";
 import { type AgentRuntime, elizaLogger } from "@elizaos/core";
@@ -49,10 +49,19 @@ export class RuntimeCache {
     return now - entry.createdAt > this.MAX_AGE_MS || now - entry.lastUsed > this.IDLE_TIMEOUT_MS;
   }
 
-  private async evictEntry(key: string, entry: CachedRuntime, reason: string): Promise<void> {
-    await stopRuntimeServices(entry.runtime, key, "RuntimeCache");
+  private async evictEntry(
+    key: string,
+    entry: CachedRuntime,
+    reason: string,
+    dbPool?: DbAdapterPool,
+  ): Promise<boolean> {
+    if (this.cache.get(key) !== entry) return false;
+    // Revoke reuse synchronously, before stop hooks can reenter the cache.
     this.cache.delete(key);
+    dbPool?.removeAdapter(entry.agentId, entry.runtime.adapter);
+    await stopRuntimeServices(entry.runtime, key, "RuntimeCache");
     elizaLogger.debug(`[RuntimeCache] Evicted ${reason} runtime: ${key} (adapter kept alive)`);
+    return true;
   }
 
   async get(agentId: string): Promise<AgentRuntime | null> {
@@ -79,8 +88,7 @@ export class RuntimeCache {
 
     const now = Date.now();
     if (this.isStale(entry, now)) {
-      await this.evictEntry(agentId, entry, "stale");
-      dbPool.removeAdapter(entry.agentId as string);
+      await this.evictEntry(agentId, entry, "stale", dbPool);
       return null;
     }
 
@@ -88,12 +96,12 @@ export class RuntimeCache {
       elizaLogger.info(
         `[RuntimeCache] MCP version stale: cached=${entry.mcpVersion}, current=${currentMcpVersion}, key=${agentId}`,
       );
-      await this.evictEntry(agentId, entry, "mcp-version-stale");
-      dbPool.removeAdapter(entry.agentId as string);
+      await this.evictEntry(agentId, entry, "mcp-version-stale", dbPool);
       return null;
     }
 
     const isHealthy = await dbPool.checkHealth(entry.agentId as UUID);
+    if (this.cache.get(agentId) !== entry) return null;
     if (!isHealthy) {
       await this.evictEntry(agentId, entry, "unhealthy");
       return null;
@@ -133,10 +141,7 @@ export class RuntimeCache {
     const entry = this.cache.get(agentId);
     if (!entry) return false;
 
-    await stopRuntimeServices(entry.runtime, agentId, "RuntimeCache");
-    this.cache.delete(agentId);
-    elizaLogger.info(`[RuntimeCache] Removed runtime: ${agentId} (adapter kept alive)`);
-    return true;
+    return this.evictEntry(agentId, entry, "removed");
   }
 
   async removeByAgentId(agentId: string): Promise<number> {
@@ -204,15 +209,11 @@ export class RuntimeCache {
       key.includes(`:${organizationId}`),
     );
 
-    await Promise.all(
-      entries.map(async ([key, entry]) => {
-        await stopRuntimeServices(entry.runtime, key, "RuntimeCache");
-        this.cache.delete(key);
-        dbPool.removeAdapter(entry.agentId as string);
-      }),
+    const removed = await Promise.all(
+      entries.map(([key, entry]) => this.evictEntry(key, entry, "organization", dbPool)),
     );
 
-    return entries.length;
+    return removed.filter(Boolean).length;
   }
 
   /** Clear all cached runtimes. WARNING: Closes shared connection pool. */

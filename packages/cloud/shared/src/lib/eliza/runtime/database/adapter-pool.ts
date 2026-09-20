@@ -136,8 +136,14 @@ export class DbAdapterPool {
     return adapter;
   }
 
-  /** Remove adapter reference without closing the shared connection pool. */
-  removeAdapter(agentId: string): void {
+  /** Remove references without closing the shared pool. An expected adapter
+   * binds an old runtime's eviction to its own instance; ordinary invalidation
+   * without that argument also revokes pending initialization generations.
+   */
+  removeAdapter(agentId: string, expectedAdapter?: IDatabaseAdapter): boolean {
+    if (expectedAdapter !== undefined && this.adapters.get(agentId) !== expectedAdapter) {
+      return false;
+    }
     this.generations.delete(agentId);
     this.initPromises.delete(agentId);
     this.adapters.delete(agentId);
@@ -145,6 +151,7 @@ export class DbAdapterPool {
     elizaLogger.debug(
       `[DbAdapterPool] Removed adapter reference: ${agentId} (connection pool kept alive)`,
     );
+    return true;
   }
 
   /** Close adapter completely. WARNING: Closes shared connection pool. */

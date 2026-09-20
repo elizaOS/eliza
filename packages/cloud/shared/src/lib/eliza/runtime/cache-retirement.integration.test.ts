@@ -47,10 +47,11 @@ test.each(["remove", "organization", "stale"] as const)(
           : cache.get(key);
     try {
       await stopping.promise;
+      expect(cache.has(agentId)).toBe(false);
       await cache.set(key, replacement, "Replacement", agentId);
       finish.resolve();
       await eviction;
-      expect(await cache.get(key)).toBe(replacement);
+      expect((await cache.get(key)) === replacement).toBe(true);
       expect(stops).toBe(1);
     } finally {
       finish.resolve();

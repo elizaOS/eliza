@@ -278,7 +278,7 @@ test.each(["organization", "stale", "mcp"] as const)(
       expect(replacement).not.toBe(originalAdapter);
       finish.resolve();
       await eviction;
-      expect(pool.entriesForTesting().get(agentId)).toBe(replacement);
+      expect(pool.entriesForTesting().get(agentId) === replacement).toBe(true);
       expect(await replacement.getEntitiesByIds([randomUUID()])).toEqual([]);
     } finally {
       finish.resolve();
@@ -288,3 +288,61 @@ test.each(["organization", "stale", "mcp"] as const)(
   },
   30_000,
 );
+
+test("an old runtime's eviction cannot remove an already-replaced adapter", async () => {
+  const agentId = randomUUID();
+  const organizationId = randomUUID();
+  const pool = new DbAdapterPool(realFactory);
+  const originalAdapter = await pool.getOrCreate(agentId);
+  const runtime = new AgentRuntime({ agentId, adapter: originalAdapter, logLevel: "fatal" });
+  const cache = new RuntimeCache();
+  try {
+    await runtime.initialize({ skipMigrations: true });
+    await cache.set(`${agentId}:${organizationId}:old`, runtime, "Old", agentId);
+    pool.removeAdapter(agentId);
+    const replacement = await pool.getOrCreate(agentId);
+    expect(replacement === originalAdapter).toBe(false);
+    await cache.removeByOrganization(organizationId, pool);
+    expect(pool.entriesForTesting().get(agentId) === replacement).toBe(true);
+    expect(await replacement.getEntitiesByIds([randomUUID()])).toEqual([]);
+  } finally {
+    await runtime.stop({ requireQuiescence: true });
+  }
+}, 30_000);
+
+test("a completed health read cannot return a retired runtime", async () => {
+  const agentId = randomUUID();
+  const pool = new DbAdapterPool(realFactory);
+  const adapter = await pool.getOrCreate(agentId);
+  const original = new AgentRuntime({ agentId, adapter, logLevel: "fatal" });
+  const replacement = new AgentRuntime({ agentId, adapter, logLevel: "fatal" });
+  const cache = new RuntimeCache();
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let health: Promise<AgentRuntime | null> | undefined;
+  try {
+    await original.initialize({ skipMigrations: true });
+    await replacement.initialize({ skipMigrations: true });
+    await cache.set(agentId, original, "Original", agentId);
+    const read = adapter.getEntitiesByIds.bind(adapter);
+    adapter.getEntitiesByIds = async (ids) => {
+      entered.resolve();
+      await release.promise;
+      return read(ids);
+    };
+    health = cache.getWithHealthCheck(agentId, pool);
+    await entered.promise;
+    await cache.remove(agentId);
+    await cache.set(agentId, replacement, "Replacement", agentId);
+    release.resolve();
+    expect(await health).toBeNull();
+    expect((await cache.get(agentId)) === replacement).toBe(true);
+  } finally {
+    release.resolve();
+    await health;
+    await Promise.all([
+      original.stop({ requireQuiescence: true }),
+      replacement.stop({ requireQuiescence: true }),
+    ]);
+  }
+}, 30_000);
