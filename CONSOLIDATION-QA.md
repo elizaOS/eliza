@@ -114,3 +114,9 @@ Source review now covers114/270 entries. Remaining implementation diffs are the 
 Both remaining Calendar implementation diffs have been inspected. Keep missing-time clarification, exact-interval conflict checks, source-target validation, duration preservation and receipt-grounded conversational completion. Calendar acceptance remains open for recipient identity and follow-up authorization checks; source inspection is not blanket approval. The existing four attendee contract tests passed, but passing an existing behavior test does not establish that its acceptance rule is correct. No paid model call, invitation or external Calendar write was made.
 
 The local ledger now has116 reviewed entries,115 include decisions and one review-required implementation. Remaining unreviewed entries are tests, documentation and a generated report.
+
+## Calendar recipient clarification correction
+
+Named guests with unverified model-proposed addresses now pause before creation instead of treating a display-name/mailbox match as address evidence. Exact user-supplied addresses remain supported. The handler reports awaiting user input with rejected acceptance; an unrelated invented guest remains excluded. This adds no model call or external lookup.
+
+31 focused and real-PGlite handler tests passed, including an empty stored feed after the unresolved-guest request. Package typecheck passed. The first test attempt used an incorrect top-level receipt assertion; corrected to the existing nested failure.acceptance contract and reran successfully. Full root verification is running in `calendar-guest-root-verify.log`; do not treat it as passed yet. Live runtime remains on the preceding code. Prior-turn authorization and remaining acceptance scenarios stay open.

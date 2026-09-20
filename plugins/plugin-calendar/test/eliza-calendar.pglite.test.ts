@@ -412,6 +412,70 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     );
   });
 
+  it("pauses a named guest with an unverified address before any calendar write", async () => {
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async ({ actionType }) =>
+        actionType === "lifeops.calendar.extract_create_event"
+          ? {
+              rawResponse: "{}",
+              parsed: {
+                startAt: "2026-09-18T15:00:00-04:00",
+                endAt: "2026-09-18T16:00:00-04:00",
+                timeZone: "America/New_York",
+              },
+            }
+          : null,
+      ),
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const result = await action.handler(
+      runtime,
+      {
+        id: "00000000-0000-0000-0000-000000000301",
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse("2026-09-15T22:00:00.000Z"),
+        content: {
+          text: "add a meeting with Dana friday at 3pm to my calendar",
+        },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          subaction: "create_event",
+          title: "Meeting with Dana",
+          details: {
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            timeZone: "America/New_York",
+            start: "2026-09-18T15:00:00",
+            end: "2026-09-18T16:00:00",
+            durationMinutes: 60,
+            attendees: [
+              { email: "dana@unverified-mailbox.net", displayName: "Dana" },
+            ],
+          },
+        },
+      },
+    );
+    expect(result?.success).toBe(false);
+    expect(result?.data).toMatchObject({
+      error: "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
+      requiresInput: true,
+      awaitingUserInput: true,
+    });
+    expect(result?.effectReceipts?.[0]).toMatchObject({
+      outcome: "failed",
+      failure: { acceptance: "rejected" },
+    });
+    const feed = await service.getCalendarFeed(INTERNAL_URL, {
+      timeMin: "2026-09-18T00:00:00Z",
+      timeMax: "2026-09-19T00:00:00Z",
+    });
+    expect(feed.events).toEqual([]);
+  });
+
   it("preserves supplied note content when scheduling extraction rewrites the description", async () => {
     const description = "Bring the green notebook at 4:30.\nKeep  two spaces.";
     const action = createCalendarActionRunner({

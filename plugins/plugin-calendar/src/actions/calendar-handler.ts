@@ -1180,6 +1180,7 @@ function buildCalendarServiceErrorFallback(
 ): string {
   if (
     error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" ||
+    error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
     error.code === "CALENDAR_TARGET_SELECTOR_INVALID"
   ) {
     return error.message;
@@ -4648,16 +4649,8 @@ export function attendeeEmailAccepted(email: string): boolean {
 const RESERVED_EXAMPLE_DOMAIN_PATTERN =
   /(?:^|\.)(?:example\.(?:com|net|org)|example|invalid|test|localhost)$/i;
 
-/**
- * Guests the user actually named. The planner fills `attendees` from the
- * complete schema, and a small planner invented "shawmakesmagic@example.invalid"
- * on "add a barber appointment friday at 3pm to my calendar" (live 2026-09-16);
- * with a mail-capable connector that is an invitation to a made-up address. An
- * attendee is kept only when the user's current or earlier words carry its
- * address, its mailbox name or its display name — the same authority the
- * recurrence rule already requires. Addresses on reserved example domains are
- * never kept.
- */
+/** Planner-supplied names do not establish recipient addresses. Keep explicit
+ * address evidence; a named guest without it needs resolution before writing. */
 export function userAuthorizedCalendarAttendees(
   attendees: CreateLifeOpsCalendarEventAttendee[] | undefined,
   userTexts: ReadonlyArray<string | null | undefined>,
@@ -4677,14 +4670,24 @@ export function userAuthorizedCalendarAttendees(
     const email = attendee.email.trim().toLowerCase();
     const at = email.lastIndexOf("@");
     if (at <= 0) return false;
-    if (RESERVED_EXAMPLE_DOMAIN_PATTERN.test(email.slice(at + 1))) return false;
-    if (spoken.includes(email)) return true;
+    const explicitAddress = words.has(email);
+    const reserved = RESERVED_EXAMPLE_DOMAIN_PATTERN.test(email.slice(at + 1));
+    if (explicitAddress && !reserved) return true;
     const mailbox = email.slice(0, at);
-    if (mailbox.length >= 3 && words.has(mailbox)) return true;
-    const name = attendee.displayName?.trim().toLowerCase();
-    if (!name) return false;
-    const parts = name.split(/\s+/).filter((part) => part.length > 0);
-    return parts.length > 0 && parts.every((part) => words.has(part));
+    const nameParts =
+      attendee.displayName?.trim().toLowerCase().split(/\s+/).filter(Boolean) ??
+      [];
+    const named =
+      (mailbox.length >= 3 && words.has(mailbox)) ||
+      (nameParts.length > 0 && nameParts.every((part) => words.has(part)));
+    if (explicitAddress || named) {
+      throw new CalendarServiceError(
+        400,
+        "No event was created. The requested guest's email address is not verified. Ask for their exact email address before creating the event; do not guess an address or omit the guest.",
+        "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
+      );
+    }
+    return false;
   });
   return kept.length > 0 ? kept : undefined;
 }
@@ -7046,6 +7049,9 @@ const calendarAction: CalendarHandlerAction = {
                 error.code === "CALENDAR_READ_DATE_CONFLICT"))
               ? { coachingFailure: true }
               : {}),
+            ...(error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED"
+              ? { requiresInput: true, missing: ["guest email address"] }
+              : {}),
             actionName: "CALENDAR",
             subaction,
             error: error.code ?? `CALENDAR_SERVICE_${error.status}`,
@@ -7065,6 +7071,7 @@ const calendarAction: CalendarHandlerAction = {
             retryable: error.status >= 500,
             acceptance:
               error.code !== "CALENDAR_TARGET_SELECTOR_INVALID" &&
+              error.code !== "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" &&
               (subaction === "create_event" ||
                 subaction === "update_event" ||
                 subaction === "delete_event")
