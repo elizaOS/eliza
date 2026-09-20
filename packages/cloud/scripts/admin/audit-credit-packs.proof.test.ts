@@ -1,19 +1,11 @@
 /**
- * Proof harness for audit-credit-packs.ts (#22963): applies the real migration
- * journal to a temp PGlite store, seeds packs via a SUBPROCESS (fresh module
- * cache per store — the in-process client is cached across tests), and runs
- * the audit as a subprocess with a hermetic environment.
- * Run: bun test packages/cloud/scripts/admin/audit-credit-packs.proof.test.ts
- *
- * Every test sets an explicit 60s timeout: freshDb/seed/audit spawn cold bun
- * subprocesses that exceeded bun's 5s default on hosted runners (#23870 CI
- * failures at ~5005ms). bunfig's [test] section has no timeout option (Bun
- * ignores the key — oven-sh/bun#7789), so the timeout stays per-test.
- * Hermetic children also resolve packages from cloud-shared's isolated
- * node_modules tree because the audit intentionally runs outside the checkout.
+ * Exercises credit-pack classification against the real audit CLI and PGlite.
+ * The migration subprocess produces one closed empty store; each case receives
+ * an independent copy. Seed and audit subprocesses keep cached database clients
+ * isolated and resolve packages from cloud-shared's dependency tree.
  */
-import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -32,7 +24,7 @@ function childEnv(dbUrl: string, extra: Record<string, string> = {}) {
   };
 }
 
-async function freshDb(): Promise<{ dir: string; url: string }> {
+async function migratedDb(): Promise<{ dir: string; url: string }> {
   const dir = await mkdtemp(`${tmpdir()}/22963-audit-`);
   const url = `pglite://${dir}`;
   const proc = Bun.spawnSync([process.execPath, "run", "db:migrate"], {
@@ -45,6 +37,21 @@ async function freshDb(): Promise<{ dir: string; url: string }> {
     throw new Error(`migrate failed: ${proc.stderr.toString().slice(-400)}`);
   }
   return { dir, url };
+}
+
+// The migration child exits before cloning, so each case owns an independent
+// closed PGlite store without replaying the same migration journal five times.
+let template: { dir: string; url: string };
+beforeAll(async () => {
+  template = await migratedDb();
+}, 60_000);
+afterAll(async () => {
+  if (template) await rm(template.dir, { recursive: true, force: true });
+});
+async function freshDb(): Promise<{ dir: string; url: string }> {
+  const dir = await mkdtemp(`${tmpdir()}/22963-audit-case-`);
+  await cp(template.dir, dir, { recursive: true });
+  return { dir, url: `pglite://${dir}` };
 }
 
 /** Seed in a fresh process so the db client binds to THIS test's store. */

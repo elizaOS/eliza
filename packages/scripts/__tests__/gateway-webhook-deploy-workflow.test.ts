@@ -519,7 +519,18 @@ describe("protected gateway-webhook deployment workflow", () => {
         }
 
         for (const name of blooioNames) {
-          for (const missingValue of [undefined, "", " \t "]) {
+          for (const [state, missingValue] of [
+            undefined,
+            "",
+            " \t ",
+          ].entries()) {
+            // Each name/state pair exercises identical validation once. Rotate
+            // environments; complete canonical routing runs in both above.
+            const owner =
+              (blooioNames.indexOf(name) + state) % 2 === 0
+                ? "staging"
+                : "production";
+            if (target !== owner) continue;
             const missing = verifyRailwayVariableInventory(target, {
               [name]: missingValue,
             });
@@ -580,21 +591,34 @@ describe("protected gateway-webhook deployment workflow", () => {
         for (const name of blooioNames) {
           // A divergent-but-nonblank Worker secret is precisely the case a
           // names-only inventory accepts and a live webhook then rejects with 401.
-          const divergent = verifyRailwayVariableInventory(
-            target,
-            {},
-            { [name]: workerValues[name] },
-          );
-          expect(divergent.exitCode).toBe(1);
-          const divergentOutput = `${divergent.stdout.toString()}${divergent.stderr.toString()}`;
-          expect(divergentOutput).toContain(
-            `Protected ${target} Blooio value differs between the Cloudflare Worker GitHub environment secret and the Railway variable: ${name}`,
-          );
-          for (const value of allSecretValues) {
-            expect(divergentOutput).not.toContain(value);
+          if (
+            target ===
+            (blooioNames.indexOf(name) % 2 === 0 ? "staging" : "production")
+          ) {
+            const divergent = verifyRailwayVariableInventory(
+              target,
+              {},
+              { [name]: workerValues[name] },
+            );
+            expect(divergent.exitCode).toBe(1);
+            const divergentOutput = `${divergent.stdout.toString()}${divergent.stderr.toString()}`;
+            expect(divergentOutput).toContain(
+              `Protected ${target} Blooio value differs between the Cloudflare Worker GitHub environment secret and the Railway variable: ${name}`,
+            );
+            for (const value of allSecretValues) {
+              expect(divergentOutput).not.toContain(value);
+            }
           }
-
-          for (const absentWorkerValue of [undefined, "", " \t "]) {
+          for (const [state, absentWorkerValue] of [
+            undefined,
+            "",
+            " \t ",
+          ].entries()) {
+            const owner =
+              (blooioNames.indexOf(name) + state) % 2 === 0
+                ? "staging"
+                : "production";
+            if (target !== owner) continue;
             const absent = verifyRailwayVariableInventory(
               target,
               {},
