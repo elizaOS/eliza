@@ -17,12 +17,12 @@ jobs:
         run: git config --global core.longpaths true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: e06d1469d7bfc02727bb55e69ed8de0d3a91dd91
+          ref: 64b76309addae0e48c642490c63958c0b98c1155
           persist-credentials: false
           submodules: false
       - name: Verify product revision
         run: |
-          if ((git rev-parse HEAD) -ne 'e06d1469d7bfc02727bb55e69ed8de0d3a91dd91') { throw 'Wrong source revision' }
+          if ((git rev-parse HEAD) -ne '64b76309addae0e48c642490c63958c0b98c1155') { throw 'Wrong source revision' }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '24.15.0'
@@ -35,27 +35,34 @@ jobs:
         run: bun run postinstall
       - name: Build Windows desktop with canonical command
         run: node packages/app-core/scripts/desktop-build.mjs build
-      - name: Exercise canonical development renderer entry
+      - name: Exercise canonical API and renderer development entry
         env:
           ELIZA_UI_PORT: '22138'
+          ELIZA_API_PORT: '22137'
+          ELIZA_STATE_DIR: ${{ runner.temp }}\script-dev-state
+          PGLITE_DATA_DIR: ${{ runner.temp }}\script-dev-pglite
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           $out = Join-Path $env:RUNNER_TEMP 'script-dev.stdout.log'
           $err = Join-Path $env:RUNNER_TEMP 'script-dev.stderr.log'
-          $child = Start-Process bun -ArgumentList @('packages/app-core/scripts/dev-ui.mjs', '--ui-only') -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+          $child = Start-Process bun -ArgumentList @('--no-install', '--conditions=eliza-source', 'packages/app-core/scripts/dev-ui.mjs', '--cloud-target=offline') -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
           try {
-            $deadline = (Get-Date).AddMinutes(4)
+            $deadline = (Get-Date).AddMinutes(10)
             $ready = $false
             while ((Get-Date) -lt $deadline) {
               $child.Refresh()
               if ($child.HasExited) { throw "Development process exited: $($child.ExitCode)" }
               try {
                 $response = Invoke-WebRequest 'http://127.0.0.1:22138/' -TimeoutSec 5
-                if ($response.StatusCode -eq 200 -and $response.Content -match '/@vite/client') { $ready = $true; break }
-              } catch { Write-Host 'Waiting for development renderer' }
+                if ($response.StatusCode -eq 200 -and $response.Content -match '/@vite/client') {
+                  $health = Invoke-RestMethod 'http://127.0.0.1:22137/api/health' -TimeoutSec 5
+                  if ($health.ready -eq $true) { $ready = $true; break }
+                }
+              } catch { Write-Host 'Waiting for development API and renderer' }
               Start-Sleep -Seconds 2
             }
-            if (-not $ready) { throw 'Development renderer never served Vite HTML' }
-            Write-Host 'Canonical Windows development entry served real Vite HTML'
+            if (-not $ready) { throw 'Development API and renderer never became ready' }
+            Write-Host 'Canonical Windows development entry served real Vite HTML and ready API health'
           } finally {
             taskkill /PID $child.Id /T /F
             Get-Content $out
@@ -75,7 +82,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: script-windows-e06d
+          name: script-windows-64b763
           path: |
             packages/app/test-results/
             packages/app/playwright-report/
