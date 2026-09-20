@@ -1,8 +1,9 @@
 /** Exercises real PGlite subscriptions through insert, update, delete and unsubscribe flows. */
-import { live as liveExtension } from "@electric-sql/pglite/live";
+
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { live as liveExtension } from "@electric-sql/pglite/live";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
