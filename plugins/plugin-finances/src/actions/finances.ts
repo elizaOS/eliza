@@ -18,6 +18,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { CalendarTimeZoneError } from "@elizaos/shared";
 import {
   decodeChildcareWorkScenarioInput,
   evaluateChildcareWorkScenario,
@@ -751,7 +752,11 @@ export async function runPaymentsHandler(
   try {
     return await runPaymentsActionInner(runtime, message, state, options);
   } catch (error) {
-    if (error instanceof FinancesServiceError) {
+    // error-policy:J1 return typed domain failures through the action result.
+    if (
+      error instanceof FinancesServiceError ||
+      error instanceof CalendarTimeZoneError
+    ) {
       return {
         success: false,
         text: error.message,

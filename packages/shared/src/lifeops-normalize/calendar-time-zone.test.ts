@@ -5,17 +5,18 @@
  * with a fake runtime; default-zone assertions compare against
  * `resolveDefaultTimeZone()` so they hold on any host.
  */
+import { ElizaError } from "@elizaos/core/errors";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   CALENDAR_TIME_ZONE_INVALID,
   CALENDAR_TIME_ZONE_UNAVAILABLE,
+  CalendarTimeZoneError,
   type CalendarTimeZoneRuntime,
   calendarDateKey,
   registerCalendarTimeZoneResolver,
   resolveCalendarTimeZone,
   unregisterCalendarTimeZoneResolver,
 } from "./calendar-time-zone";
-import { LifeOpsServiceError } from "./service-error";
 import { resolveDefaultTimeZone } from "./time-zone";
 
 // 2026-03-03T03:30Z is still the evening of March 2 west of Greenwich and
@@ -131,11 +132,13 @@ describe("resolveCalendarTimeZone", () => {
       throw cause;
     });
     const error = await resolveCalendarTimeZone(runtime, NOW).catch((e) => e);
-    expect(error).toBeInstanceOf(LifeOpsServiceError);
+    expect(error).toBeInstanceOf(CalendarTimeZoneError);
+    expect(error).toBeInstanceOf(ElizaError);
     expect(error).toMatchObject({
       status: 503,
       code: CALENDAR_TIME_ZONE_UNAVAILABLE,
       cause,
+      context: { source: "owner" },
     });
   });
 
@@ -145,6 +148,7 @@ describe("resolveCalendarTimeZone", () => {
     await expect(resolveCalendarTimeZone(runtime, NOW)).rejects.toMatchObject({
       status: 422,
       code: CALENDAR_TIME_ZONE_INVALID,
+      context: { source: "owner", timeZone: "Mars/Phobos" },
     });
   });
 

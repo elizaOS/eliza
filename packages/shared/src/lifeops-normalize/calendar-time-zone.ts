@@ -12,11 +12,11 @@
  *
  * Resolution is fail-closed: a registered resolver that throws, or a zone
  * (from the resolver or the agent `TIMEZONE` setting) that Intl rejects, is a
- * `LifeOpsServiceError` the caller surfaces, never a quiet substitution of
+ * `CalendarTimeZoneError` the caller surfaces, never a quiet substitution of
  * another zone. Absent configuration is not a failure: with no owner zone and
  * no setting, the runtime host zone is used and reported as such.
  */
-import { LifeOpsServiceError } from "./service-error.js";
+import { ElizaError, type ElizaErrorOptions } from "@elizaos/core/errors";
 import { isValidTimeZone, resolveDefaultTimeZone } from "./time-zone.js";
 
 /** Where the resolved zone came from, so callers can tell configured from defaulted. */
@@ -48,6 +48,19 @@ export interface CalendarTimeZoneRuntime {
 export const CALENDAR_TIME_ZONE_UNAVAILABLE = "CALENDAR_TIME_ZONE_UNAVAILABLE";
 export const CALENDAR_TIME_ZONE_INVALID = "CALENDAR_TIME_ZONE_INVALID";
 
+/** Calendar resolution failure translated by the consuming action or HTTP boundary. */
+export class CalendarTimeZoneError extends ElizaError {
+  override readonly name = "CalendarTimeZoneError";
+
+  constructor(
+    readonly status: 422 | 503 | 500,
+    message: string,
+    options: ElizaErrorOptions,
+  ) {
+    super(message, options);
+  }
+}
+
 const RESOLVER_KEY = Symbol.for("@elizaos/shared:calendar-time-zone-resolver");
 
 interface CalendarTimeZoneResolverHost extends CalendarTimeZoneRuntime {
@@ -75,10 +88,10 @@ function requireValidZone(
 ): string {
   const candidate = timeZone.trim();
   if (!candidate || !isValidTimeZone(candidate)) {
-    throw new LifeOpsServiceError(
+    throw new CalendarTimeZoneError(
       422,
       `Configured calendar time zone "${timeZone}" (${source}) is not a valid IANA time zone`,
-      CALENDAR_TIME_ZONE_INVALID,
+      { code: CALENDAR_TIME_ZONE_INVALID, context: { timeZone, source } },
     );
   }
   return candidate;
@@ -100,13 +113,15 @@ export async function resolveCalendarTimeZone(
     } catch (error) {
       // error-policy:J2 the owner's zone exists but cannot be read; classifying
       // in another zone would be a silent wrong answer, so fail closed.
-      throw Object.assign(
-        new LifeOpsServiceError(
-          503,
-          "The owner's calendar time zone could not be resolved",
-          CALENDAR_TIME_ZONE_UNAVAILABLE,
-        ),
-        { cause: error },
+      throw new CalendarTimeZoneError(
+        503,
+        "The owner's calendar time zone could not be resolved",
+        {
+          code: CALENDAR_TIME_ZONE_UNAVAILABLE,
+          context: { source: "owner" },
+          cause: error,
+          severity: "ephemeral",
+        },
       );
     }
     if (ownerZone !== null) {
@@ -144,10 +159,10 @@ export function calendarDateKey(now: Date, timeZone: string): string {
   const month = read("month");
   const day = read("day");
   if (!year || !month || !day) {
-    throw new LifeOpsServiceError(
+    throw new CalendarTimeZoneError(
       500,
       `Unable to derive a calendar date in time zone "${timeZone}"`,
-      CALENDAR_TIME_ZONE_INVALID,
+      { code: CALENDAR_TIME_ZONE_INVALID, context: { timeZone } },
     );
   }
   return `${year}-${month}-${day}`;

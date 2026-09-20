@@ -38,7 +38,6 @@ import {
 import {
   type CalendarTimeZoneResolution,
   calendarDateKey,
-  LifeOpsServiceError,
   resolveCalendarTimeZone,
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
@@ -48,7 +47,6 @@ import {
   PlaidSyncCursorConflictError,
 } from "./db/finances-repository.ts";
 import {
-  FinancesServiceError,
   fail,
   normalizeOptionalString,
   requireAgentId,
@@ -525,28 +523,11 @@ export class FinancesService {
     this.ownerEntityId = normalizeOptionalString(options.ownerEntityId) ?? null;
   }
 
-  /**
-   * The owner's calendar zone at `now`, through the runtime-scoped owner in
-   * `@elizaos/shared`. Resolution failures and invalid configured zones are
-   * rethrown as `FinancesServiceError` so both route and action surfaces
-   * report them instead of classifying in a substitute zone.
-   */
+  /** Resolves the owner's calendar zone; typed failures reach action and HTTP boundaries. */
   async resolveCalendarTimeZone(
     now: Date,
   ): Promise<CalendarTimeZoneResolution> {
-    try {
-      return await resolveCalendarTimeZone(this.runtime, now);
-    } catch (error) {
-      // error-policy:J2 preserve the shared error's status and code under the
-      // finances error type every consumer of this service already maps.
-      if (error instanceof LifeOpsServiceError) {
-        throw Object.assign(
-          new FinancesServiceError(error.status, error.message, error.code),
-          { cause: error },
-        );
-      }
-      throw error;
-    }
+    return resolveCalendarTimeZone(this.runtime, now);
   }
 
   agentId(): string {

@@ -4,17 +4,17 @@
  * through a stubbed `FinancesRepository`, and the zone comes from the shared
  * calendar time zone owner registered on the fake runtime. Covers the
  * owner-zone, agent-setting and host-default sources plus the fail-closed
- * `FinancesServiceError` for an unreadable or invalid configured zone.
+ * `CalendarTimeZoneError` for an unreadable or invalid configured zone.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   CALENDAR_TIME_ZONE_INVALID,
   CALENDAR_TIME_ZONE_UNAVAILABLE,
+  CalendarTimeZoneError,
   type CalendarTimeZoneResolver,
   registerCalendarTimeZoneResolver,
 } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
-import { FinancesServiceError } from "./finance-normalize.ts";
 import { FinancesService } from "./finances-service.ts";
 import type {
   LifeOpsPaymentSource,
@@ -134,22 +134,22 @@ describe("getUpcomingBills owner-day dueness (#31062)", () => {
     );
   });
 
-  it("fails with a 503 FinancesServiceError when the owner zone cannot be read", async () => {
+  it("fails with a 503 CalendarTimeZoneError when the owner zone cannot be read", async () => {
     const cause = new Error("fact store unavailable");
     const error = await makeService("America/Los_Angeles", async () => {
       throw cause;
     })
       .getUpcomingBills({ now: NOW })
       .catch((e) => e);
-    expect(error).toBeInstanceOf(FinancesServiceError);
+    expect(error).toBeInstanceOf(CalendarTimeZoneError);
     expect(error).toMatchObject({
       status: 503,
       code: CALENDAR_TIME_ZONE_UNAVAILABLE,
     });
-    expect(error.cause).toMatchObject({ cause });
+    expect(error.cause).toBe(cause);
   });
 
-  it("fails with a 422 FinancesServiceError for an invalid configured zone", async () => {
+  it("fails with a 422 CalendarTimeZoneError for an invalid configured zone", async () => {
     await expect(
       makeService(
         "America/Los_Angeles",

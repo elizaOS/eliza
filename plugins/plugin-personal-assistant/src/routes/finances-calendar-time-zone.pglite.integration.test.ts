@@ -5,7 +5,8 @@
  * registered personal-assistant plugin on a PGlite runtime supplies the
  * calendar time zone resolver from the owner facts, the bill is persisted
  * through the finances plugin schema, and the route is reached through the
- * real runtime plugin HTTP dispatcher. Only `Date` is faked, to pin `now`.
+ * real runtime plugin HTTP dispatcher. `Date` is pinned; the unavailable-zone
+ * case injects a resolver failure while retaining both real transport boundaries.
  */
 import { once } from "node:events";
 import { createServer, type Server } from "node:http";
@@ -16,6 +17,8 @@ import { FinancesService } from "@elizaos/plugin-finances/finances-service";
 import { financesPlugin } from "@elizaos/plugin-finances/plugin";
 import {
   CALENDAR_TIME_ZONE_INVALID,
+  CALENDAR_TIME_ZONE_UNAVAILABLE,
+  registerCalendarTimeZoneResolver,
   resolveCalendarTimeZone,
 } from "@elizaos/shared";
 import {
@@ -33,7 +36,10 @@ import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../test/helpers/runtime.js";
-import { resolveOwnerFactStore } from "../lifeops/owner/fact-store.js";
+import {
+  resolveConfiguredOwnerTimeZone,
+  resolveOwnerFactStore,
+} from "../lifeops/owner/fact-store.js";
 import { LifeOpsService } from "../lifeops/service.js";
 
 // Evening of March 2 in the Americas, afternoon of March 3 in Tokyo.
@@ -338,5 +344,31 @@ describe("finances bill dueness through both surfaces (#31062)", () => {
     expect(viaRoute.status).toBe(422);
     expect(viaRoute.bill).toBeNull();
     expect(JSON.stringify(viaRoute.body)).toContain("Mars/Phobos");
+  });
+
+  it("surfaces unavailable owner-zone storage as 503 on both boundaries", async () => {
+    await setOwnerTimeZone("America/Los_Angeles");
+    const cause = new Error("Owner time zone storage is unavailable");
+    registerCalendarTimeZoneResolver(host.runtime, async () => {
+      throw cause;
+    });
+    try {
+      const viaAction = await actionBill();
+      expect(viaAction.result.success).toBe(false);
+      expect(viaAction.result.data).toMatchObject({
+        status: 503,
+        code: CALENDAR_TIME_ZONE_UNAVAILABLE,
+      });
+      const viaRoute = await routeBill();
+      expect(viaRoute.status).toBe(503);
+      expect(viaRoute.bill).toBeNull();
+      expect(JSON.stringify(viaRoute.body)).toContain(
+        "The owner's calendar time zone could not be resolved",
+      );
+    } finally {
+      registerCalendarTimeZoneResolver(host.runtime, (_runtime, now) =>
+        resolveConfiguredOwnerTimeZone(host.runtime, now),
+      );
+    }
   });
 });
