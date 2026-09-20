@@ -9,6 +9,7 @@
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { isElizaError } from "@elizaos/common";
+import { BGE_SMALL_VECTOR_SPACE, getEmbeddingVectorSpace } from "@elizaos/core";
 import {
   buildSharedRecallContext,
   embedTextsViaSidecar,
@@ -34,6 +35,7 @@ function embeddingResponse(embedding: number[]): Response {
   return new Response(
     JSON.stringify({
       object: "list",
+      embedding_space: BGE_SMALL_VECTOR_SPACE,
       data: [{ object: "embedding", index: 0, embedding }],
       model: SHARED_RECALL_EMBEDDING_MODEL,
       usage: { prompt_tokens: 3, total_tokens: 3 },
@@ -70,6 +72,7 @@ describe("embedTextViaSidecar — request contract", () => {
       "what was my keyboard budget?",
     );
 
+    expect(getEmbeddingVectorSpace(embedding)).toBe(BGE_SMALL_VECTOR_SPACE);
     expect(embedding).toHaveLength(SHARED_RECALL_EMBEDDING_DIMENSIONS);
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe("https://sidecar.internal/v1/embeddings");
@@ -208,6 +211,41 @@ describe("embedTextsViaSidecar — batch validation", () => {
       "SHARED_RECALL_EMBEDDING_INVALID_RESPONSE",
     );
     expect(error.context?.reason).toBe("non-json-body");
+  });
+});
+
+describe("sidecar representation identity", () => {
+  for (const identity of [undefined, "bge-small-en-v1.5", "other:cls:l2:384:tail-v1"]) {
+    test(`rejects unverified representation ${identity} for single and batch requests`, async () => {
+      globalThis.fetch = (async () =>
+        Response.json({
+          embedding_space: identity,
+          data: [{ embedding: vectorOf(384) }],
+        })) as typeof fetch;
+      await expectElizaError(
+        embedTextViaSidecar("https://sidecar.internal", undefined, "query"),
+        "EMBEDDING_SPACE_MISMATCH",
+      );
+      await expectElizaError(
+        embedTextsViaSidecar("https://sidecar.internal", undefined, ["query"]),
+        "EMBEDDING_SPACE_MISMATCH",
+      );
+    });
+  }
+  test("preserves verified identity on every batch vector", async () => {
+    globalThis.fetch = (async () =>
+      Response.json({
+        embedding_space: BGE_SMALL_VECTOR_SPACE,
+        data: [{ embedding: vectorOf(384) }, { embedding: vectorOf(384) }],
+      })) as typeof fetch;
+    const vectors = await embedTextsViaSidecar("https://sidecar.internal", undefined, [
+      "one",
+      "two",
+    ]);
+    expect(vectors.map(getEmbeddingVectorSpace)).toEqual([
+      BGE_SMALL_VECTOR_SPACE,
+      BGE_SMALL_VECTOR_SPACE,
+    ]);
   });
 });
 
