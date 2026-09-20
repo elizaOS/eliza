@@ -1,8 +1,10 @@
 /**
  * Inbound Slack files must reach `Media` with the fetchable `url_private` /
  * `url_private_download` URL Slack actually sends (#31767). Deterministic:
- * the boundary mapper is exercised directly and through the real
- * `buildMemoryFromMessage` with the service's lookups stubbed.
+ * the boundary mapper is exercised directly, through the real
+ * `buildMemoryFromMessage`, and through the real `fetchConnectorMessages`
+ * thread path over a wire-shape `conversations.replies` fake, with the
+ * service's room/user lookups stubbed.
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -92,6 +94,78 @@ describe("slack inbound files", () => {
       files: [wireFile],
     })) as Memory;
     expect(memory.content.attachments).toEqual([
+      expect.objectContaining({
+        id: "F0001",
+        url: wireFile.url_private_download,
+        source: "slack",
+      }),
+    ]);
+  });
+
+  it("carries the url through a thread history read", async () => {
+    const runtime = {
+      agentId: "00000000-0000-0000-0000-000000000001",
+      logger: { warn: vi.fn(), debug: vi.fn(), info: vi.fn(), error: vi.fn() },
+    } as unknown as IAgentRuntime;
+    const replies = vi.fn(async () => ({
+      messages: [
+        {
+          type: "message",
+          ts: "1700000000.000100",
+          thread_ts: "1700000000.000100",
+          user: "U0001",
+          text: "thread root",
+        },
+        {
+          type: "message",
+          subtype: "file_share",
+          ts: "1700000000.000200",
+          thread_ts: "1700000000.000100",
+          user: "U0002",
+          text: "here is the report",
+          files: [wireFile],
+        },
+      ],
+      response_metadata: { next_cursor: "" },
+    }));
+    const service = Object.assign(
+      Object.create(SlackService.prototype) as SlackService,
+      {
+        runtime,
+        client: { conversations: { replies } },
+        defaultAccountId: "default",
+        accountStates: new Map(),
+        getRoomId: vi.fn(async () => "00000000-0000-0000-0000-00000000000a"),
+        getUser: vi.fn(async () => null),
+        getChannel: vi.fn(async () => null),
+      },
+    );
+    const memories = await service.fetchConnectorMessages(
+      { runtime },
+      {
+        accountId: "default",
+        target: {
+          source: "slack",
+          channelId: "C1",
+          threadId: "1700000000.000100",
+        },
+      },
+    );
+    expect(replies).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: "C1", ts: "1700000000.000100" }),
+    );
+    const byTs = new Map(
+      memories.map((memory) => [
+        (memory.content.metadata as { slackMessageTs?: string } | undefined)
+          ?.slackMessageTs ?? memory.content.text,
+        memory,
+      ]),
+    );
+    const fileMessage = memories.find(
+      (memory) => memory.content.text === "here is the report",
+    );
+    expect(byTs.size).toBe(2);
+    expect(fileMessage?.content.attachments).toEqual([
       expect.objectContaining({
         id: "F0001",
         url: wireFile.url_private_download,
