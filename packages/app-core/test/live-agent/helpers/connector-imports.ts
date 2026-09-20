@@ -1,6 +1,8 @@
 /**
- * Resolves connector modules for live tests through installed package exports,
- * direct ESM entries and local checkout paths, then selects their plugin export.
+ * Plugin import resolution helpers for connector live tests. Resolves package
+ * names, node_modules dist entries, and local checkout paths for first-party
+ * connector plugins. Filesystem fallbacks are rooted at the app-core package,
+ * independently of the caller's working directory.
  */
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -41,6 +43,7 @@ export function isPackageImportResolvable(packageName: string): boolean {
     require.resolve(packageName);
     return true;
   } catch {
+    // error-policy:J4 An unavailable installation lets the live suite try its explicit filesystem fallbacks.
     return false;
   }
 }
@@ -131,7 +134,11 @@ export function resolveTelegramPluginImportSpecifier(): string | null {
         relativeEntryPath: "dist/index.js",
       },
     ],
-    localEntries: ["../plugins/plugin-telegram/dist/index"],
+    localEntries: [
+      "../../plugins/plugin-telegram/dist/index.js",
+      "../plugins/plugin-telegram/dist/index.js",
+      "../plugins/plugin-telegram/dist/index",
+    ],
   });
 }
 
@@ -153,8 +160,12 @@ export function resolveLensPluginImportSpecifier(): string | null {
       },
     ],
     localEntries: [
+      "../../plugins/plugin-lens/dist/index.js",
+      "../plugins/plugin-lens/dist/index.js",
       "../plugins/plugin-lens/dist/index",
+      "../../client-lens/dist/index.js",
       "../../client-lens/dist/index",
+      "../../client-lens/src/index.ts",
       "../../client-lens/src/index",
     ],
   });
@@ -165,7 +176,10 @@ const FARCASTER_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-farcaster";
 export function resolveFarcasterPluginImportSpecifier(): string | null {
   return resolvePluginImportSpecifier({
     packageName: FARCASTER_PLUGIN_PACKAGE_NAME,
-    localEntries: ["../plugins/plugin-farcaster/dist/node/index.node.js"],
+    localEntries: [
+      "../../plugins/plugin-farcaster/dist/node/index.node.js",
+      "../plugins/plugin-farcaster/dist/node/index.node.js",
+    ],
   });
 }
 
@@ -174,7 +188,11 @@ const NOSTR_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-nostr";
 export function resolveNostrPluginImportSpecifier(): string | null {
   return resolvePluginImportSpecifier({
     packageName: NOSTR_PLUGIN_PACKAGE_NAME,
-    localEntries: ["../plugins/plugin-nostr/dist/index"],
+    localEntries: [
+      "../../plugins/plugin-nostr/dist/index.js",
+      "../plugins/plugin-nostr/dist/index.js",
+      "../plugins/plugin-nostr/dist/index",
+    ],
   });
 }
 
@@ -183,7 +201,11 @@ const MATRIX_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-matrix";
 export function resolveMatrixPluginImportSpecifier(): string | null {
   return resolvePluginImportSpecifier({
     packageName: MATRIX_PLUGIN_PACKAGE_NAME,
-    localEntries: ["../plugins/plugin-matrix/dist/index"],
+    localEntries: [
+      "../../plugins/plugin-matrix/dist/index.js",
+      "../plugins/plugin-matrix/dist/index.js",
+      "../plugins/plugin-matrix/dist/index",
+    ],
   });
 }
 
@@ -198,6 +220,10 @@ export function resolveFeishuPluginImportSpecifier(): string | null {
         relativeEntryPath: "dist/index.js",
       },
     ],
-    localEntries: ["../plugins/plugin-feishu/dist/index"],
+    localEntries: [
+      "../../plugins/plugin-feishu/dist/index.js",
+      "../plugins/plugin-feishu/dist/index.js",
+      "../plugins/plugin-feishu/dist/index",
+    ],
   });
 }
