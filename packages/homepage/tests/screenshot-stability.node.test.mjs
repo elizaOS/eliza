@@ -19,55 +19,19 @@ import {
 
 const SIZE = 32;
 
-/** Multi-color PNG whose pixels derive from `seed`, so seeds differ bytewise. */
-async function colorfulPng(seed) {
+/** Deterministic color field with optional visible pixels or sub-threshold whole-frame dither. */
+async function colorfulPng(seed, { perturbedPixels = 0, dither = 0 } = {}) {
   const raw = Buffer.alloc(SIZE * SIZE * 3);
   for (let y = 0; y < SIZE; y += 1) {
     for (let x = 0; x < SIZE; x += 1) {
       const i = (y * SIZE + x) * 3;
-      raw[i] = (x * 8 + seed * 37) % 256;
-      raw[i + 1] = (y * 8 + seed * 53) % 256;
-      raw[i + 2] = (x * y + seed) % 256;
+      raw[i] = Math.min(255, ((x * 8 + seed * 37) % 256) + dither);
+      raw[i + 1] = Math.min(255, ((y * 8 + seed * 53) % 256) + dither);
+      raw[i + 2] = Math.min(255, ((x * y + seed) % 256) + dither);
     }
   }
-  return sharp(raw, { raw: { width: SIZE, height: SIZE, channels: 3 } })
-    .png()
-    .toBuffer();
-}
-
-/** Variant of colorfulPng(seed) with `pixels` pixels visibly changed. */
-async function perturbedPng(seed, pixels) {
-  const raw = Buffer.alloc(SIZE * SIZE * 3);
-  for (let y = 0; y < SIZE; y += 1) {
-    for (let x = 0; x < SIZE; x += 1) {
-      const i = (y * SIZE + x) * 3;
-      raw[i] = (x * 8 + seed * 37) % 256;
-      raw[i + 1] = (y * 8 + seed * 53) % 256;
-      raw[i + 2] = (x * y + seed) % 256;
-    }
-  }
-  for (let p = 0; p < pixels; p += 1) {
+  for (let p = 0; p < perturbedPixels; p += 1) {
     raw[p * 3] = (raw[p * 3] + 128) % 256;
-  }
-  return sharp(raw, { raw: { width: SIZE, height: SIZE, channels: 3 } })
-    .png()
-    .toBuffer();
-}
-
-/**
- * Variant of colorfulPng(seed) with every channel of every pixel nudged by
- * `amount` — whole-frame dither below pixelmatch's perceptual threshold,
- * the shape WebGL/video compositing noise takes in real captures.
- */
-async function ditheredPng(seed, amount) {
-  const raw = Buffer.alloc(SIZE * SIZE * 3);
-  for (let y = 0; y < SIZE; y += 1) {
-    for (let x = 0; x < SIZE; x += 1) {
-      const i = (y * SIZE + x) * 3;
-      raw[i] = Math.min(255, ((x * 8 + seed * 37) % 256) + amount);
-      raw[i + 1] = Math.min(255, ((y * 8 + seed * 53) % 256) + amount);
-      raw[i + 2] = Math.min(255, ((x * y + seed) % 256) + amount);
-    }
   }
   return sharp(raw, { raw: { width: SIZE, height: SIZE, channels: 3 } })
     .png()
@@ -124,7 +88,7 @@ test("consecutive frames within the pixel tolerance count as stable", async () =
   // 32x32 = 1024 pixels; 10 changed pixels ≈ 0.98% < the 2% default ratio,
   // while PNG compression makes the two buffers differ in far more bytes.
   const a = await colorfulPng(6);
-  const nearA = await perturbedPng(6, 10);
+  const nearA = await colorfulPng(6, { perturbedPixels: 10 });
   const { page, callCount } = fakePage([a, nearA]);
   const result = await captureScreenshotWithQualityRetry(
     page,
@@ -143,7 +107,7 @@ test("whole-frame dither below the perceptual threshold counts as stable", async
   // This is the compositing noise real WebGL/video pages produce between
   // consecutive captures while the golden diff itself stays green.
   const a = await colorfulPng(7);
-  const jittered = await ditheredPng(7, 6);
+  const jittered = await colorfulPng(7, { dither: 6 });
   const { page, callCount } = fakePage([a, jittered]);
   const result = await captureScreenshotWithQualityRetry(
     page,
@@ -171,7 +135,12 @@ test("keeps capturing while frames change, then returns the settled frame", asyn
 
 test("a blank frame resets stability instead of pairing with a real frame", async () => {
   const a = await colorfulPng(3);
-  const { page, callCount } = fakePage([await blankPng(), a, Buffer.from(a)]);
+  const { page, callCount } = fakePage([
+    a,
+    await blankPng(),
+    a,
+    Buffer.from(a),
+  ]);
   const result = await captureScreenshotWithQualityRetry(
     page,
     "blank-reset",
@@ -179,7 +148,7 @@ test("a blank frame resets stability instead of pairing with a real frame", asyn
     retry,
   );
   assert.ok(result.equals(a));
-  assert.equal(callCount(), 3);
+  assert.equal(callCount(), 4);
 });
 
 test("throws ScreenshotUnstableError naming the byte diff when frames never settle", async () => {

@@ -1,29 +1,6 @@
 /**
- * Runner state-machine fuzz (#10723 #10721).
- *
- * Drives the REAL runner (in-memory store, scripted dispatcher — same shape
- * as dispatch-policy-enforcement.test.ts) through randomized sequences of
- * schedule / snooze / skip / complete / dismiss / acknowledge / reopen /
- * escalate / edit / fire verbs with randomized dispatch outcomes (success,
- * void, every typed failure reason, and a throwing dispatcher) and a
- * monotonically advancing clock.
- *
- * Invariants checked on every run:
- *  - every persisted task's `state.status` is a valid enum member;
- *  - no dispatch ever happens without a successful atomic fire-claim
- *    (dispatch records ⊆ claim records, matched on taskId + firedAtIso);
- *  - `metadata.pendingDispatch` never survives a snooze or a successful
- *    dispatch;
- *  - the state log is consistent: first row is "scheduled", running count of
- *    "fired" rows never exceeds "fire_attempt" rows, and the current status
- *    always has a matching transition row;
- *  - verbs never throw except the documented legality guards (reopen on a
- *    non-terminal task / expired reopen window), and fire results are always
- *    a member of the ScheduledTaskFireResult union with the documented
- *    post-conditions per kind.
- *
- * Seeds are pinned so failures reproduce; fast-check prints the failing
- * counterexample (the exact op sequence) on assertion failure.
+ * Exercises real runner claim, continuation and state-log invariants over seeded,
+ * shrinkable operation sequences with in-memory storage and scripted dispatch.
  */
 
 import fc from "fast-check";
@@ -66,17 +43,6 @@ import type {
 
 const AGENT_ID = "agent-runner-fuzz";
 const SEED = 20260702;
-
-const VALID_STATUSES: ReadonlySet<ScheduledTaskStatus> = new Set([
-  "scheduled",
-  "fired",
-  "acknowledged",
-  "completed",
-  "skipped",
-  "expired",
-  "failed",
-  "dismissed",
-]);
 
 /** Every persisted status must have a matching state-log transition row. */
 const STATUS_TO_TRANSITION: Record<
@@ -166,19 +132,23 @@ type FuzzOp =
   | { op: "verb"; verb: ScheduledTaskVerb; pick: number; minutes: number }
   | { op: "fire"; pick: number; refire: boolean; resultIdx: number };
 
+const arbSchedule = fc.record({
+  op: fc.constant("schedule" as const),
+  kindIdx: fc.nat(7),
+  priority: fc.constantFrom<ScheduledTask["priority"]>("low", "medium", "high"),
+  triggerIdx: fc.nat(9),
+  withPipeline: fc.boolean(),
+});
+
+const fireFields = {
+  op: fc.constant("fire" as const),
+  pick: fc.nat(30),
+  refire: fc.boolean(),
+};
+
 const arbOp: fc.Arbitrary<FuzzOp> = fc.oneof(
   {
-    arbitrary: fc.record({
-      op: fc.constant("schedule" as const),
-      kindIdx: fc.nat(7),
-      priority: fc.constantFrom<ScheduledTask["priority"]>(
-        "low",
-        "medium",
-        "high",
-      ),
-      triggerIdx: fc.nat(9),
-      withPipeline: fc.boolean(),
-    }),
+    arbitrary: arbSchedule,
     weight: 3,
   },
   {
@@ -199,9 +169,7 @@ const arbOp: fc.Arbitrary<FuzzOp> = fc.oneof(
   },
   {
     arbitrary: fc.record({
-      op: fc.constant("fire" as const),
-      pick: fc.nat(30),
-      refire: fc.boolean(),
+      ...fireFields,
       resultIdx: fc.nat(DISPATCH_POOL.length - 1),
     }),
     weight: 4,
@@ -301,11 +269,8 @@ function makeHarness(startIso: string): FuzzHarness {
     subjectStore: { wasUpdatedSince: () => false },
     dispatcher: {
       async dispatch(record) {
-        if (script === "throw") {
-          dispatches.push(record);
-          throw new Error("fuzz transport exploded");
-        }
         dispatches.push(record);
+        if (script === "throw") throw new Error("fuzz transport exploded");
         return script;
       },
     },
@@ -353,7 +318,7 @@ function isTerminalStatus(status: ScheduledTaskStatus): boolean {
 
 async function assertStatusesValid(store: ScheduledTaskStore): Promise<void> {
   for (const task of await store.list()) {
-    expect(VALID_STATUSES.has(task.state.status)).toBe(true);
+    expect(Object.hasOwn(STATUS_TO_TRANSITION, task.state.status)).toBe(true);
   }
 }
 
@@ -404,7 +369,7 @@ async function runSequence(ops: FuzzOp[]): Promise<void> {
       case "fire": {
         const task = await pickTask(h.store, op.pick);
         if (!task) break;
-        h.setDispatchScript(DISPATCH_POOL[op.resultIdx] ?? { ok: true });
+        h.setDispatchScript(DISPATCH_POOL[op.resultIdx]);
         const result = await h.runner.fireWithResult(task.taskId, {
           allowTerminalRefire: op.refire,
         });
@@ -498,17 +463,7 @@ describe("runner fuzz: randomized verb sequences hold the state-machine invarian
   it("dispatch-failure storms (every fire fails or throws) never corrupt state", async () => {
     const arbFailingOp: fc.Arbitrary<FuzzOp> = fc.oneof(
       {
-        arbitrary: fc.record({
-          op: fc.constant("schedule" as const),
-          kindIdx: fc.nat(7),
-          priority: fc.constantFrom<ScheduledTask["priority"]>(
-            "low",
-            "medium",
-            "high",
-          ),
-          triggerIdx: fc.nat(9),
-          withPipeline: fc.boolean(),
-        }),
+        arbitrary: arbSchedule,
         weight: 2,
       },
       {
@@ -520,9 +475,7 @@ describe("runner fuzz: randomized verb sequences hold the state-machine invarian
       },
       {
         arbitrary: fc.record({
-          op: fc.constant("fire" as const),
-          pick: fc.nat(30),
-          refire: fc.boolean(),
+          ...fireFields,
           // Only failing outcomes: indices 3.. of DISPATCH_POOL.
           resultIdx: fc.integer({ min: 3, max: DISPATCH_POOL.length - 1 }),
         }),

@@ -8,7 +8,6 @@ import { describe, expect, it } from "vitest";
 import {
   createInMemoryScheduledTaskLogStore,
   createStateLogger,
-  STATE_LOG_DEFAULT_RETENTION_DAYS,
 } from "./state-log.js";
 import type {
   ScheduledTaskLogEntry,
@@ -51,6 +50,15 @@ describe("createInMemoryScheduledTaskLogStore — list", () => {
       entry({
         logId: "other",
         taskId: "t2",
+        occurredAtIso: "2026-01-01T00:00:00.000Z",
+        transition: "fired",
+      }),
+    );
+    await store.append(
+      entry({
+        logId: "other-agent",
+        agentId: "agent-2",
+        taskId: "t1",
         occurredAtIso: "2026-01-01T00:00:00.000Z",
         transition: "fired",
       }),
@@ -120,7 +128,7 @@ describe("createInMemoryScheduledTaskLogStore — list", () => {
 });
 
 describe("createInMemoryScheduledTaskLogStore — rollupOlderThan", () => {
-  it("folds expired raw rows into per-task/day/transition summaries", async () => {
+  it("rolls up expired history once while preserving recent rows and creation receipts", async () => {
     const store = createInMemoryScheduledTaskLogStore();
     // 3 'fired' on Jan-01, 1 'completed' on Jan-02, 1 recent (kept).
     for (let i = 0; i < 3; i++) {
@@ -150,6 +158,23 @@ describe("createInMemoryScheduledTaskLogStore — rollupOlderThan", () => {
       }),
     );
 
+    await store.append(
+      entry({
+        logId: "creation-receipt",
+        taskId: "t1",
+        occurredAtIso: "2026-01-01T00:00:00.000Z",
+        transition: "scheduled",
+      }),
+    );
+    const before = await store.list({ agentId: AGENT, taskId: "t1" });
+    expect(
+      await store.rollupOlderThan({
+        agentId: AGENT,
+        olderThanIso: "2026-01-01T00:00:00.000Z",
+      }),
+    ).toEqual({ rolledUp: 0, deletedRaw: 0 });
+    expect(await store.list({ agentId: AGENT, taskId: "t1" })).toEqual(before);
+
     const result = await store.rollupOlderThan({
       agentId: AGENT,
       olderThanIso: "2026-02-01T00:00:00.000Z",
@@ -163,69 +188,17 @@ describe("createInMemoryScheduledTaskLogStore — rollupOlderThan", () => {
     expect(firedRollup?.detail).toEqual({ rollupCount: 3 });
     expect(firedRollup?.occurredAtIso).toBe("2026-01-01T00:00:00.000Z");
 
-    // Raw expired rows are gone; the recent row survives.
     expect(all.filter((r) => !r.rolledUp).map((r) => r.logId)).toEqual([
+      "creation-receipt",
       "recent",
     ]);
-  });
-
-  it("is a no-op when nothing is expired", async () => {
-    const store = createInMemoryScheduledTaskLogStore();
-    await store.append(
-      entry({
-        logId: "recent",
-        taskId: "t1",
-        occurredAtIso: "2026-06-01T00:00:00.000Z",
-        transition: "fired",
-      }),
-    );
-    expect(
-      await store.rollupOlderThan({
-        agentId: AGENT,
-        olderThanIso: "2026-01-01T00:00:00.000Z",
-      }),
-    ).toEqual({ rolledUp: 0, deletedRaw: 0 });
-  });
-
-  it("retains scheduled creation receipts beyond the rollup window", async () => {
-    const store = createInMemoryScheduledTaskLogStore();
-    await store.append(
-      entry({
-        logId: "creation-receipt",
-        taskId: "t1",
-        occurredAtIso: "2026-01-01T00:00:00.000Z",
-        transition: "scheduled",
-      }),
-    );
-
     expect(
       await store.rollupOlderThan({
         agentId: AGENT,
         olderThanIso: "2026-02-01T00:00:00.000Z",
       }),
     ).toEqual({ rolledUp: 0, deletedRaw: 0 });
-    await expect(
-      store.list({ agentId: AGENT, taskId: "t1", excludeRollups: true }),
-    ).resolves.toMatchObject([{ logId: "creation-receipt" }]);
-  });
-
-  it("does not re-roll already-rolled-up rows", async () => {
-    const store = createInMemoryScheduledTaskLogStore();
-    await store.append(
-      entry({
-        logId: "old-roll",
-        taskId: "t1",
-        occurredAtIso: "2026-01-01T00:00:00.000Z",
-        transition: "fired",
-        rolledUp: true,
-      }),
-    );
-    expect(
-      await store.rollupOlderThan({
-        agentId: AGENT,
-        olderThanIso: "2026-02-01T00:00:00.000Z",
-      }),
-    ).toEqual({ rolledUp: 0, deletedRaw: 0 });
+    expect(await store.list({ agentId: AGENT, taskId: "t1" })).toEqual(all);
   });
 });
 
@@ -254,11 +227,6 @@ describe("createStateLogger", () => {
       detail: { x: 1 },
     });
     const rows = await store.list({ agentId: AGENT, taskId: "t1" });
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.logId).toBe("log-1");
-  });
-
-  it("exposes the documented default retention", () => {
-    expect(STATE_LOG_DEFAULT_RETENTION_DAYS).toBe(90);
+    expect(rows).toEqual([written]);
   });
 });

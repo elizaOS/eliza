@@ -53,10 +53,6 @@ describe("ConsolidationRegistry", () => {
       mode: "merge",
       sortBy: "priority_desc",
     });
-    const tasks: ScheduledTask[] = (
-      ["low", "high", "medium"] as ScheduledTaskPriority[]
-    ).map((priority, _i) => baseTask({ taskId: `t-${priority}`, priority }));
-    void tasks; // silence unused if any
     const taskList: ScheduledTask[] = ["low", "high", "medium"].map((p, i) =>
       baseTask({
         taskId: `t-${p}-${i}`,
@@ -109,39 +105,30 @@ describe("ConsolidationRegistry", () => {
 });
 
 describe("AnchorRegistry", () => {
-  it("rejects duplicate registrations without `override`", () => {
+  it("rejects duplicate anchors and changes resolution only on explicit override", async () => {
     const reg = createAnchorRegistry();
-    reg.register({
-      anchorKey: "wake.confirmed",
-      describe: { label: "test", provider: "tests" },
-      resolve: () => ({ atIso: "2026-05-09T07:00:00.000Z" }),
-    });
-    expect(() =>
-      reg.register({
-        anchorKey: "wake.confirmed",
-        describe: { label: "another", provider: "tests" },
-        resolve: () => null,
-      }),
-    ).toThrow(/duplicate/);
-  });
-
-  it("allows override when explicitly opted in (richer anchor replaces fallback)", () => {
-    const reg = createAnchorRegistry();
-    reg.register({
+    const context: AnchorContext = {
+      nowIso: "2026-05-09T06:00:00.000Z",
+      ownerFacts: { timezone: "UTC" },
+    };
+    const fallback = {
       anchorKey: "wake.confirmed",
       describe: { label: "fallback", provider: "tests" },
       resolve: () => ({ atIso: "2026-05-09T07:00:00.000Z" }),
+    };
+    const replacement = {
+      ...fallback,
+      resolve: () => ({ atIso: "2026-05-09T07:30:00.000Z" }),
+    };
+    reg.register(fallback);
+    expect(() => reg.register(replacement)).toThrow(/duplicate/);
+    await expect(reg.resolve("wake.confirmed", context)).resolves.toEqual({
+      atIso: "2026-05-09T07:00:00.000Z",
     });
-    reg.register(
-      {
-        anchorKey: "wake.confirmed",
-        describe: { label: "real", provider: "plugin-health" },
-        resolve: () => ({ atIso: "2026-05-09T07:30:00.000Z" }),
-      },
-      { override: true },
-    );
-    const got = reg.get("wake.confirmed");
-    expect(got?.describe.label).toBe("real");
+    reg.register(replacement, { override: true });
+    await expect(reg.resolve("wake.confirmed", context)).resolves.toEqual({
+      atIso: "2026-05-09T07:30:00.000Z",
+    });
   });
 
   it("resolves the fallback wake anchor through compatible gap handling", async () => {

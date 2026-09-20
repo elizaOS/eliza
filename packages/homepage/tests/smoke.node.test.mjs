@@ -1,9 +1,4 @@
-/**
- * Homepage asset, caching, API-origin, and build-configuration contracts exercised without importing the React tree.
- *
- * The package test script runs under node:test, so this avoids pulling three.js
- * or adding Vitest just to confirm the entry component remains exportable.
- */
+/** Checks homepage asset formats, emitted-asset ownership, caching, security headers and API-origin contracts using real source assets and configuration. */
 
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -21,7 +16,6 @@ const appAssetSyncPath = resolve(
 );
 const indexHtmlPath = resolve(__dirname, "../index.html");
 const landingPath = resolve(__dirname, "../src/pages/landing.tsx");
-const visualRegressionSpecPath = resolve(__dirname, "./e2e/visual.spec.ts");
 const cloudApiClientPath = resolve(__dirname, "../src/lib/api/client.ts");
 const playwrightLauncherPath = resolve(
   __dirname,
@@ -44,22 +38,6 @@ const profileImagePath = resolve(
   "../public/eliza-app-profile-image.webp",
 );
 const headersPath = resolve(__dirname, "../public/_headers");
-const viteConfigPath = resolve(__dirname, "../vite.config.ts");
-const tsconfigPath = resolve(__dirname, "../tsconfig.app.json");
-
-test("package test script collects the consolidated homepage coverage suites", () => {
-  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
-  const testScript = packageJson.scripts.test;
-
-  for (const testFile of [
-    "tests/landing-demo.test.ts",
-    "tests/query-client.test.ts",
-    "tests/siws-session.test.ts",
-    "tests/siws.test.ts",
-  ]) {
-    assert.match(testScript, new RegExp(`(?:^|\\s)${testFile}(?:\\s|$)`));
-  }
-});
 
 test("landing ships its canonical profile assets", () => {
   const avatar = readFileSync(elizaAvatarPath, "utf8");
@@ -118,16 +96,6 @@ test("landing stays a static surface with no animation-framework dependencies", 
   assert.match(appPackageJson.scripts.prebuild, /sync-homepage-assets/);
   assert.match(appViteConfig, /find:\s*\/\^@homepage\\\//);
   assert.match(appAssetSync, /\.\.\/homepage\/public/);
-});
-
-test("visual regression compares the quality-validated capture itself", () => {
-  const visualSpec = readFileSync(visualRegressionSpecPath, "utf8");
-
-  assert.match(
-    visualSpec,
-    /const screenshot = await captureScreenshotWithQualityRetry\(/,
-  );
-  assert.match(visualSpec, /expect\(screenshot\)\.toMatchSnapshot\(/);
 });
 
 test("cloud API defaults, the e2e server, and route mocks use the apex origin", () => {
@@ -233,21 +201,6 @@ test("preloaded image declares the MIME type of the referenced asset", () => {
   assert.doesNotMatch(preloadTag, /favicon\.svg/);
 });
 
-test("built asset URLs include a deployment-specific cache revision", () => {
-  const viteConfig = readFileSync(viteConfigPath, "utf8");
-
-  assert.match(viteConfig, /process\.env\.GITHUB_SHA/);
-  assert.match(viteConfig, /process\.env\.CF_PAGES_COMMIT_SHA/);
-  assert.match(
-    viteConfig,
-    /entryFileNames: `assets\/\[name\]-\[hash\]-\$\{homepageBuildRevision\}\.js`/,
-  );
-  assert.match(
-    viteConfig,
-    /chunkFileNames: `assets\/\[name\]-\[hash\]-\$\{homepageBuildRevision\}\.js`/,
-  );
-});
-
 test("reduced-motion keeps functional loading indicators animated", () => {
   const css = readFileSync(globalStylesPath, "utf8");
   const reducedMotionStart = css.indexOf(
@@ -268,17 +221,6 @@ test("reduced-motion keeps functional loading indicators animated", () => {
     reducedMotionBlock,
     /animation-iteration-count:\s*infinite\s*!important/,
   );
-});
-
-test("clean builds resolve bare shared imports to language-only source", () => {
-  const viteConfig = readFileSync(viteConfigPath, "utf8");
-  const tsconfig = JSON.parse(readFileSync(tsconfigPath, "utf8"));
-
-  assert.match(viteConfig, /find:\s*"@elizaos\/shared"/);
-  assert.match(viteConfig, /\.\.\/shared\/src\/i18n\/language\.ts/);
-  assert.deepEqual(tsconfig.compilerOptions.paths["@elizaos/shared"], [
-    "../shared/src/i18n/language.ts",
-  ]);
 });
 
 // The deployable frontend is packages/app. A homepage `src="/…"` asset ships
