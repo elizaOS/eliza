@@ -33,6 +33,10 @@ import {
   type VoiceContinuousMode,
 } from "../../voice/voice-chat-types";
 import { voiceSettingsController } from "../../voice/voice-settings-controller";
+import {
+  readVadAutoStop as readBroadcastVadAutoStop,
+  readContinuousMode,
+} from "../../voice/voice-settings-payload";
 import { VoicePresetSettingsContent } from "./IdentitySettingsSection";
 import {
   type VadAutoStopPrefs,
@@ -108,6 +112,10 @@ export function VoiceSectionMount(): React.ReactElement {
   const [prefs, setPrefs] = React.useState<VoiceSectionPrefs>(
     DEFAULT_VOICE_SECTION_PREFS,
   );
+  // Applied fields received during the initial read override only their stale
+  // counterparts; unrelated persisted preferences still hydrate normally.
+  const pendingHydrationUpdates =
+    React.useRef<Partial<VoiceSectionPrefs> | null>({});
   const [persistError, setPersistError] = React.useState<string | null>(null);
   // Wake-word listening is a device-local pref (localStorage mirror the shell
   // reads synchronously — see useShellController's useWakeListenWindow), not part
@@ -122,23 +130,33 @@ export function VoiceSectionMount(): React.ReactElement {
 
   useViewEvent(VOICE_SETTINGS_APPLY_EVENT, (event) => {
     const payload = event.payload as VoiceSettingsApplyPayload;
+    const continuous = readContinuousMode(payload.continuous);
+    const vadAutoStop = readBroadcastVadAutoStop(payload.vadAutoStop);
     if (
+      !continuous &&
+      !vadAutoStop &&
       typeof payload.osIntentAutoStartVoice !== "boolean" &&
       typeof payload.osIntentAutoStartTranscription !== "boolean"
     ) {
       return;
     }
-    setPrefs((current) => ({
-      ...current,
-      osIntentAutoStartVoice:
-        typeof payload.osIntentAutoStartVoice === "boolean"
-          ? payload.osIntentAutoStartVoice
-          : current.osIntentAutoStartVoice,
-      osIntentAutoStartTranscription:
-        typeof payload.osIntentAutoStartTranscription === "boolean"
-          ? payload.osIntentAutoStartTranscription
-          : current.osIntentAutoStartTranscription,
-    }));
+    const applied: Partial<VoiceSectionPrefs> = {
+      ...(continuous ? { continuous } : {}),
+      ...(vadAutoStop ? { vadAutoStop } : {}),
+      ...(typeof payload.osIntentAutoStartVoice === "boolean"
+        ? { osIntentAutoStartVoice: payload.osIntentAutoStartVoice }
+        : {}),
+      ...(typeof payload.osIntentAutoStartTranscription === "boolean"
+        ? {
+            osIntentAutoStartTranscription:
+              payload.osIntentAutoStartTranscription,
+          }
+        : {}),
+    };
+    if (pendingHydrationUpdates.current !== null) {
+      Object.assign(pendingHydrationUpdates.current, applied);
+    }
+    setPrefs((current) => ({ ...current, ...applied }));
   });
 
   React.useEffect(() => {
@@ -154,7 +172,11 @@ export function VoiceSectionMount(): React.ReactElement {
         // here would leave the capture hot path with no value at all).
       }
       if (cancelled) return;
-      const loaded = readStoredVoicePrefs(config);
+      const loaded = {
+        ...readStoredVoicePrefs(config),
+        ...pendingHydrationUpdates.current,
+      };
+      pendingHydrationUpdates.current = null;
       setPrefs(loaded);
       // Seed the local mirrors so the capture hot path reads the server value.
       voiceSettingsController.applyDeviceSettings(loaded);

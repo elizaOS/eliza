@@ -25,36 +25,11 @@ import {
   saveContinuousChatMode,
   saveOsIntentAutoStartConsent,
   saveVadAutoStop,
-  type VadAutoStopValue,
 } from "../state/persistence";
-import {
-  VOICE_CONTINUOUS_MODES,
-  type VoiceContinuousMode,
-} from "./voice-chat-types";
+import { readContinuousMode, readVadAutoStop } from "./voice-settings-payload";
 
 export type { VoiceSettingsApplyPayload } from "@elizaos/shared/events";
 export { VOICE_SETTINGS_APPLY_EVENT };
-
-function readContinuousMode(value: unknown): VoiceContinuousMode | null {
-  return typeof value === "string" &&
-    VOICE_CONTINUOUS_MODES.includes(value as VoiceContinuousMode)
-    ? (value as VoiceContinuousMode)
-    : null;
-}
-
-function readVadAutoStop(value: unknown): VadAutoStopValue | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const { silenceMs, speechRmsThreshold } = value as Record<string, unknown>;
-  if (
-    typeof silenceMs !== "number" ||
-    !Number.isFinite(silenceMs) ||
-    typeof speechRmsThreshold !== "number" ||
-    !Number.isFinite(speechRmsThreshold)
-  ) {
-    return null;
-  }
-  return { silenceMs, speechRmsThreshold };
-}
 
 export function useVoiceSettingsApplyChannel(): void {
   useViewEvent(VOICE_SETTINGS_APPLY_EVENT, (event) => {
