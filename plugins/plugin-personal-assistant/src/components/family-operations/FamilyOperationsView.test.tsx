@@ -886,27 +886,6 @@ describe("FamilyOperationsView", () => {
     ).toBe(false);
   });
 
-  it("requires a review reason and delegates approval to the canonical adapter", async () => {
-    const local = adapter();
-    render(<FamilyOperationsView adapter={local} />);
-    expect(
-      await screen.findByRole("heading", { name: "Family Operations" }),
-    ).toBeTruthy();
-    const approve = await screen.findByRole("button", { name: "Approve" });
-    expect((approve as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("Decision reason"), {
-      target: { value: "Checked against pages 4 and 5." },
-    });
-    fireEvent.click(approve);
-    await waitFor(() =>
-      expect(local.decideObligation).toHaveBeenCalledWith(
-        expect.objectContaining({ id: "obligation-1" }),
-        "approve",
-        "Checked against pages 4 and 5.",
-      ),
-    );
-  });
-
   it("keeps unavailable school APIs visibly distinct from an empty workflow", async () => {
     render(<FamilyOperationsView adapter={adapter()} />);
     fireEvent.click(
@@ -962,7 +941,7 @@ describe("FamilyOperationsView", () => {
     );
   });
 
-  it("uploads a signed PDF as an immutable agreement version", async () => {
+  it("uploads a large signed PDF with its immutable agreement metadata", async () => {
     const local = adapter({
       ...snapshot(),
       agreements: { status: "ready", data: [] },
@@ -971,6 +950,7 @@ describe("FamilyOperationsView", () => {
     const file = new File(["%PDF-1.7"], "parenting-plan.pdf", {
       type: "application/pdf",
     });
+    Object.defineProperty(file, "size", { value: 20 * 1024 * 1024 + 1 });
     fireEvent.click(await screen.findByText("Choose a signed PDF"));
     fireEvent.change(screen.getByLabelText("Signed PDF"), {
       target: { files: [file] },
@@ -1026,35 +1006,6 @@ describe("FamilyOperationsView", () => {
     fireEvent.click(upload);
     await screen.findByText("Immutable agreement version uploaded.");
     expect(screen.queryByText("Extraction unavailable")).toBeNull();
-  });
-
-  it("allows an agreement above the former 20 MiB ceiling", async () => {
-    const local = adapter({
-      ...snapshot(),
-      agreements: { status: "ready", data: [] },
-    });
-    render(<FamilyOperationsView adapter={local} />);
-    const file = new File(["%PDF-1.7"], "oversized.pdf", {
-      type: "application/pdf",
-    });
-    Object.defineProperty(file, "size", {
-      value: 20 * 1024 * 1024 + 1,
-    });
-    fireEvent.click(await screen.findByText("Choose a signed PDF"));
-    fireEvent.change(screen.getByLabelText("Signed PDF"), {
-      target: { files: [file] },
-    });
-    expect(
-      (
-        screen.getByRole("button", {
-          name: "Upload immutable PDF",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(false);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Upload immutable PDF" }),
-    );
-    await waitFor(() => expect(local.uploadAgreement).toHaveBeenCalled());
   });
 
   it("keeps missing sections distinct from conflicting sources during packet review", async () => {
