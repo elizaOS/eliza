@@ -3,17 +3,17 @@
  * approval queue, audit log, commitment ledger, and versioned repositories.
  */
 import { randomUUID } from "node:crypto";
-import {
-  type EntityStore,
-  KNOWLEDGE_GRAPH_SERVICE,
-  resolveKnowledgeGraphService,
-} from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import {
   AgentEventService,
   createMessageMemory,
   promoteSubactionsToActions,
 } from "@elizaos/core";
+import {
+  type EntityStore,
+  KNOWLEDGE_GRAPH_SERVICE,
+  resolveKnowledgeGraphService,
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import {
   getScheduledTaskRunner,
   type ScheduledTaskRunnerHandle,

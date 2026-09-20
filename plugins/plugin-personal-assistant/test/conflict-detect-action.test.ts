@@ -6,6 +6,11 @@
  * against owner feed plus attendee free/busy windows.
  */
 
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: mocks.hasOwnerAccess,
+}));
+
 import type {
   HandlerOptions,
   IAgentRuntime,
@@ -16,10 +21,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(async () => true),
-}));
-
-vi.mock("@elizaos/agent", () => ({
-  hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
 import {

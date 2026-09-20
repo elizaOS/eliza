@@ -36,6 +36,16 @@
       },
       "import": "./dist/*.js",
       "default": "./dist/*.js"
+    },
+    "./knowledge-graph": {
+      "types": "./dist/knowledge-graph/index.d.ts",
+      "eliza-source": {
+        "types": "./src/knowledge-graph/index.ts",
+        "import": "./src/knowledge-graph/index.ts",
+        "default": "./src/knowledge-graph/index.ts"
+      },
+      "import": "./dist/knowledge-graph/index.js",
+      "default": "./dist/knowledge-graph/index.js"
     }
   },
   "files": [
@@ -53,13 +63,11 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "drizzle-orm": "0.45.2",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "@elizaos/plugin-sql": "workspace:*",
@@ -77,7 +85,9 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@electric-sql/pglite": "^0.4.0",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "scripts": {
     "build": "bun run build:js && bun run build:views && bun run build:types",

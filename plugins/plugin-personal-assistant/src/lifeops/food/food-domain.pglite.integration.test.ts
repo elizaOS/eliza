@@ -4,12 +4,12 @@
  */
 import { once } from "node:events";
 import http from "node:http";
+import type { AgentRuntime } from "@elizaos/core";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import type { AgentRuntime } from "@elizaos/core";
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {

@@ -19,13 +19,14 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { buildAccessContext, toWellFormedUnicode } from "@elizaos/core";
-import { aliasRecallQuery, embedRecallQuery } from "@elizaos/plugin-assistant";
+import {
+  aliasRecallQuery,
+  type DocumentsServiceLike,
+  embedRecallQuery,
+  getDocumentsService,
+} from "@elizaos/plugin-assistant";
 import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { extractCompatTextContent } from "./compat-utils.ts";
-import {
-  type DocumentsServiceLike,
-  getDocumentsService,
-} from "./documents-service-loader.ts";
 import { getErrorMessage } from "./server-helpers.ts";
 
 type DocumentMatch = Awaited<

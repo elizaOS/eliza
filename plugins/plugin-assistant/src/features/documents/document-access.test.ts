@@ -3,25 +3,9 @@
  * classification, scope parsing, facet filtering, read/mutate authorization,
  * and the public send/surface walls (#13593 / #13595 spill guards).
  */
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("@elizaos/core", () => ({
-  ChannelType: {
-    DM: "dm",
-    SELF: "self",
-    VOICE_DM: "voice_dm",
-    API: "api",
-    GROUP: "group",
-    VOICE_GROUP: "voice_group",
-    FEED: "feed",
-    THREAD: "thread",
-    WORLD: "world",
-    FORUM: "forum",
-    AUTONOMOUS: "autonomous",
-  },
-}));
 
 import { ChannelType } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import {
   canMutateDocumentMemory,
   canReadDocumentMemory,

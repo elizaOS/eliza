@@ -9,11 +9,11 @@
  *   POST   /api/lifeops/relationships/:id/retire
  */
 
+import type { AgentRuntime } from "@elizaos/core";
 import {
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import type { AgentRuntime } from "@elizaos/core";
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import type {
   Relationship,
   RelationshipFilter,

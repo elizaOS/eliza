@@ -4,16 +4,14 @@
  * spine receives only the typed, minimal result and never imports LifeOps.
  */
 
-import {
-  resolveKnowledgeGraphService,
-  resolveOwnerEntityId,
-} from "@elizaos/agent";
+import { resolveOwnerEntityId } from "@elizaos/agent";
 import {
   ElizaError,
   type IAgentRuntime,
   type Memory,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import {
   normalizeScheduledEventPayload,
   type OwnerFactsView,

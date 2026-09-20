@@ -114,7 +114,8 @@
     "ws": "^8.21.3",
     "@elizaos/credentials": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "@elizaos/plugin-relationships": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/corpus-tools": "workspace:*",

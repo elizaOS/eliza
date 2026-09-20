@@ -6,12 +6,12 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import { ElizaError, type IAgentRuntime, Service } from "@elizaos/core";
 import {
   CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
   CalendarService,
 } from "@elizaos/plugin-calendar";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import {
   getScheduledTaskRunner,
   type ScheduledTask,

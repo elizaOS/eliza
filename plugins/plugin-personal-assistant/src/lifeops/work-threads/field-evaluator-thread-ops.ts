@@ -28,13 +28,13 @@
  * duplicate the validation / locking / atomic-merge logic).
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   ResponseHandlerFieldContext,
   ResponseHandlerFieldEffect,
   ResponseHandlerFieldEvaluator,
   ResponseHandlerFieldHandleContext,
 } from "@elizaos/core";
+import { hasRoleAccess } from "@elizaos/core";
 import { resolvePendingPromptsStore } from "../pending-prompts/store.js";
 import { createWorkThreadStore } from "./store.js";
 import type { ThreadSourceRef } from "./types.js";
@@ -184,7 +184,7 @@ async function threadOpsShouldRun(
   ctx: ResponseHandlerFieldContext,
 ): Promise<boolean> {
   // Only owners can mutate threads.
-  if (!(await hasOwnerAccess(ctx.runtime, ctx.message))) {
+  if (!(await hasRoleAccess(ctx.runtime, ctx.message, "OWNER"))) {
     return false;
   }
   const roomId =

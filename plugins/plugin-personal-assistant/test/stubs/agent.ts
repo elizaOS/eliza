@@ -45,21 +45,8 @@ export {
   HandoffService,
   resolveHandoffService,
 } from "../../../../packages/agent/src/services/handoff/index.ts";
-// The runtime knowledge graph (entity/relationship stores + service + schema)
-// is owned by @elizaos/agent. Re-export the real implementations here: they
-// are self-contained (only @elizaos/core, @elizaos/shared, drizzle-orm) and do
-// not drag the agent server graph into the e2e lane, so the e2e tests exercise
-// the genuine stores via the personal-assistant shims.
-export {
-  EntityStore,
-  KNOWLEDGE_GRAPH_SERVICE,
-  KnowledgeGraphService,
-  knowledgeGraphSchema,
-  RelationshipStore,
-  resolveKnowledgeGraphService,
-} from "../../../../packages/agent/src/services/knowledge-graph/index.ts";
-// Cache-backed runtime stores promoted from LifeOps (Slice 3). Like the
-// knowledge graph above, they are self-contained (only @elizaos/core) and the
+// Cache-backed runtime stores promoted from LifeOps (Slice 3). These are
+// self-contained (only @elizaos/core) and the
 // personal-assistant store shims import them from `@elizaos/agent`, so re-export
 // the genuine implementations here for the test lane.
 export {
@@ -70,10 +57,6 @@ export {
 } from "../../../../packages/agent/src/services/pending-prompts/index.ts";
 
 export class DatabaseSync {}
-
-export async function hasOwnerAccess(): Promise<boolean> {
-  return true;
-}
 
 export interface LocalAgentBackupStubMetadata {
   fileName: string;

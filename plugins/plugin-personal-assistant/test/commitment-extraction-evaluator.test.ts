@@ -7,16 +7,17 @@
  * when the model over-extracts it with high confidence.
  */
 
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: mocks.hasOwnerAccess,
+}));
+
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(async () => true),
   upsertCommitmentLedgerRecord: vi.fn(async () => undefined),
-}));
-
-vi.mock("@elizaos/agent", () => ({
-  hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
 vi.mock("../src/lifeops/repository.js", () => ({

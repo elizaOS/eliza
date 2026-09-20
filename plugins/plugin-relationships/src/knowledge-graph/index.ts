@@ -1,8 +1,7 @@
 /**
  * Runtime knowledge-graph: entity nodes + typed relationship edges.
  *
- * The DB-backed stores and their schema are owned by `@elizaos/agent` (the
- * runtime) and surfaced through the registered {@link KnowledgeGraphService}.
+ * The DB-backed stores and their schema are owned by `@elizaos/plugin-relationships` and surfaced through the registered {@link KnowledgeGraphService}.
  * Pure KG types and the identity-merge engine live in `@elizaos/shared`.
  */
 

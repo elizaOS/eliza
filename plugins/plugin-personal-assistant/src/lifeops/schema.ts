@@ -1160,9 +1160,8 @@ export const lifeRelationshipInteractions = appLifeopsPgSchema.table(
 
 // Knowledge graph tables (life_entities, life_entity_identities,
 // life_entity_attributes, life_relationships_v2,
-// life_relationship_audit_events) are now runtime-owned: their drizzle
-// definitions + schema registration live in `@elizaos/agent`
-// (`services/knowledge-graph/schema.ts`). They remain in the same
+// life_relationship_audit_events) belong to `@elizaos/plugin-relationships`
+// (`knowledge-graph/schema.ts`); the host registers them. They remain in the same
 // `app_lifeops` Postgres schema — ownership moved, the physical tables did
 // not. The DB-backed EntityStore / RelationshipStore are surfaced via the
 // runtime `KnowledgeGraphService`.

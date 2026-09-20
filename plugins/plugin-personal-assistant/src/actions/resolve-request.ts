@@ -8,8 +8,8 @@
  * planner learns about pending rows from the `pendingApprovals` provider
  * (../providers/pending-approvals.ts), which routes decisions here (#14630).
  */
+
 import {
-  hasOwnerAccess,
   ApprovalNotFoundError as RuntimeApprovalNotFoundError,
   ApprovalStateTransitionError as RuntimeApprovalStateTransitionError,
 } from "@elizaos/agent";
@@ -26,6 +26,7 @@ import {
   appendInteractionBlock,
   type ChoiceInteraction,
   ElizaError,
+  hasRoleAccess,
   logger,
   ModelType,
   resolveActionArgs,
@@ -2234,7 +2235,7 @@ async function resolveApprovalRequest(
   params: ResolveRequestParameters,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
-  if (!(await hasOwnerAccess(runtime, message))) {
+  if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
     return denied("PERMISSION_DENIED");
   }
   const subjectUserId =

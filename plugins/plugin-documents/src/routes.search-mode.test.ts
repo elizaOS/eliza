@@ -11,7 +11,7 @@ vi.mock("@elizaos/shared", () => ({
   parsePositiveInteger: () => 20,
 }));
 
-vi.mock("@elizaos/agent/api/documents-service-loader", () => ({
+vi.mock("./service-loader.ts", () => ({
   getDocumentsService: vi.fn(async () => ({
     service: {
       searchDocuments,

@@ -2,7 +2,7 @@
  * Real-PGlite DB round-trip test for the relationships data path.
  *
  * plugin-relationships is a VIEWER + KNOWLEDGE_GRAPH action over the runtime's
- * KnowledgeGraphService (owned by @elizaos/agent) — that service's
+ * KnowledgeGraphService (owned by this plugin) — that service's
  * EntityStore / RelationshipStore are the relationships domain's real backing.
  * This boots a REAL PGLite-backed AgentRuntime, registers the KG service + its
  * schema, and round-trips entities + a relationship through the SAME stores the
@@ -11,11 +11,6 @@
  * .list / .resolve issue real SELECTs). No mocked adapter.
  */
 
-import {
-  KnowledgeGraphService,
-  knowledgeGraphSchema,
-  resolveKnowledgeGraphService,
-} from "@elizaos/agent/services/knowledge-graph";
 import {
   type AgentRuntime,
   type Memory,
@@ -28,6 +23,11 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../packages/app-core/test/helpers/real-runtime.ts";
+import {
+  KnowledgeGraphService,
+  knowledgeGraphSchema,
+  resolveKnowledgeGraphService,
+} from "../src/knowledge-graph/index.ts";
 import { relationshipsPlugin } from "../src/plugin.ts";
 
 // Registering the KG service + schema makes runtime.initialize() start the

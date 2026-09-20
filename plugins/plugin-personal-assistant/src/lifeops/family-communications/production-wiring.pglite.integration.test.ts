@@ -4,7 +4,6 @@
  * projection. Spoofed or ambiguous identity metadata must fail closed.
  */
 import { randomUUID } from "node:crypto";
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import {
   type AgentRuntime,
   ChannelType,
@@ -13,6 +12,7 @@ import {
   setEntityRole,
   type UUID,
 } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {

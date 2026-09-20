@@ -4,7 +4,7 @@ HTTP API surface and reusable presentation components for the elizaOS document s
 
 ## Purpose / role
 
-Registers a set of REST routes that expose document CRUD, bulk upload, URL ingestion, semantic search, and fragment listing against the runtime's document store. The plugin delegates all persistence and search to `DocumentsServiceLike` (resolved from `@elizaos/agent/api/documents-service-loader`). It also registers the Knowledge document views through `src/register.ts`, so the app shell discovers and lazy-loads the UI from this plugin without importing feature views from `@elizaos/ui`. It also does not register owner actions; `OWNER_DOCUMENTS` is host-adapted by `@elizaos/plugin-personal-assistant`, which owns approval queue gating, scheduled-task deadline tracking, and document-request orchestration. This plugin has no providers, evaluators, or event handlers.
+Registers a set of REST routes that expose document CRUD, bulk upload, URL ingestion, semantic search, and fragment listing against the runtime's document store. The plugin delegates all persistence and search to `DocumentsServiceLike` (resolved from `@elizaos/plugin-assistant`). It also registers the Knowledge document views through `src/register.ts`, so the app shell discovers and lazy-loads the UI from this plugin without importing feature views from `@elizaos/ui`. It also does not register owner actions; `OWNER_DOCUMENTS` is host-adapted by `@elizaos/plugin-personal-assistant`, which owns approval queue gating, scheduled-task deadline tracking, and document-request orchestration. This plugin has no providers, evaluators, or event handlers.
 
 Loading: added explicitly to the agent plugin list or via character config. It is not unconditionally enabled by default; the runtime must resolve it by name (`@elizaos/plugin-documents`).
 
@@ -49,7 +49,7 @@ src/
   document-presenter.ts  presentDocument(), getDocumentEditability(), getDocumentDeleteability(),
                          getDocumentProvenance(), getDocumentVisibilityScope(), etc.
   service-loader.ts      Re-exports canonical types and getDocumentsService() from
-                         @elizaos/agent/api/documents-service-loader
+                         @elizaos/plugin-assistant
   components/
     documents/
       DocumentsView.tsx                  React document browser view
@@ -132,7 +132,7 @@ must never become a competing read authority or post-filter raw storage rows.
 
 ## Conventions / gotchas
 
-- **No service ownership.** This plugin does not define `DocumentsServiceLike` — it imports it from `@elizaos/agent/api/documents-service-loader`. If the service times out during loading, the route returns 503 with a `Retry-After: 5` header; if the service is simply absent (e.g. agent not running), it returns 503 without that header.
+- **No service ownership.** This plugin does not define `DocumentsServiceLike` — it imports it from `@elizaos/plugin-assistant`. If the service times out during loading, the route returns 503 with a `Retry-After: 5` header; if the service is simply absent (e.g. agent not running), it returns 503 without that header.
 - **Scope defaults.** Uploads with `addedFrom: "chat"` and no explicit scope use the current chat participant audience; `audience: "chat"` requests this explicitly. The canonical service validates the human author and current room membership. Explicit private uploads remain private, and contradictory chat/private options are rejected. Other uploads default to `user-private` for USER/ADMIN, `agent-private` for AGENT, and `global` for OWNER/RUNTIME. GUEST and unresolved callers cannot upload. Chat sharing neither publishes to the internet nor grants mutation authority.
 - **Bundled and character documents** are read-only: `getDocumentEditability` and `getDocumentDeleteability` enforce this in the presenter, and the PATCH/DELETE handlers check these flags before proceeding.
 - **Image upload.** Images are stored as text. If `includeImageDescriptions: true` is passed in the metadata, the handler calls `runtime.useModel(ModelType.IMAGE_DESCRIPTION, ...)` to generate a description. If the model call fails, a warning is included in the response and the stored text explicitly says that image description was unavailable.

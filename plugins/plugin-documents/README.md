@@ -127,3 +127,7 @@ from `@elizaos/ui`.
 The document detail view offers separate reader and pin editors. Pin placement is owner-managed and independent of read permissions: an agent pin applies across its chats, while individual chat pins persist independently. Every save requires the opaque revision returned by the pin read; stale writes return 409 and require a new read and review. The editor preserves saved chat identities missing from the current conversation directory and displays an error if either inventory cannot be loaded.
 
 Core owns persistence and response-context admission. Its automatic pin provider includes a document only when every current chat participant can read it; participant or document changes during preparation require retry. Pinning does not publish a document on the internet or change its readers.
+
+Shared document access policy and service-loading contracts belong to the
+documents feature in `@elizaos/plugin-assistant`. This route/view plugin has no
+production dependency on the agent or application host.

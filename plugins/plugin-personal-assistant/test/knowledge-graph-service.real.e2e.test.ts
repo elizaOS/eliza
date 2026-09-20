@@ -21,12 +21,12 @@
  * real PGLite-backed runtime.
  */
 
+import type { AgentRuntime, Plugin } from "@elizaos/core";
 import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import type { AgentRuntime, Plugin } from "@elizaos/core";
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,

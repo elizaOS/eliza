@@ -3,6 +3,11 @@
  * from the core `factMemory` evaluator are projected into the real
  * OwnerFactStore cache and fake graph stores without another LLM call.
  */
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: agentMocks.hasOwnerAccess,
+}));
+
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -22,8 +27,7 @@ const agentMocks = vi.hoisted(() => ({
   resolveKnowledgeGraphService: vi.fn(),
 }));
 
-vi.mock("@elizaos/agent", () => ({
-  hasOwnerAccess: agentMocks.hasOwnerAccess,
+vi.mock("@elizaos/plugin-relationships/knowledge-graph", () => ({
   resolveKnowledgeGraphService: agentMocks.resolveKnowledgeGraphService,
 }));
 

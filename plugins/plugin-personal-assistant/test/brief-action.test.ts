@@ -11,6 +11,11 @@
  * echoing the stub.
  */
 
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: mocks.hasOwnerAccess,
+}));
+
 import type {
   HandlerOptions,
   IAgentRuntime,
@@ -26,7 +31,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@elizaos/agent", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@elizaos/agent")>()),
-  hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
 import {

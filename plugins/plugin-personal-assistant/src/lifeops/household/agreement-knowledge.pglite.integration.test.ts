@@ -11,7 +11,6 @@ import fs from "node:fs";
 import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import { createLocalAgentBackup } from "@elizaos/agent/services/agent-backup";
 import { withAgentBackupAuthority } from "@elizaos/agent/services/agent-backup-authority";
 import { AuthStore } from "@elizaos/app-core/services/auth-store";
@@ -35,6 +34,7 @@ import {
   TrajectoriesService,
 } from "@elizaos/plugin-assistant";
 import type { PdfService } from "@elizaos/plugin-pdf";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import {
   getScheduledTaskRunner,
   registerScheduledTaskChannelDispatcher,

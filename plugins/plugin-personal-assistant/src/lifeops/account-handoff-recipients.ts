@@ -3,8 +3,9 @@
  * entity graph. Revalidation reads the same entities, never a new global handle
  * match. These checks prove identity binding, not provider reachability or delivery.
  */
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
+
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { normalizeEntityConnectorAccountId } from "@elizaos/shared";
 import { z } from "zod";
 import {

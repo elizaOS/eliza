@@ -28,9 +28,9 @@ export default defineConfig({
     // @elizaos/core + drizzle).
     alias: [
       {
-        find: /^@elizaos\/agent\/services\/knowledge-graph$/,
+        find: /^@elizaos\/plugin-relationships\/knowledge-graph$/,
         replacement: sourceOf(
-          "../../packages/agent/src/services/knowledge-graph/index.ts",
+          "../plugin-relationships/src/knowledge-graph/index.ts",
         ),
       },
       {

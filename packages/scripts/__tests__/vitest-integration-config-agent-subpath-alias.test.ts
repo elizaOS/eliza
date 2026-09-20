@@ -1,6 +1,6 @@
 /**
  * Agent + integration-config guards:
- * - knowledge-graph subpath resolves to source without a prebuilt agent dist
+ * - knowledge-graph subpath resolves to source without a prebuilt relationships dist
  * - packages/agent src/ and test/ roots are both covered by integration globs
  *   (#17778 / #17838 — agent package lanes exclude *.integration.test.*)
  */
@@ -56,13 +56,13 @@ function findIntegrationSuites(dir: string, acc: string[] = []): string[] {
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
 const agentRoot = path.join(repoRoot, "packages", "agent");
 
-describe("integration.config.ts agent directory export", () => {
+describe("integration.config.ts relationships directory export", () => {
   it("resolves the knowledge-graph subpath to its source index", () => {
     const aliases = (integrationConfig as { resolve?: { alias?: unknown } })
       .resolve?.alias;
     expect(Array.isArray(aliases)).toBe(true);
 
-    const specifier = "@elizaos/agent/services/knowledge-graph";
+    const specifier = "@elizaos/plugin-relationships/knowledge-graph";
     const entry = (aliases as AliasEntry[]).find(({ find }) =>
       matches(find, specifier),
     );
@@ -75,7 +75,7 @@ describe("integration.config.ts agent directory export", () => {
       existsSync(resolved as string) && statSync(resolved as string).isFile(),
     ).toBe(true);
     expect((resolved as string).replace(/\\/g, "/")).toMatch(
-      /packages\/agent\/src\/services\/knowledge-graph\/index\.ts$/,
+      /plugins\/plugin-relationships\/src\/knowledge-graph\/index\.ts$/,
     );
   });
 });

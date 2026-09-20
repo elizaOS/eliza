@@ -26,7 +26,7 @@ import {
   mergeEntities,
   normalizeEntityConnectorAccountId,
   SELF_ENTITY_ID,
-} from "@elizaos/shared";
+} from "@elizaos/shared/knowledge-graph";
 import {
   type ConfirmEmailRecipientInput,
   type ConfirmedEmailRecipient,

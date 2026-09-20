@@ -104,7 +104,7 @@ const POST_TURN_EVALUATION_PROMPT_PREFIX = "# Task: Post-turn evaluation";
 
 async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
   const [knowledgeGraphModule, approvalModule] = await Promise.all([
-    import("@elizaos/agent/services/knowledge-graph"),
+    import("@elizaos/plugin-relationships/knowledge-graph"),
     import("@elizaos/agent/services/approval/index"),
   ]);
   const { KnowledgeGraphService, knowledgeGraphSchema } = knowledgeGraphModule;

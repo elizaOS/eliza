@@ -4,6 +4,13 @@
  * over that queue, proving pending rows surface as RESOLVE_REQUEST decisions
  * and rejected rows disappear without booting the full optional-plugin graph.
  */
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: vi.fn(async (_runtime: IAgentRuntime, message: Memory) => {
+    return message.entityId === "00000000-0000-0000-0000-0000000000b1";
+  }),
+}));
+
 import { PGlite } from "@electric-sql/pglite";
 import {
   ChannelType,
@@ -39,13 +46,7 @@ import {
 
 vi.mock("@elizaos/agent", async () => {
   const stub = await import("./stubs/agent.ts");
-  return {
-    ...stub,
-    hasOwnerAccess: vi.fn(async (_runtime: IAgentRuntime, message: Memory) => {
-      return message.entityId === "00000000-0000-0000-0000-0000000000b1";
-    }),
-    resolveApprovalService: vi.fn(() => null),
-  };
+  return { ...stub, resolveApprovalService: vi.fn(() => null) };
 });
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;

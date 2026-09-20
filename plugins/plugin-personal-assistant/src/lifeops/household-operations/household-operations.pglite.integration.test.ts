@@ -2,13 +2,14 @@
  * Real-PGlite integration coverage for the canonical knowledge graph, durable
  * household-operation repository, restart, concurrency, privacy, and policy.
  */
+
+import type { AgentRuntime, Memory } from "@elizaos/core";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import type { AgentRuntime, Memory } from "@elizaos/core";
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {

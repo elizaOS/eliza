@@ -50,6 +50,8 @@ export default documentsPlugin;
 export { documentAction, documentActions } from "./actions";
 export type { Bm25Document, Bm25Options, Bm25Score } from "./bm25";
 export { bm25Scores, normalizeBm25Scores, tokenize } from "./bm25";
+export * from "./document-access.ts";
+export * from "./documents-service-loader.ts";
 export { documentsProvider } from "./provider.ts";
 export { aliasRecallQuery, embedRecallQuery } from "./recall-embed.ts";
 export type {

@@ -3,8 +3,12 @@
  * notification and model collaborators. These registrations mirror the default Eliza
  * host closely enough that passive services cannot degrade while tests appear healthy.
  */
-import { KnowledgeGraphService, knowledgeGraphSchema } from "@elizaos/agent";
+
 import { ModelType, type Plugin } from "@elizaos/core";
+import {
+  KnowledgeGraphService,
+  knowledgeGraphSchema,
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import {
   createRealTestRuntime,
   type RealTestRuntimeOptions,

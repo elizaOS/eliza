@@ -4,11 +4,13 @@
  * the owner-fact store and relationship graph. Registered as the
  * `owner.profile_extraction` evaluator.
  */
-import { hasOwnerAccess, resolveKnowledgeGraphService } from "@elizaos/agent";
+
 import type {
   ResponseHandlerEvaluator,
   ResponseHandlerPatch,
 } from "@elizaos/core";
+import { hasRoleAccess } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { SELF_ENTITY_ID } from "../entities/types.js";
 import {
   createOwnerFactStore,
@@ -326,7 +328,7 @@ export const ownerProfileExtractionEvaluator: ResponseHandlerEvaluator = {
     "Extract stable owner facts, nicknames, handles, relationship aliases before planning.",
   priority: 30,
   async shouldRun({ runtime, message }) {
-    if (!(await hasOwnerAccess(runtime, message))) {
+    if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
       return false;
     }
     return hasExtraction(

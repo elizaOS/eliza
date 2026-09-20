@@ -3,9 +3,9 @@
  * knowledge graph and fail closed before exposing provider coordinates.
  */
 
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { CALENDAR_GUEST_AVAILABILITY_PURPOSE } from "@elizaos/plugin-calendar";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {

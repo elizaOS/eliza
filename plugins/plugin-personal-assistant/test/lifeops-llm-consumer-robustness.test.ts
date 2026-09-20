@@ -13,6 +13,11 @@
  *   - renderReminderBody         (src/lifeops/service-mixin-reminders.ts)
  *   - composeNarrative           (src/actions/brief.ts, via the BRIEF handler)
  */
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: mocks.hasOwnerAccess,
+}));
+
 import type {
   HandlerOptions,
   IAgentRuntime,
@@ -31,7 +36,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@elizaos/agent", async () => {
   const actual =
     await vi.importActual<typeof import("@elizaos/agent")>("@elizaos/agent");
-  return { ...actual, hasOwnerAccess: mocks.hasOwnerAccess };
+  return { ...actual };
 });
 
 function userMessage(text: string): Memory {

@@ -3,7 +3,6 @@
  * active-thread capping, plus multi-user/multi-channel thread-boundary enforcement with
  * current-channel merge. Real scheduler over a mocked runtime.
  */
-import * as agentAccess from "@elizaos/agent";
 import type {
   ActionResult,
   HandlerOptions,
@@ -14,8 +13,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { ChannelType, setEntityRole, stringToUuid } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { hasOwnerAccess } from "../../../packages/agent/src/security/access.ts";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runWithActionRoutingContext } from "../../../packages/core/src/runtime/action-routing-context.js";
 import { AgentEventService } from "../../../packages/core/src/services/agentEvent.js";
 import { workThreadAction } from "../src/actions/work-thread.ts";
@@ -33,11 +31,6 @@ import { createMockedTestRuntime } from "./support/helpers/mock-runtime.ts";
 let cleanupRuntime: (() => Promise<void>) | undefined;
 
 vi.setConfig({ testTimeout: 120_000 });
-
-beforeEach(() => {
-  // The unit alias grants every caller access; these cases exercise stored roles.
-  vi.spyOn(agentAccess, "hasOwnerAccess").mockImplementation(hasOwnerAccess);
-});
 
 afterEach(async () => {
   vi.restoreAllMocks();

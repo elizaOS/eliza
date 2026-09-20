@@ -528,21 +528,10 @@ export default defineConfig({
         replacement: path.join(agentSourceRoot, "runtime", "owner-entity.ts"),
       },
       {
-        find: /^@elizaos\/agent\/services\/knowledge-graph$/,
-        replacement: path.join(
-          agentSourceRoot,
-          "services",
-          "knowledge-graph",
-          "index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/agent\/services\/knowledge-graph\/service$/,
-        replacement: path.join(
-          agentSourceRoot,
-          "services",
-          "knowledge-graph",
-          "service.ts",
+        find: /^@elizaos\/plugin-relationships\/knowledge-graph$/,
+        replacement: path.resolve(
+          here,
+          "../plugin-relationships/src/knowledge-graph/index.ts",
         ),
       },
       {

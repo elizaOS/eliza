@@ -10,7 +10,7 @@ import {
   type EntityAttribute,
   type EntityIdentity,
   SELF_ENTITY_ID,
-} from "@elizaos/shared";
+} from "@elizaos/shared/knowledge-graph";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AUTO_MERGE_CONFIDENCE_THRESHOLD,

@@ -218,7 +218,6 @@ it("keeps full and source-staged package modes distinct through a cycle", async 
     "services/approval/index.ts",
     "services/global-pause/index.ts",
     "services/handoff/index.ts",
-    "services/knowledge-graph/index.ts",
     "services/pending-prompts/index.ts",
     "services/escalation.ts",
     "triggers/scheduling.ts",

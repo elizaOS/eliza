@@ -6,9 +6,9 @@
 
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import { AuthStore } from "@elizaos/app-core/services/auth-store";
 import type { Plugin } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { afterEach, expect, it, vi } from "vitest";
 import { tryHandleRuntimePluginRoute } from "../../../../packages/agent/src/api/runtime-plugin-routes.ts";
 import { LocalFileStorageService } from "../../../../packages/agent/src/services/file-storage.js";

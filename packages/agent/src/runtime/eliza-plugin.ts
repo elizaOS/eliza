@@ -13,6 +13,10 @@ import {
   PairingService,
   promoteSubactionsToActions,
 } from "@elizaos/core";
+import {
+  KnowledgeGraphService,
+  knowledgeGraphSchema,
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { connectAccountAction } from "../actions/connect-account.ts";
 import { contactAction } from "../actions/contact.ts";
@@ -68,10 +72,6 @@ import { ElizaCharacterPersistenceService } from "../services/character-persiste
 import { LocalFileStorageService } from "../services/file-storage.ts";
 import { GlobalPauseService } from "../services/global-pause/index.ts";
 import { HandoffService } from "../services/handoff/index.ts";
-import {
-  KnowledgeGraphService,
-  knowledgeGraphSchema,
-} from "../services/knowledge-graph/index.ts";
 import { AgentMediaGenerationService } from "../services/media-generation.ts";
 import { MessageInteractionHostService } from "../services/message-interaction-host.ts";
 import { OwnerBindingService } from "../services/owner-binding.ts";

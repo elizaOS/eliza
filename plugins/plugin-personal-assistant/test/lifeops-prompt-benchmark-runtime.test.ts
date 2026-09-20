@@ -2,7 +2,7 @@
  * Verifies the benchmark's real PGLite runtime includes the production-owned
  * knowledge graph collaborator before LifeOps passive services handle turns.
  */
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { describe, expect, it } from "vitest";
 import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
 

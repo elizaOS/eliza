@@ -2,6 +2,11 @@
  * Asserts owner-only action handlers deny when the LifeOps access gate is closed.
  * Deterministic, mocked access and extractor.
  */
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: mocks.hasLifeOpsAccess,
+}));
+
 import type {
   Action,
   ActionResult,
@@ -20,7 +25,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@elizaos/agent", () => ({
   extractActionParamsViaLlm: mocks.extractActionParamsViaLlm,
-  hasOwnerAccess: mocks.hasLifeOpsAccess,
 }));
 
 vi.mock("@elizaos/plugin-phone/twilio", () => ({

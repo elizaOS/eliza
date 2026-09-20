@@ -230,21 +230,6 @@
       "import": "./dist/services/permissions/probers/*.js",
       "default": "./dist/services/permissions/probers/*.js"
     },
-    "./services/knowledge-graph": {
-      "types": "./src/services/knowledge-graph/index.ts",
-      "eliza-source": {
-        "types": "./src/services/knowledge-graph/index.ts",
-        "import": "./src/services/knowledge-graph/index.ts",
-        "default": "./src/services/knowledge-graph/index.ts"
-      },
-      "bun": {
-        "types": "./src/services/knowledge-graph/index.ts",
-        "import": "./src/services/knowledge-graph/index.ts",
-        "default": "./src/services/knowledge-graph/index.ts"
-      },
-      "import": "./dist/services/knowledge-graph/index.js",
-      "default": "./dist/services/knowledge-graph/index.js"
-    },
     "./security/access": {
       "types": "./src/security/access.ts",
       "eliza-source": {
@@ -388,7 +373,8 @@
     "@elizaos/cloud-routing": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/prompts": "workspace:*",
-    "@elizaos/retrieval": "workspace:*"
+    "@elizaos/retrieval": "workspace:*",
+    "@elizaos/plugin-relationships": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/plugin-calendar": "workspace:*",

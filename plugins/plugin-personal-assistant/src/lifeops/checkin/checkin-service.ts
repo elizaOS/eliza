@@ -4,7 +4,7 @@
  * the model to produce the check-in message. Check-ins fire as structural
  * scheduled tasks routed through the shared runner, not on prompt-text matching.
  */
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
+
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,
@@ -12,6 +12,7 @@ import {
   runWithTrajectoryPurpose,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import {
   type GetLifeOpsCalendarFeedRequest,
   type GetLifeOpsGmailTriageRequest,

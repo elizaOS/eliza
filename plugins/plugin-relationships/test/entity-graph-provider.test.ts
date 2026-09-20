@@ -1,7 +1,7 @@
 /**
  * `ENTITY_GRAPH` provider — unit tests.
  *
- * Mocks the agent knowledge-graph subpath so the provider projects a fake
+ * Mocks the plugin knowledge-graph module so the provider projects a fake
  * EntityStore/RelationshipStore. Asserts the empty-graph
  * fallback, the service-absent fallback, the populated projection (entity
  * lines + ego-network edge lines with resolved target names, `self` excluded),
@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
   resolveKnowledgeGraphService: vi.fn(),
 }));
 
-vi.mock("@elizaos/agent/services/knowledge-graph", () => ({
+vi.mock("../src/knowledge-graph/index.ts", () => ({
   resolveKnowledgeGraphService: mocks.resolveKnowledgeGraphService,
 }));
 

@@ -16,11 +16,9 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@elizaos/agent", () => ({
-  hasOwnerAccess: mocks.hasOwnerAccess,
-}));
-
 vi.mock("@elizaos/core", () => ({
+  hasRoleAccess: mocks.hasOwnerAccess,
+
   formatError: (error: unknown) =>
     error instanceof Error ? error.message : String(error),
   logger: mocks.logger,
