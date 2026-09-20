@@ -230,3 +230,26 @@ zero live model calls. Logs are in the local evidence directory's runtime folder
 
 No additional source edits are needed for these items. Remaining held behavior
 requires final explicit include/exclude decisions, followed by final QA/handoff.
+
+## Resolved exclusions after consumer review
+
+The following are final exclusions for this candidate, replacing provisional holds:
+
+- Automatic14-day trajectory deletion: changes evidence-retention policy, not a
+  demonstrated text-flow defect; preserve the diagnostic records.
+- Bare-abort WEB_SEARCH fallback: fetch-guard uses the same abort mechanism for
+  timeout and caller cancellation. The proposed regex cannot distinguish them.
+- Missing-memory-update creation hint: absence of a target does not authorize a
+  new record. Keep typed targets and explicit update/create intent boundaries.
+- Message-scoped failure supersession: a message ID cannot prove a later write
+  reached the original failed target; retain target-bound receipt correlation.
+- BatchQueue return count: inspected production consumers do not use it. Do not
+  change the public drain contract without its demonstrated dependent behavior.
+- Alternate inline catalog and voice-prewarm changes: retain complete authored
+  descriptions and current channel contracts; direct text already defers catalog.
+- Permission-miss coaching: malformed-input coaching is already present. Keep
+  failed admission distinct from a harmless syntax correction.
+
+Calendar already tests literal location/description preservation, and current
+context rendering retains routing metadata; no parity-only duplicate tests added.
+No runtime modifications or additional model calls were needed for these decisions.

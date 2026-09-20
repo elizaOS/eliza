@@ -6,8 +6,8 @@ All127 changed paths were inspected. Test decisions do not claim tests were run.
 
 | Path | Decision and evidence |
 | --- | --- |
-| `packages/agent/src/actions/memories.test.ts` | Keep explicit pagination expectation; remote replaces error with first20 automatic results. Hold targetless-update create hint test with intent behavior review. |
-| `packages/agent/src/actions/memories.ts` | Do not auto-page an unbounded search; retain explicit complete-scan pagination contract. Missing-update creation hint needs separate intent review. |
+| `packages/agent/src/actions/memories.test.ts` | Keep explicit pagination; exclude new create-hint expectation because it changes failed-update intent into presumed creation. |
+| `packages/agent/src/actions/memories.ts` | Exclude auto-pagination and missing-update create hint. No existing target is not evidence of authorization to create a new record; typed mutations already require explicit target. Preserve failed-update distinction. |
 | `packages/agent/src/api/chat-routes.ts` | Remote delta is comment expansion only; no implementation to integrate. |
 | `packages/agent/src/api/conversation-routes.ts` | Remote delta is comment expansion only; no implementation to integrate. |
 | `packages/agent/src/config/schema.ts` | Hold keyed web-search settings retirement for config consumer/migration review; not a latency fix. |
@@ -27,14 +27,14 @@ All127 changed paths were inspected. Test decisions do not claim tests were run.
 | `packages/core/src/__tests__/message-runtime-stage1.test.ts` | Keep native read/ready separation, bounded malformed-source repair, one-decision options and complete custom aliases. New discovery assertions require coverage comparison; do not import broad test rewrite. |
 | `packages/core/src/__tests__/message-stable-prefix.test.ts` | Fixture-only optional actions/getRoom/reportError; no new assertion or missing behavior. |
 | `packages/core/src/__tests__/message-stage1-action-catalog.test.ts` | Do not import pure formatting tests for held lossy inline catalog projection. |
-| `packages/core/src/__tests__/message-stage1-context-catalog.test.ts` | New role/cache omission and routing metadata case needs existing coverage comparison; role-filter assertions sharpen existing tests, not implementation. |
+| `packages/core/src/__tests__/message-stage1-context-catalog.test.ts` | Current renderer retains aliases, parent/parents and sensitivity and filters role/cache metadata; existing suite passes role-filtered full-description contract. No production delta; do not add renderer-mirroring assertions solely for parity. |
 | `packages/core/src/__tests__/tiered-action-surface.test.ts` | Keep removed channel/discovery/alias/complete-description tests; remote expects omitted children/aliases. Additional index-only assertions tied to remote projection, not new domain behavior. |
 | `packages/core/src/entities.ts` | Reject arbitrary metadata/key omission and name normalization; preserve complete identity/provenance context. |
 | `packages/core/src/features/advanced-capabilities/actions/message.ts` | Already integrated in current candidate: selectConnectorForOp uses soleConnectorFamily. Eight connector-selection tests passed, including distinct accounts/sources and duplicate routes staying ambiguous. No re-import needed. |
 | `packages/core/src/features/advanced-capabilities/evaluators/reflection-items.ts` | Reject shared action-result cap; complete result context required. |
 | `packages/core/src/features/advanced-capabilities/experience/utils/experienceFormatter.test.ts` | Superseded by current experienceProvider.test.ts exact-byte/provenance tests at128-176, preserving full learning/result/rationale and original records. Provider suite passed; no label-specific helper duplicate. |
 | `packages/core/src/features/advanced-capabilities/experience/utils/experienceFormatter.ts` | Keep current byte-exact local reference; remote mainly rearranges WHY/RATIONALE. No required missing behavior established. |
-| `packages/core/src/features/trajectories/TrajectoriesService.ts` | Hold automatic destructive retention policy; evidence preservation needed, no disk-pressure requirement in this candidate. |
+| `packages/core/src/features/trajectories/TrajectoriesService.ts` | Exclude automatic14-day deletion from this candidate. This changes evidence retention policy and does not repair a demonstrated text-flow defect. |
 | `packages/core/src/prompts/evaluator.ts` | Keep queue-aware and host-clipboard-aware prompt. Remote replaces conditional routes with static NEXT_RECOMMENDED and clipboard output; other changes expand equivalent rules. |
 | `packages/core/src/prompts/planner.ts` | Keep concise existing rules. Remote adds incident comments and longer explanatory examples, without a missing planner capability. |
 | `packages/core/src/runtime/__tests__/evaluator-foreground-context.test.ts` | Keep both current queryTokenCount and legacy queryTokens diagnostic compatibility tests. |
@@ -45,7 +45,7 @@ All127 changed paths were inspected. Test decisions do not claim tests were run.
 | `packages/core/src/runtime/__tests__/message-handler-stop-lexicon.test.ts` | Keep removed multilingual STOP decision coverage; do not require an English keyword for stopping. |
 | `packages/core/src/runtime/__tests__/planner-loop-calendar-verified-receipt.test.ts` | Reject changed expectation skipping semantic evaluation on self-verified receipt; keep current intent verification. |
 | `packages/core/src/runtime/__tests__/planner-loop-discovery.test.ts` | Keep removed draft-plus-explicit-discovery case; prior reply is not proof of current discovery. |
-| `packages/core/src/runtime/__tests__/planner-loop-superseded-effect-failure.test.ts` | Hold added message-scoped failure supersession with target correlation review. Existing distinct-resource rejection remains; reordering that case is equivalent. |
+| `packages/core/src/runtime/__tests__/planner-loop-superseded-effect-failure.test.ts` | Exclude message-scoped failure supersession. A source message does not identify the failed target; same mutation parameters after stripping selectors cannot prove the same resource. Preserve target-bound tests. |
 | `packages/core/src/runtime/__tests__/planner-loop-verified-intent-operation.test.ts` | Do not import helper tests for rejected lexical intent-completion shortcut. Operation-family match does not prove requested content or target. |
 | `packages/core/src/runtime/__tests__/planner-loop-verified-prose-restatement.test.ts` | Do not import helper tests for rejected English restatement suppression; word sets and sample values do not prove semantic equivalence. |
 | `packages/core/src/runtime/__tests__/planner-loop.test.ts` | Keep semantic evaluation and targeted second-call expectations; remote changes them to lexical completion and subset queue skipping. Standalone batch-scope description assertion is useful only with held custom-template placement review. |
@@ -58,8 +58,8 @@ All127 changed paths were inspected. Test decisions do not claim tests were run.
 | `packages/core/src/runtime/planner-rendering.ts` | Reject result-body truncation; complete receipts and outputs required. |
 | `packages/core/src/runtime/planner-types.ts` | Reject context-exclusion prefix and loss of false clipboard capability; no import. |
 | `packages/core/src/runtime/sub-planner.ts` | Comment expansion only; implementation identical. |
-| `packages/core/src/runtime/trajectory-recorder.ts` | Hold14-day deletion default and silent filesystem catches with trajectory retention feature. |
-| `packages/core/src/runtime/trajectory-retention.test.ts` | Hold with unaccepted14-day file deletion policy. Tests cover temp fixtures but not evidence retention authorization. |
+| `packages/core/src/runtime/trajectory-recorder.ts` | Exclude default14-day deletion and silent filesystem catches; preserve recorded evidence and explicit diagnostics. |
+| `packages/core/src/runtime/trajectory-retention.test.ts` | Exclude with automatic retention feature; deleting aged temp fixtures does not justify changing evidence retention policy. |
 | `packages/core/src/services/__tests__/history-quote-discovery.test.ts` | Keep chronological original-source attribution and eager exact quoted-source read tests, including stale/miss/duplicate/full restoration cases. |
 | `packages/core/src/services/__tests__/history-search-receipts.test.ts` | Keep lossless repeated-original reassembly test separating speakers, occurrences and whitespace. |
 | `packages/core/src/services/evaluator.input-budget.test.ts` | Do not import tests requiring oldest-history truncation and skipped-budget evaluation with empty errors; violates complete input contract. |
@@ -68,7 +68,7 @@ All127 changed paths were inspected. Test decisions do not claim tests were run.
 | `packages/core/src/services/evaluator.ts` | Reject opt-in oldest-history and result-prefix trimming, and skipped-budget success telemetry. Keep dedicated extraction system contract and current native/text schema separation; remote refactor is not a missing capability. |
 | `packages/core/src/services/message.runtime-failure-suppression.test.ts` | Keep removed401/402/403 single-model-attempt and provider-neutral failure delivery tests. |
 | `packages/core/src/services/message.stage1-retry.test.ts` | Keep malformed/conflicting native decision rejection and identical-decision recovery tests. |
-| `packages/core/src/services/message/context-assembly.ts` | Hold alternate inline catalog projection for channel-specific review. Remote drops aliases, contexts and promoted child entries and collapses description newlines; direct-text reference-only path already avoids this catalog cost. |
+| `packages/core/src/services/message/context-assembly.ts` | Exclude alternate inline catalog projection: drops aliases/contexts/children and normalizes authored newlines. Current direct text already defers catalog via authorized discovery; retain complete other-channel path. |
 | `packages/core/src/services/message/context-discovery.ts` | Keep explicit provider-reference versus routing-context distinction; remote weakens read guidance. |
 | `packages/core/src/services/message/egress-policy.combined-verified-reply.test.ts` | Comment-only gate incident identifier; no behavioral delta. |
 | `packages/core/src/services/message/egress-policy.ts` | Comment-only delta; no implementation needed. |
@@ -81,15 +81,15 @@ All127 changed paths were inspected. Test decisions do not claim tests were run.
 | `packages/core/src/services/message/side-effect-claims.moved.test.ts` | Comment-only gate incident identifier; no behavioral delta. |
 | `packages/core/src/services/message/stage1-decision.ts` | Keep one native decision, source-label repair and field prompt refresh after every authorized read. Remote removes parallelToolCalls=false and limits field refresh to one restoration path. |
 | `packages/core/src/services/message/stage1-generation.ts` | Keep native decision rejection rather than fallback prose after an invalid HANDLE_RESPONSE. |
-| `packages/core/src/services/message/stage1-input.ts` | Hold voice prewarm catalog change with voice acceptance; no current text fix. |
+| `packages/core/src/services/message/stage1-input.ts` | Exclude voice-prewarm change from this text candidate; voice remains a separate acceptance gate. |
 | `packages/core/src/services/message/stage1-output.ts` | Keep rejection of inconsistent native decisions; remote accepts first usable decision and prose fallback. |
 | `packages/core/src/services/message/time-observations.test.ts` | Single added English today-date case paired with held lexical shortcut; not broad current-time correctness proof. |
 | `packages/core/src/services/message/time-observations.ts` | Hold extra English current-date phrase shortcut; no demonstrated missing scenario in selected text acceptance. |
-| `packages/core/src/services/message/tool-discovery.test.ts` | Keep complete named parameter evidence and explicit discovered operation tests. Remote coachingFailure and index JSON assertions depend on held routing/projection changes. |
+| `packages/core/src/services/message/tool-discovery.test.ts` | Keep complete named schemas and explicit operation tests. Malformed-input coaching already exists; exclude permission-miss coaching reclassification to preserve admission failure authority. |
 | `packages/core/src/services/message/tool-discovery.ts` | Keep description parameter schemas and requested-operation canonical grouping; remote strips schemas and restores flat expansion. Coaching-marker delta requires separate permission-failure semantics review. |
 | `packages/core/src/types/evaluator.ts` | Reject shared result character cap. |
-| `packages/core/src/utils/batch-queue.test.ts` | Return-count expectations depend on held drain API change; processed items/error reporting unchanged. |
-| `packages/core/src/utils/batch-queue/index.ts` | Hold with dependent idle-backoff feature; changed drain return type alone establishes no benefit. |
+| `packages/core/src/utils/batch-queue.test.ts` | Keep void drain contract with processed-item and error behavior tests; return-count assertions support excluded API-only change. |
+| `packages/core/src/utils/batch-queue/index.ts` | Exclude drain return-count API change. Reviewed production call sites do not consume this count; no demonstrated candidate idle-backoff dependency or behavior benefit. |
 | `packages/prompts/src/index.ts` | Comment-only incident narrative; no runtime prompt change to integrate. |
 | `packages/shared/src/config/types.tools.ts` | Hold search config type removals with settings migration; compatibility needs verification. |
 | `packages/ui/scripts/duplicate-molecular-components-report.json` | Full parsed JSON objects equal; formatting only. Keep current generated report. |
@@ -117,10 +117,10 @@ All127 changed paths were inspected. Test decisions do not claim tests were run.
 | `plugins/plugin-calendar/src/actions/calendar-handler.travel-guard.test.ts` | Reject added title-echo location helper expectations; lexical noun overlap does not establish authorization. |
 | `plugins/plugin-calendar/src/actions/calendar-handler.ts` | Reject bulk patch: English word/prefix heuristics drop literal fields and failed explicit IDs fall back to title mutation. Current grounded extraction, source-bound selectors and guest identity pause supersede this approach. |
 | `plugins/plugin-calendar/src/actions/calendar-handler.update-field-debris.test.ts` | Reject helper suite for placeholder/English overlap/clear keyword shortcuts. Current user-grounded typed extraction owns intended fields. |
-| `plugins/plugin-calendar/test/calendar-action-effect-receipts.test.ts` | Keep unresolved explicit target rejection; remote expects fallback update/delete of another queried event. Preserve literal field values including primary/title text. Compare independent stated-field preservation coverage. |
+| `plugins/plugin-calendar/test/calendar-action-effect-receipts.test.ts` | Keep unresolved explicit target rejection. Current stated-field test at1734 preserves literal primary location and title-like description despite unrequested recurrence; no weaker corner-deli duplicate required. |
 | `plugins/plugin-calendar/test/eliza-calendar.pglite.test.ts` | Relocated plain move is not new coverage. Current persisted omission/null/clear tests and date/duration plus exact description tests supersede older self-verification fixtures; prior29-test PGlite pass remains evidence, not rerun here. |
-| `plugins/plugin-coding-tools/src/actions/web-fetch.test.ts` | Keep cancellation without fallback recommendation. Remote treats all AbortErrors as timeout; requires real timeout-vs-user cancellation distinction. |
-| `plugins/plugin-coding-tools/src/actions/web-fetch.ts` | Hold broad aborted-string fallback hint until cancellation versus transport failure is distinguished. |
+| `plugins/plugin-coding-tools/src/actions/web-fetch.test.ts` | Keep cancellation without fallback recommendation; remote positive fallback assertion cannot distinguish timeout from caller cancellation. |
+| `plugins/plugin-coding-tools/src/actions/web-fetch.ts` | Exclude aborted-string fallback. Current fetch-guard uses bare abort for both timeout and caller cancellation, so the remote regex cannot distinguish them and may recommend more work after cancellation. |
 | `plugins/plugin-notes/AGENTS.md` | Keep exact ID and complete content in same row; remote relaxes to separate positional IDs. Remote guide pair verified byte-identical. |
 | `plugins/plugin-notes/CLAUDE.md` | Keep exact ID and complete content in same row; remote relaxes to separate positional IDs. Remote guide pair verified byte-identical. |
 | `plugins/plugin-notes/README.md` | Keep exact-ID updates and ID/content row pairing documentation; remote describes rejected older behavior. |
