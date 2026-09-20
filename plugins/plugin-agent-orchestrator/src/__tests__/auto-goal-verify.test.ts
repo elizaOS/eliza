@@ -30,6 +30,20 @@ import { OrchestratorTaskService } from "../services/orchestrator-task-service.j
 import { OrchestratorTaskStore } from "../services/orchestrator-task-store.js";
 import type { AttemptReflection } from "../services/orchestrator-task-types.js";
 
+const testServices = new Set<OrchestratorTaskService>();
+function createService(
+  ...args: ConstructorParameters<typeof OrchestratorTaskService>
+): OrchestratorTaskService {
+  const service = new OrchestratorTaskService(...args);
+  testServices.add(service);
+  return service;
+}
+
+afterEach(async () => {
+  await Promise.all([...testServices].map((service) => service.stop()));
+  testServices.clear();
+});
+
 describe("shouldAutoVerifyGoal", () => {
   const prev = process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
   afterEach(() => {
@@ -244,7 +258,7 @@ describe("auto goal verification on task_complete", () => {
     const runtime = makeRuntime(fake.service, () =>
       JSON.stringify({ passed: true, summary: "all good", missing: [] }),
     );
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "done, tests pass" });
@@ -269,7 +283,7 @@ describe("auto goal verification on task_complete", () => {
         missing: ["tests pass"],
       }),
     );
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "I think it works" });
@@ -304,7 +318,7 @@ describe("auto goal verification on task_complete", () => {
         missing: ["tests pass"],
       }),
     );
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "trust me it works" });
@@ -338,7 +352,7 @@ describe("auto goal verification on task_complete", () => {
         missing: ["tests pass"],
       }),
     );
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "still broken" });
@@ -363,7 +377,7 @@ describe("auto goal verification on task_complete", () => {
       getService: (type: string) =>
         type === AcpService.serviceType ? fake.service : undefined,
     };
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "done" });
@@ -401,7 +415,7 @@ describe("auto goal verification on task_complete", () => {
       getService: (type: string) =>
         type === AcpService.serviceType ? fake.service : undefined,
     };
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "done" });
@@ -508,7 +522,7 @@ describe("completion envelope gate (#8895)", () => {
     const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
       JSON.stringify({ passed: true, summary: "confirmed", missing: [] }),
     );
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: fence(VALID_ENVELOPE) });
@@ -538,7 +552,7 @@ describe("completion envelope gate (#8895)", () => {
     const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
       JSON.stringify({ passed: true, summary: "n/a", missing: [] }),
     );
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", {
@@ -570,7 +584,7 @@ describe("completion envelope gate (#8895)", () => {
     const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
       JSON.stringify({ passed: true, summary: "confirmed", missing: [] }),
     );
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", {
@@ -598,7 +612,7 @@ describe("completion envelope gate (#8895)", () => {
     const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
       JSON.stringify({ passed: true, summary: "n/a", missing: [] }),
     );
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", {
@@ -661,7 +675,7 @@ describe("claimed-file ledger cross-check (#16523)", () => {
     const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
       JSON.stringify({ passed: true, summary: "confirmed", missing: [] }),
     );
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: fence(VALID_ENVELOPE) });
@@ -705,7 +719,7 @@ describe("claimed-file ledger cross-check (#16523)", () => {
     const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
       JSON.stringify({ passed: true, summary: "confirmed", missing: [] }),
     );
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: fence(VALID_ENVELOPE) });
@@ -734,7 +748,7 @@ describe("claimed-file ledger cross-check (#16523)", () => {
     const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
       JSON.stringify({ passed: true, summary: "confirmed", missing: [] }),
     );
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: fence(VALID_ENVELOPE) });
@@ -894,7 +908,7 @@ describe("independent read-only verifier (#8898)", () => {
       getService: (type: string) =>
         type === AcpService.serviceType ? fake.service : undefined,
     };
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     // Worker falsely claims green via a valid envelope.
@@ -940,7 +954,7 @@ describe("independent read-only verifier (#8898)", () => {
       getService: (type: string) =>
         type === AcpService.serviceType ? fake.service : undefined,
     };
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: fence(VALID_ENVELOPE) });
@@ -990,7 +1004,7 @@ describe("independent read-only verifier (#8898)", () => {
       getService: (type: string) =>
         type === AcpService.serviceType ? fake.service : undefined,
     };
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "done, all tests pass" });
@@ -1047,7 +1061,7 @@ describe("attempt reflection persistence (#8899)", () => {
     const runtime = makeRuntime(fake.service, () =>
       JSON.stringify(opts.verdict),
     );
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
     fake.emit(sessionId, "task_complete", { response: "I think it works" });
     return { store, taskId };
@@ -1224,7 +1238,7 @@ describe("deterministic completion-residuals gate", () => {
     const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
       JSON.stringify({ passed: true, summary: "would pass", missing: [] }),
     );
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "all done, promise" });
@@ -1264,7 +1278,7 @@ describe("deterministic completion-residuals gate", () => {
     const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
       JSON.stringify({ passed: true, summary: "would pass", missing: [] }),
     );
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "done and pushed" });
@@ -1288,7 +1302,7 @@ describe("deterministic completion-residuals gate", () => {
     const { taskId, sessionId, workdir } = await seedTaskWithSession(store, []);
     dirtyWorkdir(workdir);
     const { runtime, useModel } = makeSpyRuntime(fake.service, () => "{}");
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "trivially done" });
@@ -1307,7 +1321,7 @@ describe("deterministic completion-residuals gate", () => {
     const store = new OrchestratorTaskStore({ backend: "memory" });
     const { taskId, sessionId } = await seedTaskWithSession(store, []);
     const { runtime, useModel } = makeSpyRuntime(fake.service, () => "{}");
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "done" });
@@ -1343,7 +1357,7 @@ describe("deterministic completion-residuals gate", () => {
       getService: (type: string) =>
         type === AcpService.serviceType ? fake.service : undefined,
     };
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "done with evidence" });
@@ -1395,7 +1409,7 @@ describe("deterministic completion-residuals gate", () => {
       getService: (type: string) =>
         type === AcpService.serviceType ? fake.service : undefined,
     };
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "done with evidence" });
@@ -1429,7 +1443,7 @@ describe("deterministic completion-residuals gate", () => {
       JSON.stringify({ passed: true, summary: "would pass", missing: [] }),
     );
     (runtime as Record<string, unknown>).reportError = reportError;
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "done" });
@@ -1480,7 +1494,7 @@ describe("deterministic completion-residuals gate", () => {
         );
       }
       const { runtime, useModel } = makeSpyRuntime(fake.service, () => "{}");
-      const service = new OrchestratorTaskService(runtime as never, { store });
+      const service = createService(runtime as never, { store });
       await service.start();
       fake.emit(sessionId, "task_complete", { response: "done with evidence" });
       const expected = deliveryFails ? "waiting_on_user" : "active";
@@ -1543,7 +1557,7 @@ describe("deterministic completion-residuals gate", () => {
     const { runtime } = makeSpyRuntime(fake.service, () =>
       JSON.stringify({ passed: true, summary: "confirmed", missing: [] }),
     );
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: fence(envelope) });
@@ -1582,7 +1596,7 @@ describe("deterministic completion-residuals gate", () => {
     const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
       JSON.stringify({ passed: true, summary: "would pass", missing: [] }),
     );
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: fence(envelope) });
@@ -1605,7 +1619,7 @@ describe("deterministic completion-residuals gate", () => {
       metadata: { autoVerifyAttempts: MAX_AUTO_VERIFY_ATTEMPTS },
     });
     const { runtime } = makeSpyRuntime(fake.service, () => "{}");
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "still done, promise" });
@@ -1632,7 +1646,7 @@ describe("deterministic completion-residuals gate", () => {
     const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
       JSON.stringify({ passed: true, summary: "confirmed", missing: [] }),
     );
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "the answer is 42" });
@@ -1660,7 +1674,7 @@ describe("deterministic completion-residuals gate", () => {
       const { runtime } = makeSpyRuntime(fake.service, () =>
         JSON.stringify({ passed: true, summary: "confirmed", missing: [] }),
       );
-      const service = new OrchestratorTaskService(runtime as never, { store });
+      const service = createService(runtime as never, { store });
       await service.start();
 
       fake.emit(sessionId, "task_complete", { response: "done" });
@@ -1688,7 +1702,7 @@ describe("validateTask transition + humanOverride rules", () => {
     dirtyWorkdir(workdir);
     await store.updateTask(taskId, { status: "validating" });
     const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
 
     await expect(
       service.validateTask(taskId, { passed: true, summary: "looks good" }),
@@ -1706,7 +1720,7 @@ describe("validateTask transition + humanOverride rules", () => {
     const { taskId } = await seedTaskWithSession(store, ["tests pass"]);
     await store.updateTask(taskId, { status: "validating" });
     const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
 
     const detail = await service.validateTask(taskId, {
       passed: true,
@@ -1719,7 +1733,7 @@ describe("validateTask transition + humanOverride rules", () => {
     const store = new OrchestratorTaskStore({ backend: "memory" });
     const { taskId } = await seedTaskWithSession(store, ["tests pass"]);
     const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await expect(
       service.validateTask(taskId, { passed: true, summary: "nope" }),
     ).rejects.toThrow(/validating/);
@@ -1729,7 +1743,7 @@ describe("validateTask transition + humanOverride rules", () => {
     const store = new OrchestratorTaskStore({ backend: "memory" });
     const { taskId } = await seedTaskWithSession(store, ["tests pass"]);
     const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await expect(
       service.validateTask(taskId, { passed: true, humanOverride: true }),
     ).rejects.toThrow(/evidence/i);
@@ -1744,7 +1758,7 @@ describe("validateTask transition + humanOverride rules", () => {
     dirtyWorkdir(workdir);
     await store.updateTask(taskId, { status: "validating" });
     const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
 
     const detail = await service.validateTask(taskId, {
       passed: true,
@@ -1776,7 +1790,7 @@ describe("validateTask transition + humanOverride rules", () => {
     const store = new OrchestratorTaskStore({ backend: "memory" });
     const { taskId } = await seedTaskWithSession(store, ["tests pass"]);
     const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
 
     // active → done via override (explicit evidence).
     const detail = await service.validateTask(taskId, {
@@ -1818,7 +1832,7 @@ describe("validateTask transition + humanOverride rules", () => {
     });
     rmSync(workdir, { recursive: true, force: true });
     const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
 
     const detail = await service.validateTask(taskId, {
       passed: true,
@@ -1858,7 +1872,7 @@ describe("validateTask transition + humanOverride rules", () => {
     });
     rmSync(workdir, { recursive: true, force: true });
     const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
 
     await expect(
       service.validateTask(taskId, { passed: true, summary: "trust me" }),
@@ -1903,7 +1917,7 @@ describe("validateTask transition + humanOverride rules", () => {
       getService: (type: string) =>
         type === AcpService.serviceType ? fake.service : undefined,
     };
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: fence(VALID_ENVELOPE) });
@@ -1944,7 +1958,7 @@ describe("validateTask transition + humanOverride rules", () => {
     const { taskId } = await seedTaskWithSession(store, ["tests pass"]);
     await store.updateTask(taskId, { status: "validating" });
     const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
-    const service = new OrchestratorTaskService(runtime as never, { store });
+    const service = createService(runtime as never, { store });
     const detail = await service.validateTask(taskId, {
       passed: false,
       summary: "missing proof",
@@ -1989,7 +2003,7 @@ describe("persisted verification recovery", () => {
             throw new Error("settings unavailable");
           return undefined;
         };
-      const service = new OrchestratorTaskService(runtime as never, { store });
+      const service = createService(runtime as never, { store });
       const expected =
         scenario === "no criteria"
           ? "done"
@@ -2075,7 +2089,7 @@ describe("persisted verification recovery", () => {
     if (state === "manual")
       process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = "0";
     const fake = makeFakeAcp();
-    const service = new OrchestratorTaskService(
+    const service = createService(
       makeRuntime(fake.service, () => "{}") as never,
       { store: new OrchestratorTaskStore({ backend: "file", stateFile }) },
     );
@@ -2172,7 +2186,7 @@ describe("persisted verification recovery", () => {
       const runtime = makeRuntime(fake.service, () => {
         throw new Error("must not judge during recovery");
       });
-      const service = new OrchestratorTaskService(runtime as never, {
+      const service = createService(runtime as never, {
         store: reopened,
       });
       try {
