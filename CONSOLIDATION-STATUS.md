@@ -1,7 +1,8 @@
 # Eliza consolidation status — September 20, 2026
 
-**The isolated text candidate is running and verified in part. It is not a
-finished release.** Full evidence and historical failures:
+**The local consolidation checkpoint and handoff are ready for text rehearsal.
+It is not a finished release.** Start with [CONSOLIDATION-HANDOFF.md](CONSOLIDATION-HANDOFF.md).
+Full evidence and historical failures:
 [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md).
 
 ## Current checkpoint
@@ -43,7 +44,7 @@ Thirty-four paid text QA turns have been recorded in total; no voice testing.
 
 These are individual observations across checkpoints, not a controlled latency
 benchmark or a guarantee. The three-call path is routing/acknowledgment,
-action planning, then grounded completion. The latest removal used one tool,
+action planning, then grounded completion. The follow-up memory removal used one tool,
 with no context-restoration call, target retry, or separate reply synthesis.
 Its provider calls took1.112s,0.685s and0.445s; the remaining0.773s includes
 application/tool/transport work not separately attributed here.
@@ -68,7 +69,7 @@ application/tool/transport work not separately attributed here.
   regressions,12 expected fallback exceptions. Three family-interview hover
   controls across four viewports remain unverified.
 
-## Remaining acceptance checklist
+## Consolidation acceptance and remaining release gates
 
 - [x] Check single-day morning availability wording against actual slot evidence.
   Latest preview returned three contiguous AM slots and no booking; reply persisted
@@ -80,20 +81,21 @@ application/tool/transport work not separately attributed here.
   temporary greenhouse rule was removed on4283ed4fd1e in three calls with a
   valid durable receipt. Add/remove deterministic coverage passes413 tests;
   live add completion on the corrected code was not separately retested.
-- [ ] Reconcile remote work: read-only inventory checked44 registered worktrees,
+- [x] Inventory and classify the identified remote work: read-only inventory checked44 registered worktrees,
   24 dirty/untracked. September heads d0d478fe7dd (sync2) and4e8feaac096
   (group protocol) are now fetched locally; all127 sync2 file dispositions are in
   [REMOTE-SOURCE-REVIEW.md](REMOTE-SOURCE-REVIEW.md). Saved Mac/merge remote heads are
   already ancestors. All sync2 file dispositions are explicit; group-channel/Discord
   integration remains a separate release gate. Unspecified other hosts remain unconfirmed.
-- [ ] Finish applicable recovery/persistence review and clean remaining owned
-  Calendar/Notes fixtures. Owned Cedar note/event and the temporary QA memory
+- [x] Review recovery/persistence evidence and clean owned Calendar/Notes fixtures;
+  retain the unexplained historical case as an explicit release gate. Owned Cedar note/event and the temporary QA memory
   and personality directive are now removed; cleanup evidence is saved. Setup-time
   Stop is corrected. Clean post-reload navigation passed in0.978s/one call; the
   preceding Calendar run encountered a development hot-update failure. Historical
   delayed arrival remains causally unproven, not silently marked fixed.
-- [ ] Produce the final candidate handoff with source decisions and explicit
-  release gates.
+- [x] Produce [the final candidate handoff](CONSOLIDATION-HANDOFF.md) with source
+  decisions and explicit release gates. Group/Discord integration is not complete;
+  review and preservation must not be mistaken for integration acceptance.
 
 Native installation remains gated on the Xcode/Metal prerequisite. Remote,
 staging, device, voice and deployment acceptance have not been established.
