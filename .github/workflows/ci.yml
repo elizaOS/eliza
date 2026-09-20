@@ -17,12 +17,12 @@ jobs:
         run: git config --global core.longpaths true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 86f312ef809022e69d1d8f158f72d088b720bc25
+          ref: 0a8df75ae4a7f6fa615420ea3dff17f94b5bba8c
           persist-credentials: false
           submodules: false
       - name: Verify product revision
         run: |
-          if ((git rev-parse HEAD) -ne '86f312ef809022e69d1d8f158f72d088b720bc25') { throw 'Wrong source revision' }
+          if ((git rev-parse HEAD) -ne '0a8df75ae4a7f6fa615420ea3dff17f94b5bba8c') { throw 'Wrong source revision' }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '24.15.0'
@@ -33,6 +33,10 @@ jobs:
         run: bun install --frozen-lockfile --ignore-scripts
       - name: Apply repository installation patches
         run: bun run postinstall
+      - name: Exercise avatar preparation layout and failure contracts
+        run: node --test packages/scripts/__tests__/avatar-preparation.test.mjs
+      - name: Prepare pinned renderer assets
+        run: node packages/app-core/scripts/ensure-avatars.mjs
       - name: Build Windows desktop with canonical command
         run: node packages/app-core/scripts/desktop-build.mjs build --env=canary
       - name: Exercise real Windows secure identity contracts
@@ -84,7 +88,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: script-windows-86f312
+          name: script-windows-0a8df7
           path: |
             packages/app/test-results/
             packages/app/playwright-report/
