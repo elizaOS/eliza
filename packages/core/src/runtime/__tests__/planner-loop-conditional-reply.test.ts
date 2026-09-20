@@ -66,6 +66,9 @@ describe("conditional offers after completed navigation", () => {
 	it.each([
 		"If you have a first thought in mind, tell me what to write and I'll put it up now.",
 		"Once you choose a title, I will save the note.",
+		"Reconnect your calendar and I will schedule it.",
+		"You can reconnect your calendar and I'll schedule it.",
+		"Sign in to your calendar and I'll schedule it.",
 		"If you want, say go and I'll retry from the description updates in order.",
 		"If you say go, I will retry the update.",
 		`Just say "note that..." and I'll write it down.`,
@@ -88,6 +91,10 @@ describe("conditional offers after completed navigation", () => {
 	it.each([
 		"I'll save a note now.",
 		"I’ll save a note now.",
+		"Reconnect your calendar. I'll schedule it now.",
+		"Reconnect your calendar and I'll schedule it and I will email everyone now.",
+		'Your note says "Reconnect your calendar and" and I will schedule it now.',
+		"I will reconnect your calendar and I'll schedule it now.",
 		`Just say "note that..." and I'll save it and I will send your notes now.`,
 		'The phrase "If you tell me" appears in my notes and I will send them now.',
 		'I will send your notes now with the subject "if you confirm".',

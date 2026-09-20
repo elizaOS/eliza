@@ -9643,7 +9643,19 @@ function hasInFlightActionClaim(candidate: string): boolean {
 				/^\s*(?:(?:just|please)\s+)?(?:say|tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b[\s\S]*\band\s*$/i.test(
 					before,
 				);
-			return !precedingRequest && !followingRequest && !requestedInput;
+			// A user-owned connection prerequisite is also conditional work.
+			// Keep it in the same clause as this promise; a quoted instruction,
+			// earlier sentence or another promise cannot supply its condition.
+			const requestedConnection =
+				/(?:^|,\s*(?:or\s+)?)\s*(?:(?:you\s+(?:can|could)|please)\s+)?(?:reconnect|connect|sign in|log in)\b[^;.!?]*\band\s*$/i.test(
+					before,
+				);
+			return (
+				!precedingRequest &&
+				!followingRequest &&
+				!requestedInput &&
+				!requestedConnection
+			);
 		});
 	});
 }
