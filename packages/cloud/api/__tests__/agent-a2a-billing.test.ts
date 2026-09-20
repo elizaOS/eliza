@@ -1,18 +1,7 @@
 /**
- * Agent A2A billing invariants for monetized agents — companion to
- * agent-mcp-billing.test.ts.
- *
- * Regression for #10266: the A2A chat path settles the consumer org with
- * reservation.reconcile(actualTotal), THEN records creator earnings in the same
- * try. recordCreatorEarnings can throw on a transient DB error; the pre-fix code
- * let it reach the outer catch, which ran the NON-idempotent reconcile(0) —
- * double-refunding the WHOLE reservation (free inference + a net credit grant)
- * and returning a -32000 error. The degraded response now preserves the model
- * result with an explicit warning and reconciles exactly once.
- *
- * `handleChat` is module-private, so we drive it through the exported Hono app's
- * POST handler (method "chat"), mounted under `/agents/:id/a2a` so the `:id`
- * param resolves (mirrors app-charge-public-route.test.ts).
+ * Exercises the mounted A2A route with controlled billing and provider boundaries.
+ * Retains admission, protocol validation and settlement ordering, including
+ * provider uncertainty and protection against a second refund after settlement.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -337,6 +326,8 @@ describe("Agent A2A billing", () => {
       headers: { "Content-Type": "application/json" },
       body: "{not-json",
     });
+    expect(malformedJson.status).toBe(400);
+    expect(assertInferenceCredentialActive).toHaveBeenCalledTimes(1);
     expect(await malformedJson.json()).toMatchObject({
       error: { code: -32700, message: "Parse error" },
       id: null,
@@ -351,6 +342,7 @@ describe("Agent A2A billing", () => {
       error: { code: -32600, message: "Invalid Request" },
       id: "keep-me",
     });
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
     expect(reserve).not.toHaveBeenCalled();
     expect(streamText).not.toHaveBeenCalled();
     expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(2);
@@ -362,27 +354,6 @@ describe("Agent A2A billing", () => {
       ORG_ID,
       inferenceCredential,
     );
-  });
-
-  test("checks the deferred credential once when JSON parsing terminates before any resource or provider work", async () => {
-    const response = await app.request("/agents/agent-1/a2a", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "{not-json",
-    });
-
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({
-      error: { code: -32700, message: "Parse error" },
-    });
-    expect(assertInferenceCredentialActive).toHaveBeenCalledTimes(1);
-    expect(assertInferenceCredentialActive).toHaveBeenCalledWith(
-      ORG_ID,
-      inferenceCredential,
-    );
-    expect(admitOrganizationInference).not.toHaveBeenCalled();
-    expect(reserve).not.toHaveBeenCalled();
-    expect(streamText).not.toHaveBeenCalled();
   });
 
   test("standing denial precedes agent lookup and preserves its safe reason", async () => {
@@ -617,7 +588,6 @@ describe("Agent A2A billing", () => {
     expect(streamText).not.toHaveBeenCalled();
   });
 
-  // Regression for #10266 (A2A side).
   test("post-settlement earnings failure does not double-refund the reservation", async () => {
     const reconcile = makeReservation({ adjustmentType: "none" });
     recordCreatorEarnings.mockRejectedValue(
