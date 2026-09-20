@@ -746,6 +746,30 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     });
   });
 
+  it("rejects incomplete and foreign internal targets before contacting an external provider", async () => {
+    for (const eventId of [
+      "eliza:owner:grant:eliza-calendar:calendar:primary:event-test",
+      "another-agent:eliza:owner:grant:eliza-calendar:calendar:primary:event-test",
+      `calendar-event-${AGENT_ID}:eliza:owner:grant:eliza-calendar:calendar:primary:event-test`,
+    ]) {
+      await expect(
+        service.getConditionalCalendarMutationTarget(INTERNAL_URL, {
+          eventId,
+        }),
+      ).rejects.toMatchObject({
+        status: 400,
+        code: "CALENDAR_TARGET_SELECTOR_INVALID",
+      });
+    }
+    // A correctly scoped but missing local ID must stay a local not-found,
+    // and the gate fixture throws if any lookup escapes to Google.
+    await expect(
+      service.getConditionalCalendarMutationTarget(INTERNAL_URL, {
+        eventId: `${AGENT_ID}:eliza:owner:grant:eliza-calendar:calendar:primary:event-missing`,
+      }),
+    ).rejects.toMatchObject({ status: 404, code: "CALENDAR_EVENT_NOT_FOUND" });
+  });
+
   it("creates once, replays idempotently, and returns the event through the canonical feed", async () => {
     const request = {
       title: "Demo with Shaw",

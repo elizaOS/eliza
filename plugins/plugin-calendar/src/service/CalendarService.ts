@@ -7418,6 +7418,22 @@ export class CalendarService extends Service {
       recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
     },
   ): Promise<LifeOpsCalendarEvent> {
+    // Composite local identities are not external provider IDs. Reject a
+    // dropped/wrong agent prefix (including UI element IDs) instead of sending
+    // it to Google or silently rebinding it to a different local event.
+    const localIdentity =
+      request.eventId.startsWith("eliza:owner:grant:") ||
+      request.eventId.includes(":eliza:owner:grant:");
+    if (
+      localIdentity &&
+      !isElizaCalendarEventId(request.eventId, this.agentId())
+    ) {
+      fail(
+        400,
+        "The internal calendar event ID is not bound to this agent. Use the exact event ID from a Calendar result, or resolve the event by its title/source constraints. No calendar read or change occurred.",
+        "CALENDAR_TARGET_SELECTOR_INVALID",
+      );
+    }
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
     if (
