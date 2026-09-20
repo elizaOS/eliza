@@ -1,3 +1,5 @@
+> **Historical snapshot.** Branches, ports, acceptance claims and next steps below describe an earlier checkpoint. For this combined candidate, use [CONSOLIDATION-STATUS.md](CONSOLIDATION-STATUS.md) and [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md). Preserve this document as prior evidence; it is not the current task checklist.
+
 <!-- Saved September 19 before isolated peer integration. Live board remains in the external task artifact directory. -->
 
 # Eliza: saved pre-integration acceptance snapshot

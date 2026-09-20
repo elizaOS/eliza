@@ -1,3 +1,5 @@
+> **Historical snapshot.** Branches, ports, acceptance claims and next steps below describe an earlier checkpoint. For this combined candidate, use [CONSOLIDATION-STATUS.md](CONSOLIDATION-STATUS.md) and [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md). Preserve this document as prior evidence; it is not the current task checklist.
+
 # ganttnubs: context, latency and scenario QA
 
 Status: final original-task browser checks and repository verification PASS. Saved local checkpoint: `codex/ganttnubs-calendar-contracts-20260918`. This pass fixes explicit deletion selectors, proposal completion, source/destination date scoping, local-time conversion and consistent request-date interpretation. The planner-only wording experiment was rejected and removed. Fresh proposal: 3 calls / 3.162s; deletion: 3 / 3.413s; Open Notes: 1 / 1.334s. The approximately-three-second target is NOT consistently met. Updated: 2026-09-18.

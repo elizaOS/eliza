@@ -1,3 +1,5 @@
+> **Historical snapshot.** Branches, ports, acceptance claims and next steps below describe an earlier checkpoint. For this combined candidate, use [CONSOLIDATION-STATUS.md](CONSOLIDATION-STATUS.md) and [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md). Preserve this document as prior evidence; it is not the current task checklist.
+
 # Post-call Notes/Calendar scenario evidence
 
 Final source candidate: `d502d12aad7` on `ganttnubs`. Earlier tables identify historical runs; the final acceptance receipt is below. These are individual local runs,

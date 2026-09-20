@@ -1,3 +1,5 @@
+> **Historical snapshot.** Branches, ports, acceptance claims and next steps below describe an earlier checkpoint. For this combined candidate, use [CONSOLIDATION-STATUS.md](CONSOLIDATION-STATUS.md) and [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md). Preserve this document as prior evidence; it is not the current task checklist.
+
 # Text demo: short handoff
 
 Latest focused latency follow-up: Calendar now selected its day-feed directly
