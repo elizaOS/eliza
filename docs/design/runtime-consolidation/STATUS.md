@@ -83,7 +83,7 @@ remains at its actual host resolver, including symlink/cross-bundle rejection.
 
 ## Residual complexity and ownership review
 
-The current AST proxy compares develop `7084d6847b` with combined revision
+The historical 19-owner AST proxy compares develop `7084d6847b` with combined revision
 `b3f79752c8`. It counts one per function plus if/ternary/loop/case/catch/boolean
 and nullish decisions, with nested functions measured separately. It is not
 complete McCabe analysis. Its 19 owner scopes include core, former auth/vault/
@@ -99,6 +99,9 @@ Conversation routing's entrypoint reduction mostly distributes branches into
 named handlers; use the combined totals, not that single function, to assess
 actual complexity reduction.
 
+The following function table records the earlier `b3f79752c8` checkpoint,
+with ownership names updated after extraction.
+
 | Function | Before → after decision score | Disposition |
 | --- | --- | --- |
 | Agent handleConversationRoutes | 430 → 4 | Fifteen independently maintained selectors now use one ordered route table and shared request preparation. Named handlers retain domain authority and room/effect lifetimes. The change adds 50 net lines; it is dispatch consolidation, not a line reduction. |
@@ -106,10 +109,27 @@ actual complexity reduction.
 | Assistant runPlannerLoopIterations | 310 → 286 | Shared required-tool miss and evaluator finish policy removes 104 net implementation lines. Remaining reply/scope states preserve different effect and delivery contracts; current score includes the consolidated paths. |
 | Core useModel | 205 → 198 | Direct Node clock removes fallback probes; cancellation, streaming and failure ownership stay distinct. |
 | Assistant runV5MessageRuntimeStage1 | 188 → 182 | Some branch deletion, not wholesale rewrite. |
-| Structured prompt execution | Relocation; no deletion credit | Concrete schema/template/recovery execution moved to assistant. Core delegates to an explicitly registered executor and fails before model dispatch when absent. Generic prompt rendering remains a kernel API. |
+| Structured prompt execution | Relocation; no deletion credit | Concrete schema/template/recovery execution moved to assistant. Core delegates to an explicitly registered executor and fails before model dispatch when absent. Generic template rendering belongs to `@elizaos/prompts`; core retains structural prompt contracts. |
 | Assistant processMessage | 144 → 133 | Terminal ownership consolidation reduces local decisions. |
 | Agent startEliza | 138 → 132 | Explicit composition removes some inferred modes. |
-| Core stem | 372 → 372 | Snowball linguistic algorithm; do not rewrite solely to lower a complexity score. |
+| Retrieval stem | 372 → 372 | Snowball linguistic algorithm; do not rewrite solely to lower a complexity score. |
+
+A fresh, like-for-like 20-owner measurement compares `dc3ea3c800` with
+`f25668677c`. It adds `packages/retrieval` to **both** sides so moving the
+stemmer cannot count as deleting its decisions. The non-test JS/TS decision
+score is **160,411 → 156,288** (4,123 fewer, 2.57%); functions above 25 decisions
+are **463 → 451**. There are 2,881 → 2,813 classified files and
+41,619 → 40,565 functions. These totals include tooling and exclude `.test`,
+`.spec` and `__tests__` paths, not every fixture. They measure neither packed
+size nor full control-flow complexity. Do not compare these totals with the
+19-owner checkpoint.
+
+At this revision, planner loop score is 284, server request dispatch is 219,
+Stage-1 message processing is 184, and model dispatch remains 198. The view
+route dispatcher remains 236. These are residual complexity to review, not
+proof that every original simplification requirement is complete. Source
+moves and selective branch removal account for the smaller core; the total
+workflow reduction remains modest.
 
 Do not certify all requested simplification from a green suite or smaller core
 alone. Complete final verification against the original plan; cosmetic wrapper
@@ -216,3 +236,27 @@ This closes three package boundaries, not the full plugin-to-host audit. The
 remaining app-manager, mobile bridge, finances, personal-assistant and registry
 edges require separate ownership dispositions; a green package suite alone does
 not certify those remaining edges.
+
+## Final integration remains open
+
+`f25668677c` is a local migration candidate, not the published or merged final
+revision. The ownership and package results above do not replace combined
+acceptance. Completion requires:
+
+- Integrate the qualified dialogue-state and native-policy ownership changes
+  (`d29134b15a` and `5379093d87`) and the canonical Node Vite build commands
+  (`6b5eae6e34` and `f674d3afbb`), then bind evidence to that combined revision.
+- Resolve the actual Workerd prompt-rendering failure in the external host
+  integration. Preserve the ordinary Node core surface and real prompt
+  semantics; an old edge implementation or a bypassed test is not acceptance.
+- Complete the combined normal install, root checks, package and packed
+  consumers, SQL/provider and applicable hosted platform lanes. Historical
+  package passes remain historical when the combined source changes.
+- Merge the reviewed final candidate into develop, verify hosted outcomes,
+  and deliver the verified revision into `~/v3` without discarding local work.
+
+The separately qualified verifier-lifecycle and batched-query fixes still
+need their final merged-base binding and delivery. They are not evidence
+that this migration PR has already landed. The remaining plugin-to-host
+import edges likewise require explicit disposition before claiming that
+all dependency directions in the original plan have been satisfied.
