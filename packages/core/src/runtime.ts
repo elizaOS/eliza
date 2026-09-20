@@ -62,7 +62,10 @@ import {
 	resolveCapabilityConfig,
 } from "./features/basic-capabilities/index";
 import { createLogger } from "./logger";
-import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
+import {
+	createAsyncContextStorage,
+	installRuntimePluginLifecycle,
+} from "./plugin-lifecycle";
 import { createCoreSecurityHooksPlugin } from "./plugins/core-security-hooks";
 import {
 	getNativeRuntimeFeaturePlugin,
@@ -372,6 +375,14 @@ const NON_CREDENTIAL_SECRET_KEYS: ReadonlySet<string> = new Set([
 	"LANGUAGE",
 	"LANG",
 ]);
+
+/**
+ * Set for the duration of an ERROR_REPORTED emit, across every await inside
+ * its handlers, so a report raised from such a handler can be recognised and
+ * recorded without emitting again. The synchronous `inReportError` latch only
+ * covers handlers that report before their first await.
+ */
+const errorReportEmitScope = createAsyncContextStorage<{ scope: string }>();
 
 export class AgentRuntime implements IAgentRuntime {
 	private readonly dataMutations = new RuntimeDataMutations(this, {
@@ -4402,8 +4413,11 @@ export class AgentRuntime implements IAgentRuntime {
 	 * AgentEventService `"error"` stream when that service is registered.
 	 *
 	 * Self-safe: never throws. A failure inside this method (or inside an
-	 * `ERROR_REPORTED` handler it triggers) is caught and logged as a warning
-	 * without re-entering `reportError`, guarded by {@link inReportError}.
+	 * `ERROR_REPORTED` handler it triggers) is caught and logged as a warning.
+	 * A handler that reports its own failure before its first await is dropped
+	 * by the synchronous {@link inReportError} latch; one that reports after an
+	 * await is recorded in the ring but not emitted again, recognised through
+	 * the async scope the emit runs in.
 	 */
 	reportError(
 		scope: string,
@@ -4419,6 +4433,7 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			return;
 		}
+		const originatingReport = errorReportEmitScope.getStore();
 		this.inReportError = true;
 		try {
 			const normalized = toElizaError(error);
@@ -4462,27 +4477,44 @@ export class AgentRuntime implements IAgentRuntime {
 
 			this.forwardToAgentEventStream(entry, runId);
 
+			if (originatingReport) {
+				// error-policy:J7 diagnostics-must-not-kill-the-loop — a report
+				// raised from inside an ERROR_REPORTED handler (after any await) is
+				// logged and recorded above but never emitted again: emitting would
+				// run the same handler again without bound.
+				this.logger.warn(
+					{ src: "agent", scope, originatingScope: originatingReport.scope },
+					`[${scope}] reported from an ERROR_REPORTED handler for [${originatingReport.scope}]; recorded without re-emitting`,
+				);
+				return;
+			}
+
 			// Fire-and-forget: emitEvent is async but reportError is a sync
 			// diagnostic one-liner. A rejected emit (bad handler) is swallowed to
 			// the logger here — it must not surface as an unhandled rejection and
-			// must not re-enter reportError.
-			void this.emitEvent(EventType.ERROR_REPORTED, {
-				runtime: this,
-				source: scope,
-				scope,
-				code: normalized.code,
-				message: normalized.message,
-				context: merged,
-				runId,
-				roomId,
-			}).catch((emitErr) => {
-				// error-policy:J7 diagnostics-must-not-kill-the-loop — a broken
-				// ERROR_REPORTED handler is logged, never re-reported.
-				this.logger.warn(
-					{ src: "agent", scope, err: emitErr },
-					`[${scope}] ERROR_REPORTED emit failed`,
-				);
-			});
+			// must not re-enter reportError. The emit runs inside the report scope
+			// so handler failures reported across an await are recognised above.
+			void errorReportEmitScope
+				.run({ scope }, () =>
+					this.emitEvent(EventType.ERROR_REPORTED, {
+						runtime: this,
+						source: scope,
+						scope,
+						code: normalized.code,
+						message: normalized.message,
+						context: merged,
+						runId,
+						roomId,
+					}),
+				)
+				.catch((emitErr) => {
+					// error-policy:J7 diagnostics-must-not-kill-the-loop — a broken
+					// ERROR_REPORTED handler is logged, never re-reported.
+					this.logger.warn(
+						{ src: "agent", scope, err: emitErr },
+						`[${scope}] ERROR_REPORTED emit failed`,
+					);
+				});
 		} catch (reportErr) {
 			// error-policy:J7 diagnostics-must-not-kill-the-loop — reportError is
 			// the diagnostic boundary; its own failure may only warn.

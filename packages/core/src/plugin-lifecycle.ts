@@ -167,7 +167,12 @@ class StackAsyncContextStorage<T> implements AsyncContextStorage<T> {
 	}
 }
 
-function createAsyncContextStorage<T>(): AsyncContextStorage<T> {
+/**
+ * Async-propagating context storage: AsyncLocalStorage on Node, an explicit
+ * stack elsewhere. Shared with the runtime's error-report scope so a value set
+ * around an async call is visible to everything that call awaits.
+ */
+export function createAsyncContextStorage<T>(): AsyncContextStorage<T> {
 	if (
 		typeof process !== "undefined" &&
 		typeof process.versions !== "undefined" &&

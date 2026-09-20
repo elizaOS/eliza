@@ -1128,8 +1128,9 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * RECENT_ERRORS provider and the owner-escalation threshold read.
 	 *
 	 * This is the diagnostic boundary (#12263): it never throws. Its own
-	 * failures — and failures inside `ERROR_REPORTED` handlers — are warn-only
-	 * and never re-enter `reportError`.
+	 * failures are warn-only, and a report raised from inside an
+	 * `ERROR_REPORTED` handler is recorded without emitting `ERROR_REPORTED`
+	 * again, so handlers can report through it without looping.
 	 */
 	reportError(
 		scope: string,

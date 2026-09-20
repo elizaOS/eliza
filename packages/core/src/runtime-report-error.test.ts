@@ -159,6 +159,45 @@ describe("AgentRuntime.reportError", () => {
 		warnSpy.mockRestore();
 	});
 
+	it("records but does not re-emit a report raised by an ERROR_REPORTED handler after an await (#31947)", async () => {
+		const runtime = makeRuntime();
+		const warnSpy = vi.spyOn(runtime.logger, "warn");
+
+		// The synchronous latch is already cleared once the handler awaits, so
+		// without async attribution this report would emit ERROR_REPORTED again,
+		// run this handler again, and loop until the process is restarted.
+		let handlerInvocations = 0;
+		runtime.registerEvent(EventType.ERROR_REPORTED, async () => {
+			handlerInvocations += 1;
+			if (handlerInvocations > 25) return;
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			runtime.reportError(
+				"Sink",
+				new ElizaError("sink unavailable", { code: "SINK" }),
+			);
+		});
+
+		runtime.reportError("Outer", new ElizaError("outer", { code: "O" }));
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		expect(handlerInvocations).toBe(1);
+		// The handler's own failure is still observable in the ring, after the
+		// outer report that triggered it.
+		expect(runtime.getRecentReportedErrors().map((e) => e.code)).toEqual([
+			"O",
+			"SINK",
+		]);
+		expect(
+			warnSpy.mock.calls.some(
+				([, msg]) =>
+					typeof msg === "string" &&
+					msg.includes("recorded without re-emitting"),
+			),
+		).toBe(true);
+
+		warnSpy.mockRestore();
+	});
+
 	it("forwards to the AgentEventService error stream when registered", async () => {
 		const runtime = makeRuntime();
 		const emitted: Array<{ stream: string; data: Record<string, unknown> }> =
