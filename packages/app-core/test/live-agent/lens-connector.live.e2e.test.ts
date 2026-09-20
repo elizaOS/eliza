@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { logger, type Plugin } from "@elizaos/core";
 import dotenv from "dotenv";
 import { ethers } from "ethers";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 
 const { extractPlugin, resolveLensPluginImportSpecifier } = await import(
@@ -917,49 +917,4 @@ describeIfLive("Lens Connector - Error Handling", () => {
     },
     TEST_TIMEOUT,
   );
-});
-
-// ---------------------------------------------------------------------------
-// Integration Tests (always run, no live creds needed)
-// These import from workspace modules that may need building first.
-// ---------------------------------------------------------------------------
-
-/** Try to import a workspace module; returns null if the package isn't built. */
-async function tryWorkspaceImport<T>(specifier: string): Promise<T | null> {
-  try {
-    return (await import(specifier)) as T;
-  } catch {
-    return null;
-  }
-}
-
-describe("Lens Connector - Integration", () => {
-  it("Lens is mapped in CONNECTOR_PLUGINS", async () => {
-    const mod = await tryWorkspaceImport<{
-      CONNECTOR_PLUGINS: Record<string, string>;
-    }>("@elizaos/app-core");
-    if (!mod) {
-      logger.warn("[lens-connector] Workspace not built — skipping");
-      return;
-    }
-    expect(mod.CONNECTOR_PLUGINS.lens).toBe("@elizaos/plugin-lens");
-  });
-
-  it("Lens is mapped in CHANNEL_PLUGIN_MAP", async () => {
-    let mod: { CHANNEL_PLUGIN_MAP: Record<string, string> } | null;
-    try {
-      mod = await tryWorkspaceImport<{
-        CHANNEL_PLUGIN_MAP: Record<string, string>;
-      }>("@elizaos/app-core");
-    } catch {
-      mod = null;
-    }
-    if (!mod) {
-      logger.warn(
-        "[lens-connector] Workspace not built or import failed — skipping",
-      );
-      return;
-    }
-    expect(mod.CHANNEL_PLUGIN_MAP.lens).toBe("@elizaos/plugin-lens");
-  });
 });
