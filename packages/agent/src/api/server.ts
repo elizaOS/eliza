@@ -3352,8 +3352,14 @@ async function handleRequest(
       }
       return result;
     };
-    // #12087 Item 13: single boundary-role collapse (no inline OWNER/GUEST ternary).
-    const appActorRole: AppsRouteActorRole = resolveBoundaryRole(req);
+    // Session authority comes from the host's verified session store. Preserve
+    // it before falling back to the standalone token/loopback boundary.
+    const appAuthorization = await resolveHostSessionAuthorization();
+    const appActorRole: AppsRouteActorRole = appAuthorization.ok
+      ? appAuthorization.role === "OWNER"
+        ? "OWNER"
+        : "GUEST"
+      : resolveBoundaryRole(req);
     if (
       await handleAppsRoutes({
         req,
