@@ -9,7 +9,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { approvalRequestsRepository } from "@/db/repositories/approval-requests";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { storableJsonRecord } from "@/lib/api/storable-strings";
+import { storableJsonRecord, storableString } from "@/lib/api/storable-strings";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -34,10 +34,10 @@ const StatusSchema = z.enum([
 const SignerKindSchema = z.enum(["wallet", "ed25519"]);
 
 const ChallengePayloadSchema = z.object({
-  message: z.string().min(1).max(8192),
+  message: storableString().min(1).max(8192),
   signerKind: SignerKindSchema.optional(),
-  walletAddress: z.string().min(1).max(256).optional(),
-  publicKey: z.string().min(1).max(1024).optional(),
+  walletAddress: storableString().min(1).max(256).optional(),
+  publicKey: storableString().min(1).max(1024).optional(),
   context: storableJsonRecord().optional(),
 });
 

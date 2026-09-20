@@ -9,7 +9,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { storableJsonRecord } from "@/lib/api/storable-strings";
+import { storableJsonRecord, storableString } from "@/lib/api/storable-strings";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   moneyRateLimit,
@@ -27,7 +27,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const CreatePaymentRequestSchema = z.object({
   amountUsd: z.number().positive().max(100_000),
   network: z.string().optional(),
-  description: z.string().trim().min(1).max(240).optional(),
+  description: storableString().trim().min(1).max(240).optional(),
   callbackUrl: z.string().url().optional(),
   callback_channel: storableJsonRecord().optional(),
   appId: z.string().uuid().optional(),

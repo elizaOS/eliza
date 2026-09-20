@@ -45,8 +45,6 @@ export type StorableJsonInspection =
   | { kind: "unstorable"; path: (string | number)[] }
   | { kind: "too-large"; limit: number };
 
-class JsonNodeBudgetExceeded extends Error {}
-
 /**
  * Walks parsed JSON and reports the first key or string value PostgreSQL would
  * reject, that the value exceeds `MAX_JSON_NODES`, or that it is storable. The
@@ -57,38 +55,57 @@ export function inspectStorableJson(
   value: unknown,
   path: readonly (string | number)[] = [],
 ): StorableJsonInspection {
+  // Explicit stack rather than recursion: a body nested tens of thousands of
+  // levels deep parses fine but would overflow the call stack here, and a
+  // RangeError escaping this walk would surface as a 500 for what is a client
+  // request that must be answered 400 or accepted. Paths are parent-linked and
+  // materialized only for the reported hit so the walk stays linear in depth.
   let budget = MAX_JSON_NODES;
-  const visit = (node: unknown, at: (string | number)[]): (string | number)[] | null => {
+  const root: PathNode = { key: null, parent: null };
+  const stack: Array<{ node: unknown; at: PathNode }> = [{ node: value, at: root }];
+  while (stack.length > 0) {
+    const frame = stack.pop();
+    if (!frame) break;
     budget -= 1;
-    if (budget < 0) throw new JsonNodeBudgetExceeded();
-    if (typeof node === "string") return isStorableString(node) ? null : at;
+    if (budget < 0) return { kind: "too-large", limit: MAX_JSON_NODES };
+    const { node, at } = frame;
+    if (typeof node === "string") {
+      if (!isStorableString(node)) return { kind: "unstorable", path: materialize(path, at) };
+      continue;
+    }
     if (Array.isArray(node)) {
-      for (let index = 0; index < node.length; index += 1) {
-        const hit = visit(node[index], [...at, index]);
-        if (hit) return hit;
+      // Push in reverse so entries are visited in index order and the first
+      // offending path is the same one a left-to-right walk would report.
+      for (let index = node.length - 1; index >= 0; index -= 1) {
+        stack.push({ node: node[index], at: { key: index, parent: at } });
       }
-      return null;
+      continue;
     }
     if (node && typeof node === "object") {
-      for (const [key, child] of Object.entries(node)) {
-        if (!isStorableString(key)) return [...at, key];
-        const hit = visit(child, [...at, key]);
-        if (hit) return hit;
+      const entries = Object.entries(node);
+      for (const [key] of entries) {
+        if (!isStorableString(key)) {
+          return { kind: "unstorable", path: materialize(path, { key, parent: at }) };
+        }
+      }
+      for (let index = entries.length - 1; index >= 0; index -= 1) {
+        const [key, child] = entries[index];
+        stack.push({ node: child, at: { key, parent: at } });
       }
     }
-    return null;
-  };
-  try {
-    const hit = visit(value, [...path]);
-    return hit ? { kind: "unstorable", path: hit } : { kind: "storable" };
-  } catch (error) {
-    // error-policy:J3 the budget signal is this module's own control flow;
-    // it becomes the explicit too-large outcome, never a fake-valid result.
-    if (error instanceof JsonNodeBudgetExceeded) {
-      return { kind: "too-large", limit: MAX_JSON_NODES };
-    }
-    throw error;
   }
+  return { kind: "storable" };
+}
+
+type PathNode = { key: string | number | null; parent: PathNode | null };
+
+function materialize(prefix: readonly (string | number)[], at: PathNode): (string | number)[] {
+  const suffix: (string | number)[] = [];
+  for (let node: PathNode | null = at; node && node.key !== null; node = node.parent) {
+    suffix.push(node.key);
+  }
+  suffix.reverse();
+  return [...prefix, ...suffix];
 }
 
 /**

@@ -52,6 +52,23 @@ describe("inspectStorableJson", () => {
   });
 });
 
+describe("inspectStorableJson on deep nesting", () => {
+  test("walks a 40000-level array without overflowing the call stack", () => {
+    const depth = 40_000;
+    const clean = JSON.parse("[".repeat(depth) + '"x"' + "]".repeat(depth));
+    expect(inspectStorableJson(clean)).toEqual({ kind: "storable" });
+    const dirty = JSON.parse("[".repeat(depth) + '"a\\u0000b"' + "]".repeat(depth));
+    const inspection = inspectStorableJson(dirty);
+    expect(inspection.kind).toBe("unstorable");
+    if (inspection.kind === "unstorable") expect(inspection.path).toHaveLength(depth);
+  });
+
+  test("reports the first offending value in left-to-right order", () => {
+    const value = { a: ["ok", { b: "fine", c: "bad\u0000" }], d: "\ud800" };
+    expect(inspectStorableJson(value)).toEqual({ kind: "unstorable", path: ["a", 1, "c"] });
+  });
+});
+
 describe("zod schemas", () => {
   test("storableString keeps chained constraints and reports the field path", () => {
     const schema = z.object({ reason: storableString().max(500).optional() });
