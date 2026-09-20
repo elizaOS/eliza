@@ -2,7 +2,7 @@
  * Exercises proxy replay and cancellation against a real local HTTP server.
  * The RPC tests redirect only the provider URL; handler, retry, and fetch run unchanged.
  */
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { createServer } from "node:http";
 import { type RetryFetchOptions, retryFetch } from "./fetch";
 import { rpcHandlerForChain } from "./services/rpc";
@@ -163,6 +163,7 @@ describe("caller cancellation", () => {
   });
 
   it("preserves cancellation during backoff even when its reason is TimeoutError", async () => {
+    const jitter = spyOn(Math, "random").mockReturnValue(0);
     let requests = 0;
     const controller = new AbortController();
     const reason = new DOMException("caller deadline expired", "TimeoutError");
@@ -172,7 +173,11 @@ describe("caller cancellation", () => {
       fetch() {
         requests += 1;
         setTimeout(() => controller.abort(reason), 20);
-        return new Response("gateway unavailable", { status: 503 });
+        // A server-directed delay guarantees backoff even at zero retry jitter.
+        return new Response("gateway unavailable", {
+          status: 503,
+          headers: { "Retry-After": "1" },
+        });
       },
     });
     try {
@@ -182,6 +187,7 @@ describe("caller cancellation", () => {
       expect(requests).toBe(1);
     } finally {
       server.stop(true);
+      jitter.mockRestore();
     }
   });
 
