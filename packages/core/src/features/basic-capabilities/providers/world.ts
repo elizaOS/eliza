@@ -16,7 +16,6 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";
-import { addHeader } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("WORLD");
@@ -223,18 +222,10 @@ export const worldProvider: Provider = {
 
 		// Create formatted text for display
 		const worldInfoText = [
-			`# World: ${world.name}`,
-			`Current Channel: ${currentRoom.name} (${currentRoom.type})`,
-			`Total Channels: ${worldRooms.length}`,
-			`Participants in current channel: ${participants.length}`,
-			"",
-			`Text channels: ${channelsByType.text.length}`,
-			`Voice channels: ${channelsByType.voice.length}`,
-			`DM channels: ${channelsByType.dm.length}`,
-			`Feed channels: ${channelsByType.feed.length}`,
-			`Thread channels: ${channelsByType.thread.length}`,
-			`Other channels: ${channelsByType.other.length}`,
-		].join("\n");
+			`World: ${world.name}`,
+			`current channel: ${currentRoom.name} (${currentRoom.type}), participants=${participants.length}`,
+			`channels: total=${worldRooms.length}, text=${channelsByType.text.length}, voice=${channelsByType.voice.length}, DM=${channelsByType.dm.length}, feed=${channelsByType.feed.length}, thread=${channelsByType.thread.length}, other=${channelsByType.other.length}`,
+		].join("; ");
 
 		// Build the world information object with formatted data
 		const data = {
@@ -269,9 +260,6 @@ export const worldProvider: Provider = {
 			worldInfo: worldInfoText,
 		};
 
-		// Use addHeader like in entitiesProvider
-		const formattedText = addHeader("# World Information", worldInfoText);
-
 		logger.debug(
 			{
 				src: "plugin:basic-capabilities:provider:world",
@@ -285,7 +273,7 @@ export const worldProvider: Provider = {
 				world: data.world,
 			},
 			values,
-			text: formattedText,
+			text: worldInfoText,
 		} as ProviderResult;
 	},
 };
