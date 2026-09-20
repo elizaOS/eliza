@@ -18,6 +18,8 @@ import {
 } from "../app-manifest";
 import type { PluginManifestCandidate } from "../plugin-manifest";
 
+type AppConfig = Parameters<typeof applyAppManifestDefaults>[0];
+
 let tmpRoot: string;
 
 async function writeAppPackageJson(
@@ -30,15 +32,15 @@ async function writeAppPackageJson(
   return tmpRoot;
 }
 
-beforeEach(async () => {
-  tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "app-manifest-test-"));
-});
-
-afterEach(async () => {
-  await fs.rm(tmpRoot, { recursive: true, force: true });
-});
-
 describe("readAppManifest", () => {
+  beforeEach(async () => {
+    tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "app-manifest-test-"));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpRoot, { recursive: true, force: true });
+  });
+
   it("returns null when package.json is missing", async () => {
     const manifest = await readAppManifest(path.join(tmpRoot, "missing"));
     expect(manifest).toBeNull();
@@ -87,19 +89,14 @@ describe("filterCandidatesByAppManifest", () => {
     { packageName: "@elizaos/plugin-wallet", packageRoot: "/c" },
   ];
 
-  it("returns all candidates when manifest is null", () => {
-    expect(filterCandidatesByAppManifest(candidates, null)).toEqual(candidates);
-  });
-
-  it("returns all candidates when candidates is undefined", () => {
-    expect(filterCandidatesByAppManifest(candidates, {})).toEqual(candidates);
-  });
-
-  it("returns all candidates when candidates is empty array", () => {
-    expect(
-      filterCandidatesByAppManifest(candidates, { candidates: [] }),
-    ).toEqual(candidates);
-  });
+  it.each([null, {}, { candidates: [] }])(
+    "returns all candidates without an allowlist: %j",
+    (manifest) => {
+      expect(filterCandidatesByAppManifest(candidates, manifest)).toEqual(
+        candidates,
+      );
+    },
+  );
 
   it("filters by full package name", () => {
     const result = filterCandidatesByAppManifest(candidates, {
@@ -141,9 +138,7 @@ describe("filterCandidatesByAppManifest", () => {
 
 describe("applyAppManifestDefaults", () => {
   it("does nothing when manifest is null", () => {
-    const config: {
-      plugins?: { entries?: Record<string, { enabled?: boolean }> };
-    } = {};
+    const config: AppConfig = {};
     expect(applyAppManifestDefaults(config, null)).toEqual([]);
     expect(config.plugins?.entries).toBeUndefined();
   });
@@ -154,9 +149,7 @@ describe("applyAppManifestDefaults", () => {
   });
 
   it("populates entries from defaults", () => {
-    const config: {
-      plugins?: { entries?: Record<string, { enabled?: boolean }> };
-    } = {};
+    const config: AppConfig = {};
     const applied = applyAppManifestDefaults(config, {
       defaults: {
         wallet: { enabled: false },
@@ -169,27 +162,14 @@ describe("applyAppManifestDefaults", () => {
   });
 
   it("user-set entries win over defaults", () => {
-    const config: {
-      plugins: { entries: Record<string, { enabled?: boolean }> };
-    } = {
+    const config: AppConfig = {
       plugins: { entries: { wallet: { enabled: true } } },
     };
     const applied = applyAppManifestDefaults(config, {
       defaults: { wallet: { enabled: false }, anthropic: { enabled: true } },
     });
     expect(applied).toEqual(["anthropic"]);
-    expect(config.plugins?.entries.wallet).toEqual({ enabled: true });
-    expect(config.plugins?.entries.anthropic).toEqual({ enabled: true });
-  });
-
-  it("creates plugins.entries when missing", () => {
-    const config: {
-      plugins?: { entries?: Record<string, { enabled?: boolean }> };
-    } = {};
-    applyAppManifestDefaults(config, {
-      defaults: { x: { enabled: true } },
-    });
-    expect(config.plugins?.entries).toBeDefined();
-    expect(config.plugins?.entries?.x).toEqual({ enabled: true });
+    expect(config.plugins?.entries?.wallet).toEqual({ enabled: true });
+    expect(config.plugins?.entries?.anthropic).toEqual({ enabled: true });
   });
 });
