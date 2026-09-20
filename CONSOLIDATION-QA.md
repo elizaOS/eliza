@@ -218,3 +218,9 @@ No claimed seven-call or latency resolution: the model can still CONTINUE with a
 Six remaining original Calendar test diffs inspected in full against ec23d0f670c. Inventory now189/270 reviewed (185 include,3 upstream-equivalent,1 Calendar handler review-required). Real PGlite assertions check saved/unchanged event fields, guest boundaries, exact supplied description, targeted follow-up moves and local ID isolation. Deterministic handler tests cover write-time conflict checks, duration preservation, DST civil-day reads and typed preflight repair without repeated completion.
 
 These tests use model doubles and do not establish general extraction accuracy, external invitation delivery, recurring availability or live latency. Historical test names referring to self-verification are stale; current assertions require model-owned replies and factual receipts. No tests rerun solely for this review and no paid calls.
+
+## Notes test and scenario source review complete
+
+Five complete original Notes test/scenario diffs reviewed against ec23d0f670c; inventory194/270 (190 include,3 upstream-equivalent,1 Calendar handler review-required). The deterministic action scenario now compares writes and reads with persisted JSON, checks exact multiline/double-space content, stable identity/creation timestamp and precise deletion. Action tests cover reopened-store persistence, exact IDs versus decoys, duplicate title clarification, role denial, date filters across DST and unchanged omitted fields. Provider tests verify fresh owner-scoped matching records with original Unicode and identity. Literal colon parsing no longer invents a title/body separator.
+
+This is source review using previously recorded test results, not a fresh live run. The planner/evaluator doubles cannot prove natural-language routing or disambiguation accuracy. No paid calls.
