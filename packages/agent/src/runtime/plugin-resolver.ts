@@ -157,9 +157,7 @@ const SOURCE_STAGED_ROOT_ENTRYPOINTS: Record<
 > = {
   "@elizaos/agent": {
     path: "./src/staged-runtime-index.ts",
-    source: `export { extractActionParamsViaLlm } from "./actions/extract-params.ts";
-export { renderGroundedActionReply } from "./actions/grounded-action-reply.ts";
-export { extractConversationMetadataFromRoom, isPageScopedConversationMetadata } from "./api/conversation-metadata.ts";
+    source: `export { extractConversationMetadataFromRoom, isPageScopedConversationMetadata } from "./api/conversation-metadata.ts";
 export { handleConnectorAccountRoutes } from "./api/connector-account-routes.ts";
 export { checkRateLimit } from "./api/rate-limiter.ts";
 export { loadEffectiveElizaConfig, loadElizaConfig, saveElizaConfig } from "./config/config.ts";

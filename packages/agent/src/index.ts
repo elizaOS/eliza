@@ -86,11 +86,6 @@ export {
   resolveCloudApiBaseUrl,
   setRestartHandler,
 } from "@elizaos/shared";
-export {
-  type ExtractActionParamsArgs,
-  extractActionParamsViaLlm,
-  type ParamSchemaDescriptor,
-} from "./actions/extract-params.ts";
 export * from "./actions/index.ts";
 export * from "./api/config-env.ts";
 export { handleConnectorAccountRoutes } from "./api/connector-account-routes.ts";

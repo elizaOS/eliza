@@ -49,3 +49,7 @@ or domain task names. Persisted files, MACs and activation links are unchanged.
 The documents feature owns the shared access policy and bounded service loader
 used by host knowledge actions and document HTTP routes. Their document scope,
 source and role types come from the same feature contracts.
+
+Action parameter extraction and grounded action replies are assistant policy.
+Import them from this package; they preserve complete conversation and action
+results, including planner-owned deferred reply receipts.

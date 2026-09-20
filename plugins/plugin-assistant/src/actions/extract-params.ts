@@ -1,50 +1,7 @@
 /**
- * Self-correcting LLM-based parameter extraction for action handlers.
- *
- * Project policy:
- *   - The action planner is the *primary* extractor of params.
- *   - Handlers MUST NOT use regex / string matching for intent inference.
- *   - The only natural-language shortcut exception is an explicit
- *     `ShortcutDefinition` (or package-local deterministic shortcut) with a
- *     stable id, narrow scope, tests, and documented routing target. Shortcuts
- *     may select an action or route a known shell command, but they must not
- *     become ad hoc parameter extractors inside handlers/providers/evaluators.
- *   - But planners get params wrong frequently — small models drop fields,
- *     misname keys, send strings as numbers, etc.
- *   - When that happens, the action handler runs its OWN small LLM call
- *     scoped to the conversation + action's parameter schema. The handler
- *     never falls back to regex; it falls back to the LLM.
- *
- * This module provides one helper, `extractActionParamsViaLlm`, which any
- * action handler can call when its incoming `params` are missing required
- * fields. The handler prefers planner-supplied values (planner is
- * authoritative); the helper only fills in missing slots.
- *
- * Usage in a handler:
- *
- *   const filled = await extractActionParamsViaLlm<MyParams>({
- *     runtime, message, state,
- *     actionName: "MESSAGE",
- *     actionDescription: "Cross-channel inbox: triage / digest / respond / search...",
- *     paramSchema: triageMessagesAction.parameters,
- *     existingParams: planParams,
- *     requiredFields: ["subaction"],
- *   });
- *   if (!filled.subaction) {
- *     return cleanError("MISSING_SUBACTION");
- *   }
- *
- * The helper:
- *   - Inspects which required fields are missing from `existingParams`
- *   - If none are missing, returns existingParams unchanged (no model call)
- *   - Otherwise builds a focused JSON-extraction prompt with the action's
- *     name, description, schema, the recent conversation, and the current
- *     message
- *   - Calls `runtime.useModel(ModelType.TEXT_SMALL)` and parses the JSON
- *   - Merges extracted values UNDER existing planner values (planner wins
- *     on every field)
- *   - Returns silently with whatever was extractable; handler decides what
- *     to do if required fields remain missing.
+ * Fills missing action parameters using the complete conversation and declared
+ * schema. Planner-supplied values remain authoritative; callers handle any
+ * required fields that the model cannot resolve.
  */
 
 import {

@@ -4,9 +4,9 @@
  * adapter deterministically selects a value from the schema it actually receives.
  */
 import { type Action, ModelType } from "@elizaos/core";
+import { createRealTestRuntime } from "@elizaos/testing/real-runtime";
 import { expect, it } from "vitest";
-import { createRealTestRuntime } from "../../../app-core/test/helpers/real-runtime.ts";
-import { validateToolArgs } from "../../../core/src/actions/validate-tool-args.ts";
+import { validateToolArgs } from "../../../../packages/core/src/actions/validate-tool-args.ts";
 import { extractActionParamsViaLlm } from "./extract-params.ts";
 
 function isObject(value: unknown): value is Record<string, unknown> {

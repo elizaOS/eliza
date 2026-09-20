@@ -2,8 +2,9 @@
  * Covers lossless recent conversation backfill through the agent-facing core
  * re-export, including malformed rows and repeated storage/state occurrences.
  */
+
+import { recentConversationTexts } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { recentConversationTexts } from "./recent-conversation-texts.ts";
 
 describe("recentConversationTexts", () => {
   it("keeps valid memories when one row has no content", async () => {

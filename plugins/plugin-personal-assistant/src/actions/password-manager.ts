@@ -4,7 +4,7 @@
  * subactions, shelling out to the configured password-manager CLI and
  * injecting the retrieved secret via the clipboard.
  */
-import { extractActionParamsViaLlm } from "@elizaos/agent";
+
 import {
   type ActionResult,
   type HandlerOptions,
@@ -14,6 +14,7 @@ import {
   requireConfirmation,
   type State,
 } from "@elizaos/core";
+import { extractActionParamsViaLlm } from "@elizaos/plugin-assistant";
 import {
   injectCredentialToClipboard,
   listPasswordItems,

@@ -23,7 +23,8 @@ const mocks = vi.hoisted(() => ({
   hasLifeOpsAccess: vi.fn(async () => false),
 }));
 
-vi.mock("@elizaos/agent", () => ({
+vi.mock("@elizaos/plugin-assistant", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/plugin-assistant")>()),
   extractActionParamsViaLlm: mocks.extractActionParamsViaLlm,
 }));
 
