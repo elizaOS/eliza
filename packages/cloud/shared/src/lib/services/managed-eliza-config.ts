@@ -216,7 +216,7 @@ export function applyManagedAgentInferenceEnvDefaults(
   const embeddingDimension =
     existingEnv.EMBEDDING_DIMENSION ??
     existingEnv.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ??
-    (localPrimaryEmbeddings || isFreshProvision ? "384" : "1536");
+    (isFreshProvision ? "384" : "1536");
   const cloudDimension = existingEnv.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? embeddingDimension;
   const embeddingModel =
     existingEnv.ELIZAOS_CLOUD_EMBEDDING_MODEL ??
@@ -229,12 +229,16 @@ export function applyManagedAgentInferenceEnvDefaults(
     Boolean(existingEnv.EMBEDDING_BASE_URL?.trim() || existingEnv.EMBEDDING_API_KEY?.trim());
   if (
     embeddingDimension !== cloudDimension ||
+    (!isFreshProvision &&
+      localPrimaryEmbeddings &&
+      !directEmbeddingProvider &&
+      existingEnv.ELIZAOS_CLOUD_EMBEDDING_MODEL !== "bge-small-en-v1.5") ||
     (!directEmbeddingProvider &&
       (localPrimaryEmbeddings || embeddingModel === "bge-small-en-v1.5") &&
       (embeddingDimension !== "384" || embeddingModel !== "bge-small-en-v1.5"))
   ) {
     throw new ElizaError(
-      "Managed embedding model and stored dimensions disagree; explicitly re-embed the existing store before selecting BGE384",
+      "Managed embedding identity or dimensions are incompatible or unknown; back up and explicitly re-embed the existing store before pinning BGE384 model and dimensions",
       {
         code: "MANAGED_EMBEDDING_MIGRATION_REQUIRED",
         context: {
