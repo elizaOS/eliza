@@ -33,7 +33,7 @@ import {
   test,
 } from "bun:test";
 import { APICallError } from "ai";
-import { isInsufficientCreditsError } from "../../../core/src/services/message/fallback-reply";
+import { isInsufficientCreditsError } from "../../../core/src/security/model-failure";
 import { mockNonSubscriberEntitlementLookup } from "./helpers/non-subscriber-entitlement-mock";
 
 // These purchased-credit fixtures have no paid subscription. Keep the real
