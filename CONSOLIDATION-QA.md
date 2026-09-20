@@ -212,3 +212,9 @@ Changed the deferred settlement branch to set modelReplyRequired=true, preservin
 Two new cases exercise real settlement, planner-result serialization and evaluator schema construction for successful and failed clarification outcomes. Both failed before the change, then passed. Focused tests183 passed; planner/message suites1173 passed; Agent executor/deferred-renderer handoff file passed (plus9 mobile workspace entry checks). Scoped Biome passed. Full root verification is running under session77087; log deferred-required-root-verify.log in the external evidence folder. No live restart or paid call yet; UI5268 still uses3a50ad527d4.
 
 No claimed seven-call or latency resolution: the model can still CONTINUE with an empty reply, request needed context or fail output validation. Overbroad weekly availability, speculative history restoration and the Stage-1 routing repair remain separate open observations.
+
+## Calendar test review complete
+
+Six remaining original Calendar test diffs inspected in full against ec23d0f670c. Inventory now189/270 reviewed (185 include,3 upstream-equivalent,1 Calendar handler review-required). Real PGlite assertions check saved/unchanged event fields, guest boundaries, exact supplied description, targeted follow-up moves and local ID isolation. Deterministic handler tests cover write-time conflict checks, duration preservation, DST civil-day reads and typed preflight repair without repeated completion.
+
+These tests use model doubles and do not establish general extraction accuracy, external invitation delivery, recurring availability or live latency. Historical test names referring to self-verification are stale; current assertions require model-owned replies and factual receipts. No tests rerun solely for this review and no paid calls.
