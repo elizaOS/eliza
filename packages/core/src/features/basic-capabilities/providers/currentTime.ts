@@ -2,8 +2,8 @@
  * The CURRENT_TIME provider renders an active sender device's wall clock when
  * its IANA timezone is available. Agent configuration and the runtime host are
  * used as fallbacks. A configured owner's zone can be user-local; agent/host
- * clocks remain references for other senders. Text comes from the centralized
- * provider specification.
+ * clocks remain references for other senders. The single-line rendering preserves
+ * the exact UTC instant, local clock, timezone and source without conflating them.
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getConfiguredOwnerEntityIds } from "../../../roles.ts";
@@ -118,17 +118,8 @@ export const currentTimeProvider: Provider = {
 		);
 
 		const contextText = userTimeZone
-			? `# Current Time
-- User local time: ${humanReadable}
-- User timezone: ${timeZone} (${origin === "device" ? "from the active device" : "the owner's configured timezone; use it unless the user states another"})
-- ISO (UTC): ${isoTimestamp}
-For the current time/date, use this user-local clock as given, not earlier dialogue; no timezone arithmetic.`
-			: `# Current Time
-- User timezone: unknown (do not guess; ask when the user's local time matters)
-- ${origin === "agent-setting" ? "Agent reference" : "Server"} time: ${humanReadable}
-- ${origin === "agent-setting" ? "Agent" : "Server"} timezone: ${timeZone}
-- ISO (UTC): ${isoTimestamp}
-The reference clock above is not the user's local time. Do not present it as user-local or perform timezone arithmetic.`;
+			? `User local time: ${humanReadable} (${timeZone}; ${origin === "device" ? "device" : "owner setting; user override wins"}); UTC: ${isoTimestamp}. Use this clock, not prior chat; no timezone arithmetic.`
+			: `${origin === "agent-setting" ? "Agent reference" : "Server reference"} time: ${humanReadable} (${timeZone}); UTC: ${isoTimestamp}. User timezone unknown: never guess; ask if needed. Not user-local; no timezone arithmetic.`;
 
 		return {
 			text: contextText,

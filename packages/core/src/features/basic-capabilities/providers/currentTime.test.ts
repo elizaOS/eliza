@@ -67,9 +67,10 @@ describe("currentTimeProvider", () => {
 		expect(result.text).toContain(
 			"User local time: Tuesday, August 4, 2026 at 7:41:04 PM PDT",
 		);
-		expect(result.text).toContain("ISO (UTC): 2026-08-05T02:41:04.618Z");
-		expect(result.text).toContain("from the active device");
+		expect(result.text).toContain("UTC: 2026-08-05T02:41:04.618Z");
+		expect(result.text).toContain("America/Los_Angeles; device");
 		expect(result.text).not.toContain("Europe/Paris");
+		expect(result.text).not.toMatch(/[\r\n]/);
 	});
 
 	it("lets a traveling device override the configured reference timezone", async () => {
@@ -86,10 +87,29 @@ describe("currentTimeProvider", () => {
 			timeZone: "America/Los_Angeles",
 			timeZoneOrigin: "device",
 		});
+		expect(result.text).toContain("Sunday, November 1, 2026 at 1:30:00 AM PST");
+		expect(result.text).toContain("2026-11-01T09:30:00.000Z");
+	});
+
+	it.each([
+		["2026-03-08T09:59:59.000Z", "1:59:59 AM PST"],
+		["2026-03-08T10:00:00.000Z", "3:00:00 AM PDT"],
+	])("retains the instant and DST offset at %s", async (instant, localTime) => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date(instant));
+		const result = await currentTimeProvider.get(
+			runtime(),
+			message("America/Los_Angeles"),
+			{} as never,
+		);
+		expect(result.text).toContain(instant);
+		expect(result.text).toContain(`Sunday, March 8, 2026 at ${localTime}`);
+		expect(result.text).toContain("America/Los_Angeles; device");
+		expect(result.text).not.toMatch(/[\r\n]/);
 	});
 
 	it("presents the configured TIMEZONE as the owner's zone when the owner sends without a device zone", async () => {
-		// Live 2026-09-05: "User timezone: unknown" made the planner emit UTC
+		// Live 2026-09-05: "User timezone unknown" made the planner emit UTC
 		// day bounds and "Z" instants for a Pacific owner's calendar even though
 		// TIMEZONE=America/Los_Angeles was configured by that owner.
 		const result = await currentTimeProvider.get(
@@ -103,11 +123,14 @@ describe("currentTimeProvider", () => {
 			userTimeZone: "Europe/Paris",
 			timeZoneOrigin: "agent-setting",
 		});
-		expect(result.text).toContain("User timezone: Europe/Paris");
-		expect(result.text).toContain("owner's configured timezone");
+		expect(result.text).toContain(
+			"Europe/Paris; owner setting; user override wins",
+		);
+		expect(result.text).toContain("owner setting");
 		expect(result.text).toContain("User local time:");
-		expect(result.text).not.toContain("User timezone: unknown");
+		expect(result.text).not.toContain("User timezone unknown");
 		expect(result.text).not.toContain("Agent reference time:");
+		expect(result.text).not.toMatch(/[\r\n]/);
 	});
 
 	it("keeps the configured TIMEZONE as a reference clock for a sender who is not the owner", async () => {
@@ -123,9 +146,11 @@ describe("currentTimeProvider", () => {
 			userTimeZone: null,
 			timeZoneOrigin: "agent-setting",
 		});
-		expect(result.text).toContain("User timezone: unknown");
+		expect(result.text).toContain("User timezone unknown");
 		expect(result.text).toContain("Agent reference time:");
 		expect(result.text).not.toContain("User local time:");
+		expect(result.text).toContain("never guess; ask if needed");
+		expect(result.text).not.toMatch(/[\r\n]/);
 	});
 
 	it("labels the host clock as server time when no trusted sender zone exists", async () => {
@@ -141,9 +166,11 @@ describe("currentTimeProvider", () => {
 			userTimeZone: null,
 			timeZoneOrigin: "host",
 		});
-		expect(result.text).toContain("User timezone: unknown");
-		expect(result.text).toContain("Server time:");
+		expect(result.text).toContain("User timezone unknown");
+		expect(result.text).toContain("Server reference time:");
 		expect(result.text).not.toContain("User local time:");
+		expect(result.text).toContain("never guess; ask if needed");
+		expect(result.text).not.toMatch(/[\r\n]/);
 	});
 
 	it.each(["Mars/Olympus_Mons", "\nUTC\rspoof", "", 42])(
