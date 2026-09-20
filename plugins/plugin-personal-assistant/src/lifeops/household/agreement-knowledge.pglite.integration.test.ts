@@ -47,7 +47,10 @@ import {
   createBrowserSession,
   createMachineSession,
 } from "../../../../../packages/app-core/src/api/auth/sessions.ts";
-import { composeResponseState } from "../../../../../packages/core/src/services/message/provider-state.js";
+import {
+  composeResponseState,
+  selectV5PlannerStateProviderNames,
+} from "../../../../../packages/core/src/services/message/provider-state.js";
 import { TrajectoriesService } from "../../../../../packages/core/src/services/trajectories.ts";
 import {
   createLifeOpsTestRuntime,
@@ -506,7 +509,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
   });
 
-  it("composes approved pins on ordinary owner turns while preserving room and audience boundaries", async () => {
+  it("composes approved pins into the planner state on ordinary owner turns while preserving room and audience boundaries", async () => {
     const service = createAgreementKnowledgeService(runtime);
     const ownerId = crypto.randomUUID() as UUID;
     const roomId = crypto.randomUUID() as UUID;
@@ -528,22 +531,44 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       await runtime.addParticipant(ownerId, id);
       await runtime.addParticipant(runtime.agentId, id);
     }
-    const compose = async (targetRoomId: UUID) => {
-      const message: Memory = {
-        id: crypto.randomUUID() as UUID,
-        entityId: ownerId,
-        agentId: runtime.agentId,
-        roomId: targetRoomId,
-        content: {
-          text: "What approved agreement obligation applies here?",
-          source: "eliza-client",
-        },
-      };
+    const buildOwnerMessage = (targetRoomId: UUID): Memory => ({
+      id: crypto.randomUUID() as UUID,
+      entityId: ownerId,
+      agentId: runtime.agentId,
+      roomId: targetRoomId,
+      content: {
+        text: "What approved agreement obligation applies here?",
+        source: "eliza-client",
+      },
+    });
+    // Stage 1 owns interpretation; approved obligations are planner-phase
+    // state, so the two phases are composed independently.
+    const composeStage1State = async (targetRoomId: UUID) => {
+      const message = buildOwnerMessage(targetRoomId);
       await attestAuthenticatedApiDeliveryAudience(runtime, message, {
         kind: "owner_session",
         principalId: ownerId,
       });
       return composeResponseState(runtime, message);
+    };
+    const composePlannerState = async (targetRoomId: UUID) => {
+      const message = buildOwnerMessage(targetRoomId);
+      await attestAuthenticatedApiDeliveryAudience(runtime, message, {
+        kind: "owner_session",
+        principalId: ownerId,
+      });
+      return runtime.composeState(
+        message,
+        selectV5PlannerStateProviderNames({
+          runtime,
+          message,
+          selectedContexts: ["general"],
+          userRoles: ["OWNER"],
+        }),
+        true,
+        false,
+        [],
+      );
     };
     let pin = await service.pin({
       artifactId: artifact.id,
@@ -552,13 +577,16 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       pinnedByEntityId: SELF_ENTITY_ID,
     });
     try {
-      const state = await compose(roomId);
+      expect((await composeStage1State(roomId)).text).not.toContain(
+        "Share school notices within twenty-four hours.",
+      );
+      const state = await composePlannerState(roomId);
       expect(state.text).toContain(
         "Share school notices within twenty-four hours.",
       );
       expect(state.text).toContain("source pages 4-5");
       expect(state.text).not.toContain("An unsupported model interpretation.");
-      expect((await compose(otherRoomId)).text).not.toContain(
+      expect((await composePlannerState(otherRoomId)).text).not.toContain(
         "Share school notices within twenty-four hours.",
       );
 
@@ -566,7 +594,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         pinId: pin.id,
         unpinnedByEntityId: SELF_ENTITY_ID,
       });
-      expect((await compose(roomId)).text).not.toContain(
+      expect((await composePlannerState(roomId)).text).not.toContain(
         "Share school notices within twenty-four hours.",
       );
       pin = await service.pin({
@@ -575,7 +603,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         targetId: runtime.agentId,
         pinnedByEntityId: SELF_ENTITY_ID,
       });
-      expect((await compose(otherRoomId)).text).toContain(
+      expect((await composePlannerState(otherRoomId)).text).toContain(
         "Share school notices within twenty-four hours.",
       );
 
@@ -586,7 +614,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         agentId: runtime.agentId,
       });
       await runtime.addParticipant(guestId, roomId);
-      expect((await compose(roomId)).text).not.toContain(
+      expect((await composePlannerState(roomId)).text).not.toContain(
         "Share school notices within twenty-four hours.",
       );
     } finally {
