@@ -186,21 +186,18 @@ export function capturePlannerReplyRecovery(
 	};
 }
 
-/**
- * The reply is the result's exact verified sentence, or that sentence
- * verbatim followed by the evaluator's grounded prose in the combination form
- * the planner loop emits (`<verified>\n\n<prose>`, the verified block fenced
- * when it is multiline). The canonical sentence is intact either way, so the
- * result's receipts still ground the completion claim it makes; a reply that
- * rewrites or embeds the sentence mid-prose is not bound.
- */
+/** Match the canonical result alone or the planner's exact two-part composition. */
 export function replyCarriesCanonicalText(
 	reply: string,
 	canonical: string,
+	evaluatorProse?: string,
 ): boolean {
 	if (reply === canonical) return true;
-	if (reply.startsWith(`${canonical}\n\n`)) return true;
-	return reply.startsWith(`\`\`\`\n${canonical}\n\`\`\`\n\n`);
+	if (!evaluatorProse) return false;
+	return (
+		reply === `${canonical}\n\n${evaluatorProse}` ||
+		reply === `\`\`\`\n${canonical}\n\`\`\`\n\n${evaluatorProse}`
+	);
 }
 
 export function appliedEffectReceiptIdsForReply(
@@ -213,40 +210,64 @@ export function appliedEffectReceiptIdsForReply(
 	const allTurnReceipts = mergeEffectReceipts(
 		...results.map((result) => result.effectReceipts),
 	);
-	// Keep the model's proof attached to its original prose. Planner fallbacks,
-	// sanitizers and hooks must not borrow these IDs for a different message.
-	if (
-		evaluator?.decision === "FINISH" &&
-		!evaluator.protocolFailure &&
-		evaluator.messageToUser?.trim() === normalizedReply &&
-		((typeof evaluator.raw?.messageToUser === "string" &&
-			evaluator.raw.messageToUser.trim() === normalizedReply) ||
-			evaluator.plannerReply?.text.trim() === normalizedReply)
-	) {
-		const receipts = resolveAppliedUserFacingEffectReceipts(
-			{
-				verifiedUserFacing: true,
-				userFacingText: normalizedReply,
-				userFacingEffectReceiptIds:
-					evaluator.plannerReply?.text.trim() === normalizedReply
-						? evaluator.plannerReply.effectReceiptIds
-						: evaluator.effectReceiptIds,
-			},
-			allTurnReceipts,
-		);
-		if (receipts) return receipts.map((receipt) => receipt.receiptId);
+	const evaluatorText = evaluator?.messageToUser?.trim();
+	// Keep proof attached to the original model output, including when the
+	// planner combines it with an action-owned sentence. A prefix alone cannot
+	// authorize prose added by a sanitizer, fallback, or delivery hook.
+	const evaluatorOwnsText = Boolean(
+		evaluatorText &&
+			evaluator?.decision === "FINISH" &&
+			!evaluator.protocolFailure &&
+			((typeof evaluator.raw?.messageToUser === "string" &&
+				evaluator.raw.messageToUser.trim() === evaluatorText) ||
+				evaluator.plannerReply?.text.trim() === evaluatorText),
+	);
+	const evaluatorReceipts = evaluatorOwnsText
+		? resolveAppliedUserFacingEffectReceipts(
+				{
+					verifiedUserFacing: true,
+					userFacingText: evaluatorText,
+					userFacingEffectReceiptIds:
+						evaluator?.plannerReply?.text.trim() === evaluatorText
+							? evaluator?.plannerReply?.effectReceiptIds
+							: evaluator?.effectReceiptIds,
+				},
+				allTurnReceipts,
+			)
+		: undefined;
+	if (normalizedReply === evaluatorText && evaluatorReceipts) {
+		return evaluatorReceipts.map((receipt) => receipt.receiptId);
 	}
+	const combinedProse = evaluatorOwnsText ? evaluatorText : undefined;
 	for (const result of results) {
 		const canonical = result.userFacingText?.trim();
-		if (!canonical || !replyCarriesCanonicalText(normalizedReply, canonical))
+		if (
+			!canonical ||
+			!replyCarriesCanonicalText(normalizedReply, canonical, combinedProse)
+		)
 			continue;
 		const receipts = resolveAppliedUserFacingEffectReceipts(
 			result,
 			allTurnReceipts,
 		);
-		if (receipts) {
-			return receipts.map((receipt) => receipt.receiptId);
+		if (!receipts) continue;
+		if (normalizedReply !== canonical) {
+			// The tool's receipt proves only its sentence. Any applied claim in
+			// the evaluator's own portion still needs that evaluator's proof.
+			if (
+				(evaluator?.replyEffectStatus === "applied" ||
+					(combinedProse && replyClaimsCompletedSideEffect(combinedProse))) &&
+				!evaluatorReceipts?.length
+			)
+				continue;
+			return [
+				...new Set([
+					...receipts.map((receipt) => receipt.receiptId),
+					...(evaluatorReceipts ?? []).map((receipt) => receipt.receiptId),
+				]),
+			];
 		}
+		return receipts.map((receipt) => receipt.receiptId);
 	}
 	return [];
 }

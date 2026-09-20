@@ -6,6 +6,7 @@
  * came back as a paraphrase). Deterministic; no runtime.
  */
 import { describe, expect, it } from "vitest";
+import type { EvaluatorOutput } from "../../runtime/evaluator";
 import type { Action, ActionResult } from "../../types/components";
 import {
 	appliedEffectReceiptIdsForReply,
@@ -47,19 +48,34 @@ const calendar = {
 	tags: ["domain:calendar", "effect:receipt-required"],
 } as unknown as Action;
 
+function finish(text: string, ids: readonly string[] = []): EvaluatorOutput {
+	return {
+		decision: "FINISH",
+		success: true,
+		thought: "",
+		messageToUser: text,
+		raw: { messageToUser: text },
+		effectReceiptIds: ids,
+		replyEffectStatus: ids.length ? "applied" : "none",
+	};
+}
+
 describe("combined verified reply egress", () => {
 	it("binds the verified sentence followed by grounded prose to the result's receipts", () => {
-		const reply = `${VERIFIED}\n\nIt overlaps with your dentist visit at 3:30.`;
-		expect(replyCarriesCanonicalText(reply, VERIFIED)).toBe(true);
-		expect(appliedEffectReceiptIdsForReply(reply, [settled])).toEqual([
-			receipt.receiptId,
-		]);
+		const prose = "It overlaps with your dentist visit at 3:30.";
+		const evaluator = finish(prose);
+		const reply = `${VERIFIED}\n\n${prose}`;
+		expect(replyCarriesCanonicalText(reply, VERIFIED, prose)).toBe(true);
+		expect(
+			appliedEffectReceiptIdsForReply(reply, [settled], evaluator),
+		).toEqual([receipt.receiptId]);
 		expect(
 			evaluatePlannedReplyEgress({
 				reply,
 				request: "add an optometrist appointment friday at 3pm",
 				actionResults: [settled],
 				actions: [calendar],
+				evaluator,
 			}),
 		).toEqual({ verdict: "allow" });
 	});
@@ -86,5 +102,63 @@ describe("combined verified reply egress", () => {
 		expect(replyCarriesCanonicalText(`${VERIFIED} And more.`, VERIFIED)).toBe(
 			false,
 		);
+	});
+	it("rejects appended claims that lack evaluator ownership or proof", () => {
+		const prose = "I deleted your note.";
+		const reply = `${VERIFIED}\n\n${prose}`;
+		for (const evaluator of [
+			undefined,
+			finish(prose),
+			{ ...finish(prose, [receipt.receiptId]), protocolFailure: true as const },
+			{
+				...finish(prose, [receipt.receiptId]),
+				raw: { messageToUser: "Different reply" },
+			},
+			finish(prose, ["missing-receipt"]),
+		]) {
+			expect(
+				appliedEffectReceiptIdsForReply(reply, [settled], evaluator),
+			).toEqual([]);
+			expect(
+				evaluatePlannedReplyEgress({
+					reply,
+					actionResults: [settled],
+					actions: [calendar],
+					evaluator,
+				}),
+			).toEqual({ verdict: "reject", kind: "completed_side_effect" });
+		}
+	});
+
+	it("preserves evaluator proof for its exact applied prose only", () => {
+		const prose = "I created the appointment.";
+		const evaluator = finish(prose, [receipt.receiptId]);
+		expect(
+			appliedEffectReceiptIdsForReply(
+				`${VERIFIED}\n\n${prose}`,
+				[settled],
+				evaluator,
+			),
+		).toEqual([receipt.receiptId]);
+		expect(
+			appliedEffectReceiptIdsForReply(
+				`${VERIFIED}\n\n${prose} I deleted your note.`,
+				[settled],
+				evaluator,
+			),
+		).toEqual([]);
+	});
+
+	it("preserves fenced multiline results with the exact evaluator prose", () => {
+		const canonical = "Created event\nFriday at 3 PM";
+		const prose = "Bring your insurance card.";
+		const result = { ...settled, userFacingText: canonical };
+		expect(
+			appliedEffectReceiptIdsForReply(
+				`\`\`\`\n${canonical}\n\`\`\`\n\n${prose}`,
+				[result],
+				finish(prose),
+			),
+		).toEqual([receipt.receiptId]);
 	});
 });
