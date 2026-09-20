@@ -3,7 +3,7 @@
  * collapses legacy aliases into their canonical environment, preserves custom
  * and loopback bases, and honors the ELIZAOS_CLOUD_BASE_URL override.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import {
   defaultCloudSiteUrl,
@@ -17,15 +17,28 @@ import {
   resetDevCloudEnvAuthorityForTests,
 } from "./dev-cloud-env-authority";
 
+let savedConfig: ReturnType<typeof getBootConfig>;
+beforeEach(() => {
+  savedConfig = getBootConfig();
+  setBootConfig({ ...savedConfig, envAliases: [] });
+  resetDevCloudEnvAuthorityForTests();
+  for (const key of [
+    "ELIZAOS_CLOUD_BASE_URL",
+    "ACME_CLOUD_BASE_URL",
+    "ELIZA_DEV_SOURCE",
+    "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+    "ELIZA_DEV_CLOUD_TARGET",
+    "NODE_ENV",
+  ])
+    vi.stubEnv(key, undefined);
+});
+afterEach(() => {
+  setBootConfig(savedConfig);
+  vi.unstubAllEnvs();
+  resetDevCloudEnvAuthorityForTests();
+});
+
 describe("Eliza Cloud base URL normalization", () => {
-  const savedConfig = getBootConfig();
-
-  afterEach(() => {
-    delete process.env.ELIZAOS_CLOUD_BASE_URL;
-    delete process.env.ACME_CLOUD_BASE_URL;
-    setBootConfig(savedConfig);
-  });
-
   it("normalizes every production cloud alias to the managed app origin", () => {
     expect(normalizeCloudSiteUrl("https://api.elizacloud.ai")).toBe(
       "https://cloud.eliza.app",
@@ -111,23 +124,7 @@ describe("Cloud redirect scopes", () => {
   });
 });
 
-/**
- * The dev/production cloud split. `bun run dev` must not exercise production
- * credentials, billing, or agent state by default, so the unconfigured default
- * follows the entrypoint: staging from dev, production everywhere else. Staging
- * is a separate deployment with its own database and keys — crossing the
- * boundary by accident is the failure these cases exist to prevent.
- */
 describe("default cloud target by environment", () => {
-  const savedDevSource = process.env.ELIZA_DEV_SOURCE;
-
-  afterEach(() => {
-    if (savedDevSource === undefined) delete process.env.ELIZA_DEV_SOURCE;
-    else process.env.ELIZA_DEV_SOURCE = savedDevSource;
-    delete process.env.ELIZAOS_CLOUD_BASE_URL;
-    delete process.env.NODE_ENV;
-  });
-
   it("defaults to staging under the dev entrypoint", () => {
     process.env.ELIZA_DEV_SOURCE = "1";
     expect(isDevCloudTarget()).toBe(true);
@@ -185,67 +182,36 @@ describe("default cloud target by environment", () => {
 });
 
 describe("launcher-authoritative cloud base URL", () => {
-  const savedAuthorityEnv = {
-    source: process.env.ELIZA_DEV_SOURCE,
-    authority: process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY,
-    target: process.env.ELIZA_DEV_CLOUD_TARGET,
-    baseUrl: process.env.ELIZAOS_CLOUD_BASE_URL,
-  };
-
-  afterEach(() => {
-    for (const [key, value] of [
-      ["ELIZA_DEV_SOURCE", savedAuthorityEnv.source],
-      ["ELIZA_DEV_CLOUD_ENV_AUTHORITY", savedAuthorityEnv.authority],
-      ["ELIZA_DEV_CLOUD_TARGET", savedAuthorityEnv.target],
-      ["ELIZAOS_CLOUD_BASE_URL", savedAuthorityEnv.baseUrl],
-    ] as const) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-    resetDevCloudEnvAuthorityForTests();
-  });
-
-  it("keeps the staging-explicit launch base after process.env is polluted", () => {
-    resetDevCloudEnvAuthorityForTests();
-    process.env.ELIZA_DEV_SOURCE = "1";
-    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-explicit";
-    process.env.ELIZA_DEV_CLOUD_TARGET = "staging";
-    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api-staging.eliza.app/api/v1";
-    captureDevCloudEnvAuthoritySnapshot();
-
-    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
-
-    expect(normalizeCloudSiteUrl()).toBe("https://cloud-staging.eliza.app");
-    expect(resolveCloudApiBaseUrl()).toBe(
+  it.each([
+    [
+      "staging-explicit",
+      "staging",
       "https://api-staging.eliza.app/api/v1",
-    );
-  });
-
-  it("keeps the self-hosted launch base after process.env is polluted", () => {
-    resetDevCloudEnvAuthorityForTests();
-    process.env.ELIZA_DEV_SOURCE = "1";
-    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "self-hosted";
-    delete process.env.ELIZA_DEV_CLOUD_TARGET;
-    process.env.ELIZAOS_CLOUD_BASE_URL = "http://localhost:8787/api/v1";
-    captureDevCloudEnvAuthoritySnapshot();
-
-    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
-
-    expect(normalizeCloudSiteUrl()).toBe("http://localhost:8787");
-    expect(resolveCloudApiBaseUrl()).toBe("http://localhost:8787/api/v1");
-  });
-
-  it("preserves an accepted LAN HTTP origin and port for self-hosted authority", () => {
-    resetDevCloudEnvAuthorityForTests();
-    process.env.ELIZA_DEV_SOURCE = "1";
-    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "self-hosted";
-    delete process.env.ELIZA_DEV_CLOUD_TARGET;
-    process.env.ELIZAOS_CLOUD_BASE_URL = "http://192.168.1.20:8787/api/v1";
-    captureDevCloudEnvAuthoritySnapshot();
-
-    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
-
-    expect(normalizeCloudSiteUrl()).toBe("http://192.168.1.20:8787");
-    expect(resolveCloudApiBaseUrl()).toBe("http://192.168.1.20:8787/api/v1");
-  });
+      "https://cloud-staging.eliza.app",
+    ],
+    [
+      "self-hosted",
+      undefined,
+      "http://localhost:8787/api/v1",
+      "http://localhost:8787",
+    ],
+    [
+      "self-hosted",
+      undefined,
+      "http://192.168.1.20:8787/api/v1",
+      "http://192.168.1.20:8787",
+    ],
+  ])(
+    "preserves %s launch URL %s %s despite late environment pollution",
+    (authority, target, api, site) => {
+      vi.stubEnv("ELIZA_DEV_SOURCE", "1");
+      vi.stubEnv("ELIZA_DEV_CLOUD_ENV_AUTHORITY", authority);
+      vi.stubEnv("ELIZA_DEV_CLOUD_TARGET", target);
+      vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", api);
+      captureDevCloudEnvAuthoritySnapshot();
+      vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", "https://api.eliza.app/api/v1");
+      expect(normalizeCloudSiteUrl()).toBe(site);
+      expect(resolveCloudApiBaseUrl()).toBe(api);
+    },
+  );
 });
