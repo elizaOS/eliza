@@ -54,6 +54,8 @@ type TestState = {
   };
   connected: boolean;
   syncing: boolean;
+  appliedEditIds: Set<string>;
+  pendingDispatches: Map<string, Promise<void>>;
 };
 
 function createRuntime(settings: Record<string, unknown> = {}): IAgentRuntime {
@@ -98,6 +100,8 @@ function createService(
     },
     connected: true,
     syncing: true,
+    appliedEditIds: new Set<string>(),
+    pendingDispatches: new Map<string, Promise<void>>(),
     ...stateOverrides,
   };
   const service = Object.create(MatrixService.prototype) as MatrixService;

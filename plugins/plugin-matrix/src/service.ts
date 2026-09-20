@@ -183,8 +183,23 @@ type MatrixAccountState = {
   client: sdk.MatrixClient;
   connected: boolean;
   syncing: boolean;
+  /** Event ids of m.replace edits already applied, so a replayed edit is not re-applied. */
+  appliedEditIds: Set<string>;
+  /** In-flight inbound dispatches by event id, awaited by an edit of that event. */
+  pendingDispatches: Map<string, Promise<void>>;
   cryptoSnapshotTimer?: ReturnType<typeof setInterval>;
 };
+
+/** Upper bound on remembered edit ids per account; the oldest entry is evicted first. */
+const MAX_APPLIED_EDIT_IDS = 1000;
+
+function rememberAppliedEdit(state: MatrixAccountState, eventId: string): void {
+  state.appliedEditIds.add(eventId);
+  if (state.appliedEditIds.size > MAX_APPLIED_EDIT_IDS) {
+    const oldest = state.appliedEditIds.values().next().value;
+    if (oldest !== undefined) state.appliedEditIds.delete(oldest);
+  }
+}
 
 /**
  * Serialized form of an IndexedDB database: object-store schemas plus their
@@ -849,6 +864,8 @@ export class MatrixService extends Service implements IMatrixService {
         }),
         connected: false,
         syncing: false,
+        appliedEditIds: new Set(),
+        pendingDispatches: new Map(),
       };
 
       this.states.set(state.accountId, state);
@@ -1289,13 +1306,23 @@ export class MatrixService extends Service implements IMatrixService {
     if (!message) return;
 
     // An m.replace edit corrects a message the agent already has; it is not a
-    // new request. Patch the stored original instead of dispatching again.
+    // new request, so it bypasses the mention gate below and patches the stored
+    // original instead of dispatching again. The same edit event can be
+    // delivered twice across a sync replay, so it is applied at most once.
     if (message.isEdit) {
-      void this.applyMessageEdit(message).catch((err) =>
-        logger.error(
-          `Matrix edit apply failed: ${err instanceof Error ? err.message : String(err)}`
-        )
-      );
+      if (state.appliedEditIds.has(message.eventId)) return;
+      rememberAppliedEdit(state, message.eventId);
+      // error-policy:J1 the SDK timeline listener is the transport boundary; a
+      // failed apply is reported and forgotten so the same edit can be retried
+      // on redelivery, and the listener itself stays alive.
+      void this.applyMessageEdit(state, message).catch((err: unknown) => {
+        state.appliedEditIds.delete(message.eventId);
+        this.runtime.reportError("matrix.applyMessageEdit", err, {
+          accountId: state.accountId,
+          eventId: message.eventId,
+          replacesEventId: message.replacesEventId,
+        });
+      });
       return;
     }
 
@@ -1339,12 +1366,21 @@ export class MatrixService extends Service implements IMatrixService {
       accountId: state.accountId,
     } as EventPayload);
 
-    // Drive the core message loop so the agent actually reads and replies.
-    void this.dispatchToAgent(state, message, matrixRoom).catch((err) =>
-      logger.error(
-        `Matrix dispatchToAgent failed: ${err instanceof Error ? err.message : String(err)}`
+    // Drive the core message loop so the agent actually reads and replies. The
+    // dispatch is tracked by event id until it settles so an edit arriving in
+    // the same timeline batch waits for the original to be persisted.
+    const dispatch = this.dispatchToAgent(state, message, matrixRoom)
+      .catch((err) =>
+        logger.error(
+          `Matrix dispatchToAgent failed: ${err instanceof Error ? err.message : String(err)}`
+        )
       )
-    );
+      .finally(() => {
+        if (state.pendingDispatches.get(message.eventId) === dispatch) {
+          state.pendingDispatches.delete(message.eventId);
+        }
+      });
+    state.pendingDispatches.set(message.eventId, dispatch);
   }
 
   /**
@@ -1352,9 +1388,12 @@ export class MatrixService extends Service implements IMatrixService {
    * original memory id is derived from the replaced event id exactly as
    * matrixMessageToMemory derives it, so recall reads the corrected text. An
    * edit for an event this agent never stored is ignored rather than invented.
+   * When the original's dispatch is still in flight, the edit waits for it so
+   * an original and its edit from one sync batch are applied in order.
    */
-  private async applyMessageEdit(message: MatrixMessage): Promise<void> {
+  private async applyMessageEdit(state: MatrixAccountState, message: MatrixMessage): Promise<void> {
     if (!message.replacesEventId) return;
+    await state.pendingDispatches.get(message.replacesEventId);
     const originalId = createUniqueUuid(this.runtime, message.replacesEventId);
     const original = await this.runtime.getMemoryById(originalId);
     if (!original) {
@@ -1905,6 +1944,8 @@ export class MatrixService extends Service implements IMatrixService {
         client: legacy.client ?? ({} as sdk.MatrixClient),
         connected: legacy.connected ?? true,
         syncing: legacy.syncing ?? true,
+        appliedEditIds: new Set(),
+        pendingDispatches: new Map(),
       };
     }
 
