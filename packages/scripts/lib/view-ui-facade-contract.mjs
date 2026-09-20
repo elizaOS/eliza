@@ -78,7 +78,10 @@ export function collectNamedUiFacadeImports(
   source,
   { file = "<view-source>", owner = "<view>" } = {},
 ) {
-  const sourceFile = parseSource(source, file);
+  return collectSourceUiFacadeImports(parseSource(source, file), file, owner);
+}
+
+function collectSourceUiFacadeImports(sourceFile, file, owner) {
   const imports = [];
   const add = (node, specifier, imported, importKind) => {
     imports.push({
@@ -295,7 +298,7 @@ function productionViewSources(target, repoRoot) {
     if (sources.has(file)) continue;
     const source = readFileSync(file, "utf8");
     const sourceFile = parseSource(source, file);
-    sources.set(file, source);
+    sources.set(file, sourceFile);
     for (const specifier of moduleSpecifiers(sourceFile)) {
       if (!specifier.startsWith(".")) continue;
       const resolved = resolveRelativeSource(specifier, file, repoRoot);
@@ -305,7 +308,7 @@ function productionViewSources(target, repoRoot) {
   return sources;
 }
 
-function uiCompilerOptions(repoRoot) {
+function uiCompilerOptions(repoRoot, rootNames) {
   const configPath = path.join(repoRoot, "packages/ui/tsconfig.json");
   const config = ts.readConfigFile(configPath, ts.sys.readFile);
   if (config.error) {
@@ -315,7 +318,8 @@ function uiCompilerOptions(repoRoot) {
   }
   const parsed = ts.parseJsonConfigFileContent(
     config.config,
-    ts.sys,
+    // Validate the original config; the program already owns its source roots.
+    { ...ts.sys, readDirectory: () => rootNames },
     path.dirname(configPath),
     undefined,
     configPath,
@@ -368,9 +372,10 @@ function facadeExportMaps(repoRoot) {
       `[view-ui-facade] ${definition.id}`,
     ).absolute,
   }));
+  const rootNames = definitions.map(({ absolute }) => absolute);
   const program = ts.createProgram({
-    rootNames: definitions.map(({ absolute }) => absolute),
-    options: uiCompilerOptions(repoRoot),
+    rootNames,
+    options: uiCompilerOptions(repoRoot, rootNames),
   });
   const checker = program.getTypeChecker();
 
@@ -456,14 +461,11 @@ export function auditViewUiFacadeImports(options = {}) {
   const imports = [];
   const sourceIdentities = new Set();
   for (const target of inventory.targets) {
-    for (const [file, source] of productionViewSources(target, repoRoot)) {
+    for (const [file, sourceFile] of productionViewSources(target, repoRoot)) {
       const relative = path.relative(repoRoot, file).split(path.sep).join("/");
       sourceIdentities.add(`${target.name}\0${relative}`);
       imports.push(
-        ...collectNamedUiFacadeImports(source, {
-          file: relative,
-          owner: target.name,
-        }),
+        ...collectSourceUiFacadeImports(sourceFile, relative, target.name),
       );
     }
   }
