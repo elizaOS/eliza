@@ -22,7 +22,7 @@ Results and failures: [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md).
 
 ## Remaining acceptance checklist
 
-- [ ] Complete semantic source ledger (114/270 entries explicitly reviewed; remaining implementation review is two Calendar files; review is not acceptance) and reconcile any newer remote work.
+- [ ] Complete semantic source ledger (116/270 entries explicitly reviewed; all implementation diffs inspected, with Calendar recipient correctness still open; review is not acceptance) and reconcile any newer remote work.
 - [x] Full visual rerun and flagged screenshot inspection: 230 checks passed; OCR212 verified/zero broken/12 expected fallback exceptions. All23 soft layout flags inspected. Family interview hover remains unverified for three controls across four viewports; native/remote fallback surfaces are not feature acceptance.
 - [ ] Investigate post-restart request arriving after Stop; it eventually edited the QA note. A repeat made no second write. Seven real HTTP/Vite lifecycle tests and existing server disconnect suites pass, so a basic proxy cancellation defect is not reproduced.
 - [ ] Close remaining combined scenarios: cancellation, memory/preference correction and applicable recovery/persistence checks, using existing evidence before new paid tests.
