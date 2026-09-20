@@ -68,6 +68,8 @@ describe.runIf(process.platform === "win32")(
       expect(await loadOrCreateRuntimeInstallationId(root)).toBe(identities[0]);
       expect(await freshProcess(root)).toBe(identities[0]);
       expect(await fs.readdir(root)).toEqual([]);
+      await fs.rm(root, { recursive: true });
+      expect(await freshProcess(root)).toBe(identities[0]);
       const other = await directory();
       credential(other);
       expect(await freshProcess(other)).not.toBe(identities[0]);
@@ -84,6 +86,30 @@ describe.runIf(process.platform === "win32")(
       });
       expect(entry.getPassword()).toBe("not-a-valid-master-key");
       expect(await fs.readdir(root)).toEqual([]);
+    }, 60_000);
+
+    it("fails closed when the native lock host is unavailable even for an existing credential", async () => {
+      const root = await directory();
+      const entry = credential(root);
+      const identity = await loadOrCreateRuntimeInstallationId(root);
+      const stored = entry.getPassword();
+      const systemRoot = process.env.SystemRoot;
+      try {
+        process.env.SystemRoot = path.join(
+          root,
+          "missing-windows-installation",
+        );
+        await expect(
+          loadOrCreateRuntimeInstallationId(root),
+        ).rejects.toMatchObject({
+          code: "RUNTIME_INSTALLATION_ID_SECURE_STORAGE_UNAVAILABLE",
+        });
+        expect(entry.getPassword()).toBe(stored);
+      } finally {
+        if (systemRoot === undefined) delete process.env.SystemRoot;
+        else process.env.SystemRoot = systemRoot;
+      }
+      expect(await loadOrCreateRuntimeInstallationId(root)).toBe(identity);
     }, 60_000);
   },
 );
