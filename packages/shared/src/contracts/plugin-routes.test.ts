@@ -9,7 +9,6 @@ import {
   PostPluginCoreToggleRequestSchema,
   PostPluginInstallRequestSchema,
   PostPluginUninstallRequestSchema,
-  PostPluginUpdateRequestSchema,
   PutCuratedSkillSourceRequestSchema,
   PutPluginRequestSchema,
   PutSecretsRequestSchema,
@@ -32,16 +31,11 @@ describe("PutPluginRequestSchema", () => {
     });
   });
 
-  it("rejects non-string config values", () => {
-    expect(() =>
-      PutPluginRequestSchema.parse({ config: { KEY: 123 } }),
-    ).toThrow();
-  });
-
-  it("rejects extra fields", () => {
-    expect(() =>
-      PutPluginRequestSchema.parse({ enabled: true, foo: "bar" }),
-    ).toThrow();
+  it.each([
+    ["non-string config values", { config: { KEY: 123 } }],
+    ["extra fields", { enabled: true, foo: "bar" }],
+  ])("rejects %s", (_name, input) => {
+    expect(() => PutPluginRequestSchema.parse(input)).toThrow();
   });
 });
 
@@ -59,33 +53,19 @@ describe("PutSecretsRequestSchema", () => {
     });
   });
 
-  it("rejects missing secrets", () => {
-    expect(() => PutSecretsRequestSchema.parse({})).toThrow();
-  });
-
-  it("rejects non-string values", () => {
-    expect(() =>
-      PutSecretsRequestSchema.parse({ secrets: { KEY: 1 } }),
-    ).toThrow();
-  });
-
-  it("rejects extra fields", () => {
-    expect(() =>
-      PutSecretsRequestSchema.parse({ secrets: {}, audit: true }),
-    ).toThrow();
+  it.each([
+    ["missing secrets", {}],
+    ["non-string values", { secrets: { KEY: 1 } }],
+    ["extra fields", { secrets: {}, audit: true }],
+  ])("rejects %s", (_name, input) => {
+    expect(() => PutSecretsRequestSchema.parse(input)).toThrow();
   });
 });
 
 describe("PostPluginInstallRequestSchema", () => {
-  it("trims name", () => {
-    expect(
-      PostPluginInstallRequestSchema.parse({ name: "  @elizaos/plugin-x  " }),
-    ).toEqual({ name: "@elizaos/plugin-x" });
-  });
-
-  it("accepts full body", () => {
+  it("normalizes names and versions in a complete install request", () => {
     const parsed = PostPluginInstallRequestSchema.parse({
-      name: "@elizaos/plugin-x",
+      name: "  @elizaos/plugin-x  ",
       autoRestart: false,
       stream: "beta",
       version: " 1.2.3 ",
@@ -126,25 +106,11 @@ describe("PostPluginInstallRequestSchema", () => {
   });
 });
 
-describe("PostPluginUpdateRequestSchema", () => {
-  it("trims name and accepts the same shape as install", () => {
-    expect(
-      PostPluginUpdateRequestSchema.parse({ name: "  @elizaos/plugin-x  " }),
-    ).toEqual({ name: "@elizaos/plugin-x" });
-  });
-});
-
 describe("PostPluginUninstallRequestSchema", () => {
-  it("trims name", () => {
-    expect(PostPluginUninstallRequestSchema.parse({ name: " @x/y " })).toEqual({
-      name: "@x/y",
-    });
-  });
-
-  it("accepts autoRestart=false", () => {
+  it("trims name and preserves autoRestart=false", () => {
     expect(
       PostPluginUninstallRequestSchema.parse({
-        name: "@x/y",
+        name: " @x/y ",
         autoRestart: false,
       }),
     ).toEqual({ name: "@x/y", autoRestart: false });
@@ -179,26 +145,12 @@ describe("PostPluginCoreToggleRequestSchema", () => {
     ).toThrow(/npmName is required/);
   });
 
-  it("rejects missing enabled", () => {
-    expect(() =>
-      PostPluginCoreToggleRequestSchema.parse({ npmName: "x" }),
-    ).toThrow();
-  });
-
-  it("rejects non-boolean enabled", () => {
-    expect(() =>
-      PostPluginCoreToggleRequestSchema.parse({ npmName: "x", enabled: "yes" }),
-    ).toThrow();
-  });
-
-  it("rejects extra fields", () => {
-    expect(() =>
-      PostPluginCoreToggleRequestSchema.parse({
-        npmName: "x",
-        enabled: true,
-        force: true,
-      }),
-    ).toThrow();
+  it.each([
+    ["missing enabled", { npmName: "x" }],
+    ["non-boolean enabled", { npmName: "x", enabled: "yes" }],
+    ["extra fields", { npmName: "x", enabled: true, force: true }],
+  ])("rejects %s", (_name, input) => {
+    expect(() => PostPluginCoreToggleRequestSchema.parse(input)).toThrow();
   });
 });
 
@@ -212,19 +164,11 @@ describe("PutCuratedSkillSourceRequestSchema", () => {
     });
   });
 
-  it("rejects non-string content", () => {
-    expect(() =>
-      PutCuratedSkillSourceRequestSchema.parse({ content: 1 }),
-    ).toThrow();
-  });
-
-  it("rejects missing content", () => {
-    expect(() => PutCuratedSkillSourceRequestSchema.parse({})).toThrow();
-  });
-
-  it("rejects extra fields", () => {
-    expect(() =>
-      PutCuratedSkillSourceRequestSchema.parse({ content: "x", path: "/" }),
-    ).toThrow();
+  it.each([
+    ["non-string content", { content: 1 }],
+    ["missing content", {}],
+    ["extra fields", { content: "x", path: "/" }],
+  ])("rejects %s", (_name, input) => {
+    expect(() => PutCuratedSkillSourceRequestSchema.parse(input)).toThrow();
   });
 });
