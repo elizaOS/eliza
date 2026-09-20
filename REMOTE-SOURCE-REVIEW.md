@@ -184,3 +184,26 @@ experience exact-byte preservation, native/fallback schema parity and shared
 block dedup cases, alongside the discovery cases noted above. They are not
 implicitly accepted just because the associated optimization sounds useful.
 18 UI/plugin/report paths remain unreviewed. No paid calls or runtime edits.
+
+## File inventory review complete
+
+All127 sync2 changed paths now have explicit dispositions:54 implementation
+files and73 supporting test/documentation/report files. The full review is in
+[REMOTE-SOURCE-DECISIONS.md](REMOTE-SOURCE-DECISIONS.md). This completes file
+inspection, not the held dependency reviews or final candidate acceptance.
+
+Keep exact-ID Notes execution/persistence and ID/body pairing tests. Keep Calendar
+unresolved-target rejection rather than updating/deleting a different title match.
+The new Calendar token/placeholder helper tests enforce the lexical shortcuts
+already rejected; literal field values must remain possible. The relocated
+plain-move PGlite test is not new coverage. Extra attendee syntax and optional-field
+cases join the bounded coverage comparison before final disposition.
+
+Keep trajectory late-run visibility, transcript resync and actual-stage labeling
+tests. Voice test removals were inspected only; no voice testing occurred. Keep
+real-local-HTTP408/429 shared retry-budget tests and cancellation without an
+unrelated WEB_SEARCH fallback. The molecular-components report is formatting
+only: full parsed JSON equality was verified.
+
+No runtime changes or paid calls in this batch. Remaining work is resolving the
+listed independent holds/coverage comparisons, applicable final QA and handoff.

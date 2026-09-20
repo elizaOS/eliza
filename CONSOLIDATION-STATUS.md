@@ -74,9 +74,10 @@ application/tool/transport work not separately attributed here.
   live add completion on the corrected code was not separately retested.
 - [ ] Reconcile remote work: read-only inventory checked44 registered worktrees,
   24 dirty/untracked. September heads d0d478fe7dd (sync2) and4e8feaac096
-  (group protocol) are now fetched locally; partial decisions are in
+  (group protocol) are now fetched locally; all127 sync2 file dispositions are in
   [REMOTE-SOURCE-REVIEW.md](REMOTE-SOURCE-REVIEW.md). Saved Mac/merge remote heads are
-  already ancestors. Unspecified other hosts remain unconfirmed.
+  already ancestors. Independent holds/coverage comparisons remain; file inspection
+  alone is not integration acceptance. Unspecified other hosts remain unconfirmed.
 - [ ] Finish applicable recovery/persistence review and clean remaining owned
   Calendar/Notes fixtures. Owned Cedar note/event and the temporary QA memory
   and personality directive are now removed; cleanup evidence is saved.
