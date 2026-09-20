@@ -961,6 +961,17 @@ function unwrapProviderError(error: unknown): unknown {
   return error;
 }
 
+// Provider billing text can trigger a client add-credits prompt even with HTTP 503.
+const PROVIDER_PAYMENT_UNAVAILABLE_MESSAGE =
+  "The AI service is temporarily unavailable. Please try again later.";
+
+function isProviderPaymentError(error: unknown): boolean {
+  const providerError = unwrapProviderError(error);
+  return (
+    APICallError.isInstance(providerError) && providerError.statusCode === 402
+  );
+}
+
 function getProviderCallerFaultStatus(error: unknown): number | null {
   if (!(error instanceof Error)) {
     return null;
@@ -991,6 +1002,12 @@ function getRecoverableProviderErrorStatus(error: unknown): number | null {
   }
 
   if (APICallError.isInstance(providerError)) {
+    if (providerError.statusCode === 402) {
+      // HTTP 402 identifies platform funding even if its body says quota exceeded.
+      // It is not the caller's Cloud credit balance.
+      return 503;
+    }
+
     const providerCode =
       getProviderErrorCode(providerError.data) ??
       getProviderErrorCode(parseJsonObject(providerError.responseBody));
@@ -1006,10 +1023,6 @@ function getRecoverableProviderErrorStatus(error: unknown): number | null {
       message.includes("insufficient_quota")
     ) {
       return 429;
-    }
-
-    if (providerError.statusCode === 402) {
-      return 402;
     }
 
     // A provider 400 is the CALLER's fault (invalid parameters / a response
@@ -2278,15 +2291,21 @@ export async function handleChatCompletionsPOST(
       rawMessage.startsWith("Failed query:") ||
       rawMessage.includes("insert into") ||
       rawMessage.includes("select from");
-    const errorMessage = isDbError ? "Internal server error" : rawMessage;
+    const errorMessage = isDbError
+      ? "Internal server error"
+      : isProviderPaymentError(error)
+        ? PROVIDER_PAYMENT_UNAVAILABLE_MESSAGE
+        : rawMessage;
 
+    const providerStatus = getRecoverableProviderErrorStatus(error);
     const isInsufficientCredits =
       error instanceof InsufficientCreditsError ||
-      errorMessage.includes("Insufficient") ||
-      errorMessage.includes("credits");
+      (providerStatus === null &&
+        (errorMessage.includes("Insufficient") ||
+          errorMessage.includes("credits")));
     const status = isInsufficientCredits
       ? 402
-      : (getRecoverableProviderErrorStatus(error) ?? getErrorStatusCode(error));
+      : (providerStatus ?? getErrorStatusCode(error));
     const errorType = openAiErrorTypeForStatus(status);
 
     return attachPreforwardTelemetry(
@@ -2539,12 +2558,12 @@ function qualifiesForPassthroughStreaming(request: ChatRequest): boolean {
 /**
  * Client-facing status for a pass-through upstream error response — the same
  * classification getRecoverableProviderErrorStatus applies to AI-SDK errors:
- * caller-fault statuses pass through; 401/403 are OUR provider-key state
+ * caller-fault statuses pass through; 401/402/403 are OUR provider-account state
  * (never the caller's fault) and everything else means the upstream is
  * unavailable, both surfaced as 503.
  */
 function mapPassthroughUpstreamStatus(status: number): number {
-  if (status === 400 || status === 402 || status === 404 || status === 429) {
+  if (status === 400 || status === 404 || status === 429) {
     return status;
   }
   return 503;
@@ -3674,10 +3693,12 @@ async function handleStreamingRequest(
             error: {
               message: isConfigError
                 ? modelNotAvailableMessage(model)
-                : redactPromptCacheKey(
-                    error instanceof Error ? error.message : String(error),
-                    promptCacheKey,
-                  ),
+                : isProviderPaymentError(error)
+                  ? PROVIDER_PAYMENT_UNAVAILABLE_MESSAGE
+                  : redactPromptCacheKey(
+                      error instanceof Error ? error.message : String(error),
+                      promptCacheKey,
+                    ),
               // Same status→type mapping as the non-streaming path — a
               // hardcoded "rate_limit_error" here mislabeled every mid-stream
               // provider failure (schema 400s, upstream 5xx) as rate limiting,
