@@ -16,9 +16,9 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@elizaos/core", () => ({
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
   hasRoleAccess: mocks.hasOwnerAccess,
-
   formatError: (error: unknown) =>
     error instanceof Error ? error.message : String(error),
   logger: mocks.logger,
