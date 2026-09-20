@@ -3,7 +3,7 @@
  * env names and boot-configured brand aliases, proving the shared detector can
  * run before alias sync writes have materialized compatibility keys.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getBootConfig, setBootConfig } from "../config/boot-config.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { resetDevCloudEnvAuthorityForTests } from "./dev-cloud-env-authority.js";
@@ -24,25 +24,18 @@ const CLOUD_PROVISIONING_KEYS = [
 ] as const;
 
 describe("isCloudProvisionedContainer", () => {
-  const savedConfig = getBootConfig();
-  const savedEnv = Object.fromEntries(
-    CLOUD_PROVISIONING_KEYS.map((key) => [key, process.env[key]]),
-  );
+  let savedConfig: ReturnType<typeof getBootConfig>;
 
   beforeEach(() => {
+    savedConfig = getBootConfig();
     resetDevCloudEnvAuthorityForTests();
-    setBootConfig(savedConfig);
-    for (const key of CLOUD_PROVISIONING_KEYS) {
-      delete process.env[key];
-    }
+    setBootConfig({ ...savedConfig, envAliases: [] });
+    for (const key of CLOUD_PROVISIONING_KEYS) vi.stubEnv(key, undefined);
   });
 
   afterEach(() => {
     setBootConfig(savedConfig);
-    for (const [key, value] of Object.entries(savedEnv)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
+    vi.unstubAllEnvs();
     resetDevCloudEnvAuthorityForTests();
   });
 

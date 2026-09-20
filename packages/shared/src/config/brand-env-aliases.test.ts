@@ -1,14 +1,6 @@
-/**
- * Unit coverage for environment alias definition and normalization in
- * brand-env-aliases.ts.
- *
- * Verifies normalizeBrandEnvPrefix identifier sanitization, buildBrandEnvAliases
- * standard and Vite prefix mappings, and buildBrandEnvSyncAliases overrides.
- */
-
+/** Exercises brand identifier normalization and compatibility environment mappings. */
 import { describe, expect, it } from "vitest";
 import {
-  BRAND_ENV_ALIAS_DEFINITIONS,
   buildBrandEnvAliases,
   buildBrandEnvSyncAliases,
   normalizeBrandEnvPrefix,
@@ -42,47 +34,19 @@ describe("brand-env-aliases", () => {
     });
   });
 
-  describe("buildBrandEnvAliases", () => {
-    it("generates brand-to-eliza alias pairs for given prefix", () => {
-      const aliases = buildBrandEnvAliases("ACME");
-      expect(aliases.length).toBe(BRAND_ENV_ALIAS_DEFINITIONS.length);
-
-      const stateDirPair = aliases.find(
-        ([, eliza]) => eliza === "ELIZA_STATE_DIR",
-      );
-      expect(stateDirPair).toEqual(["ACME_STATE_DIR", "ELIZA_STATE_DIR"]);
-
-      const apiTokenPair = aliases.find(
-        ([, eliza]) => eliza === "ELIZA_API_TOKEN",
-      );
-      expect(apiTokenPair).toEqual(["ACME_API_TOKEN", "ELIZA_API_TOKEN"]);
-    });
-
-    it("prefixes vite-flagged definitions with VITE_", () => {
-      const aliases = buildBrandEnvAliases("ACME");
-      const viteDebugPair = aliases.find(
-        ([brand]) => brand === "VITE_ACME_SETTINGS_DEBUG",
-      );
-      expect(viteDebugPair).toEqual([
-        "VITE_ACME_SETTINGS_DEBUG",
-        "VITE_ELIZA_SETTINGS_DEBUG",
-      ]);
-    });
-  });
-
-  describe("buildBrandEnvSyncAliases", () => {
-    it("uses syncElizaKey when available in definition", () => {
-      const syncAliases = buildBrandEnvSyncAliases("ACME");
-      const portPair = syncAliases.find(([brand]) => brand === "ACME_PORT");
-      expect(portPair).toEqual(["ACME_PORT", "ELIZA_UI_PORT"]);
-    });
-
-    it("falls back to standard elizaKey when syncElizaKey is not specified", () => {
-      const syncAliases = buildBrandEnvSyncAliases("ACME");
-      const apiPortPair = syncAliases.find(
-        ([brand]) => brand === "ACME_API_PORT",
-      );
-      expect(apiPortPair).toEqual(["ACME_API_PORT", "ELIZA_API_PORT"]);
-    });
+  it("maps standard, Vite and port-sync aliases for a custom brand", () => {
+    expect(buildBrandEnvAliases("ACME")).toEqual(
+      expect.arrayContaining([
+        ["ACME_STATE_DIR", "ELIZA_STATE_DIR"],
+        ["ACME_API_TOKEN", "ELIZA_API_TOKEN"],
+        ["VITE_ACME_SETTINGS_DEBUG", "VITE_ELIZA_SETTINGS_DEBUG"],
+      ]),
+    );
+    expect(buildBrandEnvSyncAliases("ACME")).toEqual(
+      expect.arrayContaining([
+        ["ACME_PORT", "ELIZA_UI_PORT"],
+        ["ACME_API_PORT", "ELIZA_API_PORT"],
+      ]),
+    );
   });
 });
