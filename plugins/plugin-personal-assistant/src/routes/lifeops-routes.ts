@@ -49,7 +49,7 @@ import {
 } from "@elizaos/plugin-finances/finances-service";
 import type { AddPaymentSourceRequest } from "@elizaos/plugin-finances/payment-types";
 import { PLAID_WEBHOOK_MAX_BODY_BYTES } from "@elizaos/plugin-finances/plaid-webhook";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { CalendarTimeZoneError, SELF_ENTITY_ID } from "@elizaos/shared";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -969,7 +969,7 @@ async function runCalendarRoute(
 /**
  * Variant of {@link runRoute} that injects a {@link FinancesService} (the
  * finance back-end in @elizaos/plugin-finances) instead of LifeOpsService, and
- * maps {@link FinancesServiceError} to the same HTTP shape. Used by the
+ * maps typed finance and calendar failures to the same HTTP shape. Used by the
  * /api/lifeops/money/* routes whose payments logic moved to plugin-finances.
  * URLs and response shapes are unchanged.
  */
@@ -1006,7 +1006,11 @@ async function runFinancesRoute(
     });
     return true;
   } catch (error) {
-    if (error instanceof FinancesServiceError) {
+    // error-policy:J1 translate typed finance and calendar failures to HTTP.
+    if (
+      error instanceof FinancesServiceError ||
+      error instanceof CalendarTimeZoneError
+    ) {
       const logFn =
         error.status === 401
           ? logger.debug.bind(logger)

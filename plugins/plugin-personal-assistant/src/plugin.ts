@@ -61,7 +61,10 @@ import type {
   Platform,
   Prober,
 } from "@elizaos/shared";
-import { MEETING_TRANSCRIPT_FINALIZED_EVENT } from "@elizaos/shared";
+import {
+  MEETING_TRANSCRIPT_FINALIZED_EVENT,
+  registerCalendarTimeZoneResolver,
+} from "@elizaos/shared";
 import { ownerAgreementKnowledgeAction } from "./actions/agreement-knowledge.js";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
@@ -189,6 +192,7 @@ import { registerCoreFactMemoryBridge } from "./lifeops/owner/core-fact-memory-b
 import {
   createOwnerFactStore,
   registerOwnerFactStore,
+  resolveConfiguredOwnerTimeZone,
 } from "./lifeops/owner/fact-store.js";
 import { ownerProfileExtractionEvaluator } from "./lifeops/owner/profile-extraction-evaluator.js";
 import {
@@ -951,6 +955,12 @@ const rawPersonalAssistantPlugin: Plugin = {
     runtime: IAgentRuntime,
   ) => {
     registerPersonalAssistantConflictDetectHost(runtime);
+    // Domain plugins (finances bill dueness, routes and actions alike) resolve
+    // "today" through the shared calendar zone owner; the owner facts are the
+    // only source of the user's configured zone, so register before any turn.
+    registerCalendarTimeZoneResolver(runtime, (_runtime, now) =>
+      resolveConfiguredOwnerTimeZone(runtime, now),
+    );
     runtime.registerEvent(MEETING_TRANSCRIPT_FINALIZED_EVENT, async (payload) =>
       handleMeetingTranscriptFinalized(
         payload as EventPayload & MeetingTranscriptFinalizedPayload,

@@ -103,8 +103,17 @@ describe("registerLifeOpsTaskWorker", () => {
       registerTaskWorker: (worker: TaskWorker) => {
         registered = worker;
       },
-      getTask: vi.fn(async () => task),
-      updateTask: vi.fn(async () => undefined),
+      ...({
+        getTask: async () => structuredClone(task),
+        // This fixture has no atomic adapter; exercise the real fallback write.
+        patchTaskMetadata: async () => "unsupported",
+        updateTask: async (_id, patch) => {
+          Object.assign(task, structuredClone(patch));
+        },
+      } satisfies Pick<
+        IAgentRuntime,
+        "getTask" | "patchTaskMetadata" | "updateTask"
+      >),
       logger: {
         debug: vi.fn(),
         error: vi.fn(),
@@ -132,6 +141,12 @@ describe("registerLifeOpsTaskWorker", () => {
     ready = true;
     await taskService.runTick([task]);
     expect(execute).toHaveBeenCalledOnce();
+    const persisted = await gatedRuntime.getTask(task.id as UUID);
+    expect(persisted?.metadata?.updatedAt).toBeGreaterThan(0);
+    expect(persisted?.metadata?.updateInterval).toBe(
+      resolveLifeOpsTaskIntervalMs(AGENT_ID),
+    );
+    expect(persisted?.metadata?.failureCount).toBe(0);
   });
 });
 
