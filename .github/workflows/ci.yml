@@ -17,12 +17,12 @@ jobs:
         run: git config --global core.longpaths true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 64b76309addae0e48c642490c63958c0b98c1155
+          ref: 1bd8c0b846cdc4cbcac5eb4f9cee739cc575c045
           persist-credentials: false
           submodules: false
       - name: Verify product revision
         run: |
-          if ((git rev-parse HEAD) -ne '64b76309addae0e48c642490c63958c0b98c1155') { throw 'Wrong source revision' }
+          if ((git rev-parse HEAD) -ne '1bd8c0b846cdc4cbcac5eb4f9cee739cc575c045') { throw 'Wrong source revision' }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '24.15.0'
@@ -82,7 +82,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: script-windows-64b763
+          name: script-windows-1bd8c0
           path: |
             packages/app/test-results/
             packages/app/playwright-report/
