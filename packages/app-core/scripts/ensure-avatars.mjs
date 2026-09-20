@@ -4,16 +4,15 @@
  *
  * On a fresh clone, the app's public/vrms/ and public/animations/ may be
  * empty or contain only Git LFS pointers.  This script clones the
- * elizaos/avatars repository (org-owned) into a temp directory and copies
- * the assets into the app public dir (apps/app/public/) — the same target
+ * pinned avatar repository into a temp directory and copies
+ * the assets into the resolved app public dir — the same target
  * the sibling process-vrms.mjs writes and the static file server serves
  * /vrms and /animations from.
  *
- * Run automatically via the `postinstall` hook, or manually:
- *   node scripts/ensure-avatars.mjs
- *   node scripts/ensure-avatars.mjs --force   # re-download even if present
+ * Release preparation and consumer setup invoke this explicitly. CLI failures
+ * exit nonzero; SKIP_AVATAR_CLONE deliberately disables network preparation.
  */
-import { execFileSync, execSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
@@ -28,18 +27,14 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
+import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = resolveRepoRootFromImportMeta(import.meta.url);
-const cleanupHelperScript = join(
-  ROOT,
-  "packages",
-  "scripts",
-  "rm-path-recursive.mjs",
-);
-const PUBLIC = join(ROOT, "apps", "app", "public");
+const APP_DIR = resolveMainAppDir(ROOT);
+const PUBLIC = join(APP_DIR, "public");
 const VRMS_DIR = join(PUBLIC, "vrms");
 const ANIMATIONS_DIR = join(PUBLIC, "animations");
 const BUNDLED_VRM_SOURCE_IDS = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -50,13 +45,14 @@ const UNUSED_ANIMATION_PATHS = [
   join("mixamo", "Crying.fbx"),
 ];
 
-// elizaos/avatars is an org-owned repo in the elizaos GitHub organization.
+// Source asset names are retained at the pinned revision; destination names
+// follow the app catalog. Do not mechanically rename remote coordinates.
 // Pinned to a specific commit for reproducible installs (supply-chain safety).
-const AVATARS_REPO = "https://github.com/elizaos/avatars.git";
+const AVATARS_REPO = "https://github.com/milady-ai/avatars.git";
 const AVATARS_COMMIT = "50f6bf0ad6db583581d4cbaeb377ca005b45195b";
 const AVATARS_REF = process.env.ELIZA_AVATARS_REF?.trim() || "";
 const TAG = "[ensure-avatars]";
-const CHARACTERS_VRM = join(ROOT, "apps", "app", "characters", "vrm");
+const CHARACTERS_VRM = join(APP_DIR, "characters", "vrm");
 
 /** A bundled VRM asset is valid if its compressed or raw file is > 1 KB. */
 export function hasValidVrm(dir) {
@@ -68,6 +64,7 @@ export function hasValidVrm(dir) {
     if (files.length === 0) return false;
     return files.some((file) => statSync(join(dir, file)).size > 1024);
   } catch {
+    // error-policy:J3 invalid or unreadable prerequisites are explicitly unavailable.
     return false;
   }
 }
@@ -84,6 +81,7 @@ export function hasValidAnimations(dir) {
     const stat = statSync(join(emotesDir, files[0]));
     return stat.size > 1024;
   } catch {
+    // error-policy:J3 invalid or unreadable prerequisites are explicitly unavailable.
     return false;
   }
 }
@@ -93,25 +91,24 @@ function gitAvailable() {
     execSync("git --version", { stdio: "ignore" });
     return true;
   } catch {
+    // error-policy:J3 invalid or unreadable prerequisites are explicitly unavailable.
     return false;
   }
 }
 
 function removePathRecursive(targetPath) {
-  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
-    cwd: ROOT,
-    stdio: "inherit",
+  rmSync(targetPath, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 100,
   });
 }
 
 /** Count files matching an extension in a directory (non-recursive). */
 function countFiles(dir, ext) {
   if (!existsSync(dir)) return 0;
-  try {
-    return readdirSync(dir).filter((f) => f.endsWith(ext)).length;
-  } catch {
-    return 0;
-  }
+  return readdirSync(dir).filter((f) => f.endsWith(ext)).length;
 }
 
 function copyPathIfExists(src, dest) {
@@ -194,7 +191,7 @@ export function runEnsureAvatars({
     return { cloned: false, reason: "no-git" };
   }
 
-  // Prefer local characters/vrm when available (process-vrms compresses with meshopt + gzip)
+  // Prefer local character models; process-vrms preserves VRM extensions with gzip.
   const localVrms =
     _charactersVrmPath && existsSync(_charactersVrmPath)
       ? readdirSync(_charactersVrmPath).filter((f) => f.endsWith(".vrm"))
@@ -205,8 +202,12 @@ export function runEnsureAvatars({
   if (useLocalVrms) {
     log(`${TAG} Using local characters/vrm — running process-vrms...`);
     try {
-      _exec("node scripts/process-vrms.mjs", { cwd: ROOT, stdio: "inherit" });
+      _exec(`"${process.execPath}" "${join(__dirname, "process-vrms.mjs")}"`, {
+        cwd: ROOT,
+        stdio: "inherit",
+      });
     } catch (err) {
+      // error-policy:J1 preparation returns an explicit failure for the CLI boundary.
       const msg = err instanceof Error ? err.message : String(err);
       logError(`${TAG} process-vrms failed: ${msg}`);
       return { cloned: false, reason: "process-vrms-failed", error: msg };
@@ -258,18 +259,18 @@ export function runEnsureAvatars({
 
       for (const sourceId of BUNDLED_VRM_SOURCE_IDS) {
         copyPathIfExists(
-          join(avatarVrms, `eliza-${sourceId}.vrm`),
+          join(avatarVrms, `milady-${sourceId}.vrm`),
           join(VRMS_DIR, `eliza-${sourceId}.vrm`),
         );
         copyPathIfExists(
-          join(avatarVrms, "previews", `eliza-${sourceId}.png`),
+          join(avatarVrms, "previews", `milady-${sourceId}.png`),
           join(VRMS_DIR, "previews", `eliza-${sourceId}.png`),
         );
       }
 
       for (const sourceId of BUNDLED_BACKGROUND_SOURCE_IDS) {
         copyPathIfExists(
-          join(avatarVrms, "backgrounds", `eliza-${sourceId}.png`),
+          join(avatarVrms, "backgrounds", `milady-${sourceId}.png`),
           join(VRMS_DIR, "backgrounds", `eliza-${sourceId}.png`),
         );
       }
@@ -323,10 +324,11 @@ export function runEnsureAvatars({
     log(`${TAG} Avatar assets installed successfully`);
     return { cloned: true, vrmsOk, animsOk };
   } catch (err) {
+    // error-policy:J1 preparation returns an explicit failure for the CLI boundary.
     const message = err instanceof Error ? err.message : String(err);
     logError(`${TAG} Failed to clone avatar assets: ${message}`);
     logError(
-      `${TAG} You can manually clone: git clone ${AVATARS_REPO} /tmp/avatars && cp -r /tmp/avatars/vrms/ apps/app/public/vrms/ && cp -r /tmp/avatars/animations/ apps/app/public/animations/`,
+      `${TAG} Restore access to ${AVATARS_REPO} and rerun asset preparation for ${PUBLIC}.`,
     );
     return { cloned: false, reason: "clone-failed", error: message };
   } finally {
@@ -334,8 +336,9 @@ export function runEnsureAvatars({
       if (existsSync(tmpDir)) {
         removePathRecursive(tmpDir);
       }
-    } catch {
-      // Ignore cleanup errors
+    } catch (error) {
+      // error-policy:J6 clone teardown must not replace the preparation result.
+      logError(`${TAG} Failed to remove temporary clone: ${error}`);
     }
   }
 }
@@ -346,5 +349,12 @@ const isDirectRun =
 
 if (isDirectRun) {
   const force = process.argv.includes("--force");
-  runEnsureAvatars({ force });
+  const result = runEnsureAvatars({ force });
+  if (
+    result.reason !== "already-present" &&
+    result.reason !== "skipped-by-env" &&
+    !(result.vrmsOk && result.animsOk)
+  ) {
+    process.exitCode = 1;
+  }
 }

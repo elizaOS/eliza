@@ -28,21 +28,16 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
+import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = resolveRepoRootFromImportMeta(import.meta.url);
-const CHARACTERS_VRM = join(ROOT, "apps", "app", "characters", "vrm");
-const PUBLIC_VRMS = join(ROOT, "apps", "app", "public", "vrms");
-const PUBLIC_SRC_VRMS = join(
-  ROOT,
-  "eliza",
-  "apps",
-  "app-companion",
-  "public_src",
-  "vrms",
-);
+const APP_DIR = resolveMainAppDir(ROOT);
+const CHARACTERS_VRM = join(APP_DIR, "characters", "vrm");
+const PUBLIC_VRMS = join(APP_DIR, "public", "vrms");
+const PUBLIC_SRC_VRMS = join(APP_DIR, "public_src", "vrms");
 const TAG = "[process-vrms]";
 
 // Character name -> eliza index (1-based). Order determines avatar order in UI.
@@ -134,8 +129,9 @@ function main() {
           try {
             unlinkSync(p);
             console.log(`${TAG} Removed obsolete ${f}`);
-          } catch {
-            // ignore
+          } catch (error) {
+            // error-policy:J6 obsolete-asset cleanup does not invalidate new outputs.
+            console.warn(`${TAG} Failed to remove obsolete ${p}: ${error}`);
           }
         }
       }
