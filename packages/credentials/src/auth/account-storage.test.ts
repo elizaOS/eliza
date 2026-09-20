@@ -280,7 +280,7 @@ describe("encrypted at-rest storage", () => {
 });
 
 describe("conditional credential update", () => {
-  it("updates only a record that still holds the expected refresh token", () => {
+  it("updates only a record that still holds the expected credential generation", () => {
     const policy = createIsolatedAccountStoragePolicy(stateRoot);
     saveAccount(
       {
@@ -301,7 +301,7 @@ describe("conditional credential update", () => {
     const outcome = updateAccountCredentialsIfUnchanged(
       "openai-codex",
       "account-1",
-      "old-family",
+      before.credentialGeneration,
       { access: "new", refresh: "old-family-rotated", expires: 2 },
       policy,
     );
@@ -326,12 +326,14 @@ describe("conditional credential update", () => {
   it("reports a deleted record as missing and never creates one", () => {
     const policy = createIsolatedAccountStoragePolicy(stateRoot);
     saveAccount(record("account-1"), policy);
+    const before = loadAccount("openai-codex", "account-1", policy);
+    if (!before) throw new Error("seeded account is missing");
     deleteAccount("openai-codex", "account-1", policy);
 
     const outcome = updateAccountCredentialsIfUnchanged(
       "openai-codex",
       "account-1",
-      "refresh-account-1",
+      before.credentialGeneration,
       { access: "new", refresh: "rotated", expires: 2 },
       policy,
     );
@@ -344,6 +346,8 @@ describe("conditional credential update", () => {
   it("reports a replaced refresh token as changed and keeps the newer record", () => {
     const policy = createIsolatedAccountStoragePolicy(stateRoot);
     saveAccount(record("account-1"), policy);
+    const before = loadAccount("openai-codex", "account-1", policy);
+    if (!before) throw new Error("seeded account is missing");
     saveAccount(
       {
         ...record("account-1"),
@@ -355,7 +359,7 @@ describe("conditional credential update", () => {
     const outcome = updateAccountCredentialsIfUnchanged(
       "openai-codex",
       "account-1",
-      "refresh-account-1",
+      before.credentialGeneration,
       { access: "stale", refresh: "stale-rotated", expires: 2 },
       policy,
     );
@@ -371,7 +375,7 @@ describe("conditional credential update", () => {
     ).toEqual({ access: "fresh", refresh: "fresh-family", expires: 9 });
   });
 
-  it("rejects an empty expected refresh token before touching storage", () => {
+  it("rejects an empty expected storage generation before touching storage", () => {
     const policy = createIsolatedAccountStoragePolicy(stateRoot);
     saveAccount(record("account-1"), policy);
 

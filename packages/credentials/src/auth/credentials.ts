@@ -11,7 +11,7 @@
  * `saveCredentials` is the login commit path and may create a record. A token
  * refresh commits through `updateAccountCredentialsIfUnchanged` instead: the
  * grant is spent outside the storage lock, so the result is only persisted if
- * the account still exists and still holds the refresh token the refresh was
+ * the account still exists and still holds the storage generation the refresh was
  * started from. Otherwise the result is discarded in favour of the current
  * stored state (a concurrent logout or re-login wins).
  */
@@ -35,6 +35,7 @@ import {
   carryForwardIdToken,
   commitAccountDeletions,
   deleteAccount,
+  type LoadedAccountCredentialRecord,
   listAccounts,
   loadAccount,
   preflightProviderAccountDeletions,
@@ -156,7 +157,7 @@ export function saveCredentials(
   credentials: OAuthCredentials,
   accountId: string,
   storagePolicy: AccountStoragePolicy,
-): void {
+): LoadedAccountCredentialRecord {
   const existing = loadAccount(provider, accountId, storagePolicy);
   const now = Date.now();
   const mergedCredentials: OAuthCredentials = existing
@@ -181,7 +182,7 @@ export function saveCredentials(
     ...(existing?.userId !== undefined ? { userId: existing.userId } : {}),
     ...(existing?.email !== undefined ? { email: existing.email } : {}),
   };
-  saveAccount(record, storagePolicy);
+  return saveAccount(record, storagePolicy);
 }
 
 /**
@@ -378,7 +379,7 @@ export async function getAccessToken(
   return accountRefreshMutex.acquire(`${provider}:${accountId}`, async () => {
     // Re-read after acquiring the lock — a concurrent caller may have
     // already refreshed the token, in which case we want the new one.
-    const stored = loadCredentials(provider, accountId, opts?.storagePolicy);
+    const stored = loadAccount(provider, accountId, opts?.storagePolicy);
     if (!stored) {
       return finish(tokenFailure("auth", "No credential is stored"));
     }
@@ -448,7 +449,7 @@ export async function getAccessToken(
     const commit = updateAccountCredentialsIfUnchanged(
       provider,
       accountId,
-      credentials.refresh,
+      stored.credentialGeneration,
       refreshed,
       opts.storagePolicy,
     );

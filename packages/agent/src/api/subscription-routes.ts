@@ -12,8 +12,7 @@ import crypto from "node:crypto";
 import { logger, resolveStateDir } from "@elizaos/core";
 import {
   createRuntimeAccountStoragePolicy,
-  loadAccount,
-  saveAccount,
+  updateAccountMetadata,
 } from "@elizaos/credentials/auth/account-storage";
 import type { AnthropicFlow } from "@elizaos/credentials/auth/anthropic";
 import type { CodexFlow } from "@elizaos/credentials/auth/openai-codex";
@@ -171,21 +170,17 @@ export async function handleSubscriptionRoutes(
         : await exchangeAnthropicAuthorizationCode(body.code);
       const profile = await fetchAnthropicOAuthProfile(credentials.access);
       const accountId = profile.accountId ?? crypto.randomUUID();
-      saveCredentials(
+      const stored = saveCredentials(
         "anthropic-subscription",
         credentials,
         accountId,
         storagePolicy,
       );
-      const stored = loadAccount(
-        "anthropic-subscription",
-        accountId,
-        storagePolicy,
-      );
-      if (stored && profile.email) {
-        saveAccount(
+      if (profile.email) {
+        const metadata = updateAccountMetadata(
+          "anthropic-subscription",
+          accountId,
           {
-            ...stored,
             label: profile.email,
             email: profile.email,
             ...(profile.organizationId
@@ -193,7 +188,16 @@ export async function handleSubscriptionRoutes(
               : {}),
           },
           storagePolicy,
+          stored.credentialGeneration,
         );
+        if (metadata.kind !== "updated") {
+          error(
+            res,
+            "Account login changed before its profile could be saved; retry login",
+            409,
+          );
+          return true;
+        }
       }
       const pool = getAgentHostBridge().getDefaultAccountPool() as {
         list(providerId?: string): LinkedAccountConfig[];
