@@ -4080,6 +4080,54 @@ export function formatCreateEventRecentConversation(
   return state?.text || "(none)";
 }
 
+/** Reuse only selected same-room originals authored by this requester.
+ * Raw provider prose and assistant recaps cannot establish user authority. */
+export function calendarAuthorizingUserTexts(
+  state: State | undefined,
+  message: Memory,
+): string[] {
+  const current = messageText(message);
+  const selected = state?.values?.selectedActionConversation;
+  if (typeof selected !== "string") return [current];
+  let sources: unknown;
+  try {
+    sources = JSON.parse(selected);
+  } catch {
+    // error-policy:J3 Malformed optional source evidence grants no authority.
+    return [current];
+  }
+  if (!Array.isArray(sources)) return [current];
+  const originals: string[] = [];
+  for (const source of sources) {
+    if (
+      !source ||
+      typeof source !== "object" ||
+      source.type !== "segment" ||
+      source.source !== "prior-dialogue"
+    )
+      continue;
+    const segment = source.segment;
+    if (
+      segment?.label !== "prior_message:user" ||
+      typeof source.id !== "string" ||
+      segment.id !== source.id ||
+      typeof segment.content !== "string" ||
+      segment.metadata?.roomId !== message.roomId ||
+      segment.metadata?.entityId !== message.entityId
+    )
+      continue;
+    const speaker = segment.metadata.speakerName;
+    const prefix = typeof speaker === "string" ? `${speaker}: ` : "";
+    originals.push(
+      prefix && segment.content.startsWith(prefix)
+        ? segment.content.slice(prefix.length)
+        : segment.content,
+    );
+  }
+  // The latest explicit correction wins in ordered recurrence interpretation.
+  return [...originals, current];
+}
+
 function formatUpdateEventTargetContext(
   event: LifeOpsCalendarEvent | null,
 ): string {
@@ -5543,7 +5591,7 @@ const calendarAction: CalendarHandlerAction = {
           extractedDetails,
           explicitTitle,
           inferredTitle,
-          authorizingUserTexts: [messageText(message)],
+          authorizingUserTexts: calendarAuthorizingUserTexts(state, message),
           // The outer planner identifies CALENDAR and supplies hints; this
           // domain-specific extraction has the authoritative calendar context,
           // timezone, and local-date anchors needed to normalize wall time.
@@ -6069,7 +6117,7 @@ const calendarAction: CalendarHandlerAction = {
         // friday at 4pm" (live 2026-09-14) and the built-in calendar refused
         // the whole move. The create path's user-text gate decides here too.
         const recurrenceUpdate = selectUserAuthorizedRecurrence(
-          [messageText(message)],
+          calendarAuthorizingUserTexts(state, message),
           [
             detailRecurrenceLines(details),
             detailRecurrenceLines(extractedForUpdate),

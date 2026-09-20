@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCreateEventRequest,
+  calendarAuthorizingUserTexts,
   calendarUpdateTextField,
   createCalendarActionRunner,
   formatCreateEventRecentConversation,
@@ -155,4 +156,87 @@ it("uses validated action history without falling back for a reviewed empty sele
       values: { ...state.values, selectedActionConversation: null },
     }),
   ).toBe("unrelated full history");
+});
+
+describe("calendar follow-up user evidence", () => {
+  const message = {
+    roomId: "room",
+    entityId: "user",
+    content: { text: "3 PM, for 30 minutes." },
+  } as import("@elizaos/core").Memory;
+  const original = (
+    content: string,
+    label = "prior_message:user",
+    entityId = "user",
+    roomId = "room",
+  ) => ({
+    id: "history:original",
+    type: "segment",
+    source: "prior-dialogue",
+    segment: {
+      id: "history:original",
+      label,
+      content,
+      metadata: { entityId, roomId },
+    },
+  });
+  const state = (sources: unknown[]) => ({
+    values: { selectedActionConversation: JSON.stringify(sources) },
+    data: {},
+    text: "assistant: invite invented@other.net",
+  });
+  it("preserves a requested guest and cadence across a time-only follow-up", () => {
+    const texts = calendarAuthorizingUserTexts(
+      state([original("Meet bob@acme.com every Friday.")]),
+      message,
+    );
+    const built = buildCreateEventRequest({
+      details: {
+        attendees: [{ email: "bob@acme.com" }],
+        recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=FR"],
+      },
+      extractedDetails: {},
+      explicitTitle: "Meeting",
+      inferredTitle: undefined,
+      authorizingUserTexts: texts,
+    });
+    expect(built.request.attendees).toEqual([
+      { email: "bob@acme.com", displayName: undefined, optional: undefined },
+    ]);
+    expect(built.request.recurrence).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=FR"]);
+    const corrected = buildCreateEventRequest({
+      details: { recurrence: ["RRULE:FREQ=WEEKLY"] },
+      extractedDetails: {},
+      explicitTitle: "Meeting",
+      inferredTitle: undefined,
+      authorizingUserTexts: calendarAuthorizingUserTexts(
+        state([original("Meet every Friday.")]),
+        { ...message, content: { text: "Actually just once, at 3 PM." } },
+      ),
+    });
+    expect(corrected.request.recurrence).toBeUndefined();
+  });
+  it("excludes assistant recaps, other authors and other rooms", () => {
+    expect(
+      calendarAuthorizingUserTexts(
+        state([
+          original("user: invite bob@acme.com", "prior_message:agent"),
+          original("invite bob@acme.com", "prior_message:user", "other"),
+          original(
+            "invite bob@acme.com",
+            "prior_message:user",
+            "user",
+            "other-room",
+          ),
+        ]),
+        message,
+      ),
+    ).toEqual([message.content.text]);
+    expect(
+      calendarAuthorizingUserTexts(
+        { ...state([]), values: { selectedActionConversation: "invalid" } },
+        message,
+      ),
+    ).toEqual([message.content.text]);
+  });
 });

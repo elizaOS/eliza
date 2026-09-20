@@ -120,3 +120,11 @@ The local ledger now has116 reviewed entries,115 include decisions and one revie
 Named guests with unverified model-proposed addresses now pause before creation instead of treating a display-name/mailbox match as address evidence. Exact user-supplied addresses remain supported. The handler reports awaiting user input with rejected acceptance; an unrelated invented guest remains excluded. This adds no model call or external lookup.
 
 31 focused and real-PGlite handler tests passed, including an empty stored feed after the unresolved-guest request. Package typecheck passed. The first test attempt used an incorrect top-level receipt assertion; corrected to the existing nested failure.acceptance contract and reran successfully. Full root verification is running in `calendar-guest-root-verify.log`; do not treat it as passed yet. Live runtime remains on the preceding code. Prior-turn authorization and remaining acceptance scenarios stay open.
+
+Full root verification for56340db491b completed with exit0 (`calendar-guest-root-verify.log`).
+
+## Calendar follow-up source evidence
+
+Guest and recurrence checks now reuse selected original user segments matching the current room and requester, with the current message last. This prevents a time-only clarification answer from discarding prior guest/cadence evidence. Assistant recaps, other authors/rooms and malformed source data are excluded. This does not add a model call or replace semantic interpretation of the current request.
+
+57 focused checks passed across four files, including real-PGlite creation that preserves the prior requested guest after a time-only follow-up; tests also cover latest one-shot correction and excluded sources. Calendar typecheck passed. Full repository verification for this follow-up change remains pending; running demo still uses preceding code.
