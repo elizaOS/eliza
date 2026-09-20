@@ -9,7 +9,12 @@ import { AgentRuntime } from "../runtime";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import { ServiceType } from "../types/service";
-import type { Task, TaskWorker } from "../types/task";
+import type {
+	Task,
+	TaskMetadataPatch,
+	TaskMetadataPatchOutcome,
+	TaskWorker,
+} from "../types/task";
 import {
 	TaskService,
 	type TaskServiceClock,
@@ -30,6 +35,10 @@ function makeTaskRuntime(options?: {
 		tags?: string[];
 		agentIds?: UUID[];
 	}) => Promise<Task[]>;
+	patchTaskMetadata?: (
+		id: UUID,
+		patch: TaskMetadataPatch,
+	) => Promise<TaskMetadataPatchOutcome>;
 }) {
 	const tasks = new Map<string, Task>();
 	const workers = new Map<string, TaskWorker>();
@@ -60,6 +69,22 @@ function makeTaskRuntime(options?: {
 			if (!existing) throw new Error(`no task ${id}`);
 			tasks.set(id, { ...existing, ...patch });
 		},
+		patchTaskMetadata:
+			options?.patchTaskMetadata ??
+			(async (id: UUID, patch: TaskMetadataPatch) => {
+				const existing = tasks.get(id);
+				if (!existing) return "missing";
+				const metadata: Record<string, unknown> = {
+					...(existing.metadata ?? {}),
+					...(patch.set ?? {}),
+				};
+				for (const key of patch.unset ?? []) delete metadata[key];
+				tasks.set(id, {
+					...existing,
+					metadata: metadata as Task["metadata"],
+				});
+				return "patched";
+			}),
 		deleteTask: async (id: UUID) => {
 			tasks.delete(id);
 		},
@@ -1111,4 +1136,88 @@ describe("explicit retry deadlines", () => {
 			});
 		},
 	);
+});
+
+describe("TaskService metadata writes are key-level", () => {
+	function makeService(runtime: IAgentRuntime) {
+		return new TaskService(runtime, {
+			now: () => T0,
+			setInterval: () => {
+				throw Error("Manual ticks only");
+			},
+			clearInterval: () => undefined,
+		});
+	}
+
+	it("keeps a pause that lands during a run's bookkeeping write", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		let release: () => void = () => undefined;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		workers.set("racy", {
+			name: "racy",
+			execute: async () => {
+				await gate;
+			},
+		});
+		tasks.set("racy" as UUID, {
+			id: "racy" as UUID,
+			name: "racy",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			metadata: { updateInterval: 60_000, updatedAt: T0 - 120_000 },
+		});
+		const service = makeService(runtime);
+		const tick = service.runTick(Array.from(tasks.values()));
+		await service.pauseTask("racy" as UUID);
+		release();
+		await tick;
+		expect(tasks.get("racy")?.metadata).toMatchObject({
+			paused: true,
+			updatedAt: T0,
+			failureCount: 0,
+			updateInterval: 60_000,
+		});
+	});
+
+	it("falls back to a merged whole-metadata update when the adapter cannot patch", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime({
+			patchTaskMetadata: async () => "unsupported",
+		});
+		workers.set("plain", {
+			name: "plain",
+			execute: async () => ({ nextInterval: 5_000 }),
+		});
+		tasks.set("plain" as UUID, {
+			id: "plain" as UUID,
+			name: "plain",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			metadata: {
+				updateInterval: 60_000,
+				baseInterval: 60_000,
+				lastError: "boom",
+				failureCount: 2,
+				updatedAt: T0 - 120_000,
+				customFlag: true,
+			} as Task["metadata"],
+		});
+		const service = makeService(runtime);
+		await service.runTick(Array.from(tasks.values()));
+		const metadata = tasks.get("plain")?.metadata as Record<string, unknown>;
+		expect(metadata).toMatchObject({
+			updateInterval: 5_000,
+			failureCount: 0,
+			updatedAt: T0,
+			customFlag: true,
+		});
+		expect(metadata).not.toHaveProperty("lastError");
+		expect(metadata).not.toHaveProperty("baseInterval");
+		await service.pauseTask("plain" as UUID);
+		expect(tasks.get("plain")?.metadata).toMatchObject({
+			paused: true,
+			updateInterval: 5_000,
+		});
+	});
 });

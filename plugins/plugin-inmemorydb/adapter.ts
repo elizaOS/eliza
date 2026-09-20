@@ -74,6 +74,7 @@ import {
   rankMessageSearch,
   requireFreshWorldMetadataRevision,
   type Task,
+  type TaskMetadataPatch,
   type UUID,
   validateDocumentDirectGrantEntityIds,
   validateDocumentRevisionReplacement,
@@ -2372,6 +2373,30 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       await this.storage.set(COLLECTIONS.TASKS, id, { ...existing, ...task, id });
       return true;
     };
+    const run = this.taskMutationTail.then(operation, operation);
+    this.taskMutationTail = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
+  }
+
+  async patchTaskMetadata(id: UUID, patch: TaskMetadataPatch): Promise<boolean> {
+    const operation = async () => {
+      const existing = await this.storage.get<Task>(COLLECTIONS.TASKS, id);
+      if (!existing) return false;
+      const metadata: Record<string, unknown> = {
+        ...(existing.metadata ?? {}),
+        ...(patch.set ?? {}),
+      };
+      for (const key of patch.unset ?? []) delete metadata[key];
+      await this.storage.set(COLLECTIONS.TASKS, id, {
+        ...existing,
+        metadata: metadata as Task["metadata"],
+      });
+      return true;
+    };
+    // Serialize with the other task mutations so two patches never interleave.
     const run = this.taskMutationTail.then(operation, operation);
     this.taskMutationTail = run.then(
       () => undefined,
