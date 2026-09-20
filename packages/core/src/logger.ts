@@ -28,6 +28,7 @@ export const __loggerTestHooks = {
 
 import adze, {
 	type ConsoleStyle,
+	type Level,
 	type LevelConfiguration,
 	type Method,
 	setup,
@@ -190,7 +191,40 @@ const LOG_LEVEL_PRIORITY: Record<string, number> = {
 	error: 50,
 	fatal: 60,
 	alert: 60,
+	silent: Number.POSITIVE_INFINITY,
 };
+
+/** Accepted spellings that map onto a canonical level name. */
+const LOG_LEVEL_ALIASES: Record<string, string> = {
+	off: "silent",
+	none: "silent",
+	warning: "warn",
+};
+
+/**
+ * Resolve a configured level name to a canonical entry of
+ * `LOG_LEVEL_PRIORITY`. An unknown name is reported once on stderr and falls
+ * back to `fallback`, so a typo such as `LOG_LEVEL=warnign` never silently
+ * turns into full info output.
+ */
+function resolveConfiguredLogLevel(
+	raw: string | undefined,
+	fallback: string,
+	source: string,
+): string {
+	const trimmed = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+	if (trimmed.length === 0) return fallback;
+	const level = LOG_LEVEL_ALIASES[trimmed] ?? trimmed;
+	if (Object.hasOwn(LOG_LEVEL_PRIORITY, level)) return level;
+	const known = Object.keys(LOG_LEVEL_PRIORITY).join(", ");
+	const message = `[logger] ignoring unknown ${source}=${JSON.stringify(raw)}; expected one of ${known} (aliases: off, none, warning); using "${fallback}"`;
+	if (typeof process !== "undefined" && process.stderr?.write) {
+		process.stderr.write(`${message}\n`);
+	} else {
+		console.warn(message);
+	}
+	return fallback;
+}
 
 /**
  * Reverse mapping from numeric level to preferred level name
@@ -307,7 +341,13 @@ function formatPrettyLog(
 
 // Log level configuration
 const DEFAULT_LOG_LEVEL = "info";
-const effectiveLogLevel = getEnvironmentVar("LOG_LEVEL") || DEFAULT_LOG_LEVEL;
+const effectiveLogLevel = resolveConfiguredLogLevel(
+	getEnvironmentVar("LOG_LEVEL"),
+	DEFAULT_LOG_LEVEL,
+	"LOG_LEVEL",
+);
+/** True when the configured level is `silent`: no sink receives anything. */
+const effectiveLogSilent = effectiveLogLevel === "silent";
 
 // Custom log levels mapping (elizaOS to Adze)
 // These are for our internal shouldLog function, not Adze's levels
@@ -770,17 +810,26 @@ const globalInMemoryDestination = createInMemoryDestination();
 
 // Configure Adze globally
 // Map elizaOS log levels to Adze log levels
-const getAdzeActiveLevel = () => {
-	const level = effectiveLogLevel.toLowerCase();
-	if (level === "trace") return "verbose";
-	if (level === "debug") return "debug";
-	if (level === "log") return "log";
-	if (level === "info") return "info";
-	if (level === "warn") return "warn";
-	if (level === "error") return "error";
-	if (level === "fatal") return "alert";
-	return "info"; // Default to info
+// Every name in LOG_LEVEL_PRIORITY maps onto one of the custom Adze levels
+// below so the console and the in-memory buffer agree on what is emitted;
+// `silent` disables the console through Adze's own `silent` switch.
+const ADZE_ACTIVE_LEVEL_BY_NAME: Record<string, Level> = {
+	trace: "verbose",
+	verbose: "verbose",
+	debug: "debug",
+	success: "success",
+	progress: "log",
+	log: "log",
+	info: "info",
+	warn: "warn",
+	error: "error",
+	fatal: "alert",
+	alert: "alert",
+	silent: "alert",
 };
+
+const getAdzeActiveLevel = (): Level =>
+	ADZE_ACTIVE_LEVEL_BY_NAME[effectiveLogLevel] ?? "info";
 
 const adzeActiveLevel = getAdzeActiveLevel();
 
@@ -862,6 +911,7 @@ const customLevelConfig: Record<string, LevelConfiguration> = {
 
 setup({
 	activeLevel: adzeActiveLevel,
+	silent: effectiveLogSilent,
 	format: raw ? "json" : "pretty",
 	timestampFormatter: showTimestamps ? undefined : () => "",
 	withEmoji: false,
@@ -926,6 +976,7 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
 	// This ensures the sealed logger inherits the correct log level and styling
 	const globalConfig: UserConfiguration = {
 		activeLevel: getAdzeActiveLevel(),
+		silent: effectiveLogSilent,
 		format: raw ? "json" : "pretty",
 		timestampFormatter: showTimestamps ? undefined : () => "",
 		withEmoji: false,
@@ -964,7 +1015,11 @@ function extractBindingsConfig(bindings: LoggerBindings | boolean): {
 
 	if (typeof bindings === "object" && bindings !== null) {
 		if ("level" in bindings) {
-			level = bindings.level as string;
+			level = resolveConfiguredLogLevel(
+				String(bindings.level),
+				effectiveLogLevel,
+				"bindings.level",
+			);
 		}
 		if (
 			"maxMemoryLogs" in bindings &&
