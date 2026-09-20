@@ -305,3 +305,12 @@ Ledger now has240 explicit reviews:236 include,3 upstream-equivalent and1 Calend
 - `packages/agent/src/providers/relevant-conversations.test.ts`: Recall provider tests exclude current-room duplicate retrieval, preserve every readable unidentified record, and apply retention only to validated private source rooms with fresh scope. Hidden records remain excluded. Shared-prefix/repeated-body encodings reconstruct exact text and preserve occurrence/author identity; stale or incomplete review restores complete evidence. Mock access/search collaborators are not live cross-account permission acceptance.
 
 264 explicit reviews:260 include,3 upstream-equivalent and1 Calendar handler review-required.6 entries remain; no blanket acceptance. Documentation-only checkpoint; existing ef88e31918b production evidence remains unchanged. No new tests or paid model calls.
+
+## Guide and historical evidence review — 268/270
+
+- `packages/core/CLAUDE.md`: Full changed guide inspected in two parts. Records fresh authorized discovery, lossless source recovery, direct-conversation source contracts, planner-first required-tool work, final reply ownership, exact personal-directive scope and dependency preservation. Source/model-judgment limits remain explicit; direct voice documentation does not establish voice acceptance.
+- `packages/core/AGENTS.md`: Byte-identical to completely reviewed core CLAUDE.md (cmp passed). Same discovery, source identity, pending-work, reply ownership and personal-scope contracts; no separate acceptance claim.
+- `GANTTNUBS-PLAN.md`: Complete historical plan inspected. Preserves original scope, rejected experiments, measured latency, paid-test discipline, acknowledgement evolution and prior checkpoint boundaries. Current-status banner supersedes old active-checklist language; prior passes are not combined candidate acceptance.
+- `GANTTNUBS-SCENARIO-RESULTS.md`: Complete historical scenario ledger inspected. Retains failed date/scope/recovery runs, per-call timing and cache counts, corrected behavior and exact fixture-preservation boundaries. Historical source/runtime receipts are scoped rather than treated as current combined acceptance or latency guarantees; current-status banner remains authoritative.
+
+268 explicit reviews:264 include,3 upstream-equivalent and1 Calendar handler review-required.2 larger test comparisons remain; no blanket acceptance. Documentation-only checkpoint; existing production code and live evidence remain unchanged.
