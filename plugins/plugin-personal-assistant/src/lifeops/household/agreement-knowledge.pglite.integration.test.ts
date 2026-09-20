@@ -37,7 +37,15 @@ import {
   registerScheduledTaskChannelDispatcher,
 } from "@elizaos/plugin-scheduling";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { z } from "zod";
 import { collectReferencedMedia } from "../../../../../packages/agent/src/api/media-runtime.ts";
 import { gcUnreferencedMedia } from "../../../../../packages/agent/src/api/media-store.ts";
@@ -202,7 +210,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   let runtimeResult: RealTestRuntimeResult;
   let runtime: AgentRuntime;
   let household: HouseholdCoordinationService;
-  let artifact: ParentingAgreementArtifact;
+  const fixtureArtifacts: ParentingAgreementArtifact[] = [];
   let guestHouseholdGrantId: string;
   let mediaStateDir: string;
   const familyRoomId = crypto.randomUUID() as UUID;
@@ -218,6 +226,71 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     });
     await runtime.addParticipant(runtime.agentId, id);
   }
+  async function agreementFixture(
+    reviewed = false,
+  ): Promise<ParentingAgreementArtifact> {
+    const service = createAgreementKnowledgeService(runtime);
+    const artifact = await createAgreement(service, {
+      agreementKey: crypto.randomUUID(),
+      title: "Parenting plan",
+      originalFilename: "parenting-plan.pdf",
+      bytes: pdf("agreement version one"),
+    });
+    fixtureArtifacts.push(artifact);
+    if (reviewed) {
+      for (const [title, text, pageStart, pageEnd, decision] of [
+        [
+          "School notice",
+          "Share school notices within twenty-four hours.",
+          4,
+          5,
+          "approve",
+        ],
+        [
+          "Unsupported interpretation",
+          "An unsupported model interpretation.",
+          8,
+          8,
+          "reject",
+        ],
+      ] as const) {
+        const obligation = await service.proposeObligation({
+          artifactId: artifact.id,
+          title,
+          obligationText: text,
+          pageStart,
+          pageEnd,
+          citationText: text,
+          proposedByEntityId: SELF_ENTITY_ID,
+        });
+        await service.decideObligation({
+          obligationId: obligation.id,
+          decision,
+          decidedByEntityId: SELF_ENTITY_ID,
+          reason: "Owner checked the fixture source.",
+        });
+      }
+    }
+    return artifact;
+  }
+
+  afterEach(async () => {
+    const service = createAgreementKnowledgeService(runtime);
+    for (const artifact of fixtureArtifacts.splice(0)) {
+      const pins = await service.listPins({
+        artifactId: artifact.id,
+        ownerEntityId: SELF_ENTITY_ID,
+      });
+      for (const pin of pins) {
+        if (pin.unpinnedAt === null)
+          await service.unpin({
+            pinId: pin.id,
+            unpinnedByEntityId: SELF_ENTITY_ID,
+          });
+      }
+    }
+  });
+
   let syntheticSchedulerDispatches = 0;
 
   beforeAll(async () => {
@@ -330,7 +403,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   it("stores immutable content-addressed versions and rejects duplicate bytes", async () => {
     const service = createAgreementKnowledgeService(runtime);
     const firstBytes = pdf("agreement version one");
-    artifact = await createAgreement(service, {
+    const artifact = await createAgreement(service, {
       agreementKey: "parenting-plan",
       title: "Parenting plan",
       originalFilename: "parenting-plan.pdf",
@@ -399,6 +472,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("requires valid page citations and makes review decisions terminal", async () => {
+    const artifact = await agreementFixture(false);
     const service = createAgreementKnowledgeService(runtime);
     await expect(
       service.proposeObligation({
@@ -464,7 +538,14 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("keeps agent and chat pins separate from guest authorization", async () => {
+    const artifact = await agreementFixture(true);
     const service = createAgreementKnowledgeService(runtime);
+    await createAgreement(service, {
+      agreementKey: artifact.agreementKey,
+      title: "Parenting plan amended",
+      originalFilename: "amended.pdf",
+      bytes: pdf("agreement version two"),
+    });
     const agentPin = await service.pin({
       artifactId: artifact.id,
       targetType: "agent",
@@ -506,13 +587,18 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     const ownerList = await service.listOwnerAgreements({
       ownerEntityId: SELF_ENTITY_ID,
     });
-    expect(ownerList.map((view) => view.artifact.version)).toEqual([2, 1]);
+    expect(
+      ownerList
+        .filter((view) => view.artifact.agreementKey === artifact.agreementKey)
+        .map((view) => view.artifact.version),
+    ).toEqual([2, 1]);
     await expect(
       service.listOwnerAgreements({ ownerEntityId: "verified-co-parent" }),
     ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
   });
 
   it("composes approved pins on owner planning turns while preserving room and audience boundaries", async () => {
+    const artifact = await agreementFixture(true);
     const service = createAgreementKnowledgeService(runtime);
     const ownerId = crypto.randomUUID() as UUID;
     const roomId = crypto.randomUUID() as UUID;
@@ -621,6 +707,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("persists pin provenance atomically and rolls back when the audit ledger rejects it", async () => {
+    const artifact = await agreementFixture(false);
     const service = createAgreementKnowledgeService(runtime);
     const targetId = crypto.randomUUID() as UUID;
     await createPinRoom(targetId);
@@ -697,6 +784,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("exports the owner workspace with real packet records and verified nested source archives while denying guests", async () => {
+    const artifact = await agreementFixture(false);
     const packets = new MonthlyFamilyPacketService(runtime);
     const packet = await packets.buildInternal(
       {
@@ -1090,7 +1178,15 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("exports verified originals and complete persisted provenance without granting guest export access", async () => {
+    const artifact = await agreementFixture(true);
     const service = createAgreementKnowledgeService(runtime);
+    const pin = await service.pin({
+      artifactId: artifact.id,
+      targetType: "chat",
+      targetId: familyRoomId,
+      pinnedByEntityId: SELF_ENTITY_ID,
+    });
+    await service.unpin({ pinId: pin.id, unpinnedByEntityId: SELF_ENTITY_ID });
     const original = await service.readOwnerPdf({
       artifactId: artifact.id,
       ownerEntityId: SELF_ENTITY_ID,
@@ -1166,6 +1262,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("refuses missing or corrupted originals without recording a prepared export", async () => {
+    const artifact = await agreementFixture(false);
     const service = createAgreementKnowledgeService(runtime);
     const file = path.join(mediaStateDir, "media", artifact.mediaFileName);
     const original = fs.readFileSync(file);
@@ -1233,6 +1330,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("keeps concurrent pin transitions and their audit evidence in the same export snapshot", async () => {
+    const artifact = await agreementFixture(false);
     const service = createAgreementKnowledgeService(runtime);
     const repository = new AgreementKnowledgeRepository(
       runtime,
@@ -1285,6 +1383,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("requires verified identity plus an exact active household grant", async () => {
+    const artifact = await agreementFixture(true);
     const service = createAgreementKnowledgeService(runtime);
     await service.pin({
       artifactId: artifact.id,
@@ -1439,6 +1538,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("fails closed after household-grant revocation or expiry", async () => {
+    const artifact = await agreementFixture(false);
     const service = createAgreementKnowledgeService(runtime);
     const expiring = await household.issueGrant({
       principalEntityId: "verified-co-parent",
@@ -1476,6 +1576,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("serves only the bound guest projection over HTTP and denies revoked access", async () => {
+    const artifact = await agreementFixture(true);
     const db = (
       runtime as AgentRuntime & {
         adapter: { db: ConstructorParameters<typeof AuthStore>[0] };
