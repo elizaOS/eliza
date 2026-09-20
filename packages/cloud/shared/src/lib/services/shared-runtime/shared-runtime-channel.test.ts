@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { ChannelType } from "@elizaos/core/edge";
+import { ChannelType } from "@elizaos/common";
 import { parseSharedRuntimeChannel } from "./shared-runtime-channel";
 
 describe("parseSharedRuntimeChannel", () => {

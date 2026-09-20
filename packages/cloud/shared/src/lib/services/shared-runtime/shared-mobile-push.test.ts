@@ -1,6 +1,6 @@
 /** Verifies that canonical agent notification events dispatch one mobile-push payload through the Shared host boundary. */
 
-import type { AgentEventPayload } from "@elizaos/core/edge";
+import type { AgentEventPayload } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { SHARED_NOTIFICATION_SERVICES, subscribeSharedMobilePush } from "./shared-eliza-runtime";
 

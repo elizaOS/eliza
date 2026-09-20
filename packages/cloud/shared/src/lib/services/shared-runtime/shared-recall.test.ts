@@ -8,7 +8,7 @@
  */
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { isElizaError } from "@elizaos/core/edge";
+import { isElizaError } from "@elizaos/common";
 import {
   buildSharedRecallContext,
   embedTextsViaSidecar,
