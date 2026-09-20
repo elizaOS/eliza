@@ -38,9 +38,11 @@ export interface TypedTurnEvaluationContract {
 }
 
 function typedTurnInputRepresentations(input: string): string[] {
-  // Storage may omit the canonical warning while retaining the complete envelope.
+  // Incoming turns use the sender warning; stored and legacy records may retain
+  // the reference warning or omit it while preserving the complete envelope.
   return [
     input,
+    wrapExternalContent(input, { source: "api", purpose: "incoming_message" }),
     wrapExternalContent(input, { source: "api" }),
     wrapExternalContent(input, { source: "api", includeWarning: false }),
   ];
