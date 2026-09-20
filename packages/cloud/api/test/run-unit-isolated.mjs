@@ -52,8 +52,8 @@ let files = walk(pkgRoot).sort();
 if (filter) files = files.filter((f) => f.includes(filter));
 
 if (files.length === 0) {
-  console.log("[cloud-api unit] no test files matched");
-  process.exit(0);
+  console.error("[cloud-api unit] no test files matched");
+  process.exit(1);
 }
 
 console.log(
