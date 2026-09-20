@@ -1447,6 +1447,11 @@ function stageDesktopBuild() {
   ensureWorkspaceCheckoutPresent();
   ensureAppDirs();
 
+  runBun([path.join(SCRIPT_DIR, "ensure-avatars.mjs"), `--app=${appName}`], {
+    cwd: ROOT,
+    label: "Preparing pinned renderer avatars",
+  });
+
   ensureRootRuntimeBundle();
   ensureWorkspaceRuntimePackagesBuilt();
   stageNativeActivityTrackerSourceBinary();

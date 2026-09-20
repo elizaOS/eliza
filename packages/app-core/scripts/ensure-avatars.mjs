@@ -12,7 +12,7 @@
  * Release preparation and consumer setup invoke this explicitly. CLI failures
  * exit nonzero; SKIP_AVATAR_CLONE deliberately disables network preparation.
  */
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
@@ -33,7 +33,9 @@ import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = resolveRepoRootFromImportMeta(import.meta.url);
-const APP_DIR = resolveMainAppDir(ROOT);
+const appName =
+  process.argv.find((arg) => arg.startsWith("--app="))?.slice(6) || "app";
+const APP_DIR = resolveMainAppDir(ROOT, appName);
 const PUBLIC = join(APP_DIR, "public");
 const VRMS_DIR = join(PUBLIC, "vrms");
 const ANIMATIONS_DIR = join(PUBLIC, "animations");
@@ -202,10 +204,11 @@ export function runEnsureAvatars({
   if (useLocalVrms) {
     log(`${TAG} Using local characters/vrm — running process-vrms...`);
     try {
-      _exec(`"${process.execPath}" "${join(__dirname, "process-vrms.mjs")}"`, {
-        cwd: ROOT,
-        stdio: "inherit",
-      });
+      execFileSync(
+        process.execPath,
+        [join(__dirname, "process-vrms.mjs"), `--app=${appName}`],
+        { cwd: ROOT, stdio: "inherit" },
+      );
     } catch (err) {
       // error-policy:J1 preparation returns an explicit failure for the CLI boundary.
       const msg = err instanceof Error ? err.message : String(err);

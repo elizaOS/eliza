@@ -34,7 +34,9 @@ import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = resolveRepoRootFromImportMeta(import.meta.url);
-const APP_DIR = resolveMainAppDir(ROOT);
+const appName =
+  process.argv.find((arg) => arg.startsWith("--app="))?.slice(6) || "app";
+const APP_DIR = resolveMainAppDir(ROOT, appName);
 const CHARACTERS_VRM = join(APP_DIR, "characters", "vrm");
 const PUBLIC_VRMS = join(APP_DIR, "public", "vrms");
 const PUBLIC_SRC_VRMS = join(APP_DIR, "public_src", "vrms");

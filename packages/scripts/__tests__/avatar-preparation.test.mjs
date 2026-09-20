@@ -23,17 +23,18 @@ import { gunzipSync, gzipSync } from "node:zlib";
 const scripts = fileURLToPath(
   new URL("../../app-core/scripts/", import.meta.url),
 );
-function fixture(t, nested = false) {
+function fixture(t, nested = false, appName = "app") {
   const root = realpathSync(
     mkdtempSync(path.join(tmpdir(), "avatar-preparation-")),
   );
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const workspace = nested ? path.join(root, "eliza") : root;
-  const app = path.join(root, nested ? "apps" : "packages", "app");
+  const app = path.join(root, nested ? "apps" : "packages", appName);
   for (const dir of [
     root,
     workspace,
     app,
+    path.join(root, nested ? "apps" : "packages", "app"),
     path.join(workspace, "packages/app-core"),
     path.join(workspace, "packages/agent"),
   ]) {
@@ -55,12 +56,16 @@ function fixture(t, nested = false) {
     writeFileSync(dest, bytes);
   };
   const run = (env = {}) =>
-    spawnSync(process.execPath, [path.join(target, "ensure-avatars.mjs")], {
-      cwd: root,
-      env: { ...process.env, SKIP_AVATAR_CLONE: "", ...env },
-      encoding: "utf8",
-      timeout: 15000,
-    });
+    spawnSync(
+      process.execPath,
+      [path.join(target, "ensure-avatars.mjs"), `--app=${appName}`],
+      {
+        cwd: root,
+        env: { ...process.env, SKIP_AVATAR_CLONE: "", ...env },
+        encoding: "utf8",
+        timeout: 15000,
+      },
+    );
   return { root, target, app, put, run };
 }
 
@@ -159,3 +164,19 @@ for (const nested of [false, true]) {
     );
   });
 }
+
+test("prepares the explicitly selected desktop app instead of the default renderer", (t) => {
+  const { app, put, run } = fixture(t, true, "custom-desktop");
+  const bytes = randomBytes(4096);
+  put("characters/vrm/Chen.vrm", bytes);
+  put("public/animations/emotes/wave.glb.gz", gzipSync(randomBytes(2048)));
+  const prepared = run();
+  assert.equal(prepared.status, 0, prepared.stderr);
+  assert.deepEqual(
+    gunzipSync(readFileSync(path.join(app, "public/vrms/eliza-1.vrm.gz"))),
+    bytes,
+  );
+  const reused = run({ PATH: "" });
+  assert.equal(reused.status, 0, reused.stderr);
+  assert.match(reused.stdout, /already present/);
+});
