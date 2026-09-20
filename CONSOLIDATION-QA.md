@@ -242,3 +242,9 @@ Raw traces, summaries and feed saved as runtime/spruce-recurring-capability-* an
 24 additional original inventory diffs reviewed in full;218/270 now reviewed (214 include,3 upstream-equivalent,1 Calendar handler review-required). These cover unpublished-reply requirements, single final callback attribution, legacy diagnostic projection, trajectory stage labels, literal search distinctions, registered child dispatch, preserved partial effects, required reconciliation targets with SQL snapshots, timezone override precedence, inferred activity labeling, lossless keyless MCP parsing and TypeSafe probability validation. Recent-conversation manifests retain authorization without eager body reads or invented message counts. Historical peer plan is retained only as a labeled snapshot.
 
 The review distinguishes intentional routing/terminal repair calls from performance proof. Finite phrase tests do not establish universal natural-language correctness; canned provider responses are protocol coverage, not live service acceptance. No production changes or paid calls.
+
+## Planner, failure and recall source review
+
+16 additional original inventory diffs reviewed in full;234/270 reviewed (230 include,3 upstream-equivalent,1 Calendar handler review-required). Evidence covers initial reply presentation, preparatory versus requested discovery, conflicting native decisions, one final publication, exact proposal whitespace, catalog/schema semantic preservation, failure handling without paid apologies, transcript resync timing, attested reply provenance and205-source real PGlite recall. Historical demo measurements remain explicitly historical.
+
+No production edits, repeated tests or paid calls. Schema/canned-generation checks prove their specific boundaries, not general model accuracy or speed.
