@@ -16,35 +16,38 @@ if (!bundle)
 const library = resolveFusedLibraryPath(bundle);
 if (!library)
   throw new Error("Installed fused inference library is unavailable");
-const ffi = loadElizaInferenceFfi(library);
-let context;
-try {
-  if (!ffi.embedSupported() || typeof ffi.embed !== "function")
-    throw new Error(
-      "Installed fused inference library lacks embedding support",
-    );
-  context = ffi.create(bundle);
-  const embedding = ffi.embed({
-    ctx: context,
-    text: "Verify local embedding availability.",
-    pooling: 1,
-  });
-  if (
-    embedding.length !== 384 ||
-    !embedding.every(Number.isFinite) ||
-    !embedding.some((value) => value !== 0)
-  ) {
-    throw new Error(
-      "Installed fused inference returned an invalid default embedding",
-    );
-  }
-  console.log(
-    `[verify-fused-embedding] ready: ${library}; ${embedding.length} finite local dimensions`,
-  );
-} finally {
+// Reopening must remain safe after releasing the first model and binding.
+for (let cycle = 0; cycle < 2; cycle += 1) {
+  const ffi = loadElizaInferenceFfi(library);
+  let context;
   try {
-    if (context) ffi.destroy(context);
+    if (!ffi.embedSupported() || typeof ffi.embed !== "function")
+      throw new Error(
+        "Installed fused inference library lacks embedding support",
+      );
+    context = ffi.create(bundle);
+    const embedding = ffi.embed({
+      ctx: context,
+      text: "Verify local embedding availability.",
+      pooling: 1,
+    });
+    if (
+      embedding.length !== 384 ||
+      !embedding.every(Number.isFinite) ||
+      !embedding.some((value) => value !== 0)
+    ) {
+      throw new Error(
+        "Installed fused inference returned an invalid default embedding",
+      );
+    }
+    console.log(
+      `[verify-fused-embedding] ready: ${library}; ${embedding.length} finite local dimensions; cycle ${cycle + 1}/2`,
+    );
   } finally {
-    ffi.close();
+    try {
+      if (context) ffi.destroy(context);
+    } finally {
+      ffi.close();
+    }
   }
 }
