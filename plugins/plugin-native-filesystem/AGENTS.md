@@ -26,9 +26,7 @@ src/
   services/
     device-filesystem-bridge.ts    DeviceFilesystemBridge service + getDeviceFilesystemBridge() helper
   __tests__/
-    path-validation.test.ts        Unit tests for normalizeDevicePath
-    plugin-registration.test.ts    Plugin wiring smoke test
-    round-trip.test.ts             read/write/list round-trip against a temp Node root
+    path-validation.test.ts        Path guards and read/write/list flows against a temp Node root
 ```
 
 ## Service API
@@ -82,7 +80,7 @@ No runtime configuration keys or agent settings are read by this plugin.
 1. Add the method signature to `DeviceFilesystemBridge` in `src/services/device-filesystem-bridge.ts`.
 2. Implement the Capacitor branch (`mod.Filesystem.*`) and the Node branch (`node:fs/promises`).
 3. Call `normalizeDevicePath(relativePath)` as the first step to sanitise input.
-4. Add a test case to `src/__tests__/round-trip.test.ts` using `DeviceFilesystemBridge.forNodeRoot(tmpDir)`.
+4. Add a test case to `src/__tests__/path-validation.test.ts` using `DeviceFilesystemBridge.forNodeRoot(tmpDir)`.
 
 **Add a new action** (e.g. a planner-visible `DELETE_DEVICE_FILE`):
 1. Create `src/actions/delete-device-file.ts` implementing the `Action` interface from `@elizaos/core`.

@@ -1,6 +1,6 @@
 /**
- * Unit tests for `normalizeDevicePath`, plus integration tests exercising the Node
- * backend's traversal/symlink-escape guards against a real temp directory on disk (no mocks).
+ * Exercises path normalization and the Node filesystem bridge against real temporary
+ * directories, including read/write/list flows, concurrency and path-boundary guards.
  */
 import {
 	existsSync,
@@ -91,6 +91,26 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 		await expect(bridge.write("../../escape.txt", "hi")).rejects.toThrow(
 			/traversal/,
 		);
+	});
+
+	it("lists files at the root after a write", async () => {
+		await bridge.write("alpha.txt", "a");
+		await bridge.write("beta.txt", "b");
+		const entries = await bridge.list("");
+		const names = entries.map((e) => e.name).sort();
+		expect(names).toContain("alpha.txt");
+		expect(names).toContain("beta.txt");
+		expect(entries.every((e) => e.type === "file")).toBe(true);
+	});
+
+	it("lists nested directories with correct type", async () => {
+		await bridge.write("docs/readme.md", "# hi");
+		const root = await bridge.list("");
+		const docs = root.find((e) => e.name === "docs");
+		expect(docs).toBeDefined();
+		expect(docs?.type).toBe("directory");
+		const inside = await bridge.list("docs");
+		expect(inside).toEqual([{ name: "readme.md", type: "file" }]);
 	});
 
 	it("round-trips utf8 content", async () => {
@@ -296,5 +316,6 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 			"utf8",
 		);
 		expect(onDisk).toBe("v2");
+		expect(await bridge.read("notes/keep.txt")).toBe("v2");
 	});
 });
