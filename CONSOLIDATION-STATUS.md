@@ -5,7 +5,7 @@ Results and failures: [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md).
 
 ## Exact checkpoints
 
-- Current candidate includes the pending-work acknowledgment guard following `8660d9d9b21`; 59 focused guard tests, 702 Stage1/claim tests, and full root verification passed. Runtime UI5268/API31392 still runs the preceding production code `9896c239663`; the new guard has not yet been live-rechecked.
+- Current production candidate is `609048e9c1e`: pending-work acknowledgment guard plus Calendar guest clarification and selected-user follow-up evidence. Focused tests, Calendar typecheck and full root verification passed. Isolated UI5268/API31392 now runs this code (API PID15168 at restart).
 - Sources: saved Mac text candidate `a15525f30fb` plus develop `ba04de0e2c1`, then reviewed develop test maintenance `ec23d0f670c`.
 - Reviewed remote checkpoint `89a476f3d75` is already an ancestor of the Mac candidate. Any newer remote work still needs its exact source and review.
 - Published rollback tag: `codex/consolidation-checkpoint-20260920` at `a42679bf08f`.
@@ -17,12 +17,14 @@ Results and failures: [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md).
 - Calendar target boundary: 29 scoped tests and package typecheck passed. Incomplete/foreign local IDs cannot fall through to another provider.
 - Earlier broad suites: Calendar 1,088 passed/four skipped; Notes192 passed; core13,661 passed/two initial failures/three skipped. Both initial core failures were investigated and their affected suites passed after reconciliation, including70 wallet-grounding tests.
 - Follow-up core443, personal-assistant Calendar60, agent recall57, prompt-package20, upstream A2A19 and real SQL vector6 checks passed in their scoped runs. Further package results are recorded in the QA evidence.
-- Seventeen real text turns recorded. Greetings/navigation/recall, exact note create/edit, Calendar timing clarification/create/conflict/move exercised. Latest move3.873s/four calls; exact original-message recall0.915s/one call. These are observations, not latency guarantees.
-- The captured premature Done acknowledgment is now withheld while work is pending. Deterministic runtime coverage confirms both progress callbacks withhold it and the final reply still arrives without an extra model call. Live recheck remains open; this is not a universal natural-language guarantee.
+- Eighteen real text turns recorded. Greetings/navigation/recall, exact note create/edit, Calendar timing clarification/create/conflict/move exercised. Latest move3.873s/four calls; exact original-message recall0.915s/one call. These are observations, not latency guarantees.
+- The captured premature Done acknowledgment is now withheld while work is pending. Deterministic runtime coverage confirms both progress callbacks withhold it and the final reply still arrives without an extra model call. The latest live note edit produced an appropriate pending acknowledgment in its trace and a receipt-grounded final reply; transient browser delivery was not captured. Deterministic coverage proves the captured premature Done case is withheld, not a universal natural-language guarantee.
+
+Latest exact note edit: **3.321s, three model calls, 23,710 input tokens, 964 output tokens**. Provider-reported cache reads:4,096 input tokens. Routing/acknowledgment1.263s; planner0.839s; completion0.509s. Notes view after reload showed the exact requested body. This is one measured run, not a latency guarantee.
 
 ## Remaining acceptance checklist
 
-- [ ] Complete semantic source ledger (116/270 entries explicitly reviewed; all implementation diffs inspected, with Calendar recipient correctness still open; review is not acceptance) and reconcile any newer remote work.
+- [ ] Complete semantic source ledger (135/270 entries explicitly reviewed; all implementation diffs inspected, Calendar recipient and follow-up fixes checked deterministically with live Calendar validation still open; review is not acceptance) and reconcile any newer remote work.
 - [x] Full visual rerun and flagged screenshot inspection: 230 checks passed; OCR212 verified/zero broken/12 expected fallback exceptions. All23 soft layout flags inspected. Family interview hover remains unverified for three controls across four viewports; native/remote fallback surfaces are not feature acceptance.
 - [ ] Investigate post-restart request arriving after Stop; it eventually edited the QA note. A repeat made no second write. Seven real HTTP/Vite lifecycle tests and existing server disconnect suites pass, so a basic proxy cancellation defect is not reproduced.
 - [ ] Close remaining combined scenarios: cancellation, memory/preference correction and applicable recovery/persistence checks, using existing evidence before new paid tests.
