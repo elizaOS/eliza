@@ -5,7 +5,7 @@ Results and failures: [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md).
 
 ## Exact checkpoints
 
-- Current production candidate is `609048e9c1e`: pending-work acknowledgment guard plus Calendar guest clarification and selected-user follow-up evidence. Focused tests, Calendar typecheck and full root verification passed. Isolated UI5268/API31392 now runs3a50ad527d4, including the failure-reply and deferred-format corrections (API PID27428 at restart).
+- Current production candidate is `3a50ad527d4`: pending-work acknowledgment guard, Calendar guest/follow-up evidence, failure-reply guard and deferred completion-format correction. Scoped checks and full root verification passed. Last runtime verification: isolated UI5268/API31392 on this code (API PID27428 at restart).
 - Sources: saved Mac text candidate `a15525f30fb` plus develop `ba04de0e2c1`, then reviewed develop test maintenance `ec23d0f670c`.
 - Reviewed remote checkpoint `89a476f3d75` is already an ancestor of the Mac candidate. Any newer remote work still needs its exact source and review.
 - Published rollback tag: `codex/consolidation-checkpoint-20260920` at `a42679bf08f`.
@@ -24,13 +24,13 @@ Latest exact note edit: **3.321s, three model calls, 23,710 input tokens, 964 ou
 
 Latest Calendar follow-up exposed unresolved issues: weekly intent survived, but local recurrence is unsupported and its useful explanation was replaced by a generic error. Clarification took7.114s/seven calls; follow-up4.693s/five calls. A single Friday availability check was also described too broadly as weekly availability. No event was created. These are open defects, not accepted behavior.
 
-Offline correction committed as `b18ff926bec`: both captured Calendar explanations now survive the connection-prerequisite guard, eliminating the extra synthesis in replay.297 relevant tests, Core typecheck and scoped lint passed. Full root verification passed. Live demo now uses b18ff926bec and delivered the clear Calendar limitation; this run still needed recovery because its first model reply contained invalid control characters.4.144s/five calls; no Calendar write.
+Offline correction committed as `b18ff926bec`: both captured Calendar explanations now survive the connection-prerequisite guard, eliminating the extra synthesis in replay.297 relevant tests, Core typecheck and scoped lint passed. Full root verification passed. Live validation of b18ff926bec delivered the clear Calendar limitation; this run still needed recovery because its first model reply contained invalid control characters.4.144s/five calls; no Calendar write.
 
 Next committed cleanup `3a50ad527d4` removes a text-only output instruction from structured completion input. Five reply-contract test files, Agent typecheck, lint and full root verification passed. Runtime now runs3a50ad527d4 (API PID27428); clean pre-effect Stop passed. No speed improvement claimed yet.
 
 ## Remaining acceptance checklist
 
-- [ ] Complete semantic source ledger (169/270 entries explicitly reviewed; all implementation diffs inspected, Calendar recipient and follow-up fixes checked deterministically with live Calendar validation still open; review is not acceptance) and reconcile any newer remote work.
+- [ ] Complete semantic source ledger (183/270 entries explicitly reviewed; all implementation diffs inspected, Calendar recipient and follow-up fixes checked deterministically with live Calendar validation still open; review is not acceptance) and reconcile any newer remote work.
 - [x] Full visual rerun and flagged screenshot inspection: 230 checks passed; OCR212 verified/zero broken/12 expected fallback exceptions. All23 soft layout flags inspected. Family interview hover remains unverified for three controls across four viewports; native/remote fallback surfaces are not feature acceptance.
 - [ ] Correct and verify Calendar failure explanation delivery, redundant clarification steps and recurring availability claims using the captured traces.
 - [x] Clean pre-effect Stop: interrupted before any tool, note unchanged after reload. Earlier incident remains unexplained: post-restart request arrived after Stop; it eventually edited the QA note. A repeat made no second write. Seven real HTTP/Vite lifecycle tests and existing server disconnect suites pass, so a basic proxy cancellation defect is not reproduced.
