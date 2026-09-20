@@ -1617,23 +1617,33 @@ describe("agent backup manifest v2", () => {
     expect(cancelled.live).toEqual([]);
 
     const expired = restoreProvidersFor(fixture);
+    const reading = Promise.withResolvers<void>();
     expired.providers.decompressChunk = () => ({
       [Symbol.asyncIterator]: () => ({
-        next: () => new Promise<IteratorResult<Uint8Array>>(() => undefined),
+        next: () => {
+          reading.resolve();
+          return new Promise<IteratorResult<Uint8Array>>(() => undefined);
+        },
       }),
     });
-    await expect(
-      verifyAgentBackupManifestV2Payload(
-        verified,
-        expired.providers,
-        {
-          deadlineEpochMs: Date.now() + 20,
-        },
-        restoreAttempt(),
-      ),
-    ).rejects.toThrow(/deadline/);
-    expect(expired.transactions[0]).toMatchObject({ aborted: true });
-    expect(expired.live).toEqual([]);
+    vi.useFakeTimers();
+    try {
+      const rejected = expect(
+        verifyAgentBackupManifestV2Payload(
+          verified,
+          expired.providers,
+          { deadlineEpochMs: Date.now() + 60_000 },
+          restoreAttempt(),
+        ),
+      ).rejects.toThrow(/deadline/);
+      await reading.promise;
+      await vi.advanceTimersByTimeAsync(60_000);
+      await rejected;
+      expect(expired.transactions[0]).toMatchObject({ aborted: true });
+      expect(expired.live).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("releases a data key whose unwrap finishes after the deadline", async () => {
@@ -1643,27 +1653,36 @@ describe("agent backup manifest v2", () => {
       restoreAuthority(fixture.manifest),
     );
     const harness = restoreProvidersFor(fixture);
-    let finishUnwrap: ((dataKey: Buffer) => void) | undefined;
-    harness.providers.unwrapDek = () =>
-      new Promise<Buffer>((resolve) => {
-        finishUnwrap = resolve;
-      });
+    const unwrapping = Promise.withResolvers<void>();
+    const dataKey = Promise.withResolvers<Buffer>();
+    harness.providers.unwrapDek = () => {
+      unwrapping.resolve();
+      return dataKey.promise;
+    };
 
-    await expect(
-      verifyAgentBackupManifestV2Payload(
-        verified,
-        harness.providers,
-        { deadlineEpochMs: Date.now() + 20 },
-        restoreAttempt(),
-      ),
-    ).rejects.toThrow(/deadline/);
-    expect(harness.transactions[0]).toMatchObject({ aborted: true });
-    expect(harness.calls.release).toBe(0);
+    vi.useFakeTimers();
+    try {
+      const rejected = expect(
+        verifyAgentBackupManifestV2Payload(
+          verified,
+          harness.providers,
+          { deadlineEpochMs: Date.now() + 60_000 },
+          restoreAttempt(),
+        ),
+      ).rejects.toThrow(/deadline/);
+      await unwrapping.promise;
+      await vi.advanceTimersByTimeAsync(60_000);
+      await rejected;
+      expect(harness.transactions[0]).toMatchObject({ aborted: true });
+      expect(harness.calls.release).toBe(0);
 
-    finishUnwrap?.(fixture.key);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(harness.calls.release).toBe(1);
-    expect(harness.live).toEqual([]);
+      dataKey.resolve(fixture.key);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(harness.calls.release).toBe(1);
+      expect(harness.live).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("releases a data key returned while its unwrap cancels the operation", async () => {
