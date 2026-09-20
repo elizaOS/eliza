@@ -1,96 +1,39 @@
-# Temporary qualification harness; never merge this branch into develop.
-# Product source is pinned independently of this workflow-only commit.
-name: Script Windows Qualification
+# Temporary diagnostic harness; never merge into develop.
+name: Script Windows Startup Diagnostic
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  desktop:
+  diagnose:
     runs-on: windows-2025
-    timeout-minutes: 150
+    timeout-minutes: 10
     defaults:
       run:
         shell: pwsh
     steps:
-      - name: Enable long checkout paths
-        run: git config --global core.longpaths true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: 0a8df75ae4a7f6fa615420ea3dff17f94b5bba8c
           persist-credentials: false
           submodules: false
-      - name: Verify product revision
-        run: |
-          if ((git rev-parse HEAD) -ne '0a8df75ae4a7f6fa615420ea3dff17f94b5bba8c') { throw 'Wrong source revision' }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '24.15.0'
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: '1.3.14'
-      - name: Install workspace
-        run: bun install --frozen-lockfile --ignore-scripts
-      - name: Apply repository installation patches
-        run: bun run postinstall
-      - name: Exercise avatar preparation layout and failure contracts
-        run: node --test packages/scripts/__tests__/avatar-preparation.test.mjs
-      - name: Prepare pinned renderer assets
-        run: node packages/app-core/scripts/ensure-avatars.mjs
-      - name: Build Windows desktop with canonical command
-        run: node packages/app-core/scripts/desktop-build.mjs build --env=canary
-      - name: Exercise real Windows secure identity contracts
-        run: node packages/scripts/run-vitest.mjs run --config packages/agent/vitest.config.ts packages/agent/src/runtime/runtime-installation-id.windows.test.ts
-      - name: Exercise canonical API and renderer development entry
-        env:
-          ELIZA_UI_PORT: '22138'
-          ELIZA_API_PORT: '22137'
-          ELIZA_STATE_DIR: ${{ runner.temp }}\script-dev-state
-          PGLITE_DATA_DIR: ${{ runner.temp }}\script-dev-pglite
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      - name: Instrument ancestor discovery only
         run: |
-          $out = Join-Path $env:RUNNER_TEMP 'script-dev.stdout.log'
-          $err = Join-Path $env:RUNNER_TEMP 'script-dev.stderr.log'
-          $child = Start-Process bun -ArgumentList @('--no-install', '--conditions=eliza-source', 'packages/app-core/scripts/dev-ui.mjs', '--cloud-target=offline') -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
-          try {
-            $deadline = (Get-Date).AddMinutes(10)
-            $ready = $false
-            while ((Get-Date) -lt $deadline) {
-              $child.Refresh()
-              if ($child.HasExited) { throw "Development process exited: $($child.ExitCode)" }
-              try {
-                $response = Invoke-WebRequest 'http://127.0.0.1:22138/' -TimeoutSec 5
-                if ($response.StatusCode -eq 200 -and $response.Content -match '/@vite/client') {
-                  $health = Invoke-RestMethod 'http://127.0.0.1:22137/api/health' -TimeoutSec 5
-                  if ($health.ready -eq $true) { $ready = $true; break }
-                }
-              } catch { Write-Host 'Waiting for development API and renderer' }
-              Start-Sleep -Seconds 2
-            }
-            if (-not $ready) { throw 'Development API and renderer never became ready' }
-            Write-Host 'Canonical Windows development entry served real Vite HTML and ready API health'
-          } finally {
-            taskkill /PID $child.Id /T /F
-            Get-Content $out
-            Get-Content $err
-          }
-      - name: Install pinned browser
-        run: bunx playwright install chromium
-      - name: Exercise packaged Windows launch and health
-        env:
-          ELIZA_DISABLE_LOCAL_EMBEDDINGS: '1'
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          ELIZA_TEST_WINDOWS_INSTALL_DIR: ${{ runner.temp }}\el
-          ELIZA_TEST_WINDOWS_LAUNCHER_DIR: ${{ runner.temp }}\eliza-script-launcher
-          ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE: ${{ runner.temp }}\eliza-script-launcher.txt
+          $script = 'packages/app-core/platforms/electrobun/scripts/smoke-test-windows.ps1'
+          $source = Get-Content -Raw $script
+          $source = $source.Replace('$ErrorActionPreference = "Stop"', '$ErrorActionPreference = "Stop"' + "`nWrite-Host 'DIAGNOSTIC script entered'`n")
+          $source = $source.Replace('while ($currentPid -gt 0) {', 'while ($currentPid -gt 0) {' + "`n" + '    Write-Host "DIAGNOSTIC ancestor query pid=$currentPid"')
+          $source = $source.Replace('if (-not $proc -or', 'Write-Host "DIAGNOSTIC ancestor result pid=$($proc.ProcessId) parent=$($proc.ParentProcessId)"' + "`n    if (-not `$proc -or")
+          $source = $source.Replace('Write-Host "Artifacts dir: $resolvedArtifactsDir"', 'throw "DIAGNOSTIC completed pre-launch discovery; no packaged app supplied"')
+          Set-Content -Path $script -Value $source
+          New-Item -ItemType Directory -Force packages/app-core/platforms/electrobun/artifacts, packages/app-core/platforms/electrobun/build | Out-Null
+          git diff --stat
+      - name: Exercise canonical parent chain with bounded diagnostic observation
+        timeout-minutes: 2
         run: bun run --cwd packages/app test:desktop:packaged:windows
-      - name: Save diagnostic artifacts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: script-windows-0a8df7
-          path: |
-            packages/app/test-results/
-            packages/app/playwright-report/
-            ${{ runner.temp }}/script-dev.*.log
-          if-no-files-found: ignore
