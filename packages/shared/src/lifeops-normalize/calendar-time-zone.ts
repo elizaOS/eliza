@@ -16,7 +16,7 @@
  * another zone. Absent configuration is not a failure: with no owner zone and
  * no setting, the runtime host zone is used and reported as such.
  */
-import { ElizaError, type ElizaErrorOptions } from "@elizaos/core/errors";
+import { ElizaError, type ElizaErrorOptions } from "@elizaos/core";
 import { isValidTimeZone, resolveDefaultTimeZone } from "./time-zone.js";
 
 /** Where the resolved zone came from, so callers can tell configured from defaulted. */
