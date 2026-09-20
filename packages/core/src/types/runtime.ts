@@ -152,6 +152,11 @@ export type PostConnectorCapability =
 
 /** Options for bounded runtime shutdown. */
 export interface RuntimeStopOptions {
+	/** Wait for original service starts, teardown and plugin registration even after
+	 * a prior bounded stop. Teardown failures reject persistently. An outer deadline
+	 * may stop waiting, but cannot cancel this drain or authorize resource reuse.
+	 */
+	requireQuiescence?: boolean;
 	/**
 	 * Skip waiting for unresolved service starts and cap service teardown. Intended
 	 * for signal handlers, reset/restart paths, and development shutdown.

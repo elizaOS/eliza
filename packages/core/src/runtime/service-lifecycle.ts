@@ -8,6 +8,7 @@ import type {
 	ServiceTypeName,
 } from "../types";
 import { EventType } from "../types/events";
+import type { RuntimeRetirement } from "./retirement.js";
 
 export type ServiceResolver = (service: Service) => void;
 
@@ -81,7 +82,10 @@ export class RuntimeServiceLifecycle {
 	constructor(
 		private readonly runtime: IAgentRuntime,
 		private readonly host: RuntimeServiceLifecycleHost,
+		private readonly retirement: RuntimeRetirement,
 	) {}
+
+	private readonly stopOperations = new WeakMap<Service, Promise<void>>();
 
 	async _stopServiceInstance(
 		serviceType: string,
@@ -91,7 +95,21 @@ export class RuntimeServiceLifecycle {
 		const maybe = service as { stop?: () => Promise<void> | void } | null;
 		if (maybe && typeof maybe.stop === "function") {
 			try {
-				await Promise.resolve().then(() => maybe.stop?.());
+				let operation = this.stopOperations.get(service as Service);
+				if (!operation) {
+					// Defer hook invocation until its single-flight identity is published.
+					operation = this.retirement.run(() =>
+						Promise.resolve()
+							.then(() => maybe.stop?.())
+							.catch((error) => {
+								// error-policy:J2 retain the original failure before this operation settles.
+								this.retirement.recordFailure(`stop:${serviceType}`, error);
+								throw error;
+							}),
+					);
+					this.stopOperations.set(service as Service, operation);
+				}
+				await operation;
 			} catch (err) {
 				// error-policy:J6 Service shutdown is best-effort so every
 				// registered service receives its teardown opportunity.
@@ -107,11 +125,19 @@ export class RuntimeServiceLifecycle {
 				);
 			}
 		} else if (!maybe) {
+			this.retirement.recordFailure(
+				`stop:${serviceType}`,
+				new Error("Null service instance"),
+			);
 			this.runtime.logger.warn(
 				{ src: "agent", agentId: this.runtime.agentId, serviceType, reason },
 				"Null service instance during stop; skipping",
 			);
 		} else {
+			this.retirement.recordFailure(
+				`stop:${serviceType}`,
+				new Error("Service is missing stop()"),
+			);
 			this.runtime.logger.warn(
 				{ src: "agent", agentId: this.runtime.agentId, serviceType, reason },
 				"Service instance is missing stop(); skipping",
@@ -234,7 +260,17 @@ export class RuntimeServiceLifecycle {
 	}
 
 	/** Runs one service start; used by _ensureServiceStarted with startingServices dedupe. */
-	async _runServiceStart(
+	_runServiceStart(
+		key: ServiceTypeName,
+		serviceType: string,
+		serviceDef: ServiceClass,
+	): Promise<Service | null> {
+		return this.retirement.run(() =>
+			this.runServiceStart(key, serviceType, serviceDef),
+		);
+	}
+
+	private async runServiceStart(
 		key: ServiceTypeName,
 		serviceType: string,
 		serviceDef: ServiceClass,

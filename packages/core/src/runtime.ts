@@ -6,6 +6,7 @@ import {
 	EmbeddingDimensionProbeError,
 	RuntimeEmbeddings,
 } from "./runtime/embeddings.js";
+import { RuntimeRetirement } from "./runtime/retirement.js";
 import {
 	RuntimeServiceLifecycle,
 	type ServicePromiseHandler,
@@ -350,20 +351,26 @@ export class AgentRuntime implements IAgentRuntime {
 		roomMessagesMemo: () => this.roomMessagesMemo,
 		roomReadMemo: () => this.roomReadMemo,
 	});
-	private readonly serviceLifecycle = new RuntimeServiceLifecycle(this, {
-		stopRequested: () => this.stopRequested,
-		resolveServiceTypeAlias: (...args) => this.resolveServiceTypeAlias(...args),
-		initResolver: () => this.initResolver,
-		serviceTypes: () => this.serviceTypes,
-		serviceInstancesByClass: () => this.serviceInstancesByClass,
-		startingServiceClasses: () => this.startingServiceClasses,
-		failedServiceClasses: () => this.failedServiceClasses,
-		startingServices: () => this.startingServices,
-		serviceRegistrationStatus: () => this.serviceRegistrationStatus,
-		servicePromiseHandlers: () => this.servicePromiseHandlers,
-		servicePromises: () => this.servicePromises,
-		stopped: () => this.stopped,
-	});
+	private readonly retirement = new RuntimeRetirement();
+	private readonly serviceLifecycle = new RuntimeServiceLifecycle(
+		this,
+		{
+			stopRequested: () => this.stopRequested,
+			resolveServiceTypeAlias: (...args) =>
+				this.resolveServiceTypeAlias(...args),
+			initResolver: () => this.initResolver,
+			serviceTypes: () => this.serviceTypes,
+			serviceInstancesByClass: () => this.serviceInstancesByClass,
+			startingServiceClasses: () => this.startingServiceClasses,
+			failedServiceClasses: () => this.failedServiceClasses,
+			startingServices: () => this.startingServices,
+			serviceRegistrationStatus: () => this.serviceRegistrationStatus,
+			servicePromiseHandlers: () => this.servicePromiseHandlers,
+			servicePromises: () => this.servicePromises,
+			stopped: () => this.stopped,
+		},
+		this.retirement,
+	);
 	private readonly embeddings = new RuntimeEmbeddings(this, {
 		resolveModelRegistrations: (...args) =>
 			this.resolveModelRegistrations(...args),
@@ -542,6 +549,7 @@ export class AgentRuntime implements IAgentRuntime {
 	private readonly stopController = new AbortController();
 	/** The active stop attempt; concurrent callers await the same teardown. */
 	private stopPromise: Promise<void> | null = null;
+	private strictStopPromise: Promise<void> | null = null;
 
 	constructor(opts: {
 		conversationLength?: number;
@@ -878,7 +886,11 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.pipelineHooks.applyPipelineHooks(...args);
 	}
 
-	async registerPlugin<T extends Plugin>(plugin: T): Promise<void> {
+	registerPlugin<T extends Plugin>(plugin: T): Promise<void> {
+		return this.retirement.run(() => this._registerPlugin(plugin));
+	}
+
+	private async _registerPlugin<T extends Plugin>(plugin: T): Promise<void> {
 		if (!plugin.name) {
 			// Ensure plugin.name is defined
 			const errorMsg = "Plugin or plugin name is undefined";
@@ -928,8 +940,15 @@ export class AgentRuntime implements IAgentRuntime {
 					}
 				}
 			}
-			await pluginToRegister.init(config, this);
-			assertRuntimeActive();
+			try {
+				await pluginToRegister.init(config, this);
+				assertRuntimeActive();
+			} catch (error) {
+				// error-policy:J2 withdraw this pending registration and preserve its failure.
+				const index = this.plugins.indexOf(pluginToRegister);
+				if (index !== -1) this.plugins.splice(index, 1);
+				throw error;
+			}
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId, plugin: pluginToRegister.name },
 				"Plugin initialized",
@@ -1127,7 +1146,39 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Stops all started services and clears runtime caches/handlers.
 	 * For full teardown (including DB/adapter connection), call close() after stop().
 	 */
-	async stop(options?: RuntimeStopOptions): Promise<void> {
+	stop(options?: RuntimeStopOptions): Promise<void> {
+		if (!options?.requireQuiescence) return this._stopBestEffort(options);
+		if (this.strictStopPromise) return this.strictStopPromise;
+		let resolve!: () => void;
+		let reject!: (reason: unknown) => void;
+		this.strictStopPromise = new Promise<void>((settle, fail) => {
+			resolve = settle;
+			reject = fail;
+		});
+		// Publish before preparation hooks can request strict shutdown reentrantly.
+		void this._stopAndDrain(options).then(resolve, reject);
+		return this.strictStopPromise;
+	}
+
+	private async _stopAndDrain(options: RuntimeStopOptions): Promise<void> {
+		await this._stopBestEffort(options);
+		if (options?.requireQuiescence) {
+			// A prior fast stop may have returned while these original operations live.
+			let generation: number;
+			do {
+				generation = this.retirement.generation;
+				await this.roomHandlerQueue.quiesceAll();
+				await drainPostDeliveryTasks(this);
+				await this.retirement.drain();
+			} while (
+				generation !== this.retirement.generation ||
+				this.roomHandlerQueue.pendingTotal() > 0 ||
+				pendingPostDeliveryTaskCount(this) > 0
+			);
+		}
+	}
+
+	private async _stopBestEffort(options?: RuntimeStopOptions): Promise<void> {
 		if (this.stopPromise) {
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId },
@@ -1170,6 +1221,7 @@ export class AgentRuntime implements IAgentRuntime {
 					} catch (err) {
 						// error-policy:J6 admission preparation is best-effort so one broken
 						// connector cannot deny every service its teardown opportunity.
+						this.retirement.recordFailure(`prepareStop:${serviceType}`, err);
 						this.logger.warn(
 							{
 								src: "agent",
@@ -1184,7 +1236,10 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 
-		void this._stopAfterAdmissionCordon(options).then(resolveStop, rejectStop);
+		void this._stopAfterAdmissionCordon(options).then(resolveStop, (error) => {
+			this.retirement.recordFailure("runtime-stop", error);
+			rejectStop(error);
+		});
 		try {
 			await stopAttempt;
 		} finally {

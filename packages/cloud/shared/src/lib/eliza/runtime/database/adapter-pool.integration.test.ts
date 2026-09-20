@@ -4,7 +4,7 @@
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import type { IDatabaseAdapter } from "@elizaos/core";
+import { AgentRuntime, type IDatabaseAdapter } from "@elizaos/core";
 import { createDatabaseAdapter, plugin } from "@elizaos/plugin-sql";
 import { DbAdapterPool } from "./adapter-pool";
 
@@ -193,4 +193,39 @@ test("retiring one agent preserves another agent's adapter and persisted data", 
   pool.removeAdapter(retiringId);
   expect(await pool.getOrCreate(otherId)).toBe(other);
   expect(await other.getAgent(otherId)).toMatchObject({ id: otherId, name: "Unaffected agent" });
+}, 30_000);
+
+test("strict runtime retirement leaves another runtime and its real database usable", async () => {
+  const pool = new DbAdapterPool(realFactory);
+  const retiringId = randomUUID();
+  const otherId = randomUUID();
+  const retiringAdapter = await pool.getOrCreate(retiringId);
+  const otherAdapter = await pool.getOrCreate(otherId);
+  const retiring = new AgentRuntime({
+    agentId: retiringId,
+    adapter: retiringAdapter,
+    logLevel: "fatal",
+  });
+  const other = new AgentRuntime({ agentId: otherId, adapter: otherAdapter, logLevel: "fatal" });
+  try {
+    await retiring.initialize({ skipMigrations: true });
+    await other.initialize({ skipMigrations: true });
+    await retiring.stop({ requireQuiescence: true });
+    await other.createAgent({
+      id: otherId,
+      name: "Live after peer retirement",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    expect(await other.getAgent(otherId)).toMatchObject({
+      id: otherId,
+      name: "Live after peer retirement",
+    });
+    expect(await pool.getOrCreate(otherId)).toBe(otherAdapter);
+  } finally {
+    await Promise.all([
+      retiring.stop({ requireQuiescence: true }),
+      other.stop({ requireQuiescence: true }),
+    ]);
+  }
 }, 30_000);
