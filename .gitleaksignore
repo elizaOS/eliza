@@ -49,6 +49,6 @@ f5aaa84aa0b5cf3dcd018f4e35f9c7243c5cc80c:plugins/plugin-agent-orchestrator/src/_
 
 # Synthetic redaction and setup fixtures moved during runtime consolidation.
 # Exact historical findings only; current and future credentials remain scanned.
-e58e22281868aef0d44ab022141c5e9f6fc9f86b:packages/core/src/logger.test.ts:generic-api-key:787
-e58e22281868aef0d44ab022141c5e9f6fc9f86b:plugins/plugin-assistant/src/features/secrets/actions/mask.test.ts:aws-access-token:28
-e58e22281868aef0d44ab022141c5e9f6fc9f86b:plugins/plugin-assistant/src/features/secrets/setup/state-machine.test.ts:generic-api-key:77
+f1ef23605e9b0a70b59371409d30cea6851c281b:packages/core/src/logger.test.ts:generic-api-key:787
+f1ef23605e9b0a70b59371409d30cea6851c281b:plugins/plugin-assistant/src/features/secrets/actions/mask.test.ts:aws-access-token:28
+f1ef23605e9b0a70b59371409d30cea6851c281b:plugins/plugin-assistant/src/features/secrets/setup/state-machine.test.ts:generic-api-key:77
