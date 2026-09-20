@@ -4551,8 +4551,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const tableName = params.tableName ?? "messages";
       const conditions = [eq(memoryTable.type, tableName)];
 
-      if (params.roomIds && params.roomIds.length > 0) {
-        conditions.push(inArray(memoryTable.roomId, params.roomIds));
+      // An explicit empty roomIds list means "no rooms", not "every room":
+      // getMemories treats an empty authorEntityIds the same way.
+      if (params.roomIds) {
+        conditions.push(
+          params.roomIds.length === 0 ? sql`false` : inArray(memoryTable.roomId, params.roomIds)
+        );
       }
       if (params.entityId) {
         conditions.push(eq(memoryTable.entityId, params.entityId));
