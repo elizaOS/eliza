@@ -170,3 +170,13 @@ without installing assistant. Scheduling owns its three task-slot literals.
 Artifact formats and stored paths are unchanged. The service and its existing
 persistence/provenance/planner tests move together; this is relocation, not
 whole-repository deletion. Packed core rejects the retired artifact exports.
+
+## Provider schema ownership completion
+
+OpenAI owns the Cerebras schema normalizer, function-name adaptation, and bounded
+transport cloning in `plugins/plugin-openai/utils/schema-compat.ts`. Its only
+production consumer already resides in that provider. The two schema suites move
+with the implementation, and the provider's actual-handler tests retain their
+existing behavior. Core no longer exports these provider-specific helpers; packed
+kernel verification rejects their return. This removes a dependency direction
+and public surface, not the normalization algorithm or its input protections.
