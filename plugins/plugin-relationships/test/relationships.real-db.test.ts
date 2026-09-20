@@ -2,7 +2,7 @@
  * Real-PGlite DB round-trip test for the relationships data path.
  *
  * plugin-relationships is a VIEWER + KNOWLEDGE_GRAPH action over the runtime's
- * KnowledgeGraphService (owned by @elizaos/agent) — that service's
+ * KnowledgeGraphService (owned by this plugin) — that service's
  * EntityStore / RelationshipStore are the relationships domain's real backing.
  * This boots a REAL PGLite-backed AgentRuntime, registers the KG service + its
  * schema, and round-trips entities + a relationship through the SAME stores the

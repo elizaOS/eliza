@@ -187,3 +187,32 @@ conversation affinity, complete prompt segments and provider option shapes stay
 unchanged. Its cache-plan and prefix-stability suites move with it; the OpenAI SDK
 wire test now consumes the assistant implementation. Core retains generic hashing
 and model-option transport, without vendor cache retention or breakpoint policy.
+
+## Plugin-to-host dependency cleanup
+
+Plugin owner checks now call `hasRoleAccess(runtime, message, "OWNER")` from
+core directly. This is the same check used by the former agent wrapper; it does
+not weaken admission or make an unconfigured caller an owner. The blocker
+plugin no longer depends on agent or app-core.
+
+| Previous import | Replacement | Contract preserved |
+| --- | --- | --- |
+| Agent `EntityStore`, `RelationshipStore`, `resolveKnowledgeGraphService`, and `services/knowledge-graph` | `@elizaos/plugin-relationships/knowledge-graph` | Same stores, service identity, SQL schema and agent partitioning. |
+| Agent `api/document-access` helpers | `@elizaos/plugin-assistant` document feature exports | Same room visibility, mutation and facet policy used by host actions and HTTP routes. |
+| Agent `api/documents-service-loader` and its API barrel exports | `@elizaos/plugin-assistant` document feature exports | Same bounded service wait and typed failure result; scope/source/role unions use the existing feature types. |
+
+Relationships and documents no longer declare agent or app-core dependencies.
+The graph host still registers the same service and schema exactly once; the
+physical `app_lifeops` tables and stored identities are unchanged. Moving these
+files is not a claim that their implementation lines were deleted.
+
+The generic integration-test source resolver reads the graph leaf from package
+exports, so no plugin-specific alias or new allowlist exception is needed.
+Document-policy tests use the real core channel values. Permission fixtures
+configure an actual owner where authorization is required and retain explicit
+guest denials instead of silently bypassing the check.
+
+This closes three package boundaries, not the full plugin-to-host audit. The
+remaining app-manager, mobile bridge, finances, personal-assistant and registry
+edges require separate ownership dispositions; a green package suite alone does
+not certify those remaining edges.
