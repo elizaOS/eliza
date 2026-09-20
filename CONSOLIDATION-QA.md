@@ -170,3 +170,13 @@ Character duplication remains unmodified: the normal pipeline supplies its chara
 Full root verification for3a50ad527d4 completed exit0 (session2595, deferred-reply-format-root-verify.log). Live runtime stillb18ff926bec; this completion does not claim new live latency evidence.
 
 Source accounting now149/270:145 include decisions,3 exact upstream equivalents,1 review-required Calendar implementation. Latest six test reviews cover exact import repair, SSE/chat acknowledgment separation, retrieval completion timestamps and browser argument forwarding. Their mocked seams are recorded in the local ledger. Two additional files have no remaining diff against reviewed develop. Remaining121 entries are unreviewed; no blanket feature acceptance.
+
+## Clean steady-state Stop check on verified reply-format candidate
+
+Restarted only isolated31392 after root verification for3a50ad527d4. Runtime session53355/PID27428; health ready, database healthy,35 plugins/95 services, boot settled. Original demos preserved. No build ran during these two UI attempts. Previous log: runtime/server-before-deferred-format-3a50ad5.log.
+
+Turn22 asked to change the QA note to orange. It completed in2.590s/three calls/23,712input tokens before the attempted Stop interaction, which failed because the control was gone. This is a normal successful edit, not cancellation evidence.
+
+Turn23 asked for silver. Stop was successfully clicked at1789936727486 after a fresh UI observation in the same browser invocation. UI displayed Response interrupted. Trace step-1789936727260-nmsiy4 terminated at1789936727593, duration333ms, one interrupted model attempt and zero tool events. Its trace status is error rather than a distinct cancellation label. Prompt token count0 has no completed provider usage; do not infer zero billing. Stored note stayed orange at revision7; independent Notes reload confirmed it. No subsequent write was observed.
+
+This passes clean pre-effect cancellation. It does not prove rollback after an already-committed action or explain the older build-time late-arrival incident. No speculative cancellation code change was made. Evidence: runtime/cancellation-{race-completed,clicked}-{trace,summary}.json, cancellation-before-state.json and cancellation-after-state.json.
