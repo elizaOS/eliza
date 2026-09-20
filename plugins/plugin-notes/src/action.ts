@@ -41,6 +41,38 @@ function readString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/** Keep Notes compatibility at its domain boundary without renaming executor arguments. */
+function readAlternatives(
+  params: Record<string, unknown>,
+  names: readonly string[],
+) {
+  let value: string | undefined;
+  const conflicts: string[] = [];
+  for (const name of names) {
+    const candidate = params[name];
+    if (typeof candidate !== "string" || candidate.trim().length === 0)
+      continue;
+    if (value === undefined) value = candidate;
+    else if (candidate !== value) conflicts.push(name);
+  }
+  return { value: readString(value), conflicts };
+}
+
+function conflictingAlternatives(names: string[]): ActionResult {
+  return {
+    ...failure(
+      "Pass matching note content alternatives or only the canonical field. Nothing changed.",
+      "NOTES_CONFLICTING_CONTENT",
+    ),
+    data: {
+      actionName: "NOTES",
+      error: "NOTES_CONFLICTING_CONTENT",
+      invalidParameterNames: names,
+      parameterErrors: names.map((name) => `Conflicting argument '${name}'`),
+    },
+  };
+}
+
 /**
  * `undefined` means the caller named no operation at all — a bare NOTES call,
  * which reads. An unrecognised name is NOT that: it is a caller asking for
@@ -193,14 +225,20 @@ export const notesAction: Action = {
       );
     }
     const op: NotesOp = parsed?.op ?? "list";
+    const alternatives = readAlternatives(params, [
+      "content",
+      "text",
+      "note",
+      "title",
+      "query",
+    ]);
+    if (alternatives.conflicts.length > 0)
+      return conflictingAlternatives(alternatives.conflicts);
     const service = getNotesService(runtime);
 
     if (op === "list" || op === "get") {
       const noteId = readString(params.noteId);
-      const topic =
-        readString(params.content) ??
-        readString(params.query) ??
-        readString(params.text);
+      const topic = alternatives.value;
       if ((op === "get" || params.noteId !== undefined) && !noteId) {
         return failure("Supply a nonempty exact note ID.", "NOTES_INVALID_ID");
       }
@@ -237,12 +275,7 @@ export const notesAction: Action = {
     // The service still receives one user-authored content value. Providers
     // may preserve an explicitly requested title and body as separate tool
     // arguments, so normalize that losslessly before deriving the label.
-    // `text`/`note`/`title` remain planner aliases for `content`.
-    const content =
-      readString(params.content) ??
-      readString(params.text) ??
-      readString(params.note) ??
-      readString(params.title);
+    const content = alternatives.value;
     if (!content) {
       return failure(
         "Tell me what the note should say.",
@@ -288,10 +321,14 @@ export const notesAction: Action = {
       });
     }
 
-    const replacement =
-      readString(params.replacementContent) ??
-      readString(params.body) ??
-      readString(params.newText);
+    const replacements = readAlternatives(params, [
+      "replacementContent",
+      "body",
+      "newText",
+    ]);
+    if (replacements.conflicts.length > 0)
+      return conflictingAlternatives(replacements.conflicts);
+    const replacement = replacements.value;
     const hasTextEdit =
       params.textEdit !== undefined && params.textEdit !== null;
     if (hasTextEdit && replacement) {
@@ -334,14 +371,30 @@ export const notesAction: Action = {
         "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; compare returned createdAt/updatedAt timestamps, never search for 'latest' or 'most recently updated'. For update/delete, identify the EXISTING note, not its replacement. For create, supply the exact title, newline, and body.",
       required: false,
       subactions: ["create", "list", "update", "delete"],
-      requiredForSubactions: ["create", "update", "delete"],
-      // Normalize supported handler spellings before core validates the call.
-      aliases: ["text", "note", "title", "query"],
+      // Notes validates content-or-alternative before any write.
       // Strict providers may serialize an omitted optional string as "". The
       // empty string is never valid note content (minLength is 1), so normalize
       // that provider sentinel back to omission before schema validation. This
       // lets an unfiltered list/count reach the authoritative NotesService
       // instead of failing and inviting a model-authored estimate.
+      modelOmissionSentinels: [""],
+      schema: { type: "string", minLength: 1 },
+    },
+    ...["text", "note", "title", "query"].map((name) => ({
+      name,
+      description:
+        "Supported alternative to content; prefer content and never supply conflicting values.",
+      subactions: ["create", "list", "update", "delete"],
+      required: false,
+      modelOmissionSentinels: [""],
+      schema: { type: "string" as const, minLength: 1 },
+    })),
+    {
+      name: "newText",
+      description:
+        "Supported alternative to replacementContent for the complete updated note.",
+      subactions: ["update"],
+      required: false,
       modelOmissionSentinels: [""],
       schema: { type: "string", minLength: 1 },
     },
@@ -358,8 +411,8 @@ export const notesAction: Action = {
     {
       name: "body",
       description:
-        "For create only: optional body when content contains only the title. Prefer the complete note in content: title on the first line and body on subsequent lines, omitting body. Alternatively, pass only the exact title in content and the requested body here. Copy an explicit user title byte-for-byte, including spaces, capitalization, punctuation, and alphanumeric codes, even when the body is recalled from earlier conversation or generated. Do not reformat the title or substitute the spelling or spacing of a similar prior note. Preserve an explicitly supplied body exactly. Put a newline between title and body; do not join them with a dash into one title. For update use replacementContent, not body.",
-      subactions: ["create"],
+        "For create: optional body when content contains only the title. For update: supported alternative to replacementContent. Prefer the complete note in content: title on the first line and body on subsequent lines, omitting body. Alternatively, pass only the exact title in content and the requested body here. Copy an explicit user title byte-for-byte, including spaces, capitalization, punctuation, and alphanumeric codes, even when the body is recalled from earlier conversation or generated. Do not reformat the title or substitute the spelling or spacing of a similar prior note. Preserve an explicitly supplied body exactly. Put a newline between title and body; do not join them with a dash into one title. Prefer replacementContent for updates.",
+      subactions: ["create", "update"],
       required: false,
       schema: { type: "string" },
     },
