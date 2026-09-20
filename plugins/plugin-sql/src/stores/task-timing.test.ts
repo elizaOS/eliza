@@ -1,8 +1,14 @@
-/** Verifies exact and fail-closed task due-time conversion at the SQL persistence boundary. */
+/** Verifies exact and fail-closed task due-time conversion and canonicalisation at the SQL persistence boundary. */
 
 import type { TaskMetadata } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { readTaskDueAt, serializeTaskDueAt, taskMetadataForWrite } from "./task-timing";
+import {
+  canonicalizeTaskScheduledAt,
+  readTaskDueAt,
+  serializeTaskDueAt,
+  taskMetadataForWrite,
+  taskMetadataPatchForWrite,
+} from "./task-timing";
 
 describe("SQL task timing", () => {
   it("serializes safe bigint milliseconds as canonical ISO-8601", () => {
@@ -30,16 +36,49 @@ describe("SQL task timing", () => {
     );
   });
 
-  it("rejects lossy, out-of-range, and malformed values", () => {
+  it("canonicalises unambiguous ISO-8601 date-times on write and reads them back", () => {
+    expect(canonicalizeTaskScheduledAt("2030-03-17T17:46:45Z")).toBe("2030-03-17T17:46:45.000Z");
+    expect(canonicalizeTaskScheduledAt("2030-03-17T17:46Z")).toBe("2030-03-17T17:46:00.000Z");
+    expect(canonicalizeTaskScheduledAt("2030-03-17T09:46:45.5-08:00")).toBe(
+      "2030-03-17T17:46:45.500Z"
+    );
+    expect(canonicalizeTaskScheduledAt(1_900_000_005_000)).toBe("2030-03-17T17:46:45.000Z");
+    expect(taskMetadataForWrite({ scheduledAt: "2030-03-17T17:46:45Z" }, undefined)).toEqual({
+      scheduledAt: "2030-03-17T17:46:45.000Z",
+    });
+    expect(
+      taskMetadataPatchForWrite({
+        set: { paused: true, scheduledAt: "2030-03-17T17:46:45+00:00" },
+        unset: ["lastError"],
+      })
+    ).toEqual({
+      set: { paused: true, scheduledAt: "2030-03-17T17:46:45.000Z" },
+      unset: ["lastError"],
+    });
+    expect(taskMetadataPatchForWrite({ set: { paused: true } })).toEqual({
+      set: { paused: true },
+    });
+    expect(readTaskDueAt({ scheduledAt: "2030-03-17T17:46:45Z" })).toBe(1_900_000_005_000);
+    expect(readTaskDueAt({ scheduledAt: "2030-03-17T09:46:45.000-08:00" })).toBe(1_900_000_005_000);
+  });
+
+  it("rejects lossy, out-of-range, ambiguous, and malformed values", () => {
     expect(() => serializeTaskDueAt(Number.NaN)).toThrow("safe integer");
     expect(() => serializeTaskDueAt(1.5)).toThrow("safe integer");
     expect(() => serializeTaskDueAt(BigInt(Number.MAX_SAFE_INTEGER) + 1n)).toThrow("safe integer");
-    expect(() => readTaskDueAt({ scheduledAt: "not-a-date" })).toThrow("ISO-8601");
+    expect(() => readTaskDueAt({ scheduledAt: "not-a-date" })).toThrow("YYYY-MM-DDTHH:MM:SS.mmmZ");
     expect(() => readTaskDueAt({ scheduledAt: "" })).toThrow("ISO-8601");
-    expect(() => readTaskDueAt({ scheduledAt: "2030-03-17T17:46:45Z" })).toThrow("ISO-8601");
     expect(() => readTaskDueAt({ scheduledAt: "2030-03-17 17:46:45.000Z" })).toThrow("ISO-8601");
-    expect(() => readTaskDueAt({ scheduledAt: "2030-03-17T09:46:45.000-08:00" })).toThrow(
-      "ISO-8601"
+    expect(() => readTaskDueAt({ scheduledAt: "2030-03-17T17:46:45.000" })).toThrow("ISO-8601");
+    expect(() => readTaskDueAt({ scheduledAt: "2030-03-17" })).toThrow("ISO-8601");
+    expect(() => readTaskDueAt({ scheduledAt: "2030-02-30T00:00:00.000Z" })).toThrow(
+      "non-existent calendar day"
     );
+    expect(() => readTaskDueAt({ scheduledAt: "2030-03-17T25:00:00.000Z" })).toThrow("ISO-8601");
+    expect(() => canonicalizeTaskScheduledAt("March 17, 2030")).toThrow("ISO-8601");
+    expect(() => canonicalizeTaskScheduledAt(null)).toThrow("ISO-8601");
+    expect(() =>
+      taskMetadataPatchForWrite({ set: { scheduledAt: "2030-03-17T17:46:45" } })
+    ).toThrow("ISO-8601");
   });
 });
