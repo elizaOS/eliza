@@ -164,6 +164,20 @@ function pdf(label: string): Buffer {
   return Buffer.from(`%PDF-1.7\n${label}\n%%EOF\n`, "utf8");
 }
 
+function createAgreement(
+  service: AgreementKnowledgeService,
+  input: Omit<
+    Parameters<AgreementKnowledgeService["createAgreementVersion"]>[0],
+    "mimeType" | "uploadedByEntityId"
+  >,
+): Promise<ParentingAgreementArtifact> {
+  return service.createAgreementVersion({
+    ...input,
+    mimeType: "application/pdf",
+    uploadedByEntityId: SELF_ENTITY_ID,
+  });
+}
+
 function readStoredZip(bytes: Buffer): Map<string, Buffer> {
   // Independently read ZIP local records rather than using the archive writer.
   const files = new Map<string, Buffer>();
@@ -316,13 +330,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   it("stores immutable content-addressed versions and rejects duplicate bytes", async () => {
     const service = createAgreementKnowledgeService(runtime);
     const firstBytes = pdf("agreement version one");
-    artifact = await service.createAgreementVersion({
+    artifact = await createAgreement(service, {
       agreementKey: "parenting-plan",
       title: "Parenting plan",
       originalFilename: "parenting-plan.pdf",
-      mimeType: "application/pdf",
       bytes: firstBytes,
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     expect(artifact).toMatchObject({
       version: 1,
@@ -350,36 +362,30 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     });
 
     await expect(
-      service.createAgreementVersion({
+      createAgreement(service, {
         agreementKey: "parenting-plan",
         title: "Duplicate",
         originalFilename: "duplicate.pdf",
-        mimeType: "application/pdf",
         bytes: firstBytes,
-        uploadedByEntityId: SELF_ENTITY_ID,
       }),
     ).rejects.toMatchObject({ code: "AGREEMENT_DUPLICATE_CONTENT" });
 
-    const second = await service.createAgreementVersion({
+    const second = await createAgreement(service, {
       agreementKey: "parenting-plan",
       title: "Parenting plan amended",
       originalFilename: "parenting-plan-amended.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("agreement version two"),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     expect(second).toMatchObject({
       version: 2,
       supersedesArtifactId: artifact.id,
     });
     await expect(
-      service.createAgreementVersion({
+      createAgreement(service, {
         agreementKey: "parenting-plan",
         title: "Old content replay",
         originalFilename: "old-content.pdf",
-        mimeType: "application/pdf",
         bytes: firstBytes,
-        uploadedByEntityId: SELF_ENTITY_ID,
       }),
     ).rejects.toMatchObject({ code: "AGREEMENT_DUPLICATE_CONTENT" });
     await expect(
@@ -1192,13 +1198,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
 
   it("detects altered extraction metadata and identifies legacy history explicitly", async () => {
     const service = createAgreementKnowledgeService(runtime);
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "export-provenance-test",
       title: "Export provenance",
       originalFilename: "provenance.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("export provenance"),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     await executeRawSql(
       runtime,
@@ -1650,13 +1654,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       }),
     ).rejects.toBeInstanceOf(AgreementKnowledgeError);
     await expect(
-      service.createAgreementVersion({
+      createAgreement(service, {
         agreementKey: "not-pdf",
         title: "Not PDF",
         originalFilename: "not-pdf.pdf",
-        mimeType: "application/pdf",
         bytes: Buffer.from("not actually a PDF"),
-        uploadedByEntityId: SELF_ENTITY_ID,
       }),
     ).rejects.toMatchObject({ code: "AGREEMENT_INVALID_CONTRACT" });
   });
@@ -1723,13 +1725,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
   it("lists only verified scoped permissions and retains unavailable bindings for owner revocation", async () => {
     const service = createAgreementKnowledgeService(runtime);
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "guest-choice-contract",
       title: "Guest choice contract",
       originalFilename: "guest-choices.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("guest choice filtering"),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     const input = {
       principalEntityId: "verified-co-parent",
@@ -1851,13 +1851,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         (chat) => chat.id === roomId,
       ),
     ).toBe(true);
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "stale-pin-destination",
       title: "Stale pin destination",
       originalFilename: "stale-pin.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("stale pin destination"),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     await runtime.removeParticipant(runtime.agentId, roomId);
     await expect(
@@ -1904,16 +1902,14 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       ).resolves.toEqual([]);
     },
   );
-  it("validates owner corrections, commits concurrent retries once, and preserves a decision across restart", async () => {
+  it("validates owner corrections, commits concurrent retries once, and preserves a decision across service recreation", async () => {
     const service = createAgreementKnowledgeService(runtime);
     const citation = "Share school notices within 24 hours.";
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "owner-review-correction",
       title: "Owner correction",
       originalFilename: "owner-review.pdf",
-      mimeType: "application/pdf",
       bytes: pdf(citation),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     const input = {
       artifactId: source.id,
@@ -1991,7 +1987,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     ).resolves.toBeNull();
   });
 
-  it("prepares cited proposals once, preserves owner decisions across restart, and never activates them implicitly", async () => {
+  it("prepares cited proposals once, preserves owner decisions across service recreation, and never activates them implicitly", async () => {
     runtime.setSetting("ELIZA_TRAJECTORY_LOGGING", "1");
     if (!runtime.getService("trajectories"))
       await runtime.registerService(TrajectoriesService);
@@ -2002,13 +1998,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     expect(trajectories.isEnabled()).toBe(true);
     const service = createAgreementKnowledgeService(runtime);
     const citation = "Each parent must share school notices within 24 hours.";
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "review-generation-retry",
       title: "Review generation",
       originalFilename: "review.pdf",
-      mimeType: "application/pdf",
       bytes: pdf(citation),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     let calls = 0;
     let modelPrompt = "";
@@ -2109,13 +2103,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
 
   it("rejects a fabricated model citation without committing a partial review and allows a valid retry", async () => {
     const service = createAgreementKnowledgeService(runtime);
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "review-invalid-citation",
       title: "Citation rejection",
       originalFilename: "citation.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("A travel request remains unresolved until answered."),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     runtime.registerModel(
       ModelType.TEXT_LARGE,
@@ -2180,13 +2172,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   it("commits one review across service instances and rolls back the entire batch when its audit fails", async () => {
     const service = createAgreementKnowledgeService(runtime);
     const citation = "Each parent must acknowledge receipt of school notices.";
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "review-transaction-recovery",
       title: "Transactional review",
       originalFilename: "transaction.pdf",
-      mimeType: "application/pdf",
       bytes: pdf(citation),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     let calls = 0;
     runtime.registerModel(
@@ -2657,13 +2647,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
   it("invalidates deletion when a referenced packet or draft appears without treating prose as a dependency", async () => {
     const service = createAgreementKnowledgeService(runtime);
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "packet-deletion-family",
       title: "Packet dependency fixture",
       originalFilename: "packet-dependency.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("packet deletion source"),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     const request = {
       ownerEntityId: SELF_ENTITY_ID,
@@ -2826,13 +2814,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   it("reviews all agreement families and derived documents without including another agent", async () => {
     await new CalendarCardAccessStore(runtime).ensureSchema();
     const service = createAgreementKnowledgeService(runtime);
-    const first = await service.createAgreementVersion({
+    const first = await createAgreement(service, {
       agreementKey: "workspace-snapshot-first",
       title: "Workspace first",
       originalFilename: "workspace-first.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("workspace database first"),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     const before = await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID);
     expect(
@@ -2851,13 +2837,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     await expect(
       previewFamilyDeletionDatabase(runtime, "verified-co-parent"),
     ).rejects.toMatchObject({ code: "FAMILY_DELETION_ACCESS_DENIED" });
-    const second = await service.createAgreementVersion({
+    const second = await createAgreement(service, {
       agreementKey: "workspace-snapshot-second",
       title: "Workspace second",
       originalFilename: "workspace-second.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("workspace database second"),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     const expanded = await previewFamilyDeletionDatabase(
       runtime,
@@ -3148,13 +3132,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         uploadId: upload.uploadId,
         contentIdentity,
         createArtifact: async ({ bytes: assembled }: { bytes: Buffer }) =>
-          service.createAgreementVersion({
+          createAgreement(service, {
             agreementKey,
             title: "Settled extraction retry",
             originalFilename: "retry.pdf",
-            mimeType: "application/pdf",
             bytes: assembled,
-            uploadedByEntityId: SELF_ENTITY_ID,
           }),
         readArtifact: async (id: string) => {
           const artifact = await repository.getArtifact(id);
@@ -3326,13 +3308,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
           ),
         ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
         expect(enteredDeletion).toBe(false);
-        return service.createAgreementVersion({
+        return createAgreement(service, {
           agreementKey: "guarded-staging",
           title: "Guarded staging",
           originalFilename: "guarded.pdf",
-          mimeType: "application/pdf",
           bytes: assembled,
-          uploadedByEntityId: SELF_ENTITY_ID,
         });
       },
       readArtifact: async (id) => {
@@ -3542,13 +3522,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     const service = createAgreementKnowledgeService(runtime);
     try {
       await expect(
-        service.createAgreementVersion({
+        createAgreement(service, {
           agreementKey: "private-write-ack-loss",
           title: "Interrupted private write",
           originalFilename: "interrupted.pdf",
-          mimeType: "application/pdf",
           bytes,
-          uploadedByEntityId: SELF_ENTITY_ID,
         }),
       ).rejects.toMatchObject({
         code: "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED",
@@ -3634,13 +3612,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     try {
       const service = createAgreementKnowledgeService(runtime);
       await expect(
-        service.createAgreementVersion({
+        createAgreement(service, {
           agreementKey: key,
           title: "Settlement outage",
           originalFilename: "settlement.pdf",
-          mimeType: "application/pdf",
           bytes,
-          uploadedByEntityId: SELF_ENTITY_ID,
         }),
       ).rejects.toMatchObject({
         code: "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED",
@@ -3935,13 +3911,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   it("revokes retained agreement reads and pinned context when workspace deletion starts", async () => {
     const service = createAgreementKnowledgeService(runtime);
     const bytes = pdf("private agreement read revocation");
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "read-revocation",
       title: "Read revocation",
       originalFilename: "read-revocation.pdf",
-      mimeType: "application/pdf",
       bytes,
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     expect(
       (
@@ -4026,13 +4000,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
 
   it("rejects an owner PDF response when revocation commits during its storage read", async () => {
     const service = createAgreementKnowledgeService(runtime);
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "read-revocation-race",
       title: "Read race",
       originalFilename: "race.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("private bytes read before revocation"),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     const storage = runtime.getService<IFileStorageService>(
       ServiceType.REMOTE_FILES,
@@ -4528,13 +4500,11 @@ describe("reviewed workspace deletion — real database and disk", () => {
       await new SchoolCalendarWorkflow(runtime).ensureSchema();
       await new MonthlyFamilyPacketService(runtime).list();
       const service = createAgreementKnowledgeService(runtime);
-      const source = await service.createAgreementVersion({
+      const source = await createAgreement(service, {
         agreementKey: "http-delete",
         title: "HTTP deletion fixture",
         originalFilename: "http.pdf",
-        mimeType: "application/pdf",
         bytes: pdf("HTTP deletion source"),
-        uploadedByEntityId: SELF_ENTITY_ID,
       });
       const oldBackup = await createLocalAgentBackup(runtime, {});
       const db = (
@@ -4825,13 +4795,11 @@ describe("reviewed workspace deletion — real database and disk", () => {
       await new MonthlyFamilyPacketService(runtime).list();
       const service = createAgreementKnowledgeService(runtime);
       const bytes = pdf("synthetic source to delete");
-      const first = await service.createAgreementVersion({
+      const first = await createAgreement(service, {
         agreementKey: "delete-atomic",
         title: "Delete atomic",
         originalFilename: "atomic.pdf",
-        mimeType: "application/pdf",
         bytes,
-        uploadedByEntityId: SELF_ENTITY_ID,
       });
       const storage = runtime.getService<IFileStorageService>(
         ServiceType.REMOTE_FILES,
