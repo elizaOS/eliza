@@ -160,7 +160,10 @@ import {
   flushEarlyLogs,
   listenForUiLogs,
 } from "./early-logs.ts";
-import { createApiEventHub } from "./event-hub.ts";
+import {
+  createApiEventHub,
+  createEventSocketLivenessSweep,
+} from "./event-hub.ts";
 import { computeCanRespond } from "./health-routes.ts";
 import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
@@ -3877,6 +3880,13 @@ export async function startApiServer(opts?: {
       `[eliza-api] WebSocketServer error: ${err instanceof Error ? err.message : err}`,
     );
   });
+  // Server-side ping/pong: a peer whose TCP window froze (backgrounded app,
+  // suspended laptop) never sends a close frame, so without this sweep its
+  // socket and everything the hub queues for it would live until the OS
+  // gives up on the connection.
+  const wsLiveness = createEventSocketLivenessSweep<WebSocket>({
+    clientIds: wsClientIds,
+  });
   /**
    * Per-connection active conversation. Each browser window/client owns its own
    * active conversation, so two windows no longer fight over a single global.
@@ -4135,6 +4145,7 @@ export async function startApiServer(opts?: {
   // Handle WebSocket connections
   wss.on("connection", (ws: WebSocket, request: http.IncomingMessage) => {
     wsRequests.set(ws, request);
+    wsLiveness.track(ws);
     let wsClientId: string | null = null;
     let wsUrl: URL;
     try {
@@ -4915,6 +4926,7 @@ export async function startApiServer(opts?: {
     {
       name: "WebSocket clients",
       dispose: () => {
+        wsLiveness.stop();
         for (const ws of wsClients) {
           if (ws.readyState !== 1 && ws.readyState !== 0) continue;
           if ("terminate" in ws && typeof ws.terminate === "function") {
