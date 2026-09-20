@@ -69,7 +69,7 @@ describe("PostWalletGenerateRequestSchema", () => {
     expect(PostWalletGenerateRequestSchema.parse({})).toEqual({});
   });
 
-  it("accepts each chain + source combo", () => {
+  it("accepts local generation and steward-backed generation", () => {
     expect(
       PostWalletGenerateRequestSchema.parse({ chain: "both", source: "local" }),
     ).toEqual({ chain: "both", source: "local" });
@@ -81,25 +81,12 @@ describe("PostWalletGenerateRequestSchema", () => {
     ).toEqual({ chain: "evm", source: "steward" });
   });
 
-  it("rejects unknown chain", () => {
-    expect(() =>
-      PostWalletGenerateRequestSchema.parse({ chain: "btc" }),
-    ).toThrow();
-  });
-
-  it("rejects unknown source", () => {
-    expect(() =>
-      PostWalletGenerateRequestSchema.parse({ source: "vault" }),
-    ).toThrow();
-  });
-
-  it("rejects extra fields", () => {
-    expect(() =>
-      PostWalletGenerateRequestSchema.parse({
-        chain: "evm",
-        seed: "abc",
-      }),
-    ).toThrow();
+  it.each([
+    ["unknown chain", { chain: "btc" }],
+    ["unknown source", { source: "vault" }],
+    ["extra fields", { chain: "evm", seed: "abc" }],
+  ])("rejects %s", (_name, input) => {
+    expect(() => PostWalletGenerateRequestSchema.parse(input)).toThrow();
   });
 });
 
@@ -119,40 +106,13 @@ describe("PostWalletPrimaryRequestSchema", () => {
     ).toEqual({ chain: "solana", source: "local" });
   });
 
-  it("rejects bad chain", () => {
-    expect(() =>
-      PostWalletPrimaryRequestSchema.parse({
-        chain: "bitcoin",
-        source: "local",
-      }),
-    ).toThrow();
-  });
-
-  it("rejects bad source", () => {
-    expect(() =>
-      PostWalletPrimaryRequestSchema.parse({
-        chain: "evm",
-        source: "steward",
-      }),
-    ).toThrow();
-  });
-
-  it("rejects missing fields", () => {
-    expect(() =>
-      PostWalletPrimaryRequestSchema.parse({ chain: "evm" }),
-    ).toThrow();
-    expect(() =>
-      PostWalletPrimaryRequestSchema.parse({ source: "cloud" }),
-    ).toThrow();
-  });
-
-  it("rejects extra fields", () => {
-    expect(() =>
-      PostWalletPrimaryRequestSchema.parse({
-        chain: "evm",
-        source: "cloud",
-        force: true,
-      }),
-    ).toThrow();
+  it.each([
+    ["bad chain", { chain: "bitcoin", source: "local" }],
+    ["bad source", { chain: "evm", source: "steward" }],
+    ["missing source", { chain: "evm" }],
+    ["missing chain", { source: "cloud" }],
+    ["extra fields", { chain: "evm", source: "cloud", force: true }],
+  ])("rejects %s", (_name, input) => {
+    expect(() => PostWalletPrimaryRequestSchema.parse(input)).toThrow();
   });
 });

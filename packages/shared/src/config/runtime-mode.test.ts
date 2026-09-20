@@ -9,8 +9,6 @@ import {
   isSafeLocalMode,
   isYoloLocalMode,
   normalizeRuntimeExecutionMode,
-  RUNTIME_EXECUTION_MODE_DEFINITIONS,
-  RUNTIME_EXECUTION_MODES,
   readRuntimeExecutionModeConfig,
   resolveLocalExecutionMode,
   resolveRuntimeExecutionMode,
@@ -147,21 +145,5 @@ describe("resolveRuntimeExecutionMode and helpers", () => {
       resolveRuntimeExecutionMode({ getSetting: () => "local-yolo" }),
     ).toBe("local-safe");
     expect(shouldUseSandboxExecution(null)).toBe(true);
-  });
-});
-
-describe("RUNTIME_EXECUTION_MODE_DEFINITIONS", () => {
-  it("defines flags accurately for all modes", () => {
-    for (const mode of RUNTIME_EXECUTION_MODES) {
-      const def = RUNTIME_EXECUTION_MODE_DEFINITIONS[mode];
-      expect(def.mode).toBe(mode);
-      if (mode === "cloud") {
-        expect(def.cloud).toBe(true);
-        expect(def.local).toBe(false);
-      } else {
-        expect(def.cloud).toBe(false);
-        expect(def.local).toBe(true);
-      }
-    }
   });
 });

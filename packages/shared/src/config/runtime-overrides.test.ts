@@ -5,9 +5,9 @@
  * must deep-merge onto a fresh tree and leave the input config untouched, and
  * `setConfigOverride` must refuse a path that could reach `Object.prototype`.
  *
- * Pure module state; each test resets it first. No filesystem, no runtime.
+ * Pure module state; each test resets it before and after use. No filesystem, no runtime.
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applyConfigOverrides,
   getConfigOverrides,
@@ -19,16 +19,10 @@ import type { ElizaConfig } from "./types.eliza.js";
 
 const cfg = (value: unknown): ElizaConfig => value as ElizaConfig;
 
-beforeEach(() => {
-  resetConfigOverrides();
-});
+beforeEach(resetConfigOverrides);
+afterEach(resetConfigOverrides);
 
 describe("setConfigOverride / unsetConfigOverride", () => {
-  it("stores a value at a dotted path", () => {
-    expect(setConfigOverride("a.b.c", 1)).toEqual({ ok: true });
-    expect(getConfigOverrides()).toMatchObject({ a: { b: { c: 1 } } });
-  });
-
   it("rejects an empty or malformed path without mutating state", () => {
     const result = setConfigOverride("   ", 1);
     expect(result.ok).toBe(false);
@@ -44,7 +38,8 @@ describe("setConfigOverride / unsetConfigOverride", () => {
   });
 
   it("reports whether an unset actually removed something", () => {
-    setConfigOverride("a.b", 1);
+    expect(setConfigOverride("a.b", 1)).toEqual({ ok: true });
+    expect(getConfigOverrides()).toEqual({ a: { b: 1 } });
     expect(unsetConfigOverride("a.b")).toEqual({ ok: true, removed: true });
     expect(unsetConfigOverride("a.b")).toEqual({ ok: true, removed: false });
   });
@@ -68,55 +63,43 @@ describe("applyConfigOverrides", () => {
     expect(applyConfigOverrides(base)).toBe(base);
   });
 
-  it("merges nested overrides without dropping sibling keys", () => {
+  it("merges nested overrides, preserves siblings and leaves the input untouched", () => {
+    const base = cfg({
+      server: { port: 3000, host: "localhost" },
+      other: true,
+    });
     setConfigOverride("server.port", 9999);
-    const merged = applyConfigOverrides(
-      cfg({ server: { port: 3000, host: "localhost" }, other: true }),
-    ) as unknown as Record<string, Record<string, unknown>>;
-    expect(merged.server).toEqual({ port: 9999, host: "localhost" });
-    expect(merged.other).toBe(true);
-  });
-
-  it("does not mutate the input config", () => {
-    setConfigOverride("server.port", 9999);
-    const base = cfg({ server: { port: 3000 } });
-    applyConfigOverrides(base);
-    expect((base as unknown as { server: { port: number } }).server.port).toBe(
-      3000,
-    );
+    expect(applyConfigOverrides(base)).toEqual({
+      server: { port: 9999, host: "localhost" },
+      other: true,
+    });
+    expect(base).toEqual({
+      server: { port: 3000, host: "localhost" },
+      other: true,
+    });
   });
 
   it("adds a key the base config does not have", () => {
     setConfigOverride("added.deep", "x");
-    const merged = applyConfigOverrides(
-      cfg({ existing: 1 }),
-    ) as unknown as Record<string, unknown>;
-    expect(merged).toMatchObject({ existing: 1, added: { deep: "x" } });
+    const merged = applyConfigOverrides(cfg({ existing: 1 }));
+    expect(merged).toEqual({ existing: 1, added: { deep: "x" } });
   });
 
   it("replaces rather than merges when the base value is not a plain object", () => {
     setConfigOverride("list.0", "b");
-    const merged = applyConfigOverrides(
-      cfg({ list: ["a", "z"] }),
-    ) as unknown as Record<string, unknown>;
-    // An array base is not a plain object, so the override subtree replaces it.
-    expect(Array.isArray(merged.list)).toBe(false);
-    expect(merged.list).toMatchObject({ 0: "b" });
+    const merged = applyConfigOverrides(cfg({ list: ["a", "z"] }));
+    expect(merged).toEqual({ list: { 0: "b" } });
   });
 
   it("replaces a scalar base with a scalar override", () => {
     setConfigOverride("flag", false);
-    const merged = applyConfigOverrides(
-      cfg({ flag: true }),
-    ) as unknown as Record<string, unknown>;
-    expect(merged.flag).toBe(false);
+    const merged = applyConfigOverrides(cfg({ flag: true }));
+    expect(merged).toEqual({ flag: false });
   });
 
   it("keeps a null override as an explicit null rather than dropping it", () => {
     setConfigOverride("maybe", null);
-    const merged = applyConfigOverrides(
-      cfg({ maybe: { nested: 1 } }),
-    ) as unknown as Record<string, unknown>;
-    expect(merged.maybe).toBeNull();
+    const merged = applyConfigOverrides(cfg({ maybe: { nested: 1 } }));
+    expect(merged).toEqual({ maybe: null });
   });
 });

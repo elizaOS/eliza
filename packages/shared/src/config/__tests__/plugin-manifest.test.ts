@@ -1,7 +1,7 @@
 /**
  * Unit tests for the plugin-manifest auto-enable engine (pluginShortId,
  * evaluatePluginManifest, evaluatePluginManifests, applyPluginManifestVerdicts).
- * Each test writes a fake plugin package to a temp dir — a package.json
+ * Loader cases write a fixture plugin package to a temp dir — a package.json
  * declaring `elizaos.plugin.autoEnableModule` plus a small check module that
  * exports shouldEnable / shouldForce — and the engine loads them for real,
  * without booting the plugin runtime.
@@ -21,6 +21,8 @@ import {
   type PluginManifestVerdict,
   pluginShortId,
 } from "../plugin-manifest";
+
+type PluginConfig = Parameters<typeof applyPluginManifestVerdicts>[0];
 
 let tmpRoot: string;
 
@@ -62,14 +64,6 @@ const baseCtx = {
   isNativePlatform: false,
 };
 
-beforeEach(async () => {
-  tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "plugin-manifest-test-"));
-});
-
-afterEach(async () => {
-  await fs.rm(tmpRoot, { recursive: true, force: true });
-});
-
 describe("pluginShortId", () => {
   it("strips @scope/plugin- prefix", () => {
     expect(pluginShortId("@elizaos/plugin-anthropic")).toBe("anthropic");
@@ -82,10 +76,21 @@ describe("pluginShortId", () => {
   });
 });
 
-describe("evaluatePluginManifest", () => {
+describe("manifest loading", () => {
+  beforeEach(async () => {
+    tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "plugin-manifest-test-"));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpRoot, { recursive: true, force: true });
+  });
+
   it("returns null when package.json is missing", async () => {
     const verdict = await evaluatePluginManifest(
-      { packageName: "@x/missing", packageRoot: path.join(tmpRoot, "missing") },
+      {
+        packageName: "@x/missing",
+        packageRoot: path.join(tmpRoot, "missing"),
+      },
       baseCtx,
     );
     expect(verdict).toBeNull();
@@ -112,30 +117,27 @@ describe("evaluatePluginManifest", () => {
     expect(verdict?.capabilities).toEqual(["just-data"]);
   });
 
-  it("returns enabled=true when shouldEnable returns true (env match)", async () => {
+  it("evaluates the same imported predicate against each supplied environment", async () => {
     const candidate = await writeFakePlugin({
       pkgName: "@x/env-match",
       checkSource:
         "export function shouldEnable(ctx) { return Boolean(ctx.env.MY_KEY); }",
     });
-    const verdict = await evaluatePluginManifest(candidate, {
-      ...baseCtx,
-      env: { MY_KEY: "yes" },
+    expect(await evaluatePluginManifest(candidate, baseCtx)).toMatchObject({
+      enabled: false,
+      reason: null,
+      error: null,
     });
-    expect(verdict?.enabled).toBe(true);
-    expect(verdict?.reason).toMatch(/manifest:/);
-    expect(verdict?.error).toBeNull();
-  });
-
-  it("returns enabled=false when shouldEnable returns false", async () => {
-    const candidate = await writeFakePlugin({
-      pkgName: "@x/env-miss",
-      checkSource:
-        "export function shouldEnable(ctx) { return Boolean(ctx.env.MY_KEY); }",
+    expect(
+      await evaluatePluginManifest(candidate, {
+        ...baseCtx,
+        env: { MY_KEY: "yes" },
+      }),
+    ).toMatchObject({
+      enabled: true,
+      reason: expect.stringMatching(/manifest:/),
+      error: null,
     });
-    const verdict = await evaluatePluginManifest(candidate, baseCtx);
-    expect(verdict?.enabled).toBe(false);
-    expect(verdict?.reason).toBeNull();
   });
 
   it("supports default-export check modules", async () => {
@@ -198,9 +200,9 @@ describe("evaluatePluginManifest", () => {
     const candidate = await writeFakePlugin({
       pkgName: "@x/conditional-force",
       checkSource: `
-        export function shouldEnable() { return true; }
-        export function shouldForce(ctx) { return ctx.env.FORCE === '1'; }
-      `,
+      export function shouldEnable() { return true; }
+      export function shouldForce(ctx) { return ctx.env.FORCE === '1'; }
+    `,
     });
     const allowed = await evaluatePluginManifest(candidate, baseCtx);
     expect(allowed?.force).toBe(false);
@@ -210,9 +212,7 @@ describe("evaluatePluginManifest", () => {
     });
     expect(forced?.force).toBe(true);
   });
-});
 
-describe("evaluatePluginManifests (batch)", () => {
   it("returns one verdict per candidate that has a manifest", async () => {
     const a = await writeFakePlugin({
       pkgName: "@x/a",
@@ -266,36 +266,22 @@ describe("applyPluginManifestVerdicts", () => {
     };
   }
 
-  it("adds enabled plugins to plugins.allow with both shortId and full name", () => {
-    const config: {
-      plugins?: {
-        allow?: string[];
-        entries?: Record<string, { enabled?: boolean }>;
-      };
-    } = {};
+  it("adds both plugin identifiers once across repeated application", () => {
+    const config: PluginConfig = {};
     const changes: string[] = [];
-    applyPluginManifestVerdicts(
-      config,
-      [
-        makeVerdict({
-          enabled: true,
-          reason: "manifest: @x/test/auto-enable.js",
-        }),
-      ],
-      changes,
-    );
-    expect(config.plugins?.allow).toContain("test");
-    expect(config.plugins?.allow).toContain("@x/test");
+    const verdict = makeVerdict({
+      enabled: true,
+      reason: "manifest: @x/test/auto-enable.js",
+    });
+    applyPluginManifestVerdicts(config, [verdict], changes);
+    applyPluginManifestVerdicts(config, [verdict], changes);
+    expect(config.plugins?.allow).toEqual(["test", "@x/test"]);
+    expect(changes).toHaveLength(1);
     expect(changes[0]).toMatch(/Auto-enabled plugin: @x\/test/);
   });
 
   it("respects entries.enabled=false (does not add)", () => {
-    const config: {
-      plugins: {
-        entries: Record<string, { enabled?: boolean }>;
-        allow?: string[];
-      };
-    } = {
+    const config: PluginConfig = {
       plugins: { entries: { test: { enabled: false } } },
     };
     const changes: string[] = [];
@@ -309,12 +295,7 @@ describe("applyPluginManifestVerdicts", () => {
   });
 
   it("force overrides entries.enabled=false", () => {
-    const config: {
-      plugins: {
-        entries: Record<string, { enabled?: boolean }>;
-        allow?: string[];
-      };
-    } = {
+    const config: PluginConfig = {
       plugins: { entries: { test: { enabled: false } } },
     };
     const changes: string[] = [];
@@ -328,12 +309,7 @@ describe("applyPluginManifestVerdicts", () => {
   });
 
   it("force adds a plugin even when the enable predicate is false", () => {
-    const config: {
-      plugins?: {
-        allow?: string[];
-        entries?: Record<string, { enabled?: boolean }>;
-      };
-    } = {};
+    const config: PluginConfig = {};
     const changes: string[] = [];
 
     applyPluginManifestVerdicts(
@@ -353,15 +329,6 @@ describe("applyPluginManifestVerdicts", () => {
     expect(config.plugins?.allow).toContain("forced-provider");
     expect(config.plugins?.allow).toContain("@x/forced-provider");
     expect(changes[0]).toMatch(/Auto-enabled plugin: @x\/forced-provider/);
-  });
-
-  it("dedupes when called twice with the same verdict", () => {
-    const config: { plugins?: { allow?: string[] } } = {};
-    const changes: string[] = [];
-    const v = makeVerdict({ enabled: true, reason: "first" });
-    applyPluginManifestVerdicts(config, [v], changes);
-    applyPluginManifestVerdicts(config, [v], changes);
-    expect(config.plugins?.allow?.filter((n) => n === "test")).toHaveLength(1);
   });
 
   it("surfaces verdict errors as changes", () => {

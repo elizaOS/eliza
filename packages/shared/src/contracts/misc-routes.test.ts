@@ -24,13 +24,13 @@ describe("PostIngestShareRequestSchema", () => {
   });
 
   it("accepts a populated share", () => {
-    const parsed = PostIngestShareRequestSchema.parse({
+    const input = {
       source: "share-sheet",
       title: "Hello",
       url: "https://x.test",
       text: "body",
-    });
-    expect(parsed.title).toBe("Hello");
+    };
+    expect(PostIngestShareRequestSchema.parse(input)).toEqual(input);
   });
 
   it("rejects extra fields", () => {
@@ -72,15 +72,13 @@ describe("PostAgentEventRequestSchema", () => {
 
 describe("PostTerminalRunRequestSchema", () => {
   it("accepts a populated body and passes clientId through unchanged", () => {
-    const parsed = PostTerminalRunRequestSchema.parse({
+    const input = {
       command: "echo hi",
       clientId: { socketId: 7 },
       terminalToken: "tok",
       captureOutput: true,
-    });
-    expect(parsed.command).toBe("echo hi");
-    expect(parsed.clientId).toEqual({ socketId: 7 });
-    expect(parsed.captureOutput).toBe(true);
+    };
+    expect(PostTerminalRunRequestSchema.parse(input)).toEqual(input);
   });
 
   it("requires command", () => {
@@ -101,77 +99,60 @@ describe("PostCustomActionRequestSchema", () => {
       description: " sends a slack message ",
       handler: { type: "http", method: "POST", url: "https://api.slack" },
     });
-    expect(parsed.name).toBe("send slack");
-    expect(parsed.description).toBe("sends a slack message");
-    expect(parsed.handler.type).toBe("http");
-    expect(parsed.enabled).toBe(true);
-    expect(parsed.similes).toEqual([]);
-    expect(parsed.parameters).toEqual([]);
+    expect(parsed).toEqual({
+      name: "send slack",
+      description: "sends a slack message",
+      handler: { type: "http", method: "POST", url: "https://api.slack" },
+      enabled: true,
+      similes: [],
+      parameters: [],
+    });
   });
 
   it("accepts a shell action with parameters and similes", () => {
-    const parsed = PostCustomActionRequestSchema.parse({
+    const input = {
       name: "RUN_BUILD",
       description: "runs build",
       similes: ["BUILD"],
       parameters: [{ name: "target", description: "...", required: true }],
       handler: { type: "shell", command: "make build" },
       enabled: false,
-    });
-    expect(parsed.enabled).toBe(false);
-    expect(parsed.similes).toEqual(["BUILD"]);
-    expect(parsed.parameters[0]?.name).toBe("target");
+    };
+    expect(PostCustomActionRequestSchema.parse(input)).toEqual(input);
   });
 
   it("accepts a code action", () => {
-    expect(() =>
-      PostCustomActionRequestSchema.parse({
-        name: "CODE_X",
-        description: "x",
-        handler: { type: "code", code: "return 42" },
-      }),
-    ).not.toThrow();
+    const input = {
+      name: "CODE_X",
+      description: "x",
+      handler: { type: "code", code: "return 42" },
+    };
+    expect(PostCustomActionRequestSchema.parse(input)).toEqual({
+      ...input,
+      enabled: true,
+      similes: [],
+      parameters: [],
+    });
   });
 
-  it("rejects unknown handler type", () => {
-    expect(() =>
-      PostCustomActionRequestSchema.parse({
-        name: "x",
-        description: "y",
-        handler: { type: "ftp", url: "ftp://" },
-      }),
-    ).toThrow();
-  });
-
-  it("rejects http handler with whitespace url", () => {
-    expect(() =>
-      PostCustomActionRequestSchema.parse({
-        name: "x",
-        description: "y",
-        handler: { type: "http", method: "GET", url: " " },
-      }),
-    ).toThrow(/HTTP handler requires a url/);
-  });
-
-  it("rejects whitespace-only name", () => {
-    expect(() =>
-      PostCustomActionRequestSchema.parse({
-        name: " ",
-        description: "y",
-        handler: { type: "shell", command: "ls" },
-      }),
-    ).toThrow(/name is required/);
-  });
-
-  it("rejects extra fields", () => {
+  it.each([
+    ["unknown handler", { handler: { type: "ftp", url: "ftp://" } }, undefined],
+    [
+      "blank HTTP URL",
+      { handler: { type: "http", method: "GET", url: " " } },
+      /HTTP handler requires a url/,
+    ],
+    ["blank name", { name: " " }, /name is required/],
+    ["extra field", { nuke: true }, undefined],
+  ])("rejects %s", (_name, patch, error) => {
     expect(() =>
       PostCustomActionRequestSchema.parse({
         name: "x",
         description: "y",
         handler: { type: "shell", command: "ls" },
-        nuke: true,
+        ...patch,
       }),
-    ).toThrow();
+    ).toThrow(error);
   });
 });
 
@@ -225,12 +206,8 @@ describe("PutCustomActionRequestSchema", () => {
   });
 
   it("accepts partial updates including handler swap", () => {
-    const parsed = PutCustomActionRequestSchema.parse({
-      enabled: false,
-      handler: { type: "shell", command: "ls" },
-    });
-    expect(parsed.handler?.type).toBe("shell");
-    expect(parsed.enabled).toBe(false);
+    const input = { enabled: false, handler: { type: "shell", command: "ls" } };
+    expect(PutCustomActionRequestSchema.parse(input)).toEqual(input);
   });
 
   it("rejects malformed handler discriminant", () => {
