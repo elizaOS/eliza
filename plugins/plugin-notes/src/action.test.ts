@@ -120,6 +120,174 @@ function execute(
 }
 
 describe("promoted Notes execution", () => {
+  it.each(["text", "note", "title", "query"])(
+    "persists CRUD through the declared %s content alternative",
+    async (name) => {
+      const runtime = await executorHarness();
+      const content = "Exact label\nComplete body with  two spaces.";
+      expect(
+        await execute(runtime, {
+          name: "NOTES_CREATE",
+          params: { [name]: content },
+        }),
+      ).toMatchObject({ success: true });
+      expect(
+        await execute(runtime, {
+          name: "NOTES_LIST",
+          params: { [name]: "Exact label" },
+        }),
+      ).toMatchObject({ success: true, data: { count: 1 } });
+      expect(
+        await execute(runtime, {
+          name: "NOTES_UPDATE",
+          params: {
+            [name]: "Exact label",
+            replacementContent: "Exact label\nChanged body.",
+          },
+        }),
+      ).toMatchObject({ success: true });
+      expect(getNotesService(runtime).listNotes()).toMatchObject([
+        { title: "Exact label", body: "Changed body." },
+      ]);
+      expect(
+        await execute(runtime, {
+          name: "NOTES_DELETE",
+          params: { [name]: "Exact label" },
+        }),
+      ).toMatchObject({ success: true });
+      expect(getNotesService(runtime).listNotes()).toEqual([]);
+    },
+  );
+
+  it.each(["body", "newText"])(
+    "accepts matching %s replacement and rejects conflicting replacements without writing",
+    async (name) => {
+      const runtime = await executorHarness();
+      await execute(runtime, {
+        name: "NOTES_CREATE",
+        params: { content: "Record\nOriginal" },
+      });
+      const replacement = "Record\nChanged  exactly";
+      expect(
+        await execute(runtime, {
+          name: "NOTES_UPDATE",
+          params: {
+            content: "Record",
+            [name]: replacement,
+            replacementContent: replacement,
+          },
+        }),
+      ).toMatchObject({ success: true });
+      const before = getNotesService(runtime).listNotes();
+      expect(
+        await execute(runtime, {
+          name: "NOTES_UPDATE",
+          params: {
+            content: "Record",
+            [name]: "Different",
+            replacementContent: replacement,
+          },
+        }),
+      ).toMatchObject({ success: false });
+      expect(getNotesService(runtime).listNotes()).toEqual(before);
+    },
+  );
+
+  it("accepts identical content alternatives without losing bytes", async () => {
+    const runtime = await executorHarness();
+    const content = "Exact label\nComplete  body";
+    expect(
+      await execute(runtime, {
+        name: "NOTES_CREATE",
+        params: {
+          content,
+          text: content,
+          note: content,
+          title: content,
+          query: content,
+        },
+      }),
+    ).toMatchObject({ success: true });
+    expect(getNotesService(runtime).listNotes()).toMatchObject([
+      { title: "Exact label", body: "Complete  body" },
+    ]);
+  });
+
+  it.each([
+    {},
+    { text: "" },
+    { text: "   " },
+    { unexpected: "Content" },
+    { content: "Record", query: "Different" },
+    { content: "Record", text: "Record " },
+  ])(
+    "rejects missing, unknown, or conflicting input without writes: %j",
+    async (params) => {
+      const runtime = await executorHarness();
+      expect(
+        await execute(runtime, { name: "NOTES_CREATE", params }),
+      ).toMatchObject({ success: false });
+      expect(getNotesService(runtime).listNotes()).toEqual([]);
+    },
+  );
+
+  it("accepts the planner alias spellings the handler documents (#31114)", async () => {
+    // Before the aliases were declared, every one of these calls was rejected
+    // by the core validator with "Unexpected argument" before the handler ran.
+    const runtime = await executorHarness();
+    const created = await execute(runtime, {
+      name: "NOTES_CREATE",
+      params: { text: "Alias check\noriginal body" },
+    });
+    expect(created).toMatchObject({
+      success: true,
+      data: {
+        op: "create",
+        note: { title: "Alias check", body: "original body" },
+      },
+    });
+
+    const listed = await execute(runtime, {
+      name: "NOTES_LIST",
+      params: { query: "alias" },
+    });
+    expect(listed).toMatchObject({
+      success: true,
+      data: { count: 1, filterApplied: true, topic: "alias" },
+    });
+
+    const updated = await execute(runtime, {
+      name: "NOTES_UPDATE",
+      params: { title: "Alias check", newText: "Alias check\nupdated body" },
+    });
+    expect(updated).toMatchObject({
+      success: true,
+      data: {
+        op: "update",
+        note: { title: "Alias check", body: "updated body" },
+      },
+    });
+
+    const umbrella = await execute(runtime, {
+      name: "NOTES",
+      params: { action: "create", note: "Second note" },
+    });
+    expect(umbrella).toMatchObject({
+      success: true,
+      data: { op: "create", note: { title: "Second note" } },
+    });
+
+    // Notes rejects conflicting alternatives before any store operation.
+    const conflict = await execute(runtime, {
+      name: "NOTES_LIST",
+      params: { content: "second", query: "alias" },
+    });
+    expect(conflict).toMatchObject({
+      success: false,
+      data: { invalidParameterNames: ["query"] },
+    });
+  });
+
   it("reads exact IDs without substituting matching text or exposing other notes", async () => {
     const runtime = await executorHarness();
     const created = await run(runtime, {
@@ -364,7 +532,7 @@ describe("promoted Notes execution", () => {
     [
       "NOTES_UPDATE",
       { content: "Existing note", body: "" },
-      "Unexpected argument 'body'",
+      "replacementContent",
     ],
     ["NOTES_DELETE", {}, "content"],
     ["NOTES_DELETE", { content: "" }, "content"],
