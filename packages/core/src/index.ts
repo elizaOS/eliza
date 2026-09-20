@@ -175,7 +175,6 @@ export * from "./runtime/response-handler-field-evaluator";
 export * from "./runtime/response-handler-field-registry";
 export * from "./runtime/rlm";
 export * from "./runtime/room-handler-queue";
-export * from "./runtime/schema-compat";
 export * from "./runtime/shortcut-registry";
 export * from "./runtime/system-prompt";
 export * from "./runtime/trace-correlation";

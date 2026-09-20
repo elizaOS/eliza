@@ -3,10 +3,10 @@
  * Tests exercise the real normalization pipeline and model handler, including
  * fail-closed behavior before provider dispatch.
  */
+import { ElizaError, type IAgentRuntime, MAX_WELL_FORMED_DEPTH } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CEREBRAS_SCHEMA_UNBOUNDED,
-  ElizaError,
-  type IAgentRuntime,
   isCerebrasSchemaUnbounded,
   JSON_SCHEMA_ARRAY_KEYWORDS,
   JSON_SCHEMA_MAP_KEYWORDS,
@@ -14,9 +14,7 @@ import {
   JSON_SCHEMA_SINGLE_KEYWORDS,
   MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
   MAX_CEREBRAS_SCHEMA_WALK_NODES,
-  MAX_WELL_FORMED_DEPTH,
-} from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+} from "../utils/schema-compat";
 
 const aiMocks = vi.hoisted(() => ({
   generateText: vi.fn(),

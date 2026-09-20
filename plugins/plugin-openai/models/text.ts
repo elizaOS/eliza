@@ -1,3 +1,13 @@
+import {
+  cloneSchemaForBoundedTransport,
+  JSON_SCHEMA_ARRAY_KEYWORDS,
+  JSON_SCHEMA_MAP_KEYWORDS,
+  JSON_SCHEMA_MIXED_MAP_KEYWORDS,
+  JSON_SCHEMA_SINGLE_KEYWORDS,
+  MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
+  normalizeSchemaForCerebras,
+  sanitizeFunctionNameForCerebras,
+} from "../utils/schema-compat";
 /**
  * Text generation model handlers
  *
@@ -18,28 +28,20 @@ import {
   assertSchemaAnnotationsSerializable,
   attestLlmInputSubstring,
   buildCanonicalSystemPrompt,
-  cloneSchemaForBoundedTransport,
   deepToWellFormedUnicode,
   dropDuplicateLeadingSystemMessage,
   ElizaError,
   getInferenceTimer,
   getTrajectoryContext,
   isPermanentQuotaError,
-  JSON_SCHEMA_ARRAY_KEYWORDS,
-  JSON_SCHEMA_MAP_KEYWORDS,
-  JSON_SCHEMA_MIXED_MAP_KEYWORDS,
-  JSON_SCHEMA_SINGLE_KEYWORDS,
   logActiveTrajectoryLlmCall,
   logger,
-  MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
   MAX_WELL_FORMED_DEPTH,
   MODEL_PROVIDER_ATTEMPTS,
   ModelType,
-  normalizeSchemaForCerebras,
   providerRetryAfterMs,
   recordLlmCall,
   resolveEffectiveSystemPrompt,
-  sanitizeFunctionNameForCerebras,
   toWellFormedUnicode,
   truncateWellFormed,
   wellFormedUnicodeSchemaStructure,
@@ -1582,7 +1584,7 @@ function sanitizeJsonSchema(
     // closes this afterwards (explicit empty `properties` +
     // `additionalProperties: false`) — Cerebras's grammar compiler rejects a
     // bare `{type: "object"}` with a request-fatal 400. See
-    // `normalizeSchemaForCerebras` in @elizaos/core for the live-bisected
+    // `normalizeSchemaForCerebras` in ../utils/schema-compat for the live-bisected
     // provider rules.
     return { type: "object" };
   }
