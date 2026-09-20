@@ -147,3 +147,25 @@ This is source review, not acceptance of the remote branch or new runtime QA.
   results would not prove equivalence to the requested behavior.
 
 No production source was changed or paid model call made in this review batch.
+
+## Documentation and initial test reconciliation
+
+84 of127 paths now have explicit dispositions:54 implementation files and30
+supporting test/documentation files. The four changed remote AGENTS/CLAUDE pairs
+were checked byte-for-byte before treating each pair as the same reviewed text.
+
+Keep current documentation for exact-ID Notes updates, bound ID/content rows,
+history reads and source repair, complete named-tool schema inspection, native
+schema fallback, late trajectory refresh, browser metadata versus page reads,
+and shared transient429 retry budgets. The remote documentation describes the
+older implementations rejected above.
+
+Keep the removed source-citation regressions, temperature provenance tests,
+no-extra-call account failure tests, and native read/ready and source-label
+repair cases. Their removal would hide regressions in current behavior.
+Two additions warrant coverage comparison: discovery under a family's declared
+contexts without mutating contextless state, and discovery visibility assertions
+in the Stage-1 suite. These are not yet imported or claimed covered.
+
+43 supporting paths remain unreviewed. No runtime changes or paid tests were
+made during this documentation/test reconciliation batch.
