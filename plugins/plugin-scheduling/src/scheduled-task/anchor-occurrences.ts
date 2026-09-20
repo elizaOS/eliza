@@ -166,7 +166,6 @@ export async function resolveAnchorOccurrences(
   };
 
   const baseAnchorMs = await anchorForDay(0);
-  if (baseAnchorMs === null) return { kind: "unresolved" };
   // `offsetMinutes` is only schema-bounded to an integer. Every instant this
   // scan touches lies within a few days of `now ± offset`; an offset that
   // pushes that reach outside the Date range cannot be indexed or fired, and
@@ -175,7 +174,7 @@ export async function resolveAnchorOccurrences(
   if (
     !isRepresentableMs(nowMs + reachMs) ||
     !isRepresentableMs(nowMs - reachMs) ||
-    !isRepresentableMs(baseAnchorMs + offsetMs)
+    (baseAnchorMs !== null && !isRepresentableMs(baseAnchorMs + offsetMs))
   ) {
     return { kind: "out_of_range" };
   }
@@ -185,25 +184,28 @@ export async function resolveAnchorOccurrences(
   if (todayStartMs === null) return { kind: "unresolved" };
 
   // The local day whose anchor plus offset lands on today, measured from
-  // today's anchor. DST makes a day 23 or 25 hours long, which the ±1 day
-  // slack in DAY_SPAN absorbs.
+  // today's anchor, or midnight when today has no observation. DAY_SPAN
+  // absorbs the unknown wall-clock time and 23/25-hour DST days.
   const landingDayShift = Math.floor(
-    (baseAnchorMs - todayStartMs + offsetMs) / DAY_MS,
+    ((baseAnchorMs ?? todayStartMs) - todayStartMs + offsetMs) / DAY_MS,
   );
   const occurrences = new Set<number>();
+  let fixedInstant = baseAnchorMs !== null;
   for (const delta of DAY_SPAN) {
     const dayOffset = delta - landingDayShift;
     const anchorMs =
       dayOffset === 0 ? baseAnchorMs : await anchorForDay(dayOffset);
+    if (anchorMs === null || anchorMs !== baseAnchorMs) fixedInstant = false;
     if (anchorMs === null) continue;
     const occurrenceMs = anchorMs + offsetMs;
     if (isRepresentableMs(occurrenceMs)) occurrences.add(occurrenceMs);
   }
 
-  // Every day probe resolving to the same instant means the anchor is a
-  // fixed instant, not a daily wall-clock time; its single occurrence has no
-  // successor to supersede it, so the current-local-day bound does not apply.
-  const fixedInstant = occurrences.size === 1;
+  if (occurrences.size === 0) return { kind: "unresolved" };
+
+  // Only complete agreement across all probes identifies a fixed instant.
+  // A single observed day surrounded by missing observations remains subject
+  // to the current-local-day bound so stale observations cannot replay.
   let currentMs: number | null = null;
   let nextMs: number | null = null;
   for (const occurrenceMs of [...occurrences].sort(

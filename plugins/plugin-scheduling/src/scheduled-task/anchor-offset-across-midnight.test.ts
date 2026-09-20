@@ -352,6 +352,112 @@ describe("relative_to_anchor occurrences that cross local midnight (72h sweep)",
     expectIndexAgrees(result, "no_later");
   }, 60_000);
 
+  it("finds yesterday's observed wake without a static fallback and does not replay it a day late", async () => {
+    const anchors = createAnchorRegistry();
+    const observed = "2026-05-09T21:07:00.000Z";
+    anchors.register({
+      anchorKey: "wake.confirmed",
+      describe: { label: "sparse observed wake", provider: "test" },
+      resolve({ nowIso }) {
+        return nowIso.slice(0, 10) === observed.slice(0, 10) &&
+          Date.parse(nowIso) >= Date.parse(observed)
+          ? { atIso: observed }
+          : null;
+      },
+    });
+    const task = makeTask({
+      kind: "relative_to_anchor",
+      anchorKey: "wake.confirmed",
+      offsetMinutes: 240,
+    });
+    const context = { ownerFacts: { timezone: "UTC" }, anchors };
+    const before = new Date("2026-05-10T00:00:00.000Z");
+    expect(
+      await isScheduledTaskDue(task, { now: before, ...context }),
+    ).toMatchObject({ due: false });
+    expect(await computeNextFireAt(task, { now: before, ...context })).toBe(
+      "2026-05-10T01:07:00.000Z",
+    );
+    const due = new Date("2026-05-10T01:07:00.000Z");
+    expect(
+      await isScheduledTaskDue(task, { now: due, ...context }),
+    ).toMatchObject({ due: true, occurrenceAtIso: due.toISOString() });
+    expect(await computeNextFireAt(task, { now: due, ...context })).toBe(
+      due.toISOString(),
+    );
+    const afterDay = new Date("2026-05-11T00:00:00.000Z");
+    expect(
+      await isScheduledTaskDue(task, { now: afterDay, ...context }),
+    ).toMatchObject({ due: false });
+    expect(
+      await computeNextFireAt(task, { now: afterDay, ...context }),
+    ).toBeNull();
+    task.state = {
+      status: "fired",
+      firedAt: due.toISOString(),
+      followupCount: 0,
+    };
+    expect(
+      await isScheduledTaskDue(task, { now: due, ...context }),
+    ).toMatchObject({ due: false });
+    expect(await computeNextFireAt(task, { now: due, ...context })).toBeNull();
+  });
+
+  it("does not replay a lone observed day's occurrence from the previous local day", async () => {
+    const anchors = createAnchorRegistry();
+    const observed = "2026-05-10T00:07:00.000Z";
+    anchors.register({
+      anchorKey: "wake.confirmed",
+      describe: { label: "sparse observed wake", provider: "test" },
+      resolve({ nowIso }) {
+        return nowIso.slice(0, 10) === observed.slice(0, 10) &&
+          Date.parse(nowIso) >= Date.parse(observed)
+          ? { atIso: observed }
+          : null;
+      },
+    });
+    const task = makeTask({
+      kind: "relative_to_anchor",
+      anchorKey: "wake.confirmed",
+      offsetMinutes: -60,
+    });
+    const context = {
+      now: new Date("2026-05-10T00:08:00.000Z"),
+      ownerFacts: { timezone: "UTC" },
+      anchors,
+    };
+    expect(await isScheduledTaskDue(task, context)).toMatchObject({
+      due: false,
+    });
+    expect(await computeNextFireAt(task, context)).toBeNull();
+  });
+
+  it.each([null, { atIso: "not-a-date" }])(
+    "keeps absent or malformed observations unresolved without a fallback: %j",
+    async (observation) => {
+      const anchors = createAnchorRegistry();
+      anchors.register({
+        anchorKey: "wake.confirmed",
+        describe: { label: "missing observation", provider: "test" },
+        resolve: () => observation,
+      });
+      const task = makeTask({
+        kind: "relative_to_anchor",
+        anchorKey: "wake.confirmed",
+        offsetMinutes: 240,
+      });
+      const context = {
+        now: new Date("2026-05-10T01:07:00.000Z"),
+        ownerFacts: { timezone: "UTC" },
+        anchors,
+      };
+      expect(await isScheduledTaskDue(task, context)).toMatchObject({
+        due: false,
+      });
+      expect(await computeNextFireAt(task, context)).toBeNull();
+    },
+  );
+
   it("fixed-instant anchor: a 23:50 occurrence missed across midnight fires once at the first tick after the outage", async () => {
     // Event at 00:05 on 05-11, approval 15 minutes before: 23:50 on 05-10.
     // The runner is down from 23:45 until 00:20, so the occurrence is on an
