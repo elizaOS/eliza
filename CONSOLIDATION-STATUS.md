@@ -2,6 +2,12 @@
 
 **Integration in progress; not release acceptance.**
 
+Latest real-text results and open findings: [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md).
+The integration checkpoint and rollback tag are published at `a42679bf08f`.
+Final checkpoint root verification passed. Nine live text turns verified core
+flows but exposed acknowledgment wording and availability-grounding issues;
+these remain open. Existing source demos are unchanged.
+
 This branch combines develop `ba04de0e2c1f3e498bd881864fd104e734501142`
 with the saved text candidate `a15525f30fb30b2060331fec2257ebda98911cb6`.
 Both source branches and existing demo instances are preserved.
