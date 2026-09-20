@@ -969,6 +969,19 @@ function buildEntityContext(
   };
 }
 
+// A rejected read must not let the tracked build finish before sibling reads.
+async function awaitGraphReads<T extends readonly unknown[]>(
+  reads: T,
+): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }> {
+  try {
+    return await Promise.all(reads);
+  } catch (error) {
+    // error-policy:J2 Preserve the read failure after its siblings settle.
+    await Promise.allSettled(reads);
+    throw error;
+  }
+}
+
 async function collectWorkspaceEntityIds(
   runtime: IAgentRuntime,
   relationshipsService: RelationshipsServiceLike,
@@ -986,7 +999,7 @@ async function collectWorkspaceEntityIds(
   }
 
   if (rooms.length > 0) {
-    const roomEntities = await Promise.all(
+    const roomEntities = await awaitGraphReads(
       rooms.map((room) => runtime.getEntitiesForRoom(room.id)),
     );
     for (const entities of roomEntities) {
@@ -1160,7 +1173,7 @@ async function countFacts(
   entityIds: UUID[],
 ): Promise<Map<UUID, number>> {
   const counts = new Map<UUID, number>();
-  await Promise.all(
+  await awaitGraphReads(
     entityIds.map(async (entityId) => {
       const facts = await runtime.getMemories({
         tableName: "facts",
@@ -1462,7 +1475,7 @@ async function buildConversationEdgeMap(
 
   for (let index = 0; index < rooms.length; index += batchSize) {
     const roomBatch = rooms.slice(index, index + batchSize);
-    await Promise.all(
+    await awaitGraphReads(
       roomBatch.map(async (room) => {
         const messages = await runtime.getMemories({
           tableName: "messages",
@@ -2169,9 +2182,9 @@ async function buildGraphModel(
   const configuredOwnerName = await resolvers.fetchConfiguredOwnerName();
   const entityContexts = new Map<UUID, EntityContext>();
 
-  await Promise.all(
+  await awaitGraphReads(
     entityIds.map(async (entityId) => {
-      const [entity, contact] = await Promise.all([
+      const [entity, contact] = await awaitGraphReads([
         runtime.getEntityById(entityId),
         typeof relationshipsService.getContact === "function"
           ? relationshipsService.getContact(entityId)

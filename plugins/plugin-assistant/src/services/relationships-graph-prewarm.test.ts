@@ -183,3 +183,66 @@ test("shutdown observes a failed prewarm and waits for other owned builds", asyn
     context: { failedBuilds: 1 },
   });
 });
+
+test.each(["entity", "contact"])(
+  "shutdown waits for sibling %s reads after an entity read fails",
+  async (siblingKind) => {
+    const firstId = "22222222-2222-4222-8222-222222222222";
+    const secondId = "33333333-3333-4333-8333-333333333333";
+    let rejectFirst!: (error: Error) => void;
+    let releaseSibling!: () => void;
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const first = new Promise<null>((_resolve, reject) => {
+      rejectFirst = reject;
+    });
+    const sibling = new Promise<null>((resolve) => {
+      releaseSibling = () => resolve(null);
+    });
+    const runtime = mockRuntime({ onWorlds: () => {} });
+    runtime.getEntityById = (id) => {
+      if (id === firstId) return first;
+      markStarted();
+      return sibling;
+    };
+    const graph = createNativeRelationshipsGraphService(runtime, {
+      async searchContacts() {
+        return (siblingKind === "entity" ? [firstId, secondId] : [firstId]).map(
+          (entityId) => ({ entityId }),
+        );
+      },
+      getContact() {
+        if (siblingKind === "contact") {
+          markStarted();
+          return sibling;
+        }
+        return Promise.resolve(null);
+      },
+    });
+    graph.prewarmGraphModel();
+    await started;
+    let settled = false;
+    const stopping = drainRelationshipsGraphBuilds(runtime).then(
+      () => {
+        settled = true;
+        return null;
+      },
+      (error: Error) => {
+        settled = true;
+        return error;
+      },
+    );
+    rejectFirst(new Error("entity read failed"));
+    await sleep(0);
+    expect(settled).toBe(false);
+    releaseSibling();
+    expect(await stopping).toMatchObject({
+      code: "RELATIONSHIPS_GRAPH_SHUTDOWN_FAILED",
+      cause: expect.objectContaining({
+        errors: [new Error("entity read failed")],
+      }),
+    });
+  },
+);
