@@ -35,3 +35,14 @@ Call shape: greetings, navigation, recall, and this history-grounded conflict cl
 - Final checkpoint root verification passed. Source-ledger semantic review and newer remote-source confirmation remain open.
 
 No production deployment or voice testing. QA records remain local; this document publishes only synthetic scenarios and aggregate results.
+
+## Follow-up checkpoint
+
+Two targeted live rechecks exercised `dc97d77cc5f` without the earlier heavy jobs:
+
+- Notes edit: 3.352 seconds, three calls, 23,836 input tokens. Final stored text was correct, but the initial acknowledgment still claimed completion prematurely. The ineffective reply-classification wording change was subsequently reverted.
+- Calendar proposals: 3.002 seconds, three calls, 28,210 input tokens. Three valid Tuesday slots were offered and no event was moved. The added slot-evidence context prevented the earlier invented 8:30 boundary in this run; broad availability language still needs scrutiny.
+
+A separate concrete contradiction was then removed: the shared prompt said only asynchronous work could acknowledge early, despite the synchronous planning acknowledgment path. This short deletion passed the 20 prompt-package checks but has not yet been live-verified. No additional routing step was introduced.
+
+Latest reviewed develop addition `ec23d0f670c` only consolidates A2A tests and makes empty test selections fail. Its 19 tests passed, and an intentionally nonexistent selection correctly exited 1. It was merged at `cc375c20141`. Final revision verification and remaining acceptance items are still open.

@@ -4,11 +4,12 @@
 
 Latest real-text results and open findings: [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md).
 The integration checkpoint and rollback tag are published at `a42679bf08f`.
-Final checkpoint root verification passed. Nine live text turns verified core
+Root verification passed at the earlier integration checkpoint; verification of the latest revision remains open. Nine live text turns verified core
 flows but exposed acknowledgment wording and availability-grounding issues;
 these remain open. Existing source demos are unchanged.
 
 This branch combines develop `ba04de0e2c1f3e498bd881864fd104e734501142`
+and reviewed develop test-maintenance commit `ec23d0f670c`
 with the saved text candidate `a15525f30fb30b2060331fec2257ebda98911cb6`.
 Both source branches and existing demo instances are preserved.
 The reviewed remote checkpoint `89a476f3d750feb40d7f1aeac99ce2219479d8fd`
@@ -28,8 +29,7 @@ an exact source location and review.
 
 ## Checks observed
 
-- Root `bun run verify`: passed before the final schema/test reconciliation;
-  final changed files also pass Biome. Final revision verification remains below.
+- Root `bun run verify`: passed at the earlier integration checkpoint. Latest-revision verification remains open.
 - Full core run: 13,661 passed, two failed, three skipped. Both failures were
   investigated: restored the candidate's direct-conversation schema projection;
   moved the receipt-recovery fixture to final delivery because intermediate prose
@@ -41,7 +41,10 @@ an exact source location and review.
 - Provider wire: eight passed; scheduling: 83 passed; browser: 25 passed.
 - Scenario unit tests: 17 passed. Deterministic Notes create/read/edit/delete
   scenario passed against real local storage; this is not live-model evidence.
-- All-view app visual capture/OCR audit: running at checkpoint creation.
+- All-view capture: 229 passed, one failed with an HTTP 424 bundle diagnostic;
+  focused LifeOps rerun passed all four viewports. Full visual acceptance remains open.
+- Follow-up checks: 443 core, 60 personal-assistant Calendar, 57 agent recall,
+  20 prompt-package, and 19 upstream A2A tests passed in their scoped runs.
 
 ## Acceptance checklist
 
@@ -56,7 +59,8 @@ an exact source location and review.
 - [ ] Confirm whether newer remote work exists beyond the reviewed checkpoint.
 - [ ] Record final acceptance results and rollback instructions.
 
-No new paid model calls have been used by this consolidation at this checkpoint.
+Eleven live text turns have been recorded so far; the QA document distinguishes
+which revision each run exercised. Latest acknowledgment change awaits live verification.
 The full dependency install hit a native prerequisite: Metal compilation requires
 the installed Xcode license/toolchain to be ready. Root verification succeeds;
 native build acceptance is not claimed. No voice testing, develop merge, deployment,
