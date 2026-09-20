@@ -88,3 +88,10 @@ local event's current title and dates. Missing local events remain visible with
 `event: null`; database failures remain errors. The ordinary list response stays
 unchanged. Family Operations uses this view for recognizable event headings and
 keeps provider identifiers in expandable connection details.
+
+
+Conversational moves preserve the date resolved by request-grounded extraction.
+The stored event weekday does not authorize shifting that date back a week,
+even when the request names the same weekday. Missing timing still pauses for
+clarification; omitted duration retains the event duration, and the canonical
+availability check runs against the actual proposed interval before writing.

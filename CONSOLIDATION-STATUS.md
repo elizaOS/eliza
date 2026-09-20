@@ -64,7 +64,8 @@ application/tool/transport work not separately attributed here.
 ## Remaining acceptance checklist
 
 - [ ] Close Calendar handler disposition and remaining recurrence/availability
-  wording coverage. Local Calendar recurrence is unsupported. Correct failure
+  wording coverage. Date-rewrite removal passes Calendar1,092 tests and29
+  real-PGlite tests; root verification and runtime restart remain pending. Local Calendar recurrence is unsupported. Correct failure
   explanation was observed, but one recovered run still took five calls.
 - [x] Verify PERSONALITY directive removal through the live model path. The
   temporary greenhouse rule was removed on4283ed4fd1e in three calls with a

@@ -2365,93 +2365,6 @@ function parseDateTimeInZone(value: string, timeZone: string): Date | null {
  * `timeZone` otherwise. Every other combination passes through unchanged and
  * the service keeps validating end-after-start.
  */
-const WEEKDAY_NAMES = [
-  "sunday",
-  "monday",
-  "tuesday",
-  "wednesday",
-  "thursday",
-  "friday",
-  "saturday",
-] as const;
-
-const WEEKDAY_MENTION_PATTERNS: Record<(typeof WEEKDAY_NAMES)[number], RegExp> =
-  {
-    sunday: /\bsun(?:day)?\b/i,
-    monday: /\bmon(?:day)?\b/i,
-    tuesday: /\btue(?:s|sday)?\b/i,
-    wednesday: /\bwed(?:s|nesday)?\b/i,
-    thursday: /\bthu(?:r|rs|rsday)?\b/i,
-    friday: /\bfri(?:day)?\b/i,
-    saturday: /\bsat(?:urday)?\b/i,
-  };
-
-const EXPLICIT_DATE_OR_NEXT_WEEK_PATTERN =
-  /\b(?:next|following)\b|\bweek from\b|\bthe (?:\w+ )?after\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b|\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2}/i;
-
-function localDateInZone(date: Date, timeZone: string): string {
-  return formatLocalDateTimeInZone(date, timeZone).slice(0, 10);
-}
-
-function shiftLocalDays(local: string, days: number): string {
-  const [datePart, timePart] = local.split("T");
-  const [y, m, d] = datePart.split("-").map(Number);
-  const shifted = new Date(Date.UTC(y, m - 1, d + days));
-  return `${shifted.toISOString().slice(0, 10)}T${timePart ?? "00:00:00"}`;
-}
-
-/**
- * "move my vet appointment to friday at 4pm", asked late on that same Friday,
- * arrives from the planner with next Friday's date (live 2026-09-11 22:15 ET):
- * the model reasons that today's 4pm is over. The user named the weekday the
- * event already sits on, so the move keeps the event's own day while that day
- * has not ended; "next friday", a month, or a numeric date is left as sent,
- * and once the event's day is over the following week is the honest reading.
- */
-export function snapWeekdayMoveToTargetDay(args: {
-  requestText: string;
-  startAt: string;
-  endAt?: string;
-  target: { startAt: string };
-  timeZone: string;
-  now: Date;
-}): { startAt: string; endAt?: string } {
-  const text = args.requestText.toLowerCase();
-  if (EXPLICIT_DATE_OR_NEXT_WEEK_PATTERN.test(text)) return args;
-  const targetStart = new Date(args.target.startAt);
-  if (Number.isNaN(targetStart.getTime())) return args;
-  const weekday = new Intl.DateTimeFormat("en-US", {
-    timeZone: args.timeZone,
-    weekday: "long",
-  })
-    .format(targetStart)
-    .toLowerCase();
-  const weekdayName = WEEKDAY_NAMES.find((name) => name === weekday);
-  if (!weekdayName) return args;
-  if (!WEEKDAY_MENTION_PATTERNS[weekdayName].test(text)) return args;
-  const targetDay = localDateInZone(targetStart, args.timeZone);
-  if (targetDay < localDateInZone(args.now, args.timeZone)) return args;
-  const start = parseDateTimeInZone(args.startAt, args.timeZone);
-  if (!start) return args;
-  const startLocal = formatLocalDateTimeInZone(start, args.timeZone);
-  if (shiftLocalDays(startLocal, -7).slice(0, 10) !== targetDay) return args;
-  const absolute = OFFSET_OR_UTC_SUFFIX_PATTERN.test(args.startAt.trim());
-  const respell = (value: string): string | undefined => {
-    const parsed = parseDateTimeInZone(value, args.timeZone);
-    if (!parsed) return undefined;
-    const local = shiftLocalDays(
-      formatLocalDateTimeInZone(parsed, args.timeZone),
-      -7,
-    );
-    if (!absolute) return local;
-    return parseDateTimeInZone(local, args.timeZone)?.toISOString();
-  };
-  const startAt = respell(args.startAt);
-  if (!startAt) return args;
-  const endAt = args.endAt ? respell(args.endAt) : undefined;
-  return { startAt, ...(args.endAt ? { endAt: endAt ?? args.endAt } : {}) };
-}
-
 export function resolveUpdateTimeRange(args: {
   explicitStart?: string;
   explicitEnd?: string;
@@ -2462,7 +2375,7 @@ export function resolveUpdateTimeRange(args: {
   requestText?: string;
   now?: Date;
 }): { startAt?: string; endAt?: string } {
-  let startAt = args.explicitStart ?? args.extractedStart;
+  const startAt = args.explicitStart ?? args.extractedStart;
   // An end pairs only with the start it was produced beside: the planner's
   // new start next to the extractor's old end put the start after the end
   // (live 2026-09-14, CALENDAR_EVENT_RANGE_INVALID on a plain move). With no
@@ -2481,18 +2394,6 @@ export function resolveUpdateTimeRange(args: {
     !requestStatesEndOrDuration(args.requestText)
   ) {
     endAt = undefined;
-  }
-  if (startAt && args.requestText && args.timeZone?.trim()) {
-    const snapped = snapWeekdayMoveToTargetDay({
-      requestText: args.requestText,
-      startAt,
-      endAt,
-      target: args.target,
-      timeZone: args.timeZone.trim(),
-      now: args.now ?? new Date(),
-    });
-    startAt = snapped.startAt;
-    endAt = snapped.endAt ?? endAt;
   }
   if (
     startAt &&

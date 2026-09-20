@@ -523,3 +523,28 @@ retested; both add/remove action-to-evaluator tests pass.
 
 API restarted atPID62532 on4283ed4fd1e, UI5268/API31392,35 plugins and95 services,
 zero failures and deferred boot settled. Original demos were untouched.
+
+
+## Calendar resolved-date preservation
+
+Source audit found `snapWeekdayMoveToTargetDay` rewrote an extracted next-week
+move onto the stored event's weekday, even after the proposed clock time had
+already passed that day. The handler had no later update-time guard reversing
+that rewrite. A real-handler boundary regression failed before removal: a
+resolved September25 move reached the write as September18.
+
+Removed the weekday rewrite and its unused helpers, retaining extraction,
+stored-duration calculation, explicit-range rejection and write-time conflict
+checks. No prompt expansion, new model call, or user-specific rule. The removed
+export had only internal/test callers in the repository; deep consumers of
+that helper must migrate to the existing range resolver.
+
+Calendar suite:1,092 passed/four skipped before the additional persistence
+case; the expanded real-PGlite suite then passed29 tests. It persists the
+extracted date and unchanged duration even when planner timestamps disagree.
+The handler test uses a service fixture; the PGlite test uses real storage and
+service with controlled model output. These prove execution fidelity, not
+universal natural-language date interpretation. Typecheck, lint and declaration
+build passed; root verification is tracked in `calendar-weekday-verify.log`.
+All evidence logs use the `runtime/calendar-weekday-` prefix. No paid model
+calls were added. The running app still uses4283ed4fd1e until restart.

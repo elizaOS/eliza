@@ -679,87 +679,98 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     expect(noted?.verifiedUserFacing).toBeUndefined();
   });
 
-  it("stamps a plain move as verified even when the planner fills every optional key", async () => {
-    // With the complete planner surface a small planner sends end, date,
-    // durationMinutes, notifyAttendees, allowPast, includeHiddenCalendars and
-    // recurrence "none" on a plain move (live 2026-09-15); none of them is an
-    // unshown detail, so the receipt sentence stays self-verified.
-    // The target is a 30-minute event; the planner's end (17:00) beside its
-    // start (16:00) is not the user's range, so the move keeps 30 minutes.
-    await service.createCalendarEventMutation(INTERNAL_URL, {
-      title: "Notary appointment",
-      startAt: "2026-09-18T19:00:00.000Z",
-      endAt: "2026-09-18T19:30:00.000Z",
-      timeZone: "America/New_York",
-      idempotencyKey: "notary-gate-180",
-    });
-    const action = createCalendarActionRunner({
-      runTextModel: vi.fn(async () => null),
-      // The re-extraction answers with empty strings for the fields the user
-      // never mentioned; an empty string is an omission, not a clear.
-      runJsonModel: vi.fn(async ({ actionType }) =>
-        actionType === "lifeops.calendar.extract_update_event"
-          ? {
-              rawResponse: JSON.stringify({
-                startAt: "2026-09-18T16:00:00",
-                location: "",
-                description: "",
-                recurrenceScope: null,
-              }),
-              parsed: {
-                startAt: "2026-09-18T16:00:00",
-                location: "",
-                description: "",
-                recurrenceScope: null,
-              },
-            }
-          : null,
-      ),
-      recentConversationTexts: vi.fn(async () => []),
-    });
-    const result = await action.handler(
-      runtime,
-      {
-        id: "00000000-0000-0000-0000-000000000201",
-        entityId: "00000000-0000-0000-0000-000000000102",
-        roomId: "00000000-0000-0000-0000-000000000103",
-        createdAt: Date.parse("2026-09-15T22:00:00.000Z"),
-        content: { text: "move my notary appointment to friday at 4pm" },
-      } as Memory,
-      undefined,
-      {
-        parameters: {
-          subaction: "update_event",
-          query: "notary appointment",
-          details: {
-            grantId: ELIZA_CALENDAR_GRANT_ID,
-            calendarId: ELIZA_CALENDAR_ID,
-            timeZone: "America/New_York",
-            start: "2026-09-18T16:00:00",
-            end: "2026-09-18T17:00:00",
-            date: "2026-09-18",
-            durationMinutes: 60,
-            notifyAttendees: true,
-            allowPast: true,
-            includeHiddenCalendars: true,
-            recurrence: "none",
+  it.each([
+    { day: "2026-09-18", observedAt: "2026-09-15T22:00:00.000Z" },
+    { day: "2026-09-25", observedAt: "2026-09-19T02:15:00.000Z" },
+  ])(
+    "persists the extracted move date and duration for %j",
+    async ({ day, observedAt }) => {
+      // Planner timing conflicts with extraction in the second case. Persist
+      // the extracted date and the stored 30-minute duration, including when
+      // that weekday's earlier occurrence has already passed.
+      await service.createCalendarEventMutation(INTERNAL_URL, {
+        title: "Notary appointment",
+        startAt: "2026-09-18T19:00:00.000Z",
+        endAt: "2026-09-18T19:30:00.000Z",
+        timeZone: "America/New_York",
+        idempotencyKey: "notary-gate-180",
+      });
+      const action = createCalendarActionRunner({
+        runTextModel: vi.fn(async () => null),
+        // The re-extraction answers with empty strings for the fields the user
+        // never mentioned; an empty string is an omission, not a clear.
+        runJsonModel: vi.fn(async ({ actionType }) =>
+          actionType === "lifeops.calendar.extract_update_event"
+            ? {
+                rawResponse: JSON.stringify({
+                  startAt: `${day}T16:00:00`,
+                  location: "",
+                  description: "",
+                  recurrenceScope: null,
+                }),
+                parsed: {
+                  startAt: `${day}T16:00:00`,
+                  location: "",
+                  description: "",
+                  recurrenceScope: null,
+                },
+              }
+            : null,
+        ),
+        recentConversationTexts: vi.fn(async () => []),
+      });
+      const result = await action.handler(
+        runtime,
+        {
+          id: "00000000-0000-0000-0000-000000000201",
+          entityId: "00000000-0000-0000-0000-000000000102",
+          roomId: "00000000-0000-0000-0000-000000000103",
+          createdAt: Date.parse(observedAt),
+          content: { text: "move my notary appointment to friday at 4pm" },
+        } as Memory,
+        undefined,
+        {
+          parameters: {
+            subaction: "update_event",
+            query: "notary appointment",
+            details: {
+              grantId: ELIZA_CALENDAR_GRANT_ID,
+              calendarId: ELIZA_CALENDAR_ID,
+              timeZone: "America/New_York",
+              start: "2026-09-18T16:00:00",
+              end: "2026-09-18T17:00:00",
+              date: "2026-09-18",
+              durationMinutes: 60,
+              notifyAttendees: true,
+              allowPast: true,
+              includeHiddenCalendars: true,
+              recurrence: "none",
+            },
           },
         },
-      },
-    );
-    expect(result?.success, JSON.stringify(result)).toBe(true);
-    expect(result?.modelReplyRequired, JSON.stringify(result)).toBe(true);
-    expect((result?.data?.replyContext as { facts: string })?.facts).toBe(
-      "Moved “Notary appointment” to Friday, Sep 18 at 4pm EDT.",
-    );
-    const moved = (
-      result?.data as { event?: { startAt: string; endAt: string } }
-    )?.event;
-    expect(moved).toMatchObject({
-      startAt: "2026-09-18T20:00:00.000Z",
-      endAt: "2026-09-18T20:30:00.000Z",
-    });
-  });
+      );
+      expect(result?.success, JSON.stringify(result)).toBe(true);
+      expect(result?.modelReplyRequired, JSON.stringify(result)).toBe(true);
+      expect((result?.data?.replyContext as { facts: string })?.facts).toBe(
+        day === "2026-09-18"
+          ? "Moved “Notary appointment” to Friday, Sep 18 at 4pm EDT."
+          : "Updated “Notary appointment” for Sep 25, 4:00 PM EDT.",
+      );
+      const moved = (
+        result?.data as { event?: { startAt: string; endAt: string } }
+      )?.event;
+      expect(moved).toMatchObject({
+        startAt: `${day}T20:00:00.000Z`,
+        endAt: `${day}T20:30:00.000Z`,
+      });
+      const persisted = await service.getCalendarFeed(INTERNAL_URL, {
+        timeMin: `${day}T00:00:00Z`,
+        timeMax: `${day}T23:59:59Z`,
+      });
+      expect(persisted.events).toHaveLength(1);
+      expect(persisted.events[0]).toMatchObject(moved!);
+    },
+  );
 
   it("moves a source-scoped target when only the destination is stated in the follow-up", async () => {
     const created = await service.createCalendarEventMutation(

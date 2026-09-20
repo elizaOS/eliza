@@ -226,6 +226,7 @@ describe("calendar conversational update boundary", () => {
     identifyTarget = true,
     plannerFields: Record<string, unknown> = {},
     targetSelector?: { query?: string; eventId?: string },
+    request?: { text: string; createdAt: number },
   ) {
     const { service, runtime } = fixture(
       targetSelector?.query ? [{ ...busy, metadata: { etag: '"1"' } }] : [],
@@ -257,11 +258,13 @@ describe("calendar conversational update boundary", () => {
         id: "00000000-0000-4000-8000-000000000aab",
         entityId: "00000000-0000-4000-8000-000000000aac",
         roomId: "00000000-0000-4000-8000-000000000aad",
-        createdAt: Date.now(),
+        createdAt: request?.createdAt ?? Date.now(),
         content: {
-          text: identifyTarget
-            ? "Move that appointment to 5 PM, keeping its duration."
-            : "Use the first one, 9:00 AM.",
+          text:
+            request?.text ??
+            (identifyTarget
+              ? "Move that appointment to 5 PM, keeping its duration."
+              : "Use the first one, 9:00 AM."),
           metadata: { uiTimeZone: "America/New_York" },
         },
       } as Memory,
@@ -287,6 +290,29 @@ describe("calendar conversational update boundary", () => {
     );
     return { result, service, updateCalendarEvent };
   }
+  it("does not rewrite a resolved future Saturday to an already-passed Saturday", async () => {
+    const { result, service, updateCalendarEvent } = await update(
+      { startAt: "2027-09-25T17:00:00" },
+      true,
+      {},
+      undefined,
+      {
+        text: "Move that appointment to Saturday at 5 PM.",
+        createdAt: Date.parse("2027-09-19T02:15:00Z"),
+      },
+    );
+    expect(result.success).toBe(true);
+    expect(updateCalendarEvent).toHaveBeenCalledOnce();
+    expect(updateCalendarEvent.mock.calls[0][1]).toMatchObject({
+      startAt: "2027-09-25T17:00:00",
+      endAt: "2027-09-25T17:30:00",
+    });
+    expect(service.getCalendarFeed).toHaveBeenLastCalledWith(expect.any(URL), {
+      side: "owner",
+      timeMin: "2027-09-25T21:00:00.000Z",
+      timeMax: "2027-09-25T21:30:00.000Z",
+    });
+  });
   it.each([{ eventId: "busy" }, { query: "Existing appointment" }])(
     "resolves a promoted typed target %j",
     async (target) => {
