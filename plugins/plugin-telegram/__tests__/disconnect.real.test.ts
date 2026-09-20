@@ -14,7 +14,7 @@ import { ConnectorSetupService } from "../../../packages/agent/src/services/conn
 import { createCharacter } from "../../../packages/core/src/character.ts";
 import { AgentRuntime } from "../../../packages/core/src/runtime.ts";
 import type { UUID } from "../../../packages/core/src/types/index.ts";
-import { InMemoryDatabaseAdapter } from "../../plugin-inmemorydb/adapter.ts";
+import { createDatabaseAdapter } from "../../plugin-inmemorydb/index.ts";
 import { getTelegramPollerClaim } from "../src/poller-lock.ts";
 import { TelegramService } from "../src/service.ts";
 import { telegramSetupRoutes } from "../src/setup-routes.ts";
@@ -113,7 +113,7 @@ it("removes an unstarted saved bot but fences a real pending service before allo
     const agentId = randomUUID() as UUID;
     runtime = new AgentRuntime({
       agentId,
-      adapter: new InMemoryDatabaseAdapter(agentId),
+      adapter: createDatabaseAdapter(agentId),
       enableAutonomy: false,
       logLevel: "fatal",
       character: createCharacter({
