@@ -114,7 +114,6 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/lib/capacitor-plugin-names.mjs",
   "scripts/lib/desktop-cloud-target.mjs",
   "scripts/lib/desktop-preflight.mjs",
-  "scripts/lib/desktop-runtime-package-policy.mjs",
   "scripts/lib/desktop-stack-status.mjs",
   "scripts/lib/desktop-startup-embedding-warmup-policy.mjs",
   "scripts/lib/dev-api-health.mjs",

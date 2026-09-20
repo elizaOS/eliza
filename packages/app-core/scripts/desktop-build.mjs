@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveElectrobunDir, resolveMainAppDir } from "./lib/app-dir.mjs";
-import { artifactStaleness, maxMtimeUnder } from "./lib/artifact-staleness.mjs";
+import { artifactStaleness } from "./lib/artifact-staleness.mjs";
 import {
   applyDesktopCloudTarget,
   resolveDesktopCloudTarget,
@@ -23,7 +23,6 @@ import {
   hasElectrobunViewExport,
   isSupportedBunVersion,
 } from "./lib/desktop-preflight.mjs";
-import { canReuseDesktopRuntimePackage } from "./lib/desktop-runtime-package-policy.mjs";
 import { hardenElectrobunRpcSockets } from "./lib/electrobun-loopback-hardening.mjs";
 import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
 import {
@@ -210,25 +209,13 @@ function resolveWorkspacePluginDir(pluginDirName) {
   );
 }
 
-const APP_CORE_PACKAGE_DIR = resolveWorkspacePackageDir("app-core");
-const AGENT_PACKAGE_DIR = resolveWorkspacePackageDir("agent");
-const CLOUD_SDK_PACKAGE_DIR = resolveWorkspacePackageDir(
-  path.join("cloud", "sdk"),
-);
 const CORE_PACKAGE_DIR = resolveWorkspacePackageDir("core");
-const PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR = resolveWorkspacePluginDir(
-  "plugin-agent-orchestrator",
-);
 const PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-local-inference",
 );
 const PLUGIN_NATIVE_ACTIVITY_TRACKER_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-native-activity-tracker",
 );
-const PLUGIN_SQL_PACKAGE_DIR = resolveWorkspacePluginDir("plugin-sql");
-const SHARED_PACKAGE_DIR = resolveWorkspacePackageDir("shared");
-const UI_PACKAGE_DIR = resolveWorkspacePackageDir("ui");
-const CREDENTIALS_PACKAGE_DIR = resolveWorkspacePackageDir("credentials");
 const DESKTOP_BUILD_TMP_DIR = path.join(ELECTROBUN_DIR, "tmp");
 const DESKTOP_BUILD_BUN_CACHE_DIR = path.join(
   DESKTOP_BUILD_TMP_DIR,
@@ -966,101 +953,24 @@ function ensureWorkspaceCheckoutPresent() {
   );
 }
 
-function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
-  const packageJson = path.join(packageDir, "package.json");
-  if (!fs.existsSync(packageJson)) {
-    fail(`Expected ${packageName} package not found: ${packageDir}`);
-  }
-
-  if (
-    canReuseDesktopRuntimePackage({
-      packageName,
-      forceRebuild: process.env.ELIZA_DESKTOP_REBUILD_RUNTIME_PACKAGES === "1",
-      looksBuilt: workspaceRuntimePackageLooksBuilt(packageName, packageDir),
-    })
-  ) {
-    console.log(
-      `[desktop-build] Reusing existing ${packageName} runtime package`,
-    );
-    return;
-  }
-
-  runBun(["run", "build"], {
-    cwd: packageDir,
-    label: `Building ${packageName} runtime package`,
-  });
-}
-
-function workspaceRuntimePackageMarkersPresent(packageName, distDir) {
-  if (packageName === "@elizaos/core") {
-    return (
-      fs.existsSync(path.join(distDir, "index.js")) &&
-      fs.existsSync(path.join(distDir, "index.d.ts"))
-    );
-  }
-
-  if (packageName === "@elizaos/ui") {
-    return (
-      fs.existsSync(path.join(distDir, "index.js")) &&
-      fs.existsSync(path.join(distDir, "App.js")) &&
-      fs.existsSync(path.join(distDir, "components", "pages", "LogsView.js"))
-    );
-  }
-
-  return true;
-}
-
-function workspaceRuntimePackageLooksBuilt(packageName, packageDir) {
-  const distDir = path.join(packageDir, "dist");
-  if (!fs.existsSync(distDir)) return false;
-  if (!workspaceRuntimePackageMarkersPresent(packageName, distDir))
-    return false;
-
-  // Presence of the marker files isn't enough — a dist built from older sources
-  // would silently reuse stale runtime code (issue #9309). Reuse only when the
-  // dist is at least as new as the package's src. ELIZA_DESKTOP_TRUST_RUNTIME_-
-  // PACKAGE_DIST=1 bypasses the mtime check for environments where checkout
-  // mtimes are unreliable.
-  if (process.env.ELIZA_DESKTOP_TRUST_RUNTIME_PACKAGE_DIST === "1") return true;
-  const srcDir = path.join(packageDir, "src");
-  if (!fs.existsSync(srcDir)) return true;
-  const srcMtime = maxMtimeUnder(srcDir);
-  const distMtime = maxMtimeUnder(distDir);
-  if (srcMtime > distMtime) {
-    console.log(
-      `[desktop-build] ${packageName} dist is stale (src newer than dist) — rebuilding`,
-    );
-    return false;
-  }
-  return true;
-}
-
 function ensureWorkspaceRuntimePackagesBuilt() {
-  ensureWorkspaceRuntimePackageBuilt("@elizaos/core", CORE_PACKAGE_DIR);
-  ensureWorkspaceRuntimePackageBuilt("@elizaos/shared", SHARED_PACKAGE_DIR);
-  ensureWorkspaceRuntimePackageBuilt(
-    "@elizaos/cloud-sdk",
-    CLOUD_SDK_PACKAGE_DIR,
+  const workspaceRoot = path.resolve(CORE_PACKAGE_DIR, "../..");
+  // Packaging must not inherit fresh-looking but incomplete server dist.
+  // Turbo owns dependency order; --force preserves source-built authorities.
+  runBun(
+    [
+      path.join(workspaceRoot, "packages", "scripts", "run-turbo.mjs"),
+      "run",
+      "build",
+      "--filter=@elizaos/app-core...",
+      "--force",
+      "--concurrency=8",
+    ],
+    {
+      cwd: workspaceRoot,
+      label: "Building the desktop runtime dependency graph",
+    },
   );
-  ensureWorkspaceRuntimePackageBuilt(
-    "@elizaos/credentials",
-    CREDENTIALS_PACKAGE_DIR,
-  );
-  ensureWorkspaceRuntimePackageBuilt(
-    "@elizaos/plugin-agent-orchestrator",
-    PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR,
-  );
-  ensureWorkspaceRuntimePackageBuilt("@elizaos/ui", UI_PACKAGE_DIR);
-  ensureWorkspaceRuntimePackageBuilt(
-    "@elizaos/plugin-local-inference",
-    PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR,
-  );
-  ensureWorkspaceRuntimePackageBuilt(
-    "@elizaos/plugin-sql",
-    PLUGIN_SQL_PACKAGE_DIR,
-  );
-  ensureWorkspaceRuntimePackageBuilt("@elizaos/agent", AGENT_PACKAGE_DIR);
-  ensureWorkspaceRuntimePackageBuilt("@elizaos/app-core", APP_CORE_PACKAGE_DIR);
 }
 
 function shouldStageNativeActivityTracker() {
