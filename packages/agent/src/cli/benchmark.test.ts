@@ -93,7 +93,9 @@ describe("runBenchmarkTask", () => {
 
     expect(receivedSignal).toBe(controller.signal);
     expect(receivedCodingMode).toBeUndefined();
-    expect(receivedText).toBe("Explain the result");
+    expect(receivedText).toBe(
+      'Explain the result\n\nTask context (JSON):\n{"fixture":"ground truth"}',
+    );
     expect(receivedBenchmarkContext).toBe('{"fixture":"ground truth"}');
     expect(result).toMatchObject({
       id: "complete",

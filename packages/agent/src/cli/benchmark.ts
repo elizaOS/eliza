@@ -106,21 +106,25 @@ export async function runBenchmarkTask(
     });
     abortSignal.throwIfAborted();
 
+    const context = task.context ? JSON.stringify(task.context) : undefined;
     const message = createMessageMemory({
       id: crypto.randomUUID() as UUID,
       entityId: userId,
       roomId,
       content: {
-        text: task.prompt,
+        text:
+          context === undefined
+            ? task.prompt
+            : `${task.prompt}\n\nTask context (JSON):\n${context}`,
         source: "benchmark",
         channelType: ChannelType.DM,
       },
     });
-    if (task.context) {
+    if (context !== undefined) {
       if (message.metadata?.type !== "message") {
         throw new Error("Benchmark message is missing message metadata");
       }
-      message.metadata.benchmarkContext = JSON.stringify(task.context);
+      message.metadata.benchmarkContext = context;
     }
 
     if (!runtime.messageService) {
