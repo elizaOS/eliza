@@ -1153,7 +1153,10 @@ export function stringToUuid(target: string | number): UUID {
 	const maybeUuid = validateUuid(target);
 	if (maybeUuid) return maybeUuid;
 
-	const escapedStr = encodeURIComponent(target);
+	// encodeURIComponent throws URIError on a lone surrogate; a string that was
+	// cut mid code point must still hash to a deterministic id, so it is made
+	// well-formed (lone units become U+FFFD) before escaping.
+	const escapedStr = encodeURIComponent(toWellFormedUnicode(target));
 
 	// Deterministic UUID derived from SHA-1(escapedStr)
 	// Use WebCrypto if available (sync via cache), otherwise pure JS

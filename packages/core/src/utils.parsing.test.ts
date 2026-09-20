@@ -33,6 +33,17 @@ describe("stringToUuid", () => {
 		expect(stringToUuid(u)).toBe(u);
 		expect(stringToUuid(42)).toMatch(UUID_RE);
 	});
+
+	it("derives a deterministic id from a string holding a lone surrogate (#31950)", () => {
+		// A string cut mid code point must hash, not throw URIError from
+		// encodeURIComponent; it maps to the same id as its U+FFFD spelling.
+		const lone = `lone ${String.fromCharCode(0xd83d)} tail`;
+		const id = stringToUuid(lone);
+		expect(id).toMatch(UUID_RE);
+		expect(stringToUuid(lone)).toBe(id);
+		expect(stringToUuid("lone \uFFFD tail")).toBe(id);
+		expect(stringToUuid("ok \u{1F600}")).toMatch(UUID_RE);
+	});
 });
 
 describe("validateUuid", () => {
