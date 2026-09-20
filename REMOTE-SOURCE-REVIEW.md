@@ -169,3 +169,18 @@ in the Stage-1 suite. These are not yet imported or claimed covered.
 
 43 supporting paths remain unreviewed. No runtime changes or paid tests were
 made during this documentation/test reconciliation batch.
+
+## Remaining core test reconciliation
+
+109 of127 paths now have dispositions. This batch inspected25 core test deltas.
+Keep tests for multilingual STOP, conflicting native decisions, clipboard host
+capabilities, exact history-source chronology/reassembly, complete named schemas,
+and bounded account-error handling. Do not replace them with tests requiring
+result/history truncation, blanket provider exclusions or missing action aliases.
+Comment-only incident additions and fixture-only changes add no behavior.
+
+Coverage comparison still needs the independent context-routing metadata,
+experience exact-byte preservation, native/fallback schema parity and shared
+block dedup cases, alongside the discovery cases noted above. They are not
+implicitly accepted just because the associated optimization sounds useful.
+18 UI/plugin/report paths remain unreviewed. No paid calls or runtime edits.
