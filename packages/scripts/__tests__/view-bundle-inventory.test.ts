@@ -67,7 +67,7 @@ describe("dynamic-view build inventory", () => {
     const root = makeRoot();
     const workspace = addWorkspace(root, "packages/nested/viewer", {
       config: "vite.config.views.mts",
-      buildScript: "bunx --bun vite build --config vite.config.views.mts",
+      buildScript: "vite build --config vite.config.views.mts",
     });
 
     const inventory = discoverViewBundleInventory({
@@ -132,11 +132,11 @@ describe("dynamic-view build inventory", () => {
     const root = makeRoot();
     const first = addWorkspace(root, "plugins/alpha/plugin-view", {
       config: "vite.config.views.ts",
-      buildScript: "bunx --bun vite build --config vite.config.views.ts",
+      buildScript: "vite build --config vite.config.views.ts",
     });
     const second = addWorkspace(root, "packages/beta/plugin-view", {
       config: "vite.config.views.ts",
-      buildScript: "bunx --bun vite build --config vite.config.views.ts",
+      buildScript: "vite build --config vite.config.views.ts",
     });
     expect(() =>
       discoverViewBundleInventory({
@@ -165,7 +165,7 @@ describe("dynamic-view build inventory", () => {
 
     const wrongScript = addWorkspace(root, "plugins/wrong-script", {
       config: "vite.config.views.ts",
-      buildScript: "bunx --bun vite build --config other.config.ts",
+      buildScript: "vite build --config other.config.ts",
     });
     expect(() =>
       discoverViewBundleInventory({
@@ -175,9 +175,9 @@ describe("dynamic-view build inventory", () => {
       }),
     ).toThrow(/build:views must be exactly/);
     for (const buildScript of [
-      "echo bunx --bun vite build --config vite.config.views.ts",
-      "bunx --bun vite build --config vite.config.views.ts && true",
-      "bunx --bun vite build --config vite.config.views.ts # producer",
+      "echo vite build --config vite.config.views.ts",
+      "vite build --config vite.config.views.ts && true",
+      "vite build --config vite.config.views.ts # producer",
     ]) {
       const deceptive = addWorkspace(
         root,
@@ -197,7 +197,7 @@ describe("dynamic-view build inventory", () => {
     }
 
     const scriptOnly = addWorkspace(root, "plugins/script-only", {
-      buildScript: "bunx --bun vite build --config vite.config.views.ts",
+      buildScript: "vite build --config vite.config.views.ts",
     });
     expect(() =>
       discoverViewBundleInventory({
@@ -209,7 +209,7 @@ describe("dynamic-view build inventory", () => {
 
     const oldVite = addWorkspace(root, "plugins/old-vite", {
       config: "vite.config.views.ts",
-      buildScript: "bunx --bun vite build --config vite.config.views.ts",
+      buildScript: "vite build --config vite.config.views.ts",
     });
     oldVite.packageJson.devDependencies.vite = "^7.0.0";
     expect(() =>
@@ -222,7 +222,7 @@ describe("dynamic-view build inventory", () => {
 
     const prereleaseVite = addWorkspace(root, "plugins/prerelease-vite", {
       config: "vite.config.views.ts",
-      buildScript: "bunx --bun vite build --config vite.config.views.ts",
+      buildScript: "vite build --config vite.config.views.ts",
     });
     prereleaseVite.packageJson.devDependencies.vite = "^8.0.0-beta.1";
     expect(() =>
@@ -238,7 +238,7 @@ describe("dynamic-view build inventory", () => {
     const root = makeRoot();
     const workspace = addWorkspace(root, "plugins/linked", {
       config: "vite.config.views.ts",
-      buildScript: "bunx --bun vite build --config vite.config.views.ts",
+      buildScript: "vite build --config vite.config.views.ts",
     });
     const outsideManifest = path.join(root, "outside-package.json");
     fs.writeFileSync(outsideManifest, '{"name":"outside"}\n');
@@ -257,7 +257,7 @@ describe("dynamic-view build inventory", () => {
 
     const configWorkspace = addWorkspace(root, "plugins/linked-config", {
       config: "vite.config.views.ts",
-      buildScript: "bunx --bun vite build --config vite.config.views.ts",
+      buildScript: "vite build --config vite.config.views.ts",
     });
     const outsideConfig = path.join(root, "outside-config.ts");
     fs.writeFileSync(outsideConfig, "export {};\n");
@@ -296,8 +296,7 @@ describe("dynamic-view build inventory", () => {
               name: "@fixture/ancestor",
               devDependencies: { vite: "^8.0.0" },
               scripts: {
-                "build:views":
-                  "bunx --bun vite build --config vite.config.views.ts",
+                "build:views": "vite build --config vite.config.views.ts",
               },
             },
           },
@@ -348,7 +347,7 @@ describe("dynamic-view build inventory", () => {
     const root = makeRoot();
     const workspace = addWorkspace(root, "plugins/viewer", {
       config: "vite.config.views.ts",
-      buildScript: "bunx --bun vite build --config vite.config.views.ts",
+      buildScript: "vite build --config vite.config.views.ts",
     });
     const serialized = serializeViewBundleInventory(
       discoverViewBundleInventory({
@@ -372,7 +371,7 @@ describe("dynamic-view build inventory", () => {
           configBytes: 11,
           configSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
           bundle: "plugins/viewer/dist/views/bundle.js",
-          buildScript: "bunx --bun vite build --config vite.config.views.ts",
+          buildScript: "vite build --config vite.config.views.ts",
           packageManifestSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
           viteDependency: "^8.0.0",
         },

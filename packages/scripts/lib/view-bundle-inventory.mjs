@@ -89,7 +89,7 @@ function assertUniqueTargetIdentities(targets) {
 
 function validateBuildScript(workspace, configName) {
   const script = workspace.packageJson.scripts?.["build:views"];
-  const expected = `bunx --bun vite build --config ${configName}`;
+  const expected = `vite build --config ${configName}`;
   if (script !== expected) {
     throw new Error(
       `[view-inventory] ${workspace.dir} build:views must be exactly: ${expected}`,

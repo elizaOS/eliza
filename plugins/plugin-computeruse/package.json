@@ -40,7 +40,7 @@
   "scripts": {
     "postinstall": "node scripts/ensure-platform-deps.mjs",
     "build": "bun run build.ts && bun run build:views",
-    "build:views": "bunx --bun vite build --config vite.config.views.ts",
+    "build:views": "vite build --config vite.config.views.ts",
     "test": "vitest run --config vitest.config.ts",
     "test:e2e:browser-fixture": "vitest run --config vitest.browser-fixture.config.ts",
     "test:live:cerebras-browser-fixture": "vitest run --config vitest.cerebras-browser-fixture.config.ts",
