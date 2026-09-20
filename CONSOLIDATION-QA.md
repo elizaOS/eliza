@@ -364,9 +364,8 @@ existing tool schema, without a global prompt addition or another model call.
 All156 memory-action tests, Agent typecheck and package lint passed. Evidence:
 `runtime/memory-exact-before.log`, `memory-exact-after.log`,
 `memory-exact-typecheck.log`, `memory-exact-lint.log` in the external evidence
-directory. Full root verification of this follow-up is running as session16994
-(`memory-exact-verify.log`). Live exact-wording/model compliance and latency
-remain unverified; the running API is still ef88e31918b and live count is27.
+directory. Full root verification of this follow-up passed (session16994 exit0;
+`memory-exact-verify.log`). The subsequent live evidence follows below.
 
 Remote recheck: `/home/milady/projects/eliza-wt-merge` remains clean at
 89a476f3d750feb40d7f1aeac99ce2219479d8fd, already included. Its locally cached
@@ -374,3 +373,36 @@ tracking ref says behind one; no fetch or source modification was performed.
 Full registered-worktree output is saved in
 `remote-worktrees-recheck-20260920.txt`; this does not identify which other
 remote checkout, if any, contains the user's latest unreviewed work.
+
+
+## Live memory check on f210e2f1e3c
+
+Isolated API31392 restarted cleanly on f210e2f1e3c (PID49649; launch session44552),
+UI5268 reloaded. Readiness/deferred boot settled with35 plugins/95 services and
+zero failures. Previous server log preserved as `runtime/server-before-memory-f210e2f.log`.
+Original demo runtimes were not touched. Total live QA turns now29.
+
+- **Exact save PASS:** “Remember this exact preference: \"For my QA garden, I use metric units.\" Keep my other preferences.” Trace `step-1789940203751-vubt26`,
+  `memory-exact-live-create-*`:2.780s,3 calls,23,226 input/720 output tokens,
+  3,072 cache-read input tokens. Handler1.048s/10,902 input; planner0.571s/6,458;
+  completion0.427s/5,866. Exact text persisted as fact15c9e33d-6d6b-4b0d-bab9-d578128374f3.
+  Snapshot comparison: one added record, zero removed/changed pre-existing
+  records; no more result pages. No separate synthesis/grounding calls. This
+  is an observed run, not a latency guarantee or controlled benchmark.
+- **Natural follow-up removal FAIL, no unintended write:** “Forget only the
+  QA garden preference I just saved. Keep my other preferences.” Trace
+  `step-1789940235125-cqewxt`, `memory-exact-live-remove-*`:4.674s,6 calls,
+  49,024 input/1,265 output tokens,12,288 cache-read input tokens. Handler0.989s;
+  planner0.521s requested context restoration; planner0.520s omitted the target;
+  evaluator0.475s continued; planner0.656s again omitted the target;
+  evaluator0.473s honestly reported failure. Two executed MEMORY_DELETE results
+  returned MEMORY_MISSING_ID; the restored-context batch made no write.
+  User-visible reply unnecessarily asks for another nudge. The QA preference
+  remains; all nine baseline fact records are unchanged.
+
+The recorded native schema exposes query and memoryId but requires neither;
+only confirm and turn scope are required. The handler correctly refuses to
+invent a target. Next work is the mutation target-selection contract and its
+planner retry behavior, preserving by-ID and by-query compatibility, scope and
+confirmation. Do not fix by guessing a last-used record or deleting every
+matching fact. No additional paid retry was sent.

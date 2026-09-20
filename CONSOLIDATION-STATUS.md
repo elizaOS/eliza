@@ -5,7 +5,9 @@ Results and failures: [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md).
 
 ## Exact checkpoints
 
-- Current production candidate is `ef88e31918b`: acknowledgment, Calendar guest/follow-up, failure-reply and deferred completion corrections. Scoped checks and full root verification passed. Isolated UI5268/API31392 runs this code (API PID35418); readiness and deferred boot settled with zero plugin/service failures.
+- Current source and isolated runtime: `f210e2f1e3c`, UI5268/API31392 (PID49649). Full root verification passed. Exact memory save passed live; natural follow-up deletion remains a safe failure. See latest evidence below.
+
+- Earlier verified production checkpoint is `ef88e31918b`: acknowledgment, Calendar guest/follow-up, failure-reply and deferred completion corrections. Scoped checks and full root verification passed. It was verified in the isolated runtime before the f210e2f1e3c update; readiness and deferred boot settled with zero failures.
 - Sources: saved Mac text candidate `a15525f30fb` plus develop `ba04de0e2c1`, then reviewed develop test maintenance `ec23d0f670c`.
 - Reviewed remote checkpoint `89a476f3d75` is already an ancestor of the Mac candidate. Any newer remote work still needs its exact source and review.
 - Published rollback tag: `codex/consolidation-checkpoint-20260920` at `a42679bf08f`.
@@ -17,7 +19,7 @@ Results and failures: [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md).
 - Calendar target boundary: 29 scoped tests and package typecheck passed. Incomplete/foreign local IDs cannot fall through to another provider.
 - Earlier broad suites: Calendar 1,088 passed/four skipped; Notes192 passed; core13,661 passed/two initial failures/three skipped. Both initial core failures were investigated and their affected suites passed after reconciliation, including70 wallet-grounding tests.
 - Follow-up core443, personal-assistant Calendar60, agent recall57, prompt-package20, upstream A2A19 and real SQL vector6 checks passed in their scoped runs. Further package results are recorded in the QA evidence.
-- Twenty-seven real text turns recorded. Greetings/navigation/recall, exact note create/edit, Calendar timing clarification/create/conflict/move exercised. Latest move3.873s/four calls; exact original-message recall0.915s/one call. These are observations, not latency guarantees.
+- Twenty-nine real text turns recorded. Greetings/navigation/recall, exact note create/edit, Calendar timing clarification/create/conflict/move exercised. Latest move3.873s/four calls; exact original-message recall0.915s/one call. These are observations, not latency guarantees.
 - The captured premature Done acknowledgment is now withheld while work is pending. Deterministic runtime coverage confirms both progress callbacks withhold it and the final reply still arrives without an extra model call. The latest live note edit produced an appropriate pending acknowledgment in its trace and a receipt-grounded final reply; transient browser delivery was not captured. Deterministic coverage proves the captured premature Done case is withheld, not a universal natural-language guarantee.
 
 Latest exact note edit: **3.321s, three model calls, 23,710 input tokens, 964 output tokens**. Provider-reported cache reads:4,096 input tokens. Routing/acknowledgment1.263s; planner0.839s; completion0.509s. Notes view after reload showed the exact requested body. This is one measured run, not a latency guarantee.
@@ -34,11 +36,14 @@ Latest live availability check: **3.604s, three calls,27,299 input tokens;6,144 
 
 Source follow-up: successful planner-owned memory mutations now use the shared
 deferred-reply contract. Three regressions reproduced the missing required
-completion reply; all153 memory-action tests passed after correction. This
-source change is not yet live-tested; UI5268/API31392 remains on ef88e31918b.
+completion reply; all153 memory-action tests passed after correction. This source change has now been exercised by the live exact-save run below.
 A follow-up preserves exact supplied memory text and removes the tool instruction
 that required rewriting; all156 memory tests, Agent typecheck and lint pass.
-Full verification is running; live exact wording and PERSONALITY removal remain open.
+Full verification passed. UI5268/API31392 now runs f210e2f1e3c (PID49649).
+Live exact save passed in2.780s/three calls, preserving all pre-existing facts.
+Natural follow-up removal failed safely in4.674s/six calls because the planner
+omitted both target fields twice. The QA preference remains; target selection
+and PERSONALITY removal remain open.
 
 ## Remaining acceptance checklist
 
@@ -46,7 +51,7 @@ Full verification is running; live exact wording and PERSONALITY removal remain 
 - [x] Full visual rerun and flagged screenshot inspection: 230 checks passed; OCR212 verified/zero broken/12 expected fallback exceptions. All23 soft layout flags inspected. Family interview hover remains unverified for three controls across four viewports; native/remote fallback surfaces are not feature acceptance.
 - [ ] Correct and verify Calendar failure explanation delivery, redundant clarification steps and recurring availability claims using the captured traces.
 - [x] Clean pre-effect Stop: interrupted before any tool, note unchanged after reload. Earlier incident remains unexplained: post-restart request arrived after Stop; it eventually edited the QA note. A repeat made no second write. Seven real HTTP/Vite lifecycle tests and existing server disconnect suites pass, so a basic proxy cancellation defect is not reproduced.
-- [ ] Exact preference text was paraphrased in live MEMORY_CREATE; targeted MEMORY_DELETE passed without a scope question. Live PERSONALITY rule removal remains unproven.
+- [ ] Exact preference save is now live-verified; natural follow-up removal still fails because the planner omits its target. Earlier explicit-ID deletion passed. Live PERSONALITY rule removal remains unproven.
 - [ ] Close remaining combined scenarios: cancellation, memory/preference correction and applicable recovery/persistence checks, using existing evidence before new paid tests.
 - [ ] Record final candidate, source decisions, explicit release gates and handoff.
 
