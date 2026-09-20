@@ -450,3 +450,89 @@ describe("MemoryService searchLongTermMemories similarity comparator", () => {
     );
   });
 });
+
+describe("MemoryService confidence and extraction threshold configuration", () => {
+  /** Initialize a service with one setting set to `raw` and return the config. */
+  async function configFor(
+    key: "MEMORY_CONFIDENCE_THRESHOLD" | "MEMORY_EXTRACTION_THRESHOLD",
+    raw: string | number | boolean,
+  ): Promise<{
+    longTermConfidenceThreshold: number;
+    longTermExtractionThreshold: number;
+  }> {
+    const runtime = createMockRuntime({
+      getCache: vi.fn<IAgentRuntime["getCache"]>(async () => 0),
+      setCache: vi.fn(async () => true),
+      getSetting: (settingKey: string) =>
+        settingKey === key ? raw : undefined,
+      hasService: () => false,
+      getService: () => null,
+    });
+    const service = new MemoryService(runtime);
+    await service.initialize(runtime);
+    return service.getConfig();
+  }
+
+  it("keeps the default confidence floor for a non-numeric threshold and warns", async () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    const config = await configFor("MEMORY_CONFIDENCE_THRESHOLD", "high");
+    expect(config.longTermConfidenceThreshold).toBe(0.85);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('MEMORY_CONFIDENCE_THRESHOLD="high"'),
+    );
+    warn.mockRestore();
+  });
+
+  it("rejects a confidence threshold outside [0, 1] or with trailing garbage", async () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    expect(
+      (await configFor("MEMORY_CONFIDENCE_THRESHOLD", "1.5"))
+        .longTermConfidenceThreshold,
+    ).toBe(0.85);
+    expect(
+      (await configFor("MEMORY_CONFIDENCE_THRESHOLD", "0.9;"))
+        .longTermConfidenceThreshold,
+    ).toBe(0.85);
+    expect(
+      (await configFor("MEMORY_CONFIDENCE_THRESHOLD", true))
+        .longTermConfidenceThreshold,
+    ).toBe(0.85);
+    warn.mockRestore();
+  });
+
+  it("honours a clean confidence threshold", async () => {
+    expect(
+      (await configFor("MEMORY_CONFIDENCE_THRESHOLD", "0.9"))
+        .longTermConfidenceThreshold,
+    ).toBe(0.9);
+    expect(
+      (await configFor("MEMORY_CONFIDENCE_THRESHOLD", 0.95))
+        .longTermConfidenceThreshold,
+    ).toBe(0.95);
+  });
+
+  it("keeps the default extraction threshold for a non-numeric, fractional or non-positive value and warns", async () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    for (const raw of ["thirty", "0.5", "0", "-3", "3e2"]) {
+      expect(
+        (await configFor("MEMORY_EXTRACTION_THRESHOLD", raw))
+          .longTermExtractionThreshold,
+      ).toBe(30);
+    }
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('MEMORY_EXTRACTION_THRESHOLD="thirty"'),
+    );
+    warn.mockRestore();
+  });
+
+  it("honours a clean extraction threshold", async () => {
+    expect(
+      (await configFor("MEMORY_EXTRACTION_THRESHOLD", "12"))
+        .longTermExtractionThreshold,
+    ).toBe(12);
+    expect(
+      (await configFor("MEMORY_EXTRACTION_THRESHOLD", 7))
+        .longTermExtractionThreshold,
+    ).toBe(7);
+  });
+});
