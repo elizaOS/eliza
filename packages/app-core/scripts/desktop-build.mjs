@@ -26,10 +26,10 @@ import {
 import { hardenElectrobunRpcSockets } from "./lib/electrobun-loopback-hardening.mjs";
 import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
 import {
-  nativeActivityTrackerBundleBinary,
   nativeActivityTrackerSourceBinary,
   nativeActivityTrackerStagedBinary,
   shouldPackageNativeActivityTracker,
+  verifyBundledNativeActivityTracker,
   verifyNativeActivityTrackerBinary,
 } from "./lib/native-activity-tracker-packaging.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
@@ -1011,10 +1011,10 @@ function verifyStagedNativeActivityTrackerBinary() {
 
 function verifyPackagedNativeActivityTrackerBinary(appBundlePath) {
   if (!shouldStageNativeActivityTracker()) return;
-  const result = verifyNativeActivityTrackerBinary(
-    nativeActivityTrackerBundleBinary(appBundlePath),
-    { arch: process.arch, label: "packaged activity collector" },
-  );
+  const result = verifyBundledNativeActivityTracker(appBundlePath, {
+    arch: process.arch,
+    label: "packaged activity collector",
+  });
   console.log(
     `[desktop-build] Verified packaged activity collector (${result.arch}, ${result.size} bytes, mode=${result.mode.toString(8)})`,
   );
