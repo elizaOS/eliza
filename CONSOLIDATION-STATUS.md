@@ -24,6 +24,8 @@ Latest exact note edit: **3.321s, three model calls, 23,710 input tokens, 964 ou
 
 Latest Calendar follow-up exposed unresolved issues: weekly intent survived, but local recurrence is unsupported and its useful explanation was replaced by a generic error. Clarification took7.114s/seven calls; follow-up4.693s/five calls. A single Friday availability check was also described too broadly as weekly availability. No event was created. These are open defects, not accepted behavior.
 
+Offline correction committed as `b18ff926bec`: both captured Calendar explanations now survive the connection-prerequisite guard, eliminating the extra synthesis in replay.297 relevant tests, Core typecheck and scoped lint passed. Full root verification is running; live demo still uses609048.
+
 ## Remaining acceptance checklist
 
 - [ ] Complete semantic source ledger (135/270 entries explicitly reviewed; all implementation diffs inspected, Calendar recipient and follow-up fixes checked deterministically with live Calendar validation still open; review is not acceptance) and reconcile any newer remote work.
