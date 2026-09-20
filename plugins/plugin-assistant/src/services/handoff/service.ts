@@ -1,14 +1,7 @@
 /**
- * HandoffService — the runtime-owned per-room handoff state, exposed as a
- * registered runtime service.
- *
- * Handoff is a runtime primitive: the room-policy provider and the
- * `MESSAGE.handoff` resume-detection branch consume the store via
- * `runtime.getService(...)` rather than constructing the cache-backed store
- * itself. The service is a thin factory over the per-runtime
- * {@link HandoffStore}; the store is cache-backed (no SQL), keyed per room.
- *
- * Mirrors `KnowledgeGraphService` (lifecycle + getService accessor).
+ * Provides per-room handoff and resume state for assistant conversation policy.
+ * Hosts register the service explicitly; direct consumers share the same runtime
+ * cache keys when the service is absent.
  */
 
 import { type IAgentRuntime, Service } from "@elizaos/core";
@@ -42,4 +35,10 @@ export function resolveHandoffService(
   runtime: IAgentRuntime,
 ): HandoffService | null {
   return runtime.getService<HandoffService>(HANDOFF_SERVICE);
+}
+
+/** Resolves the registered store or its equivalent runtime-cache implementation. */
+export function resolveHandoffStore(runtime: IAgentRuntime): HandoffStore {
+  const service = resolveHandoffService(runtime);
+  return service ? service.getStore() : createHandoffStore(runtime);
 }

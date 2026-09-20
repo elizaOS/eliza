@@ -336,30 +336,6 @@ export {
   PgApprovalQueue,
   resolveApprovalService,
 } from "./services/approval/index.ts";
-export {
-  createGlobalPauseStore,
-  GLOBAL_PAUSE_CACHE_KEY,
-  GLOBAL_PAUSE_SERVICE,
-  GlobalPauseService,
-  type GlobalPauseStatus,
-  type GlobalPauseStore,
-  type GlobalPauseWindow,
-  resolveGlobalPauseService,
-} from "./services/global-pause/index.ts";
-export {
-  createHandoffStore,
-  describeResumeCondition,
-  evaluateResume,
-  HANDOFF_SERVICE,
-  type HandoffEnterOpts,
-  HandoffService,
-  type HandoffStatus,
-  type HandoffStore,
-  type ResumeCondition,
-  type ResumeEvaluation,
-  type ResumeEvaluationInput,
-  resolveHandoffService,
-} from "./services/handoff/index.ts";
 export * from "./services/index.ts";
 export {
   type JsRuntimeBridge,
@@ -371,19 +347,6 @@ export {
   registerJsRuntimeFactory,
   resolveJsRuntimeBridge,
 } from "./services/js-runtime-bridge.ts";
-// Cache-backed runtime stores promoted from LifeOps (pending-prompts /
-// global-pause / handoff). Named exports avoid collisions in the services barrel.
-export {
-  createPendingPromptsStore,
-  type ExpectedReplyKind,
-  PENDING_PROMPTS_SERVICE,
-  type PendingPrompt,
-  type PendingPromptRecordInput,
-  PendingPromptsService,
-  type PendingPromptsStore,
-  type RecordedPendingPrompt,
-  resolvePendingPromptsService,
-} from "./services/pending-prompts/index.ts";
 export * from "./services/plugin-installer";
 export type {
   CoreManagerLike,

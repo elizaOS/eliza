@@ -35,7 +35,7 @@ import type {
   ResponseHandlerFieldHandleContext,
 } from "@elizaos/core";
 import { hasRoleAccess } from "@elizaos/core";
-import { resolvePendingPromptsStore } from "../pending-prompts/store.js";
+import { resolvePendingPromptsStore } from "@elizaos/plugin-assistant";
 import { createWorkThreadStore } from "./store.js";
 import type { ThreadSourceRef } from "./types.js";
 

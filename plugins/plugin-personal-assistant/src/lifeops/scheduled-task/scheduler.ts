@@ -23,6 +23,10 @@ import {
   type Memory,
   type MessagePayload,
 } from "@elizaos/core";
+import {
+  type RecordedPendingPrompt,
+  resolvePendingPromptsStore,
+} from "@elizaos/plugin-assistant";
 import type { ScheduledTask, TerminalState } from "@elizaos/plugin-scheduling";
 import {
   expectedReplyKindForTask,
@@ -48,10 +52,6 @@ import {
   type ReminderIntensity,
   resolveOwnerFactStore,
 } from "../owner/fact-store.js";
-import {
-  type RecordedPendingPrompt,
-  resolvePendingPromptsStore,
-} from "../pending-prompts/store.js";
 import { LifeOpsRepository } from "../repository.js";
 import { readScheduledTaskChatDeliveryBinding } from "./delivery-binding.js";
 import {

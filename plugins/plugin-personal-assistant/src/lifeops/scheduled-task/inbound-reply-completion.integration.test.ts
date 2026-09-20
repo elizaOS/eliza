@@ -13,6 +13,7 @@
  */
 
 import { EventType, type Memory, stringToUuid } from "@elizaos/core";
+import { resolvePendingPromptsStore } from "@elizaos/plugin-assistant";
 import {
   KNOWLEDGE_GRAPH_SERVICE,
   KnowledgeGraphService,
@@ -23,7 +24,6 @@ import {
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.ts";
 import { CheckinService } from "../checkin/checkin-service.js";
-import { resolvePendingPromptsStore } from "../pending-prompts/store.js";
 import { LifeOpsRepository } from "../repository.js";
 import { settleDeferredInboundScans } from "./deferred-inbound-scans.js";
 import { completeFiredTasksOnOwnerReply } from "./inbound-reply-completion.js";

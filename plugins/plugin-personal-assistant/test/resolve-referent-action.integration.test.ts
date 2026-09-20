@@ -25,6 +25,7 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
+import { resolvePendingPromptsStore } from "@elizaos/plugin-assistant";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
@@ -32,7 +33,6 @@ import {
 } from "../../../packages/app-core/test/helpers/real-runtime.ts";
 import { resolveReferentAction } from "../src/actions/resolve-referent.js";
 import { resolveOwnerFactStore } from "../src/lifeops/owner/fact-store.js";
-import { resolvePendingPromptsStore } from "../src/lifeops/pending-prompts/store.js";
 
 let testRuntime: RealTestRuntimeResult;
 let runtime: RealTestRuntimeResult["runtime"];

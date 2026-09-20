@@ -14,6 +14,11 @@ import {
   promoteSubactionsToActions,
 } from "@elizaos/core";
 import {
+  GlobalPauseService,
+  HandoffService,
+  PendingPromptsService,
+} from "@elizaos/plugin-assistant";
+import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
 } from "@elizaos/plugin-relationships/knowledge-graph";
@@ -70,13 +75,10 @@ import { ApprovalService } from "../services/approval/index.ts";
 import { AudioRedactionService } from "../services/audio-redaction-service.ts";
 import { ElizaCharacterPersistenceService } from "../services/character-persistence.ts";
 import { LocalFileStorageService } from "../services/file-storage.ts";
-import { GlobalPauseService } from "../services/global-pause/index.ts";
-import { HandoffService } from "../services/handoff/index.ts";
 import { AgentMediaGenerationService } from "../services/media-generation.ts";
 import { MessageInteractionHostService } from "../services/message-interaction-host.ts";
 import { OwnerBindingService } from "../services/owner-binding.ts";
 import { pendantSessionSchema } from "../services/pendant-session/index.ts";
-import { PendingPromptsService } from "../services/pending-prompts/index.ts";
 import { PermissionRegistry } from "../services/permissions-registry.ts";
 import { NotificationPushService } from "../services/push/notification-push-service.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";

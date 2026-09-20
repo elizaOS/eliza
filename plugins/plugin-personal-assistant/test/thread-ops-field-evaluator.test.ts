@@ -13,11 +13,11 @@
  * For full atomic-merge + concurrency tests, see `work-threads.integration.test.ts`.
  */
 
-import * as agentAccess from "@elizaos/agent";
 import type {
   ResponseHandlerFieldContext,
   ResponseHandlerFieldHandleContext,
 } from "@elizaos/core";
+import * as assistantState from "@elizaos/plugin-assistant";
 import { describe, expect, it, vi } from "vitest";
 import { threadOpsFieldEvaluator } from "../src/lifeops/work-threads/field-evaluator-thread-ops";
 
@@ -168,7 +168,7 @@ describe("threadOpsFieldEvaluator", () => {
 
     it("keeps instructions while a user answer is pending", async () => {
       const ctx = buildCtx(buildFakeRuntime());
-      await agentAccess.createPendingPromptsStore(ctx.runtime).record({
+      await assistantState.createPendingPromptsStore(ctx.runtime).record({
         taskId: "pending-1",
         roomId: "room-1",
         promptSnippet: "Proceed?",

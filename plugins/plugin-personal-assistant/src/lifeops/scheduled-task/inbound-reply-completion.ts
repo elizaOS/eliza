@@ -31,12 +31,12 @@ import {
   logger,
   type Memory,
 } from "@elizaos/core";
+import { resolvePendingPromptsStore } from "@elizaos/plugin-assistant";
 import {
   getScheduledTaskRunner,
   pendingPromptRoomIdForTask,
 } from "@elizaos/plugin-scheduling";
 import { CheckinService } from "../checkin/checkin-service.js";
-import { resolvePendingPromptsStore } from "../pending-prompts/store.js";
 import { recordTaskStateEntry } from "./scheduler.js";
 
 const LOG_SRC = "lifeops:scheduled-task:inbound-reply-completion";

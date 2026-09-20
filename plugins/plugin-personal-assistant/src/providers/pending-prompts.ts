@@ -29,7 +29,7 @@ import {
   type PendingPrompt,
   type PendingPromptsStore,
   resolvePendingPromptsStore,
-} from "../lifeops/pending-prompts/store.js";
+} from "@elizaos/plugin-assistant";
 
 export type { PendingPrompt };
 

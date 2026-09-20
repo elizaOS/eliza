@@ -1382,6 +1382,27 @@ const rawPersonalAssistantPlugin: Plugin = {
 
 export const personalAssistantPlugin: Plugin = rawPersonalAssistantPlugin;
 
+export {
+  createGlobalPauseStore,
+  createHandoffStore,
+  createPendingPromptsStore,
+  describeResumeCondition,
+  evaluateResume,
+  type GlobalPauseStatus,
+  type GlobalPauseStore,
+  type GlobalPauseWindow,
+  type HandoffEnterOpts,
+  type HandoffStatus,
+  type HandoffStore,
+  type PendingPromptRecordInput,
+  type PendingPromptsStore,
+  type ResumeCondition,
+  type ResumeEvaluation,
+  type ResumeEvaluationInput,
+  resolveGlobalPauseStore,
+  resolveHandoffStore,
+  resolvePendingPromptsStore,
+} from "@elizaos/plugin-assistant";
 export { appBlockerProvider } from "@elizaos/plugin-blocker/providers/app-blocker";
 export {
   getAppBlockerPermissionState,
@@ -1469,25 +1490,6 @@ export {
   type FtuGoalStatus,
 } from "./lifeops/ftu-goal/state.js";
 export {
-  createGlobalPauseStore,
-  type GlobalPauseStatus,
-  type GlobalPauseStore,
-  type GlobalPauseWindow,
-  resolveGlobalPauseStore,
-} from "./lifeops/global-pause/store.js";
-export {
-  createHandoffStore,
-  describeResumeCondition,
-  evaluateResume,
-  type HandoffEnterOpts,
-  type HandoffStatus,
-  type HandoffStore,
-  type ResumeCondition,
-  type ResumeEvaluation,
-  type ResumeEvaluationInput,
-  resolveHandoffStore,
-} from "./lifeops/handoff/store.js";
-export {
   type AgreementGuestGrantPreview,
   AgreementKnowledgeError,
   AgreementKnowledgeRuntimeService,
@@ -1531,12 +1533,6 @@ export {
   registerOwnerFactStore,
   resolveOwnerFactStore,
 } from "./lifeops/owner/fact-store.js";
-export {
-  createPendingPromptsStore,
-  type PendingPromptRecordInput,
-  type PendingPromptsStore,
-  resolvePendingPromptsStore,
-} from "./lifeops/pending-prompts/store.js";
 // LifeOps runtime exports
 export {
   ensureLifeOpsSchedulerTask,

@@ -8,6 +8,7 @@ export {
   PENDING_PROMPTS_SERVICE,
   PendingPromptsService,
   resolvePendingPromptsService,
+  resolvePendingPromptsStore,
 } from "./service.ts";
 export {
   createPendingPromptsStore,

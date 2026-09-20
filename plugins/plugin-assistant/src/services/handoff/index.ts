@@ -8,6 +8,7 @@ export {
   HANDOFF_SERVICE,
   HandoffService,
   resolveHandoffService,
+  resolveHandoffStore,
 } from "./service.ts";
 export {
   createHandoffStore,

@@ -8,13 +8,13 @@
  */
 
 import { EventType, type Memory } from "@elizaos/core";
+import { resolvePendingPromptsStore } from "@elizaos/plugin-assistant";
 import { afterEach, describe, expect, it } from "vitest";
 import { trajectoriesPlugin } from "../../../../plugin-assistant/src/features/trajectories/index.ts";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.ts";
-import { resolvePendingPromptsStore } from "../pending-prompts/store.ts";
 import { LifeOpsRepository } from "../repository.ts";
 import {
   detachInboundScan,

@@ -8,6 +8,7 @@ export {
   GLOBAL_PAUSE_SERVICE,
   GlobalPauseService,
   resolveGlobalPauseService,
+  resolveGlobalPauseStore,
 } from "./service.ts";
 export {
   createGlobalPauseStore,

@@ -25,6 +25,7 @@ import {
   logger,
   ServiceType,
 } from "@elizaos/core";
+import { resolveGlobalPauseStore } from "@elizaos/plugin-assistant";
 import type {
   ActivitySignalBusView,
   CompletionCheckContribution,
@@ -77,7 +78,6 @@ import {
 import { withFamilyScheduledExecution } from "../family-workflows/scheduled-execution.js";
 import { createFamilySchedulingStores } from "../family-workflows/scheduled-store.js";
 import { purgeFamilyBackupCleanup } from "../family-workflows/workspace-deletion.js";
-import { resolveGlobalPauseStore } from "../global-pause/store.js";
 import { registerHouseholdGrantExpiryWarningGate } from "../household/grant-expiry-warning.js";
 import { HouseholdCoordinationRepository } from "../household/repository.js";
 import {

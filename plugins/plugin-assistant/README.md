@@ -53,3 +53,8 @@ source and role types come from the same feature contracts.
 Action parameter extraction and grounded action replies are assistant policy.
 Import them from this package; they preserve complete conversation and action
 results, including planner-owned deferred reply receipts.
+
+Cache-backed pause windows, room handoff state and pending owner prompts are
+assistant services. Hosts may register them explicitly; the exported store
+resolvers use the same runtime cache when a service is absent. Service names,
+cache keys and pending-action projections remain stable.

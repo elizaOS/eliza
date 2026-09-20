@@ -1,5 +1,5 @@
 /**
- * Test stub for @elizaos/agent: re-exports the real global-pause and handoff store surfaces
+ * Test stub for @elizaos/agent: re-exports the real approval queue surfaces
  * plus a mutable agent-backup state, so PA tests run without pulling in the full agent
  * package.
  */
@@ -30,30 +30,6 @@ export {
   ApprovalNotFoundError,
   ApprovalStateTransitionError,
 } from "../../../../packages/agent/src/services/approval/types.ts";
-export {
-  createGlobalPauseStore,
-  GLOBAL_PAUSE_SERVICE,
-  GlobalPauseService,
-  resolveGlobalPauseService,
-} from "../../../../packages/agent/src/services/global-pause/index.ts";
-export {
-  createHandoffStore,
-  describeResumeCondition,
-  evaluateResume,
-  HANDOFF_SERVICE,
-  HandoffService,
-  resolveHandoffService,
-} from "../../../../packages/agent/src/services/handoff/index.ts";
-// Cache-backed runtime stores promoted from LifeOps (Slice 3). These are
-// self-contained (only @elizaos/core) and the
-// personal-assistant store shims import them from `@elizaos/agent`, so re-export
-// the genuine implementations here for the test lane.
-export {
-  createPendingPromptsStore,
-  PENDING_PROMPTS_SERVICE,
-  PendingPromptsService,
-  resolvePendingPromptsService,
-} from "../../../../packages/agent/src/services/pending-prompts/index.ts";
 
 export class DatabaseSync {}
 

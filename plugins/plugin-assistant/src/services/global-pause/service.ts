@@ -1,14 +1,7 @@
 /**
- * GlobalPauseService — the runtime-owned vacation / pause-mode singleton,
- * exposed as a registered runtime service.
- *
- * Global pause is a runtime primitive: the scheduled-task runner consults the
- * store pre-fire via `runtime.getService(...)` rather than constructing the
- * cache-backed store itself. The service is a thin factory over the per-runtime
- * {@link GlobalPauseStore}; the store is cache-backed (no SQL), single canonical
- * key.
- *
- * Mirrors `KnowledgeGraphService` (lifecycle + getService accessor).
+ * Provides the cache-backed pause window used by scheduled assistant work.
+ * Hosts register the service explicitly; direct consumers share the same runtime
+ * cache keys when the service is absent.
  */
 
 import { type IAgentRuntime, Service } from "@elizaos/core";
@@ -42,4 +35,12 @@ export function resolveGlobalPauseService(
   runtime: IAgentRuntime,
 ): GlobalPauseService | null {
   return runtime.getService<GlobalPauseService>(GLOBAL_PAUSE_SERVICE);
+}
+
+/** Resolves the registered store or its equivalent runtime-cache implementation. */
+export function resolveGlobalPauseStore(
+  runtime: IAgentRuntime,
+): GlobalPauseStore {
+  const service = resolveGlobalPauseService(runtime);
+  return service ? service.getStore() : createGlobalPauseStore(runtime);
 }

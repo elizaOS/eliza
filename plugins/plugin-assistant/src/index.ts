@@ -150,6 +150,8 @@ export * from "./runtime/trajectory-recorder";
 export * from "./services/evaluator.ts";
 export * from "./services/evaluator-priorities.ts";
 export { canonicalEvaluatorMessages } from "./services/evaluator-transcript.ts";
+export * from "./services/global-pause/index.ts";
+export * from "./services/handoff/index.ts";
 export {
   CODING_DELEGATION_ACTION_TAGS,
   findCodingDelegationActionName,
@@ -160,6 +162,7 @@ export {
 } from "./services/message/direct-action-heuristics.ts";
 export * from "./services/message.ts";
 export * from "./services/optimized-prompt.ts";
+export * from "./services/pending-prompts/index.ts";
 export { RelationshipsService } from "./services/relationships.ts";
 export * from "./services/relationships-graph-builder.ts";
 export * from "./services/trajectories.ts";

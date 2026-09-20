@@ -16,6 +16,7 @@ import {
   type Task,
   type UUID,
 } from "@elizaos/core";
+import { PENDING_PROMPTS_SERVICE } from "@elizaos/plugin-assistant";
 import type { RouteHelpers } from "@elizaos/shared/api/route-helpers";
 import {
   APPROVAL_SERVICE,
@@ -32,7 +33,6 @@ import {
   APPROVAL_EXECUTION_CAPABILITY,
   APPROVAL_EXECUTION_PROTOCOL_VERSION,
 } from "../services/approval/types.ts";
-import { PENDING_PROMPTS_SERVICE } from "../services/pending-prompts/service.ts";
 
 interface ApprovalRouteRuntime {
   agentId?: string;

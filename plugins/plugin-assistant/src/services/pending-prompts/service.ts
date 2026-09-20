@@ -1,14 +1,7 @@
 /**
- * PendingPromptsService — the runtime-owned store of open scheduled-task
- * prompts, exposed as a registered runtime service.
- *
- * Pending prompts are a runtime primitive: any plugin (LifeOps scheduler, the
- * work-thread evaluator, …) consumes the store via `runtime.getService(...)`
- * rather than constructing the cache-backed store itself. The service is a thin
- * factory over the per-runtime {@link PendingPromptsStore}; the store is
- * cache-backed (no SQL), keyed per room.
- *
- * Mirrors `KnowledgeGraphService` (lifecycle + getService accessor).
+ * Provides pending owner prompts and their user-action projection.
+ * Hosts register the service explicitly; direct consumers share the same runtime
+ * cache keys when the service is absent.
  */
 
 import {
@@ -85,4 +78,12 @@ export function resolvePendingPromptsService(
   runtime: IAgentRuntime,
 ): PendingPromptsService | null {
   return runtime.getService<PendingPromptsService>(PENDING_PROMPTS_SERVICE);
+}
+
+/** Resolves the registered store or its equivalent runtime-cache implementation. */
+export function resolvePendingPromptsStore(
+  runtime: IAgentRuntime,
+): PendingPromptsStore {
+  const service = resolvePendingPromptsService(runtime);
+  return service ? service.getStore() : createPendingPromptsStore(runtime);
 }
