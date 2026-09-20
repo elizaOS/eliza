@@ -1,6 +1,5 @@
 /**
- * Test stub for @elizaos/agent: re-exports the real approval queue surfaces
- * plus a mutable agent-backup state, so PA tests run without pulling in the full agent
+ * Test stub for @elizaos/agent: mutable agent-backup state, so PA tests run without pulling in the full agent
  * package.
  */
 
@@ -12,24 +11,6 @@ import path from "node:path";
 // real limiter (self-contained, in-memory) so route e2e tests run the genuine
 // dispatch path instead of a bypass.
 export { checkRateLimit } from "../../../../packages/agent/src/api/rate-limiter.ts";
-export {
-  APPROVAL_SERVICE,
-  ApprovalDispatchControlStore,
-  ApprovalService,
-  approvalDispatchAdmissionCte,
-  resolveApprovalService,
-} from "../../../../packages/agent/src/services/approval/index.ts";
-export {
-  createApprovalQueue,
-  PgApprovalQueue,
-} from "../../../../packages/agent/src/services/approval/store.ts";
-export {
-  APPROVAL_EXECUTION_CAPABILITY,
-  APPROVAL_EXECUTION_PROTOCOL_VERSION,
-  ApprovalIdempotencyConflictError,
-  ApprovalNotFoundError,
-  ApprovalStateTransitionError,
-} from "../../../../packages/agent/src/services/approval/types.ts";
 
 export class DatabaseSync {}
 

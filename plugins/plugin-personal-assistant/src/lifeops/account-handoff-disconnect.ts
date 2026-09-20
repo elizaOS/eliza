@@ -4,8 +4,9 @@
  * removal can resume without resolving credentials that were already deleted.
  * This phase retains imported data and keeps both dispatch controls paused.
  */
-import { ApprovalDispatchControlStore } from "@elizaos/agent";
+
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import { ApprovalDispatchControlStore } from "@elizaos/plugin-assistant";
 import type { CalendarService } from "@elizaos/plugin-calendar";
 import type { IGoogleWorkspaceService } from "@elizaos/plugin-google-workspace";
 import { z } from "zod";

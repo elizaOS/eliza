@@ -5,7 +5,7 @@ import {
   ApprovalDispatchControlStore,
   type ApprovalEnqueueInput,
   createApprovalQueue,
-} from "@elizaos/agent";
+} from "@elizaos/plugin-assistant";
 import {
   CalendarService,
   createDefaultCalendarHostGate,

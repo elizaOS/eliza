@@ -105,7 +105,7 @@ const POST_TURN_EVALUATION_PROMPT_PREFIX = "# Task: Post-turn evaluation";
 async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
   const [knowledgeGraphModule, approvalModule] = await Promise.all([
     import("@elizaos/plugin-relationships/knowledge-graph"),
-    import("@elizaos/agent/services/approval/index"),
+    import("@elizaos/plugin-assistant"),
   ]);
   const { KnowledgeGraphService, knowledgeGraphSchema } = knowledgeGraphModule;
   const { ApprovalService } = approvalModule;
@@ -116,7 +116,7 @@ async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
     typeof knowledgeGraphSchema !== "object"
   ) {
     throw new Error(
-      "[scenario-runner] @elizaos/agent did not expose production host services and knowledgeGraphSchema",
+      "[scenario-runner] Assistant and relationships plugins did not expose approval and knowledge-graph services",
     );
   }
 

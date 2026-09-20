@@ -6,14 +6,6 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import {
-  type ApprovalAction,
-  type ApprovalChannel,
-  type ApprovalPayload,
-  type ApprovalQueue,
-  type ApprovalRequest,
-  resolveApprovalService,
-} from "@elizaos/agent/services/approval/index";
-import {
   type AgentNotification,
   ChannelType,
   ElizaError,
@@ -25,6 +17,14 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import {
+  type ApprovalAction,
+  type ApprovalChannel,
+  type ApprovalPayload,
+  type ApprovalQueue,
+  type ApprovalRequest,
+  resolveApprovalService,
+} from "@elizaos/plugin-assistant";
 import {
   getScheduledTaskRunner,
   type ScheduledTask,

@@ -4,11 +4,12 @@
  * an explicit local-only calendar choice remain paused; later user changes are
  * conflicts rather than state to overwrite.
  */
+
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
   ApprovalDispatchControlStore,
   createApprovalQueue,
-} from "@elizaos/agent";
-import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import type { CalendarService } from "@elizaos/plugin-calendar";
 import type { IGoogleWorkspaceService } from "@elizaos/plugin-google-workspace";
 import { z } from "zod";

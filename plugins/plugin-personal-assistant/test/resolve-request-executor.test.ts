@@ -93,16 +93,6 @@ const docMocks = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock("@elizaos/agent", async () => {
-  const approvalTypes = await import(
-    "../../../packages/agent/src/services/approval/types.ts"
-  );
-  return {
-    ApprovalNotFoundError: approvalTypes.ApprovalNotFoundError,
-    ApprovalStateTransitionError: approvalTypes.ApprovalStateTransitionError,
-  };
-});
-
 vi.mock("../src/lifeops/approval-queue.js", () => ({
   createApprovalQueue: () => ({
     capability: "eliza.approval-execution",

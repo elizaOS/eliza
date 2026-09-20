@@ -7,7 +7,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import * as knowledgeGraph from "@elizaos/plugin-relationships/knowledge-graph/sql";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import * as approval from "./approval/sql.ts";
+import * as approval from "../../../../plugins/plugin-assistant/src/services/approval/sql.ts";
 
 for (const [name, boundary] of Object.entries({ approval, knowledgeGraph })) {
   describe(`${name} SQL consumer`, () => {

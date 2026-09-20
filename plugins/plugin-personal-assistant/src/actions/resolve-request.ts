@@ -9,10 +9,6 @@
  * (../providers/pending-approvals.ts), which routes decisions here (#14630).
  */
 
-import {
-  ApprovalNotFoundError as RuntimeApprovalNotFoundError,
-  ApprovalStateTransitionError as RuntimeApprovalStateTransitionError,
-} from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -36,6 +32,10 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import {
+  ApprovalNotFoundError as RuntimeApprovalNotFoundError,
+  ApprovalStateTransitionError as RuntimeApprovalStateTransitionError,
+} from "@elizaos/plugin-assistant";
 import {
   readTwilioCredentialsFromEnv,
   sendTwilioVoiceCall,

@@ -19,6 +19,7 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
+import { createApprovalQueue as createAgentApprovalQueue } from "@elizaos/plugin-assistant";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import {
@@ -30,7 +31,6 @@ import {
   it,
   vi,
 } from "vitest";
-import { createApprovalQueue as createAgentApprovalQueue } from "../../../packages/agent/src/services/approval/store.ts";
 import type {
   ApprovalEnqueueInput,
   ApprovalQueue,

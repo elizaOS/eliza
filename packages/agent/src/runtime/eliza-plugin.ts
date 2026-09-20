@@ -14,6 +14,7 @@ import {
   promoteSubactionsToActions,
 } from "@elizaos/core";
 import {
+  ApprovalService,
   GlobalPauseService,
   HandoffService,
   PendingPromptsService,
@@ -71,7 +72,6 @@ import { createDynamicSkillProvider } from "../providers/skill-provider.ts";
 import { createOngoingTasksProvider } from "../providers/tasks.ts";
 import { createUserNameProvider } from "../providers/user-name.ts";
 import { createWorkspaceProvider } from "../providers/workspace-provider.ts";
-import { ApprovalService } from "../services/approval/index.ts";
 import { AudioRedactionService } from "../services/audio-redaction-service.ts";
 import { ElizaCharacterPersistenceService } from "../services/character-persistence.ts";
 import { LocalFileStorageService } from "../services/file-storage.ts";

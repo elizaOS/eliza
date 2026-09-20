@@ -58,3 +58,8 @@ Cache-backed pause windows, room handoff state and pending owner prompts are
 assistant services. Hosts may register them explicitly; the exported store
 resolvers use the same runtime cache when a service is absent. Service names,
 cache keys and pending-action projections remain stable.
+
+The approval queue, dispatch control and optional ApprovalService are owned here.
+Hosts register ApprovalService explicitly. SQL owns the existing approval tables;
+HTTP routes and caller authentication remain in the agent host. Import approval
+contracts from this package without loading agent process code.

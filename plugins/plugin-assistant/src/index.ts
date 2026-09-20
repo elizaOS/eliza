@@ -147,6 +147,7 @@ export { FAILED_TOOL_FALLBACK_MESSAGE } from "./runtime/planner-loop.ts";
 export { renderActionResultsForModel } from "./runtime/planner-rendering.ts";
 export * from "./runtime/sub-planner.ts";
 export * from "./runtime/trajectory-recorder";
+export * from "./services/approval/index.ts";
 export * from "./services/evaluator.ts";
 export * from "./services/evaluator-priorities.ts";
 export { canonicalEvaluatorMessages } from "./services/evaluator-transcript.ts";

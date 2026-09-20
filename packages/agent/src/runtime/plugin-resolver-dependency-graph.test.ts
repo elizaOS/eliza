@@ -213,7 +213,6 @@ it("keeps full and source-staged package modes distinct through a cycle", async 
     "security/access.ts",
     "services/agent-backup.ts",
     "services/app-session-gate.ts",
-    "services/approval/index.ts",
     "services/escalation.ts",
     "triggers/scheduling.ts",
     "triggers/runtime.ts",

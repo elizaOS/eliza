@@ -1,5 +1,5 @@
 /** Real PGlite review assembly and recipient preflight with deterministic provider discovery; no external changes or messages. */
-import { createApprovalQueue } from "@elizaos/agent";
+import { createApprovalQueue } from "@elizaos/plugin-assistant";
 import {
   CalendarService,
   createDefaultCalendarHostGate,

@@ -1,10 +1,13 @@
 /** Exercises durable account retirement through the real approval queue and PGlite migrations; no provider calls occur. */
 
-import type { ApprovalEnqueueInput, ApprovalPayload } from "@elizaos/agent";
+import type {
+  ApprovalEnqueueInput,
+  ApprovalPayload,
+} from "@elizaos/plugin-assistant";
 import {
   ApprovalDispatchControlStore,
   createApprovalQueue,
-} from "@elizaos/agent";
+} from "@elizaos/plugin-assistant";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
