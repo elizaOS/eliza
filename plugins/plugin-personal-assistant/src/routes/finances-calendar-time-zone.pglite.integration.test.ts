@@ -10,6 +10,7 @@
 import { once } from "node:events";
 import { createServer, type Server } from "node:http";
 import type { HandlerOptions, Memory } from "@elizaos/core";
+import { resolveOwnerEntityIdOrDefault } from "@elizaos/core";
 import { runPaymentsHandler } from "@elizaos/plugin-finances/actions/finances";
 import { FinancesService } from "@elizaos/plugin-finances/finances-service";
 import { financesPlugin } from "@elizaos/plugin-finances/plugin";
@@ -19,6 +20,7 @@ import {
 } from "@elizaos/shared";
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -32,6 +34,7 @@ import {
   type RealTestRuntimeResult,
 } from "../../test/helpers/runtime.js";
 import { resolveOwnerFactStore } from "../lifeops/owner/fact-store.js";
+import { LifeOpsService } from "../lifeops/service.js";
 
 // Evening of March 2 in the Americas, afternoon of March 3 in Tokyo.
 const NOW = new Date("2026-03-03T03:30:00.000Z");
@@ -51,13 +54,13 @@ describe("finances bill dueness through both surfaces (#31062)", () => {
   let previousSchedulerFlag: string | undefined;
 
   beforeAll(async () => {
-    // The LifeOps scheduler tick reconciles owner travel: a home zone that
-    // differs from the host zone opens a provisional travel record whose
-    // destination (the host zone) then legitimately overrides the owner zone.
-    // The zone fixtures below must stay the effective zone, so the tick is
-    // disabled for this runtime.
+    vi.stubEnv("TZ", "UTC");
+    vi.stubEnv("ELIZA_DEVICE_KIND", "cloud");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    // Keep the scheduler enabled; invoke its real public tick deterministically below.
     previousSchedulerFlag = process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
-    process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
+    delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
     host = await createLifeOpsTestRuntime({
       characterName: "finances-calendar-time-zone",
       plugins: [financesPlugin],
@@ -100,8 +103,14 @@ describe("finances bill dueness through both surfaces (#31062)", () => {
   // The shared app-core setup restores real timers after every test, so the
   // pinned instant is re-armed per test rather than once for the file.
   beforeEach(() => {
+    vi.stubEnv("TZ", "UTC");
+    vi.stubEnv("ELIZA_DEVICE_KIND", "cloud");
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   afterAll(async () => {
@@ -159,6 +168,131 @@ describe("finances bill dueness through both surfaces (#31062)", () => {
     if (!bill) throw new Error("seeded bill missing from route response");
     return { status: response.status, body, bill };
   }
+
+  it("does not infer owner travel from a UTC cloud host", async () => {
+    await setOwnerTimeZone("America/Los_Angeles");
+    const before = {
+      facts: await resolveOwnerFactStore(host.runtime).read(),
+      zone: await resolveCalendarTimeZone(host.runtime, NOW),
+      action: await actionBill(),
+      route: await routeBill(),
+    };
+    const service = new LifeOpsService(host.runtime, {
+      ownerEntityId: resolveOwnerEntityIdOrDefault(host.runtime),
+    });
+    const tick = await service.processScheduledWork({
+      now: NOW.toISOString(),
+      sleepCycleCheckins: false,
+    });
+    const after = {
+      facts: await resolveOwnerFactStore(host.runtime).read(),
+      zone: await resolveCalendarTimeZone(host.runtime, NOW),
+      action: await actionBill(),
+      route: await routeBill(),
+    };
+    expect(before.zone.timeZone).toBe("America/Los_Angeles");
+    expect(before.action.bill?.status).toBe("upcoming");
+    expect(before.route.bill?.status).toBe("upcoming");
+    expect(
+      tick.subsystemFailures.find(
+        (failure) => failure.subsystem === "travel_reconcile",
+      ),
+    ).toBeUndefined();
+    expect(after.facts.activeTravel).toBeUndefined();
+    expect(after.zone.timeZone).toBe("America/Los_Angeles");
+    expect(after.action.bill?.status).toBe("upcoming");
+    expect(after.route.bill?.status).toBe("upcoming");
+  }, 180_000);
+
+  it("preserves active owner travel on a cloud host", async () => {
+    await setOwnerTimeZone("America/Los_Angeles");
+    const store = resolveOwnerFactStore(host.runtime);
+    const travel = {
+      startIso: "2026-03-01T00:00:00.000Z",
+      endIso: "2026-03-05T00:00:00.000Z",
+      destinationTimezone: "Asia/Tokyo",
+    };
+    await store.setActiveTravel(travel, {
+      source: "profile_save",
+      recordedAt: NOW.toISOString(),
+    });
+    const service = new LifeOpsService(host.runtime, {
+      ownerEntityId: resolveOwnerEntityIdOrDefault(host.runtime),
+    });
+    await service.processScheduledWork({
+      now: NOW.toISOString(),
+      sleepCycleCheckins: false,
+    });
+    expect((await store.read()).activeTravel?.value).toEqual(travel);
+    expect((await routeBill()).bill?.status).toBe("overdue");
+  }, 180_000);
+
+  it("does not treat a cloud host matching home as a device returning home", async () => {
+    await setOwnerTimeZone("UTC");
+    const store = resolveOwnerFactStore(host.runtime);
+    const travel = {
+      startIso: "2026-03-01T00:00:00.000Z",
+      endIso: "2026-03-05T00:00:00.000Z",
+      destinationTimezone: "Asia/Tokyo",
+    };
+    await store.setActiveTravel(travel, {
+      source: "connector_inferred",
+      recordedAt: NOW.toISOString(),
+      note: "device-timezone divergence",
+    });
+    const service = new LifeOpsService(host.runtime, {
+      ownerEntityId: resolveOwnerEntityIdOrDefault(host.runtime),
+    });
+    await service.processScheduledWork({
+      now: NOW.toISOString(),
+      sleepCycleCheckins: false,
+    });
+    expect((await store.read()).activeTravel?.value).toEqual(travel);
+    expect((await resolveCalendarTimeZone(host.runtime, NOW)).timeZone).toBe(
+      "Asia/Tokyo",
+    );
+  }, 180_000);
+
+  it("expires travel on a cloud host without reopening it from the host zone", async () => {
+    await setOwnerTimeZone("America/Los_Angeles");
+    const store = resolveOwnerFactStore(host.runtime);
+    await store.setActiveTravel(
+      {
+        startIso: "2026-03-01T00:00:00.000Z",
+        endIso: "2026-03-02T00:00:00.000Z",
+        destinationTimezone: "Asia/Tokyo",
+      },
+      { source: "profile_save", recordedAt: NOW.toISOString() },
+    );
+    const service = new LifeOpsService(host.runtime, {
+      ownerEntityId: resolveOwnerEntityIdOrDefault(host.runtime),
+    });
+    await service.processScheduledWork({
+      now: NOW.toISOString(),
+      sleepCycleCheckins: false,
+    });
+    expect((await store.read()).activeTravel).toBeUndefined();
+    expect((await actionBill()).bill?.status).toBe("upcoming");
+    expect((await routeBill()).bill?.status).toBe("upcoming");
+  }, 180_000);
+
+  it("retains timezone travel inference on a recognized personal device", async () => {
+    await setOwnerTimeZone("America/Los_Angeles");
+    vi.stubEnv("ELIZA_DEVICE_KIND", "mac");
+    const service = new LifeOpsService(host.runtime, {
+      ownerEntityId: resolveOwnerEntityIdOrDefault(host.runtime),
+    });
+    await service.processScheduledWork({
+      now: NOW.toISOString(),
+      sleepCycleCheckins: false,
+    });
+    expect(
+      (await resolveOwnerFactStore(host.runtime).read()).activeTravel?.value
+        .destinationTimezone,
+    ).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    expect((await actionBill()).bill?.status).toBe("overdue");
+    expect((await routeBill()).bill?.status).toBe("overdue");
+  }, 180_000);
 
   it("registers the owner-fact calendar zone resolver through plugin init", async () => {
     await setOwnerTimeZone("America/Los_Angeles");

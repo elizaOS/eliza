@@ -5872,11 +5872,9 @@ export class RemindersDomain {
    *     provisional record (tagged via `TZ_PROVISIONAL_TRAVEL_NOTE`) so a real
    *     booking or spoken statement is never dropped on a coincidental match.
    *
-   * On shared-server topology `resolveDefaultTimeZone()` returns the SERVER's
-   * zone, not the owner's device — so leg (2) is effectively a no-op there
-   * (device zone == home zone, or the home-zone fact is absent). That is the
-   * intended graceful degradation: we never fabricate a home zone or infer
-   * travel from the server's own zone.
+   * Host timezone is device evidence only for a recognized personal device.
+   * Cloud and unknown hosts still expire travel windows, but cannot infer
+   * owner travel or a return home from their own timezone.
    */
   private async reconcileTravelActive(now: Date): Promise<void> {
     const store = resolveOwnerFactStore(this.ctx.runtime);
@@ -5898,6 +5896,11 @@ export class RemindersDomain {
         );
         return;
       }
+    }
+
+    const { deviceKind } = resolveScheduleDeviceIdentity();
+    if (deviceKind === "cloud" || deviceKind === "unknown") {
+      return;
     }
 
     const homeTz = facts.timezone?.value;
