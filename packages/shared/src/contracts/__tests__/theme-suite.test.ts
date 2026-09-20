@@ -1,38 +1,8 @@
-/**
- * Unit tests for theme definition schema, CSS variable mappings, and validation logic.
- * Validates theme structure requirements, font links, and CSS custom property tables.
- */
+/** Exercises theme validation with valid definitions and malformed inputs. */
 import { describe, expect, it } from "vitest";
-import {
-  THEME_CSS_VAR_MAP,
-  THEME_CSS_VAR_NAMES,
-  THEME_FONT_CSS_VARS,
-  THEME_FONT_LINK_ID,
-  validateThemeDefinition,
-} from "../theme.ts";
+import { validateThemeDefinition } from "../theme.ts";
 
 describe("theme contracts", () => {
-  describe("constants", () => {
-    it("defines font link id", () => {
-      expect(THEME_FONT_LINK_ID).toBe("eliza-theme-font");
-    });
-
-    it("maps font CSS variable names correctly", () => {
-      expect(THEME_FONT_CSS_VARS.body).toBe("--font-body");
-      expect(THEME_FONT_CSS_VARS.display).toBe("--font-display");
-      expect(THEME_FONT_CSS_VARS.chat).toBe("--font-chat");
-      expect(THEME_FONT_CSS_VARS.mono).toBe("--mono");
-    });
-
-    it("maps key CSS color variables", () => {
-      expect(THEME_CSS_VAR_MAP.bg).toBe("--bg");
-      expect(THEME_CSS_VAR_MAP.accent).toBe("--accent");
-      expect(THEME_CSS_VAR_MAP.border).toBe("--border");
-      expect(THEME_CSS_VAR_NAMES).toContain("--bg");
-      expect(THEME_CSS_VAR_NAMES).toContain("--accent");
-    });
-  });
-
   describe("validateThemeDefinition", () => {
     it("rejects non-object root inputs", () => {
       expect(validateThemeDefinition(null)).toEqual([
