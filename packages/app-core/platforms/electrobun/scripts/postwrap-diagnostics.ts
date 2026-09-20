@@ -2,6 +2,7 @@
 /** Supports Electrobun packaging and signing workflow for app-core desktop builds. */
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -413,6 +414,96 @@ function collectArchiveReports(resourcesDir: string): ArchiveReport[] {
     });
 }
 
+function hashArchiveFile(filePath: string): string {
+  const hash = createHash("sha256");
+  const descriptor = fs.openSync(filePath, "r");
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  try {
+    for (;;) {
+      const bytes = fs.readSync(descriptor, buffer);
+      if (bytes === 0) break;
+      hash.update(buffer.subarray(0, bytes));
+    }
+    return hash.digest("hex");
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
+/** Keeps macOS cold extraction within the supported startup deadline without changing tar bytes or updater identity. */
+export function prepareMacInstallerArchive(
+  wrapperBundlePath: string,
+  arch: string,
+): void {
+  const resourcesDir = joinPortable(wrapperBundlePath, "Contents", "Resources");
+  const archives = fs
+    .readdirSync(resourcesDir)
+    .filter((name) => name.endsWith(".tar.zst"));
+  const [archive] = archives;
+  if (archives.length !== 1 || !archive) {
+    throw new Error(
+      `Expected one macOS installer archive, found ${archives.length}`,
+    );
+  }
+  const wrapperArchive = joinPortable(resourcesDir, archive);
+  const updateArchive = `${wrapperBundlePath}.tar.zst`;
+  if (hashArchiveFile(wrapperArchive) !== hashArchiveFile(updateArchive)) {
+    throw new Error(
+      "macOS wrapper and update archives differ before recompression",
+    );
+  }
+  const compressor = joinPortable(
+    resolveElectrobunRuntimeDir("macos", arch),
+    "zig-zstd",
+  );
+  // The compiled upstream CLI ignores npm source patches. Its postWrap hook
+  // runs before outer signing, DMG creation and moving the update artifact.
+  const temporaryDir = fs.mkdtempSync(`${updateArchive}.recompress-`);
+  try {
+    const tar = path.join(temporaryDir, "app.tar");
+    const compressed = path.join(temporaryDir, "app.tar.zst");
+    execFileSync(compressor, ["decompress", "-i", updateArchive, "-o", tar], {
+      stdio: "inherit",
+    });
+    const args = [
+      "compress",
+      "-i",
+      tar,
+      "-o",
+      compressed,
+      "-l",
+      "-1",
+      "--threads",
+      "max",
+    ];
+    console.log(
+      `[postwrap-diagnostics] ${JSON.stringify([compressor, ...args])}`,
+    );
+    execFileSync(compressor, args, { stdio: "inherit" });
+    const verifiedTar = path.join(temporaryDir, "verified.tar");
+    execFileSync(
+      compressor,
+      ["decompress", "-i", compressed, "-o", verifiedTar],
+      { stdio: "inherit" },
+    );
+    const tarSha256 = hashArchiveFile(tar);
+    if (hashArchiveFile(verifiedTar) !== tarSha256)
+      throw new Error("macOS installer recompression changed tar bytes");
+    fs.copyFileSync(compressed, wrapperArchive);
+    fs.renameSync(compressed, updateArchive);
+    const archiveSha256 = hashArchiveFile(updateArchive);
+    if (hashArchiveFile(wrapperArchive) !== archiveSha256)
+      throw new Error(
+        "macOS wrapper and update archives differ after recompression",
+      );
+    console.log(
+      `[postwrap-diagnostics] verified lossless installer archives ${JSON.stringify({ tarSha256, archiveSha256, wrapperArchive, updateArchive })}`,
+    );
+  } finally {
+    fs.rmSync(temporaryDir, { recursive: true, force: true });
+  }
+}
+
 export function main(
   args = process.argv.slice(2),
   env: NodeJS.ProcessEnv = process.env,
@@ -425,6 +516,9 @@ export function main(
     osName,
   );
   const outputPath = resolveDiagnosticsOutputPath(wrapperBundlePath, env);
+  if (osName === "macos" && env.ELECTROBUN_WRAPPER_BUNDLE_PATH) {
+    prepareMacInstallerArchive(wrapperBundlePath, arch);
+  }
 
   const repairedFiles = ensureWrapperRuntimeFiles({
     arch,
