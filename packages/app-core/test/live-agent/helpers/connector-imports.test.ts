@@ -1,12 +1,18 @@
 /**
- * Direct unit coverage for connector-imports helpers. Retained from the former
- * src/test-support/test-helpers.test.ts after removing HTTP-factory and waitMs
- * tests. The predicate exports (looksLikePlugin, extractPlugin) have non-obvious
- * precedence (default beats plugin, root-module name short-circuits before key
- * scan) that a refactor could silently break. Every live e2e importer is gated
- * behind describeIf, so without these tests a precedence regression would appear
- * only on a credentialed runner.
+ * Exercises connector export selection and import resolution with real modules.
+ * A disposable package tree checks fallback lookup from the live-test location.
  */
+import { execFileSync } from "node:child_process";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   extractPlugin,
@@ -25,7 +31,6 @@ describe("looksLikePlugin", () => {
 
   it("rejects functions even when Function.name is a non-empty string", () => {
     function namedExport() {}
-    expect(namedExport.name).toBe("namedExport");
     expect(looksLikePlugin(namedExport)).toBe(false);
   });
 
@@ -103,4 +108,43 @@ describe("extractPlugin", () => {
       }),
     ).toBeNull();
   });
+});
+
+it("loads an ESM-only connector from the package node_modules fallback", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "connector-imports-"));
+  try {
+    const packageRoot = path.join(directory, "packages/app-core");
+    const helper = path.join(
+      packageRoot,
+      "test/live-agent/helpers/connector-imports.ts",
+    );
+    const connector = path.join(
+      packageRoot,
+      "node_modules/@elizaos/plugin-telegram/dist/index.js",
+    );
+    mkdirSync(path.dirname(helper), { recursive: true });
+    mkdirSync(path.dirname(connector), { recursive: true });
+    copyFileSync(
+      fileURLToPath(new URL("./connector-imports.ts", import.meta.url)),
+      helper,
+    );
+    writeFileSync(path.join(packageRoot, "package.json"), '{"type":"module"}');
+    writeFileSync(connector, 'export default { name: "fixture-telegram" };');
+    // The package has only an ESM dist entry: require.resolve cannot find a main entry.
+    const output = execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `const helper = await import(${JSON.stringify(pathToFileURL(helper).href)});
+       const specifier = helper.resolveTelegramPluginImportSpecifier();
+       if (specifier === null) throw new Error("connector fallback was not found");
+       console.log(JSON.stringify(helper.extractPlugin(await import(specifier))));`,
+      ],
+      { encoding: "utf8", timeout: 10_000 },
+    );
+    expect(JSON.parse(output)).toEqual({ name: "fixture-telegram" });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

@@ -1,9 +1,6 @@
 /**
- * Plugin import resolution helpers for connector live tests. Resolves package
- * names, node_modules dist entries, and local checkout paths for first-party
- * connector plugins. Retained from the former src/test-support/test-helpers.ts
- * after removing unused HTTP factories and timer wrappers that shipped in the
- * published artifact.
+ * Resolves connector modules for live tests through installed package exports,
+ * direct ESM entries and local checkout paths, then selects their plugin export.
  */
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -50,6 +47,7 @@ export function isPackageImportResolvable(packageName: string): boolean {
 
 const PACKAGE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
+  "..",
   "..",
   "..",
 );
