@@ -125,15 +125,6 @@ const relativeElizaRoot = path
 const elizaGlob = (pattern: string): string =>
   relativeElizaRoot === "" ? pattern : `${relativeElizaRoot}/${pattern}`;
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
-const knowledgeGraphAliases: ModuleAlias[] = [
-  {
-    find: /^@elizaos\/plugin-relationships\/knowledge-graph$/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "plugins/plugin-relationships/src/knowledge-graph/index.ts",
-    ),
-  },
-];
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
 const workspaceUiSourceRoot = path.join(
@@ -179,7 +170,6 @@ const integrationResolveAlias: ModuleAlias[] = [
         },
       ]
     : []),
-  ...knowledgeGraphAliases,
   ...getAgentSourceAliases(autonomousSourceRoot),
   ...getAppCoreSourceAliases(appCoreSourceRoot),
   ...getUiSourceAliases(uiSourceRoot),
