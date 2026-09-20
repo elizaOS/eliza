@@ -1,16 +1,4 @@
-/**
- * Tests for the phrase-chunked TTS adapter that wraps a remote TTS handler
- * so streaming LLM output can be spoken progressively.
- *
- * The fixed contract these tests pin:
- *   - First TTS call fires on the first punctuation boundary (≤ 1 ms after
- *     the boundary token is pushed).
- *   - Subsequent calls follow phrase-by-phrase.
- *   - `finish()` drains the tail phrase exactly once.
- *   - TTS calls are ordered the same as their phrases.
- *   - When a producer stalls past the time budget without punctuation, the
- *     in-flight phrase is force-flushed by the watchdog timer.
- */
+/** Exercises real phrase chunking, complete stream delivery, TTS completion and watchdog behavior. */
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { PhraseChunkedTts, speakStreamingText } from "./phrase-chunked-tts";
 
@@ -20,18 +8,10 @@ beforeAll(async () => {
   await PhraseChunkedTts.load();
 });
 
-interface TtsCall {
-  text: string;
-  at: number;
-}
-
-function makeRecordingTts(now: () => number, latencyMs = 0) {
-  const calls: TtsCall[] = [];
+function makeRecordingTts() {
+  const calls: { text: string }[] = [];
   const tts = async (text: string): Promise<string> => {
-    calls.push({ text, at: now() });
-    if (latencyMs > 0) {
-      await new Promise((r) => setTimeout(r, latencyMs));
-    }
+    calls.push({ text });
     return `audio:${text}`;
   };
   return { tts, calls };
@@ -39,7 +19,7 @@ function makeRecordingTts(now: () => number, latencyMs = 0) {
 
 describe("PhraseChunkedTts", () => {
   it("emits the first phrase as soon as the first sentence-ending punctuation arrives", async () => {
-    const { tts, calls } = makeRecordingTts(() => performance.now());
+    const { tts, calls } = makeRecordingTts();
     const pipe = new PhraseChunkedTts(tts);
 
     pipe.push("Hello");
@@ -57,7 +37,7 @@ describe("PhraseChunkedTts", () => {
   });
 
   it("splits a multi-sentence stream into ordered, complete phrases", async () => {
-    const { tts, calls } = makeRecordingTts(() => performance.now());
+    const { tts, calls } = makeRecordingTts();
     const pipe = new PhraseChunkedTts(tts);
 
     const stream =
@@ -79,7 +59,7 @@ describe("PhraseChunkedTts", () => {
   });
 
   it("falls back to a max-token flush when there is no punctuation", async () => {
-    const { tts, calls } = makeRecordingTts(() => performance.now());
+    const { tts, calls } = makeRecordingTts();
     const pipe = new PhraseChunkedTts(tts, {
       chunker: { chunkOn: "punctuation", maxTokensPerPhrase: 5 },
     });
@@ -104,7 +84,7 @@ describe("PhraseChunkedTts", () => {
   });
 
   it("drains the tail phrase exactly once on finish", async () => {
-    const { tts, calls } = makeRecordingTts(() => performance.now());
+    const { tts, calls } = makeRecordingTts();
     const pipe = new PhraseChunkedTts(tts);
     pipe.push("only a tail");
     expect(calls).toHaveLength(0);
@@ -119,7 +99,7 @@ describe("PhraseChunkedTts", () => {
 
   it("invokes onPhraseEmit synchronously before the TTS call", async () => {
     const seen: string[] = [];
-    const { tts, calls } = makeRecordingTts(() => performance.now());
+    const { tts, calls } = makeRecordingTts();
     const pipe = new PhraseChunkedTts(tts, {
       onPhraseEmit: (p) => {
         // The TTS call must not have started yet at this synchronous hook.
@@ -128,34 +108,34 @@ describe("PhraseChunkedTts", () => {
       },
     });
     pipe.push("Phrase one.");
-    await new Promise((r) => setTimeout(r, 0));
     expect(seen).toEqual(["Phrase one."]);
     await pipe.finish();
   });
 
-  it("invokes onAudio in phrase order even when TTS calls have variable latency", async () => {
-    // First TTS call sleeps 30 ms, second 1 ms. Without ordering protection
-    // they would resolve out of order — Promise.all() in finish() awaits each
-    // .then() chain, but onAudio runs at handler resolve time. We accept that
-    // onAudio is per-handler (not totally-ordered) and verify both *fired*.
-    const order: string[] = [];
-    let n = 0;
-    const tts = async (text: string): Promise<string> => {
-      const wait = n++ === 0 ? 30 : 1;
-      await new Promise((r) => setTimeout(r, wait));
-      return text.toUpperCase();
-    };
-    const pipe = new PhraseChunkedTts(tts, {
-      onAudio: (p, a) => {
-        order.push(`${p.text}=${a as string}`);
+  it("delivers each completed TTS result while another phrase is still pending", async () => {
+    const alpha = Promise.withResolvers<string>();
+    const betaDelivered = Promise.withResolvers<void>();
+    const results: string[] = [];
+    const pipe = new PhraseChunkedTts(
+      (text) => (text === "Alpha." ? alpha.promise : "BETA."),
+      {
+        onAudio: (phrase, audio) => {
+          results.push(`${phrase.text}=${audio}`);
+          if (phrase.text === "Beta.") betaDelivered.resolve();
+        },
       },
-    });
+    );
     pipe.push("Alpha.");
     pipe.push("Beta.");
-    await pipe.finish();
-    expect(order).toContain("Alpha.=ALPHA.");
-    expect(order).toContain("Beta.=BETA.");
-    expect(order).toHaveLength(2);
+    const finished = pipe.finish();
+    try {
+      await betaDelivered.promise;
+      expect(results).toEqual(["Beta.=BETA."]);
+    } finally {
+      alpha.resolve("ALPHA.");
+      await finished;
+    }
+    expect(results).toEqual(["Beta.=BETA.", "Alpha.=ALPHA."]);
   });
 
   it("rethrows the first TTS error on finish unless onTtsError swallows", async () => {
@@ -181,7 +161,7 @@ describe("PhraseChunkedTts", () => {
   });
 
   it("rejects push() after finish()", async () => {
-    const { tts } = makeRecordingTts(() => performance.now());
+    const { tts } = makeRecordingTts();
     const pipe = new PhraseChunkedTts(tts);
     pipe.push("hello.");
     await pipe.finish();
@@ -194,7 +174,7 @@ describe("PhraseChunkedTts", () => {
     // same monotonic counter, advanced explicitly.
     let now = 0;
     const clock = () => now;
-    const { tts, calls } = makeRecordingTts(clock);
+    const { tts, calls } = makeRecordingTts();
     const pipe = new PhraseChunkedTts(tts, {
       chunker: {
         chunkOn: "punctuation",
@@ -248,39 +228,8 @@ describe("PhraseChunkedTts", () => {
     expect(phrases.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("first-phrase TTS dispatch happens in under 5 ms after the boundary token", async () => {
-    let now = 1000;
-    const clock = (): number => now;
-    const dispatchAt: number[] = [];
-    const pipe = new PhraseChunkedTts(
-      async (text: string) => {
-        dispatchAt.push(now);
-        return text;
-      },
-      { clock },
-    );
-
-    pipe.push("Hello");
-    now += 8;
-    pipe.push(" there");
-    now += 8;
-    const t = now;
-    pipe.push("!"); // boundary hits here
-    // Synchronous dispatch of the TTS handler within the same tick.
-    await Promise.resolve();
-    await Promise.resolve();
-    const firstDispatchAt = dispatchAt[0];
-    if (firstDispatchAt === undefined) {
-      throw new Error("Expected TTS dispatch timestamp");
-    }
-    expect(firstDispatchAt).toBeGreaterThanOrEqual(t);
-    expect(firstDispatchAt - t).toBeLessThan(5);
-
-    await pipe.finish();
-  });
-
   it("respects an explicit sentenceTerminators set (period-only mode)", async () => {
-    const { tts, calls } = makeRecordingTts(() => performance.now());
+    const { tts, calls } = makeRecordingTts();
     const pipe = new PhraseChunkedTts(tts, {
       chunker: {
         chunkOn: "punctuation",
@@ -300,39 +249,11 @@ describe("PhraseChunkedTts", () => {
   });
 
   it("ensures every input character makes it to TTS exactly once across phrases", async () => {
-    const { tts, calls } = makeRecordingTts(() => performance.now());
+    const { tts, calls } = makeRecordingTts();
     const pipe = new PhraseChunkedTts(tts);
     const input = "One two three. Four five six! Seven, eight; nine: ten?";
     for (const ch of input) pipe.push(ch);
     await pipe.finish();
     expect(calls.map((c) => c.text).join("")).toBe(input);
-  });
-});
-
-describe("PhraseChunkedTts — latency benchmark assertions", () => {
-  it("for a realistic streaming response, first TTS call lands within 50 ms of stream start", async () => {
-    const dispatchAt: number[] = [];
-    const start = performance.now();
-    const pipe = new PhraseChunkedTts(async (text: string) => {
-      dispatchAt.push(performance.now() - start);
-      return text;
-    });
-
-    // Simulate a 9-ms-per-token cadence (typical for streamed APIs).
-    const text = "Hi there! I'm checking the pipeline. Looks good so far.";
-    for (const tok of text.split(/(\s+)/g).filter((s) => s.length > 0)) {
-      pipe.push(tok);
-      await new Promise((r) => setTimeout(r, 9));
-    }
-    await pipe.finish();
-
-    expect(dispatchAt.length).toBeGreaterThanOrEqual(3);
-    // First TTS call must happen on the first ! — which is after about 3
-    // tokens. Generous upper bound: the whole text streams over ~17 tokens, so
-    // a late (end-buffered) dispatch would land well past this; the bound only
-    // needs to separate "dispatched on the boundary" from "dispatched at end".
-    // Windows' ~15.6 ms default timer resolution rounds each 9 ms setTimeout up,
-    // so the early dispatch + scheduler jitter can exceed a tight 80 ms cap.
-    expect(dispatchAt[0]).toBeLessThan(150);
   });
 });

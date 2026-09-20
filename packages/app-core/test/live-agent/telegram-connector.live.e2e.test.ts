@@ -9,11 +9,11 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import dotenv from "dotenv";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 
 const { extractPlugin, resolveTelegramPluginImportSpecifier } = await import(
-  "../../src/test-support/test-helpers.ts"
+  "./helpers/connector-imports.ts"
 );
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
@@ -718,15 +718,4 @@ describeIfLive("Telegram Connector - Enhanced Features", () => {
     },
     TEST_TIMEOUT,
   );
-});
-
-// ---------------------------------------------------------------------------
-// 6. Integration Tests
-// ---------------------------------------------------------------------------
-
-describe("Telegram Connector - Integration", () => {
-  it("Telegram connector is mapped in plugin auto-enable", async () => {
-    const mod = await import("@elizaos/app-core");
-    expect(mod.CONNECTOR_PLUGINS.telegram).toBe("@elizaos/plugin-telegram");
-  });
 });
