@@ -184,15 +184,19 @@ test("retiring one agent preserves another agent's adapter and persisted data", 
   const otherId = randomUUID();
   await pool.getOrCreate(retiringId);
   const other = await pool.getOrCreate(otherId);
-  await other.createAgent({
-    id: otherId,
-    name: "Unaffected agent",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  });
+  await other.createAgents([
+    {
+      id: otherId,
+      name: "Unaffected agent",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    },
+  ]);
   pool.removeAdapter(retiringId);
   expect(await pool.getOrCreate(otherId)).toBe(other);
-  expect(await other.getAgent(otherId)).toMatchObject({ id: otherId, name: "Unaffected agent" });
+  expect(await other.getAgentsByIds([otherId])).toMatchObject([
+    { id: otherId, name: "Unaffected agent" },
+  ]);
 }, 30_000);
 
 test("strict runtime retirement leaves another runtime and its real database usable", async () => {
@@ -211,12 +215,12 @@ test("strict runtime retirement leaves another runtime and its real database usa
     await retiring.initialize({ skipMigrations: true });
     await other.initialize({ skipMigrations: true });
     await retiring.stop({ requireQuiescence: true });
-    await other.createAgent({
-      id: otherId,
-      name: "Live after peer retirement",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
+    expect(
+      await other.updateAgent(otherId, {
+        name: "Live after peer retirement",
+        updatedAt: Date.now(),
+      }),
+    ).toBe(true);
     expect(await other.getAgent(otherId)).toMatchObject({
       id: otherId,
       name: "Live after peer retirement",

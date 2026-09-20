@@ -69,6 +69,7 @@ describe("strict runtime retirement", () => {
 			await stopping.promise;
 			await stillPending(strict);
 			const retry = runtime.stop({ requireQuiescence: true });
+			expect(retry).toBe(strict);
 			await stillPending(retry);
 			expect(stops).toBe(1);
 			finish.resolve();
@@ -110,6 +111,82 @@ describe("strict runtime retirement", () => {
 			expect(stops).toBe(1);
 		},
 	);
+
+	it("an outer wait deadline retains the original strict stop and teardown operation", async () => {
+		const runtime = await initialized();
+		const stopping = deferred();
+		const finish = deferred();
+		let stops = 0;
+		class SlowStop extends Service {
+			static override serviceType = "quiescence-outer-deadline";
+			capabilityDescription = "Controlled teardown deadline";
+			static override async start(runtime: IAgentRuntime) {
+				return new SlowStop(runtime);
+			}
+			override async stop() {
+				stops += 1;
+				stopping.resolve();
+				await finish.promise;
+			}
+		}
+		await runtime.registerService(SlowStop);
+		await runtime.getServiceLoadPromise(SlowStop.serviceType);
+		const strict = runtime.stop({
+			fast: true,
+			serviceStopTimeoutMs: 1,
+			requireQuiescence: true,
+		});
+		await stopping.promise;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const expired = new Error("Host wait deadline expired");
+		try {
+			await expect(
+				Promise.race([
+					strict,
+					new Promise<void>((_, reject) => {
+						timer = setTimeout(() => reject(expired), 20);
+					}),
+				]),
+			).rejects.toBe(expired);
+			const retry = runtime.stop({ requireQuiescence: true });
+			expect(retry).toBe(strict);
+			await stillPending(retry);
+			expect(stops).toBe(1);
+		} finally {
+			if (timer !== undefined) clearTimeout(timer);
+			finish.resolve();
+			await strict;
+		}
+		expect(stops).toBe(1);
+	});
+
+	it("publishes the strict stop before a preparation hook reenters it", async () => {
+		const runtime = await initialized();
+		let reentrant: Promise<void> | undefined;
+		let preparations = 0;
+		let stops = 0;
+		class ReentrantStop extends Service {
+			static override serviceType = "quiescence-reentrant";
+			capabilityDescription = "Requests strict retirement during preparation";
+			static override async start(runtime: IAgentRuntime) {
+				return new ReentrantStop(runtime);
+			}
+			override prepareStop() {
+				preparations += 1;
+				reentrant = runtime.stop({ requireQuiescence: true });
+			}
+			override async stop() {
+				stops += 1;
+			}
+		}
+		await runtime.registerService(ReentrantStop);
+		await runtime.getServiceLoadPromise(ReentrantStop.serviceType);
+		const strict = runtime.stop({ requireQuiescence: true });
+		expect(reentrant).toBe(strict);
+		await strict;
+		expect(preparations).toBe(1);
+		expect(stops).toBe(1);
+	});
 
 	it("waits for pending plugin initialization and its existing registration rollback", async () => {
 		const runtime = await initialized();
