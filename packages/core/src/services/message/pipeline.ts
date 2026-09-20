@@ -901,6 +901,7 @@ export async function runV5MessageRuntimeStage1(
 			(onResponseHandlerEarlyReply || args.onPlanningAcknowledgment)
 		) {
 			const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
+				pendingWork: prePatchStageOneReplyEffectStatus === "pending",
 				providers: args.state.data.providers,
 				request: getUserMessageText(args.message),
 				reply: earlyReplyText,

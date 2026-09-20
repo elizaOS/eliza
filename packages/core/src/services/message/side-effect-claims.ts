@@ -118,12 +118,21 @@ const GENERIC_COMPLETION_OPENER_PATTERN = /^[\s.!?…–—-]*done\b/i;
  * the same sentence overrides that exclusion, and openers whose own match text
  * carries the write verb ("reminders are set", "Saved!") are unaffected.
  */
-function stateSideEffectClaimHasLocalSubject(text: string): boolean {
+function stateSideEffectClaimHasLocalSubject(
+	text: string,
+	pendingWork: boolean,
+): boolean {
 	for (const match of text.matchAll(STATE_SIDE_EFFECT_CLAIM_PATTERN)) {
 		const firstWordOffset = match[0].search(/[\p{L}\p{N}]/u);
 		const claimIndex =
 			(match.index ?? 0) + (firstWordOffset >= 0 ? firstWordOffset : 0);
 		const sentence = sentenceContaining(text, claimIndex);
+		// During pending work, the runtime already supplies the operation context.
+		// A bare Done opener is premature even when its subject is in the next
+		// sentence. Final replies keep the existing local-subject/read rules.
+		if (pendingWork && GENERIC_COMPLETION_OPENER_PATTERN.test(match[0])) {
+			return true;
+		}
 		if (!SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(sentence)) continue;
 		if (
 			GENERIC_COMPLETION_OPENER_PATTERN.test(match[0]) &&
@@ -643,7 +652,10 @@ function localeReplyClaimsCompletedSideEffect(text: string): boolean {
 	return false;
 }
 
-export function replyClaimsCompletedSideEffect(reply: string): boolean {
+export function replyClaimsCompletedSideEffect(
+	reply: string,
+	options: { pendingWork?: boolean } = {},
+): boolean {
 	const original = reply.trim();
 	// An explicitly introduced example or original quotation reports wording,
 	// not a new effect. Keep the original reply intact; inspect only assertions
@@ -664,10 +676,14 @@ export function replyClaimsCompletedSideEffect(reply: string): boolean {
 	}
 	if (!text) return false;
 	// Quoted wording can still name the object of an outside assertion.
-	if (!SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(original)) {
+	if (
+		!options.pendingWork &&
+		!SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(original)
+	) {
 		return localeReplyClaimsCompletedSideEffect(text);
 	}
-	if (stateSideEffectClaimHasLocalSubject(text)) return true;
+	if (stateSideEffectClaimHasLocalSubject(text, options.pendingWork === true))
+		return true;
 	for (const match of text.matchAll(
 		SUBJECTLESS_PAST_SIDE_EFFECT_CLAIM_PATTERN,
 	)) {

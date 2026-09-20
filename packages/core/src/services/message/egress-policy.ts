@@ -353,6 +353,8 @@ export type PlannedReplyEgressDecision =
  */
 export function evaluatePlannedReplyEgress(args: {
 	reply: string;
+	/** Early progress for a turn whose work has not settled. */
+	pendingWork?: boolean;
 	request?: string;
 	providers?: StateData["providers"];
 	actionResults: readonly ActionResult[];
@@ -380,7 +382,7 @@ export function evaluatePlannedReplyEgress(args: {
 	}
 	if (
 		args.evaluator?.replyEffectStatus === "applied" ||
-		replyClaimsCompletedSideEffect(reply)
+		replyClaimsCompletedSideEffect(reply, { pendingWork: args.pendingWork })
 	) {
 		if (
 			plannedReplyHasClaimGroundingReceipt({

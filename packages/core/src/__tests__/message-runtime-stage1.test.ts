@@ -10267,6 +10267,40 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("withholds a bare completion opener from pending progress without another inference", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				replyText: 'Done. The note now says "Bring the green notebook."',
+				extra: { requiresTool: true, replyEffectStatus: "pending" },
+			}),
+			JSON.stringify({
+				thought: "Finished the check.",
+				toolCalls: [],
+				messageToUser: "I checked the request.",
+			}),
+		]);
+		const onPlanningAcknowledgment = vi.fn();
+		const earlyReply = vi.fn();
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onPlanningAcknowledgment,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+		expect(onPlanningAcknowledgment).not.toHaveBeenCalled();
+		expect(earlyReply).not.toHaveBeenCalled();
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I checked the request.",
+			);
+		}
+	});
+
 	it("delivers planning progress before work without consuming the final reply", async () => {
 		const order: string[] = [];
 		const runtime = makeRuntime([

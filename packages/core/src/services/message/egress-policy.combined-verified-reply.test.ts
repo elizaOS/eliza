@@ -162,3 +162,46 @@ describe("combined verified reply egress", () => {
 		).toEqual([receipt.receiptId]);
 	});
 });
+
+describe("pending-work acknowledgment egress", () => {
+	it.each([
+		'Done. The Cedar rehearsal note now says "Bring the green notebook."',
+		"Done!",
+		"Done — your notes are loaded.",
+	])("withholds completion wording while the turn is pending: %s", (reply) => {
+		expect(
+			evaluatePlannedReplyEgress({
+				reply,
+				pendingWork: true,
+				actionResults: [],
+				actions: [],
+			}),
+		).toEqual({ verdict: "reject", kind: "completed_side_effect" });
+	});
+
+	it.each([
+		"On it, changing blue to green.",
+		"I'll check your calendar first.",
+		"Once that's done, I'll check the other note.",
+		'You said: "Done." I will check the saved note.',
+	])("retains ordinary progress and reported wording: %s", (reply) => {
+		expect(
+			evaluatePlannedReplyEgress({
+				reply,
+				pendingWork: true,
+				actionResults: [],
+				actions: [],
+			}),
+		).toEqual({ verdict: "allow" });
+	});
+
+	it("keeps settled navigation wording under the existing final-response rules", () => {
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: "Done. What should we do with your notes?",
+				actionResults: [],
+				actions: [],
+			}),
+		).toEqual({ verdict: "allow" });
+	});
+});

@@ -5,7 +5,7 @@ Results and failures: [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md).
 
 ## Exact checkpoints
 
-- Current candidate includes the receipt-composition correction after `673a13f3537`; full root verification and124 focused checks passed. Latest runtime is UI5268/API31392 (restarted for this change).
+- Current candidate includes the pending-work acknowledgment guard following `8660d9d9b21`; 59 focused guard tests, 702 Stage1/claim tests, and full root verification passed. Runtime UI5268/API31392 still runs the preceding production code `9896c239663`; the new guard has not yet been live-rechecked.
 - Sources: saved Mac text candidate `a15525f30fb` plus develop `ba04de0e2c1`, then reviewed develop test maintenance `ec23d0f670c`.
 - Reviewed remote checkpoint `89a476f3d75` is already an ancestor of the Mac candidate. Any newer remote work still needs its exact source and review.
 - Published rollback tag: `codex/consolidation-checkpoint-20260920` at `a42679bf08f`.
@@ -18,7 +18,7 @@ Results and failures: [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md).
 - Earlier broad suites: Calendar 1,088 passed/four skipped; Notes192 passed; core13,661 passed/two initial failures/three skipped. Both initial core failures were investigated and their affected suites passed after reconciliation, including70 wallet-grounding tests.
 - Follow-up core443, personal-assistant Calendar60, agent recall57, prompt-package20, upstream A2A19 and real SQL vector6 checks passed in their scoped runs. Further package results are recorded in the QA evidence.
 - Seventeen real text turns recorded. Greetings/navigation/recall, exact note create/edit, Calendar timing clarification/create/conflict/move exercised. Latest move3.873s/four calls; exact original-message recall0.915s/one call. These are observations, not latency guarantees.
-- Acknowledgment correction passed one earlier live edit, but the latest handler again generated premature Done with pending status. The early-reply guard reproducibly misses that two-sentence completion claim. Keep acknowledgment correctness open; persisted note text and final receipt were correct.
+- The captured premature Done acknowledgment is now withheld while work is pending. Deterministic runtime coverage confirms both progress callbacks withhold it and the final reply still arrives without an extra model call. Live recheck remains open; this is not a universal natural-language guarantee.
 
 ## Remaining acceptance checklist
 

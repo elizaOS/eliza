@@ -88,3 +88,11 @@ Added a real HTTP/Vite test that waits for the upstream POST body to arrive, abo
 Acknowledgment diagnosis: invoking `evaluatePlannedReplyEgress` with the captured early sentence `Done. The Cedar rehearsal note now says "Bring the green notebook."` and zero action results returned allow. `stateSideEffectClaimHasLocalSubject` requires a saved-item noun in the same sentence as Done, so this two-sentence assertion is missed. A targeted pending-work delivery correction remains open; this is separate from final receipt-composition binding.
 
 Evidence: `proxy-preheaders-cancel-tests.log`, `cancellation-boundaries-tests.log`. Production remains9896c239663.
+
+## Pending-work acknowledgment delivery correction
+
+The existing completion-claim guard now receives the runtime pending-work phase. It withholds a bare Done opener before work settles, including the captured two-sentence premature completion claim. Settled final navigation replies retain their existing sentence-local behavior. No extra prompt, model call, substitute acknowledgment, timer, or action-routing change was introduced.
+
+Validation: 59 focused classifier/egress tests passed; 702 Stage1/claim tests passed, including a runtime fixture proving neither early callback receives the premature claim while the final reply remains delivered with the original two fixture calls. Full root `bun run verify` exited0. Evidence: `pending-ack-guard-tests.log`, `pending-ack-runtime-tests.log`, and `pending-ack-root-verify.log` in the local consolidation evidence folder. No new paid calls.
+
+Runtime remains on9896c239663 until restart; live acceptance of this guard remains open. The delayed-request/Stop concern and other remaining checklist items are unchanged.
