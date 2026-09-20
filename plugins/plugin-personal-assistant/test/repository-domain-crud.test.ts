@@ -2,6 +2,10 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  createRealTestRuntime,
+  type RealTestRuntimeResult,
+} from "../../../packages/app-core/test/helpers/real-runtime.ts";
+import {
   createLifeOpsAuditEvent,
   createLifeOpsBrowserSession,
   createLifeOpsCalendarSyncState,
@@ -21,10 +25,6 @@ import {
   createLifeOpsWorkflowRun,
   LifeOpsRepository,
 } from "../src/lifeops/repository.ts";
-import {
-  createRealTestRuntime,
-  type RealTestRuntimeResult,
-} from "../../../packages/app-core/test/helpers/real-runtime.ts";
 
 const NOW = "2026-07-11T08:00:00.000Z";
 const LATER = "2026-07-11T09:00:00.000Z";
