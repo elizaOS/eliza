@@ -3,8 +3,9 @@
  * categorization. The harness uses typed runtime stubs while exercising the
  * real provider formatting and data assembly.
  */
-import { describe, expect, it, vi } from "vitest";
+
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { describe, expect, it, vi } from "vitest";
 import type {
   IAgentRuntime,
   Memory,
