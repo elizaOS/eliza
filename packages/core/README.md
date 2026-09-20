@@ -53,6 +53,15 @@ an explicitly supplied or extracted `[]` through argument resolution; it never
 defaults an omitted or null value to an empty list. The owning action must still
 validate element types, permissions and domain constraints.
 
+## Action argument compatibility
+
+Required string action parameters may declare `legacyRequiredAlternatives` for
+explicit runtime compatibility. Native tool schemas still require the canonical
+parameter. Admission accepts an absent canonical selector only when an own,
+nonempty alternative is also a declared string parameter and passes both
+schemas. It does not rename arguments, waive other requirements, or resolve
+conflicting values; the owning handler must handle its declared alternatives.
+
 ## Optimized prompt compatibility
 
 Runtime prompt resolution binds an artifact to the caller's complete baseline

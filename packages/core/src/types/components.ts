@@ -106,6 +106,16 @@ export interface ActionParameter {
 	 */
 	requiredForSubactions?: readonly string[];
 	/**
+	 * Explicit legacy string selectors that may satisfy this required parameter
+	 * at runtime admission. Each alternative must also be a declared parameter,
+	 * supplied as an own, nonempty string and valid against both schemas. Only an
+	 * absent canonical parameter may be waived; arguments are never renamed.
+	 * Native tool schemas still require the canonical name. Use this only when
+	 * the owning handler deliberately supports these alternatives and validates
+	 * conflicting values. Other required parameters remain required.
+	 */
+	legacyRequiredAlternatives?: readonly string[];
+	/**
 	 * Accepted arg-name synonyms for this parameter. The pre-validation
 	 * normalizer renames an incoming alias key to this param's name when the
 	 * param itself is absent from the args and exactly one declared param claims

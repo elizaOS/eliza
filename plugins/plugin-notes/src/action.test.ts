@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   type ActionResult,
+  actionToJsonSchema,
   executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
@@ -16,12 +17,16 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import {
+  type JsonSchema,
+  validateSchema,
+} from "../../../packages/core/src/actions/validate-tool-args.ts";
 import {
   type PlannerToolCall,
   runPlannerLoop,
 } from "../../plugin-assistant/src/runtime/planner-loop.ts";
 import { collectBudgetedStageOneCandidateActions } from "../../plugin-assistant/src/services/message/planned-tool.ts";
+import { __INTERNAL_normalizeNativeToolsForCall } from "../../plugin-openai/models/text.ts";
 import { notesAction } from "./action.js";
 import { notesPlugin } from "./plugin.js";
 import {
@@ -120,6 +125,82 @@ function execute(
 }
 
 describe("promoted Notes execution", () => {
+  it("requires an update selector on the provider wire and preserves unrelated text through real admission", async () => {
+    const runtime = await executorHarness();
+    const action = notesPlugin.actions?.find(
+      (entry) => entry.name === "NOTES_UPDATE",
+    );
+    if (!action)
+      throw new Error("The promoted Notes update action is unavailable");
+    const normalized = __INTERNAL_normalizeNativeToolsForCall(
+      [
+        {
+          name: action.name,
+          description: action.description,
+          strict: true,
+          parameters: actionToJsonSchema(action),
+        },
+      ],
+      { cerebrasMode: true },
+    );
+    const tools = normalized.tools as Record<
+      string,
+      { inputSchema: { jsonSchema: JsonSchema } }
+    >;
+    const schema = tools.NOTES_UPDATE.inputSchema.jsonSchema;
+    const missing = { replacementContent: "Packing\nBring spare cable." };
+    const errors: string[] = [];
+    validateSchema(schema, missing, "", errors);
+    expect(errors).toEqual(
+      expect.arrayContaining([expect.stringContaining("content")]),
+    );
+    const service = getNotesService(runtime);
+    const original = await service.createNote({
+      title: "Packing",
+      body: "Bring lens. Bring cable.",
+      color: "yellow",
+    });
+    expect(
+      (await execute(runtime, { name: action.name, params: missing })).success,
+    ).toBe(false);
+    expect(service.getNote(original.id)).toEqual(original);
+    const params = {
+      content: "Packing",
+      textEdit: {
+        field: "body",
+        oldText: "Bring cable.",
+        newText: "Bring spare cable.",
+      },
+    };
+    const validErrors: string[] = [];
+    validateSchema(schema, params, "", validErrors);
+    expect(validErrors).toEqual([]);
+    expect(
+      (await execute(runtime, { name: action.name, params })).success,
+    ).toBe(true);
+    expect(service.getNote(original.id).body).toBe(
+      "Bring lens. Bring spare cable.",
+    );
+  });
+
+  it.each([undefined, "", "  ", 7, ["Existing"], { title: "Existing" }])(
+    "rejects invalid legacy update selector %j without writes",
+    async (selector) => {
+      const runtime = await executorHarness();
+      const service = getNotesService(runtime);
+      const original = await service.createNote({
+        title: "Existing",
+        body: "Keep all text.",
+        color: "yellow",
+      });
+      const result = await execute(runtime, {
+        name: "NOTES_UPDATE",
+        params: { text: selector, replacementContent: "Existing\nChanged" },
+      });
+      expect(result.success).toBe(false);
+      expect(service.getNote(original.id)).toEqual(original);
+    },
+  );
   it.each(["text", "note", "title", "query"])(
     "persists CRUD through the declared %s content alternative",
     async (name) => {

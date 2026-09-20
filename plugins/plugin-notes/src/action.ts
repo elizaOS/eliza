@@ -371,6 +371,8 @@ export const notesAction: Action = {
         "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; compare returned createdAt/updatedAt timestamps, never search for 'latest' or 'most recently updated'. For update/delete, identify the EXISTING note, not its replacement. For create, supply the exact title, newline, and body.",
       required: false,
       subactions: ["create", "list", "update", "delete"],
+      requiredForSubactions: ["update"],
+      legacyRequiredAlternatives: ["text", "note", "title", "query"],
       // Notes validates content-or-alternative before any write.
       // Strict providers may serialize an omitted optional string as "". The
       // empty string is never valid note content (minLength is 1), so normalize

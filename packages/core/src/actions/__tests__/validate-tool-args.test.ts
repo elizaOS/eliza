@@ -71,6 +71,54 @@ const nestedAction = makeAction({
 });
 
 describe("validateToolArgs", () => {
+	it("admits only declared valid legacy selectors without renaming or waiving other requirements", () => {
+		const action = makeAction({
+			parameters: [
+				{
+					name: "selector",
+					description: "Canonical selector",
+					required: true,
+					legacyRequiredAlternatives: ["legacy", "unknown", "numeric"],
+					schema: { type: "string", minLength: 2, pattern: "^note-" },
+				},
+				{
+					name: "legacy",
+					description: "Supported legacy selector",
+					schema: { type: "string", maxLength: 20 },
+				},
+				{
+					name: "numeric",
+					description: "Unrelated number",
+					schema: { type: "number" },
+				},
+				{
+					name: "confirmation",
+					description: "Separate required argument",
+					required: true,
+					schema: { type: "boolean" },
+				},
+			],
+		});
+		const args = { legacy: "note-original", confirmation: true };
+		expect(validateToolArgs(action, args)).toMatchObject({ valid: true, args });
+		expect(args).not.toHaveProperty("selector");
+		for (const invalid of [
+			{ legacy: "note-original" },
+			{ legacy: "", confirmation: true },
+			{ legacy: "  ", confirmation: true },
+			{ legacy: "wrong-prefix", confirmation: true },
+			{ legacy: "note-more-than-twenty-characters", confirmation: true },
+			{ legacy: 4, confirmation: true },
+			{ unknown: "note-original", confirmation: true },
+			{ numeric: 4, confirmation: true },
+			{ selector: "", legacy: "note-original", confirmation: true },
+			Object.assign(Object.create({ legacy: "note-original" }), {
+				confirmation: true,
+			}),
+		])
+			expect(validateToolArgs(action, invalid).valid).toBe(false);
+	});
+
 	it("validates numbers, integers, and bounds", () => {
 		const errors: string[] = [];
 		const numSchema = {
