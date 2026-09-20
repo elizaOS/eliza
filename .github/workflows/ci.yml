@@ -31,12 +31,12 @@ jobs:
           bun-version: '1.3.14'
       - name: Install workspace
         run: bun install --frozen-lockfile --ignore-scripts
-      - name: Exercise real Windows secure identity contracts
-        run: node packages/scripts/run-vitest.mjs run --config packages/agent/vitest.config.ts packages/agent/src/runtime/runtime-installation-id.windows.test.ts
       - name: Apply repository installation patches
         run: bun run postinstall
       - name: Build Windows desktop with canonical command
         run: node packages/app-core/scripts/desktop-build.mjs build
+      - name: Exercise real Windows secure identity contracts
+        run: node packages/scripts/run-vitest.mjs run --config packages/agent/vitest.config.ts packages/agent/src/runtime/runtime-installation-id.windows.test.ts
       - name: Exercise canonical API and renderer development entry
         env:
           ELIZA_UI_PORT: '22138'
