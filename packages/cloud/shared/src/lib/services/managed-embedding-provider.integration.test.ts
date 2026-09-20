@@ -127,6 +127,22 @@ describe("managed provider model and stored-width contract", () => {
     expect(requests).toHaveLength(0);
   });
 
+  test.each(["false", "true"])(
+    "unpinned historical384 cannot switch models with Cloud routing %s",
+    async (cloudRouting) => {
+      await expect(
+        embedding({
+          ELIZAOS_CLOUD_API_KEY: "existing-test-key",
+          ELIZAOS_CLOUD_USE_EMBEDDINGS: cloudRouting,
+          EMBEDDING_DIMENSION: "384",
+          ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS: "384",
+        }),
+      ).rejects.toMatchObject({ code: "MANAGED_EMBEDDING_MIGRATION_REQUIRED" });
+      expect(mintedKeys).toBe(0);
+      expect(requests).toHaveLength(0);
+    },
+  );
+
   test("a freshly stamped BGE384 local configuration remains eligible on upgrade", async () => {
     const fresh = await prepareManagedElizaBaseEnvironment({
       existingEnv: {},

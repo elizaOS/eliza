@@ -201,9 +201,9 @@ export function mergeManagedPublicBaseUrl(
 /**
  * Selects BGE384 for fresh agents and preserves explicit embedding controls.
  * Local ownership includes the lean-chat plugin opt-in and the persisted route.
- * Existing Cloud stores without a model pin retain their historical
- * text-embedding-3-small identity and width; this compatibility path is not a
- * BGE migration. Incompatible BGE selections fail before runtime storage probes.
+ * Existing 384-dimensional stores require an explicit model identity: prior
+ * managed defaults could route that width to different models. The legacy
+ * 1536-dimensional compatibility path is not a BGE migration. Incompatible BGE selections fail before runtime storage probes.
  */
 export function applyManagedAgentInferenceEnvDefaults(
   existingEnv: Record<string, string>,
@@ -229,6 +229,10 @@ export function applyManagedAgentInferenceEnvDefaults(
     Boolean(existingEnv.EMBEDDING_BASE_URL?.trim() || existingEnv.EMBEDDING_API_KEY?.trim());
   if (
     embeddingDimension !== cloudDimension ||
+    (!isFreshProvision &&
+      embeddingDimension === "384" &&
+      !directEmbeddingProvider &&
+      !existingEnv.ELIZAOS_CLOUD_EMBEDDING_MODEL?.trim()) ||
     (!isFreshProvision &&
       localPrimaryEmbeddings &&
       !directEmbeddingProvider &&

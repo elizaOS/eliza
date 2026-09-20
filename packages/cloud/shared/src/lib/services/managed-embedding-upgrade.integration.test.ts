@@ -3,7 +3,7 @@
  * Real PGlite migrations and storage retain old vectors and complete source text;
  * only credential minting is a fixture, and rejected boots never run inference.
  */
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { ChannelType } from "@elizaos/core";
 import { createDatabaseAdapter, DatabaseMigrationService, plugin } from "@elizaos/plugin-sql";
@@ -18,14 +18,25 @@ mock.module("./api-keys", () => ({
   },
 }));
 const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
+const { buildManagedElizaRuntimeConfig } = await import("./docker-sandbox-provider");
+const { applyCloudConfigToEnv } = await import("@elizaos/agent/runtime");
+const savedEnv = { ...process.env };
 beforeEach(() => {
   mintedKeys = 0;
 });
+afterEach(() => {
+  for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key];
+  Object.assign(process.env, savedEnv);
+});
 
 describe("legacy embedding store managed upgrade", () => {
-  test.each([384, 1536])(
-    "refuses ambiguous %i-dimensional local adoption before touching stored vectors",
-    async (dimension) => {
+  test.each([
+    { dimension: 384, historicalUnpinned: false },
+    { dimension: 1536, historicalUnpinned: false },
+    { dimension: 384, historicalUnpinned: true },
+  ])(
+    "refuses ambiguous persisted identity before touching vectors: %j",
+    async ({ dimension, historicalUnpinned }) => {
       const agentId = randomUUID();
       const entityId = randomUUID();
       const roomId = randomUUID();
@@ -71,6 +82,23 @@ describe("legacy embedding store managed upgrade", () => {
           existingEnv.EMBEDDING_DIMENSION = "384";
           existingEnv.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS = "384";
         }
+        if (historicalUnpinned) {
+          // The f9 managed fresh producer saved these hints without a lean
+          // opt-in or model identity. Persisted canonical routing subsequently
+          // enabled Cloud embeddings; equal width cannot establish its model.
+          delete existingEnv.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS;
+          existingEnv.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
+          const persistedConfig = JSON.parse(
+            JSON.stringify(buildManagedElizaRuntimeConfig(existingEnv)),
+          );
+          Object.assign(process.env, existingEnv);
+          delete process.env.ELIZAOS_CLOUD_EMBEDDING_MODEL;
+          applyCloudConfigToEnv(persistedConfig);
+          expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("true");
+          expect(process.env.ELIZAOS_CLOUD_EMBEDDING_MODEL).toBeUndefined();
+          existingEnv.ELIZAOS_CLOUD_USE_EMBEDDINGS = "true";
+        }
+        const envBeforeUpgrade = { ...process.env };
         await expect(
           prepareManagedElizaBaseEnvironment({
             existingEnv,
@@ -80,6 +108,7 @@ describe("legacy embedding store managed upgrade", () => {
           }),
         ).rejects.toMatchObject({ code: "MANAGED_EMBEDDING_MIGRATION_REQUIRED" });
         expect(mintedKeys).toBe(0);
+        expect(process.env).toEqual(envBeforeUpgrade);
         const after = await adapter.getMemoryById(id);
         expect(after?.content.text).toBe(source);
         expect(after?.embedding).toEqual(before?.embedding);
