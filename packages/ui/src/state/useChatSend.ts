@@ -626,6 +626,7 @@ export function useChatSend(deps: UseChatSendDeps) {
   } = deps;
 
   const chatSendQueueRef = useRef<QueuedChatSend[]>([]);
+  const sendCancellationGenerationRef = useRef(0);
   const activeChatTurnRef = useRef<ActiveChatTurn | null>(null);
   // ElizaClient owns a mutable base outside React state. Snapshot it each render
   // so selecting another agent retriggers the prewarm effect.
@@ -1177,6 +1178,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     unmountingRef.current = false;
     return () => {
       unmountingRef.current = true;
+      sendCancellationGenerationRef.current += 1;
       const activeTurn = activeChatTurnRef.current;
       if (activeTurn?.abortServerTurn) {
         activeTurn.controller.signal.removeEventListener(
@@ -1257,6 +1259,7 @@ export function useChatSend(deps: UseChatSendDeps) {
 
   const interruptActiveChatPipelineWithDraft =
     useCallback((): RestoredQueuedDraft => {
+      sendCancellationGenerationRef.current += 1;
       const activeTurn = activeChatTurnRef.current;
       const restoredQueuedDraft = resolveQueuedChatSends(
         activeConversationIdRef.current ?? activeTurn?.conversationId ?? null,
@@ -1792,6 +1795,50 @@ export function useChatSend(deps: UseChatSendDeps) {
         controller,
       };
       const handoffView = createTurnViewHandoff(viewHandoffOwner);
+      // Stop must also invalidate setup work before the streaming controller
+      // exists (command resolution and first-conversation creation).
+      const cancellationGeneration = sendCancellationGenerationRef.current;
+      const discardCancelledSetup = (): boolean => {
+        if (cancellationGeneration === sendCancellationGenerationRef.current) {
+          return false;
+        }
+        if (unmountingRef.current) return true;
+        const ids = [
+          turn.optimisticTurn.userMsgId,
+          turn.optimisticTurn.assistantMsgId,
+        ];
+        setConversationMessagesForConversation(
+          optimisticOwnerConversationId,
+          (previous) => previous.filter((message) => !ids.includes(message.id)),
+        );
+        for (const messageId of ids) {
+          applyConversationMessageOverlayModification(
+            optimisticOwnerConversationId,
+            messageId,
+            { messageId, mode: "drop" },
+          );
+        }
+        if (
+          optimisticOwnerGeneration !== null &&
+          activeConversationIdRef.current === optimisticOwnerConversationId &&
+          isConversationMessagesOwnershipCurrent(
+            optimisticOwnerConversationId,
+            optimisticOwnerGeneration,
+          )
+        ) {
+          const draft = [turn.rawInput, chatInputRef.current]
+            .filter(Boolean)
+            .join("\n");
+          chatInputRef.current = draft;
+          setChatInput(draft);
+          if (imagesToSend?.length) {
+            const images = [...imagesToSend, ...chatPendingImagesRef.current];
+            chatPendingImagesRef.current = images;
+            setChatPendingImages(images);
+          }
+        }
+        return true;
+      };
 
       let text = hasAttachedImages
         ? rawText || "Please review the attached image."
@@ -1805,6 +1852,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             optimisticOwnerGeneration,
           );
         } catch (err) {
+          if (discardCancelledSetup()) return;
           appendLocalCommandTurn(
             rawText,
             `Command failed: ${err instanceof Error ? err.message : "unknown error"}`,
@@ -1813,6 +1861,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           );
           return;
         }
+        if (discardCancelledSetup()) return;
         if (commandResult.handled) {
           return;
         }
@@ -1915,6 +1964,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         try {
           const { conversation: rawConversation } =
             await createConversationForFirstSend(client, uiLanguage);
+          if (discardCancelledSetup()) return;
           if (!isConversationRecord(rawConversation)) {
             throw new Error(
               "Conversation creation returned an invalid payload.",
@@ -1949,6 +1999,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           convId = conversation.id;
           convRoomId = conversation.roomId;
         } catch {
+          if (discardCancelledSetup()) return;
           // error-policy:J4 surfaced user-facing failure state.
           // First-message conversation creation failed (cold open on weak
           // signal). Remove the local accepted-turn rows and restore the draft:

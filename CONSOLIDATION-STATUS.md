@@ -14,8 +14,9 @@ finished release.** Full evidence and historical failures:
 - Original UI5248/UI5258 demos and their source branches remain preserved.
 - Inputs: Mac `a15525f30fb`, develop `ba04de0e2c1` plus reviewed maintenance
   `ec23d0f670c`. Reviewed remote `89a476f3d75` is already an ancestor. A fresh
-  remote check found that known checkout unchanged and clean; newer work in
-  other locations is not established.
+  remote inventory also found sync2 `d0d478fe7dd` and group-protocol
+  `4e8feaac096`; their reviewed differences and holds are recorded below.
+  Other unspecified hosts remain unconfirmed.
 - Pushed rollback tag: `codex/consolidation-checkpoint-20260920` at `a42679bf08f`.
   The user authorized publishing this isolated branch; no develop push or
   deployment occurred.
@@ -57,7 +58,9 @@ application/tool/transport work not separately attributed here.
   clarification/create/conflict/move have live evidence. The latest memory
   fixes add exact saving, safe scoped deletion and restart persistence.
 - Clean pre-effect Stop passed: no tool effect and unchanged note after reload.
-  An older late-arriving request around restart remains unexplained.
+  A separate Stop-during-conversation-creation race was reproduced and corrected;
+  150 lifecycle tests pass. The older late-arriving request is not causally
+  explained by this reproduction.
 - Visual checks:230 passed;23 soft flags inspected. OCR212 verified, zero
   regressions,12 expected fallback exceptions. Three family-interview hover
   controls across four viewports remain unverified.

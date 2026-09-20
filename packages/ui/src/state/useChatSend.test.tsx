@@ -645,6 +645,54 @@ describe("useChatSend stop handling", () => {
     );
   });
 
+  it.each(["resolved", "rejected"])(
+    "does not dispatch a stopped turn after pending conversation creation %s",
+    async (outcome) => {
+      const creation = deferred<{ conversation: Conversation }>();
+      mocks.client.createConversation.mockReturnValue(creation.promise);
+      mocks.client.sendConversationMessageStream.mockResolvedValue({
+        text: "Unexpected reply",
+        completed: true,
+      });
+      const deps = makeDeps();
+      const { result } = renderHook(() => useChatSend(deps));
+      let sendPromise: Promise<void> | undefined;
+      await act(async () => {
+        sendPromise = result.current.sendChatText("Create a note for tomorrow");
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+      act(() => result.current.handleChatStop());
+      await act(async () => {
+        if (outcome === "resolved") {
+          creation.resolve({
+            conversation: conversation("conv-new", "room-new"),
+          });
+        } else {
+          creation.reject(new Error("Creation failed after Stop"));
+        }
+        await sendPromise;
+      });
+      expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+      expect(listPendingChatTurns("conv-new")).toHaveLength(0);
+      expect(deps.setChatInput).toHaveBeenLastCalledWith(
+        "Create a note for tomorrow",
+      );
+      expect(deps.conversationMessagesRef.current).toEqual([]);
+      expect(deps.setActionNotice).not.toHaveBeenCalled();
+      mocks.client.createConversation.mockResolvedValue({
+        conversation: conversation("conv-next", "room-next"),
+      });
+      await act(async () => {
+        await result.current.sendChatText("hello again");
+      });
+      expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(
+        1,
+      );
+    },
+  );
+
   it("paints the accepted turn before cold conversation creation finishes", async () => {
     const creation = deferred<{ conversation: Conversation }>();
     mocks.client.createConversation.mockReturnValue(creation.promise);

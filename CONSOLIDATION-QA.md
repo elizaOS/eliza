@@ -582,3 +582,27 @@ sync2 d0d478fe7dd and group-protocol4e8feaac096 were not available as local
 commit objects, so their inclusion is unresolved; a read-only remote delta
 inspection is in progress. Old dirty worktrees are preserved, not auto-staged
 or assumed to be recent work. No remote service or branch was modified.
+
+
+## Stop during conversation setup — reproduced and corrected
+
+A deterministic hook test reproduced an additional cancellation hole: start the
+first text turn, hold conversation creation, press Stop, then finish creation.
+Before the fix the stopped turn still called sendConversationMessageStream.
+The new cancellation generation covers setup before its streaming controller
+exists and invalidates it on Stop/unmount. Cancelled setup drops only its own
+optimistic rows and restores the unsent text/attachments only while its original
+conversation ownership remains current. It never dispatches a stopped turn.
+Both creation success and rejection after Stop are covered, including a subsequent
+fresh send. This changes no model calls or prompts.
+
+The three owning lifecycle suites passed150 tests (5.69s); focused Biome checks
+passed. Evidence: runtime/stop-before-conversation-regression.log (before failure)
+and runtime/stop-before-conversation-fixed.log (after pass). Root verification
+is recorded separately in runtime/setup-stop-root-verify.log.
+
+This proves a setup cancellation bug and its correction. It does not establish
+that conversation creation caused the historical build-time late-arrival case,
+or provide rollback for actions already committed before Stop. No paid model
+calls were used. Fresh API31392 /api/health returned ready/canRespond true,
+database healthy,35 loaded plugins,95 services,zero failures and settled boot.
