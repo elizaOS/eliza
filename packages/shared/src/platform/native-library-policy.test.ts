@@ -167,6 +167,7 @@ describe("store native library containment on the filesystem", () => {
     "other-app",
     "above-contents",
     "wrong-basename",
+    "symlink-wrong-basename",
   ])("%s is allowed only inside the running app Contents", (scenario) => {
     const root = mkdtempSync(path.join(tmpdir(), "eliza-native-policy-"));
     directories.push(root);
@@ -192,7 +193,11 @@ describe("store native library containment on the filesystem", () => {
     if (scenario === "wrong-basename")
       candidate = path.join(resources, "other.dylib");
     if (scenario === "symlink") symlinkSync(outside, bundled);
-    else writeFileSync(candidate, "fixture");
+    else if (scenario === "symlink-wrong-basename") {
+      const target = path.join(resources, "other.dylib");
+      writeFileSync(target, "fixture");
+      symlinkSync(target, bundled);
+    } else writeFileSync(candidate, "fixture");
     const result = resolveNativeLibraryCandidate(
       { path: candidate },
       {

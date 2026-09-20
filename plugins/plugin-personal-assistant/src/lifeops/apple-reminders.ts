@@ -8,10 +8,6 @@
  */
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  type NativeLibraryCandidate,
-  resolveNativeLibraryCandidate,
-} from "@elizaos/app-core/platform/native-library-policy";
 import type { IAgentRuntime, Service } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
@@ -19,6 +15,10 @@ import {
   appleRemindersMacosBridgeCandidates,
 } from "@elizaos/macosreminders";
 import type { FeatureResult, IPermissionsRegistry } from "@elizaos/shared";
+import {
+  type NativeLibraryCandidate,
+  resolveNativeLibraryCandidate,
+} from "@elizaos/shared/platform/native-library-policy";
 import { isDarwin } from "../platform/host.js";
 
 export const NATIVE_APPLE_REMINDER_METADATA_KEY = "nativeAppleReminder";

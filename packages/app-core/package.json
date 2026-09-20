@@ -226,11 +226,6 @@
       "import": "./dist/platform/empty-node-module.js",
       "default": "./dist/platform/empty-node-module.js"
     },
-    "./platform/native-library-policy": {
-      "types": "./dist/platform/native-library-policy.d.ts",
-      "import": "./dist/platform/native-library-policy.js",
-      "default": "./dist/platform/native-library-policy.js"
-    },
     "./ui-compat": {
       "types": "./dist/ui-compat.d.ts",
       "import": "./dist/ui-compat.js",

@@ -21,14 +21,6 @@ const pluginSchedulingSrc = path.join(
 const sharedSrc = path.join(elizaRoot, "packages", "shared", "src");
 const uiSrc = path.join(elizaRoot, "packages", "ui", "src");
 const coreSrc = path.join(elizaRoot, "packages", "core", "src");
-const appCoreNativeLibraryPolicy = path.join(
-  elizaRoot,
-  "packages",
-  "app-core",
-  "src",
-  "platform",
-  "native-library-policy.ts",
-);
 
 /**
  * Unit-test config. UI / service suites that need inlined core/agent/ui or
@@ -119,10 +111,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/shared\/(.+)$/,
         replacement: path.join(sharedSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/app-core\/platform\/native-library-policy$/,
-        replacement: appCoreNativeLibraryPolicy,
       },
       {
         find: /^@elizaos\/ui$/,

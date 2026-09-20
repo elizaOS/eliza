@@ -1,8 +1,8 @@
 /** Exercises mac-window-effects fallbacks, string ownership, and fn-monitor mapping with deterministic app-core test fixtures. */
 
 import type { Pointer } from "bun:ffi";
+import { resolveNativeLibraryCandidate } from "@elizaos/shared/platform/native-library-policy";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveNativeLibraryCandidate } from "../../../../src/platform/native-library-policy";
 
 const WINDOW = 7 as Pointer;
 const NATIVE_PTR = 99 as Pointer;
@@ -80,7 +80,7 @@ vi.mock("bun:ffi", () => {
   };
 });
 
-vi.mock("../../../../src/platform/native-library-policy", () => ({
+vi.mock("@elizaos/shared/platform/native-library-policy", () => ({
   resolveNativeLibraryCandidate: vi.fn(() => ffi.dylibPath),
 }));
 

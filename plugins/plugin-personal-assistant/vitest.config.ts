@@ -27,14 +27,6 @@ const appCoreTestSetup = path.join(
 );
 const lifeopsTestSetup = path.join(here, "test", "setup.ts");
 const lifeopsTestStubsRoot = path.join(here, "test", "stubs");
-const appCoreNativeLibraryPolicy = path.join(
-  elizaRoot,
-  "packages",
-  "app-core",
-  "src",
-  "platform",
-  "native-library-policy.ts",
-);
 const appCoreTaskHostCapabilities = path.join(
   elizaRoot,
   "packages",
@@ -338,10 +330,6 @@ export default defineConfig({
           "runtime",
           "plugin-collector.ts",
         ),
-      },
-      {
-        find: /^@elizaos\/app-core\/platform\/native-library-policy$/,
-        replacement: appCoreNativeLibraryPolicy,
       },
       // Registered HTTP routes must exercise the real owner authentication
       // boundary even when app-core's distribution has not been built.
