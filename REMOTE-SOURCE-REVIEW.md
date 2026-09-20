@@ -207,3 +207,26 @@ only: full parsed JSON equality was verified.
 
 No runtime changes or paid calls in this batch. Remaining work is resolving the
 listed independent holds/coverage comparisons, applicable final QA and handoff.
+
+## Current-candidate coverage reconciliation
+
+Fresh focused checks on `8caf12bab21`:92 tests passed across five files, with
+zero live model calls. Logs are in the local evidence directory's runtime folder:
+`remote-coverage-reconciliation.log` (84) and `remote-connector-coverage.log` (8).
+
+- The exact own-context discovery/contextless state-identity test already exists.
+- Experience provider tests preserve complete learning, result, extraction rationale
+  and provenance, including whitespace distinctions; the remote helper-label tests
+  add no missing consumer contract.
+- Evaluator tests already prove identical shared blocks render once, differing
+  blocks survive, and native/JSON/plain fallback schemas retain identical evidence
+  with their dedicated extraction instruction and persisted results.
+- The connector-family refactor is already integrated in current source. Distinct
+  accounts, sources and duplicate routes remain ambiguous; the eight tests pass.
+  This resolves the earlier provisional hold, which compared against the old base.
+- Current Calendar persistence tests cover unchanged location/description, explicit
+  clearing, date/duration and exact note-body preservation. The earlier29-test
+  PGlite run remains the evidence; it was not rerun in this batch.
+
+No additional source edits are needed for these items. Remaining held behavior
+requires final explicit include/exclude decisions, followed by final QA/handoff.
