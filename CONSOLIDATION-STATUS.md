@@ -43,7 +43,9 @@ Full verification passed. UI5268/API31392 now runs f210e2f1e3c (PID49649).
 Live exact save passed in2.780s/three calls, preserving all pre-existing facts.
 Natural follow-up removal failed safely in4.674s/six calls because the planner
 omitted both target fields twice. The QA preference remains; target selection
-and PERSONALITY removal remain open.
+and PERSONALITY removal remain open. A source correction now requires a typed
+mutation target; scoped tests, Agent typecheck and lint pass, with root
+verification and live deletion confirmation pending.
 
 ## Remaining acceptance checklist
 

@@ -406,3 +406,33 @@ invent a target. Next work is the mutation target-selection contract and its
 planner retry behavior, preserving by-ID and by-query compatibility, scope and
 confirmation. Do not fix by guessing a last-used record or deleting every
 matching fact. No additional paid retry was sent.
+
+
+## Required memory mutation target
+
+The captured `{confirm:true}` delete passed the registered tool validator even
+though the handler correctly rejected it. A regression against the registered
+MEMORY_DELETE action failed before the correction. Registered MEMORY_UPDATE
+and MEMORY_DELETE now require a single structured `target` with `kind`
+(memoryId or query) and nonempty `value`. Existing nested-object schema support
+is used; no framework/provider change, additional tool, or model call.
+
+The native promoted-tool argument format deliberately changes. The MEMORY
+umbrella retains flat memoryId/query callers, including their existing ID
+precedence; mixing that legacy shape with target rejects. The handler never
+chooses a recent record on the caller's behalf. Typed query targets stay
+queries even if their text looks like a UUID. Exact target IDs still pass the
+existing UUID checks; missing confirmation and ambiguous scope still refuse.
+
+Both scoped Agent test files passed (memory actions and registered plugin
+contracts), including real handler/validator checks for each target kind,
+unrelated-record preservation and invalid/conflicting targets. Agent typecheck
+and package lint passed. Root verification is running as session8685 in
+`runtime/memory-target-verify.log`. Before/after evidence:
+`memory-target-contract-before.log`, `memory-target-contract-after.log`;
+package checks: `memory-target-typecheck.log`, `memory-target-lint.log`.
+
+No new live call or restart yet. UI5268/API31392 remains on f210e2f1e3c, and
+QA fact15c9e33d-6d6b-4b0d-bab9-d578128374f3 remains pending removal. Live QA
+count remains29. The next live check should remove only that disposable
+preference and compare the saved baseline, after verification settles.

@@ -51,6 +51,7 @@ const UUID_SCHEMA_PATTERN =
   "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
 
 interface MemoryParams {
+  target?: unknown;
   action?: MemoryOp;
   op?: MemoryOp;
   subaction?: MemoryOp;
@@ -369,7 +370,17 @@ export function inferMemorySubaction(
   )
     return undefined;
   if (!op) {
-    const target = memoryId || query;
+    const explicitTarget = params.target;
+    const target =
+      memoryId ||
+      query ||
+      (typeof explicitTarget === "object" &&
+        explicitTarget !== null &&
+        "kind" in explicitTarget &&
+        "value" in explicitTarget &&
+        (explicitTarget.kind === "memoryId" ||
+          explicitTarget.kind === "query") &&
+        hasNonEmptyString(explicitTarget.value));
     if (text && !target) {
       op = "create";
     } else if (target && text) {
@@ -2103,10 +2114,37 @@ export const memoryAction: Action = {
     // Search keeps a UUID-shaped query as a filter; only a mutation may read
     // it as the record id (review 2026-09-06: adopting it before every op made
     // MEMORY_SEARCH query=<uuid> an unfiltered scan).
-    const params =
-      op === "update" || op === "delete"
-        ? adoptUuidQueryAsMemoryId(rawParams)
-        : rawParams;
+    let params = rawParams;
+    if (rawParams.target !== undefined) {
+      const target = rawParams.target;
+      if (
+        (op !== "update" && op !== "delete") ||
+        typeof target !== "object" ||
+        target === null ||
+        Array.isArray(target) ||
+        !("kind" in target) ||
+        !("value" in target) ||
+        (target.kind !== "memoryId" && target.kind !== "query") ||
+        !hasNonEmptyString(target.value)
+      ) {
+        return fail(
+          "Choose a memoryId or query target with a nonempty value.",
+          "MEMORY_INVALID_TARGET",
+        );
+      }
+      if (rawParams.memoryId !== undefined || rawParams.query !== undefined) {
+        return fail(
+          "Use target alone, not together with legacy memoryId or query fields.",
+          "MEMORY_CONFLICTING_TARGET",
+        );
+      }
+      params =
+        target.kind === "memoryId"
+          ? { ...rawParams, memoryId: target.value }
+          : { ...rawParams, query: target.value };
+    } else if (op === "update" || op === "delete") {
+      params = adoptUuidQueryAsMemoryId(rawParams);
+    }
     if (!op) {
       return fail(
         `op/subaction is required and must be one of ${MEMORY_OPS.join(", ")}.`,
@@ -2256,6 +2294,22 @@ export const memoryAction: Action = {
         "search: continuation fingerprint for the same filters and ordered results. Required with a positive offset. Omit when starting or restarting at offset 0, including after changing query, author, type or roomId.",
       required: false,
       schema: { type: "string" as const, pattern: "^[0-9a-f]{64}$" },
+    },
+    {
+      name: "target",
+      description:
+        "Memory to change: choose memoryId for an observed record ID, or query for the requested saved wording from the conversation. Never invent an ID.",
+      required: false,
+      subactions: ["update", "delete"],
+      schema: {
+        type: "object",
+        properties: {
+          kind: { type: "string", enum: ["memoryId", "query"] },
+          value: { type: "string", minLength: 1 },
+        },
+        required: ["kind", "value"],
+        additionalProperties: false,
+      },
     },
     {
       name: "memoryId",

@@ -66,7 +66,13 @@ The promoted search also requires explicit `query` and `limit` choices. An empty
 keyword query intentionally searches all records within the other filters;
 `limit` (1–50) sizes a page, not the total result set. Follow `nextOffset` and
 `snapshot` for further pages. Legacy `MEMORY action=search` keeps these fields
-optional. Mutation parameters and permission checks are unchanged.
+optional. Registered `MEMORY_UPDATE` and `MEMORY_DELETE` require one `target`
+object: `{ kind: "memoryId", value: "<observed UUID>" }` or
+`{ kind: "query", value: "<saved wording>" }`, plus confirmation and replacement
+text for updates. This makes selection mandatory on the model's tool schema.
+The `MEMORY` umbrella still accepts existing flat `memoryId`/`query` callers;
+combining those fields with `target` rejects before mutation. Permission and
+ambiguity checks remain in the shared handler.
 
 For already-known source wording, `queryMode=literal` matches `query` as a
 case-sensitive substring of source text, including punctuation, whitespace and

@@ -3992,3 +3992,70 @@ describe("MEMORY exact supplied text", () => {
     expect(rows).toEqual(before);
   });
 });
+
+describe("registered memory mutation target contract", () => {
+  it.each(["update", "delete"])(
+    "executes %s by either explicit target and preserves unrelated facts",
+    async (operation) => {
+      const { createElizaPlugin } = await import("../runtime/eliza-plugin");
+      const action = createElizaPlugin().actions?.find(
+        (entry) => entry.name === `MEMORY_${operation.toUpperCase()}`,
+      );
+      if (!action) throw new Error("Missing mutation action");
+      for (const kind of ["memoryId", "query"]) {
+        const { runtime, rows } = makeRuntime();
+        const message = makeMessage();
+        const original = "For my QA garden, I use metric units.";
+        const saved = await runCreate(runtime, message, { text: original });
+        await runCreate(runtime, message, { text: "Keep my tea preference." });
+        const unrelated = structuredClone(rows[1]);
+        const validated = validateToolArgs(action, {
+          target: {
+            kind,
+            value: kind === "memoryId" ? saved.values?.memoryId : original,
+          },
+          ...(operation === "update"
+            ? { text: "For my QA garden, use centimeters." }
+            : {}),
+          confirm: true,
+        });
+        expect(validated.valid).toBe(true);
+        const result = await action.handler(runtime, message, undefined, {
+          parameters: validated.args,
+        } as never);
+        expect(result).toMatchObject({ success: true });
+        expect(
+          rows.find((row) => row.memory.id === unrelated.memory.id),
+        ).toEqual(unrelated);
+        expect(
+          rows.find((row) => row.memory.id === saved.values?.memoryId)?.memory
+            .content.text,
+        ).toBe(
+          operation === "delete"
+            ? undefined
+            : "For my QA garden, use centimeters.",
+        );
+      }
+    },
+  );
+
+  it.each([
+    { target: { kind: "query", value: " " } },
+    { target: { kind: "recent", value: "last" } },
+    { target: { kind: "memoryId", value: "not-an-id" } },
+    { target: { kind: "query", value: "tea" }, query: "garden" },
+  ])(
+    "rejects invalid or conflicting targets without changing records: %j",
+    async (parameters) => {
+      const { runtime, rows } = makeRuntime();
+      const message = makeMessage();
+      await runCreate(runtime, message, { text: "Keep my tea preference." });
+      const before = structuredClone(rows);
+      const result = await memoryAction.handler(runtime, message, undefined, {
+        parameters: { action: "delete", confirm: true, ...parameters },
+      } as never);
+      expect(result).toMatchObject({ success: false });
+      expect(rows).toEqual(before);
+    },
+  );
+});
