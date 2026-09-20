@@ -1,3 +1,7 @@
+/**
+ * Resolves OS kernel and PID-namespace identity for durable verifier ownership.
+ * Unprovable locality requires explicit operator review instead of recovery.
+ */
 import { execFile } from "node:child_process";
 import { readFile, readlink } from "node:fs/promises";
 import { promisify } from "node:util";
