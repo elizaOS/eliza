@@ -7,7 +7,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   afterAll,
@@ -20,6 +20,7 @@ import {
   vi,
 } from "vitest";
 import { AcpService } from "../services/acp-service.js";
+import { deriveChildTerminalResult } from "../services/child-terminal-result.js";
 import {
   buildAutoVerifyCorrection,
   MAX_AUTO_VERIFY_ATTEMPTS,
@@ -1950,4 +1951,258 @@ describe("validateTask transition + humanOverride rules", () => {
     });
     expect(detail?.status).toBe("active");
   });
+});
+
+describe("persisted verification recovery", () => {
+  it.each([
+    "no criteria",
+    "model outage",
+    "exception",
+    "retry delivery failure",
+  ])(
+    "%s persists a terminal or retry state without spending corrections",
+    async (scenario) => {
+      const root = mkdtempSync(join(tmpdir(), "orch-verifier-disk-"));
+      gitRoots.push(root);
+      const stateFile = join(root, "tasks.json");
+      const store = new OrchestratorTaskStore({ backend: "file", stateFile });
+      const { taskId, sessionId } = await seedTaskWithSession(
+        store,
+        scenario === "no criteria" ? [] : ["tests pass"],
+      );
+      const seeded = await store.getTask(taskId);
+      await store.updateTask(taskId, {
+        metadata: { ...seeded?.task.metadata, autoVerifyAttempts: 2 },
+      });
+      const fake = makeFakeAcp();
+      if (scenario === "retry delivery failure")
+        fake.service.sendToSession.mockRejectedValue(
+          new Error("worker stopped"),
+        );
+      const runtime = makeRuntime(fake.service, () => {
+        throw new Error("verifier unavailable");
+      });
+      runtime.reportError = vi.fn();
+      if (scenario === "exception")
+        runtime.getSetting = (key: string) => {
+          if (key === "ELIZA_ORCHESTRATOR_GROUND_TRUTH_EVIDENCE")
+            throw new Error("settings unavailable");
+          return undefined;
+        };
+      const service = new OrchestratorTaskService(runtime as never, { store });
+      const expected =
+        scenario === "no criteria"
+          ? "done"
+          : scenario === "retry delivery failure"
+            ? "waiting_on_user"
+            : "active";
+      try {
+        await service.start();
+        fake.emit(sessionId, "task_complete", {
+          response: "completed with evidence",
+        });
+        await until(
+          async () => {
+            const persisted = await new OrchestratorTaskStore({
+              backend: "file",
+              stateFile,
+            }).getTask(taskId);
+            return (
+              persisted?.task.status === expected &&
+              (scenario === "no criteria" ||
+                persisted.events.some(
+                  (event) => event.data?.retryable === true,
+                ))
+            );
+          },
+          { timeoutMs: 15000 },
+        );
+        const disk = new OrchestratorTaskStore({ backend: "file", stateFile });
+        const result = await disk.getTask(taskId);
+        expect(result?.task.status).toBe(expected);
+        expect(result?.task.metadata.autoVerifyAttempts).toBe(2);
+        expect(result?.task.metadata.autoVerifyOwner).toEqual({
+          pid: process.pid,
+          hostname: hostname(),
+        });
+        expect(result?.task.metadata.attemptReflections).toBeUndefined();
+        if (scenario !== "no criteria")
+          expect(
+            result?.events.some((event) => event.data?.retryable === true),
+          ).toBe(true);
+      } finally {
+        await service.stop();
+      }
+    },
+    20000,
+  );
+
+  it.each([
+    "done",
+    "interrupted",
+    "paused",
+    "manual",
+    "live verifier",
+    "remote verifier",
+    "unknown verifier",
+  ] as const)("restart preserves %s work", async (state) => {
+    const root = mkdtempSync(join(tmpdir(), "orch-verifier-preserve-"));
+    gitRoots.push(root);
+    const stateFile = join(root, "tasks.json");
+    const store = new OrchestratorTaskStore({ backend: "file", stateFile });
+    const { taskId, sessionId } = await seedTaskWithSession(store, [
+      "tests pass",
+    ]);
+    const status =
+      state === "done" || state === "interrupted" ? state : "validating";
+    await store.updateTask(taskId, {
+      status: state === "interrupted" ? "active" : status,
+      paused: state === "paused",
+      metadata:
+        state === "unknown verifier"
+          ? {}
+          : {
+              autoVerifyOwner: {
+                pid: process.pid,
+                hostname:
+                  state === "remote verifier"
+                    ? `${hostname()}-other`
+                    : hostname(),
+              },
+            },
+    });
+    const flag = process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
+    if (state === "manual")
+      process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = "0";
+    const fake = makeFakeAcp();
+    const service = new OrchestratorTaskService(
+      makeRuntime(fake.service, () => "{}") as never,
+      { store: new OrchestratorTaskStore({ backend: "file", stateFile }) },
+    );
+    try {
+      if (state === "interrupted") {
+        await service.stopTaskAgent(taskId, sessionId);
+        expect(fake.service.stopSession).toHaveBeenCalledWith(sessionId);
+      }
+      await service.start();
+      const persisted = await new OrchestratorTaskStore({
+        backend: "file",
+        stateFile,
+      }).getTask(taskId);
+      expect(persisted?.task.status).toBe(status);
+      expect(
+        persisted?.events.some(
+          (event) => event.eventType === "auto_verify_inconclusive",
+        ),
+      ).toBe(false);
+      expect(fake.sent).toHaveLength(0);
+    } finally {
+      await service.stop();
+      if (flag === undefined)
+        delete process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
+      else process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = flag;
+    }
+  });
+
+  it.each([false, true])(
+    "restart conditionally recovers a dead verifier (concurrent new owner: %s)",
+    async (concurrentOwner) => {
+      const root = mkdtempSync(join(tmpdir(), "orch-verifier-restart-"));
+      gitRoots.push(root);
+      const stateFile = join(root, "tasks.json");
+      const store = new OrchestratorTaskStore({ backend: "file", stateFile });
+      const { taskId, sessionId } = await seedTaskWithSession(store, [
+        "tests pass",
+      ]);
+      const seeded = await store.getTask(taskId);
+      await store.updateTask(taskId, {
+        status: "validating",
+        metadata: {
+          ...seeded?.task.metadata,
+          autoVerifyAttempts: 2,
+          autoVerifyOwner: {
+            pid: Number(
+              execFileSync(
+                process.execPath,
+                ["-e", "console.log(process.pid)"],
+                {
+                  encoding: "utf8",
+                },
+              ).trim(),
+            ),
+            hostname: hostname(),
+          },
+        },
+      });
+      await store.addEvent({
+        id: "completion-before-process-exit",
+        taskId,
+        sessionId,
+        eventType: "task_complete",
+        summary: "Completed with evidence",
+        data: { response: "Completed with evidence" },
+        timestamp: Date.now(),
+        createdAt: new Date().toISOString(),
+      });
+      const reopened = new OrchestratorTaskStore({
+        backend: "file",
+        stateFile,
+      });
+      if (concurrentOwner) {
+        const interrupt = reopened.interruptStuckTaskIfUnchanged.bind(reopened);
+        vi.spyOn(
+          reopened,
+          "interruptStuckTaskIfUnchanged",
+        ).mockImplementationOnce(async (input) => {
+          const other = new OrchestratorTaskStore({
+            backend: "file",
+            stateFile,
+          });
+          const current = await other.getTask(taskId);
+          await other.updateTask(taskId, {
+            metadata: {
+              ...current?.task.metadata,
+              autoVerifyOwner: { pid: process.pid, hostname: hostname() },
+            },
+          });
+          return interrupt(input);
+        });
+      }
+      const fake = makeFakeAcp();
+      const runtime = makeRuntime(fake.service, () => {
+        throw new Error("must not judge during recovery");
+      });
+      const service = new OrchestratorTaskService(runtime as never, {
+        store: reopened,
+      });
+      try {
+        await service.start();
+        const disk = new OrchestratorTaskStore({ backend: "file", stateFile });
+        const recovered = await disk.getTask(taskId);
+        if (!recovered) throw new Error("Persisted task disappeared");
+        expect(recovered?.task.status).toBe(
+          concurrentOwner ? "validating" : "interrupted",
+        );
+        expect(recovered?.task.metadata.autoVerifyAttempts).toBe(2);
+        expect(recovered?.task.metadata.attemptReflections).toBeUndefined();
+        const recovery = recovered?.events.find(
+          (e) => e.eventType === "auto_verify_inconclusive",
+        );
+        if (concurrentOwner) expect(recovery).toBeUndefined();
+        else {
+          expect(recovery?.data).toMatchObject({
+            retryable: true,
+            reason: "process_restart",
+          });
+          expect(deriveChildTerminalResult(recovered)).toMatchObject({
+            verificationStatus: "inconclusive",
+          });
+        }
+        expect(runtime.useModel).not.toHaveBeenCalled();
+        expect(fake.sent).toHaveLength(0);
+      } finally {
+        await service.stop();
+      }
+    },
+  );
 });
