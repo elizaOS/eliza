@@ -1149,11 +1149,9 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(done.text).toBe(
       "Image generation requires an authenticated Personal Shared user.",
     );
-    expect(done.actionResults?.[0]).toMatchObject({
-      success: false,
-      error: "Action GENERATE_MEDIA is not allowed for the current role",
-      data: { actionName: "GENERATE_MEDIA" },
-    });
+    // Admission rejects the unavailable tool before dispatch; the refusal
+    // must not acquire an execution receipt for an action that never ran.
+    expect(done.actionResults ?? []).toEqual([]);
     expect(payload.coordinatorRequests).toEqual([
       {
         name: "70000000-0000-5000-8000-000000000075:70000000-0000-5000-8000-000000000075",
