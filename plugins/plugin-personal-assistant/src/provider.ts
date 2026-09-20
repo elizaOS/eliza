@@ -3,8 +3,8 @@
  * browser-companion state (paired companions and open tabs) into the model
  * prompt so the assistant can reason about the browser. Gated on owner access.
  */
-import { hasOwnerAccess } from "@elizaos/agent";
 import {
+  hasRoleAccess,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -60,7 +60,7 @@ export const lifeOpsBrowserProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    if (!(await hasOwnerAccess(runtime, message))) {
+    if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
       return { text: "", values: {}, data: {} };
     }
 

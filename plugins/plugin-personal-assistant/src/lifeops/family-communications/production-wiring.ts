@@ -4,9 +4,10 @@
  * household graph supplies structural audience metadata without asking model
  * text to decide whether an event is safe for a child.
  */
+
 import { resolveKnowledgeGraphService } from "@elizaos/agent";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { hasRoleAccess } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {
   authenticatedHouseholdInboundIdentity,
@@ -42,7 +43,7 @@ export async function resolveAuthenticatedFamilyPrincipal(
   runtime: IAgentRuntime,
   message: Memory,
 ): Promise<string | null> {
-  if (await hasOwnerAccess(runtime, message)) return SELF_ENTITY_ID;
+  if (await hasRoleAccess(runtime, message, "OWNER")) return SELF_ENTITY_ID;
   const principalEntityId = requireFamilyText(
     message.entityId,
     "message.entityId",

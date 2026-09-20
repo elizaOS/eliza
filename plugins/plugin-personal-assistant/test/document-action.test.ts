@@ -4,6 +4,11 @@
  * are controlled collaborators; this does not prove signing or durable storage.
  */
 
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: mocks.hasOwnerAccess,
+}));
+
 import type {
   HandlerOptions,
   IAgentRuntime,
@@ -23,10 +28,6 @@ const mocks = vi.hoisted(() => ({
   apply: vi.fn(
     async (_taskId: string, _verb: string, _options: unknown) => undefined,
   ),
-}));
-
-vi.mock("@elizaos/agent", () => ({
-  hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
 vi.mock("../src/lifeops/approval-queue.js", () => ({

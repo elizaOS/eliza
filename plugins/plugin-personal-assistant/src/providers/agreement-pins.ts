@@ -4,8 +4,12 @@
  * participate in guest authorization or widen a resource grant.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
-import { ElizaError, type Memory, type Provider } from "@elizaos/core";
+import {
+  ElizaError,
+  hasRoleAccess,
+  type Memory,
+  type Provider,
+} from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { getAgreementKnowledgeService } from "../lifeops/household/agreement-knowledge.js";
 
@@ -25,7 +29,7 @@ export const agreementPinsProvider: Provider = {
     if (!service) {
       return { text: "", values: { agreementPinCount: 0 }, data: {} };
     }
-    const owner = await hasOwnerAccess(runtime, message);
+    const owner = await hasRoleAccess(runtime, message, "OWNER");
     const principalEntityId = owner ? SELF_ENTITY_ID : message.entityId;
     if (typeof principalEntityId !== "string" || !principalEntityId.trim()) {
       return { text: "", values: { agreementPinCount: 0 }, data: {} };

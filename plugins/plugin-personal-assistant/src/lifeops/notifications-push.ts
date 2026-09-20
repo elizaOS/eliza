@@ -4,8 +4,9 @@
  * integration telemetry. Throws NtfyConfigError when the topic is unconfigured
  * rather than silently dropping the notification.
  */
-import { createIntegrationTelemetrySpan } from "@elizaos/agent";
+
 import { logger } from "@elizaos/core";
+import { createIntegrationTelemetrySpan } from "@elizaos/shared/integration-observability";
 
 // ---------------------------------------------------------------------------
 // Config

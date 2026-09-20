@@ -1,5 +1,9 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
-import { type IAgentRuntime, logger, type Memory } from "@elizaos/core";
+import {
+  hasRoleAccess,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+} from "@elizaos/core";
 import {
   checkSenderRole,
   type RoleCheckResult,
@@ -29,7 +33,7 @@ export async function getAppBlockerAccess(
   // authoritative in environments where the per-world role table is not seeded.
   if (
     hasPrincipal(runtime, message) &&
-    (await hasOwnerAccess(runtime, message))
+    (await hasRoleAccess(runtime, message, "OWNER"))
   ) {
     return { allowed: true, role: "OWNER" };
   }

@@ -8,13 +8,14 @@
  * the model over-extracts. Deterministic-only paths (sent mail, document
  * hooks, transcripts) stay on `extractCommitmentLedgerRecords`.
  */
-import { hasOwnerAccess } from "@elizaos/agent";
+
 import type {
   Evaluator,
   IAgentRuntime,
   JSONSchema,
   Memory,
 } from "@elizaos/core";
+import { hasRoleAccess } from "@elizaos/core";
 import { LifeOpsRepository } from "../repository.js";
 import {
   classifyCommitmentKind,
@@ -182,7 +183,7 @@ export const commitmentExtractionEvaluator: Evaluator<
     // spend and structurally no row — the false-positive guard's outer wall.
     if (!textHasCommitmentCue(text)) return false;
     if (!hasSqlAdapter(runtime)) return false;
-    return hasOwnerAccess(runtime, message);
+    return hasRoleAccess(runtime, message, "OWNER");
   },
 
   async prepare() {

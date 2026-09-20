@@ -71,10 +71,6 @@ export {
 
 export class DatabaseSync {}
 
-export async function hasOwnerAccess(): Promise<boolean> {
-  return true;
-}
-
 export interface LocalAgentBackupStubMetadata {
   fileName: string;
   path: string;

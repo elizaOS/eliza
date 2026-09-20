@@ -16,7 +16,7 @@
  *   - `log_interaction`    record an inbound/outbound interaction on an entity
  *   - `set_relationship`   upsert a typed edge between two entities
  *
- * Owner-only (`roleGate.minRole: OWNER` + the {@link hasOwnerAccess} gate).
+ * Owner-only (`roleGate.minRole: OWNER` + the {@link hasRoleAccess} gate).
  *
  * NOTE on naming: this action is `KNOWLEDGE_GRAPH`, NOT `ENTITY`.
  * `@elizaos/plugin-personal-assistant` registers the `ENTITY` action (a rich
@@ -26,7 +26,6 @@
  * under a distinct name keeps exactly one `ENTITY` action at runtime.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import { resolveKnowledgeGraphService } from "@elizaos/agent/services/knowledge-graph";
 import type {
   Action,
@@ -37,7 +36,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { describeUserReference, logger } from "@elizaos/core";
+import { describeUserReference, hasRoleAccess, logger } from "@elizaos/core";
 import type { Entity } from "@elizaos/shared";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 
@@ -169,7 +168,7 @@ export const entityAction: Action = {
     _state?: State,
   ): Promise<boolean> => {
     if (!resolveKnowledgeGraphService(runtime)) return false;
-    return hasOwnerAccess(runtime, message);
+    return hasRoleAccess(runtime, message, "OWNER");
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -178,7 +177,7 @@ export const entityAction: Action = {
     options: HandlerOptions | undefined,
     callback: HandlerCallback | undefined,
   ): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
+    if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
       const text = "The knowledge graph is restricted to the owner.";
       await callback?.({
         text,

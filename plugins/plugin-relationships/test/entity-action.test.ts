@@ -9,6 +9,11 @@
  * graph mutation.
  */
 
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: mocks.hasOwnerAccess,
+}));
+
 import type {
   HandlerOptions,
   IAgentRuntime,
@@ -21,10 +26,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(async () => true),
   resolveKnowledgeGraphService: vi.fn(),
-}));
-
-vi.mock("@elizaos/agent/security/access", () => ({
-  hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
 vi.mock("@elizaos/agent/services/knowledge-graph", () => ({

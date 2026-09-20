@@ -1,17 +1,18 @@
 /**
  * Covers the hasLifeOpsAccess owner gate: denying on a missing runtime/agentId or message
- * entityId, and otherwise delegating to hasOwnerAccess. Deterministic, mocked owner-access.
+ * entityId, and otherwise delegating to the canonical OWNER role check.
  */
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: mocks.hasOwnerAccess,
+}));
+
 import type { Memory } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mirrors the @elizaos/agent owner-access mock other PA action tests use.
 // `vi.hoisted` so the mock fn exists when the hoisted `vi.mock` factory runs.
 const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(async () => true),
-}));
-vi.mock("@elizaos/agent", () => ({
-  hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
 import {
@@ -76,7 +77,7 @@ describe("hasLifeOpsAccess — owner gate", () => {
     expect(mocks.hasOwnerAccess).not.toHaveBeenCalled();
   });
 
-  it("delegates to hasOwnerAccess for a well-formed owner request", async () => {
+  it("delegates to the canonical role check for a well-formed owner request", async () => {
     mocks.hasOwnerAccess.mockResolvedValueOnce(true);
     expect(await hasLifeOpsAccess(runtime("agent-1"), message("owner-1"))).toBe(
       true,
@@ -86,6 +87,11 @@ describe("hasLifeOpsAccess — owner gate", () => {
       false,
     );
     expect(mocks.hasOwnerAccess).toHaveBeenCalledTimes(2);
+    expect(mocks.hasOwnerAccess).toHaveBeenLastCalledWith(
+      runtime("agent-1"),
+      message("owner-1"),
+      "OWNER",
+    );
   });
 });
 
