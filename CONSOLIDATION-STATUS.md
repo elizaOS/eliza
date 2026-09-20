@@ -23,7 +23,7 @@ Results and failures: [CONSOLIDATION-QA.md](CONSOLIDATION-QA.md).
 ## Remaining acceptance checklist
 
 - [ ] Complete semantic source ledger and reconcile any newer remote work.
-- [ ] Finish full visual rerun and inspect remaining flagged views. Initial full run229 passed/one bundle-load failure; focused LifeOps rerun4/4 passed. Full rerun is now running in separate artifacts.
+- [x] Full visual rerun and flagged screenshot inspection: 230 checks passed; OCR212 verified/zero broken/12 expected fallback exceptions. All23 soft layout flags inspected. Family interview hover remains unverified for three controls across four viewports; native/remote fallback surfaces are not feature acceptance.
 - [ ] Close remaining combined scenarios: cancellation, memory/preference correction and applicable recovery/persistence checks, using existing evidence before new paid tests.
 - [ ] Record final candidate, source decisions, explicit release gates and handoff.
 

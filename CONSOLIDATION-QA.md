@@ -66,3 +66,9 @@ At `c65e5d6bd1a`, incomplete or foreign internal event IDs are rejected before p
 The next live move succeeded in 3.873 seconds with four calls (32,594 input, 1,186 output tokens). The planner used the title query, the handler resolved the existing event and validated the requested interval, and the same event was saved at Tuesday September 22, 9:00–9:15 AM PDT with version2. UI readback matched. This demonstrates the valid query path; deterministic tests demonstrate malformed-ID rejection.
 
 After the restart and later corrections, exact recall of the first move request also passed in 0.915 seconds with one call (11,076 input,526 output tokens). Remaining gates include complete source review, visual acceptance and the remaining combined scenarios.
+
+## Final full browser audit — c65e5d6bd1a
+
+`audit:app` completed with exit0: 230 Playwright checks passed in6.2m. DOM224 captures: zero broken/needs-work,23 soft radius/divider flags visually inspected. OCR212 verified, zero broken/regressions,12 expected exceptions visually inspected: Camera/Cockpit unavailable and LifeOps registry fallback. The earlier LifeOps bundle failure did not recur.
+
+Remaining limitation: Family interview hover probing timed out on Open month, Add private source, and Generate 2026-10 packet in all four viewports. Cause is not established by the truncated timeout diagnostics; screenshots are not interaction proof. Native/remote feature acceptance remains separate. No paid model calls or source changes were needed. Local evidence: `eliza-consolidation-20260919/VISUAL-FINAL-REVIEW.md` and `visual-final-recheck/`.
