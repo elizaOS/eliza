@@ -785,6 +785,8 @@ export async function runProposeMeetingTimesHandler(
     fallback,
     context: {
       slotCount: slots.length,
+      availabilityEvidence:
+        "These are selected slot options, not a complete free/busy timeline. Do not infer availability before, between, or after the listed slots.",
       durationMinutes,
       timeZone: effectivePreferences.timeZone,
       counterparties,
