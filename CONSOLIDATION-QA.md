@@ -224,3 +224,15 @@ These tests use model doubles and do not establish general extraction accuracy, 
 Five complete original Notes test/scenario diffs reviewed against ec23d0f670c; inventory194/270 (190 include,3 upstream-equivalent,1 Calendar handler review-required). The deterministic action scenario now compares writes and reads with persisted JSON, checks exact multiline/double-space content, stable identity/creation timestamp and precise deletion. Action tests cover reopened-store persistence, exact IDs versus decoys, duplicate title clarification, role denial, date filters across DST and unchanged omitted fields. Provider tests verify fresh owner-scoped matching records with original Unicode and identity. Literal colon parsing no longer invents a title/body separator.
 
 This is source review using previously recorded test results, not a fresh live run. The planner/evaluator doubles cannot prove natural-language routing or disambiguation accuracy. No paid calls.
+
+Root verification for ef88e31918b completed exit0 (session77087). Preserved previous runtime log as runtime/server-before-deferred-required-ef88e31.log. Stopped only owned API PID27428, verified port31392 released, and started the same isolated launcher with current source (session6701, API PID35418). First health check ready/canRespond true, database healthy, zero plugin/service failures; deferred boot still pending. Original demo ports unchanged. Live follow-up is next.
+
+## Live ef88e31918b verification: turns26–27
+
+Runtime fully ready (35 plugins,95 services, zero failures, deferred boot settled).
+
+26. “Schedule a 15-minute Spruce QA check every Friday morning on my local calendar.” Trace step-1789938063414-h9m90a,2.619s,one handler call (2.219s),10,722 input tokens,1,387 output tokens,6,144 reported cache reads. Responded from prior context that local recurrence is unsupported and offered a connected calendar or one-off alternative. No tool executed. This did not exercise deferred action presentation.
+
+27. “Check what's free this Friday morning for 15 minutes. Don't book anything yet.” Trace step-1789938092268-qagg61,3.604s,three calls,27,299 input tokens,1,525 output tokens,6,144 cache reads. Handler1.465s/10,833 input;planner0.678s/7,762 input;completion0.698s/8,704 input. Remaining0.763s is other turn overhead. One CALENDAR_PROPOSE_TIMES preview with modelReplyRequired=true. No routing repair, RESTORE_CONTEXT or subsequent planner REPLY. Final evaluator FINISH delivered three slots at9:00,9:15,9:30; its9:00–9:45 statement is covered by those contiguous15-minute intervals. No weekly availability claim. No booking tool; explicit Sep25 feed read afterwards was complete/fresh/empty.
+
+Raw traces, summaries and feed saved as runtime/spruce-recurring-capability-* and runtime/friday-deferred-reply-*. The follow-up differs from the original recurring request and has more prior context, so no causal claim that the one-line change alone reduced seven calls to three. Under3s target is not met in this run. No further paid tests in this batch.
