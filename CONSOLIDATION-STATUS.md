@@ -25,7 +25,7 @@ Exact preference save and natural follow-up removal now pass. The saved text
 was preserved verbatim, survived an API restart, and only that QA fact was
 removed. All nine baseline fact records match their original values. This
 verifies MEMORY facts; PERSONALITY directives are a separate remaining check.
-Thirty paid text QA turns have been recorded in total; no voice testing.
+Thirty-one paid text QA turns have been recorded in total; no voice testing.
 
 | Recorded scenario | Total time | Model calls | Input tokens | Cached input |
 | --- | ---: | ---: | ---: | ---: |
@@ -64,8 +64,10 @@ application/tool/transport work not separately attributed here.
 - [ ] Close Calendar handler disposition and remaining recurrence/availability
   wording coverage. Local Calendar recurrence is unsupported. Correct failure
   explanation was observed, but one recovered run still took five calls.
-- [ ] Verify PERSONALITY directive removal through the live model path. Existing
-  deterministic tests cover selective removal; fact deletion is not that test.
+- [ ] Close PERSONALITY directive live acceptance. Adding a QA rule persisted it
+  but ended in a reply error after17 calls because no durable effect receipt was
+  returned. Source correction passes413 tests/typecheck/lint and root verification;
+  live removal remains pending. The temporary greenhouse rule is still saved.
 - [ ] Reconcile any newer remote work by exact checkout/commit and review scope.
 - [ ] Finish applicable recovery/persistence review and clean remaining owned
   Calendar/Notes fixtures. The temporary QA memory has been removed.

@@ -5,7 +5,12 @@
  * the audit-memory trail. Admin-only paths run on an owner-seeded runtime so
  * hasRoleAccess grants access.
  */
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { promoteSubactionsToActions } from "../../../../actions/promote-subactions.ts";
+import { validateToolArgs } from "../../../../actions/validate-tool-args.ts";
+import { runWithActionRoutingContext } from "../../../../runtime/action-routing-context.ts";
+import { runEvaluator } from "../../../../runtime/evaluator.ts";
+import { actionResultToPlannerToolResult } from "../../../../runtime/planner-loop.ts";
 import type { ActionResult, HandlerOptions } from "../../../../types/index.ts";
 import { personalityAction } from "../actions/personality.ts";
 import { GLOBAL_PERSONALITY_SCOPE, PERSONALITY_AUDIT_TABLE } from "../types.ts";
@@ -568,3 +573,93 @@ describe("individual directive removal", () => {
 		]);
 	});
 });
+
+describe("personal directive completion receipts", () => {
+	test.each(["add_directive", "remove_directive"])(
+		"can finish %s from the durable result in one evaluation",
+		async (op) => {
+			const fake = makeFakeRuntime({ owner: TEST_SENDER });
+			await initStore(fake);
+			await fake.store.setSlot({
+				...fake.store.getSlot(TEST_SENDER),
+				custom_directives:
+					op === "remove_directive"
+						? ["QA rule", "keep this rule"]
+						: ["keep this rule"],
+			});
+			const message = makeMessage({
+				entityId: TEST_SENDER,
+				agentId: fake.runtime.agentId,
+				text: "Change only the QA rule for me.",
+			});
+			const { cb, calls } = captureCallback();
+			const result = await runWithActionRoutingContext(
+				{
+					actionName: "PERSONALITY",
+					messageId: message.id,
+					replyOwner: "planner",
+					modelClass: undefined,
+				},
+				async () =>
+					(await personalityAction.handler(
+						fake.runtime,
+						message,
+						undefined,
+						{ parameters: { action: op, directive: "QA rule" } },
+						cb,
+					)) as ActionResult,
+			);
+			const useModel = vi.fn(async () =>
+				JSON.stringify({
+					success: true,
+					decision: "FINISH",
+					replyEffectStatus: "applied",
+					messageToUser:
+						op === "add_directive"
+							? "Added that reply rule."
+							: "Removed that reply rule.",
+					effectReceiptIds:
+						result.effectReceipts?.map((receipt) => receipt.receiptId) ?? [],
+				}),
+			);
+			const completion = await runEvaluator({
+				runtime: { useModel },
+				context: { id: "personality-proof", events: [] },
+				trajectory: {
+					context: { id: "personality-proof", events: [] },
+					codingMode: false,
+					steps: [
+						{
+							iteration: 1,
+							toolCall: { name: "PERSONALITY", params: { action: op } },
+							result: actionResultToPlannerToolResult(result),
+						},
+					],
+					archivedSteps: [],
+					plannedQueue: [],
+					evaluatorOutputs: [],
+				},
+			});
+			expect(completion.decision).toBe("FINISH");
+			expect(useModel).toHaveBeenCalledTimes(1);
+			expect(calls).toHaveLength(0);
+			expect(fake.store.getSlot(TEST_SENDER).custom_directives).toEqual(
+				op === "add_directive"
+					? ["keep this rule", "QA rule"]
+					: ["keep this rule"],
+			);
+		},
+	);
+});
+
+test.each(["ADD_DIRECTIVE", "REMOVE_DIRECTIVE"])(
+	"requires directive text on promoted PERSONALITY_%s",
+	(suffix) => {
+		const child = promoteSubactionsToActions(personalityAction).find(
+			(action) => action.name === `PERSONALITY_${suffix}`,
+		);
+		if (!child) throw new Error("Missing directive operation");
+		expect(validateToolArgs(child, {}).valid).toBe(false);
+		expect(validateToolArgs(child, { directive: "QA rule" }).valid).toBe(true);
+	},
+);

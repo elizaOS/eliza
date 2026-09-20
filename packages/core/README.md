@@ -860,3 +860,10 @@ context also remains complete. Node consumers can reuse `visibleHistoryEventIds`
 `historyRetentionContext`, `HISTORY_RETENTION_EVALUATOR` and
 `getEvaluatorProgressState` to validate existing retention checkpoints; those
 checkpoints never grant source access.
+
+
+Personal directive add/remove actions return durable slot-change receipts after
+persistence. Planner-owned calls leave final wording to the completion model;
+standalone callers retain their direct callbacks. Promoted directive tools
+require the rule text. Requester-only scope, exact removal, unrelated rules and
+per-directive provenance remain enforced by the existing store and action.

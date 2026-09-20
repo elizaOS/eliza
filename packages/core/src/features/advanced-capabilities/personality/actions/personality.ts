@@ -17,6 +17,10 @@
  */
 import { logger } from "../../../../logger.ts";
 import { hasRoleAccess, type RoleName } from "../../../../roles.ts";
+import {
+	applyGroundedActionReply,
+	getActionReplyOwner,
+} from "../../../../types/action-reply.ts";
 import type {
 	Action,
 	ActionExample,
@@ -33,6 +37,7 @@ import {
 	describeUserReference,
 	userReferenceLogView,
 } from "../../../../utils/reference-echo.ts";
+import { stringToUuid } from "../../../../utils.ts";
 import {
 	getPersonalityStore,
 	type PersonalityStore,
@@ -324,6 +329,7 @@ export const personalityAction: Action = {
 		},
 		{
 			name: "directive",
+			requiredForSubactions: ["add_directive", "remove_directive"],
 			description:
 				"add_directive: a free-text directive to attach to the user's slot. remove_directive always targets only the requester (global removal is unsupported): exact complete existing directive text from show_state or supplied user preferences; removes only that rule. Never clear all directives to cancel one.",
 			required: false,
@@ -811,6 +817,51 @@ async function runLiftReplyGate(
 	};
 }
 
+async function finishDirectiveChange(
+	args: OpArgs,
+	op: "add_directive" | "remove_directive",
+	before: PersonalitySlot,
+	after: PersonalitySlot,
+	directive: string,
+	text: string,
+): Promise<ActionResult> {
+	const resourceId = `${after.agentId}:${after.userId}`;
+	const result: ActionResult = {
+		success: true,
+		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
+		values: { scope: "user", directiveCount: after.custom_directives.length },
+		effectReceipts: [
+			{
+				receiptId: `personality-slot:${stringToUuid(JSON.stringify({ op, after }))}`,
+				operation: `personality.${op}`,
+				resource: { kind: "personality.slot", id: resourceId },
+				artifacts: [],
+				idempotency: { key: null, replayed: false },
+				observedAt: after.updated_at,
+				outcome: "applied",
+				commit: {
+					kind: "durable",
+					id: resourceId,
+					committedAt: after.updated_at,
+				},
+			},
+		],
+		data: { action: "PERSONALITY", op, directive, before, after },
+	};
+	if (getActionReplyOwner(args.message.id) === "planner") {
+		return applyGroundedActionReply(result, {
+			kind: "deferred",
+			grounding:
+				"Describe only the personal directive change proven by data.before and data.after. Only the requester was changed.",
+		});
+	}
+	await args.callback?.({ text, actions: ["PERSONALITY"] });
+	return result;
+}
+
 async function runAddDirective(
 	args: OpArgs & {
 		scope: PersonalityScope;
@@ -844,23 +895,14 @@ async function runAddDirective(
 		after,
 	);
 	const text = "Got it — I'll keep that in mind for our chats.";
-	await args.callback?.({
+	return finishDirectiveChange(
+		args,
+		"add_directive",
+		before,
+		after,
+		directive,
 		text,
-		thought: `Added directive: ${directive}`,
-		actions: ["PERSONALITY"],
-	});
-	return {
-		text,
-		success: true,
-		userFacingText: text,
-		verifiedUserFacing: true,
-		turnComplete: true,
-		values: {
-			scope: "user",
-			directiveCount: after.custom_directives.length,
-		},
-		data: { action: "PERSONALITY", op: "add_directive", after },
-	};
+	);
 }
 
 async function runRemoveDirective(
@@ -896,15 +938,14 @@ async function runRemoveDirective(
 		after,
 	);
 	const text = "Removed that personal directive.";
-	await args.callback?.({ text, actions: ["PERSONALITY"] });
-	return {
-		success: true,
+	return finishDirectiveChange(
+		args,
+		"remove_directive",
+		before,
+		after,
+		directive,
 		text,
-		userFacingText: text,
-		verifiedUserFacing: true,
-		turnComplete: true,
-		data: { action: "PERSONALITY", op: "remove_directive", after },
-	};
+	);
 }
 
 async function runClearDirectives(

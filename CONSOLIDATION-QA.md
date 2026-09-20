@@ -462,3 +462,39 @@ then being found/deleted also exercises persistence. PERSONALITY slot removal
 is distinct and remains unproven live. These are individual QA observations;
 the retry has additional conversation context, so do not infer a controlled
 speedup or a universal three-call guarantee.
+
+
+## Live personality directive failure and receipt correction
+
+Turn31 on04719e2706e: “For me, add this reply rule: when I ask about the QA
+greenhouse, end with GREENHOUSE CHECK. Keep my other preferences.” Trace
+`step-1789941312567-s9fggw`, `runtime/personality-live-add-*` ended in error:
+11.915s,17 model calls,120,879 input/4,374 output tokens,52,224 cached input.
+No further paid call was sent after this failure.
+
+The first tool call omitted directive text, which was optional on the promoted
+schema. A corrected add persisted the rule to the requester slot (one directive;
+traits and reply gate null). Its result had success/verifiedUserFacing but no
+effectReceipts. Applied completion claims therefore failed the existing receipt
+gate, causing repeated reply attempts and recovery. The final visible message
+was “I couldn't verify my reply against the available results.” The rule IS
+saved; the visible failure is not a rollback. The temporary directive text is
+`when I ask about the QA greenhouse, end with GREENHOUSE CHECK` and must be
+removed after validation. Original demo settings were not changed.
+
+Source correction: promoted add/remove directive tools require directive text.
+Successful durable add/remove results attach slot-change receipts and complete
+before/after data. Planner-owned calls use shared deferred presentation and
+suppress their standalone callback; other callers keep direct replies. The
+receipt guard remains unchanged. No general personality reset, permission
+change, scope inference or new model call was introduced.
+
+Two action-to-real-evaluator tests failed before correction (CONTINUE instead
+of FINISH) and now pass with one evaluation, alongside stored-rule preservation.
+All413 personality tests across14 files, Core typecheck and package lint pass.
+Evidence: `personality-receipt-before.log`, `personality-receipt-after.log`,
+`personality-receipt-typecheck.log`, `personality-receipt-lint.log` under runtime.
+Full root verification passed (session87319 exit0 / `personality-receipt-verify.log`).
+No live acceptance of this correction yet; API still runs04719e2706e.
+The change covers add/remove directives; do not generalize this result to
+unexercised trait/profile operations.
