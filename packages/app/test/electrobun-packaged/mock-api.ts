@@ -1013,6 +1013,11 @@ export async function startMockApiServer(
       return;
     }
 
+    if (method === "GET" && pathname === "/api/approvals") {
+      json(res, 200, { pending: [] });
+      return;
+    }
+
     if (method === "GET" && pathname === "/api/notifications") {
       json(res, 200, { notifications: [], unreadCount: 0 });
       return;
