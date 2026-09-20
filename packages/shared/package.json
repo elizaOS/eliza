@@ -692,6 +692,26 @@
       },
       "import": "./dist/knowledge-graph/index.js",
       "default": "./dist/knowledge-graph/index.js"
+    },
+    "./contracts/first-run-options": {
+      "types": "./dist/contracts/first-run-options.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/first-run-options.ts",
+        "import": "./src/contracts/first-run-options.ts",
+        "default": "./src/contracts/first-run-options.ts"
+      },
+      "import": "./dist/contracts/first-run-options.js",
+      "default": "./dist/contracts/first-run-options.js"
+    },
+    "./contracts/service-routing": {
+      "types": "./dist/contracts/service-routing.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/service-routing.ts",
+        "import": "./src/contracts/service-routing.ts",
+        "default": "./src/contracts/service-routing.ts"
+      },
+      "import": "./dist/contracts/service-routing.js",
+      "default": "./dist/contracts/service-routing.js"
     }
   },
   "publishConfig": {
