@@ -47,7 +47,7 @@ import {
   createBrowserSession,
   createMachineSession,
 } from "../../../../../packages/app-core/src/api/auth/sessions.ts";
-import { composeResponseState } from "../../../../../packages/core/src/services/message/provider-state.js";
+import { selectV5PlannerStateProviderNames } from "../../../../../packages/core/src/services/message/provider-state.js";
 import { TrajectoriesService } from "../../../../../packages/core/src/services/trajectories.ts";
 import {
   createLifeOpsTestRuntime,
@@ -506,7 +506,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
   });
 
-  it("composes approved pins on ordinary owner turns while preserving room and audience boundaries", async () => {
+  it("composes approved pins on owner planning turns while preserving room and audience boundaries", async () => {
     const service = createAgreementKnowledgeService(runtime);
     const ownerId = crypto.randomUUID() as UUID;
     const roomId = crypto.randomUUID() as UUID;
@@ -543,7 +543,18 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         kind: "owner_session",
         principalId: ownerId,
       });
-      return composeResponseState(runtime, message);
+      return runtime.composeState(
+        message,
+        selectV5PlannerStateProviderNames({
+          runtime,
+          message,
+          selectedContexts: ["general"],
+          userRoles: ["OWNER"],
+        }),
+        true,
+        false,
+        [],
+      );
     };
     let pin = await service.pin({
       artifactId: artifact.id,
