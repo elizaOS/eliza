@@ -198,11 +198,26 @@ describe("buildManagedElizaRuntimeConfig", () => {
       ELIZAOS_CLOUD_API_KEY: "agent-api-key",
       ELIZAOS_CLOUD_USE_EMBEDDINGS: "false",
       EMBEDDING_BASE_URL: "http://eliza-embedding-sidecar:80/v1",
+      ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS: "1",
     });
 
     expect(config).toMatchObject({
       serviceRouting: {
         embeddings: { backend: "embeddings", transport: "direct" },
+      },
+    });
+  });
+
+  test("persists native local embedding ownership selected for fresh lean-chat agents", () => {
+    const config = buildManagedElizaRuntimeConfig({
+      ELIZAOS_CLOUD_API_KEY: "agent-api-key",
+      ELIZAOS_CLOUD_USE_EMBEDDINGS: "false",
+      ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS: "1",
+    });
+
+    expect(config).toMatchObject({
+      serviceRouting: {
+        embeddings: { backend: "local-inference", transport: "direct" },
       },
     });
   });
@@ -226,6 +241,7 @@ describe("buildManagedElizaRuntimeConfig", () => {
       ELIZAOS_CLOUD_USE_EMBEDDINGS: "true",
       // A stale direct endpoint must not beat the explicit Cloud opt-in.
       EMBEDDING_BASE_URL: "http://eliza-embedding-sidecar:80/v1",
+      ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS: "1",
     });
 
     expect(config).toMatchObject({
