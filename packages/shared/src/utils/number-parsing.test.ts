@@ -17,14 +17,29 @@ import {
 
 describe("parseCanonicalInteger", () => {
   it("distinguishes omission from malformed and unsafe input", () => {
-    expect(parseCanonicalInteger(null, { min: 1 })).toBeUndefined();
-    expect(parseCanonicalInteger("", { min: 1 })).toBeUndefined();
-    expect(parseCanonicalInteger("1e2", { min: 1 })).toBe("invalid");
-    expect(parseCanonicalInteger("007", { min: 1 })).toBe("invalid");
-    expect(parseCanonicalInteger("0x10", { min: 1 })).toBe("invalid");
-    expect(parseCanonicalInteger("9007199254740992", { min: 1 })).toBe(
-      "invalid",
-    );
+    for (const omitted of [null, undefined, "", "   "]) {
+      expect(parseCanonicalInteger(omitted, { min: 1 })).toBeUndefined();
+    }
+    for (const malformed of [
+      "1e2",
+      "007",
+      "0x10",
+      "012",
+      "00",
+      "01",
+      " 1",
+      "1 ",
+      " 1 ",
+      "+1",
+      "-1",
+      "1.0",
+      " 0",
+      "0 ",
+      "9007199254740992",
+    ]) {
+      expect(parseCanonicalInteger(malformed)).toBe("invalid");
+    }
+    expect(parseCanonicalInteger("9007199254740991")).toBe(9007199254740991);
   });
 
   it("supports explicit bounds and clamping", () => {
