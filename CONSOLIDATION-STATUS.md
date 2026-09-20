@@ -32,6 +32,12 @@ Verified checkpoint `ef88e31918b` retains `modelReplyRequired` for deferred acti
 
 Latest live availability check: **3.604s, three calls,27,299 input tokens;6,144 cached input tokens**. Handler1.465s, planner0.678s, completion0.698s. One availability preview returned three consecutive Sep25 slots; final wording stayed within those intervals and no event was created. No routing repair, history restoration or extra planner reply in this run. Different request/context from the older seven-call trace, so this is not a controlled before/after result. Under-three-second consistency and recurring-availability wording remain open.
 
+Source follow-up: successful planner-owned memory mutations now use the shared
+deferred-reply contract. Three regressions reproduced the missing required
+completion reply; all153 memory-action tests passed after correction. This
+source change is not yet live-tested; UI5268/API31392 remains on ef88e31918b.
+Exact preference wording and PERSONALITY removal remain open.
+
 ## Remaining acceptance checklist
 
 - [ ] Close the Calendar handler disposition and reconcile any newer remote work. All270 original source entries now have explicit review decisions:266 include,3 upstream-equivalent,1 Calendar handler review-required. Source inspection is complete; live acceptance is not.

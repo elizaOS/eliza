@@ -321,3 +321,31 @@ Ledger now has240 explicit reviews:236 include,3 upstream-equivalent and1 Calend
 - `packages/core/src/__tests__/message-runtime-stage1.test.ts`: Complete 2070-line changed comparison inspected in four parts. End-to-end Stage-1 harness covers bound provider review through planner/completion, fresh/revoked context recomposition, exact native source replies and legacy formats, field activity refresh, invalid-checkpoint full fallback, source/label repair before dispatch, effect-free reads and cancellation. Progress labels remain stable and separate from final replies, premature completion is withheld, required-tool work plans before evaluation, unknown tool hints discover actual capabilities, and settled callback prose is returned once to outer delivery. Direct-voice fixtures cover source plumbing only. Canned model decisions do not prove universal relevance, grounded prose or live voice behavior.
 
 All270 original inventory entries now have decisions:266 include,3 upstream-equivalent and1 Calendar handler review-required pending behavior gates. No entry is blanket accepted. Source inspection is complete; Calendar/preference live acceptance, remaining combined persistence/recovery and final handoff still require closure. Documentation-only checkpoint; no new model calls or test reruns.
+
+
+## Memory mutation completion contract
+
+The recorded preference-create run took4.843s/five model calls: handler,
+planner, evaluator, then separate reply synthesis and grounding. Its successful
+MEMORY result retained canonical `userFacingText` and `turnComplete:true`,
+without `modelReplyRequired`. The evaluator therefore did not require
+`messageToUser`. This is distinct from the Calendar deferred-result fix.
+
+Planner-owned successful create/update/delete results now use the existing
+`applyGroundedActionReply` deferred contract. Complete mutation facts and
+receipts remain available; standalone callers, reads and failures keep their
+existing path. No new model call, routing rule or system-prompt instruction is
+added. Three real action-to-evaluator regressions failed before this change
+because the completion schema did not require a reply; all153 tests in the
+memory action file passed afterward. Agent typecheck and package lint passed
+(existing15 warnings/two infos); root verification is still running in
+session4904. Guide parity157 and changed-document link checks passed. The model and database are deterministic
+fixtures, so these tests do not establish live latency or model compliance.
+
+Evidence: external runtime files `memory-completion-before.log`,
+`memory-completion-after.log`, `memory-completion-typecheck.log`,
+`memory-completion-lint.log`, and `memory-completion-verify.log` under the
+consolidation evidence directory. Live runtime remains on ef88e31918b; no new
+paid calls or runtime restart accompanied this change. The separate exact-text
+issue remains open: MEMORY create's parameter description currently requires
+third-person rewriting and conflicts with an explicit verbatim-save request.
