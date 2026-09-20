@@ -23,6 +23,7 @@ import {
   type IAgentRuntime,
   type IFileStorageService,
   type Memory,
+  type ModelHandler,
   ModelType,
   Service,
   ServiceType,
@@ -38,10 +39,19 @@ import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/know
 import {
   getScheduledTaskRunner,
   registerScheduledTaskChannelDispatcher,
+  unregisterScheduledTaskChannelDispatcher,
 } from "@elizaos/plugin-scheduling";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { z } from "zod";
 import { collectReferencedMedia } from "../../../../../packages/agent/src/api/media-runtime.ts";
 import { gcUnreferencedMedia } from "../../../../../packages/agent/src/api/media-store.ts";
@@ -170,6 +180,48 @@ function pdf(label: string): Buffer {
   return Buffer.from(`%PDF-1.7\n${label}\n%%EOF\n`, "utf8");
 }
 
+function createAgreement(
+  service: AgreementKnowledgeService,
+  input: Omit<
+    Parameters<AgreementKnowledgeService["createAgreementVersion"]>[0],
+    "mimeType" | "uploadedByEntityId"
+  >,
+): Promise<ParentingAgreementArtifact> {
+  return service.createAgreementVersion({
+    ...input,
+    mimeType: "application/pdf",
+    uploadedByEntityId: SELF_ENTITY_ID,
+  });
+}
+
+function createAgreementServer(runtime: AgentRuntime) {
+  installHttpPluginLifecycle(runtime);
+  return createServer(async (req, res) => {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    const handled = await tryHandleRuntimePluginRoute({
+      req,
+      res,
+      url,
+      pathname: url.pathname,
+      method: req.method ?? "GET",
+      runtime,
+      isAuthorized: () => true,
+    });
+    if (!handled && !res.headersSent) {
+      res.statusCode = 404;
+      res.end("not found");
+    }
+  });
+}
+
+async function closeAgreementServer(server: ReturnType<typeof createServer>) {
+  server.closeAllConnections();
+  if (server.listening)
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+}
+
 function readStoredZip(bytes: Buffer): Map<string, Buffer> {
   // Independently read ZIP local records rather than using the archive writer.
   const files = new Map<string, Buffer>();
@@ -194,7 +246,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   let runtimeResult: RealTestRuntimeResult;
   let runtime: AgentRuntime;
   let household: HouseholdCoordinationService;
-  let artifact: ParentingAgreementArtifact;
+  const fixtureArtifacts: ParentingAgreementArtifact[] = [];
   let guestHouseholdGrantId: string;
   let mediaStateDir: string;
   const familyRoomId = crypto.randomUUID() as UUID;
@@ -210,13 +262,172 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     });
     await runtime.addParticipant(runtime.agentId, id);
   }
+  async function packetFixture(
+    artifact: ParentingAgreementArtifact,
+    month: "2026-11" | "2026-12" = "2026-11",
+  ) {
+    const packets = new MonthlyFamilyPacketService(runtime);
+    return packets.buildInternal(
+      {
+        key: month,
+        startsOn: `${month}-01`,
+        endsOnExclusive: month === "2026-11" ? "2026-12-01" : "2027-01-01",
+        timeZone: "UTC",
+      },
+      [
+        {
+          claimId: "workspace-export-question",
+          stableKey: "workspace-export-question",
+          section: "unanswered",
+          statement: "Confirm the synthetic library pickup date.",
+          visibility: "owner_only",
+          provenance: [
+            {
+              source: "knowledge",
+              sourceId: artifact.id,
+              observedAt: artifact.createdAt,
+              contentSha256: artifact.contentSha256,
+            },
+          ],
+          dates: [],
+          requests: ["Confirm the pickup date"],
+          urgency: null,
+          commitments: [],
+          accountability: [],
+          unanswered: true,
+        },
+      ],
+    );
+  }
+
+  async function packetReceiptFixture(
+    month: "2026-11" | "2026-12" = "2026-11",
+  ) {
+    const packet = await packetFixture(await agreementFixture(), month);
+    const approvalId = crypto.randomUUID();
+    const unrelatedId = crypto.randomUUID();
+    const body = "Synthetic packet delivery record for export verification.";
+    const bodyHash = crypto.createHash("sha256").update(body).digest("hex");
+    const at = new Date().toISOString();
+    // Historical provider evidence is a database fixture; this test sends no message.
+    const receipt = {
+      provider: "fixture-provider",
+      messageId: "stored-message-receipt",
+      acceptedAt: at,
+    };
+    for (const [id, content] of [
+      [approvalId, body],
+      [unrelatedId, "unrelated-approval-body-canary"],
+    ]) {
+      await executeRawSql(
+        runtime,
+        `INSERT INTO approval_requests (id,agent_id,state,requested_by,subject_user_id,action,payload,channel,reason,expires_at,provider_receipt) VALUES (${sqlQuote(id)},${sqlQuote(runtime.agentId)},'executed','self','self','send_message',${sqlQuote(JSON.stringify({ action: "send_message", recipient: "+15555550101", body: content }))}::jsonb,'imessage','Synthetic historical fixture','2099-01-01T00:00:00Z',${sqlQuote(JSON.stringify(receipt))}::jsonb)`,
+      );
+    }
+    await executeRawSql(
+      runtime,
+      `INSERT INTO app_lifeops.life_family_packet_drafts (agent_id,packet_id,internal_version,draft_version,recipient,body,body_sha256,transformations_json,created_at) VALUES (${sqlQuote(runtime.agentId)},${sqlQuote(packet.packetId)},${packet.version},1,'+15555550101',${sqlQuote(body)},${sqlQuote(bodyHash)},'[]',${sqlQuote(at)})`,
+    );
+    await executeRawSql(
+      runtime,
+      `INSERT INTO app_lifeops.life_family_packet_approvals (agent_id,packet_id,draft_version,draft_sha256,approval_id,created_at) VALUES (${sqlQuote(runtime.agentId)},${sqlQuote(packet.packetId)},1,${sqlQuote(bodyHash)},${sqlQuote(approvalId)},${sqlQuote(at)})`,
+    );
+    return { packet, approvalId, unrelatedId, body, bodyHash, receipt };
+  }
+
+  async function agreementFixture(
+    reviewed = false,
+  ): Promise<ParentingAgreementArtifact> {
+    const service = createAgreementKnowledgeService(runtime);
+    const artifact = await createAgreement(service, {
+      agreementKey: crypto.randomUUID(),
+      title: "Parenting plan",
+      originalFilename: "parenting-plan.pdf",
+      bytes: pdf("agreement version one"),
+    });
+    fixtureArtifacts.push(artifact);
+    if (reviewed) {
+      for (const [title, text, pageStart, pageEnd, decision] of [
+        [
+          "School notice",
+          "Share school notices within twenty-four hours.",
+          4,
+          5,
+          "approve",
+        ],
+        [
+          "Unsupported interpretation",
+          "An unsupported model interpretation.",
+          8,
+          8,
+          "reject",
+        ],
+      ] as const) {
+        const obligation = await service.proposeObligation({
+          artifactId: artifact.id,
+          title,
+          obligationText: text,
+          pageStart,
+          pageEnd,
+          citationText: text,
+          proposedByEntityId: SELF_ENTITY_ID,
+        });
+        await service.decideObligation({
+          obligationId: obligation.id,
+          decision,
+          decidedByEntityId: SELF_ENTITY_ID,
+          reason: "Owner checked the fixture source.",
+        });
+      }
+    }
+    return artifact;
+  }
+
+  afterEach(async () => {
+    runtime.models.set(ModelType.TEXT_LARGE, [...initialTextModels]);
+    unregisterScheduledTaskChannelDispatcher(runtime, "family_fence_test");
+    if (restoreWorkspaceFence) {
+      await executeRawSql(
+        runtime,
+        `UPDATE app_lifeops.life_family_workspace_state SET state='active' WHERE agent_id=${sqlQuote(runtime.agentId)} AND state='revoking'`,
+      );
+      restoreWorkspaceFence = false;
+    }
+    const service = createAgreementKnowledgeService(runtime);
+    for (const artifact of fixtureArtifacts.splice(0)) {
+      const pins = await service.listPins({
+        artifactId: artifact.id,
+        ownerEntityId: SELF_ENTITY_ID,
+      });
+      for (const pin of pins) {
+        if (pin.unpinnedAt === null)
+          await service.unpin({
+            pinId: pin.id,
+            unpinnedByEntityId: SELF_ENTITY_ID,
+          });
+      }
+    }
+  });
+
   let syntheticSchedulerDispatches = 0;
+  let restoreWorkspaceFence = false;
+  let initialTextModels: ModelHandler[];
+
+  function registerFixtureDispatcher() {
+    registerScheduledTaskChannelDispatcher(runtime, {
+      channelKey: "family_fence_test",
+      dispatch: async () => {
+        syntheticSchedulerDispatches += 1;
+        return { ok: true, channelKey: "family_fence_test" };
+      },
+    });
+  }
 
   beforeAll(async () => {
     mediaStateDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "agreement-knowledge-media-"),
     );
-    process.env.ELIZA_STATE_DIR = mediaStateDir;
+    vi.stubEnv("ELIZA_STATE_DIR", mediaStateDir);
     runtimeResult = await createLifeOpsTestRuntime({
       plugins: [
         fileStoragePlugin,
@@ -224,6 +435,10 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       ],
     });
     runtime = runtimeResult.runtime;
+    initialTextModels = [...(runtime.models.get(ModelType.TEXT_LARGE) ?? [])];
+    await new SchoolCalendarWorkflow(runtime).ensureSchema();
+    await new CalendarCardAccessStore(runtime).ensureSchema();
+    await new MonthlyFamilyPacketService(runtime).list();
     await createPinRoom(familyRoomId);
     runtime.services.set(ServiceType.PDF, [
       new AgreementTestPdfService(runtime),
@@ -317,21 +532,22 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   afterAll(async () => {
-    await runtimeResult?.cleanup();
-    delete process.env.ELIZA_STATE_DIR;
-    fs.rmSync(mediaStateDir, { recursive: true, force: true });
+    try {
+      await runtimeResult?.cleanup();
+    } finally {
+      vi.unstubAllEnvs();
+      fs.rmSync(mediaStateDir, { recursive: true, force: true });
+    }
   });
 
   it("stores immutable content-addressed versions and rejects duplicate bytes", async () => {
     const service = createAgreementKnowledgeService(runtime);
     const firstBytes = pdf("agreement version one");
-    artifact = await service.createAgreementVersion({
+    const artifact = await createAgreement(service, {
       agreementKey: "parenting-plan",
       title: "Parenting plan",
       originalFilename: "parenting-plan.pdf",
-      mimeType: "application/pdf",
       bytes: firstBytes,
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     expect(artifact).toMatchObject({
       version: 1,
@@ -359,36 +575,30 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     });
 
     await expect(
-      service.createAgreementVersion({
+      createAgreement(service, {
         agreementKey: "parenting-plan",
         title: "Duplicate",
         originalFilename: "duplicate.pdf",
-        mimeType: "application/pdf",
         bytes: firstBytes,
-        uploadedByEntityId: SELF_ENTITY_ID,
       }),
     ).rejects.toMatchObject({ code: "AGREEMENT_DUPLICATE_CONTENT" });
 
-    const second = await service.createAgreementVersion({
+    const second = await createAgreement(service, {
       agreementKey: "parenting-plan",
       title: "Parenting plan amended",
       originalFilename: "parenting-plan-amended.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("agreement version two"),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     expect(second).toMatchObject({
       version: 2,
       supersedesArtifactId: artifact.id,
     });
     await expect(
-      service.createAgreementVersion({
+      createAgreement(service, {
         agreementKey: "parenting-plan",
         title: "Old content replay",
         originalFilename: "old-content.pdf",
-        mimeType: "application/pdf",
         bytes: firstBytes,
-        uploadedByEntityId: SELF_ENTITY_ID,
       }),
     ).rejects.toMatchObject({ code: "AGREEMENT_DUPLICATE_CONTENT" });
     await expect(
@@ -402,6 +612,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("requires valid page citations and makes review decisions terminal", async () => {
+    const artifact = await agreementFixture(false);
     const service = createAgreementKnowledgeService(runtime);
     await expect(
       service.proposeObligation({
@@ -467,7 +678,14 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("keeps agent and chat pins separate from guest authorization", async () => {
+    const artifact = await agreementFixture(true);
     const service = createAgreementKnowledgeService(runtime);
+    await createAgreement(service, {
+      agreementKey: artifact.agreementKey,
+      title: "Parenting plan amended",
+      originalFilename: "amended.pdf",
+      bytes: pdf("agreement version two"),
+    });
     const agentPin = await service.pin({
       artifactId: artifact.id,
       targetType: "agent",
@@ -509,13 +727,18 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     const ownerList = await service.listOwnerAgreements({
       ownerEntityId: SELF_ENTITY_ID,
     });
-    expect(ownerList.map((view) => view.artifact.version)).toEqual([2, 1]);
+    expect(
+      ownerList
+        .filter((view) => view.artifact.agreementKey === artifact.agreementKey)
+        .map((view) => view.artifact.version),
+    ).toEqual([2, 1]);
     await expect(
       service.listOwnerAgreements({ ownerEntityId: "verified-co-parent" }),
     ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
   });
 
-  it("composes approved pins for owner planning while preserving room and audience boundaries", async () => {
+  it("composes approved pins on owner planning turns while preserving room and audience boundaries", async () => {
+    const artifact = await agreementFixture(true);
     const service = createAgreementKnowledgeService(runtime);
     const ownerId = crypto.randomUUID() as UUID;
     const roomId = crypto.randomUUID() as UUID;
@@ -627,6 +850,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("persists pin provenance atomically and rolls back when the audit ledger rejects it", async () => {
+    const artifact = await agreementFixture(false);
     const service = createAgreementKnowledgeService(runtime);
     const targetId = crypto.randomUUID() as UUID;
     await createPinRoom(targetId);
@@ -703,38 +927,8 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("exports the owner workspace with real packet records and verified nested source archives while denying guests", async () => {
-    const packets = new MonthlyFamilyPacketService(runtime);
-    const packet = await packets.buildInternal(
-      {
-        key: "2026-11",
-        startsOn: "2026-11-01",
-        endsOnExclusive: "2026-12-01",
-        timeZone: "UTC",
-      },
-      [
-        {
-          claimId: "workspace-export-question",
-          stableKey: "workspace-export-question",
-          section: "unanswered",
-          statement: "Confirm the synthetic library pickup date.",
-          visibility: "owner_only",
-          provenance: [
-            {
-              source: "knowledge",
-              sourceId: artifact.id,
-              observedAt: artifact.createdAt,
-              contentSha256: artifact.contentSha256,
-            },
-          ],
-          dates: [],
-          requests: ["Confirm the pickup date"],
-          urgency: null,
-          commitments: [],
-          accountability: [],
-          unanswered: true,
-        },
-      ],
-    );
+    const artifact = await agreementFixture(false);
+    const packet = await packetFixture(artifact);
     await expect(
       exportFamilyWorkspace(runtime, "unverified-guest"),
     ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
@@ -902,7 +1096,6 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("exports retained school bytes without executor leases or another agent's records and fails on missing source bytes", async () => {
-    await new SchoolCalendarWorkflow(runtime).ensureSchema();
     const storage = runtime.getService<IFileStorageService>(
       ServiceType.REMOTE_FILES,
     );
@@ -1039,64 +1232,53 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("preserves packet-bound stored delivery receipts without including unrelated approval payloads", async () => {
-    const packet = await new MonthlyFamilyPacketService(runtime).latest(
-      "2026-11",
-    );
-    if (!packet) throw new Error("Workspace test packet is unavailable");
-    const approvalId = crypto.randomUUID();
-    const unrelatedId = crypto.randomUUID();
-    const body = "Synthetic packet delivery record for export verification.";
-    const bodyHash = crypto.createHash("sha256").update(body).digest("hex");
-    const at = new Date().toISOString();
-    // Historical provider evidence is a database fixture; this test sends no message.
-    const receipt = {
-      provider: "fixture-provider",
-      messageId: "stored-message-receipt",
-      acceptedAt: at,
-    };
-    for (const [id, content] of [
-      [approvalId, body],
-      [unrelatedId, "unrelated-approval-body-canary"],
-    ]) {
-      await executeRawSql(
-        runtime,
-        `INSERT INTO approval_requests (id,agent_id,state,requested_by,subject_user_id,action,payload,channel,reason,expires_at,provider_receipt) VALUES (${sqlQuote(id)},${sqlQuote(runtime.agentId)},'executed','self','self','send_message',${sqlQuote(JSON.stringify({ action: "send_message", recipient: "+15555550101", body: content }))}::jsonb,'imessage','Synthetic historical fixture','2099-01-01T00:00:00Z',${sqlQuote(JSON.stringify(receipt))}::jsonb)`,
-      );
-    }
-    await executeRawSql(
-      runtime,
-      `INSERT INTO app_lifeops.life_family_packet_drafts (agent_id,packet_id,internal_version,draft_version,recipient,body,body_sha256,transformations_json,created_at) VALUES (${sqlQuote(runtime.agentId)},${sqlQuote(packet.packetId)},${packet.version},1,'+15555550101',${sqlQuote(body)},${sqlQuote(bodyHash)},'[]',${sqlQuote(at)})`,
-    );
-    await executeRawSql(
-      runtime,
-      `INSERT INTO app_lifeops.life_family_packet_approvals (agent_id,packet_id,draft_version,draft_sha256,approval_id,created_at) VALUES (${sqlQuote(runtime.agentId)},${sqlQuote(packet.packetId)},1,${sqlQuote(bodyHash)},${sqlQuote(approvalId)},${sqlQuote(at)})`,
-    );
+    const { packet, approvalId, unrelatedId, body, bodyHash, receipt } =
+      await packetReceiptFixture();
     const manifestBytes = readStoredZip(
       (await exportFamilyWorkspace(runtime, SELF_ENTITY_ID)).bytes,
     ).get("manifest.json");
     if (!manifestBytes) throw new Error("Workspace manifest is unavailable");
     const manifest = JSON.parse(manifestBytes.toString("utf8"));
-    expect(manifest.records.approvals).toEqual([
+    expect(
+      manifest.records.approvals.filter(
+        (approval: { id: string }) => approval.id === approvalId,
+      ),
+    ).toEqual([
       expect.objectContaining({
         id: approvalId,
         state: "executed",
         provider_receipt: receipt,
       }),
     ]);
-    expect(manifest.records.drafts).toEqual([
+    expect(
+      manifest.records.drafts.filter(
+        (draft: { packet_id: string }) => draft.packet_id === packet.packetId,
+      ),
+    ).toEqual([
       expect.objectContaining({
         packet_id: packet.packetId,
         body,
         body_sha256: bodyHash,
       }),
     ]);
+    expect(
+      manifest.records.approvals.map((approval: { id: string }) => approval.id),
+    ).not.toContain(unrelatedId);
     expect(manifestBytes.toString("utf8")).not.toContain(
       "unrelated-approval-body-canary",
     );
   });
 
   it("exports verified originals and complete persisted provenance without granting guest export access", async () => {
+    const artifact = await agreementFixture(true);
     const service = createAgreementKnowledgeService(runtime);
+    const pin = await service.pin({
+      artifactId: artifact.id,
+      targetType: "chat",
+      targetId: familyRoomId,
+      pinnedByEntityId: SELF_ENTITY_ID,
+    });
+    await service.unpin({ pinId: pin.id, unpinnedByEntityId: SELF_ENTITY_ID });
     const original = await service.readOwnerPdf({
       artifactId: artifact.id,
       ownerEntityId: SELF_ENTITY_ID,
@@ -1172,6 +1354,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("refuses missing or corrupted originals without recording a prepared export", async () => {
+    const artifact = await agreementFixture(false);
     const service = createAgreementKnowledgeService(runtime);
     const file = path.join(mediaStateDir, "media", artifact.mediaFileName);
     const original = fs.readFileSync(file);
@@ -1204,13 +1387,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
 
   it("detects altered extraction metadata and identifies legacy history explicitly", async () => {
     const service = createAgreementKnowledgeService(runtime);
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "export-provenance-test",
       title: "Export provenance",
       originalFilename: "provenance.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("export provenance"),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     await executeRawSql(
       runtime,
@@ -1241,6 +1422,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("keeps concurrent pin transitions and their audit evidence in the same export snapshot", async () => {
+    const artifact = await agreementFixture(false);
     const service = createAgreementKnowledgeService(runtime);
     const repository = new AgreementKnowledgeRepository(
       runtime,
@@ -1293,6 +1475,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("requires verified identity plus an exact active household grant", async () => {
+    const artifact = await agreementFixture(true);
     const service = createAgreementKnowledgeService(runtime);
     await service.pin({
       artifactId: artifact.id,
@@ -1447,6 +1630,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("fails closed after household-grant revocation or expiry", async () => {
+    const artifact = await agreementFixture(false);
     const service = createAgreementKnowledgeService(runtime);
     const expiring = await household.issueGrant({
       principalEntityId: "verified-co-parent",
@@ -1484,6 +1668,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("serves only the bound guest projection over HTTP and denies revoked access", async () => {
+    const artifact = await agreementFixture(true);
     const db = (
       runtime as AgentRuntime & {
         adapter: { db: ConstructorParameters<typeof AuthStore>[0] };
@@ -1519,23 +1704,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       rememberDevice: false,
     });
     const service = createAgreementKnowledgeService(runtime);
-    installHttpPluginLifecycle(runtime);
-    const server = createServer(async (req, res) => {
-      const url = new URL(req.url ?? "/", "http://127.0.0.1");
-      const handled = await tryHandleRuntimePluginRoute({
-        req,
-        res,
-        url,
-        pathname: url.pathname,
-        method: req.method ?? "GET",
-        runtime,
-        isAuthorized: () => true,
-      });
-      if (!handled && !res.headersSent) {
-        res.statusCode = 404;
-        res.end("not found");
-      }
-    });
+    const server = createAgreementServer(runtime);
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
     const address = server.address();
@@ -1641,10 +1810,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       expect(await auth.revokeSession(session.id)).toBe(true);
       expect((await fetch(`${base}/shared`, { headers })).status).not.toBe(200);
     } finally {
-      server.closeAllConnections();
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      );
+      await closeAgreementServer(server);
       await auth.revokeSession(session.id);
       await auth.revokeSession(ownerSession.id);
     }
@@ -1663,13 +1829,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       }),
     ).rejects.toBeInstanceOf(AgreementKnowledgeError);
     await expect(
-      service.createAgreementVersion({
+      createAgreement(service, {
         agreementKey: "not-pdf",
         title: "Not PDF",
         originalFilename: "not-pdf.pdf",
-        mimeType: "application/pdf",
         bytes: Buffer.from("not actually a PDF"),
-        uploadedByEntityId: SELF_ENTITY_ID,
       }),
     ).rejects.toMatchObject({ code: "AGREEMENT_INVALID_CONTRACT" });
   });
@@ -1736,13 +1900,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
   it("lists only verified scoped permissions and retains unavailable bindings for owner revocation", async () => {
     const service = createAgreementKnowledgeService(runtime);
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "guest-choice-contract",
       title: "Guest choice contract",
       originalFilename: "guest-choices.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("guest choice filtering"),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     const input = {
       principalEntityId: "verified-co-parent",
@@ -1864,13 +2026,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         (chat) => chat.id === roomId,
       ),
     ).toBe(true);
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "stale-pin-destination",
       title: "Stale pin destination",
       originalFilename: "stale-pin.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("stale pin destination"),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     await runtime.removeParticipant(runtime.agentId, roomId);
     await expect(
@@ -1917,16 +2077,14 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       ).resolves.toEqual([]);
     },
   );
-  it("validates owner corrections, commits concurrent retries once, and preserves a decision across restart", async () => {
+  it("validates owner corrections, commits concurrent retries once, and preserves a decision across service recreation", async () => {
     const service = createAgreementKnowledgeService(runtime);
     const citation = "Share school notices within 24 hours.";
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "owner-review-correction",
       title: "Owner correction",
       originalFilename: "owner-review.pdf",
-      mimeType: "application/pdf",
       bytes: pdf(citation),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     const input = {
       artifactId: source.id,
@@ -2004,7 +2162,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     ).resolves.toBeNull();
   });
 
-  it("prepares cited proposals once, preserves owner decisions across restart, and never activates them implicitly", async () => {
+  it("prepares cited proposals once, preserves owner decisions across service recreation, and never activates them implicitly", async () => {
     runtime.setSetting("ELIZA_TRAJECTORY_LOGGING", "1");
     if (!runtime.getService("trajectories"))
       await runtime.registerService(TrajectoriesService);
@@ -2015,13 +2173,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     expect(trajectories.isEnabled()).toBe(true);
     const service = createAgreementKnowledgeService(runtime);
     const citation = "Each parent must share school notices within 24 hours.";
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "review-generation-retry",
       title: "Review generation",
       originalFilename: "review.pdf",
-      mimeType: "application/pdf",
       bytes: pdf(citation),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     let calls = 0;
     let modelPrompt = "";
@@ -2122,13 +2278,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
 
   it("rejects a fabricated model citation without committing a partial review and allows a valid retry", async () => {
     const service = createAgreementKnowledgeService(runtime);
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "review-invalid-citation",
       title: "Citation rejection",
       originalFilename: "citation.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("A travel request remains unresolved until answered."),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     runtime.registerModel(
       ModelType.TEXT_LARGE,
@@ -2193,13 +2347,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   it("commits one review across service instances and rolls back the entire batch when its audit fails", async () => {
     const service = createAgreementKnowledgeService(runtime);
     const citation = "Each parent must acknowledge receipt of school notices.";
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "review-transaction-recovery",
       title: "Transactional review",
       originalFilename: "transaction.pdf",
-      mimeType: "application/pdf",
       bytes: pdf(citation),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     let calls = 0;
     runtime.registerModel(
@@ -2670,13 +2822,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
   it("invalidates deletion when a referenced packet or draft appears without treating prose as a dependency", async () => {
     const service = createAgreementKnowledgeService(runtime);
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "packet-deletion-family",
       title: "Packet dependency fixture",
       originalFilename: "packet-dependency.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("packet deletion source"),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     const request = {
       ownerEntityId: SELF_ENTITY_ID,
@@ -2837,15 +2987,12 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     }
   });
   it("reviews all agreement families and derived documents without including another agent", async () => {
-    await new CalendarCardAccessStore(runtime).ensureSchema();
     const service = createAgreementKnowledgeService(runtime);
-    const first = await service.createAgreementVersion({
+    const first = await createAgreement(service, {
       agreementKey: "workspace-snapshot-first",
       title: "Workspace first",
       originalFilename: "workspace-first.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("workspace database first"),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     const before = await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID);
     expect(
@@ -2864,13 +3011,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     await expect(
       previewFamilyDeletionDatabase(runtime, "verified-co-parent"),
     ).rejects.toMatchObject({ code: "FAMILY_DELETION_ACCESS_DENIED" });
-    const second = await service.createAgreementVersion({
+    const second = await createAgreement(service, {
       agreementKey: "workspace-snapshot-second",
       title: "Workspace second",
       originalFilename: "workspace-second.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("workspace database second"),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     const expanded = await previewFamilyDeletionDatabase(
       runtime,
@@ -2921,7 +3066,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     expect(entered).toBe(false);
   });
   it("blocks reviewed deletion while school writes or family message receipts remain unresolved", async () => {
-    await new CalendarCardAccessStore(runtime).ensureSchema();
+    const { approvalId } = await packetReceiptFixture("2026-12");
     const agent = sqlQuote(runtime.agentId);
     const source = sqlQuote(crypto.randomUUID());
     const run = sqlQuote(crypto.randomUUID());
@@ -2966,8 +3111,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       },
       {
         table: "approval_requests",
-        where:
-          "id::text IN (SELECT approval_id FROM app_lifeops.life_family_packet_approvals)",
+        where: `id::text=${sqlQuote(approvalId)}`,
         busy: "state='reconciliation_required'",
         idle: "state='executed'",
         kind: "approvals",
@@ -3022,7 +3166,6 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     expect(entered).toBe(true);
   });
   it("fingerprints private workflow lease changes without disclosing tokens and rolls back failed workspace revocation", async () => {
-    await new CalendarCardAccessStore(runtime).ensureSchema();
     await previewFamilyDeletionDatabase(runtime, SELF_ENTITY_ID);
     const period = "2042-03";
     const lease = crypto.randomUUID();
@@ -3161,13 +3304,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         uploadId: upload.uploadId,
         contentIdentity,
         createArtifact: async ({ bytes: assembled }: { bytes: Buffer }) =>
-          service.createAgreementVersion({
+          createAgreement(service, {
             agreementKey,
             title: "Settled extraction retry",
             originalFilename: "retry.pdf",
-            mimeType: "application/pdf",
             bytes: assembled,
-            uploadedByEntityId: SELF_ENTITY_ID,
           }),
         readArtifact: async (id: string) => {
           const artifact = await repository.getArtifact(id);
@@ -3339,13 +3480,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
           ),
         ).rejects.toMatchObject({ code: "FAMILY_DELETION_WORK_UNSETTLED" });
         expect(enteredDeletion).toBe(false);
-        return service.createAgreementVersion({
+        return createAgreement(service, {
           agreementKey: "guarded-staging",
           title: "Guarded staging",
           originalFilename: "guarded.pdf",
-          mimeType: "application/pdf",
           bytes: assembled,
-          uploadedByEntityId: SELF_ENTITY_ID,
         });
       },
       readArtifact: async (id) => {
@@ -3555,13 +3694,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     const service = createAgreementKnowledgeService(runtime);
     try {
       await expect(
-        service.createAgreementVersion({
+        createAgreement(service, {
           agreementKey: "private-write-ack-loss",
           title: "Interrupted private write",
           originalFilename: "interrupted.pdf",
-          mimeType: "application/pdf",
           bytes,
-          uploadedByEntityId: SELF_ENTITY_ID,
         }),
       ).rejects.toMatchObject({
         code: "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED",
@@ -3647,13 +3784,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     try {
       const service = createAgreementKnowledgeService(runtime);
       await expect(
-        service.createAgreementVersion({
+        createAgreement(service, {
           agreementKey: key,
           title: "Settlement outage",
           originalFilename: "settlement.pdf",
-          mimeType: "application/pdf",
           bytes,
-          uploadedByEntityId: SELF_ENTITY_ID,
         }),
       ).rejects.toMatchObject({
         code: "AGREEMENT_INGESTION_RECONCILIATION_REQUIRED",
@@ -3869,6 +4004,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("retains scheduled execution admission when final receipt persistence fails", async () => {
+    registerFixtureDispatcher();
     const runner = getScheduledTaskRunner(runtime, {
       agentId: runtime.agentId,
     });
@@ -3948,13 +4084,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   it("revokes retained agreement reads and pinned context when workspace deletion starts", async () => {
     const service = createAgreementKnowledgeService(runtime);
     const bytes = pdf("private agreement read revocation");
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "read-revocation",
       title: "Read revocation",
       originalFilename: "read-revocation.pdf",
-      mimeType: "application/pdf",
       bytes,
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     expect(
       (
@@ -4039,13 +4173,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
 
   it("rejects an owner PDF response when revocation commits during its storage read", async () => {
     const service = createAgreementKnowledgeService(runtime);
-    const source = await service.createAgreementVersion({
+    const source = await createAgreement(service, {
       agreementKey: "read-revocation-race",
       title: "Read race",
       originalFilename: "race.pdf",
-      mimeType: "application/pdf",
       bytes: pdf("private bytes read before revocation"),
-      uploadedByEntityId: SELF_ENTITY_ID,
     });
     const storage = runtime.getService<IFileStorageService>(
       ServiceType.REMOTE_FILES,
@@ -4104,6 +4236,8 @@ describe("parenting-agreement knowledge — real PGlite", () => {
   });
 
   it("holds deletion behind real in-flight ingestion and durably fences subsequent uploads", async () => {
+    registerFixtureDispatcher();
+    restoreWorkspaceFence = true;
     const storage = runtime.getService<IFileStorageService>(
       ServiceType.REMOTE_FILES,
     );
@@ -4144,6 +4278,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         runtime,
         SELF_ENTITY_ID,
       );
+      expect(inFlight.unavailable).toEqual([]);
       expect(
         inFlight.records.some(
           (row) => row.kind === "workspaceOperations" && row.unsettled,
@@ -4166,6 +4301,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       storage.storePrivate = original;
     }
     const artifact = await uploading;
+    fixtureArtifacts.push(artifact);
     expect(
       (
         await createAgreementKnowledgeService(runtime).readOwnerPdf({
@@ -4502,13 +4638,13 @@ describe("parenting-agreement knowledge — real PGlite", () => {
 });
 
 describe("reviewed workspace deletion — real database and disk", () => {
+  afterEach(() => vi.unstubAllEnvs());
   it("authorizes owner HTTP deletion and exposes stale, pending, and retry states", async () => {
-    const previousKmsBackend = process.env.ELIZA_KMS_BACKEND;
-    process.env.ELIZA_KMS_BACKEND = "memory";
+    vi.stubEnv("ELIZA_KMS_BACKEND", "memory");
     const mediaDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "family-delete-http-"),
     );
-    process.env.ELIZA_STATE_DIR = mediaDir;
+    vi.stubEnv("ELIZA_STATE_DIR", mediaDir);
     const result = await createLifeOpsTestRuntime({
       pgliteDir: path.join(mediaDir, "pglite"),
       plugins: [
@@ -4517,23 +4653,7 @@ describe("reviewed workspace deletion — real database and disk", () => {
       ],
     });
     const runtime = result.runtime;
-    installHttpPluginLifecycle(runtime);
-    const server = createServer(async (req, res) => {
-      const url = new URL(req.url ?? "/", "http://127.0.0.1");
-      const handled = await tryHandleRuntimePluginRoute({
-        req,
-        res,
-        url,
-        pathname: url.pathname,
-        method: req.method ?? "GET",
-        runtime,
-        isAuthorized: () => true,
-      });
-      if (!handled && !res.headersSent) {
-        res.statusCode = 404;
-        res.end("not found");
-      }
-    });
+    const server = createAgreementServer(runtime);
     try {
       runtime.services.set(ServiceType.PDF, [
         new AgreementTestPdfService(runtime),
@@ -4545,13 +4665,11 @@ describe("reviewed workspace deletion — real database and disk", () => {
       await new SchoolCalendarWorkflow(runtime).ensureSchema();
       await new MonthlyFamilyPacketService(runtime).list();
       const service = createAgreementKnowledgeService(runtime);
-      const source = await service.createAgreementVersion({
+      const source = await createAgreement(service, {
         agreementKey: "http-delete",
         title: "HTTP deletion fixture",
         originalFilename: "http.pdf",
-        mimeType: "application/pdf",
         bytes: pdf("HTTP deletion source"),
-        uploadedByEntityId: SELF_ENTITY_ID,
       });
       const oldBackup = await createLocalAgentBackup(runtime, {});
       const db = (
@@ -4809,23 +4927,15 @@ describe("reviewed workspace deletion — real database and disk", () => {
       ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
     } finally {
       vi.restoreAllMocks();
-      if (previousKmsBackend === undefined)
-        delete process.env.ELIZA_KMS_BACKEND;
-      else process.env.ELIZA_KMS_BACKEND = previousKmsBackend;
-      server.closeAllConnections();
-      if (server.listening)
-        await new Promise<void>((resolve, reject) =>
-          server.close((error) => (error ? reject(error) : resolve())),
-        );
+      await closeAgreementServer(server);
       await result.cleanup();
-      delete process.env.ELIZA_STATE_DIR;
       fs.rmSync(mediaDir, { recursive: true, force: true });
     }
   });
 
   it("atomically removes private database projections and journals remaining files", async () => {
     const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), "family-delete-"));
-    process.env.ELIZA_STATE_DIR = mediaDir;
+    vi.stubEnv("ELIZA_STATE_DIR", mediaDir);
     const result = await createLifeOpsTestRuntime({
       plugins: [
         fileStoragePlugin,
@@ -4845,13 +4955,11 @@ describe("reviewed workspace deletion — real database and disk", () => {
       await new MonthlyFamilyPacketService(runtime).list();
       const service = createAgreementKnowledgeService(runtime);
       const bytes = pdf("synthetic source to delete");
-      const first = await service.createAgreementVersion({
+      const first = await createAgreement(service, {
         agreementKey: "delete-atomic",
         title: "Delete atomic",
         originalFilename: "atomic.pdf",
-        mimeType: "application/pdf",
         bytes,
-        uploadedByEntityId: SELF_ENTITY_ID,
       });
       const storage = runtime.getService<IFileStorageService>(
         ServiceType.REMOTE_FILES,
@@ -5124,7 +5232,6 @@ describe("reviewed workspace deletion — real database and disk", () => {
       );
     } finally {
       await result.cleanup();
-      delete process.env.ELIZA_STATE_DIR;
       fs.rmSync(mediaDir, { recursive: true, force: true });
     }
   });
