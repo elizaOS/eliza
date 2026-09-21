@@ -5573,17 +5573,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * Maps a listed task row while keeping one unreadable `scheduledAt` from
    * hiding every other task of the agent. The scheduler tick lists all tasks in
    * one call, so a throwing mapper would stop every queued task; the damaged row
-   * is returned with `dueAt` unset and its raw metadata intact so callers can
-   * still see and repair it. Single-row reads stay strict.
+   * retains its raw metadata and an explicit `scheduleError` for inspection and
+   * repair. The scheduler rejects this state; single-row reads stay strict.
    */
   private taskFromListRow(row: typeof taskTable.$inferSelect): Task {
     const metadata = (row.metadata || {}) as TaskMetadata;
     let dueAt: number | undefined;
+    let scheduleError: string | undefined;
     try {
       dueAt = readTaskDueAt(metadata);
     } catch (error) {
       // error-policy:J4 only TaskTimingValidationError degrades this one row to an
-      // unset due time; the raw metadata stays visible and anything else rethrows.
+      // explicit schedule failure; raw metadata stays visible and anything else rethrows.
       if (!(error instanceof TaskTimingValidationError)) throw error;
       logger.warn(
         {
@@ -5593,9 +5594,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           scheduledAt: metadata.scheduledAt,
           error: error.message,
         },
-        "BaseDrizzleAdapter: task row has unreadable metadata.scheduledAt; listing it without dueAt"
+        "BaseDrizzleAdapter: task row has unreadable metadata.scheduledAt; listing it with a scheduleError"
       );
-      dueAt = undefined;
+      scheduleError = error.message;
     }
     return {
       id: row.id as UUID,
@@ -5607,6 +5608,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       entityId: row.entityId as UUID,
       tags: row.tags || [],
       dueAt,
+      ...(scheduleError === undefined ? {} : { scheduleError }),
       metadata,
     };
   }

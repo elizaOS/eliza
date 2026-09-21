@@ -155,6 +155,8 @@ export interface Task {
 	updatedAt?: number | bigint;
 	/** Millisecond deadline; null explicitly clears a previously persisted deadline. */
 	dueAt?: number | bigint | null;
+	/** Adapter-reported schedule failure: retain the row for repair, but never execute it. */
+	scheduleError?: string;
 	status?: TaskStatus;
 }
 

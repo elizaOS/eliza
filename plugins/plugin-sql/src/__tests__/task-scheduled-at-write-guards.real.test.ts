@@ -1,17 +1,21 @@
 /**
- * Regression coverage for task `metadata.scheduledAt` write guards and the
- * per-row tolerance of task list reads, against a real isolated PGlite (or
- * Postgres) adapter with no mocks.
- *
- * The scheduler tick lists every task of an agent in one `getTasks` call, so a
- * single row whose `scheduledAt` escaped canonicalisation through
- * `patchTaskMetadata` or `updatePendingTask` must neither be stored in that
- * form nor poison the whole list.
+ * Exercises real SQL task timing writes and list-to-scheduler dispatch, including
+ * malformed stored rows, healthy sibling execution, and repair. The existing
+ * isolated database fixture supplies the actual adapter and AgentRuntime;
+ * TaskService uses an injected clock without replacing validation or execution.
  */
-import { ChannelType, type Entity, logger, type Room, type Task, type UUID } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  ChannelType,
+  type Entity,
+  type Room,
+  type Task,
+  TaskService,
+  type UUID,
+} from "@elizaos/core";
 import { eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../pglite/adapter";
 import { taskTable } from "../schema";
@@ -26,6 +30,7 @@ const REPEAT_DUE_AT = 1_900_000_005_000;
 describe("task scheduledAt write guards", () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   let cleanup: () => Promise<void>;
+  let runtime: AgentRuntime;
   let testAgentId: UUID;
   let testRoomId: UUID;
   let testWorldId: UUID;
@@ -66,6 +71,7 @@ describe("task scheduledAt write guards", () => {
   beforeAll(async () => {
     const setup = await createIsolatedTestDatabase("task-scheduled-at-write-guards");
     adapter = setup.adapter;
+    runtime = setup.runtime;
     cleanup = setup.cleanup;
     testAgentId = setup.testAgentId;
 
@@ -160,31 +166,70 @@ describe("task scheduledAt write guards", () => {
     expect(task?.dueAt).toBeUndefined();
   });
 
-  it("keeps listing healthy tasks when one persisted row carries unreadable timing", async () => {
-    const repeatId = await createHealthyRepeatTask();
-    const queueId = await createQueueTask();
-    await (adapter.getDatabase() as DrizzleDatabase)
-      .update(taskTable)
-      .set({ metadata: { status: "pending", scheduledAt: "not-a-date" } })
-      .where(eq(taskTable.id, queueId));
-
-    const warn = vi.spyOn(logger, "warn");
-    try {
-      const tasks = await listTasks();
-      expect(tasks).toHaveLength(2);
-      expect(tasks.find((task) => task.id === repeatId)?.dueAt).toBe(REPEAT_DUE_AT);
-      const damaged = tasks.find((task) => task.id === queueId);
-      expect(damaged?.dueAt).toBeUndefined();
-      expect(damaged?.metadata).toMatchObject({ scheduledAt: "not-a-date" });
-      expect(warn).toHaveBeenCalledWith(
-        expect.objectContaining({ src: "plugin:sql", taskId: queueId, agentId: testAgentId }),
-        expect.stringContaining("scheduledAt")
+  it.each(["not-a-date", "2026-02-30T00:00:00Z"])(
+    "keeps an invalid schedule %s visible without dispatching it, then permits repair",
+    async (scheduledAt) => {
+      const healthyId = await adapter.createTask(
+        baseTask({
+          name: "healthy-once",
+          tags: ["queue"],
+          metadata: { scheduledAt: "2026-09-21T10:00:00+01:00" },
+        })
       );
-      expect(await adapter.getTasksByName("healthy-repeat")).toEqual([
-        expect.objectContaining({ id: repeatId, dueAt: REPEAT_DUE_AT }),
-      ]);
-    } finally {
-      warn.mockRestore();
+      const queueId = await createQueueTask();
+      await (adapter.getDatabase() as DrizzleDatabase)
+        .update(taskTable)
+        .set({ metadata: { status: "pending", scheduledAt } })
+        .where(eq(taskTable.id, queueId));
+
+      const executions: UUID[] = [];
+      for (const name of ["healthy-once", "queued-once"]) {
+        runtime.registerTaskWorker({
+          name,
+          execute: async (_runtime, _options, task) => {
+            if (!task.id) throw new Error("Persisted task has no id");
+            executions.push(task.id);
+            return { preserveTask: true };
+          },
+        });
+      }
+      const scheduler = new TaskService(runtime, {
+        now: () => CANONICAL_MS + 1000,
+        setInterval: () => {
+          throw new Error("Only manual ticks are expected");
+        },
+        clearInterval: () => undefined,
+      });
+      try {
+        const tasks = await runtime.getTasks({ tags: ["queue"] });
+        expect(tasks).toHaveLength(2);
+        const damaged = tasks.find((task) => task.id === queueId);
+        expect(damaged?.dueAt).toBeUndefined();
+        expect(damaged?.scheduleError).toBeTruthy();
+        expect(damaged?.metadata).toEqual({ status: "pending", scheduledAt });
+        expect((await adapter.getTasksByName("queued-once"))[0]?.scheduleError).toBe(
+          damaged?.scheduleError
+        );
+        await expect(adapter.getTask(queueId)).rejects.toThrow();
+        await expect(scheduler.runDueTasks()).rejects.toMatchObject({
+          code: "TASK_TICK_FAILED",
+          context: { failureCodes: ["TASK_SCHEDULE_INVALID"] },
+        });
+        expect(executions).toEqual([healthyId]);
+
+        await adapter.patchTaskMetadata(queueId, { set: { scheduledAt: NON_CANONICAL_ISO } });
+        expect(
+          (await runtime.getTasks({ tags: ["queue"] })).find((task) => task.id === queueId)
+            ?.scheduleError
+        ).toBeUndefined();
+        executions.length = 0;
+        await scheduler.runDueTasks();
+        expect(executions.sort()).toEqual([healthyId, queueId].sort());
+      } finally {
+        await scheduler.stop();
+        runtime.unregisterTaskWorker("healthy-once");
+        runtime.unregisterTaskWorker("queued-once");
+      }
     }
-  });
+  );
 });
