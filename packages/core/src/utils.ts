@@ -1140,6 +1140,18 @@ export function validateUuid(value: unknown): UUID | null {
  * @returns {UUID} The UUID generated from the input target.
  * @throws {TypeError} Throws an error if the input target is not a string.
  */
+/**
+ * The escaped form that is hashed into a deterministic UUID. Shared by
+ * {@link stringToUuid} and {@link prewarmUuidCache} so the cache key matches
+ * the lookup. `encodeURIComponent` throws URIError on a lone surrogate, and a
+ * string that was cut mid code point (or arrived that way from a JSON body,
+ * whose `\uD83D` escapes decode to lone units) must still hash to a
+ * deterministic id, so lone units become U+FFFD before escaping.
+ */
+function escapeForUuidDigest(value: string): string {
+	return encodeURIComponent(toWellFormedUnicode(value));
+}
+
 export function stringToUuid(target: string | number): UUID {
 	if (typeof target === "number") {
 		target = target.toString();
@@ -1153,10 +1165,7 @@ export function stringToUuid(target: string | number): UUID {
 	const maybeUuid = validateUuid(target);
 	if (maybeUuid) return maybeUuid;
 
-	// encodeURIComponent throws URIError on a lone surrogate; a string that was
-	// cut mid code point must still hash to a deterministic id, so it is made
-	// well-formed (lone units become U+FFFD) before escaping.
-	const escapedStr = encodeURIComponent(toWellFormedUnicode(target));
+	const escapedStr = escapeForUuidDigest(target);
 
 	// Deterministic UUID derived from SHA-1(escapedStr)
 	// Use WebCrypto if available (sync via cache), otherwise pure JS
@@ -1179,7 +1188,7 @@ export async function prewarmUuidCache(values: string[]): Promise<void> {
 	if (!checkWebCrypto()) return;
 
 	const promises = values.map(async (value) => {
-		const escapedStr = encodeURIComponent(value);
+		const escapedStr = escapeForUuidDigest(value);
 		const digest = await sha1BytesAsync(escapedStr);
 		sha1Cache.set(escapedStr, digest);
 	});

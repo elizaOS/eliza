@@ -11,6 +11,7 @@ import {
 	parseBooleanFromText,
 	parseJSONObjectFromText,
 	parseToonKeyValue,
+	prewarmUuidCache,
 	stringToUuid,
 	truncateToCompleteSentence,
 	validateUuid,
@@ -43,6 +44,12 @@ describe("stringToUuid", () => {
 		expect(stringToUuid(lone)).toBe(id);
 		expect(stringToUuid("lone \uFFFD tail")).toBe(id);
 		expect(stringToUuid("ok \u{1F600}")).toMatch(UUID_RE);
+	});
+
+	it("pre-warms the digest cache for a lone-surrogate value under the same key stringToUuid reads (#31950)", async () => {
+		const lone = `warm ${String.fromCharCode(0xdc00)} tail`;
+		await expect(prewarmUuidCache([lone, "plain"])).resolves.toBeUndefined();
+		expect(stringToUuid(lone)).toBe(stringToUuid("warm \uFFFD tail"));
 	});
 });
 
