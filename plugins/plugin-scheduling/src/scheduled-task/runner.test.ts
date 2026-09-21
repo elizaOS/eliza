@@ -75,6 +75,7 @@ function makeHarness(
       | "completionChecks"
       | "ladders"
       | "channelKeys"
+      | "anchors"
     >
   > = {},
 ): Harness {
@@ -101,7 +102,7 @@ function makeHarness(
   const ladders = options.ladders ?? createEscalationLadderRegistry();
   if (!options.ladders) registerDefaultEscalationLadders(ladders);
 
-  const anchors = createAnchorRegistry();
+  const anchors = options.anchors ?? createAnchorRegistry();
   const consolidation = createConsolidationRegistry();
   const store = createInMemoryScheduledTaskStore();
   const nextFireAtByTaskId = new Map<string, string | null>();
@@ -2020,5 +2021,64 @@ describe("ScheduledTaskRunner — resolveNextFireAt (due-window primitive)", () 
       reason: "cron_due",
       occurrenceAtIso: "2026-05-09T09:00:00.000Z",
     });
+  });
+});
+
+describe("observed anchor midnight recovery", () => {
+  it("indexes and persists exactly one fire without today's observation or a static fallback", async () => {
+    const anchors = createAnchorRegistry();
+    const observed = "2026-05-09T21:07:00.000Z";
+    anchors.register({
+      anchorKey: "wake.confirmed",
+      describe: { label: "observed wake", provider: "test" },
+      resolve({ nowIso }) {
+        return nowIso.slice(0, 10) === observed.slice(0, 10) &&
+          Date.parse(nowIso) >= Date.parse(observed)
+          ? { atIso: observed }
+          : null;
+      },
+    });
+    const h = makeHarness("2026-05-10T00:00:00.000Z", {
+      anchors,
+      ownerFacts: () => ({ timezone: "UTC" }),
+    });
+    const task = await h.runner.schedule(
+      baseInput({
+        trigger: {
+          kind: "relative_to_anchor",
+          anchorKey: "wake.confirmed",
+          offsetMinutes: 240,
+        },
+      }),
+    );
+    expect(await h.runner.resolveNextFireAt(task)).toBe(
+      "2026-05-10T01:07:00.000Z",
+    );
+    expect(await h.runner.resolveDueDecision(task)).toMatchObject({
+      due: false,
+    });
+    h.setNow("2026-05-10T01:07:00.000Z");
+    expect(await h.runner.resolveDueDecision(task)).toMatchObject({
+      due: true,
+      occurrenceAtIso: "2026-05-10T01:07:00.000Z",
+    });
+    const fired = await h.runner.fire(task.taskId);
+    expect(fired.state).toMatchObject({
+      status: "fired",
+      firedAt: "2026-05-10T01:07:00.000Z",
+    });
+    expect(await h.runner.resolveDueDecision(fired)).toMatchObject({
+      due: false,
+    });
+    expect(await h.runner.resolveNextFireAt(fired)).toBeNull();
+    expect((await h.runner.fire(task.taskId)).state).toEqual(fired.state);
+    expect((await h.store.get(task.taskId))?.state).toEqual(fired.state);
+    const history = await h.logStore.list({
+      agentId: "test-agent",
+      taskId: task.taskId,
+    });
+    expect(
+      history.filter((entry) => entry.transition === "fired"),
+    ).toHaveLength(1);
   });
 });

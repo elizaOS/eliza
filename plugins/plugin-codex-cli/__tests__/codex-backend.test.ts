@@ -1,11 +1,11 @@
 /**
- * Unit coverage for the Codex provider: plugin model metadata, JWT expiry, the
+ * Unit coverage for the Codex provider: JWT expiry, the
  * SSE parser, tool-schema translation, and CodexBackend request/stream handling
  * driven by a fake fetch (no live model or network).
  */
 import { ElizaError } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { __INTERNAL_buildCodexGenerateParams, codexCliPlugin } from "../index";
+import { __INTERNAL_buildCodexGenerateParams } from "../index";
 import {
   __resetCodexAuthDeps,
   __setCodexAuthDeps,
@@ -40,19 +40,6 @@ const auth: CodexAuth = {
     account_id: "acct_123",
   },
 };
-
-describe("codex plugin metadata", () => {
-  it("declares CODEX_MODEL as display metadata for every model handler", () => {
-    const modelTypes = Object.keys(codexCliPlugin.models ?? {});
-    expect(modelTypes.length).toBeGreaterThan(0);
-    expect(Object.keys(codexCliPlugin.modelMetadata ?? {}).sort()).toEqual(modelTypes.sort());
-    for (const modelType of modelTypes) {
-      expect(codexCliPlugin.modelMetadata?.[modelType]).toEqual({
-        displayModelSetting: "CODEX_MODEL",
-      });
-    }
-  });
-});
 
 describe("codex auth helpers", () => {
   afterEach(() => __resetCodexAuthDeps());

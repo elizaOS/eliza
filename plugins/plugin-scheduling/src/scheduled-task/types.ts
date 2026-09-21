@@ -548,6 +548,15 @@ export interface CompletionCheckContribution {
 // §1.4 Anchor + consolidation registries (frozen)
 // ---------------------------------------------------------------------------
 
+/**
+ * Input to an anchor resolver. `nowIso` is the reference instant, not
+ * necessarily the wall clock: a resolver answers with the anchor instant for
+ * the owner-local day containing `nowIso`, using only evidence available at
+ * `nowIso`, or `null` when that day has none. The spine resolves adjacent
+ * days by passing the last instant of an earlier day or the first instant of
+ * a later one, so a `relative_to_anchor` offset that crosses midnight still
+ * finds its occurrence.
+ */
 export interface AnchorContext {
   nowIso: string;
   ownerFacts: OwnerFactsView;
