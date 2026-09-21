@@ -161,8 +161,15 @@ export class RuntimeCache {
     actualAgentId: UUID,
     mcpVersion = 0,
   ): Promise<void> {
-    if (this.cache.size >= this.MAX_SIZE) {
+    if (!this.cache.has(cacheKey) && this.cache.size >= this.MAX_SIZE) {
       await this.evictOldest();
+    }
+
+    // Capacity eviction may yield while another creator publishes this same key.
+    // Retain that exact generation before replacing it, without closing its adapter.
+    const previous = this.cache.get(cacheKey);
+    if (previous && previous.runtime !== runtime) {
+      this.retainRetirement(previous);
     }
 
     const now = Date.now();

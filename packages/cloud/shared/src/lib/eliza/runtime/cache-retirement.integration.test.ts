@@ -182,3 +182,82 @@ test("agent drain joins another retired generation added while its first teardow
     await Promise.all([firstEviction, secondEviction, drain]);
   }
 });
+
+test("same-key publication retires the displaced runtime and keeps its replacement reusable", async () => {
+  const agentId = randomUUID();
+  const cache = new RuntimeCache();
+  const original = await controlledRetirement(agentId);
+  const replacement = await controlledRetirement(agentId);
+  await cache.set(agentId, original.runtime, "Original", agentId);
+  try {
+    await cache.set(agentId, replacement.runtime, "Replacement", agentId);
+    await original.entered.promise;
+    expect(await cache.get(agentId)).toBe(replacement.runtime);
+    const drain = cache.drainRetiredByAgentId(agentId);
+    await expectDrainPending(drain);
+    original.finish.resolve();
+    await drain;
+    expect(original.stops()).toBe(1);
+    expect(replacement.stops()).toBe(0);
+    // Republishing the same instance must not stop the reusable generation.
+    await cache.set(agentId, replacement.runtime, "Replacement", agentId);
+    await cache.drainRetiredByAgentId(agentId);
+    expect(await cache.get(agentId)).toBe(replacement.runtime);
+    expect(replacement.stops()).toBe(0);
+  } finally {
+    original.finish.resolve();
+    replacement.finish.resolve();
+    await Promise.all([
+      original.runtime.stop({ requireQuiescence: true }),
+      replacement.runtime.stop({ requireQuiescence: true }),
+    ]);
+  }
+});
+
+test("publication retires a competing generation inserted during capacity eviction", async () => {
+  const cache = new RuntimeCache();
+  const evicted = await controlledRetirement(randomUUID());
+  const agentId = randomUUID();
+  const competing = await controlledRetirement(agentId);
+  const incoming = await controlledRetirement(agentId);
+  const fillers = Array.from({ length: cache.getStats().maxSize - 1 }, () => {
+    const id = randomUUID();
+    return new AgentRuntime({
+      agentId: id,
+      logLevel: "fatal",
+      adapter: new InMemoryDatabaseAdapter(id),
+    });
+  });
+  await cache.set(evicted.runtime.agentId, evicted.runtime, "Oldest", evicted.runtime.agentId);
+  const oldest = cache.getEntryForTesting(evicted.runtime.agentId);
+  if (!oldest) throw new Error("Fixture runtime was not cached");
+  oldest.lastUsed = 0;
+  for (const runtime of fillers)
+    await cache.set(runtime.agentId, runtime, "Filler", runtime.agentId);
+  const publication = cache.set(agentId, incoming.runtime, "Incoming", agentId);
+  try {
+    await evicted.entered.promise;
+    await cache.set(agentId, competing.runtime, "Competing", agentId);
+    evicted.finish.resolve();
+    await publication;
+    await competing.entered.promise;
+    expect(await cache.get(agentId)).toBe(incoming.runtime);
+    expect(cache.getStats().size).toBe(cache.getStats().maxSize);
+    const drain = cache.drainRetiredByAgentId(agentId);
+    await expectDrainPending(drain);
+    competing.finish.resolve();
+    await drain;
+    expect(competing.stops()).toBe(1);
+    expect(incoming.stops()).toBe(0);
+  } finally {
+    evicted.finish.resolve();
+    competing.finish.resolve();
+    incoming.finish.resolve();
+    await publication;
+    await Promise.all(
+      [...fillers, evicted.runtime, competing.runtime, incoming.runtime].map((runtime) =>
+        runtime.stop({ requireQuiescence: true }),
+      ),
+    );
+  }
+});
