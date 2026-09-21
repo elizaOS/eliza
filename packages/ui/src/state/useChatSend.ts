@@ -3037,6 +3037,8 @@ export function useChatSend(deps: UseChatSendDeps) {
                 uiLanguage,
                 actionTitle || t("common.newChat"),
               );
+            if (admissionGeneration !== sendCancellationGenerationRef.current)
+              return;
             if (!isConversationRecord(rawConversation)) {
               throw new Error(
                 "Conversation creation returned an invalid payload.",
@@ -3064,6 +3066,8 @@ export function useChatSend(deps: UseChatSendDeps) {
             convId = conversation.id;
             convRoomId = conversation.roomId;
           } catch {
+            if (admissionGeneration !== sendCancellationGenerationRef.current)
+              return;
             // error-policy:J4 surfaced user-facing failure state. An
             // action/inbox send that can't start a conversation must not
             // vanish silently (mirrors the cold-open path in

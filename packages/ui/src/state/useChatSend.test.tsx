@@ -693,6 +693,43 @@ describe("useChatSend stop handling", () => {
     },
   );
 
+  it.each(["resolved", "rejected"])(
+    "keeps an action send stopped when pending conversation creation %s",
+    async (outcome) => {
+      const creation = deferred<{ conversation: Conversation }>();
+      mocks.client.createConversation.mockReturnValue(creation.promise);
+      mocks.client.sendConversationMessageStream.mockResolvedValue({
+        text: "Unexpected reply",
+        completed: true,
+      });
+      const deps = makeDeps();
+      const { result } = renderHook(() => useChatSend(deps));
+      let sendPromise: Promise<unknown> | undefined;
+      await act(async () => {
+        sendPromise = result.current.sendActionMessage(
+          "Continue the requested action",
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+      act(() => result.current.handleChatStop());
+      await act(async () => {
+        if (outcome === "resolved") {
+          creation.resolve({
+            conversation: conversation("conv-action", "room-action"),
+          });
+        } else {
+          creation.reject(new Error("Creation failed after Stop"));
+        }
+        await sendPromise;
+      });
+      expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+      expect(deps.setActionNotice).not.toHaveBeenCalled();
+      expect(deps.activeConversationIdRef.current).toBeNull();
+    },
+  );
+
   it("paints the accepted turn before cold conversation creation finishes", async () => {
     const creation = deferred<{ conversation: Conversation }>();
     mocks.client.createConversation.mockReturnValue(creation.promise);
