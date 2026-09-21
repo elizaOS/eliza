@@ -1,4 +1,4 @@
-> Recovery correction checkpoint:07178b7c036 covers Stop during history restoration, action setup and404 replay. All183 targeted tests pass. Final root verification is running against this exact code; the earlier tagged handoff remains the verified baseline.
+> Recovery code07178b7c036:183 targeted tests and final full repository verification passed. Fresh browser acceptance remains unavailable because browser-control navigation/focus timed out, including after the build settled. See the recovery section in CONSOLIDATION-HANDOFF.md.
 
 # Eliza consolidation status — September 20, 2026
 

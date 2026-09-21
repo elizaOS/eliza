@@ -158,10 +158,10 @@ send/ownership/restoration suites pass183 tests. These tests run the real React
 hook with controlled API promises; they do not prove arbitrary backend effects
 are reversible or retrospectively identify the old build-time incident.
 
-Final root verification is running against the frozen recovery code, recorded in
-`runtime/recovery-final-root-verify.log`; until its exit is recorded, only the
-focused checks are accepted for this correction. The prior verification exited0
-but overlapped edits and is not the final acceptance receipt.
+Final root verification against frozen recovery code07178b7c036 passed with
+exit0; evidence is in `runtime/recovery-final-root-verify.log`. Together with
+183 passing targeted tests, this accepts the code correction at the local-check
+level. The prior overlapping run is not used as the final acceptance receipt.
 
 No paid model calls were added in this recovery pass. Both original demo worktrees
 were freshly confirmed clean. Browser-control verification timed out and then
@@ -169,7 +169,14 @@ reported a different selected browser after its session reset; no successful
 fresh rendered acceptance is claimed from that attempt. The API still reports
 ready/canRespond with healthy database and zero plugin/service failures.
 
-Remaining: finish the exact-code verification, refresh rendered acceptance when
-browser control is available, and retain the historical delayed-admission case
+Remaining: refresh rendered acceptance when browser control is available, and
+retain the historical delayed-admission case
 as causally unproven. The earlier fresh-reload Go home trace remains valid for its
 recorded checkpoint, not a new timing measurement for this correction.
+
+
+Final browser-control attempt after verification also timed out before a usable
+page observation (the new tab remained about:blank before retry). This is a
+browser-control limitation, not a verified product failure. No fallback control,
+new paid inference or app restart was used. Recovery checkpoint tag:
+`codex/recovery-cancellation-verified-20260920` (local only).

@@ -698,3 +698,12 @@ runtime/recovery-final-root-verify.log. No further production edits are planned
 while that final check runs. Zero new paid model calls in this recovery pass.
 The old build-time delayed request remains causally unproven; these reproduced
 cancellation boundaries explain what was corrected without guessing its cause.
+
+
+Final recovery verification: session23835 exited0 against production code
+07178b7c036; recovery-final-root-verify.log is the exact-code receipt. No
+production file changed during that final invocation. Browser control remained
+unavailable after completion: an owned blank tab could be listed, but navigation
+and focus-emulation commands timed out. Fresh rendered acceptance is not claimed.
+Both preserved source worktrees were clean in the final audit. No paid calls,
+remote publication, deployment or voice testing occurred during this recovery pass.
