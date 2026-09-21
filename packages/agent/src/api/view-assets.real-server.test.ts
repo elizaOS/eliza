@@ -262,3 +262,36 @@ it("rejects a hero request retired during its file read", async () => {
     await host.close();
   }
 });
+
+it.each([
+  ["ENOENT", 200],
+  ["EACCES", 500],
+])(
+  "only uses a generated hero for an expected missing file (%s)",
+  async (code, status) => {
+    const host = await fixture();
+    await fs.mkdir(path.join(host.dir, "assets"));
+    const file = path.join(host.dir, "assets/hero.svg");
+    await writeFile(file, '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    const heroPath = await fs.realpath(file);
+    const originalRead = fs.readFile.bind(fs);
+    const read = vi
+      .spyOn(fs, "readFile")
+      .mockImplementation(async (...args: Parameters<typeof fs.readFile>) => {
+        if (String(args[0]) === heroPath)
+          throw Object.assign(new Error("Fixture hero read failed"), { code });
+        return originalRead(...args);
+      });
+    try {
+      const response = await fetch(
+        new URL("/api/views/graph/hero", host.origin),
+      );
+      expect(response.status).toBe(status);
+      if (status === 200)
+        expect(response.headers.get("content-type")).toBe("image/svg+xml");
+    } finally {
+      read.mockRestore();
+      await host.close();
+    }
+  },
+);

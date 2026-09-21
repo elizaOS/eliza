@@ -646,8 +646,9 @@ export async function handleViewsRoutes(
     if (resolved) {
       try {
         data = await fs.readFile(resolved.absolutePath);
-      } catch {
-        // error-policy:J6 An unavailable decorative asset uses the generated image.
+      } catch (cause) {
+        // error-policy:J4 A decorative file removed after lookup uses the designed generated fallback.
+        if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
       }
     }
     // Both disk and generated images belong to the selected installation.
@@ -655,6 +656,7 @@ export async function handleViewsRoutes(
     try {
       assertRuntimeViewEntry(viewRuntime, entry);
     } catch (cause) {
+      // error-policy:J1 Return a typed installation failure at the HTTP boundary.
       if (!(cause instanceof ElizaError)) throw cause;
       error(res, "View installation changed; reload the catalog", 409);
       return true;
