@@ -42,6 +42,12 @@ const parseMeetingStatusEventMock = vi.hoisted(() =>
   vi.fn((_data: unknown) => null as unknown),
 );
 
+// This standalone page fixture has no connected runtime view installation.
+// Catalog binding and reporting are exercised by the shell/catalog integration tests.
+vi.mock("../../hooks/useAvailableViews", () => ({
+  useAvailableViews: () => ({ views: [] }),
+}));
+
 vi.mock("../../api/client", () => ({ client: clientMock }));
 vi.mock("../../api/client-meetings", () => ({
   parseMeetingStatusEvent: parseMeetingStatusEventMock,

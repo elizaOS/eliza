@@ -26,6 +26,7 @@ const appStateValue = vi.hoisted(() => ({
 
 vi.mock("../../hooks/useAvailableViews", () => ({
   useRoutableViews: vi.fn(),
+  useAvailableViews: () => ({ views: [] }),
 }));
 
 vi.mock("../../state", () => ({
