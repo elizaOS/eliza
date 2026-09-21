@@ -701,6 +701,9 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
   );
   const iframeFocusTimersRef = useRef(new Set<number>());
   const browserActionFocusReturnTargetRef = useRef<HTMLElement | null>(null);
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+  const mobileActionsMenuRef = useRef<HTMLDivElement | null>(null);
+  const mobileActionsFocusRef = useRef<HTMLElement | null>(null);
   const pendingIframeFocusReturnTargetsRef = useRef(
     new Map<string, HTMLElement | null>(),
   );
@@ -2918,7 +2921,37 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
           secondary actions live behind one touch-sized menu instead of a
           second row. */}
       <span className="shrink-0 max-md:inline-flex md:hidden">
-        <DropdownMenu>
+        <DropdownMenu
+          open={mobileActionsOpen}
+          onOpenChange={(open) => {
+            const activeElement = document.activeElement;
+            const menu = mobileActionsMenuRef.current;
+            if (
+              !open &&
+              document.hasFocus() &&
+              menu?.dataset.state === "open" &&
+              activeElement instanceof HTMLIFrameElement &&
+              [...iframeRefs.current.values()].includes(activeElement)
+            ) {
+              // Radix closes menus on window blur, including child-frame focus.
+              // Keep this modal open and restore its focus after that transfer.
+              queueMicrotask(() => {
+                if (
+                  mobileActionsMenuRef.current !== menu ||
+                  !menu.isConnected ||
+                  menu.dataset.state !== "open"
+                )
+                  return;
+                const previous = mobileActionsFocusRef.current;
+                const target =
+                  previous && menu.contains(previous) ? previous : menu;
+                target.focus({ preventScroll: true });
+              });
+              return;
+            }
+            setMobileActionsOpen(open);
+          }}
+        >
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
@@ -2932,7 +2965,18 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
               <EllipsisVertical className="size-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-52 md:hidden">
+          <DropdownMenuContent
+            ref={mobileActionsMenuRef}
+            align="end"
+            className="min-w-52 md:hidden"
+            onFocusCapture={(event) => {
+              if (event.target instanceof HTMLElement) {
+                mobileActionsFocusRef.current = event.target;
+              }
+            }}
+            onEscapeKeyDown={() => setMobileActionsOpen(false)}
+            onPointerDownOutside={() => setMobileActionsOpen(false)}
+          >
             <DropdownMenuItem
               className="min-h-12 gap-3"
               disabled={busyAction !== null || browserWorkspaceUnavailable}
