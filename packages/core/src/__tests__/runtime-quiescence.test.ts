@@ -1,4 +1,5 @@
 /** Exercises strict retirement on real AgentRuntime instances with controlled lifecycle hooks. Deferred operations prove bounded shutdown cannot certify cleanup or replay teardown on a later wait. */
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
 import { trackPostDeliveryTask } from "../services/post-delivery-task-tracker";
@@ -15,7 +16,7 @@ function deferred<T = void>() {
 
 async function initialized() {
 	const runtime = new AgentRuntime({ logLevel: "fatal" });
-	await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+	await initializeTestRuntime(runtime, { skipMigrations: true });
 	return runtime;
 }
 
