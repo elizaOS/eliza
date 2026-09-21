@@ -24,6 +24,7 @@ import {
   appChargeCallbacksService,
   parseAppChargeCallbackDispatchParams,
 } from "./app-charge-callbacks";
+import { isAppChargePayableStatus } from "./app-charge-settlement";
 import { appCreditsService } from "./app-credits";
 import { creditsService } from "./credits";
 import { invoicesService } from "./invoices";
@@ -700,7 +701,7 @@ class CryptoPaymentsService {
           await appChargeCallbacksService.enqueue(callbackSettlement, tx);
           return callbackSettlement;
         }
-        if (chargeRequest.status !== "pending") {
+        if (!isAppChargePayableStatus(chargeRequest.status)) {
           throw new Error(`Charge request cannot settle from status ${chargeRequest.status}`);
         }
 

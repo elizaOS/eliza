@@ -1,4 +1,9 @@
-/** Atomically commits app-charge status and its durable callback delivery intent. */
+/**
+ * Atomically commits app-charge status and its durable callback delivery intent.
+ *
+ * Create writes status `requested`. Some fixtures still seed `pending`. Both are
+ * payable; `confirmed` stays idempotent for the same provider payment.
+ */
 import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import { eq } from "drizzle-orm";
@@ -6,6 +11,11 @@ import { dbWrite } from "../../db/helpers";
 import { cryptoPayments } from "../../db/schemas/crypto-payments";
 import { logger } from "../utils/logger";
 import { appChargeCallbacksService } from "./app-charge-callbacks";
+
+/** Statuses that may transition to confirmed when a provider payment lands. */
+export function isAppChargePayableStatus(status: string): boolean {
+  return status === "requested" || status === "pending";
+}
 
 export type AppChargeSettlementProvider = "stripe" | "oxapay";
 
@@ -91,7 +101,7 @@ export class AppChargeSettlementService {
         await appChargeCallbacksService.enqueue(callback, tx);
         return;
       }
-      if (chargeRequest.status !== "pending") {
+      if (!isAppChargePayableStatus(chargeRequest.status)) {
         throw new ElizaError("Charge request cannot be settled from its current status", {
           code: "INVALID_APP_CHARGE_STATUS",
           context: { chargeRequestId: params.chargeRequestId, status: chargeRequest.status },
