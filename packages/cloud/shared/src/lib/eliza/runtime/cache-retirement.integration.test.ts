@@ -261,3 +261,61 @@ test("publication retires a competing generation inserted during capacity evicti
     );
   }
 });
+
+test("admission revoked while capacity eviction waits prevents publication", async () => {
+  const cache = new RuntimeCache();
+  const evicted = await controlledRetirement(randomUUID());
+  const incoming = await controlledRetirement(randomUUID());
+  const fillers = Array.from({ length: cache.getStats().maxSize - 1 }, () => {
+    const id = randomUUID();
+    return new AgentRuntime({
+      agentId: id,
+      logLevel: "fatal",
+      adapter: new InMemoryDatabaseAdapter(id),
+    });
+  });
+  await cache.set(evicted.runtime.agentId, evicted.runtime, "Oldest", evicted.runtime.agentId);
+  const oldest = cache.getEntryForTesting(evicted.runtime.agentId);
+  if (!oldest) throw new Error("Fixture runtime was not cached");
+  oldest.lastUsed = 0;
+  for (const runtime of fillers)
+    await cache.set(runtime.agentId, runtime, "Filler", runtime.agentId);
+  const invalidated = new Error("Fixture admission invalidated");
+  let admitted = true;
+  const publication = cache.set(
+    incoming.runtime.agentId,
+    incoming.runtime,
+    "Incoming",
+    incoming.runtime.agentId,
+    0,
+    () => {
+      if (!admitted) throw invalidated;
+    },
+  );
+  const outcome = publication.then(
+    () => undefined,
+    (error: Error) => error,
+  );
+  try {
+    await evicted.entered.promise;
+    admitted = false;
+    evicted.finish.resolve();
+    expect(await outcome).toBe(invalidated);
+    expect(await cache.get(incoming.runtime.agentId)).toBeNull();
+    // The factory owns unpublished runtime cleanup, not the cache publication operation.
+    cache.retire(incoming.runtime);
+    await incoming.entered.promise;
+    incoming.finish.resolve();
+    await cache.drainRetiredByAgentId(incoming.runtime.agentId);
+    expect(incoming.stops()).toBe(1);
+  } finally {
+    evicted.finish.resolve();
+    incoming.finish.resolve();
+    await outcome;
+    await Promise.all(
+      [...fillers, evicted.runtime, incoming.runtime].map((runtime) =>
+        runtime.stop({ requireQuiescence: true }),
+      ),
+    );
+  }
+});

@@ -56,24 +56,24 @@ export class RuntimeCache {
     return now - entry.createdAt > this.MAX_AGE_MS || now - entry.lastUsed > this.IDLE_TIMEOUT_MS;
   }
 
-  private retainRetirement(entry: CachedRuntime): void {
-    if (this.retired.has(entry.runtime)) return;
+  /** Own teardown of an evicted or unpublished runtime without closing its adapter. */
+  retire(runtime: AgentRuntime): void {
+    const agentId = runtime.agentId;
+    if (this.retired.has(runtime)) return;
     // Defer hooks until the retirement is visible, including to reentrant callers.
-    const completion = Promise.resolve().then(() =>
-      entry.runtime.stop({ requireQuiescence: true }),
-    );
-    const retirement = { agentId: entry.agentId, completion };
-    this.retired.set(entry.runtime, retirement);
+    const completion = Promise.resolve().then(() => runtime.stop({ requireQuiescence: true }));
+    const retirement = { agentId, completion };
+    this.retired.set(runtime, retirement);
     void completion.then(
       () => {
-        if (this.retired.get(entry.runtime) === retirement) {
-          this.retired.delete(entry.runtime);
+        if (this.retired.get(runtime) === retirement) {
+          this.retired.delete(runtime);
         }
       },
       (error) => {
         // error-policy:J5 The original rejection stays retained and is observed by drainRetiredByAgentId.
         elizaLogger.warn(
-          { agentId: entry.agentId, error },
+          { agentId, error },
           "[RuntimeCache] Runtime retirement remains incomplete",
         );
       },
@@ -100,7 +100,7 @@ export class RuntimeCache {
     if (this.cache.get(key) !== entry) return false;
     // Revoke reuse synchronously, before stop hooks can reenter the cache.
     this.cache.delete(key);
-    this.retainRetirement(entry);
+    this.retire(entry.runtime);
     dbPool?.removeAdapter(entry.agentId, entry.runtime.adapter);
     await stopRuntimeServices(entry.runtime, key, "RuntimeCache");
     elizaLogger.debug(`[RuntimeCache] Evicted ${reason} runtime: ${key} (adapter kept alive)`);
@@ -160,16 +160,19 @@ export class RuntimeCache {
     characterName: string,
     actualAgentId: UUID,
     mcpVersion = 0,
+    assertAdmission?: () => void,
   ): Promise<void> {
+    assertAdmission?.();
     if (!this.cache.has(cacheKey) && this.cache.size >= this.MAX_SIZE) {
       await this.evictOldest();
     }
+    assertAdmission?.();
 
     // Capacity eviction may yield while another creator publishes this same key.
     // Retain that exact generation before replacing it, without closing its adapter.
     const previous = this.cache.get(cacheKey);
     if (previous && previous.runtime !== runtime) {
-      this.retainRetirement(previous);
+      this.retire(previous.runtime);
     }
 
     const now = Date.now();
