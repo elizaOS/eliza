@@ -345,16 +345,6 @@ describe("HetznerCloudClient provider contract", () => {
             diagnostic,
           };
         },
-        "opaque-connection-id": async () => {
-          const connectionId = provider.createConnectionId();
-          return {
-            scenario: "opaque-connection-id",
-            status: "passed",
-            detail:
-              "provider connection exposed only an opaque capability handle",
-            connectionId,
-          };
-        },
         "read-policy": async () => {
           await client.listServers();
           const receipt = provider.receipts.find(
@@ -431,6 +421,6 @@ describe("HetznerCloudClient provider contract", () => {
         },
       },
     });
-    expect(report.observations).toHaveLength(15);
+    expect(report.observations).toHaveLength(14);
   });
 });

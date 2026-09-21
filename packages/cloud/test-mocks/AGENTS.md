@@ -103,6 +103,10 @@ scenario catalog, including OAuth state/PKCE and credential rotation, response
 and transport faults, webhook ordering/idempotency, tenant denial, redaction,
 and policy receipts.
 
+Adapters that consume or return managed connection handles must explicitly add
+`opaque-connection-id` to `requiredScenarios` and exercise their real handle
+boundary. A handle generated only by the fake upstream is not adapter evidence.
+
 Choose `outbound-http` for adapters that initiate provider requests and
 `inbound-webhook` for provider-authenticated delivery routes. Profiles are
 additive mandatory scenario sets, are bound into the nonce report, and cannot

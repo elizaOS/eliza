@@ -174,6 +174,7 @@ describe("GitHub connector OAuth production contract", () => {
       adapterName: "GitHubConnectorAccountProvider",
       profile: "outbound-http",
       capabilities: ["oauth"],
+      requiredScenarios: ["opaque-connection-id"],
       scenarios: {
         success: async () => {
           await completeFreshOAuth();

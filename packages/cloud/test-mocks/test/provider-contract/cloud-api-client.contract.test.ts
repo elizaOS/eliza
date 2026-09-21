@@ -247,16 +247,6 @@ describe("CloudApiClient provider contract", () => {
             diagnostic: provider.requests.at(-1),
           };
         },
-        "opaque-connection-id": async () => {
-          const connectionId = provider.createConnectionId();
-          return {
-            scenario: "opaque-connection-id",
-            status: "passed",
-            detail:
-              "provider connection exposed only an opaque capability handle",
-            connectionId,
-          };
-        },
         "read-policy": async () => {
           await client.get("/models", {
             headers: { "x-provider-request-id": "cloud-read-policy" },
@@ -315,6 +305,6 @@ describe("CloudApiClient provider contract", () => {
         },
       },
     });
-    expect(report.observations).toHaveLength(14);
+    expect(report.observations).toHaveLength(13);
   });
 });

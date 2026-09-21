@@ -111,6 +111,7 @@ describe("JsonMapsHttpAdapter provider contract", () => {
       adapterName: "JsonMapsHttpAdapter",
       profile: "outbound-http",
       capabilities: ["http-read", "pagination"],
+      requiredScenarios: ["opaque-connection-id"],
       scenarios: {
         success: async () => {
           const page = await adapter.searchPlaces({ query: "park" });
