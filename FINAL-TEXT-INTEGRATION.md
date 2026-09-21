@@ -19,11 +19,17 @@ Published peer branches `ganttnubs` (`bd227d2f52e`) and `nubsDONTDELETEpls` (`e5
 - [x] Scheduling:637 tests pass; Codex provider:10 pass; Cloud affected suites:103 pass; Wi-Fi:29 pass after building the fresh checkout's UI dependency.
 - [x] Full root verification after UI dependency build:373 tasks and repository audits passed, session87512 exit0.
 - [x] Agreement real-PGlite suite:56/56 passed after build settled, session75918 exit0. Initial concurrent run had55 pass and one transient snapshot failure; isolated case also passed. All logs retained; exact transient cause remains unproven, and no guard was weakened.
-- [ ] Start final isolated app and verify source, health and rendered text behavior.
-- [ ] Publish final branch/tag and deliver one URL with limitations.
+- [x] Final app: http://127.0.0.1:5288/chat, API31412, source6a738bf3493. Own isolated state and dependency builds; backendPID37244/UI PID37245. Health/deferred boot settled with35plugins/95services,zero failures. Browser rendered Calendar and Opening Calendar reply after one submitted Open Calendar turn.
+- [ ] Publish final branch/tag and deliver one URL with limitations (remote verification recorded in local TONIGHT-FINISH.md).
 
 Existing eleven-turn text acceptance and cancellation/acknowledgment checks are documented in TEXT-ACCEPTANCE.md and remain explicitly reused where code is unchanged. Do not repeat paid benchmarks merely to obtain lower timings. Calendar availability's observed five-call/4.971s run remains a known model decision inefficiency; its existing prompt already instructs direct clarification. No universal sub3s claim. Background-memory cost remains separate from foreground calls.
 
 Local evidence root: `/Users/nubs/Documents/ChatGPT/test/eliza-group-channel-integration-20260920/`. Logs prefixed `final-`; final app launchers/state under `final-runtime`. Initial fresh-checkout root/Wi-Fi checks could not resolve unbuilt UI exports; explicit UI build passed55 runtime export checks before reruns. The initial dependency install's optional native-inference download was cancelled; frozen install completed using supported ELIZA_SKIP_FUSED_INFERENCE_SETUP=1. Existing native runtime installation remains untouched.
 
 Voice/native-device QA, actual Discord sends, deployment and protected-branch merging are deferred. Historical build-time request delay remains unproven, and consistent sub3s response time is unachieved. All older demo instances and data remain preserved.
+
+## Final app smoke evidence
+
+Trace `step-1789959826742-ivnz1u`:1.161s backend duration,one foreground model call,9453 input,313 output,9216 reported cached input. Separate background memory trace:one call,.648s,7375 input,272 output,4096 cached. One final paid user turn total; no repeat speed benchmark. Tool navigation and rendered route agree. A browser automation key action initially timed out without submitting; native accessible Send submitted exactly one Open Calendar message. This is not classified as an app latency incident.
+
+The preserved checkpoint is published at `codex/group-channel-integration-20260920`, tag `codex/group-text-accepted-20260920`, commit2ea336c2a58. The final merge contains both that checkpoint and develop5356317c263. Use this document instead of older checkpoint documents for final app identity; historical reports retain their original local-only status statements.
