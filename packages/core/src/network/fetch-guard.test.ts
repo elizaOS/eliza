@@ -153,6 +153,43 @@ describe("fetchWithSsrfGuard teardown and cancellation", () => {
 		expect(cancelCalls).toBe(1);
 	});
 
+	it("reports a redirect budget violation as a policy block, not a transport error", async () => {
+		const fetchImpl = vi.fn(
+			async () =>
+				new Response(null, {
+					status: 302,
+					headers: { location: "https://example.com/next" },
+				}),
+		);
+		await expect(
+			fetchWithSsrfGuard({
+				url: "https://example.com/page",
+				fetchImpl,
+				maxRedirects: 0,
+			}),
+		).rejects.toBeInstanceOf(SsrfBlockedError);
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+	});
+
+	it("reports a redirect loop as a policy block, not a transport error", async () => {
+		const fetchImpl = vi.fn(async (url: string) => {
+			const target = url.endsWith("/a")
+				? "https://example.com/b"
+				: "https://example.com/a";
+			return new Response(null, {
+				status: 302,
+				headers: { location: target },
+			});
+		});
+		const error = await fetchWithSsrfGuard({
+			url: "https://example.com/a",
+			fetchImpl,
+			maxRedirects: 5,
+		}).catch((caught: unknown) => caught);
+		expect(error).toBeInstanceOf(SsrfBlockedError);
+		expect((error as Error).message).toBe("Redirect loop detected");
+	});
+
 	it("keeps the missing-location error when the redirect body cancel rejects", async () => {
 		const fetchImpl = vi.fn(
 			async () =>
