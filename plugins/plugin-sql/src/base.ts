@@ -686,6 +686,21 @@ import {
 import type { StoreContext } from "./stores/types";
 import type { DrizzleDatabase } from "./types";
 
+/**
+ * ISO-8601 form of a relationship row's `created_at`, which the schema declares
+ * NOT NULL; a row without a usable value is a storage fault, not a fresh row.
+ */
+function relationshipRowCreatedAt(value: unknown): string {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string" && !Number.isNaN(Date.parse(value))) {
+    return new Date(value).toISOString();
+  }
+  throw new ElizaError("relationship row has no usable created_at", {
+    code: "RELATIONSHIP_ROW_INVALID",
+    context: { createdAt: value },
+  });
+}
+
 export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase> {
   readonly messageContentSegmentCapability = 1 as const;
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
@@ -5694,28 +5709,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       const result = await this.db.execute(query);
 
-      return result.rows.map(
-        ({
-          extraction_evidence: _extractionEvidence,
-          ...relationship
-        }: Record<string, unknown>) => ({
-          ...relationship,
-          id: relationship.id as UUID,
-          sourceEntityId: (relationship.source_entity_id || relationship.sourceEntityId) as UUID,
-          targetEntityId: (relationship.target_entity_id || relationship.targetEntityId) as UUID,
-          agentId: (relationship.agent_id || relationship.agentId) as UUID,
-          tags: (relationship.tags ?? []) as string[],
-          metadata: (relationship.metadata ?? {}) as Metadata,
-          createdAt:
-            relationship.created_at || relationship.createdAt
-              ? (relationship.created_at || relationship.createdAt) instanceof Date
-                ? ((relationship.created_at || relationship.createdAt) as Date).toISOString()
-                : new Date(
-                    (relationship.created_at as string) || (relationship.createdAt as string)
-                  ).toISOString()
-              : new Date().toISOString(),
-        })
-      );
+      // The raw row carries snake_case columns; the DTO is built field by field
+      // so nothing outside the `Relationship` contract reaches callers.
+      return result.rows.map((row: Record<string, unknown>) => ({
+        id: row.id as UUID,
+        sourceEntityId: (row.source_entity_id ?? row.sourceEntityId) as UUID,
+        targetEntityId: (row.target_entity_id ?? row.targetEntityId) as UUID,
+        agentId: (row.agent_id ?? row.agentId) as UUID,
+        tags: (row.tags ?? []) as string[],
+        metadata: (row.metadata ?? {}) as Metadata,
+        createdAt: relationshipRowCreatedAt(row.created_at ?? row.createdAt),
+      }));
     });
   }
 
