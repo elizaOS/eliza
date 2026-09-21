@@ -108,6 +108,7 @@ export * from "./media/image-description-cache.js";
 export * from "./media/local-store.js";
 export * from "./media/mime.js";
 export * from "./media/mime-sniffer.js";
+export * from "./media/outbound.js";
 export * from "./memory";
 export * from "./messaging/interactions";
 export * from "./messaging/manage-server-authorization";

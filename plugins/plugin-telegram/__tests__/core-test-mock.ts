@@ -33,6 +33,12 @@ vi.mock("@elizaos/core", async () => {
   const { toWellFormedUnicode, truncateWellFormed } = await import(
     "../../../packages/core/src/utils/well-formed"
   );
+  const { fetchWithSsrfGuard } = await import(
+    "../../../packages/core/src/network/fetch-guard"
+  );
+  const { getLocalServerUrl } = await import(
+    "../../../packages/core/src/utils/node"
+  );
 
   const logger = {
     debug: vi.fn(),
@@ -130,6 +136,8 @@ vi.mock("@elizaos/core", async () => {
     ElizaError,
     EventType,
     checkPairingAllowed,
+    fetchWithSsrfGuard,
+    getLocalServerUrl,
     getConfiguredOwnerEntityIds: () => [],
     ModelType,
     Role,

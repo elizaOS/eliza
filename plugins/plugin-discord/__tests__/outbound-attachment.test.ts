@@ -1,16 +1,14 @@
 /**
- * buildOutboundDiscordAttachment — the byte-fetch + URL-fallback path (#9604).
- *
- * Generated VIDEO/AUDIO media at http(s) URLs is byte-fetched through the core
- * SSRF guard so Discord gets bytes without routing untrusted URLs through an
- * unguarded fetch. Private/internal fetch failures fail closed; public failures
- * can fall back to a URL attachment. The REAL guard runs in every case — only
- * DNS + transport are injected (lookupFn + pinned/plain fetch impls), since the
- * guard's node pinned transport bypasses a stubbed global fetch by design.
+ * buildOutboundDiscordAttachment — resolve outbound bytes through the guarded
+ * fetch / media store. `data:` URLs decode locally, filesystem paths are
+ * rejected without `fs` access, http(s) URLs go through the real SSRF guard
+ * (injected DNS + transport), and guard failures fail closed with no URL
+ * fallback. Deterministic — no live Discord or network.
  */
 
+import fs from "node:fs";
 import { ContentType, type Media } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	buildOutboundDiscordAttachment,
 	type OutboundAttachmentFetchOptions,
@@ -19,7 +17,7 @@ import {
 function media(overrides: Partial<Media>): Media {
 	return {
 		id: "m1",
-		url: "http://127.0.0.1:8080/v1/media/abc/content",
+		url: "https://cdn.example.com/clip.mp4",
 		title: "clip",
 		contentType: ContentType.VIDEO,
 		source: "media-generation",
@@ -39,6 +37,10 @@ function transport(
 		fetchImpl: async (input, init) => fetchMock(String(input), init),
 	};
 }
+
+afterEach(() => {
+	vi.restoreAllMocks();
+});
 
 describe("buildOutboundDiscordAttachment", () => {
 	it("byte-fetches VIDEO bytes into a Buffer-backed attachment on a 200", async () => {
@@ -60,37 +62,14 @@ describe("buildOutboundDiscordAttachment", () => {
 		expect(Buffer.from(att.attachment as Buffer)).toEqual(Buffer.from(bytes));
 	});
 
-	it("fails closed for private/internal generated-media URLs when the fetch is not ok", async () => {
-		const fetchMock = vi
-			.fn()
-			.mockResolvedValue(new Response("bad", { status: 502 }));
-
-		const url = "http://127.0.0.1:8080/v1/media/x/content";
-		await expect(
-			buildOutboundDiscordAttachment(
-				media({ url }),
-				undefined,
-				transport(fetchMock),
-			),
-		).rejects.toThrow("HTTP 502");
-		expect(fetchMock).toHaveBeenCalledTimes(1);
-	});
-
-	it("fails closed for private/internal generated-media URLs when the fetch throws", async () => {
-		const fetchMock = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
-
-		const url = "http://127.0.0.1:8080/v1/media/y/content";
-		await expect(
-			buildOutboundDiscordAttachment(
-				media({ url }),
-				undefined,
-				transport(fetchMock),
-			),
-		).rejects.toThrow("ECONNREFUSED");
-	});
-
-	it("does not byte-fetch non-video/audio media (e.g. IMAGE)", async () => {
-		const fetchMock = vi.fn();
+	it("byte-fetches IMAGE bytes instead of passing the raw URL to discord.js", async () => {
+		const bytes = new Uint8Array([9, 8, 7]);
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(bytes, {
+				status: 200,
+				headers: { "content-type": "image/png" },
+			}),
+		);
 
 		const url = "https://cdn.example.com/pic.png";
 		const att = await buildOutboundDiscordAttachment(
@@ -98,12 +77,98 @@ describe("buildOutboundDiscordAttachment", () => {
 			undefined,
 			transport(fetchMock),
 		);
-		expect(fetchMock).not.toHaveBeenCalled();
-		expect(att.attachment).toBe(url);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(Buffer.isBuffer(att.attachment)).toBe(true);
+		expect(Buffer.from(att.attachment as Buffer)).toEqual(Buffer.from(bytes));
+		expect(typeof att.attachment === "string").toBe(false);
 	});
 
-	it("does not byte-fetch non-generated video/audio URLs", async () => {
+	it("decodes a data: image locally and never treats it as a filesystem path", async () => {
 		const fetchMock = vi.fn();
+		const readSpy = vi.spyOn(fs, "readFileSync");
+		const existsSpy = vi.spyOn(fs, "existsSync");
+		const streamSpy = vi.spyOn(fs, "createReadStream");
+
+		const att = await buildOutboundDiscordAttachment(
+			media({
+				url: "data:image/png;base64,aGVsbG8=",
+				contentType: ContentType.IMAGE,
+				title: "cat.png",
+			}),
+			undefined,
+			transport(fetchMock),
+		);
+
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(readSpy).not.toHaveBeenCalled();
+		expect(existsSpy).not.toHaveBeenCalled();
+		expect(streamSpy).not.toHaveBeenCalled();
+		expect(Buffer.isBuffer(att.attachment)).toBe(true);
+		expect(Buffer.from(att.attachment as Buffer).toString("utf8")).toBe(
+			"hello",
+		);
+		expect(att.name).toBe("cat.png");
+	});
+
+	it("rejects a local secrets path without reading it", async () => {
+		const fetchMock = vi.fn();
+		const readSpy = vi.spyOn(fs, "readFileSync");
+		const existsSpy = vi.spyOn(fs, "existsSync");
+		const streamSpy = vi.spyOn(fs, "createReadStream");
+
+		await expect(
+			buildOutboundDiscordAttachment(
+				media({ url: "/etc/passwd", contentType: ContentType.DOCUMENT }),
+				undefined,
+				transport(fetchMock),
+			),
+		).rejects.toThrow();
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(readSpy).not.toHaveBeenCalled();
+		expect(existsSpy).not.toHaveBeenCalled();
+		expect(streamSpy).not.toHaveBeenCalled();
+	});
+
+	it("fails closed for private/internal URLs when the fetch is not ok", async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(new Response("bad", { status: 502 }));
+
+		const url = "http://127.0.0.1:8080/v1/media/x/content";
+		await expect(
+			buildOutboundDiscordAttachment(media({ url }), undefined, {
+				lookupFn: async () => [{ address: "127.0.0.1", family: 4 }],
+				pinnedFetchImpl: async ({ url: fetched, init }) =>
+					fetchMock(fetched.toString(), init),
+				fetchImpl: async (input, init) => fetchMock(String(input), init),
+			}),
+		).rejects.toThrow(/private|internal|Blocked/i);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("fails closed for private/internal URLs when the lookup is blocked", async () => {
+		const fetchMock = vi.fn().mockRejectedValue(new Error("must not fetch"));
+
+		const url = "http://127.0.0.1:8080/v1/media/y/content";
+		await expect(
+			buildOutboundDiscordAttachment(media({ url }), undefined, {
+				lookupFn: async () => [{ address: "127.0.0.1", family: 4 }],
+				pinnedFetchImpl: async ({ url: fetched, init }) =>
+					fetchMock(fetched.toString(), init),
+				fetchImpl: async (input, init) => fetchMock(String(input), init),
+			}),
+		).rejects.toThrow(/private|internal|Blocked/i);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("byte-fetches non-generated video/audio URLs through the guard", async () => {
+		const bytes = new Uint8Array([5, 6]);
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(bytes, {
+				status: 200,
+				headers: { "content-type": "video/mp4" },
+			}),
+		);
 
 		const url = "https://cdn.example.com/video.mp4";
 		const att = await buildOutboundDiscordAttachment(
@@ -111,22 +176,23 @@ describe("buildOutboundDiscordAttachment", () => {
 			undefined,
 			transport(fetchMock),
 		);
-		expect(fetchMock).not.toHaveBeenCalled();
-		expect(att.attachment).toBe(url);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(Buffer.isBuffer(att.attachment)).toBe(true);
 	});
 
-	it("falls back to a URL attachment for public generated-media fetch failures", async () => {
+	it("fails closed for public fetch failures instead of falling back to a URL attachment", async () => {
 		const fetchMock = vi
 			.fn()
 			.mockResolvedValue(new Response("bad", { status: 502 }));
 
 		const url = "https://cdn.example.com/video.mp4";
-		const att = await buildOutboundDiscordAttachment(
-			media({ url }),
-			undefined,
-			transport(fetchMock),
-		);
+		await expect(
+			buildOutboundDiscordAttachment(
+				media({ url }),
+				undefined,
+				transport(fetchMock),
+			),
+		).rejects.toThrow(/HTTP 502/);
 		expect(fetchMock).toHaveBeenCalledTimes(1);
-		expect(att.attachment).toBe(url);
 	});
 });

@@ -12,7 +12,6 @@
  * role-gated for embedded-app launch buttons. Owned by `TelegramService`, which
  * registers this as the connector's send path.
  */
-import fs from "node:fs";
 import {
   buildInteractionUrlResolver,
   ChannelType,
@@ -32,9 +31,12 @@ import {
   ModelType,
   type ResolvedAttachmentBytes,
   resolveAttachmentBytes,
+  type ResolveOutboundAttachmentOptions,
+  resolveOutboundAttachmentBytes,
   type SendHandlerOutcome,
   type SendHandlerReceipt,
   ServiceType,
+  summarizeOutboundAttachmentUrl,
   toWellFormedUnicode,
   truncateWellFormed,
   type UUID,
@@ -303,8 +305,8 @@ function isPdfTextService(service: unknown): service is PdfTextService {
 
 type TelegramMediaSender = (
   chatId: number | string,
-  media: string | { source: fs.ReadStream },
-  extra?: { caption?: string },
+  media: string | { source: Buffer; filename?: string },
+  extra?: { caption?: string; message_thread_id?: number },
 ) => Promise<unknown>;
 
 const getChannelType = (chat: Chat): ChannelType => {
@@ -1153,13 +1155,28 @@ export class MessageManager {
             mediaType = MediaType.DOCUMENT;
           }
 
-          await this.sendMedia(
-            ctx,
-            attachment.url,
-            mediaType,
-            attachment.description,
-            messageThreadId,
-          );
+          try {
+            await this.sendMedia(
+              ctx,
+              attachment.url,
+              mediaType,
+              attachment.description,
+              messageThreadId,
+            );
+          } catch (error) {
+            // error-policy:J4 an undeliverable attachment must not drop the
+            // accompanying prose; log a URL summary, never a data-URL payload.
+            logger.warn(
+              {
+                src: "plugin:telegram",
+                agentId: this.runtime.agentId,
+                contentType: attachment.contentType,
+                ...summarizeOutboundAttachmentUrl(attachment.url ?? ""),
+                error: error instanceof Error ? error.message : String(error),
+              },
+              "Failed to send Telegram outbound attachment; continuing with text",
+            );
+          }
         }),
       );
       // Fall through to the text path below so an attachment reply never drops
@@ -1363,13 +1380,10 @@ export class MessageManager {
   /**
    * Sends media to a chat using the Telegram API.
    *
-   * @param {Context} ctx - The context object containing information about the current chat.
-   * @param {string} mediaPath - The path to the media to be sent, either a URL or a local file path.
-   * @param {MediaType} type - The type of media being sent (PHOTO, VIDEO, DOCUMENT, AUDIO, or ANIMATION).
-   * @param {string} [caption] - Optional caption for the media being sent.
-   * @param {number} [messageThreadId] - Forum topic identifier for the media send.
-   *
-   * @returns {Promise<void>} A Promise that resolves when the media is successfully sent.
+   * Stored `telegram-file:` references are re-sent by file id. Every other
+   * attachment is resolved to bytes (data-URL decode, media-store handle, or
+   * SSRF-guarded http(s) fetch) and uploaded as a buffer. Filesystem paths are
+   * never read.
    */
   async sendMedia(
     ctx: Context,
@@ -1377,9 +1391,10 @@ export class MessageManager {
     type: MediaType,
     caption?: string,
     messageThreadId?: number,
+    fetchOptions?: ResolveOutboundAttachmentOptions,
   ): Promise<void> {
+    const urlSummary = summarizeOutboundAttachmentUrl(mediaPath);
     try {
-      const isUrl = /^(http|https):\/\//.test(mediaPath);
       // Look up the raw sender lazily and bind only the one we need. Building
       // the full map up front and `.bind`-ing every entry would crash with
       // "Cannot read properties of undefined" if the Telegram client is missing
@@ -1418,25 +1433,19 @@ export class MessageManager {
         // Bot API re-sends those by id directly, so the round-trip never needs
         // the token-bearing file URL.
         await sendFunction(ctx.chat.id, fileRefId, sendOptions);
-      } else if (isUrl) {
-        // Handle HTTP URLs
-        await sendFunction(ctx.chat.id, mediaPath, sendOptions);
       } else {
-        // Handle local file paths
-        if (!fs.existsSync(mediaPath)) {
-          throw new Error(`File not found at path: ${mediaPath}`);
-        }
-
-        const fileStream = fs.createReadStream(mediaPath);
-
-        try {
-          if (!ctx.chat) {
-            throw new Error("sendMedia (file): ctx.chat is undefined");
-          }
-          await sendFunction(ctx.chat.id, { source: fileStream }, sendOptions);
-        } finally {
-          fileStream.destroy();
-        }
+        const resolved = await resolveOutboundAttachmentBytes(mediaPath, {
+          localFetch: this.runtime.fetch ?? undefined,
+          ...fetchOptions,
+        });
+        await sendFunction(
+          ctx.chat.id,
+          {
+            source: resolved.buffer,
+            filename: resolved.fileName ?? "attachment",
+          },
+          sendOptions,
+        );
       }
 
       if (captionNeedsFollowUp) {
@@ -1457,7 +1466,7 @@ export class MessageManager {
           src: "plugin:telegram",
           agentId: this.runtime.agentId,
           mediaType: type,
-          mediaPath,
+          ...urlSummary,
         },
         "Media sent successfully",
       );
@@ -1467,7 +1476,7 @@ export class MessageManager {
           src: "plugin:telegram",
           agentId: this.runtime.agentId,
           mediaType: type,
-          mediaPath,
+          ...urlSummary,
           error: error instanceof Error ? error.message : String(error),
         },
         "Failed to send media",
