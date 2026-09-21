@@ -14,6 +14,7 @@ import type {
   ContextEvent,
   ContextObject,
   ContextObjectTool,
+  EffectReceipt,
   EvaluatorOutput,
   PlannerLoopParams,
   PlannerLoopResult,
@@ -5516,7 +5517,15 @@ function latestUnresolvedFailedNonTerminalToolStep(
       unresolvedByOperation.delete(operationKey);
       unresolvedByOperation.set(operationKey, step);
     } else if (step.result.success === true) {
-      unresolvedByOperation.delete(operationKey);
+      // Identical arguments do not prove every failed effect succeeded.
+      const previous = unresolvedByOperation.get(operationKey);
+      if (
+        !previous?.result?.effectReceipts?.some(
+          (receipt) => receipt.outcome === "failed",
+        )
+      ) {
+        unresolvedByOperation.delete(operationKey);
+      }
       resolveShellFailuresSubsumedBy(step, unresolvedByOperation);
       resolveMalformedCallsSupersededBy(step, unresolvedByOperation);
       resolveFailedEffectsSupersededBy(step, unresolvedByOperation);
@@ -5533,13 +5542,18 @@ export function effectOperationKey(operation: string): string {
   );
 }
 
-/** Calendar retries may change their selector, but must preserve the mutation. */
-function effectRetryParams(call: PlannerToolCall, operation: string): string {
+/** Only receipts proving the same resource may correlate across changed selectors. */
+function effectRetryParams(
+  call: PlannerToolCall,
+  operation: string,
+  preserveTarget = false,
+): string {
   const params = { ...call.params };
   delete params.eliza_turn_scope;
   if (
-    operation === "calendar.event.update" ||
-    operation === "calendar.event.delete"
+    !preserveTarget &&
+    (operation === "calendar.event.update" ||
+      operation === "calendar.event.delete")
   ) {
     delete params.query;
     delete params.eventId;
@@ -5556,6 +5570,61 @@ function effectRetryParams(call: PlannerToolCall, operation: string): string {
   return stableCorrelationJson(params);
 }
 
+/** Wrapper failures identify the source message until a target is resolved. */
+const MESSAGE_SCOPED_EFFECT_RESOURCE_KIND = "runtime.message";
+
+/**
+ * Message-scoped calendar failures need an explicit selector preserved by the
+ * retry. They cannot prove that a changed query or event id names the same event.
+ */
+function failedEffectTargetsAppliedResource(
+  failed: EffectReceipt,
+  applied: EffectReceipt,
+  failedCall: PlannerToolCall,
+  appliedCall: PlannerToolCall,
+): boolean {
+  if (failed.resource.kind === MESSAGE_SCOPED_EFFECT_RESOURCE_KIND) {
+    const operation = effectOperationKey(applied.operation);
+    if (
+      operation !== "calendar.event.update" &&
+      operation !== "calendar.event.delete"
+    )
+      return false;
+    const params = failedCall.params;
+    const details = params?.details;
+    const selectors = [
+      params?.query,
+      params?.eventId,
+      operation === "calendar.event.delete" ? params?.title : undefined,
+      details &&
+      typeof details === "object" &&
+      !Array.isArray(details) &&
+      "oldTitle" in details
+        ? details.oldTitle
+        : undefined,
+      details &&
+      typeof details === "object" &&
+      !Array.isArray(details) &&
+      "eventId" in details
+        ? details.eventId
+        : undefined,
+    ];
+    return (
+      selectors.some(
+        (value) => typeof value === "string" && value.trim().length > 0,
+      ) &&
+      effectRetryParams(failedCall, operation, true) ===
+        effectRetryParams(appliedCall, operation, true)
+    );
+  }
+  return (
+    applied.resource.kind === failed.resource.kind &&
+    applied.resource.id.length > 0 &&
+    applied.resource.id === failed.resource.id
+  );
+}
+
+/** Clear a failure only when every failed receipt has a matching applied effect. */
 function resolveFailedEffectsSupersededBy(
   step: PlannerStep,
   unresolvedByOperation: Map<string, PlannerStep>,
@@ -5584,9 +5653,12 @@ function resolveFailedEffectsSupersededBy(
           const operation = effectOperationKey(receipt.operation);
           return (
             operation === effectOperationKey(failedReceipt.operation) &&
-            receipt.resource.kind === failedReceipt.resource.kind &&
-            receipt.resource.id.length > 0 &&
-            receipt.resource.id === failedReceipt.resource.id &&
+            failedEffectTargetsAppliedResource(
+              failedReceipt,
+              receipt,
+              failedCall,
+              call,
+            ) &&
             effectRetryParams(call, operation) ===
               effectRetryParams(failedCall, operation)
           );
