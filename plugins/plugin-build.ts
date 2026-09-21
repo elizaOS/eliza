@@ -32,6 +32,8 @@ export interface BuildTarget {
   sourcemap?: "external" | "inline" | "none" | "linked";
   /** Default: false (Bun's default). */
   splitting?: boolean;
+  /** Resolve CJS import.meta.url from the deployed bundle instead of a build-host source path. */
+  runtimeImportMetaUrl?: boolean;
   /** Passed through to Bun.build (e.g. `{ entry: "index.node.js" }`). */
   naming?: { entry?: string; chunk?: string; asset?: string };
   /**
@@ -196,6 +198,13 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
       minify: t.minify ?? false,
       splitting: t.splitting ?? false,
       external,
+      ...(t.format === "cjs" && t.runtimeImportMetaUrl
+        ? {
+            define: { "import.meta.url": "__elizaPluginBundleUrl" },
+            banner:
+              'var __elizaPluginBundleUrl = require("node:url").pathToFileURL(__filename).href;',
+          }
+        : {}),
       ...(t.naming ? { naming: t.naming } : {}),
     });
     if (!result.success) {
