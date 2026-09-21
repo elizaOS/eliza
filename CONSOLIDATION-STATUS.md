@@ -1,4 +1,4 @@
-> Recovery code07178b7c036:183 targeted tests and final full repository verification passed. Fresh browser acceptance remains unavailable because browser-control navigation/focus timed out, including after the build settled. See the recovery section in CONSOLIDATION-HANDOFF.md.
+> Recovery pass complete at code07178b7c036:183 targeted tests, final full repository verification, and fresh rendered Home/conversation restoration passed. The original build-time delay remains causally unproven; broader release gates remain below.
 
 # Eliza consolidation status — September 20, 2026
 

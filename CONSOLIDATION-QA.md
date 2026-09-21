@@ -707,3 +707,11 @@ unavailable after completion: an owned blank tab could be listed, but navigation
 and focus-emulation commands timed out. Fresh rendered acceptance is not claimed.
 Both preserved source worktrees were clean in the final audit. No paid calls,
 remote publication, deployment or voice testing occurred during this recovery pass.
+
+
+Fresh rendered check subsequently succeeded in the selected browser:5268/chat
+loaded Home/composer, and expanding chat restored the existing continuous history
+through the final morning-preview and Go home replies. No prompt was submitted,
+so the paid QA count remains34. This replaces the earlier current browser-control
+blocker with a passed startup/history readback; it does not claim a newly measured
+model latency or a live timing-race reproduction. Source code remains07178b7c036.

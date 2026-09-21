@@ -180,3 +180,22 @@ page observation (the new tab remained about:blank before retry). This is a
 browser-control limitation, not a verified product failure. No fallback control,
 new paid inference or app restart was used. Recovery checkpoint tag:
 `codex/recovery-cancellation-verified-20260920` (local only).
+
+
+### Final rendered recovery check
+
+Browser control recovered on the next bounded attempt after the build settled.
+A fresh navigation to5268/chat reached Home and the composer; expanding chat
+restored the continuous conversation through the latest Calendar preview and
+"Go home" / "Back to home." pair. No new conversation or paid turn was created.
+The visible history also retained earlier failures and the interrupted turn;
+those are historical evidence, not newly generated failures. This closes the
+fresh-rendered acceptance limitation above for page startup/history restoration.
+It does not retroactively explain the original build-time delay or guarantee
+all networks/dev hot updates. The corrected cancellation races are established
+by183 deterministic hook tests plus full repository verification.
+
+Recovery pass complete: concrete admission/cancellation defects are corrected
+and verified, original demos are preserved, and the historical causal uncertainty
+and broader integration/release gates remain explicit. No remote publication,
+deployment or voice test was performed.
