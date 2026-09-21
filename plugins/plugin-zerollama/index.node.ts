@@ -1,3 +1,6 @@
 /** Node/Bun build entrypoint — re-exports the plugin; build.ts emits it to dist/node. */
-export * from "./index";
-export { default } from "./index";
+import { ollamaPlugin } from "./plugin";
+
+export { ollamaPlugin };
+export const zerollamaPlugin = ollamaPlugin;
+export default ollamaPlugin;

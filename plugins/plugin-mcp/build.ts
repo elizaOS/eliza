@@ -42,6 +42,7 @@ await buildPlugin({
       outSubdir: "cjs",
       target: "node",
       format: "cjs",
+      runtimeImportMetaUrl: true,
       sourcemap: "external",
       minify: false,
       // Rename Bun's CJS output to .cjs to be loadable under "type": "module".
