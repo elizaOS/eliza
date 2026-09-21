@@ -12,7 +12,10 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { claimRendererReply } from "../__tests__/view-renderer-test-utils.ts";
+import {
+  bindCatalogAssetRequest,
+  claimRendererReply,
+} from "../__tests__/view-renderer-test-utils.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   beginViewInstallation,
@@ -75,6 +78,13 @@ function seedPluginDir(): string {
   writeFileSync(
     path.join(dir, "package.json"),
     '{"name":"@test/views-routes-bundle"}\n',
+  );
+  writeFileSync(
+    path.join(dir, "dist/views/bundle.js.assets.json"),
+    JSON.stringify({
+      version: 1,
+      files: ["bundle.js", "chunk.css", "data.json", "picture.svg"],
+    }),
   );
   return dir;
 }
@@ -169,14 +179,7 @@ function makeCtx(options: {
     broadcastWs,
     broadcastWsToClientId,
   };
-  if (pathname.endsWith("/bundle.js") || pathname.endsWith("/frame.html")) {
-    const entry = getView(
-      runtime,
-      decodeURIComponent(pathname.split("/")[3] ?? ""),
-    );
-    if (entry?.installationId)
-      ctx.url.searchParams.set("installation", entry.installationId);
-  }
+  bindCatalogAssetRequest(runtime, ctx);
   if (options.callerAuthorization) {
     ctx.callerAuthorization = options.callerAuthorization;
   }
@@ -601,7 +604,7 @@ describe("GET /api/views/:id bundle, frame, and assets", () => {
     expect(json).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalledWith(
       ctx.res,
-      "Dynamic view bundle loading is not permitted on this platform.",
+      "Dynamic view asset loading is not permitted on this platform.",
       403,
     );
   });
@@ -615,7 +618,7 @@ describe("GET /api/views/:id bundle, frame, and assets", () => {
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
     expect(error).toHaveBeenCalledWith(
       ctx.res,
-      "Dynamic view frame loading is not permitted on this platform.",
+      "Dynamic view asset loading is not permitted on this platform.",
       403,
     );
   });
@@ -634,7 +637,7 @@ describe("GET /api/views/:id bundle, frame, and assets", () => {
     );
   });
 
-  it("404s a view with no bundle path configured", async () => {
+  it("404s a view with no local root", async () => {
     const { ctx, error } = makeCtx({
       method: "GET",
       pathname: "/api/views/wallet/bundle.js",
@@ -642,12 +645,12 @@ describe("GET /api/views/:id bundle, frame, and assets", () => {
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
     expect(error).toHaveBeenCalledWith(
       ctx.res,
-      'View "wallet" has no bundle path configured. Build the plugin bundle first.',
+      "View asset is not built or has no local root",
       404,
     );
   });
 
-  it("404s a view with no frame path configured", async () => {
+  it("404s a view with no local root", async () => {
     const { ctx, error } = makeCtx({
       method: "GET",
       pathname: "/api/views/wallet/frame.html",
@@ -655,7 +658,7 @@ describe("GET /api/views/:id bundle, frame, and assets", () => {
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
     expect(error).toHaveBeenCalledWith(
       ctx.res,
-      'View "wallet" has no frame path configured. Build or declare the sandboxed frame document first.',
+      "View asset is not built or has no local root",
       404,
     );
   });
@@ -671,7 +674,7 @@ describe("GET /api/views/:id bundle, frame, and assets", () => {
       200,
       expect.objectContaining({
         "Content-Type": "application/javascript; charset=utf-8",
-        "Cache-Control": "no-cache",
+        "Cache-Control": "private, no-cache",
       }),
     );
     const headers = writeHead.mock.calls[0][1] as Record<string, string>;
@@ -774,9 +777,9 @@ describe("GET /api/views/:id bundle, frame, and assets", () => {
       pathname: "/api/views/bundled/nope.wasm",
     });
     await handleViewsRoutes(missing.ctx);
-    expect(missing.error).toHaveBeenCalledWith(
+    expect(missing.json).toHaveBeenCalledWith(
       missing.ctx.res,
-      'View asset "nope.wasm" not found',
+      expect.objectContaining({ code: "VIEW_ASSET_NOT_PUBLISHED" }),
       404,
     );
   });
@@ -791,7 +794,7 @@ describe("GET /api/views/:id bundle, frame, and assets", () => {
       await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
       expect(error).toHaveBeenCalledWith(
         ctx.res,
-        "Malformed view asset path",
+        "Malformed view asset path or modality",
         400,
       );
       expect(writeHead).not.toHaveBeenCalled();

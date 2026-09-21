@@ -469,10 +469,10 @@ describe("registerPluginViews / unregisterPluginViews", () => {
     expect(entry?.bundleHash).toBe(expectedHash);
     expect(entry?.bundleSize).toBe(Buffer.byteLength(contents));
     expect(entry?.bundleUrl).toMatch(
-      /^\/api\/views\/vr-hashed\/bundle\.js\?v=/,
+      /^\/api\/views\/vr-hashed\/installations\/[a-f0-9-]{36}\/gui\/bundle\/bundle\.js\?v=/,
     );
     expect(entry?.bundleUrlVersioned).toBe(
-      `/api/views/vr-hashed/bundle.js?v=${expectedHash}&installation=${entry?.installationId}`,
+      `/api/views/vr-hashed/installations/${entry?.installationId}/gui/bundle/bundle.js?v=${expectedHash}`,
     );
   });
 
@@ -541,11 +541,11 @@ describe("registerPluginViews / unregisterPluginViews", () => {
     expect(entry?.available).toBe(true);
     expect(entry?.frameHash).toBe(expectedHash);
     expect(entry?.frameUrlVersioned).toBe(
-      `/api/views/vr-frame/frame.html?v=${expectedHash}&installation=${entry?.installationId}`,
+      `/api/views/vr-frame/installations/${entry?.installationId}/gui/frame/frame.html?v=${expectedHash}`,
     );
   });
 
-  it("encodes the view id and appends viewType on non-gui asset URLs", async () => {
+  it("encodes the view id and binds the non-gui modality in asset URLs", async () => {
     await registerFixturePlugin(
       pluginWith(PLUGIN, [
         urlView("vr unit/slash", {
@@ -559,9 +559,9 @@ describe("registerPluginViews / unregisterPluginViews", () => {
     );
     const entry = getView(runtime, "vr unit/slash", { viewType: "tui" });
     expect(entry?.bundleUrl).toContain(
-      "/api/views/vr%20unit%2Fslash/bundle.js",
+      "/api/views/vr%20unit%2Fslash/installations/",
     );
-    expect(entry?.bundleUrl).toContain("viewType=tui");
+    expect(entry?.bundleUrl).toContain("/tui/bundle/bundle.js");
     expect(entry?.heroImageUrl).toContain("viewType=tui");
   });
 

@@ -159,6 +159,7 @@
         "@noble/curves": "2.2.0",
         "@noble/hashes": "2.2.0",
         "drizzle-orm": "0.45.2",
+        "es-module-lexer": "^2.3.2",
         "esbuild": "^0.28.0",
         "ethers": "^6.16.0",
         "git-workspace-service": "0.4.5",

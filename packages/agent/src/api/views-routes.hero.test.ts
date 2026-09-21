@@ -57,6 +57,7 @@ function makeHeroCtx(id: string): {
   const pathname = `/api/views/${encodeURIComponent(id)}/hero`;
   const ctx: ViewsRouteContext = {
     runtime,
+    callerAuthorization: { ok: true, role: "OWNER" },
     hostKey,
     req,
     res: res as unknown as http.ServerResponse,

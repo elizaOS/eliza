@@ -2,6 +2,7 @@
 import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { closeRuntimeViewRegistry } from "../api/view-installations.ts";
 import { closeViewInteractionHost } from "../api/view-interaction-host.ts";
+import { bindCatalogAssetRequest } from "./view-renderer-test-utils.ts";
 
 let runtime: AgentRuntime;
 let hostKey: object;
@@ -84,20 +85,6 @@ function makeCtx(
   const json = vi.fn();
   const error = vi.fn();
   const url = new URL(`http://localhost${pathname}`);
-  const asset = url.pathname.match(
-    /^\/api\/views\/([^/]+)\/(?:bundle\.js|frame\.html)$/,
-  );
-  if (asset) {
-    const entry = getView(runtime, decodeURIComponent(asset[1]), {
-      viewType: (url.searchParams.get("viewType") ?? undefined) as
-        | "gui"
-        | "tui"
-        | "xr"
-        | undefined,
-    });
-    if (entry?.installationId)
-      url.searchParams.set("installation", entry.installationId);
-  }
 
   const req =
     opts.body !== undefined || method === "POST"
@@ -116,6 +103,7 @@ function makeCtx(
     broadcastWs: opts.broadcastWs,
     developerMode: opts.developerMode,
   };
+  bindCatalogAssetRequest(runtime, ctx);
   return { ctx, json, error };
 }
 
@@ -214,7 +202,7 @@ describe("stage 1: plugin declares views → registry populated", () => {
     );
     expect(
       getView(runtime, "smoke.multimodal", { viewType: "tui" })?.bundleUrl,
-    ).toContain("viewType=tui");
+    ).toContain("/tui/bundle/");
     expect(
       getView(runtime, "smoke.multimodal", { viewType: "xr" })?.heroImageUrl,
     ).toContain("viewType=xr");
@@ -234,7 +222,7 @@ describe("stage 1: plugin declares views → registry populated", () => {
 
     const entry = getView(runtime, "smoke.main");
     expect(entry?.bundleUrl).toMatch(
-      /^\/api\/views\/smoke\.main\/bundle\.js\?(?:v=[a-f0-9]{64}&)?installation=[a-f0-9-]{36}$/,
+      /^\/api\/views\/smoke\.main\/installations\/[a-f0-9-]{36}\/gui\/bundle\/bundle\.js(?:\?v=[a-f0-9]{64})?$/,
     );
     expect(entry?.heroImageUrl).toBe("/api/views/smoke.main/hero");
   });
@@ -253,7 +241,7 @@ describe("stage 1: plugin declares views → registry populated", () => {
 
     const entry = getView(runtime, "smoke.main", { viewType: "tui" });
     expect(entry?.bundleUrl).toMatch(
-      /^\/api\/views\/smoke\.main\/bundle\.js\?viewType=tui&(?:v=[a-f0-9]{64}&)?installation=[a-f0-9-]{36}$/,
+      /^\/api\/views\/smoke\.main\/installations\/[a-f0-9-]{36}\/tui\/bundle\/bundle\.js(?:\?v=[a-f0-9]{64})?$/,
     );
     expect(entry?.heroImageUrl).toBe("/api/views/smoke.main/hero?viewType=tui");
   });
@@ -342,7 +330,7 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
     ];
     const view = body.views.find((v) => v.id === "smoke.main");
     expect(view?.bundleUrl).toMatch(
-      /^\/api\/views\/smoke\.main\/bundle\.js\?(?:v=[a-f0-9]{64}&)?installation=[a-f0-9-]{36}$/,
+      /^\/api\/views\/smoke\.main\/installations\/[a-f0-9-]{36}\/gui\/bundle\/bundle\.js(?:\?v=[a-f0-9]{64})?$/,
     );
     expect(view?.heroImageUrl).toBe("/api/views/smoke.main/hero");
   });
@@ -391,7 +379,7 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
       const view = body.views.find((v) => v.id === "smoke.main");
       expect(view?.bundleUrl).toBeUndefined();
       expect(view?.frameUrl).toMatch(
-        /^\/api\/views\/smoke\.main\/frame\.html\?(?:v=[a-f0-9]{64}&)?installation=[a-f0-9-]{36}$/,
+        /^\/api\/views\/smoke\.main\/installations\/[a-f0-9-]{36}\/gui\/frame\/frame\.html(?:\?v=[a-f0-9]{64})?$/,
       );
       expect(view?.available).toBe(true);
       const registryEntry = getView(runtime, "smoke.main");
@@ -446,10 +434,10 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
       ];
       const view = body.views.find((v) => v.id === "smoke.main");
       expect(view?.bundleUrl).toMatch(
-        /^\/api\/views\/smoke\.main\/bundle\.js\?(?:v=[a-f0-9]{64}&)?installation=[a-f0-9-]{36}$/,
+        /^\/api\/views\/smoke\.main\/installations\/[a-f0-9-]{36}\/gui\/bundle\/bundle\.js(?:\?v=[a-f0-9]{64})?$/,
       );
       expect(view?.frameUrl).toMatch(
-        /^\/api\/views\/smoke\.main\/frame\.html\?(?:v=[a-f0-9]{64}&)?installation=[a-f0-9-]{36}$/,
+        /^\/api\/views\/smoke\.main\/installations\/[a-f0-9-]{36}\/gui\/frame\/frame\.html(?:\?v=[a-f0-9]{64})?$/,
       );
       expect(view?.available).toBe(false);
     } finally {
@@ -701,6 +689,10 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
     await mkdir(viewsDir, { recursive: true });
     await writeFile(path.join(viewsDir, "bundle.js"), "import './chunk.js';");
     await writeFile(path.join(viewsDir, "chunk.js"), "export const ok = true;");
+    await writeFile(
+      path.join(viewsDir, "bundle.js.assets.json"),
+      JSON.stringify({ version: 1, files: ["bundle.js", "chunk.js"] }),
+    );
 
     try {
       await registerPluginViews(
@@ -826,7 +818,7 @@ describe("stage 4b: GET /api/views/:id/frame.html serves sandbox frame documents
       expect(handled).toBe(true);
       expect(error).toHaveBeenCalledWith(
         expect.anything(),
-        "Dynamic view frame loading is not permitted on this platform.",
+        "Dynamic view asset loading is not permitted on this platform.",
         403,
       );
     } finally {
@@ -857,7 +849,7 @@ describe("stage 4b: GET /api/views/:id/frame.html serves sandbox frame documents
       number,
     ];
     expect(status).toBe(404);
-    expect(message).toContain("has no frame path configured");
+    expect(message).toContain("has no local root");
   });
 });
 

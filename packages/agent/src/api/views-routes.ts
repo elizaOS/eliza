@@ -9,9 +9,7 @@
  *   GET  /api/views/platform-info      — platform detection info (JSON)
  *   GET  /api/views/search?q=&limit=   — hybrid keyword+semantic ranked search (JSON)
  *   GET  /api/views/:id                — single view metadata (JSON)
- *   GET  /api/views/:id/bundle.js      — compiled view bundle (JS)
- *   GET  /api/views/:id/frame.html     — sandboxed iframe document (HTML)
- *   GET  /api/views/:id/<asset>        — compiled bundle chunk/asset
+ *   GET/HEAD /api/views/:id/installations/:lease/:type/:kind/:file — published view assets
  *   GET  /api/views/:id/hero           — hero image (image/*)
  *   POST /api/views/:id/navigate       — deliver a shell navigation event (JSON)
  *   POST /api/views/:id/elements       — report the view's addressable element snapshot
@@ -22,7 +20,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import type http from "node:http";
-import path from "node:path";
 
 import {
   ElizaError,
@@ -59,18 +56,13 @@ import {
   getViewClientScope,
   type ViewClientScope,
 } from "../runtime/view-client-context.ts";
-import {
-  parseHostExternalSpecifiers,
-  wrapBundleAsHostExternalFactory,
-} from "./dynamic-view-host-external.mjs";
 import type { ViewInteractResult } from "./pending-request-map.ts";
 import {
   detectClientPlatform,
   isDynamicLoadingAllowed,
 } from "./platform-detect.ts";
-import { isPathWithinRoot, resolveRealPath } from "./realpath-confinement.ts";
-import { decodePathComponent } from "./server-helpers.ts";
 import { normalizeWsClientId } from "./server-helpers-auth.ts";
+import { handleViewAssetRequest } from "./view-asset-routes.ts";
 import { assertRuntimeViewEntry } from "./view-installations.ts";
 import {
   type RendererViewInteractResult,
@@ -80,8 +72,6 @@ import type { ViewRegistryEntry } from "./view-registry-types.ts";
 import {
   findHeroOnDisk,
   generateViewHeroSvg,
-  getBundleDiskPath,
-  getFrameDiskPath,
   getView,
   listViews,
 } from "./views-registry.ts";
@@ -190,38 +180,6 @@ function normalizeActiveViewElements(raw: unknown): ActiveViewElement[] {
     out.push(el);
   }
   return out;
-}
-
-function contentTypeForViewAsset(assetPath: string): string {
-  const ext = path.extname(assetPath).toLowerCase();
-  switch (ext) {
-    case ".js":
-    case ".mjs":
-      return "application/javascript; charset=utf-8";
-    case ".css":
-      return "text/css; charset=utf-8";
-    case ".json":
-    case ".map":
-      return "application/json; charset=utf-8";
-    case ".html":
-    case ".htm":
-      return "text/html; charset=utf-8";
-    case ".svg":
-      return "image/svg+xml";
-    case ".png":
-      return "image/png";
-    case ".jpg":
-    case ".jpeg":
-      return "image/jpeg";
-    case ".webp":
-      return "image/webp";
-    case ".gif":
-      return "image/gif";
-    case ".wasm":
-      return "application/wasm";
-    default:
-      return "application/octet-stream";
-  }
 }
 
 /**
@@ -652,132 +610,6 @@ export async function handleViewsRoutes(
     return true;
   }
 
-  // ── GET/HEAD /api/views/:id/bundle.js ─────────────────────────────────────
-  if (
-    (method === "GET" || method === "HEAD") &&
-    (subResource === "bundle.js" || subResource === "frame.html")
-  ) {
-    const isBundle = subResource === "bundle.js";
-    // Block dynamic bundle delivery on restricted platforms (iOS/Android store).
-    const clientPlatform = detectClientPlatform(req);
-    if (!isDynamicLoadingAllowed(clientPlatform)) {
-      error(
-        res,
-        `Dynamic view ${isBundle ? "bundle" : "frame"} loading is not permitted on this platform.`,
-        403,
-      );
-      return true;
-    }
-
-    const parsedBundleViewType = resolveViewTypeQuery(
-      url.searchParams.get("viewType"),
-      res,
-      error,
-    );
-    if ("reject" in parsedBundleViewType) return true;
-    const viewType = parsedBundleViewType.viewType;
-    const entry = getView(viewRuntime, id, { viewType });
-    if (!entry) {
-      error(res, `View "${id}" not found`, 404);
-      return true;
-    }
-    if (!satisfiesRoleGate(callerRoles(ctx), entry.roleGate)) {
-      error(res, `View "${id}" is not available to this caller`, 403);
-      return true;
-    }
-
-    const bundlePath = isBundle
-      ? getBundleDiskPath(entry)
-      : getFrameDiskPath(entry);
-    const installationHash = isBundle ? entry.bundleHash : entry.frameHash;
-    if (url.searchParams.get("installation") !== entry.installationId) {
-      error(
-        res,
-        "View installation changed; refresh the view catalog before loading this asset",
-        409,
-      );
-      return true;
-    }
-    if (!bundlePath) {
-      error(
-        res,
-        isBundle
-          ? `View "${id}" has no bundle path configured. Build the plugin bundle first.`
-          : `View "${id}" has no frame path configured. Build or declare the sandboxed frame document first.`,
-        404,
-      );
-      return true;
-    }
-
-    let data: Buffer;
-    try {
-      data = await fs.readFile(bundlePath);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        error(res, `Bundle not built for view "${id}"`, 404);
-      } else {
-        logger.error(
-          { src: "ViewsRoutes", viewId: id, bundlePath, err },
-          "Failed to read view bundle",
-        );
-        error(res, `Failed to read bundle for view "${id}"`, 500);
-      }
-      return true;
-    }
-    assertRuntimeViewEntry(viewRuntime, entry);
-    const sourceHash = createHash("sha256").update(data).digest("hex");
-    const requestedHash = url.searchParams.get("v");
-    if (
-      (installationHash && installationHash !== sourceHash) ||
-      (requestedHash && requestedHash !== sourceHash)
-    ) {
-      error(
-        res,
-        "View asset changed; reload its installation before requesting this version",
-        409,
-      );
-      return true;
-    }
-    const hostExternalSpecifiers = isBundle
-      ? parseHostExternalSpecifiers(url)
-      : [];
-    if (hostExternalSpecifiers.length > 0) {
-      data = Buffer.from(
-        wrapBundleAsHostExternalFactory(
-          data.toString("utf8"),
-          hostExternalSpecifiers,
-        ),
-        "utf8",
-      );
-    }
-    const digest = createHash("sha256").update(data).digest();
-    const etag = `"${digest.toString("hex")}"`;
-    const headers = {
-      "Content-Type": isBundle
-        ? "application/javascript; charset=utf-8"
-        : "text/html; charset=utf-8",
-      "X-Content-Type-Options": "nosniff",
-      "Content-Length": data.byteLength,
-      "Cache-Control":
-        hostExternalSpecifiers.length > 0
-          ? "no-store"
-          : requestedHash === sourceHash && installationHash === sourceHash
-            ? "public, max-age=31536000, immutable"
-            : "no-cache",
-      ETag: etag,
-      "X-Content-Hash": `sha256-${digest.toString("base64")}`,
-    };
-    // HEAD and conditional GET describe the same bytes as GET, including wrapping.
-    const notModified = req.headers["if-none-match"] === etag;
-    res.writeHead(notModified ? 304 : 200, headers);
-    res.end(notModified || method === "HEAD" ? undefined : data);
-    return true;
-  }
-
-  // ── GET /api/views/:id/<asset> ───────────────────────────────────────────
-  // Vite/Rollup view bundles can emit relative chunk imports such as
-  // `./chunk-abc.js`. Browser module resolution turns those into
-  // `/api/views/:id/chunk-abc.js`, so serve files beside the root bundle.
   if (
     (method === "GET" || method === "HEAD") &&
     subResource !== "" &&
@@ -785,140 +617,9 @@ export async function handleViewsRoutes(
       subResource,
     )
   ) {
-    const decodedSubResource = decodePathComponent(
-      subResource,
-      res,
-      "view asset path",
+    return handleViewAssetRequest(ctx, viewRuntime, id, subResource, (entry) =>
+      satisfiesRoleGate(callerRoles(ctx), entry.roleGate),
     );
-    if (decodedSubResource === null) return true;
-
-    // URL assets use forward slashes. Reject control bytes, backslashes, and
-    // dot segments before platform policy, registry, or filesystem work.
-    const hasControlCharacter = Array.from(decodedSubResource).some((char) => {
-      const codePoint = char.codePointAt(0) ?? 0;
-      return codePoint <= 0x1f || codePoint === 0x7f;
-    });
-    const hasInvalidSegment = decodedSubResource
-      .split("/")
-      .some((segment) => segment === "" || segment === "." || segment === "..");
-    if (
-      decodedSubResource.includes("\\") ||
-      hasControlCharacter ||
-      hasInvalidSegment
-    ) {
-      error(res, "Malformed view asset path", 400);
-      return true;
-    }
-
-    const clientPlatform = detectClientPlatform(req);
-    if (!isDynamicLoadingAllowed(clientPlatform)) {
-      error(
-        res,
-        "Dynamic view asset loading is not permitted on this platform.",
-        403,
-      );
-      return true;
-    }
-
-    const parsedAssetViewType = resolveViewTypeQuery(
-      url.searchParams.get("viewType"),
-      res,
-      error,
-    );
-    if ("reject" in parsedAssetViewType) return true;
-    const viewType = parsedAssetViewType.viewType;
-    const entry = getView(viewRuntime, id, { viewType });
-    if (!entry) {
-      error(res, `View "${id}" not found`, 404);
-      return true;
-    }
-
-    const bundlePath = getBundleDiskPath(entry);
-    if (!bundlePath) {
-      error(
-        res,
-        `View "${id}" has no bundle path configured. Build the plugin bundle first.`,
-        404,
-      );
-      return true;
-    }
-
-    const bundleDir = path.dirname(bundlePath);
-    const realBundleDir = await resolveRealPath(bundleDir);
-    const assetPath = path.resolve(bundleDir, decodedSubResource);
-    const realAssetPath = await resolveRealPath(assetPath);
-    // Confinement via canonical paths — lexical relative is bypassable through a
-    // directory symlink inside the bundle dir.
-    if (
-      !realAssetPath ||
-      !realBundleDir ||
-      !isPathWithinRoot(realAssetPath, realBundleDir)
-    ) {
-      error(res, "Malformed view asset path", 400);
-      return true;
-    }
-
-    let stat: import("node:fs").Stats;
-    try {
-      stat = await fs.stat(realAssetPath);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        error(res, `View asset "${decodedSubResource}" not found`, 404);
-      } else {
-        logger.error(
-          { src: "ViewsRoutes", viewId: id, assetPath, err },
-          `[ViewsRoutes] Failed to stat asset "${decodedSubResource}" for view "${id}"`,
-        );
-        error(res, `Failed to read asset for view "${id}"`, 500);
-      }
-      return true;
-    }
-
-    if (!stat.isFile()) {
-      error(res, `View asset "${decodedSubResource}" not found`, 404);
-      return true;
-    }
-
-    const etagRaw = `${stat.mtimeMs}-${stat.size}`;
-    const etag = `"${createHash("sha256").update(etagRaw).digest("hex").slice(0, 16)}"`;
-    if (req.headers["if-none-match"] === etag) {
-      const raw304 = res as {
-        writeHead?: (status: number, headers: Record<string, string>) => void;
-        end?: () => void;
-      };
-      raw304.writeHead?.(304, {});
-      raw304.end?.();
-      return true;
-    }
-
-    let data: Buffer;
-    try {
-      data =
-        method === "HEAD" ? Buffer.alloc(0) : await fs.readFile(realAssetPath);
-    } catch (err) {
-      logger.error(
-        { src: "ViewsRoutes", viewId: id, assetPath: realAssetPath, err },
-        `[ViewsRoutes] Failed to read asset "${decodedSubResource}" for view "${id}"`,
-      );
-      error(res, `Failed to read asset for view "${id}"`, 500);
-      return true;
-    }
-
-    const raw = res as {
-      writeHead?: (
-        status: number,
-        headers: Record<string, string | number>,
-      ) => void;
-      end?: (chunk?: unknown) => void;
-    };
-    raw.writeHead?.(200, {
-      "Content-Type": contentTypeForViewAsset(realAssetPath),
-      "Content-Length": stat.size,
-      "Cache-Control": "no-cache",
-      ETag: etag,
-    });
-    raw.end?.(method === "HEAD" ? undefined : data);
-    return true;
   }
 
   // ── GET /api/views/:id/hero ───────────────────────────────────────────────
@@ -936,24 +637,35 @@ export async function handleViewsRoutes(
       return true;
     }
 
-    const resolved = await findHeroOnDisk(entry);
-    if (resolved) {
-      let stat: import("node:fs").Stats | null = null;
-      let data: Buffer;
-      try {
-        [stat, data] = await Promise.all([
-          fs.stat(resolved.absolutePath).catch(() => null),
-          fs.readFile(resolved.absolutePath),
-        ]);
-      } catch {
-        // Fall through to generated fallback image.
-        return sendGeneratedHero(res, entry.label, entry.icon);
-      }
-      return streamHeroImage(res, data, resolved.contentType, req, stat);
+    if (!satisfiesRoleGate(callerRoles(ctx), entry.roleGate)) {
+      error(res, "Insufficient role for this view", 403);
+      return true;
     }
-
-    // No image found — send a generated SVG fallback.
-    return sendGeneratedHero(res, entry.label, entry.icon);
+    const resolved = await findHeroOnDisk(entry);
+    let data: Buffer | null = null;
+    if (resolved) {
+      try {
+        data = await fs.readFile(resolved.absolutePath);
+      } catch {
+        // error-policy:J6 An unavailable decorative asset uses the generated image.
+      }
+    }
+    // Both disk and generated images belong to the selected installation.
+    // Recheck after I/O before returning bytes or a conditional 304 response.
+    try {
+      assertRuntimeViewEntry(viewRuntime, entry);
+    } catch (cause) {
+      if (!(cause instanceof ElizaError)) throw cause;
+      error(res, "View installation changed; reload the catalog", 409);
+      return true;
+    }
+    if (!satisfiesRoleGate(callerRoles(ctx), entry.roleGate)) {
+      error(res, "Insufficient role for this view", 403);
+      return true;
+    }
+    return data && resolved
+      ? streamHeroImage(res, data, resolved.contentType, req)
+      : sendGeneratedHero(res, entry.label, entry.icon);
   }
 
   // ── POST /api/views/:id/navigate ─────────────────────────────────────────
@@ -1888,12 +1600,8 @@ function streamHeroImage(
   data: Buffer,
   contentType: string,
   req: http.IncomingMessage,
-  stat: import("node:fs").Stats | null,
 ): true {
-  // Build an ETag from mtime + size when stat is available.
-  const etag = stat
-    ? `"${createHash("sha256").update(`${stat.mtimeMs}-${stat.size}`).digest("hex").slice(0, 16)}"`
-    : undefined;
+  const etag = `"${createHash("sha256").update(data).digest("hex")}"`;
 
   if (etag && req.headers["if-none-match"] === etag) {
     const raw304 = res as {
@@ -1901,7 +1609,10 @@ function streamHeroImage(
       end?: () => void;
     };
     if (typeof raw304.writeHead === "function") {
-      raw304.writeHead(304, {});
+      raw304.writeHead(304, {
+        ETag: etag,
+        "Cache-Control": "private, no-cache",
+      });
     }
     raw304.end?.();
     return true;
@@ -1918,7 +1629,7 @@ function streamHeroImage(
   const headers: Record<string, string | number> = {
     "Content-Type": contentType,
     "Content-Length": data.byteLength,
-    "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+    "Cache-Control": "private, no-cache",
   };
   if (etag) headers.ETag = etag;
 
@@ -1952,12 +1663,12 @@ function sendGeneratedHero(
     raw.writeHead(200, {
       "Content-Type": "image/svg+xml",
       "Content-Length": data.byteLength,
-      "Cache-Control": "public, max-age=300",
+      "Cache-Control": "private, no-cache",
     });
   } else if (typeof raw.setHeader === "function") {
     raw.setHeader("Content-Type", "image/svg+xml");
     raw.setHeader("Content-Length", data.byteLength);
-    raw.setHeader("Cache-Control", "public, max-age=300");
+    raw.setHeader("Cache-Control", "private, no-cache");
   }
   raw.end?.(data);
   return true;

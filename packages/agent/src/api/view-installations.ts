@@ -1,6 +1,11 @@
 /** Runtime object ownership for atomic view installations and synchronous revocation. */
 import { randomUUID } from "node:crypto";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import {
+  bindViewAssets,
+  getViewAssetRoot,
+  type ViewAssetKind,
+} from "./view-assets.ts";
 import type { ViewRegistryEntry } from "./view-registry-types.ts";
 
 /** An opaque in-process handle. Serialized IDs never grant installation authority. */
@@ -29,10 +34,17 @@ const entryInstallations = new WeakMap<ViewRegistryEntry, Installation>();
 function installationAssetUrl(
   url: string | undefined,
   installationId: string,
+  entry: ViewRegistryEntry,
+  kind: ViewAssetKind,
 ): string | undefined {
   if (!url?.startsWith("/api/views/")) return url;
   const parsed = new URL(url, "http://view.local");
-  parsed.searchParams.set("installation", installationId);
+  const root = getViewAssetRoot(entry, kind);
+  const rootName =
+    root?.rootName ?? (kind === "bundle" ? "bundle.js" : "frame.html");
+  parsed.pathname = `/api/views/${encodeURIComponent(entry.id)}/installations/${installationId}/${entry.viewType ?? "gui"}/${kind}/${encodeURIComponent(rootName)}`;
+  parsed.searchParams.delete("installation");
+  parsed.searchParams.delete("viewType");
   return `${parsed.pathname}${parsed.search}`;
 }
 
@@ -149,18 +161,33 @@ export function commitViewInstallation(
       Object.freeze({
         ...entry,
         installationId: handle.id,
-        bundleUrl: installationAssetUrl(entry.bundleUrl, handle.id),
+        bundleUrl: installationAssetUrl(
+          entry.bundleUrl,
+          handle.id,
+          entry,
+          "bundle",
+        ),
         bundleUrlVersioned: installationAssetUrl(
           entry.bundleUrlVersioned,
           handle.id,
+          entry,
+          "bundle",
         ),
-        frameUrl: installationAssetUrl(entry.frameUrl, handle.id),
+        frameUrl: installationAssetUrl(
+          entry.frameUrl,
+          handle.id,
+          entry,
+          "frame",
+        ),
         frameUrlVersioned: installationAssetUrl(
           entry.frameUrlVersioned,
           handle.id,
+          entry,
+          "frame",
         ),
       }),
     );
+    bindViewAssets(entry, proposed.get(key)!);
   }
   const previous = registry.active.get(installation.owner);
   if (previous) previous.state = "revoked";

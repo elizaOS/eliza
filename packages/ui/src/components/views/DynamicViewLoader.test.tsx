@@ -993,6 +993,7 @@ describe("DynamicViewLoader", () => {
       <DynamicViewLoader
         installationId="fixture-installation"
         {...DATABASE_VECTOR_VIEW}
+        bundleUrl="/api/views/vector-browser/installations/fixture-installation/gui/bundle/bundle.js"
       />,
     );
     fireEvent.click(

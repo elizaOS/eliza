@@ -1,7 +1,10 @@
 import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { closeRuntimeViewRegistry } from "../api/view-installations.ts";
 import { closeViewInteractionHost } from "../api/view-interaction-host.ts";
-import { claimRendererReply } from "./view-renderer-test-utils.ts";
+import {
+  bindCatalogAssetRequest,
+  claimRendererReply,
+} from "./view-renderer-test-utils.ts";
 
 let runtime: AgentRuntime;
 let hostKey: object;
@@ -86,16 +89,6 @@ function makeCtx(
   const search = new URLSearchParams(queryParams).toString();
   const urlString = `http://localhost${pathname}${search ? `?${search}` : ""}`;
   const url = new URL(urlString);
-  const asset = pathname.match(
-    /^\/api\/views\/([^/]+)\/(?:bundle\.js|frame\.html)$/,
-  );
-  if (asset) {
-    const entry = getView(runtime, decodeURIComponent(asset[1]), {
-      viewType: queryParams.viewType as "gui" | "tui" | "xr" | undefined,
-    });
-    if (entry?.installationId)
-      url.searchParams.set("installation", entry.installationId);
-  }
 
   // Build a minimal res mock that readJsonBody can write errors to without crashing.
   const res = {
@@ -128,6 +121,7 @@ function makeCtx(
       return broadcastWs ? 1 : 0;
     },
   };
+  bindCatalogAssetRequest(runtime, ctx);
   return { ctx, json, error };
 }
 
@@ -796,10 +790,10 @@ describe("GET /api/views/:id/bundle.js", () => {
       number,
     ];
     expect(status).toBe(404);
-    expect(message).toContain("no bundle path configured");
+    expect(message).toContain("no local root");
   });
 
-  it("serves local bundles with ETag, HEAD, 304, immutable versioned URLs, and changed hashes after rebuild", async () => {
+  it("serves local bundles with ETag, HEAD, 304, private versioned URLs, and changed hashes after rebuild", async () => {
     const { pluginDir, bundlePath } = await createLocalBundlePlugin(
       "export default function LocalBundle(){ return 'v1'; }\n",
     );
@@ -845,7 +839,7 @@ describe("GET /api/views/:id/bundle.js", () => {
       expect(getHeaders["Content-Type"]).toBe(
         "application/javascript; charset=utf-8",
       );
-      expect(getHeaders["Cache-Control"]).toBe("no-cache");
+      expect(getHeaders["Cache-Control"]).toBe("private, no-cache");
       expect(getHeaders.ETag).toMatch(/^"[a-f0-9]{64}"$/);
       expect(getHeaders["X-Content-Hash"]).toMatch(/^sha256-/);
       expect(getBody.toString("utf8")).toContain("LocalBundle");
@@ -891,9 +885,7 @@ describe("GET /api/views/:id/bundle.js", () => {
         number,
         Record<string, string | number>,
       ];
-      expect(immutableHeaders["Cache-Control"]).toBe(
-        "public, max-age=31536000, immutable",
-      );
+      expect(immutableHeaders["Cache-Control"]).toBe("private, no-cache");
 
       await writeFile(
         bundlePath,
@@ -933,7 +925,7 @@ describe("GET /api/views/:id/bundle.js", () => {
 // ---------------------------------------------------------------------------
 
 describe("GET /api/views/:id/frame.html", () => {
-  it("serves local frame documents with HTML content type and immutable versioned URLs", async () => {
+  it("serves local frame documents with HTML content type and private versioned URLs", async () => {
     const { pluginDir } = await createLocalFramePlugin(
       '<!doctype html><html><body><main id="app">Frame v1</main></body></html>\n',
     );
@@ -965,7 +957,9 @@ describe("GET /api/views/:id/frame.html", () => {
         framePath: "dist/views/frame.html",
       });
       expect(entry?.frameHash).toMatch(/^[a-f0-9]{64}$/);
-      expect(entry?.frameUrl).toContain("/api/views/local.frame/frame.html?v=");
+      expect(entry?.frameUrl).toContain(
+        `/api/views/local.frame/installations/${entry?.installationId}/gui/frame/frame.html?v=`,
+      );
       expect(entry?.frameUrlVersioned).toContain(`v=${entry?.frameHash}`);
 
       const { ctx: getCtx } = makeCtx(
@@ -982,7 +976,7 @@ describe("GET /api/views/:id/frame.html", () => {
       expect(getHeaders["Content-Type"]).toBe("text/html; charset=utf-8");
       expect(getHeaders["Content-Length"]).toBe(getBody.byteLength);
       expect(getHeaders["X-Content-Type-Options"]).toBe("nosniff");
-      expect(getHeaders["Cache-Control"]).toBe("no-cache");
+      expect(getHeaders["Cache-Control"]).toBe("private, no-cache");
       expect(getBody.toString("utf8")).toContain("Frame v1");
 
       const { ctx: headCtx } = makeCtx(
@@ -997,7 +991,7 @@ describe("GET /api/views/:id/frame.html", () => {
       ];
       expect(headHeaders["Content-Type"]).toBe("text/html; charset=utf-8");
       expect(headHeaders["Content-Length"]).toBe(getBody.byteLength);
-      expect(headHeaders["Cache-Control"]).toBe("no-cache");
+      expect(headHeaders["Cache-Control"]).toBe("private, no-cache");
       expect(headRes.end).toHaveBeenCalledWith(undefined);
 
       const { ctx: immutableCtx } = makeCtx(
@@ -1011,9 +1005,7 @@ describe("GET /api/views/:id/frame.html", () => {
         number,
         Record<string, string | number>,
       ];
-      expect(immutableHeaders["Cache-Control"]).toBe(
-        "public, max-age=31536000, immutable",
-      );
+      expect(immutableHeaders["Cache-Control"]).toBe("private, no-cache");
     } finally {
       unregisterPluginViews(runtime, "views-integration-local-frame");
       await rm(pluginDir, { recursive: true, force: true });
@@ -1050,7 +1042,7 @@ describe("GET /api/views/:id/frame.html", () => {
       number,
     ];
     expect(status).toBe(404);
-    expect(message).toContain("no frame path configured");
+    expect(message).toContain("no local root");
   });
 });
 

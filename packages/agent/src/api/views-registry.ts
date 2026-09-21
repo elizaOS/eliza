@@ -6,7 +6,6 @@
  * layer (`views-routes.ts`) delegates all path resolution back to this module.
  */
 
-import { createHash } from "node:crypto";
 import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,6 +27,12 @@ import {
   isPathWithinRoot,
   resolveRealPathSync,
 } from "./realpath-confinement.ts";
+import {
+  captureViewAssetRoot,
+  setViewAssets,
+  type ViewAssetKind,
+  type ViewAssetRoot,
+} from "./view-assets.ts";
 import {
   assertViewInstallation,
   beginViewInstallation,
@@ -218,7 +223,9 @@ function resolveNearestPackageDirSync(startDir: string): string | undefined {
  * Resolve the absolute on-disk path for a view bundle.
  * Returns `null` when the entry has no `bundlePath` or no `pluginDir`.
  */
-export function getBundleDiskPath(entry: ViewRegistryEntry): string | null {
+export function getBundleDiskPath(
+  entry: Pick<ViewRegistryEntry, "bundlePath" | "pluginDir">,
+): string | null {
   if (!entry.bundlePath || !entry.pluginDir) return null;
   const resolved = path.resolve(entry.pluginDir, entry.bundlePath);
   // Prevent path traversal outside the plugin package root — resolve through
@@ -234,7 +241,9 @@ export function getBundleDiskPath(entry: ViewRegistryEntry): string | null {
  * Resolve the absolute on-disk path for a sandboxed frame document.
  * Returns `null` when the entry has no `framePath` or no `pluginDir`.
  */
-export function getFrameDiskPath(entry: ViewRegistryEntry): string | null {
+export function getFrameDiskPath(
+  entry: Pick<ViewRegistryEntry, "framePath" | "pluginDir">,
+): string | null {
   if (!entry.framePath || !entry.pluginDir) return null;
   const resolved = path.resolve(entry.pluginDir, entry.framePath);
   const realResolved = resolveRealPathSync(resolved);
@@ -546,16 +555,6 @@ export function getView(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/** Compute a short content hash for a served view file. Returns `null` on any I/O error. */
-async function computeFileHash(filePath: string): Promise<string | null> {
-  try {
-    const content = await fs.readFile(filePath);
-    return createHash("sha256").update(content).digest("hex");
-  } catch {
-    return null;
-  }
-}
-
 async function buildEntry(
   view: ViewDeclaration,
   pluginName: string,
@@ -566,82 +565,38 @@ async function buildEntry(
   const registryKey = viewRegistryKey(view.id, normalizedViewType);
   const requiresFrameDocument = view.surface?.isolation === "sandboxed-iframe";
 
-  // Check bundle/frame availability and collect hashes + sizes when resolvable.
-  let available = requiresFrameDocument
-    ? Boolean(view.frameUrl)
-    : Boolean(view.bundleUrl || view.frameUrl);
-  let bundleHash: string | undefined;
-  let bundleSize: number | undefined;
-  if (!view.bundleUrl && pluginDir && view.bundlePath) {
-    const bundleAbs = path.resolve(pluginDir, view.bundlePath);
-    const realBundleAbs = resolveRealPathSync(bundleAbs);
-    const realPackageRoot = resolveRealPathSync(path.resolve(pluginDir));
-    if (
-      realBundleAbs &&
-      realPackageRoot &&
-      isPathWithinRoot(realBundleAbs, realPackageRoot)
-    ) {
-      const bundleAvailable = await fileExists(realBundleAbs);
-      if (bundleAvailable && !requiresFrameDocument) {
-        available = true;
-      }
-      if (bundleAvailable) {
-        const [hash, stat] = await Promise.all([
-          computeFileHash(realBundleAbs),
-          fs.stat(realBundleAbs).catch(() => null),
-        ]);
-        if (hash) bundleHash = hash;
-        if (stat) bundleSize = stat.size;
-
-        // buildEntry runs on every (re-)registration, so a plugin loaded into
-        // multiple views/runtimes logs this repeatedly. Keep ordinary bundle
-        // sizes at debug and warn once per physical file for truly large output.
-        const sizeKb = stat ? stat.size / 1024 : 0;
-        if (stat && stat.size > VIEW_BUNDLE_WARNING_BYTES) {
-          if (!warnedLargeBundlePaths.has(realBundleAbs)) {
-            warnedLargeBundlePaths.add(realBundleAbs);
-            logger.warn(
-              {
-                src: "ViewRegistry",
-                viewId: view.id,
-                viewType: normalizedViewType,
-                sizeKb: sizeKb.toFixed(0),
-              },
-              `View ${registryKey} bundle is large (${sizeKb.toFixed(0)}KB) — consider code splitting`,
-            );
-          }
-        } else if (stat) {
-          logger.debug(
-            { src: "ViewRegistry", viewId: view.id, sizeKb: sizeKb.toFixed(1) },
-            `Registered view ${view.id} — bundle: ${sizeKb.toFixed(1)}KB`,
-          );
-        }
-      }
-    }
+  const roots: Partial<Record<ViewAssetKind, ViewAssetRoot>> = {};
+  for (const kind of ["bundle", "frame"] as const) {
+    if (kind === "bundle" ? view.bundleUrl : view.frameUrl) continue;
+    const file =
+      kind === "bundle"
+        ? getBundleDiskPath({ bundlePath: view.bundlePath, pluginDir })
+        : getFrameDiskPath({ framePath: view.framePath, pluginDir });
+    if (file && (await fileExists(file)))
+      roots[kind] = await captureViewAssetRoot(file);
   }
-  let frameHash: string | undefined;
-  let frameSize: number | undefined;
-  if (!view.frameUrl && pluginDir && view.framePath) {
-    const frameAbs = path.resolve(pluginDir, view.framePath);
-    const realFrameAbs = resolveRealPathSync(frameAbs);
-    const realPackageRoot = resolveRealPathSync(path.resolve(pluginDir));
-    if (
-      realFrameAbs &&
-      realPackageRoot &&
-      isPathWithinRoot(realFrameAbs, realPackageRoot)
-    ) {
-      const frameAvailable = await fileExists(realFrameAbs);
-      if (frameAvailable) {
-        available = true;
-      }
-      if (frameAvailable) {
-        const [hash, stat] = await Promise.all([
-          computeFileHash(realFrameAbs),
-          fs.stat(realFrameAbs).catch(() => null),
-        ]);
-        if (hash) frameHash = hash;
-        if (stat) frameSize = stat.size;
-      }
+  const bundle = roots.bundle?.files.get(roots.bundle.rootName);
+  const frame = roots.frame?.files.get(roots.frame.rootName);
+  const bundleHash = bundle?.hash;
+  const bundleSize = bundle?.size;
+  const frameHash = frame?.hash;
+  const frameSize = frame?.size;
+  const available = requiresFrameDocument
+    ? Boolean(view.frameUrl || frame)
+    : Boolean(view.bundleUrl || view.frameUrl || bundle || frame);
+  if (bundle && roots.bundle && bundle.size > VIEW_BUNDLE_WARNING_BYTES) {
+    const rootPath = path.join(roots.bundle.directory, roots.bundle.rootName);
+    if (!warnedLargeBundlePaths.has(rootPath)) {
+      warnedLargeBundlePaths.add(rootPath);
+      logger.warn(
+        {
+          src: "ViewRegistry",
+          viewId: view.id,
+          viewType: normalizedViewType,
+          sizeKb: (bundle.size / 1024).toFixed(0),
+        },
+        `View ${registryKey} bundle is large; reduce dependencies in its single-module build`,
+      );
     }
   }
 
@@ -698,7 +653,7 @@ async function buildEntry(
   const platform: AgentPlatform =
     (view.platforms?.[0] as AgentPlatform | undefined) ?? "web";
 
-  return {
+  const entry: ViewRegistryEntry = {
     ...view,
     viewType: normalizedViewType,
     pluginName,
@@ -717,4 +672,6 @@ async function buildEntry(
     frameHash,
     frameSize,
   };
+  setViewAssets(entry, roots);
+  return entry;
 }

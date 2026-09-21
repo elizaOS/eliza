@@ -32,13 +32,11 @@ interface CanonicalBuiltinRouteDescriptor {
 
 interface BuiltinDynamicViewDescriptor {
   readonly viewId: string;
-  readonly bundleUrl: string;
   readonly componentExport: string;
 }
 
 export const DATABASE_VECTOR_VIEW = Object.freeze({
   viewId: "vector-browser",
-  bundleUrl: "/api/views/vector-browser/bundle.js",
   componentExport: "VectorBrowserView",
 });
 
