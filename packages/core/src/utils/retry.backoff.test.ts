@@ -211,20 +211,33 @@ describe("retryAsync numeric-attempts style", () => {
 
 	it("waits exponentially longer between attempts", async () => {
 		let calls = 0;
-		const started = Date.now();
-		await retryAsync(
-			async () => {
-				calls += 1;
-				if (calls < 3) {
-					throw new Error("flaky");
-				}
-				return "done";
-			},
-			3,
-			20,
-		);
-		expect(Date.now() - started).toBeGreaterThanOrEqual(60); // 20ms + 40ms
-		expect(calls).toBe(3);
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			const result = retryAsync(
+				async () => {
+					calls += 1;
+					if (calls < 3) throw new Error("flaky");
+					return "done";
+				},
+				3,
+				20,
+			);
+			await vi.advanceTimersByTimeAsync(0);
+			expect(calls).toBe(1);
+			for (const [delay, attempts] of [
+				[20, 1],
+				[40, 2],
+			]) {
+				await vi.advanceTimersByTimeAsync(delay - 1);
+				expect(calls).toBe(attempts);
+				await vi.advanceTimersByTimeAsync(1);
+				expect(calls).toBe(attempts + 1);
+			}
+			await expect(result).resolves.toBe("done");
+		} finally {
+			vi.clearAllTimers();
+			vi.useRealTimers();
+		}
 	});
 
 	it('reports "Retry failed" when every attempt throws a non-Error value', async () => {
