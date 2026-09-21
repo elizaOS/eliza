@@ -9,6 +9,8 @@ import { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { runWithTrajectoryContext } from "../../../../../packages/core/src/trajectory-context.ts";
+import { logActiveTrajectoryLlmCall } from "../../../../../packages/core/src/trajectory-utils.ts";
 import type {
   IAgentRuntime,
   Memory,
@@ -1233,5 +1235,107 @@ describe("trajectories trace_id join key (real PGLite)", () => {
       `UPDATE trajectories SET duration_ms = NULL WHERE id = '${malformedTerminalId}'`,
     );
     await assertAllReadSurfacesReject(malformedTerminalId);
+  });
+});
+
+describe("provider native-call correlation (real PGlite)", () => {
+  it("exports concurrent provider calls with exact turn identities and complete wire values", async () => {
+    const runtime = {
+      ...serviceRuntime,
+      getService: (type: string) => (type === "trajectories" ? service : null),
+      getServicesByType: () => [service],
+    } as unknown as IAgentRuntime;
+    let arrivals = 0;
+    let release!: () => void;
+    const bothEntered = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const calls = await Promise.all(
+      [false, true].map(async (explicit) => {
+        const context = {
+          runId: crypto.randomUUID(),
+          roomId: crypto.randomUUID(),
+          messageId: crypto.randomUUID(),
+          traceId: crypto.randomUUID(),
+        };
+        const provided = {
+          runId: crypto.randomUUID(),
+          roomId: crypto.randomUUID(),
+          messageId: crypto.randomUUID(),
+          executionTraceId: crypto.randomUUID(),
+        };
+        const trajectoryId = await service.startTrajectory(runtime.agentId, {
+          source: "provider-correlation-proof",
+          metadata: context,
+        });
+        const stepId = service.startStep(trajectoryId, {
+          timestamp: Date.now(),
+        });
+        const content = `complete-wire-${context.messageId}:${"all bytes ".repeat(2000)}`;
+        const messages = [{ role: "user", content }];
+        const tools = {
+          inspect: { description: content, parameters: { type: "object" } },
+        };
+        await runWithTrajectoryContext(
+          { ...context, trajectoryId, trajectoryStepId: stepId },
+          async () => {
+            if (++arrivals === 2) release();
+            await bothEntered;
+            expect(
+              logActiveTrajectoryLlmCall(runtime, {
+                model: "deterministic-provider",
+                provider: "vercel-ai-sdk",
+                systemPrompt: "system",
+                userPrompt: content,
+                messages,
+                tools,
+                response: content,
+                purpose: "provider",
+                actionType: "ai.generateText",
+                ...(explicit ? provided : {}),
+              }),
+            ).toBe(true);
+          },
+        );
+        await service.flushWriteQueue(trajectoryId);
+        return {
+          trajectoryId,
+          expected: explicit
+            ? provided
+            : { ...context, executionTraceId: context.traceId },
+          content,
+          messages,
+          tools,
+        };
+      }),
+    );
+    const exported = await service.exportTrajectories({
+      format: "json",
+      includePrompts: true,
+      trajectoryIds: calls.map((call) => call.trajectoryId),
+    });
+    const rows: unknown = JSON.parse(
+      typeof exported.data === "string"
+        ? exported.data
+        : Buffer.from(exported.data).toString("utf8"),
+    );
+    if (!Array.isArray(rows))
+      throw new Error("Canonical export must contain rows");
+    expect(rows).toHaveLength(2);
+    for (const call of calls) {
+      const row = rows.find(
+        (entry) => entry.trajectoryId === call.trajectoryId,
+      );
+      expect(row).toMatchObject({
+        metadata: {
+          source_run_id: call.expected.runId,
+          source_room_id: call.expected.roomId,
+          source_message_id: call.expected.messageId,
+          source_execution_trace_id: call.expected.executionTraceId,
+        },
+        request: { messages: call.messages, tools: call.tools },
+        response: { text: call.content },
+      });
+    }
   });
 });
