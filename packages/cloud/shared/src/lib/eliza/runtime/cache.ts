@@ -1,4 +1,4 @@
-/** Owns hosted runtime reuse and revokes an exact cache entry before awaiting its service teardown. Replacement runtimes and adapters must survive completion of an older eviction; shared-pool closure remains restricted to full shutdown. */
+/** Owns hosted runtime reuse and revokes an exact cache entry before awaiting its service teardown. Replacement runtimes and adapters must survive completion of an older eviction; Evicted generations remain owned until strict retirement succeeds; an empty reuse map is not a migration drain. Shared-pool closure remains restricted to full shutdown. */
 import { createHash } from "node:crypto";
 import { type UUID } from "@elizaos/common";
 import { type AgentRuntime, elizaLogger } from "@elizaos/core";
@@ -41,12 +41,54 @@ export function buildRuntimeCacheKey(parts: RuntimeCacheKeyParts): string {
 
 export class RuntimeCache {
   private cache = new Map<string, CachedRuntime>();
+  private readonly retired = new Map<
+    AgentRuntime,
+    {
+      agentId: UUID;
+      completion: Promise<void>;
+    }
+  >();
   private readonly MAX_SIZE = 50;
   private readonly MAX_AGE_MS = 30 * 60 * 1000;
   private readonly IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 
   private isStale(entry: CachedRuntime, now: number): boolean {
     return now - entry.createdAt > this.MAX_AGE_MS || now - entry.lastUsed > this.IDLE_TIMEOUT_MS;
+  }
+
+  private retainRetirement(entry: CachedRuntime): void {
+    if (this.retired.has(entry.runtime)) return;
+    // Defer hooks until the retirement is visible, including to reentrant callers.
+    const completion = Promise.resolve().then(() =>
+      entry.runtime.stop({ requireQuiescence: true }),
+    );
+    const retirement = { agentId: entry.agentId, completion };
+    this.retired.set(entry.runtime, retirement);
+    void completion.then(
+      () => {
+        if (this.retired.get(entry.runtime) === retirement) {
+          this.retired.delete(entry.runtime);
+        }
+      },
+      (error) => {
+        // error-policy:J5 The original rejection stays retained and is observed by drainRetiredByAgentId.
+        elizaLogger.warn(
+          { agentId: entry.agentId, error },
+          "[RuntimeCache] Runtime retirement remains incomplete",
+        );
+      },
+    );
+  }
+
+  /** Joins evicted generations, including failures and work outliving bounded stop.
+   * The caller must separately fence runtime creation; this does not grant migration admission.
+   */
+  async drainRetiredByAgentId(agentId: string): Promise<void> {
+    for (;;) {
+      const retirements = [...this.retired.values()].filter((entry) => entry.agentId === agentId);
+      if (retirements.length === 0) return;
+      await Promise.all(retirements.map((entry) => entry.completion));
+    }
   }
 
   private async evictEntry(
@@ -58,6 +100,7 @@ export class RuntimeCache {
     if (this.cache.get(key) !== entry) return false;
     // Revoke reuse synchronously, before stop hooks can reenter the cache.
     this.cache.delete(key);
+    this.retainRetirement(entry);
     dbPool?.removeAdapter(entry.agentId, entry.runtime.adapter);
     await stopRuntimeServices(entry.runtime, key, "RuntimeCache");
     elizaLogger.debug(`[RuntimeCache] Evicted ${reason} runtime: ${key} (adapter kept alive)`);

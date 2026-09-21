@@ -72,3 +72,113 @@ test.each(["remove", "organization", "stale"] as const)(
     }
   },
 );
+
+async function controlledRetirement(agentId: ReturnType<typeof randomUUID>, fail = false) {
+  const runtime = new AgentRuntime({
+    agentId,
+    logLevel: "fatal",
+    adapter: new InMemoryDatabaseAdapter(agentId),
+  });
+  const entered = Promise.withResolvers<void>();
+  const finish = Promise.withResolvers<void>();
+  let stops = 0;
+  class ControlledStop extends Service {
+    static override serviceType = "retained-retirement";
+    capabilityDescription = "Controlled retained teardown";
+    static override async start(owner: IAgentRuntime) {
+      return new ControlledStop(owner);
+    }
+    override async stop() {
+      stops += 1;
+      entered.resolve();
+      await finish.promise;
+      if (fail) throw new Error("Fixture teardown failed");
+    }
+  }
+  await runtime.initialize({ skipMigrations: true });
+  await runtime.registerService(ControlledStop);
+  await runtime.getServiceLoadPromise(ControlledStop.serviceType);
+  return { runtime, entered, finish, stops: () => stops };
+}
+
+async function expectDrainPending(drain: Promise<void>) {
+  expect(
+    await Promise.race([
+      drain.then(() => "completed"),
+      new Promise<string>((resolve) => setTimeout(() => resolve("pending"), 20)),
+    ]),
+  ).toBe("pending");
+}
+
+test("agent drain retains teardown after bounded eviction empties the cache", async () => {
+  const previous = process.env.RUNTIME_LIFECYCLE_TIMEOUT_MS;
+  const agentId = randomUUID();
+  const cache = new RuntimeCache();
+  const fixture = await controlledRetirement(agentId);
+  process.env.RUNTIME_LIFECYCLE_TIMEOUT_MS = "1";
+  try {
+    await cache.set(agentId, fixture.runtime, "Retiring", agentId);
+    const eviction = cache.remove(agentId);
+    await fixture.entered.promise;
+    await eviction;
+    expect(cache.getStats().size).toBe(0);
+    const drain = cache.drainRetiredByAgentId(agentId);
+    await expectDrainPending(drain);
+    // Another agent does not inherit this agent's teardown barrier.
+    await cache.drainRetiredByAgentId(randomUUID());
+    fixture.finish.resolve();
+    await drain;
+    await cache.drainRetiredByAgentId(agentId);
+    expect(fixture.stops()).toBe(1);
+  } finally {
+    fixture.finish.resolve();
+    await fixture.runtime.stop({ requireQuiescence: true });
+    if (previous === undefined) delete process.env.RUNTIME_LIFECYCLE_TIMEOUT_MS;
+    else process.env.RUNTIME_LIFECYCLE_TIMEOUT_MS = previous;
+  }
+});
+
+test("retired teardown failures reject every later drain without replaying the hook", async () => {
+  const agentId = randomUUID();
+  const cache = new RuntimeCache();
+  const fixture = await controlledRetirement(agentId, true);
+  await cache.set(agentId, fixture.runtime, "Failing", agentId);
+  const eviction = cache.remove(agentId);
+  await fixture.entered.promise;
+  fixture.finish.resolve();
+  await eviction;
+  expect(cache.getStats().size).toBe(0);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await expect(cache.drainRetiredByAgentId(agentId)).rejects.toMatchObject({
+      code: "RUNTIME_QUIESCENCE_FAILED",
+    });
+  }
+  expect(fixture.stops()).toBe(1);
+});
+
+test("agent drain joins another retired generation added while its first teardown waits", async () => {
+  const agentId = randomUUID();
+  const cache = new RuntimeCache();
+  const first = await controlledRetirement(agentId);
+  const second = await controlledRetirement(agentId);
+  await cache.set(`${agentId}:first`, first.runtime, "First", agentId);
+  await cache.set(`${agentId}:second`, second.runtime, "Second", agentId);
+  const firstEviction = cache.remove(`${agentId}:first`);
+  await first.entered.promise;
+  const drain = cache.drainRetiredByAgentId(agentId);
+  const secondEviction = cache.remove(`${agentId}:second`);
+  try {
+    await second.entered.promise;
+    first.finish.resolve();
+    await firstEviction;
+    await expectDrainPending(drain);
+    second.finish.resolve();
+    await Promise.all([drain, secondEviction]);
+    expect(first.stops()).toBe(1);
+    expect(second.stops()).toBe(1);
+  } finally {
+    first.finish.resolve();
+    second.finish.resolve();
+    await Promise.all([firstEviction, secondEviction, drain]);
+  }
+});
