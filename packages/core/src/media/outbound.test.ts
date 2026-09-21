@@ -9,143 +9,157 @@ import fs from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MediaFetchError } from "./fetch.ts";
 import {
-  resolveOutboundAttachmentBytes,
-  summarizeOutboundAttachmentUrl,
+	resolveOutboundAttachmentBytes,
+	summarizeOutboundAttachmentUrl,
 } from "./outbound.ts";
 
 function transport(
-  fetchMock: (input: string, init?: RequestInit) => Promise<Response>,
+	fetchMock: (input: string, init?: RequestInit) => Promise<Response>,
 ) {
-  return {
-    lookupFn: async () => [{ address: "203.0.113.7", family: 4 }],
-    pinnedFetchImpl: async ({ url, init }: { url: URL; init?: RequestInit }) =>
-      fetchMock(url.toString(), init),
-    fetchImpl: async (input: RequestInfo | URL, init?: RequestInit) =>
-      fetchMock(String(input), init),
-  };
+	return {
+		lookupFn: async () => [{ address: "203.0.113.7", family: 4 }],
+		pinnedFetchImpl: async ({ url, init }: { url: URL; init?: RequestInit }) =>
+			fetchMock(url.toString(), init),
+		fetchImpl: async (input: RequestInfo | URL, init?: RequestInit) =>
+			fetchMock(String(input), init),
+	};
 }
 
 afterEach(() => {
-  vi.restoreAllMocks();
+	vi.restoreAllMocks();
 });
 
 describe("summarizeOutboundAttachmentUrl", () => {
-  it("omits the data-URL payload", () => {
-    expect(
-      summarizeOutboundAttachmentUrl("data:image/png;base64,aGVsbG8="),
-    ).toEqual({ scheme: "data", path: "image/png" });
-  });
+	it("omits the data-URL payload", () => {
+		expect(
+			summarizeOutboundAttachmentUrl("data:image/png;base64,aGVsbG8="),
+		).toEqual({ scheme: "data", path: "image/png" });
+	});
+
+	it("omits the payload when the data scheme is uppercase", () => {
+		expect(
+			summarizeOutboundAttachmentUrl("DATA:image/png;base64,aGVsbG8="),
+		).toEqual({ scheme: "data", path: "image/png" });
+	});
 });
 
 describe("resolveOutboundAttachmentBytes", () => {
-  it("decodes a data: image locally without fetching or touching fs", async () => {
-    const fetchMock = vi.fn();
-    const readSpy = vi.spyOn(fs, "readFileSync");
-    const existsSpy = vi.spyOn(fs, "existsSync");
-    const streamSpy = vi.spyOn(fs, "createReadStream");
+	it("decodes a data: image locally without fetching or touching fs", async () => {
+		const fetchMock = vi.fn();
+		const readSpy = vi.spyOn(fs, "readFileSync");
+		const existsSpy = vi.spyOn(fs, "existsSync");
+		const streamSpy = vi.spyOn(fs, "createReadStream");
 
-    const out = await resolveOutboundAttachmentBytes(
-      "data:image/png;base64,aGVsbG8=",
-      transport(fetchMock),
-    );
+		const out = await resolveOutboundAttachmentBytes(
+			"data:image/png;base64,aGVsbG8=",
+			transport(fetchMock),
+		);
 
-    expect(out.buffer.toString("utf8")).toBe("hello");
-    expect(out.contentType).toBe("image/png");
-    expect(out.fileName).toBe("attachment.png");
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(readSpy).not.toHaveBeenCalled();
-    expect(existsSpy).not.toHaveBeenCalled();
-    expect(streamSpy).not.toHaveBeenCalled();
-  });
+		expect(out.buffer.toString("utf8")).toBe("hello");
+		expect(out.contentType).toBe("image/png");
+		expect(out.fileName).toBe("attachment.png");
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(readSpy).not.toHaveBeenCalled();
+		expect(existsSpy).not.toHaveBeenCalled();
+		expect(streamSpy).not.toHaveBeenCalled();
+	});
 
-  it("rejects a local secrets path without reading it", async () => {
-    const fetchMock = vi.fn();
-    const readSpy = vi.spyOn(fs, "readFileSync");
-    const existsSpy = vi.spyOn(fs, "existsSync");
-    const streamSpy = vi.spyOn(fs, "createReadStream");
+	it("decodes an uppercase DATA: URL locally", async () => {
+		const out = await resolveOutboundAttachmentBytes(
+			"DATA:image/png;base64,aGVsbG8=",
+		);
+		expect(out.buffer.toString("utf8")).toBe("hello");
+		expect(out.contentType).toBe("image/png");
+	});
 
-    await expect(
-      resolveOutboundAttachmentBytes("/etc/passwd", transport(fetchMock)),
-    ).rejects.toBeInstanceOf(MediaFetchError);
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(readSpy).not.toHaveBeenCalled();
-    expect(existsSpy).not.toHaveBeenCalled();
-    expect(streamSpy).not.toHaveBeenCalled();
-  });
+	it("rejects a local secrets path without reading it", async () => {
+		const fetchMock = vi.fn();
+		const readSpy = vi.spyOn(fs, "readFileSync");
+		const existsSpy = vi.spyOn(fs, "existsSync");
+		const streamSpy = vi.spyOn(fs, "createReadStream");
 
-  it("rejects file: URLs without reading the host filesystem", async () => {
-    const readSpy = vi.spyOn(fs, "readFileSync");
-    await expect(
-      resolveOutboundAttachmentBytes("file:///etc/passwd"),
-    ).rejects.toBeInstanceOf(MediaFetchError);
-    expect(readSpy).not.toHaveBeenCalled();
-  });
+		await expect(
+			resolveOutboundAttachmentBytes("/etc/passwd", transport(fetchMock)),
+		).rejects.toBeInstanceOf(MediaFetchError);
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(readSpy).not.toHaveBeenCalled();
+		expect(existsSpy).not.toHaveBeenCalled();
+		expect(streamSpy).not.toHaveBeenCalled();
+	});
 
-  it("fetches http(s) bytes through the SSRF guard", async () => {
-    const bytes = Buffer.from("png-bytes");
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(bytes, {
-        status: 200,
-        headers: { "content-type": "image/png" },
-      }),
-    );
+	it("rejects file: URLs without reading the host filesystem", async () => {
+		const readSpy = vi.spyOn(fs, "readFileSync");
+		await expect(
+			resolveOutboundAttachmentBytes("file:///etc/passwd"),
+		).rejects.toBeInstanceOf(MediaFetchError);
+		expect(readSpy).not.toHaveBeenCalled();
+	});
 
-    const out = await resolveOutboundAttachmentBytes(
-      "https://cdn.example.com/pic.png",
-      transport(fetchMock),
-    );
+	it("fetches http(s) bytes through the SSRF guard", async () => {
+		const bytes = Buffer.from("png-bytes");
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(bytes, {
+				status: 200,
+				headers: { "content-type": "image/png" },
+			}),
+		);
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(out.buffer.equals(bytes)).toBe(true);
-    expect(out.contentType).toBe("image/png");
-  });
+		const out = await resolveOutboundAttachmentBytes(
+			"https://cdn.example.com/pic.png",
+			transport(fetchMock),
+		);
 
-  it("fails closed when the guarded fetch is not ok", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(new Response("bad", { status: 502 }));
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(out.buffer.equals(bytes)).toBe(true);
+		expect(out.contentType).toBe("image/png");
+	});
 
-    await expect(
-      resolveOutboundAttachmentBytes(
-        "https://cdn.example.com/pic.png",
-        transport(fetchMock),
-      ),
-    ).rejects.toMatchObject({ code: "http_error" });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
+	it("fails closed when the guarded fetch is not ok", async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(new Response("bad", { status: 502 }));
 
-  it("fails closed for private/internal http(s) URLs without a public fallback", async () => {
-    const fetchMock = vi.fn();
-    await expect(
-      resolveOutboundAttachmentBytes("http://127.0.0.1:8080/secret", {
-        lookupFn: async () => [{ address: "127.0.0.1", family: 4 }],
-        pinnedFetchImpl: async ({ url, init }) =>
-          fetchMock(url.toString(), init),
-        fetchImpl: async (input, init) => fetchMock(String(input), init),
-      }),
-    ).rejects.toThrow(/private|internal|Blocked/i);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
+		await expect(
+			resolveOutboundAttachmentBytes(
+				"https://cdn.example.com/pic.png",
+				transport(fetchMock),
+			),
+		).rejects.toMatchObject({ code: "http_error" });
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
 
-  it("loads canonical media-store handles through localFetch, not the remote guard", async () => {
-    const sha = "a".repeat(64);
-    const localFetch = vi.fn(
-      async () =>
-        new Response(Buffer.from("store-bytes"), {
-          status: 200,
-          headers: { "content-type": "image/png" },
-        }),
-    );
-    const fetchMock = vi.fn();
+	it("fails closed for private/internal http(s) URLs without a public fallback", async () => {
+		const fetchMock = vi.fn();
+		await expect(
+			resolveOutboundAttachmentBytes("http://127.0.0.1:8080/secret", {
+				lookupFn: async () => [{ address: "127.0.0.1", family: 4 }],
+				pinnedFetchImpl: async ({ url, init }) =>
+					fetchMock(url.toString(), init),
+				fetchImpl: async (input, init) => fetchMock(String(input), init),
+			}),
+		).rejects.toThrow(/private|internal|Blocked/i);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
 
-    const out = await resolveOutboundAttachmentBytes(`/api/media/${sha}.png`, {
-      localFetch,
-      ...transport(fetchMock),
-    });
+	it("loads canonical media-store handles through localFetch, not the remote guard", async () => {
+		const sha = "a".repeat(64);
+		const localFetch = vi.fn(
+			async () =>
+				new Response(Buffer.from("store-bytes"), {
+					status: 200,
+					headers: { "content-type": "image/png" },
+				}),
+		);
+		const fetchMock = vi.fn();
 
-    expect(localFetch).toHaveBeenCalledTimes(1);
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(out.buffer.toString("utf8")).toBe("store-bytes");
-    expect(out.fileName).toBe(`${sha}.png`);
-  });
+		const out = await resolveOutboundAttachmentBytes(`/api/media/${sha}.png`, {
+			localFetch,
+			...transport(fetchMock),
+		});
+
+		expect(localFetch).toHaveBeenCalledTimes(1);
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(out.buffer.toString("utf8")).toBe("store-bytes");
+		expect(out.fileName).toBe(`${sha}.png`);
+	});
 });

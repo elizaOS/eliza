@@ -110,6 +110,21 @@ describe("buildOutboundDiscordAttachment", () => {
 		expect(att.name).toBe("cat.png");
 	});
 
+	it("does not derive a filename extension from an uppercase data-URL payload", async () => {
+		const att = await buildOutboundDiscordAttachment(
+			media({
+				url: "DATA:text/plain,secret.mp4",
+				contentType: ContentType.IMAGE,
+				title: "cat",
+			}),
+		);
+
+		expect(Buffer.from(att.attachment as Buffer).toString("utf8")).toBe(
+			"secret.mp4",
+		);
+		expect(att.name).toBe("cat.png");
+	});
+
 	it("rejects a local secrets path without reading it", async () => {
 		const fetchMock = vi.fn();
 		const readSpy = vi.spyOn(fs, "readFileSync");

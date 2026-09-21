@@ -36,6 +36,8 @@ vi.mock("@elizaos/core", async () => {
   const { fetchWithSsrfGuard } = await import(
     "../../../packages/core/src/network/fetch-guard"
   );
+  const { resolveOutboundAttachmentBytes, summarizeOutboundAttachmentUrl } =
+    await import("../../../packages/core/src/media/outbound");
   const { getLocalServerUrl } = await import(
     "../../../packages/core/src/utils/node"
   );
@@ -149,9 +151,11 @@ vi.mock("@elizaos/core", async () => {
         : stringToUuid(`${baseUserId}:${runtime.agentId}`),
     lifeOpsPassiveConnectorsEnabled,
     logger,
+    resolveOutboundAttachmentBytes,
     selectDefaultConnectorAccountId: (accountIds: readonly string[]) =>
       accountIds.includes("default") ? "default" : (accountIds[0] ?? "default"),
     stringToUuid,
+    summarizeOutboundAttachmentUrl,
     toWellFormedUnicode,
     truncateWellFormed,
   };

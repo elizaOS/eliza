@@ -14,8 +14,8 @@ import {
 	type Media,
 	MediaFetchError,
 	ModelType,
-	type ResolveOutboundAttachmentOptions,
 	type ReplyToMode,
+	type ResolveOutboundAttachmentOptions,
 	resolveOutboundAttachmentBytes,
 	summarizeOutboundAttachmentUrl,
 	toWellFormedUnicode,
@@ -224,7 +224,7 @@ export function extractUrls(text: string, runtime?: IAgentRuntime): string[] {
 export function getAttachmentFileName(media: Media): string {
 	let extension = "";
 	// `data:` pathnames carry the payload; never treat that blob as a filename.
-	if (media.url && !media.url.startsWith("data:")) {
+	if (media.url && media.url.slice(0, 5).toLowerCase() !== "data:") {
 		try {
 			const urlPath = new URL(media.url).pathname;
 			const urlExtension = urlPath.substring(urlPath.lastIndexOf("."));
