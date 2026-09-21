@@ -8,6 +8,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../../..");
 const workflowsDirectory = path.join(repositoryRoot, ".github/workflows");
@@ -161,7 +162,7 @@ function runTelegramPreflight(
   try {
     const botId = overrides.botId ?? stagingTelegram.botId;
     const botUsername = overrides.botUsername ?? stagingTelegram.botUsername;
-    const result = Bun.spawnSync(["bash", "-c", telegramValidation.run], {
+    const result = spawnSync("bash", ["-c", telegramValidation.run], {
       cwd: repositoryRoot,
       env: {
         ...process.env,
@@ -176,12 +177,10 @@ function runTelegramPreflight(
           overrides.authoritySha256 ??
           telegramIdentityAuthoritySha256(botId, botUsername),
       },
-      stderr: "pipe",
-      stdout: "pipe",
     });
 
     return {
-      exitCode: result.exitCode,
+      exitCode: result.status,
       githubOutput: readOptionalFile(githubOutputPath),
       stderr: result.stderr.toString(),
       stdout: result.stdout.toString(),
@@ -214,33 +213,28 @@ function runReusableTelegramPreflight(
 
   try {
     const targetEnvironment = overrides.targetEnvironment ?? "staging";
-    const result = Bun.spawnSync(
-      ["bash", "-c", admittedTelegramValidation.run],
-      {
-        cwd: repositoryRoot,
-        env: {
-          ...process.env,
-          GITHUB_OUTPUT: githubOutputPath,
-          GITHUB_STEP_SUMMARY: summaryPath,
-          ADMITTED_TELEGRAM_BOT_ID: overrides.botId ?? stagingTelegram.botId,
-          ADMITTED_TELEGRAM_BOT_USERNAME:
-            overrides.botUsername ?? stagingTelegram.botUsername,
-          RELEASE_RUN_ATTEMPT: overrides.releaseRunAttempt ?? "1",
-          TARGET_ENVIRONMENT: targetEnvironment,
-          TELEGRAM_AUTHORITY_RUN_ATTEMPT: overrides.authorityRunAttempt ?? "1",
-          TELEGRAM_RUNTIME_AUTHORITY:
-            overrides.runtimeAuthority ??
-            (targetEnvironment === "production"
-              ? "production-live-attested"
-              : "staging-protected-receipt-and-existing-bindings"),
-        },
-        stderr: "pipe",
-        stdout: "pipe",
+    const result = spawnSync("bash", ["-c", admittedTelegramValidation.run], {
+      cwd: repositoryRoot,
+      env: {
+        ...process.env,
+        GITHUB_OUTPUT: githubOutputPath,
+        GITHUB_STEP_SUMMARY: summaryPath,
+        ADMITTED_TELEGRAM_BOT_ID: overrides.botId ?? stagingTelegram.botId,
+        ADMITTED_TELEGRAM_BOT_USERNAME:
+          overrides.botUsername ?? stagingTelegram.botUsername,
+        RELEASE_RUN_ATTEMPT: overrides.releaseRunAttempt ?? "1",
+        TARGET_ENVIRONMENT: targetEnvironment,
+        TELEGRAM_AUTHORITY_RUN_ATTEMPT: overrides.authorityRunAttempt ?? "1",
+        TELEGRAM_RUNTIME_AUTHORITY:
+          overrides.runtimeAuthority ??
+          (targetEnvironment === "production"
+            ? "production-live-attested"
+            : "staging-protected-receipt-and-existing-bindings"),
       },
-    );
+    });
 
     return {
-      exitCode: result.exitCode,
+      exitCode: result.status,
       githubOutput: readOptionalFile(githubOutputPath),
       stderr: result.stderr.toString(),
       stdout: result.stdout.toString(),
@@ -264,7 +258,7 @@ function runTelegramAuthorityCanaryAdmission(
   );
   if (!guard.run) throw new Error("Missing executable canary admission guard");
 
-  const result = Bun.spawnSync(["bash", "-c", guard.run], {
+  const result = spawnSync("bash", ["-c", guard.run], {
     cwd: repositoryRoot,
     env: {
       ...process.env,
@@ -281,12 +275,10 @@ function runTelegramAuthorityCanaryAdmission(
       TARGET_ENVIRONMENT: overrides.targetEnvironment ?? "staging",
       TELEGRAM_AUTHORITY_CANARY: "true",
     },
-    stderr: "pipe",
-    stdout: "pipe",
   });
 
   return {
-    exitCode: result.exitCode,
+    exitCode: result.status,
     githubOutput: "",
     stderr: result.stderr.toString(),
     stdout: result.stdout.toString(),
@@ -339,7 +331,7 @@ function runTelegramAuthorityGuard(
   const summaryPath = path.join(fixtureRoot, "step-summary.md");
 
   try {
-    const result = Bun.spawnSync(["bash", "-c", guard.run], {
+    const result = spawnSync("bash", ["-c", guard.run], {
       cwd: repositoryRoot,
       env: {
         ...process.env,
@@ -350,12 +342,10 @@ function runTelegramAuthorityGuard(
         RELEASE_RUN_ATTEMPT: releaseRunAttempt,
         TELEGRAM_AUTHORITY_RUN_ATTEMPT: authorityRunAttempt,
       },
-      stderr: "pipe",
-      stdout: "pipe",
     });
 
     return {
-      exitCode: result.exitCode,
+      exitCode: result.status,
       githubOutput: readOptionalFile(githubOutputPath),
       stderr: result.stderr.toString(),
       stdout: result.stdout.toString(),
