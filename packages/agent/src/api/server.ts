@@ -162,6 +162,7 @@ import {
 } from "./early-logs.ts";
 import {
   createApiEventHub,
+  createEventSocketBackpressureGuard,
   createEventSocketLivenessSweep,
 } from "./event-hub.ts";
 import { computeCanRespond } from "./health-routes.ts";
@@ -3716,6 +3717,19 @@ export async function startApiServer(opts?: {
   const wsActiveConversations = new WeakMap<WebSocket, string>();
   const wsRequests = new WeakMap<WebSocket, http.IncomingMessage>();
   const wsSendQueues = new WeakMap<WebSocket, Promise<void>>();
+  const wsQueuedSendBytes = new WeakMap<WebSocket, number>();
+  const reportWebSocketSendError = (err: unknown): void => {
+    logger.error(
+      `[eliza-api] WebSocket send error: ${err instanceof Error ? err.message : err}`,
+    );
+  };
+  const wsBackpressure = createEventSocketBackpressureGuard({
+    clients: wsClients,
+    clientIds: wsClientIds,
+    reportSendError: reportWebSocketSendError,
+    getBufferedAmount: (ws) =>
+      ws.bufferedAmount + (wsQueuedSendBytes.get(ws) ?? 0),
+  });
   const admitWebSocket = async (
     ws: WebSocket,
     request: http.IncomingMessage,
@@ -3729,23 +3743,37 @@ export async function startApiServer(opts?: {
     }
     return ws.readyState === WebSocket.OPEN;
   };
-  const sendWebSocket = (ws: WebSocket, message: string): void => {
+  const sendWebSocket = (ws: WebSocket, message: string): boolean => {
+    if (ws.readyState !== WebSocket.OPEN || !wsBackpressure.admit(ws)) {
+      return false;
+    }
     if (!hostAdmission) {
       ws.send(message);
-      return;
+      return true;
     }
     const request = wsRequests.get(ws);
     if (!request) {
       ws.close(1008, "Host admission rejected");
-      return;
+      return false;
     }
     // Reappraise at delivery, preserving ordering across status, replay, targeted
-    // events and PTY output. Queued frames cannot inherit an earlier approval.
+    // events and PTY output. Queued frames cannot inherit an earlier approval;
+    // their bytes remain visible to the same backpressure guard as ws's native
+    // transport buffer until the admission decision completes.
+    const messageBytes = Buffer.byteLength(message);
+    wsQueuedSendBytes.set(ws, (wsQueuedSendBytes.get(ws) ?? 0) + messageBytes);
     const previous = wsSendQueues.get(ws) ?? Promise.resolve();
     const pending = previous
       .then(async () => {
-        if (await admitWebSocket(ws, request, "websocket-send"))
-          ws.send(message);
+        try {
+          if (await admitWebSocket(ws, request, "websocket-send")) {
+            ws.send(message);
+          }
+        } finally {
+          const remaining = (wsQueuedSendBytes.get(ws) ?? 0) - messageBytes;
+          if (remaining > 0) wsQueuedSendBytes.set(ws, remaining);
+          else wsQueuedSendBytes.delete(ws);
+        }
       })
       .catch(() => {
         // error-policy:J1 Close this transport without exposing frame or policy data.
@@ -3753,6 +3781,7 @@ export async function startApiServer(opts?: {
         ws.close(1011, "Host admission unavailable");
       });
     wsSendQueues.set(ws, pending);
+    return true;
   };
   const eventHub = createApiEventHub({
     state,
@@ -3760,11 +3789,7 @@ export async function startApiServer(opts?: {
     clientIds: wsClientIds,
     activeConversations: wsActiveConversations,
     sendMessage: sendWebSocket,
-    reportSendError: (err) => {
-      logger.error(
-        `[eliza-api] WebSocket send error: ${err instanceof Error ? err.message : err}`,
-      );
-    },
+    reportSendError: reportWebSocketSendError,
   });
   const broadcastWs = eventHub.broadcast;
   const pushEvent = eventHub.publish;

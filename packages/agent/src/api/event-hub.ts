@@ -3,12 +3,16 @@
  * WebSocket clients. HTTP composition supplies connection ownership maps while
  * route and runtime code consume this small event boundary.
  *
- * Fan-out is bounded per peer: a socket whose send buffer is above the soft
- * limit is skipped, and it is terminated once it stays there for the grace
- * period or crosses the hard limit. A reconnecting client catches up through
- * the replay buffer, so skipping is loss-free for buffered events. The
- * liveness sweep pings every tracked socket on an interval and terminates the
- * ones that did not answer, which covers peers that stall without traffic.
+ * Fan-out is bounded per peer without ever skipping a frame on a live socket:
+ * a peer keeps receiving every message until it is terminated. Crossing the
+ * soft limit only starts a stall clock; the peer is terminated once it stays
+ * above the soft limit for the grace period or crosses the hard limit, so its
+ * queue is bounded by the hard limit or by the soft limit plus one grace
+ * window of traffic, whichever comes first. Loss therefore happens only
+ * through termination, which the client observes and recovers from by
+ * reconnecting and replaying from the buffer. The liveness sweep pings every
+ * tracked socket on an interval and terminates the ones that did not answer,
+ * which covers peers that stall without traffic.
  */
 import { logger } from "@elizaos/core";
 import type { StreamEventEnvelope } from "./server-types.ts";
@@ -36,7 +40,7 @@ export interface ApiEventHub {
   sendToConversation(conversationId: string, payload: unknown): number;
 }
 
-/** Queued bytes above which the hub stops handing a peer new messages. */
+/** Queued bytes above which a peer's grace period starts counting down. */
 export const EVENT_SOCKET_BACKPRESSURE_SOFT_LIMIT_BYTES = 4 * 1024 * 1024;
 /** Queued bytes above which a peer is terminated on sight. */
 export const EVENT_SOCKET_BACKPRESSURE_HARD_LIMIT_BYTES = 16 * 1024 * 1024;
@@ -49,19 +53,23 @@ export interface EventSocketBackpressure {
   graceMs: number;
 }
 
-export function createApiEventHub<Socket extends EventSocket>(options: {
-  state: EventHubState;
+export interface EventSocketBackpressureGuard<Socket extends EventSocket> {
+  /** True when the peer remains eligible to receive the next frame. */
+  admit(socket: Socket): boolean;
+}
+
+export function createEventSocketBackpressureGuard<
+  Socket extends EventSocket,
+>(options: {
   clients: Set<Socket>;
   clientIds: WeakMap<Socket, string>;
-  activeConversations: WeakMap<Socket, string>;
   reportSendError(error: unknown): void;
-  /** A host may queue delivery for current admission; counts mean accepted sends. */
-  sendMessage?(socket: Socket, message: string): void;
-  maxBufferedEvents?: number;
   backpressure?: Partial<EventSocketBackpressure>;
+  /** Includes bytes waiting outside the transport, such as admission queues. */
+  getBufferedAmount?: (socket: Socket) => number;
   /** Clock used for the grace period; injectable for deterministic tests. */
   now?: () => number;
-}): ApiEventHub {
+}): EventSocketBackpressureGuard<Socket> {
   const limits: EventSocketBackpressure = {
     softLimitBytes:
       options.backpressure?.softLimitBytes ??
@@ -74,7 +82,8 @@ export function createApiEventHub<Socket extends EventSocket>(options: {
   };
   const now = options.now ?? Date.now;
   // First moment each peer was observed above the soft limit; cleared as soon
-  // as it drains back under it.
+  // as it drains back under it. While set, the peer is still sent every frame
+  // so that a transient stall never opens a gap on a connection that survives.
   const stalledSince = new WeakMap<Socket, number>();
 
   const dropClient = (
@@ -104,26 +113,47 @@ export function createApiEventHub<Socket extends EventSocket>(options: {
     }
   };
 
-  /** True when the peer may receive a message right now. */
-  const admit = (client: Socket): boolean => {
-    const bufferedAmount = client.bufferedAmount;
-    if (bufferedAmount > limits.hardLimitBytes) {
-      dropClient(client, "hard-limit", bufferedAmount);
-      return false;
-    }
-    if (bufferedAmount > limits.softLimitBytes) {
-      const at = now();
-      const since = stalledSince.get(client);
-      if (since === undefined) {
-        stalledSince.set(client, at);
-      } else if (at - since >= limits.graceMs) {
-        dropClient(client, "grace-expired", bufferedAmount);
+  return {
+    admit(client) {
+      const bufferedAmount =
+        options.getBufferedAmount?.(client) ?? client.bufferedAmount;
+      if (bufferedAmount > limits.hardLimitBytes) {
+        dropClient(client, "hard-limit", bufferedAmount);
+        return false;
       }
-      return false;
-    }
-    stalledSince.delete(client);
-    return true;
+      if (bufferedAmount > limits.softLimitBytes) {
+        const at = now();
+        const since = stalledSince.get(client);
+        if (since === undefined) {
+          stalledSince.set(client, at);
+        } else if (at - since >= limits.graceMs) {
+          dropClient(client, "grace-expired", bufferedAmount);
+          return false;
+        }
+        return true;
+      }
+      stalledSince.delete(client);
+      return true;
+    },
   };
+}
+
+export function createApiEventHub<Socket extends EventSocket>(options: {
+  state: EventHubState;
+  clients: Set<Socket>;
+  clientIds: WeakMap<Socket, string>;
+  activeConversations: WeakMap<Socket, string>;
+  reportSendError(error: unknown): void;
+  /** A host may queue delivery for current admission; counts mean accepted sends. */
+  sendMessage?(socket: Socket, message: string): boolean;
+  maxBufferedEvents?: number;
+  backpressure?: Partial<EventSocketBackpressure>;
+  /** Includes bytes waiting outside the transport, such as admission queues. */
+  getBufferedAmount?: (socket: Socket) => number;
+  /** Clock used for the grace period; injectable for deterministic tests. */
+  now?: () => number;
+}): ApiEventHub {
+  const backpressure = createEventSocketBackpressureGuard(options);
 
   const sendWhere = (
     payload: unknown,
@@ -133,10 +163,13 @@ export function createApiEventHub<Socket extends EventSocket>(options: {
     let delivered = 0;
     for (const client of [...options.clients]) {
       if (client.readyState !== 1 || !include(client)) continue;
-      if (!admit(client)) continue;
       try {
-        if (options.sendMessage) options.sendMessage(client, message);
-        else client.send(message);
+        if (options.sendMessage) {
+          if (!options.sendMessage(client, message)) continue;
+        } else {
+          if (!backpressure.admit(client)) continue;
+          client.send(message);
+        }
         delivered += 1;
       } catch (error) {
         options.reportSendError(error);

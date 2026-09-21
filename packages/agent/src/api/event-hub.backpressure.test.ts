@@ -2,10 +2,11 @@
  * Covers WebSocket fan-out backpressure and liveness in the API event hub. The
  * fan-out case runs a real `ws` server and two real `ws` clients over loopback,
  * one of which stops reading its socket: the server-side send buffer for it
- * must stay bounded, it must be terminated and unregistered, and the healthy
- * client must still receive every message. The buffer thresholds and the
- * ping/pong sweep are exercised deterministically against scripted sockets,
- * the sweep under fake timers.
+ * must stay bounded by the soft limit plus one grace window of traffic, it
+ * must be terminated and unregistered, and the healthy client must still
+ * receive every message. The buffer thresholds, the no-gap guarantee for a
+ * peer that survives a transient stall, and the ping/pong sweep are exercised
+ * deterministically against scripted sockets, the sweep under fake timers.
  */
 import { once } from "node:events";
 import type { Socket } from "node:net";
@@ -13,6 +14,7 @@ import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import {
   createApiEventHub,
+  createEventSocketBackpressureGuard,
   createEventSocketLivenessSweep,
   EVENT_SOCKET_BACKPRESSURE_GRACE_MS,
   EVENT_SOCKET_BACKPRESSURE_HARD_LIMIT_BYTES,
@@ -23,6 +25,18 @@ import {
 
 const BROADCASTS = 2000;
 const CHUNK_BYTES = 30 * 1024;
+/** Injected clock advance per broadcast in the real-socket case. */
+const CLOCK_STEP_MS = 100;
+/** JSON envelope plus WebSocket framing around one chunk, generously. */
+const FRAME_OVERHEAD_BYTES = 1024;
+/**
+ * Frames a stalled peer can still be handed after crossing the soft limit:
+ * the one that starts the stall clock, one per clock step until the grace
+ * period elapses, plus the frame that pushed it over the limit in the first
+ * place.
+ */
+const GRACE_WINDOW_FRAMES =
+  EVENT_SOCKET_BACKPRESSURE_GRACE_MS / CLOCK_STEP_MS + 2;
 
 async function waitFor(
   predicate: () => boolean,
@@ -162,14 +176,20 @@ describe("event hub backpressure", () => {
         maxHealthyBuffered,
         healthy.serverSide.bufferedAmount,
       );
-      clock += 100;
+      clock += CLOCK_STEP_MS;
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
 
-    // The stalled peer may be handed at most one message past the soft cap
-    // before the hub stops sending to it; the hard cap is never approached.
+    // The stalled peer keeps being sent every frame for one grace window after
+    // it crosses the soft cap, then is terminated; its queue therefore grows
+    // past the soft cap by at most that window's traffic and never approaches
+    // the hard cap.
+    expect(maxStalledBuffered).toBeGreaterThan(
+      EVENT_SOCKET_BACKPRESSURE_SOFT_LIMIT_BYTES,
+    );
     expect(maxStalledBuffered).toBeLessThan(
-      EVENT_SOCKET_BACKPRESSURE_SOFT_LIMIT_BYTES + 2 * CHUNK_BYTES,
+      EVENT_SOCKET_BACKPRESSURE_SOFT_LIMIT_BYTES +
+        GRACE_WINDOW_FRAMES * (CHUNK_BYTES + FRAME_OVERHEAD_BYTES),
     );
     expect(maxStalledBuffered).toBeLessThan(
       EVENT_SOCKET_BACKPRESSURE_HARD_LIMIT_BYTES,
@@ -191,7 +211,7 @@ describe("event hub backpressure", () => {
     expect(sendErrors).toEqual([]);
   });
 
-  it("skips a peer above the soft cap, terminates it after the grace period, and terminates a peer above the hard cap at once", () => {
+  it("keeps sending to a peer above the soft cap until the grace period expires and then terminates it, and terminates a peer above the hard cap at once", () => {
     let clock = 1_000;
     const draining = scriptedSocket(0);
     const slow = scriptedSocket(EVENT_SOCKET_BACKPRESSURE_SOFT_LIMIT_BYTES + 1);
@@ -212,7 +232,7 @@ describe("event hub backpressure", () => {
 
     hub.broadcast({ type: "first" });
     expect(draining.sent).toHaveLength(1);
-    expect(slow.sent).toHaveLength(0);
+    expect(slow.sent).toHaveLength(1);
     expect(slow.terminate).not.toHaveBeenCalled();
     expect(frozen.sent).toHaveLength(0);
     expect(frozen.terminate).toHaveBeenCalledTimes(1);
@@ -220,19 +240,20 @@ describe("event hub backpressure", () => {
 
     clock += EVENT_SOCKET_BACKPRESSURE_GRACE_MS - 1;
     hub.broadcast({ type: "second" });
-    expect(slow.sent).toHaveLength(0);
+    expect(slow.sent).toHaveLength(2);
     expect(slow.terminate).not.toHaveBeenCalled();
     expect(clients.has(slow)).toBe(true);
 
     clock += 1;
     hub.broadcast({ type: "third" });
+    expect(slow.sent).toHaveLength(2);
     expect(slow.terminate).toHaveBeenCalledTimes(1);
     expect(clients.has(slow)).toBe(false);
     expect(draining.sent).toHaveLength(3);
     expect(draining.terminate).not.toHaveBeenCalled();
   });
 
-  it("forgives a peer that drains back under the soft cap within the grace period", () => {
+  it("delivers every frame to a peer that goes above the soft cap and drains back within the grace period", () => {
     let clock = 0;
     const socket = scriptedSocket(
       EVENT_SOCKET_BACKPRESSURE_SOFT_LIMIT_BYTES + 1,
@@ -250,20 +271,96 @@ describe("event hub backpressure", () => {
     });
 
     expect(hub.sendToClient("nobody", { type: "ignored" })).toBe(0);
-    hub.broadcast({ type: "skipped" });
-    expect(socket.sent).toHaveLength(0);
+    hub.broadcast({ type: "over-soft-cap" });
+    expect(socket.sent).toHaveLength(1);
+    expect(socket.terminate).not.toHaveBeenCalled();
 
     socket.bufferedAmount = 0;
     clock += EVENT_SOCKET_BACKPRESSURE_GRACE_MS - 1;
-    hub.broadcast({ type: "delivered" });
-    expect(socket.sent).toHaveLength(1);
+    hub.broadcast({ type: "drained" });
+    expect(socket.sent).toHaveLength(2);
 
+    // Draining reset the stall clock, so re-crossing the soft cap long after
+    // the first stall starts a fresh grace period instead of expiring one.
     socket.bufferedAmount = EVENT_SOCKET_BACKPRESSURE_SOFT_LIMIT_BYTES + 1;
     clock += EVENT_SOCKET_BACKPRESSURE_GRACE_MS;
-    hub.broadcast({ type: "skipped-again" });
-    expect(socket.sent).toHaveLength(1);
+    hub.broadcast({ type: "over-soft-cap-again" });
+    expect(socket.sent).toHaveLength(3);
     expect(socket.terminate).not.toHaveBeenCalled();
     expect(clients.has(socket)).toBe(true);
+
+    clock += EVENT_SOCKET_BACKPRESSURE_GRACE_MS - 1;
+    hub.broadcast({ type: "still-within-grace" });
+    expect(socket.sent).toHaveLength(4);
+    expect(socket.terminate).not.toHaveBeenCalled();
+    expect(clients.has(socket)).toBe(true);
+    expect(socket.sent.map((frame) => JSON.parse(frame).type)).toEqual([
+      "over-soft-cap",
+      "drained",
+      "over-soft-cap-again",
+      "still-within-grace",
+    ]);
+  });
+
+  it("never resumes a peer terminated for grace expiry, even after it drains", () => {
+    let clock = 0;
+    const socket = scriptedSocket(
+      EVENT_SOCKET_BACKPRESSURE_SOFT_LIMIT_BYTES + 1,
+    );
+    const clients = new Set<ScriptedSocket>([socket]);
+    const clientIds = new WeakMap<ScriptedSocket, string>([
+      [socket, "client-1"],
+    ]);
+    const activeConversations = new WeakMap<ScriptedSocket, string>([
+      [socket, "conversation-1"],
+    ]);
+    const hub = createApiEventHub({
+      state: { eventBuffer: [], nextEventId: 1 },
+      clients,
+      clientIds,
+      activeConversations,
+      reportSendError: (error) => {
+        throw error;
+      },
+      now: () => clock,
+    });
+
+    expect(hub.sendToClient("client-1", { type: "before" })).toBe(1);
+    clock += EVENT_SOCKET_BACKPRESSURE_GRACE_MS;
+    expect(hub.sendToClient("client-1", { type: "expiry" })).toBe(0);
+    expect(socket.terminate).toHaveBeenCalledTimes(1);
+    expect(clients.has(socket)).toBe(false);
+
+    socket.bufferedAmount = 0;
+    clock += EVENT_SOCKET_BACKPRESSURE_GRACE_MS;
+    hub.broadcast({ type: "after-broadcast" });
+    expect(hub.sendToClient("client-1", { type: "after-client" })).toBe(0);
+    expect(
+      hub.sendToConversation("conversation-1", { type: "after-conversation" }),
+    ).toBe(0);
+    expect(socket.sent).toHaveLength(1);
+    expect(socket.terminate).toHaveBeenCalledTimes(1);
+    expect(clients.has(socket)).toBe(false);
+  });
+
+  it("counts frames queued outside the transport toward the same hard limit", () => {
+    const socket = scriptedSocket(1024);
+    const clients = new Set<ScriptedSocket>([socket]);
+    const admissionQueueBytes =
+      EVENT_SOCKET_BACKPRESSURE_HARD_LIMIT_BYTES - socket.bufferedAmount + 1;
+    const guard = createEventSocketBackpressureGuard({
+      clients,
+      clientIds: new WeakMap([[socket, "client-1"]]),
+      reportSendError: (error) => {
+        throw error;
+      },
+      getBufferedAmount: (candidate) =>
+        candidate.bufferedAmount + admissionQueueBytes,
+    });
+
+    expect(guard.admit(socket)).toBe(false);
+    expect(socket.terminate).toHaveBeenCalledTimes(1);
+    expect(clients.has(socket)).toBe(false);
   });
 
   it("pings tracked sockets every interval and terminates peers that did not answer", () => {
