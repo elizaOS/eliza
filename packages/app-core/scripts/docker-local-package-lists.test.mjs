@@ -1,69 +1,84 @@
-/**
- * Verifies the duplicated Docker package lists stay aligned without importing
- * the linker, whose module body mutates node_modules as a build side effect.
- */
-
-import { existsSync, readFileSync } from "node:fs";
+/** Tests manifest-driven Docker runtime closure with real isolated workspace manifests. */
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { collectDockerWorkspaceDirs } from "./collect-docker-runtime-deps.mjs";
 
-const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(scriptsDir, "..", "..", "..");
-
-function readStringArray(filePath, variableName) {
-  const source = readFileSync(filePath, "utf8");
-  const match = source.match(
-    new RegExp(`const ${variableName} = \\[([\\s\\S]*?)\\];`),
+const roots = [];
+function workspace(packages) {
+  const root = mkdtempSync(path.join(os.tmpdir(), "docker-closure-"));
+  roots.push(root);
+  writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({ workspaces: ["packages/*"] }),
   );
-  if (!match) {
-    throw new Error(`Could not find ${variableName} in ${filePath}`);
+  for (const [directory, manifest] of Object.entries(packages)) {
+    const dir = path.join(root, "packages", directory);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "package.json"), JSON.stringify(manifest));
   }
-  return [...match[1].matchAll(/^\s*"([^"]+)",?$/gm)].map((entry) => entry[1]);
+  return root;
 }
+afterEach(() => {
+  for (const root of roots.splice(0))
+    rmSync(root, { recursive: true, force: true });
+});
 
-const collectListPath = path.join(
-  scriptsDir,
-  "collect-docker-runtime-deps.mjs",
-);
-const linkListPath = path.join(
-  scriptsDir,
-  "link-docker-local-app-packages.mjs",
-);
+describe("Docker runtime dependency closure", () => {
+  it("includes transitive and cyclic runtime dependencies once, without development or optional dependencies", () => {
+    const root = workspace({
+      agent: {
+        name: "@elizaos/agent",
+        dependencies: { "@elizaos/sql": "workspace:*" },
+        devDependencies: { "dev-only": "workspace:*" },
+        optionalDependencies: { "optional-only": "workspace:*" },
+        peerDependencies: { "optional-peer": "workspace:*" },
+        peerDependenciesMeta: { "optional-peer": { optional: true } },
+      },
+      sql: {
+        name: "@elizaos/sql",
+        dependencies: { "@elizaos/retrieval": "workspace:*", pg: "8.23.0" },
+      },
+      retrieval: {
+        name: "@elizaos/retrieval",
+        dependencies: { "@elizaos/sql": "workspace:*" },
+      },
+    });
+    expect(
+      collectDockerWorkspaceDirs(root, ["packages/agent"]).map((dir) =>
+        path.relative(root, dir),
+      ),
+    ).toEqual(["packages/agent", "packages/sql", "packages/retrieval"]);
+  });
 
-function normalizedLinkedPackages() {
-  return readStringArray(linkListPath, "localPackages").map((entry) =>
-    entry.replace(/^eliza\//, ""),
-  );
-}
-
-describe("Docker local package lists", () => {
-  it("keeps collected runtime dependencies aligned with linked workspace packages", () => {
-    const collected = new Set(
-      readStringArray(collectListPath, "LINKED_WORKSPACE_PACKAGES"),
-    );
-    const linked = new Set(normalizedLinkedPackages());
-
-    expect([...collected].filter((entry) => !linked.has(entry)).sort()).toEqual(
-      ["packages/agent"],
-    );
-    expect([...linked].filter((entry) => !collected.has(entry)).sort()).toEqual(
-      ["packages/ui"],
+  it("fails with the owning consumer when a declared runtime workspace is absent", () => {
+    const root = workspace({
+      agent: {
+        name: "@elizaos/agent",
+        dependencies: { "@elizaos/missing": "workspace:*" },
+      },
+    });
+    expect(() => collectDockerWorkspaceDirs(root, ["packages/agent"])).toThrow(
+      "Missing runtime workspace @elizaos/missing required by @elizaos/agent",
     );
   });
 
-  it("only links scoped elizaOS packages into the local Docker image", () => {
-    for (const packagePath of normalizedLinkedPackages()) {
-      const packageJsonPath = path.join(repoRoot, packagePath, "package.json");
-      expect(
-        existsSync(packageJsonPath),
-        `${packagePath} must have a package.json`,
-      ).toBe(true);
-
-      const manifest = JSON.parse(readFileSync(packageJsonPath, "utf8"));
-      expect(manifest.name, `${packagePath} must be @elizaos-scoped`).toMatch(
-        /^@elizaos\//,
-      );
-    }
+  it("keeps UI linked without expanding its browser-only dependency tree", () => {
+    const root = workspace({
+      agent: {
+        name: "@elizaos/agent",
+        dependencies: { "@elizaos/ui": "workspace:*" },
+      },
+      ui: {
+        name: "@elizaos/ui",
+        dependencies: { "browser-only": "workspace:*" },
+      },
+    });
+    expect(
+      collectDockerWorkspaceDirs(root, ["packages/agent"]).map((dir) =>
+        path.relative(root, dir),
+      ),
+    ).toEqual(["packages/agent", "packages/ui"]);
   });
 });
