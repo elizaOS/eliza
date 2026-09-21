@@ -5,13 +5,13 @@
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { EmbeddingsResponse } from "@elizaos/cloud-sdk";
+import { BGE_SMALL_VECTOR_SPACE } from "@elizaos/common";
 import { APICallError } from "ai";
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as rateLimitActual from "@/lib/middleware/rate-limit";
-import * as languageModelActual from "@/lib/providers/language-model";
-import type { EmbeddingsResponse } from "@elizaos/cloud-sdk";
-import { BGE_SMALL_VECTOR_SPACE } from "@elizaos/core";
 import { createCloudflareEmbeddingModel } from "@/lib/providers/cloudflare-embeddings";
+import * as languageModelActual from "@/lib/providers/language-model";
 import * as aiBillingActual from "@/lib/services/ai-billing";
 import * as apiKeysActual from "@/lib/services/api-keys";
 import * as inferenceAuthActual from "@/lib/services/inference-auth-context";

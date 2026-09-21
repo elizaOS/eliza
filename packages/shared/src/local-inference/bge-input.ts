@@ -3,7 +3,7 @@
  * Keeping whole source words avoids converting a leading WordPiece continuation
  * into a different token when Cloudflare retokenizes its string input.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { BertNormalizer, Tokenizer } from "@huggingface/tokenizers";
 import tokenizerJson from "./bge/tokenizer.json" with { type: "json" };
 import tokenizerConfig from "./bge/tokenizer_config.json" with { type: "json" };

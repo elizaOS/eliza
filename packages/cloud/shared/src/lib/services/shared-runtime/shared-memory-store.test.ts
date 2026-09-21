@@ -6,7 +6,8 @@
  * repository's own unit and integration suites.
  */
 import { afterEach, describe, expect, test } from "bun:test";
-import { BGE_SMALL_VECTOR_SPACE, identifyEmbeddingVector, stringToUuid } from "@elizaos/core";
+import { BGE_SMALL_VECTOR_SPACE, identifyEmbeddingVector } from "@elizaos/common";
+import { stringToUuid } from "@elizaos/core";
 import type {
   InsertSharedAgentMemoryInput,
   MergeSharedAgentMessageMemoryInput,

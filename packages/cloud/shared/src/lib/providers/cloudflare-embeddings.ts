@@ -1,5 +1,5 @@
 /** Serves the canonical BGE CLS representation through Workers AI with the shared source-tail policy. */
-import { BGE_SMALL_VECTOR_SPACE, ElizaError } from "@elizaos/core";
+import { BGE_SMALL_VECTOR_SPACE, ElizaError } from "@elizaos/common";
 import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
 import { APICallError, type EmbeddingModel } from "ai";
 import { z } from "zod";

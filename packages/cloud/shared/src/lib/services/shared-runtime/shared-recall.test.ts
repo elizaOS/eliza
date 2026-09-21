@@ -8,8 +8,7 @@
  */
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { isElizaError } from "@elizaos/common";
-import { BGE_SMALL_VECTOR_SPACE, getEmbeddingVectorSpace } from "@elizaos/core";
+import { BGE_SMALL_VECTOR_SPACE, getEmbeddingVectorSpace, isElizaError } from "@elizaos/common";
 import {
   buildSharedRecallContext,
   embedTextsViaSidecar,
