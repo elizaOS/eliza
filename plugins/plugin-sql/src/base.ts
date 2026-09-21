@@ -5680,6 +5680,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         `;
       }
 
+      // A stable order is what makes LIMIT/OFFSET pages disjoint and complete;
+      // the heap order the query would otherwise follow moves on every UPDATE.
+      query = sql`${query} ORDER BY ${relationshipTable.createdAt}, ${relationshipTable.id}`;
+
       if (typeof limit === "number") {
         query = sql`${query} LIMIT ${limit}`;
       }
@@ -8034,10 +8038,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         inArray(roomTable.worldId, worldIds),
         eq(roomTable.agentId, this.agentId),
       ];
+      // LIMIT/OFFSET without ORDER BY walks the heap, whose order changes on any
+      // UPDATE, so consecutive pages could drop a row and serve another twice.
       let query = this.db
         .select()
         .from(roomTable)
-        .where(and(...conditions));
+        .where(and(...conditions))
+        .orderBy(asc(roomTable.createdAt), asc(roomTable.id));
       if (offset != null) {
         query = query.offset(offset) as typeof query;
       }
