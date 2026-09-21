@@ -663,3 +663,19 @@ passed. Full root verification is running in runtime/hydration-stop-root-verify.
 do not treat its result as passed until the command exits successfully. This
 confirms a real cancellation defect, not the causal explanation of the historical
 build-time delay. Further admission/recovery boundaries remain under review.
+
+
+## Action setup cancellation boundary
+
+The separate sendActionMessage path also awaited first-conversation creation
+before its stream controller existed. Two new tests failed before the correction:
+creation success dispatched after Stop; creation failure displayed an obsolete
+error after Stop. The same admission generation now guards both continuations.
+No protocol, prompt or model change. Four lifecycle/restoration suites pass181
+cases (runtime/stop-action-create-after.log); the two before failures are saved
+in runtime/stop-action-create-before.log. Focused Biome and diff checks pass.
+
+The full repository verification started for the earlier hydration change is
+still running. Because production code changed during that run, its result alone
+cannot certify this final action correction; a final verification invocation is
+required after it settles. Original demos remain untouched; no paid calls.
