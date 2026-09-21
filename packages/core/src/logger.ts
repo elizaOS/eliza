@@ -1,6 +1,3 @@
-import * as fs from "node:fs";
-import { hostname } from "node:os";
-import * as pathMod from "node:path";
 /**
  * elizaOS's standard structured logger, built on Adze. Exposes the `Logger`
  * interface and the `createLogger` factory (plus the default `logger` /
@@ -18,9 +15,14 @@ import * as pathMod from "node:path";
  * downstream scrubber. Keeps
  * an in-memory ring buffer with real-time listeners for WebSocket streaming,
  * and lazily opens optional file sinks (`output.log`, `prompts.log`,
- * `chat.log`, all 0600) with prompt/response/chat instrumentation helpers.
- * Node logging is synchronously available; file sinks open lazily.
+ * `chat.log`, all 0600) with prompt/response/chat instrumentation helpers;
+ * `LOG_LEVEL=silent` keeps every one of those sinks closed. Node logging is
+ * synchronously available; file sinks open lazily.
  */
+import * as fs from "node:fs";
+import { hostname } from "node:os";
+import * as pathMod from "node:path";
+
 // Leaf-only test access; excluded from the public runtime barrel.
 export const __loggerTestHooks = {
 	stripAnsi: (str: string): string => stripAnsi(str),
@@ -346,7 +348,11 @@ const effectiveLogLevel = resolveConfiguredLogLevel(
 	DEFAULT_LOG_LEVEL,
 	"LOG_LEVEL",
 );
-/** True when the configured level is `silent`: no sink receives anything. */
+/**
+ * True when the configured level is `silent`: no sink receives anything. It
+ * switches off the Adze console, the buffer filter, and the file sinks
+ * (`ensureFileLog` never opens output.log, prompts.log, or chat.log).
+ */
 const effectiveLogSilent = effectiveLogLevel === "silent";
 
 // Custom log levels mapping (elizaOS to Adze)
@@ -383,7 +389,7 @@ const serverId = getEnvironmentVar("SERVER_ID") || `process-${process.pid}`;
  * File logging - lazy-initialized on first write to avoid module-init timing issues.
  * Enable with LOG_FILE=true/1 (writes output.log, prompts.log, and chat.log in
  * cwd) or LOG_FILE=/path/to/file.log.
- * Disabled by default.
+ * Disabled by default, and always disabled under LOG_LEVEL=silent.
  */
 let _fileLogState: "pending" | "active" | "disabled" = "pending";
 let _fileLogFd: number | null = null;
@@ -432,13 +438,19 @@ function openLogFilePrivate(
 
 /**
  * Lazily open the log files on the first write.
- * Returns true if the files are ready for writing.
+ * Returns true if the files are ready for writing. Every file sink (output,
+ * prompt, and chat) is opened here and nowhere else, so this is the single
+ * gate for LOG_FILE and for the silent level.
  */
 function ensureFileLog(): boolean {
 	if (_fileLogState === "active") return true;
 	if (_fileLogState === "disabled") return false;
 
 	_fileLogState = "disabled";
+	// `silent` disables the file sinks too: logPrompt/logResponse/logChatIn/
+	// logChatOut bypass shouldLog, so gating here is what keeps prompts.log and
+	// chat.log from being created when LOG_FILE is set alongside silent.
+	if (effectiveLogSilent) return false;
 	try {
 		const logFileEnv = process.env.LOG_FILE;
 		if (
