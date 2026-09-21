@@ -96,8 +96,11 @@ establish that application billing and provisioning use the guard.
 The canonical `bge-small-en-v1.5` embedding route uses the request's Workers AI
 `AI` binding when present. Node hosts can configure `CLOUDFLARE_ACCOUNT_ID` and
 `CLOUDFLARE_EMBEDDING_API_TOKEN` for the same REST-backed representation. Both
-paths use CLS pooling, L2 normalization, 384 dimensions, and reject complete
-inputs over 512 tokens before dispatch. The Cloud API's Wrangler configuration
+paths use CLS pooling, L2 normalization, and 384 dimensions. Inputs that fit the
+512-token boundary remain unchanged; oversized inputs retain a token-verified
+suffix of complete source words before dispatch. Stored source text remains
+complete. An input whose tail cannot be represented as an unchanged source
+suffix is rejected explicitly. The Cloud API's Wrangler configuration
 binds AI in development, staging, and production. Deploy the API before clients
 that require its `embedding_space` response metadata.
 
