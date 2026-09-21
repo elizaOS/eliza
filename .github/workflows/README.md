@@ -208,7 +208,9 @@ that family runs, otherwise the Storybook catalog builder. Standalone UI fixture
 and Storybook calls retain their designated writer by default; Storybook manual
 dispatch exposes the same opt-out. A failed writer leaves a cold cache for later
 runs and still fails its normal required job. No consumer waits for cache
-publication. Other operating-system caches and Docker's separate cache key are
+publication. PR source smoke owns its Bun archive; the subscription authority
+PostgreSQL job restores without publishing, retaining its separate Turbo cache.
+Other operating-system caches and Docker's separate cache key are
 unchanged. Story shards serve the catalog artifact and disable Turbo caching
 because they do not execute Turbo tasks.
 

@@ -119,6 +119,7 @@ jobs:
 
       - uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "true"
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
@@ -361,6 +362,7 @@ jobs:
       - if: steps.authority-diff.outputs.run == 'true'
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
