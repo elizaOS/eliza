@@ -44,6 +44,7 @@ import {
   listAccounts,
   loadAccount,
   saveAccount,
+  updateAccountMetadata,
 } from "@elizaos/credentials/auth/account-storage";
 import { fetchCodexUsage } from "@elizaos/credentials/auth/codex-usage";
 import { getAccessToken } from "@elizaos/credentials/auth/credentials";
@@ -1539,19 +1540,28 @@ async function handlePatchAccount(
           }
       : {}),
   };
-  await pool.upsert(next);
-
   // Mirror label changes onto the on-disk credential so listAccounts()
   // and the runtime keep reading the same name.
   if (parsed.data.label !== undefined) {
     const accountProvider = asAccountCredentialProvider(providerId);
-    if (accountProvider) {
-      const record = loadAccount(accountProvider, accountId, storagePolicy);
-      if (record && record.label !== parsed.data.label) {
-        saveAccount({ ...record, label: parsed.data.label }, storagePolicy);
+    // External CLI accounts may intentionally have no imported credential.
+    if (
+      accountProvider &&
+      loadAccount(accountProvider, accountId, storagePolicy)
+    ) {
+      const outcome = updateAccountMetadata(
+        accountProvider,
+        accountId,
+        { label: parsed.data.label },
+        storagePolicy,
+      );
+      if (outcome.kind === "missing") {
+        error(res, "Account credentials were removed during the update", 404);
+        return true;
       }
     }
   }
+  await pool.upsert(next);
   if (parsed.data.enabled !== undefined || parsed.data.priority !== undefined) {
     await syncDirectProviderCredentials(ctx, providerId);
   }

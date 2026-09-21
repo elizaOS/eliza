@@ -18,6 +18,7 @@ import {
   preflightProviderAccountDeletions,
   saveAccount,
   touchAccount,
+  updateAccountCredentialsIfUnchanged,
 } from "./account-storage.ts";
 
 let stateRoot: string;
@@ -275,5 +276,127 @@ describe("encrypted at-rest storage", () => {
     expect(() => loadAccount("openai-codex", "replayed", policy)).toThrow(
       expect.objectContaining({ code: "AUTH_CREDENTIAL_RECORD_CORRUPT" }),
     );
+  });
+});
+
+describe("conditional credential update", () => {
+  it("updates only a record that still holds the expected credential generation", () => {
+    const policy = createIsolatedAccountStoragePolicy(stateRoot);
+    saveAccount(
+      {
+        ...record("account-1"),
+        email: "person@example.com",
+        credentials: {
+          access: "expired",
+          refresh: "old-family",
+          expires: 1,
+          idToken: "id-login",
+        },
+      },
+      policy,
+    );
+    const before = loadAccount("openai-codex", "account-1", policy);
+    if (!before) throw new Error("seeded account is missing");
+
+    const outcome = updateAccountCredentialsIfUnchanged(
+      "openai-codex",
+      "account-1",
+      before.credentialGeneration,
+      { access: "new", refresh: "old-family-rotated", expires: 2 },
+      policy,
+    );
+
+    expect(outcome.kind).toBe("updated");
+    const after = loadAccount("openai-codex", "account-1", policy);
+    expect(after).toMatchObject({
+      label: before.label,
+      source: before.source,
+      email: "person@example.com",
+      createdAt: before.createdAt,
+      credentials: {
+        access: "new",
+        refresh: "old-family-rotated",
+        expires: 2,
+        idToken: "id-login",
+      },
+    });
+    expect(after?.updatedAt).toBeGreaterThanOrEqual(before.updatedAt);
+  });
+
+  it("reports a deleted record as missing and never creates one", () => {
+    const policy = createIsolatedAccountStoragePolicy(stateRoot);
+    saveAccount(record("account-1"), policy);
+    const before = loadAccount("openai-codex", "account-1", policy);
+    if (!before) throw new Error("seeded account is missing");
+    deleteAccount("openai-codex", "account-1", policy);
+
+    const outcome = updateAccountCredentialsIfUnchanged(
+      "openai-codex",
+      "account-1",
+      before.credentialGeneration,
+      { access: "new", refresh: "rotated", expires: 2 },
+      policy,
+    );
+
+    expect(outcome).toEqual({ kind: "missing" });
+    expect(loadAccount("openai-codex", "account-1", policy)).toBeNull();
+    expect(listAccounts("openai-codex", policy)).toEqual([]);
+  });
+
+  it("reports a replaced refresh token as changed and keeps the newer record", () => {
+    const policy = createIsolatedAccountStoragePolicy(stateRoot);
+    saveAccount(record("account-1"), policy);
+    const before = loadAccount("openai-codex", "account-1", policy);
+    if (!before) throw new Error("seeded account is missing");
+    saveAccount(
+      {
+        ...record("account-1"),
+        credentials: { access: "fresh", refresh: "fresh-family", expires: 9 },
+      },
+      policy,
+    );
+
+    const outcome = updateAccountCredentialsIfUnchanged(
+      "openai-codex",
+      "account-1",
+      before.credentialGeneration,
+      { access: "stale", refresh: "stale-rotated", expires: 2 },
+      policy,
+    );
+
+    expect(outcome).toMatchObject({
+      kind: "changed",
+      record: {
+        credentials: { access: "fresh", refresh: "fresh-family", expires: 9 },
+      },
+    });
+    expect(
+      loadAccount("openai-codex", "account-1", policy)?.credentials,
+    ).toEqual({ access: "fresh", refresh: "fresh-family", expires: 9 });
+  });
+
+  it("rejects an empty expected storage generation before touching storage", () => {
+    const policy = createIsolatedAccountStoragePolicy(stateRoot);
+    saveAccount(record("account-1"), policy);
+
+    expect(() =>
+      updateAccountCredentialsIfUnchanged(
+        "openai-codex",
+        "account-1",
+        "",
+        { access: "new", refresh: "rotated", expires: 2 },
+        policy,
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        code: "AUTH_CREDENTIAL_UPDATE_EXPECTATION_INVALID",
+      }),
+    );
+    expect(
+      loadAccount("openai-codex", "account-1", policy)?.credentials,
+    ).toMatchObject({
+      access: "access-account-1",
+      refresh: "refresh-account-1",
+    });
   });
 });
