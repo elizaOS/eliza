@@ -7,6 +7,8 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
+import { CorruptAppMonetizationNumberError } from "@/lib/services/app-credit-math";
 
 const getTransactionByStripePaymentIntent = mock(
   async (): Promise<{
@@ -138,14 +140,13 @@ mock.module("@/lib/stripe", () => ({
     charges: { retrieve: retrieveCharge },
   }),
 }));
-mock.module("@/lib/utils/logger", () => ({
-  logger: {
-    debug: mock(() => undefined),
-    info: mock(() => undefined),
-    warn: mock(() => undefined),
-    error: mock(() => undefined),
-  },
-}));
+const logger = {
+  debug: mock(() => undefined),
+  info: mock(() => undefined),
+  warn: mock(() => undefined),
+  error: mock(() => undefined),
+};
+mock.module("@/lib/utils/logger", () => ({ logger }));
 
 const queueLists = new Map<string, string[]>();
 mock.module("@/lib/cache/client", () => ({
@@ -215,6 +216,10 @@ beforeEach(() => {
     id,
     invoice: null,
   }));
+  logger.debug.mockClear();
+  logger.info.mockClear();
+  logger.warn.mockClear();
+  logger.error.mockClear();
 });
 
 describe("STRIPE_MAX_CREDITS", () => {
@@ -831,47 +836,42 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
     expect(refundCredits).not.toHaveBeenCalled();
   });
 
-  test("acks a lookup whose error message is a permanent 'not found'", async () => {
-    getTransactionByStripePaymentIntent.mockRejectedValueOnce(
-      new Error("organization not found"),
-    );
-    expect(
-      await processStripeEvent(
-        delivery("charge.refunded", {
-          id: "ch_not_found",
-          invoice: null,
-          amount_refunded: 100,
-          payment_intent: "pi_missing_org",
-        }),
-      ),
-    ).toBe("ack");
+  test("retries a lookup whose error message looks permanent but is untyped", async () => {
+    for (const message of [
+      "organization not found",
+      "Invalid grant row",
+      "charge already processed",
+    ]) {
+      getTransactionByStripePaymentIntent.mockRejectedValueOnce(
+        new Error(message),
+      );
+      expect(
+        await processStripeEvent(
+          delivery("charge.refunded", {
+            id: "ch_untyped",
+            invoice: null,
+            amount_refunded: 100,
+            payment_intent: "pi_untyped",
+          }),
+        ),
+      ).toBe("retry");
+    }
   });
 
-  test("acks a lookup whose error message contains Invalid or already processed", async () => {
+  test("acks a non-paid event only for an allowlisted ElizaError code", async () => {
     getTransactionByStripePaymentIntent.mockRejectedValueOnce(
-      new Error("Invalid grant row"),
+      new ElizaError("App not found: app-1", {
+        code: "APP_NOT_FOUND",
+        context: { appId: "app-1" },
+      }),
     );
     expect(
       await processStripeEvent(
         delivery("charge.refunded", {
-          id: "ch_invalid",
+          id: "ch_typed",
           invoice: null,
           amount_refunded: 100,
-          payment_intent: "pi_invalid",
-        }),
-      ),
-    ).toBe("ack");
-
-    getTransactionByStripePaymentIntent.mockRejectedValueOnce(
-      new Error("charge already processed"),
-    );
-    expect(
-      await processStripeEvent(
-        delivery("charge.refunded", {
-          id: "ch_processed",
-          invoice: null,
-          amount_refunded: 100,
-          payment_intent: "pi_processed",
+          payment_intent: "pi_typed",
         }),
       ),
     ).toBe("ack");
@@ -909,6 +909,165 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
         }),
       ),
     ).toBe("retry");
+  });
+});
+
+function miniAppPaidCheckout(overrides?: {
+  paymentIntentId?: string;
+  appId?: string;
+  organizationId?: string;
+}) {
+  const paymentIntentId = overrides?.paymentIntentId ?? "pi_deleted_app";
+  return delivery("checkout.session.completed", {
+    id: "cs_deleted_app",
+    payment_status: "paid",
+    payment_intent: paymentIntentId,
+    amount_total: 1000,
+    currency: "usd",
+    customer: "cus_1",
+    metadata: {
+      type: "app_credit_purchase",
+      source: "miniapp_app",
+      organization_id: overrides?.organizationId ?? "org-1",
+      user_id: "user-1",
+      app_id: overrides?.appId ?? "app-deleted",
+      charge_request_id: "cr-1",
+      credits: "10.00",
+    },
+  });
+}
+
+describe("processStripeEvent paid-event classification", () => {
+  test("dlqs a paid checkout when the app is gone", async () => {
+    processPurchase.mockRejectedValueOnce(
+      new ElizaError("App not found: app-deleted", {
+        code: "APP_NOT_FOUND",
+        context: { appId: "app-deleted" },
+      }),
+    );
+    expect(await processStripeEvent(miniAppPaidCheckout())).toBe("dlq");
+    expect(addCredits).not.toHaveBeenCalled();
+    expect(createInvoice).not.toHaveBeenCalled();
+    expect(markPaid).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("cannot complete; sending to DLQ"),
+      expect.objectContaining({
+        paymentIntentId: "pi_deleted_app",
+        organizationId: "org-1",
+        amount: "10.00",
+        appId: "app-deleted",
+        code: "APP_NOT_FOUND",
+      }),
+    );
+  });
+
+  test("dlqs a paid payment_intent.succeeded for an allowlisted code", async () => {
+    addCredits.mockRejectedValueOnce(
+      new ElizaError("App not found: app-deleted", {
+        code: "APP_NOT_FOUND",
+        context: { appId: "app-deleted" },
+      }),
+    );
+    expect(
+      await processStripeEvent(
+        delivery("payment_intent.succeeded", {
+          id: "pi_deleted_app",
+          invoice: null,
+          amount: 1000,
+          amount_received: 1000,
+          currency: "usd",
+          customer: "cus_1",
+          metadata: {
+            type: "one_time",
+            organization_id: "org-1",
+            credits: "10.00",
+          },
+        }),
+      ),
+    ).toBe("dlq");
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("cannot complete; sending to DLQ"),
+      expect.objectContaining({
+        paymentIntentId: "pi_deleted_app",
+        organizationId: "org-1",
+        amount: "10.00",
+        code: "APP_NOT_FOUND",
+      }),
+    );
+  });
+
+  test("does not ack a paid checkout on an English 'not found' substring", async () => {
+    processPurchase.mockRejectedValueOnce(
+      new Error("Charge request not found"),
+    );
+    expect(await processStripeEvent(miniAppPaidCheckout())).toBe("retry");
+    expect(markPaid).not.toHaveBeenCalled();
+  });
+
+  test("dlqs a paid checkout for a missing charge request ElizaError", async () => {
+    markPaid.mockRejectedValueOnce(
+      new ElizaError("Charge request not found", {
+        code: "APP_CHARGE_REQUEST_NOT_FOUND",
+        context: { chargeRequestId: "cr-1" },
+      }),
+    );
+    expect(await processStripeEvent(miniAppPaidCheckout())).toBe("dlq");
+    expect(processPurchase).toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("cannot complete; sending to DLQ"),
+      expect.objectContaining({
+        paymentIntentId: "pi_deleted_app",
+        organizationId: "org-1",
+        amount: "10.00",
+        code: "APP_CHARGE_REQUEST_NOT_FOUND",
+      }),
+    );
+  });
+
+  test("dlqs a paid checkout when app monetization numbers are corrupt", async () => {
+    processPurchase.mockRejectedValueOnce(
+      new CorruptAppMonetizationNumberError("creditsToAdd", undefined),
+    );
+    expect(await processStripeEvent(miniAppPaidCheckout())).toBe("dlq");
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("cannot complete; sending to DLQ"),
+      expect.objectContaining({
+        paymentIntentId: "pi_deleted_app",
+        code: "CORRUPT_APP_MONETIZATION_NUMBER",
+      }),
+    );
+  });
+
+  test("retries a paid checkout on a transient failure", async () => {
+    processPurchase.mockRejectedValueOnce(new Error("connection timed out"));
+    expect(await processStripeEvent(miniAppPaidCheckout())).toBe("retry");
+  });
+
+  test("the real queue sends a deleted-app paid checkout straight to DLQ", async () => {
+    queueLists.clear();
+    processPurchase.mockRejectedValue(
+      new ElizaError("App not found: app-deleted", {
+        code: "APP_NOT_FOUND",
+        context: { appId: "app-deleted" },
+      }),
+    );
+    const input = miniAppPaidCheckout();
+    await enqueue("stripe-events", input.body);
+    const stats = await drain("stripe-events", processStripeEvent, {
+      max: 5,
+      maxAttempts: 5,
+    });
+    expect(stats).toEqual({
+      attempted: 1,
+      acked: 0,
+      retried: 0,
+      dlqed: 1,
+      failed: 0,
+    });
+    expect(queueLists.get("stripe-events")).toEqual([]);
+    expect(queueLists.get("stripe-events:dlq")).toHaveLength(1);
+    expect(addCredits).not.toHaveBeenCalled();
+    expect(createInvoice).not.toHaveBeenCalled();
   });
 });
 

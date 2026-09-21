@@ -528,7 +528,10 @@ export class AppCreditsService {
       ? (await transaction.select().from(apps).where(eq(apps.id, appId)).limit(1))[0]
       : await appsRepository.findById(appId);
     if (!app) {
-      throw new Error(`App not found: ${appId}`);
+      throw new ElizaError(`App not found: ${appId}`, {
+        code: "APP_NOT_FOUND",
+        context: { appId },
+      });
     }
 
     if (stripePaymentIntentId) {

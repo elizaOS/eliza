@@ -20,15 +20,19 @@
  *     attempt got partway through.
  *
  * Failure handling:
- *   - Permanent failures (bad metadata, missing required fields) ack the
- *     message — there is no recovery path and we do not want them eating
- *     retry budget.
- *   - Transient failures (DB error, downstream timeout, etc.) return
- *     `retry`. After the retry budget is exhausted, the Redis queue helper
- *     promotes the message to stripe-events:dlq for manual reconciliation.
+ *   - Typed permanent failures (ElizaError.code allowlist or
+ *     CorruptAppMonetizationNumberError) are classified without guessing
+ *     English substrings.
+ *   - Paid fulfillment events (checkout.session.completed with
+ *     payment_status paid, payment_intent.succeeded) never ack on error:
+ *     typed permanent failures return `dlq`; everything else retries.
+ *   - Non-paid typed permanent failures ack so they do not eat retry
+ *     budget. Transient failures return `retry` until the Redis helper
+ *     promotes the message to stripe-events:dlq.
  */
 
 import { createHmac } from "node:crypto";
+import { isElizaError } from "@elizaos/core";
 import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
 import { dbRead } from "@/db/helpers";
@@ -40,6 +44,7 @@ import type { DrainResult } from "@/lib/queue/redis-queue";
 import { safeFetch } from "@/lib/security/safe-fetch";
 import { appChargeCallbacksService } from "@/lib/services/app-charge-callbacks";
 import { appChargeSettlementService } from "@/lib/services/app-charge-settlement";
+import { CorruptAppMonetizationNumberError } from "@/lib/services/app-credit-math";
 import { appCreditsService } from "@/lib/services/app-credits";
 import { autoTopUpService } from "@/lib/services/auto-top-up";
 import { creditsService } from "@/lib/services/credits";
@@ -105,6 +110,76 @@ function formatCreditMicros(value: bigint): string {
   const whole = absolute / 1_000_000n;
   const fraction = (absolute % 1_000_000n).toString().padStart(6, "0");
   return `${value < 0n ? "-" : ""}${whole}.${fraction}`;
+}
+
+/** Typed failures that cannot complete by retrying the same payload. */
+const STRIPE_QUEUE_PERMANENT_ERROR_CODES = new Set([
+  "APP_NOT_FOUND",
+  "APP_CHARGE_REQUEST_NOT_FOUND",
+  "APP_CHARGE_REQUEST_MISMATCH",
+  "APP_CHARGE_ALREADY_SETTLED",
+  "INVALID_APP_CHARGE_STATUS",
+  "INVALID_APP_CHARGE_SETTLEMENT_AMOUNT",
+]);
+
+function stripeQueueFailureCode(error: unknown): string | undefined {
+  if (isElizaError(error)) return error.code;
+  if (error instanceof CorruptAppMonetizationNumberError) {
+    return "CORRUPT_APP_MONETIZATION_NUMBER";
+  }
+  return undefined;
+}
+
+function isStripeQueuePermanentFailure(error: unknown): boolean {
+  if (error instanceof CorruptAppMonetizationNumberError) return true;
+  return (
+    isElizaError(error) && STRIPE_QUEUE_PERMANENT_ERROR_CODES.has(error.code)
+  );
+}
+
+function isPaidFulfillmentEvent(event: Stripe.Event): boolean {
+  if (event.type === "payment_intent.succeeded") return true;
+  if (event.type !== "checkout.session.completed") return false;
+  const session = event.data.object as Stripe.Checkout.Session;
+  return session.payment_status === "paid";
+}
+
+function paidFulfillmentLogContext(
+  event: Stripe.Event,
+): Record<string, unknown> {
+  const object = event.data.object as {
+    id?: string;
+    metadata?: Stripe.Metadata | null;
+    amount?: number;
+    amount_received?: number;
+    amount_total?: number | null;
+    payment_intent?: string | Stripe.PaymentIntent | null;
+  };
+  const metadata = object.metadata ?? {};
+  const paymentIntentId =
+    event.type === "payment_intent.succeeded"
+      ? object.id
+      : typeof object.payment_intent === "string"
+        ? object.payment_intent
+        : object.payment_intent?.id;
+  const amountFromMetadata = metadata.credits || metadata.amount;
+  const amountFromStripe =
+    typeof object.amount_total === "number"
+      ? object.amount_total / 100
+      : typeof object.amount_received === "number"
+        ? object.amount_received / 100
+        : typeof object.amount === "number"
+          ? object.amount / 100
+          : undefined;
+  return {
+    eventId: event.id,
+    eventType: event.type,
+    paymentIntentId,
+    organizationId: metadata.organization_id,
+    amount: amountFromMetadata || amountFromStripe,
+    appId: metadata.app_id,
+    chargeRequestId: metadata.charge_request_id,
+  };
 }
 
 function minBigInt(left: bigint, right: bigint): bigint {
@@ -312,21 +387,41 @@ export async function processStripeEvent(
     }
     return "ack";
   } catch (error) {
+    // error-policy:J1 Queue boundary classifies typed permanent failures; paid
+    // fulfillment never acks without a completion record.
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
+    const code = stripeQueueFailureCode(error);
+    const permanent = isStripeQueuePermanentFailure(error);
+    const paid = isPaidFulfillmentEvent(event);
 
-    // Permanent errors: bad data we cannot recover by retrying. Ack so
-    // the DLQ does not collect noise from poisonous metadata.
-    const isPermanentError =
-      error instanceof Error &&
-      (error.message.includes("not found") ||
-        error.message.includes("Invalid") ||
-        error.message.includes("already processed"));
+    if (paid) {
+      if (permanent) {
+        logger.error(
+          `[Stripe Queue] Paid event ${event.type} (${event.id}) cannot complete; sending to DLQ`,
+          {
+            ...paidFulfillmentLogContext(event),
+            code,
+            error: errorMessage,
+          },
+        );
+        return "dlq";
+      }
+      logger.error(
+        `[Stripe Queue] Transient failure for ${event.type} (${event.id}); retrying`,
+        {
+          ...paidFulfillmentLogContext(event),
+          error: errorMessage,
+          attempts: delivery.attempts,
+        },
+      );
+      return "retry";
+    }
 
-    if (isPermanentError) {
+    if (permanent) {
       logger.warn(
         `[Stripe Queue] Permanent failure for ${event.type} (${event.id}); acking to skip retries`,
-        { error: errorMessage },
+        { error: errorMessage, code },
       );
       return "ack";
     }
