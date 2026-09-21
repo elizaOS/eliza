@@ -43,6 +43,13 @@
       "when": 1787752800000,
       "tag": "0005_connector_account_external_role",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789968000000,
+      "tag": "0006_entity_merge_candidates_pending_pair",
+      "breakpoints": true
     }
   ]
 }

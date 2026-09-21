@@ -2633,50 +2633,74 @@ export class RelationshipsService extends Service {
     }
     // entity_a is the *surviving* entity. Order is intentional and not
     // normalized — the caller picks the canonical side, and acceptMerge
-    // folds entity_b into entity_a. A second identical pending proposal
-    // returns the existing row instead of inserting a duplicate.
-    const existing = await this.execSql(
-      `SELECT id
-			 FROM entity_merge_candidates
-			 WHERE agent_id = ${sqlQuote(this.runtime.agentId)}
-				AND entity_a = ${sqlQuote(entityA)}
-				AND entity_b = ${sqlQuote(entityB)}
-				AND status = 'pending'
-			 ORDER BY proposed_at ASC
-			 LIMIT 1`,
-    );
-    const existingId = existing.rows[0]?.id;
-    if (typeof existingId === "string" && existingId.length > 0) {
-      return asUUID(existingId);
-    }
+    // folds entity_b into entity_a. The pending-pair unique index makes
+    // concurrent identical proposals converge on one row.
     const evidenceLiteral = sqlJsonbLiteral(evidence);
     const confidence = clampConfidence(
       typeof evidence.confidence === "number" ? evidence.confidence : 1,
     );
-    const result = await this.execSql(
-      `INSERT INTO entity_merge_candidates (
-				agent_id, entity_a, entity_b, confidence, evidence, status
-			) VALUES (
-				${sqlQuote(this.runtime.agentId)},
-				${sqlQuote(entityA)},
-				${sqlQuote(entityB)},
-				${confidence},
-				${evidenceLiteral},
-				'pending'
-			) RETURNING id`,
+    const agent = sqlQuote(this.runtime.agentId);
+    const a = sqlQuote(entityA);
+    const b = sqlQuote(entityB);
+    let inserted: { rows: Record<string, unknown>[] };
+    try {
+      inserted = await this.execSql(
+        `INSERT INTO entity_merge_candidates (
+					agent_id, entity_a, entity_b, confidence, evidence, status
+				) VALUES (
+					${agent},
+					${a},
+					${b},
+					${confidence},
+					${evidenceLiteral},
+					'pending'
+				)
+				ON CONFLICT (agent_id, entity_a, entity_b) WHERE (status = 'pending')
+				DO NOTHING
+				RETURNING id`,
+      );
+    } catch (error) {
+      // error-policy:J3 unique-index races or older catalogs without the
+      // partial unique index still resolve to the existing pending row.
+      inserted = { rows: [] };
+      logger.debug(
+        {
+          src: "service:relationships",
+          error,
+          entityA,
+          entityB,
+        },
+        "proposeMerge insert collided; reading the pending pair",
+      );
+    }
+    const insertedId = inserted.rows[0]?.id;
+    if (typeof insertedId === "string" && insertedId.length > 0) {
+      logger.info(
+        `[RelationshipsService] Proposed merge candidate ${insertedId} (${entityA} <-> ${entityB})`,
+      );
+      this.graphServiceInstance = null;
+      return asUUID(insertedId);
+    }
+    const existing = await this.execSql(
+      `SELECT id
+			 FROM entity_merge_candidates
+			 WHERE agent_id = ${agent}
+				AND entity_a = ${a}
+				AND entity_b = ${b}
+				AND status = 'pending'
+			 ORDER BY proposed_at ASC, id ASC
+			 LIMIT 1`,
     );
-    const row = result.rows[0];
-    const id = row?.id;
-    if (typeof id !== "string") {
+    const existingId = existing.rows[0]?.id;
+    if (typeof existingId !== "string" || existingId.length === 0) {
       throw new Error(
         "[RelationshipsService] proposeMerge: insert did not return an id",
       );
     }
     logger.info(
-      `[RelationshipsService] Proposed merge candidate ${id} (${entityA} <-> ${entityB})`,
+      `[RelationshipsService] Reused pending merge candidate ${existingId} (${entityA} <-> ${entityB})`,
     );
-    this.graphServiceInstance = null;
-    return asUUID(id);
+    return asUUID(existingId);
   }
 
   async getCandidateMerges(): Promise<MergeCandidateRecord[]> {
@@ -2700,34 +2724,44 @@ export class RelationshipsService extends Service {
    * resolved instead of receiving a fabricated fresh acceptance.
    */
   async acceptMerge(candidateId: UUID): Promise<void> {
-    const result = await this.execSql(
-      `SELECT id, entity_a, entity_b, confidence, evidence, status,
-				proposed_at, resolved_at
-			 FROM entity_merge_candidates
-			 WHERE id = ${sqlQuote(candidateId)}
-				AND agent_id = ${sqlQuote(this.runtime.agentId)}
-			 LIMIT 1`,
-    );
-    const row = result.rows[0];
-    if (!row) {
-      throw mergeCandidateNotFoundError(candidateId);
-    }
-    const candidate = parseMergeCandidateRow(row);
-    if (candidate.status !== "pending") {
-      throw mergeCandidateAlreadyResolvedError(candidateId, candidate.status);
-    }
-
-    // Move identities + relationships from B into A, dedupe via the unique
-    // constraint, then collapse the secondary contact (if any). PGlite's
-    // prepared-statement protocol disallows multi-statement queries, so we
-    // issue each step as its own execute() inside an explicit transaction.
-    const a = sqlQuote(candidate.entityA);
-    const b = sqlQuote(candidate.entityB);
-    const agent = sqlQuote(this.runtime.agentId);
+    // Claim the pending row before folding identities so a concurrent
+    // reject cannot relabel the candidate while the graph is mid-merge.
     const candidateLiteral = sqlQuote(candidateId);
+    const agent = sqlQuote(this.runtime.agentId);
+    let candidate: MergeCandidateRecord;
 
     await this.execSql("BEGIN");
     try {
+      const claimed = await this.execSql(
+        `UPDATE entity_merge_candidates
+				 SET status = 'accepted', resolved_at = now()
+				 WHERE id = ${candidateLiteral}
+					AND agent_id = ${agent}
+					AND status = 'pending'
+				 RETURNING id, entity_a, entity_b, confidence, evidence, status,
+					proposed_at, resolved_at`,
+      );
+      const claimedRow = claimed.rows[0];
+      if (!claimedRow) {
+        await this.execSql("ROLLBACK");
+        const existing = await this.execSql(
+          `SELECT status
+					 FROM entity_merge_candidates
+					 WHERE id = ${candidateLiteral} AND agent_id = ${agent}
+					 LIMIT 1`,
+        );
+        const existingRow = existing.rows[0];
+        if (!existingRow) {
+          throw mergeCandidateNotFoundError(candidateId);
+        }
+        throw mergeCandidateAlreadyResolvedError(
+          candidateId,
+          normalizeMergeCandidateStatus(existingRow.status),
+        );
+      }
+      candidate = parseMergeCandidateRow(claimedRow);
+      const a = sqlQuote(candidate.entityA);
+      const b = sqlQuote(candidate.entityB);
       const originalIdentities = (
         await this.execSql(
           `SELECT * FROM entity_identities WHERE agent_id = ${agent} AND entity_id IN (${a}, ${b}) ORDER BY id FOR UPDATE`,
@@ -2793,11 +2827,6 @@ export class RelationshipsService extends Service {
           ),
         );
       }
-      await this.execSql(
-        `UPDATE entity_merge_candidates
-				 SET status = 'accepted', resolved_at = now()
-				 WHERE id = ${candidateLiteral}`,
-      );
       await this.execSql("COMMIT");
     } catch (err) {
       try {

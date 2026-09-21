@@ -37,7 +37,10 @@ async function createIdentityTables(client: PGlite): Promise<void> {
 		id uuid PRIMARY KEY DEFAULT gen_random_uuid(),agent_id uuid NOT NULL,
 		entity_a uuid NOT NULL,entity_b uuid NOT NULL,confidence real NOT NULL,
 		evidence jsonb,status text NOT NULL,proposed_at timestamptz DEFAULT now(),resolved_at timestamptz
-	)`);
+	);
+	CREATE UNIQUE INDEX uniq_entity_merge_candidates_pending_pair
+		ON entity_merge_candidates (agent_id, entity_a, entity_b)
+		WHERE status = 'pending'`);
 }
 
 async function candidateStatus(
@@ -197,6 +200,19 @@ describe("RelationshipsService merge candidate status guards", () => {
       platform: "github",
       handle: "example-again",
     });
+    expect(second).toBe(first);
+    const pending = await client.query<{ count: string }>(
+      "SELECT count(*)::text AS count FROM entity_merge_candidates WHERE agent_id = $1 AND status = 'pending'",
+      [AGENT],
+    );
+    expect(pending.rows[0]?.count).toBe("1");
+  });
+
+  it("proposeMerge returns one id for concurrent identical pairs", async () => {
+    const [first, second] = await Promise.all([
+      service.proposeMerge(PRIMARY, SECONDARY, { notes: "a" }),
+      service.proposeMerge(PRIMARY, SECONDARY, { notes: "b" }),
+    ]);
     expect(second).toBe(first);
     const pending = await client.query<{ count: string }>(
       "SELECT count(*)::text AS count FROM entity_merge_candidates WHERE agent_id = $1 AND status = 'pending'",

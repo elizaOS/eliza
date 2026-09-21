@@ -21,6 +21,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
@@ -91,6 +92,9 @@ export const entityMergeCandidateTable = pgTable(
   (table) => [
     index("idx_entity_merge_candidates_status").on(table.status),
     index("idx_entity_merge_candidates_pair").on(table.entityA, table.entityB),
+    uniqueIndex("uniq_entity_merge_candidates_pending_pair")
+      .on(table.agentId, table.entityA, table.entityB)
+      .where(sql`${table.status} = 'pending'`),
     foreignKey({
       name: "fk_entity_merge_candidates_a",
       columns: [table.entityA],
