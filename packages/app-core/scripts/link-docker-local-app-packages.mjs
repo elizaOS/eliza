@@ -293,15 +293,6 @@ function resolveDependencyPackageDir(packageName, baseDirs = [repoRoot]) {
   );
 }
 
-function resolveRootPackageDir(packageName) {
-  return resolveDependencyPackageDir(packageName);
-}
-
-function linkRootDependency({ packageName, target }) {
-  const packageDir = resolveRootPackageDir(packageName);
-  linkDependencyPackage({ packageDir, target });
-}
-
 function linkDependencyPackage({ packageDir, target }) {
   if (path.resolve(packageDir) === path.resolve(target)) {
     return;
@@ -387,38 +378,6 @@ for (const packagePath of localPackages) {
       target,
     });
     linked += 1;
-  }
-
-  if (pkg.name === "@elizaos/plugin-sql") {
-    const pluginSqlRootDeps = [
-      "@electric-sql/pglite",
-      "@neondatabase/serverless",
-      "dotenv",
-      "drizzle-orm",
-      "pg",
-      "uuid",
-      "ws",
-    ];
-    for (const rootDep of pluginSqlRootDeps) {
-      linkRootDependency({
-        packageName: rootDep,
-        target: path.join(packageDir, "node_modules", rootDep),
-      });
-      linkRootDependency({
-        packageName: rootDep,
-        target: path.join(packageDir, "typescript", "node_modules", rootDep),
-      });
-      // Also ensure root-level node_modules has it so ESM resolution always
-      // finds the package regardless of which symlink depth Node traverses.
-      try {
-        linkRootDependency({
-          packageName: rootDep,
-          target: path.join(repoRoot, "node_modules", rootDep),
-        });
-      } catch {
-        // Not all deps may be installed; non-fatal.
-      }
-    }
   }
 
   if (pkg.name === "@elizaos/app-core") {
