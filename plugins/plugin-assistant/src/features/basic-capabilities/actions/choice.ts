@@ -1,3 +1,4 @@
+/** Dispatches pending task choices after admission checks, while allowing cancellation of invalid tasks. */
 import type {
   Action,
   ActionExample,
@@ -8,7 +9,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 
 function _readChoiceParameters(
   message: Memory,
@@ -243,6 +244,13 @@ export const choiceAction: Action = {
           },
           success: true,
         };
+      }
+      if (selectedTask.scheduleError !== undefined) {
+        throw new ElizaError(selectedTask.scheduleError, {
+          code: "TASK_SCHEDULE_INVALID",
+          context: { taskId: selectedTaskId, field: "metadata.scheduledAt" },
+          severity: "fatal",
+        });
       }
       const taskWorker = runtime.getTaskWorker(selectedTask.name);
       if (taskWorker) {
