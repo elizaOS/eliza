@@ -1,4 +1,4 @@
 /** Re-export shim: the selection-retry feedback prompt template from prompts.ts. */
-import { feedbackTemplate } from "../prompts.js";
+import { feedbackTemplate } from "@elizaos/shared/mcp/prompts";
 
 export { feedbackTemplate };
