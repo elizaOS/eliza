@@ -84,7 +84,9 @@ export async function handleCommandsRoutes(
   // Prefer an explicit ?view= (the client knows what it is rendering), else fall
   // back to the agent's server-side current view.
   const activeViewId =
-    url.searchParams.get("view") ?? getCurrentViewState()?.viewId ?? null;
+    url.searchParams.get("view") ??
+    (runtime ? getCurrentViewState(runtime)?.viewId : null) ??
+    null;
 
   // Absent `?surface=` defaults to the web composer's surface (its historical
   // consumer); an explicit surface filters to exactly that surface's commands.

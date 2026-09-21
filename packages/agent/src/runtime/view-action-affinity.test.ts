@@ -8,8 +8,11 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  closeRuntimeViewRegistry,
+  getView,
   registerBuiltinViews,
   registerPluginViews,
   unregisterPluginViews,
@@ -37,8 +40,16 @@ const AWARE_VIEW = {
 
 const AFFINITY_TEST_PLUGIN = "@test/view-action-affinity";
 
+let runtime: AgentRuntime;
+let scope: { hostKey: object; clientId: string };
+
 beforeEach(async () => {
-  await registerPluginViews({
+  runtime = new AgentRuntime({
+    character: createCharacter({ name: "Affinity" }),
+    enableAutonomy: false,
+  });
+  scope = { hostKey: {}, clientId: "shell-1" };
+  await registerPluginViews(runtime, {
     name: AFFINITY_TEST_PLUGIN,
     description: "Synthetic view action affinity fixtures.",
     views: [
@@ -90,22 +101,26 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  clearActiveViewContext();
-  unregisterPluginViews(AFFINITY_TEST_PLUGIN);
+  clearActiveViewContext(runtime, scope);
+  closeRuntimeViewRegistry(runtime);
 });
 
 describe("view-action-affinity", () => {
   it("stores and clears the active view", () => {
-    expect(getActiveViewContext()).toBeNull();
-    setActiveViewContext({
-      viewId: "wallet",
-      viewLabel: "Wallet",
-      viewType: "gui",
-      viewPath: "/wallet",
-    });
-    expect(getActiveViewContext()?.viewId).toBe("wallet");
-    clearActiveViewContext();
-    expect(getActiveViewContext()).toBeNull();
+    expect(getActiveViewContext(runtime, scope)).toBeNull();
+    setActiveViewContext(
+      runtime,
+      {
+        viewId: "wallet",
+        viewLabel: "Wallet",
+        viewType: "gui",
+        viewPath: "/wallet",
+      },
+      scope,
+    );
+    expect(getActiveViewContext(runtime, scope)?.viewId).toBe("wallet");
+    clearActiveViewContext(runtime, scope);
+    expect(getActiveViewContext(runtime, scope)).toBeNull();
   });
 
   it("preserves element snapshot on same-viewId re-publish without elements (#17918)", () => {
@@ -119,77 +134,111 @@ describe("view-action-affinity", () => {
       },
       { id: "save-ledger", role: "button", label: "Save ledger" },
     ] as const;
-    setActiveViewContext({
-      viewId: "scenario-active-ledger",
-      viewLabel: "Scenario Active Ledger",
-      viewType: "gui",
-      viewPath: "/scenario/active-ledger",
-      elements,
-      clientId: "shell-1",
-    });
+    setActiveViewContext(
+      runtime,
+      {
+        viewId: "scenario-active-ledger",
+        viewLabel: "Scenario Active Ledger",
+        viewType: "gui",
+        viewPath: "/scenario/active-ledger",
+        elements,
+        clientId: "shell-1",
+      },
+      scope,
+    );
     // Navigate route re-publishes the same view with no elements field.
-    setActiveViewContext({
-      viewId: "scenario-active-ledger",
-      viewLabel: "Scenario Active Ledger",
-      viewType: "gui",
-      viewPath: "/scenario/active-ledger",
-      switchedAt: new Date().toISOString(),
-      source: "user",
-    });
-    const ctx = getActiveViewContext();
+    setActiveViewContext(
+      runtime,
+      {
+        viewId: "scenario-active-ledger",
+        viewLabel: "Scenario Active Ledger",
+        viewType: "gui",
+        viewPath: "/scenario/active-ledger",
+        switchedAt: new Date().toISOString(),
+        source: "user",
+      },
+      scope,
+    );
+    const ctx = getActiveViewContext(runtime, scope);
     expect(ctx?.viewId).toBe("scenario-active-ledger");
     expect(ctx?.elements).toEqual(elements);
     expect(ctx?.clientId).toBe("shell-1");
     // Explicit elements on same viewId still replace the snapshot.
-    setActiveViewContext({
-      viewId: "scenario-active-ledger",
-      viewLabel: "Scenario Active Ledger",
-      viewType: "gui",
-      viewPath: "/scenario/active-ledger",
-      elements: [{ id: "only", role: "button", label: "Only" }],
-    });
-    expect(getActiveViewContext()?.elements).toEqual([
+    setActiveViewContext(
+      runtime,
+      {
+        viewId: "scenario-active-ledger",
+        viewLabel: "Scenario Active Ledger",
+        viewType: "gui",
+        viewPath: "/scenario/active-ledger",
+        elements: [{ id: "only", role: "button", label: "Only" }],
+      },
+      scope,
+    );
+    expect(getActiveViewContext(runtime, scope)?.elements).toEqual([
       { id: "only", role: "button", label: "Only" },
     ]);
     // Different viewId drops the prior snapshot.
-    setActiveViewContext({
-      viewId: "wallet",
-      viewLabel: "Wallet",
-      viewType: "gui",
-      viewPath: "/wallet",
-    });
-    expect(getActiveViewContext()?.elements).toBeUndefined();
+    setActiveViewContext(
+      runtime,
+      {
+        viewId: "wallet",
+        viewLabel: "Wallet",
+        viewType: "gui",
+        viewPath: "/wallet",
+      },
+      scope,
+    );
+    expect(getActiveViewContext(runtime, scope)?.elements).toBeUndefined();
   });
 
   it("resolves scoped action names from the map", () => {
-    expect(viewScopedActionNames("training")).toEqual(new Set(["RUNTIME"]));
-    expect(viewScopedActionNames("orchestrator")).toEqual(new Set(["TASKS"]));
-    expect(viewScopedActionNames("a-view-with-no-actions").size).toBe(0);
-    expect(viewScopedActionNames(null).size).toBe(0);
-    expect(viewScopedActionNames(undefined).size).toBe(0);
+    expect(viewScopedActionNames(runtime, "training")).toEqual(
+      new Set(["RUNTIME"]),
+    );
+    expect(viewScopedActionNames(runtime, "orchestrator")).toEqual(
+      new Set(["TASKS"]),
+    );
+    expect(viewScopedActionNames(runtime, "a-view-with-no-actions").size).toBe(
+      0,
+    );
+    expect(viewScopedActionNames(runtime, null).size).toBe(0);
+    expect(viewScopedActionNames(runtime, undefined).size).toBe(0);
   });
 
   it("covers the major plugin views (expanded map)", () => {
     // Wallet and trading surfaces boost their plugin actions.
-    expect(viewScopedActionNames("wallet").has("EVM_SWAP")).toBe(true);
-    expect(viewScopedActionNames("wallet").has("SOLANA_TRANSFER")).toBe(true);
-    expect(viewScopedActionNames("steward").has("WALLET")).toBe(true);
+    expect(viewScopedActionNames(runtime, "wallet").has("EVM_SWAP")).toBe(true);
+    expect(
+      viewScopedActionNames(runtime, "wallet").has("SOLANA_TRANSFER"),
+    ).toBe(true);
+    expect(viewScopedActionNames(runtime, "steward").has("WALLET")).toBe(true);
   });
 
   it("emphasizes each LifeOps/utility view's own domain actions", () => {
-    expect(viewScopedActionNames("calendar").has("CALENDAR")).toBe(true);
-    expect(viewScopedActionNames("health").has("OWNER_HEALTH")).toBe(true);
-    expect(viewScopedActionNames("todos").has("OWNER_TODOS")).toBe(true);
-    expect(viewScopedActionNames("goals").has("OWNER_GOALS")).toBe(true);
-    expect(viewScopedActionNames("finances").has("OWNER_FINANCES")).toBe(true);
-    expect(viewScopedActionNames("lifeops").has("PERSONAL_ASSISTANT")).toBe(
+    expect(viewScopedActionNames(runtime, "calendar").has("CALENDAR")).toBe(
       true,
     );
+    expect(viewScopedActionNames(runtime, "health").has("OWNER_HEALTH")).toBe(
+      true,
+    );
+    expect(viewScopedActionNames(runtime, "todos").has("OWNER_TODOS")).toBe(
+      true,
+    );
+    expect(viewScopedActionNames(runtime, "goals").has("OWNER_GOALS")).toBe(
+      true,
+    );
+    expect(
+      viewScopedActionNames(runtime, "finances").has("OWNER_FINANCES"),
+    ).toBe(true);
+    expect(
+      viewScopedActionNames(runtime, "lifeops").has("PERSONAL_ASSISTANT"),
+    ).toBe(true);
   });
 
   it("flags drift when a mapped action is not registered", () => {
     const warnings: string[] = [];
-    validateViewActionMap(["REPLY", "TASKS"], {
+    validateViewActionMap(runtime, ["REPLY", "TASKS"], {
       warn: (m) => warnings.push(m),
     });
     // RUNTIME is mapped but not in the registered list → should warn.
@@ -204,7 +253,7 @@ describe("view-action-affinity", () => {
     // Register nothing → every mapped action is "missing". Deployments without
     // the optional wallet/polymarket/… plugins hit this shape at boot; the
     // detector must not flood the log with one warn per (view, action) pair.
-    validateViewActionMap([], {
+    validateViewActionMap(runtime, [], {
       warn: (m) => warnings.push(m),
       debug: (m) => debugs.push(m),
     });
@@ -215,7 +264,7 @@ describe("view-action-affinity", () => {
     expect(warnings[0]).toContain("wallet: WALLET, EVM_SWAP");
     expect(warnings[0]).toContain("plugins not loaded in this config");
     // Per-action detail is preserved at debug level.
-    const totalMapped = Object.values(viewActionAffinityMap()).reduce(
+    const totalMapped = Object.values(viewActionAffinityMap(runtime)).reduce(
       (n, a) => n + a.length,
       0,
     );
@@ -225,30 +274,32 @@ describe("view-action-affinity", () => {
 
   it("aggregated warn works when the logger has no debug method", () => {
     const warnings: string[] = [];
-    validateViewActionMap([], { warn: (m) => warnings.push(m) });
+    validateViewActionMap(runtime, [], { warn: (m) => warnings.push(m) });
     expect(warnings).toHaveLength(1);
   });
 
   it("does not warn when every mapped action is registered", () => {
     const allMapped = new Set<string>();
-    for (const actions of Object.values(viewActionAffinityMap())) {
+    for (const actions of Object.values(viewActionAffinityMap(runtime))) {
       for (const a of actions) allMapped.add(a);
     }
     const warnings: string[] = [];
-    validateViewActionMap([...allMapped], { warn: (m) => warnings.push(m) });
+    validateViewActionMap(runtime, [...allMapped], {
+      warn: (m) => warnings.push(m),
+    });
     expect(warnings).toHaveLength(0);
   });
 
   it("keeps missing optional alternatives at debug when a view remains actionable", () => {
     const allMapped = new Set<string>();
-    for (const actions of Object.values(viewActionAffinityMap())) {
+    for (const actions of Object.values(viewActionAffinityMap(runtime))) {
       for (const action of actions) allMapped.add(action);
     }
     allMapped.delete("OWNER_SCREENTIME");
     const warnings: string[] = [];
     const debugs: string[] = [];
 
-    validateViewActionMap([...allMapped], {
+    validateViewActionMap(runtime, [...allMapped], {
       warn: (message) => warnings.push(message),
       debug: (message) => debugs.push(message),
     });
@@ -266,17 +317,26 @@ describe("view-action-affinity", () => {
     // was deleted; both built-in views declare relatedActions: ["RUNTIME"] in
     // builtin-views.ts, so once registered the derived map (and the scoped-name
     // resolver the planner reads) must still yield RUNTIME — no behavior change.
-    registerBuiltinViews();
-    const map = viewActionAffinityMap();
+    const runtime = new AgentRuntime({
+      character: createCharacter({ name: "Builtin affinity" }),
+      enableAutonomy: false,
+    });
+    registerBuiltinViews(runtime);
+    const map = viewActionAffinityMap(runtime);
     expect(map["plugins-page"]).toContain("RUNTIME");
     expect(map.settings).toContain("RUNTIME");
-    expect(viewScopedActionNames("plugins-page").has("RUNTIME")).toBe(true);
-    expect(viewScopedActionNames("settings").has("RUNTIME")).toBe(true);
+    expect(viewScopedActionNames(runtime, "plugins-page").has("RUNTIME")).toBe(
+      true,
+    );
+    expect(viewScopedActionNames(runtime, "settings").has("RUNTIME")).toBe(
+      true,
+    );
   });
 
   it("validateViewCoverage warns for a registered view with no affinity and no capabilities", () => {
     const warnings: string[] = [];
     const uncovered = validateViewCoverage(
+      runtime,
       ["wallet", "screenshare", "feed"],
       ["feed"], // feed declares ViewCapability → covered
       { warn: (m) => warnings.push(m) },
@@ -288,7 +348,7 @@ describe("view-action-affinity", () => {
   });
 
   it("renders an awareness block describing the active view", () => {
-    const block = renderActiveViewContextBlock({
+    const block = renderActiveViewContextBlock(runtime, {
       viewId: "wallet",
       viewLabel: "Wallet",
       viewType: "gui",
@@ -303,13 +363,55 @@ describe("view-action-affinity", () => {
     expect(block).toContain("EVM_SWAP");
   });
 
+  it("renders action hints only for the foreground modality", async () => {
+    const installation = await registerPluginViews(runtime, {
+      name: "@test/modality-hints",
+      description: "Distinct modality operations",
+      views: (["gui", "tui"] as const).map((viewType) => ({
+        id: "modal-hints",
+        label: "Modality hints",
+        viewType,
+        relatedActions: [`${viewType.toUpperCase()}_RELATED`],
+        scopedActions: [
+          {
+            name: `${viewType.toUpperCase()}_NAMED`,
+            description: `${viewType} operation`,
+            steps: [{ kind: "agent-click" as const, target: "save" }],
+          },
+        ],
+      })),
+    });
+    try {
+      const block = renderActiveViewContextBlock(runtime, {
+        viewId: "modal-hints",
+        viewLabel: "Modality hints",
+        viewType: "tui",
+        viewPath: "/modal-hints",
+      });
+      expect(block).toContain("TUI_RELATED");
+      expect(block).toContain("TUI_NAMED");
+      expect(block).not.toContain("GUI_RELATED");
+      expect(block).not.toContain("GUI_NAMED");
+      const missing = renderActiveViewContextBlock(runtime, {
+        viewId: "modal-hints",
+        viewLabel: "Modality hints",
+        viewType: "xr",
+        viewPath: null,
+      });
+      expect(missing).not.toContain("GUI_RELATED");
+      expect(missing).not.toContain("GUI_NAMED");
+    } finally {
+      unregisterPluginViews(runtime, installation);
+    }
+  });
+
   it("surfaces a view's named scopedActions in the awareness block (#13589)", async () => {
     // A view that declares scopedActions (gated named actions) → the awareness
     // block names them so the planner knows what it can invoke while here.
     const SCOPED_PLUGIN = "@test/view-scoped-named";
     // Unique view id — the beforeEach fixture already owns "wallet", and the
     // registry's conflict guard keeps the first registration for a shared id.
-    await registerPluginViews({
+    const installation = await registerPluginViews(runtime, {
       name: SCOPED_PLUGIN,
       description: "Scoped named action fixture.",
       views: [
@@ -327,13 +429,13 @@ describe("view-action-affinity", () => {
       ],
     });
     try {
-      expect(viewScopedNamedActions("scoped-wallet")).toEqual([
+      expect(viewScopedNamedActions(runtime, "scoped-wallet")).toEqual([
         {
           name: "VIEW_WALLET_SWAP_TOKENS",
           description: "Swap tokens using the wallet view controls",
         },
       ]);
-      const block = renderActiveViewContextBlock({
+      const block = renderActiveViewContextBlock(runtime, {
         viewId: "scoped-wallet",
         viewLabel: "Scoped Wallet",
         viewType: "gui",
@@ -342,7 +444,7 @@ describe("view-action-affinity", () => {
       expect(block).toContain("Named actions this view exposes only while");
       expect(block).toContain("VIEW_WALLET_SWAP_TOKENS: Swap tokens");
     } finally {
-      unregisterPluginViews(SCOPED_PLUGIN);
+      unregisterPluginViews(runtime, installation);
     }
   });
 
@@ -354,7 +456,7 @@ describe("view-action-affinity", () => {
       viewPath: "/wallet",
     };
     // Fresh agent-initiated switch → acknowledgement line present.
-    const fresh = renderActiveViewContextBlock({
+    const fresh = renderActiveViewContextBlock(runtime, {
       ...base,
       switchedAt: new Date().toISOString(),
       source: "agent",
@@ -363,7 +465,7 @@ describe("view-action-affinity", () => {
     expect(fresh).toContain("(you navigated here)");
 
     // Fresh user-initiated switch → acknowledged, without the "you navigated" note.
-    const userFresh = renderActiveViewContextBlock({
+    const userFresh = renderActiveViewContextBlock(runtime, {
       ...base,
       switchedAt: new Date().toISOString(),
       source: "user",
@@ -372,7 +474,7 @@ describe("view-action-affinity", () => {
     expect(userFresh).not.toContain("(you navigated here)");
 
     // Stale switch (older than the freshness window) → no acknowledgement.
-    const stale = renderActiveViewContextBlock({
+    const stale = renderActiveViewContextBlock(runtime, {
       ...base,
       switchedAt: new Date(Date.now() - 20_000).toISOString(),
       source: "agent",
@@ -380,7 +482,7 @@ describe("view-action-affinity", () => {
     expect(stale).not.toContain("just switched into this view");
 
     // No switchedAt (sitting on the view) → no acknowledgement.
-    expect(renderActiveViewContextBlock(base)).not.toContain(
+    expect(renderActiveViewContextBlock(runtime, base)).not.toContain(
       "just switched into this view",
     );
   });
@@ -395,33 +497,46 @@ describe("active-view element snapshot", () => {
   };
 
   it("only accepts elements for the active view (gates stale reports)", () => {
-    setActiveViewContext(VIEW);
+    setActiveViewContext(
+      runtime,
+      { ...VIEW, installationId: getView(runtime, "wallet")!.installationId },
+      scope,
+    );
     // A background/stale view's report is dropped.
     expect(
-      setActiveViewElements("some-other-view", [
-        { id: "x", role: "button", label: "X" },
-      ]),
+      setActiveViewElements(
+        runtime,
+        getView(runtime, "orchestrator")!,
+        [{ id: "x", role: "button", label: "X" }],
+        scope,
+      ),
     ).toBe(false);
-    expect(getActiveViewContext()?.elements).toBeUndefined();
+    expect(getActiveViewContext(runtime, scope)?.elements).toBeUndefined();
     // The active view's report sticks.
     expect(
-      setActiveViewElements("wallet", [
-        { id: "send", role: "button", label: "Send" },
-      ]),
+      setActiveViewElements(
+        runtime,
+        getView(runtime, "wallet")!,
+        [{ id: "send", role: "button", label: "Send" }],
+        scope,
+      ),
     ).toBe(true);
-    expect(getActiveViewContext()?.elements).toHaveLength(1);
+    expect(getActiveViewContext(runtime, scope)?.elements).toHaveLength(1);
   });
 
   it("no-ops when no view is active", () => {
     expect(
-      setActiveViewElements("wallet", [
-        { id: "send", role: "button", label: "Send" },
-      ]),
+      setActiveViewElements(
+        runtime,
+        getView(runtime, "wallet")!,
+        [{ id: "send", role: "button", label: "Send" }],
+        scope,
+      ),
     ).toBe(false);
   });
 
   it("renders elements into the awareness block, focused-first, by id", () => {
-    const block = renderActiveViewContextBlock({
+    const block = renderActiveViewContextBlock(runtime, {
       ...VIEW,
       elements: [
         { id: "amount", role: "text-input", label: "Amount", value: "5" },
@@ -439,7 +554,7 @@ describe("active-view element snapshot", () => {
   });
 
   it("does not describe hidden registered controls as currently visible", () => {
-    const block = renderActiveViewContextBlock({
+    const block = renderActiveViewContextBlock(runtime, {
       ...VIEW,
       elements: [
         {
@@ -466,13 +581,16 @@ describe("active-view element snapshot", () => {
       role: "button",
       label: `E${i}`,
     }));
-    const block = renderActiveViewContextBlock({ ...VIEW, elements: many });
+    const block = renderActiveViewContextBlock(runtime, {
+      ...VIEW,
+      elements: many,
+    });
     expect(block).toContain(`- el-${many.length - 1} [button]`);
     expect(block).not.toContain("more — call list-elements");
   });
 
   it("omits the elements section when none are reported", () => {
-    const block = renderActiveViewContextBlock(VIEW);
+    const block = renderActiveViewContextBlock(runtime, VIEW);
     expect(block).not.toContain("Addressable elements currently in this view");
   });
 });
@@ -487,7 +605,9 @@ describe("view related action names resolve to declared actions in source", () =
 
   it("all related actions are declared somewhere in source", () => {
     const names = [
-      ...new Set(Object.values(viewActionAffinityMap()).flatMap((a) => [...a])),
+      ...new Set(
+        Object.values(viewActionAffinityMap(runtime)).flatMap((a) => [...a]),
+      ),
     ];
     const escaped = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     let out = "";
@@ -541,7 +661,7 @@ describe("applyActiveViewAwareness", () => {
   const PROMPT = "intro text\n\n# Available Actions\n- REPLY: respond\n";
 
   it("injects the awareness block just before # Available Actions", () => {
-    const out = applyActiveViewAwareness(PROMPT, AWARE_VIEW);
+    const out = applyActiveViewAwareness(runtime, PROMPT, AWARE_VIEW);
     expect(out).toContain("# Active View");
     expect(out.indexOf("# Active View")).toBeLessThan(
       out.indexOf("# Available Actions"),
@@ -552,12 +672,12 @@ describe("applyActiveViewAwareness", () => {
   });
 
   it("is a no-op when no view is active", () => {
-    expect(applyActiveViewAwareness(PROMPT, null)).toBe(PROMPT);
+    expect(applyActiveViewAwareness(runtime, PROMPT, null)).toBe(PROMPT);
   });
 
   it("is idempotent (fresh block replaces any prior block)", () => {
-    const once = applyActiveViewAwareness(PROMPT, AWARE_VIEW);
-    const twice = applyActiveViewAwareness(once, AWARE_VIEW);
+    const once = applyActiveViewAwareness(runtime, PROMPT, AWARE_VIEW);
+    const twice = applyActiveViewAwareness(runtime, once, AWARE_VIEW);
     // Strip+reinject is content-stable for the same view snapshot.
     expect(twice.replace(/\n+/g, "\n")).toBe(once.replace(/\n+/g, "\n"));
     expect(twice.match(/# Active View/g)?.length).toBe(1);
@@ -570,7 +690,7 @@ describe("applyActiveViewAwareness", () => {
     };
     const incomplete =
       "intro text\n\n# Active View\nThe user is looking at a view with no elements section.\n\n# Available Actions\n- REPLY: respond\n";
-    const out = applyActiveViewAwareness(incomplete, withElements);
+    const out = applyActiveViewAwareness(runtime, incomplete, withElements);
     expect(out).toContain("# Active View");
     expect(out).toContain("Addressable elements currently in this view");
     expect(out).toContain("save-ledger [button]");
@@ -580,7 +700,7 @@ describe("applyActiveViewAwareness", () => {
   });
 
   it("prepends when there is no actions header", () => {
-    const out = applyActiveViewAwareness("just a prompt", AWARE_VIEW);
+    const out = applyActiveViewAwareness(runtime, "just a prompt", AWARE_VIEW);
     expect(out.startsWith("# Active View")).toBe(true);
     expect(out).toContain("just a prompt");
   });

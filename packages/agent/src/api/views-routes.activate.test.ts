@@ -1,3 +1,11 @@
+import { AgentRuntime, createCharacter } from "@elizaos/core";
+import { closeRuntimeViewRegistry } from "./view-installations.ts";
+import { closeViewInteractionHost } from "./view-interaction-host.ts";
+
+let runtime: AgentRuntime;
+let hostKey: object;
+let scope: { hostKey: object; clientId: string };
+
 /**
  * Unit test for POST /api/views/:id/activate. Contract: `{ elementId }` resolves
  * the element against the active-view snapshot (for context) and dispatches the
@@ -13,9 +21,9 @@ import {
   setActiveViewElements,
 } from "../runtime/view-action-affinity.ts";
 import {
+  getView,
   registerBuiltinViews,
   registerPluginViews,
-  unregisterPluginViews,
 } from "./views-registry.ts";
 import {
   clearCurrentViewState,
@@ -38,12 +46,14 @@ function makeCtx(
   const req = Readable.from(
     body === null ? [] : [Buffer.from(JSON.stringify(body))],
   ) as unknown as http.IncomingMessage;
-  req.headers = {};
+  req.headers = { "x-elizaos-client-id": scope.clientId };
   const res = {} as http.ServerResponse;
   const json = vi.fn();
   const error = vi.fn();
   const broadcastWs = vi.fn();
   const ctx: ViewsRouteContext = {
+    runtime,
+    hostKey,
     req,
     res,
     method,
@@ -65,10 +75,17 @@ describe("POST /api/views/:id/activate", () => {
   );
 
   beforeEach(async () => {
-    registerBuiltinViews();
-    clearCurrentViewState();
+    runtime = new AgentRuntime({
+      character: createCharacter({ name: "Activate" }),
+      enableAutonomy: false,
+    });
+    hostKey = {};
+    scope = { hostKey, clientId: "activate-client" };
+    registerBuiltinViews(runtime);
+    clearCurrentViewState(runtime, scope);
     serverInteract.mockClear();
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "Synthetic activate test plugin.",
@@ -85,28 +102,38 @@ describe("POST /api/views/:id/activate", () => {
           },
         ],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
   });
 
   afterEach(() => {
-    clearCurrentViewState();
-    unregisterPluginViews(TEST_PLUGIN);
+    closeRuntimeViewRegistry(runtime);
+    closeViewInteractionHost(hostKey);
+    clearCurrentViewState(runtime, scope);
     vi.restoreAllMocks();
   });
 
   it("dispatches CLICK_ELEMENT for the element and echoes the resolved element", async () => {
     // Mark the view active + report its element snapshot so the route resolves
     // the element for context.
-    setActiveViewContext({
-      viewId: "approve",
-      viewLabel: "Approve",
-      viewType: "tui",
-      viewPath: "/approve",
-    });
-    setActiveViewElements("approve", [
-      { id: "send-it", role: "button", label: "Send it" },
-    ]);
+    setActiveViewContext(
+      runtime,
+      {
+        viewId: "approve",
+        viewLabel: "Approve",
+        viewType: "gui",
+        installationId: getView(runtime, "approve", { viewType: "gui" })!
+          .installationId,
+        viewPath: "/approve",
+      },
+      scope,
+    );
+    setActiveViewElements(
+      runtime,
+      getView(runtime, "approve", { viewType: "gui" })!,
+      [{ id: "send-it", role: "button", label: "Send it" }],
+      scope,
+    );
 
     const { ctx, json, broadcastWs } = makeCtx(
       "POST",

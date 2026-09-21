@@ -3,7 +3,7 @@
  * @vitest-environment jsdom
  */
 
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAppShellPage } from "../app-shell-registry";
 import { resetUiRegistryHostForTests } from "../registry-host";
@@ -25,6 +25,11 @@ const { authorityState, client, fetchWithCsrf, getFrontendPlatform } =
     return {
       authorityState,
       client: {
+        fetch: vi.fn(async (_path: string, _init?: RequestInit) => ({
+          claimId: "native-execution-claim",
+        })),
+        sendWsMessage: vi.fn(),
+        clientId: "native-client",
         getBaseUrl: vi.fn(() => ""),
         onBaseUrlChange: vi.fn((onChange: () => void) => {
           authorityState.listeners.add(onChange);
@@ -76,6 +81,8 @@ describe("useAvailableViews", () => {
     __resetResourceCache();
     authorityState.listeners.clear();
     client.getBaseUrl.mockReturnValue("");
+    client.fetch.mockClear();
+    client.sendWsMessage.mockClear();
     fetchWithCsrf.mockReset();
     getFrontendPlatform.mockReset();
     getFrontendPlatform.mockReturnValue("desktop");
@@ -212,6 +219,7 @@ describe("useAvailableViews", () => {
           view("calendar", {
             path: "/calendar",
             bundleUrl: "/api/views/calendar/bundle.js",
+            installationId: "calendar-installation",
           }),
         ],
       }),
@@ -228,6 +236,7 @@ describe("useAvailableViews", () => {
         id: "calendar",
         path: "/calendar",
         pluginName: "@elizaos/plugin-calendar",
+        installationId: "calendar-installation",
       }),
     );
     expect(calendar?.bundleUrl).toBeUndefined();
@@ -235,6 +244,186 @@ describe("useAvailableViews", () => {
       headers: { "X-Eliza-Platform": "android" },
     });
   });
+
+  it.each(["ios", "android"])(
+    "binds signed native controls to the current runtime installation on %s",
+    async (platform) => {
+      const { ShellViewAgentSurface } = await import(
+        "../components/views/ShellViewAgentSurface"
+      );
+      const { AgentButton } = await import("../agent-surface");
+      const { dispatchViewInteract } = await import(
+        "../components/views/view-interact-registry"
+      );
+      getFrontendPlatform.mockReturnValue(platform);
+      const effect = vi.fn();
+      const NativeCalendar = () => (
+        <AgentButton agentId="native-save" onClick={effect}>
+          Save
+        </AgentButton>
+      );
+      registerAppShellPage({
+        id: "calendar",
+        pluginId: "@elizaos/plugin-calendar",
+        label: "Calendar",
+        path: "/calendar",
+        Component: NativeCalendar,
+      });
+      const catalog = (installationId: string) =>
+        response(200, {
+          views: [
+            view("calendar", {
+              installationId,
+              path: "/calendar",
+              bundleUrl: "/api/views/calendar/bundle.js",
+              frameUrl: "/api/views/calendar/frame.html",
+            }),
+          ],
+        });
+      fetchWithCsrf.mockResolvedValue(catalog("native-old"));
+      const { result, unmount } = renderHook(() => useAvailableViews());
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      const mounted = render(
+        <ShellViewAgentSurface viewId="calendar">
+          <NativeCalendar />
+        </ShellViewAgentSurface>,
+      );
+      try {
+        const current = () =>
+          result.current.views.find((entry) => entry.id === "calendar");
+        expect(current()).toMatchObject({
+          installationId: "native-old",
+          available: true,
+        });
+        expect(current()?.bundleUrl).toBeUndefined();
+        expect(current()?.frameUrl).toBeUndefined();
+        await dispatchViewInteract(
+          "calendar",
+          "gui",
+          "agent-click",
+          { id: "native-save" },
+          `${platform}-first`,
+          "native-old",
+        );
+        expect(effect).toHaveBeenCalledTimes(1);
+        fetchWithCsrf.mockResolvedValue(catalog("native-new"));
+        await act(async () => {
+          await result.current.refresh();
+        });
+        await waitFor(() =>
+          expect(current()?.installationId).toBe("native-new"),
+        );
+        await dispatchViewInteract(
+          "calendar",
+          "gui",
+          "agent-click",
+          { id: "native-save" },
+          `${platform}-retired`,
+          "native-old",
+        );
+        expect(effect).toHaveBeenCalledTimes(1);
+        await dispatchViewInteract(
+          "calendar",
+          "gui",
+          "agent-click",
+          { id: "native-save" },
+          `${platform}-current`,
+          "native-new",
+        );
+        expect(effect).toHaveBeenCalledTimes(2);
+        expect(client.fetch).toHaveBeenCalledTimes(2);
+        expect(client.sendWsMessage).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            installationId: "native-new",
+            success: true,
+          }),
+        );
+      } finally {
+        mounted.unmount();
+        unmount();
+      }
+    },
+  );
+
+  it.each(["ios", "android"])(
+    "reports only current native installation controls on %s",
+    async (platform) => {
+      const { ShellViewAgentSurface } = await import(
+        "../components/views/ShellViewAgentSurface"
+      );
+      const { AgentButton, getViewRegistry } = await import("../agent-surface");
+      getFrontendPlatform.mockReturnValue(platform);
+      const NativeCalendar = () => (
+        <AgentButton agentId="native-save">Save</AgentButton>
+      );
+      registerAppShellPage({
+        id: "calendar",
+        pluginId: "@elizaos/plugin-calendar",
+        label: "Calendar",
+        path: "/calendar",
+        Component: NativeCalendar,
+      });
+      const catalog = (installationId: string) =>
+        response(200, {
+          views: [
+            view("calendar", {
+              installationId,
+              path: "/calendar",
+              bundleUrl: "/api/views/calendar/bundle.js",
+            }),
+          ],
+        });
+      fetchWithCsrf.mockResolvedValue(catalog("report-old"));
+      const hook = renderHook(() => useAvailableViews());
+      await waitFor(() => expect(hook.result.current.loading).toBe(false));
+      vi.stubEnv("NODE_ENV", "production");
+      vi.useFakeTimers();
+      const mounted = render(
+        <ShellViewAgentSurface viewId="calendar">
+          <NativeCalendar />
+        </ShellViewAgentSurface>,
+      );
+      try {
+        const oldRegistry = getViewRegistry("calendar", "gui", "report-old");
+        expect(oldRegistry).toBeDefined();
+        fetchWithCsrf.mockResolvedValue(catalog("report-new"));
+        await act(async () => {
+          await hook.result.current.refresh();
+        });
+        expect(
+          hook.result.current.views.find((entry) => entry.id === "calendar")
+            ?.installationId,
+        ).toBe("report-new");
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(500);
+        });
+        const reports = () =>
+          client.fetch.mock.calls
+            .filter(([path]) => path === "/api/views/calendar/elements")
+            .map(([, init]) => JSON.parse(String(init?.body)));
+        expect(reports()).toEqual([
+          expect.objectContaining({
+            installationId: "report-new",
+            clientId: "native-client",
+            viewType: "gui",
+            elements: expect.arrayContaining([
+              expect.objectContaining({ id: "native-save" }),
+            ]),
+          }),
+        ]);
+        oldRegistry?.update("native-save", { label: "Retired" });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(500);
+        });
+        expect(reports()).toHaveLength(1);
+      } finally {
+        mounted.unmount();
+        hook.unmount();
+        vi.unstubAllEnvs();
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it("keeps the runtime bundle authoritative on desktop", async () => {
     getFrontendPlatform.mockReturnValue("desktop");

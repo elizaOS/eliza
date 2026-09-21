@@ -6,6 +6,7 @@
  */
 
 import type { ReactNode } from "react";
+import { useAvailableViews } from "../../hooks/useAvailableViews";
 import {
   FramedPage,
   FramedPageBody,
@@ -30,6 +31,12 @@ export function DatabasePageView({
 }: {
   contentHeader?: ReactNode;
 } = {}) {
+  const { views } = useAvailableViews();
+  const vectorView = views.find(
+    (view) =>
+      view.id === DATABASE_VECTOR_VIEW.viewId &&
+      (view.viewType ?? "gui") === "gui",
+  );
   const t = useAppSelector((s) => s.t);
   const databaseSubTab = useAppSelector((s) => s.databaseSubTab);
   const setState = useAppSelector((s) => s.setState);
@@ -75,7 +82,10 @@ export function DatabasePageView({
   } else if (databaseSubTab === "vectors") {
     content = (
       <DynamicViewLoader
-        {...DATABASE_VECTOR_VIEW}
+        viewId={DATABASE_VECTOR_VIEW.viewId}
+        bundleUrl={vectorView?.bundleUrl}
+        installationId={vectorView?.installationId}
+        surface={vectorView?.surface}
         viewProps={{ leftNav, contentHeader }}
       />
     );

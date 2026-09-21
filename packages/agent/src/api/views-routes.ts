@@ -25,6 +25,7 @@ import type http from "node:http";
 import path from "node:path";
 
 import {
+  ElizaError,
   EventType,
   type IAgentRuntime,
   logger,
@@ -54,13 +55,15 @@ import {
   setActiveViewElements,
 } from "../runtime/view-action-affinity.ts";
 import {
+  createViewClientStore,
+  getViewClientScope,
+  type ViewClientScope,
+} from "../runtime/view-client-context.ts";
+import {
   parseHostExternalSpecifiers,
   wrapBundleAsHostExternalFactory,
 } from "./dynamic-view-host-external.mjs";
-import {
-  PendingRequestMap,
-  type ViewInteractResult,
-} from "./pending-request-map.ts";
+import type { ViewInteractResult } from "./pending-request-map.ts";
 import {
   detectClientPlatform,
   isDynamicLoadingAllowed,
@@ -68,6 +71,11 @@ import {
 import { isPathWithinRoot, resolveRealPath } from "./realpath-confinement.ts";
 import { decodePathComponent } from "./server-helpers.ts";
 import { normalizeWsClientId } from "./server-helpers-auth.ts";
+import { assertRuntimeViewEntry } from "./view-installations.ts";
+import {
+  type RendererViewInteractResult,
+  viewInteractionHost,
+} from "./view-interaction-host.ts";
 import type { ViewRegistryEntry } from "./view-registry-types.ts";
 import {
   findHeroOnDisk,
@@ -77,7 +85,7 @@ import {
   getView,
   listViews,
 } from "./views-registry.ts";
-import { viewSearchIndex } from "./views-search-index.ts";
+import { getViewSearchIndex } from "./views-search-index.ts";
 
 const VIEW_TYPE_ERROR = "viewType must be one of: gui, tui, xr";
 
@@ -283,42 +291,11 @@ function capabilityDeniedMessage(viewId: string, capability: string): string {
   );
 }
 
-/** Module-level map of pending interact requests awaiting a frontend result. */
-const pendingInteractRequests = new PendingRequestMap();
-
-/**
- * Module-level WS broadcaster, wired once by server.ts at boot. Lets code that
- * runs outside an HTTP request — notably the view-scoped action handler, which
- * fires from the planner loop, not a `/interact` request — dispatch a
- * `view:interact` frame to mounted shells through the SAME path the route uses.
- * Null until wired (or in headless test/CI); dispatch degrades to a route-error
- * result rather than silently succeeding when it is unset.
- */
-let moduleBroadcastWs: ((payload: object) => void) | null = null;
-let moduleBroadcastWsToClientId:
-  | ((clientId: string, payload: object) => number)
-  | null = null;
-
-/** Wire the process WS broadcaster into the views module. Called once at boot. */
-export function setViewsBroadcastWs(
-  broadcast: ((payload: object) => void) | null,
-  broadcastToClientId?: ((clientId: string, payload: object) => number) | null,
-): void {
-  moduleBroadcastWs = broadcast;
-  moduleBroadcastWsToClientId = broadcastToClientId ?? null;
-}
-
-/** The wired process WS broadcaster, or null when none is installed. */
-export function getViewsBroadcastWs(): ((payload: object) => void) | null {
-  return moduleBroadcastWs;
-}
-
-/** The wired caller-targeted broadcaster, or null when none is installed. */
-export function getViewsBroadcastWsToClientId():
-  | ((clientId: string, payload: object) => number)
-  | null {
-  return moduleBroadcastWsToClientId;
-}
+export {
+  getViewsBroadcastWs,
+  getViewsBroadcastWsToClientId,
+  setViewsBroadcastWs,
+} from "./view-interaction-host.ts";
 
 export interface CurrentViewState {
   viewId: string;
@@ -365,29 +342,47 @@ export function isViewSwitchFresh(
   return now - t <= VIEW_SWITCH_FRESH_MS;
 }
 
-let currentViewState: CurrentViewState | null = null;
+const currentViews = createViewClientStore<CurrentViewState>();
 
-export function getCurrentViewState(): CurrentViewState | null {
-  return currentViewState;
+export function getCurrentViewState(
+  runtime: IAgentRuntime,
+  scope: ViewClientScope | undefined = getViewClientScope(),
+): CurrentViewState | null {
+  return currentViews.get(runtime, scope);
 }
 
-export function clearCurrentViewState(): void {
-  currentViewState = null;
-  clearActiveViewContext();
+export function clearCurrentViewState(
+  runtime: IAgentRuntime,
+  scope: ViewClientScope | undefined = getViewClientScope(),
+): void {
+  currentViews.delete(runtime, scope);
+  clearActiveViewContext(runtime, scope);
+}
+function clientScope(
+  hostKey: object,
+  clientId: string | null,
+): ViewClientScope | undefined {
+  return clientId ? { hostKey, clientId } : undefined;
 }
 
 /**
  * Resolve a pending interact request from a WS `view:interact:result` message.
  * Called by the WebSocket message handler in server.ts.
  */
-export function resolveViewInteractResult(result: ViewInteractResult): void {
-  pendingInteractRequests.resolve(result.requestId, result);
+export function resolveViewInteractResult(
+  runtime: IAgentRuntime,
+  hostKey: object,
+  clientId: string,
+  result: RendererViewInteractResult,
+): void {
+  viewInteractionHost(runtime, hostKey).resolve(clientId, result);
 }
 
 export interface ViewsRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "json" | "error"> {
   url: URL;
+  hostKey: object;
   developerMode?: boolean;
   /** Broadcast an arbitrary payload to all connected WebSocket clients. */
   broadcastWs?: (payload: object) => void;
@@ -423,6 +418,16 @@ export async function handleViewsRoutes(
     return true;
   }
 
+  if (!ctx.runtime) {
+    error(res, "View operations require an active runtime", 503);
+    return true;
+  }
+  const viewRuntime = ctx.runtime;
+  let currentViewState = getCurrentViewState(
+    viewRuntime,
+    clientScope(ctx.hostKey, resolveViewInteractClientId(req, undefined)),
+  );
+
   // ── GET /api/views/search?q=<query>&limit=<n> ─────────────────────────────
   // Hybrid keyword + semantic search over registered views.
   if (method === "GET" && pathname === `${PREFIX}/search`) {
@@ -447,7 +452,7 @@ export async function handleViewsRoutes(
     }
 
     const viewType = parsedSearchViewType.viewType;
-    const allViews = listViews({
+    const allViews = listViews(viewRuntime, {
       developerMode: ctx.developerMode ?? false,
       viewType,
     }).filter((view) => satisfiesRoleGate(callerRoles(ctx), view.roleGate));
@@ -471,9 +476,8 @@ export async function handleViewsRoutes(
     const semanticMap = new Map<string, number>();
     if (ctx.runtime) {
       try {
-        const semResults = await viewSearchIndex.search(
+        const semResults = await getViewSearchIndex(viewRuntime).search(
           query,
-          ctx.runtime,
           topK * 2,
         );
         for (const { viewId, viewType, score } of semResults) {
@@ -513,7 +517,7 @@ export async function handleViewsRoutes(
       .slice(0, topK)
       .map(({ view, score }) => ({ ...view, _score: Math.round(score) }));
 
-    json(res, { results, query, semanticEnabled: ctx.runtime != null });
+    json(res, { results, query, semanticEnabled: semanticMap.size > 0 });
     return true;
   }
 
@@ -532,14 +536,27 @@ export async function handleViewsRoutes(
     // apply the user's Settings toggles + build defaults itself. The server has
     // no way to know whether it is talking to a dev build or which kinds the
     // user enabled, so kind-gating is a client responsibility.
-    const allViews = listViews({ includeAllKinds: true, viewType }).filter(
-      (view) => satisfiesRoleGate(callerRoles(ctx), view.roleGate),
-    );
-    // On restricted platforms (iOS/Android store builds), only surface views
-    // without dynamic bundle/frame URLs (already in-process).
+    const allViews = listViews(viewRuntime, {
+      includeAllKinds: true,
+      viewType,
+    }).filter((view) => satisfiesRoleGate(callerRoles(ctx), view.roleGate));
+    // Native renderers need installation metadata for their signed counterpart.
+    // Withhold executable URLs; the bundle/frame/asset routes still reject loading.
     const filtered = dynamicAllowed
       ? allViews
-      : allViews.filter((v) => !v.bundleUrl && !v.frameUrl);
+      : allViews.map((view) =>
+          view.bundleUrl || view.frameUrl
+            ? {
+                ...view,
+                bundleUrl: undefined,
+                frameUrl: undefined,
+                bundleUrlVersioned: undefined,
+                frameUrlVersioned: undefined,
+                available: false,
+                metadataOnly: true,
+              }
+            : view,
+        );
     // Annotate each entry with `builtin: true` when it comes from the shell.
     const views = filtered.map((v) => ({
       ...v,
@@ -622,7 +639,7 @@ export async function handleViewsRoutes(
     );
     if ("reject" in parsedDetailViewType) return true;
     const viewType = parsedDetailViewType.viewType;
-    const entry = getView(id, { viewType });
+    const entry = getView(viewRuntime, id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
       return true;
@@ -636,13 +653,17 @@ export async function handleViewsRoutes(
   }
 
   // ── GET/HEAD /api/views/:id/bundle.js ─────────────────────────────────────
-  if ((method === "GET" || method === "HEAD") && subResource === "bundle.js") {
+  if (
+    (method === "GET" || method === "HEAD") &&
+    (subResource === "bundle.js" || subResource === "frame.html")
+  ) {
+    const isBundle = subResource === "bundle.js";
     // Block dynamic bundle delivery on restricted platforms (iOS/Android store).
     const clientPlatform = detectClientPlatform(req);
     if (!isDynamicLoadingAllowed(clientPlatform)) {
       error(
         res,
-        "Dynamic view bundle loading is not permitted on this platform.",
+        `Dynamic view ${isBundle ? "bundle" : "frame"} loading is not permitted on this platform.`,
         403,
       );
       return true;
@@ -655,7 +676,7 @@ export async function handleViewsRoutes(
     );
     if ("reject" in parsedBundleViewType) return true;
     const viewType = parsedBundleViewType.viewType;
-    const entry = getView(id, { viewType });
+    const entry = getView(viewRuntime, id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
       return true;
@@ -665,84 +686,62 @@ export async function handleViewsRoutes(
       return true;
     }
 
-    const bundlePath = getBundleDiskPath(entry);
+    const bundlePath = isBundle
+      ? getBundleDiskPath(entry)
+      : getFrameDiskPath(entry);
+    const installationHash = isBundle ? entry.bundleHash : entry.frameHash;
+    if (url.searchParams.get("installation") !== entry.installationId) {
+      error(
+        res,
+        "View installation changed; refresh the view catalog before loading this asset",
+        409,
+      );
+      return true;
+    }
     if (!bundlePath) {
       error(
         res,
-        `View "${id}" has no bundle path configured. Build the plugin bundle first.`,
+        isBundle
+          ? `View "${id}" has no bundle path configured. Build the plugin bundle first.`
+          : `View "${id}" has no frame path configured. Build or declare the sandboxed frame document first.`,
         404,
       );
       return true;
     }
 
-    // Stat the file first so we can compute an ETag and support 304 responses.
-    let stat: import("node:fs").Stats;
+    let data: Buffer;
     try {
-      stat = await fs.stat(bundlePath);
+      data = await fs.readFile(bundlePath);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        error(
-          res,
-          `Bundle not built for view "${id}". Run the plugin's build step to generate dist/views/bundle.js.`,
-          404,
-        );
+        error(res, `Bundle not built for view "${id}"`, 404);
       } else {
         logger.error(
           { src: "ViewsRoutes", viewId: id, bundlePath, err },
-          `[ViewsRoutes] Failed to stat bundle for view "${id}"`,
+          "Failed to read view bundle",
         );
         error(res, `Failed to read bundle for view "${id}"`, 500);
       }
       return true;
     }
-
-    // ETag derived from mtime + size — fast to compute, no need to read the
-    // full file, and stable across restarts for unchanged content.
-    const etagRaw = `${stat.mtimeMs}-${stat.size}`;
-    const etag = `"${createHash("sha256").update(etagRaw).digest("hex").slice(0, 16)}"`;
-    const ifNoneMatch = req.headers["if-none-match"];
-    if (ifNoneMatch === etag) {
-      const raw304 = res as {
-        writeHead?: (status: number, headers: Record<string, string>) => void;
-        end?: () => void;
-      };
-      if (typeof raw304.writeHead === "function") {
-        raw304.writeHead(304, {});
-      }
-      raw304.end?.();
-      return true;
-    }
-
-    const hostExternalSpecifiers = parseHostExternalSpecifiers(url);
-    let data: Buffer;
-    try {
-      data =
-        method === "HEAD" ? Buffer.alloc(0) : await fs.readFile(bundlePath);
-    } catch (err) {
-      logger.error(
-        { src: "ViewsRoutes", viewId: id, bundlePath, err },
-        `[ViewsRoutes] Failed to read bundle for view "${id}"`,
+    assertRuntimeViewEntry(viewRuntime, entry);
+    const sourceHash = createHash("sha256").update(data).digest("hex");
+    const requestedHash = url.searchParams.get("v");
+    if (
+      (installationHash && installationHash !== sourceHash) ||
+      (requestedHash && requestedHash !== sourceHash)
+    ) {
+      error(
+        res,
+        "View asset changed; reload its installation before requesting this version",
+        409,
       );
-      error(res, `Failed to read bundle for view "${id}"`, 500);
       return true;
     }
-
-    // When the request carries a ?v= param that matches the entry's content
-    // hash, the URL is fully versioned — serve with a year-long immutable cache.
-    // Otherwise always revalidate via ETag so clients pick up updates promptly.
-    const vParam = url.searchParams.get("v");
-    const contentHashMatch = entry.bundleHash && vParam === entry.bundleHash;
-    const cacheControl = contentHashMatch
-      ? "public, max-age=31536000, immutable"
-      : "no-cache";
-
-    // SRI informational header — sha256 of the raw bundle bytes.
-    const contentHash =
-      method === "HEAD"
-        ? null
-        : createHash("sha256").update(data).digest("base64");
-
-    if (hostExternalSpecifiers.length > 0 && method !== "HEAD") {
+    const hostExternalSpecifiers = isBundle
+      ? parseHostExternalSpecifiers(url)
+      : [];
+    if (hostExternalSpecifiers.length > 0) {
       data = Buffer.from(
         wrapBundleAsHostExternalFactory(
           data.toString("utf8"),
@@ -751,155 +750,27 @@ export async function handleViewsRoutes(
         "utf8",
       );
     }
-
-    const raw = res as {
-      writeHead?: (
-        status: number,
-        headers: Record<string, string | number>,
-      ) => void;
-      setHeader?: (name: string, value: string | number) => void;
-      end?: (chunk?: unknown) => void;
+    const digest = createHash("sha256").update(data).digest();
+    const etag = `"${digest.toString("hex")}"`;
+    const headers = {
+      "Content-Type": isBundle
+        ? "application/javascript; charset=utf-8"
+        : "text/html; charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Length": data.byteLength,
+      "Cache-Control":
+        hostExternalSpecifiers.length > 0
+          ? "no-store"
+          : requestedHash === sourceHash && installationHash === sourceHash
+            ? "public, max-age=31536000, immutable"
+            : "no-cache",
+      ETag: etag,
+      "X-Content-Hash": `sha256-${digest.toString("base64")}`,
     };
-
-    if (typeof raw.writeHead === "function") {
-      raw.writeHead(200, {
-        "Content-Type": "application/javascript; charset=utf-8",
-        "Content-Length": data.byteLength,
-        "Cache-Control":
-          hostExternalSpecifiers.length > 0 ? "no-store" : cacheControl,
-        ETag: etag,
-        ...(contentHash ? { "X-Content-Hash": `sha256-${contentHash}` } : {}),
-      });
-    } else if (typeof raw.setHeader === "function") {
-      raw.setHeader("Content-Type", "application/javascript; charset=utf-8");
-      raw.setHeader("Content-Length", data.byteLength);
-      raw.setHeader(
-        "Cache-Control",
-        hostExternalSpecifiers.length > 0 ? "no-store" : cacheControl,
-      );
-      raw.setHeader("ETag", etag);
-      if (contentHash) {
-        raw.setHeader("X-Content-Hash", `sha256-${contentHash}`);
-      }
-    }
-    raw.end?.(method === "HEAD" ? undefined : data);
-    return true;
-  }
-
-  // ── GET/HEAD /api/views/:id/frame.html ───────────────────────────────────
-  if ((method === "GET" || method === "HEAD") && subResource === "frame.html") {
-    const clientPlatform = detectClientPlatform(req);
-    if (!isDynamicLoadingAllowed(clientPlatform)) {
-      error(
-        res,
-        "Dynamic view frame loading is not permitted on this platform.",
-        403,
-      );
-      return true;
-    }
-
-    const parsedFrameViewType = resolveViewTypeQuery(
-      url.searchParams.get("viewType"),
-      res,
-      error,
-    );
-    if ("reject" in parsedFrameViewType) return true;
-    const viewType = parsedFrameViewType.viewType;
-    const entry = getView(id, { viewType });
-    if (!entry) {
-      error(res, `View "${id}" not found`, 404);
-      return true;
-    }
-
-    const framePath = getFrameDiskPath(entry);
-    if (!framePath) {
-      error(
-        res,
-        `View "${id}" has no frame path configured. Build or declare the sandboxed frame document first.`,
-        404,
-      );
-      return true;
-    }
-
-    let stat: import("node:fs").Stats;
-    try {
-      stat = await fs.stat(framePath);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        error(
-          res,
-          `Frame document not built for view "${id}". Build the plugin frame document first.`,
-          404,
-        );
-      } else {
-        logger.error(
-          { src: "ViewsRoutes", viewId: id, framePath, err },
-          `[ViewsRoutes] Failed to stat frame document for view "${id}"`,
-        );
-        error(res, `Failed to read frame document for view "${id}"`, 500);
-      }
-      return true;
-    }
-
-    if (!stat.isFile()) {
-      error(res, `Frame document not built for view "${id}".`, 404);
-      return true;
-    }
-
-    const etagRaw = `${stat.mtimeMs}-${stat.size}`;
-    const etag = `"${createHash("sha256").update(etagRaw).digest("hex").slice(0, 16)}"`;
-    if (req.headers["if-none-match"] === etag) {
-      const raw304 = res as {
-        writeHead?: (status: number, headers: Record<string, string>) => void;
-        end?: () => void;
-      };
-      raw304.writeHead?.(304, {});
-      raw304.end?.();
-      return true;
-    }
-
-    let data: Buffer;
-    try {
-      data = method === "HEAD" ? Buffer.alloc(0) : await fs.readFile(framePath);
-    } catch (err) {
-      logger.error(
-        { src: "ViewsRoutes", viewId: id, framePath, err },
-        `[ViewsRoutes] Failed to read frame document for view "${id}"`,
-      );
-      error(res, `Failed to read frame document for view "${id}"`, 500);
-      return true;
-    }
-
-    const vParam = url.searchParams.get("v");
-    const contentHashMatch = entry.frameHash && vParam === entry.frameHash;
-    const cacheControl = contentHashMatch
-      ? "public, max-age=31536000, immutable"
-      : "no-cache";
-    const raw = res as {
-      writeHead?: (
-        status: number,
-        headers: Record<string, string | number>,
-      ) => void;
-      setHeader?: (name: string, value: string | number) => void;
-      end?: (chunk?: unknown) => void;
-    };
-
-    if (typeof raw.writeHead === "function") {
-      raw.writeHead(200, {
-        "Content-Type": "text/html; charset=utf-8",
-        "Content-Length": stat.size,
-        "Cache-Control": cacheControl,
-        "X-Content-Type-Options": "nosniff",
-        ETag: etag,
-      });
-    } else if (typeof raw.setHeader === "function") {
-      raw.setHeader("Content-Type", "text/html; charset=utf-8");
-      raw.setHeader("Content-Length", stat.size);
-      raw.setHeader("Cache-Control", cacheControl);
-      raw.setHeader("X-Content-Type-Options", "nosniff");
-      raw.setHeader("ETag", etag);
-    }
-    raw.end?.(method === "HEAD" ? undefined : data);
+    // HEAD and conditional GET describe the same bytes as GET, including wrapping.
+    const notModified = req.headers["if-none-match"] === etag;
+    res.writeHead(notModified ? 304 : 200, headers);
+    res.end(notModified || method === "HEAD" ? undefined : data);
     return true;
   }
 
@@ -956,7 +827,7 @@ export async function handleViewsRoutes(
     );
     if ("reject" in parsedAssetViewType) return true;
     const viewType = parsedAssetViewType.viewType;
-    const entry = getView(id, { viewType });
+    const entry = getView(viewRuntime, id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
       return true;
@@ -1059,7 +930,7 @@ export async function handleViewsRoutes(
     );
     if ("reject" in parsedHeroViewType) return true;
     const viewType = parsedHeroViewType.viewType;
-    const entry = getView(id, { viewType });
+    const entry = getView(viewRuntime, id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
       return true;
@@ -1121,7 +992,7 @@ export async function handleViewsRoutes(
     );
     if ("reject" in parsedNavigateViewType) return true;
     const viewType = parsedNavigateViewType.viewType;
-    const entry = getView(id, { viewType });
+    const entry = getView(viewRuntime, id, { viewType });
     // Allow navigating to synthetic IDs (like __view-manager__) even when not
     // in the registry — they route to built-in shell tabs.
     const viewPath =
@@ -1163,6 +1034,8 @@ export async function handleViewsRoutes(
       body?.delivery === "originating-client" ||
       body?.delivery === "completed-action";
     const originatingClientId = resolveViewInteractClientId(req, body);
+    const scope = clientScope(ctx.hostKey, originatingClientId);
+    currentViewState = getCurrentViewState(viewRuntime, scope);
     const layoutPayload = {
       ...(layoutViews && layoutViews.length > 0 ? { views: layoutViews } : {}),
       ...(layout ? { layout } : {}),
@@ -1188,7 +1061,7 @@ export async function handleViewsRoutes(
     // The targeted frame or completed action is the only commit edge for it.
     const commitCurrentViewState = (committedViewPath: string | null) => {
       if (isCloseNavigation) {
-        clearCurrentViewState();
+        clearCurrentViewState(viewRuntime, scope);
         return;
       }
       const now = new Date().toISOString();
@@ -1213,17 +1086,25 @@ export async function handleViewsRoutes(
         source,
         updatedAt: now,
       };
+      currentViews.set(viewRuntime, currentViewState, scope);
       // Publish to the prompt-optimization layer so the planner upweights this
       // view's scoped actions while it is on screen.
-      setActiveViewContext({
-        viewId: id,
-        viewLabel,
-        viewType: resolvedViewType,
-        viewPath: committedViewPath,
-        // Carry freshness so Stage-1 can acknowledge a just-happened switch (#8788).
-        ...(switchedAt ? { switchedAt } : {}),
-        ...(source ? { source } : {}),
-      });
+      setActiveViewContext(
+        viewRuntime,
+        {
+          hostKey: ctx.hostKey,
+          viewId: id,
+          viewLabel,
+          viewType: resolvedViewType,
+          installationId: entry?.installationId,
+          viewPath: committedViewPath,
+          // Carry freshness so Stage-1 can acknowledge a just-happened switch (#8788).
+          ...(switchedAt ? { switchedAt } : {}),
+          ...(source ? { source } : {}),
+          ...(originatingClientId ? { clientId: originatingClientId } : {}),
+        },
+        scope,
+      );
       // Emit the first-class VIEW_SWITCHED interaction event (#8792) so a
       // proactive decider can comment. Only on a real change (no spam on
       // re-navigates), and fire-and-forget so it never blocks the response.
@@ -1373,23 +1254,41 @@ export async function handleViewsRoutes(
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
       () => null,
     );
-    const elements = normalizeActiveViewElements(body?.elements);
+    if (!body) return true;
+    const parsedElementsViewType = resolveViewTypePair(
+      body.viewType,
+      url.searchParams.get("viewType"),
+      res,
+      error,
+    );
+    if ("reject" in parsedElementsViewType) return true;
+    const entry = getView(viewRuntime, id, {
+      viewType: parsedElementsViewType.viewType,
+    });
     const clientId = resolveViewInteractClientId(req, body);
-    let accepted = setActiveViewElements(id, elements, clientId);
+    if (
+      !clientId ||
+      !entry ||
+      entry.viewType !== (parsedElementsViewType.viewType ?? "gui") ||
+      body.installationId !== entry.installationId ||
+      !satisfiesRoleGate(callerRoles(ctx), entry.roleGate)
+    ) {
+      error(
+        res,
+        "Element report does not belong to the current view installation",
+        409,
+      );
+      return true;
+    }
+    const elements = normalizeActiveViewElements(body.elements);
+    const scope = clientScope(ctx.hostKey, clientId);
+    currentViewState = getCurrentViewState(viewRuntime, scope);
+    let accepted = setActiveViewElements(viewRuntime, entry, elements, scope);
     if (
       !accepted &&
       currentViewState === null &&
-      getActiveViewContext() === null
+      getActiveViewContext(viewRuntime, scope) === null
     ) {
-      const parsedElementsViewType = resolveViewTypePair(
-        body?.viewType,
-        url.searchParams.get("viewType"),
-        res,
-        error,
-      );
-      if ("reject" in parsedElementsViewType) return true;
-      const viewType = parsedElementsViewType.viewType;
-      const entry = getView(id, { viewType });
       const reportedPath = normalizedViewPath(body?.viewPath);
       const registeredPath = normalizedViewPath(entry?.path);
       if (entry && reportedPath && reportedPath === registeredPath) {
@@ -1401,14 +1300,21 @@ export async function handleViewsRoutes(
           viewType: entry.viewType,
           updatedAt: now,
         };
-        setActiveViewContext({
-          viewId: id,
-          viewPath: entry.path ?? null,
-          viewLabel: entry.label,
-          viewType: entry.viewType,
-          elements,
-          ...(clientId ? { clientId } : {}),
-        });
+        currentViews.set(viewRuntime, currentViewState, scope);
+        setActiveViewContext(
+          viewRuntime,
+          {
+            hostKey: ctx.hostKey,
+            viewId: id,
+            viewPath: entry.path ?? null,
+            viewLabel: entry.label,
+            viewType: entry.viewType,
+            installationId: entry.installationId,
+            elements,
+            ...(clientId ? { clientId } : {}),
+          },
+          scope,
+        );
         accepted = true;
       }
     }
@@ -1453,7 +1359,7 @@ export async function handleViewsRoutes(
     );
     if ("reject" in parsedActivateViewType) return true;
     const viewType = parsedActivateViewType.viewType;
-    const entry = getView(id, { viewType });
+    const entry = getView(viewRuntime, id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
       return true;
@@ -1467,9 +1373,14 @@ export async function handleViewsRoutes(
     // Resolve the element from the active-view snapshot for context (the planner
     // reports it via /:id/elements). Only used when this view is the foreground
     // active view; absent otherwise — the click still dispatches by id.
-    const active = getActiveViewContext();
+    const active = getActiveViewContext(
+      viewRuntime,
+      clientScope(ctx.hostKey, resolveViewInteractClientId(req, body)),
+    );
     const element =
-      active?.viewId === id
+      active?.viewId === id &&
+      active.viewType === entry.viewType &&
+      active.installationId === entry.installationId
         ? active.elements?.find((el) => el.id === elementId)
         : undefined;
 
@@ -1482,10 +1393,17 @@ export async function handleViewsRoutes(
     );
 
     const dispatch = await dispatchViewInteract(entry, id, capability, params, {
+      hostKey: ctx.hostKey,
       broadcastWs: ctx.broadcastWs,
       broadcastWsToClientId: ctx.broadcastWsToClientId,
-      clientId: resolveTargetViewClientId(id, req, body),
-      runtime: ctx.runtime ?? undefined,
+      clientId: resolveTargetViewClientId(
+        viewRuntime,
+        ctx.hostKey,
+        id,
+        req,
+        body,
+      ),
+      runtime: viewRuntime,
       userRoles: boundaryRoles,
     });
 
@@ -1496,6 +1414,43 @@ export async function handleViewsRoutes(
       ...(element ? { element } : {}),
       dispatch,
     });
+    return true;
+  }
+
+  // Execution is claimed at the owning host before any renderer effect.
+  if (method === "POST" && id === "interact-claim" && subResource === "") {
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    const clientId = resolveViewInteractClientId(req, body);
+    if (
+      !clientId ||
+      typeof body.requestId !== "string" ||
+      typeof body.viewId !== "string" ||
+      typeof body.viewType !== "string" ||
+      typeof body.installationId !== "string"
+    ) {
+      error(res, "Missing view interaction binding", 400);
+      return true;
+    }
+    const claimId = viewInteractionHost(viewRuntime, ctx.hostKey).claim(
+      clientId,
+      {
+        requestId: body.requestId,
+        viewId: body.viewId,
+        viewType: body.viewType,
+        installationId: body.installationId,
+      },
+      callerRoles(ctx),
+    );
+    if (!claimId) {
+      error(
+        res,
+        "View interaction is no longer available to this renderer",
+        409,
+      );
+      return true;
+    }
+    json(res, { claimId });
     return true;
   }
 
@@ -1514,14 +1469,26 @@ export async function handleViewsRoutes(
       return true;
     }
 
-    const result: ViewInteractResult = {
+    const result: RendererViewInteractResult = {
       requestId,
+      viewId: typeof body.viewId === "string" ? body.viewId : undefined,
+      viewType: typeof body.viewType === "string" ? body.viewType : undefined,
+      installationId:
+        typeof body.installationId === "string"
+          ? body.installationId
+          : undefined,
+      claimId: typeof body.claimId === "string" ? body.claimId : undefined,
       success: body.success === true,
       result: body.result,
       error: typeof body.error === "string" ? body.error : undefined,
     };
 
-    pendingInteractRequests.resolve(requestId, result);
+    const clientId = resolveViewInteractClientId(req, body);
+    if (!clientId) {
+      error(res, "Missing client id for view interaction result", 400);
+      return true;
+    }
+    viewInteractionHost(viewRuntime, ctx.hostKey).resolve(clientId, result);
     json(res, { ok: true });
     return true;
   }
@@ -1544,7 +1511,7 @@ export async function handleViewsRoutes(
     );
     if ("reject" in parsedInteractViewType) return true;
     const viewType = parsedInteractViewType.viewType;
-    const entry = getView(id, { viewType });
+    const entry = getView(viewRuntime, id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
       return true;
@@ -1605,17 +1572,24 @@ export async function handleViewsRoutes(
       return true;
     }
 
-    const targetClientId = resolveTargetViewClientId(id, req, body);
+    const targetClientId = resolveTargetViewClientId(
+      viewRuntime,
+      ctx.hostKey,
+      id,
+      req,
+      body,
+    );
     const dispatch = await dispatchViewInteract(
       entry,
       id,
       capability,
       params,
       {
+        hostKey: ctx.hostKey,
         broadcastWs: ctx.broadcastWs,
         broadcastWsToClientId: ctx.broadcastWsToClientId,
         clientId: targetClientId,
-        runtime: ctx.runtime ?? undefined,
+        runtime: viewRuntime,
         userRoles: callerRoles(ctx),
       },
       timeoutMs,
@@ -1648,14 +1622,31 @@ export interface ViewInteractDispatchResult {
   success: boolean;
   result?: unknown;
   error?: string;
-  failureKind?: "timeout";
+  failureKind?: "timeout" | "revoked" | "unavailable" | "unknown";
+}
+
+const VIEW_INTERACTION_FAILURE_CODES: Readonly<
+  Record<string, NonNullable<ViewInteractDispatchResult["failureKind"]>>
+> = {
+  PENDING_REQUEST_TIMEOUT: "timeout",
+  VIEW_HOST_CLOSED: "unavailable",
+  VIEW_INSTALLATION_INVALID: "revoked",
+  VIEW_REGISTRY_CLOSED: "revoked",
+};
+function interactionFailureKind(
+  error: unknown,
+): NonNullable<ViewInteractDispatchResult["failureKind"]> {
+  return error instanceof ElizaError
+    ? (VIEW_INTERACTION_FAILURE_CODES[error.code] ?? "unknown")
+    : "unknown";
 }
 
 interface ViewInteractTransport {
+  hostKey?: object;
   broadcastWs?: (payload: object) => void;
   broadcastWsToClientId?: (clientId: string, payload: object) => number;
   clientId?: string | null;
-  runtime?: IAgentRuntime;
+  runtime: IAgentRuntime;
   userRoles?: readonly RoleGateRole[];
 }
 
@@ -1678,6 +1669,9 @@ export async function dispatchViewInteract(
   timeoutMs = 5_000,
 ): Promise<ViewInteractDispatchResult> {
   const requestId = randomUUID();
+  assertRuntimeViewEntry(transport.runtime, entry);
+  if (transport.hostKey)
+    viewInteractionHost(transport.runtime, transport.hostKey);
 
   if (!satisfiesRoleGate(transport.userRoles, entry.roleGate)) {
     return {
@@ -1711,9 +1705,18 @@ export async function dispatchViewInteract(
     transport.clientId &&
     typeof transport.broadcastWsToClientId === "function"
   ) {
-    const resultPromise = pendingInteractRequests.waitFor(requestId, timeoutMs);
+    if (!transport.hostKey)
+      throw new Error("Mounted view dispatch requires an owning HTTP host");
+    const host = viewInteractionHost(transport.runtime, transport.hostKey);
+    const resultPromise = host.waitFor(
+      requestId,
+      transport.clientId,
+      entry,
+      timeoutMs,
+    );
     const frame = {
       type: "view:interact",
+      installationId: entry.installationId,
       viewId,
       viewType: entry.viewType,
       capability,
@@ -1723,17 +1726,35 @@ export async function dispatchViewInteract(
     let delivered = 0;
     try {
       delivered = transport.broadcastWsToClientId(transport.clientId, frame);
+      if (!Number.isSafeInteger(delivered) || delivered < 0)
+        throw new Error("Invalid delivery count");
     } catch (err) {
-      // error-policy:J4 a mixed view retains its headless serverInteract path
-      // when the optional mounted-shell delivery boundary is unavailable.
+      // error-policy:J4 delivery may have happened before the transport threw;
+      // report an unknown outcome and never replay through the server handler.
       logger.warn(
         { src: "ViewsRoutes", viewId, capability, requestId, err },
         `[ViewsRoutes] Targeted interaction delivery failed for view "${viewId}"`,
       );
+      host.cancel(
+        requestId,
+        new ElizaError("Renderer delivery outcome is unknown", {
+          code: "VIEW_DELIVERY_UNKNOWN",
+        }),
+      );
+      // error-policy:J4 consume this locally canceled waiter after reporting its cause.
+      await resultPromise.catch(() => undefined);
+      return {
+        requestId,
+        success: false,
+        failureKind: "unknown",
+        error:
+          "Renderer delivery outcome is unknown; do not replay the operation.",
+      };
     }
     if (delivered > 0) {
       try {
         const result = (await resultPromise) as ViewInteractResult;
+        assertRuntimeViewEntry(transport.runtime, entry);
         return {
           requestId,
           success: result.success,
@@ -1743,31 +1764,44 @@ export async function dispatchViewInteract(
       } catch (err) {
         logger.warn(
           { src: "ViewsRoutes", viewId, capability, requestId, err },
-          `[ViewsRoutes] Interact timed out for view "${viewId}"`,
+          `[ViewsRoutes] Interaction outcome unavailable for view "${viewId}"`,
         );
         return {
           requestId,
           success: false,
-          error: `View "${viewId}" did not respond to capability "${capability}" within ${timeoutMs}ms`,
-          failureKind: "timeout",
+          error:
+            err instanceof Error
+              ? err.message
+              : "View interaction outcome is unknown",
+          failureKind: interactionFailureKind(err),
         };
       }
     }
 
-    pendingInteractRequests.resolve(requestId, {
+    const unavailable = `No connected view client "${transport.clientId}" is available for "${viewId}".`;
+    host.cancel(
       requestId,
-      success: false,
-      error: `No connected view client "${transport.clientId}" is available for "${viewId}".`,
-    });
-    const unavailableResult = await resultPromise;
-    if (!hasServerInteract) return unavailableResult;
+      new ElizaError(unavailable, { code: "VIEW_CLIENT_UNAVAILABLE" }),
+    );
+    // error-policy:J4 zero delivery is proven; retire the unclaimed waiter before fallback.
+    await resultPromise.catch(() => undefined);
+    if (!hasServerInteract)
+      return { requestId, success: false, error: unavailable };
   }
 
   if (typeof entry.serverInteract === "function") {
+    let invoked = false;
     try {
+      assertRuntimeViewEntry(transport.runtime, entry);
+      if (transport.hostKey)
+        viewInteractionHost(transport.runtime, transport.hostKey);
+      invoked = true;
       const result = await entry.serverInteract(capability, params, {
         runtime: transport.runtime,
       });
+      assertRuntimeViewEntry(transport.runtime, entry);
+      if (transport.hostKey)
+        viewInteractionHost(transport.runtime, transport.hostKey);
       transport.broadcastWs?.({
         type: "view:event",
         viewEventType: `view:${viewId}:updated`,
@@ -1782,10 +1816,11 @@ export async function dispatchViewInteract(
       return {
         requestId,
         success: false,
+        failureKind: invoked ? "unknown" : interactionFailureKind(err),
         error: err instanceof Error ? err.message : String(err),
         result: {
           success: false,
-          text: `Cannot invoke capability "${capability}" on view "${viewId}": ${
+          text: `${invoked ? "Unknown outcome for" : "Cannot invoke"} capability "${capability}" on view "${viewId}": ${
             err instanceof Error ? err.message : String(err)
           }.`,
         },
@@ -1801,50 +1836,11 @@ export async function dispatchViewInteract(
         "Missing client id for frontend view interaction. Provide X-ElizaOS-Client-Id or clientId.",
     };
   }
-  if (typeof transport.broadcastWsToClientId !== "function") {
-    return {
-      requestId,
-      success: false,
-      error: "Targeted view interaction delivery is unavailable.",
-    };
-  }
-
-  const resultPromise = pendingInteractRequests.waitFor(requestId, timeoutMs);
-  const delivered = transport.broadcastWsToClientId(transport.clientId, {
-    type: "view:interact",
-    viewId,
-    viewType: entry.viewType,
-    capability,
-    params,
+  return {
     requestId,
-  });
-  if (delivered <= 0) {
-    pendingInteractRequests.resolve(requestId, {
-      requestId,
-      success: false,
-      error: `No connected view client "${transport.clientId}" is available for "${viewId}".`,
-    });
-  }
-  try {
-    const result = (await resultPromise) as ViewInteractResult;
-    return {
-      requestId,
-      success: result.success,
-      result: result.result,
-      ...(result.error ? { error: result.error } : {}),
-    };
-  } catch (err) {
-    logger.warn(
-      { src: "ViewsRoutes", viewId, capability, requestId, err },
-      `[ViewsRoutes] Interact timed out for view "${viewId}"`,
-    );
-    return {
-      requestId,
-      success: false,
-      error: `View "${viewId}" did not respond to capability "${capability}" within ${timeoutMs}ms`,
-      failureKind: "timeout",
-    };
-  }
+    success: false,
+    error: "Targeted view interaction delivery is unavailable.",
+  };
 }
 
 function firstHeaderValue(value: string | string[] | undefined): string | null {
@@ -1865,12 +1861,14 @@ function resolveViewInteractClientId(
 }
 
 function resolveTargetViewClientId(
+  runtime: IAgentRuntime,
+  hostKey: object,
   viewId: string,
   req: Pick<http.IncomingMessage, "headers">,
   body: Record<string, unknown> | null | undefined,
 ): string | null {
   const explicit = resolveViewInteractClientId(req, body);
-  const active = getActiveViewContext();
+  const active = getActiveViewContext(runtime, clientScope(hostKey, explicit));
   const mountedOwner =
     active?.viewId === viewId ? (active.clientId ?? null) : null;
   if (!mountedOwner) return explicit;

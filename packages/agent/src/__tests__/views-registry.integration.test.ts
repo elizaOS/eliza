@@ -1,3 +1,22 @@
+import { AgentRuntime, createCharacter } from "@elizaos/core";
+import { closeRuntimeViewRegistry } from "../api/view-installations.ts";
+import { closeViewInteractionHost } from "../api/view-interaction-host.ts";
+import { claimRendererReply } from "./view-renderer-test-utils.ts";
+
+let runtime: AgentRuntime;
+let hostKey: object;
+const installed = new Map<string, Awaited<ReturnType<typeof registerViews>>>();
+async function registerPluginViews(...args: Parameters<typeof registerViews>) {
+  const lease = await registerViews(...args);
+  installed.set(args[1].name, lease);
+  return lease;
+}
+function unregisterPluginViews(ownerRuntime: AgentRuntime, name: string) {
+  const lease = installed.get(name);
+  if (lease) unregisterViews(ownerRuntime, lease);
+  installed.delete(name);
+}
+
 /**
  * View Registry + HTTP route integration tests.
  *
@@ -13,8 +32,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getView,
   listViews,
-  registerPluginViews,
-  unregisterPluginViews,
+  registerPluginViews as registerViews,
+  unregisterPluginViews as unregisterViews,
 } from "../api/views-registry.js";
 import type { ViewsRouteContext } from "../api/views-routes.js";
 import { handleViewsRoutes } from "../api/views-routes.js";
@@ -67,6 +86,16 @@ function makeCtx(
   const search = new URLSearchParams(queryParams).toString();
   const urlString = `http://localhost${pathname}${search ? `?${search}` : ""}`;
   const url = new URL(urlString);
+  const asset = pathname.match(
+    /^\/api\/views\/([^/]+)\/(?:bundle\.js|frame\.html)$/,
+  );
+  if (asset) {
+    const entry = getView(runtime, decodeURIComponent(asset[1]), {
+      viewType: queryParams.viewType as "gui" | "tui" | "xr" | undefined,
+    });
+    if (entry?.installationId)
+      url.searchParams.set("installation", entry.installationId);
+  }
 
   // Build a minimal res mock that readJsonBody can write errors to without crashing.
   const res = {
@@ -83,6 +112,8 @@ function makeCtx(
       : ({ headers: {} } as http.IncomingMessage);
 
   const ctx: ViewsRouteContext = {
+    runtime,
+    hostKey,
     req,
     res,
     method,
@@ -146,13 +177,21 @@ const PLUGIN_NAMES = [
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
+  installed.clear();
+  runtime = new AgentRuntime({
+    character: createCharacter({ name: "View registry integration" }),
+    enableAutonomy: false,
+  });
+  hostKey = {};
   vi.spyOn(console, "info").mockImplementation(() => {});
 });
 
 afterEach(() => {
   for (const name of PLUGIN_NAMES) {
-    unregisterPluginViews(name);
+    unregisterPluginViews(runtime, name);
   }
+  closeRuntimeViewRegistry(runtime);
+  closeViewInteractionHost(hostKey);
   vi.restoreAllMocks();
 });
 
@@ -198,6 +237,7 @@ function rawResponse(ctx: ViewsRouteContext): {
 describe("GET /api/views", () => {
   it("resolves short first-party plugin names to their workspace package roots", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "todos",
         description: "short-name first-party plugin",
@@ -211,10 +251,10 @@ describe("GET /api/views", () => {
           },
         ],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
-    const entry = getView("short-name.todos");
+    const entry = getView(runtime, "short-name.todos");
     expect(entry?.pluginName).toBe("todos");
     expect(entry?.pluginDir).toContain("plugin-todos");
     expect(entry?.available).toBe(true);
@@ -222,13 +262,14 @@ describe("GET /api/views", () => {
 
   it("returns registered views with views key in response body", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-wallet",
         description: "wallet",
         actions: [],
         views: [WALLET_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, json } = makeCtx("GET", "/api/views");
@@ -244,6 +285,7 @@ describe("GET /api/views", () => {
 
   it("defaults views to gui and lets tui override the same logical id", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-wallet",
         description: "wallet",
@@ -258,7 +300,7 @@ describe("GET /api/views", () => {
           },
         ],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx: guiCtx, json: guiJson } = makeCtx("GET", "/api/views");
@@ -292,7 +334,7 @@ describe("GET /api/views", () => {
 
   it("returns 200 with empty views array when no plugins are registered", async () => {
     // Ensure wallet is not present for this test.
-    unregisterPluginViews("views-integration-wallet");
+    unregisterPluginViews(runtime, "views-integration-wallet");
 
     const { ctx, json } = makeCtx("GET", "/api/views");
     await handleViewsRoutes(ctx);
@@ -306,22 +348,24 @@ describe("GET /api/views", () => {
     // is talking to a dev build or which Settings toggles are on, so kind-gating
     // is a client responsibility — the route just hands over the full catalog.
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-wallet",
         description: "wallet",
         actions: [],
         views: [WALLET_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-dev",
         description: "dev",
         actions: [],
         views: [DEV_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, json } = makeCtx("GET", "/api/views");
@@ -342,13 +386,14 @@ describe("GET /api/views", () => {
 
   it("includes developerOnly views when developerMode query param is true", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-dev",
         description: "dev",
         actions: [],
         views: [DEV_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, json } = makeCtx("GET", "/api/views", {
@@ -366,13 +411,14 @@ describe("GET /api/views", () => {
 
   it("includes developerOnly views when context developerMode flag is true", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-dev",
         description: "dev",
         actions: [],
         views: [DEV_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     // developerMode passed as context flag, no query param
@@ -396,6 +442,7 @@ describe("GET /api/views", () => {
 
   it("returns views sorted by order field", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-wallet",
         description: "wallet",
@@ -405,7 +452,7 @@ describe("GET /api/views", () => {
           { id: "chat.main", label: "Chat", order: 5 },
         ],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, json } = makeCtx("GET", "/api/views");
@@ -424,16 +471,17 @@ describe("GET /api/views", () => {
 
   it("returns absolute remote bundleUrl for remote capability views", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-remote",
         description: "remote",
         actions: [],
         views: [REMOTE_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
-    const registryEntry = getView("remote.panel");
+    const registryEntry = getView(runtime, "remote.panel");
     expect(registryEntry).toMatchObject({
       id: "remote.panel",
       pluginName: "views-integration-remote",
@@ -469,6 +517,7 @@ describe("GET /api/views", () => {
 
   it("returns absolute remote frameUrl for sandboxed remote capability views", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-remote-frame",
         description: "remote frame",
@@ -482,10 +531,10 @@ describe("GET /api/views", () => {
           },
         ],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
-    const registryEntry = getView("remote.frame");
+    const registryEntry = getView(runtime, "remote.frame");
     expect(registryEntry).toMatchObject({
       id: "remote.frame",
       pluginName: "views-integration-remote-frame",
@@ -526,13 +575,14 @@ describe("GET /api/views", () => {
 describe("GET /api/views/:id", () => {
   it("returns 200 with view metadata for a known id", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-wallet",
         description: "wallet",
         actions: [],
         views: [WALLET_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, json } = makeCtx("GET", "/api/views/wallet.inventory");
@@ -562,13 +612,14 @@ describe("GET /api/views/:id", () => {
   it("decodes percent-encoded view ids", async () => {
     const viewWithDots = { id: "wallet.inventory", label: "Wallet" };
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-wallet",
         description: "wallet",
         actions: [],
         views: [viewWithDots],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     // The router encodes with encodeURIComponent; simulate a URL-encoded id
@@ -584,13 +635,14 @@ describe("GET /api/views/:id", () => {
 
   it("returns single remote view metadata with absolute bundleUrl", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-remote",
         description: "remote",
         actions: [],
         views: [REMOTE_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, json } = makeCtx("GET", "/api/views/remote.panel");
@@ -611,6 +663,7 @@ describe("GET /api/views/:id", () => {
 
   it("returns single sandboxed view metadata with frameUrl and no bundleUrl", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-remote-frame",
         description: "remote frame",
@@ -624,7 +677,7 @@ describe("GET /api/views/:id", () => {
           },
         ],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, json } = makeCtx("GET", "/api/views/remote.frame");
@@ -653,13 +706,14 @@ describe("GET /api/views/:id/bundle.js", () => {
   it("returns 404 when bundle path is not configured", async () => {
     // WALLET_VIEW has no bundlePath → no bundle configured
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-wallet",
         description: "wallet",
         actions: [],
         views: [WALLET_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, error } = makeCtx(
@@ -681,13 +735,17 @@ describe("GET /api/views/:id/bundle.js", () => {
     };
     // pluginDir undefined → resolvePluginPackageDir will fail → available=false
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-wallet",
         description: "wallet",
         actions: [],
         views: [viewWithBundle],
       },
-      "/tmp/nonexistent-plugin-dir-abc123",
+      {
+        pluginDir: "/tmp/nonexistent-plugin-dir-abc123",
+        indexEmbeddings: false,
+      },
     );
 
     const { ctx, error } = makeCtx(
@@ -717,13 +775,14 @@ describe("GET /api/views/:id/bundle.js", () => {
 
   it("does not fabricate a local bundle route for remote absolute bundleUrl views", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-remote",
         description: "remote",
         actions: [],
         views: [REMOTE_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, error } = makeCtx("GET", "/api/views/remote.panel/bundle.js");
@@ -747,6 +806,7 @@ describe("GET /api/views/:id/bundle.js", () => {
 
     try {
       await registerPluginViews(
+        runtime,
         {
           name: "views-integration-local-bundle",
           description: "local bundle",
@@ -760,15 +820,15 @@ describe("GET /api/views/:id/bundle.js", () => {
             },
           ],
         },
-        pluginDir,
+        { pluginDir: pluginDir, indexEmbeddings: false },
       );
 
-      const entryV1 = getView("local.bundle");
+      const entryV1 = getView(runtime, "local.bundle");
       expect(entryV1).toMatchObject({
         available: true,
         bundlePath: "dist/views/bundle.js",
       });
-      expect(entryV1?.bundleHash).toMatch(/^[a-f0-9]{12}$/);
+      expect(entryV1?.bundleHash).toMatch(/^[a-f0-9]{64}$/);
       expect(entryV1?.bundleUrlVersioned).toContain(`v=${entryV1?.bundleHash}`);
 
       const { ctx: getCtx } = makeCtx(
@@ -786,7 +846,7 @@ describe("GET /api/views/:id/bundle.js", () => {
         "application/javascript; charset=utf-8",
       );
       expect(getHeaders["Cache-Control"]).toBe("no-cache");
-      expect(getHeaders.ETag).toMatch(/^"[a-f0-9]{16}"$/);
+      expect(getHeaders.ETag).toMatch(/^"[a-f0-9]{64}"$/);
       expect(getHeaders["X-Content-Hash"]).toMatch(/^sha256-/);
       expect(getBody.toString("utf8")).toContain("LocalBundle");
 
@@ -801,7 +861,7 @@ describe("GET /api/views/:id/bundle.js", () => {
         Record<string, string | number>,
       ];
       expect(headHeaders.ETag).toBe(getHeaders.ETag);
-      expect(headHeaders["Content-Length"]).toBe(0);
+      expect(headHeaders["Content-Length"]).toBe(getBody.byteLength);
       expect(headRes.end.mock.calls[0]?.[0]).toBeUndefined();
 
       const { ctx: notModifiedCtx } = makeCtx(
@@ -814,7 +874,10 @@ describe("GET /api/views/:id/bundle.js", () => {
       };
       await handleViewsRoutes(notModifiedCtx);
       const notModifiedRes = rawResponse(notModifiedCtx);
-      expect(notModifiedRes.writeHead).toHaveBeenCalledWith(304, {});
+      expect(notModifiedRes.writeHead).toHaveBeenCalledWith(
+        304,
+        expect.objectContaining({ ETag: getHeaders.ETag }),
+      );
       expect(notModifiedRes.end.mock.calls[0]?.[0]).toBeUndefined();
 
       const { ctx: immutableCtx } = makeCtx(
@@ -837,6 +900,7 @@ describe("GET /api/views/:id/bundle.js", () => {
         "export default function LocalBundle(){ return 'v2'; }\n",
       );
       await registerPluginViews(
+        runtime,
         {
           name: "views-integration-local-bundle",
           description: "local bundle",
@@ -850,15 +914,15 @@ describe("GET /api/views/:id/bundle.js", () => {
             },
           ],
         },
-        pluginDir,
+        { pluginDir: pluginDir, indexEmbeddings: false },
       );
 
-      const entryV2 = getView("local.bundle");
-      expect(entryV2?.bundleHash).toMatch(/^[a-f0-9]{12}$/);
+      const entryV2 = getView(runtime, "local.bundle");
+      expect(entryV2?.bundleHash).toMatch(/^[a-f0-9]{64}$/);
       expect(entryV2?.bundleHash).not.toBe(entryV1?.bundleHash);
       expect(entryV2?.bundleUrlVersioned).toContain(`v=${entryV2?.bundleHash}`);
     } finally {
-      unregisterPluginViews("views-integration-local-bundle");
+      unregisterPluginViews(runtime, "views-integration-local-bundle");
       await rm(pluginDir, { recursive: true, force: true });
     }
   });
@@ -876,6 +940,7 @@ describe("GET /api/views/:id/frame.html", () => {
 
     try {
       await registerPluginViews(
+        runtime,
         {
           name: "views-integration-local-frame",
           description: "local frame",
@@ -890,16 +955,16 @@ describe("GET /api/views/:id/frame.html", () => {
             },
           ],
         },
-        pluginDir,
+        { pluginDir: pluginDir, indexEmbeddings: false },
       );
 
-      const entry = getView("local.frame");
+      const entry = getView(runtime, "local.frame");
       expect(entry).toMatchObject({
         available: true,
         bundleUrl: undefined,
         framePath: "dist/views/frame.html",
       });
-      expect(entry?.frameHash).toMatch(/^[a-f0-9]{12}$/);
+      expect(entry?.frameHash).toMatch(/^[a-f0-9]{64}$/);
       expect(entry?.frameUrl).toContain("/api/views/local.frame/frame.html?v=");
       expect(entry?.frameUrlVersioned).toContain(`v=${entry?.frameHash}`);
 
@@ -950,13 +1015,14 @@ describe("GET /api/views/:id/frame.html", () => {
         "public, max-age=31536000, immutable",
       );
     } finally {
-      unregisterPluginViews("views-integration-local-frame");
+      unregisterPluginViews(runtime, "views-integration-local-frame");
       await rm(pluginDir, { recursive: true, force: true });
     }
   });
 
   it("does not fabricate a local frame route for remote absolute frameUrl views", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-remote-frame",
         description: "remote frame",
@@ -970,7 +1036,7 @@ describe("GET /api/views/:id/frame.html", () => {
           },
         ],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, error } = makeCtx("GET", "/api/views/remote.frame/frame.html");
@@ -1013,13 +1079,14 @@ describe("POST /api/views/:id/interact", () => {
 
   it("returns 400 when capability field is missing in body", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-wallet",
         description: "wallet",
         actions: [],
         views: [WALLET_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, error } = makeCtx(
@@ -1039,13 +1106,14 @@ describe("POST /api/views/:id/interact", () => {
 
   it("broadcasts view:interact WS message and resolves when result arrives", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-wallet",
         description: "wallet",
         actions: [],
         views: [WALLET_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const broadcasts: object[] = [];
@@ -1068,6 +1136,8 @@ describe("POST /api/views/:id/interact", () => {
     const broadcast = broadcasts[0] as {
       type: string;
       requestId: string;
+      viewId: string;
+      installationId: string;
       viewType: string;
     };
     expect(broadcast.type).toBe("view:interact");
@@ -1075,8 +1145,13 @@ describe("POST /api/views/:id/interact", () => {
     expect(typeof broadcast.requestId).toBe("string");
 
     // Resolve the pending request as the frontend would.
-    resolveViewInteractResult({
-      requestId: broadcast.requestId,
+    resolveViewInteractResult(runtime, hostKey, "views-integration-client", {
+      ...claimRendererReply(
+        runtime,
+        hostKey,
+        "views-integration-client",
+        broadcast,
+      ),
       success: true,
       result: "Hello from the view",
     });
@@ -1094,6 +1169,7 @@ describe("POST /api/views/:id/interact", () => {
 
   it("routes interact to the requested tui view override", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-wallet",
         description: "wallet",
@@ -1110,7 +1186,7 @@ describe("POST /api/views/:id/interact", () => {
           },
         ],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const broadcasts: object[] = [];
@@ -1142,13 +1218,14 @@ describe("POST /api/views/:id/interact", () => {
       capabilities: [{ id: "custom-action", description: "A custom action" }],
     };
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-wallet",
         description: "wallet",
         actions: [],
         views: [viewWithCaps],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, error } = makeCtx(
@@ -1175,13 +1252,14 @@ describe("POST /api/views/:id/interact", () => {
         capabilities: [{ id: "custom-action", description: "A custom action" }],
       };
       await registerPluginViews(
+        runtime,
         {
           name: "views-integration-wallet",
           description: "wallet",
           actions: [],
           views: [viewWithCaps],
         },
-        undefined,
+        { pluginDir: undefined, indexEmbeddings: false },
       );
 
       const broadcasts: object[] = [];
@@ -1212,22 +1290,24 @@ describe("POST /api/views/:id/interact", () => {
 describe("registering and unregistering plugin views", () => {
   it("registering a plugin with views adds them to the registry", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-wallet",
         description: "wallet",
         actions: [],
         views: [WALLET_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
-    const entry = getView("wallet.inventory");
+    const entry = getView(runtime, "wallet.inventory");
     expect(entry).toBeDefined();
     expect(entry?.pluginName).toBe("views-integration-wallet");
   });
 
   it("expands one modalities declaration into per-surface registry entries", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-modalities",
         description: "multi-surface view",
@@ -1241,18 +1321,20 @@ describe("registering and unregistering plugin views", () => {
           },
         ],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
-    expect(getView("multi.calendar", { viewType: "gui" })?.viewType).toBe(
-      "gui",
-    );
-    expect(getView("multi.calendar", { viewType: "xr" })?.viewType).toBe("xr");
-    expect(getView("multi.calendar", { viewType: "tui" })?.viewType).toBe(
-      "tui",
-    );
     expect(
-      listViews({ developerMode: true, viewType: "tui" }).find(
+      getView(runtime, "multi.calendar", { viewType: "gui" })?.viewType,
+    ).toBe("gui");
+    expect(
+      getView(runtime, "multi.calendar", { viewType: "xr" })?.viewType,
+    ).toBe("xr");
+    expect(
+      getView(runtime, "multi.calendar", { viewType: "tui" })?.viewType,
+    ).toBe("tui");
+    expect(
+      listViews(runtime, { developerMode: true, viewType: "tui" }).find(
         (view) => view.id === "multi.calendar",
       )?.viewType,
     ).toBe("tui");
@@ -1260,35 +1342,37 @@ describe("registering and unregistering plugin views", () => {
 
   it("unregistering a plugin removes its views from the registry", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-wallet",
         description: "wallet",
         actions: [],
         views: [WALLET_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
-    expect(getView("wallet.inventory")).toBeDefined();
-    unregisterPluginViews("views-integration-wallet");
-    expect(getView("wallet.inventory")).toBeUndefined();
+    expect(getView(runtime, "wallet.inventory")).toBeDefined();
+    unregisterPluginViews(runtime, "views-integration-wallet");
+    expect(getView(runtime, "wallet.inventory")).toBeUndefined();
   });
 
   it("filtering by developerMode works at registry level", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "views-integration-dev",
         description: "dev",
         actions: [],
         views: [DEV_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
-    const normal = listViews({ developerMode: false });
+    const normal = listViews(runtime, { developerMode: false });
     expect(normal.find((v) => v.id === "dev.logs")).toBeUndefined();
 
-    const dev = listViews({ developerMode: true });
+    const dev = listViews(runtime, { developerMode: true });
     expect(dev.find((v) => v.id === "dev.logs")).toBeDefined();
   });
 });

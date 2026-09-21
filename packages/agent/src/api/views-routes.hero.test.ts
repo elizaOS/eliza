@@ -3,17 +3,18 @@
  * builtin views, a generated image/svg+xml fallback for plugin views with no hero
  * asset, and a 404 through the error helper for unknown ids. In-process route
  * calls against a mock ServerResponse that captures writeHead/setHeader/end — no
- * HTTP server, no runtime, no LLM.
+ * HTTP server or LLM. The registry belongs to a real runtime.
  */
 import type http from "node:http";
 import { Readable } from "node:stream";
+import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_VIEWS } from "./builtin-views.ts";
 import {
+  closeRuntimeViewRegistry,
   listViews,
   registerBuiltinViews,
   registerPluginViews,
-  unregisterPluginViews,
 } from "./views-registry.ts";
 import {
   clearCurrentViewState,
@@ -24,6 +25,9 @@ import {
 // Unit test for GET /api/views/:id/hero (views-routes.ts ~L710). The route
 // streams image bytes directly via res.writeHead/setHeader/end — NOT the `json`
 // helper. So the mock res here captures writeHead/setHeader/end directly.
+
+let runtime: AgentRuntime;
+let hostKey: object;
 
 const TEST_PLUGIN = "@test/views-hero";
 
@@ -52,6 +56,8 @@ function makeHeroCtx(id: string): {
   const error = vi.fn();
   const pathname = `/api/views/${encodeURIComponent(id)}/hero`;
   const ctx: ViewsRouteContext = {
+    runtime,
+    hostKey,
     req,
     res: res as unknown as http.ServerResponse,
     method: "GET",
@@ -93,9 +99,15 @@ function bodyBufferFrom(res: CapturedRes): Buffer {
 
 describe("GET /api/views/:id/hero", () => {
   beforeEach(async () => {
-    registerBuiltinViews();
-    clearCurrentViewState();
+    runtime = new AgentRuntime({
+      character: createCharacter({ name: "View route" }),
+      enableAutonomy: false,
+    });
+    hostKey = {};
+    registerBuiltinViews(runtime);
+    clearCurrentViewState(runtime);
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "Synthetic hero test plugin.",
@@ -109,13 +121,13 @@ describe("GET /api/views/:id/hero", () => {
         ],
       },
       // process.cwd() has no assets/hero.* file → forces the SVG fallback.
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
   });
 
   afterEach(() => {
-    clearCurrentViewState();
-    unregisterPluginViews(TEST_PLUGIN);
+    clearCurrentViewState(runtime);
+    closeRuntimeViewRegistry(runtime);
     vi.restoreAllMocks();
   });
 
@@ -136,7 +148,7 @@ describe("GET /api/views/:id/hero", () => {
   });
 
   it("marks each builtin according to whether it declares a packaged hero", () => {
-    const builtinViews = listViews({ includeAllKinds: true }).filter(
+    const builtinViews = listViews(runtime, { includeAllKinds: true }).filter(
       (view) => view.pluginName === "@elizaos/builtin",
     );
 

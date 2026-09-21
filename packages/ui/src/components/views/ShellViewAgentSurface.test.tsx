@@ -8,7 +8,23 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sendWsMessage = vi.fn();
-vi.mock("../../api", () => ({ client: { sendWsMessage } }));
+vi.mock("../../api", () => ({
+  client: {
+    sendWsMessage,
+    fetch: vi.fn(async () => ({ claimId: "execution-claim" })),
+    clientId: "fixture-client",
+  },
+}));
+
+vi.mock("../../hooks/useAvailableViews", () => ({
+  useAvailableViews: () => ({
+    views: ["browser", "settings", "character"].map((id) => ({
+      id,
+      viewType: "gui",
+      installationId: "fixture-installation",
+    })),
+  }),
+}));
 
 afterEach(cleanup);
 beforeEach(() => sendWsMessage.mockClear());
@@ -34,6 +50,7 @@ describe("ShellViewAgentSurface", () => {
       "get-text",
       { selector: "h1", nativeOnly: true },
       "native-read-1",
+      "fixture-installation",
     );
     expect(read).toHaveBeenCalledWith("h1");
     expect(sendWsMessage.mock.calls.at(-1)?.[0]).toMatchObject({
@@ -51,6 +68,7 @@ describe("ShellViewAgentSurface", () => {
       "get-text",
       { nativeOnly: true },
       "native-read-2",
+      "fixture-installation",
     );
     expect(sendWsMessage.mock.calls.at(-1)?.[0]).toMatchObject({
       success: false,
@@ -86,9 +104,14 @@ describe("ShellViewAgentSurface", () => {
       "list-elements",
       undefined,
       "r1",
+      "fixture-installation",
     );
     const listMsg = sendWsMessage.mock.calls.at(-1)?.[0];
     expect(listMsg).toMatchObject({
+      viewId: "settings",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "r1",
       success: true,
@@ -104,6 +127,7 @@ describe("ShellViewAgentSurface", () => {
       "agent-click",
       { id: "save" },
       "r2",
+      "fixture-installation",
     );
     expect(onClick).toHaveBeenCalledOnce();
   });
@@ -122,6 +146,7 @@ describe("ShellViewAgentSurface", () => {
       "no-such-cap",
       undefined,
       "r3",
+      "fixture-installation",
     );
     const msg = sendWsMessage.mock.calls.at(-1)?.[0];
     expect(msg).toMatchObject({ requestId: "r3", success: false });

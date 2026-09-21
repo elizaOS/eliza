@@ -11,14 +11,14 @@
  */
 import type http from "node:http";
 import { Readable } from "node:stream";
-import { logger } from "@elizaos/core";
+import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_VIEWS } from "./builtin-views.ts";
 import {
+  closeRuntimeViewRegistry,
   listViews,
   registerBuiltinViews,
   registerPluginViews,
-  unregisterPluginViews,
 } from "./views-registry.ts";
 import {
   clearCurrentViewState,
@@ -29,6 +29,8 @@ import {
 // Two plugins each declaring views with NO hero file on disk. Registering them
 // under process.cwd() (which has no assets/hero.* nor the declared heroImagePath)
 // forces every one of these views down the generated-SVG fallback path.
+let runtime: AgentRuntime;
+let hostKey: object;
 const FALLBACK_PLUGIN_A = "@test/views-hero-coverage-a";
 const FALLBACK_PLUGIN_B = "@test/views-hero-coverage-b";
 
@@ -60,6 +62,8 @@ function makeHeroCtx(id: string): {
   const error = vi.fn();
   const pathname = `/api/views/${encodeURIComponent(id)}/hero`;
   const ctx: ViewsRouteContext = {
+    runtime,
+    hostKey,
     req,
     res: res as unknown as http.ServerResponse,
     method: "GET",
@@ -98,12 +102,18 @@ function bodyBufferFrom(res: CapturedRes): Buffer {
 
 describe("GET /api/views/:id/hero — every view returns an image", () => {
   beforeEach(async () => {
-    registerBuiltinViews();
-    clearCurrentViewState();
+    runtime = new AgentRuntime({
+      character: createCharacter({ name: "Hero coverage" }),
+      enableAutonomy: false,
+    });
+    hostKey = {};
+    registerBuiltinViews(runtime);
+    clearCurrentViewState(runtime);
     // Two synthetic plugins with views that have no packaged hero. process.cwd()
     // is the agent package dir, which has no assets/hero.* and none of the
     // declared heroImagePath files → every view here hits the SVG fallback.
     await registerPluginViews(
+      runtime,
       {
         name: FALLBACK_PLUGIN_A,
         description: "Synthetic hero-coverage plugin A (no hero files).",
@@ -124,9 +134,10 @@ describe("GET /api/views/:id/hero — every view returns an image", () => {
           },
         ],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
     await registerPluginViews(
+      runtime,
       {
         name: FALLBACK_PLUGIN_B,
         description: "Synthetic hero-coverage plugin B (no hero files).",
@@ -139,19 +150,18 @@ describe("GET /api/views/:id/hero — every view returns an image", () => {
           },
         ],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
   });
 
   afterEach(() => {
-    clearCurrentViewState();
-    unregisterPluginViews(FALLBACK_PLUGIN_A);
-    unregisterPluginViews(FALLBACK_PLUGIN_B);
+    clearCurrentViewState(runtime);
+    closeRuntimeViewRegistry(runtime);
     vi.restoreAllMocks();
   });
 
   it("registers builtin views (real heroes) and fallback plugin views together", () => {
-    const views = listViews({ includeAllKinds: true });
+    const views = listViews(runtime, { includeAllKinds: true });
     const ids = new Set(views.map((view) => view.id));
 
     // Sanity: the registry holds both flavours, so the per-view loop exercises
@@ -168,7 +178,7 @@ describe("GET /api/views/:id/hero — every view returns an image", () => {
   });
 
   it("serves a non-empty image for EVERY registered view (no 404, image/* content-type)", async () => {
-    const views = listViews({ includeAllKinds: true });
+    const views = listViews(runtime, { includeAllKinds: true });
     expect(views.length).toBeGreaterThan(0);
 
     const failures: string[] = [];

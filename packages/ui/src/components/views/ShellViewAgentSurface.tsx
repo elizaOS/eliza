@@ -22,6 +22,7 @@ import {
   isAgentSurfaceCapability,
 } from "../../agent-surface";
 import type { RegisteredAgentSurfaceKind } from "../../app-shell-registry";
+import { useAvailableViews } from "../../hooks/useAvailableViews";
 import { registerViewInteractHandler } from "./view-interact-registry";
 
 function idParam(params: Record<string, unknown> | undefined): string | null {
@@ -47,6 +48,26 @@ export function ShellViewAgentSurface({
   readPage,
   children,
 }: ShellViewAgentSurfaceProps) {
+  const { views } = useAvailableViews();
+  const installationId = views.find(
+    (entry) => entry.id === viewId && (entry.viewType ?? "gui") === viewType,
+  )?.installationId;
+  return (
+    <InstalledShellViewAgentSurface
+      key={installationId ?? "unbound"}
+      {...{ viewId, viewType, surfaceKind, readPage, children, installationId }}
+    />
+  );
+}
+
+function InstalledShellViewAgentSurface({
+  viewId,
+  viewType = "gui",
+  surfaceKind,
+  readPage,
+  children,
+  installationId,
+}: ShellViewAgentSurfaceProps & { installationId?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const pageReader = useRef(readPage);
   pageReader.current = readPage;
@@ -56,7 +77,7 @@ export function ShellViewAgentSurface({
       viewId,
       viewType,
       async (capability, params) => {
-        const registry = getViewRegistry(viewId, viewType);
+        const registry = getViewRegistry(viewId, viewType, installationId);
         if (isAgentSurfaceCapability(capability)) {
           if (!registry) {
             throw new Error(
@@ -119,11 +140,16 @@ export function ShellViewAgentSurface({
             );
         }
       },
+      installationId,
     );
-  }, [viewId, viewType]);
+  }, [viewId, viewType, installationId]);
 
   return (
-    <AgentSurfaceProvider viewId={viewId} viewType={viewType}>
+    <AgentSurfaceProvider
+      viewId={viewId}
+      viewType={viewType}
+      installationId={installationId}
+    >
       <div
         ref={containerRef}
         className="contents"

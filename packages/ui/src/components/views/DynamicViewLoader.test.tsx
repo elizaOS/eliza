@@ -197,7 +197,15 @@ vi.mock("../../api", () => ({
     apiToken: activeCredential,
     rawRequest,
     sendWsMessage,
+    fetch: vi.fn(async () => ({ claimId: "execution-claim" })),
+    clientId: "fixture-client",
   },
+}));
+
+// Host-external authority hooks use the same mocked transport as the loader.
+// Importing a second, real client here starts unrelated network/bootstrap work.
+vi.mock("../../api/client", async () => ({
+  client: (await import("../../api")).client,
 }));
 
 describe("authenticated protected view bundle loading", () => {
@@ -505,15 +513,27 @@ describe("DynamicViewLoader", () => {
     try {
       const rendered = render(
         <div>
-          <DynamicViewLoader bundleUrl={firstUrl} viewId="retained-a" />
+          <DynamicViewLoader
+            installationId="fixture-installation"
+            bundleUrl={firstUrl}
+            viewId="retained-a"
+          />
         </div>,
       );
       await screen.findByRole("button", { name: firstUrl });
       act(() => setActiveSurfaceRealmScope(makeScope("foreground-b")));
       rendered.rerender(
         <div>
-          <DynamicViewLoader bundleUrl={firstUrl} viewId="retained-a" />
-          <DynamicViewLoader bundleUrl={secondUrl} viewId="foreground-b" />
+          <DynamicViewLoader
+            installationId="fixture-installation"
+            bundleUrl={firstUrl}
+            viewId="retained-a"
+          />
+          <DynamicViewLoader
+            installationId="fixture-installation"
+            bundleUrl={secondUrl}
+            viewId="foreground-b"
+          />
         </div>,
       );
       fireEvent.click(await screen.findByRole("button", { name: secondUrl }));
@@ -548,8 +568,16 @@ describe("DynamicViewLoader", () => {
     try {
       render(
         <>
-          <DynamicViewLoader bundleUrl="/api/views/a/bundle.js" viewId="a" />
-          <DynamicViewLoader bundleUrl="/api/views/b/bundle.js" viewId="b" />
+          <DynamicViewLoader
+            installationId="fixture-installation"
+            bundleUrl="/api/views/a/bundle.js"
+            viewId="a"
+          />
+          <DynamicViewLoader
+            installationId="fixture-installation"
+            bundleUrl="/api/views/b/bundle.js"
+            viewId="b"
+          />
         </>,
       );
       await screen.findByText("/api/views/a/bundle.js");
@@ -612,6 +640,7 @@ describe("DynamicViewLoader", () => {
     try {
       render(
         <DynamicViewLoader
+          installationId="fixture-installation"
           bundleUrl="/api/views/scope-panel/bundle.js"
           viewId="scope-panel"
         />,
@@ -650,7 +679,13 @@ describe("DynamicViewLoader", () => {
     }));
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
 
-    render(<DynamicViewLoader bundleUrl={bundleUrl} viewId="remote.panel" />);
+    render(
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="remote.panel"
+      />,
+    );
 
     await screen.findByText("Remote capability panel loaded");
     expect(importBundle).toHaveBeenCalledWith(bundleUrl, expect.any(Function));
@@ -710,6 +745,7 @@ describe("DynamicViewLoader", () => {
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
     const { rerender } = render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl="/api/views/cloud/bundle.js"
         viewId="cloud"
         surface={{ capabilities: ["navigate"] }}
@@ -723,6 +759,7 @@ describe("DynamicViewLoader", () => {
     act(() => setActiveSurfaceRealmScope(firstScope));
     rerender(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl="/api/views/cloud/bundle.js"
         viewId="cloud"
         surface={{ capabilities: ["navigate"] }}
@@ -796,6 +833,7 @@ describe("DynamicViewLoader", () => {
     );
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl="/api/views/cloud/bundle.js"
         viewId="cloud"
       />,
@@ -840,6 +878,7 @@ describe("DynamicViewLoader", () => {
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl="/api/views/cloud/bundle.js"
         viewId="cloud"
       />,
@@ -891,14 +930,17 @@ describe("DynamicViewLoader", () => {
     render(
       <>
         <DynamicViewLoader
+          installationId="fixture-installation"
           viewId="notes"
           bundleUrl="/api/views/notes/bundle.js"
         />
         <DynamicViewLoader
+          installationId="fixture-installation"
           viewId="calendar"
           bundleUrl="/api/views/calendar/bundle.js"
         />
         <DynamicViewLoader
+          installationId="fixture-installation"
           viewId="unrelated"
           bundleUrl="/api/views/unrelated/bundle.js"
         />
@@ -947,7 +989,12 @@ describe("DynamicViewLoader", () => {
       },
     }));
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
-    render(<DynamicViewLoader {...DATABASE_VECTOR_VIEW} />);
+    render(
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        {...DATABASE_VECTOR_VIEW}
+      />,
+    );
     fireEvent.click(
       await screen.findByRole("button", { name: "Select vector" }),
     );
@@ -980,6 +1027,7 @@ describe("DynamicViewLoader", () => {
 
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl="/api/views/sandboxed.panel/bundle.js"
         frameUrl="/api/views/sandboxed.panel/frame.html"
         viewId="sandboxed.panel"
@@ -1005,6 +1053,7 @@ describe("DynamicViewLoader", () => {
 
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl="/api/views/sandboxed.panel/bundle.js"
         viewId="sandboxed.panel"
         surface={{ isolation: "sandboxed-iframe" }}
@@ -1031,6 +1080,7 @@ describe("DynamicViewLoader", () => {
 
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={bundleUrl}
         viewId="remote.interactive"
         viewType="gui"
@@ -1047,12 +1097,17 @@ describe("DynamicViewLoader", () => {
       "custom-capability",
       undefined,
       "req-remote",
+      "fixture-installation",
     );
 
     await waitFor(() => {
       expect(interact).toHaveBeenCalledWith("custom-capability", undefined);
     });
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "remote.interactive",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-remote",
       success: true,
@@ -1073,7 +1128,13 @@ describe("DynamicViewLoader", () => {
       },
     }));
 
-    render(<DynamicViewLoader bundleUrl={bundleUrl} viewId="window.manager" />);
+    render(
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="window.manager"
+      />,
+    );
     await screen.findByText("Window manager state");
 
     const { dispatchViewInteract } = await import("./view-interact-registry");
@@ -1083,6 +1144,7 @@ describe("DynamicViewLoader", () => {
       "get-text",
       undefined,
       "req-text",
+      "fixture-installation",
     );
     await dispatchViewInteract(
       "window.manager",
@@ -1090,6 +1152,7 @@ describe("DynamicViewLoader", () => {
       "get-state",
       undefined,
       "req-state",
+      "fixture-installation",
     );
 
     expect(sendWsMessage).toHaveBeenCalledWith(
@@ -1100,6 +1163,10 @@ describe("DynamicViewLoader", () => {
       }),
     );
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "window.manager",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-state",
       success: true,
@@ -1115,7 +1182,13 @@ describe("DynamicViewLoader", () => {
       },
     }));
 
-    render(<DynamicViewLoader bundleUrl={bundleUrl} viewId="bad.state" />);
+    render(
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="bad.state"
+      />,
+    );
     await screen.findByText("Bad state panel");
 
     const { dispatchViewInteract } = await import("./view-interact-registry");
@@ -1125,9 +1198,14 @@ describe("DynamicViewLoader", () => {
       "get-state",
       undefined,
       "req-bad-state",
+      "fixture-installation",
     );
 
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "bad.state",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-bad-state",
       success: true,
@@ -1152,6 +1230,7 @@ describe("DynamicViewLoader", () => {
 
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={bundleUrl}
         viewId="focus.view"
         surface={AGENT_SURFACE_MANIFEST}
@@ -1167,6 +1246,7 @@ describe("DynamicViewLoader", () => {
         "focus-element",
         { selector: ".primary-action" },
         "req-focus-selector",
+        "fixture-installation",
       );
     });
     expect(document.activeElement).toBe(
@@ -1180,6 +1260,7 @@ describe("DynamicViewLoader", () => {
         "focus-element",
         { name: "view-title" },
         "req-focus-name",
+        "fixture-installation",
       );
     });
     expect(document.activeElement).toBe(screen.getByLabelText("View title"));
@@ -1236,6 +1317,7 @@ describe("DynamicViewLoader", () => {
 
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={bundleUrl}
         viewId="form.view"
         surface={AGENT_SURFACE_MANIFEST}
@@ -1251,6 +1333,7 @@ describe("DynamicViewLoader", () => {
         "fill-input",
         { name: "view-title", value: "Remote Ledger Updated" },
         "req-fill",
+        "fixture-installation",
       );
     });
     expect(screen.getByDisplayValue("Remote Ledger Updated")).toBeTruthy();
@@ -1262,6 +1345,7 @@ describe("DynamicViewLoader", () => {
         "click-element",
         { selector: ".submit-view" },
         "req-click",
+        "fixture-installation",
       );
     });
     await waitFor(() =>
@@ -1276,9 +1360,14 @@ describe("DynamicViewLoader", () => {
       "get-state",
       undefined,
       "req-form-state",
+      "fixture-installation",
     );
 
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "form.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-fill",
       success: true,
@@ -1289,12 +1378,20 @@ describe("DynamicViewLoader", () => {
       },
     });
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "form.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-click",
       success: true,
       result: { clicked: true, selector: ".submit-view" },
     });
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "form.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-form-state",
       success: true,
@@ -1320,6 +1417,7 @@ describe("DynamicViewLoader", () => {
 
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={bundleUrl}
         viewId="form.errors.view"
         surface={AGENT_SURFACE_MANIFEST}
@@ -1334,6 +1432,7 @@ describe("DynamicViewLoader", () => {
       "click-element",
       { selector: ".missing" },
       "req-click-missing",
+      "fixture-installation",
     );
     await dispatchViewInteract(
       "form.errors.view",
@@ -1341,6 +1440,7 @@ describe("DynamicViewLoader", () => {
       "fill-input",
       { selector: ".not-fillable", value: "Changed" },
       "req-fill-not-fillable",
+      "fixture-installation",
     );
     await dispatchViewInteract(
       "form.errors.view",
@@ -1348,22 +1448,35 @@ describe("DynamicViewLoader", () => {
       "fill-input",
       { name: "view-title", value: 12 },
       "req-fill-bad-value",
+      "fixture-installation",
     );
 
     expect(screen.getByDisplayValue("Original")).toBeTruthy();
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "form.errors.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-click-missing",
       success: true,
       result: { clicked: false, reason: "element not found" },
     });
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "form.errors.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-fill-not-fillable",
       success: true,
       result: { filled: false, reason: "element is not fillable" },
     });
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "form.errors.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-fill-bad-value",
       success: true,
@@ -1393,6 +1506,7 @@ describe("DynamicViewLoader", () => {
     }));
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl="https://capability.example.test/assets/status.js"
         viewId="status.view"
         surface={AGENT_SURFACE_MANIFEST}
@@ -1406,8 +1520,13 @@ describe("DynamicViewLoader", () => {
       "list-elements",
       undefined,
       "req-status-unselected",
+      "fixture-installation",
     );
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "status.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-status-unselected",
       success: true,
@@ -1426,11 +1545,16 @@ describe("DynamicViewLoader", () => {
         "agent-fill",
         { id: "goal-status-filter", value: "Active" },
         "req-status-active",
+        "fixture-installation",
       );
     });
     expect(screen.queryByText("Learn conversational Spanish")).toBeNull();
     expect(screen.getByText("Run a half marathon")).toBeTruthy();
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "status.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-status-active",
       success: true,
@@ -1443,6 +1567,7 @@ describe("DynamicViewLoader", () => {
         "agent-fill",
         { id: "goal-status-filter", value: "Paused" },
         "req-status-paused",
+        "fixture-installation",
       );
     });
     expect(screen.queryByText("Run a half marathon")).toBeNull();
@@ -1469,6 +1594,7 @@ describe("DynamicViewLoader", () => {
 
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={bundleUrl}
         viewId="sensitive.view"
         surface={AGENT_SURFACE_MANIFEST}
@@ -1483,6 +1609,7 @@ describe("DynamicViewLoader", () => {
       "list-elements",
       undefined,
       "req-list-sensitive",
+      "fixture-installation",
     );
     await dispatchViewInteract(
       "sensitive.view",
@@ -1490,6 +1617,7 @@ describe("DynamicViewLoader", () => {
       "agent-fill",
       { id: "owner-password", value: "changed-secret" },
       "req-fill-sensitive-agent",
+      "fixture-installation",
     );
     await dispatchViewInteract(
       "sensitive.view",
@@ -1497,10 +1625,15 @@ describe("DynamicViewLoader", () => {
       "fill-input",
       { selector: "[data-agent-id='owner-password']", value: "changed-secret" },
       "req-fill-sensitive-selector",
+      "fixture-installation",
     );
 
     expect(screen.getByDisplayValue("existing-secret")).toBeTruthy();
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "sensitive.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-list-sensitive",
       success: true,
@@ -1521,6 +1654,10 @@ describe("DynamicViewLoader", () => {
       );
     expect(JSON.stringify(listCall?.[0])).not.toContain("existing-secret");
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "sensitive.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-fill-sensitive-agent",
       success: true,
@@ -1530,6 +1667,10 @@ describe("DynamicViewLoader", () => {
       }),
     });
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "sensitive.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-fill-sensitive-selector",
       success: true,
@@ -1550,6 +1691,7 @@ describe("DynamicViewLoader", () => {
 
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={bundleUrl}
         viewId="missing.focus"
         surface={AGENT_SURFACE_MANIFEST}
@@ -1564,9 +1706,14 @@ describe("DynamicViewLoader", () => {
       "focus-element",
       { selector: ".does-not-exist" },
       "req-missing-focus",
+      "fixture-installation",
     );
 
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "missing.focus",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-missing-focus",
       success: true,
@@ -1590,6 +1737,7 @@ describe("DynamicViewLoader", () => {
 
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={bundleUrl}
         viewId="refresh.view"
         surface={AGENT_SURFACE_MANIFEST}
@@ -1605,12 +1753,17 @@ describe("DynamicViewLoader", () => {
         "refresh",
         undefined,
         "req-refresh",
+        "fixture-installation",
       );
     });
 
     await screen.findByText("Refresh version 2");
     expect(interact).not.toHaveBeenCalled();
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "refresh.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-refresh",
       success: true,
@@ -1656,6 +1809,7 @@ describe("DynamicViewLoader", () => {
 
     const rendered = render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={bundleUrl}
         viewId="hmr.view"
         surface={AGENT_SURFACE_MANIFEST}
@@ -1697,6 +1851,7 @@ describe("DynamicViewLoader", () => {
       "custom-capability",
       undefined,
       "req-hmr-interact",
+      "fixture-installation",
     );
     expect(interactVersion2).toHaveBeenCalledWith(
       "custom-capability",
@@ -1704,6 +1859,10 @@ describe("DynamicViewLoader", () => {
     );
     expect(interactVersion1).not.toHaveBeenCalled();
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "hmr.view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-hmr-interact",
       success: true,
@@ -1746,6 +1905,7 @@ describe("DynamicViewLoader", () => {
 
     const rendered = render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={firstUrl}
         viewId="replace.first"
         viewType="gui"
@@ -1756,6 +1916,7 @@ describe("DynamicViewLoader", () => {
 
     rendered.rerender(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={secondUrl}
         viewId="replace.second"
         viewType="gui"
@@ -1771,6 +1932,7 @@ describe("DynamicViewLoader", () => {
       "custom-capability",
       undefined,
       "req-old-view",
+      "fixture-installation",
     );
     await dispatchViewInteract(
       "replace.second",
@@ -1778,6 +1940,7 @@ describe("DynamicViewLoader", () => {
       "custom-capability",
       undefined,
       "req-new-view",
+      "fixture-installation",
     );
 
     expect(firstInteract).not.toHaveBeenCalled();
@@ -1793,6 +1956,10 @@ describe("DynamicViewLoader", () => {
       }),
     );
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "replace.second",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-new-view",
       success: true,
@@ -1813,7 +1980,13 @@ describe("DynamicViewLoader", () => {
       default: "not a component",
     }));
 
-    render(<DynamicViewLoader bundleUrl={bundleUrl} viewId="broken.view" />);
+    render(
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="broken.view"
+      />,
+    );
 
     await screen.findByText("This view couldn’t open");
     expect(screen.queryByText("View ID: broken.view")).toBeNull();
@@ -1845,7 +2018,11 @@ describe("DynamicViewLoader", () => {
     });
 
     const { container } = render(
-      <DynamicViewLoader bundleUrl={bundleUrl} viewId="network.view" />,
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="network.view"
+      />,
     );
 
     const retry = await screen.findByRole("button", { name: /retry/i });
@@ -1892,7 +2069,13 @@ describe("DynamicViewLoader", () => {
       };
     });
 
-    render(<DynamicViewLoader bundleUrl={bundleUrl} viewId="crashy.view" />);
+    render(
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="crashy.view"
+      />,
+    );
 
     // First import renders a component that throws → ErrorBoundary fallback.
     const retry = await screen.findByRole("button", { name: /retry/i });
@@ -1919,6 +2102,7 @@ describe("DynamicViewLoader", () => {
 
     render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl="https://capability.example.test/assets/fullscreen-fail.js"
         viewId="fullscreen.view"
         surface={{ header: "fullscreen" }}
@@ -1945,7 +2129,11 @@ describe("DynamicViewLoader", () => {
     }));
 
     const rendered = render(
-      <DynamicViewLoader bundleUrl={bundleUrl} viewId="cleanup.view" />,
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="cleanup.view"
+      />,
     );
     await screen.findByText("Cleanup panel");
 
@@ -1969,7 +2157,11 @@ describe("DynamicViewLoader", () => {
     );
 
     const rendered = render(
-      <DynamicViewLoader bundleUrl={bundleUrl} viewId="late.cleanup.view" />,
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="late.cleanup.view"
+      />,
     );
     expect(
       screen
@@ -2008,7 +2200,11 @@ describe("DynamicViewLoader", () => {
     );
 
     const rendered = render(
-      <DynamicViewLoader bundleUrl={bundleUrl} viewId="late.pressure.view" />,
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="late.pressure.view"
+      />,
     );
     rendered.unmount();
     window.dispatchEvent(new Event("memorypressure"));
@@ -2042,7 +2238,11 @@ describe("DynamicViewLoader", () => {
     }));
 
     const rendered = render(
-      <DynamicViewLoader bundleUrl={bundleUrl} viewId="pause.view" />,
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="pause.view"
+      />,
     );
     await screen.findByText("Pause panel");
     rendered.unmount();
@@ -2056,19 +2256,19 @@ describe("DynamicViewLoader", () => {
         expect.objectContaining({
           source: "dynamic-view",
           action: "load",
-          key: `${bundleUrl}::default`,
+          key: `${bundleUrl}::default::fixture-installation`,
         }),
         expect.objectContaining({
           source: "dynamic-view",
           action: "evict",
           reason: "app-pause",
-          key: `${bundleUrl}::default`,
+          key: `${bundleUrl}::default::fixture-installation`,
         }),
         expect.objectContaining({
           source: "dynamic-view",
           action: "cleanup",
           reason: "app-pause",
-          key: `${bundleUrl}::default`,
+          key: `${bundleUrl}::default::fixture-installation`,
         }),
       ]),
     );
@@ -2088,7 +2288,11 @@ describe("DynamicViewLoader", () => {
     }));
 
     const rendered = render(
-      <DynamicViewLoader bundleUrl={bundleUrl} viewId="listener.view" />,
+      <DynamicViewLoader
+        installationId="fixture-installation"
+        bundleUrl={bundleUrl}
+        viewId="listener.view"
+      />,
     );
     await screen.findByText("Listener panel");
     rendered.unmount();
@@ -2121,5 +2325,75 @@ describe("DynamicViewLoader", () => {
       APP_PAUSE_EVENT,
       appPauseHandler,
     );
+  });
+  it("loads a replacement installation before admitting its interactions at the same URL", async () => {
+    const { dispatchViewInteract } = await import("./view-interact-registry");
+    const effects = [vi.fn(async () => "old"), vi.fn(async () => "new")];
+    let resume!: () => void;
+    const paused = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    let loads = 0;
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => {
+      const generation = loads++;
+      if (generation === 1) await paused;
+      return {
+        default: () => <div>Installation {generation}</div>,
+        interact: effects[generation],
+      };
+    });
+    const props = {
+      bundleUrl: "/api/views/reloaded/bundle.js",
+      viewId: "reloaded",
+      surface: AGENT_SURFACE_MANIFEST,
+    };
+    const mounted = render(
+      <DynamicViewLoader {...props} installationId="old" />,
+    );
+    try {
+      await screen.findByText("Installation 0");
+      mounted.rerender(<DynamicViewLoader {...props} installationId="new" />);
+      await waitFor(() => expect(loads).toBe(2));
+      await dispatchViewInteract(
+        "reloaded",
+        "gui",
+        "save",
+        {},
+        "before-load",
+        "new",
+      );
+      expect(effects[0]).not.toHaveBeenCalled();
+      expect(effects[1]).not.toHaveBeenCalled();
+      await act(async () => resume());
+      await screen.findByText("Installation 1");
+      await dispatchViewInteract(
+        "reloaded",
+        "gui",
+        "save",
+        {},
+        "retired-request",
+        "old",
+      );
+      await dispatchViewInteract(
+        "reloaded",
+        "gui",
+        "save",
+        {},
+        "current-request",
+        "new",
+      );
+      expect(effects[0]).not.toHaveBeenCalled();
+      expect(effects[1]).toHaveBeenCalledTimes(1);
+      expect(sendWsMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          installationId: "new",
+          requestId: "current-request",
+          result: "new",
+        }),
+      );
+    } finally {
+      resume();
+      mounted.unmount();
+    }
   });
 });

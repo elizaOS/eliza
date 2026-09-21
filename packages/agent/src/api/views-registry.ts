@@ -28,8 +28,23 @@ import {
   isPathWithinRoot,
   resolveRealPathSync,
 } from "./realpath-confinement.ts";
+import {
+  assertViewInstallation,
+  beginViewInstallation,
+  commitViewInstallation,
+  revokeViewInstallation,
+  runtimeViewEntries,
+  type ViewInstallation,
+} from "./view-installations.ts";
 import type { ViewRegistryEntry } from "./view-registry-types.ts";
-import { viewSearchIndex } from "./views-search-index.ts";
+import { getViewSearchIndex } from "./views-search-index.ts";
+
+export {
+  assertRuntimeViewEntry,
+  beginViewInstallation,
+  closeRuntimeViewRegistry,
+  type ViewInstallation,
+} from "./view-installations.ts";
 
 /** Hero image extensions checked in order when `heroImagePath` is not set. */
 const HERO_EXTENSIONS = [".webp", ".png", ".jpg", ".jpeg", ".svg"] as const;
@@ -57,12 +72,7 @@ function viewRegistryKey(id: string, viewType: ViewType): string {
   return `${viewType}:${id}`;
 }
 
-/** Module-level registry storage. Keyed by view type + view id. */
-const registry = new Map<string, ViewRegistryEntry>();
-const pluginFallbacks = new Map<
-  string,
-  { views: Set<ViewDeclaration>; runtime?: IAgentRuntime }
->();
+const builtinInstallations = new WeakMap<IAgentRuntime, ViewInstallation>();
 
 // Directory-loaded plugins are real module objects but are not installed npm
 // packages, so name-based resolution cannot recover their bundle root. Binding
@@ -318,120 +328,61 @@ export function generateViewHeroSvg(label: string, icon?: string): string {
  * @param plugin    - The Plugin object whose `views` array to register.
  * @param pluginDir - Absolute path to the plugin's package root. When omitted,
  *   the registry attempts to resolve it via `require.resolve`.
- * @param runtime   - Optional agent runtime. When provided, embeddings for the
- *   newly registered views are queued in the background search index.
+ * @param runtime - Runtime object that owns this installation.
+ * Embedding indexing is explicit through options.indexEmbeddings.
  */
 export async function registerPluginViews(
+  runtime: IAgentRuntime,
   plugin: Plugin,
-  pluginDir?: string,
-  runtime?: IAgentRuntime,
-): Promise<void> {
-  const views = plugin.views;
-  if (!views || views.length === 0) return;
-
-  // A plugin can be hot-reloaded with a changed views array. Remove the old
-  // entries first so deleted or renamed views do not survive the reload.
-  unregisterPluginViews(plugin.name);
-
-  // Resolve plugin directory once for all views in this plugin. A plugin whose
-  // runtime `name` is not its npm package name (e.g. "elizaOSCloud" →
-  // @elizaos/plugin-elizacloud) declares `packageName` so resolution targets
-  // the real package instead of failing on name-derived candidates.
-  const resolvedDir =
-    pluginDir ??
-    boundPluginPackageDirectories.get(plugin) ??
-    (await resolvePluginPackageDir(plugin.packageName ?? plugin.name));
-
-  const registered: ViewRegistryEntry[] = [];
-  for (const view of views) {
-    for (const viewType of getViewModalities(view)) {
-      const entry = await buildEntry(
-        { ...view, viewType },
-        plugin.name,
-        resolvedDir,
-      );
-      const key = viewRegistryKey(entry.id, entry.viewType);
-      const existing = registry.get(key);
-      const fallback = BUILTIN_VIEWS.find(
-        (candidate) =>
-          candidate.fallbackFor === (plugin.packageName ?? plugin.name) &&
-          candidate.id === entry.id &&
-          candidate.path === entry.path &&
-          getViewModalities(candidate).includes(entry.viewType),
-      );
-      if (
-        existing &&
-        existing.pluginName !== plugin.name &&
-        !(existing.builtin && fallback)
-      ) {
-        logger.warn(
-          {
-            src: "ViewRegistry",
-            viewId: entry.id,
-            viewType: entry.viewType,
-            existingPlugin: existing.pluginName,
-            incomingPlugin: plugin.name,
-          },
-          `View id "${entry.id}" (${entry.viewType}) from plugin "${plugin.name}" conflicts with plugin "${existing.pluginName}"; keeping existing entry`,
+  options: {
+    pluginDir?: string;
+    indexEmbeddings?: boolean;
+    installation?: ViewInstallation;
+  } = {},
+): Promise<ViewInstallation> {
+  const installation =
+    options.installation ??
+    beginViewInstallation(runtime, plugin.name, plugin.packageName);
+  try {
+    const resolvedDir =
+      options.pluginDir ??
+      boundPluginPackageDirectories.get(plugin) ??
+      (await resolvePluginPackageDir(plugin.packageName ?? plugin.name));
+    const registered: ViewRegistryEntry[] = [];
+    for (const view of plugin.views ?? []) {
+      for (const viewType of getViewModalities(view)) {
+        registered.push(
+          await buildEntry({ ...view, viewType }, plugin.name, resolvedDir),
         );
-        continue;
       }
-      registry.set(key, entry);
-      if (fallback) {
-        const fallbacks = pluginFallbacks.get(plugin.name) ?? {
-          views: new Set<ViewDeclaration>(),
-          runtime,
-        };
-        fallbacks.views.add(fallback);
-        pluginFallbacks.set(plugin.name, fallbacks);
-      }
-      registered.push(entry);
-      logger.debug(
-        {
-          src: "ViewRegistry",
-          viewId: entry.id,
-          viewType: entry.viewType,
-          pluginName: entry.pluginName,
-          available: entry.available,
-        },
-        `Registered view "${entry.id}" (${entry.viewType}) from plugin "${plugin.name}"`,
-      );
     }
-  }
-
-  // Queue embedding computation in the background — non-blocking.
-  if (runtime && registered.length > 0) {
-    setImmediate(() => {
-      for (const entry of registered) {
-        // error-policy:J5 indexView self-degrades (its own catch logs and falls
-        // back to keyword search); this only suppresses a stray rejection from a
-        // synchronous pre-embed throw so a background task cannot crash the loop.
-        void viewSearchIndex.indexView(entry, runtime).catch(() => {});
-      }
-    });
+    const published = commitViewInstallation(runtime, installation, registered);
+    if (options.indexEmbeddings) indexInstalledViews(runtime, published);
+    return installation;
+  } catch (error) {
+    revokeViewInstallation(runtime, installation);
+    throw error;
   }
 }
 
-/**
- * Remove all views registered for `pluginName`. Called when a plugin is
- * unloaded via `runtime.unloadPlugin`.
- */
-export function unregisterPluginViews(pluginName: string): void {
-  for (const [key, entry] of registry) {
-    if (entry.pluginName === pluginName) {
-      registry.delete(key);
-      viewSearchIndex.removeView(entry.id, entry.viewType);
-      logger.debug(
-        { src: "ViewRegistry", viewId: entry.id, pluginName },
-        `Unregistered view "${entry.id}" from plugin "${pluginName}"`,
-      );
+/** Retired installation handles cannot delete their replacement. */
+export function unregisterPluginViews(
+  runtime: IAgentRuntime,
+  installation: ViewInstallation,
+): void {
+  revokeViewInstallation(runtime, installation);
+}
+
+function indexInstalledViews(
+  runtime: IAgentRuntime,
+  entries: readonly ViewRegistryEntry[],
+): void {
+  setImmediate(() => {
+    for (const entry of entries) {
+      // indexView owns its optional-model fallback and installation checks.
+      void getViewSearchIndex(runtime).indexView(entry);
     }
-  }
-  const fallbacks = pluginFallbacks.get(pluginName);
-  if (fallbacks) {
-    pluginFallbacks.delete(pluginName);
-    registerBuiltinViewDeclarations([...fallbacks.views], fallbacks.runtime);
-  }
+  });
 }
 
 /**
@@ -450,25 +401,23 @@ export function unregisterPluginViews(pluginName: string): void {
  * @param runtime - Optional agent runtime. When provided, embeddings for the
  *   built-in views are queued in the background search index.
  */
-export function registerBuiltinViews(runtime?: IAgentRuntime): void {
-  registerBuiltinViewDeclarations(BUILTIN_VIEWS, runtime);
-}
-
-function registerBuiltinViewDeclarations(
-  views: readonly ViewDeclaration[],
-  runtime?: IAgentRuntime,
+export function registerBuiltinViews(
+  runtime: IAgentRuntime,
+  options: { indexEmbeddings?: boolean } = {},
 ): void {
+  const current = builtinInstallations.get(runtime);
+  if (current) {
+    assertViewInstallation(runtime, current);
+    return;
+  }
+  const installation = beginViewInstallation(runtime, "@elizaos/builtin");
+  const views = BUILTIN_VIEWS;
   const loadedAt = Date.now();
   const pluginName = "@elizaos/builtin";
   const registered: ViewRegistryEntry[] = [];
   for (const sourceView of views) {
     for (const viewType of getViewModalities(sourceView)) {
       const view = { ...sourceView, viewType };
-      const key = viewRegistryKey(view.id, viewType);
-      if (registry.has(key)) {
-        // Already registered (e.g. called twice at startup). Skip silently.
-        continue;
-      }
       const platform: AgentPlatform =
         (view.platforms?.[0] as AgentPlatform | undefined) ?? "web";
       const pluginDir = AGENT_PACKAGE_DIR;
@@ -501,30 +450,16 @@ function registerBuiltinViewDeclarations(
         platform,
         builtin: true,
       };
-      registry.set(key, entry);
       registered.push(entry);
     }
   }
-  // Called on every /api/views request and again during deferred startup, but
-  // registration is idempotent — only the first call adds entries. Stay silent
-  // on idempotent re-calls so the boot log isn't spammed with the same line.
-  if (registered.length > 0) {
-    logger.info(
-      { src: "ViewRegistry", count: registered.length },
-      `Registered ${registered.length} built-in views`,
-    );
-  }
-
-  // Queue embedding computation in the background — non-blocking.
-  if (runtime && registered.length > 0) {
-    setImmediate(() => {
-      for (const entry of registered) {
-        // error-policy:J5 indexView self-degrades (its own catch logs and falls
-        // back to keyword search); this only suppresses a stray rejection from a
-        // synchronous pre-embed throw so a background task cannot crash the loop.
-        void viewSearchIndex.indexView(entry, runtime).catch(() => {});
-      }
-    });
+  try {
+    const published = commitViewInstallation(runtime, installation, registered);
+    builtinInstallations.set(runtime, installation);
+    if (options.indexEmbeddings) indexInstalledViews(runtime, published);
+  } catch (error) {
+    revokeViewInstallation(runtime, installation);
+    throw error;
   }
 }
 
@@ -543,16 +478,19 @@ function registerBuiltinViewDeclarations(
  * @param filter.includeAllKinds - Include every kind regardless of toggle
  *   (developer + preview). Default false.
  */
-export function listViews(filter?: {
-  developerMode?: boolean;
-  includeAllKinds?: boolean;
-  viewType?: ViewType;
-}): ViewRegistryEntry[] {
+export function listViews(
+  runtime: IAgentRuntime,
+  filter?: {
+    developerMode?: boolean;
+    includeAllKinds?: boolean;
+    viewType?: ViewType;
+  },
+): ViewRegistryEntry[] {
   const developerMode = filter?.developerMode ?? false;
   const includeAllKinds = filter?.includeAllKinds ?? false;
   const requestedViewType = filter?.viewType ?? DEFAULT_VIEW_TYPE;
   const byId = new Map<string, ViewRegistryEntry>();
-  for (const entry of registry.values()) {
+  for (const entry of runtimeViewEntries(runtime)) {
     if (!includeAllKinds) {
       const kind = resolveViewKind(entry);
       if (kind === "preview") continue;
@@ -589,13 +527,18 @@ export function listViews(filter?: {
  * Look up a single view by its stable id.
  */
 export function getView(
+  runtime: IAgentRuntime,
   id: string,
   filter?: { viewType?: ViewType },
 ): ViewRegistryEntry | undefined {
   const requestedViewType = filter?.viewType ?? DEFAULT_VIEW_TYPE;
   return (
-    registry.get(viewRegistryKey(id, requestedViewType)) ??
-    registry.get(viewRegistryKey(id, DEFAULT_VIEW_TYPE))
+    runtimeViewEntries(runtime).find(
+      (entry) => entry.id === id && entry.viewType === requestedViewType,
+    ) ??
+    runtimeViewEntries(runtime).find(
+      (entry) => entry.id === id && entry.viewType === DEFAULT_VIEW_TYPE,
+    )
   );
 }
 
@@ -607,7 +550,7 @@ export function getView(
 async function computeFileHash(filePath: string): Promise<string | null> {
   try {
     const content = await fs.readFile(filePath);
-    return createHash("sha256").update(content).digest("hex").slice(0, 12);
+    return createHash("sha256").update(content).digest("hex");
   } catch {
     return null;
   }
@@ -703,8 +646,7 @@ async function buildEntry(
   }
 
   const encodedId = encodeURIComponent(view.id);
-  // bundleUrl uses a timestamp ?v= param for backwards-compat; bundleUrlVersioned
-  // uses the content hash when available (allows immutable long-lived caching).
+  // Both public URLs identify the registered bytes. Publication adds the installation.
   const buildAssetUrl = (
     asset: "bundle.js" | "frame.html" | "hero",
     version?: number | string,
@@ -723,7 +665,7 @@ async function buildEntry(
   const bundleUrl = view.bundleUrl
     ? view.bundleUrl
     : view.bundlePath
-      ? buildAssetUrl("bundle.js", loadedAt)
+      ? buildAssetUrl("bundle.js", bundleHash)
       : undefined;
   const bundleUrlVersioned = view.bundleUrl
     ? view.bundleUrl
@@ -733,7 +675,7 @@ async function buildEntry(
   const frameUrl = view.frameUrl
     ? view.frameUrl
     : view.framePath
-      ? buildAssetUrl("frame.html", loadedAt)
+      ? buildAssetUrl("frame.html", frameHash)
       : undefined;
   const frameUrlVersioned = view.frameUrl
     ? view.frameUrl

@@ -42,6 +42,10 @@ import { useActiveAgentAuthority } from "./useActiveAgentAuthority";
 import { useCachedResource } from "./useCachedResource";
 
 export interface ViewRegistryEntry {
+  /** Runtime-owned installation that published this catalog entry. */
+  installationId?: string;
+  /** Runtime metadata only; execution requires a separately registered native page. */
+  metadataOnly?: boolean;
   /** Stable unique identifier for the view, e.g. "wallet.inventory". */
   id: string;
   /** Human-readable label shown in the view manager. */
@@ -226,6 +230,8 @@ function isViewRegistryEntry(value: unknown): value is ViewRegistryEntry {
     isOptionalString(value.frameUrl) &&
     isOptionalString(value.componentExport) &&
     isOptionalString(value.heroImageUrl) &&
+    isOptionalString(value.installationId) &&
+    isOptionalBoolean(value.metadataOnly) &&
     isOptionalString(value.group) &&
     isOptionalBoolean(value.hasHeroImage) &&
     isOptionalBoolean(value.developerOnly) &&
@@ -269,12 +275,21 @@ export function enforceDynamicViewPolicy(
   dynamicLoadingAllowed: boolean,
 ): ViewRegistryEntry[] {
   if (dynamicLoadingAllowed) return views;
-  // Restricted native clients cannot execute agent-served JavaScript or
-  // frames. Enforce the platform policy locally as well as on the agent route:
-  // a gateway may omit X-Eliza-Platform and return the unfiltered registry.
-  // Removing those network entries lets the signed app-shell registrations
-  // fill the same ids in mergeWithAppShellViews below.
-  return views.filter((view) => !view.bundleUrl && !view.frameUrl);
+  // Preserve the runtime binding for signed in-process counterparts, while
+  // removing every dynamic executable URL even if a gateway omitted platform headers.
+  return views.map((view) =>
+    view.bundleUrl || view.frameUrl
+      ? {
+          ...view,
+          bundleUrl: undefined,
+          frameUrl: undefined,
+          bundleUrlVersioned: undefined,
+          frameUrlVersioned: undefined,
+          available: false,
+          metadataOnly: true,
+        }
+      : view,
+  );
 }
 
 async function fetchViewList(): Promise<ViewRegistryEntry[]> {
@@ -581,6 +596,7 @@ export function mergeViewRegistryEntries(
           capabilities: existing.capabilities ?? entry.capabilities,
           tags: existing.tags ?? entry.tags,
           pluginName: existing.pluginName,
+          installationId: existing.installationId,
           bundleUrl: undefined,
           frameUrl: undefined,
           componentExport: undefined,
@@ -601,7 +617,20 @@ function mergeWithAppShellViews(
   // connected runtime and the app declare the same view. Web and desktop keep
   // the runtime bundle so plugin reloads remain live during development.
   if (platform === "ios" || platform === "android") {
-    return mergeViewRegistryEntries(appShellViews, [networkViews]);
+    const runtimeByKey = new Map(
+      networkViews.map((entry) => [
+        `${entry.viewType ?? "gui"}:${entry.id}`,
+        entry,
+      ]),
+    );
+    return mergeViewRegistryEntries(appShellViews, [networkViews]).map(
+      (entry) => ({
+        ...entry,
+        installationId: runtimeByKey.get(
+          `${entry.viewType ?? "gui"}:${entry.id}`,
+        )?.installationId,
+      }),
+    );
   }
   return mergeViewRegistryEntries(networkViews, [appShellViews]);
 }

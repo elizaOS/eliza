@@ -42,6 +42,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   registerPluginViews,
@@ -432,7 +433,11 @@ describe("static view-capability audit (#8798)", () => {
   // audited set must then come back clean.
   it("validateViewCoverage flags an uncovered view and passes the audited set", async () => {
     const pluginName = "@test/view-capability-audit";
-    await registerPluginViews({
+    const runtime = new AgentRuntime({
+      character: createCharacter({ name: "Static audit" }),
+      enableAutonomy: false,
+    });
+    const lease = await registerPluginViews(runtime, {
       name: pluginName,
       description: "Synthetic view capability audit fixtures.",
       views: coverage.map((c) => ({
@@ -449,6 +454,7 @@ describe("static view-capability audit (#8798)", () => {
     try {
       const sentinel = "__unmapped_sentinel_view__";
       const flagged = validateViewCoverage(
+        runtime,
         [...registered, sentinel],
         withCapabilities,
         { warn: () => {} },
@@ -456,16 +462,21 @@ describe("static view-capability audit (#8798)", () => {
       expect(flagged, "sentinel must surface as uncovered").toContain(sentinel);
 
       const warnings: string[] = [];
-      const uncovered = validateViewCoverage(registered, withCapabilities, {
-        warn: (m) => warnings.push(m),
-      });
+      const uncovered = validateViewCoverage(
+        runtime,
+        registered,
+        withCapabilities,
+        {
+          warn: (m) => warnings.push(m),
+        },
+      );
       expect(
         uncovered,
         `uncovered registered views: ${uncovered.join(", ")}`,
       ).toEqual([]);
       expect(warnings).toEqual([]);
     } finally {
-      unregisterPluginViews(pluginName);
+      unregisterPluginViews(runtime, lease);
     }
   });
 });

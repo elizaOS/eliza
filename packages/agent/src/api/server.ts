@@ -10,7 +10,15 @@ import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
+import {
+  getViewClientScope,
+  runWithViewClient,
+} from "../runtime/view-client-context.ts";
 import { registerInProcessApi } from "./in-process-api.ts";
+import {
+  bindViewRequestHost,
+  closeViewInteractionHost,
+} from "./view-interaction-host.ts";
 
 function tokenMatches(expected: string, provided: string): boolean {
   const expectedBuf = Buffer.from(expected);
@@ -147,6 +155,16 @@ const nativeReaderWiredRuntimes = new WeakSet<AgentRuntime>();
 function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
   if (!runtime || nativeReaderWiredRuntimes.has(runtime)) return;
   nativeReaderWiredRuntimes.add(runtime);
+  const requestingHost = (clientId: string): object => {
+    const scope = getViewClientScope();
+    if (!scope || scope.clientId !== clientId) {
+      throw new ElizaError(
+        "Native browser requires the requesting view client",
+        { code: "VIEW_CLIENT_REQUIRED" },
+      );
+    }
+    return scope.hostKey;
+  };
   // Context activation can register the plugin long after API startup. Bind
   // each actual service instance when it starts, without eagerly loading it.
   const bindReader = () => {
@@ -157,6 +175,7 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
       return;
     browser.setNativeClientTransport({
       navigate: async (clientId, url) => {
+        const hostKey = requestingHost(clientId);
         const [
           { getViewsBroadcastWsToClientId },
           { createShellNavigateViewWsFrame },
@@ -164,7 +183,7 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
           import("./views-routes.ts"),
           import("@elizaos/shared"),
         ]);
-        const send = getViewsBroadcastWsToClientId();
+        const send = getViewsBroadcastWsToClientId(hostKey);
         if (
           !send ||
           send(
@@ -185,6 +204,7 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
           );
       },
       readPage: async (clientId, selector) => {
+        const hostKey = requestingHost(clientId);
         const [
           { dispatchViewInteract, getViewsBroadcastWsToClientId },
           { getView },
@@ -192,8 +212,8 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
           import("./views-routes.ts"),
           import("./views-registry.ts"),
         ]);
-        const entry = getView("browser", { viewType: "gui" });
-        const sendToClient = getViewsBroadcastWsToClientId();
+        const entry = getView(runtime, "browser", { viewType: "gui" });
+        const sendToClient = getViewsBroadcastWsToClientId(hostKey);
         if (!entry || !sendToClient)
           throw new Error(
             "Native Browser interaction transport is unavailable.",
@@ -208,6 +228,7 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
           },
           {
             clientId,
+            hostKey,
             broadcastWsToClientId: sendToClient,
             runtime,
           },
@@ -1669,6 +1690,24 @@ async function handleRequest(
   state: ServerState,
   ctx?: RequestContext,
 ): Promise<void> {
+  const rawClientId =
+    req.headers["x-elizaos-client-id"] ?? req.headers["x-eliza-client-id"];
+  const clientId = normalizeWsClientId(
+    Array.isArray(rawClientId) ? rawClientId[0] : rawClientId,
+  );
+  return runWithViewClient(
+    clientId ? { hostKey: state, clientId } : undefined,
+    () => handleRequestForViewClient(req, res, state, ctx),
+  );
+}
+
+async function handleRequestForViewClient(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  state: ServerState,
+  ctx?: RequestContext,
+): Promise<void> {
+  bindViewRequestHost(req, state);
   const method = req.method ?? "GET";
   let url: URL;
   try {
@@ -3397,6 +3436,7 @@ async function handleRequest(
   );
   if (
     await handleViewsRoutes({
+      hostKey: state,
       req,
       res,
       method,
@@ -4981,8 +5021,18 @@ export async function startApiServer(opts?: {
         ) {
           void import("./views-routes.ts")
             .then(({ resolveViewInteractResult }) => {
-              resolveViewInteractResult({
+              if (!state.runtime || !wsClientId) return;
+              resolveViewInteractResult(state.runtime, state, wsClientId, {
                 requestId: msg.requestId,
+                viewId: typeof msg.viewId === "string" ? msg.viewId : undefined,
+                viewType:
+                  typeof msg.viewType === "string" ? msg.viewType : undefined,
+                installationId:
+                  typeof msg.installationId === "string"
+                    ? msg.installationId
+                    : undefined,
+                claimId:
+                  typeof msg.claimId === "string" ? msg.claimId : undefined,
                 success: msg.success === true,
                 result: msg.result,
                 error: typeof msg.error === "string" ? msg.error : undefined,
@@ -5101,6 +5151,7 @@ export async function startApiServer(opts?: {
   void import("./views-routes.ts")
     .then(({ setViewsBroadcastWs }) => {
       setViewsBroadcastWs(
+        state,
         state.broadcastWs ?? null,
         state.broadcastWsToClientId ?? null,
       );
@@ -5449,6 +5500,7 @@ export async function startApiServer(opts?: {
     serverResources.add(resource);
   }
   const stopServerSideResources = (): Promise<void> => {
+    closeViewInteractionHost(state);
     unregisterInProcessApi?.();
     return serverResources.close();
   };

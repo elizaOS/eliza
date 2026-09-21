@@ -1,3 +1,11 @@
+import { AgentRuntime, createCharacter } from "@elizaos/core";
+import { closeRuntimeViewRegistry } from "./view-installations.ts";
+import { closeViewInteractionHost } from "./view-interaction-host.ts";
+
+let runtime: AgentRuntime;
+let hostKey: object;
+let scope: { hostKey: object; clientId: string };
+
 /**
  * Server half of the agent view-switch contract: POST /api/views/:id/navigate
  * resolves a view (builtin registry, body path override, or synthetic ids) and
@@ -11,11 +19,7 @@ import type http from "node:http";
 import { Readable } from "node:stream";
 import { SHELL_NAVIGATE_VIEW_WS_EVENT } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  registerBuiltinViews,
-  registerPluginViews,
-  unregisterPluginViews,
-} from "./views-registry.ts";
+import { registerBuiltinViews, registerPluginViews } from "./views-registry.ts";
 import {
   type CurrentViewState,
   clearCurrentViewState,
@@ -64,6 +68,8 @@ function makeNavigateCtx(
   const broadcastWsToClientId = vi.fn(() => 1);
   const pathname = `/api/views/${encodeURIComponent(id)}/navigate`;
   const ctx: ViewsRouteContext = {
+    runtime,
+    hostKey,
     req,
     res,
     method: "POST",
@@ -95,6 +101,8 @@ function makeInteractCtx(
   const broadcastWs = vi.fn();
   const pathname = `/api/views/${encodeURIComponent(id)}/interact`;
   const ctx: ViewsRouteContext = {
+    runtime,
+    hostKey,
     req,
     res,
     method: "POST",
@@ -109,13 +117,20 @@ function makeInteractCtx(
 
 describe("POST /api/views/:id/navigate broadcast contract", () => {
   beforeEach(() => {
-    registerBuiltinViews();
-    clearCurrentViewState();
+    runtime = new AgentRuntime({
+      character: createCharacter({ name: "Navigate" }),
+      enableAutonomy: false,
+    });
+    hostKey = {};
+    scope = { hostKey, clientId: "navigate-client" };
+    registerBuiltinViews(runtime);
+    clearCurrentViewState(runtime, scope);
   });
 
   afterEach(() => {
-    clearCurrentViewState();
-    unregisterPluginViews("@test/views-route");
+    closeRuntimeViewRegistry(runtime);
+    closeViewInteractionHost(hostKey);
+    clearCurrentViewState(runtime, scope);
     vi.restoreAllMocks();
   });
 
@@ -158,7 +173,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
 
     expect(broadcastWs).not.toHaveBeenCalled();
-    expect(getCurrentViewState()).toBeNull();
+    expect(getCurrentViewState(runtime, scope)).toBeNull();
     expect(json).toHaveBeenCalledWith(
       ctx.res,
       expect.objectContaining({ ok: true, viewId: "notes" }),
@@ -185,7 +200,9 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     expect(broadcastWsToClientId.mock.invocationCallOrder[0]).toBeLessThan(
       json.mock.invocationCallOrder[0],
     );
-    expect(getCurrentViewState()).toMatchObject({ viewId: "notes" });
+    expect(
+      getCurrentViewState(runtime, { hostKey, clientId: "speaking-seeker" }),
+    ).toMatchObject({ viewId: "notes" });
   });
 
   it("rejects voice navigation to a disconnected renderer without global fallback", async () => {
@@ -203,7 +220,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
       expect.stringContaining("No connected view client"),
       409,
     );
-    expect(getCurrentViewState()).toBeNull();
+    expect(getCurrentViewState(runtime, scope)).toBeNull();
   });
 
   it("best-effort delivers completed-action navigation before its acknowledgement", async () => {
@@ -227,7 +244,9 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
         viewPath: null,
       }),
     );
-    expect(getCurrentViewState()).toMatchObject({
+    expect(
+      getCurrentViewState(runtime, { hostKey, clientId: "seeker-rest-client" }),
+    ).toMatchObject({
       viewId: "calendar",
       viewPath: null,
     });
@@ -307,7 +326,12 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
         completedActionDelivered: false,
       }),
     );
-    expect(getCurrentViewState()).toMatchObject({
+    expect(
+      getCurrentViewState(runtime, {
+        hostKey,
+        clientId: "closing-rest-client",
+      }),
+    ).toMatchObject({
       viewId: "notes",
       viewPath: null,
     });
@@ -347,12 +371,21 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
         viewPath: "/browser?browse=https%3A%2F%2Ftwo.example%2Fprivate",
       }),
     );
-    expect(getCurrentViewState()).toMatchObject({
-      viewId: "browser",
-      viewPath: "/browser",
-    });
-    expect(JSON.stringify(getCurrentViewState())).not.toContain("one.example");
-    expect(JSON.stringify(getCurrentViewState())).not.toContain("two.example");
+    expect(getCurrentViewState(runtime, scope)).toBeNull();
+    expect(
+      getCurrentViewState(runtime, { hostKey, clientId: "client-one" })
+        ?.viewPath,
+    ).toBe("/browser");
+    expect(
+      getCurrentViewState(runtime, { hostKey, clientId: "client-two" })
+        ?.viewPath,
+    ).toBe("/browser");
+    expect(JSON.stringify(getCurrentViewState(runtime, scope))).not.toContain(
+      "one.example",
+    );
+    expect(JSON.stringify(getCurrentViewState(runtime, scope))).not.toContain(
+      "two.example",
+    );
   });
 
   it("delivers app-chat navigation only to its originating client", async () => {
@@ -522,6 +555,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
 
   it("broadcasts generic view update events after server-backed interactions", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: "@test/views-route",
         description: "Synthetic view route test plugin.",
@@ -538,7 +572,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
           },
         ],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
     const { ctx, json, broadcastWs } = makeInteractCtx("scratchpad", {
       capability: "get-state",
@@ -583,9 +617,10 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
   it("records the navigated view as the current view state", async () => {
     const { ctx } = makeNavigateCtx("settings", { action: "pin-tab" });
 
+    ctx.req.headers["x-elizaos-client-id"] = scope.clientId;
     await handleViewsRoutes(ctx);
 
-    const state = getCurrentViewState();
+    const state = getCurrentViewState(runtime, scope);
     expect(state?.viewId).toBe("settings");
     expect(state?.viewPath).toBe("/settings");
     expect(state?.viewType).toBe("gui");
@@ -594,7 +629,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
 
   // ── #9945: settings subview deep-linking ──────────────────────────────────
 
-  it("threads a body subview into the frame, response, and current state", async () => {
+  it("threads a body subview into the frame and response without assigning anonymous state", async () => {
     const { ctx, json, broadcastWs } = makeNavigateCtx("settings", {
       subview: "voice",
     });
@@ -616,7 +651,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
         subview: "voice",
       }),
     );
-    expect(getCurrentViewState()?.subview).toBe("voice");
+    expect(getCurrentViewState(runtime, scope)).toBeNull();
   });
 
   it("accepts `section` as an alias for `subview`", async () => {
@@ -647,10 +682,13 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     json: ReturnType<typeof vi.fn>;
   } {
     const req = Readable.from([]) as unknown as http.IncomingMessage;
+    req.headers = { "x-elizaos-client-id": scope.clientId };
     const res = {} as http.ServerResponse;
     const json = vi.fn();
     const pathname = "/api/views/current";
     const ctx: ViewsRouteContext = {
+      runtime,
+      hostKey,
       req,
       res,
       method: "GET",
@@ -665,9 +703,10 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
 
   it("stamps switchedAt + source=agent on navigate and reports justSwitched via GET current", async () => {
     const nav = makeNavigateCtx("settings", {});
+    nav.ctx.req.headers["x-elizaos-client-id"] = scope.clientId;
     await handleViewsRoutes(nav.ctx);
 
-    const state = getCurrentViewState();
+    const state = getCurrentViewState(runtime, scope);
     expect(typeof state?.switchedAt).toBe("string");
     expect(state?.source).toBe("agent");
     expect(isViewSwitchFresh(state)).toBe(true);
@@ -685,9 +724,10 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
 
   it("marks source=user and skips the shell echo for a user-reported switch", async () => {
     const nav = makeNavigateCtx("settings", { source: "user" });
+    nav.ctx.req.headers["x-elizaos-client-id"] = scope.clientId;
     await handleViewsRoutes(nav.ctx);
     // State is recorded (so the agent observes the user's manual switch)...
-    expect(getCurrentViewState()?.source).toBe("user");
+    expect(getCurrentViewState(runtime, scope)?.source).toBe("user");
     // ...but the shell:navigate:view echo is suppressed (the client already
     // navigated locally — re-broadcasting would loop).
     expect(nav.broadcastWs).not.toHaveBeenCalled();
@@ -700,22 +740,27 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     try {
       vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
       const first = makeNavigateCtx("settings", {});
+      first.ctx.req.headers["x-elizaos-client-id"] = scope.clientId;
       await handleViewsRoutes(first.ctx);
-      const switchedAt = getCurrentViewState()?.switchedAt;
+      const switchedAt = getCurrentViewState(runtime, scope)?.switchedAt;
       expect(switchedAt).toBe("2026-01-01T00:00:00.000Z");
 
       // Re-navigate to the SAME view: updatedAt moves but switchedAt is preserved.
       vi.setSystemTime(new Date("2026-01-01T00:00:02.000Z"));
       const second = makeNavigateCtx("settings", { action: "pin-tab" });
+      second.ctx.req.headers["x-elizaos-client-id"] = scope.clientId;
       await handleViewsRoutes(second.ctx);
-      expect(getCurrentViewState()?.switchedAt).toBe(switchedAt);
-      expect(getCurrentViewState()?.updatedAt).toBe("2026-01-01T00:00:02.000Z");
+      expect(getCurrentViewState(runtime, scope)?.switchedAt).toBe(switchedAt);
+      expect(getCurrentViewState(runtime, scope)?.updatedAt).toBe(
+        "2026-01-01T00:00:02.000Z",
+      );
 
       // Navigating to a DIFFERENT view re-stamps switchedAt.
       vi.setSystemTime(new Date("2026-01-01T00:00:04.000Z"));
       const third = makeNavigateCtx("character", {});
+      third.ctx.req.headers["x-elizaos-client-id"] = scope.clientId;
       await handleViewsRoutes(third.ctx);
-      expect(getCurrentViewState()?.switchedAt).toBe(
+      expect(getCurrentViewState(runtime, scope)?.switchedAt).toBe(
         "2026-01-01T00:00:04.000Z",
       );
     } finally {

@@ -5,14 +5,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const sendWsMessage = vi.fn();
+const claim = vi.fn();
 
 vi.mock("../../api", () => ({
-  client: { sendWsMessage },
+  client: { sendWsMessage, fetch: claim, clientId: "test-client" },
 }));
 
 describe("view-interact-registry", () => {
   beforeEach(() => {
     sendWsMessage.mockClear();
+    claim.mockReset().mockResolvedValue({ claimId: "execution-claim" });
     vi.resetModules();
   });
 
@@ -21,12 +23,22 @@ describe("view-interact-registry", () => {
       "./view-interact-registry"
     );
 
-    registerViewInteractHandler("views-manager", "gui", async () => ({
-      surface: "gui",
-    }));
-    registerViewInteractHandler("views-manager", "tui", async () => ({
-      surface: "tui",
-    }));
+    registerViewInteractHandler(
+      "views-manager",
+      "gui",
+      async () => ({
+        surface: "gui",
+      }),
+      "fixture-installation",
+    );
+    registerViewInteractHandler(
+      "views-manager",
+      "tui",
+      async () => ({
+        surface: "tui",
+      }),
+      "fixture-installation",
+    );
 
     await dispatchViewInteract(
       "views-manager",
@@ -34,9 +46,14 @@ describe("view-interact-registry", () => {
       "get-state",
       undefined,
       "req-1",
+      "fixture-installation",
     );
 
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "views-manager",
+      viewType: "tui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-1",
       success: true,
@@ -49,9 +66,14 @@ describe("view-interact-registry", () => {
       "./view-interact-registry"
     );
 
-    registerViewInteractHandler("wallet", "gui", async () => ({
-      surface: "gui",
-    }));
+    registerViewInteractHandler(
+      "wallet",
+      "gui",
+      async () => ({
+        surface: "gui",
+      }),
+      "fixture-installation",
+    );
 
     await dispatchViewInteract(
       "wallet",
@@ -59,9 +81,14 @@ describe("view-interact-registry", () => {
       "get-state",
       undefined,
       "req-2",
+      "fixture-installation",
     );
 
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "wallet",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-2",
       success: true,
@@ -78,6 +105,7 @@ describe("view-interact-registry", () => {
       "get-state",
       undefined,
       "req-missing",
+      "fixture-installation",
     );
 
     expect(sendWsMessage).not.toHaveBeenCalled();
@@ -91,8 +119,13 @@ describe("view-interact-registry", () => {
       "get-text",
       { nativeOnly: true },
       "native-missing",
+      "fixture-installation",
     );
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "browser",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "native-missing",
       success: false,
@@ -107,9 +140,14 @@ describe("view-interact-registry", () => {
       "./view-interact-registry"
     );
 
-    registerViewInteractHandler("broken-view", "gui", async () => {
-      throw new Error("interact failed");
-    });
+    registerViewInteractHandler(
+      "broken-view",
+      "gui",
+      async () => {
+        throw new Error("interact failed");
+      },
+      "fixture-installation",
+    );
 
     await dispatchViewInteract(
       "broken-view",
@@ -117,9 +155,14 @@ describe("view-interact-registry", () => {
       "refresh",
       undefined,
       "req-error",
+      "fixture-installation",
     );
 
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "broken-view",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-error",
       success: false,
@@ -132,7 +175,12 @@ describe("view-interact-registry", () => {
       "./view-interact-registry"
     );
     const handler = vi.fn(async () => ({ ok: true }));
-    registerViewInteractHandler("notes", "gui", handler);
+    registerViewInteractHandler(
+      "notes",
+      "gui",
+      handler,
+      "fixture-installation",
+    );
 
     await dispatchViewInteract(
       "notes",
@@ -140,6 +188,7 @@ describe("view-interact-registry", () => {
       "create-note",
       undefined,
       "req-dupe",
+      "fixture-installation",
     );
     await dispatchViewInteract(
       "notes",
@@ -147,6 +196,7 @@ describe("view-interact-registry", () => {
       "create-note",
       undefined,
       "req-dupe",
+      "fixture-installation",
     );
 
     expect(handler).toHaveBeenCalledTimes(1);
@@ -158,9 +208,14 @@ describe("view-interact-registry", () => {
       "./view-interact-registry"
     );
 
-    registerViewInteractHandler("string-failure", "gui", async () => {
-      throw "plain failure";
-    });
+    registerViewInteractHandler(
+      "string-failure",
+      "gui",
+      async () => {
+        throw "plain failure";
+      },
+      "fixture-installation",
+    );
 
     await dispatchViewInteract(
       "string-failure",
@@ -168,9 +223,14 @@ describe("view-interact-registry", () => {
       "refresh",
       undefined,
       "req-string-error",
+      "fixture-installation",
     );
 
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "string-failure",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-string-error",
       success: false,
@@ -186,11 +246,13 @@ describe("view-interact-registry", () => {
       "replaceable",
       "gui",
       async () => ({ version: 1 }),
+      "fixture-installation",
     );
     const secondUnregister = registerViewInteractHandler(
       "replaceable",
       "gui",
       async () => ({ version: 2 }),
+      "fixture-installation",
     );
 
     await dispatchViewInteract(
@@ -199,8 +261,13 @@ describe("view-interact-registry", () => {
       "get-state",
       undefined,
       "req-replaced",
+      "fixture-installation",
     );
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "replaceable",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-replaced",
       success: true,
@@ -208,6 +275,7 @@ describe("view-interact-registry", () => {
     });
 
     sendWsMessage.mockClear();
+    claim.mockReset().mockResolvedValue({ claimId: "execution-claim" });
     secondUnregister();
     await dispatchViewInteract(
       "replaceable",
@@ -215,8 +283,13 @@ describe("view-interact-registry", () => {
       "get-state",
       undefined,
       "req-unregistered",
+      "fixture-installation",
     );
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "replaceable",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-unregistered",
       success: true,
@@ -224,6 +297,7 @@ describe("view-interact-registry", () => {
     });
 
     sendWsMessage.mockClear();
+    claim.mockReset().mockResolvedValue({ claimId: "execution-claim" });
     firstUnregister();
     await dispatchViewInteract(
       "replaceable",
@@ -231,6 +305,7 @@ describe("view-interact-registry", () => {
       "get-state",
       undefined,
       "req-fully-unregistered",
+      "fixture-installation",
     );
     expect(sendWsMessage).not.toHaveBeenCalled();
   });
@@ -243,10 +318,16 @@ describe("view-interact-registry", () => {
       "overlap-order",
       "gui",
       async () => ({ version: 1 }),
+      "fixture-installation",
     );
-    registerViewInteractHandler("overlap-order", "gui", async () => ({
-      version: 2,
-    }));
+    registerViewInteractHandler(
+      "overlap-order",
+      "gui",
+      async () => ({
+        version: 2,
+      }),
+      "fixture-installation",
+    );
 
     firstUnregister();
     await dispatchViewInteract(
@@ -255,13 +336,85 @@ describe("view-interact-registry", () => {
       "get-state",
       undefined,
       "req-newest-survives",
+      "fixture-installation",
     );
 
     expect(sendWsMessage).toHaveBeenCalledWith({
+      viewId: "overlap-order",
+      viewType: "gui",
+      installationId: "fixture-installation",
+      claimId: "execution-claim",
       type: "view:interact:result",
       requestId: "req-newest-survives",
       success: true,
       result: { version: 2 },
     });
+  });
+  it("does not grant a retained handler authority for a replacement installation", async () => {
+    const { dispatchViewInteract, registerViewInteractHandler } = await import(
+      "./view-interact-registry"
+    );
+    const oldEffect = vi.fn(async () => ({ ok: true }));
+    registerViewInteractHandler("notes", "gui", oldEffect, "old-installation");
+    await dispatchViewInteract(
+      "notes",
+      "gui",
+      "agent-click",
+      { id: "delete" },
+      "replacement-request",
+      "new-installation",
+    );
+    expect(oldEffect).not.toHaveBeenCalled();
+    expect(sendWsMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ success: true }),
+    );
+  });
+  it("does not execute after its installation is unmounted while claiming", async () => {
+    const { dispatchViewInteract, registerViewInteractHandler } = await import(
+      "./view-interact-registry"
+    );
+    let finishClaim!: (value: { claimId: string }) => void;
+    claim.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishClaim = resolve;
+        }),
+    );
+    const effect = vi.fn(async () => "changed");
+    const unmount = registerViewInteractHandler("notes", "gui", effect, "old");
+    const pending = dispatchViewInteract(
+      "notes",
+      "gui",
+      "save",
+      {},
+      "unmount",
+      "old",
+    );
+    unmount();
+    registerViewInteractHandler("notes", "gui", effect, "new");
+    finishClaim({ claimId: "execution-claim" });
+    await pending;
+    expect(effect).not.toHaveBeenCalled();
+    expect(sendWsMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        installationId: "old",
+        claimId: "execution-claim",
+      }),
+    );
+  });
+
+  it("does not execute or retry when the host denies or loses a claim", async () => {
+    const { dispatchViewInteract, registerViewInteractHandler } = await import(
+      "./view-interact-registry"
+    );
+    const effect = vi.fn(async () => "changed");
+    registerViewInteractHandler("notes", "gui", effect, "current");
+    claim.mockRejectedValueOnce(new Error("claim outcome unknown"));
+    await dispatchViewInteract("notes", "gui", "save", {}, "lost", "current");
+    await dispatchViewInteract("notes", "gui", "save", {}, "lost", "current");
+    expect(claim).toHaveBeenCalledTimes(1);
+    expect(effect).not.toHaveBeenCalled();
+    expect(sendWsMessage).not.toHaveBeenCalled();
   });
 });
