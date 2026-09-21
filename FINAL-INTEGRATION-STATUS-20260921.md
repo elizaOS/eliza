@@ -14,6 +14,10 @@
 ## Verification and limits
 
 - `node --check packages/app-core/scripts/dev-ui.mjs` passes.
+- Current-develop focused QA passes after building the workspace graph: assistant
+  context/history/voice gates (39 tests), planner discovery (11), Calendar
+  guardrails (17), Notes action/validation (71), and UI voice suites (67):
+  205 tests total.
 - The saved 5288 runtime checkpoint is healthy: API ready, local voice gateway ready, Cartesia STT/TTS configured, Cerebras text configured; 73 focused voice tests passed on the verified checkpoint.
 - Physical microphone/audio/animation verification is still a user-side gate. No deploy or protected-`develop` merge has happened.
 - There is no universal under-three-second guarantee for planner, calendar, memory, or conflict checks; those paths can require additional model/tool calls and larger context.

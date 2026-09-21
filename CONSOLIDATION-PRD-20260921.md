@@ -18,6 +18,7 @@ This is the compact handoff contract for the demo product. It keeps the scope ti
 - Current-develop voice correction: `codex/final-integration-20260921` / `7248c6c95b9` / [PR #32044](https://github.com/elizaOS/eliza/pull/32044).
 - Historical consolidation: [PR #32042](https://github.com/elizaOS/eliza/pull/32042), intentionally draft because current `develop` relocated the runtime and the broad diff conflicts.
 - Local handoff: `FINAL-HANDOFF-20260921.md` and `FINAL-INTEGRATION-STATUS-20260921.md`.
+- Current-develop focused QA: 205 passing tests across assistant context/history/voice, planner discovery, Calendar, Notes, and UI voice suites.
 
 ## Open gates
 
