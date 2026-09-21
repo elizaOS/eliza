@@ -679,3 +679,22 @@ The full repository verification started for the earlier hydration change is
 still running. Because production code changed during that run, its result alone
 cannot certify this final action correction; a final verification invocation is
 required after it settles. Original demos remain untouched; no paid calls.
+
+
+## Conversation-recovery cancellation and final verification
+
+The final checked admission boundary is send404 -> recreate conversation ->
+stream replay. Two tests reproduced replay/selection replacement after Stop on
+successful recreation, and an obsolete failure notice on rejected recreation.
+Commit07178b7c036 checks the existing controller's aborted signal after either
+completion and keeps the original user row while dropping its empty placeholder.
+No model or transport protocol change was needed. All183 tests across the four
+send/ownership/restoration suites pass; focused Biome and diff checks pass.
+Before/after logs: runtime/stop-replay-before.log and stop-replay-after.log.
+
+The earlier hydration-stop-root-verify.log run exited0, but code changed during
+that run. A separate final root verification is running against07178b7c036 in
+runtime/recovery-final-root-verify.log. No further production edits are planned
+while that final check runs. Zero new paid model calls in this recovery pass.
+The old build-time delayed request remains causally unproven; these reproduced
+cancellation boundaries explain what was corrected without guessing its cause.

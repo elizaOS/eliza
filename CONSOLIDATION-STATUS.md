@@ -1,4 +1,4 @@
-> Resumed recovery work: cc857a94013 fixes Stop during pending history restoration. 179 targeted tests pass; full verification is pending. The tagged handoff below remains the previous verified checkpoint.
+> Recovery correction checkpoint:07178b7c036 covers Stop during history restoration, action setup and404 replay. All183 targeted tests pass. Final root verification is running against this exact code; the earlier tagged handoff remains the verified baseline.
 
 # Eliza consolidation status — September 20, 2026
 
