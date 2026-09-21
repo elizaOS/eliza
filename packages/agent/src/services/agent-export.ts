@@ -26,6 +26,7 @@ import {
   type AgentRuntime,
   type CanonicalJsonOptions,
   type Character,
+  type CharacterSettings,
   type Component,
   canonicalJsonString,
   ElizaError,
@@ -210,6 +211,8 @@ export const AGENT_EXPORT_CANONICALIZE_UNBOUNDED =
 
 /** Default classification for export/import failures without a finer code. */
 export const AGENT_EXPORT_FAILED = "AGENT_EXPORT_FAILED";
+/** A bundle's agent or character config carries a non-object `settings`. */
+export const AGENT_EXPORT_INVALID_SETTINGS = "AGENT_EXPORT_INVALID_SETTINGS";
 
 /**
  * Export/import domain failure. Extends {@link ElizaError} so every throw site
@@ -712,6 +715,53 @@ async function gunzipWithSizeLimit(
 }
 
 // ---------------------------------------------------------------------------
+// Secret stripping
+// ---------------------------------------------------------------------------
+
+/** A character-shaped record with both secret containers removed. */
+type WithoutCharacterSecrets<T extends Partial<Character>> = Omit<
+  T,
+  "secrets" | "settings"
+> & { settings?: Omit<CharacterSettings, "secrets"> };
+
+/**
+ * Remove every secret container the character encryption boundary knows about:
+ * `secrets` and `settings.secrets` (the two containers core's
+ * `encryptedCharacter` / `decryptedCharacter` transform). The SQL adapter hands
+ * back `settings.secrets` decrypted, so this runs on the DB agent record and
+ * the runtime character before they enter a bundle, and again on a bundle's
+ * `agent` and `characterConfig` on import so an edited bundle cannot plant
+ * provider keys into the created agent. Every other field is kept as-is.
+ */
+function stripCharacterSecrets<T extends Partial<Character>>(
+  value: T,
+): WithoutCharacterSecrets<T> {
+  const { secrets: _secrets, settings, ...rest } = value;
+  if (settings === undefined) {
+    return rest as WithoutCharacterSecrets<T>;
+  }
+  // On import `value` is bundle content, so `settings` may be anything JSON
+  // can encode; a non-object cannot be stripped and is rejected, not dropped.
+  if (
+    typeof settings !== "object" ||
+    settings === null ||
+    Array.isArray(settings)
+  ) {
+    throw new AgentExportError(
+      "Agent settings must be an object to strip secrets from it.",
+      {
+        code: AGENT_EXPORT_INVALID_SETTINGS,
+        context: {
+          settingsType: Array.isArray(settings) ? "array" : typeof settings,
+        },
+      },
+    );
+  }
+  const { secrets: _settingsSecrets, ...safeSettings } = settings;
+  return { ...rest, settings: safeSettings } as WithoutCharacterSecrets<T>;
+}
+
+// ---------------------------------------------------------------------------
 // Data extraction
 // ---------------------------------------------------------------------------
 
@@ -748,12 +798,14 @@ async function extractAgentData(
 
   logger.info(`[agent-export] Extracting data for agent ${agentId}`);
 
-  // 1. Agent record
+  // 1. Agent record. The adapter returns `settings.secrets` decrypted, so both
+  // secret containers are removed before the record can enter the payload.
   const agents = await db.getAgentsByIds([agentId]);
-  const agent = agents[0];
-  if (!agent) {
+  const storedAgent = agents[0];
+  if (!storedAgent) {
     throw new AgentExportError(`Agent ${agentId} not found in database.`);
   }
+  const agent: Partial<Agent> = stripCharacterSecrets(storedAgent);
 
   // 2. Worlds owned by this agent
   const allWorlds = await db.getAllWorlds();
@@ -909,8 +961,8 @@ async function extractAgentData(
   // messageExamples, postExamples, knowledge sources, etc.)
   let characterConfig: Omit<Character, "secrets"> | undefined;
   if (runtime.character) {
-    // Clone and strip secrets/sensitive fields
-    const { secrets: _secrets, ...safeChar } = runtime.character;
+    // Clone and strip both secret containers (`secrets`, `settings.secrets`)
+    const safeChar = stripCharacterSecrets(runtime.character);
     characterConfig = safeChar;
     logger.info(
       `[agent-export] Captured runtime character config (${Object.keys(safeChar).length} fields)`,
@@ -1072,16 +1124,15 @@ async function restoreAgentDataInScope(
   // 1. Create agent — merge characterConfig (if present) as a base so
   //    style/topics/adjectives/messageExamples survive the round-trip even
   //    if the DB agent record didn't persist them.
-  // Spread and explicitly exclude secrets. characterConfig is already typed as
-  // Omit<Character, "secrets">, but strip the field defensively for runtime safety.
-  const { secrets: _secrets, ...charBase } = payload.characterConfig
-    ? ({ ...payload.characterConfig } as { secrets?: unknown } & Record<
-        string,
-        unknown
-      >)
-    : ({} as { secrets?: unknown } & Record<string, unknown>);
+  // The bundle is untrusted input: strip `secrets` and `settings.secrets` from
+  // both characterConfig and the agent record so an edited bundle cannot plant
+  // provider keys or endpoints into the created agent.
+  const charBase = payload.characterConfig
+    ? stripCharacterSecrets(payload.characterConfig)
+    : {};
+  const safeAgent = stripCharacterSecrets(payload.agent);
 
-  const agentData = { ...charBase, ...payload.agent } as Partial<Agent>;
+  const agentData = { ...charBase, ...safeAgent } as Partial<Agent>;
   agentData.id = newAgentId;
   agentData.enabled = true;
   agentData.createdAt = Date.now();
