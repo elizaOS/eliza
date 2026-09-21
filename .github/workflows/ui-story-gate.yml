@@ -6,7 +6,19 @@ name: UI Story Gate
 
 on:
   workflow_call:
+    inputs:
+      publish_bun_install_cache:
+        description: Allow this workflow's designated Bun install-cache writer
+        required: false
+        type: boolean
+        default: true
   workflow_dispatch:
+    inputs:
+      publish_bun_install_cache:
+        description: Allow the catalog job to publish the Bun install cache
+        required: false
+        type: boolean
+        default: true
 
 concurrency:
   group: ui-story-gate-${{ github.ref || github.run_id }}
@@ -32,6 +44,7 @@ jobs:
 
       - uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: ${{ inputs.publish_bun_install_cache }}
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
@@ -70,6 +83,7 @@ jobs:
 
       - uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
