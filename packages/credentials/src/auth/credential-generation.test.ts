@@ -2,8 +2,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import * as vault from "@elizaos/credentials/vault";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as vault from "../vault/crypto.js";
 import {
   createIsolatedAccountStoragePolicy,
   deleteAccount,

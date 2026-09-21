@@ -15,7 +15,7 @@ import fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ElizaError, logger, resolveStateDir } from "@elizaos/core";
-import { decrypt, encrypt } from "../vault/crypto.js";
+import { CryptoError, decrypt, encrypt } from "../vault/crypto.js";
 import { loadDefaultMasterKeySync } from "../vault/master-key.js";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
@@ -648,11 +648,12 @@ function isEnvelope(value: unknown): value is EncryptedAccountEnvelope {
   );
 }
 
+/** Persisted cryptographic identity; package renames must not change these bytes. */
 function accountAad(
   provider: AccountCredentialProvider,
   accountId: string,
 ): string {
-  return `@elizaos/credentials/auth/account/${provider}/${accountId}`;
+  return `@elizaos/auth/account/${provider}/${accountId}`;
 }
 
 /**
@@ -1167,16 +1168,16 @@ function isAccountCredentialRecord(
 
 interface DecodedAccountRecord {
   record: AccountCredentialRecord;
-  wasPlaintext: boolean;
+  requiresRewrite: boolean;
 }
 
 /**
  * Decode raw account-file bytes into a validated record. Envelope files are
  * decrypted with the policy-scoped master key and a per-provider/account AAD
  * so a ciphertext cannot be replayed under a different identity; legacy
- * plaintext files are accepted once and flagged for re-encryption. Any
- * decrypt or schema failure throws — a credential that cannot be proven
- * intact is never returned.
+ * plaintext files and authenticated schema-v2 compatibility envelopes are
+ * flagged for canonical re-encryption. Any decrypt or schema failure throws —
+ * a credential that cannot be proven intact is never returned.
  */
 function decodeAccountRecord(
   contents: Buffer,
@@ -1198,19 +1199,34 @@ function decodeAccountRecord(
   if (!isEnvelope(parsed)) {
     return {
       record: parseAccountCredentialRecord(parsed, file),
-      wasPlaintext: true,
+      requiresRewrite: true,
     };
   }
   let decrypted: unknown;
+  let requiresRewrite = false;
   try {
-    decrypted = JSON.parse(
-      decrypt(
-        masterKey(policy),
+    const key = masterKey(policy);
+    const accountId = path.basename(file, ".json");
+    let plaintext: string;
+    try {
+      plaintext = decrypt(
+        key,
         parsed.ciphertext,
-        accountAad(provider, path.basename(file, ".json")),
-      ),
-    );
+        accountAad(provider, accountId),
+      );
+    } catch (cause) {
+      // error-policy:J3 schema-v2 compatibility accepts only authenticated bytes under the intervening namespace.
+      if (!(cause instanceof CryptoError)) throw cause;
+      plaintext = decrypt(
+        key,
+        parsed.ciphertext,
+        `@elizaos/credentials/auth/account/${provider}/${accountId}`,
+      );
+      requiresRewrite = true;
+    }
+    decrypted = JSON.parse(plaintext);
   } catch (cause) {
+    // error-policy:J2 both authenticated formats must fail closed with the decoding cause preserved.
     throw storageError(
       "AUTH_CREDENTIAL_RECORD_CORRUPT",
       "Credential envelope failed authenticated decryption",
@@ -1220,7 +1236,7 @@ function decodeAccountRecord(
   }
   return {
     record: parseAccountCredentialRecord(decrypted, file),
-    wasPlaintext: false,
+    requiresRewrite,
   };
 }
 
@@ -1270,7 +1286,7 @@ function listAccountsUnlocked(
       policy,
       "list-account",
     );
-    const { record: parsed, wasPlaintext } = decodeAccountRecord(
+    const { record: parsed, requiresRewrite } = decodeAccountRecord(
       contents,
       filePath,
       provider,
@@ -1294,7 +1310,7 @@ function listAccountsUnlocked(
         { accountId: parsed.id, entry, filePath },
       );
     }
-    records.push(ensureCredentialGeneration(parsed, wasPlaintext, policy));
+    records.push(ensureCredentialGeneration(parsed, requiresRewrite, policy));
   }
 
   records.sort((a, b) => {
@@ -1319,7 +1335,7 @@ function loadAccountUnlocked(
     if ((cause as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw cause;
   }
-  const { record: parsed, wasPlaintext } = decodeAccountRecord(
+  const { record: parsed, requiresRewrite } = decodeAccountRecord(
     contents,
     file,
     provider,
@@ -1338,20 +1354,20 @@ function loadAccountUnlocked(
       },
     );
   }
-  return ensureCredentialGeneration(parsed, wasPlaintext, policy);
+  return ensureCredentialGeneration(parsed, requiresRewrite, policy);
 }
 
 /** Persists legacy encryption and missing replacement identity atomically inside the storage lock. */
 function ensureCredentialGeneration(
   record: AccountCredentialRecord,
-  wasPlaintext: boolean,
+  requiresRewrite: boolean,
   policy: AccountStoragePolicy,
 ): LoadedAccountCredentialRecord {
   const next: LoadedAccountCredentialRecord = {
     ...record,
     credentialGeneration: record.credentialGeneration ?? randomUUID(),
   };
-  if (wasPlaintext || record.credentialGeneration === undefined) {
+  if (requiresRewrite || record.credentialGeneration === undefined) {
     writeAccountFile(next.providerId, next.id, policy, next);
     logger.info(
       `[auth] Migrated ${next.providerId} account "${next.id}" storage`,
