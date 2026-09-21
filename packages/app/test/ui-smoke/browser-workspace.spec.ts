@@ -518,6 +518,27 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
       shellBottomGap: 84,
     });
 
+  // The synthetic inset phase precedes a viewport resize. Wait for the real
+  // resting composer publisher before comparing the closed and open layouts.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const sheet = document.querySelector<HTMLElement>(
+          '[data-testid="chat-sheet"]',
+        );
+        if (!sheet || sheet.dataset.detent !== "collapsed") return false;
+        const clearance = Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--eliza-chat-clearance",
+          ),
+        );
+        // Routed content reserves the resting composer and its 8px gap.
+        const restingFootprint = sheet.getBoundingClientRect().height + 8;
+        return Math.abs(clearance - restingFootprint) < 1;
+      }),
+    )
+    .toBe(true);
+
   const surfaceBeforeChatOpen = await pageSurface.boundingBox();
   const surfaceBeforeChatOpenBottom =
     (surfaceBeforeChatOpen?.y ?? 0) + (surfaceBeforeChatOpen?.height ?? 0);
