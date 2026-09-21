@@ -7,8 +7,13 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { ElizaError } from "./errors";
+import { StackAsyncContextStorage } from "./plugin-lifecycle";
 import { recentErrorsProvider } from "./providers/recent-errors";
 import { AgentRuntime } from "./runtime";
+import {
+	ErrorReportEmitGuard,
+	type ErrorReportEmitScope,
+} from "./runtime/error-report-emit-guard";
 import type { Character, ErrorReportedPayload } from "./types";
 import { EventType } from "./types";
 
@@ -194,6 +199,55 @@ describe("AgentRuntime.reportError", () => {
 					msg.includes("recorded without re-emitting"),
 			),
 		).toBe(true);
+
+		warnSpy.mockRestore();
+	});
+
+	it("stops the same loop on a runtime without AsyncLocalStorage at the first same-scope repeat (#31947)", async () => {
+		const runtime = makeRuntime();
+		// Browser and edge builds fall back to the synchronous stack storage,
+		// whose scope is gone by the handler's first await; the same-scope
+		// in-flight rule is then what stands between this handler and an
+		// unbounded loop.
+		(
+			runtime as unknown as { errorReportEmitGuard: ErrorReportEmitGuard }
+		).errorReportEmitGuard = new ErrorReportEmitGuard(
+			new StackAsyncContextStorage<ErrorReportEmitScope>(),
+		);
+		const warnSpy = vi.spyOn(runtime.logger, "warn");
+
+		let handlerInvocations = 0;
+		runtime.registerEvent(EventType.ERROR_REPORTED, async () => {
+			handlerInvocations += 1;
+			if (handlerInvocations > 50) return;
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			runtime.reportError(
+				"Sink",
+				new ElizaError("sink unavailable", { code: "SINK" }),
+			);
+		});
+
+		runtime.reportError("Outer", new ElizaError("outer", { code: "O" }));
+		await new Promise((resolve) => setTimeout(resolve, 100));
+
+		expect(handlerInvocations).toBe(2);
+		// Every report reached the ring; only the repeat's emit was withheld.
+		expect(runtime.getRecentReportedErrors().map((e) => e.code)).toEqual([
+			"O",
+			"SINK",
+			"SINK",
+		]);
+		expect(
+			warnSpy.mock.calls.filter(
+				([, msg]) =>
+					typeof msg === "string" &&
+					msg.includes("for this scope is still in flight"),
+			),
+		).toHaveLength(1);
+		// A later, unrelated report emits normally once the chains unwind.
+		runtime.reportError("Later", new ElizaError("later", { code: "L" }));
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		expect(handlerInvocations).toBe(4);
 
 		warnSpy.mockRestore();
 	});

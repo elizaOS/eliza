@@ -106,9 +106,12 @@ type RuntimePluginServiceStartCapture = {
 	pluginName: string;
 };
 
-type AsyncContextStorage<T> = {
+/** Minimal async-context contract: AsyncLocalStorage on Node, a scoped stack elsewhere. */
+export type AsyncContextStorage<T> = {
 	run<R>(store: T, callback: () => R): R;
 	getStore(): T | undefined;
+	/** True when a store set around an async call stays visible after its awaits. */
+	readonly propagatesAcrossAwaits: boolean;
 };
 
 type RuntimeWithPluginLifecycle = IAgentRuntime &
@@ -148,7 +151,15 @@ type RuntimePrivateState = {
 	registerSendHandler?: (source: string, handler: RuntimeSendHandler) => void;
 };
 
-class StackAsyncContextStorage<T> implements AsyncContextStorage<T> {
+/**
+ * Synchronous fallback for runtimes without AsyncLocalStorage (browser and
+ * edge builds). The store is visible only until the callback returns, so an
+ * awaited continuation no longer sees it; consumers that need to survive an
+ * await must pair it with their own bound (see the runtime's error-report
+ * emit guard).
+ */
+export class StackAsyncContextStorage<T> implements AsyncContextStorage<T> {
+	readonly propagatesAcrossAwaits = false;
 	private readonly stack: T[] = [];
 
 	run<R>(store: T, callback: () => R): R {
@@ -185,6 +196,7 @@ export function createAsyncContextStorage<T>(): AsyncContextStorage<T> {
 			) as typeof import("node:async_hooks");
 			const storage = new AsyncLocalStorage<T>();
 			return {
+				propagatesAcrossAwaits: true,
 				run<R>(store: T, callback: () => R): R {
 					return storage.run(store, callback);
 				},

@@ -5,6 +5,7 @@ import {
 	EmbeddingDimensionProbeError,
 	RuntimeEmbeddings,
 } from "./runtime/embeddings.js";
+import { ErrorReportEmitGuard } from "./runtime/error-report-emit-guard.js";
 import {
 	RuntimeServiceLifecycle,
 	type ServicePromiseHandler,
@@ -62,10 +63,7 @@ import {
 	resolveCapabilityConfig,
 } from "./features/basic-capabilities/index";
 import { createLogger } from "./logger";
-import {
-	createAsyncContextStorage,
-	installRuntimePluginLifecycle,
-} from "./plugin-lifecycle";
+import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
 import { createCoreSecurityHooksPlugin } from "./plugins/core-security-hooks";
 import {
 	getNativeRuntimeFeaturePlugin,
@@ -376,14 +374,6 @@ const NON_CREDENTIAL_SECRET_KEYS: ReadonlySet<string> = new Set([
 	"LANG",
 ]);
 
-/**
- * Set for the duration of an ERROR_REPORTED emit, across every await inside
- * its handlers, so a report raised from such a handler can be recognised and
- * recorded without emitting again. The synchronous `inReportError` latch only
- * covers handlers that report before their first await.
- */
-const errorReportEmitScope = createAsyncContextStorage<{ scope: string }>();
-
 export class AgentRuntime implements IAgentRuntime {
 	private readonly dataMutations = new RuntimeDataMutations(this, {
 		invalidateTurnEntityDetails: (...args) =>
@@ -539,6 +529,14 @@ export class AgentRuntime implements IAgentRuntime {
 	private static readonly REPORTED_ERROR_RING_CAP = 200;
 	/** Re-entrancy latch so a failure inside reportError stays warn-only (J7). */
 	private inReportError = false;
+	/**
+	 * Decides whether a report may emit ERROR_REPORTED: a report raised inside
+	 * a still-running ERROR_REPORTED handler (or, without async context, one
+	 * that repeats a scope whose handlers are still running) is recorded in
+	 * the ring but not emitted again. The synchronous `inReportError` latch
+	 * only covers handlers that report before their first await.
+	 */
+	private readonly errorReportEmitGuard = new ErrorReportEmitGuard();
 	models = new Map<string, ModelHandler[]>();
 	routes: Route[] = [];
 	private secretRedactionProfileSignature = "";
@@ -4417,7 +4415,8 @@ export class AgentRuntime implements IAgentRuntime {
 	 * A handler that reports its own failure before its first await is dropped
 	 * by the synchronous {@link inReportError} latch; one that reports after an
 	 * await is recorded in the ring but not emitted again, recognised through
-	 * the async scope the emit runs in.
+	 * the emit guard's async scope where AsyncLocalStorage exists and through
+	 * the guard's same-scope in-flight rule elsewhere.
 	 */
 	reportError(
 		scope: string,
@@ -4433,7 +4432,7 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			return;
 		}
-		const originatingReport = errorReportEmitScope.getStore();
+		const attribution = this.errorReportEmitGuard.attribute(scope);
 		this.inReportError = true;
 		try {
 			const normalized = toElizaError(error);
@@ -4477,14 +4476,30 @@ export class AgentRuntime implements IAgentRuntime {
 
 			this.forwardToAgentEventStream(entry, runId);
 
-			if (originatingReport) {
+			if (attribution.kind === "nested") {
 				// error-policy:J7 diagnostics-must-not-kill-the-loop — a report
 				// raised from inside an ERROR_REPORTED handler (after any await) is
 				// logged and recorded above but never emitted again: emitting would
 				// run the same handler again without bound.
 				this.logger.warn(
-					{ src: "agent", scope, originatingScope: originatingReport.scope },
-					`[${scope}] reported from an ERROR_REPORTED handler for [${originatingReport.scope}]; recorded without re-emitting`,
+					{
+						src: "agent",
+						scope,
+						originatingScope: attribution.originatingScope,
+					},
+					`[${scope}] reported from an ERROR_REPORTED handler for [${attribution.originatingScope}]; recorded without re-emitting`,
+				);
+				return;
+			}
+			if (attribution.kind === "repeat-in-flight") {
+				// error-policy:J7 diagnostics-must-not-kill-the-loop — without
+				// async context a handler's report after an await cannot be told
+				// from an unrelated one, so a repeat of a scope whose handlers are
+				// still running is what stops the loop; recorded above, not
+				// emitted.
+				this.logger.warn(
+					{ src: "agent", scope, inFlight: attribution.inFlight },
+					`[${scope}] an ERROR_REPORTED emit for this scope is still in flight; recorded without re-emitting`,
 				);
 				return;
 			}
@@ -4492,10 +4507,10 @@ export class AgentRuntime implements IAgentRuntime {
 			// Fire-and-forget: emitEvent is async but reportError is a sync
 			// diagnostic one-liner. A rejected emit (bad handler) is swallowed to
 			// the logger here — it must not surface as an unhandled rejection and
-			// must not re-enter reportError. The emit runs inside the report scope
-			// so handler failures reported across an await are recognised above.
-			void errorReportEmitScope
-				.run({ scope }, () =>
+			// must not re-enter reportError. The emit runs inside the guard so a
+			// handler failure reported across an await is recognised above.
+			void this.errorReportEmitGuard
+				.emit(scope, () =>
 					this.emitEvent(EventType.ERROR_REPORTED, {
 						runtime: this,
 						source: scope,

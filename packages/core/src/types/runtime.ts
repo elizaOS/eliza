@@ -1130,7 +1130,9 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * This is the diagnostic boundary (#12263): it never throws. Its own
 	 * failures are warn-only, and a report raised from inside an
 	 * `ERROR_REPORTED` handler is recorded without emitting `ERROR_REPORTED`
-	 * again, so handlers can report through it without looping.
+	 * again (attributed exactly where AsyncLocalStorage exists; elsewhere a
+	 * report that repeats a scope whose handlers are still running is treated
+	 * the same way), so handlers can report through it without looping.
 	 */
 	reportError(
 		scope: string,
