@@ -186,6 +186,8 @@ describe.each(["deterministic", "live"] as const)(
 				const sendEmail = {
 					name: "SEND_EMAIL",
 					description: "Send an email",
+					contexts: ["messaging"],
+					roleGate: { minRole: "OWNER" },
 					parameters: [
 						{
 							name: "to",
@@ -209,12 +211,12 @@ describe.each(["deterministic", "live"] as const)(
 				} as Action;
 
 				runtime.registerAction(sendEmail);
-				await runWithTrajectoryContext(
+				const executionResult = await runWithTrajectoryContext(
 					{ runId: "evidence-run", piiSwapSession: session },
 					() =>
 						executePlannedToolCall(
 							runtime,
-							{ message },
+							{ message, activeContexts: ["messaging"] },
 							// Fixture-supplied surrogate arguments probe restoration independently of model planning.
 							{
 								name: "SEND_EMAIL",
@@ -225,6 +227,9 @@ describe.each(["deterministic", "live"] as const)(
 							},
 						),
 				);
+				expect(executionResult, JSON.stringify(executionResult)).toMatchObject({
+					success: true,
+				});
 				expect(received.to).toBe(REAL.person);
 				expect(received.body).toBe(`Reaching out from ${REAL.org}.`);
 
