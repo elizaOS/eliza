@@ -2,6 +2,7 @@
 import { expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { AgentRuntime, type IAgentRuntime, Service } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/plugin-inmemorydb/runtime";
 import { RuntimeCache } from "./cache";
 import { DbAdapterPool } from "./database/adapter-pool";
 
@@ -12,8 +13,16 @@ test.each(["remove", "organization", "stale"] as const)(
     const organizationId = randomUUID();
     const key = `${agentId}:${organizationId}:retirement-test`;
     const cache = new RuntimeCache();
-    const original = new AgentRuntime({ agentId, logLevel: "fatal" });
-    const replacement = new AgentRuntime({ agentId, logLevel: "fatal" });
+    const original = new AgentRuntime({
+      agentId,
+      logLevel: "fatal",
+      adapter: new InMemoryDatabaseAdapter(agentId),
+    });
+    const replacement = new AgentRuntime({
+      agentId,
+      logLevel: "fatal",
+      adapter: new InMemoryDatabaseAdapter(agentId),
+    });
     const stopping = Promise.withResolvers<void>();
     const finish = Promise.withResolvers<void>();
     let stops = 0;
@@ -29,8 +38,8 @@ test.each(["remove", "organization", "stale"] as const)(
         await finish.promise;
       }
     }
-    await original.initialize({ allowNoDatabase: true, skipMigrations: true });
-    await replacement.initialize({ allowNoDatabase: true, skipMigrations: true });
+    await original.initialize({ skipMigrations: true });
+    await replacement.initialize({ skipMigrations: true });
     await original.registerService(DelayedStop);
     await original.getServiceLoadPromise(DelayedStop.serviceType);
     await cache.set(key, original, "Original", agentId);
