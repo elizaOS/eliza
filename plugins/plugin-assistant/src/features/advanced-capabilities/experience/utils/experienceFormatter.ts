@@ -36,23 +36,31 @@ export function formatExperienceForPrompt(
   const tags = experience.tags.length > 0 ? experience.tags.join(", ") : "none";
   const keywords =
     experience.keywords.length > 0 ? experience.keywords.join(", ") : tags;
-  // Repeated extraction fields can be byte-identical. Use an explicit local
-  // reference instead of sending the same learning twice; distinct reasons
-  // and all other provenance remain complete.
-  const reason =
-    experience.result || experience.extractionReason || "past experience";
+  // Byte-identical result/learning values need no second copy. Prefer a
+  // distinct extraction rationale; otherwise retain an explicit local reference.
+  // Distinct result and rationale text remain complete, including whitespace.
+  const why = whyLine(experience);
   const rationale =
     experience.extractionReason &&
-    experience.extractionReason !== reason &&
+    experience.extractionReason !== why &&
     experience.extractionReason !== experience.learning
       ? `\nRATIONALE: ${experience.extractionReason}`
       : "";
   return `${prefix}DO: ${experience.learning}
 WHEN: ${experience.context || experience.action || "similar situation"}
-WHY: ${reason === experience.learning ? "Same text as DO above." : reason}${rationale}
+WHY: ${why}${rationale}
 META: id=${experience.id}; domain=${experience.domain}; confidence=${Math.round(
     experience.confidence * 100,
   )}%; importance=${Math.round(experience.importance * 100)}%; keywords=${keywords}`;
+}
+
+function whyLine(experience: Experience): string {
+  const { learning, result, extractionReason } = experience;
+  if (result && result !== learning) return result;
+  if (extractionReason && extractionReason !== learning)
+    return extractionReason;
+  if (result || extractionReason) return "Same text as DO above.";
+  return "past experience";
 }
 
 export function formatExperienceList(experiences: Experience[]): string {
