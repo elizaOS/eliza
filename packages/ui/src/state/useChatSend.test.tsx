@@ -770,6 +770,39 @@ describe("useChatSend stop handling", () => {
     ).toEqual(["conv-restored", "hello"]);
   });
 
+  it.each(["composer", "text", "action"] as const)(
+    "does not send %s after Stop while history recovery is pending",
+    async (entry) => {
+      const hydration = deferred<boolean>();
+      const deps = makeActiveConversationDeps();
+      deps.settleConversationHydrationForSend = vi.fn(() => hydration.promise);
+      deps.chatInputRef.current = "Keep this request";
+      mocks.client.sendConversationMessageStream.mockResolvedValue({
+        text: "Unexpected reply",
+        completed: true,
+      });
+      const { result } = renderHook(() => useChatSend(deps));
+      let sendPromise: Promise<unknown> | undefined;
+      act(() => {
+        sendPromise =
+          entry === "composer"
+            ? result.current.handleChatSend()
+            : entry === "text"
+              ? result.current.sendChatText("Keep this request")
+              : result.current.sendActionMessage("Keep this request");
+      });
+      expect(deps.settleConversationHydrationForSend).toHaveBeenCalledTimes(1);
+      act(() => result.current.handleChatStop());
+      await act(async () => {
+        hydration.resolve(true);
+        await sendPromise;
+      });
+      expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+      expect(mocks.client.sendConversationMessage).not.toHaveBeenCalled();
+      expect(deps.chatInputRef.current).toBe("Keep this request");
+    },
+  );
+
   it("preserves the draft, attachments and reply when recovery is unavailable", async () => {
     const deps: UseChatSendDeps = makeDeps({ activeConversationId: "conv-1" });
     deps.settleConversationHydrationForSend = vi.fn(async () => false);

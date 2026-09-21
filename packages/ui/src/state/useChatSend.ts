@@ -2816,6 +2816,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         return;
       }
 
+      const admissionGeneration = sendCancellationGenerationRef.current;
       // Direct Cloud paints the shell while its history restore continues in
       // the background. Let that restore choose the active conversation before
       // this turn snapshots the target or paints optimistically; otherwise the
@@ -2825,6 +2826,8 @@ export function useChatSend(deps: UseChatSendDeps) {
         (await settleConversationHydrationForSend?.()) === false
       )
         return;
+
+      if (admissionGeneration !== sendCancellationGenerationRef.current) return;
 
       // Claim + clear the active reply target here — the single chokepoint every
       // real user turn (composer send + overlay/voice send()) funnels through —
@@ -2941,7 +2944,9 @@ export function useChatSend(deps: UseChatSendDeps) {
       // Keep the draft, attachments and reply target intact until restore has
       // established the destination. Concurrent clicks then claim the draft
       // only once, after this shared barrier settles.
+      const admissionGeneration = sendCancellationGenerationRef.current;
       if ((await settleConversationHydrationForSend?.()) === false) return;
+      if (admissionGeneration !== sendCancellationGenerationRef.current) return;
       const claimedInput = chatInputRef.current;
       const imagesToSend = chatPendingImagesRef.current.length
         ? [...chatPendingImagesRef.current]
@@ -2999,7 +3004,9 @@ export function useChatSend(deps: UseChatSendDeps) {
       // Actions can be fired from shell surfaces while startup hydration is
       // still choosing the initial conversation. An unavailable restore leaves
       // the action unsent instead of allocating a competing conversation.
+      const admissionGeneration = sendCancellationGenerationRef.current;
       if ((await settleConversationHydrationForSend?.()) === false) return;
+      if (admissionGeneration !== sendCancellationGenerationRef.current) return;
       if (chatSendBusyRef.current) return;
       chatSendBusyRef.current = true;
       const sendNonce = ++chatSendNonceRef.current;
