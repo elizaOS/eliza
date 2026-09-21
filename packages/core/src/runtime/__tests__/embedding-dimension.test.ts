@@ -814,7 +814,9 @@ describe("provider-identified embedding representations", () => {
 			text: source,
 		});
 		expect(getEmbeddingVectorSpace(embedding)).toBe(BGE_SMALL_VECTOR_SPACE);
-		expect(await runtime.getCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY)).toBeUndefined();
+		expect(
+			await runtime.getCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY),
+		).toBeUndefined();
 		await runtime.updateMemory({ id: memory.id, embedding });
 		expect((await runtime.getMemoryById(memory.id))?.embedding).toEqual(
 			embedding,

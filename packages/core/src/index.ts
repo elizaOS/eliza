@@ -370,7 +370,7 @@ export {
 	DISCOVER_TOOLS_NAME,
 	SHOULD_RESPOND_SCHEMA_DESCRIPTION,
 } from "./actions/to-tool.ts";
-
+export * from "./embedding-vector-space";
 export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
 export { actionGateFailure, canActionRun } from "./runtime/action-gate.ts";
 export { settleActionHandler } from "./runtime/action-handler-settlement.ts";
@@ -644,5 +644,3 @@ export {
 	isPlainObject,
 } from "./utils/type-guards.ts";
 export { UnionFind } from "./utils/union-find.ts";
-
-export * from "./embedding-vector-space";
