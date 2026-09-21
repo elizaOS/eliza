@@ -38,7 +38,9 @@ function safeTimestamp(value: number, label: string): number {
 /**
  * Parses an ISO-8601 date-time that carries an explicit offset. `Date.parse` silently
  * rolls an overflowing calendar day into the next month, so the date part is checked
- * against the calendar before the engine parse is trusted.
+ * against the calendar before the engine parse is trusted. The check goes through
+ * `setUTCFullYear` rather than `Date.UTC`, which remaps years 0 through 99 to 1900
+ * through 1999 and would reject the valid instants `0000-01-01` through `0099-12-31`.
  */
 function parseScheduledAtString(value: string): number {
   const match = ISO_DATE_TIME_WITH_OFFSET.exec(value);
@@ -48,7 +50,8 @@ function parseScheduledAtString(value: string): number {
   const year = Number(match.groups.year);
   const month = Number(match.groups.month);
   const day = Number(match.groups.day);
-  const calendar = new Date(Date.UTC(year, month - 1, day));
+  const calendar = new Date(0);
+  calendar.setUTCFullYear(year, month - 1, day);
   if (
     calendar.getUTCFullYear() !== year ||
     calendar.getUTCMonth() !== month - 1 ||

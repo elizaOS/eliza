@@ -62,6 +62,25 @@ describe("SQL task timing", () => {
     expect(readTaskDueAt({ scheduledAt: "2030-03-17T09:46:45.000-08:00" })).toBe(1_900_000_005_000);
   });
 
+  it("keeps years 0000 through 0099 as written instead of remapping them to the 1900s", () => {
+    expect(canonicalizeTaskScheduledAt("0000-01-01T00:00:00Z")).toBe("0000-01-01T00:00:00.000Z");
+    expect(readTaskDueAt({ scheduledAt: "0000-01-01T00:00:00.000Z" })).toBe(
+      Date.parse("0000-01-01T00:00:00.000Z")
+    );
+    expect(canonicalizeTaskScheduledAt("0099-12-31T23:59:59.999Z")).toBe(
+      "0099-12-31T23:59:59.999Z"
+    );
+    expect(canonicalizeTaskScheduledAt("0096-02-29T12:00:00+01:00")).toBe(
+      "0096-02-29T11:00:00.000Z"
+    );
+    expect(() => canonicalizeTaskScheduledAt("0099-02-29T00:00:00Z")).toThrow(
+      "non-existent calendar day"
+    );
+    expect(() => canonicalizeTaskScheduledAt("0000-04-31T00:00:00Z")).toThrow(
+      "non-existent calendar day"
+    );
+  });
+
   it("rejects lossy, out-of-range, ambiguous, and malformed values", () => {
     expect(() => serializeTaskDueAt(Number.NaN)).toThrow("safe integer");
     expect(() => serializeTaskDueAt(1.5)).toThrow("safe integer");
