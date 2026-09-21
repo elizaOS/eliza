@@ -2381,6 +2381,10 @@ export function useChatSend(deps: UseChatSendDeps) {
           try {
             const { conversation: rawConversation } =
               await client.createConversation();
+            if (controller.signal.aborted) {
+              dropEmptyAssistantPlaceholder(convId, assistantMsgId);
+              return;
+            }
             if (!isConversationRecord(rawConversation)) {
               throw new Error(
                 "Conversation creation returned an invalid payload.",
@@ -2388,6 +2392,10 @@ export function useChatSend(deps: UseChatSendDeps) {
             }
             conversation = rawConversation;
           } catch (createErr) {
+            if (controller.signal.aborted) {
+              dropEmptyAssistantPlaceholder(convId, assistantMsgId);
+              return;
+            }
             const createStatus = (createErr as { status?: number }).status;
             // Conversation recreation also failed against a cloud agent base —
             // the agent is gone/unreachable. Surface the failure and KEEP the

@@ -1208,6 +1208,43 @@ describe("useChatSend 404 recovery", () => {
     ).toBe(false);
   });
 
+  it.each(["resolved", "rejected"])(
+    "does not replay or replace history when Stop wins 404 recovery (%s)",
+    async (outcome) => {
+      mocks.client.abortConversationTurn.mockResolvedValue({ aborted: true });
+      mocks.client.stopCodingAgent.mockResolvedValue(undefined);
+      const creation = deferred<{ conversation: Conversation }>();
+      mocks.client.createConversation.mockReturnValue(creation.promise);
+      mocks.client.sendConversationMessageStream
+        .mockRejectedValueOnce(http404())
+        .mockResolvedValue({ text: "Unexpected replay", completed: true });
+      const deps = makeActiveConversationDeps();
+      const { result } = renderHook(() => useChatSend(deps));
+      let sendPromise: Promise<void> | undefined;
+      await act(async () => {
+        sendPromise = result.current.sendChatText("Keep my request", {
+          conversationId: "conv-1",
+        });
+        for (let i = 0; i < 8; i++) await Promise.resolve();
+      });
+      expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+      act(() => result.current.handleChatStop());
+      await act(async () => {
+        if (outcome === "resolved")
+          creation.resolve({
+            conversation: conversation("replacement", "replacement-room"),
+          });
+        else creation.reject(http404());
+        await sendPromise;
+      });
+      expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(deps.activeConversationIdRef.current).toBe("conv-1");
+      expect(deps.setActionNotice).not.toHaveBeenCalled();
+    },
+  );
+
   it("recreates the conversation and replays as a token STREAM when only the conversation was deleted", async () => {
     // The normal recoverable case: the conversation row was deleted but the
     // agent is fine. createConversation succeeds, and the message is REPLAYED
