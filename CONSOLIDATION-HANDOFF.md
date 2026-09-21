@@ -9,7 +9,8 @@ promise that every request completes in three seconds.
 - Checkout: `/Users/nubs/Git/eliza-consolidation-20260920`
 - Branch: `codex/consolidation-20260920`
 - Backend runtime source: `3f46cd1362d`; final UI correction: `1e230d820a4`.
-  Subsequent commits change documentation only.
+  Resumed recovery corrections are in `cc857a94013`, `462b346c2f4`, and
+  `07178b7c036`; see the recovery section below. The earlier tag remains intact.
 - UI5268 / API31392. API readiness checked: runtime/database healthy,35 plugins,
   95 services,zero failures,deferred boot settled. Browser reloaded after the UI
   hook change; Home navigation and persisted conversation verified afterward.
@@ -138,3 +139,37 @@ original demos. If integration scope expands to groups, Discord or another remot
 host, open the source decisions first and test that domain explicitly. Do not
 replace current pipeline files with older remote versions or repeatedly retest
 paid scenarios without a concrete uncertainty to resolve.
+
+
+## Resumed recovery correction — current evidence
+
+Current recovery code: `07178b7c036`. Changes since the tagged consolidation
+checkpoint add19 production lines to the existing chat-send module; no prompts,
+model selection, context limits or transport protocol were changed.
+
+| Reproduced boundary | Before | Correction |
+| --- | --- | --- |
+| History restoration, all three send entry points | Stop was forgotten when restoration completed; message then dispatched | Compare cancellation generation across the wait; preserve unclaimed composer draft |
+| First-conversation setup for action sends | Late dispatch or obsolete error after Stop | Check the same generation on success and failure before publishing state |
+| Missing-conversation404 recovery | Retry attempted after Stop and could replace selected conversation; failure could display obsolete notice | Check the existing abort signal before replay or error publication; retain user row |
+
+All seven new regression cases failed before their corresponding fixes. Four
+send/ownership/restoration suites pass183 tests. These tests run the real React
+hook with controlled API promises; they do not prove arbitrary backend effects
+are reversible or retrospectively identify the old build-time incident.
+
+Final root verification is running against the frozen recovery code, recorded in
+`runtime/recovery-final-root-verify.log`; until its exit is recorded, only the
+focused checks are accepted for this correction. The prior verification exited0
+but overlapped edits and is not the final acceptance receipt.
+
+No paid model calls were added in this recovery pass. Both original demo worktrees
+were freshly confirmed clean. Browser-control verification timed out and then
+reported a different selected browser after its session reset; no successful
+fresh rendered acceptance is claimed from that attempt. The API still reports
+ready/canRespond with healthy database and zero plugin/service failures.
+
+Remaining: finish the exact-code verification, refresh rendered acceptance when
+browser control is available, and retain the historical delayed-admission case
+as causally unproven. The earlier fresh-reload Go home trace remains valid for its
+recorded checkpoint, not a new timing measurement for this correction.
