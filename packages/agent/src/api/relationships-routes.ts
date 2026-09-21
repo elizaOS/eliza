@@ -10,12 +10,12 @@
  * recent extracted facts from runtime memory.
  */
 import {
+  ElizaError,
   type IAgentRuntime,
   PostRelationshipLinkRequestSchema,
   type RouteRequestContext,
   type UUID,
 } from "@elizaos/core";
-
 import type {
   RelationshipsGraphQuery,
   RelationshipsGraphService,
@@ -25,6 +25,22 @@ import { decodePathComponent } from "./server-helpers.ts";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Codes raised by RelationshipsService.acceptMerge / rejectMerge /
+// proposeMerge in @elizaos/plugin-assistant.
+const MERGE_CANDIDATE_ERROR_STATUS: Readonly<Record<string, number>> = {
+  RELATIONSHIPS_MERGE_CANDIDATE_NOT_FOUND: 404,
+  RELATIONSHIPS_MERGE_CANDIDATE_ALREADY_RESOLVED: 409,
+  RELATIONSHIPS_MERGE_SAME_ENTITY: 400,
+};
+
+function mergeCandidateErrorResponse(
+  err: unknown,
+): { status: number; message: string } | null {
+  if (!(err instanceof ElizaError)) return null;
+  const status = MERGE_CANDIDATE_ERROR_STATUS[err.code];
+  return status === undefined ? null : { status, message: err.message };
+}
 
 type RelationshipsFeatureRuntime = IAgentRuntime & {
   enableRelationships?: () => Promise<void>;
@@ -245,10 +261,19 @@ export async function handleRelationshipsRoutes(
         error(res, "Invalid merge candidate id.", 400);
         return true;
       }
-      if (action === "accept") {
-        await relationshipsGraph.acceptMerge(candidateId as UUID);
-      } else {
-        await relationshipsGraph.rejectMerge(candidateId as UUID);
+      try {
+        if (action === "accept") {
+          await relationshipsGraph.acceptMerge(candidateId as UUID);
+        } else {
+          await relationshipsGraph.rejectMerge(candidateId as UUID);
+        }
+      } catch (err) {
+        // error-policy:J1 boundary translation — unknown and already-resolved
+        // candidates become 404/409; anything else stays a server failure.
+        const response = mergeCandidateErrorResponse(err);
+        if (response === null) throw err;
+        error(res, response.message, response.status);
+        return true;
       }
       json(res, { data: { id: candidateId, status: action } }, 200);
       return true;
@@ -278,13 +303,26 @@ export async function handleRelationshipsRoutes(
         );
         return true;
       }
+      const targetEntityId = parsedLink.data.targetEntityId;
+      if (sourceEntityId === targetEntityId) {
+        error(res, "Cannot link an entity to itself.", 400);
+        return true;
+      }
       const evidence = asEvidenceRecord(parsedLink.data.evidence);
-      const candidateId = await relationshipsGraph.proposeMerge(
-        sourceEntityId as UUID,
-        parsedLink.data.targetEntityId as UUID,
-        evidence,
-      );
-      json(res, { data: { id: candidateId, status: "pending" } }, 201);
+      try {
+        const candidateId = await relationshipsGraph.proposeMerge(
+          sourceEntityId as UUID,
+          targetEntityId as UUID,
+          evidence,
+        );
+        json(res, { data: { id: candidateId, status: "pending" } }, 201);
+      } catch (err) {
+        // error-policy:J1 boundary translation — a same-entity proposal is
+        // a client error; anything else stays a server failure.
+        const response = mergeCandidateErrorResponse(err);
+        if (response === null) throw err;
+        error(res, response.message, response.status);
+      }
       return true;
     }
 

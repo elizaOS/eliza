@@ -442,6 +442,19 @@ export interface PlatformIdentityInput {
 
 export type MergeCandidateStatus = "pending" | "accepted" | "rejected";
 
+/** `ElizaError.code` when a merge candidate id does not exist for this agent. */
+export const RELATIONSHIPS_MERGE_CANDIDATE_NOT_FOUND =
+  "RELATIONSHIPS_MERGE_CANDIDATE_NOT_FOUND";
+/**
+ * `ElizaError.code` when a merge candidate has already been accepted or
+ * rejected; `context.status` carries the resolved status.
+ */
+export const RELATIONSHIPS_MERGE_CANDIDATE_ALREADY_RESOLVED =
+  "RELATIONSHIPS_MERGE_CANDIDATE_ALREADY_RESOLVED";
+/** `ElizaError.code` when proposeMerge is called with the same entity twice. */
+export const RELATIONSHIPS_MERGE_SAME_ENTITY =
+  "RELATIONSHIPS_MERGE_SAME_ENTITY";
+
 export interface MergeCandidateEvidence {
   platform?: string;
   handle?: string;
@@ -2610,13 +2623,32 @@ export class RelationshipsService extends Service {
     evidence: MergeCandidateEvidence,
   ): Promise<UUID> {
     if (entityA === entityB) {
-      throw new Error(
-        "[RelationshipsService] proposeMerge requires two distinct entities",
+      throw new ElizaError(
+        "A merge candidate requires two distinct entities.",
+        {
+          code: RELATIONSHIPS_MERGE_SAME_ENTITY,
+          context: { entityId: entityA },
+        },
       );
     }
     // entity_a is the *surviving* entity. Order is intentional and not
     // normalized — the caller picks the canonical side, and acceptMerge
-    // folds entity_b into entity_a.
+    // folds entity_b into entity_a. A second identical pending proposal
+    // returns the existing row instead of inserting a duplicate.
+    const existing = await this.execSql(
+      `SELECT id
+			 FROM entity_merge_candidates
+			 WHERE agent_id = ${sqlQuote(this.runtime.agentId)}
+				AND entity_a = ${sqlQuote(entityA)}
+				AND entity_b = ${sqlQuote(entityB)}
+				AND status = 'pending'
+			 ORDER BY proposed_at ASC
+			 LIMIT 1`,
+    );
+    const existingId = existing.rows[0]?.id;
+    if (typeof existingId === "string" && existingId.length > 0) {
+      return asUUID(existingId);
+    }
     const evidenceLiteral = sqlJsonbLiteral(evidence);
     const confidence = clampConfidence(
       typeof evidence.confidence === "number" ? evidence.confidence : 1,
@@ -2659,6 +2691,14 @@ export class RelationshipsService extends Service {
     return result.rows.map(parseMergeCandidateRow);
   }
 
+  /**
+   * Applies a pending merge candidate: folds `entity_b` into `entity_a` and
+   * marks the row accepted. Throws `RELATIONSHIPS_MERGE_CANDIDATE_NOT_FOUND`
+   * for an unknown id and `RELATIONSHIPS_MERGE_CANDIDATE_ALREADY_RESOLVED`
+   * once the candidate is accepted or rejected. A repeated accept is not
+   * treated as idempotent success: the caller learns the row was already
+   * resolved instead of receiving a fabricated fresh acceptance.
+   */
   async acceptMerge(candidateId: UUID): Promise<void> {
     const result = await this.execSql(
       `SELECT id, entity_a, entity_b, confidence, evidence, status,
@@ -2670,16 +2710,11 @@ export class RelationshipsService extends Service {
     );
     const row = result.rows[0];
     if (!row) {
-      throw new Error(
-        `[RelationshipsService] merge candidate ${candidateId} not found`,
-      );
+      throw mergeCandidateNotFoundError(candidateId);
     }
     const candidate = parseMergeCandidateRow(row);
     if (candidate.status !== "pending") {
-      logger.info(
-        `[RelationshipsService] Merge candidate ${candidateId} already ${candidate.status}`,
-      );
-      return;
+      throw mergeCandidateAlreadyResolvedError(candidateId, candidate.status);
     }
 
     // Move identities + relationships from B into A, dedupe via the unique
@@ -2839,13 +2874,56 @@ export class RelationshipsService extends Service {
     this.graphServiceInstance = null;
   }
 
+  /**
+   * Marks a pending merge candidate rejected. Throws
+   * `RELATIONSHIPS_MERGE_CANDIDATE_NOT_FOUND` for an unknown id and
+   * `RELATIONSHIPS_MERGE_CANDIDATE_ALREADY_RESOLVED` when the row is no
+   * longer pending, so an applied merge can never be relabelled as rejected
+   * while the folded graph stays in place.
+   */
   async rejectMerge(candidateId: UUID): Promise<void> {
-    await this.execSql(
+    const candidateLiteral = sqlQuote(candidateId);
+    const agent = sqlQuote(this.runtime.agentId);
+    const existing = await this.execSql(
+      `SELECT status
+			 FROM entity_merge_candidates
+			 WHERE id = ${candidateLiteral} AND agent_id = ${agent}
+			 LIMIT 1`,
+    );
+    const row = existing.rows[0];
+    if (!row) {
+      throw mergeCandidateNotFoundError(candidateId);
+    }
+    const status = normalizeMergeCandidateStatus(row.status);
+    if (status !== "pending") {
+      throw mergeCandidateAlreadyResolvedError(candidateId, status);
+    }
+    // The status guard on the UPDATE closes the window between the read
+    // above and the write: a concurrent accept leaves zero rows to update.
+    const updated = await this.execSql(
       `UPDATE entity_merge_candidates
 			 SET status = 'rejected', resolved_at = now()
-			 WHERE id = ${sqlQuote(candidateId)}
-				AND agent_id = ${sqlQuote(this.runtime.agentId)}`,
+			 WHERE id = ${candidateLiteral}
+				AND agent_id = ${agent}
+				AND status = 'pending'
+			 RETURNING id`,
     );
+    if (updated.rows.length === 0) {
+      const raced = await this.execSql(
+        `SELECT status
+				 FROM entity_merge_candidates
+				 WHERE id = ${candidateLiteral} AND agent_id = ${agent}
+				 LIMIT 1`,
+      );
+      const racedRow = raced.rows[0];
+      if (!racedRow) {
+        throw mergeCandidateNotFoundError(candidateId);
+      }
+      throw mergeCandidateAlreadyResolvedError(
+        candidateId,
+        normalizeMergeCandidateStatus(racedRow.status),
+      );
+    }
     logger.info(`[RelationshipsService] Rejected merge ${candidateId}`);
     this.graphServiceInstance = null;
   }
@@ -3198,6 +3276,30 @@ function parseEntityIdentityRow(
   };
 }
 
+function normalizeMergeCandidateStatus(status: unknown): MergeCandidateStatus {
+  return status === "accepted" || status === "rejected" ? status : "pending";
+}
+
+function mergeCandidateNotFoundError(candidateId: UUID): ElizaError {
+  return new ElizaError(`Merge candidate ${candidateId} was not found.`, {
+    code: RELATIONSHIPS_MERGE_CANDIDATE_NOT_FOUND,
+    context: { candidateId },
+  });
+}
+
+function mergeCandidateAlreadyResolvedError(
+  candidateId: UUID,
+  status: MergeCandidateStatus,
+): ElizaError {
+  return new ElizaError(
+    `Merge candidate ${candidateId} is already ${status}.`,
+    {
+      code: RELATIONSHIPS_MERGE_CANDIDATE_ALREADY_RESOLVED,
+      context: { candidateId, status },
+    },
+  );
+}
+
 function parseMergeCandidateRow(
   row: Record<string, unknown>,
 ): MergeCandidateRecord {
@@ -3213,9 +3315,7 @@ function parseMergeCandidateRow(
       "[RelationshipsService] entity_merge_candidates row missing required fields",
     );
   }
-  const status = row.status;
-  const normalizedStatus: MergeCandidateStatus =
-    status === "accepted" || status === "rejected" ? status : "pending";
+  const normalizedStatus = normalizeMergeCandidateStatus(row.status);
   const evidenceRaw = row.evidence;
   let evidence: MergeCandidateEvidence = {};
   if (typeof evidenceRaw === "string") {
