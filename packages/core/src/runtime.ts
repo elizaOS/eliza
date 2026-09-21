@@ -4005,8 +4005,11 @@ export class AgentRuntime implements IAgentRuntime {
 						typeof paramsObj.source === "string" ? paramsObj.source : "runtime",
 				} as EventPayloadMap[keyof EventPayloadMap] | EventPayload;
 			}
+			// Each handler starts in its own async frame so a handler that throws
+			// synchronously rejects like an async one instead of aborting the map
+			// before its siblings (registered by later plugins) have been invoked.
 			await Promise.all(
-				eventHandlers.map((handler) =>
+				eventHandlers.map(async (handler) =>
 					handler(paramsWithRuntime as EventPayloadMap[keyof EventPayloadMap]),
 				),
 			);
