@@ -434,6 +434,7 @@ function hashArchiveFile(filePath: string): string {
 export function prepareMacInstallerArchive(
   wrapperBundlePath: string,
   arch: string,
+  env: NodeJS.ProcessEnv = process.env,
 ): void {
   const resourcesDir = joinPortable(wrapperBundlePath, "Contents", "Resources");
   const archives = fs
@@ -446,7 +447,14 @@ export function prepareMacInstallerArchive(
     );
   }
   const wrapperArchive = joinPortable(resourcesDir, archive);
-  const updateArchive = `${wrapperBundlePath}.tar.zst`;
+  const buildDir = env.ELECTROBUN_BUILD_DIR?.trim();
+  const appFileName = env.ELECTROBUN_APP_NAME?.trim();
+  if (!buildDir || !appFileName) {
+    throw new Error(
+      "macOS installer hook requires build directory and archive app name",
+    );
+  }
+  const updateArchive = joinPortable(buildDir, `${appFileName}.app.tar.zst`);
   if (hashArchiveFile(wrapperArchive) !== hashArchiveFile(updateArchive)) {
     throw new Error(
       "macOS wrapper and update archives differ before recompression",
@@ -517,7 +525,7 @@ export function main(
   );
   const outputPath = resolveDiagnosticsOutputPath(wrapperBundlePath, env);
   if (osName === "macos" && env.ELECTROBUN_WRAPPER_BUNDLE_PATH) {
-    prepareMacInstallerArchive(wrapperBundlePath, arch);
+    prepareMacInstallerArchive(wrapperBundlePath, arch, env);
   }
 
   const repairedFiles = ensureWrapperRuntimeFiles({

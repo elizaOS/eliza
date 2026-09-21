@@ -22,23 +22,27 @@ afterEach(() => {
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "mac-installer-archive-"));
   roots.push(root);
-  const bundle = path.join(root, "Eliza-canary.app");
+  const bundle = path.join(root, "Project Eliza-canary.app");
   const resources = path.join(bundle, "Contents", "Resources");
   fs.mkdirSync(resources, { recursive: true });
   return {
     root,
     bundle,
     resources,
-    update: `${bundle}.tar.zst`,
+    update: path.join(root, "Project-Eliza-canary.app.tar.zst"),
+    env: {
+      ELECTROBUN_BUILD_DIR: root,
+      ELECTROBUN_APP_NAME: "Project-Eliza-canary",
+    },
     wrapper: path.join(resources, "unchanged-hash.tar.zst"),
   };
 }
 
 it("rejects a missing installer archive before altering output", () => {
   const f = fixture();
-  expect(() => prepareMacInstallerArchive(f.bundle, process.arch)).toThrow(
-    "Expected one macOS installer archive",
-  );
+  expect(() =>
+    prepareMacInstallerArchive(f.bundle, process.arch, f.env),
+  ).toThrow("Expected one macOS installer archive");
   expect(fs.readdirSync(f.resources)).toEqual([]);
 });
 
@@ -46,17 +50,34 @@ it("rejects mismatched wrapper and update inputs without modifying either", () =
   const f = fixture();
   fs.writeFileSync(f.update, "update");
   fs.writeFileSync(f.wrapper, "wrapper");
-  expect(() => prepareMacInstallerArchive(f.bundle, process.arch)).toThrow(
-    "differ before recompression",
-  );
+  expect(() =>
+    prepareMacInstallerArchive(f.bundle, process.arch, f.env),
+  ).toThrow("differ before recompression");
   expect(fs.readFileSync(f.update, "utf8")).toBe("update");
   expect(fs.readFileSync(f.wrapper, "utf8")).toBe("wrapper");
 });
 
+it.each([
+  { ELECTROBUN_APP_NAME: "Project-Eliza-canary" },
+  { ELECTROBUN_BUILD_DIR: "/unused" },
+])(
+  "rejects incomplete archive metadata without altering either input: %j",
+  (env) => {
+    const f = fixture();
+    fs.writeFileSync(f.update, "archive");
+    fs.writeFileSync(f.wrapper, "archive");
+    expect(() =>
+      prepareMacInstallerArchive(f.bundle, process.arch, env),
+    ).toThrow("requires build directory and archive app name");
+    expect(fs.readFileSync(f.update, "utf8")).toBe("archive");
+    expect(fs.readFileSync(f.wrapper, "utf8")).toBe("archive");
+  },
+);
+
 describe.skipIf(process.platform !== "darwin" || !fs.existsSync(compressor))(
   "native macOS installer compression",
   () => {
-    it("preserves every payload byte and produces identical wrapper and update archives", () => {
+    it("uses archive metadata when display names differ and preserves every payload byte", () => {
       const f = fixture();
       const payload = Buffer.alloc(1024 * 1024);
       for (let i = 0; i < payload.length; i++) payload[i] = i % 251;
@@ -72,7 +93,7 @@ describe.skipIf(process.platform !== "darwin" || !fs.existsSync(compressor))(
         "19",
       ]);
       fs.copyFileSync(f.update, f.wrapper);
-      prepareMacInstallerArchive(f.bundle, process.arch);
+      prepareMacInstallerArchive(f.bundle, process.arch, f.env);
       const update = fs.readFileSync(f.update);
       expect(fs.readFileSync(f.wrapper).equals(update)).toBe(true);
       expect(zstdDecompressSync(update).equals(payload)).toBe(true);
@@ -87,7 +108,7 @@ describe.skipIf(process.platform !== "darwin" || !fs.existsSync(compressor))(
       fs.writeFileSync(f.update, "invalid zstd");
       fs.writeFileSync(f.wrapper, "invalid zstd");
       expect(() =>
-        prepareMacInstallerArchive(f.bundle, process.arch),
+        prepareMacInstallerArchive(f.bundle, process.arch, f.env),
       ).toThrow();
       expect(fs.readFileSync(f.update, "utf8")).toBe("invalid zstd");
       expect(fs.readFileSync(f.wrapper, "utf8")).toBe("invalid zstd");
