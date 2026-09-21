@@ -668,6 +668,8 @@ fi
 # second hand-maintained build sequence misses moved dependencies.
 log "Building app and runtime workspace artifacts"
 "$BUN_BIN" run build:client -- --force
+# Keep local native packages outside the app graph; the helper skips CI.
+"$BUN_BIN" "$APP_CORE_SCRIPTS_DIR/build-native-plugins.mjs"
 CORE_NODE_MODULE="node_modules/@elizaos/core"
 
 log "Building agent workspace"
