@@ -744,6 +744,7 @@ for plugin in \
   plugin-pdf \
   plugin-browser \
   plugin-capacitor-bridge \
+  plugin-web-search \
   plugin-coding-tools \
   plugin-commands \
   plugin-computeruse \

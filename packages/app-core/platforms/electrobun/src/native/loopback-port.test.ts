@@ -108,7 +108,8 @@ describe("findFirstAvailableLoopbackPort", () => {
   });
 
   it("skips an occupied preferred port and returns the next hop", async () => {
-    const { start } = await occupyConsecutive(LOOPBACK, 1);
+    const { start, servers } = await occupyConsecutive(LOOPBACK, 2);
+    await closeServer(servers[1]);
 
     await expect(
       findFirstAvailableLoopbackPort(start, { host: LOOPBACK, maxHops: 4 }),
@@ -116,7 +117,8 @@ describe("findFirstAvailableLoopbackPort", () => {
   });
 
   it("skips a contiguous occupied prefix and returns the first free hop", async () => {
-    const { start } = await occupyConsecutive(LOOPBACK, 3);
+    const { start, servers } = await occupyConsecutive(LOOPBACK, 4);
+    await closeServer(servers[3]);
 
     await expect(
       findFirstAvailableLoopbackPort(start, { host: LOOPBACK, maxHops: 8 }),
@@ -124,11 +126,20 @@ describe("findFirstAvailableLoopbackPort", () => {
   });
 
   it("uses default maxHops of 64 when options omit it", async () => {
-    const { start } = await occupyConsecutive(LOOPBACK, 2);
+    const { start, servers } = await occupyConsecutive(LOOPBACK, 64);
 
     await expect(
       findFirstAvailableLoopbackPort(start, { host: LOOPBACK }),
-    ).resolves.toBe(start + 2);
+    ).rejects.toThrow(
+      `No free TCP port on ${LOOPBACK} in range ${start}–${start + 63}`,
+    );
+
+    // Release a port we actually reserved; an adjacent port may belong to
+    // another test or process. The last allowed hop must still be reachable.
+    await closeServer(servers[63]);
+    await expect(
+      findFirstAvailableLoopbackPort(start, { host: LOOPBACK }),
+    ).resolves.toBe(start + 63);
   });
 
   it("throws when every hop in maxHops is occupied", async () => {
