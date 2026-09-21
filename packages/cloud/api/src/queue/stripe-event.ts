@@ -935,10 +935,15 @@ async function handlePaymentIntentSucceeded(
   // affiliate markup is applied when the PaymentIntent is created, so
   // the only payout here is the auto-top-up affiliate fee.
   const purchaseType = paymentIntent.metadata?.type;
+  const purchaseSource = paymentIntent.metadata?.source;
+  // Checkout-owned one-time purchases, including mini-app charge requests,
+  // fulfill on checkout.session.completed. Auto-top-up is PaymentIntent-owned.
   if (
     paymentIntent.metadata?.checkout_order_id ||
     purchaseType === "custom_amount" ||
-    purchaseType === "credit_pack"
+    purchaseType === "credit_pack" ||
+    purchaseType === "app_credit_purchase" ||
+    (purchaseSource === "miniapp_app" && purchaseType !== "auto_top_up")
   ) {
     logger.debug(
       `[Stripe Queue] Skipping Checkout-owned payment intent ${paymentIntent.id}; checkout.session.completed owns fulfillment`,

@@ -80,10 +80,19 @@ mock.module("@/lib/security/safe-fetch", () => ({
 mock.module("@/lib/services/app-charge-callbacks", () => ({
   appChargeCallbacksService: { failChargeAndEnqueue },
 }));
-mock.module("@/lib/services/app-charge-settlement", () => ({
-  appChargeSettlementService: {},
+const processPurchase = mock(async () => ({
+  creditsAdded: 10,
+  platformOffset: 0,
+  creatorEarnings: 0,
+  newBalance: 10,
 }));
-mock.module("@/lib/services/app-credits", () => ({ appCreditsService: {} }));
+const markPaid = mock(async () => undefined);
+mock.module("@/lib/services/app-charge-settlement", () => ({
+  appChargeSettlementService: { markPaid },
+}));
+mock.module("@/lib/services/app-credits", () => ({
+  appCreditsService: { processPurchase },
+}));
 mock.module("@/lib/services/auto-top-up", () => ({ autoTopUpService: {} }));
 mock.module("@/lib/services/credits", () => ({
   creditsService: {
@@ -188,6 +197,15 @@ beforeEach(() => {
   clawbackCredits.mockClear();
   refundCredits.mockClear();
   failChargeAndEnqueue.mockClear();
+  processPurchase.mockClear();
+  processPurchase.mockResolvedValue({
+    creditsAdded: 10,
+    platformOffset: 0,
+    creatorEarnings: 0,
+    newBalance: 10,
+  });
+  markPaid.mockClear();
+  markPaid.mockResolvedValue(undefined);
   getByStripeInvoiceId.mockClear();
   getByStripeInvoiceId.mockResolvedValue(null);
   createInvoice.mockClear();
@@ -340,6 +358,117 @@ describe("processStripeEvent dispatch", () => {
       ),
     ).toBe("ack");
     expect(addCredits).not.toHaveBeenCalled();
+  });
+
+  test("skips mini-app charge payment_intent.succeeded events", async () => {
+    for (const metadata of [
+      {
+        type: "app_credit_purchase",
+        organization_id: "org-1",
+        credits: "10.00",
+      },
+      {
+        type: "app_credit_purchase",
+        source: "miniapp_app",
+        organization_id: "org-1",
+        app_id: "app-1",
+        credits: "10.00",
+      },
+      {
+        source: "miniapp_app",
+        organization_id: "org-1",
+        credits: "10.00",
+      },
+    ]) {
+      addCredits.mockClear();
+      createInvoice.mockClear();
+      expect(
+        await processStripeEvent(
+          delivery("payment_intent.succeeded", {
+            id: "pi_app_credit",
+            invoice: null,
+            amount: 1000,
+            amount_received: 1000,
+            currency: "usd",
+            metadata,
+          }),
+        ),
+      ).toBe("ack");
+      expect(addCredits).not.toHaveBeenCalled();
+      expect(createInvoice).not.toHaveBeenCalled();
+      expect(processPurchase).not.toHaveBeenCalled();
+    }
+  });
+
+  test("does not skip auto-top-up payment intents as mini-app charges", async () => {
+    expect(
+      await processStripeEvent(
+        delivery("payment_intent.succeeded", {
+          id: "pi_auto_top_up_generic",
+          invoice: null,
+          amount: 1000,
+          amount_received: 1000,
+          currency: "usd",
+          customer: "cus_1",
+          metadata: {
+            type: "auto_top_up",
+            organization_id: "org-1",
+            credits: "10.00",
+          },
+        }),
+      ),
+    ).toBe("ack");
+    expect(addCredits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "org-1",
+        amount: 10,
+        stripePaymentIntentId: "pi_auto_top_up_generic",
+        description: "Auto top-up - $10.00",
+      }),
+    );
+  });
+
+  test("checkout.session.completed fulfills mini-app charges", async () => {
+    expect(
+      await processStripeEvent(
+        delivery("checkout.session.completed", {
+          id: "cs_app_credit",
+          payment_status: "paid",
+          payment_intent: "pi_app_credit",
+          amount_total: 1000,
+          currency: "usd",
+          customer: "cus_1",
+          metadata: {
+            type: "app_credit_purchase",
+            source: "miniapp_app",
+            organization_id: "org-1",
+            user_id: "user-1",
+            app_id: "app-1",
+            charge_request_id: "cr-1",
+            credits: "10.00",
+          },
+        }),
+      ),
+    ).toBe("ack");
+    expect(addCredits).not.toHaveBeenCalled();
+    expect(processPurchase).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: "app-1",
+        userId: "user-1",
+        organizationId: "org-1",
+        purchaseAmount: 10,
+        stripePaymentIntentId: "pi_app_credit",
+      }),
+    );
+    expect(markPaid).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: "app-1",
+        chargeRequestId: "cr-1",
+        provider: "stripe",
+        providerPaymentId: "pi_app_credit",
+        amountUsd: 10,
+      }),
+    );
   });
 
   test("skips payment intents with no purchase type and no auto-top-up marker", async () => {
