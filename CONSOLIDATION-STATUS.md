@@ -1,3 +1,5 @@
+> Resumed recovery work: cc857a94013 fixes Stop during pending history restoration. 179 targeted tests pass; full verification is pending. The tagged handoff below remains the previous verified checkpoint.
+
 # Eliza consolidation status — September 20, 2026
 
 **The local consolidation checkpoint and handoff are ready for text rehearsal.

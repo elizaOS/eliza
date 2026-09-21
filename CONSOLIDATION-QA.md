@@ -645,3 +645,21 @@ The browser changed from /notes to /chat and showed home-launcher-page:home plus
 "Back to home." This is a successful clean navigation run, not a universal timing
 claim. Evidence: runtime/final-clean-home-{trace,summary,output}.json. The earlier
 Calendar hot-update delay was not reproduced by this clean navigation request.
+
+
+## Resumed recovery work — history-restoration Stop boundary
+
+On the user's request to proceed, three deterministic tests reproduced delayed
+admission after Stop while history restoration was pending: composer, direct text
+and action sends all dispatched after the deferred restoration completed. This
+is distinct from first-conversation creation. Commit cc857a94013 checks the existing
+cancellation generation before and after the restoration wait in each entry point.
+The composer draft stays untouched; a stopped intent cannot become a new queued
+turn once restoration finishes. No extra prompt, model call or live paid test.
+
+Before:3 failing cases in runtime/stop-during-hydration-before.log. After:179 tests
+across4 send/ownership/restoration suites passed in6.20s, and focused Biome checks
+passed. Full root verification is running in runtime/hydration-stop-root-verify.log;
+do not treat its result as passed until the command exits successfully. This
+confirms a real cancellation defect, not the causal explanation of the historical
+build-time delay. Further admission/recovery boundaries remain under review.
