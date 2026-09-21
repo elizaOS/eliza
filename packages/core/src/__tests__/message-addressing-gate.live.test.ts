@@ -6,6 +6,9 @@
  * separately force the post-Stage-1 engagement-gate branch.
  */
 
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
 	ChannelType,
@@ -26,6 +29,7 @@ interface LiveTrajectoryDetail {
 		llmCalls?: Array<{
 			provider?: string;
 			response?: string;
+			toolCalls?: unknown[];
 		}>;
 	}>;
 }
@@ -45,8 +49,10 @@ const liveDescribe =
 
 liveDescribe("group addressing gate — live Cerebras message loop", () => {
 	let harness: RealTestRuntimeResult;
+	let evidenceDirectory: string;
 
 	beforeAll(async () => {
+		evidenceDirectory = mkdtempSync(join(tmpdir(), "eliza-group-addressing-"));
 		harness = await createRealTestRuntime({
 			characterName: "AddressingProofAgent",
 			withLLM: true,
@@ -130,10 +136,20 @@ liveDescribe("group addressing gate — live Cerebras message loop", () => {
 			await new Promise((resolve) => setTimeout(resolve, 20));
 		}
 		if (!trajectory) throw new Error("live group trajectory was not persisted");
+		const evidencePath = join(evidenceDirectory, `${trajectoryId}.json`);
+		writeFileSync(
+			evidencePath,
+			JSON.stringify({ text, delivered, result, trajectory }, null, 2),
+		);
+		console.info(`Group addressing trajectory: ${evidencePath}`);
 		const modelResponses =
 			trajectory.steps
 				?.flatMap((step) => step.llmCalls ?? [])
-				.map((call) => call.response)
+				.map(
+					(call) =>
+						call.response?.trim() ||
+						(call.toolCalls?.length ? JSON.stringify(call.toolCalls) : ""),
+				)
 				.filter((response): response is string => Boolean(response?.trim())) ??
 			[];
 		return { delivered, message, modelResponses, result, trajectory };
@@ -167,7 +183,7 @@ liveDescribe("group addressing gate — live Cerebras message loop", () => {
 		expect(direct.trajectory.metrics?.finalStatus).toBe("completed");
 		expect(
 			direct.delivered.length > 0 ||
-				typeof direct.result.responseContent?.text === "string",
+				Boolean(direct.result.responseContent?.text?.trim()),
 		).toBe(true);
 	}, 240_000);
 });

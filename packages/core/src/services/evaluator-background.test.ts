@@ -594,11 +594,11 @@ describe("durable background memory", () => {
 		[ChannelType.DM, true],
 		[ChannelType.API, true],
 		[ChannelType.SELF, true],
-		[ChannelType.GROUP, false],
+		[ChannelType.GROUP, true],
 		[ChannelType.VOICE_DM, true],
 		[ChannelType.VOICE_GROUP, false],
 	] as const)(
-		"indexes supported direct-conversation sources: %s",
+		"indexes supported progressive-context sources: %s",
 		async (channelType, enabled) => {
 			const { runtime, service, message } = await setup();
 			await runtime.registerPlugin(createAdvancedMemoryPlugin());
@@ -1009,7 +1009,7 @@ describe("durable background memory", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 	});
 
-	it.each(["incomplete", "unknown-reference", "missing-source"])(
+	it.each(["incomplete", "unknown-reference"])(
 		"keeps invalid retention %s pending without hiding originals",
 		async (invalid) => {
 			const { runtime, service, message } = await setup();
@@ -1021,8 +1021,6 @@ describe("durable background memory", () => {
 				if (invalid === "incomplete") output.historyRetention.complete = false;
 				if (invalid === "unknown-reference")
 					output.historyRetention.referenceMessageIds = [String(message.id)];
-				if (invalid === "missing-source")
-					output.historyRetention.retainSourceIds = [];
 				return JSON.stringify(output);
 			}) as AgentRuntime["useModel"];
 			await service.enqueue(message, state, { phase: "post_turn" });
@@ -1044,6 +1042,35 @@ describe("durable background memory", () => {
 		},
 	);
 
+	it("commits a review that omits a source and keeps that source visible", async () => {
+		const { runtime, service, message } = await setup();
+		runtime.registerEvaluator(historyRetentionEvaluator);
+		runtime.useModel = vi.fn(async (_type, params) => {
+			// The reviewer answers with h1 in no classification at all.
+			const output = JSON.parse(
+				retentionAnswer(retentionPrompt(params), ["h1"]),
+			);
+			output.historyRetention.retainSourceIds = [];
+			return JSON.stringify(output);
+		}) as AgentRuntime["useModel"];
+		await service.enqueue(message, state, { phase: "post_turn" });
+		await execute(runtime, await job(runtime));
+		if (!message.id) throw new Error("Fixture source has no ID");
+		expect(
+			await getEvaluatorProgressState(
+				runtime,
+				message,
+				historyRetentionEvaluator.name,
+			),
+		).toMatchObject({
+			reviewedCount: 1,
+			retainedEventIds: [`history:${message.id}`],
+		});
+		expect(await runtime.getMemoryById(message.id)).toMatchObject({
+			content: message.content,
+		});
+		expect(runtime.useModel).toHaveBeenCalledOnce();
+	});
 	it("rejects a retention decision if original source bytes change during background inference", async () => {
 		const { runtime, service, message } = await setup();
 		runtime.registerEvaluator(historyRetentionEvaluator);

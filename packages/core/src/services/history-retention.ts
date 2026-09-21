@@ -19,11 +19,11 @@ import {
 import type { ContextEvent, ContextObject } from "../types/context-object.ts";
 import type { Evaluator, EvaluatorPromptContext } from "../types/evaluator.ts";
 import type { Memory } from "../types/memory.ts";
-import { ChannelType } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 import { isPlainObject } from "../utils/type-guards.ts";
 import { canonicalEvaluatorMessages } from "./evaluator-transcript.ts";
 import { resolveStage1SenderRole } from "./message/addressing.ts";
+import { isProgressiveContextChannel } from "./message/channel-protocol";
 import { appendPriorDialogueEvents } from "./message/dialogue-context.ts";
 
 export const HISTORY_RETENTION_EVALUATOR = "historyRetention";
@@ -159,18 +159,13 @@ export const historyRetentionEvaluator: Evaluator<
 			evidence.messages.length < HISTORY_CONTINUITY_SOURCE_COUNT
 		)
 			return false;
-		// Direct conversations share foreground projection across text and voice.
+		// Direct conversations and text groups share foreground projection.
 		// Older stored messages
 		// may omit channelType, so use their authoritative room in that case.
 		const channelType =
 			message.content.channelType ??
 			(await runtime.getRoom(message.roomId))?.type;
-		return (
-			channelType === ChannelType.DM ||
-			channelType === ChannelType.VOICE_DM ||
-			channelType === ChannelType.API ||
-			channelType === ChannelType.SELF
-		);
+		return isProgressiveContextChannel(channelType);
 	},
 	async prepare({ runtime, message, options }) {
 		const evidence = options.extraction;

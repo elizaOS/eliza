@@ -867,3 +867,5 @@ persistence. Planner-owned calls leave final wording to the completion model;
 standalone callers retain their direct callbacks. Promoted directive tools
 require the rule text. Requester-only scope, exact removal, unrelated rules and
 per-directive provenance remain enforced by the existing store and action.
+
+Text groups use the existing progressive context-discovery path while retaining their engagement and silence rules. Complete authorized references and history remain retrievable; direct voice keeps its existing behavior and group voice is unchanged. A missing history classification stays visible and eligible for review instead of invalidating an otherwise valid checkpoint.

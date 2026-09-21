@@ -3104,7 +3104,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime)).toHaveLength(2);
 	});
 
-	it.each([ChannelType.GROUP])(
+	it.each([ChannelType.VOICE_GROUP])(
 		"keeps full catalog descriptions for %s",
 		async (channelType) => {
 			const description =
@@ -3138,61 +3138,107 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
-	it("keeps the system prefix identical when loading a stable provider reference", async () => {
-		const full =
-			"Complete character preferences: use plain language and address the user as Sam.";
-		const runtime = makeRuntime([
-			stage1Response({
-				contextRequests: ["userPersonalityPreferences"],
-				contexts: ["simple"],
-			}),
-			stage1Response({ contexts: ["simple"], replyText: "Here is the form." }),
-		]);
-		runtime.providers = [
-			{ name: "userPersonalityPreferences", cacheStable: true, get: vi.fn() },
-		];
-		const state = makeState();
-		state.data.providers = {
-			userPersonalityPreferences: {
-				text: full,
-				discoveryText: "context_discovery: userPersonalityPreferences",
-			},
-		};
-		runtime.composeState = vi.fn(async () => structuredClone(state));
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.DM }),
-			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-		const calls = useModelCalls(runtime).map(
-			([, params]) =>
-				params as {
-					messages: Array<{ role: string; content: string }>;
-					providerOptions: {
-						eliza: { prefixHash: string };
-						cerebras: { prompt_cache_key: string };
-						openai: { parallelToolCalls: boolean };
-					};
+	it.each([
+		ChannelType.GROUP,
+		ChannelType.THREAD,
+		ChannelType.WORLD,
+		ChannelType.FORUM,
+		ChannelType.FEED,
+	])(
+		"uses progressive catalog references for text group %s",
+		async (channelType) => {
+			const description =
+				"Complete context routing reference for the full input path. ".repeat(
+					25,
+				);
+			const runtime = makeRuntime([
+				stage1Response({ contexts: ["simple"], replyText: "Hello." }),
+			]);
+			runtime.actions = [
+				{ name: "CUSTOM_ACTION", description, similes: ["CUSTOM_ALIAS"] },
+			];
+			runtime.contexts = new ContextRegistry([
+				{ id: "custom_catalog", description },
+			]);
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ channelType }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				stage1DecisionOnly: true,
+			});
+			const params = useModelCalls(runtime)[0]?.[1] as {
+				messages: Array<{ content: string }>;
+			};
+			const wire = params.messages.map(({ content }) => content).join("\n");
+			expect(wire).not.toContain(description.trim());
+			expect(wire).not.toContain("CUSTOM_ALIAS");
+			expect(wire).toContain("context_discovery: CONTEXT_CATALOG");
+			expect(useModelCalls(runtime)).toHaveLength(1);
+		},
+	);
+
+	it.each([ChannelType.DM, ChannelType.GROUP])(
+		"keeps the system prefix identical when loading a stable provider reference in %s",
+		async (channelType) => {
+			const full =
+				"Complete character preferences: use plain language and address the user as Sam.";
+			const runtime = makeRuntime([
+				stage1Response({
+					contextRequests: ["userPersonalityPreferences"],
+					contexts: ["simple"],
+				}),
+				stage1Response({
+					contexts: ["simple"],
+					replyText: "Here is the form.",
+				}),
+			]);
+			runtime.providers = [
+				{ name: "userPersonalityPreferences", cacheStable: true, get: vi.fn() },
+			];
+			const state = makeState();
+			state.data.providers = {
+				userPersonalityPreferences: {
+					text: full,
+					discoveryText: "context_discovery: userPersonalityPreferences",
 				},
-		);
-		expect(calls).toHaveLength(2);
-		expect(
-			calls.map((call) => call.providerOptions.openai.parallelToolCalls),
-		).toEqual([false, false]);
-		expect(calls[0]?.providerOptions.cerebras.prompt_cache_key).toBeTruthy();
-		expect(calls[1]?.providerOptions.cerebras.prompt_cache_key).toBe(
-			calls[0]?.providerOptions.cerebras.prompt_cache_key,
-		);
-		expect(calls[0]?.messages[0]).toEqual(calls[1]?.messages[0]);
-		expect(calls[0]?.providerOptions.eliza.prefixHash).toEqual(
-			calls[1]?.providerOptions.eliza.prefixHash,
-		);
-		expect(JSON.stringify(calls[0]?.messages)).not.toContain(full);
-		expect(
-			calls[1]?.messages.find((message) => message.role === "user")?.content,
-		).toContain(full);
-	});
+			};
+			runtime.composeState = vi.fn(async () => structuredClone(state));
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ channelType }),
+				state,
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			const calls = useModelCalls(runtime).map(
+				([, params]) =>
+					params as {
+						messages: Array<{ role: string; content: string }>;
+						providerOptions: {
+							eliza: { prefixHash: string };
+							cerebras: { prompt_cache_key: string };
+							openai: { parallelToolCalls: boolean };
+						};
+					},
+			);
+			expect(calls).toHaveLength(2);
+			expect(
+				calls.map((call) => call.providerOptions.openai.parallelToolCalls),
+			).toEqual([false, false]);
+			expect(calls[0]?.providerOptions.cerebras.prompt_cache_key).toBeTruthy();
+			expect(calls[1]?.providerOptions.cerebras.prompt_cache_key).toBe(
+				calls[0]?.providerOptions.cerebras.prompt_cache_key,
+			);
+			expect(calls[0]?.messages[0]).toEqual(calls[1]?.messages[0]);
+			expect(calls[0]?.providerOptions.eliza.prefixHash).toEqual(
+				calls[1]?.providerOptions.eliza.prefixHash,
+			);
+			expect(JSON.stringify(calls[0]?.messages)).not.toContain(full);
+			expect(
+				calls[1]?.messages.find((message) => message.role === "user")?.content,
+			).toContain(full);
+		},
+	);
 	it("does not add a discovery pass to voice replies", async () => {
 		const runtime = makeRuntime([
 			stage1Response({ contexts: ["simple"], replyText: "Hello." }),

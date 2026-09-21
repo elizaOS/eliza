@@ -48,6 +48,39 @@ function fixture() {
 }
 
 describe("history retention dependency closure", () => {
+	it("keeps omitted originals visible and supplies them for another review", () => {
+		const { context, scope, prepared, review } = fixture();
+		const checkpoint = applyHistoryRetentionReview(prepared, {
+			...review,
+			deferSourceIds: ["h2"],
+		});
+		expect(checkpoint.retainedEventIds).toContain("history:2");
+		expect(visibleHistoryEventIds(context, scope, checkpoint)).toContain(
+			"history:2",
+		);
+		const next = prepareHistoryRetention(context, scope, checkpoint, "next", 4);
+		expect(next.candidates.map((source) => source.event.id)).toContain(
+			"history:2",
+		);
+		expect(checkpoint.dependencyEventGroups).toContainEqual([
+			"history:0",
+			"history:1",
+		]);
+	});
+
+	it.each([["h2", "h2"], ["h99"]])(
+		"rejects duplicate or unknown classifications %s",
+		(...ids) => {
+			const { prepared, review } = fixture();
+			expect(() =>
+				applyHistoryRetentionReview(prepared, {
+					...review,
+					deferSourceIds: ids,
+				}),
+			).toThrow();
+		},
+	);
+
 	it("keeps a declared dependency despite a conflicting deferral without changing originals", () => {
 		const { context, scope, prepared, review } = fixture();
 		const before = structuredClone({ context, review });
@@ -79,7 +112,7 @@ describe("history retention dependency closure", () => {
 		},
 	);
 
-	it("still rejects stale and incomplete classifications", () => {
+	it("still rejects stale and explicitly incomplete reviews", () => {
 		const { prepared, review } = fixture();
 		expect(() =>
 			applyHistoryRetentionReview(prepared, {
@@ -90,7 +123,7 @@ describe("history retention dependency closure", () => {
 		expect(() =>
 			applyHistoryRetentionReview(prepared, {
 				...review,
-				deferSourceIds: ["h2"],
+				complete: false,
 			}),
 		).toThrow();
 	});

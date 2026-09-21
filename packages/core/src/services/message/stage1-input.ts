@@ -195,6 +195,8 @@ export function renderMessageHandlerModelInput(
 		directMessage?: boolean;
 		voiceDirectMessage?: boolean;
 		groupTriage?: boolean;
+		/** Render discovery independently of the direct/group instruction template. */
+		progressiveContext?: boolean;
 		responseHandlerFields?: string;
 		contextCatalog?: ContextCatalogReference;
 		history?: HistoryDiscovery;
@@ -209,11 +211,13 @@ export function renderMessageHandlerModelInput(
 	const completionSourceIds = new Map(
 		completionSources?.sources.map(({ id, event }) => [event.id, id]),
 	);
-	const directConversation = options?.directMessage && !options.groupTriage;
+	const progressiveContext =
+		options?.progressiveContext ??
+		(options?.directMessage && !options.groupTriage);
 	const history =
-		directConversation &&
-		options.history?.sourceSetId === completionSources?.sourceSetId
-			? options.history
+		progressiveContext &&
+		options?.history?.sourceSetId === completionSources?.sourceSetId
+			? options?.history
 			: undefined;
 	const instructions = renderMessageHandlerInstructions(
 		runtime,
@@ -259,7 +263,7 @@ export function renderMessageHandlerModelInput(
 	// Availability validation can change this complete, freshly authorized catalog
 	// on every request. Keep it after the history prefix so an action appearing or
 	// disappearing does not invalidate cached history. Never cache authorization.
-	const actionCatalogSegments = directConversation
+	const actionCatalogSegments = progressiveContext
 		? remainingDynamicSegments.filter(
 				(segment) =>
 					segment.id === "available-actions" &&
@@ -276,7 +280,7 @@ export function renderMessageHandlerModelInput(
 	// it with structural-looking text. Providers remain adjacent after that
 	// boundary, preserving their reusable prefix before the current message.
 	const orderedDynamicSegments = [
-		...(directConversation
+		...(progressiveContext
 			? shortenHistoryRoleLabels(priorDialogueSegments, completionSourceIds)
 			: priorDialogueSegments),
 		...actionCatalogSegments,
@@ -302,7 +306,7 @@ export function renderMessageHandlerModelInput(
 		...loadedHistorySegments(
 			context,
 			history ??
-				(directConversation ? options?.historyReadEvidence : undefined),
+				(progressiveContext ? options?.historyReadEvidence : undefined),
 			history?.loadedSourceIds.size
 				? new Set(
 						priorDialogueSegments.flatMap((segment) =>

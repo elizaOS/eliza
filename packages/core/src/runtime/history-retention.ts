@@ -269,15 +269,19 @@ export function applyHistoryRetentionReview(
 	requireValue(arrays.every(stringIds), "Invalid classification arrays");
 	const supplied = new Map(prepared.candidates.map((s) => [s.id, s]));
 	const classified = arrays.flat();
+	const classifiedSet = new Set(classified);
 	requireValue(
-		classified.length === supplied.size &&
-			new Set(classified).size === supplied.size &&
+		classifiedSet.size === classified.length &&
 			classified.every((id) => supplied.has(id)),
-		"Missing, duplicate or unknown source classification",
+		"Duplicate or unknown source classification",
 	);
+	// Omission is uncertainty, never permission to hide an original. Keep it
+	// visible and supply it again in the next review, including linked sources.
+	const omitted = [...supplied.keys()].filter((id) => !classifiedSet.has(id));
 	const retained = new Set([
 		...output.retainSourceIds,
 		...output.uncertainSourceIds,
+		...omitted,
 	]);
 	requireValue(
 		Array.isArray(output.dependencyGroups) &&
