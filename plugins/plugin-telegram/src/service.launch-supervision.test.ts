@@ -11,8 +11,13 @@
  * Runtime, timers, and `@elizaos/core` (logger/Service) are mocked.
  */
 import { logger } from "@elizaos/core";
+import type { Context, Telegraf } from "telegraf";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getTelegramPollerClaim } from "./poller-lock";
+import {
+  claimTelegramPollerToken,
+  getTelegramPollerClaim,
+  releaseTelegramPollerToken,
+} from "./poller-lock";
 import { TelegramService } from "./service";
 
 const CONFLICT = "409: Conflict: terminated by other getUpdates request";
@@ -331,5 +336,88 @@ describe("TelegramService.launchPollerSupervised", () => {
 
     expect(first.bot.stop).not.toHaveBeenCalled();
     expect(second.bot.launch).not.toHaveBeenCalled();
+  });
+});
+
+describe("default bot disconnect identity", () => {
+  it("does not report an inert replacement drained while the previous runtime still owns its poller", async () => {
+    const { service, runtime } = makeService();
+    const bot = makeBot().bot;
+    const token = "123456:previous-runtime-token";
+    Object.assign(service, {
+      defaultAccountId: "default",
+      botToken: null,
+      bot: null,
+      accountStates: new Map(),
+      stop: vi.fn().mockResolvedValue(undefined),
+    });
+    claimTelegramPollerToken(token, {
+      bot: bot as unknown as Telegraf<Context>,
+      mode: "full",
+      ownerId: runtime.agentId,
+      accountId: "default",
+    });
+    try {
+      await expect(service.disconnectDefaultBot(token)).rejects.toMatchObject({
+        code: "TELEGRAM_SHUTDOWN_INCOMPLETE",
+      });
+    } finally {
+      releaseTelegramPollerToken(token, bot as unknown as Telegraf<Context>);
+    }
+  });
+
+  it("can drain an inert default service after a token was saved for the next startup", async () => {
+    const { service } = makeService();
+    const stop = vi.fn().mockResolvedValue(undefined);
+    Object.assign(service, {
+      defaultAccountId: "default",
+      botToken: null,
+      bot: null,
+      accountStates: new Map(),
+      stop,
+    });
+    await service.disconnectDefaultBot("123456:saved-for-next-start");
+    expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a named account and a stale credential before stopping", async () => {
+    const { service } = makeService();
+    const stop = vi.spyOn(service, "stop");
+    Object.assign(service, {
+      defaultAccountId: "named",
+      botToken: "synthetic",
+    });
+    await expect(
+      service.disconnectDefaultBot("synthetic"),
+    ).rejects.toMatchObject({ code: "TELEGRAM_DISCONNECT_IDENTITY_MISMATCH" });
+    Object.assign(service, { defaultAccountId: "default" });
+    await expect(service.disconnectDefaultBot("other")).rejects.toMatchObject({
+      code: "TELEGRAM_DISCONNECT_IDENTITY_MISMATCH",
+    });
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it("waits for admitted outbound work and can be repeated after shutdown", async () => {
+    const { service } = makeService();
+    let release!: () => void;
+    const admitted = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    Object.assign(service, {
+      defaultAccountId: "default",
+      botToken: "synthetic-disconnect",
+      outboundCompletions: new Set([admitted]),
+    });
+    let finished = false;
+    const pending = service
+      .disconnectDefaultBot("synthetic-disconnect")
+      .then(() => {
+        finished = true;
+      });
+    await Promise.resolve();
+    expect(finished).toBe(false);
+    release();
+    await pending;
+    await expect(service.disconnectDefaultBot()).resolves.toBeUndefined();
   });
 });

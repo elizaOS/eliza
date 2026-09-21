@@ -18,15 +18,12 @@
 import { computeNextCronRunAtMs } from "@elizaos/core";
 
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
+import { resolveAnchorOccurrences } from "./anchor-occurrences.js";
 import { windowOccurrenceKey } from "./due.js";
 import { resolveLocalHHMMToIso } from "./local-time.js";
 import { isRepresentableMs, MAX_DATE_MS } from "./time-range.js";
 import { resolveTriggerTz } from "./trigger-tz.js";
-import type {
-  OwnerFactsView,
-  ScheduledTask,
-  ScheduledTaskTrigger,
-} from "./types.js";
+import type { OwnerFactsView, ScheduledTask } from "./types.js";
 import {
   formatLocalHHMM,
   resolveOwnerWindowBoundsMinutes,
@@ -126,68 +123,6 @@ function nextWindowStartIso(
   return earliest === undefined ? null : new Date(earliest).toISOString();
 }
 
-async function nextAnchorIso(
-  trigger: Extract<ScheduledTaskTrigger, { kind: "relative_to_anchor" }>,
-  context: ComputeNextFireAtContext,
-): Promise<string | null> {
-  const ownerFacts = context.ownerFacts;
-  const registryAnchor = context.anchors?.get(trigger.anchorKey) as
-    | {
-        resolve?: (
-          ctx: unknown,
-        ) => Promise<{ atIso: string } | null> | { atIso: string } | null;
-      }
-    | null
-    | undefined;
-  if (typeof registryAnchor?.resolve === "function") {
-    const resolved = await registryAnchor.resolve({
-      nowIso: context.now.toISOString(),
-      ownerFacts,
-    });
-    if (resolved?.atIso && Number.isFinite(Date.parse(resolved.atIso))) {
-      const atMs =
-        Date.parse(resolved.atIso) + trigger.offsetMinutes * MINUTE_MS;
-      // Extreme offsetMinutes can leave the representable Date range; a
-      // non-indexable anchor is NULL, not a crash in the persist path.
-      if (!isRepresentableMs(atMs)) return null;
-      return new Date(atMs).toISOString();
-    }
-  }
-
-  const timeZone = ownerFacts.timezone ?? "UTC";
-  let baseIso: string | null = null;
-  if (
-    trigger.anchorKey === "wake.confirmed" ||
-    trigger.anchorKey === "wake.observed" ||
-    trigger.anchorKey === "morning.start"
-  ) {
-    baseIso = resolveLocalHHMMToIso(
-      context.now,
-      ownerFacts.morningWindow?.start,
-      timeZone,
-    );
-  } else if (trigger.anchorKey === "bedtime.target") {
-    baseIso =
-      resolveLocalHHMMToIso(
-        context.now,
-        ownerFacts.eveningWindow?.end,
-        timeZone,
-      ) ?? resolveLocalHHMMToIso(context.now, "22:30", timeZone);
-  } else if (trigger.anchorKey === "night.start") {
-    baseIso = resolveLocalHHMMToIso(
-      context.now,
-      ownerFacts.eveningWindow?.start,
-      timeZone,
-    );
-  } else if (trigger.anchorKey === "lunch.start") {
-    baseIso = resolveLocalHHMMToIso(context.now, "12:00", timeZone);
-  }
-  if (!baseIso) return null;
-  const atMs = Date.parse(baseIso) + trigger.offsetMinutes * MINUTE_MS;
-  if (!isRepresentableMs(atMs)) return null;
-  return new Date(atMs).toISOString();
-}
-
 /**
  * Compute the next-fire-at timestamp for a task. Returns null when the
  * trigger does not have a wall-clock fire time (event/manual/after_task)
@@ -262,8 +197,22 @@ export async function computeNextFireAt(
       if (!isRepresentableMs(candidateMs)) return null;
       return new Date(candidateMs).toISOString();
     }
-    case "relative_to_anchor":
-      return nextAnchorIso(trigger, context);
+    case "relative_to_anchor": {
+      const occurrences = await resolveAnchorOccurrences(trigger, {
+        now: context.now,
+        ownerFacts: context.ownerFacts,
+        anchors: context.anchors,
+        firedAtIso: task.state.firedAt,
+      });
+      if (occurrences.kind !== "resolved") return null;
+      // An unfired occurrence that already arrived is the next candidate so
+      // the tick re-reads the row now; otherwise the earliest future one.
+      const candidateMs =
+        occurrences.currentMs !== null && !occurrences.currentFired
+          ? occurrences.currentMs
+          : occurrences.nextMs;
+      return candidateMs === null ? null : new Date(candidateMs).toISOString();
+    }
     case "during_window":
       return nextWindowStartIso(trigger.windowKey, context, task);
     case "event":

@@ -791,6 +791,43 @@ export class TelegramService extends Service {
     return service;
   }
 
+  /** Drain only a verified default bot; never stop unrelated named accounts. */
+  assertDefaultBotDisconnect(expectedToken?: string): string | null {
+    const accountIds = this.getAccountIds();
+    const state = this.getAccountState(DEFAULT_ACCOUNT_ID);
+    const activeToken = state?.account.botToken ?? this.botToken;
+    if (
+      accountIds.length !== 1 ||
+      accountIds[0] !== DEFAULT_ACCOUNT_ID ||
+      (expectedToken !== undefined &&
+        activeToken !== expectedToken &&
+        !(activeToken === null && this.getBots().length === 0))
+    ) {
+      throw new ElizaError(
+        "Review the active Telegram bot before disconnecting.",
+        {
+          code: "TELEGRAM_DISCONNECT_IDENTITY_MISMATCH",
+        },
+      );
+    }
+    return activeToken;
+  }
+
+  /** Fence and drain only the bot whose identity was reviewed. */
+  async disconnectDefaultBot(expectedToken?: string): Promise<void> {
+    const activeToken = this.assertDefaultBotDisconnect(expectedToken);
+    await this.stop();
+    const tokenToCheck = expectedToken ?? activeToken;
+    const claim = tokenToCheck
+      ? getTelegramPollerClaim(tokenToCheck)
+      : undefined;
+    if (claim?.ownerId === String(this.runtime.agentId)) {
+      throw new ElizaError("Telegram polling has not finished shutting down.", {
+        code: "TELEGRAM_SHUTDOWN_INCOMPLETE",
+      });
+    }
+  }
+
   /**
    * Stops the agent runtime.
    * @param {IAgentRuntime} runtime - The agent runtime to stop

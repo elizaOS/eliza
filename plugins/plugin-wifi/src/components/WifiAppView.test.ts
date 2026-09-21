@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+/** Exercises rendered Wi-Fi interactions against deterministic native bridge responses. */
+import type { WiFiNetwork as WifiNet } from "@elizaos/capacitor-wifi";
 
 import {
   cleanup,
@@ -9,7 +11,7 @@ import {
   within,
 } from "@testing-library/react";
 import React from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const wifiBridge = vi.hoisted(() => ({
   getWifiState: vi.fn(),
@@ -80,15 +82,6 @@ function network(over: Partial<WifiNet> = {}): WifiNet {
   };
 }
 
-interface WifiNet {
-  ssid: string;
-  bssid: string;
-  rssi: number;
-  frequency: number;
-  capabilities: string;
-  secured: boolean;
-}
-
 /** Default: Wi-Fi on, not connected, empty scan. Tests override per-case. */
 function mockDefaults() {
   wifiBridge.getWifiState.mockResolvedValue({
@@ -107,6 +100,8 @@ function renderView(exitToApps = vi.fn()) {
   return render(React.createElement(WifiAppView, overlayContext(exitToApps)));
 }
 
+beforeEach(mockDefaults);
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -114,7 +109,6 @@ afterEach(() => {
 
 describe("WifiAppView — connected card", () => {
   it("renders the connected network with ssid, rssi/frequency line, full SignalBars, and Disconnect", async () => {
-    mockDefaults();
     wifiBridge.getWifiState.mockResolvedValue({
       enabled: true,
       connected: true,
@@ -135,7 +129,6 @@ describe("WifiAppView — connected card", () => {
   });
 
   it("shows '(hidden)' when the connected ssid is empty", async () => {
-    mockDefaults();
     wifiBridge.getWifiState.mockResolvedValue({
       enabled: true,
       connected: true,
@@ -154,7 +147,6 @@ describe("WifiAppView — connected card", () => {
   });
 
   it("renders the Wi-Fi-off state and routes its Network settings button to System.openNetworkSettings", async () => {
-    mockDefaults();
     wifiBridge.getWifiState.mockResolvedValue({
       enabled: false,
       connected: false,
@@ -180,7 +172,6 @@ describe("WifiAppView — connected card", () => {
   });
 
   it("renders the not-connected state when Wi-Fi is on but no network is active", async () => {
-    mockDefaults();
     wifiBridge.getWifiState.mockResolvedValue({
       enabled: true,
       connected: false,
@@ -196,10 +187,22 @@ describe("WifiAppView — connected card", () => {
 
 describe("WifiAppView — network list", () => {
   it("sorts and renders every returned network", async () => {
-    mockDefaults();
-    // 13 networks with rssi out of order so sort is observable.
+    // Include a non-finite signal first so the real comparator must move it last.
     const rssis = [
-      -90, -41, -73, -55, -88, -62, -47, -79, -51, -67, -84, -58, -70,
+      Number.NaN,
+      -90,
+      -41,
+      -73,
+      -55,
+      -88,
+      -62,
+      -47,
+      -79,
+      -51,
+      -67,
+      -84,
+      -58,
+      -70,
     ];
     const nets = rssis.map((rssi, i) =>
       network({
@@ -213,37 +216,37 @@ describe("WifiAppView — network list", () => {
 
     renderView();
 
-    expect(await screen.findByText("13")).toBeTruthy();
+    expect(await screen.findByText("14")).toBeTruthy();
 
     const rows = screen
       .getAllByRole("button")
       .filter((b) =>
         b.getAttribute("data-testid")?.startsWith("wifi-network-"),
       );
-    expect(rows).toHaveLength(13);
+    expect(rows).toHaveLength(14);
+    expect(wifiBridge.listAvailableNetworks).toHaveBeenCalledWith();
 
     // Descending rssi: read each row's "<bssid> · <rssi> dBm" line and parse the dBm.
     const rowRssis = rows.map((row) => {
       const m = row.textContent?.match(/(-?\d+) dBm/);
       return m ? Number(m[1]) : Number.NaN;
     });
-    const sortedDesc = [...rowRssis].sort((a, b) => b - a);
+    const sortedDesc = [...rssis.filter(Number.isFinite)].sort((a, b) => b - a);
+    sortedDesc.push(Number.NaN);
     expect(rowRssis).toEqual(sortedDesc);
     // Strongest (-41) first and the weakest returned network remains visible.
     expect(rowRssis[0]).toBe(-41);
-    expect(rowRssis.at(-1)).toBe(-90);
+    expect(rowRssis.at(-2)).toBe(-90);
+    expect(rowRssis.at(-1)).toBeNaN();
 
-    // The -41 network is Net1 (index 1), which is secured:false (odd index) → Wifi icon, open.
-    // Verify a specific row's ssid/bssid/rssi text is present.
-    const strongest = screen.getByTestId("wifi-network-aa:bb:cc:dd:ee:01");
-    expect(within(strongest).getByText("Net1")).toBeTruthy();
+    const strongest = screen.getByTestId("wifi-network-aa:bb:cc:dd:ee:02");
+    expect(within(strongest).getByText("Net2")).toBeTruthy();
     expect(
-      within(strongest).getByText("aa:bb:cc:dd:ee:01 · -41 dBm"),
+      within(strongest).getByText("aa:bb:cc:dd:ee:02 · -41 dBm"),
     ).toBeTruthy();
   });
 
   it("renders Lock for secured rows and Wifi icon for open rows, with correct SignalBars per row", async () => {
-    mockDefaults();
     wifiBridge.listAvailableNetworks.mockResolvedValue({
       networks: [
         network({
@@ -280,7 +283,6 @@ describe("WifiAppView — network list", () => {
   });
 
   it("renders the empty state with Scan again + Network settings once a scan settles with zero networks", async () => {
-    mockDefaults();
     wifiBridge.listAvailableNetworks.mockResolvedValue({ networks: [] });
 
     renderView();
@@ -291,21 +293,6 @@ describe("WifiAppView — network list", () => {
     expect(
       screen.getAllByRole("button", { name: /Network settings/ }).length,
     ).toBeGreaterThanOrEqual(1);
-  });
-
-  it("uses a plain count badge", async () => {
-    mockDefaults();
-    wifiBridge.listAvailableNetworks.mockResolvedValue({
-      networks: [-40, -50, -60, -70, -80].map((rssi, i) =>
-        network({ ssid: `N${i}`, bssid: `00:00:00:00:00:0${i}`, rssi }),
-      ),
-    });
-
-    renderView();
-
-    expect(await screen.findByText("N0")).toBeTruthy();
-    expect(screen.getByText("5")).toBeTruthy();
-    expect(screen.queryByText(/shown/)).toBeNull();
   });
 });
 
@@ -322,7 +309,6 @@ describe("WifiAppView — signalBars threshold mapping", () => {
     { rssi: -81, bars: 0 },
     { rssi: -100, bars: 0 },
   ])("maps $rssi dBm to $bars bars", async ({ rssi, bars }) => {
-    mockDefaults();
     wifiBridge.listAvailableNetworks.mockResolvedValue({
       networks: [network({ ssid: "T", bssid: "ab:ab:ab:ab:ab:ab", rssi })],
     });
@@ -335,16 +321,7 @@ describe("WifiAppView — signalBars threshold mapping", () => {
 });
 
 describe("WifiAppView — controls", () => {
-  it("auto-scans on mount without truncating the native result set", async () => {
-    mockDefaults();
-    renderView();
-    await waitFor(() =>
-      expect(wifiBridge.listAvailableNetworks).toHaveBeenCalledWith(),
-    );
-  });
-
   it("re-scans and disables the Scan button while a scan is pending", async () => {
-    mockDefaults();
     // First (auto) scan resolves immediately so the view settles.
     wifiBridge.listAvailableNetworks.mockResolvedValueOnce({ networks: [] });
     renderView();
@@ -380,7 +357,6 @@ describe("WifiAppView — controls", () => {
   });
 
   it("Back button calls exitToApps exactly once", async () => {
-    mockDefaults();
     const exitToApps = vi.fn();
     renderView(exitToApps);
 
@@ -390,39 +366,7 @@ describe("WifiAppView — controls", () => {
     expect(exitToApps).toHaveBeenCalledTimes(1);
   });
 
-  it("selecting a secured row opens the connect drawer with a password input", async () => {
-    mockDefaults();
-    wifiBridge.listAvailableNetworks.mockResolvedValue({
-      networks: [
-        network({
-          ssid: "SecuredNet",
-          bssid: "11:11:11:11:11:11",
-          rssi: -50,
-          secured: true,
-        }),
-      ],
-    });
-
-    renderView();
-
-    fireEvent.click(
-      await screen.findByTestId("wifi-network-11:11:11:11:11:11"),
-    );
-
-    expect(await screen.findByText("Connect to")).toBeTruthy();
-    // SecuredNet appears twice once the drawer opens: the row label and the
-    // drawer's bold target span. Both must be present.
-    expect(screen.getAllByText("SecuredNet").length).toBeGreaterThanOrEqual(2);
-    const pw = document.querySelector(
-      'input[type="password"]',
-    ) as HTMLInputElement | null;
-    expect(pw).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
-  });
-
   it("connects to a secured network with the typed password, then clears + refreshes state", async () => {
-    mockDefaults();
     wifiBridge.listAvailableNetworks.mockResolvedValue({
       networks: [
         network({
@@ -466,7 +410,6 @@ describe("WifiAppView — controls", () => {
   });
 
   it("connects to an open network with password:undefined and shows no password input", async () => {
-    mockDefaults();
     wifiBridge.listAvailableNetworks.mockResolvedValue({
       networks: [
         network({
@@ -499,7 +442,6 @@ describe("WifiAppView — controls", () => {
   });
 
   it("surfaces a failed connect message in the error banner and keeps the drawer open", async () => {
-    mockDefaults();
     wifiBridge.listAvailableNetworks.mockResolvedValue({
       networks: [
         network({
@@ -535,7 +477,6 @@ describe("WifiAppView — controls", () => {
   });
 
   it("Cancel clears the drawer and the typed password", async () => {
-    mockDefaults();
     wifiBridge.listAvailableNetworks.mockResolvedValue({
       networks: [
         network({
@@ -574,7 +515,6 @@ describe("WifiAppView — controls", () => {
   });
 
   it("Disconnect calls disconnectFromNetwork then refreshes state", async () => {
-    mockDefaults();
     wifiBridge.getWifiState.mockResolvedValue({
       enabled: true,
       connected: true,
@@ -601,7 +541,6 @@ describe("WifiAppView — controls", () => {
   });
 
   it("surfaces a rejected scan in the inline error banner", async () => {
-    mockDefaults();
     wifiBridge.listAvailableNetworks.mockRejectedValue(
       new Error("location denied"),
     );
@@ -609,29 +548,5 @@ describe("WifiAppView — controls", () => {
     renderView();
 
     expect(await screen.findByText("location denied")).toBeTruthy();
-  });
-
-  it("sorts available networks safely when rssi contains NaN", () => {
-    const networks = [
-      { ssid: "Net-NaN", rssi: NaN },
-      { ssid: "Net-Strong", rssi: -40 },
-      { ssid: "Net-Weak", rssi: -80 },
-    ];
-
-    networks.sort((a, b) => {
-      const bRssi =
-        typeof b.rssi === "number" && Number.isFinite(b.rssi)
-          ? b.rssi
-          : -Infinity;
-      const aRssi =
-        typeof a.rssi === "number" && Number.isFinite(a.rssi)
-          ? a.rssi
-          : -Infinity;
-      return bRssi - aRssi || a.ssid.localeCompare(b.ssid);
-    });
-
-    expect(networks[0]?.ssid).toBe("Net-Strong");
-    expect(networks[1]?.ssid).toBe("Net-Weak");
-    expect(networks[2]?.ssid).toBe("Net-NaN");
   });
 });

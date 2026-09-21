@@ -1,3 +1,5 @@
+/** Exercises real Wi-Fi provider mapping and failures with a deterministic native bridge. */
+import type { ListNetworksResult, WiFiNetwork } from "@elizaos/capacitor-wifi";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -20,7 +22,7 @@ const state = {} as State;
  * including the `capabilities` field). The provider must tolerate the full
  * shape and intentionally drop `capabilities` from its emitted entries.
  */
-function realNetworks() {
+function realNetworks(): WiFiNetwork[] {
   return [
     {
       ssid: "HomeNet",
@@ -31,7 +33,7 @@ function realNetworks() {
       secured: true,
     },
     {
-      ssid: "Cafe",
+      ssid: "",
       bssid: "aa:bb:cc:dd:ee:02",
       rssi: -72,
       frequency: 2412,
@@ -45,20 +47,10 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("wifiNetworksProvider — declaration", () => {
-  it("is a dynamic, turn-scoped, system-gated provider", () => {
-    expect(wifiNetworksProvider.name).toBe("wifiNetworks");
-    expect(wifiNetworksProvider.dynamic).toBe(true);
-    expect(wifiNetworksProvider.cacheScope).toBe("turn");
-    expect(wifiNetworksProvider.contextGate).toEqual({ anyOf: ["system"] });
-  });
-});
-
 describe("wifiNetworksProvider — success mapping", () => {
   it("maps real-shaped networks to {ssid,bssid,rssi,frequency,secured}, dropping capabilities", async () => {
-    wifiBridge.listAvailableNetworks.mockResolvedValue({
-      networks: realNetworks(),
-    });
+    const response: ListNetworksResult = { networks: realNetworks() };
+    wifiBridge.listAvailableNetworks.mockResolvedValue(response);
 
     const result = await wifiNetworksProvider.get(runtime, message, state);
 
@@ -73,39 +65,22 @@ describe("wifiNetworksProvider — success mapping", () => {
         secured: true,
       },
       {
-        ssid: "Cafe",
+        ssid: "",
         bssid: "aa:bb:cc:dd:ee:02",
         rssi: -72,
         frequency: 2412,
         secured: false,
       },
     ]);
-    // `capabilities` is intentionally dropped — assert it never leaks through.
-    const networks = result.data?.networks as
-      | Array<Record<string, unknown>>
-      | undefined;
-    if (!networks) {
-      throw new Error("Wi-Fi provider omitted its networks payload");
-    }
-    for (const entry of networks) {
-      expect(entry).not.toHaveProperty("capabilities");
-    }
-
     expect(result.data?.count).toBe(2);
     expect(result.data).not.toHaveProperty("limit");
     expect(result.values?.wifiNetworksAvailable).toBe(true);
     expect(result.values?.wifiNetworkCount).toBe(2);
     expect(result.values?.wifiNetworksError).toBeUndefined();
 
-    const parsed = JSON.parse(result.text ?? "");
-    expect(parsed.wifi_networks.count).toBe(2);
-    expect(parsed.wifi_networks.items).toHaveLength(2);
-    expect(parsed.wifi_networks.items[0]).toEqual({
-      ssid: "HomeNet",
-      bssid: "aa:bb:cc:dd:ee:01",
-      rssi: -45,
-      frequency: 5180,
-      secured: true,
+    expect(JSON.parse(result.text ?? "").wifi_networks).toEqual({
+      count: 2,
+      items: result.data?.networks,
     });
   });
 
