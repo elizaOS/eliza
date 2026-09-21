@@ -6,7 +6,7 @@
  * parsed to 3600 and became configuration nobody set.
  */
 import { describe, expect, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, toElizaError } from "@elizaos/core";
 import { parseIntegerEnvValue } from "../src/integer-env";
 
 const NAME = "VOICE_AUDIO_TTL_SECONDS";
@@ -29,6 +29,22 @@ describe("parseIntegerEnvValue", () => {
       context: { envKey: NAME, configured: "3600junk" },
       severity: "fatal",
     });
+  });
+
+  test("preserves parser classification when core normalizes it", () => {
+    expect.assertions(2);
+    try {
+      parseIntegerEnvValue(NAME, "3600junk");
+    } catch (error) {
+      // error-policy:J3 Inspect the expected invalid-input failure at the consumer boundary.
+      const normalized = toElizaError(error);
+      expect(normalized).toBe(error);
+      expect(normalized).toMatchObject({
+        code: "INVALID_GATEWAY_INTEGER_ENV",
+        context: { envKey: NAME, configured: "3600junk" },
+        severity: "fatal",
+      });
+    }
   });
 
   test("rejects a fractional value", () => {
