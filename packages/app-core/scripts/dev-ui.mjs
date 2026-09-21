@@ -1295,7 +1295,9 @@ if (uiOnly) {
     process.env.ELIZA_LOCAL_VOICE_GATEWAY_PORT = String(voicePort);
     // Local-development eligibility only; consent and gateway health still
     // gate microphone ownership. Do not propagate this into deployed builds.
-    process.env.VITE_VOICE_REALTIME_FORCE ??= "1";
+    // Normal local development must use the gateway health probe. Force-arming
+    // is a diagnostic override and must remain explicit so a missing or
+    // unhealthy Cartesia gateway cannot masquerade as available voice.
     void waitForPort(API_PORT)
       .then(async () => {
         const deadline = Date.now() + 300_000;
