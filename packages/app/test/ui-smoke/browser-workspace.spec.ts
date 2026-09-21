@@ -890,3 +890,153 @@ test("browser iframe focus handoff survives delayed autofocus without stealing d
     .poll(() => page.evaluate(() => document.activeElement?.tagName ?? null))
     .toBe("IFRAME");
 });
+
+test("mobile browser menu keeps its gesture when a loading iframe takes focus", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await resetBrowserWorkspaceTabs(request);
+  await openAppPath(page, "/browser");
+  const fixtureOrigin = `http://localhost:${new URL(page.url()).port}`;
+  const fixtureUrl = `${fixtureOrigin}/__browser-menu-focus`;
+  let releaseLoad = () => {};
+  const loadRelease = new Promise<void>((resolve) => {
+    releaseLoad = resolve;
+  });
+  await page.route(`${fixtureOrigin}/__browser-menu-*`, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/__browser-menu-load.svg") {
+      await loadRelease;
+      await route.fulfill({
+        contentType: "image/svg+xml",
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>',
+      });
+      return;
+    }
+    await route.fulfill({
+      contentType: "text/html",
+      body: `<!doctype html><html><body>
+        <input aria-label="Embedded page input" />
+        ${url.searchParams.has("held") ? '<img src="/__browser-menu-load.svg" alt="delayed" />' : ""}
+      </body></html>`,
+    });
+  });
+  try {
+    const workspace = page.getByTestId("browser-workspace-view");
+    const address = workspace.getByTestId("browser-workspace-address-input");
+    const more = workspace.getByTestId("browser-workspace-mobile-more");
+    const menu = page.getByRole("menu");
+    const close = page.getByRole("menuitem", {
+      name: "Close all tabs",
+      exact: true,
+    });
+    const iframe = workspace.locator("iframe");
+    const embeddedInput = page
+      .frameLocator("iframe")
+      .getByRole("textbox", { name: "Embedded page input" });
+    const closeRequests: string[] = [];
+    page.on("request", (outgoing) => {
+      if (
+        outgoing.method() === "DELETE" &&
+        outgoing.url().includes("/api/browser-workspace/tabs/")
+      ) {
+        closeRequests.push(outgoing.url());
+      }
+    });
+    await address.fill(fixtureUrl);
+    await address.press("Enter");
+    await expect(embeddedInput).toBeVisible();
+
+    // Keyboard selection still runs the menu action through its normal path.
+    await more.press("ArrowDown");
+    await expect(
+      page.getByRole("menuitem", { name: "New tab", exact: true }),
+    ).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(
+      page.getByRole("menuitem", { name: "Refresh", exact: true }),
+    ).toBeFocused();
+    await Promise.all([
+      page.waitForRequest(
+        (outgoing) =>
+          outgoing.isNavigationRequest() && outgoing.url() === fixtureUrl,
+      ),
+      page.keyboard.press("Enter"),
+    ]);
+    await expect(menu).toBeHidden();
+    await expect(embeddedInput).toBeVisible();
+
+    await more.click();
+    await expect(close).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await embeddedInput.click();
+    await expect(embeddedInput).toBeFocused();
+
+    const addressBounds = await address.boundingBox();
+    if (!addressBounds)
+      throw new Error("Browser address control has no bounds");
+    const outside = {
+      x: addressBounds.x + addressBounds.width / 2,
+      y: addressBounds.y + addressBounds.height / 2,
+    };
+    await more.click();
+    await expect(close).toBeVisible();
+    await page.mouse.click(outside.x, outside.y);
+    await expect(menu).toBeHidden();
+    await embeddedInput.click();
+    await expect(embeddedInput).toBeFocused();
+
+    // A press dragged away from Close all tabs must not perform that mutation.
+    await more.click();
+    await close.hover();
+    const cancelBounds = await close.boundingBox();
+    if (!cancelBounds) throw new Error("Close menu item has no bounds");
+    await page.mouse.move(
+      cancelBounds.x + cancelBounds.width / 2,
+      cancelBounds.y + cancelBounds.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(outside.x, outside.y);
+    await page.mouse.up();
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    expect(closeRequests).toEqual([]);
+
+    const heldUrl = `${fixtureUrl}?held=1`;
+    await address.fill(heldUrl);
+    await address.press("Enter");
+    await expect(iframe).toHaveAttribute("src", heldUrl, { timeout: 10_000 });
+    await more.click();
+    await close.hover();
+    const bounds = await close.boundingBox();
+    if (!bounds) throw new Error("Close menu item has no bounds");
+    await page.mouse.move(
+      bounds.x + bounds.width / 2,
+      bounds.y + bounds.height / 2,
+    );
+    await page.mouse.down();
+    releaseLoad();
+    const frame = page
+      .frames()
+      .find((candidate) => candidate.url() === heldUrl);
+    if (!frame) throw new Error("Controlled loading frame is missing");
+    await frame.waitForLoadState("load");
+    await frame
+      .getByRole("textbox", { name: "Embedded page input" })
+      .evaluate((element) => {
+        if (!(element instanceof HTMLInputElement))
+          throw new Error("Fixture input missing");
+        element.focus();
+      });
+    await page.mouse.up();
+    await expect(menu).toBeHidden();
+    await expect.poll(() => closeRequests.length).toBe(1);
+    await more.click();
+    await expect(close).toBeDisabled();
+    await page.keyboard.press("Escape");
+  } finally {
+    releaseLoad();
+  }
+});
