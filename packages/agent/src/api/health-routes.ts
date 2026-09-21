@@ -17,10 +17,10 @@ import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import {
   getSwarmCoordinatorService,
-  hasTextGenerationHandler,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import { hasTextGenerationHandler } from "@elizaos/plugin-assistant";
 // Pure env detector lives in shared so status can report managed hosting mode
 // without loading the full cloud plugin graph (which may fail in lean test
 // harnesses or partial installs).

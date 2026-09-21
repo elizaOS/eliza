@@ -1,6 +1,6 @@
 /** Exercises malformed request input with deterministic route collaborators. */
 import { describe, expect, mock, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 const created = {
   id: "00000000-0000-4000-8000-0000000000ee",

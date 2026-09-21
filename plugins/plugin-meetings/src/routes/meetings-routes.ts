@@ -8,18 +8,18 @@
  * Thin proxy layer over MeetingService — no business logic here.
  */
 
-import type {
-  Route,
-  RouteHandlerContext,
-  RouteHandlerResult,
-  UUID,
-} from "@elizaos/core";
+import type { UUID } from "@elizaos/core";
 import type {
   MeetingJoinRequest,
   MeetingPlatform,
   MeetingSession,
 } from "@elizaos/shared";
 import { parseMeetingUrl } from "@elizaos/shared";
+import type {
+  Route,
+  RouteHandlerContext,
+  RouteHandlerResult,
+} from "@elizaos/shared/api/http-plugin";
 import { ZoomCloudImportError } from "../platforms/zoom/cloud-import.js";
 import { MeetingJoinError, type MeetingService } from "../service.js";
 import { selectSessionForViewer } from "../session-disclosure.js";

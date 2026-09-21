@@ -9,20 +9,23 @@
  * capabilities, and `needsProviderSetup` (true only when a non-omitted target
  * resolved no LLM route). Side-effect free; callers apply the result.
  */
+
+import type { DeploymentTargetConfig } from "@elizaos/shared/contracts/deployment-types";
+import {
+  type FirstRunCredentialInputs,
+  type FirstRunLocalProviderId,
+  normalizeFirstRunProviderId,
+  requiresAdditionalRuntimeProvider,
+} from "@elizaos/shared/contracts/first-run-options";
 import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
-  type DeploymentTargetConfig,
-  type FirstRunCredentialInputs,
-  type LinkedAccountFlagsConfig,
-  requiresAdditionalRuntimeProvider,
-  type ServiceRouteConfig,
-  type ServiceRoutingConfig,
-} from "@elizaos/shared";
-import {
-  type FirstRunLocalProviderId,
-  normalizeFirstRunProviderId,
-} from "../../../shared/src/contracts/first-run-options.js";
+} from "@elizaos/shared/contracts/service-routing";
+import type {
+  LinkedAccountFlagsConfig,
+  ServiceRouteConfig,
+  ServiceRoutingConfig,
+} from "@elizaos/shared/contracts/service-routing-types";
 import {
   type FirstRunRuntimeTarget,
   isElizaCloudFirstRunTarget,

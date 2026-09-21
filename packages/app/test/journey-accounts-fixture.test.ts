@@ -2,7 +2,7 @@
  * Keeps the walkthrough's account inventory fixture aligned with the UI API boundary.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   ACCOUNTS_RESPONSE_INVALID_CODE,
   parseAccountsListResponse,

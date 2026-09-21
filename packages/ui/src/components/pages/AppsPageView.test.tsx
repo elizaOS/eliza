@@ -10,7 +10,7 @@
  * entry); and the structured once-per-slug warning that makes the dead route
  * observable. Fake timers drive the grace window deterministically.
  */
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";

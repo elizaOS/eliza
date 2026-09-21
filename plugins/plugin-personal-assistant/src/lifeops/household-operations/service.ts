@@ -7,13 +7,14 @@
  * dispatch, calendar mutation, purchase, and scheduled-task firing remain
  * owned by their existing services.
  */
+
+import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import { type IAgentRuntime, Service } from "@elizaos/core";
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import type { Relationship } from "@elizaos/shared";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { isHouseholdRole } from "../household/types.js";

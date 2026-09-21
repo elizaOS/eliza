@@ -96,36 +96,22 @@ function markCanonicalCallback(
 	return { ...response, agentVoiced: true };
 }
 
-/** Convert legacy handler returns into the canonical ActionResult shape. */
+/** Validate a handler result and bind it to the executing action. */
 export function normalizeActionResult(
 	actionName: string,
 	result: unknown,
 ): ActionResult {
-	if (result === undefined || result === null || typeof result === "boolean") {
-		return {
-			success: result !== false,
-			data: { actionName },
-		};
-	}
 	if (!isObjectRecord(result)) {
-		if (result instanceof Error || typeof result === "object") {
-			return invalidActionResult(
-				"Action handlers must return a plain ActionResult object, boolean, primitive text, null, or undefined.",
-			);
-		}
-		return {
-			success: true,
-			text: String(result),
-			data: { actionName },
-		};
-	}
-
-	const rawResult = result as unknown as ActionResult;
-	if ("success" in rawResult && typeof rawResult.success !== "boolean") {
 		return invalidActionResult(
-			"ActionResult.success must be a boolean when present.",
+			"Action handlers must return a plain ActionResult object.",
 		);
 	}
+	if (typeof result.success !== "boolean") {
+		return invalidActionResult(
+			"ActionResult.success must be an explicit boolean.",
+		);
+	}
+	const rawResult = result as unknown as ActionResult;
 	const resultData = isObjectRecord(rawResult.data) ? rawResult.data : {};
 	const effectReceipts =
 		rawResult.effectReceipts === undefined
@@ -149,7 +135,7 @@ export function normalizeActionResult(
 
 	const normalized: ActionResult = {
 		...rawResult,
-		success: "success" in rawResult ? rawResult.success : true,
+		success: rawResult.success,
 		...(effectReceipts !== undefined ? { effectReceipts } : {}),
 		...(userFacingEffectReceiptIds !== undefined
 			? { userFacingEffectReceiptIds }

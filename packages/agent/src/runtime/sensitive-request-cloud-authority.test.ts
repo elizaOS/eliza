@@ -1,5 +1,6 @@
 /** Launcher authority must outrank every late character Cloud setting. */
 
+import { AgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createDevCloudRuntimeSettingsAuthorityOverlay,
@@ -45,42 +46,18 @@ function createRuntime(
   poisonedCharacterSettings: Record<string, string>,
   authorityOverlay: Readonly<Record<string, string>>,
 ) {
-  const character = {
+  const runtime = new AgentRuntime({
+    character: {
+      name: "cloud-authority-fixture",
+      bio: [],
+      settings: { ...poisonedCharacterSettings },
+      secrets: { ...poisonedCharacterSettings },
+    },
     settings: { ...poisonedCharacterSettings },
-    secrets: { ...poisonedCharacterSettings },
-  };
-  const settings = { ...poisonedCharacterSettings };
-  const runtime = {
-    agentId: "agent-1",
-    character,
-    settings,
-    getCharacterEnvSetting: () => undefined,
-    getConversationLength: () => 0,
-    getSetting(key: string) {
-      return (
-        character.secrets[key] ??
-        character.settings[key] ??
-        settings[key] ??
-        null
-      );
-    },
-    getService(name: string) {
-      return name === "SECRETS" ? { exists: async () => false } : null;
-    },
-    composeState: async () => ({}),
-    dynamicPromptExecFromState: async () => ({}),
-    logger: {
-      debug: () => undefined,
-      info: () => undefined,
-      warn: () => undefined,
-      error: () => undefined,
-    },
-    registerPlugin: async () => undefined,
-  };
-  installRuntimeMethodBindings(runtime as never, authorityOverlay);
-  return runtime as typeof runtime & {
-    getSetting(key: string): string | boolean | number | null;
-  };
+    logLevel: "fatal",
+  });
+  installRuntimeMethodBindings(runtime, authorityOverlay);
+  return runtime;
 }
 
 beforeEach(() => {

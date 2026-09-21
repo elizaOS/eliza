@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** Exercises strict capability-handoff parsing, session restoration, expiry, and once-only continuation without mocking the boundary under test. */
 
-import type { CapabilityHandoffRequest } from "@elizaos/shared";
+import type { CapabilityHandoffRequest } from "@elizaos/shared/capability-catalog";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { ChatActionResultSummary, ConversationMessage } from "./api";
 import {

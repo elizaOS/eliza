@@ -5,7 +5,7 @@
  * with a fake runtime; default-zone assertions compare against
  * `resolveDefaultTimeZone()` so they hold on any host.
  */
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   CALENDAR_TIME_ZONE_INVALID,

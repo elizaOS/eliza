@@ -57,19 +57,13 @@ const coreMock = vi.hoisted(() => ({
 
 vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
-	return {
-		...coreMock,
-		ElizaError: actual.ElizaError,
-		containsExternalEnvelopeMaterial: actual.containsExternalEnvelopeMaterial,
-		completeUserReferenceView: actual.completeUserReferenceView,
-		findCodingDelegationActionName: actual.findCodingDelegationActionName,
-		getStreamingContext: actual.getStreamingContext,
-		getTurnActionConstraint: actual.getTurnActionConstraint,
-		setTurnActionConstraint: actual.setTurnActionConstraint,
-		getUserMessageText: actual.getUserMessageText,
-		resolveStateDir: actual.resolveStateDir,
-		unwrapUserMessageText: actual.unwrapUserMessageText,
-	};
+	return { ...actual, ...coreMock };
+});
+
+vi.mock("@elizaos/shared/runtime-env", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("@elizaos/shared/runtime-env")>();
+	return { ...actual, resolveServerOnlyPort: coreMock.resolveServerOnlyPort };
 });
 
 type RuntimeTask = {

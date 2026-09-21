@@ -1,6 +1,6 @@
 /** Projects a coherent organization-only subscription read without provider identifiers, guessed charges or app-subscriber policy. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import type { PrimaryOrganizationSubscription } from "../../db/repositories/account-billing-snapshot-subscription";
 import type { SubscriptionAllowanceEligibility } from "../../db/repositories/subscription-allowance-eligibility";
 import type {

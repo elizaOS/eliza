@@ -148,12 +148,7 @@ const EXPECTED_WORKFLOW: Workflow = {
         },
         {
           name: "Build required linked runtime",
-          run: [
-            "bun run --cwd packages/prompts build:package",
-            "bun run --cwd packages/shared build",
-            "bun run --cwd packages/core build",
-            "",
-          ].join("\n"),
+          run: ["bun run build:core", ""].join("\n"),
         },
         {
           name: "Probe fixed runtime dependencies",
@@ -888,11 +883,7 @@ describe("database identity staging report workflow", () => {
       "run-postinstall": "false",
     });
     const linkedBuild = reportStep("Build required linked runtime").run;
-    expect(linkedBuild).toContain(
-      "bun run --cwd packages/prompts build:package",
-    );
-    expect(linkedBuild).toContain("bun run --cwd packages/shared build");
-    expect(linkedBuild).toContain("bun run --cwd packages/core build");
+    expect(linkedBuild).toContain("bun run build:core");
     expect(reportStep("Probe fixed runtime dependencies").run).toBe(
       "bun run packages/cloud/scripts/admin/preflight-database-identity.ts --probe-dependencies",
     );

@@ -73,15 +73,18 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@slack/bolt": "^5.0.0",
-    "@slack/web-api": "^7.15.2"
+    "@slack/web-api": "^7.15.2",
+    "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
+    "@elizaos/plugin-assistant": "workspace:*",
     "@biomejs/biome": "2.5.8",
     "@types/node": "^25.0.3",
     "bun-types": "^1.2.25",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@elizaos/testing": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

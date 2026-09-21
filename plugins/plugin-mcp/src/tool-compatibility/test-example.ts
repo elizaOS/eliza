@@ -40,7 +40,6 @@ function createMockRuntime(modelProvider: string, model: string): MockRuntime {
     plugins: [],
     services: new Map(),
     events: {},
-    routes: [],
     logger: {
       level: "info",
       trace: () => {},

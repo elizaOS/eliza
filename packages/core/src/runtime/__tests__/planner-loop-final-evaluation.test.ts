@@ -4,8 +4,8 @@
  * terminal reply must not bypass unfulfilled work after a settled tool result.
  */
 import { describe, expect, it, vi } from "vitest";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import { ModelType } from "../../types/model";
-import { runPlannerLoop } from "../planner-loop";
 import type { PlannerRuntime } from "../planner-types";
 
 const compoundContext = {

@@ -1,4 +1,4 @@
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { type Hex, keccak256 } from "viem";
 import { redactedThrownDiagnostics } from "../../shared/src/index.ts";
 import { ExternalBroadcastOutcomeUnknownError } from "./external-key-custody";

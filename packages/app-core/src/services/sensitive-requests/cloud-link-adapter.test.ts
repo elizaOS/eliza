@@ -13,11 +13,13 @@ import type {
   SensitiveRequestTarget,
 } from "@elizaos/core";
 import {
-  captureDevCloudEnvAuthoritySnapshot,
   getBootConfig,
-  resetDevCloudEnvAuthorityForTests,
   setBootConfig,
-} from "@elizaos/shared";
+} from "@elizaos/shared/config/boot-config-store";
+import {
+  captureDevCloudEnvAuthoritySnapshot,
+  resetDevCloudEnvAuthorityForTests,
+} from "@elizaos/shared/elizacloud/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCloudLinkSensitiveRequestAdapter } from "./cloud-link-adapter";
 

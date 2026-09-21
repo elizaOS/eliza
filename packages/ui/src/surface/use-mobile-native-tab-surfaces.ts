@@ -26,8 +26,8 @@
  * layout, viewport, and chat-motion changes so neither can drift from React.
  */
 
-import type { SurfaceLifecyclePolicy } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
+import type { SurfaceLifecyclePolicy } from "@elizaos/common";
+import { logger } from "@elizaos/shared/logger";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
 import { CapacitorNativeSurfaceShell } from "./capacitor-native-surface-shell";

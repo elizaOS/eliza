@@ -3,7 +3,7 @@
  * revision journal. Every mutation locks the organization before the
  * subscription so callers can compose it with allowance and credit work.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";

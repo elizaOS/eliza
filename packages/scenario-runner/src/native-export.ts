@@ -26,7 +26,7 @@ import type {
   RecordedStage,
   RecordedTrajectory,
 } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { writeFileAtomic } from "./reporter.js";
 import { toRecord } from "./utils.js";
 

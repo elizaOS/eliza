@@ -50,10 +50,6 @@ describe("accessibilityProber", () => {
     mockQueryTccStatus.mockResolvedValue(null);
   });
 
-  test("exports the accessibility permission id", () => {
-    expect(accessibilityProber.id).toBe("accessibility");
-  });
-
   describe("check", () => {
     test("returns platform-unsupported state on non-Darwin and skips native I/O", async () => {
       mockPlatform.isDarwin = false;

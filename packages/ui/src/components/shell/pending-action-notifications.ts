@@ -5,12 +5,8 @@
  * hide work that still blocks the agent.
  */
 
-import {
-  type AgentNotification,
-  type PendingUserAction,
-  type PendingUserActionOption,
-  stringToUuid,
-} from "@elizaos/core";
+import type { AgentNotification } from "@elizaos/common";
+import type { PendingUserAction, PendingUserActionOption } from "@elizaos/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
@@ -342,7 +338,8 @@ export function derivePendingActionOptionReply(
 }
 
 export function pendingActionNotificationId(actionId: string) {
-  return stringToUuid(`${PENDING_ACTION_NOTIFICATION_NAMESPACE}:${actionId}`);
+  // UI projection identity; the underlying pending action owns its durable ID.
+  return `${PENDING_ACTION_NOTIFICATION_NAMESPACE}:${actionId}`;
 }
 
 export function pendingActionIdFromNotification(

@@ -29,13 +29,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { KNOWLEDGE_GRAPH_SERVICE, KnowledgeGraphService } from "@elizaos/agent";
-import {
-  type AgentRuntime,
-  EventType,
-  type Memory,
-  type Plugin,
-} from "@elizaos/core";
+import { type AgentRuntime, EventType, type Memory } from "@elizaos/core";
 // plugin-local-inference modules are imported by relative source path:
 // the package's subpath export aliases resolve to (possibly stale) dist
 // bundles in the test graph, while the root barrel resolves to src — mixing
@@ -45,6 +39,11 @@ import {
   identifySpeakerAction,
   localInferencePlugin,
 } from "@elizaos/plugin-local-inference";
+import {
+  KNOWLEDGE_GRAPH_SERVICE,
+  KnowledgeGraphService,
+} from "@elizaos/plugin-relationships/knowledge-graph";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,

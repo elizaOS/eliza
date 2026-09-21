@@ -148,7 +148,7 @@ export const CONNECTOR_PATHS = [
     oneClick: {
       type: "siwe",
       detail:
-        "bun run cloud:login:test-wallet [--json] — SIWE nonce/sign/verify returns an apiKey (Bearer); PRIVATE_KEY pins the wallet, SIWE_BASE overrides the API base",
+        "bun scripts/cloud/siwe-test-login.mjs [--json] — SIWE nonce/sign/verify returns an apiKey (Bearer); PRIVATE_KEY pins the wallet, SIWE_BASE overrides the API base",
     },
     availability: { type: "always" },
     notes:

@@ -3,8 +3,9 @@
  * paused controls. The checkpoint is historical evidence; disconnection must
  * revalidate current accounts and remaining channel requirements separately.
  */
-import { ApprovalDispatchControlStore } from "@elizaos/agent";
+
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import { ApprovalDispatchControlStore } from "@elizaos/plugin-assistant";
 import type { CalendarService } from "@elizaos/plugin-calendar";
 import type { IGoogleWorkspaceService } from "@elizaos/plugin-google-workspace";
 import { z } from "zod";

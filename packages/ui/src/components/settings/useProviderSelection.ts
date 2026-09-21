@@ -6,11 +6,12 @@
  * them. A configured-but-unsigned-in cloud-proxy session defaults the open
  * panel to Local so first paint matches the provider actually serving.
  */
+
 import {
-  asRecord,
   normalizeSubscriptionProviderSelectionId,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/first-run-options";
+import { asRecord } from "@elizaos/shared/type-guards";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
 import { useBranding } from "../../config/branding";

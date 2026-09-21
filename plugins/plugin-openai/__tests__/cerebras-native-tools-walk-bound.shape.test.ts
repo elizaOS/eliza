@@ -3,10 +3,10 @@
  * Tests exercise the real normalization pipeline and model handler, including
  * fail-closed behavior before provider dispatch.
  */
+import { ElizaError, type IAgentRuntime, MAX_WELL_FORMED_DEPTH } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CEREBRAS_SCHEMA_UNBOUNDED,
-  ElizaError,
-  type IAgentRuntime,
   isCerebrasSchemaUnbounded,
   JSON_SCHEMA_ARRAY_KEYWORDS,
   JSON_SCHEMA_MAP_KEYWORDS,
@@ -14,9 +14,7 @@ import {
   JSON_SCHEMA_SINGLE_KEYWORDS,
   MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
   MAX_CEREBRAS_SCHEMA_WALK_NODES,
-  MAX_WELL_FORMED_DEPTH,
-} from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+} from "../utils/schema-compat";
 
 const aiMocks = vi.hoisted(() => ({
   generateText: vi.fn(),
@@ -602,6 +600,7 @@ describe("Cerebras mode preserves declared open-map semantics (#11249)", () => {
     const restored = restoreRecordArgToolCalls(
       [
         {
+          toolCallId: "call-test",
           toolName: "probe",
           input: {
             customFields: {
@@ -614,8 +613,8 @@ describe("Cerebras mode preserves declared open-map semantics (#11249)", () => {
         },
       ],
       result.recordArgTransformsByTool
-    ) as Array<{ input: { customFields: Record<string, unknown> } }>;
-    expect(restored[0].input.customFields).toEqual({ team: "core", tier: "gold" });
+    ) as Array<{ arguments: { customFields: Record<string, unknown> } }>;
+    expect(restored[0].arguments.customFields).toEqual({ team: "core", tier: "gold" });
   });
 
   it("restores nested open maps inside additionalProperties values", () => {
@@ -661,6 +660,7 @@ describe("Cerebras mode preserves declared open-map semantics (#11249)", () => {
     const restored = restoreRecordArgToolCalls(
       [
         {
+          toolCallId: "call-test",
           toolName: "probe",
           input: {
             customFields: {
@@ -680,9 +680,9 @@ describe("Cerebras mode preserves declared open-map semantics (#11249)", () => {
       ],
       result.recordArgTransformsByTool
     ) as Array<{
-      input: { customFields: Record<string, { labels: Record<string, unknown> }> };
+      arguments: { customFields: Record<string, { labels: Record<string, unknown> }> };
     }>;
-    expect(restored[0].input.customFields.first.labels).toEqual({ team: "core" });
+    expect(restored[0].arguments.customFields.first.labels).toEqual({ team: "core" });
   });
 
   it("preserves and reverses an open map nested under dependentSchemas", () => {
@@ -718,6 +718,7 @@ describe("Cerebras mode preserves declared open-map semantics (#11249)", () => {
     const restored = restoreRecordArgToolCalls(
       [
         {
+          toolCallId: "call-test",
           toolName: "probe",
           input: {
             mode: "advanced",
@@ -728,8 +729,8 @@ describe("Cerebras mode preserves declared open-map semantics (#11249)", () => {
         },
       ],
       result.recordArgTransformsByTool
-    ) as Array<{ input: { metadata: Record<string, unknown> } }>;
-    expect(restored[0].input.metadata).toEqual({ team: "core" });
+    ) as Array<{ arguments: { metadata: Record<string, unknown> } }>;
+    expect(restored[0].arguments.metadata).toEqual({ team: "core" });
   });
 
   it("preserves and reverses an open map in the matching prefixItems slot", () => {
@@ -770,6 +771,7 @@ describe("Cerebras mode preserves declared open-map semantics (#11249)", () => {
     const restored = restoreRecordArgToolCalls(
       [
         {
+          toolCallId: "call-test",
           toolName: "probe",
           input: {
             rows: [
@@ -780,8 +782,8 @@ describe("Cerebras mode preserves declared open-map semantics (#11249)", () => {
         },
       ],
       result.recordArgTransformsByTool
-    ) as Array<{ input: { rows: Array<Record<string, unknown>> } }>;
-    expect(restored[0].input.rows).toEqual([{ team: "core" }, { rank: 7 }]);
+    ) as Array<{ arguments: { rows: Array<Record<string, unknown>> } }>;
+    expect(restored[0].arguments.rows).toEqual([{ team: "core" }, { rank: 7 }]);
   });
 
   it("carries the open map all the way to the provider request in handleTextSmall", async () => {

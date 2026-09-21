@@ -10,6 +10,7 @@ import type {
   JsonValue,
   ModelTypeName,
   RecordLlmCallDetails,
+  ToolCall,
 } from "@elizaos/core";
 import {
   assertActiveTrajectoryForLlmCall,
@@ -17,28 +18,20 @@ import {
   assertSchemaAnnotationsSerializable,
   attestLlmInputSubstring,
   buildCanonicalSystemPrompt,
-  cloneSchemaForBoundedTransport,
   deepToWellFormedUnicode,
   dropDuplicateLeadingSystemMessage,
   ElizaError,
   getInferenceTimer,
   getTrajectoryContext,
   isPermanentQuotaError,
-  JSON_SCHEMA_ARRAY_KEYWORDS,
-  JSON_SCHEMA_MAP_KEYWORDS,
-  JSON_SCHEMA_MIXED_MAP_KEYWORDS,
-  JSON_SCHEMA_SINGLE_KEYWORDS,
   logActiveTrajectoryLlmCall,
   logger,
-  MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
   MAX_WELL_FORMED_DEPTH,
   MODEL_PROVIDER_ATTEMPTS,
   ModelType,
-  normalizeSchemaForCerebras,
   providerRetryAfterMs,
   recordLlmCall,
   resolveEffectiveSystemPrompt,
-  sanitizeFunctionNameForCerebras,
   toWellFormedUnicode,
   truncateWellFormed,
   wellFormedUnicodeSchemaStructure,
@@ -71,11 +64,19 @@ import {
   getSetting,
   getSmallModel,
   getUsageProvider,
-  isBrowser,
   isCerebrasMode,
-  isProxyMode,
 } from "../utils/config";
 import { emitModelUsageEvent, type ModelRetryTelemetry } from "../utils/events";
+import {
+  cloneSchemaForBoundedTransport,
+  JSON_SCHEMA_ARRAY_KEYWORDS,
+  JSON_SCHEMA_MAP_KEYWORDS,
+  JSON_SCHEMA_MIXED_MAP_KEYWORDS,
+  JSON_SCHEMA_SINGLE_KEYWORDS,
+  MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
+  normalizeSchemaForCerebras,
+  sanitizeFunctionNameForCerebras,
+} from "../utils/schema-compat";
 
 // ============================================================================
 // Types
@@ -159,7 +160,7 @@ type LanguageModelUsageWithCache = Omit<LanguageModelUsage, "inputTokenDetails">
 
 interface NativeGenerateTextResult {
   text: string;
-  toolCalls?: unknown[];
+  toolCalls?: ToolCall[];
   finishReason?: string;
   usage?: TokenUsage;
   providerMetadata?: unknown;
@@ -377,16 +378,11 @@ function isOpenCodeGoEndpoint(value: string | undefined): boolean {
 /**
  * Detects the endpoint contract that translates `reasoning_effort: "none"`.
  *
- * Browser requests terminate at an opaque proxy, so the direct base URL is not
- * proof of the proxy's upstream. Proxy deployments must declare their actual
- * upstream explicitly before this provider-specific wire value is emitted.
+ * Provider-specific wire values require a recognized endpoint; an opaque host
+ * proxy does not establish its upstream provider.
  */
 function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
-  if (isOpenCodeGoEndpoint(getBaseURL(runtime))) return true;
-  return (
-    isProxyMode(runtime) &&
-    isOpenCodeGoEndpoint(getSetting(runtime, "OPENAI_BROWSER_UPSTREAM_BASE_URL"))
-  );
+  return isOpenCodeGoEndpoint(getBaseURL(runtime));
 }
 
 /** Maps thinking suppression only for exact model ids on proven endpoints. */
@@ -1345,46 +1341,28 @@ function restoreRecordArgInput(input: unknown, transforms: RecordArgTransform[])
 function restoreRecordArgToolCalls(
   toolCalls: unknown,
   transformsByTool: Record<string, RecordArgTransform[]>
-): unknown[] | undefined {
-  if (!Array.isArray(toolCalls)) {
-    return undefined;
-  }
+): ToolCall[] | undefined {
+  if (toolCalls === undefined) return undefined;
+  if (!Array.isArray(toolCalls)) throw new TypeError("Invalid provider tool-call list");
 
   return toolCalls.map((toolCall) => {
     const call = asOptionalRecord(toolCall);
-    if (!call) return toolCall;
+    if (!call) throw new TypeError("Invalid provider tool call");
+    if (call.invalid) {
+      throw new TypeError("Provider returned invalid tool arguments", { cause: call.error });
+    }
     const rawFunction = asRecord(call.function);
-    const toolName = firstString(call.toolName, call.name, rawFunction.name);
-    const transforms = toolName ? transformsByTool[toolName] : undefined;
-    if (!transforms?.length) return toolCall;
-
-    if ("input" in call) {
-      return {
-        ...call,
-        input: restoreRecordArgInput(call.input, transforms),
-      };
+    const id = firstString(call.toolCallId, call.id);
+    const name = firstString(call.toolName, call.name, rawFunction.name);
+    if (!id || !name) throw new TypeError("Provider tool call requires an id and name");
+    const input = restoreRecordArgInput(
+      parseToolCallInput(call, rawFunction),
+      transformsByTool[name] ?? []
+    );
+    if (typeof input !== "string" && !asOptionalRecord(input)) {
+      throw new TypeError("Provider tool arguments must be an object or JSON string");
     }
-
-    if (typeof call.arguments === "string") {
-      const parsed = parseJsonIfPossible(call.arguments);
-      return {
-        ...call,
-        arguments: JSON.stringify(restoreRecordArgInput(parsed, transforms)),
-      };
-    }
-
-    if (typeof rawFunction.arguments === "string") {
-      const parsed = parseJsonIfPossible(rawFunction.arguments);
-      return {
-        ...call,
-        function: {
-          ...rawFunction,
-          arguments: JSON.stringify(restoreRecordArgInput(parsed, transforms)),
-        },
-      };
-    }
-
-    return toolCall;
+    return { id, name, arguments: input as ToolCall["arguments"] };
   });
 }
 
@@ -1606,7 +1584,7 @@ function sanitizeJsonSchema(
     // closes this afterwards (explicit empty `properties` +
     // `additionalProperties: false`) — Cerebras's grammar compiler rejects a
     // bare `{type: "object"}` with a request-fatal 400. See
-    // `normalizeSchemaForCerebras` in @elizaos/core for the live-bisected
+    // `normalizeSchemaForCerebras` in ../utils/schema-compat for the live-bisected
     // provider rules.
     return { type: "object" };
   }
@@ -1873,7 +1851,7 @@ function usesNativeTextResult(params: GenerateTextParamsWithOpenAIOptions): bool
 function buildNativeTextResult(
   result: {
     text: string;
-    toolCalls?: unknown[];
+    toolCalls?: ToolCall[];
     finishReason?: string;
     usage?: LanguageModelUsage;
     providerMetadata?: unknown;
@@ -2821,7 +2799,7 @@ async function generateTextByModelType(
   // executor. Only an explicit alternative credential/model enables it.
   const modelName = getSetting(runtime, "OPENROUTER_FALLBACK_MODEL")?.trim();
   const apiKey = getSetting(runtime, "OPENROUTER_API_KEY")?.trim();
-  const canFallback = isCerebrasMode(runtime) && !isBrowser() && !!modelName && !!apiKey;
+  const canFallback = isCerebrasMode(runtime) && !!modelName && !!apiKey;
   let delivered = false;
   const observedParams =
     canFallback && params.onStreamChunk
@@ -3540,7 +3518,7 @@ async function generateTextAtEndpoint(
     applyUsageToDetails(details, result.usage);
     return {
       text: restoredText,
-      toolCalls: restoredToolCalls as typeof result.toolCalls,
+      toolCalls: restoredToolCalls,
       finishReason: result.finishReason,
       usage: result.usage,
       providerMetadata: result.providerMetadata,

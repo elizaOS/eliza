@@ -1,18 +1,5 @@
+/** Exercises configuration guidance through the real terminal formatting helpers. */
 import { describe, expect, it, vi } from "vitest";
-
-const mocks = vi.hoisted(() => ({
-  formatDocsLink: vi.fn((_p: string, label: string) => label),
-  theme: {
-    muted: vi.fn((t: string) => `m(${t})`),
-    heading: vi.fn((t: string) => `h(${t})`),
-    command: vi.fn((t: string) => `c(${t})`),
-  },
-}));
-
-vi.mock("@elizaos/shared", () => ({
-  formatDocsLink: (...a: unknown[]) => mocks.formatDocsLink(...a),
-  theme: mocks.theme,
-}));
 
 import { registerConfigureCommand } from "../register.configure.ts";
 
@@ -48,9 +35,7 @@ describe("registerConfigureCommand", () => {
     registerConfigureCommand(program as never);
     const action = cmd.action.mock.calls[0][0] as () => void;
     action();
-    expect(log).toHaveBeenCalledWith(
-      expect.stringContaining("h(Configuration)"),
-    );
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("Configuration"));
     expect(log).toHaveBeenCalledWith(
       expect.stringContaining("ANTHROPIC_API_KEY"),
     );

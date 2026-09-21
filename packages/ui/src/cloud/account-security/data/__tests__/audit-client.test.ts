@@ -3,7 +3,7 @@
  * Validates payload construction, POST to /api/v1/security/audit, successful boolean return,
  * and error-policy J7 diagnostic warning logging on delivery failure.
  */
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { describe, expect, it, vi } from "vitest";
 import * as apiClient from "../../../lib/api-client.js";
 import { emitAuditEvent } from "../audit-client.js";

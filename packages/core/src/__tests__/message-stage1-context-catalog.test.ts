@@ -5,16 +5,16 @@
  * runtime with a canned tool-call response; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
-import { HANDLE_RESPONSE_TOOL_NAME } from "../actions/to-tool";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
-import { ContextRegistry } from "../runtime/context-registry";
-import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
+import { currentMessageContentForContext } from "../../../../plugins/plugin-assistant/src/services/message/dialogue-context.ts";
 import {
 	__buildV5ExecutorContextForTests,
 	formatAvailableContextsForPrompt,
 	runV5MessageRuntimeStage1,
-} from "../services/message";
-import { currentMessageContentForContext } from "../services/message/dialogue-context";
+} from "../../../../plugins/plugin-assistant/src/services/message.ts";
+import { HANDLE_RESPONSE_TOOL_NAME } from "../actions/to-tool";
+import { ContextRegistry } from "../runtime/context-registry";
+import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import type { ContextDefinition } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";

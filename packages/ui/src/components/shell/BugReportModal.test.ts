@@ -2,7 +2,7 @@
  * Regression for BugReportModal strip surrogate safety + tag stripping.
  */
 
-import { toWellFormedUnicode } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import { stripBugReportField } from "./BugReportModal";
 

@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Exercises local-inference service registration against a real AgentRuntime:
  * initialize, lazy start, synchronous discovery, and runtime-owned teardown.
@@ -36,7 +37,7 @@ describe("local-inference runtime services", () => {
 				},
 				{ stop: stopLoader },
 			);
-			await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+			await initializeTestRuntime(runtime, { skipMigrations: true });
 
 			expect(runtime.getService(TIMED_ASR_SERVICE_TYPE)).toBeNull();
 			expect(

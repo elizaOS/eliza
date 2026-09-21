@@ -5,7 +5,7 @@ import type {
   AppBillingEnvironment,
   AppBillingRegistrationDto,
 } from "@elizaos/cloud-sdk/app-billing-account";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";

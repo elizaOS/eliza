@@ -145,7 +145,7 @@ today) so records become complete if/when the API starts returning it.
 bun run --cwd packages/cloud/e2e test tests/domain-purchase-harness.spec.ts
 ```
 
-Runs in the normal mock suite (`bun run cloud:e2e`) against the booted stack
+Runs in the normal mock suite (`bun run --cwd packages/cloud/e2e test`) against the booted stack
 with `ELIZA_CF_REGISTRAR_DEV_STUB=1`: the full chain (with the mock
 control-plane pumping the deploy worker and the app's mock-container
 `production_url` standing in for public DNS), the ceiling refusal, the 409 /

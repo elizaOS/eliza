@@ -124,7 +124,7 @@ export {
 export { classifyContainerRuntimeHealthObservation } from "./eliza-sandbox/lifecycle/health-policy.js";
 
 import { isIP } from "node:net";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import {

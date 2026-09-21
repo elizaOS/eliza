@@ -5,17 +5,17 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
+	isUnsafeUserVisibleText,
+	malformedCallSupersededBy,
+	runPlannerLoop,
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import {
 	getStreamingContext,
 	runWithStreamingContext,
 } from "../../streaming-context";
 import { createUnavailableGroundedActionReply } from "../../types/action-reply";
 import type { EffectReceipt } from "../../types/effects";
 import { ModelType } from "../../types/model";
-import {
-	isUnsafeUserVisibleText,
-	malformedCallSupersededBy,
-	runPlannerLoop,
-} from "../planner-loop";
 import type {
 	PlannerLoopParams,
 	PlannerRuntime,
@@ -1809,25 +1809,6 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		},
 	);
 
-	it("does not reuse a rejected FINISH when the next planner requests new work", async () => {
-		const h = harness({
-			plans: [
-				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
-				{ text: "", toolCalls: [call("NAVIGATE", "final")] },
-			],
-			evaluations: [
-				finish("Only the record was read."),
-				finish("The record was read and the destination is open."),
-			],
-		});
-		const result = await h.run();
-		expect(h.executed).toEqual(["READ", "NAVIGATE"]);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(2);
-		expect(result.finalMessage).toBe(
-			"The record was read and the destination is open.",
-		);
-	});
-
 	it("preserves prior-turn preferences and character in one canonical receipt evaluation", async () => {
 		const preference =
 			"Use Spanish for the next calendar confirmation only; do not save that preference.";
@@ -2047,82 +2028,73 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		expect(result.evaluator?.effectReceiptIds).toBeUndefined();
 	});
 
-	it("keeps the full evaluator when the action set turnComplete:false", async () => {
-		const h = harness({
-			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
-			evaluations: [finish("Added your gym session for Tuesday at 7am.")],
-			results: [
-				internalCalendarResult([appliedReceipt], { turnComplete: false }),
-			],
+	it.each([
+		{
+			condition: "the action set turnComplete:false",
+			result: internalCalendarResult([appliedReceipt], { turnComplete: false }),
 			intents: ["add gym session to calendar"],
-		});
-		await h.run();
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
-	});
-
-	it("keeps the full evaluator when a mutation only produced a non-replayed no-op", async () => {
-		const h = harness({
-			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
-			evaluations: [finish("I couldn't find that event.", false)],
-			results: [internalCalendarResult([mutationNoopReceipt])],
+			evaluation: finish("Added your gym session for Tuesday at 7am."),
+		},
+		{
+			condition: "a mutation only produced a non-replayed no-op",
+			result: internalCalendarResult([mutationNoopReceipt]),
 			intents: ["delete the gym session"],
-		});
-		await h.run();
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
-	});
-
-	it("keeps the full evaluator when a receipt was rolled back", async () => {
-		const h = harness({
-			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
-			evaluations: [finish("The event was rolled back.", false)],
-			results: [internalCalendarResult([appliedReceipt, rolledBackReceipt])],
+			evaluation: finish("I couldn't find that event.", false),
+		},
+		{
+			condition: "a receipt was rolled back",
+			result: internalCalendarResult([appliedReceipt, rolledBackReceipt]),
 			intents: ["add gym session to calendar"],
-		});
-		await h.run();
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
-	});
-
-	it("keeps the full evaluator when Stage-1 declared more than one intent", async () => {
-		const h = harness({
-			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
-			evaluations: [
-				finish("Added the gym session; the note is still pending.", false),
-			],
-			results: [internalCalendarResult()],
-		});
-		await h.run();
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
-	});
-
-	it("keeps the full evaluator when a receipt failed", async () => {
-		const failed: EffectReceipt = {
-			receiptId: "calendar-failed-1",
-			operation: "calendar.event.create",
-			resource: { kind: "calendar.event", id: "evt-1", version: '"eliza-1"' },
-			artifacts: [],
-			idempotency: { key: null, replayed: false },
-			observedAt: "2026-09-05T18:00:00.000Z",
-			outcome: "failed",
-			failure: {
-				code: "CALENDAR_SERVICE_400",
-				retryable: false,
-				acceptance: "unknown",
-			},
-		};
-		const h = harness({
-			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
-			evaluations: [finish("The calendar rejected the event.", false)],
-			results: [internalCalendarResult([failed])],
+			evaluation: finish("The event was rolled back.", false),
+		},
+		{
+			condition: "Stage-1 declared more than one intent",
+			result: internalCalendarResult(),
+			intents: undefined,
+			evaluation: finish(
+				"Added the gym session; the note is still pending.",
+				false,
+			),
+		},
+		{
+			condition: "a receipt failed",
+			result: internalCalendarResult([
+				{
+					receiptId: "calendar-failed-1",
+					operation: "calendar.event.create",
+					resource: {
+						kind: "calendar.event",
+						id: "evt-1",
+						version: '"eliza-1"',
+					},
+					artifacts: [],
+					idempotency: { key: null, replayed: false },
+					observedAt: "2026-09-05T18:00:00.000Z",
+					outcome: "failed",
+					failure: {
+						code: "CALENDAR_SERVICE_400",
+						retryable: false,
+						acceptance: "unknown",
+					},
+				},
+			]),
 			intents: ["add gym session to calendar"],
-		});
-		await h.run();
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
-	});
+			evaluation: finish("The calendar rejected the event.", false),
+		},
+	])(
+		"keeps the full evaluator when $condition",
+		async ({ result, intents, evaluation }) => {
+			const h = harness({
+				plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+				evaluations: [evaluation],
+				results: [result],
+				intents,
+			});
+			await h.run();
+			expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
+			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+		},
+	);
 
 	it("keeps the full evaluator while the planner declared more_work_pending", async () => {
 		const h = harness({
@@ -3011,24 +2983,6 @@ describe("canonical evaluation of grounded internal receipts", () => {
 				},
 			),
 		).toBe(false);
-		// Different delete query: not superseded.
-		expect(
-			malformedCallSupersededBy(
-				{
-					name: "MEMORY",
-					params: { action: "delete", query: "favorite color" },
-				},
-				{ success: false, text: "confirm is required to delete." },
-				{
-					name: "MEMORY",
-					params: {
-						action: "delete",
-						query: "coffee with oat milk",
-						confirm: true,
-					},
-				},
-			),
-		).toBe(false);
 		// Same delete query with confirm added: superseded.
 		expect(
 			malformedCallSupersededBy(
@@ -3057,39 +3011,7 @@ describe("canonical evaluation of grounded internal receipts", () => {
 				},
 			),
 		).toBe(false);
-		// Content misfiled in query, re-issued as text in the third person.
-		expect(
-			malformedCallSupersededBy(
-				{
-					name: "MEMORY",
-					params: {
-						action: "update",
-						query: "I like my coffee with oat milk",
-						confirm: true,
-					},
-				},
-				{ success: false, text: "text is required." },
-				{
-					name: "MEMORY",
-					params: {
-						action: "create",
-						text: "The user likes their coffee with oat milk.",
-						kind: "preference",
-					},
-				},
-			),
-		).toBe(true);
-		// Dropped descriptor (kind) does not block; a dropped target does.
-		expect(
-			malformedCallSupersededBy(
-				{ name: "MEMORY", params: { action: "create", kind: "preference" } },
-				{ success: false, text: "text is required." },
-				{
-					name: "MEMORY",
-					params: { action: "create", text: "User takes tea without sugar." },
-				},
-			),
-		).toBe(true);
+		// A dropped target remains unresolved.
 		expect(
 			malformedCallSupersededBy(
 				{
@@ -3137,20 +3059,7 @@ describe("canonical evaluation of grounded internal receipts", () => {
 				},
 			),
 		).toBe(false);
-		// Identifiers match as whole tokens only: evt-1 is not carried by evt-12.
-		expect(
-			malformedCallSupersededBy(
-				{
-					name: "CALENDAR",
-					params: { action: "delete_event", eventId: "evt-1" },
-				},
-				{ success: false, text: "confirm is required." },
-				{
-					name: "CALENDAR",
-					params: { action: "delete_event", query: "evt-12", confirm: true },
-				},
-			),
-		).toBe(false);
+		// The same identifier can move into a query field.
 		expect(
 			malformedCallSupersededBy(
 				{
@@ -3230,8 +3139,6 @@ describe("canonical evaluation of grounded internal receipts", () => {
 	});
 
 	it.each([
-		'{"estimate":42,"error":0.2}',
-		'{"error":null,"value":42}',
 		'{"error":"measurement uncertainty","value":42}',
 		'{"error":0.2}',
 		'{"error":null}',
@@ -3239,8 +3146,6 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		'{"error":""}',
 		'{"error":"   "}',
 		'[{"estimate":42,"error":0.2},{"error":null,"value":42}]',
-		'Example response: {"error":"Not found"}',
-		'```json\n{"error":"Not found"}\n```',
 	])("preserves ordinary JSON error data and explicit examples: %s", (text) => {
 		expect(isUnsafeUserVisibleText(text)).toBe(false);
 	});

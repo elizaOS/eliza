@@ -16,16 +16,15 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ChannelType, type UUID } from "@elizaos/common";
 import {
   AgentRuntime,
-  ChannelType,
   createCharacter,
   createMessageMemory,
   logger,
   type Plugin,
   type Service,
   stringToUuid,
-  type UUID,
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect } from "vitest";
@@ -434,7 +433,6 @@ describe("Agent Runtime E2E", () => {
         character,
         plugins,
         logLevel: "error",
-        advancedCapabilities: true,
         enableAutonomy: true,
         // checkShouldRespond is NOT set — defaults to true (production behavior)
       });
@@ -449,7 +447,7 @@ describe("Agent Runtime E2E", () => {
       await instance.initialize();
       if (!instance.getService("AUTONOMY")) {
         const { AutonomyService } = await import(
-          "../../../core/src/features/autonomy/service.ts"
+          "../../../../plugins/plugin-assistant/src/features/autonomy/service.ts"
         );
         await AutonomyService.start(instance);
       }

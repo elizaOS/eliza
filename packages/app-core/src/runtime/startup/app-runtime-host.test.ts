@@ -6,10 +6,11 @@
  * not boot a live runtime; every assertion is about this module's control
  * flow and observable host state.
  */
+
+import { ElizaError } from "@elizaos/common";
 import type { AgentRuntime } from "@elizaos/core";
 import {
   CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
-  ElizaError,
   logger,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -42,12 +43,10 @@ const mocks = vi.hoisted(() => ({
   upstreamShutdownRuntime: vi.fn(async () => "upstream-stopped"),
 }));
 
-vi.mock("@elizaos/shared", () => ({
+vi.mock("@elizaos/shared/utils/sql-compat", () => ({
   ensureRuntimeSqlCompatibility: mocks.ensureRuntimeSqlCompatibility,
-  formatError: (error: unknown) =>
-    error instanceof Error ? error.message : String(error),
-  formatErrorWithStack: (error: unknown) =>
-    error instanceof Error ? (error.stack ?? error.message) : String(error),
+}));
+vi.mock("@elizaos/shared/runtime-env", () => ({
   isMobilePlatform: mocks.isMobilePlatform,
 }));
 

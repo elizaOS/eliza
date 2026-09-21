@@ -9,8 +9,8 @@ import type {
   MeetingParticipant,
   MeetingPlatform,
   MeetingTranscriptEvent,
-} from "@elizaos/shared";
-import { MEETING_PLATFORMS } from "@elizaos/shared";
+} from "@elizaos/shared/meetings";
+import { MEETING_PLATFORMS } from "@elizaos/shared/meetings";
 import type {
   Transcript,
   TranscriptSegment,

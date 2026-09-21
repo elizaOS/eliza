@@ -3,7 +3,8 @@
  * how to read/edit config values and the common provider API-key environment
  * variables — plus a docs link. Guidance only; it does not mutate any config.
  */
-import { formatDocsLink, theme } from "@elizaos/shared";
+import { formatDocsLink } from "@elizaos/shared/terminal/links";
+import { theme } from "@elizaos/shared/terminal/theme";
 import type { Command } from "commander";
 
 export function registerConfigureCommand(program: Command) {

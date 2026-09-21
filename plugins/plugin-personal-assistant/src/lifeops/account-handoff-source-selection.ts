@@ -3,8 +3,9 @@
  * choice per checkpoint using CalendarService's canonical compare-and-set path.
  * Readback recovers a lost checkpoint; later source or pause changes are conflicts.
  */
-import { ApprovalDispatchControlStore } from "@elizaos/agent";
+
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import { ApprovalDispatchControlStore } from "@elizaos/plugin-assistant";
 import type { CalendarService } from "@elizaos/plugin-calendar";
 import { z } from "zod";
 import {

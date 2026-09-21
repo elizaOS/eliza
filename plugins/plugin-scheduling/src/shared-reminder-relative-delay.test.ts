@@ -1,6 +1,6 @@
 /** Verifies user-authored relative delays and their action-level authority without a model stub. */
 
-import type { IAgentRuntime, Memory } from "@elizaos/core/edge";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type {
   ScheduledTask,

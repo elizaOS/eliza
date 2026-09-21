@@ -4,7 +4,8 @@
  * it, and writes it back. Provenance records whether a skill is human-authored,
  * agent-generated, or agent-refined (see types.ts).
  */
-import { ElizaError, parseFrontmatterDocument } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
+import { parseFrontmatterDocument } from "@elizaos/shared/markdown";
 import { stringify } from "yaml";
 import type {
   SkillFrontmatter,

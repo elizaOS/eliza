@@ -14,6 +14,11 @@
  * Run: bunx vitest run test/resolve-request-executor.test.ts
  */
 
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: docMocks.hasOwnerAccess,
+}));
+
 import { randomUUID } from "node:crypto";
 import type {
   HandlerCallback,
@@ -87,17 +92,6 @@ const docMocks = vi.hoisted(() => ({
     state: { status: "scheduled", followupCount: 0 },
   })),
 }));
-
-vi.mock("@elizaos/agent", async () => {
-  const approvalTypes = await import(
-    "../../../packages/agent/src/services/approval/types.ts"
-  );
-  return {
-    hasOwnerAccess: docMocks.hasOwnerAccess,
-    ApprovalNotFoundError: approvalTypes.ApprovalNotFoundError,
-    ApprovalStateTransitionError: approvalTypes.ApprovalStateTransitionError,
-  };
-});
 
 vi.mock("../src/lifeops/approval-queue.js", () => ({
   createApprovalQueue: () => ({

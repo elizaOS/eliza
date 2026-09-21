@@ -122,8 +122,6 @@ describe.skipIf(!SHOULD_RUN)("Google GenAI trajectory wrapping (live)", () => {
       text: string;
       toolCalls?: Array<{
         name?: string;
-        toolName?: string;
-        input?: unknown;
         arguments?: unknown;
       }>;
       finishReason?: string;
@@ -131,10 +129,7 @@ describe.skipIf(!SHOULD_RUN)("Google GenAI trajectory wrapping (live)", () => {
 
     expect(result.toolCalls?.length ?? 0).toBeGreaterThan(0);
     expect(
-      result.toolCalls?.some(
-        (call) =>
-          call.name === "lookup_weather" || call.toolName === "lookup_weather",
-      ),
+      result.toolCalls?.some((call) => call.name === "lookup_weather"),
     ).toBe(true);
     expect(result.finishReason).toBe("tool-calls");
 

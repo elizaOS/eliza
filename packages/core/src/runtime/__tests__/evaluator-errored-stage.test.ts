@@ -7,7 +7,7 @@
  * useModel/recorder, no live model.
  */
 import { describe, expect, it, vi } from "vitest";
-import { runEvaluator } from "../evaluator";
+import { runEvaluator } from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
 import type { RecordedStage } from "../trajectory-recorder";
 
 function providerBadRequest(): Error {

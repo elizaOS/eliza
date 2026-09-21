@@ -2,7 +2,8 @@
  * Shared app manager contracts.
  */
 
-import type { IAgentRuntime, ViewKind } from "@elizaos/core";
+import type { ViewKind } from "@elizaos/common";
+import type { IAgentRuntime } from "@elizaos/core";
 import curatedAppDefinitions from "@elizaos/registry/first-party/curated-app-definitions.json" with {
   type: "json",
 };
@@ -58,7 +59,7 @@ function registerCoreCuratedApp(def: ElizaCuratedAppDefinition): void {
   }
 }
 
-function getRegisteredCuratedApps(): ElizaCuratedAppDefinition[] {
+export function getRegisteredCuratedApps(): ElizaCuratedAppDefinition[] {
   return [...getCuratedAppRegistryStore().entries];
 }
 

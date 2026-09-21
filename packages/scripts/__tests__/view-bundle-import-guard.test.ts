@@ -43,7 +43,7 @@ function fixture() {
         vite: "^8.0.0",
       },
       scripts: {
-        "build:views": "bunx --bun vite build --config vite.config.views.ts",
+        "build:views": "vite build --config vite.config.views.ts",
       },
     },
   };

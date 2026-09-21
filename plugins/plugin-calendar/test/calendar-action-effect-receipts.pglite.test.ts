@@ -9,8 +9,8 @@ import {
   executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
-  SECRETS_SERVICE_TYPE,
 } from "@elizaos/core";
+import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import {
@@ -183,6 +183,13 @@ beforeAll(async () => {
   };
   runtime = {
     agentId: AGENT_ID,
+    getRoom: vi.fn(async () => ({ worldId: "world-id" })),
+    getWorld: vi.fn(async () => ({
+      metadata: {
+        roles: { [ENTITY_ID]: "OWNER" },
+        roleSources: { [ENTITY_ID]: "manual" },
+      },
+    })),
     adapter: { db },
     getService: (serviceType: string) =>
       serviceType === SECRETS_SERVICE_TYPE

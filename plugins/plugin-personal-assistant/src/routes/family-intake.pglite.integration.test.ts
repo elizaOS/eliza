@@ -8,12 +8,15 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import { AuthStore } from "@elizaos/app-core/services/auth-store";
 import {
-  DocumentService,
   ModelType,
   type Plugin,
   resolveOwnerEntityIdOrDefault,
-  TrajectoriesService,
 } from "@elizaos/core";
+import {
+  createDocumentsPlugin,
+  DocumentService,
+  TrajectoriesService,
+} from "@elizaos/plugin-assistant";
 import { expect, it } from "vitest";
 import { tryHandleRuntimePluginRoute } from "../../../../packages/agent/src/api/runtime-plugin-routes.ts";
 import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.js";
@@ -53,7 +56,9 @@ it("selects a canonical source, extracts private proposals and preserves review/
       },
     },
   };
-  const host = await createLifeOpsTestRuntime({ plugins: [model] });
+  const host = await createLifeOpsTestRuntime({
+    plugins: [createDocumentsPlugin({ enableActions: false }), model],
+  });
   const runtime = host.runtime;
   runtime.setSetting("ELIZA_TRAJECTORY_LOGGING", "1");
   if (!runtime.getService("trajectories"))

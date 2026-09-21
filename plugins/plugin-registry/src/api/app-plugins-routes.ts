@@ -42,18 +42,15 @@ import {
   mirrorPluginSensitiveToVault,
   sharedVault,
 } from "@elizaos/app-core/services/vault-mirror";
-import {
-  type AgentRuntime,
-  logger,
-  resolveNativeRuntimeFeatureFromPluginName,
-} from "@elizaos/core";
+import { type AgentRuntime, logger } from "@elizaos/core";
+import { VaultMissError } from "@elizaos/credentials/vault";
+import { resolveNativeRuntimeFeatureFromPluginName } from "@elizaos/plugin-assistant";
 import {
   type ConfigField,
   loadRegistry,
   type RegistryEntry,
 } from "@elizaos/registry/first-party";
 import { asRecord, CONNECTOR_PLUGINS } from "@elizaos/shared";
-import { VaultMissError } from "@elizaos/vault";
 import {
   bridgePluginParamsToRuntime,
   clearPluginParamValues,
@@ -1851,7 +1848,7 @@ export async function handlePluginsCompatRoutes(
       result.payload.unloadedPackages = runtimeApply.unloadedPackages;
       result.payload.reloadedPackages = runtimeApply.reloadedPackages;
 
-      // Write-through mirror to @elizaos/vault. Sensitive fields are
+      // Write-through mirror to @elizaos/credentials/vault. Sensitive fields are
       // copied into the vault (encrypted at rest via the OS-keychain master
       // key). The config.env writes above also persist — vault mirrors them.
       //

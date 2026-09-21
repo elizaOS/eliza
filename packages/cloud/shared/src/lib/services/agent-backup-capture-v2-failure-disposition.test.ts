@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   createAgentBackupCaptureV2ExecutorError,
   isTrustedAgentBackupCaptureV2TerminalDisposition,

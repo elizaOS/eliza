@@ -5,14 +5,6 @@ import { defineConfig } from "vitest/config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
-const groundedActionReply = path.join(
-  elizaRoot,
-  "packages",
-  "agent",
-  "src",
-  "actions",
-  "grounded-action-reply.ts",
-);
 const pluginGoogleSrc = path.join(
   elizaRoot,
   "plugins",
@@ -29,15 +21,6 @@ const pluginSchedulingSrc = path.join(
 const sharedSrc = path.join(elizaRoot, "packages", "shared", "src");
 const uiSrc = path.join(elizaRoot, "packages", "ui", "src");
 const coreSrc = path.join(elizaRoot, "packages", "core", "src");
-const loggerSrc = path.join(elizaRoot, "packages", "logger", "src");
-const appCoreNativeLibraryPolicy = path.join(
-  elizaRoot,
-  "packages",
-  "app-core",
-  "src",
-  "platform",
-  "native-library-policy.ts",
-);
 
 /**
  * Unit-test config. UI / service suites that need inlined core/agent/ui or
@@ -107,7 +90,7 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/plugin-sql$/,
-        replacement: path.join(pluginSqlSrc, "index.node.ts"),
+        replacement: path.join(pluginSqlSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/plugin-sql\/(.+)$/,
@@ -122,20 +105,12 @@ export default defineConfig({
         replacement: path.join(pluginSchedulingSrc, "$1"),
       },
       {
-        find: /^@elizaos\/agent$/,
-        replacement: groundedActionReply,
-      },
-      {
         find: /^@elizaos\/shared$/,
         replacement: path.join(sharedSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/shared\/(.+)$/,
         replacement: path.join(sharedSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/app-core\/platform\/native-library-policy$/,
-        replacement: appCoreNativeLibraryPolicy,
       },
       {
         find: /^@elizaos\/ui$/,
@@ -147,11 +122,11 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/core$/,
-        replacement: path.join(coreSrc, "index.node.ts"),
+        replacement: path.join(coreSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/core\/node$/,
-        replacement: path.join(coreSrc, "index.node.ts"),
+        replacement: path.join(coreSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/core\/atomic-json$/,
@@ -160,10 +135,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/core\/(.+)$/,
         replacement: path.join(coreSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/logger$/,
-        replacement: path.join(loggerSrc, "index.ts"),
       },
     ],
   },

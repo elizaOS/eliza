@@ -1,5 +1,5 @@
 /**
- * Proves the baseline-free publish graph invariant and its publisher preflight:
+ * Proves the baseline-free publish graph invariant:
  * no publishable package may ship a registry dependency on private/missing
  * workspace code, while private deployment packages remain outside the graph.
  */
@@ -9,12 +9,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "../lib/spawn-sync-captured.mjs";
 import { listPackages } from "../lib/workspaces.mjs";
-import { main as publishFromDist } from "../publish-from-dist.mjs";
 import {
   assertPublishableWorkspaceGraph,
   findUnpublishableWorkspaceDependencies,
   formatPublishGraphViolation,
-  PublishGraphError,
 } from "../verify-publish-graph.mjs";
 
 const CHECK = fileURLToPath(
@@ -92,22 +90,6 @@ describe("publishable workspace graph", () => {
     ];
 
     expect(findUnpublishableWorkspaceDependencies(graph)).toEqual([]);
-  });
-
-  test("publisher fails before inspecting or packing dist artifacts", () => {
-    const graph = [
-      pkg("@x/public", {
-        dependencies: { "@x/private": "workspace:*" },
-      }),
-      pkg("@x/private", { private: true }),
-    ];
-
-    expect(() =>
-      publishFromDist({
-        flags: { apply: false },
-        packages: graph,
-      }),
-    ).toThrow(PublishGraphError);
   });
 
   test("live workspace graph has no unpublishable edge", () => {

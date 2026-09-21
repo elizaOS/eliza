@@ -3,7 +3,7 @@
  * Local HTTP records dispatch; credentials and endpoint maps are synthetic.
  */
 import { describe, expect, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { getProviderForModelWithFallback, getVastProvider } from "./index";
 import { resolveVastEndpointConfig, resolveVastFallbackModel } from "./vast-endpoints";
 

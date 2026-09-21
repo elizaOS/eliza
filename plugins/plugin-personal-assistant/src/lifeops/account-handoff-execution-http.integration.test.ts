@@ -2,8 +2,8 @@
 
 import { ElizaClient } from "@elizaos/ui/api/client-base";
 import "../api/client-lifeops.js";
-import { ApprovalDispatchControlStore } from "@elizaos/agent";
 import { getConnectorAccountManager } from "@elizaos/core";
+import { ApprovalDispatchControlStore } from "@elizaos/plugin-assistant";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import {
   createHandoffHttpFixture,

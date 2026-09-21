@@ -22,7 +22,6 @@ const cloudRoutingSrc = path.resolve(
 	__dirname,
 	"../../packages/cloud/routing/src",
 );
-const loggerSrc = path.resolve(__dirname, "../../packages/logger/src");
 const uiSrc = path.resolve(__dirname, "../../packages/ui/src");
 const require = createRequire(import.meta.url);
 // react-dom is not a direct dependency of this plugin; resolve it through the
@@ -42,6 +41,7 @@ export default defineConfig({
 		// @elizaos/ui agent-surface hook share one renderer under jsdom.
 		dedupe: ["react", "react-dom"],
 		alias: [
+			...sharedAliases,
 			{
 				find: /^@elizaos\/ui$/,
 				replacement: path.join(uiSrc, "index.ts"),
@@ -185,7 +185,7 @@ export default defineConfig({
 			},
 			// Bare subpath exports must be pinned before the plain string alias
 			// below: a string alias rewrites "@elizaos/core/client-public" to
-			// "<coreSrc>/index.node.ts/client-public" (ENOTDIR) instead of the
+			// "<coreSrc>/index.ts/client-public" (ENOTDIR) instead of the
 			// subpath source module.
 			{
 				find: /^@elizaos\/core\/errors$/,
@@ -201,7 +201,7 @@ export default defineConfig({
 			},
 			{
 				find: "@elizaos/core",
-				replacement: path.join(coreSrc, "index.node.ts"),
+				replacement: path.join(coreSrc, "index.ts"),
 			},
 			// Core's src re-exports the cloud routing surface from
 			// `@elizaos/cloud-routing`, which ships no dist. With @elizaos/core
@@ -212,20 +212,14 @@ export default defineConfig({
 				find: "@elizaos/cloud-routing",
 				replacement: path.join(cloudRoutingSrc, "index.ts"),
 			},
-			// Core's src also re-exports `@elizaos/prompts`, which likewise has no
-			// dist build in this lane — anchor it to source for the same reason.
+			// Resolve the template root without rewriting keyword subpaths.
 			{
-				find: "@elizaos/prompts",
+				find: /^@elizaos\/prompts$/,
 				replacement: path.resolve(
 					__dirname,
 					"../../packages/prompts/src/index.ts",
 				),
 			},
-			{
-				find: "@elizaos/logger",
-				replacement: path.join(loggerSrc, "index.ts"),
-			},
-			...sharedAliases,
 		],
 	},
 	test: {

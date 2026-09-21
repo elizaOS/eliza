@@ -2,11 +2,20 @@
  * REST route handlers for the document store: list, stats, semantic/keyword
  * search, single fetch, fragment listing, single + bulk upload, URL/YouTube
  * ingestion, and delete. Persistence and search are delegated to the runtime
- * document service (resolved from `@elizaos/agent/api/documents-service-loader`);
+ * document service (resolved from `@elizaos/plugin-assistant`);
  * this module handles HTTP shaping and access-control scoping only.
  */
 
+import type {
+  AccessContext,
+  AgentRuntime,
+  IFileStorageService,
+  Memory,
+  UUID,
+} from "@elizaos/core";
+import { actorFromAccessContext, ElizaError, ServiceType } from "@elizaos/core";
 import {
+  __setDocumentUrlFetchImplForTests,
   actorCanManageAgentDocuments,
   actorCanManageOwnerDocuments,
   asRecord,
@@ -14,33 +23,22 @@ import {
   type DocumentReadableMemory,
   documentMediaFormat,
   documentTags,
+  fetchDocumentFromUrl,
+  isYouTubeUrl,
   matchesDocumentFilter as matchesSharedDocumentFilter,
+  normalizeDocumentContentType,
   parseDocumentScope,
   type RouteActor,
   type RouteActorRole,
   routeActorAddedByRole,
   type DocumentFilter as SharedDocumentFilter,
   trimString,
-} from "@elizaos/agent/api/document-access";
+} from "@elizaos/plugin-assistant";
+import { parseClampedFloat, parsePositiveInteger } from "@elizaos/shared";
 import type {
-  AccessContext,
-  AgentRuntime,
-  IFileStorageService,
-  Memory,
   RouteHelpers,
   RouteRequestContext,
-  UUID,
-} from "@elizaos/core";
-import {
-  __setDocumentUrlFetchImplForTests,
-  actorFromAccessContext,
-  ElizaError,
-  fetchDocumentFromUrl,
-  isYouTubeUrl,
-  normalizeDocumentContentType,
-  ServiceType,
-} from "@elizaos/core";
-import { parseClampedFloat, parsePositiveInteger } from "@elizaos/shared";
+} from "@elizaos/shared/api/route-helpers";
 import {
   getDocumentContentType,
   getDocumentDeleteability,

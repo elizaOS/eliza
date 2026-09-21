@@ -40,6 +40,7 @@ async function canReachOllama(baseUrl) {
 async function resolveProviderEnv() {
 	if (
 		process.env.OPENAI_API_KEY ||
+		process.env.CEREBRAS_API_KEY ||
 		process.env.ANTHROPIC_API_KEY ||
 		process.env.GROQ_API_KEY ||
 		process.env.OPENROUTER_API_KEY ||

@@ -4,13 +4,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { RecordedStage } from "../runtime/trajectory-recorder";
-import { RECORDED_STAGE_KINDS } from "../runtime/trajectory-stage-kind";
+import type { RecordedStage } from "../runtime/trajectory-recorder.ts";
+import { RECORDED_STAGE_KINDS } from "../runtime/trajectory-stage-kind.ts";
 import {
 	parseTrajectorySemanticStage,
 	parseTrajectorySemanticStages,
 	recordedStageToSemanticStage,
-} from "./trajectory-semantic-stage";
+} from "./trajectory-semantic-stage.ts";
 
 const toolSearchStage: RecordedStage = {
 	stageId: "stage-tool-search-1",

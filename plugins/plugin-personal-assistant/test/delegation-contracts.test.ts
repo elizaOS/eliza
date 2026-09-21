@@ -6,6 +6,7 @@
  * connector events.
  */
 
+import { ChannelType, type Memory, type UUID } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import {
@@ -301,13 +302,40 @@ describe("delegation contract repository", () => {
       }),
     );
 
+    const ownerId = crypto.randomUUID() as UUID;
+    const guestId = crypto.randomUUID() as UUID;
+    const roomId = crypto.randomUUID() as UUID;
+    runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", ownerId);
+    await runtime.createWorld({
+      id: runtime.agentId,
+      name: "Delegation contract test",
+      agentId: runtime.agentId,
+      serverId: "delegation-contract-test",
+    });
+    await runtime.createRoom({
+      id: roomId,
+      agentId: runtime.agentId,
+      worldId: runtime.agentId,
+      source: "client_chat",
+      type: ChannelType.DM,
+    });
+    const message: Memory = {
+      entityId: ownerId,
+      agentId: runtime.agentId,
+      roomId,
+      content: { text: "new vendor reply" },
+    };
+    const denied = await delegationContractsProvider.get(
+      runtime,
+      { ...message, entityId: guestId },
+      {} as never,
+    );
+    expect(denied.text).toBe("");
+    expect(denied.data?.delegationContracts).toEqual([]);
+
     const result = await delegationContractsProvider.get(
       runtime,
-      {
-        entityId: "owner-entity-1",
-        roomId: "room-1",
-        content: { text: "new vendor reply" },
-      } as never,
+      message,
       {} as never,
     );
 

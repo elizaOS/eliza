@@ -2,7 +2,10 @@
  * Unit coverage for the bundled content packs (style presets present + well-
  * formed). Pure data, no runtime.
  */
-import { getDefaultStylePreset, getStylePresets } from "@elizaos/shared";
+import {
+  getDefaultStylePreset,
+  getStylePresets,
+} from "@elizaos/shared/character-presets";
 import { describe, expect, it } from "vitest";
 import { getBundledContentPacks } from "./bundled-packs";
 

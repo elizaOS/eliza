@@ -9,7 +9,7 @@ that make a single APK unviable.
 ## `build:android:cloud` — Play-Store thin client
 
 ```bash
-bun run build:android:cloud
+bun run --cwd packages/app build:android:cloud
 ```
 
 A Play-Store-compliant Capacitor APK backed by Eliza Cloud as the only
@@ -80,7 +80,7 @@ instead, point the build at it:
 
 ```bash
 export ELIZA_ANDROID_BUNDLETOOL_JAR=/absolute/path/bundletool-all-1.18.3.jar
-bun run build:android:cloud
+bun run --cwd packages/app build:android:cloud
 ```
 
 The release build fails closed when bundletool cannot be downloaded, either
@@ -177,7 +177,7 @@ cannot try to provision an on-device agent that physically isn't there.
 ## `build:android:launcher` — stock-device Home app
 
 ```bash
-bun run install:android:launcher
+bun run --cwd packages/app install:android:launcher
 ```
 
 Builds and installs a direct-install debug APK with the same cloud-safe capability surface
@@ -187,7 +187,7 @@ dialer, SMS, browser, or privileged permissions and is not the Play release
 artifact. Android requires the user to select Eliza in the Home-app consent
 screen; the command opens that screen, waits for the selection, verifies the
 role holder and resolver, and then sends HOME. To build without installing, run
-`bun run build:android:launcher`. The equivalent manual flow is:
+`bun run --cwd packages/app build:android:launcher`. The equivalent manual flow is:
 
 ```bash
 adb install -r packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk
@@ -378,7 +378,7 @@ sub-issue 6 of #12185.
 ## `build:android:system` — AOSP privileged platform-signed APK
 
 ```bash
-bun run build:android:system
+bun run --cwd packages/app build:android:system
 ```
 
 Release APK signed by Soong's platform key for Eliza OS / ElizaOS

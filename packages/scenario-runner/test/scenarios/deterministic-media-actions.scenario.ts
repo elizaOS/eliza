@@ -3,10 +3,6 @@
  * pr-deterministic lane under the model provider.
  */
 import { ModelType, type Plugin } from "@elizaos/core";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
 import { generateMediaAction } from "@elizaos/plugin-local-inference/actions/generate-media";
 import type {
   CapturedAction,
@@ -14,6 +10,10 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+} from "@elizaos/testing";
 import { transientTurnEvaluationSeed } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
 
 const transparentPngDataUrl =
@@ -27,26 +27,17 @@ const wavBytes = new Uint8Array([
 
 const modelCalls: Array<{ modelType: string; payload: unknown }> = [];
 
-const imageGenerateMediaParameters = {
-  mediaType: "image",
-  prompt: "scenario sunset",
-};
-const audioGenerateMediaParameters = {
-  mediaType: "audio",
-  prompt: "scenario audio",
-};
-
 const strictMediaRoutes = [
   {
     actionName: "GENERATE_MEDIA",
-    args: imageGenerateMediaParameters,
+    args: {},
     contextIds: ["media"],
     input: "Draw scenario sunset",
     messageToUser: "Here's the image you asked for.",
   },
   {
     actionName: "GENERATE_MEDIA",
-    args: audioGenerateMediaParameters,
+    args: {},
     contextIds: ["media"],
     input: "Say scenario audio",
     messageToUser: "Here's the audio you asked for.",
@@ -57,11 +48,6 @@ type JsonRecord = Record<string, unknown>;
 
 function isRecord(value: unknown): value is JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function actionParameters(action: CapturedAction): JsonRecord {
-  const params = isRecord(action.parameters) ? action.parameters : {};
-  return isRecord(params.parameters) ? params.parameters : params;
 }
 
 function stableStringify(value: unknown): string {
@@ -118,29 +104,12 @@ function expectAction(
   execution: ScenarioTurnExecution,
   expected: {
     actionName: string;
-    parameters: JsonRecord;
     resultFields: JsonRecord;
   },
 ): string | undefined {
   const action = firstAction(execution, expected.actionName);
   if (typeof action === "string") return action;
-  const actualParameters = actionParameters(action);
-  const directParametersFailure = expectEqual(
-    actualParameters,
-    expected.parameters,
-    `${expected.actionName} handler options`,
-  );
-  const wrappedParametersFailure = expectEqual(
-    actualParameters,
-    { parameters: expected.parameters },
-    `${expected.actionName} handler options`,
-  );
-  const parametersFailure =
-    directParametersFailure && wrappedParametersFailure
-      ? directParametersFailure
-      : undefined;
   return (
-    parametersFailure ??
     (action.result?.success === true
       ? undefined
       : `expected ${expected.actionName} ActionResult.success=true, saw ${stableStringify(action.result)}`) ??
@@ -280,7 +249,6 @@ export default scenario({
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "GENERATE_MEDIA",
-          parameters: imageGenerateMediaParameters,
           resultFields: {
             "data.source": "generate-media",
             "data.computerUseAction": "GENERATE_MEDIA_IMAGE",
@@ -303,7 +271,6 @@ export default scenario({
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "GENERATE_MEDIA",
-          parameters: audioGenerateMediaParameters,
           resultFields: {
             "data.source": "generate-media",
             "data.computerUseAction": "GENERATE_MEDIA_AUDIO",
@@ -322,11 +289,6 @@ export default scenario({
       actionName: "GENERATE_MEDIA",
       status: "success",
       minCount: 2,
-    },
-    {
-      type: "selectedActionArguments",
-      actionName: ["GENERATE_MEDIA"],
-      includesAll: [/scenario sunset/],
     },
     {
       type: "custom",

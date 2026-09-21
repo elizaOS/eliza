@@ -1,5 +1,5 @@
 /** Sweeps durable cancellation notices under the existing cron owner and fences submission against current source and approved policy. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite, writeTransaction } from "../../db/helpers";

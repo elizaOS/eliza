@@ -3,8 +3,9 @@
  * across both stale-snapshot write orders. Barriers delay completed reads only;
  * every read and metadata mutation still executes against the real SQL adapter.
  */
+
+import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 import { describe, expect, it } from "vitest";
-import { createTestRuntime } from "../testing/pglite-runtime";
 import type { UUID } from "../types/primitives";
 import { TaskService } from "./task";
 

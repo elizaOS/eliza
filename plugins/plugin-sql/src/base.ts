@@ -103,6 +103,7 @@ import {
   type WorldMetadataMutationResult,
   worldMetadataValueEquals,
 } from "@elizaos/core";
+import { rerankMemories } from "@elizaos/retrieval";
 import { sanitizeJsonObject, serializeDocumentJsonb, serializeJsonb } from "./sanitize-json";
 import { worldRoleAuditTable } from "./schema/worldRoleAudit";
 import {
@@ -681,14 +682,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   protected migrationService?: DatabaseMigrationService;
   private migrationRunPromise: Promise<void> | null = null;
   private readonly migratedSchemaEntries = new Map<string, Map<string, unknown>>();
-  private transactionWrites?: Array<() => void>;
   private transactionEntityContext?: UUID | null;
-
-  /** Defers external write publication until the outermost SQL transaction commits. */
-  protected publishCommittedWrite(write: () => void): void {
-    if (this.transactionWrites) this.transactionWrites.push(write);
-    else write();
-  }
 
   private _connectorAccountStore?: ConnectorAccountStore;
   private messageSearchTrigramAvailable: boolean | null = null;
@@ -3922,7 +3916,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     entityId?: UUID;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
-    return await this.searchMemoriesByEmbedding(params.embedding, {
+    const memories = await this.searchMemoriesByEmbedding(params.embedding, {
       match_threshold: params.match_threshold,
       // `limit` is the IDatabaseAdapter contract param; honour it (with `count`
       // as a legacy alias) instead of silently ignoring it and capping the
@@ -3937,6 +3931,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       tableName: params.tableName,
       accessContext: params.accessContext,
     });
+    return rerankMemories(params.query, memories);
   }
 
   /**
@@ -6766,14 +6761,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     callback: (tx: IDatabaseAdapter<DrizzleDatabase>) => Promise<T>,
     options?: { entityContext?: UUID }
   ): Promise<T> {
-    const writes: Array<() => void> = [];
     const entityContext = options?.entityContext ?? this.transactionEntityContext ?? null;
     const result = await this.withEntityContext(entityContext, async (db) => {
       // The facade shares immutable adapter configuration but never replaces
       // the global connection or its connection-bound store cache.
       const scoped = Object.create(this) as BaseDrizzleAdapter;
       scoped.db = db;
-      scoped.transactionWrites = writes;
       scoped.transactionEntityContext = entityContext;
       scoped._connectorAccountStore = undefined;
       scoped.withDatabase = (operation) => operation();
@@ -6814,25 +6807,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       };
       return callback(scoped);
     });
-    const publicationErrors: unknown[] = [];
-    for (const write of writes) {
-      try {
-        this.publishCommittedWrite(write);
-      } catch (error) {
-        // error-policy:J2 attempt every committed publication before reporting the committed failure.
-        publicationErrors.push(error);
-      }
-    }
-    if (publicationErrors.length > 0) {
-      throw new ElizaError(
-        "SQL committed, but publishing its writes failed. Do not replay the transaction.",
-        {
-          code: "TRANSACTION_PUBLICATION_FAILED",
-          context: { committed: true, failedPublications: publicationErrors.length },
-          cause: new AggregateError(publicationErrors, "Committed write publication failed"),
-        }
-      );
-    }
     return result;
   }
 

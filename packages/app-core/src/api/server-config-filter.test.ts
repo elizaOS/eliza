@@ -2,7 +2,7 @@
  * Unit tests for API server config redaction and sensitive key filtering.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import {
   CONFIG_FILTER_UNBOUNDED,

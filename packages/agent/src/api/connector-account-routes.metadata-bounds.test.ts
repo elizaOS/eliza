@@ -25,8 +25,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   type ConnectorAccountPatch,
   getConnectorAccountManager,
-  InMemoryDatabaseAdapter,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ConnectorAccountRouteContext,

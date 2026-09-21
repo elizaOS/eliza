@@ -10,12 +10,12 @@ import {
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import {
   type IAgentRuntime,
   type Memory,
   stableStringify,
 } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { resolveAuthenticatedFamilyPrincipal } from "./production-wiring.js";
 import {

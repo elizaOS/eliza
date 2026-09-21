@@ -54,7 +54,7 @@
   "scripts": {
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:views": "bunx --bun vite build --config vite.config.views.ts",
+    "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "test": "vitest run --config vitest.config.ts",
@@ -69,7 +69,8 @@
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",
     "react": "^19.0.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/plugin-inmemorydb": "workspace:*"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.4.5",
@@ -85,7 +86,8 @@
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^4.0.17"
+    "vitest": "^4.0.17",
+    "@elizaos/testing": "workspace:*"
   },
   "peerDependencies": {
     "react-dom": "^19.0.0"

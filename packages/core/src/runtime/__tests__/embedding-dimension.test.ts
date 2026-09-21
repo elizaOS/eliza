@@ -20,8 +20,9 @@
  * 5. runtime.initialize() survives a total probe failure — boot stays alive in
  *    the degraded mode instead of crashing (#10702's original symptom).
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { ElizaError } from "../../errors";
 import {
 	AgentRuntime,
@@ -573,6 +574,7 @@ describe("AgentRuntime.ensureEmbeddingDimension store identity guard", () => {
 			vi.fn(async () => new Array(384).fill(0)),
 			"embeddings",
 			1,
+			{ displayModelSetting: "EMBEDDING_MODEL" },
 		);
 		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
 		const stored = await runtime.getCache<EmbeddingStoreIdentity>(
@@ -584,6 +586,54 @@ describe("AgentRuntime.ensureEmbeddingDimension store identity guard", () => {
 			dimension: 384,
 		});
 		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
+	});
+
+	it.each([
+		{ displayModel: " vendor/model " },
+		{ displayModelSettings: ["EMPTY_MODEL", "CUSTOM_MODEL"] },
+		{ displayModelDefault: " vendor/model " },
+	])("records a custom provider's declared identity: %j", async (metadata) => {
+		const runtime = makeRuntime({
+			settings: { CUSTOM_MODEL: " vendor/model " },
+		});
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			async () => new Array(384).fill(0),
+			"custom-provider",
+			1,
+			metadata,
+		);
+		await runtime.ensureEmbeddingDimension();
+		expect(
+			await runtime.getCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY),
+		).toMatchObject({
+			provider: "custom-provider",
+			modelLabel: "vendor/model",
+		});
+	});
+
+	it("does not infer an undeclared identity from a provider name or host environment", async () => {
+		vi.stubEnv("CUSTOM_EMBEDDING_MODEL", "host-model");
+		try {
+			const runtime = makeRuntime({
+				settings: { OPENAI_EMBEDDING_MODEL: "other-model" },
+			});
+			runtime.registerModel(
+				ModelType.TEXT_EMBEDDING,
+				async () => new Array(384).fill(0),
+				"openai",
+				1,
+				{ displayModelSetting: "CUSTOM_EMBEDDING_MODEL" },
+			);
+			await runtime.ensureEmbeddingDimension();
+			expect(
+				await runtime.getCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY),
+			).toMatchObject({
+				modelLabel: null,
+			});
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it("refuses to pin a different model at the same width until the operator acknowledges the cutover", async () => {
@@ -603,6 +653,7 @@ describe("AgentRuntime.ensureEmbeddingDimension store identity guard", () => {
 			vi.fn(async () => new Array(384).fill(0)),
 			"embeddings",
 			1,
+			{ displayModelSetting: "EMBEDDING_MODEL" },
 		);
 		await expect(runtime.ensureEmbeddingDimension()).rejects.toMatchObject({
 			code: "EMBEDDING_STORE_MODEL_MISMATCH",
@@ -628,6 +679,7 @@ describe("AgentRuntime.ensureEmbeddingDimension store identity guard", () => {
 			vi.fn(async () => new Array(384).fill(0)),
 			"embeddings",
 			1,
+			{ displayModelSetting: "EMBEDDING_MODEL" },
 		);
 		await expect(
 			acknowledged.ensureEmbeddingDimension(),
@@ -657,6 +709,7 @@ describe("AgentRuntime.ensureEmbeddingDimension store identity guard", () => {
 			vi.fn(async () => new Array(384).fill(0)),
 			"embeddings",
 			1,
+			{ displayModelSetting: "EMBEDDING_MODEL" },
 		);
 		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
 		const updated = await runtime.getCache<EmbeddingStoreIdentity>(
@@ -681,6 +734,7 @@ describe("AgentRuntime.ensureEmbeddingDimension store identity guard", () => {
 			vi.fn(async () => new Array(384).fill(0)),
 			"embeddings",
 			1,
+			{ displayModelSetting: "EMBEDDING_MODEL" },
 		);
 		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
 		const updated = await runtime.getCache<EmbeddingStoreIdentity>(

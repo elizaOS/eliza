@@ -1,6 +1,6 @@
 /** Keeps Shared honest and returns a resumable setup handoff for unavailable work. */
 
-import { ElizaError } from "@elizaos/core/edge";
+import { ElizaError } from "@elizaos/common";
 import { type CapabilityHandoffRequest, capabilityHandoffTargetAgentId } from "@elizaos/shared";
 
 export type SharedDedicatedCapability =

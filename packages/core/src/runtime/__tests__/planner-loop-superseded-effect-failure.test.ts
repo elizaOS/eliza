@@ -4,8 +4,11 @@
  * selectors; message-scoped failures retain their target and every receipt.
  */
 import { describe, expect, it, vi } from "vitest";
+import {
+	effectOperationKey,
+	runPlannerLoop,
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { EffectReceipt } from "../../types/effects";
-import { effectOperationKey, runPlannerLoop } from "../planner-loop";
 
 const RECEIPT_BASE = {
 	resource: { kind: "calendar.event", id: "evt-1" },

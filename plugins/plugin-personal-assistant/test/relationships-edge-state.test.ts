@@ -8,8 +8,11 @@
  * Real PGLite runtime, no mocks.
  */
 
-import { KnowledgeGraphService, knowledgeGraphSchema } from "@elizaos/agent";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
+import {
+  KnowledgeGraphService,
+  knowledgeGraphSchema,
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,

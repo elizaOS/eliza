@@ -223,6 +223,81 @@ describe("FileMessageInteractionSessionStore", () => {
     ).toHaveLength(7);
   });
 
+  it("serializes reads with a pending durable write without rewriting state", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const { created, now } = await seed(stateDirectory);
+    const publication = barrier();
+    const writer = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: { beforeStateDirectorySync: publication.hook },
+    }).deleteExpired(now);
+    await publication.entered;
+    const reader = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockTimeoutMs: 20,
+      pollMs: 1,
+    });
+    try {
+      await expect(reader.get(created.session.reference)).rejects.toMatchObject(
+        {
+          code: "INTERACTION_STORE_LOCK_TIMEOUT",
+        },
+      );
+      await expect(
+        reader.listCommitted({ committedBefore: now, limit: 10 }),
+      ).rejects.toMatchObject({
+        code: "INTERACTION_STORE_LOCK_TIMEOUT",
+      });
+    } finally {
+      publication.release();
+      await writer;
+    }
+    const filePath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json",
+    );
+    const before = await fs.stat(filePath);
+    const bytes = await fs.readFile(filePath);
+    await expect(reader.get(created.session.reference)).resolves.toMatchObject({
+      reference: created.session.reference,
+      consume: { state: "pending" },
+    });
+    await expect(
+      reader.listCommitted({ committedBefore: now, limit: 10 }),
+    ).resolves.toEqual([]);
+    const after = await fs.stat(filePath);
+    expect({ ino: after.ino, mtimeMs: after.mtimeMs }).toEqual({
+      ino: before.ino,
+      mtimeMs: before.mtimeMs,
+    });
+    expect(await fs.readFile(filePath)).toEqual(bytes);
+  });
+
+  it("preserves read lock recovery errors without claiming a mutation committed", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const { created, now } = await seed(stateDirectory);
+    const reader = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: {
+        beforeTransitionMarkerCleanup: async () => {
+          throw new Error("simulated read release cleanup failure");
+        },
+      },
+    });
+    await expect(reader.get(created.session.reference)).rejects.toMatchObject({
+      code: "INTERACTION_STORE_RELEASE_CLEANUP_FAILED",
+      context: {
+        markerPath: path.join(
+          stateDirectory,
+          "message-interaction-sessions.v1.json.lock.transition",
+        ),
+      },
+    });
+  });
+
   it("does not retire a live publisher paused past the recovery ceiling", async () => {
     const stateDirectory = await temporaryDirectory();
     const now = Date.parse("2026-08-21T00:00:00.000Z");

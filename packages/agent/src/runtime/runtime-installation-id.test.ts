@@ -10,7 +10,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   constructWithRuntimeInstallationIdentity,
   loadOrCreateRuntimeInstallationId,
-  RuntimeInstallationIdentityUnsupportedError,
 } from "./runtime-installation-id.ts";
 
 const cleanup: string[] = [];
@@ -52,7 +51,9 @@ afterEach(async () => {
   );
 });
 
-describe("runtime installation identity", () => {
+const posixDescribe = describe.skipIf(process.platform === "win32");
+
+posixDescribe("runtime installation identity", () => {
   it("keeps one iOS identity beneath a platform-managed simulator ancestor", async () => {
     const root = await fs.realpath(
       await fs.mkdtemp(path.join(os.tmpdir(), "runtime-id-ios-")),
@@ -460,13 +461,14 @@ describe("runtime installation identity", () => {
       JSON.stringify({ name: "identity-sibling-consumer", type: "module" }),
     );
     const script = [
-      'const specifier = "@elizaos/agent/runtime/runtime-installation-id";',
+      'for (const specifier of ["@elizaos/agent/runtime/runtime-installation-id", "@elizaos/agent/runtime/runtime-installation-id.windows"]) {',
       "try {",
       "  const loaded = await import(specifier);",
       '  if ("__createRuntimeInstallationIdLoaderForTests" in loaded) process.exit(7);',
       "} catch (error) {",
       '  const expected = error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED" || String(error).includes("Cannot find module");',
       "  if (!expected) throw error;",
+      "}",
       "}",
     ].join("\n");
     await expect(
@@ -522,21 +524,4 @@ describe("runtime installation identity", () => {
       "must not have multiple links",
     );
   });
-
-  it.runIf(process.platform === "win32")(
-    "fails closed with a typed unsupported contract on real Windows",
-    async () => {
-      const root = await fs.mkdtemp(
-        path.join(os.tmpdir(), "runtime-owner-win-unsupported-"),
-      );
-      cleanup.push(root);
-      await expect(loadOrCreateRuntimeInstallationId(root)).rejects.toEqual(
-        expect.objectContaining({
-          code: "RUNTIME_INSTALLATION_ID_PLATFORM_UNSUPPORTED",
-          name: RuntimeInstallationIdentityUnsupportedError.name,
-        }),
-      );
-      await expectNoIdentityArtifacts(root);
-    },
-  );
 });

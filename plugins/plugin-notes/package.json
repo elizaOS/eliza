@@ -14,22 +14,12 @@
         "import": "./src/index.ts",
         "default": "./src/index.ts"
       },
-      "bun": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./plugin": {
       "types": "./dist/plugin.d.ts",
       "eliza-source": {
-        "types": "./src/plugin.ts",
-        "import": "./src/plugin.ts",
-        "default": "./src/plugin.ts"
-      },
-      "bun": {
         "types": "./src/plugin.ts",
         "import": "./src/plugin.ts",
         "default": "./src/plugin.ts"
@@ -60,14 +50,16 @@
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:views": "bunx --bun vite build --config vite.config.views.ts",
+    "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",
-    "react": "^19.0.0"
+    "react": "^19.0.0",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/shared": "workspace:*"
   },
   "peerDependencies": {
     "react-dom": "^19.0.0"

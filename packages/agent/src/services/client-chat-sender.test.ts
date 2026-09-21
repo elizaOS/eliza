@@ -14,12 +14,12 @@ import {
   type Character,
   type Content,
   type IAgentRuntime,
-  InMemoryDatabaseAdapter,
   type Memory,
   type SendHandlerFunction,
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { handleSwarmSynthesis } from "../api/server-helpers-swarm.ts";
 import type { ConversationMeta, ServerState } from "../api/server-types.ts";

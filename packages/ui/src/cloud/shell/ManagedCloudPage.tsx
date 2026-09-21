@@ -6,7 +6,7 @@
  * session rather than the currently selected agent runtime.
  */
 
-import type { PageLayoutManifest } from "@elizaos/core";
+import type { PageLayoutManifest } from "@elizaos/common";
 import { type ComponentType, Suspense } from "react";
 import {
   matchPath,

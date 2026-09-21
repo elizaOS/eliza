@@ -157,11 +157,6 @@ function assertUiCoreFixtureCoreBootstrap(source: string): void {
       step.name === "Setup workspace dependencies" &&
       step.uses === "./.github/actions/setup-bun-workspace",
   );
-  const generationIndex = steps.findIndex(
-    (step) =>
-      step.name === "Ensure generated shared i18n data" &&
-      step.run === "node packages/app-core/scripts/ensure-shared-i18n-data.mjs",
-  );
   const buildIndex = steps.findIndex(
     (step) =>
       step.name === "Build core runtime contract" &&
@@ -175,18 +170,16 @@ function assertUiCoreFixtureCoreBootstrap(source: string): void {
 
   if (
     setupIndex < 0 ||
-    generationIndex < 0 ||
     buildIndex < 0 ||
     cloudFixtureIndex < 0
   ) {
     throw new Error(
-      "UI core fixtures must retain setup, generated data, core build, and cloud E2E steps",
+      "UI core fixtures must retain setup, core build, and cloud E2E steps",
     );
   }
   if (
     !(
-      setupIndex < generationIndex &&
-      generationIndex < buildIndex &&
+      setupIndex < buildIndex &&
       buildIndex < cloudFixtureIndex
     )
   ) {
@@ -449,7 +442,7 @@ describe("GitHub action supply-chain references", () => {
         ),
       ),
     ).toThrow(
-      "UI core fixtures must retain setup, generated data, core build, and cloud E2E steps",
+      "UI core fixtures must retain setup, core build, and cloud E2E steps",
     );
 
     const afterCloudFixture = moveStepToEnd(

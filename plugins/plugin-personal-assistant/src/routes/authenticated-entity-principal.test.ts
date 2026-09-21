@@ -20,7 +20,7 @@ vi.mock("@elizaos/app-core/services/auth-store", () => ({
   AuthStore: class AuthStore {},
 }));
 
-vi.mock("@elizaos/agent", () => ({
+vi.mock("@elizaos/plugin-relationships/knowledge-graph", () => ({
   resolveKnowledgeGraphService: () => ({
     getEntityStore: () => ({ resolve: mocks.resolve }),
   }),

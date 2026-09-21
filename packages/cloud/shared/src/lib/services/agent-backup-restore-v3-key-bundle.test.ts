@@ -11,7 +11,7 @@ import {
   type KmsAeadOperationKeyBundleHandle,
   KmsAeadOperationKeyBundleProvider,
   LocalKmsAdapter,
-} from "@elizaos/core/security/kms";
+} from "@elizaos/credentials/kms";
 import {
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,

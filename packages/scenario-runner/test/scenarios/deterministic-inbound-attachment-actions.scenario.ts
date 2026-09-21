@@ -5,12 +5,12 @@
  */
 
 import type { AgentRuntime, UUID } from "@elizaos/core";
+import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   type RuntimeWithScenarioModelFixtures,
   strictActionRouteFixtures,
-} from "@elizaos/core/testing";
-import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing";
 import {
   matchesTypedTurnInput,
   typedTurnEvaluationFixtures,

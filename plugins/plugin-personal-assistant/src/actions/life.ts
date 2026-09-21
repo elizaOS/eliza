@@ -12,7 +12,6 @@
 import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,
-  renderGroundedActionReply,
 } from "@elizaos/agent";
 import type {
   ActionResult,
@@ -36,6 +35,7 @@ import {
   type SubactionsMap,
   validateUuid,
 } from "@elizaos/core";
+import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
 import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGoalRequest,

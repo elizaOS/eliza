@@ -5,12 +5,12 @@ import {
   ApprovalDispatchControlStore,
   type ApprovalEnqueueInput,
   createApprovalQueue,
-  resolveKnowledgeGraphService,
-} from "@elizaos/agent";
+} from "@elizaos/plugin-assistant";
 import {
   CalendarService,
   createDefaultCalendarHostGate,
 } from "@elizaos/plugin-calendar";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { googleHandoffFixture } from "../../test/helpers/handoff-google.js";
 import {

@@ -21,7 +21,7 @@ const secureStoreMocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@elizaos/vault", () => ({
+vi.mock("@elizaos/credentials/vault", () => ({
   createManager: vaultMocks.createManager,
   deleteSavedLogin: vaultMocks.deleteSavedLogin,
   getAutofillAllowed: vaultMocks.getAutofillAllowed,

@@ -11,15 +11,3 @@ export type {
 	RolesConfig,
 	RolesWorldMetadata,
 } from "../roles.js";
-export * from "./cloud-topology.js";
-export * from "./deployment-types.js";
-export {
-	CHARACTER_LANGUAGES,
-	type CharacterFailureTemplates,
-	type CharacterLanguage,
-	type MessageExample,
-	type MessageExampleContent,
-	type StylePreset,
-} from "./first-run-options.js";
-export * from "./service-routing-types.js";
-export * from "./wallet-types.js";

@@ -3,18 +3,19 @@
  * readiness. Expensive model work is serialized per process and remains an
  * optimization; the model handlers retain ownership of first-use failures.
  */
+import { createRequire } from "node:module";
 import {
   configureLocalEmbeddingPlugin,
   loadEffectiveElizaConfig,
 } from "@elizaos/agent";
+import { formatError, isTruthyEnvValue } from "@elizaos/common";
 import {
   type AgentRuntime,
-  isTruthyEnvValue,
   logger,
   ModelType,
   type Plugin,
 } from "@elizaos/core";
-import { formatError, isMobilePlatform } from "@elizaos/shared";
+import { isMobilePlatform } from "@elizaos/shared/runtime-env";
 import {
   type EmbeddingWarmupPhase,
   updateStartupEmbeddingProgress,
@@ -31,7 +32,26 @@ let localInferenceRuntime:
   | undefined;
 let warmupInFlight: Promise<void> | null = null;
 
+const requireFromHost = createRequire(import.meta.url);
+
 async function getLocalInferenceRuntime() {
+  // Resolve only this optional entry before executing it. A missing dependency
+  // thrown inside an installed plugin is a real startup failure, not absence.
+  try {
+    requireFromHost.resolve("@elizaos/plugin-local-inference/runtime");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (
+      code !== "MODULE_NOT_FOUND" &&
+      code !== "ERR_MODULE_NOT_FOUND" &&
+      code !== "ERR_PACKAGE_PATH_NOT_EXPORTED"
+    )
+      throw error;
+    logger.info(
+      "[eliza] Local embedding warmup unavailable: optional local-inference runtime is not installed.",
+    );
+    return undefined;
+  }
   localInferenceRuntime ??= await import(
     "@elizaos/plugin-local-inference/runtime"
   );
@@ -47,7 +67,13 @@ function isLocalEmbeddingWarmupDeferredByEnv(): boolean {
 function startLocalEmbeddingWarmup(
   onProgress?: EmbeddingProgressCallback,
 ): void {
-  void warmupEmbeddingModel(onProgress);
+  void warmupEmbeddingModel(onProgress).catch((error) => {
+    // error-policy:J1 observe every detached warmup failure, including config
+    // and installed-plugin import errors before the download/load boundary.
+    logger.error(
+      `[eliza] Local embedding warmup preparation failed: ${formatError(error)}`,
+    );
+  });
 }
 
 /** Starts eager warmup only when the operator has disabled default deferral. */
@@ -97,6 +123,7 @@ async function warmupEmbeddingModelImpl(
   }
 
   const localInference = await getLocalInferenceRuntime();
+  if (!localInference) return;
   if (!localInference.shouldWarmupLocalEmbeddingModel()) {
     logger.info(
       "[eliza] Skipping local embedding (GGUF) warmup — not needed for this configuration (e.g. Eliza Cloud embeddings, or local embeddings disabled).",

@@ -3,7 +3,7 @@
  * prompts. Dates, custom objects, accessors, sparse arrays, and values JSON
  * would omit are rejected before delivery; repeated references are permitted.
  */
-import { ElizaError, type JsonValue } from "@elizaos/core/edge";
+import { ElizaError, type JsonValue } from "@elizaos/core";
 
 function cloneDataProperty(
   object: object,

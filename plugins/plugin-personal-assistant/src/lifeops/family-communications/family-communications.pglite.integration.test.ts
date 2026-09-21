@@ -2,8 +2,12 @@
  * Real-PGlite coverage for verified voice intake, append-only corrections,
  * the shared ScheduledTask runner, provider-event replay, and privacy views.
  */
-import { type EntityStore, resolveKnowledgeGraphService } from "@elizaos/agent";
+
 import type { AgentRuntime } from "@elizaos/core";
+import {
+  type EntityStore,
+  resolveKnowledgeGraphService,
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import type { ScheduledTaskRunnerHandle } from "@elizaos/plugin-scheduling";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

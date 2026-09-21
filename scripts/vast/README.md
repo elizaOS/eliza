@@ -57,8 +57,8 @@ What a real run does, in order:
 2. `PUT /asks/{offer}/` — boots `ghcr.io/elizaos/certification-gpu:latest`
    (override: `--image`). The signing key and push command ride **only** in
    the create-payload env; the onstart text contains no secret material.
-3. The onstart script clones the repo at exactly `--sha`, `bun run
-   install:light`, starts the baked gpu-vision `llama-server` when present,
+3. The onstart script clones the repo at exactly `--sha`, `bun
+   install`, starts the baked gpu-vision `llama-server` when present,
    then `bundle:create --tier <tier>` → `certify:rollup` → `certify:sign`
    (reviewer kind `agent`), prints the signed certification between log
    markers, and runs the push command if configured.
@@ -109,7 +109,7 @@ The workflow mirrors any failure as a red run whose summary says exactly:
 ## Local fallback (one command)
 
 Same chain, same signed output — on your machine (M-series covers the cpu
-tier; a CUDA box with `llama-server` + `bun run test:gpu-vision` models for
+tier; a CUDA box with `llama-server` + `node --test scripts/gpu-vision/*.test.mjs` models for
 gpu/full):
 
 ```bash

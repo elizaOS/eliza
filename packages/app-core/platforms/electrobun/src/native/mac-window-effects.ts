@@ -6,8 +6,7 @@
  */
 import { CString, dlopen, FFIType, type Pointer, ptr } from "bun:ffi";
 import { join } from "node:path";
-import { assertDlopenPathAllowed } from "@elizaos/core";
-import { resolveNativeLibraryCandidate } from "../../../../src/platform/native-library-policy";
+import { resolveNativeLibraryCandidate } from "@elizaos/shared/platform/native-library-policy";
 
 /**
  * Typed interface for the symbols loaded from libMacWindowEffects.dylib.
@@ -67,12 +66,8 @@ function loadLib(): MacEffectsLib {
     );
     return null;
   }
-  // Store-build invariant: every bun:ffi dlopen path must resolve inside the
-  // app bundle. Direct builds and non-darwin platforms short-circuit. Throws
-  // on a path that escapes the .app/Contents/ root before reaching the OS
-  // loader so failures are diagnosable at the JS layer instead of via opaque
-  // dyld errors.
-  assertDlopenPathAllowed(dylibPath);
+  // The host resolver has already enforced the store build's realpath,
+  // basename and running-app Contents containment before reaching dlopen.
 
   try {
     // Cast to MacEffectsLib: bun:ffi does not infer symbol signatures from

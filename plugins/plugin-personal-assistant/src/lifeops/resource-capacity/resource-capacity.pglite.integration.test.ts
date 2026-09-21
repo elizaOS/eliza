@@ -5,15 +5,15 @@
  */
 import { randomUUID } from "node:crypto";
 import {
-  type EntityStore,
-  KNOWLEDGE_GRAPH_SERVICE,
-  resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import {
   type AgentRuntime,
   createMessageMemory,
   type Memory,
 } from "@elizaos/core";
+import {
+  type EntityStore,
+  KNOWLEDGE_GRAPH_SERVICE,
+  resolveKnowledgeGraphService,
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {

@@ -11,13 +11,15 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
-  BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
   ModelType,
   NotificationService,
   ResponseHandlerFieldRegistry,
-  runV5MessageRuntimeStage1,
   ServiceType,
 } from "@elizaos/core";
+import {
+  BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+  runV5MessageRuntimeStage1,
+} from "@elizaos/plugin-assistant";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { notifyAction } from "./notify";
 
@@ -316,7 +318,7 @@ describe("NOTIFY on the planner action surface", () => {
           {
             id: "notify-1",
             name: "NOTIFY",
-            args: { title: "Job finished", category: "workflow" },
+            arguments: { title: "Job finished", category: "workflow" },
           },
         ],
       },

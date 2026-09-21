@@ -16,7 +16,7 @@ import {
   getApps,
   loadRegistry,
 } from "@elizaos/registry/first-party";
-import type { RegistryAppInfo } from "@elizaos/shared";
+import type { RegistryAppInfo } from "@elizaos/shared/contracts/apps";
 import { ensureRouteAuthorized } from "./auth.ts";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";

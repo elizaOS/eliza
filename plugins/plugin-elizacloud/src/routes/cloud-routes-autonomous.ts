@@ -3,10 +3,7 @@ import fs from "node:fs/promises";
 import type http from "node:http";
 import path from "node:path";
 import { isCliLoginSessionId } from "@elizaos/cloud-sdk";
-import {
-  isCloudInferenceSelectedInConfig,
-  migrateLegacyRuntimeConfig,
-} from "@elizaos/core";
+import { isCloudInferenceSelectedInConfig, migrateLegacyRuntimeConfig } from "@elizaos/shared/contracts/first-run-options";
 import { logger } from "@elizaos/core";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import type {

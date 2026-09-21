@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   type ActionResult,
+  actionToJsonSchema,
   executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
@@ -16,12 +17,16 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import {
+  type JsonSchema,
+  validateSchema,
+} from "../../../packages/core/src/actions/validate-tool-args.ts";
 import {
   type PlannerToolCall,
   runPlannerLoop,
-} from "../../../packages/core/src/runtime/planner-loop.js";
-import { collectBudgetedStageOneCandidateActions } from "../../../packages/core/src/services/message/planned-tool.js";
+} from "../../plugin-assistant/src/runtime/planner-loop.ts";
+import { collectBudgetedStageOneCandidateActions } from "../../plugin-assistant/src/services/message/planned-tool.ts";
+import { __INTERNAL_normalizeNativeToolsForCall } from "../../plugin-openai/models/text.ts";
 import { notesAction } from "./action.js";
 import { notesPlugin } from "./plugin.js";
 import {
@@ -78,7 +83,13 @@ async function executorHarness(): Promise<IAgentRuntime> {
   Object.assign(runtime, {
     actions: notesPlugin.actions,
     agentId: "agent-id" as UUID,
-    getRoom: vi.fn(async () => null),
+    getRoom: vi.fn(async () => ({ worldId: "world-id" })),
+    getWorld: vi.fn(async () => ({
+      metadata: {
+        roles: { "owner-id": "OWNER" },
+        roleSources: { "owner-id": "manual" },
+      },
+    })),
     reportError: vi.fn(),
     logger: {
       debug: vi.fn(),
@@ -114,6 +125,193 @@ function execute(
 }
 
 describe("promoted Notes execution", () => {
+  it("requires an update selector on the provider wire and preserves unrelated text through real admission", async () => {
+    const runtime = await executorHarness();
+    const action = notesPlugin.actions?.find(
+      (entry) => entry.name === "NOTES_UPDATE",
+    );
+    if (!action)
+      throw new Error("The promoted Notes update action is unavailable");
+    const normalized = __INTERNAL_normalizeNativeToolsForCall(
+      [
+        {
+          name: action.name,
+          description: action.description,
+          strict: true,
+          parameters: actionToJsonSchema(action),
+        },
+      ],
+      { cerebrasMode: true },
+    );
+    const tools = normalized.tools as Record<
+      string,
+      { inputSchema: { jsonSchema: JsonSchema } }
+    >;
+    const schema = tools.NOTES_UPDATE.inputSchema.jsonSchema;
+    const missing = { replacementContent: "Packing\nBring spare cable." };
+    const errors: string[] = [];
+    validateSchema(schema, missing, "", errors);
+    expect(errors).toEqual(
+      expect.arrayContaining([expect.stringContaining("content")]),
+    );
+    const service = getNotesService(runtime);
+    const original = await service.createNote({
+      title: "Packing",
+      body: "Bring lens. Bring cable.",
+      color: "yellow",
+    });
+    expect(
+      (await execute(runtime, { name: action.name, params: missing })).success,
+    ).toBe(false);
+    expect(service.getNote(original.id)).toEqual(original);
+    const params = {
+      content: "Packing",
+      textEdit: {
+        field: "body",
+        oldText: "Bring cable.",
+        newText: "Bring spare cable.",
+      },
+    };
+    const validErrors: string[] = [];
+    validateSchema(schema, params, "", validErrors);
+    expect(validErrors).toEqual([]);
+    expect(
+      (await execute(runtime, { name: action.name, params })).success,
+    ).toBe(true);
+    expect(service.getNote(original.id).body).toBe(
+      "Bring lens. Bring spare cable.",
+    );
+  });
+
+  it.each([undefined, "", "  ", 7, ["Existing"], { title: "Existing" }])(
+    "rejects invalid legacy update selector %j without writes",
+    async (selector) => {
+      const runtime = await executorHarness();
+      const service = getNotesService(runtime);
+      const original = await service.createNote({
+        title: "Existing",
+        body: "Keep all text.",
+        color: "yellow",
+      });
+      const result = await execute(runtime, {
+        name: "NOTES_UPDATE",
+        params: { text: selector, replacementContent: "Existing\nChanged" },
+      });
+      expect(result.success).toBe(false);
+      expect(service.getNote(original.id)).toEqual(original);
+    },
+  );
+  it.each(["text", "note", "title", "query"])(
+    "persists CRUD through the declared %s content alternative",
+    async (name) => {
+      const runtime = await executorHarness();
+      const content = "Exact label\nComplete body with  two spaces.";
+      expect(
+        await execute(runtime, {
+          name: "NOTES_CREATE",
+          params: { [name]: content },
+        }),
+      ).toMatchObject({ success: true });
+      expect(
+        await execute(runtime, {
+          name: "NOTES_LIST",
+          params: { [name]: "Exact label" },
+        }),
+      ).toMatchObject({ success: true, data: { count: 1 } });
+      expect(
+        await execute(runtime, {
+          name: "NOTES_UPDATE",
+          params: {
+            [name]: "Exact label",
+            replacementContent: "Exact label\nChanged body.",
+          },
+        }),
+      ).toMatchObject({ success: true });
+      expect(getNotesService(runtime).listNotes()).toMatchObject([
+        { title: "Exact label", body: "Changed body." },
+      ]);
+      expect(
+        await execute(runtime, {
+          name: "NOTES_DELETE",
+          params: { [name]: "Exact label" },
+        }),
+      ).toMatchObject({ success: true });
+      expect(getNotesService(runtime).listNotes()).toEqual([]);
+    },
+  );
+
+  it.each(["body", "newText"])(
+    "accepts matching %s replacement and rejects conflicting replacements without writing",
+    async (name) => {
+      const runtime = await executorHarness();
+      await execute(runtime, {
+        name: "NOTES_CREATE",
+        params: { content: "Record\nOriginal" },
+      });
+      const replacement = "Record\nChanged  exactly";
+      expect(
+        await execute(runtime, {
+          name: "NOTES_UPDATE",
+          params: {
+            content: "Record",
+            [name]: replacement,
+            replacementContent: replacement,
+          },
+        }),
+      ).toMatchObject({ success: true });
+      const before = getNotesService(runtime).listNotes();
+      expect(
+        await execute(runtime, {
+          name: "NOTES_UPDATE",
+          params: {
+            content: "Record",
+            [name]: "Different",
+            replacementContent: replacement,
+          },
+        }),
+      ).toMatchObject({ success: false });
+      expect(getNotesService(runtime).listNotes()).toEqual(before);
+    },
+  );
+
+  it("accepts identical content alternatives without losing bytes", async () => {
+    const runtime = await executorHarness();
+    const content = "Exact label\nComplete  body";
+    expect(
+      await execute(runtime, {
+        name: "NOTES_CREATE",
+        params: {
+          content,
+          text: content,
+          note: content,
+          title: content,
+          query: content,
+        },
+      }),
+    ).toMatchObject({ success: true });
+    expect(getNotesService(runtime).listNotes()).toMatchObject([
+      { title: "Exact label", body: "Complete  body" },
+    ]);
+  });
+
+  it.each([
+    {},
+    { text: "" },
+    { text: "   " },
+    { unexpected: "Content" },
+    { content: "Record", query: "Different" },
+    { content: "Record", text: "Record " },
+  ])(
+    "rejects missing, unknown, or conflicting input without writes: %j",
+    async (params) => {
+      const runtime = await executorHarness();
+      expect(
+        await execute(runtime, { name: "NOTES_CREATE", params }),
+      ).toMatchObject({ success: false });
+      expect(getNotesService(runtime).listNotes()).toEqual([]);
+    },
+  );
+
   it("accepts the planner alias spellings the handler documents (#31114)", async () => {
     // Before the aliases were declared, every one of these calls was rejected
     // by the core validator with "Unexpected argument" before the handler ran.
@@ -160,8 +358,7 @@ describe("promoted Notes execution", () => {
       data: { op: "create", note: { title: "Second note" } },
     });
 
-    // Core never lets an alias clobber an explicit canonical value: when both
-    // arrive, the alias stays undeclared and the call is rejected as before.
+    // Notes rejects conflicting alternatives before any store operation.
     const conflict = await execute(runtime, {
       name: "NOTES_LIST",
       params: { content: "second", query: "alias" },
@@ -243,21 +440,7 @@ describe("promoted Notes execution", () => {
     expect(getNotesService(runtime).listNotes()).toEqual(before);
   });
 
-  it("exposes complete replacement content separately from the create-only body", async () => {
-    const update = notesPlugin.actions?.find(
-      (action) => action.name === "NOTES_UPDATE",
-    );
-    expect(
-      update?.parameters?.map((parameter) => parameter.name),
-    ).not.toContain("body");
-    expect(
-      update?.parameters?.find(
-        (parameter) => parameter.name === "replacementContent",
-      ),
-    ).toMatchObject({
-      required: false,
-      aliases: ["body", "newText"],
-    });
+  it("updates the complete note through the declared replacement field", async () => {
     const runtime = await executorHarness();
     await execute(runtime, {
       name: "NOTES_CREATE",
@@ -295,7 +478,8 @@ describe("promoted Notes execution", () => {
       name: "NOTES_UPDATE",
       params: {
         content: "Conversation context QA",
-        body: "Conversation context QA\nBring only the blue notebook.",
+        replacementContent:
+          "Conversation context QA\nBring only the blue notebook.",
       },
     });
     expect(updated.success).toBe(true);
@@ -642,7 +826,13 @@ describe("NOTES operation parsing", () => {
     Object.assign(runtime, {
       actions: [notesAction],
       agentId: "agent-id" as UUID,
-      getRoom: vi.fn(async () => null),
+      getRoom: vi.fn(async () => ({ worldId: "world-id" })),
+      getWorld: vi.fn(async () => ({
+        metadata: {
+          roles: { "owner-id": "OWNER" },
+          roleSources: { "owner-id": "manual" },
+        },
+      })),
       reportError: vi.fn(),
       logger: {
         debug: vi.fn(),

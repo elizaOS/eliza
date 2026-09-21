@@ -7,8 +7,9 @@
  * asserted from the JSON the route actually serves.
  */
 import type http from "node:http";
-import type { AgentRuntime, RouteHelpers, UUID } from "@elizaos/core";
+import type { AgentRuntime, UUID } from "@elizaos/core";
 import { createUniqueUuid } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/shared/api/route-helpers";
 import { describe, expect, it } from "vitest";
 import { handleInboxRoute, type InboxRouteState } from "../inbox-routes";
 

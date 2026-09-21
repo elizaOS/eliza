@@ -26,10 +26,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { resolvePendingPromptsStore } from "@elizaos/plugin-assistant";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { gatherImplicitReferentCandidates } from "../lifeops/implicit-referents/candidate-sources.js";
 import { resolveImplicitReferent } from "../lifeops/implicit-referents/index.js";
-import { resolvePendingPromptsStore } from "../lifeops/pending-prompts/store.js";
 import { messageText } from "../lifeops/voice/grounded-reply.js";
 
 /**

@@ -16,7 +16,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveBuildModelExceptions } from "./lib/script-metadata.mjs";
-import { resolveWorkspacePackageDirs } from "./lib/workspace-package-dirs.mjs";
+import { listWorkspaceDirs } from "./lib/workspaces.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -48,7 +48,6 @@ const CUSTOM_PLUGIN_BUILD_ALLOW = new Map([
     "plugins/plugin-local-inference/build.ts",
     "multi-entry runtime package with post-build import smoke checks",
   ],
-  ["plugins/plugin-sql/src/build.ts", "nested plugin-sql package layout"],
   [
     "plugins/plugin-video/build.ts",
     "custom declaration directory flags against tsconfig.json",
@@ -69,7 +68,9 @@ const CUSTOM_PLUGIN_BUILD_ALLOW = new Map([
 ]);
 
 export function listPackageDirs(root = repoRoot, globs = workspaceGlobs) {
-  return resolveWorkspacePackageDirs(root, globs);
+  return listWorkspaceDirs({ repoRoot: root, patterns: globs }).map((dir) =>
+    path.resolve(root, dir),
+  );
 }
 
 export function walkBuildFiles(base, out = []) {
@@ -355,7 +356,6 @@ export function analyzeBuildTypecheck(options = {}) {
         body,
       ) &&
       (/\bBun\.build\b/.test(body) ||
-        /\bbuild\(\s*\{/.test(body) ||
         /import\s+\{\s*build\s*\}\s+from\s+["']bun["']/.test(body))
     ) {
       const reason = CUSTOM_PLUGIN_BUILD_ALLOW.get(rel);

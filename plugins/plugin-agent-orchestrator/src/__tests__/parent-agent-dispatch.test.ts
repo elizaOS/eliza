@@ -260,7 +260,11 @@ describe("dispatchParentAgentDirective", () => {
             didRespond: true,
             responseContent: null,
             responseMessages: [],
-            terminalFailure,
+            outcome: {
+              status: "failed" as const,
+              error: terminalFailure,
+              effects: [],
+            },
           };
         }),
       },
@@ -325,7 +329,11 @@ describe("dispatchParentAgentDirective", () => {
           didRespond: true,
           responseContent: null,
           responseMessages: [],
-          terminalFailure,
+          outcome: {
+            status: "failed" as const,
+            error: terminalFailure,
+            effects: [],
+          },
         })),
       },
     } as Partial<IAgentRuntime>);
@@ -380,7 +388,11 @@ describe("dispatchParentAgentDirective", () => {
           didRespond: true,
           responseContent: { text: "Everything passed." },
           responseMessages: [],
-          terminalFailure,
+          outcome: {
+            status: "failed" as const,
+            error: terminalFailure,
+            effects: [],
+          },
         })),
       },
     } as Partial<IAgentRuntime>);

@@ -302,10 +302,10 @@ and makes later runs look less like a first run. Before rerunning a SIWE lane,
 reconcile the org with the cleanup lane from the repo root:
 
 ```bash
-bun run cloud:e2e:agents:cleanup -- --report /tmp/cloud-agent-dry-run.json
+bun scripts/cloud/e2e-agent-cleanup.mjs --report /tmp/cloud-agent-dry-run.json
 
 # Review the dry-run identity and candidate rows, then bind mutation to them:
-bun run cloud:e2e:agents:cleanup -- \
+bun scripts/cloud/e2e-agent-cleanup.mjs \
   --apply --wait \
   --candidate <reviewed-agent-id> \
   --expected-address <siwe-wallet-address> \

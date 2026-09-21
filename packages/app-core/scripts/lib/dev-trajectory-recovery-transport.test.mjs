@@ -8,7 +8,7 @@ import { createDevTrajectoryRecoveryCoordinator } from "./dev-trajectory-recover
 
 const fixture = fileURLToPath(
   new URL(
-    "./fixtures/trajectory-recovery-transport-child.mjs",
+    "./__tests__/fixtures/trajectory-recovery-transport-child.mjs",
     import.meta.url,
   ),
 );
@@ -176,7 +176,7 @@ describe("Bun dev supervisor", () => {
   it("runs the actual Bun parent coordinator and Bun child through exact-exit recovery", () => {
     const supervisorFixture = fileURLToPath(
       new URL(
-        "./fixtures/trajectory-recovery-supervisor-parent.mjs",
+        "./__tests__/fixtures/trajectory-recovery-supervisor-parent.mjs",
         import.meta.url,
       ),
     );

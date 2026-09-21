@@ -536,7 +536,7 @@ describeE2E("Group H — /api/crypto/webhook", () => {
 
   test("happy path: GET probe returns documented JSON status", async () => {
     const res = await api.get("/api/crypto/webhook");
-    expect(res.status).toBe(200);
+    expect(res.status, await res.clone().text()).toBe(200);
     const body = (await res.json()) as { status?: string; message?: string };
     expect(body.status).toBe("ok");
   });

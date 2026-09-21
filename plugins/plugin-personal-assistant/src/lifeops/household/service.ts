@@ -6,13 +6,13 @@
  * bounded in `household-entity-scan.ts`.
  */
 import crypto from "node:crypto";
+import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import { type IAgentRuntime, Service } from "@elizaos/core";
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import {
   getScheduledTaskRunner,
   type ScheduledTaskRunnerHandle,

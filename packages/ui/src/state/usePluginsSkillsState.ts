@@ -7,7 +7,7 @@
  * Accepts `{ setActionNotice }` for cross-domain notifications.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { useCallback, useRef, useState } from "react";
 import {
   client,

@@ -8,8 +8,8 @@
  * processes are therefore inside the runtime installation's trust domain.
  * Native Android and iOS hosts supply their app sandbox boundary; platform
  * ancestors retain inode checks while the app-owned boundary remains strict.
- * Windows fails closed because this package has no ACL primitive that can prove
- * the equivalent boundary.
+ * Windows uses its current-user OS credential store instead of filesystem
+ * ownership; a protected native mutex serializes creation across processes.
  */
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
@@ -50,15 +50,6 @@ interface MobileStateBoundary {
   appDataDirectory: string;
   platformName: "Android" | "iOS";
   environmentKey: string;
-}
-
-export class RuntimeInstallationIdentityUnsupportedError extends Error {
-  readonly code = "RUNTIME_INSTALLATION_ID_PLATFORM_UNSUPPORTED";
-
-  constructor(message: string) {
-    super(message);
-    this.name = "RuntimeInstallationIdentityUnsupportedError";
-  }
 }
 
 export class RuntimeInstallationIdentityRecoveryError extends Error {
@@ -809,9 +800,10 @@ export async function loadOrCreateRuntimeInstallationId(
   stateDirectory: string,
 ): Promise<UUID> {
   if (process.platform === "win32") {
-    throw new RuntimeInstallationIdentityUnsupportedError(
-      "Secure runtime installation identity storage is unavailable on Windows.",
+    const { loadWindowsRuntimeInstallationId } = await import(
+      "./runtime-installation-id.windows.ts"
     );
+    return await loadWindowsRuntimeInstallationId(stateDirectory);
   }
   return await loadOrCreateRuntimeInstallationIdImpl(stateDirectory);
 }

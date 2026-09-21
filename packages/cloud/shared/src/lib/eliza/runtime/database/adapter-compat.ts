@@ -1,15 +1,15 @@
 // Wires hosted Eliza agent adapter compat behavior for cloud runtime services.
+
+import { type Memory, type UUID } from "@elizaos/common";
 import {
   type Component,
   type Entity,
   elizaLogger,
   type IDatabaseAdapter,
-  type Memory,
   type Relationship,
   type Room,
   stringToUuid,
   type Task,
-  type UUID,
   type World,
 } from "@elizaos/core";
 import { stableSerialize } from "../stable-serialize";

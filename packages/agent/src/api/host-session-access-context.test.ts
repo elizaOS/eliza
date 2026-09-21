@@ -4,8 +4,8 @@ import {
   type IAgentRuntime,
   type UUID,
 } from "@elizaos/core";
+import { actorCanManageOwnerDocuments } from "@elizaos/plugin-assistant";
 import { describe, expect, it } from "vitest";
-import { actorCanManageOwnerDocuments } from "./document-access.ts";
 import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 
 const owner = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" as UUID;

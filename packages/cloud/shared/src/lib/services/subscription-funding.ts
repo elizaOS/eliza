@@ -3,7 +3,7 @@
  * credits in one organization-scoped transaction, then returns refunds to the
  * exact source that funded the reservation.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, eq } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { writeTransaction } from "../../db/helpers";

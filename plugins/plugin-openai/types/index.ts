@@ -1,3 +1,5 @@
+import type { ToolCall } from "@elizaos/core";
+
 /**
  * Supported audio formats for transcription
  */
@@ -282,7 +284,7 @@ export interface TextStreamResult {
   finishReason: Promise<string | undefined>;
 
   /** Native tool calls when the caller requested a tool-capable result. */
-  toolCalls?: Promise<unknown[] | undefined>;
+  toolCalls?: Promise<ToolCall[] | undefined>;
 
   /** Concrete backend and model identity retained through runtime stream consumption. */
   providerMetadata?: {
@@ -434,15 +436,6 @@ export interface OpenAIPluginConfig {
 
   /** Enable experimental telemetry */
   OPENAI_EXPERIMENTAL_TELEMETRY?: string;
-
-  /** Browser-only proxy base URL */
-  OPENAI_BROWSER_BASE_URL?: string;
-
-  /** Declared upstream base URL for browser proxy capability checks */
-  OPENAI_BROWSER_UPSTREAM_BASE_URL?: string;
-
-  /** Browser-only embedding proxy URL */
-  OPENAI_BROWSER_EMBEDDING_URL?: string;
 
   /** Transcription model */
   OPENAI_TRANSCRIPTION_MODEL?: string;

@@ -1,7 +1,7 @@
 /** Deterministic unit proofs for the bounded backup catalogue runtime tick. */
 
 import { describe, expect, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   AGENT_BACKUP_ADMISSION_CONTENDED_CODE,
   AgentBackupAdmissionContendedError,

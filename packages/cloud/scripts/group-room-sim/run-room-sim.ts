@@ -1080,7 +1080,7 @@ function printableSpec(spec: RoomsSpec): Record<string, unknown> {
 // ── CLI ────────────────────────────────────────────────────────────────────
 
 const USAGE =
-  "usage: bun run cloud:group-room-sim -- --room <household|co-parenting|friends|trip|community> [--dry-run] | --print-spec";
+  "usage: bun packages/cloud/scripts/group-room-sim/run-room-sim.ts --room <household|co-parenting|friends|trip|community> [--dry-run] | --print-spec";
 
 async function main(
   args: readonly string[],

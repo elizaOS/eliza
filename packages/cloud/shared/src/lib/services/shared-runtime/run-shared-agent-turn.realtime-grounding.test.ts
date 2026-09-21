@@ -5,7 +5,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { ActionResult } from "@elizaos/core/edge";
+import type { ActionResult } from "@elizaos/core";
 
 let searchResult: ActionResult;
 let runtimeReply = "";

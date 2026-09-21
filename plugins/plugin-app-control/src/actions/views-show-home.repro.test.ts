@@ -7,15 +7,15 @@
 import {
 	AgentRuntime,
 	type Memory,
-	renderActionResultsForModel,
 	type ViewScopedAction,
 } from "@elizaos/core";
+import { renderActionResultsForModel } from "@elizaos/plugin-assistant";
 import { describe, expect, it, vi } from "vitest";
 import {
 	actionResultToPlannerToolResult,
 	runPlannerLoop,
-} from "../../../../packages/core/src/runtime/planner-loop.js";
-import { collectPreviousActionResults } from "../../../../packages/core/src/services/message/planned-tool.js";
+} from "../../../plugin-assistant/src/runtime/planner-loop.ts";
+import { collectPreviousActionResults } from "../../../plugin-assistant/src/services/message/planned-tool.ts";
 import { createViewsAction } from "./views.js";
 import {
 	createViewsClient,
@@ -27,7 +27,6 @@ import { runViewsShow } from "./views-show.js";
 
 const coreMock = vi.hoisted(() => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-	ModelType: { TEXT_SMALL: "TEXT_SMALL" },
 	resolveServerOnlyPort: vi.fn(() => 3456),
 	formatError: (error: unknown): string =>
 		error instanceof Error ? error.message : String(error),
@@ -46,10 +45,13 @@ const coreMock = vi.hoisted(() => ({
 
 vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
-	return {
-		...actual,
-		...coreMock,
-	};
+	return { ...actual, ...coreMock };
+});
+
+vi.mock("@elizaos/shared/runtime-env", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("@elizaos/shared/runtime-env")>();
+	return { ...actual, resolveServerOnlyPort: coreMock.resolveServerOnlyPort };
 });
 
 function message(text: string, roomId = "room-1") {

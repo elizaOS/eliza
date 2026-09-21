@@ -6,4 +6,4 @@ export {
   errorMessage,
   isRedirectResponse,
   isTimeoutError,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/errors";

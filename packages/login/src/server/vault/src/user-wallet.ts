@@ -7,7 +7,7 @@
  * default policies pre-applied.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { eq } from "drizzle-orm";
 import { parseEther } from "viem";
 import {

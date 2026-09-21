@@ -47,7 +47,6 @@ import type {
   Memory,
   RoleGateRole,
   Room,
-  RouteHelpers,
   UUID,
   World,
 } from "@elizaos/core";
@@ -55,19 +54,22 @@ import {
   createUniqueUuid,
   getConnectorAccountManager,
   requireConfirmedSendHandlerDelivery,
-  resolveEffectiveMuteState,
   roleRank,
-  setRoomMuteUntil,
-  setWorldMuteState,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import {
+  resolveEffectiveMuteState,
+  setRoomMuteUntil,
+  setWorldMuteState,
+} from "@elizaos/plugin-assistant";
 import type { DiscordService as IDiscordService } from "@elizaos/plugin-discord/service";
 import {
   expandConnectorSourceFilter,
   normalizeConnectorSource,
   PostInboxMessageRequestSchema,
 } from "@elizaos/shared";
+import type { RouteHelpers } from "@elizaos/shared/api/route-helpers";
 import { z } from "zod";
 
 let discordModulePromise: Promise<{

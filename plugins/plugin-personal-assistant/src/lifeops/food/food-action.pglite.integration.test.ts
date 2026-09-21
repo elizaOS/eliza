@@ -6,7 +6,6 @@
  * stale-contentSha256 guard. Deterministic evidence, not a live-model journey.
  */
 import { randomUUID } from "node:crypto";
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import {
   type ActionResult,
   type AgentRuntime,
@@ -14,6 +13,7 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {

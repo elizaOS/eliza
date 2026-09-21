@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Failure-observability suite for a legacy route handler that throws after
  * writing part (or all) of its response. `dispatchRoute` used to return the
@@ -9,13 +10,7 @@
  */
 
 import { Buffer } from "node:buffer";
-import {
-  AgentRuntime,
-  type Character,
-  isElizaError,
-  type Route,
-  type RouteResponse,
-} from "@elizaos/core";
+import { AgentRuntime, type Character, isElizaError } from "@elizaos/core";
 import {
   dispatchBufferedRequest,
   dispatchStreamingRequest,
@@ -24,6 +19,7 @@ import {
   createStdioBridge,
   type StdioBridgeResponseFrame,
 } from "@elizaos/plugin-capacitor-bridge/shared/stdio-bridge";
+import type { Route, RouteResponse } from "@elizaos/shared/api/http-plugin";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 import { dispatchRoute } from "./dispatch-route.ts";
@@ -69,7 +65,7 @@ function runtimeWithHandler(
       handler(res);
     },
   };
-  runtime.routes.push(route);
+  getHttpRuntime(runtime).routes.push(route);
   return runtime;
 }
 

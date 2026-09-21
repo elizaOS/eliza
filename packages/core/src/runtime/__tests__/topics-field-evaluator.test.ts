@@ -7,8 +7,8 @@ import { describe, expect, it } from "vitest";
 import {
 	normalizeTopics,
 	topicsFieldEvaluator,
-} from "../builtin-field-evaluators";
-import { parseMessageHandlerOutput } from "../message-handler";
+} from "../../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
+import { parseMessageHandlerOutput } from "../../../../../plugins/plugin-assistant/src/runtime/message-handler.ts";
 
 describe("topicsFieldEvaluator.parse / normalizeTopics", () => {
 	it("lowercases, trims, and collapses internal whitespace", () => {

@@ -1,6 +1,5 @@
 /**
- * Supplies complete owner-private app-control choices to Stage 1 and the
- * planner. Persisted options are context, never a text-triggered dispatch.
+ * Supplies complete owner-private app-control choices to planning. Persisted options are context, never a text-triggered dispatch.
  * Legacy metadata-only room bindings remain readable without rewriting tasks.
  */
 import { hasOwnerAccess, type Provider } from "@elizaos/core";

@@ -4,11 +4,9 @@
  * events, and schema. The top-level unit the agent's plugin loader resolves,
  * validates, and wires into the runtime.
  */
-import type { AppPackageRouteContext } from "../api/route-helpers";
 import type { ConnectorSourceDefinition } from "../connectors";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
-import type { AccessContext } from "./access-context";
 import type { Character } from "./agent";
 import type { ChatPreHandler } from "./chat-pre-handler";
 import type { Action, AgentContext, Provider } from "./components";
@@ -21,7 +19,6 @@ import type {
 	ModelRegistrationMetadata,
 	PluginModelResult,
 } from "./model";
-import type { X402Config, X402RequestValidator } from "./payment";
 import type { JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { Service } from "./service";
@@ -29,8 +26,6 @@ import type { ShortcutDefinition } from "./shortcut";
 import type { SurfaceManifest } from "./surface-manifest";
 import type { TestSuite } from "./testing";
 import type { ViewKind } from "./view-kind";
-
-export type RouteRuntimeMode = "local" | "local-only" | "cloud" | "remote";
 
 /**
  * Type for a service class constructor.
@@ -54,217 +49,6 @@ export interface ServiceClass {
 }
 
 /**
- * Supported types for route request body fields
- */
-export type RouteBodyValue = JsonValue;
-
-/**
- * Minimal request interface
- * Plugins can use this type for route handlers
- */
-export interface RouteRequest {
-	body?: Record<string, RouteBodyValue>;
-	/** Raw UTF-8 body bytes (required for webhook HMAC verification). */
-	rawBody?: string;
-	params?: Record<string, string>;
-	query?: Record<string, string | string[]>;
-	headers?: Record<string, string | string[] | undefined>;
-	method?: string;
-	path?: string;
-	url?: string;
-}
-
-/**
- * Minimal response interface
- * Plugins can use this type for route handlers
- */
-export interface RouteResponse {
-	status: (code: number) => RouteResponse;
-	json: (data: unknown) => RouteResponse;
-	send: (data: unknown) => RouteResponse;
-	end: () => RouteResponse;
-	setHeader?: (name: string, value: string | string[]) => RouteResponse;
-	sendFile?: (path: string) => RouteResponse;
-	headersSent?: boolean;
-}
-
-/**
- * Context passed to the return-shape route handler ({@link RouteHandler}).
- *
- * This is the canonical contract used by `dispatchRoute` for both HTTP and
- * in-process (IPC) invocations. The legacy Express-shaped `handler` field on
- * {@link Route} remains supported during the plugin-route migration; new
- * plugin routes should prefer `routeHandler` returning a
- * {@link RouteHandlerResult}.
- */
-export interface RouteHandlerContext {
-	body: unknown;
-	/** Raw UTF-8 body when the transport preserved it (webhook signature verification). */
-	rawBody?: string;
-	params: Record<string, string>;
-	query: Record<string, string | string[]>;
-	headers: Record<string, string>;
-	method: string;
-	path: string;
-	runtime: IAgentRuntime;
-	/** true when invoked in-process via IPC; false when invoked over HTTP. */
-	inProcess: boolean;
-	/** true when the HTTP transport has verified this request as loopback/local. */
-	isTrustedLocal?: boolean;
-	/**
-	 * Optional requester identity resolved by the authenticated boundary. Omitted
-	 * means the route is running under today's single-owner local boundary and
-	 * must preserve existing unfiltered behavior.
-	 */
-	accessContext?: AccessContext;
-}
-
-/** Return-shape result produced by a {@link RouteHandler}. */
-export interface RouteHandlerResult {
-	status: number;
-	headers?: Record<string, string>;
-	/** JSON-serializable body; the adapter stringifies on the way out. */
-	body?: unknown;
-	/** Optional streaming body for SSE / long responses. */
-	stream?: AsyncIterable<Uint8Array | string>;
-}
-
-/** Canonical, return-shape route handler. */
-export type RouteHandler = (
-	ctx: RouteHandlerContext,
-) => Promise<RouteHandlerResult>;
-
-/** Express-shaped legacy route handler. */
-export type LegacyRouteHandler = (
-	req: RouteRequest,
-	res: RouteResponse,
-	runtime: IAgentRuntime,
-) => Promise<void>;
-
-interface BaseRoute {
-	type: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "STATIC";
-	path: string;
-	filePath?: string;
-	/** Legacy Express-shaped handler. Coexists with `routeHandler` during migration. */
-	handler?: LegacyRouteHandler;
-	/** Canonical return-shape handler used by `dispatchRoute`. */
-	routeHandler?: RouteHandler;
-	isMultipart?: boolean; // Indicates if the route expects multipart/form-data (file uploads)
-	/**
-	 * Maximum HTTP request body bytes this route permits. Hosts retain their
-	 * default limit when omitted; use only for a reviewed endpoint whose payload
-	 * contract requires a larger bounded body.
-	 */
-	maxBodyBytes?: number;
-	/**
-	 * When true, the route path is used as-is without the plugin-name prefix.
-	 * Use for legacy API paths that must remain stable (e.g. `/api/telegram-setup/status`).
-	 */
-	rawPath?: boolean;
-	/**
-	 * Runtime modes where this route is visible. The agent HTTP server hides
-	 * routes outside this list with 404 before handler logic runs
-	 * (packages/agent/src/api/runtime-mode/), so every host — the bare agent
-	 * and the app-core wrapper — enforces the same visibility contract.
-	 */
-	modes?: ReadonlyArray<RouteRuntimeMode>;
-	/** Free-form one-liner documenting why the route is scoped to those modes. */
-	modeReason?: string;
-	/** x402 micropayment gate: object, or `true` to use `character.settings.x402` defaults */
-	x402?: X402Config | true;
-	/** Runs before payment; invalid → 402 with accepts payload */
-	validator?: X402RequestValidator;
-	/** Optional OpenAPI-style metadata for x402 outputSchema */
-	openapi?: {
-		parameters?: Array<{
-			name: string;
-			in: "path" | "query" | "header";
-			required?: boolean;
-			description?: string;
-			schema: {
-				type: string;
-				format?: string;
-				pattern?: string;
-				enum?: string[];
-				minimum?: number;
-				maximum?: number;
-			};
-		}>;
-		requestBody?: {
-			required?: boolean;
-			description?: string;
-			content: {
-				"application/json"?: { schema: JsonValue };
-				"multipart/form-data"?: { schema: JsonValue };
-			};
-		};
-	};
-	/** Shown in x402 `accepts` / wallet UIs when set */
-	description?: string;
-}
-
-interface PublicRoute extends BaseRoute {
-	public: true;
-	name: string; // Name is required for public routes
-	/**
-	 * Reviewed reason this route may bypass the central auth gate.
-	 * Public routes without this intent are rejected by route registration and
-	 * dispatchers.
-	 */
-	publicReason: string;
-	/**
-	 * A public route is unauthenticated by the central gate, so it defaults to
-	 * read-only (`GET`/`STATIC`): defense-in-depth against a mutating endpoint
-	 * being shipped world-reachable. A non-GET public route (an inbound webhook,
-	 * an OAuth redirect exchange, a companion-bridge callback) is authenticated
-	 * out-of-band instead of by the gate, so it must opt in here by naming that
-	 * mechanism (signature check, unguessable capability token, …). Without this,
-	 * a `public: true` route with a write method is rejected at registration and
-	 * dispatch. GET/STATIC public routes never need it.
-	 */
-	publicWrite?: string;
-}
-
-interface PrivateRoute extends BaseRoute {
-	public?: false;
-	name?: string; // Name is optional for private routes
-}
-
-export type Route = PublicRoute | PrivateRoute;
-
-/** Write methods a public route may only use when it self-authenticates. */
-const PUBLIC_WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-
-export function assertPublicRouteIntent(route: Route, source = "plugin"): void {
-	if (
-		route.maxBodyBytes !== undefined &&
-		(!Number.isSafeInteger(route.maxBodyBytes) || route.maxBodyBytes <= 0)
-	) {
-		throw new Error(
-			`[RouteBody] Route ${source}:${route.type} ${route.path} maxBodyBytes must be a positive safe integer`,
-		);
-	}
-	if (route.public !== true) return;
-	const reason = (route as { publicReason?: unknown }).publicReason;
-	if (typeof reason !== "string" || reason.trim().length === 0) {
-		throw new Error(
-			`[RouteAuth] Public route ${source}:${route.type} ${route.path} must declare publicReason`,
-		);
-	}
-	if (PUBLIC_WRITE_METHODS.has(route.type)) {
-		const publicWrite = (route as { publicWrite?: unknown }).publicWrite;
-		if (typeof publicWrite !== "string" || publicWrite.trim().length === 0) {
-			throw new Error(
-				`[RouteAuth] Public ${route.type} route ${source}:${route.path} is unauthenticated by the central gate; a write-method public route must declare publicWrite naming its out-of-band auth (signature, capability token, …). Make it GET, gate it, or declare publicWrite.`,
-			);
-		}
-	}
-}
-
-/** Route that may include x402 payment fields (alias for authoring clarity) */
-export type PaymentEnabledRoute = Route;
-
-/**
  * JSON Schema type definition for component validation
  */
 export interface JSONSchemaDefinition {
@@ -282,7 +66,7 @@ export interface JSONSchemaDefinition {
 export interface ComponentTypeDefinition {
 	name: string;
 	schema: JSONSchemaDefinition;
-	validator?: (data: Record<string, RouteBodyValue>) => boolean;
+	validator?: (data: Record<string, JsonValue>) => boolean;
 }
 
 /**
@@ -458,7 +242,6 @@ export interface PluginAppLaunchPreparation {
 }
 
 export interface PluginAppBridge {
-	handleAppRoutes?: (ctx: AppPackageRouteContext) => Promise<boolean>;
 	prepareLaunch?: (
 		ctx: PluginAppBridgeLaunchContext,
 	) => Promise<PluginAppLaunchPreparation | null>;
@@ -497,7 +280,15 @@ export interface PluginAppBridge {
  * - `shared`: the view intentionally sits on the same unified background used
  *   by Home/Launcher.
  */
-export type AppShellBackgroundPolicy = "opaque" | "shared";
+export type {
+	AppShellBackgroundPolicy,
+	ViewHeaderPolicy,
+} from "@elizaos/common";
+
+import type {
+	AppShellBackgroundPolicy,
+	ViewHeaderPolicy,
+} from "@elizaos/common";
 
 /**
  * How the app shell frames a view's top bar (#13586).
@@ -511,7 +302,6 @@ export type AppShellBackgroundPolicy = "opaque" | "shared";
  *   affordance; the shared header is not enforced.
  * - `immersive`: a chrome-free surface (e.g. launcher/background); no header.
  */
-export type ViewHeaderPolicy = "normal" | "fullscreen" | "modal" | "immersive";
 
 /**
  * A nav-tab declaration so an app/plugin can register its own page in the
@@ -672,25 +462,17 @@ export type ViewPlatform =
 	| "quest"
 	| "xreal";
 
-/** Presentation/runtime family for a view. */
-export type ViewType = "gui" | "tui" | "xr";
+export {
+	dedupeModalities,
+	type ViewModality,
+	type ViewType,
+} from "@elizaos/common";
 
-/**
- * A surface a view renders on. Same set as {@link ViewType}; named separately
- * because a single view declaration can render on several modalities at once
- * while the shipped view bundle can remain focused on the GUI renderer.
- */
-export type ViewModality = ViewType;
-
-const MODALITY_ORDER: readonly ViewModality[] = ["gui", "xr", "tui"];
-
-/** Order + de-duplicate a modality list as gui, xr, tui. */
-export function dedupeModalities(
-	mods: readonly ViewModality[],
-): ViewModality[] {
-	const seen = new Set(mods);
-	return MODALITY_ORDER.filter((m) => seen.has(m));
-}
+import {
+	dedupeModalities,
+	type ViewModality,
+	type ViewType,
+} from "@elizaos/common";
 
 /**
  * The surfaces a view declaration renders on: the explicit `modalities` list
@@ -1163,7 +945,6 @@ export interface PluginOwnership {
 	actions: Action[];
 	providers: Provider[];
 	evaluators: RegisteredEvaluator[];
-	routes: Route[];
 	events: PluginEventRegistration[];
 	models: PluginModelRegistration[];
 	services: PluginServiceRegistration[];
@@ -1524,7 +1305,6 @@ export interface Plugin {
 	 */
 	modelMetadata?: Record<string, ModelRegistrationMetadata>;
 	events?: PluginEvents;
-	routes?: Route[];
 	/**
 	 * Connector source names and aliases owned by this plugin. The runtime
 	 * registers these during plugin registration so source normalization and
@@ -1607,17 +1387,4 @@ export interface ProjectAgent {
 
 export interface Project {
 	agents: ProjectAgent[];
-}
-
-export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "STATIC";
-
-export interface RouteManifest {
-	method: HttpMethod;
-	path: string;
-	name?: string;
-	public?: boolean;
-	isMultipart?: boolean;
-	maxBodyBytes?: number;
-	filePath?: string;
-	x402?: X402Config;
 }

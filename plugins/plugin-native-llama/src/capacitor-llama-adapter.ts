@@ -38,7 +38,7 @@ import type {
   LoadOptions,
   SamplerStage,
   SetSpecTypeArgs,
-} from "./definitions";
+} from "./definitions.js";
 
 // Dynamically imported so the adapter can be bundled into a desktop build
 // without pulling in native-only module resolution noise.

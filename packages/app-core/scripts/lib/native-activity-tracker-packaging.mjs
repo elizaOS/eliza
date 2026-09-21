@@ -4,7 +4,9 @@
  * generated and packaged copy as an executable target-architecture Mach-O.
  */
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 const MACHO_64_MAGIC_LE = 0xfeedfacf;
@@ -107,4 +109,46 @@ export function verifyNativeActivityTrackerBinary(
   }
 
   return { path: binaryPath, arch, size: stat.size, mode: stat.mode & 0o777 };
+}
+
+/** Verifies the final helper in either a development bundle or a wrapped release. */
+export function verifyBundledNativeActivityTracker(appBundlePath, options) {
+  const binary = nativeActivityTrackerBundleBinary(appBundlePath);
+  if (fs.existsSync(binary))
+    return verifyNativeActivityTrackerBinary(binary, options);
+  const resources = path.join(appBundlePath, "Contents", "Resources");
+  const archives = fs
+    .readdirSync(resources)
+    .filter((name) => name.endsWith(".tar.zst"));
+  if (archives.length !== 1) {
+    throw new Error(
+      `Expected one packaged runtime archive in ${resources}; found ${archives.length}`,
+    );
+  }
+  const archive = path.join(resources, archives[0]);
+  const member = path
+    .relative(path.dirname(appBundlePath), binary)
+    .split(path.sep)
+    .join("/");
+  const temporary = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-activity-package-"),
+  );
+  try {
+    execFileSync("tar", [
+      "--zstd",
+      "-xf",
+      archive,
+      "-C",
+      temporary,
+      "--",
+      member,
+    ]);
+    const result = verifyNativeActivityTrackerBinary(
+      path.join(temporary, member),
+      options,
+    );
+    return { ...result, path: `${archive}:${member}` };
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
 }

@@ -213,7 +213,7 @@ describe("handleIosLocalAgentRequest", () => {
   });
 
   it("does not return Cloud bridge exception text to the renderer", async () => {
-    const { logger } = await import("@elizaos/logger");
+    const { logger } = await import("@elizaos/shared/logger");
     vi.spyOn(logger, "error").mockImplementation(() => undefined);
     const localStorage = stubLocalStorage();
     localStorage.setItem(
@@ -247,7 +247,7 @@ describe("handleIosLocalAgentRequest", () => {
   });
 
   it("contains a hostile thrown proxy at the Cloud bridge boundary", async () => {
-    const { logger } = await import("@elizaos/logger");
+    const { logger } = await import("@elizaos/shared/logger");
     vi.spyOn(logger, "error").mockImplementation(() => undefined);
     const localStorage = stubLocalStorage();
     localStorage.setItem(

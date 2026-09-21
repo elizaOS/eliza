@@ -7,11 +7,11 @@
  * checkExtensionStatus.
  */
 
-import { logger } from "@elizaos/logger";
 import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetByName,
-} from "@elizaos/shared";
+} from "@elizaos/shared/character-presets";
+import { logger } from "@elizaos/shared/logger";
 import {
   type RefObject,
   useCallback,

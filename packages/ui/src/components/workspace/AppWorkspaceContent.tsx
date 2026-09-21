@@ -6,7 +6,7 @@
  * whether the page scrolls here or inside the view and reserves floating-chat
  * clearance at that same boundary.
  */
-import type { PageLayoutManifest } from "@elizaos/core";
+import type { PageLayoutManifest } from "@elizaos/common";
 import type React from "react";
 import type { ReactNode } from "react";
 import { PageFrame } from "../../layouts/page-frame";

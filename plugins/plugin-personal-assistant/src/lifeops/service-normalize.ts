@@ -6,7 +6,6 @@
  * callers.
  */
 export {
-  defaultOwnerEntityId,
   fail,
   lifeOpsErrorMessage,
   normalizeEnumValue,
@@ -31,3 +30,5 @@ export {
   requireAgentId,
   requireNonEmptyString,
 } from "@elizaos/shared";
+
+export { defaultOwnerEntityId } from "@elizaos/shared/lifeops-normalize/owner-entity";

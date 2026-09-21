@@ -13,7 +13,7 @@ import type {
   ViewSwitchedPayload,
 } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/core/testing";
+import { createMockRuntime } from "@elizaos/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildProactiveJudgePrompt,

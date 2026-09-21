@@ -7,7 +7,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import type { RouteParams } from "../api/hono-next-style-params";
 import {
   consumeInferenceRateLimit,

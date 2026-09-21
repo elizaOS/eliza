@@ -1,5 +1,5 @@
 /** Resolves organization policy from one primary transaction for observation, inference and resource admission. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, eq, sql } from "drizzle-orm";
 import { type DbTransaction, dbWrite } from "../../db/client";
 import { readPrimaryOrganizationSubscription } from "../../db/repositories/account-billing-snapshot-subscription";

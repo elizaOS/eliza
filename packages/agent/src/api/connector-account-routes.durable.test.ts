@@ -4,10 +4,8 @@
  * restart readback; malformed SQL results must not become empty audit pages.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import {
-  getConnectorAccountManager,
-  InMemoryDatabaseAdapter,
-} from "@elizaos/core";
+import { getConnectorAccountManager } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ConnectorAccountRouteContext,

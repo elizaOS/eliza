@@ -232,10 +232,9 @@ describe("streamed tool-call delta assembly", () => {
     const calls = finalizeStreamedToolCalls(acc);
     expect(calls).toEqual([
       {
-        type: "tool-call",
-        toolCallId: "call_1",
-        toolName: "get_weather",
-        input: { city: "SF" },
+        id: "call_1",
+        name: "get_weather",
+        arguments: { city: "SF" },
       },
     ]);
   });
@@ -283,16 +282,14 @@ describe("streamed tool-call delta assembly", () => {
 
     expect(finalizeStreamedToolCalls(acc)).toEqual([
       {
-        type: "tool-call",
-        toolCallId: "call_0",
-        toolName: "first",
-        input: { name: "zero" },
+        id: "call_0",
+        name: "first",
+        arguments: { name: "zero" },
       },
       {
-        type: "tool-call",
-        toolCallId: "call_1",
-        toolName: "second",
-        input: { value: 2 },
+        id: "call_1",
+        name: "second",
+        arguments: { value: 2 },
       },
     ]);
   });
@@ -391,10 +388,9 @@ describe("streamed tool-call delta assembly", () => {
     ]);
     expect(finalizeStreamedToolCalls(acc)).toEqual([
       {
-        type: "tool-call",
-        toolCallId: "call_1",
-        toolName: "HANDLE_RESPONSE",
-        input: { replyText: "PONG" },
+        id: "call_1",
+        name: "HANDLE_RESPONSE",
+        arguments: { replyText: "PONG" },
       },
     ]);
   });
@@ -472,10 +468,9 @@ describe("streamed tool-call delta assembly", () => {
     accumulateToolCallDeltas(acc, [{ index: 0, function: { arguments: ',"c":2}' } }]);
     expect(finalizeStreamedToolCalls(acc)).toEqual([
       {
-        type: "tool-call",
-        toolCallId: "call_1",
-        toolName: "set_filter",
-        input: { a: { b: 1 }, c: 2 },
+        id: "call_1",
+        name: "set_filter",
+        arguments: { a: { b: 1 }, c: 2 },
       },
     ]);
   });
@@ -591,9 +586,7 @@ describe("streamNativeChatCompletion", () => {
     );
     await readStream(result);
     const toolCalls = await (result as { toolCalls: Promise<unknown[]> }).toolCalls;
-    expect(toolCalls).toEqual([
-      { type: "tool-call", toolCallId: "c1", toolName: "ping", input: {} },
-    ]);
+    expect(toolCalls).toEqual([{ id: "c1", name: "ping", arguments: {} }]);
   });
 
   it("reconstructs stable interleaved calls when index 1 arrives before index 0", async () => {
@@ -655,8 +648,8 @@ describe("streamNativeChatCompletion", () => {
     );
     expect(await readStream(result)).toEqual([]);
     await expect((result as { toolCalls: Promise<unknown[]> }).toolCalls).resolves.toEqual([
-      { type: "tool-call", toolCallId: "call_0", toolName: "first", input: { value: 1 } },
-      { type: "tool-call", toolCallId: "call_1", toolName: "second", input: { value: 2 } },
+      { id: "call_0", name: "first", arguments: { value: 1 } },
+      { id: "call_1", name: "second", arguments: { value: 2 } },
     ]);
   });
 
@@ -957,10 +950,9 @@ describe("streamNativeChatCompletion — forced HANDLE_RESPONSE reply envelope",
     const toolCalls = await (result as { toolCalls: Promise<unknown[]> }).toolCalls;
     expect(toolCalls).toEqual([
       {
-        type: "tool-call",
-        toolCallId: "call_1",
-        toolName: "HANDLE_RESPONSE",
-        input: { shouldRespond: "RESPOND", contexts: ["general"], replyText: "On it now." },
+        id: "call_1",
+        name: "HANDLE_RESPONSE",
+        arguments: { shouldRespond: "RESPOND", contexts: ["general"], replyText: "On it now." },
       },
     ]);
   });

@@ -15,6 +15,11 @@ through the normal runtime update event.
 
 The chat update action identifies the existing note with `content` and takes
 its complete new text in `replacementContent` (label, newline, then body).
+The promoted update tool requires `content` on the model wire. Runtime admission
+also accepts the explicitly declared legacy selectors `text`, `note`, `title`,
+and `query` when `content` is absent. Each must be a valid nonempty string;
+conflicting selectors fail without writes. This compatibility does not make
+`content` required for unfiltered lists or replace the exact `noteId` GET contract.
 For literal substitutions, supply `textEdit: { field: "title" | "body", oldText,
 newText }` instead of `replacementContent`. The service requires one unique
 case-sensitive literal match in the current field and commits under the existing

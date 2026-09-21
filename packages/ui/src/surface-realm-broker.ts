@@ -47,10 +47,13 @@
  * `App.surface-mutation-fuzz.test.tsx`.
  */
 
-import type { ResolvedSurfaceManifest } from "@elizaos/core";
-import { surfaceGrants } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
-import { THEME_CSS_VAR_MAP, THEME_FONT_CSS_VARS } from "@elizaos/shared";
+import type { ResolvedSurfaceManifest } from "@elizaos/common";
+import { surfaceGrants } from "@elizaos/common";
+import {
+  THEME_CSS_VAR_MAP,
+  THEME_FONT_CSS_VARS,
+} from "@elizaos/shared/contracts/theme";
+import { logger } from "@elizaos/shared/logger";
 import { isPrivilegedShellActive } from "./surface-realm-channel";
 
 // Re-export the shell-privileged channel so existing importers of the broker

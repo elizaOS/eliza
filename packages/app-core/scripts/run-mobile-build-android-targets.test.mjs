@@ -20,7 +20,6 @@ const mobileBuildScript = fileURLToPath(
 );
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const appPackageJsonPath = path.resolve(scriptsDir, "../../app/package.json");
-const rootPackageJsonPath = path.resolve(scriptsDir, "../../../package.json");
 const adbInstallerSource = fs.readFileSync(
   path.resolve(scriptsDir, "../../app/scripts/android-adb-install.mjs"),
   "utf8",
@@ -35,14 +34,10 @@ describe("Android mobile build target table", () => {
     const appScripts = JSON.parse(
       fs.readFileSync(appPackageJsonPath, "utf8"),
     ).scripts;
-    const rootScripts = JSON.parse(
-      fs.readFileSync(rootPackageJsonPath, "utf8"),
-    ).scripts;
     expect(appScripts["install:android:launcher"]).toContain(
       "build:android:launcher",
     );
     expect(appScripts["install:android:launcher"]).toContain("--launcher");
-    expect(rootScripts["install:android:launcher"]).toContain("--launcher");
     expect(adbInstallerSource).toContain("android.settings.HOME_SETTINGS");
     expect(adbInstallerSource).toContain("android.app.role.HOME");
     expect(adbInstallerSource).toContain("android.intent.category.HOME");

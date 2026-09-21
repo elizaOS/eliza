@@ -24,6 +24,7 @@ import type {
   ModelTypeName,
   PromptSegment,
   TextStreamResult,
+  ToolCall,
 } from "@elizaos/core";
 import {
   assertModelOutputComplete,
@@ -44,6 +45,7 @@ import {
   streamText,
   type ToolChoice,
   type ToolSet,
+  type TypedToolCall,
   type UserContent,
 } from "ai";
 import { createAnthropicClientWithTopPSupport } from "../providers/anthropic";
@@ -195,7 +197,7 @@ interface AnthropicNormalizedUsage {
 
 interface NativeGenerateTextResult {
   text: string;
-  toolCalls?: unknown[];
+  toolCalls?: ToolCall[];
   finishReason?: string;
   usage?: AnthropicNormalizedUsage;
   providerMetadata?: Record<string, unknown>;
@@ -1187,10 +1189,29 @@ function usesNativeTextResult(params: GenerateTextParamsWithProviderOptions): bo
   return Boolean(params.messages || params.tools || params.toolChoice || params.responseSchema);
 }
 
+function normalizeNativeToolCalls(
+  calls: TypedToolCall<ToolSet>[] | undefined
+): ToolCall[] | undefined {
+  return calls?.map((call) => {
+    if ("invalid" in call && call.invalid) {
+      throw new TypeError("Provider returned invalid tool arguments", { cause: call.error });
+    }
+    const { toolCallId, toolName, input } = call;
+    if (!toolCallId || !toolName) throw new TypeError("Provider tool call requires an id and name");
+    if (
+      typeof input !== "string" &&
+      (typeof input !== "object" || input === null || Array.isArray(input))
+    ) {
+      throw new TypeError("Provider tool arguments must be an object or JSON string");
+    }
+    return { id: toolCallId, name: toolName, arguments: input as ToolCall["arguments"] };
+  });
+}
+
 function buildNativeTextResult(
   result: {
     text: string;
-    toolCalls?: unknown[];
+    toolCalls?: TypedToolCall<ToolSet>[];
     finishReason?: string;
     usage?: AnthropicUsageWithCache;
     providerMetadata?: unknown;
@@ -1199,7 +1220,7 @@ function buildNativeTextResult(
 ): NativeGenerateTextResult {
   return {
     text: result.text,
-    toolCalls: result.toolCalls ?? [],
+    toolCalls: normalizeNativeToolCalls(result.toolCalls) ?? [],
     finishReason: result.finishReason,
     usage: normalizeAnthropicUsage(result.usage, result.providerMetadata),
     providerMetadata: mergeProviderModelName(result.providerMetadata, modelName),
@@ -1699,7 +1720,11 @@ async function generateTextWithModel(
           })
         ),
         ...(shouldReturnNativeResult
-          ? { toolCalls: handledPromise(Promise.resolve(streamResult.toolCalls)) }
+          ? {
+              toolCalls: handledPromise(
+                Promise.resolve(streamResult.toolCalls).then(normalizeNativeToolCalls)
+              ),
+            }
           : {}),
         usage: handledPromise(usagePromise),
         finishReason: handledPromise(finishReasonPromise),

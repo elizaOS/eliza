@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { MemoryType, ModelType, type UUID } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/core/testing";
+import { createTestRuntime } from "@elizaos/testing";
 import { afterEach, expect, it, vi } from "vitest";
 import { handleTextSmall } from "../../../plugins/plugin-openai/models/index.ts";
 import {
@@ -275,6 +275,27 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
     `,
         ],
         { timeout: 120000, maxBuffer: 16 * 1024 * 1024 },
+      ).catch(
+        (
+          cause: Error & {
+            stdout?: string;
+            stderr?: string;
+            killed?: boolean;
+            signal?: string;
+          },
+        ) => {
+          // error-policy:J2 Preserve child diagnostics instead of only its command line.
+          throw new Error(
+            JSON.stringify({
+              message: cause.message,
+              stdout: cause.stdout,
+              stderr: cause.stderr,
+              killed: cause.killed,
+              signal: cause.signal,
+            }),
+            { cause },
+          );
+        },
       );
     await runReadbackChild();
     const resumed = JSON.parse(await readFile(resumedReport, "utf8"));

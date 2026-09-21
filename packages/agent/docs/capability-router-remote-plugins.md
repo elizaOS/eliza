@@ -621,11 +621,6 @@ not the provider is called a satellite.
 
 Keep `satellite` for a concrete deployment target when useful. Use
 `capability-router` for the runtime abstraction and protocol.
-This is now CI-enforced by
-`bun run test:remote-capabilities:naming-audit`, which scans the current
-capability-router source, architecture docs, app, core, shared, and workflow
-roots. It only allows `satellite` in this historical naming analysis and in the
-legacy `ELIZA_SATELLITE_RUNNER_*` compatibility alias path and precedence test.
 
 ## Critical Assessment Of PR #7779
 
@@ -729,18 +724,12 @@ Current local implementation includes:
   definitions, plugin contexts, and top-level plugin priority.
 - Plugin surface audit in
   `packages/agent/scripts/audit-capability-router-plugin-surface.ts`, exposed as
-  `bun run test:remote-capabilities:surface-audit`, which fails when a new
+  `bun packages/agent/scripts/audit-capability-router-plugin-surface.ts`, which fails when a new
   local `Plugin` field is not classified as remote-supported or intentionally
   local-only for capability-router.
-- Capability-router naming audit in
-  `packages/agent/scripts/audit-capability-router-naming.ts`, exposed as
-  `bun run test:remote-capabilities:naming-audit`, which fails if the canonical
-  source/docs/workflow roots reintroduce `satellite` as runtime abstraction
-  vocabulary outside this architecture record's historical naming analysis and
-  the legacy env-alias compatibility path.
 - Runnable reference endpoint in
   `packages/agent/scripts/capability-router-fixture-server.ts`, exposed as
-  `bun run capability-router:fixture-server`, that serves the canonical fixture
+  `bun packages/agent/scripts/capability-router-fixture-server.ts`, that serves the canonical fixture
   through the same `/v1/capabilities` and `/v1/capabilities/invoke` HTTP
   protocol expected from real remote endpoints. The endpoint can also serve a
   built view bundle from disk, which lets the fixture-server smoke prove the
@@ -914,13 +903,13 @@ Current focused tests cover:
   handler evaluator/response-handler field evaluator/route/model/lifecycle/
   event/service/app-bridge/assets over the capability protocol, then bootstraps
   into the runtime without local plugin registration code
-  (`bun run test:remote-capabilities:source-build`),
+  (`bun run --cwd packages/agent test:remote-capabilities:source-build`),
 - no-credential process-isolation smoke: a built remote plugin runs from a
   separate child-process capability server and is consumed through HTTP only,
 - Docker/container smoke: two built remote plugin modules are packaged into one
   real Docker container, exposed as one capability server, trusted by explicit
   endpoint/module allowlist, and consumed through the same runtime path
-  (`bun run test:remote-capabilities:docker`),
+  (`bun run --cwd packages/agent test:remote-capabilities:docker`),
 - remote route dispatch through the actual API route dispatcher,
 - remote route RPC response validation before status/header metadata is exposed
   through local route dispatch,
@@ -955,54 +944,53 @@ Current focused tests cover:
 - focused Playwright app-shell smoke that starts a real remote
   capability-style HTTP endpoint, derives `/api/views` metadata from
   `plugin.modules.list`, and imports the view bundle from that endpoint
-  (`bun run test:remote-capabilities:ui`).
+  (`bun run --cwd packages/app test:remote-capabilities:ui`).
 - focused Playwright product-flow smokes that use Settings -> Capabilities to
   submit both a direct endpoint and an Eliza Cloud provisioning payload to
   `/api/capability-router/connect`; the direct endpoint smoke receives synced
   module metadata and opens the remote view through normal app navigation
-  (`bun run test:remote-capabilities:ui`).
+  (`bun run --cwd packages/app test:remote-capabilities:ui`).
 
 Run the no-credential CI slice with:
 
 ```text
-bun run test:remote-capabilities
+bun run --cwd packages/agent test:remote-capabilities
 ```
 
 Run the focused source-build/process-boundary smoke with:
 
 ```text
-bun run test:remote-capabilities:source-build
+bun run --cwd packages/agent test:remote-capabilities:source-build
 ```
 
 Run the container-backed CI smoke with Docker available:
 
 ```text
-bun run test:remote-capabilities:docker
+bun run --cwd packages/agent test:remote-capabilities:docker
 ```
 
 Run the credentialed cloud sandbox live smoke with an Eliza Cloud API key:
 
 ```text
-ELIZAOS_CLOUD_API_KEY=... bun run test:remote-capabilities:cloud-live
+ELIZAOS_CLOUD_API_KEY=... bun run --cwd packages/agent test:remote-capabilities:cloud-live
 ```
 
-The GitHub `Tests` workflow now runs `bun run test:remote-capabilities`,
-`bun run test:remote-capabilities:surface-audit`,
-`bun run test:remote-capabilities:naming-audit`,
-`bun run test:remote-capabilities:source-build`,
-`bun run test:remote-capabilities:fixture-server`, and
-`bun run test:remote-capabilities:validate-live-reports:self-test`,
-`bun run test:remote-capabilities:github-live-evidence:self-test`, and
-`bun run test:remote-capabilities:docker` in the server job for pull requests
+The GitHub `Tests` workflow now runs `bun run --cwd packages/agent test:remote-capabilities`,
+`bun packages/agent/scripts/audit-capability-router-plugin-surface.ts`,
+`bun run --cwd packages/agent test:remote-capabilities:source-build`,
+`bun packages/agent/scripts/capability-router-fixture-conformance-smoke.ts`, and
+`bun packages/agent/scripts/validate-capability-router-live-reports.self-test.ts`,
+`bun packages/agent/scripts/validate-capability-router-github-live-evidence.self-test.ts`, and
+`bun run --cwd packages/agent test:remote-capabilities:docker` in the server job for pull requests
 and pushes. The live Cloud/provider artifact smokes are observed on schedules
 and on manual dispatches that explicitly set `remote_capability_live`; ordinary
 manual runs skip those external-infrastructure smokes. The final `test-status`
 gate treats the live jobs as strict whenever they are requested. Use
-`gh run view <run-id> --json databaseId,event,status,conclusion,jobs | bun run
-test:remote-capabilities:github-live-evidence -` to prove a scheduled/manual
+`gh run view <run-id> --json databaseId,event,status,conclusion,jobs | bun
+packages/agent/scripts/validate-capability-router-github-live-evidence.ts -` to prove a scheduled/manual
 run actually observed Cloud and provider live smoke, validation, and artifact
 upload steps. Use
-`bun run test:remote-capabilities:github-live-artifacts <run-id>` for the
+`bun packages/agent/scripts/validate-capability-router-github-live-artifacts.ts <run-id>` for the
 stronger proof: it validates the run metadata, downloads
 `remote-capability-cloud-live-report` and
 `remote-capability-provider-live-report`, then validates the downloaded report
@@ -1029,7 +1017,7 @@ imports both compiled bundles, and executes each module's remote
 action/provider/evaluator/response-handler evaluator/response-handler field
 evaluator/route/model/lifecycle/event/service/app-bridge handlers through the
 protocol.
-The same workflow also runs `bun run test:remote-capabilities:cloud-live` in
+The same workflow also runs `bun run --cwd packages/agent test:remote-capabilities:cloud-live` in
 the credentialed cloud-live job. On `workflow_dispatch` and nightly schedules,
 the job now fails during preflight when the Cloud API key is missing, so an
 observed live run cannot silently become a green skip. That live smoke provisions a real
@@ -1045,7 +1033,7 @@ endpoint id, observed module ids, and every exercised full-surface RPC target.
 CI clears and recreates that report directory immediately before the live smoke,
 so validation and upload only see files produced by the current run.
 Before upload, CI runs
-`bun run test:remote-capabilities:validate-live-reports
+`bun packages/agent/scripts/validate-capability-router-live-reports.ts
 reports/remote-capabilities/cloud` so a malformed or partial live observation
 cannot become the recorded evidence for Cloud completion. The validator also
 requires `schemaVersion: 1`, `--kind cloud` or `--kind provider`,
@@ -1135,7 +1123,7 @@ one JSON file per configured provider under
 `reports/remote-capabilities/providers/*.json`. CI clears and recreates that
 report directory immediately before the provider live smoke, so validation and
 upload only see files produced by the current run. CI validates those reports with
-`bun run test:remote-capabilities:validate-live-reports
+`bun packages/agent/scripts/validate-capability-router-live-reports.ts
 reports/remote-capabilities/providers` before upload, requiring every full
 remote plugin surface to be present in each configured provider observation,
 requiring home/mobile provider reports, and rejecting inconsistent endpoint
@@ -1156,7 +1144,7 @@ compiled view asset through the installed capability-router service.
 Run the browser app-shell remote view smoke:
 
 ```text
-bun run test:remote-capabilities:ui
+bun run --cwd packages/app test:remote-capabilities:ui
 ```
 
 Validate any running endpoint directly from the CLI:
@@ -1168,7 +1156,7 @@ elizaos capability-router conformance https://remote.example.test --token ...
 Run the local reference endpoint and validate it with the same CLI:
 
 ```text
-bun run capability-router:fixture-server --token fixture-token
+bun packages/agent/scripts/capability-router-fixture-server.ts --token fixture-token
 elizaos capability-router conformance http://127.0.0.1:<port> --token fixture-token
 ```
 
@@ -1200,20 +1188,15 @@ packages/agent/src/services/remote-capability-endpoint-conformance.test.ts
 --coverage.enabled=false` passed with 48 tests passing after adding the
   canonical capability-router protocol fixture, remote component type/context
   decoding, top-level remote priority, and decoder-validity test.
-- `bun run test:remote-capabilities:surface-audit` passed, confirming all 28
+- `bun packages/agent/scripts/audit-capability-router-plugin-surface.ts` passed, confirming all 28
   local `Plugin` fields are either remote-supported or intentionally local-only
   for the capability-router protocol.
-- `bun run test:remote-capabilities:naming-audit` passed, confirming the
-  audited source/docs/workflow roots do not use `satellite` as canonical runtime
-  abstraction vocabulary; the only allowed hits are this architecture record's
-  historical naming analysis, the legacy `ELIZA_SATELLITE_RUNNER_*` aliases,
-  and the precedence test that proves canonical env names win.
-- `bun run capability-router:fixture-server --token fixture-token` started the
+- `bun packages/agent/scripts/capability-router-fixture-server.ts --token fixture-token` started the
   runnable reference endpoint on localhost, and
   the local app-core CLI entrypoint
   `capability-router conformance <fixture-url> --token fixture-token` passed
   against it, exercising the canonical fixture through HTTP.
-- `bun run test:remote-capabilities:fixture-server` passed, automatically
+- `bun packages/agent/scripts/capability-router-fixture-conformance-smoke.ts` passed, automatically
   building a temporary remote view bundle, starting the reference endpoint,
   running CLI conformance against it with bearer auth, importing the returned
   bundle as JavaScript, and tearing it down.
@@ -1229,10 +1212,10 @@ packages/agent/src/services/remote-capability-endpoint-conformance.test.ts
 - `bun run --cwd packages/agent test:remote-capabilities:provider-live` found
   the provider smoke file and skipped 4 provider tests locally because no
   `ELIZA_REMOTE_CAPABILITY_*_URL` endpoints are configured.
-- `bun run test:remote-capabilities:validate-live-reports <dir>` passed against
+- `bun packages/agent/scripts/validate-capability-router-live-reports.ts <dir>` passed against
   generated complete Cloud/provider report samples and rejected a generated
   partial provider report that lacked required full-surface RPC evidence.
-- `bun run test:remote-capabilities:validate-live-reports:self-test` passed and
+- `bun packages/agent/scripts/validate-capability-router-live-reports.self-test.ts` passed and
   is part of the normal no-credential server CI gate, so the live report
   validator is tested even when live endpoint secrets are absent. The self-test
   covers complete reports, wrong-schema reports, missing-surface reports,
@@ -1289,7 +1272,7 @@ packages/agent/src/services/remote-capability-cloud-sandbox.test.ts
 packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
 --coverage.enabled=false` passed with 5 tests passing and 1 skipped after
   moving Cloud live validation onto the reusable endpoint conformance harness.
-- `bun run test:remote-capabilities:live-ci-audit` passes and statically
+- `bun packages/agent/scripts/audit-capability-router-live-ci.ts` passes and statically
   enforces that the workflow keeps the Cloud and provider live jobs wired to
   strict scheduled or explicitly requested manual observation, and that the
   final `test-status` gate treats their job results as strict,
@@ -1315,7 +1298,7 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   requires the live report validator self-test to stay in CI, and audits the
   root package scripts that invoke the live report validator, the validator
   self-test, the live CI audit, and the live CI audit self-test.
-- `bun run test:remote-capabilities:live-ci-audit:self-test` mutates those
+- `bun packages/agent/scripts/audit-capability-router-live-ci.self-test.ts` mutates those
   report-directory env vars, artifact upload paths, provider live report
   `providerId` evidence, provider runtime evidence, runtime remote plugin
   per-module count evidence, route
@@ -1382,7 +1365,7 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   The live report validator requires every `sync.skipped` entry to have a
   rejected trust decision, so skipped modules are auditable rather than just
   unexplained plugin names.
-- `bun run test:remote-capabilities:surface-audit` also audits the canonical
+- `bun packages/agent/scripts/audit-capability-router-plugin-surface.ts` also audits the canonical
   plugin RPC method union. Every `plugin.*` method must be implemented by the
   fixture server, and every non-list plugin RPC method must appear in endpoint
   conformance plus the live report validator's required-method matrix. The
@@ -1403,7 +1386,7 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
 
 | Requirement                                                | Current evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Status                                                                                                          |
 | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Canonical abstraction is not `satellite`                   | Core/API/CLI/docs use `capability-router`; `bun run test:remote-capabilities:naming-audit` CI-enforces that `satellite` only appears in this architecture record's historical naming analysis, the legacy env-alias compatibility path, and its precedence test within audited runtime/docs/workflow roots.                                                                                                                                                                      | Implemented                                                                                                     |
+| Canonical runtime abstraction | Core/API/CLI/docs use `capability-router`; deployment names follow the naming guidance above. | Implemented |
 | Dynamic remote plugins materialize as normal local plugins | Adapter maps remote manifests into runtime `Plugin` objects with actions, providers, routes, lifecycle, events, models, services, config, schema, component types, contexts, priority, widgets, app metadata, app bridge hooks, and views. A CI surface audit classifies every local `Plugin` field.                                                                                                                                                                              | Implemented                                                                                                     |
 | Runs across machines/processes/containers                  | Local HTTP, child-process, and Docker capability servers are consumed through the same protocol; Docker smoke is a CI gate.                                                                                                                                                                                                                                                                                                                                                       | Implemented for local/container isolation                                                                       |
 | Mobile bundle reachability                                 | Android and iOS JSC mobile agent bundles include the capability-router service, bootstrap plugin sync, endpoint-provider contract, and connect route; remote frontend asset proxy is blocked for restricted mobile platforms.                                                                                                                                                                                                                                                     | Implemented for protocol reachability; dynamic frontend bundles intentionally restricted on app-store platforms |

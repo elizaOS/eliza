@@ -13,8 +13,8 @@ import { stringToUuid } from "@elizaos/core";
 import {
   getDefaultStylePreset,
   getStylePresets,
-  resetDevCloudEnvAuthorityForTests,
-} from "@elizaos/shared";
+} from "@elizaos/shared/character-presets";
+import { resetDevCloudEnvAuthorityForTests } from "@elizaos/shared/elizacloud/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   deriveFirstRunReplayBody,

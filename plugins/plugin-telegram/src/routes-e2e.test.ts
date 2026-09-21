@@ -16,6 +16,7 @@ vi.mock("@elizaos/core", async () => {
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { AgentRuntime } from "@elizaos/core";
+import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
 import { Telegraf } from "telegraf";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -114,9 +115,8 @@ function makeRuntime(
     : withTelegram
       ? {}
       : null;
-  return {
+  const runtime = {
     agentId: "00000000-0000-4000-8000-000000000123",
-    routes: [...telegramSetupRoutes, ...telegramAccountRoutes],
     reportError: vi.fn(),
     // Only the `connector-setup` service exists in these branches. The live
     // `telegram` / `telegram-account` services are absent (null), which is the
@@ -140,6 +140,11 @@ function makeRuntime(
     // into the runtime-setting tier `readSavedToken` falls back to.
     getSetting: (key: string) => settings?.[key] ?? null,
   } as unknown as AgentRuntime;
+  registerHttpPluginRoutes(runtime, {
+    name: "telegram",
+    routes: [...telegramSetupRoutes, ...telegramAccountRoutes],
+  });
+  return runtime;
 }
 
 async function startServer(

@@ -14,6 +14,7 @@ import {
   Service,
   stringToUuid,
 } from "@elizaos/core";
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
@@ -174,11 +175,10 @@ describe("LifeOps iMessage runtime status projection", () => {
     runtime = new AgentRuntime({
       agentId: stringToUuid(`imessage-status-${crypto.randomUUID()}`),
       character: createCharacter({ name: "iMessage status projection" }),
-      disableBasicCapabilities: true,
       enableAutonomy: false,
       logLevel: "fatal",
     });
-    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    await initializeTestRuntime(runtime, { skipMigrations: true });
     Object.defineProperty(runtime, "adapter", {
       value: null,
       configurable: true,
@@ -242,14 +242,10 @@ describe("LifeOps iMessage native transport projection", () => {
     nativeRuntime = new AgentRuntime({
       agentId: stringToUuid(`imessage-native-${crypto.randomUUID()}`),
       character: createCharacter({ name: "iMessage native projection" }),
-      disableBasicCapabilities: true,
       enableAutonomy: false,
       logLevel: "fatal",
     });
-    await nativeRuntime.initialize({
-      allowNoDatabase: true,
-      skipMigrations: true,
-    });
+    await initializeTestRuntime(nativeRuntime, { skipMigrations: true });
     Object.defineProperty(nativeRuntime, "adapter", {
       value: null,
       configurable: true,
@@ -342,12 +338,11 @@ describe("isolated host iMessage status", () => {
     async (backend) => {
       const runtime = new AgentRuntime({
         character: createCharacter({ name: "Isolated iMessage status" }),
-        disableBasicCapabilities: true,
         enableAutonomy: false,
         settings: { ELIZA_IMESSAGE_BACKEND: backend },
         logLevel: "fatal",
       });
-      await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+      await initializeTestRuntime(runtime);
       Object.defineProperty(runtime, "adapter", {
         value: null,
         configurable: true,

@@ -6,8 +6,8 @@
  * safety resources.
  */
 
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import {
   type Entity,
   type EntityAttribute,

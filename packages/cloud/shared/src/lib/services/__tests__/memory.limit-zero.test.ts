@@ -5,7 +5,8 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+import type { Memory, UUID } from "@elizaos/common";
+import type { AgentRuntime } from "@elizaos/core";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";

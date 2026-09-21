@@ -1,6 +1,8 @@
 /**
  * Parses bounded Bun and Vitest JUnit evidence and reconciles every declared
  * count with the testcase tree before CI treats a selection as real work.
+ * Top-level suites identify collected files in both reporters; preserve their
+ * counts so the task ledger can account for each file, including skipped files.
  */
 
 import { SaxesParser } from "saxes";
@@ -95,6 +97,7 @@ export function parseJunitSummary(xml) {
   const stack = [];
   let root;
   let testcaseCount = 0;
+  const files = [];
 
   parser.on("doctype", () => {
     throw new Error("JUnit artifact may not contain a DOCTYPE");
@@ -166,6 +169,17 @@ export function parseJunitSummary(xml) {
         node.name === "testsuites" ? new Set(["errors", "skipped"]) : undefined,
       );
     }
+    if (node.name === "testsuite" && parent?.name === "testsuites") {
+      files.push({
+        file:
+          typeof node.attributes.name === "string" &&
+          node.attributes.name.length > 0
+            ? node.attributes.name
+            : null,
+        ...node.counts,
+        executedTests: node.counts.tests - node.counts.skipped,
+      });
+    }
     if (parent && (node.name === "testcase" || node.name === "testsuite")) {
       addCounts(parent.counts, node.counts);
     }
@@ -188,5 +202,6 @@ export function parseJunitSummary(xml) {
   return {
     ...root.counts,
     executedTests: root.counts.tests - root.counts.skipped,
+    files,
   };
 }

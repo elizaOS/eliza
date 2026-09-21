@@ -6,7 +6,7 @@ import {
   ApprovalIdempotencyConflictError as RuntimeApprovalIdempotencyConflictError,
   ApprovalNotFoundError as RuntimeApprovalNotFoundError,
   ApprovalStateTransitionError as RuntimeApprovalStateTransitionError,
-} from "@elizaos/agent";
+} from "@elizaos/plugin-assistant";
 import type { CalendarCardSenderBinding } from "./calendar-card-sender.js";
 import type { TransactionalDb } from "./sql.js";
 import type { TravelBookingPayloadFields } from "./travel-booking.types.js";

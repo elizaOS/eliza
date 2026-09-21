@@ -3,7 +3,7 @@
  * the projection from shared StylePresets to roster entries. Kept out of the
  * component so the mapping is unit-testable and reused by the editor.
  */
-import type { StylePreset } from "@elizaos/shared";
+import type { StylePreset } from "@elizaos/shared/contracts/first-run-options";
 import type { CharacterRosterEntry } from "./CharacterRoster";
 
 export const SLANT_CLIP =

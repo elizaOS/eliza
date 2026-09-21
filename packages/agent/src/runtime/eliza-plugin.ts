@@ -6,13 +6,24 @@
  * Memory search/get actions are superseded by the todos plugin.
  */
 
-import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
+import type { IAgentRuntime, ServiceClass } from "@elizaos/core";
 import {
   AgentEventService,
   NotificationService,
   PairingService,
   promoteSubactionsToActions,
 } from "@elizaos/core";
+import {
+  ApprovalService,
+  GlobalPauseService,
+  HandoffService,
+  PendingPromptsService,
+} from "@elizaos/plugin-assistant";
+import {
+  KnowledgeGraphService,
+  knowledgeGraphSchema,
+} from "@elizaos/plugin-relationships/knowledge-graph";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { connectAccountAction } from "../actions/connect-account.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
@@ -61,21 +72,13 @@ import { createDynamicSkillProvider } from "../providers/skill-provider.ts";
 import { createOngoingTasksProvider } from "../providers/tasks.ts";
 import { createUserNameProvider } from "../providers/user-name.ts";
 import { createWorkspaceProvider } from "../providers/workspace-provider.ts";
-import { ApprovalService } from "../services/approval/index.ts";
 import { AudioRedactionService } from "../services/audio-redaction-service.ts";
 import { ElizaCharacterPersistenceService } from "../services/character-persistence.ts";
 import { LocalFileStorageService } from "../services/file-storage.ts";
-import { GlobalPauseService } from "../services/global-pause/index.ts";
-import { HandoffService } from "../services/handoff/index.ts";
-import {
-  KnowledgeGraphService,
-  knowledgeGraphSchema,
-} from "../services/knowledge-graph/index.ts";
 import { AgentMediaGenerationService } from "../services/media-generation.ts";
 import { MessageInteractionHostService } from "../services/message-interaction-host.ts";
 import { OwnerBindingService } from "../services/owner-binding.ts";
 import { pendantSessionSchema } from "../services/pendant-session/index.ts";
-import { PendingPromptsService } from "../services/pending-prompts/index.ts";
 import { PermissionRegistry } from "../services/permissions-registry.ts";
 import { NotificationPushService } from "../services/push/notification-push-service.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";

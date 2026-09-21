@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Boots the canonical device bridge through a real AgentRuntime and HTTP/WebSocket
  * transport, proving attach-gated handlers and server-owned teardown.
@@ -94,7 +95,7 @@ describe("canonical mobile device bridge headless boot", () => {
 					.filter((entry) => entry.provider === "capacitor-llama"),
 			).toHaveLength(0);
 
-			await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+			await initializeTestRuntime(runtime, { skipMigrations: true });
 			const service = await runtime.getServiceLoadPromise(
 				ServiceType.MOBILE_DEVICE_BRIDGE,
 			);

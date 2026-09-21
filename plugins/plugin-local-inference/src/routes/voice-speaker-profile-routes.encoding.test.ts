@@ -1,38 +1,6 @@
 /** Exercises malformed speaker-profile identifiers before store access. */
-import { EventEmitter } from "node:events";
+import { Readable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("@elizaos/core", () => ({
-	logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
-	resolveStateDir: () => "/tmp",
-	sendJson: (
-		res: { statusCode: number; end: (chunk?: string) => void },
-		body: unknown,
-		status = 200,
-	) => {
-		res.statusCode = status;
-		res.end(JSON.stringify(body));
-	},
-	sendJsonError: (
-		res: { statusCode: number; end: (chunk?: string) => void },
-		message: string,
-		status = 400,
-	) => {
-		res.statusCode = status;
-		res.end(JSON.stringify({ error: message }));
-	},
-	readJsonBody: async (req: AsyncIterable<Buffer> & { body?: unknown }) => {
-		if (req.body && typeof req.body === "object") {
-			return req.body as Record<string, unknown>;
-		}
-		const chunks: Buffer[] = [];
-		for await (const chunk of req) {
-			chunks.push(chunk);
-		}
-		const raw = Buffer.concat(chunks).toString("utf8").trim();
-		return raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-	},
-}));
 
 const { handleVoiceSpeakerProfileRoutes, setVoiceSpeakerProfileStore } =
 	await import("./voice-speaker-profile-routes");
@@ -42,23 +10,16 @@ function makeReq(args: {
 	url: string;
 	body?: string | null;
 }): import("node:http").IncomingMessage {
-	const emitter = new EventEmitter();
 	const body =
 		args.body == null ? Buffer.alloc(0) : Buffer.from(args.body, "utf8");
-	(emitter as unknown as { method: string }).method = args.method;
-	(emitter as unknown as { url: string }).url = args.url;
-	(emitter as unknown as { headers: Record<string, string> }).headers = {
-		"content-type": "application/json",
-		"content-length": String(body.length),
-	};
-	(
-		emitter as unknown as {
-			[Symbol.asyncIterator]: () => AsyncIterator<Buffer>;
-		}
-	)[Symbol.asyncIterator] = async function* () {
-		yield body;
-	};
-	return emitter as unknown as import("node:http").IncomingMessage;
+	return Object.assign(Readable.from([body]), {
+		method: args.method,
+		url: args.url,
+		headers: {
+			"content-type": "application/json",
+			"content-length": String(body.length),
+		},
+	}) as import("node:http").IncomingMessage;
 }
 
 interface CapturedResponse {

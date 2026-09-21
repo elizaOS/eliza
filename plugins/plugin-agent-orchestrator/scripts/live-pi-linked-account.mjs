@@ -70,7 +70,7 @@ const phases = new Set([
 const sourcePaths = [
   "packages/app-core/src/services/account-pool.ts",
   "packages/app-core/src/services/coding-account-bridge.ts",
-  "packages/auth/src/account-storage.ts",
+  "packages/credentials/src/auth/account-storage.ts",
   "plugins/plugin-agent-orchestrator/src/services/pi-provider-config.ts",
   "plugins/plugin-agent-orchestrator/src/services/acp-native-transport.ts",
   "plugins/plugin-agent-orchestrator/scripts/live-pi-linked-account.mjs",
@@ -99,7 +99,7 @@ async function child() {
   await mkdir(workdir, { mode: 0o700 });
   phase = "import-account-storage";
   const { createRuntimeAccountStoragePolicy, saveAccount, loadAccount } =
-    await import("@elizaos/auth/account-storage");
+    await import("@elizaos/credentials/auth/account-storage");
   phase = "import-account-pool";
   const { getDefaultAccountPool } = await import(
     "../../../packages/app-core/src/services/account-pool.ts"

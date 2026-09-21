@@ -18,8 +18,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import type { RuntimeEnvRecord } from "@elizaos/shared";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
+import type { RuntimeEnvRecord } from "@elizaos/shared/runtime-env";
 import type { AuthStore } from "../../services/auth-store";
 import { resolveElizaStateDir } from "../../services/cloud-jwks-store";
 

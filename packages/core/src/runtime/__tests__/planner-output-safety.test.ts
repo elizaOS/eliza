@@ -9,7 +9,7 @@ import {
 	isUnsafeUserVisibleText,
 	looksLikeEvaluatorEnvelopeJson,
 	parsePlannerOutput,
-} from "../planner-loop";
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 describe("planner output user-visible safety", () => {
 	it.each(["string", "native"])(

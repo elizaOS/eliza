@@ -4,7 +4,7 @@
  * can mount the plugin's HTTP routes. A separate tsup entry from index.ts.
  */
 
-import { registerAppRoutePluginLoader } from "@elizaos/core";
+import { registerAppRoutePluginLoader } from "@elizaos/shared/api/app-route-plugin-registry";
 
 registerAppRoutePluginLoader("@elizaos/plugin-github", async () => {
   const { githubPlugin } = await import("./index.js");

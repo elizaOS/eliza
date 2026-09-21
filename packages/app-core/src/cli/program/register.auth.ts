@@ -21,13 +21,13 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
 import {
   isLoopbackBindHost,
-  readAliasedEnv,
   resolveApiBindHost,
-  theme,
-} from "@elizaos/shared";
+} from "@elizaos/shared/runtime-env";
+import { theme } from "@elizaos/shared/terminal/theme";
+import { readAliasedEnv } from "@elizaos/shared/utils/env";
 import type { Command } from "commander";
 import { runCommandWithRuntime } from "../cli-utils";
 

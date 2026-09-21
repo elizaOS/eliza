@@ -27,7 +27,7 @@
  * never an implicit platform default (#15245 acceptance).
  */
 
-import type { ResolvedSurfaceManifest } from "@elizaos/core";
+import type { ResolvedSurfaceManifest } from "@elizaos/common";
 
 /**
  * Renderer-process sharing for an independent native surface.

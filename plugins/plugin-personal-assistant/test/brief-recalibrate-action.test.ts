@@ -8,18 +8,24 @@
  * database, repository, editorial contract, and action handler are real.
  */
 
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: mocks.hasOwnerAccess,
+}));
+
 import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
   UUID,
 } from "@elizaos/core";
+import { EventType, runWithTrajectoryContext } from "@elizaos/core";
 import {
   __resetDefaultTriageServiceForTests,
-  EventType,
   getDefaultTriageService,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
+  manageMessageAction,
+  respondToMessageAction,
+} from "@elizaos/plugin-assistant";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import {
   afterAll,
@@ -30,9 +36,7 @@ import {
   it,
   vi,
 } from "vitest";
-import { manageMessageAction } from "../../../packages/core/src/features/messaging/triage/actions/manageMessage.ts";
-import { respondToMessageAction } from "../../../packages/core/src/features/messaging/triage/actions/respondToMessage.ts";
-import { TrajectoriesService } from "../../../packages/core/src/features/trajectories/TrajectoriesService.ts";
+import { TrajectoriesService } from "../../plugin-assistant/src/features/trajectories/TrajectoriesService.ts";
 import { GoogleGmailAdapter } from "../../plugin-google-workspace/src/lifeops-message-adapter.ts";
 
 const mocks = vi.hoisted(() => ({
@@ -41,7 +45,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@elizaos/agent", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@elizaos/agent")>()),
-  hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
 import {

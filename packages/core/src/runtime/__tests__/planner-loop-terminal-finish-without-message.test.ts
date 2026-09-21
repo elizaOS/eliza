@@ -5,7 +5,7 @@
  * Deterministic — vitest-mocked `useModel`; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
-import { runPlannerLoop } from "../planner-loop";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 /**
  * Regression: a FINISH verdict on a terminal-only planner iteration must not

@@ -11,8 +11,8 @@
  *   3. Response: 200 { handled: true, type } on success
  */
 
+import { ChannelType } from "@elizaos/common";
 import {
-  ChannelType,
   createMessageMemory,
   type EventPayload,
   type IAgentRuntime,

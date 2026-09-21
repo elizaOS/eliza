@@ -9,12 +9,11 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import type { Memory, UUID } from "@elizaos/common";
 import {
   type AgentRuntime,
   createUniqueUuid,
-  type Memory,
   stringToUuid,
-  type UUID,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __resetChatDedupeForTests } from "../../../agent/src/api/chat-routes.ts";
@@ -79,6 +78,7 @@ function installDeterministicMessageService(
       handledPrompts.push(prompt);
       await onHandle?.(messageRuntime, message);
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text: `reply:${prompt}` },
         responseMessages: [],
@@ -440,6 +440,7 @@ describe("conversation idempotency across a real PGlite runtime restart", () => 
         };
         await runtime.createMemory(assistant, "messages");
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: assistant.content,
           responseMessages: [assistant],

@@ -8,7 +8,7 @@
  * the client fan-out so the on-wire reconstruction seam (`bindWs`) is exercised,
  * not bypassed.
  */
-import type { SwarmEvent } from "@elizaos/core";
+import type { SwarmEvent } from "@elizaos/common";
 import { beforeEach, describe, expect, it } from "vitest";
 import { client } from "../api/client";
 import { __taskActivityInternals } from "./task-activity-store";

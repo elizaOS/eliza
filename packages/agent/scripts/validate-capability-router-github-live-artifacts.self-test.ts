@@ -1,4 +1,4 @@
-// Exercises validate capability router github live artifacts.self test automation behavior with deterministic script fixtures.
+/** Exercises artifact downloads and report validation with deterministic command fixtures. */
 import { validateGithubLiveArtifacts } from "./validate-capability-router-github-live-artifacts.ts";
 
 const observedGreenRun = {
@@ -49,7 +49,7 @@ assertCommand("downloads both named artifacts", "gh", [
   "remote-capability-provider-live-report",
 ]);
 assertCommandIncludes("validates cloud report artifact", "bun", [
-  "test:remote-capabilities:validate-live-reports",
+  "packages/agent/scripts/validate-capability-router-live-reports.ts",
   "--kind",
   "cloud",
   "--expect-count",
@@ -57,7 +57,7 @@ assertCommandIncludes("validates cloud report artifact", "bun", [
   "/tmp/capability-router-live-artifacts/remote-capability-cloud-live-report",
 ]);
 assertCommandIncludes("validates provider report artifact", "bun", [
-  "test:remote-capabilities:validate-live-reports",
+  "packages/agent/scripts/validate-capability-router-live-reports.ts",
   "--kind",
   "provider",
   "--expect-count",

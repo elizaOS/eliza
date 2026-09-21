@@ -4,8 +4,10 @@
  * Personal Assistant-side projection that turns those durable rows into the
  * structural state LifeOps schedulers, policies, and relationship tools read.
  */
-import { hasOwnerAccess, resolveKnowledgeGraphService } from "@elizaos/agent";
+
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import { hasRoleAccess } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { SELF_ENTITY_ID } from "../entities/types.js";
 import {
   applyExtractedEdges,
@@ -64,7 +66,10 @@ export interface CoreFactMemoryBridgeResult {
 }
 
 interface BridgeDeps {
-  ownerAccess?: typeof hasOwnerAccess;
+  ownerAccess?: (
+    runtime: IAgentRuntime | undefined,
+    message: Memory | undefined,
+  ) => Promise<boolean>;
   factStore?: OwnerFactStore;
   now?: () => Date;
 }
@@ -398,8 +403,10 @@ export async function bridgeCoreFactMemory(
     return skipped("already_bridged");
   }
 
-  const ownerAccess = deps.ownerAccess ?? hasOwnerAccess;
-  if (!(await ownerAccess(runtime, memory))) {
+  const owner = deps.ownerAccess
+    ? await deps.ownerAccess(runtime, memory)
+    : await hasRoleAccess(runtime, memory, "OWNER");
+  if (!owner) {
     await markFactBridged(runtime, factId);
     return skipped("not_owner_fact");
   }

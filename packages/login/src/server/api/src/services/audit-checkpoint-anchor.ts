@@ -12,7 +12,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import {
   canonicalCheckpointBytes,
   type SignedCheckpoint,

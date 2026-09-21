@@ -19,7 +19,7 @@
  * and were verified field-by-field against each widget's parser.
  */
 
-import type { AgentNotification } from "@elizaos/core";
+import type { AgentNotification } from "@elizaos/common";
 import type { PluginInfo } from "../../api/client-types-config";
 import { publishAppValue, seedAppValue } from "../../state/app-store";
 import {

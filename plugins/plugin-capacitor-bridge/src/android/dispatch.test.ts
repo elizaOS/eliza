@@ -6,15 +6,16 @@
  * streaming sink lifecycle without booting a runtime or device.
  */
 
-import type { IAgentRuntime, Plugin, RouteHandlerResult } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import {
 	AgentRuntime,
 	createCharacter,
-	InMemoryDatabaseAdapter,
 	NotificationService,
 	type Service,
 	ServiceType,
 } from "@elizaos/core";
+import type { RouteHandlerResult } from "@elizaos/shared/api/http-plugin";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
 import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
 import {

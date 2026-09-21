@@ -4,7 +4,7 @@
  * Agent harness dev (TUI / watch): install, build plugin dist if missing,
  * then `packages/agent` in watch mode.
  *
- * Run via: `bun run dev:harness` from the eliza repo root.
+ * Run via: `bun packages/scripts/dev-harness.mjs` from the eliza repo root.
  * For the web + API dev stack, use `bun run dev` instead.
  */
 
@@ -34,27 +34,18 @@ if (needsInstall) {
     try {
       unlinkSync(INSTALL_STAMP);
     } catch {
-      /* ignore */
+      // error-policy:J6 The completed install remains usable if stamp cleanup fails.
+      console.warn("[dev] could not remove the completed install stamp");
     }
   }
 } else {
   console.log("\n[dev] bun install skipped (deps unchanged)\n");
 }
 
-// The @elizaos/core dist barrel (`dist/index.node.js`) re-exports from
-// `dist/node/index.node.js`, which is only produced by the full build. A stale
-// declarations-only dist leaves the barrel present but the node/ subdir
-// missing, so check for the real runtime entry, not just the dist/ folder.
-const coreNodeEntry = join(
-  ROOT,
-  "packages",
-  "typescript",
-  "dist",
-  "node",
-  "index.node.js",
-);
+// Core publishes one Node entry; missing output requires preparation.
+const coreNodeEntry = join(ROOT, "packages", "core", "dist", "index.js");
 if (!existsSync(coreNodeEntry)) {
-  console.log("\n[dev] building `@elizaos/core` (no dist/node/)…\n");
+  console.log("\n[dev] building `@elizaos/core` (no dist/index.js)…\n");
   run("bun", ["run", "build:core"]);
 }
 

@@ -2,13 +2,16 @@
  * Unit coverage for the cloud route registry (register/get, public-access map).
  * In-memory registry, no runtime.
  */
-import { describe, expect, it, vi } from "vitest";
+import { logger } from "@elizaos/shared/logger";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CLOUD_PUBLIC_ROUTE_ACCESS,
   getCloudRoute,
   listCloudRoutes,
   registerCloudRoute,
 } from "./cloud-route-registry";
+
+afterEach(() => vi.restoreAllMocks());
 
 function TestRoute() {
   return null;
@@ -82,7 +85,7 @@ describe("cloud route public registration policy", () => {
   });
 
   it("warns in dev/test when re-registration flips a private route public", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
     registerCloudRoute({
       path: "security/private-then-public",
       element: TestRoute,

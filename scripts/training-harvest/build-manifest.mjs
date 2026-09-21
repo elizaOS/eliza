@@ -200,7 +200,7 @@ const manifest = {
   goal: "Run every elizaOS scenario+benchmark+e2e through gpt-5.5 (Codex subscription), harvest correct eliza_native_v1 trajectories, GEPA-repair failures, fine-tune on Nebius.",
   provider: {
     mechanism:
-      "ELIZA_CHAT_VIA_CLI CLI-subscription backend (packages/core/src/testing/live-provider.ts selectCliProvider)",
+      "ELIZA_CHAT_VIA_CLI CLI-subscription backend (packages/testing/src/live-provider.ts selectCliProvider)",
     backend: "codex",
     model: "gpt-5.5",
     modelOverrideEnv: "ELIZA_CLI_CODEX_MODEL",

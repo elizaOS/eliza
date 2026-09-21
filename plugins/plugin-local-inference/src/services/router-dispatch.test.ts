@@ -3,10 +3,10 @@ import {
 	AgentRuntime,
 	type Character,
 	type IAgentRuntime,
-	InMemoryDatabaseAdapter,
 	ModelType,
 	runWithStreamingContext,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Force a deterministic manual policy pinned to our fake cloud provider so the

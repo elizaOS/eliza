@@ -5,8 +5,9 @@
  * ConnectorAccountManager provider, the DM sensitive-request adapter, and the
  * cross-connector triage adapter. Auto-enables on the `telegram` connector key.
  */
-import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import { getConnectorAccountManager, logger } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import {
   stopTelegramAccountAuthSession,
   telegramAccountRoutes,

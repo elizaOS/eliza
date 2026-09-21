@@ -24,7 +24,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { buildStoreVariantBlockedMessage } from "@elizaos/core";
+import { buildStoreVariantBlockedMessage } from "@elizaos/shared/platform/sandbox-policy";
 import type { OrchestratorTerminalSupport } from "../services/terminal-capabilities.js";
 
 const BLOCKED_MESSAGE = buildStoreVariantBlockedMessage("Coding agents");

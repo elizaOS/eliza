@@ -15,9 +15,9 @@ const ROOMS = {
 
 describe("matchTopicRooms — cross-channel topic search (#8927)", () => {
 	it("ranks rooms by number of matching topics, most first", () => {
-		const hits = matchTopicRooms(ROOMS, "stripe");
-		expect(hits.map((h) => h.roomId)).toEqual(["room-a", "room-b"]);
-		expect(hits[0].matchedTopics).toEqual(["stripe payout"]);
+		const hits = matchTopicRooms(ROOMS, "stripe chat swipe");
+		expect(hits.map((h) => h.roomId)).toEqual(["room-c", "room-a", "room-b"]);
+		expect(hits[0].matchedTopics).toEqual(["chat ux", "swipe gesture"]);
 	});
 
 	it("matches any whitespace-delimited token, case-insensitively", () => {

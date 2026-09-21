@@ -4,7 +4,7 @@
  * bridge, while an inert (unset) gate permits both. Uses a real in-process
  * vault (createTestVault); gate state is driven directly.
  */
-import { createTestVault, type TestVault } from "@elizaos/vault";
+import { createTestVault, type TestVault } from "@elizaos/credentials/vault";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TeeBootGate } from "../services/tee-boot-gate.ts";
 import {

@@ -25,6 +25,16 @@
       },
       "import": "./dist/api/plugin-routes.js",
       "default": "./dist/api/plugin-routes.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "eliza-source": {
+        "types": "./src/runtime/index.ts",
+        "import": "./src/runtime/index.ts",
+        "default": "./src/runtime/index.ts"
+      },
+      "import": "./dist/runtime/index.js",
+      "default": "./dist/runtime/index.js"
     }
   },
   "scripts": {
@@ -43,14 +53,16 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/registry": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "@elizaos/vault": "workspace:*"
+    "@elizaos/credentials": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {
     "bun-types": "^1.3.12",
     "tsup": "^8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@elizaos/testing": "workspace:*"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

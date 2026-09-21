@@ -25,8 +25,9 @@ vi.mock("@capacitor/core", () => ({
   },
 }));
 
-vi.mock("@elizaos/logger", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@elizaos/logger")>();
+vi.mock("@elizaos/shared/logger", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@elizaos/shared/logger")>();
   return {
     ...actual,
     logger: { ...actual.logger, error: platform.loggerError },

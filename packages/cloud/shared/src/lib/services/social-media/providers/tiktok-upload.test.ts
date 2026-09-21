@@ -4,7 +4,7 @@
  * pins decimal-MB ranges, sequential response statuses, and zero-copy views.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import * as realSafeFetch from "../../../security/safe-fetch";
 import type { SocialCredentials } from "../../../types/social-media";
 import * as realRateLimit from "../rate-limit";

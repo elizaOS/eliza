@@ -4,13 +4,12 @@
  * before a scoped session token is minted.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
+import type { Memory, UUID } from "@elizaos/common";
 import {
   hasRoleAccess as coreHasRoleAccess,
   createUniqueUuid,
   type IAgentRuntime,
   logger,
-  type Memory,
-  type UUID,
 } from "@elizaos/core";
 import type { EmbedRole } from "./embed-session-token";
 

@@ -5,8 +5,8 @@
  * ambiguous sends non-retriable until an operator reconciles the provider.
  */
 import { randomUUID } from "node:crypto";
-import { approvalDispatchAdmissionCte } from "@elizaos/agent";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import { approvalDispatchAdmissionCte } from "@elizaos/plugin-assistant";
 import type {
   DispatchReceipt,
   DispatchResult,

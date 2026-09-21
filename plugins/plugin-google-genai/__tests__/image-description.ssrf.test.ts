@@ -1,6 +1,6 @@
 /**
  * Integration-backed unit tests for IMAGE_DESCRIPTION SSRF fail-closed: real
- * `@elizaos/core` `fetchRemoteMedia` policy against literal private/loopback
+ * `@elizaos/shared/media` `fetchRemoteMedia` policy against literal private/loopback
  * hosts, with only the Gemini client and LLM call layers mocked. Proves the
  * handler never reaches the model for blocked image URLs.
  */
@@ -39,11 +39,6 @@ vi.mock("../utils/tokenization", () => ({
 }));
 
 import { handleImageDescription } from "../models/image";
-import { installNodeImageUrlFetcher } from "../models/image-url.node";
-
-// The Node entrypoint installs this in production; tests import models
-// directly, so install the same guarded fetcher here.
-installNodeImageUrlFetcher();
 
 function createRuntime(): IAgentRuntime {
   return {

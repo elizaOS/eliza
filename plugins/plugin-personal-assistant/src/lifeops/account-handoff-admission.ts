@@ -3,11 +3,12 @@
  * the canonical approval queue and calendar control. Original pause ownership
  * is checkpointed before mutation so retries preserve pre-existing pauses.
  */
+
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
   ApprovalDispatchControlStore,
   createApprovalQueue,
-} from "@elizaos/agent";
-import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import type { CalendarService } from "@elizaos/plugin-calendar";
 import { z } from "zod";
 import { assertGoogleHandoffApprovalSelection } from "./account-handoff-approval-inventory.js";

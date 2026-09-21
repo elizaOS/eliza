@@ -1,6 +1,6 @@
 /** Owns gateway token acquisition, response validation and renewal timing across connector services. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { boundedFetch } from "./bounded-fetch";
 
 export interface GatewayTokenResponse {

@@ -13,4 +13,4 @@ export {
   type AppWebConfig,
   DEFAULT_APP_CONFIG,
   resolveAppBranding,
-} from "@elizaos/shared";
+} from "@elizaos/shared/config/app-config";

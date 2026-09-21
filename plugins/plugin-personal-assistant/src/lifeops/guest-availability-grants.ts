@@ -6,7 +6,6 @@
  * into provider/account/calendar coordinates; action parameters never do.
  */
 
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   CALENDAR_GUEST_AVAILABILITY_PURPOSE,
@@ -15,6 +14,7 @@ import {
   type CalendarGuestAvailabilityProvider,
   CalendarServiceError,
 } from "@elizaos/plugin-calendar";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import type { Entity, EntityAttribute, EntityIdentity } from "@elizaos/shared";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {

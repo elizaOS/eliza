@@ -5,7 +5,7 @@
  * memory content preserves complete source text only at declared text paths;
  * unsupported NUL characters are rejected rather than silently removed.
  *
- * `utils.ts`, `utils.node.ts`, and `utils.browser.ts` re-export this so the
+ * `utils.ts` re-exports this so the
  * three platform builds cannot drift.
  */
 import { ElizaError } from "@elizaos/core";

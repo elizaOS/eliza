@@ -2,7 +2,7 @@
  * Terminal-aware global logging setup: maps log levels to priorities and themes
  * output for CLI surfaces.
  */
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { theme } from "../terminal/theme";
 
 const LOG_LEVEL_PRIORITY: Record<string, number> = {

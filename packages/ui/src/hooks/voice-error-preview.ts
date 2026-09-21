@@ -1,6 +1,6 @@
 /** Surrogate-safe preview formatting shared by voice failure and debug paths. */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
 
 export type VoiceErrorPreviewLimit = 80 | 120 | 200;
 

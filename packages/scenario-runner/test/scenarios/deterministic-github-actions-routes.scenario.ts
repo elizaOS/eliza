@@ -6,20 +6,22 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type IAgentRuntime, ModelType, type Plugin } from "@elizaos/core";
-import {
-  type DeterministicModelFixture,
-  finalMessageUserText,
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-  strictActionRouteFixtures,
-} from "@elizaos/core/testing";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
+import {
+  type DeterministicModelFixture,
+  finalMessageUserText,
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+  strictActionRouteFixtures,
+} from "@elizaos/testing";
 import { buildPreview } from "../../../../plugins/plugin-github/src/actions/issue-op.ts";
 import { buildReviewPreview } from "../../../../plugins/plugin-github/src/actions/pr-op.ts";
 import githubPlugin, {
@@ -237,13 +239,16 @@ async function ensureGithubPlugin(
   if (!registered) {
     await runtime.registerPlugin?.(githubPlugin);
   }
-  const routes = runtime.routes ?? [];
+  const routes = getHttpRuntime(runtime).routes ?? [];
   const pluginRoutes = githubPlugin.routes ?? [];
-  runtime.routes = routes.filter(
+  getHttpRuntime(runtime).routes = routes.filter(
     (route) => route.__scenarioGithubRoute !== true,
   );
   for (const route of pluginRoutes) {
-    runtime.routes.push({ ...route, __scenarioGithubRoute: true });
+    getHttpRuntime(runtime).routes.push({
+      ...route,
+      __scenarioGithubRoute: true,
+    });
   }
   const service =
     ((await runtime.getServiceLoadPromise?.(GitHubService.serviceType)) as

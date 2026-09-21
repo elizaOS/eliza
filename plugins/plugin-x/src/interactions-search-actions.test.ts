@@ -6,13 +6,6 @@ import type { Tweet } from "./client";
 import { TwitterInteractionClient } from "./interactions";
 import type { TwitterClientState } from "./types";
 
-// The lightweight plugin test shim for `@elizaos/core` omits prompt helpers used
-// by this action-decision flow. Use the node source entry for this suite.
-vi.mock("@elizaos/core", async () => {
-  const node = await import("@elizaos/core/node");
-  return node;
-});
-
 function asRuntime<T extends object>(runtime: T): IAgentRuntime & T {
   return runtime as IAgentRuntime & T;
 }

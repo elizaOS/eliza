@@ -4,8 +4,8 @@
  * write; completed mappings are never replayed after later control revisions.
  */
 import { createHash } from "node:crypto";
-import { ApprovalDispatchControlStore } from "@elizaos/agent";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import { ApprovalDispatchControlStore } from "@elizaos/plugin-assistant";
 import type { CalendarService } from "@elizaos/plugin-calendar";
 import { z } from "zod";
 import {

@@ -17,21 +17,23 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
-  buildFactKeywordsForStorage,
   MemoryType as CoreMemoryType,
   ElizaError,
-  factClaimsEquivalent,
   getActionReplyOwner,
   getRelatedEntityIds,
   inflectionTermKeys,
   isActiveMemoryEvidence,
   logger,
   ModelType,
-  readStoredFactKeywords,
   toWellFormedUnicode,
   unwrapUserMessageText,
   validateUuid,
 } from "@elizaos/core";
+import {
+  buildFactKeywordsForStorage,
+  factClaimsEquivalent,
+  readStoredFactKeywords,
+} from "@elizaos/plugin-assistant";
 
 const MEMORY_OPS = ["create", "search", "update", "delete"] as const;
 

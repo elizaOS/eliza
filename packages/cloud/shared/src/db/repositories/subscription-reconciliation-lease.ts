@@ -1,5 +1,5 @@
 /** Validates the durable observation lease under organization serialization before source publication and final receipt CAS. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, eq } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import {

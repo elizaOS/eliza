@@ -119,7 +119,7 @@ Call `startMocks` from `scripts/start-mocks.ts`, register the returned env vars,
 and construct the real runtime for the package under test. The fixture servers
 replace only external HTTP APIs; they do not replace the elizaOS runtime or
 model layer. Deterministic model responses come from
-`createDeterministicModelPlugin` in `@elizaos/core/testing` and must be declared
+`createDeterministicModelPlugin` in `@elizaos/testing` and must be declared
 explicitly by the consuming test.
 
 Run the mock contract tests from the repo root with:

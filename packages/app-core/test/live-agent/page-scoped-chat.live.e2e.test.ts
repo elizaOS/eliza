@@ -16,18 +16,20 @@
 
 import crypto from "node:crypto";
 import {
-  type AgentRuntime,
   ChannelType,
-  createMessageMemory,
   type Memory,
   type MessageMetadata,
+  type UUID,
+} from "@elizaos/common";
+import {
+  type AgentRuntime,
+  createMessageMemory,
   type Plugin,
   stringToUuid,
-  type UUID,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect } from "vitest";
+import { trajectoriesPlugin } from "../../../../plugins/plugin-assistant/src/features/trajectories/index.ts";
 import { pageScopedContextProvider } from "../../../agent/src/providers/page-scoped-context.js";
-import { trajectoriesPlugin } from "../../../core/src/features/trajectories/index.js";
 import {
   buildPageScopedRoutingMetadata,
   PAGE_SCOPE_VERSION,
@@ -102,7 +104,6 @@ describe("Page-scoped chat — provider + trajectory metadata", () => {
       withLLM: true,
       preferredProvider: selectedLiveProvider?.name,
       characterName: "PageScopedTestAgent",
-      advancedCapabilities: false,
       plugins: [
         trajectoriesPlugin as Plugin,
         {

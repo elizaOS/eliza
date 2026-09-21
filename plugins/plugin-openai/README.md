@@ -15,6 +15,11 @@ OpenAI model-provider plugin for [elizaOS](https://github.com/elizaos/eliza). Ad
 
 Works with any OpenAI-compatible endpoint: OpenAI, Cerebras, EvoLink, OpenRouter, local servers, etc.
 
+Native tool results use the core `{ id, name, arguments }` contract in both
+streaming and non-streaming calls. The adapter restores record arguments and
+converts SDK/protocol fields before returning; malformed identity or arguments
+fail at this boundary. Consumers should not read SDK `toolName` or `input` fields.
+
 For Cerebras `qwen-3.8-27b`, ordinary calls default to no reasoning. A per-call
 `providerOptions.eliza.thinking="on"` enables low reasoning unless a reasoning
 effort is already configured. An explicit `providerOptions.openai.reasoningEffort`
@@ -138,15 +143,6 @@ provider; monitor usage rather than assuming equal pricing or latency.
 | `OPENAI_RESEARCH_MODEL` | `o3-deep-research` | Research model (o3 or o4-mini variants) |
 | `OPENAI_RESEARCH_TIMEOUT` | `3600000` (1 hr) | Request timeout in milliseconds |
 
-### Browser and proxy
-
-| Variable | Default | Description |
-|---|---|---|
-| `OPENAI_BROWSER_BASE_URL` | — | Proxy URL for browser builds (keeps key server-side) |
-| `OPENAI_BROWSER_UPSTREAM_BASE_URL` | — | Actual proxy upstream used for endpoint-specific capability checks |
-| `OPENAI_BROWSER_EMBEDDING_URL` | — | Proxy URL for browser embedding requests |
-| `OPENAI_ALLOW_BROWSER_API_KEY` | `false` | Send auth header in browser builds (opt-in) |
-
 ### Other
 
 | Variable | Default | Description |
@@ -219,30 +215,11 @@ const report = await runtime.useModel(ModelType.RESEARCH, {
 console.log(report.text, report.annotations);
 ```
 
-## Browser proxy setup
+## Node host configuration
 
-In browser builds this plugin does not send `Authorization` headers by default, to avoid exposing API keys in frontend bundles. Point `OPENAI_BROWSER_BASE_URL` at a server-side proxy that injects the key:
-
-```ts
-// Minimal Express proxy
-import express from "express";
-const app = express();
-app.use(express.json());
-
-app.all("/openai/*", async (req, res) => {
-  const url = `https://api.openai.com/v1/${req.params[0]}`;
-  const r = await fetch(url, {
-    method: req.method,
-    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
-    body: req.method !== "GET" ? JSON.stringify(req.body) : undefined,
-  });
-  res.status(r.status).send(await r.text());
-});
-
-app.listen(3000);
-```
-
-Then set `OPENAI_BROWSER_BASE_URL=http://localhost:3000/openai`.
+Run this plugin in the Node host. Browser clients use the host's authenticated transport.
+Set `OPENAI_BASE_URL` for an OpenAI-compatible endpoint or authenticated server proxy;
+provider credentials belong in host settings. The plugin has no browser build.
 
 ## Cerebras compatibility
 

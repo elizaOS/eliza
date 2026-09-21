@@ -825,43 +825,81 @@ describe("remote capability router", () => {
     ]);
   });
 
-  it("rejects unsafe remote view bundle paths before exposing browser import URLs", async () => {
-    globalThis.fetch = vi.fn(async () =>
-      jsonResponse({
-        ok: true,
-        result: {
-          modules: [
-            {
-              id: "device-plugin",
-              name: "@remote/device",
-              views: [
-                {
-                  id: "device-view",
-                  label: "Device View",
-                  bundlePath: "../secrets.js",
-                },
-              ],
-            },
-          ],
-        },
-      }),
-    ) as unknown as typeof fetch;
-
-    const service = new RemoteCapabilityRouterService(makeRuntime(), {
-      enabled: true,
-      endpoints: [{ id: "device", baseUrl: "https://device.example" }],
-      environment: "server",
-      requestTimeoutMs: 1000,
-    });
-
-    await expect(service.plugin.listModules()).rejects.toMatchObject({
-      code: "CAPABILITY_DECODE_FAILED",
-      capability: "plugin",
-      method: "plugin.modules.list",
+  it.each([
+    {
+      name: "bundle path",
+      view: {
+        id: "device-view",
+        label: "Device View",
+        bundlePath: "../secrets.js",
+      },
       message:
         'Remote plugin asset path "../secrets.js" must not contain empty, current-directory, or parent-directory segments.',
-    });
-  });
+    },
+    {
+      name: "frame URL",
+      view: {
+        id: "device-view",
+        label: "Device View",
+        frameUrl: "javascript:alert(1)",
+      },
+      message:
+        'Remote plugin frameUrl "javascript:alert(1)" must be an absolute http(s) URL without embedded credentials.',
+    },
+    {
+      name: "bundle URL",
+      view: {
+        id: "device-view",
+        label: "Device View",
+        bundleUrl: "javascript:alert(1)",
+      },
+      message:
+        'Remote plugin bundleUrl "javascript:alert(1)" must be an absolute http(s) URL without embedded credentials.',
+    },
+    {
+      name: "sandboxed frame URL",
+      view: {
+        id: "device-frame-view",
+        label: "Device Frame View",
+        frameUrl: "javascript:alert(1)",
+        surface: { isolation: "sandboxed-iframe" },
+      },
+      message:
+        'Remote plugin frameUrl "javascript:alert(1)" must be an absolute http(s) URL without embedded credentials.',
+    },
+  ])(
+    "rejects unsafe $name before exposing browser URLs",
+    async ({ view, message }) => {
+      globalThis.fetch = vi.fn(async () =>
+        jsonResponse({
+          ok: true,
+          result: {
+            modules: [
+              {
+                id: "device-plugin",
+                name: "@remote/device",
+                views: [view],
+              },
+            ],
+          },
+        }),
+      ) as unknown as typeof fetch;
+
+      const service = new RemoteCapabilityRouterService(makeRuntime(), {
+        enabled: true,
+        endpoints: [{ id: "device", baseUrl: "https://device.example" }],
+        environment: "server",
+        requestTimeoutMs: 1000,
+      });
+
+      await expect(service.plugin.listModules()).rejects.toMatchObject({
+        code: "CAPABILITY_DECODE_FAILED",
+        capability: "plugin",
+        method: "plugin.modules.list",
+        message,
+      });
+    },
+  );
 
   it("rewrites remote sandboxed iframe frame paths into proxied frame URLs", async () => {
     globalThis.fetch = vi.fn(async () =>
@@ -906,121 +944,6 @@ describe("remote capability router", () => {
           ],
         },
       ],
-    });
-  });
-
-  it("rejects unsafe remote view frame URLs before exposing browser frame URLs", async () => {
-    globalThis.fetch = vi.fn(async () =>
-      jsonResponse({
-        ok: true,
-        result: {
-          modules: [
-            {
-              id: "device-plugin",
-              name: "@remote/device",
-              views: [
-                {
-                  id: "device-view",
-                  label: "Device View",
-                  frameUrl: "javascript:alert(1)",
-                },
-              ],
-            },
-          ],
-        },
-      }),
-    ) as unknown as typeof fetch;
-
-    const service = new RemoteCapabilityRouterService(makeRuntime(), {
-      enabled: true,
-      endpoints: [{ id: "device", baseUrl: "https://device.example" }],
-      environment: "server",
-      requestTimeoutMs: 1000,
-    });
-
-    await expect(service.plugin.listModules()).rejects.toMatchObject({
-      code: "CAPABILITY_DECODE_FAILED",
-      capability: "plugin",
-      method: "plugin.modules.list",
-      message:
-        'Remote plugin frameUrl "javascript:alert(1)" must be an absolute http(s) URL without embedded credentials.',
-    });
-  });
-
-  it("rejects unsafe remote view bundle URLs before exposing browser import URLs", async () => {
-    globalThis.fetch = vi.fn(async () =>
-      jsonResponse({
-        ok: true,
-        result: {
-          modules: [
-            {
-              id: "device-plugin",
-              name: "@remote/device",
-              views: [
-                {
-                  id: "device-view",
-                  label: "Device View",
-                  bundleUrl: "javascript:alert(1)",
-                },
-              ],
-            },
-          ],
-        },
-      }),
-    ) as unknown as typeof fetch;
-
-    const service = new RemoteCapabilityRouterService(makeRuntime(), {
-      enabled: true,
-      endpoints: [{ id: "device", baseUrl: "https://device.example" }],
-      environment: "server",
-      requestTimeoutMs: 1000,
-    });
-
-    await expect(service.plugin.listModules()).rejects.toMatchObject({
-      code: "CAPABILITY_DECODE_FAILED",
-      capability: "plugin",
-      method: "plugin.modules.list",
-      message:
-        'Remote plugin bundleUrl "javascript:alert(1)" must be an absolute http(s) URL without embedded credentials.',
-    });
-  });
-
-  it("rejects unsafe sandboxed remote view frame URLs before exposing browser frame URLs", async () => {
-    globalThis.fetch = vi.fn(async () =>
-      jsonResponse({
-        ok: true,
-        result: {
-          modules: [
-            {
-              id: "device-plugin",
-              name: "@remote/device",
-              views: [
-                {
-                  id: "device-frame-view",
-                  label: "Device Frame View",
-                  frameUrl: "javascript:alert(1)",
-                  surface: { isolation: "sandboxed-iframe" },
-                },
-              ],
-            },
-          ],
-        },
-      }),
-    ) as unknown as typeof fetch;
-
-    const service = new RemoteCapabilityRouterService(makeRuntime(), {
-      enabled: true,
-      endpoints: [{ id: "device", baseUrl: "https://device.example" }],
-      environment: "server",
-      requestTimeoutMs: 1000,
-    });
-
-    await expect(service.plugin.listModules()).rejects.toMatchObject({
-      code: "CAPABILITY_DECODE_FAILED",
-      capability: "plugin",
-      method: "plugin.modules.list",
-      message:
-        'Remote plugin frameUrl "javascript:alert(1)" must be an absolute http(s) URL without embedded credentials.',
     });
   });
 

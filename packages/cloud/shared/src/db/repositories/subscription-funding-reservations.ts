@@ -3,7 +3,7 @@
  * It validates exact source conservation but never opens a transaction or
  * mutates purchased-credit balances; the owning authority supplies both.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, asc, eq } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import {

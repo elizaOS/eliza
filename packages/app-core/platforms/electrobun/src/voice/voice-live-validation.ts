@@ -1,7 +1,7 @@
 /** Implements Electrobun desktop voice live validation ts behavior for app-core shell integration. */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
-import type { JsonValue } from "@elizaos/core";
+import type { JsonValue } from "@elizaos/common";
 import { DynamicViewRegistry } from "../dynamic-views/registry";
 import { DynamicViewSessionManager } from "../dynamic-views/session-manager";
 import { TraceService } from "../trace/trace-service";

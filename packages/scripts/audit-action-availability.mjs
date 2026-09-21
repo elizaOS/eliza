@@ -7,6 +7,7 @@
  * intent/keyword based instead of hard state based.
  */
 
+import { VALIDATION_KEYWORD_DOCS } from "../prompts/src/keywords.ts";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import ts from "typescript";
@@ -30,14 +31,6 @@ const SKIP_DIRS = new Set([
   "test",
   "tests",
 ]);
-
-const KEYWORD_FILES = [
-  "packages/shared/src/i18n/keywords/action-search.generated.keywords.json",
-  "packages/shared/src/i18n/keywords/context-search.keywords.json",
-  "packages/shared/src/i18n/keywords/shared.keywords.json",
-  "packages/shared/src/i18n/keywords/typescript.keywords.json",
-  "packages/shared/src/i18n/keywords/validate.keywords.json",
-];
 
 const CONTEXT_CONSTANTS = {
   CODING_TOOLS_CONTEXTS: ["code", "terminal", "automation"],
@@ -74,16 +67,14 @@ if (format === "json") {
 
 function loadKeywordKeys() {
   const keys = new Set();
-  for (const file of KEYWORD_FILES) {
-    try {
-      const parsed = JSON.parse(readFileSync(join(ROOT, file), "utf8"));
-      for (const key of Object.keys(parsed.entries ?? {})) {
-        keys.add(key);
-      }
-    } catch {
-      // Missing keyword files should not prevent source auditing.
+  function visit(tree, prefix = "") {
+    for (const [key, value] of Object.entries(tree)) {
+      const path = prefix ? `${prefix}.${key}` : key;
+      if ("base" in value || "locales" in value) keys.add(path);
+      else visit(value, path);
     }
   }
+  visit(VALIDATION_KEYWORD_DOCS);
   return keys;
 }
 

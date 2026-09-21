@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 
 import { Resend } from "resend";
 

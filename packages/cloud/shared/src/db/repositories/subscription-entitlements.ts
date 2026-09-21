@@ -3,7 +3,7 @@
  * primary database. Rebuilds use revision CAS and lock organization before
  * subscription authority, preserving the billing-domain lock order.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, eq } from "drizzle-orm";
 import { resolveSubscriptionPlanDefinition } from "../../lib/services/subscription-catalog";
 import type { DbTransaction } from "../client";

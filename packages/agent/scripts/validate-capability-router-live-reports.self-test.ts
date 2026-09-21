@@ -1,4 +1,4 @@
-// Exercises validate capability router live reports.self test automation behavior with deterministic script fixtures.
+/** Exercises live-report CLI admission with deterministic files and real subprocesses. */
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -888,14 +888,11 @@ async function main(): Promise<void> {
       "--kind=cloud",
       "--expect-count=1",
     );
-    if (wrongCloudCount.exitCode === 0) {
-      throw new Error("wrong cloud count unexpectedly passed validation.");
-    }
-    if (!wrongCloudCount.output.includes("expected 1 report(s), got 2")) {
-      throw new Error(
-        `wrong cloud count failed for the wrong reason: ${wrongCloudCount.output}`,
-      );
-    }
+    assertRejected(
+      wrongCloudCount,
+      "expected 1 report(s), got 2",
+      "wrongCloudCount",
+    );
     const ci = await runValidator(ciDir, "--kind=cloud", "--require-ci");
     if (ci.exitCode !== 0) {
       throw new Error(
@@ -964,20 +961,11 @@ async function main(): Promise<void> {
         GITHUB_REF: "refs/heads/main",
       },
     );
-    if (mismatchedProviderCi.exitCode === 0) {
-      throw new Error(
-        "mismatched provider ci report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !mismatchedProviderCi.output.includes(
-        "ci.runAttempt must match GITHUB_RUN_ATTEMPT",
-      )
-    ) {
-      throw new Error(
-        `mismatched provider ci failed for the wrong reason: ${mismatchedProviderCi.output}`,
-      );
-    }
+    assertRejected(
+      mismatchedProviderCi,
+      "ci.runAttempt must match GITHUB_RUN_ATTEMPT",
+      "mismatchedProviderCi",
+    );
     const mismatchedCi = await runValidator(
       ciDir,
       "--kind=cloud",
@@ -992,14 +980,11 @@ async function main(): Promise<void> {
         GITHUB_REF: "refs/heads/main",
       },
     );
-    if (mismatchedCi.exitCode === 0) {
-      throw new Error("mismatched ci report unexpectedly passed validation.");
-    }
-    if (!mismatchedCi.output.includes("ci.runId must match GITHUB_RUN_ID")) {
-      throw new Error(
-        `mismatched ci failed for the wrong reason: ${mismatchedCi.output}`,
-      );
-    }
+    assertRejected(
+      mismatchedCi,
+      "ci.runId must match GITHUB_RUN_ID",
+      "mismatchedCi",
+    );
     const missingGithubEnv = await runValidator(
       ciDir,
       "--kind=cloud",
@@ -1014,57 +999,33 @@ async function main(): Promise<void> {
         GITHUB_REF: "",
       },
     );
-    if (missingGithubEnv.exitCode === 0) {
-      throw new Error(
-        "missing GitHub env report unexpectedly passed validation.",
-      );
-    }
-    if (!missingGithubEnv.output.includes("GITHUB_REF must be set")) {
-      throw new Error(
-        `missing GitHub env failed for the wrong reason: ${missingGithubEnv.output}`,
-      );
-    }
+    assertRejected(
+      missingGithubEnv,
+      "GITHUB_REF must be set",
+      "missingGithubEnv",
+    );
     const malformedCi = await runValidator(
       malformedCiDir,
       "--kind=cloud",
       "--require-ci",
     );
-    if (malformedCi.exitCode === 0) {
-      throw new Error("malformed ci report unexpectedly passed validation.");
-    }
-    if (!malformedCi.output.includes("ci.sha has invalid format")) {
-      throw new Error(
-        `malformed ci failed for the wrong reason: ${malformedCi.output}`,
-      );
-    }
+    assertRejected(malformedCi, "ci.sha has invalid format", "malformedCi");
     const pushCi = await runValidator(
       pushCiDir,
       "--kind=cloud",
       "--require-ci",
     );
-    if (pushCi.exitCode === 0) {
-      throw new Error("push ci report unexpectedly passed validation.");
-    }
-    if (
-      !pushCi.output.includes(
-        "ci.eventName must be workflow_dispatch or schedule",
-      )
-    ) {
-      throw new Error(`push ci failed for the wrong reason: ${pushCi.output}`);
-    }
+    assertRejected(
+      pushCi,
+      "ci.eventName must be workflow_dispatch or schedule",
+      "pushCi",
+    );
     const missingCi = await runValidator(
       cloudOnlyDir,
       "--kind=cloud",
       "--require-ci",
     );
-    if (missingCi.exitCode === 0) {
-      throw new Error("missing ci report unexpectedly passed validation.");
-    }
-    if (!missingCi.output.includes("ci must be an object")) {
-      throw new Error(
-        `missing ci failed for the wrong reason: ${missingCi.output}`,
-      );
-    }
+    assertRejected(missingCi, "ci must be an object", "missingCi");
     const providerKind = await runValidator(providerOnlyDir, "--kind=provider");
     if (providerKind.exitCode !== 0) {
       throw new Error(
@@ -1100,162 +1061,86 @@ async function main(): Promise<void> {
       "--kind=provider",
       "--require-providers=home-machine,mobile-companion",
     );
-    if (missingRequiredProvider.exitCode === 0) {
-      throw new Error(
-        "missing required provider report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !missingRequiredProvider.output.includes(
-        'required provider "mobile-companion" was not observed',
-      )
-    ) {
-      throw new Error(
-        `missing required provider failed for the wrong reason: ${missingRequiredProvider.output}`,
-      );
-    }
+    assertRejected(
+      missingRequiredProvider,
+      'required provider "mobile-companion" was not observed',
+      "missingRequiredProvider",
+    );
     const unknownProvider = await runValidator(
       unknownProviderDir,
       "--kind=provider",
       "--allowed-providers=home-machine,mobile-companion,desktop-companion",
     );
-    if (unknownProvider.exitCode === 0) {
-      throw new Error(
-        "unknown provider report unexpectedly passed validation.",
-      );
-    }
-    if (!unknownProvider.output.includes("is not in --allowed-providers")) {
-      throw new Error(
-        `unknown provider failed for the wrong reason: ${unknownProvider.output}`,
-      );
-    }
+    assertRejected(
+      unknownProvider,
+      "is not in --allowed-providers",
+      "unknownProvider",
+    );
     const duplicateEndpointUrlFingerprint = await runValidator(
       duplicateEndpointUrlFingerprintDir,
       "--kind=provider",
     );
-    if (duplicateEndpointUrlFingerprint.exitCode === 0) {
-      throw new Error(
-        "duplicate endpoint URL fingerprint unexpectedly passed validation.",
-      );
-    }
-    if (
-      !duplicateEndpointUrlFingerprint.output.includes(
-        "endpointUrlSha256 duplicates",
-      )
-    ) {
-      throw new Error(
-        `duplicate endpoint URL fingerprint failed for the wrong reason: ${duplicateEndpointUrlFingerprint.output}`,
-      );
-    }
+    assertRejected(
+      duplicateEndpointUrlFingerprint,
+      "endpointUrlSha256 duplicates",
+      "duplicateEndpointUrlFingerprint",
+    );
     const missingProviderId = await runValidator(
       missingProviderIdDir,
       "--kind=provider",
     );
-    if (missingProviderId.exitCode === 0) {
-      throw new Error("missing providerId report unexpectedly passed.");
-    }
-    if (
-      !missingProviderId.output.includes(
-        "providerId must be a non-empty string",
-      )
-    ) {
-      throw new Error(
-        `missing providerId failed for the wrong reason: ${missingProviderId.output}`,
-      );
-    }
+    assertRejected(
+      missingProviderId,
+      "providerId must be a non-empty string",
+      "missingProviderId",
+    );
     const mismatchedProviderId = await runValidator(
       mismatchedProviderIdDir,
       "--kind=provider",
     );
-    if (mismatchedProviderId.exitCode === 0) {
-      throw new Error("mismatched providerId report unexpectedly passed.");
-    }
-    if (
-      !mismatchedProviderId.output.includes("providerId must match provider")
-    ) {
-      throw new Error(
-        `mismatched providerId failed for the wrong reason: ${mismatchedProviderId.output}`,
-      );
-    }
+    assertRejected(
+      mismatchedProviderId,
+      "providerId must match provider",
+      "mismatchedProviderId",
+    );
     const missingProviderEvidence = await runValidator(
       missingProviderEvidenceDir,
       "--kind=provider",
     );
-    if (missingProviderEvidence.exitCode === 0) {
-      throw new Error("missing providerEvidence report unexpectedly passed.");
-    }
-    if (
-      !missingProviderEvidence.output.includes(
-        "providerEvidence must be an object",
-      )
-    ) {
-      throw new Error(
-        `missing providerEvidence failed for the wrong reason: ${missingProviderEvidence.output}`,
-      );
-    }
+    assertRejected(
+      missingProviderEvidence,
+      "providerEvidence must be an object",
+      "missingProviderEvidence",
+    );
     const mismatchedProviderEvidence = await runValidator(
       mismatchedProviderEvidenceDir,
       "--kind=provider",
     );
-    if (mismatchedProviderEvidence.exitCode === 0) {
-      throw new Error(
-        "mismatched providerEvidence report unexpectedly passed.",
-      );
-    }
-    if (
-      !mismatchedProviderEvidence.output.includes(
-        'providerEvidence.endpointRuntime must be "mobile-companion"',
-      )
-    ) {
-      throw new Error(
-        `mismatched providerEvidence failed for the wrong reason: ${mismatchedProviderEvidence.output}`,
-      );
-    }
+    assertRejected(
+      mismatchedProviderEvidence,
+      'providerEvidence.endpointRuntime must be "mobile-companion"',
+      "mismatchedProviderEvidence",
+    );
     const missingEndpointUrlFingerprint = await runValidator(
       missingEndpointUrlFingerprintDir,
       "--kind=provider",
     );
-    if (missingEndpointUrlFingerprint.exitCode === 0) {
-      throw new Error(
-        "missing endpoint URL fingerprint unexpectedly passed validation.",
-      );
-    }
-    if (
-      !missingEndpointUrlFingerprint.output.includes(
-        "endpointUrlSha256 must be a non-empty string",
-      )
-    ) {
-      throw new Error(
-        `missing endpoint URL fingerprint failed for the wrong reason: ${missingEndpointUrlFingerprint.output}`,
-      );
-    }
+    assertRejected(
+      missingEndpointUrlFingerprint,
+      "endpointUrlSha256 must be a non-empty string",
+      "missingEndpointUrlFingerprint",
+    );
     const malformedEndpointUrlFingerprint = await runValidator(
       malformedEndpointUrlFingerprintDir,
       "--kind=provider",
     );
-    if (malformedEndpointUrlFingerprint.exitCode === 0) {
-      throw new Error(
-        "malformed endpoint URL fingerprint unexpectedly passed validation.",
-      );
-    }
-    if (
-      !malformedEndpointUrlFingerprint.output.includes(
-        "endpointUrlSha256 has invalid format",
-      )
-    ) {
-      throw new Error(
-        `malformed endpoint URL fingerprint failed for the wrong reason: ${malformedEndpointUrlFingerprint.output}`,
-      );
-    }
+    assertRejected(
+      malformedEndpointUrlFingerprint,
+      "endpointUrlSha256 has invalid format",
+      "malformedEndpointUrlFingerprint",
+    );
     const kindMismatch = await runValidator(providerOnlyDir, "--kind", "cloud");
-    if (kindMismatch.exitCode === 0) {
-      throw new Error("kind mismatch report unexpectedly passed validation.");
-    }
-    if (!kindMismatch.output.includes('kind must be "cloud"')) {
-      throw new Error(
-        `kind mismatch failed for the wrong reason: ${kindMismatch.output}`,
-      );
-    }
+    assertRejected(kindMismatch, 'kind must be "cloud"', "kindMismatch");
     const fresh = await runValidator(
       freshDir,
       "--kind=provider",
@@ -1272,14 +1157,7 @@ async function main(): Promise<void> {
       "--kind=provider",
       "--max-age-minutes=5",
     );
-    if (stale.exitCode === 0) {
-      throw new Error("stale report unexpectedly passed validation.");
-    }
-    if (!stale.output.includes("observedAt is older")) {
-      throw new Error(
-        `stale report failed for the wrong reason: ${stale.output}`,
-      );
-    }
+    assertRejected(stale, "observedAt is older", "stale");
     const nearFuture = await runValidator(
       nearFutureDir,
       "--kind=provider",
@@ -1296,451 +1174,211 @@ async function main(): Promise<void> {
       "--kind=provider",
       "--max-future-minutes=5",
     );
-    if (farFuture.exitCode === 0) {
-      throw new Error("far-future report unexpectedly passed validation.");
-    }
-    if (!farFuture.output.includes("observedAt is newer")) {
-      throw new Error(
-        `far-future report failed for the wrong reason: ${farFuture.output}`,
-      );
-    }
+    assertRejected(farFuture, "observedAt is newer", "farFuture");
     const malformedObservedAt = await runValidator(malformedObservedAtDir);
-    if (malformedObservedAt.exitCode === 0) {
-      throw new Error("malformed observedAt report unexpectedly passed.");
-    }
-    if (
-      !malformedObservedAt.output.includes(
-        "observedAt must be an ISO timestamp",
-      )
-    ) {
-      throw new Error(
-        `malformed observedAt failed for the wrong reason: ${malformedObservedAt.output}`,
-      );
-    }
+    assertRejected(
+      malformedObservedAt,
+      "observedAt must be an ISO timestamp",
+      "malformedObservedAt",
+    );
     const wrongSchema = await runValidator(wrongSchemaDir);
-    if (wrongSchema.exitCode === 0) {
-      throw new Error("wrong schema report unexpectedly passed validation.");
-    }
-    if (!wrongSchema.output.includes("schemaVersion must be 1")) {
-      throw new Error(
-        `wrong schema report failed for the wrong reason: ${wrongSchema.output}`,
-      );
-    }
+    assertRejected(wrongSchema, "schemaVersion must be 1", "wrongSchema");
     const partial = await runValidator(partialDir);
-    if (partial.exitCode === 0) {
-      throw new Error("partial report unexpectedly passed validation.");
-    }
-    if (!partial.output.includes("conformance.exercised.provider")) {
-      throw new Error(
-        `partial report failed for the wrong reason: ${partial.output}`,
-      );
-    }
+    assertRejected(partial, "conformance.exercised.provider", "partial");
     const failedRoute = await runValidator(failedRouteDir);
-    if (failedRoute.exitCode === 0) {
-      throw new Error("failed route report unexpectedly passed validation.");
-    }
-    if (
-      !failedRoute.output.includes(
-        "conformance.routeResult.status must be a 2xx HTTP status",
-      )
-    ) {
-      throw new Error(
-        `failed route report failed for the wrong reason: ${failedRoute.output}`,
-      );
-    }
+    assertRejected(
+      failedRoute,
+      "conformance.routeResult.status must be a 2xx HTTP status",
+      "failedRoute",
+    );
     const missingRouteBody = await runValidator(missingRouteBodyDir);
-    if (missingRouteBody.exitCode === 0) {
-      throw new Error("missing route body report unexpectedly passed.");
-    }
-    if (
-      !missingRouteBody.output.includes(
-        "conformance.routeResult.body must be a non-empty JSON value",
-      )
-    ) {
-      throw new Error(
-        `missing route body report failed for the wrong reason: ${missingRouteBody.output}`,
-      );
-    }
+    assertRejected(
+      missingRouteBody,
+      "conformance.routeResult.body must be a non-empty JSON value",
+      "missingRouteBody",
+    );
     const emptyRouteBody = await runValidator(emptyRouteBodyDir);
-    if (emptyRouteBody.exitCode === 0) {
-      throw new Error("empty route body report unexpectedly passed.");
-    }
-    if (
-      !emptyRouteBody.output.includes(
-        "conformance.routeResult.body must be a non-empty JSON value",
-      )
-    ) {
-      throw new Error(
-        `empty route body report failed for the wrong reason: ${emptyRouteBody.output}`,
-      );
-    }
+    assertRejected(
+      emptyRouteBody,
+      "conformance.routeResult.body must be a non-empty JSON value",
+      "emptyRouteBody",
+    );
     const nonJavascriptAsset = await runValidator(nonJavascriptAssetDir);
-    if (nonJavascriptAsset.exitCode === 0) {
-      throw new Error(
-        "non-JavaScript asset report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !nonJavascriptAsset.output.includes(
-        "conformance.assetResult.path must be a JavaScript asset",
-      )
-    ) {
-      throw new Error(
-        `non-JavaScript asset report failed for the wrong reason: ${nonJavascriptAsset.output}`,
-      );
-    }
+    assertRejected(
+      nonJavascriptAsset,
+      "conformance.assetResult.path must be a JavaScript asset",
+      "nonJavascriptAsset",
+    );
     const mismatchedAssetManifest = await runValidator(
       mismatchedAssetManifestDir,
     );
-    if (mismatchedAssetManifest.exitCode === 0) {
-      throw new Error(
-        "mismatched asset manifest report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !mismatchedAssetManifest.output.includes(
-        "conformance.assetResult.manifestContentType must match",
-      )
-    ) {
-      throw new Error(
-        `mismatched asset manifest failed for the wrong reason: ${mismatchedAssetManifest.output}`,
-      );
-    }
+    assertRejected(
+      mismatchedAssetManifest,
+      "conformance.assetResult.manifestContentType must match",
+      "mismatchedAssetManifest",
+    );
     const mismatchedAssetIntegrity = await runValidator(
       mismatchedAssetIntegrityDir,
     );
-    if (mismatchedAssetIntegrity.exitCode === 0) {
-      throw new Error(
-        "mismatched asset integrity report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !mismatchedAssetIntegrity.output.includes(
-        "conformance.assetResult.integrity must match conformance.assetResult.sha256",
-      )
-    ) {
-      throw new Error(
-        `mismatched asset integrity failed for the wrong reason: ${mismatchedAssetIntegrity.output}`,
-      );
-    }
+    assertRejected(
+      mismatchedAssetIntegrity,
+      "conformance.assetResult.integrity must match conformance.assetResult.sha256",
+      "mismatchedAssetIntegrity",
+    );
     const missingSha256AssetIntegrity = await runValidator(
       missingSha256AssetIntegrityDir,
     );
-    if (missingSha256AssetIntegrity.exitCode === 0) {
-      throw new Error(
-        "missing sha256 asset integrity report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !missingSha256AssetIntegrity.output.includes(
-        "conformance.assetResult.integrity must include a sha256 digest",
-      )
-    ) {
-      throw new Error(
-        `missing sha256 asset integrity failed for the wrong reason: ${missingSha256AssetIntegrity.output}`,
-      );
-    }
+    assertRejected(
+      missingSha256AssetIntegrity,
+      "conformance.assetResult.integrity must include a sha256 digest",
+      "missingSha256AssetIntegrity",
+    );
     const missingAssetDigest = await runValidator(missingAssetDigestDir);
-    if (missingAssetDigest.exitCode === 0) {
-      throw new Error("missing asset digest report unexpectedly passed.");
-    }
-    if (
-      !missingAssetDigest.output.includes(
-        "conformance.assetResult.sha256 must be a non-empty string",
-      )
-    ) {
-      throw new Error(
-        `missing asset digest failed for the wrong reason: ${missingAssetDigest.output}`,
-      );
-    }
+    assertRejected(
+      missingAssetDigest,
+      "conformance.assetResult.sha256 must be a non-empty string",
+      "missingAssetDigest",
+    );
     const malformedAssetDigest = await runValidator(malformedAssetDigestDir);
-    if (malformedAssetDigest.exitCode === 0) {
-      throw new Error("malformed asset digest report unexpectedly passed.");
-    }
-    if (
-      !malformedAssetDigest.output.includes(
-        "conformance.assetResult.sha256 has invalid format",
-      )
-    ) {
-      throw new Error(
-        `malformed asset digest failed for the wrong reason: ${malformedAssetDigest.output}`,
-      );
-    }
+    assertRejected(
+      malformedAssetDigest,
+      "conformance.assetResult.sha256 has invalid format",
+      "malformedAssetDigest",
+    );
     const emptyAssetDigest = await runValidator(emptyAssetDigestDir);
-    if (emptyAssetDigest.exitCode === 0) {
-      throw new Error("empty asset digest report unexpectedly passed.");
-    }
-    if (
-      !emptyAssetDigest.output.includes(
-        "conformance.assetResult.sha256 must not be the empty SHA-256 digest",
-      )
-    ) {
-      throw new Error(
-        `empty asset digest failed for the wrong reason: ${emptyAssetDigest.output}`,
-      );
-    }
+    assertRejected(
+      emptyAssetDigest,
+      "conformance.assetResult.sha256 must not be the empty SHA-256 digest",
+      "emptyAssetDigest",
+    );
     const missingModelResult = await runValidator(missingModelResultDir);
-    if (missingModelResult.exitCode === 0) {
-      throw new Error("missing model result report unexpectedly passed.");
-    }
-    if (
-      !missingModelResult.output.includes(
-        "conformance.modelResult.result is required",
-      )
-    ) {
-      throw new Error(
-        `missing model result failed for the wrong reason: ${missingModelResult.output}`,
-      );
-    }
+    assertRejected(
+      missingModelResult,
+      "conformance.modelResult.result is required",
+      "missingModelResult",
+    );
     const emptyActionResult = await runValidator(emptyActionResultDir);
-    if (emptyActionResult.exitCode === 0) {
-      throw new Error("empty action result report unexpectedly passed.");
-    }
-    if (
-      !emptyActionResult.output.includes(
-        "conformance.actionResult must include at least one result field",
-      )
-    ) {
-      throw new Error(
-        `empty action result failed for the wrong reason: ${emptyActionResult.output}`,
-      );
-    }
+    assertRejected(
+      emptyActionResult,
+      "conformance.actionResult must include at least one result field",
+      "emptyActionResult",
+    );
     const emptyProviderResult = await runValidator(emptyProviderResultDir);
-    if (emptyProviderResult.exitCode === 0) {
-      throw new Error("empty provider result report unexpectedly passed.");
-    }
-    if (
-      !emptyProviderResult.output.includes(
-        "conformance.providerResult must include at least one result field",
-      )
-    ) {
-      throw new Error(
-        `empty provider result failed for the wrong reason: ${emptyProviderResult.output}`,
-      );
-    }
+    assertRejected(
+      emptyProviderResult,
+      "conformance.providerResult must include at least one result field",
+      "emptyProviderResult",
+    );
     const failedLifecycle = await runValidator(failedLifecycleDir);
-    if (failedLifecycle.exitCode === 0) {
-      throw new Error("failed lifecycle report unexpectedly passed.");
-    }
-    if (
-      !failedLifecycle.output.includes(
-        "conformance.lifecycleResult.ok must be true",
-      )
-    ) {
-      throw new Error(
-        `failed lifecycle failed for the wrong reason: ${failedLifecycle.output}`,
-      );
-    }
+    assertRejected(
+      failedLifecycle,
+      "conformance.lifecycleResult.ok must be true",
+      "failedLifecycle",
+    );
     const unhandledEvent = await runValidator(unhandledEventDir);
-    if (unhandledEvent.exitCode === 0) {
-      throw new Error("unhandled event report unexpectedly passed.");
-    }
-    if (
-      !unhandledEvent.output.includes(
-        "conformance.eventResult.handled must be true",
-      )
-    ) {
-      throw new Error(
-        `unhandled event failed for the wrong reason: ${unhandledEvent.output}`,
-      );
-    }
+    assertRejected(
+      unhandledEvent,
+      "conformance.eventResult.handled must be true",
+      "unhandledEvent",
+    );
     const missingServiceResult = await runValidator(missingServiceResultDir);
-    if (missingServiceResult.exitCode === 0) {
-      throw new Error("missing service result report unexpectedly passed.");
-    }
-    if (
-      !missingServiceResult.output.includes(
-        "conformance.serviceResult.result is required",
-      )
-    ) {
-      throw new Error(
-        `missing service result failed for the wrong reason: ${missingServiceResult.output}`,
-      );
-    }
+    assertRejected(
+      missingServiceResult,
+      "conformance.serviceResult.result is required",
+      "missingServiceResult",
+    );
     const missingAppBridgeResult = await runValidator(
       missingAppBridgeResultDir,
     );
-    if (missingAppBridgeResult.exitCode === 0) {
-      throw new Error("missing app bridge result report unexpectedly passed.");
-    }
-    if (
-      !missingAppBridgeResult.output.includes(
-        "conformance.appBridgeResult.result is required",
-      )
-    ) {
-      throw new Error(
-        `missing app bridge result failed for the wrong reason: ${missingAppBridgeResult.output}`,
-      );
-    }
+    assertRejected(
+      missingAppBridgeResult,
+      "conformance.appBridgeResult.result is required",
+      "missingAppBridgeResult",
+    );
     const emptyEvaluatorProcess = await runValidator(emptyEvaluatorProcessDir);
-    if (emptyEvaluatorProcess.exitCode === 0) {
-      throw new Error("empty evaluator process report unexpectedly passed.");
-    }
-    if (
-      !emptyEvaluatorProcess.output.includes(
-        "conformance.evaluatorResult.process.result is required",
-      )
-    ) {
-      throw new Error(
-        `empty evaluator process failed for the wrong reason: ${emptyEvaluatorProcess.output}`,
-      );
-    }
+    assertRejected(
+      emptyEvaluatorProcess,
+      "conformance.evaluatorResult.process.result is required",
+      "emptyEvaluatorProcess",
+    );
     const emptyResponseHandlerEvaluate = await runValidator(
       emptyResponseHandlerEvaluateDir,
     );
-    if (emptyResponseHandlerEvaluate.exitCode === 0) {
-      throw new Error(
-        "empty response handler evaluate report unexpectedly passed.",
-      );
-    }
-    if (
-      !emptyResponseHandlerEvaluate.output.includes(
-        "conformance.responseHandlerEvaluatorResult.evaluate.patch is required",
-      )
-    ) {
-      throw new Error(
-        `empty response handler evaluate failed for the wrong reason: ${emptyResponseHandlerEvaluate.output}`,
-      );
-    }
+    assertRejected(
+      emptyResponseHandlerEvaluate,
+      "conformance.responseHandlerEvaluatorResult.evaluate.patch is required",
+      "emptyResponseHandlerEvaluate",
+    );
     const emptyFieldEvaluatorParse = await runValidator(
       emptyFieldEvaluatorParseDir,
     );
-    if (emptyFieldEvaluatorParse.exitCode === 0) {
-      throw new Error(
-        "empty field evaluator parse report unexpectedly passed.",
-      );
-    }
-    if (
-      !emptyFieldEvaluatorParse.output.includes(
-        "conformance.responseHandlerFieldEvaluatorResult.parse must include at least one result field",
-      )
-    ) {
-      throw new Error(
-        `empty field evaluator parse failed for the wrong reason: ${emptyFieldEvaluatorParse.output}`,
-      );
-    }
+    assertRejected(
+      emptyFieldEvaluatorParse,
+      "conformance.responseHandlerFieldEvaluatorResult.parse must include at least one result field",
+      "emptyFieldEvaluatorParse",
+    );
     const emptyFieldEvaluatorHandle = await runValidator(
       emptyFieldEvaluatorHandleDir,
     );
-    if (emptyFieldEvaluatorHandle.exitCode === 0) {
-      throw new Error(
-        "empty field evaluator handle report unexpectedly passed.",
-      );
-    }
-    if (
-      !emptyFieldEvaluatorHandle.output.includes(
-        "conformance.responseHandlerFieldEvaluatorResult.handle.effect is required",
-      )
-    ) {
-      throw new Error(
-        `empty field evaluator handle failed for the wrong reason: ${emptyFieldEvaluatorHandle.output}`,
-      );
-    }
+    assertRejected(
+      emptyFieldEvaluatorHandle,
+      "conformance.responseHandlerFieldEvaluatorResult.handle.effect is required",
+      "emptyFieldEvaluatorHandle",
+    );
     const mismatch = await runValidator(mismatchDir);
-    if (mismatch.exitCode === 0) {
-      throw new Error(
-        "endpoint mismatch report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !mismatch.output.includes("conformance.endpointId must match endpointId")
-    ) {
-      throw new Error(
-        `endpoint mismatch failed for the wrong reason: ${mismatch.output}`,
-      );
-    }
+    assertRejected(
+      mismatch,
+      "conformance.endpointId must match endpointId",
+      "mismatch",
+    );
     const malformedEndpointId = await runValidator(malformedEndpointIdDir);
-    if (malformedEndpointId.exitCode === 0) {
-      throw new Error("malformed endpoint id unexpectedly passed validation.");
-    }
-    if (!malformedEndpointId.output.includes("endpointId must contain only")) {
-      throw new Error(
-        `malformed endpoint id failed for the wrong reason: ${malformedEndpointId.output}`,
-      );
-    }
+    assertRejected(
+      malformedEndpointId,
+      "endpointId must contain only",
+      "malformedEndpointId",
+    );
     const malformedModuleId = await runValidator(malformedModuleIdDir);
-    if (malformedModuleId.exitCode === 0) {
-      throw new Error("malformed module id unexpectedly passed validation.");
-    }
-    if (!malformedModuleId.output.includes("moduleIds[0] must use letters")) {
-      throw new Error(
-        `malformed module id failed for the wrong reason: ${malformedModuleId.output}`,
-      );
-    }
+    assertRejected(
+      malformedModuleId,
+      "moduleIds[0] must use letters",
+      "malformedModuleId",
+    );
     const malformedProvider = await runValidator(malformedProviderDir);
-    if (malformedProvider.exitCode === 0) {
-      throw new Error("malformed provider unexpectedly passed validation.");
-    }
-    if (!malformedProvider.output.includes("provider must use lowercase")) {
-      throw new Error(
-        `malformed provider failed for the wrong reason: ${malformedProvider.output}`,
-      );
-    }
+    assertRejected(
+      malformedProvider,
+      "provider must use lowercase",
+      "malformedProvider",
+    );
     const malformedCloudApiBase = await runValidator(malformedCloudApiBaseDir);
-    if (malformedCloudApiBase.exitCode === 0) {
-      throw new Error("malformed cloudApiBase unexpectedly passed validation.");
-    }
-    if (
-      !malformedCloudApiBase.output.includes(
-        "cloudApiBase must be an absolute http(s) URL",
-      )
-    ) {
-      throw new Error(
-        `malformed cloudApiBase failed for the wrong reason: ${malformedCloudApiBase.output}`,
-      );
-    }
+    assertRejected(
+      malformedCloudApiBase,
+      "cloudApiBase must be an absolute http(s) URL",
+      "malformedCloudApiBase",
+    );
     const cloudProviderField = await runValidator(cloudProviderFieldDir);
-    if (cloudProviderField.exitCode === 0) {
-      throw new Error("cloud provider field report unexpectedly passed.");
-    }
-    if (
-      !cloudProviderField.output.includes(
-        "provider must not be present for cloud reports",
-      )
-    ) {
-      throw new Error(
-        `cloud provider field failed for the wrong reason: ${cloudProviderField.output}`,
-      );
-    }
+    assertRejected(
+      cloudProviderField,
+      "provider must not be present for cloud reports",
+      "cloudProviderField",
+    );
     const providerCloudField = await runValidator(providerCloudFieldDir);
-    if (providerCloudField.exitCode === 0) {
-      throw new Error("provider cloud field report unexpectedly passed.");
-    }
-    if (
-      !providerCloudField.output.includes(
-        "cloudApiBase must not be present for provider reports",
-      )
-    ) {
-      throw new Error(
-        `provider cloud field failed for the wrong reason: ${providerCloudField.output}`,
-      );
-    }
+    assertRejected(
+      providerCloudField,
+      "cloudApiBase must not be present for provider reports",
+      "providerCloudField",
+    );
     const cloudApiBaseQuery = await runValidator(cloudApiBaseQueryDir);
-    if (cloudApiBaseQuery.exitCode === 0) {
-      throw new Error("cloudApiBase query report unexpectedly passed.");
-    }
-    if (
-      !cloudApiBaseQuery.output.includes(
-        "cloudApiBase must not include query or fragment components",
-      )
-    ) {
-      throw new Error(
-        `cloudApiBase query failed for the wrong reason: ${cloudApiBaseQuery.output}`,
-      );
-    }
+    assertRejected(
+      cloudApiBaseQuery,
+      "cloudApiBase must not include query or fragment components",
+      "cloudApiBaseQuery",
+    );
     const cloudApiBaseFragment = await runValidator(cloudApiBaseFragmentDir);
-    if (cloudApiBaseFragment.exitCode === 0) {
-      throw new Error("cloudApiBase fragment report unexpectedly passed.");
-    }
-    if (
-      !cloudApiBaseFragment.output.includes(
-        "cloudApiBase must not include query or fragment components",
-      )
-    ) {
-      throw new Error(
-        `cloudApiBase fragment failed for the wrong reason: ${cloudApiBaseFragment.output}`,
-      );
-    }
+    assertRejected(
+      cloudApiBaseFragment,
+      "cloudApiBase must not include query or fragment components",
+      "cloudApiBaseFragment",
+    );
     const matchingFileIdentity = await runValidator(
       matchingFileIdentityDir,
       "--kind=provider",
@@ -1756,561 +1394,261 @@ async function main(): Promise<void> {
       "--kind=provider",
       "--require-file-identity",
     );
-    if (mismatchedFileIdentity.exitCode === 0) {
-      throw new Error("mismatched file identity unexpectedly passed.");
-    }
-    if (
-      !mismatchedFileIdentity.output.includes(
-        "provider report filename must match provider",
-      )
-    ) {
-      throw new Error(
-        `mismatched file identity failed for the wrong reason: ${mismatchedFileIdentity.output}`,
-      );
-    }
+    assertRejected(
+      mismatchedFileIdentity,
+      "provider report filename must match provider",
+      "mismatchedFileIdentity",
+    );
     const mismatchedCloudFileIdentity = await runValidator(
       mismatchedCloudFileIdentityDir,
       "--kind=cloud",
       "--require-file-identity",
     );
-    if (mismatchedCloudFileIdentity.exitCode === 0) {
-      throw new Error("mismatched cloud file identity unexpectedly passed.");
-    }
-    if (
-      !mismatchedCloudFileIdentity.output.includes(
-        'cloud report filename must be "cloud.json"',
-      )
-    ) {
-      throw new Error(
-        `mismatched cloud file identity failed for the wrong reason: ${mismatchedCloudFileIdentity.output}`,
-      );
-    }
+    assertRejected(
+      mismatchedCloudFileIdentity,
+      'cloud report filename must be "cloud.json"',
+      "mismatchedCloudFileIdentity",
+    );
     const duplicateEndpoint = await runValidator(duplicateEndpointDir);
-    if (duplicateEndpoint.exitCode === 0) {
-      throw new Error("duplicate endpoint reports unexpectedly passed.");
-    }
-    if (!duplicateEndpoint.output.includes("endpointId duplicates")) {
-      throw new Error(
-        `duplicate endpoint failed for the wrong reason: ${duplicateEndpoint.output}`,
-      );
-    }
+    assertRejected(
+      duplicateEndpoint,
+      "endpointId duplicates",
+      "duplicateEndpoint",
+    );
     const duplicateProvider = await runValidator(duplicateProviderDir);
-    if (duplicateProvider.exitCode === 0) {
-      throw new Error("duplicate provider reports unexpectedly passed.");
-    }
-    if (!duplicateProvider.output.includes("provider duplicates")) {
-      throw new Error(
-        `duplicate provider failed for the wrong reason: ${duplicateProvider.output}`,
-      );
-    }
+    assertRejected(
+      duplicateProvider,
+      "provider duplicates",
+      "duplicateProvider",
+    );
     const leakedSecret = await runValidator(leakedSecretDir);
-    if (leakedSecret.exitCode === 0) {
-      throw new Error("leaked secret report unexpectedly passed validation.");
-    }
-    if (!leakedSecret.output.includes("must not be present")) {
-      throw new Error(
-        `leaked secret failed for the wrong reason: ${leakedSecret.output}`,
-      );
-    }
+    assertRejected(leakedSecret, "must not be present", "leakedSecret");
     const leakedSecretValue = await runValidator(leakedSecretValueDir);
-    if (leakedSecretValue.exitCode === 0) {
-      throw new Error(
-        "leaked secret value report unexpectedly passed validation.",
-      );
-    }
-    if (!leakedSecretValue.output.includes("credential-shaped string values")) {
-      throw new Error(
-        `leaked secret value failed for the wrong reason: ${leakedSecretValue.output}`,
-      );
-    }
+    assertRejected(
+      leakedSecretValue,
+      "credential-shaped string values",
+      "leakedSecretValue",
+    );
     const bogusTarget = await runValidator(bogusTargetDir);
-    if (bogusTarget.exitCode === 0) {
-      throw new Error(
-        "bogus exercised target report unexpectedly passed validation.",
-      );
-    }
-    if (!bogusTarget.output.includes("must start with an observed module id")) {
-      throw new Error(
-        `bogus exercised target failed for the wrong reason: ${bogusTarget.output}`,
-      );
-    }
+    assertRejected(
+      bogusTarget,
+      "must start with an observed module id",
+      "bogusTarget",
+    );
     const malformedTarget = await runValidator(malformedTargetDir);
-    if (malformedTarget.exitCode === 0) {
-      throw new Error(
-        "malformed exercised target report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !malformedTarget.output.includes(
-        "must start with an observed module id followed by",
-      )
-    ) {
-      throw new Error(
-        `malformed exercised target failed for the wrong reason: ${malformedTarget.output}`,
-      );
-    }
+    assertRejected(
+      malformedTarget,
+      "must start with an observed module id followed by",
+      "malformedTarget",
+    );
     const bogusTrust = await runValidator(bogusTrustDir);
-    if (bogusTrust.exitCode === 0) {
-      throw new Error("bogus trust report unexpectedly passed validation.");
-    }
-    if (!bogusTrust.output.includes("trusted moduleId must be present")) {
-      throw new Error(
-        `bogus trust failed for the wrong reason: ${bogusTrust.output}`,
-      );
-    }
+    assertRejected(
+      bogusTrust,
+      "trusted moduleId must be present",
+      "bogusTrust",
+    );
     const bogusRegistration = await runValidator(bogusRegistrationDir);
-    if (bogusRegistration.exitCode === 0) {
-      throw new Error(
-        "bogus registration report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !bogusRegistration.output.includes(
-        "trusted module must be present in sync.registeredModules",
-      )
-    ) {
-      throw new Error(
-        `bogus registration failed for the wrong reason: ${bogusRegistration.output}`,
-      );
-    }
+    assertRejected(
+      bogusRegistration,
+      "trusted module must be present in sync.registeredModules",
+      "bogusRegistration",
+    );
     const duplicateModule = await runValidator(duplicateModuleDir);
-    if (duplicateModule.exitCode === 0) {
-      throw new Error(
-        "duplicate module report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !duplicateModule.output.includes("moduleIds must not contain duplicates")
-    ) {
-      throw new Error(
-        `duplicate module failed for the wrong reason: ${duplicateModule.output}`,
-      );
-    }
+    assertRejected(
+      duplicateModule,
+      "moduleIds must not contain duplicates",
+      "duplicateModule",
+    );
     const duplicateRegisteredModule = await runValidator(
       duplicateRegisteredModuleDir,
     );
-    if (duplicateRegisteredModule.exitCode === 0) {
-      throw new Error(
-        "duplicate registered module report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !duplicateRegisteredModule.output.includes(
-        "sync.registeredModules must not contain duplicates",
-      )
-    ) {
-      throw new Error(
-        `duplicate registered module failed for the wrong reason: ${duplicateRegisteredModule.output}`,
-      );
-    }
+    assertRejected(
+      duplicateRegisteredModule,
+      "sync.registeredModules must not contain duplicates",
+      "duplicateRegisteredModule",
+    );
     const duplicateRegisteredPlugin = await runValidator(
       duplicateRegisteredPluginDir,
     );
-    if (duplicateRegisteredPlugin.exitCode === 0) {
-      throw new Error(
-        "duplicate registered plugin report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !duplicateRegisteredPlugin.output.includes(
-        "sync.registered must not contain duplicates",
-      )
-    ) {
-      throw new Error(
-        `duplicate registered plugin failed for the wrong reason: ${duplicateRegisteredPlugin.output}`,
-      );
-    }
+    assertRejected(
+      duplicateRegisteredPlugin,
+      "sync.registered must not contain duplicates",
+      "duplicateRegisteredPlugin",
+    );
     const duplicateTrustDecision = await runValidator(
       duplicateTrustDecisionDir,
     );
-    if (duplicateTrustDecision.exitCode === 0) {
-      throw new Error(
-        "duplicate trust decision report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !duplicateTrustDecision.output.includes(
-        "sync.trustDecisions must not contain duplicates",
-      )
-    ) {
-      throw new Error(
-        `duplicate trust decision failed for the wrong reason: ${duplicateTrustDecision.output}`,
-      );
-    }
+    assertRejected(
+      duplicateTrustDecision,
+      "sync.trustDecisions must not contain duplicates",
+      "duplicateTrustDecision",
+    );
     const registeredSkipped = await runValidator(registeredSkippedDir);
-    if (registeredSkipped.exitCode === 0) {
-      throw new Error(
-        "registered skipped report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !registeredSkipped.output.includes(
-        "sync.skipped must not include plugins that are also registered",
-      )
-    ) {
-      throw new Error(
-        `registered skipped failed for the wrong reason: ${registeredSkipped.output}`,
-      );
-    }
+    assertRejected(
+      registeredSkipped,
+      "sync.skipped must not include plugins that are also registered",
+      "registeredSkipped",
+    );
     const registeredUnloaded = await runValidator(registeredUnloadedDir);
-    if (registeredUnloaded.exitCode === 0) {
-      throw new Error(
-        "registered unloaded report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !registeredUnloaded.output.includes(
-        "sync.unloaded must not include plugins that are also registered",
-      )
-    ) {
-      throw new Error(
-        `registered unloaded failed for the wrong reason: ${registeredUnloaded.output}`,
-      );
-    }
+    assertRejected(
+      registeredUnloaded,
+      "sync.unloaded must not include plugins that are also registered",
+      "registeredUnloaded",
+    );
     const skippedUnloadedOverlap = await runValidator(
       skippedUnloadedOverlapDir,
     );
-    if (skippedUnloadedOverlap.exitCode === 0) {
-      throw new Error(
-        "skipped/unloaded overlap report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !skippedUnloadedOverlap.output.includes(
-        "sync.skipped must not include plugins that are also unloaded",
-      )
-    ) {
-      throw new Error(
-        `skipped/unloaded overlap failed for the wrong reason: ${skippedUnloadedOverlap.output}`,
-      );
-    }
+    assertRejected(
+      skippedUnloadedOverlap,
+      "sync.skipped must not include plugins that are also unloaded",
+      "skippedUnloadedOverlap",
+    );
     const skippedMissingTrust = await runValidator(skippedMissingTrustDir);
-    if (skippedMissingTrust.exitCode === 0) {
-      throw new Error(
-        "skipped missing trust report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !skippedMissingTrust.output.includes(
-        "sync.skipped entries must have a rejected sync.trustDecisions entry",
-      )
-    ) {
-      throw new Error(
-        `skipped missing trust failed for the wrong reason: ${skippedMissingTrust.output}`,
-      );
-    }
+    assertRejected(
+      skippedMissingTrust,
+      "sync.skipped entries must have a rejected sync.trustDecisions entry",
+      "skippedMissingTrust",
+    );
     const duplicateSkipped = await runValidator(duplicateSkippedDir);
-    if (duplicateSkipped.exitCode === 0) {
-      throw new Error("duplicate skipped report unexpectedly passed.");
-    }
-    if (
-      !duplicateSkipped.output.includes(
-        "sync.skipped must not contain duplicates",
-      )
-    ) {
-      throw new Error(
-        `duplicate skipped failed for the wrong reason: ${duplicateSkipped.output}`,
-      );
-    }
+    assertRejected(
+      duplicateSkipped,
+      "sync.skipped must not contain duplicates",
+      "duplicateSkipped",
+    );
     const duplicateUnloaded = await runValidator(duplicateUnloadedDir);
-    if (duplicateUnloaded.exitCode === 0) {
-      throw new Error("duplicate unloaded report unexpectedly passed.");
-    }
-    if (
-      !duplicateUnloaded.output.includes(
-        "sync.unloaded must not contain duplicates",
-      )
-    ) {
-      throw new Error(
-        `duplicate unloaded failed for the wrong reason: ${duplicateUnloaded.output}`,
-      );
-    }
+    assertRejected(
+      duplicateUnloaded,
+      "sync.unloaded must not contain duplicates",
+      "duplicateUnloaded",
+    );
     const exercisedUnregistered = await runValidator(exercisedUnregisteredDir);
-    if (exercisedUnregistered.exitCode === 0) {
-      throw new Error(
-        "exercised unregistered report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !exercisedUnregistered.output.includes(
-        "every sync.registeredModules entry must have a trusted sync.trustDecisions entry",
-      )
-    ) {
-      throw new Error(
-        `exercised unregistered failed for the wrong reason: ${exercisedUnregistered.output}`,
-      );
-    }
+    assertRejected(
+      exercisedUnregistered,
+      "every sync.registeredModules entry must have a trusted sync.trustDecisions entry",
+      "exercisedUnregistered",
+    );
     const registeredUnexercised = await runValidator(registeredUnexercisedDir);
-    if (registeredUnexercised.exitCode === 0) {
-      throw new Error(
-        "registered unexercised report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !registeredUnexercised.output.includes(
-        "every sync.registeredModules moduleId must be exercised by conformance.exercised",
-      )
-    ) {
-      throw new Error(
-        `registered unexercised failed for the wrong reason: ${registeredUnexercised.output}`,
-      );
-    }
+    assertRejected(
+      registeredUnexercised,
+      "every sync.registeredModules moduleId must be exercised by conformance.exercised",
+      "registeredUnexercised",
+    );
     const missingSummaryModuleExercise = await runValidator(
       missingSummaryModuleExerciseDir,
     );
-    if (missingSummaryModuleExercise.exitCode === 0) {
-      throw new Error(
-        "missing summary module exercise report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !missingSummaryModuleExercise.output.includes(
-        "moduleExercises must include conformance.exercised.action",
-      )
-    ) {
-      throw new Error(
-        `missing summary module exercise failed for the wrong reason: ${missingSummaryModuleExercise.output}`,
-      );
-    }
+    assertRejected(
+      missingSummaryModuleExercise,
+      "moduleExercises must include conformance.exercised.action",
+      "missingSummaryModuleExercise",
+    );
     const duplicateModuleExercise = await runValidator(
       duplicateModuleExerciseDir,
     );
-    if (duplicateModuleExercise.exitCode === 0) {
-      throw new Error(
-        "duplicate module exercise report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !duplicateModuleExercise.output.includes(
-        "conformance.moduleExercises must not contain duplicates",
-      )
-    ) {
-      throw new Error(
-        `duplicate module exercise failed for the wrong reason: ${duplicateModuleExercise.output}`,
-      );
-    }
+    assertRejected(
+      duplicateModuleExercise,
+      "conformance.moduleExercises must not contain duplicates",
+      "duplicateModuleExercise",
+    );
     const missingModuleExercises = await runValidator(
       missingModuleExercisesDir,
     );
-    if (missingModuleExercises.exitCode === 0) {
-      throw new Error(
-        "missing moduleExercises report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !missingModuleExercises.output.includes(
-        "conformance.moduleExercises must be an array",
-      )
-    ) {
-      throw new Error(
-        `missing moduleExercises failed for the wrong reason: ${missingModuleExercises.output}`,
-      );
-    }
+    assertRejected(
+      missingModuleExercises,
+      "conformance.moduleExercises must be an array",
+      "missingModuleExercises",
+    );
     const missingRpcCalls = await runValidator(missingRpcCallsDir);
-    if (missingRpcCalls.exitCode === 0) {
-      throw new Error("missing rpcCalls report unexpectedly passed.");
-    }
-    if (
-      !missingRpcCalls.output.includes("conformance.rpcCalls must be an array")
-    ) {
-      throw new Error(
-        `missing rpcCalls failed for the wrong reason: ${missingRpcCalls.output}`,
-      );
-    }
+    assertRejected(
+      missingRpcCalls,
+      "conformance.rpcCalls must be an array",
+      "missingRpcCalls",
+    );
     const invalidRpcMethod = await runValidator(invalidRpcMethodDir);
-    if (invalidRpcMethod.exitCode === 0) {
-      throw new Error("invalid rpc method report unexpectedly passed.");
-    }
-    if (
-      !invalidRpcMethod.output.includes(
-        "conformance.rpcCalls[0].method must be valid for its surface.",
-      )
-    ) {
-      throw new Error(
-        `invalid rpc method failed for the wrong reason: ${invalidRpcMethod.output}`,
-      );
-    }
+    assertRejected(
+      invalidRpcMethod,
+      "conformance.rpcCalls[0].method must be valid for its surface.",
+      "invalidRpcMethod",
+    );
     const missingRequiredRpcMethod = await runValidator(
       missingRequiredRpcMethodDir,
     );
-    if (missingRequiredRpcMethod.exitCode === 0) {
-      throw new Error(
-        "missing required rpc method report unexpectedly passed.",
-      );
-    }
-    if (
-      !missingRequiredRpcMethod.output.includes(
-        "conformance.rpcCalls must include every required method for each conformance.moduleExercises entry.",
-      )
-    ) {
-      throw new Error(
-        `missing required rpc method failed for the wrong reason: ${missingRequiredRpcMethod.output}`,
-      );
-    }
+    assertRejected(
+      missingRequiredRpcMethod,
+      "conformance.rpcCalls must include every required method for each conformance.moduleExercises entry.",
+      "missingRequiredRpcMethod",
+    );
     const missingRuntimeRemotePlugin = await runValidator(
       missingRuntimeRemotePluginDir,
     );
-    if (missingRuntimeRemotePlugin.exitCode === 0) {
-      throw new Error(
-        "missing runtime remote plugin report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !missingRuntimeRemotePlugin.output.includes(
-        "runtime.remotePlugins must include every sync.registeredModules entry",
-      )
-    ) {
-      throw new Error(
-        `missing runtime remote plugin failed for the wrong reason: ${missingRuntimeRemotePlugin.output}`,
-      );
-    }
+    assertRejected(
+      missingRuntimeRemotePlugin,
+      "runtime.remotePlugins must include every sync.registeredModules entry",
+      "missingRuntimeRemotePlugin",
+    );
     const staleRuntimeRemotePlugin = await runValidator(
       staleRuntimeRemotePluginDir,
     );
-    if (staleRuntimeRemotePlugin.exitCode === 0) {
-      throw new Error(
-        "stale runtime remote plugin report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !staleRuntimeRemotePlugin.output.includes(
-        "runtime.remotePlugins must not include entries absent from sync.registeredModules",
-      )
-    ) {
-      throw new Error(
-        `stale runtime remote plugin failed for the wrong reason: ${staleRuntimeRemotePlugin.output}`,
-      );
-    }
+    assertRejected(
+      staleRuntimeRemotePlugin,
+      "runtime.remotePlugins must not include entries absent from sync.registeredModules",
+      "staleRuntimeRemotePlugin",
+    );
     const mismatchedRuntimeRemotePluginCount = await runValidator(
       mismatchedRuntimeRemotePluginCountDir,
     );
-    if (mismatchedRuntimeRemotePluginCount.exitCode === 0) {
-      throw new Error(
-        "mismatched runtime remote plugin count report unexpectedly passed.",
-      );
-    }
-    if (
-      !mismatchedRuntimeRemotePluginCount.output.includes(
-        "runtime.remotePlugins[0].routeCount must match sync.registeredModules",
-      )
-    ) {
-      throw new Error(
-        `mismatched runtime remote plugin count failed for the wrong reason: ${mismatchedRuntimeRemotePluginCount.output}`,
-      );
-    }
+    assertRejected(
+      mismatchedRuntimeRemotePluginCount,
+      "runtime.remotePlugins[0].routeCount must match sync.registeredModules",
+      "mismatchedRuntimeRemotePluginCount",
+    );
     const manifestOnlyUnregistered = await runValidator(
       manifestOnlyUnregisteredDir,
     );
-    if (manifestOnlyUnregistered.exitCode === 0) {
-      throw new Error(
-        "manifest-only unregistered report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !manifestOnlyUnregistered.output.includes(
-        "every conformance.moduleIds entry must be present in sync.registeredModules",
-      )
-    ) {
-      throw new Error(
-        `manifest-only unregistered failed for the wrong reason: ${manifestOnlyUnregistered.output}`,
-      );
-    }
+    assertRejected(
+      manifestOnlyUnregistered,
+      "every conformance.moduleIds entry must be present in sync.registeredModules",
+      "manifestOnlyUnregistered",
+    );
     const runtimeUndercount = await runValidator(runtimeUndercountDir);
-    if (runtimeUndercount.exitCode === 0) {
-      throw new Error("runtime undercount report unexpectedly passed.");
-    }
-    if (!runtimeUndercount.output.includes("runtime.actionCount")) {
-      throw new Error(
-        `runtime undercount failed for the wrong reason: ${runtimeUndercount.output}`,
-      );
-    }
+    assertRejected(
+      runtimeUndercount,
+      "runtime.actionCount",
+      "runtimeUndercount",
+    );
     const runtimePluginUndercount = await runValidator(
       runtimePluginUndercountDir,
     );
-    if (runtimePluginUndercount.exitCode === 0) {
-      throw new Error("runtime plugin undercount report unexpectedly passed.");
-    }
-    if (!runtimePluginUndercount.output.includes("runtime.pluginCount")) {
-      throw new Error(
-        `runtime plugin undercount failed for the wrong reason: ${runtimePluginUndercount.output}`,
-      );
-    }
+    assertRejected(
+      runtimePluginUndercount,
+      "runtime.pluginCount",
+      "runtimePluginUndercount",
+    );
     const missingRegisteredService = await runValidator(
       missingRegisteredServiceDir,
     );
-    if (missingRegisteredService.exitCode === 0) {
-      throw new Error(
-        "missing registered service report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !missingRegisteredService.output.includes(
-        "sync.registeredModules aggregate serviceCount must be greater than zero",
-      )
-    ) {
-      throw new Error(
-        `missing registered service failed for the wrong reason: ${missingRegisteredService.output}`,
-      );
-    }
+    assertRejected(
+      missingRegisteredService,
+      "sync.registeredModules aggregate serviceCount must be greater than zero",
+      "missingRegisteredService",
+    );
     const missingEvaluator = await runValidator(missingEvaluatorDir);
-    if (missingEvaluator.exitCode === 0) {
-      throw new Error(
-        "missing evaluator materialization report unexpectedly passed validation.",
-      );
-    }
-    if (!missingEvaluator.output.includes("runtime.evaluatorCount")) {
-      throw new Error(
-        `missing evaluator materialization failed for the wrong reason: ${missingEvaluator.output}`,
-      );
-    }
+    assertRejected(
+      missingEvaluator,
+      "runtime.evaluatorCount",
+      "missingEvaluator",
+    );
     const missingEvent = await runValidator(missingEventDir);
-    if (missingEvent.exitCode === 0) {
-      throw new Error(
-        "missing event materialization report unexpectedly passed.",
-      );
-    }
-    if (!missingEvent.output.includes("runtime.eventCount")) {
-      throw new Error(
-        `missing event materialization failed for the wrong reason: ${missingEvent.output}`,
-      );
-    }
+    assertRejected(missingEvent, "runtime.eventCount", "missingEvent");
     const missingService = await runValidator(missingServiceDir);
-    if (missingService.exitCode === 0) {
-      throw new Error(
-        "missing service materialization report unexpectedly passed validation.",
-      );
-    }
-    if (!missingService.output.includes("runtime.serviceCount")) {
-      throw new Error(
-        `missing service materialization failed for the wrong reason: ${missingService.output}`,
-      );
-    }
+    assertRejected(missingService, "runtime.serviceCount", "missingService");
     const missingApp = await runValidator(missingAppDir);
-    if (missingApp.exitCode === 0) {
-      throw new Error(
-        "missing app materialization report unexpectedly passed.",
-      );
-    }
-    if (!missingApp.output.includes("runtime.appCount")) {
-      throw new Error(
-        `missing app materialization failed for the wrong reason: ${missingApp.output}`,
-      );
-    }
+    assertRejected(missingApp, "runtime.appCount", "missingApp");
     const missingFieldEvaluator = await runValidator(missingFieldEvaluatorDir);
-    if (missingFieldEvaluator.exitCode === 0) {
-      throw new Error(
-        "missing field evaluator materialization report unexpectedly passed validation.",
-      );
-    }
-    if (
-      !missingFieldEvaluator.output.includes(
-        "runtime.responseHandlerFieldEvaluatorCount",
-      )
-    ) {
-      throw new Error(
-        `missing field evaluator materialization failed for the wrong reason: ${missingFieldEvaluator.output}`,
-      );
-    }
+    assertRejected(
+      missingFieldEvaluator,
+      "runtime.responseHandlerFieldEvaluatorCount",
+      "missingFieldEvaluator",
+    );
 
     console.log("Capability-router live report validator self-test passed.");
   } finally {
@@ -3982,6 +3320,19 @@ function makeMissingFieldEvaluatorMaterializationReport() {
       responseHandlerFieldEvaluatorCount: 0,
     },
   };
+}
+
+function assertRejected(
+  result: { exitCode: number; output: string },
+  expectedDiagnostic: string,
+  fixture: string,
+): void {
+  if (result.exitCode === 0) {
+    throw new Error(`${fixture} unexpectedly passed validation.`);
+  }
+  if (!result.output.includes(expectedDiagnostic)) {
+    throw new Error(`${fixture} failed for the wrong reason: ${result.output}`);
+  }
 }
 
 async function runValidator(

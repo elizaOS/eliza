@@ -4,6 +4,11 @@
  * process restart recovery, provider ambiguity, reconciliation, and receipts.
  */
 
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: vi.fn(async () => true),
+}));
+
 import { PGlite } from "@electric-sql/pglite";
 import type {
   IAgentRuntime,
@@ -11,6 +16,7 @@ import type {
   SendHandlerOutcome,
   UUID,
 } from "@elizaos/core";
+import { createApprovalQueue as createAgentApprovalQueue } from "@elizaos/plugin-assistant";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import {
@@ -22,7 +28,6 @@ import {
   it,
   vi,
 } from "vitest";
-import { createApprovalQueue as createAgentApprovalQueue } from "../../../packages/agent/src/services/approval/store.ts";
 import {
   ApprovalAmbiguousDeliveryError,
   runApprovalDispatch,
@@ -93,7 +98,6 @@ vi.mock("@elizaos/agent", async () => {
   const stub = await import("./stubs/agent.ts");
   return {
     ...stub,
-    hasOwnerAccess: vi.fn(async () => true),
     resolveApprovalService: (runtime: IAgentRuntime) =>
       runtime.getService("eliza_approval"),
   };

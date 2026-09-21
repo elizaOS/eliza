@@ -21,7 +21,6 @@ import {
   ChannelType,
   type Content,
   createUniqueUuid,
-  detectMime,
   ElizaError,
   type IAgentRuntime,
   type IFileStorageService,
@@ -33,6 +32,7 @@ import {
   ServiceType,
   type UUID,
 } from "@elizaos/core";
+import { detectMime } from "@elizaos/shared/media";
 import {
   assertUniqueWhatsAppAccountIds,
   checkWhatsAppUserAccess,

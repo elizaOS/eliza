@@ -3,14 +3,10 @@
  * shaping via `buildTranscriptFromRequest` and the handler contract.
  */
 
-import type {
-	AccessContext,
-	Memory,
-	RouteHandlerContext,
-	UUID,
-} from "@elizaos/core";
+import type { AccessContext, Memory, UUID } from "@elizaos/core";
 import { ServiceType } from "@elizaos/core";
 import { buildMeetingArtifactFixtures } from "@elizaos/shared";
+import type { RouteHandlerContext } from "@elizaos/shared/api/http-plugin";
 import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import { describe, expect, it } from "vitest";
 import {

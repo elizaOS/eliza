@@ -13,11 +13,11 @@
  * For full atomic-merge + concurrency tests, see `work-threads.integration.test.ts`.
  */
 
-import * as agentAccess from "@elizaos/agent";
 import type {
   ResponseHandlerFieldContext,
   ResponseHandlerFieldHandleContext,
 } from "@elizaos/core";
+import * as assistantState from "@elizaos/plugin-assistant";
 import { describe, expect, it, vi } from "vitest";
 import { threadOpsFieldEvaluator } from "../src/lifeops/work-threads/field-evaluator-thread-ops";
 
@@ -56,14 +56,14 @@ function buildFakeRuntime(overrides: FakeRuntimeOverrides = {}): unknown {
       warn: () => {},
       error: () => {},
     },
-    // hasOwnerAccess() in @elizaos/agent reads from runtime.character.owners
-    // and the message's entityId. We bypass it by monkey-patching the module
-    // import at test boundary — simpler is to intercept via the fake's
-    // owner/entity helpers. The implementation we care about is that
-    // hasOwnerAccess returns ownerAccess.
-    character: {
-      owners: ownerAccess ? ["00000000-0000-0000-0000-deadbeefdead"] : [],
-    },
+    getSetting: (key: string) =>
+      key === "ELIZA_ADMIN_ENTITY_ID"
+        ? ownerAccess
+          ? "00000000-0000-0000-0000-deadbeefdead"
+          : "00000000-0000-0000-0000-000000000002"
+        : undefined,
+    getRoom: async () => null,
+    reportError: vi.fn(),
     adapter: {
       db: {
         execute: async () => {
@@ -139,20 +139,13 @@ function buildCtx(
 describe("threadOpsFieldEvaluator", () => {
   describe("prompt admission", () => {
     it("keeps the owner gate even when another turn is active", async () => {
-      // The package setup supplies an always-owner stub; explicitly exercise
-      // the negative policy result rather than treating that stub as real auth.
-      const owner = vi
-        .spyOn(agentAccess, "hasOwnerAccess")
-        .mockResolvedValue(false);
-      try {
-        expect(
-          await threadOpsFieldEvaluator.shouldRun?.(
-            buildCtx(buildFakeRuntime({ hasAbortableTurn: true })),
+      expect(
+        await threadOpsFieldEvaluator.shouldRun?.(
+          buildCtx(
+            buildFakeRuntime({ ownerAccess: false, hasAbortableTurn: true }),
           ),
-        ).toBe(false);
-      } finally {
-        owner.mockRestore();
-      }
+        ),
+      ).toBe(false);
     });
 
     it("does not treat its own prompt-building turn as interruptible work", async () => {
@@ -175,7 +168,7 @@ describe("threadOpsFieldEvaluator", () => {
 
     it("keeps instructions while a user answer is pending", async () => {
       const ctx = buildCtx(buildFakeRuntime());
-      await agentAccess.createPendingPromptsStore(ctx.runtime).record({
+      await assistantState.createPendingPromptsStore(ctx.runtime).record({
         taskId: "pending-1",
         roomId: "room-1",
         promptSnippet: "Proceed?",

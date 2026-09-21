@@ -90,30 +90,35 @@ function plan(args: string[], env: Record<string, string> = {}) {
 }
 
 describe("run-all-tests live source plan", () => {
-  test("matches every canonical unit-test manifest exactly", () => {
-    const result = plan(["--only=test", "--no-cloud", "--require-work"]);
-    const actual = result.tasks
-      .map(({ relativeDir, scriptName }) => `${relativeDir}#${scriptName}`)
-      .sort();
-    const expected = sourceUnitTestDirs().map(
-      (directory) => `${directory}#test`,
-    );
-    expect(actual).toEqual(expected);
-    expect(result.summary.taskCount).toBe(expected.length);
-    expect(result.summary.packageCount).toBe(expected.length);
-    expect(result.summary.byScript).toEqual({ test: expected.length });
-    expect(result.summary.byPackage).toEqual(
-      Object.fromEntries(
-        sourceUnitTestDirs().map((directory) => {
-          const name = packageJson(directory).name;
-          if (!name)
-            throw new Error(`${directory} must declare a package name`);
-          return [name, 1];
-        }),
-      ),
-    );
-    expect(new Set(actual).size).toBe(actual.length);
-  });
+  test.each(["pr", "post-merge"])(
+    "%s emits a complete canonical unit-test JSON plan",
+    (lane) => {
+      const result = plan(["--only=test", "--no-cloud", "--require-work"], {
+        TEST_LANE: lane,
+      });
+      const actual = result.tasks
+        .map(({ relativeDir, scriptName }) => `${relativeDir}#${scriptName}`)
+        .sort();
+      const expected = sourceUnitTestDirs().map(
+        (directory) => `${directory}#test`,
+      );
+      expect(actual).toEqual(expected);
+      expect(result.summary.taskCount).toBe(expected.length);
+      expect(result.summary.packageCount).toBe(expected.length);
+      expect(result.summary.byScript).toEqual({ test: expected.length });
+      expect(result.summary.byPackage).toEqual(
+        Object.fromEntries(
+          sourceUnitTestDirs().map((directory) => {
+            const name = packageJson(directory).name;
+            if (!name)
+              throw new Error(`${directory} must declare a package name`);
+            return [name, 1];
+          }),
+        ),
+      );
+      expect(new Set(actual).size).toBe(actual.length);
+    },
+  );
 
   for (const lane of ["server", "client"]) {
     test(`${lane} lane matches its source-owned package metadata exactly`, () => {

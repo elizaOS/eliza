@@ -3,7 +3,7 @@
  * Queued model outputs and an in-memory calendar service prove ownership and
  * receipt transport, not the semantic accuracy of a live language model.
  */
-import { renderGroundedActionReply } from "@elizaos/agent";
+
 import {
   type ActionResult,
   type Content,
@@ -12,21 +12,22 @@ import {
   type Memory,
   ModelType,
 } from "@elizaos/core";
+import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  actionResultToPlannerToolResult,
-  runPlannerLoop,
-} from "../../../../packages/core/src/runtime/planner-loop.ts";
 import type {
   PlannerRuntime,
   PlannerToolCall,
 } from "../../../../packages/core/src/runtime/planner-types.ts";
 import { NoModelProviderConfiguredError } from "../../../../packages/core/src/runtime.ts";
+import {
+  actionResultToPlannerToolResult,
+  runPlannerLoop,
+} from "../../../plugin-assistant/src/runtime/planner-loop.ts";
 import { calendarAction } from "./calendar.ts";
 
-vi.mock("@elizaos/agent", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@elizaos/agent")>()),
+vi.mock("@elizaos/plugin-assistant", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/plugin-assistant")>()),
   renderGroundedActionReply: vi.fn(),
 }));
 

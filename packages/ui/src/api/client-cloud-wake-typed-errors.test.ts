@@ -7,7 +7,7 @@
  * job to terminal instead of discarding its jobId. Mocked client, no live
  * cloud.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@capacitor/core", () => ({

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import bs58 from "bs58";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import {

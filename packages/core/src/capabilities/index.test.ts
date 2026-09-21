@@ -5,8 +5,8 @@
  * stubbed `invokeRuntime` broker — no live host or network.
  */
 import { describe, expect, it } from "vitest";
+import { CAPABILITY_ROUTER_PROTOCOL_FIXTURE } from "../../../testing/src/capability-protocol-fixture";
 import {
-	CAPABILITY_ROUTER_PROTOCOL_FIXTURE,
 	CapabilityError,
 	RuntimeBrokerCapabilityRouter,
 	UnavailableCapabilityRouter,

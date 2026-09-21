@@ -3,18 +3,19 @@
   "compilerOptions": {
     "noEmit": false,
     "declaration": true,
-    "declarationMap": true,
+    "declarationMap": false,
     "allowImportingTsExtensions": false,
     "types": ["bun-types", "node"],
-    "outDir": "../dist",
+    "outDir": "./dist",
     "skipLibCheck": true,
     "ignoreDeprecations": "6.0",
     "moduleResolution": "bundler",
     "resolvePackageJsonExports": true,
     "resolvePackageJsonImports": true,
     "paths": {
-      "@elizaos/core": ["../../../packages/core/dist"]
-    }
+      "@elizaos/core": ["../../packages/core/dist"]
+    },
+    "rootDir": "."
   },
   "include": ["**/*.ts"],
   "exclude": [
@@ -23,6 +24,8 @@
     "__tests__",
     "**/*.test.ts",
     "**/*.spec.ts",
-    "vitest.real-runtime.config.ts"
+    "vitest.real-runtime.config.ts",
+    "dist",
+    "vitest.config.ts"
   ]
 }

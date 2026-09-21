@@ -8,4 +8,4 @@ export {
   quoteIdent,
   sanitizeIdentifier,
   sqlLiteral,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/sql-compat";

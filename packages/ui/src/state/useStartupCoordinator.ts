@@ -14,7 +14,7 @@
  * in a "ready" effect that only cleans up on unmount (not on phase transitions).
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { client } from "../api";
 import { isDirectCloudSharedAgentBase } from "../api/client-cloud";

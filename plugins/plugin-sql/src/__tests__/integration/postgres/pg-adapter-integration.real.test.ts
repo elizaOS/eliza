@@ -4,7 +4,6 @@
  * raw SQL, transactions, JSON/array/timestamp operations, error recovery,
  * and adapter shutdown.
  */
-import { PGlite } from "@electric-sql/pglite";
 import type { UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
@@ -23,8 +22,8 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
 
     beforeAll(async () => {
       testAgentId = uuidv4() as UUID;
-      const client = new PGlite();
-      manager = new PGliteClientManager(client);
+
+      manager = new PGliteClientManager({ dataDir: "memory://" });
       adapter = new PgliteDatabaseAdapter(testAgentId, manager);
       await adapter.init();
 
@@ -265,8 +264,7 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
 
     describe("Adapter Shutdown", () => {
       it("should handle close gracefully", async () => {
-        const tempClient = new PGlite();
-        const tempManager = new PGliteClientManager(tempClient);
+        const tempManager = new PGliteClientManager({ dataDir: "memory://" });
         const tempAdapter = new PgliteDatabaseAdapter(uuidv4() as UUID, tempManager);
         await tempAdapter.init();
 

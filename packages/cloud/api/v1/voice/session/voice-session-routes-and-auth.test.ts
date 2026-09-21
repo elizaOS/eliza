@@ -19,8 +19,6 @@ import * as realVoiceUsageMeter from "@/lib/services/voice-usage-meter";
 import * as realJwt from "@/lib/voice-session/jwt";
 import * as realSessionRegistry from "@/lib/voice-session/session-registry";
 import type { AppEnv } from "@/types/cloud-worker-env";
-import * as workerCoreStub from "../../../src/stubs/elizaos-core";
-import * as coreTestContract from "../../../src/stubs/elizaos-core-test-contract";
 
 const realCloudWorkerErrorsExports = { ...realCloudWorkerErrors };
 const realJwtExports = { ...realJwt };
@@ -54,39 +52,6 @@ const apiRoot = new URL("../../../src", import.meta.url).href;
 // The auth middleware pulls the real DB/plugin-sql graph transitively via
 // `getCurrentUser`; stub `@elizaos/core` so that graph never has to resolve in
 // the DB-free unit lane (matches the sibling mint-consent route test).
-mock.module("@elizaos/core", () => ({
-  ...workerCoreStub,
-  canRequesterMutateDocument: coreTestContract.canRequesterMutateDocument,
-  ChannelType: coreTestContract.ChannelType,
-  DatabaseAdapter: coreTestContract.DatabaseAdapter,
-  decryptedCharacter: coreTestContract.decryptedCharacter,
-  DOCUMENT_LIST_QUERY_CAPABILITY_VERSION:
-    coreTestContract.DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
-  documentMutationSnapshotMatches:
-    coreTestContract.documentMutationSnapshotMatches,
-  documentRoleHasGlobalVisibility:
-    coreTestContract.documentRoleHasGlobalVisibility,
-  encryptedCharacter: coreTestContract.encryptedCharacter,
-  ElizaError: workerCoreStub.ElizaError,
-  isElizaError: workerCoreStub.isElizaError,
-  isSensitiveKeyName: () => false,
-  logger: coreTestContract.logger,
-  normalizePairingPageOptions: coreTestContract.normalizePairingPageOptions,
-  redactLogArgs: (a: unknown) => a,
-  redactSensitiveText: workerCoreStub.redactSensitiveText,
-  Service: coreTestContract.Service,
-  toWellFormedUnicode: workerCoreStub.toWellFormedUnicode,
-  truncateWellFormed: workerCoreStub.truncateWellFormed,
-  validateDocumentFragmentQueryParams:
-    coreTestContract.validateDocumentFragmentQueryParams,
-  validateDocumentListQueryParams:
-    coreTestContract.validateDocumentListQueryParams,
-  validateDocumentRequesterContext:
-    coreTestContract.validateDocumentRequesterContext,
-  validateQueryEntitiesPagination:
-    coreTestContract.validateQueryEntitiesPagination,
-  validateUuid: coreTestContract.validateUuid,
-}));
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   getCurrentUser: async () => authState.currentUser,

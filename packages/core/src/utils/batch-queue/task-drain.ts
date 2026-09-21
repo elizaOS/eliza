@@ -3,7 +3,7 @@
  * `tags: ["queue", "repeat"]`, merge scheduling metadata, optionally register a task worker.
  *
  * **Why `skipRegisterWorker`:** `BATCHER_DRAIN` is executed by a **single** worker registered in
- * `TaskService` that dispatches by `metadata.affinityKey`. Per-affinity `TaskDrain` instances only
+ * the assistant plugin, which dispatches by `metadata.affinityKey`. Per-affinity `TaskDrain` instances only
  * create/update/delete tasks; registering another worker with the same name would overwrite the
  * global handler.
  *
@@ -25,7 +25,7 @@ export interface TaskDrainOptions {
 	taskMetadata?: Record<string, unknown>;
 	/**
 	 * When true, does not call `runtime.registerTaskWorker` — use when a global worker
-	 * already handles this task name (e.g. `BATCHER_DRAIN` in TaskService).
+	 * already handles this task name (e.g. `BATCHER_DRAIN` in the assistant plugin).
 	 */
 	skipRegisterWorker?: boolean;
 	/**

@@ -20,8 +20,8 @@ import {
   type NotificationCategory,
   type NotificationPriority,
   type UUID,
-} from "@elizaos/core";
-import { logger } from "@elizaos/logger";
+} from "@elizaos/common";
+import { logger } from "@elizaos/shared/logger";
 import { useSyncExternalStore } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";

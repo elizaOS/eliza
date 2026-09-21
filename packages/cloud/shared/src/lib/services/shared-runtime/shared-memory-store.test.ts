@@ -6,7 +6,7 @@
  * repository's own unit and integration suites.
  */
 import { afterEach, describe, expect, test } from "bun:test";
-import { stringToUuid } from "@elizaos/core/edge";
+import { stringToUuid } from "@elizaos/core";
 import type {
   InsertSharedAgentMemoryInput,
   MergeSharedAgentMessageMemoryInput,

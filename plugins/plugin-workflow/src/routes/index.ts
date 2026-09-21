@@ -1,5 +1,5 @@
 /** Exports the native Smithers definition, execution, revision, evaluation, approval, and signal routes mounted under `/workflow/*`. */
-import type { Route } from '@elizaos/core';
+import type { Route } from '@elizaos/shared/api/http-plugin';
 
 export { type AutomationsRouteContext, handleAutomationsRoutes } from './automations';
 

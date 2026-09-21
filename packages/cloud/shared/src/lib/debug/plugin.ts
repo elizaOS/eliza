@@ -5,7 +5,8 @@
  * Opt-in via DEBUG_TRACING=true environment variable.
  */
 
-import type { Plugin, UUID } from "@elizaos/core";
+import type { UUID } from "@elizaos/common";
+import type { Plugin } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
 import { logger } from "../utils/logger";
 import { DebugTraceCollector, getCollector, registerCollector, removeCollector } from "./collector";

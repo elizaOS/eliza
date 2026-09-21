@@ -5,7 +5,7 @@
  * is controlled by the parent via `useCloudModelConfig`.
  */
 
-import type { ModelOption } from "@elizaos/shared";
+import type { ModelOption } from "@elizaos/shared/contracts/first-run-options";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";
 import { defaultRegistry } from "../../components/config-ui/config-renderer.helpers";

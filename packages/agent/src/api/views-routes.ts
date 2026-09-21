@@ -29,7 +29,6 @@ import {
   type IAgentRuntime,
   logger,
   type RoleGateRole,
-  type RouteRequestMeta,
   satisfiesRoleGate,
   type ViewType,
 } from "@elizaos/core";
@@ -41,6 +40,7 @@ import {
   readJsonBody,
   type ShellNavigateViewPayload,
 } from "@elizaos/shared";
+import type { RouteRequestMeta } from "@elizaos/shared/api/route-helpers";
 import {
   AGENT_SURFACE_CAPABILITY_IDS,
   STANDARD_CAPABILITIES,

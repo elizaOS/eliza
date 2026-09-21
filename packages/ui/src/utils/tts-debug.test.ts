@@ -3,7 +3,7 @@
  * logcat without letting unusual diagnostic values break playback.
  */
 
-import { toWellFormedUnicode } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/common";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ttsDebug, ttsDebugTextPreview } from "./tts-debug";
 

@@ -1,4 +1,4 @@
 /**
  * Re-exports the shared lossless owner-name normalizer.
  */
-export { normalizeOwnerName } from "@elizaos/shared";
+export { normalizeOwnerName } from "@elizaos/shared/utils/owner-name";

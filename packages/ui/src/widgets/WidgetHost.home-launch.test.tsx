@@ -14,7 +14,7 @@
  * even with a populated store — is itself a contract (double-render guard).
  */
 
-import type { AgentNotification } from "@elizaos/core";
+import type { AgentNotification } from "@elizaos/common";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../api/client-types-chat";

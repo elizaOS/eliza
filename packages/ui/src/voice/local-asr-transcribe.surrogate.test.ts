@@ -2,7 +2,7 @@
  * Surrogate-safe truncation for Cloud and Local ASR error bodies.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 
 describe("local-asr-transcribe surrogate-safe", () => {

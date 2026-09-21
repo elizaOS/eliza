@@ -27,8 +27,11 @@ vi.mock("./mobile-local-inference-gate", () => ({
 		warnIfMobileGateActiveWithoutPlatform(),
 }));
 vi.mock("@elizaos/core", () => ({
-	isMobilePlatform: () => isMobilePlatform(),
 	logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
+}));
+
+vi.mock("@elizaos/shared/runtime-env", () => ({
+	isMobilePlatform: () => isMobilePlatform(),
 }));
 
 import { registerLocalInferenceBoot } from "./boot";

@@ -1,58 +1,31 @@
-#!/usr/bin/env bun
-/**
- * Build script for @elizaos/plugin-anthropic (Node + Browser + CJS).
- * Orchestration lives in the shared driver; this lists only what differs.
- */
-import { buildPlugin } from "../plugin-build";
+/** Node provider with a lightweight host endpoint configuration entry. */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { build } from "tsup";
 
-const reexport = "export * from '../index';\nexport { default } from '../index';\n";
-const rootDeclaration = `import type { Plugin } from "@elizaos/core";
+export async function buildAnthropic(options: { watch?: boolean } = {}): Promise<void> {
+  const root = fileURLToPath(new URL(".", import.meta.url));
+  const manifest = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
+  await build({
+    entry: { index: `${root}index.ts`, "endpoint-config": `${root}utils/config.ts` },
+    outDir: `${root}dist`,
+    tsconfig: `${root}tsconfig.build.json`,
+    platform: "node",
+    target: "node24",
+    format: ["esm"],
+    splitting: true,
+    dts: true,
+    // Calls from the workspace root must keep package dependencies external too.
+    external: [
+      ...Object.keys(manifest.dependencies ?? {}),
+      ...Object.keys(manifest.peerDependencies ?? {}),
+    ],
+    clean: true,
+    sourcemap: false,
+    watch: options.watch
+      ? [`${root}index.ts`, `${root}models`, `${root}utils`, `${root}providers`, `${root}types`]
+      : false,
+  });
+}
 
-export declare const anthropicPlugin: Plugin;
-declare const _default: Plugin;
-export default _default;
-`;
-const endpointDeclaration = `export type EndpointSettingReader = (key: string) => string | undefined;
-export declare function resolveAnthropicBaseURL(
-  readSetting: EndpointSettingReader,
-  options?: { browser?: boolean; mockBaseURL?: string },
-): string;
-`;
-
-await buildPlugin({
-  name: "@elizaos/plugin-anthropic",
-  targets: [
-    { label: "Node", entry: "index.node.ts", outSubdir: "node", target: "node", format: "esm" },
-    {
-      label: "Browser",
-      entry: "index.browser.ts",
-      outSubdir: "browser",
-      target: "browser",
-      format: "esm",
-    },
-    {
-      label: "Node (CJS)",
-      entry: "index.node.ts",
-      outSubdir: "cjs",
-      target: "node",
-      format: "cjs",
-      renames: [["index.node.js", "index.node.cjs"]],
-    },
-    {
-      label: "Endpoint config",
-      entry: "utils/config.ts",
-      outSubdir: "",
-      target: "node",
-      format: "esm",
-      naming: { entry: "endpoint-config.[ext]" },
-    },
-  ],
-  dtsProject: "tsconfig.build.json",
-  dtsShims: [
-    { path: "index.d.ts", content: rootDeclaration },
-    { path: "node/index.d.ts", content: reexport },
-    { path: "browser/index.d.ts", content: reexport },
-    { path: "cjs/index.d.ts", content: reexport },
-    { path: "endpoint-config.d.ts", content: endpointDeclaration },
-  ],
-});
+if (import.meta.main) await buildAnthropic({ watch: process.argv.includes("--watch") });

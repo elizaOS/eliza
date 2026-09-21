@@ -6,7 +6,8 @@
  * fire workflows without the agent action layer; dispose stops long-lived
  * services. Default-enabled (opt out with `workflow.enabled: false`).
  */
-import { type IAgentRuntime, logger, type Plugin } from '@elizaos/core';
+import { type IAgentRuntime, logger } from '@elizaos/core';
+import type { HttpPlugin as Plugin } from '@elizaos/shared/api/http-plugin';
 import { workflowAction } from './actions/index';
 import * as dbSchema from './db/index';
 import { activeWorkflowsProvider, workflowStatusProvider } from './providers/index';

@@ -21,7 +21,7 @@ process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { creditsService } from "../credits";
 import { createMeetingCreditBillingSession, resolveMeetingUsdPerMinute } from "../meeting-billing";
 

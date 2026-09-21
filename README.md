@@ -43,7 +43,7 @@ bun run dev
 build prerequisites, and builds or verifies the staged desktop
 `libelizainference`. The embedding GGUF remains runtime-managed and downloads
 automatically during local-inference warmup. Fetch archived artifact fixtures explicitly with
-`bun run fetch:archive-artifacts` when needed.
+`bun packages/scripts/fetch-archive-artifacts.mjs` when needed.
 
 Common repository commands:
 

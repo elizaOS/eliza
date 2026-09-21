@@ -3,8 +3,9 @@
  * saving its review. Recipient and source checkpoints are resumable; no account,
  * calendar preference, approval, or delivery control changes during review.
  */
-import { createApprovalQueue } from "@elizaos/agent";
+
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import { createApprovalQueue } from "@elizaos/plugin-assistant";
 import type { CalendarService } from "@elizaos/plugin-calendar";
 import type {
   LifeOpsCalendarEvent,

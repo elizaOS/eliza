@@ -15,7 +15,7 @@ import {
   profileStorageKey,
   ROUTING_KEY,
   type TestVault,
-} from "@elizaos/vault";
+} from "@elizaos/credentials/vault";
 import {
   afterAll,
   beforeAll,

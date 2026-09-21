@@ -28,7 +28,7 @@ export const MATRIX_STEPS = [
   {
     id: "test-all",
     label: "Unit, integration, and e2e test matrix",
-    command: ["node", "packages/scripts/run-all-tests.mjs", "--all"],
+    command: ["bun", "run", "test:all"],
     tags: ["tests"],
   },
   {

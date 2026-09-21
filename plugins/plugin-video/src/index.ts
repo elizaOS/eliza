@@ -1,4 +1,4 @@
-import type { Plugin } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { VideoService } from "./services/video";
 
 const videoPlugin: Plugin = {

@@ -32,11 +32,9 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import {
-  DEFAULT_NETWORK_POLICY_PREFERENCES,
-  EDGE_BACKUP_VOICES,
-  VOICE_MODEL_VERSIONS,
-} from "@elizaos/shared";
+import { DEFAULT_NETWORK_POLICY_PREFERENCES } from "@elizaos/shared/local-inference/network-policy";
+import { VOICE_MODEL_VERSIONS } from "@elizaos/shared/local-inference/voice-models";
+import { EDGE_BACKUP_VOICES } from "@elizaos/shared/voice";
 import type { AccountsListResponse } from "@elizaos/ui/api/client-agent";
 import { expect, type Page, type Route, type TestInfo } from "@playwright/test";
 import {

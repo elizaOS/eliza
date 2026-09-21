@@ -1,6 +1,6 @@
 /** Creates recoverable, account-bound recurring Checkout sessions and activates only freshly retrieved captured first payments. */
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import type Stripe from "stripe";
 import { subscriptionBillingOperationsRepository as operations } from "../../db/repositories/subscription-billing-operations";
 import {

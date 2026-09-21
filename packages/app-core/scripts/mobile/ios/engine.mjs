@@ -9,7 +9,7 @@ import {
   findForbiddenRuntimeImportGroups,
   findForbiddenRuntimeStrings,
   formatForbiddenRuntimeFindings,
-} from "../../../../native/bun-runtime/scripts/ios-app-store-runtime-policy.mjs";
+} from "../../lib/ios-app-store-runtime-policy.mjs";
 import {
   MTP_FORK_SRC_CANDIDATES,
   mtpForceRebuildRequested,

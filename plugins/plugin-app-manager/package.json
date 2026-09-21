@@ -42,7 +42,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-registry": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "@elizaos/auth": "workspace:*"
+    "@elizaos/credentials": "workspace:*"
   },
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",

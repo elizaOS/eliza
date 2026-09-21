@@ -1,6 +1,6 @@
 /** Validates the pinned platform Stripe observation for an existing organization period-end cancellation. Provider drift remains explicit uncertainty; scheduling does not end current access. */
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { z } from "zod";
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
 import {

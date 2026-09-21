@@ -30,12 +30,12 @@ import {
 	ModelType,
 	type PiiScrubParams,
 	type PiiScrubResult,
-	type Plugin,
 	resolveBackgroundInferenceBudget,
 	type TextEmbeddingParams,
 	type TextToSpeechParams,
 	type TranscriptionParams,
 } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 
 import { generateMediaAction } from "./actions/generate-media.js";
 import { identifySpeakerAction } from "./actions/identify-speaker.js";

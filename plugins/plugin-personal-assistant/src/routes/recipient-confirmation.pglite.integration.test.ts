@@ -1,7 +1,7 @@
 /** Exercises recipient confirmation through registered owner HTTP routes and real PGlite graph persistence, without a mail provider. */
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { expect, it } from "vitest";
 import { tryHandleRuntimePluginRoute } from "../../../../packages/agent/src/api/runtime-plugin-routes.ts";
 import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.js";

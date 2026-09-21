@@ -20,7 +20,7 @@
  * `peek` at decision time.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { isAndroid, isIOS } from "../platform/init";
 import { getDeviceResourceSnapshot } from "../services/local-inference/resource-snapshot-bridge";
 import {

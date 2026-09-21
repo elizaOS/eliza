@@ -7,7 +7,7 @@
  * `error.name` because the class cannot survive the Durable Object fetch
  * boundary).
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 export class SharedRuntimeCacheWarmingError extends Error {
   constructor(message: string) {

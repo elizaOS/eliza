@@ -1,27 +1,13 @@
 /**
- * Route-level e2e for plugin-imessage (issue #8802).
- *
- * Boots the plugin's declared `Route[]` (`imessageSetupRoutes` +
- * `imessageDataRoutes`) through the real production dispatcher
- * (`tryHandleRuntimePluginRoute`) over a loopback `http.createServer` — so the
- * real auth gate, JSON body parsing, query/param parsing, and handler dispatch
- * all run. The only external dependencies (the `imessage` service and the
- * `connector-setup` service) are faked; there is no chat.db, no Messages.app,
- * and no macOS bridge involved.
- *
- * No mocked `json`/`error` helpers and no shape-only assertions: every check is
- * on a real HTTP response read back over `fetch`.
- *
- * The package-wide vitest setup file mocks `@elizaos/core` down to a handful of
- * symbols, which would strip the helpers the dispatcher imports
- * (`readRequestBodyBuffer`, `writeJsonError`, `isJsonObjectBody`,
- * `setRuntimeRouteHostContext`). This file restores the real module so the
- * dispatcher runs against production code.
+ * Exercises iMessage setup and data routes through the host HTTP registry and
+ * real loopback dispatcher, including authorization, request parsing and errors.
+ * Connector services are deterministic fixtures; no Messages or Blooio effects run.
  */
 
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { AgentRuntime } from "@elizaos/core";
+import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", async () => await vi.importActual("@elizaos/core"));
@@ -175,14 +161,18 @@ function makeRuntime(options: RuntimeOptions = {}): AgentRuntime {
       ? null
       : makeConnectorSetupService(options.connectorSetup ?? { config: {} });
 
-  return {
-    routes: [...imessageSetupRoutes, ...imessageDataRoutes],
+  const runtime = {
     getService: (key: string) => {
       if (key === "imessage") return imessageService;
       if (key === "connector-setup") return connectorSetupService;
       return null;
     },
   } as unknown as AgentRuntime;
+  registerHttpPluginRoutes(runtime, {
+    name: "imessage",
+    routes: [...imessageSetupRoutes, ...imessageDataRoutes],
+  });
+  return runtime;
 }
 
 async function startServer(

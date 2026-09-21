@@ -34,7 +34,7 @@ import {
   runWithInferenceTiming,
   type UUID,
 } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/core/testing";
+import { createTestRuntime } from "@elizaos/testing";
 import { generateChatResponse } from "../src/api/chat-routes.ts";
 import { shutdownRuntime } from "../src/runtime/eliza.ts";
 import {
@@ -168,11 +168,10 @@ const CEREBRAS_LIVE_SOURCE_PATHS = [
   "packages/agent/src",
   "packages/cloud/routing/src",
   "packages/core/src",
-  "packages/logger/src",
   "packages/prompts/src",
   "packages/registry/src",
   "packages/shared/src",
-  "packages/vault/src",
+  "packages/credentials/src/vault",
   "plugins/plugin-aosp-local-inference/src",
   "plugins/plugin-capacitor-bridge/src",
   "plugins/plugin-local-inference/src",

@@ -5,7 +5,7 @@
  */
 
 import type http from "node:http";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type BoundaryRoleAccess,
   clearTokenRoleResolvers,
@@ -48,14 +48,14 @@ function makeAccess(
 
 const req = {} as http.IncomingMessage;
 
-describe("boundary-role resolver registry", () => {
-  beforeEach(() => {
-    clearTokenRoleResolvers();
-  });
+afterEach(clearTokenRoleResolvers);
 
+describe("boundary-role resolver registry", () => {
   it("returns null when no resolvers are registered", () => {
     expect(resolveRegisteredTokenRoleAccess(req)).toBeNull();
     expect(hasTokenRoleResolver("any")).toBe(false);
+    registerTokenRoleResolver(makeResolver("no-match", null));
+    expect(resolveRegisteredTokenRoleAccess(req)).toBeNull();
   });
 
   it("returns the first non-null resolver in registration order", () => {
@@ -76,14 +76,6 @@ describe("boundary-role resolver registry", () => {
     expect(access?.principal).toBe("p2");
   });
 
-  it("skips resolvers that return null and continues", () => {
-    registerTokenRoleResolver(makeResolver("a", null));
-    registerTokenRoleResolver(
-      makeResolver("b", makeAccess("b", { principal: "found" })),
-    );
-    expect(resolveRegisteredTokenRoleAccess(req)?.principal).toBe("found");
-  });
-
   it("treats a throwing resolver as a non-match (fail-closed) and continues", () => {
     registerTokenRoleResolver(makeResolver("thrower", null, true));
     registerTokenRoleResolver(
@@ -91,16 +83,6 @@ describe("boundary-role resolver registry", () => {
     );
     const access = resolveRegisteredTokenRoleAccess(req);
     expect(access?.providerId).toBe("ok");
-  });
-
-  it("stops at the first match even if later resolvers would match", () => {
-    registerTokenRoleResolver(
-      makeResolver("a", makeAccess("a", { principal: "a" })),
-    );
-    registerTokenRoleResolver(
-      makeResolver("b", makeAccess("b2", { principal: "b" })),
-    );
-    expect(resolveRegisteredTokenRoleAccess(req)?.principal).toBe("a");
   });
 
   it("re-registering the same id replaces the prior resolver", () => {
@@ -126,10 +108,6 @@ describe("boundary-role resolver registry", () => {
 });
 
 describe("isRegisteredTokenRoleAuthorized", () => {
-  beforeEach(() => {
-    clearTokenRoleResolvers();
-  });
-
   it("returns false when nothing recognises the request", () => {
     expect(isRegisteredTokenRoleAuthorized(req, "GET", "/api/x")).toBe(false);
   });

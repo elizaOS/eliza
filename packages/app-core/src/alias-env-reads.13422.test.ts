@@ -14,11 +14,13 @@ import os from "node:os";
 import path from "node:path";
 import {
   getBootConfig,
-  readAliasedEnv,
+  setBootConfig,
+} from "@elizaos/shared/config/boot-config-store";
+import {
   resolveDesktopApiPort,
   resolveServerOnlyPort,
-  setBootConfig,
-} from "@elizaos/shared";
+} from "@elizaos/shared/runtime-env";
+import { readAliasedEnv } from "@elizaos/shared/utils/env";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   deriveAgentVaultId,

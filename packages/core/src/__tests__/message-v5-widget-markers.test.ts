@@ -2,10 +2,10 @@
  * Exercises callback, verified-payload, and evaluator widget-marker delivery through stage 1 with deterministic fixtures (#14658, #14659).
  */
 import { describe, expect, it, vi } from "vitest";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
+import { runV5MessageRuntimeStage1 } from "../../../../plugins/plugin-assistant/src/services/message.ts";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import { runV5MessageRuntimeStage1 } from "../services/message";
 import type {
 	Action,
 	ActionResult,
@@ -201,7 +201,7 @@ describe("v5 widget markers — action callback and verified payload channels", 
 				}),
 				{
 					text: "",
-					toolCalls: [{ id: "call-1", name: "APP_PICKER", args: {} }],
+					toolCalls: [{ id: "call-1", name: "APP_PICKER", arguments: {} }],
 				},
 				evaluatorFinish("I've listed the app options for you."),
 			],
@@ -271,7 +271,7 @@ describe("v5 widget markers — action callback and verified payload channels", 
 				}),
 				{
 					text: "",
-					toolCalls: [{ id: "call-1", name: "APP_PICKER", args: {} }],
+					toolCalls: [{ id: "call-1", name: "APP_PICKER", arguments: {} }],
 				},
 				evaluatorFinish("I've listed the app options for you."),
 			],
@@ -314,7 +314,7 @@ describe("v5 widget markers — action callback and verified payload channels", 
 				}),
 				{
 					text: "",
-					toolCalls: [{ id: "call-1", name: "REMINDER_LOOKUP", args: {} }],
+					toolCalls: [{ id: "call-1", name: "REMINDER_LOOKUP", arguments: {} }],
 				},
 				evaluatorFinish(FORM_BLOCK),
 			],

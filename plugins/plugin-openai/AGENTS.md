@@ -35,10 +35,8 @@ All text handlers support streaming (`params.stream = true`) and structured outp
 ```
 plugins/plugin-openai/
   index.ts               # Plugin object (openaiPlugin); registers all model handlers
-  index.node.ts          # Node entrypoint
-  index.browser.ts       # Browser entrypoint
   auto-enable.ts         # shouldEnable(): true when OPENAI_API_KEY, CEREBRAS_API_KEY, or EVOLINK_API_KEY set
-  build.ts               # Bun.build config (node ESM + browser ESM) + tsc declarations
+  build.ts               # Node ESM + bundled declarations in dist/
   models/
     index.ts             # Re-exports all handlers
     text.ts              # handleTextSmall/Nano/Medium/Large/Mega/ResponseHandler/ActionPlanner
@@ -66,8 +64,8 @@ plugins/plugin-openai/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-openai build          # Bun.build (node ESM + browser ESM) + tsc d.ts
-bun run --cwd plugins/plugin-openai dev            # hot-reload build (bun --hot build.ts)
+bun run --cwd plugins/plugin-openai build          # Node ESM + bundled declarations
+bun run --cwd plugins/plugin-openai dev            # watch build
 bun run --cwd plugins/plugin-openai test           # vitest unit suite
 bun run --cwd plugins/plugin-openai typecheck      # tsc --noEmit
 bun run --cwd plugins/plugin-openai lint           # biome check --write --unsafe
@@ -109,10 +107,6 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 | `OPENAI_RESEARCH_TIMEOUT` | no | `3600000` (1 hr) | Timeout for research requests (ms) |
 | `OPENAI_EXPERIMENTAL_TELEMETRY` | no | `false` | Enable AI SDK telemetry |
 | `OPENAI_REASONING_EFFORT` | no | — | `minimal`/`low`/`medium`/`high` for o-series models |
-| `OPENAI_BROWSER_BASE_URL` | no | — | Browser-only proxy URL (keeps key server-side) |
-| `OPENAI_BROWSER_UPSTREAM_BASE_URL` | no | — | Actual proxy upstream used for endpoint-specific capability checks |
-| `OPENAI_BROWSER_EMBEDDING_URL` | no | — | Browser-only embeddings proxy URL |
-| `OPENAI_ALLOW_BROWSER_API_KEY` | no | `false` | Send auth header in browser (opt-in) |
 | `ELIZA_PROVIDER` | no | — | Set to `cerebras` or `evolink` to force that provider mode |
 | `CEREBRAS_BASE_URL` | no | `https://api.cerebras.ai/v1` | Cerebras API base |
 | `CEREBRAS_SMALL_MODEL` / `CEREBRAS_LARGE_MODEL` | no | — | Per-tier Cerebras model overrides |
@@ -137,7 +131,7 @@ Model tiers (nano/medium/mega/response-handler/action-planner) all call the shar
 
 ## Conventions / gotchas
 
-- **Dual build (node + browser).** Exports differ: `dist/node/index.node.js` and `dist/browser/index.browser.js`. Browser build avoids sending `Authorization` headers by default; set `OPENAI_BROWSER_BASE_URL` to a server-side proxy.
+- **Node-only provider.** The root and endpoint-config exports have bundled declarations in `dist/`. Browser clients call their host transport; provider credentials stay on the host.
 - **Cerebras mode.** Detected automatically from `ELIZA_PROVIDER=cerebras`, `OPENAI_BASE_URL` matching `*.cerebras.ai`, or presence of `CEREBRAS_API_KEY` without `OPENAI_API_KEY`. In Cerebras mode: caller-supplied response schemas use strict `json_schema` output without OpenAI's all-properties-required rewrite; explicit JSON-only requests retain `json_object`; `reasoning_effort` defaults to `"none"` for Qwen 3.8 and `"low"` for GPT-OSS/GLM; `promptCacheRetention` is stripped (Cerebras rejects it); embeddings fall back to a deterministic local hash when no explicit embedding URL is set.
 - **Strict-schema stripping (default for strict/unspecified tools, ALL providers).** `sanitizeJsonSchema` in `models/text.ts` is the single wire choke point for caller `response_format` schemas (`buildStructuredOutput`) and every strict or unspecified tool schema (`normalizeNativeTools`). Cerebras response schemas use its structure-preserving mode: optional fields, nullable types, and open-object declarations remain unchanged while unsupported constraints become guidance. It strips the constraint keywords strict-grammar providers (Cerebras via Eliza Cloud, OpenAI strict) 400 on — `maxItems`, `minItems`, `maxLength`, `minLength`, `pattern`, `format`, `minProperties`, `maxProperties` — folding each into the node's `description` so the model keeps the intent, and recurses through `properties`/`items`/`anyOf`/`oneOf`/`allOf`/`$defs`/`patternProperties`/`contains`/`if`-`then`-`else`. Numeric bounds (`minimum`/`maximum`/`multipleOf`/`uniqueItems`) pass through untouched. This is **not** gated on Cerebras mode — `isCerebrasMode` is proxy-blind (an agent on `api.eliza.app` with `OPENAI_API_KEY` looks like plain OpenAI, which is exactly where the 400s fired). Real bounds are still enforced app-side: `parseAndValidate` re-checks the caller's ORIGINAL schema. So do NOT add per-schema constraint-stripping — the choke point already does it (#11123 / #11153).
 - **Explicit non-strict tools preserve their schema.** A core `ToolDefinition` with `strict: false` bypasses strict-schema rewriting and reaches a non-Cerebras OpenAI-compatible endpoint with the caller's exact parameter schema and `strict: false`. This is reserved for transports whose contract requires optional fields to remain optional; strict/unspecified tools continue through the sanitizer above, and Cerebras mode still applies its compatibility normalization.

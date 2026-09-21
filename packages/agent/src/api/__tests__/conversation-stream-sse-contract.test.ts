@@ -316,6 +316,7 @@ function createModelBackedMessageService() {
         onStreamChunk: options?.onStreamChunk,
       });
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: {
           text: modelResult.text,
@@ -364,6 +365,7 @@ function createChunkPlanMessageService(
         await options?.onStreamChunk?.(chunk, undefined, accumulated);
       }
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text: finalText, thought },
         responseMessages: [],
@@ -385,6 +387,7 @@ function createViewShortcutMessageService(): NonNullable<
   return {
     async handleMessage() {
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: {
           text: "Navigated to Settings.",
@@ -419,6 +422,7 @@ function createVisibleCallbackWithInternalReceiptMessageService(): NonNullable<
     async handleMessage(_runtime, _message, callback) {
       await callback?.({ text }, "VIEWS");
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text, transcriptVisibility: "internal" as const },
         responseMessages: [],
@@ -452,6 +456,7 @@ function createFailedCallbackWithoutSyntheticFallbackMessageService(): NonNullab
     async handleMessage(_runtime, _message, callback) {
       await callback?.({ text }, "VIEWS");
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: null,
         responseMessages: [],
@@ -496,6 +501,7 @@ function createPersistedCallbackMessageService(
       );
       await callback?.({ text, actions: ["CALENDAR"] }, "CALENDAR");
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text, actions: ["CALENDAR"] },
         responseMessages: [
@@ -548,6 +554,7 @@ function createGenericPersistedCallbackMessageService(
       );
       await callback?.({ text, actions: ["REPLY"] });
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text, actions: ["REPLY"] },
         responseMessages: [
@@ -594,6 +601,7 @@ function createPersistedReplyMessageService(): NonNullable<
         "messages",
       );
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text: "Already committed by message service." },
         responseMessages: [
@@ -630,6 +638,7 @@ function createMixedPersistedTransientMessageService(
     async handleMessage(_runtime, _message, callback) {
       await callback?.({ text: "Final answer.", action: "VIEWS" });
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text: "Final answer." },
         responseMessages: [
@@ -683,6 +692,7 @@ function createEphemeralReplyMessageService(
         failureKind,
       };
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: content,
         responseMessages: [
@@ -727,11 +737,15 @@ function createCallbackTerminalFailureMessageService(
         didRespond: true,
         responseContent: null,
         responseMessages: [],
-        terminalFailure: {
-          kind: failureKind,
-          transient: !verificationFailed,
-          message,
-          code,
+        outcome: {
+          status: "failed" as const,
+          error: {
+            kind: failureKind,
+            transient: !verificationFailed,
+            message,
+            code,
+          },
+          effects: [],
         },
         mode: "actions" as const,
       };
@@ -947,6 +961,7 @@ function createGatedMessageService(
       started.resolve();
       await gate.promise;
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text: FINAL_TEXT, thought: THOUGHT },
         responseMessages: [],
@@ -984,6 +999,7 @@ function createSerialVoiceTurnMessageService({
           firstStarted.resolve();
           await firstGate.promise;
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: {
               text: "got it. i'll keep the vibe hip and cool.",
@@ -996,6 +1012,7 @@ function createSerialVoiceTurnMessageService({
             `second-context:${firstAssistantIsDurable() ? "ordered" : "stale"}`,
           );
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: { text: "got it. i'll keep it current." },
             responseMessages: [],
@@ -1039,6 +1056,7 @@ function createMetadataCaptureMessageService(
           : undefined,
       );
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text: FINAL_TEXT, thought: THOUGHT },
         responseMessages: [],
@@ -1902,6 +1920,7 @@ describe("conversation stream SSE contract (#10712)", () => {
         const text = String(message.content?.text ?? "");
         events.push(`handle:${text}`);
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: `completed ${text}` },
           responseMessages: [],
@@ -2274,6 +2293,7 @@ describe("conversation stream SSE contract (#10712)", () => {
           },
         );
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: finalText },
           responseMessages: [],
@@ -2381,6 +2401,7 @@ describe("conversation stream SSE contract (#10712)", () => {
         );
       }
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text: `Completed ${text}.` },
         responseMessages: [],
@@ -2460,6 +2481,7 @@ describe("conversation stream SSE contract (#10712)", () => {
       // onReplyReady callback has durably settled and delivered this result.
       quarantinePostDeliveryTasks(runtime, new Error("reflection cancelled"));
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text: "The action completed." },
         responseMessages: [],
@@ -3212,7 +3234,11 @@ describe("conversation stream SSE contract (#10712)", () => {
           responseContent: null,
           responseMessages: [],
           mode: "none" as const,
-          terminalFailure: unavailable.failure,
+          outcome: {
+            status: "failed" as const,
+            error: unavailable.failure,
+            effects: [],
+          },
           actionResults: [actionResult],
         };
       });

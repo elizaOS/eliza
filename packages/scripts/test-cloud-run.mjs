@@ -926,68 +926,17 @@ export function findMissingRoots(testRoots, existsFn) {
 
 // --- Clean-install preflight (#16187) ---
 //
-// A frozen `bun install --ignore-scripts` leaves the tree with
-// no built dist/ and no generated i18n keyword modules. The cloud suites
-// resolve `@elizaos/core` through its package.json `bun` export condition
-// (packages/core/dist/node/index.node.js) and import the gitignored keyword
-// modules from source, so without these artifacts every DB/service batch dies
-// in `Cannot find module` cascades that read like hundreds of regressions
-// instead of one missing prerequisite. The keyword modules are tracked
-// separately from the dist because turbo's `build` task caches `dist/**`
-// only: a cache hit can restore core's dist without ever running the codegen
-// that emits them (core's prebuild generates keywords only on a real build).
-//
-// Only the artifacts this lane's import graph actually resolves are listed —
-// `@elizaos/core` is the sole dist-resolved workspace package in the cloud
-// test graph (everything else resolves from source) — so a fully built tree
-// pays four existsSync calls and nothing more.
+// A frozen install without build scripts leaves no core distribution. Cloud
+// tests import the published root entry, so diagnose that missing prerequisite
+// once before launching the DB/service batches. Keywords are authored source.
 export function computeRequiredRuntimeArtifacts(root) {
   return {
-    keywordCodegen: [
-      path.join(
-        root,
-        "packages",
-        "shared",
-        "src",
-        "i18n",
-        "generated",
-        "validation-keyword-data.ts",
-      ),
-      path.join(
-        root,
-        "packages",
-        "shared",
-        "src",
-        "i18n",
-        "generated",
-        "validation-keyword-data.js",
-      ),
-      path.join(
-        root,
-        "packages",
-        "core",
-        "src",
-        "i18n",
-        "generated",
-        "validation-keyword-data.ts",
-      ),
-    ],
-    coreBuild: [
-      path.join(root, "packages", "core", "dist", "node", "index.node.js"),
-    ],
+    coreBuild: [path.join(root, "packages", "core", "dist", "index.js")],
   };
 }
 
-// Each step is the same standard mechanism CI already uses: the keyword
-// codegen is what packages/shared's `build:i18n` and packages/core's prebuild
-// invoke, and build-core.mjs is the root `bun run build:core` — the exact
-// prerequisite the other root test lanes (test:server/client/plugins) and the
-// cloud-tests workflow's cloud-setup-test-env action run.
+// Build missing distribution artifacts before starting the cloud tests.
 export const PREFLIGHT_STEPS = {
-  keywordCodegen: {
-    label: "i18n keyword codegen (generate-keywords.mjs)",
-    script: ["packages", "shared", "scripts", "generate-keywords.mjs"],
-  },
   coreBuild: {
     label: "core workspace build (build:core)",
     script: ["packages", "scripts", "build-core.mjs"],

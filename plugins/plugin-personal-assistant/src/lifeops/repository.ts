@@ -33,11 +33,6 @@ export {
 } from "./repositories/schedule-projection-records.js";
 
 import crypto from "node:crypto";
-import {
-  type EntityStore,
-  type RelationshipStore,
-  resolveKnowledgeGraphService,
-} from "@elizaos/agent/services/knowledge-graph";
 import type { IAgentRuntime } from "@elizaos/core";
 import { FinancesRepository } from "@elizaos/plugin-finances/db/finances-repository";
 import type {
@@ -50,6 +45,11 @@ import type {
   LifeOpsSubscriptionCandidate,
 } from "@elizaos/plugin-finances/subscriptions-types";
 import { GoalsRepository } from "@elizaos/plugin-goals/db/goals-repository";
+import {
+  type EntityStore,
+  type RelationshipStore,
+  resolveKnowledgeGraphService,
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import type {
   LifeOpsGoalDefinition,
   LifeOpsGoalLink,

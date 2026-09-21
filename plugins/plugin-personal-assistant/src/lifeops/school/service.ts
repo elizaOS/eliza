@@ -6,13 +6,14 @@
  * graph, retains every source revision, and emits only proposed or blocked
  * action items for the existing approval and scheduling systems to consume.
  */
+
+import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import { type IAgentRuntime, Service } from "@elizaos/core";
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import type { Entity, Relationship } from "@elizaos/shared";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { actionBundleId, SchoolSourceFactRepository } from "./repository.js";

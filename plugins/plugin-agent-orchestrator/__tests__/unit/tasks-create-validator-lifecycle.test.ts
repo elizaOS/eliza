@@ -8,10 +8,10 @@ import {
   AgentRuntime,
   createCharacter,
   type IAgentRuntime,
-  InMemoryDatabaseAdapter,
   type Memory,
   Service,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AcpActionService } from "../../src/actions/common.ts";
 import { tasksAction } from "../../src/actions/tasks.ts";
@@ -123,7 +123,6 @@ async function createHarness(
     agentId: AGENT_ID,
     character: createCharacter({ name: "Tester" }),
     adapter: new InMemoryDatabaseAdapter(),
-    disableBasicCapabilities: true,
     enableAutonomy: false,
     logLevel: "fatal",
   });

@@ -25,12 +25,12 @@ Useful follow-ups:
 
 ```bash
 bash scripts/bootstrap-linux-dev.sh --doctor-only
-bun run linux:doctor -- --json
+bun scripts/linux-dev-doctor.mjs --json
 bash scripts/bootstrap-linux-dev.sh --skip-install
 ```
 
 The bootstrap's repository-local PATH exists only for that command. Running
-`bun run linux:doctor` directly is still useful when intentionally auditing the
+`bun scripts/linux-dev-doctor.mjs` directly is still useful when intentionally auditing the
 ambient shell, but it will fail the pin checks if that shell resolves a
 different Bun or Node version. The doctor records only non-secret host facts:
 distro, kernel, architecture, desktop/session, memory and swap, GPU summary,

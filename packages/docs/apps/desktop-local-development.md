@@ -200,7 +200,7 @@ Browser smoke tests target the **same renderer URL** Electrobun loads in watch m
 | `packages/app-core/scripts/lib/vite-renderer-dist-stale.mjs` | When `vite build` is needed |
 | `packages/app-core/scripts/lib/kill-ui-listen-port.mjs` | Free UI port |
 | `packages/app-core/scripts/lib/kill-process-tree.mjs` | Scoped tree kill |
-| `packages/app-core/scripts/lib/desktop-stack-status.mjs` | Port + HTTP probes for `desktop:stack-status` |
+| `packages/app-core/scripts/lib/desktop-stack-status.mjs` | Port + HTTP probes for `bun --conditions=eliza-source packages/app-core/scripts/desktop-stack-status.mjs` |
 | `packages/app-core/scripts/desktop-stack-status.mjs` | CLI entry for agents (`--json`) |
 | `packages/app-core/src/api/dev-stack.ts` | Payload for `GET /api/dev/stack` |
 | `packages/app-core/src/api/dev-console-log.ts` | Safe tail read for `GET /api/dev/console-log` |

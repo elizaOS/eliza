@@ -10,6 +10,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { describe, expect, it } from "vitest";
 import { buildHonoAppForRuntime } from "./hono-adapter.ts";
 
@@ -18,38 +19,38 @@ function makeRuntime(): IAgentRuntime {
     yield "data: hello\n\n";
     yield new TextEncoder().encode("data: world\n\n");
   }
-  return {
-    routes: [
-      {
-        type: "GET",
-        path: "/api/test-plugin/events",
-        public: true,
-        name: "test-events",
-        publicReason: "Hono adapter stream header fixture route.",
-        routeHandler: async () => ({
-          status: 201,
-          headers: {
-            "content-type": "text/event-stream",
-            "cache-control": "no-cache",
-            "x-custom": "yes",
-          },
-          stream: sse(),
-        }),
-      },
-      {
-        type: "GET",
-        path: "/api/test-plugin/plain",
-        public: true,
-        name: "test-plain",
-        publicReason: "Hono adapter plain response fixture route.",
-        routeHandler: async () => ({
-          status: 201,
-          headers: { "x-custom": "yes" },
-          body: { ok: true },
-        }),
-      },
-    ],
-  } as unknown as IAgentRuntime;
+  const runtime = {} as IAgentRuntime;
+  getHttpRuntime(runtime).routes = [
+    {
+      type: "GET",
+      path: "/api/test-plugin/events",
+      public: true,
+      name: "test-events",
+      publicReason: "Hono adapter stream header fixture route.",
+      routeHandler: async () => ({
+        status: 201,
+        headers: {
+          "content-type": "text/event-stream",
+          "cache-control": "no-cache",
+          "x-custom": "yes",
+        },
+        stream: sse(),
+      }),
+    },
+    {
+      type: "GET",
+      path: "/api/test-plugin/plain",
+      public: true,
+      name: "test-plain",
+      publicReason: "Hono adapter plain response fixture route.",
+      routeHandler: async () => ({
+        status: 201,
+        headers: { "x-custom": "yes" },
+        body: { ok: true },
+      }),
+    },
+  ];
+  return runtime;
 }
 
 describe("hono-adapter streaming RouteHandlerResult", () => {

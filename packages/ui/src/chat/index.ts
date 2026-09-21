@@ -7,7 +7,7 @@ import {
   type EnabledViewKinds,
   isViewVisible,
   MESSAGE_SOURCE_CODING_AGENT,
-} from "@elizaos/core";
+} from "@elizaos/common";
 import type { ViewRegistryEntry } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
 import { shellLocalStorage } from "../surface-realm-channel";

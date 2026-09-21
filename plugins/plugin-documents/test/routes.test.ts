@@ -10,7 +10,7 @@ import {
 const addDocument = vi.fn();
 const searchDocuments = vi.fn(async () => []);
 
-vi.mock("@elizaos/agent/api/documents-service-loader", () => ({
+vi.mock("../src/service-loader.ts", () => ({
   getDocumentsService: vi.fn(async () => ({
     service: {
       addDocument,

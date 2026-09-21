@@ -1,6 +1,6 @@
 // Exercises cloud API v1 app agents route.test behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 const requireUserOrApiKeyWithOrg = mock(async () => ({
   id: "user-1",

@@ -11,7 +11,6 @@ import {
   type Content,
   type IAgentRuntime,
   type IDatabaseAdapter,
-  InMemoryDatabaseAdapter,
   type Memory,
   type MemoryMetadata,
   MemoryType,
@@ -20,6 +19,7 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/plugin-inmemorydb/runtime";
 import { vi } from "vitest";
 
 export function stringToUuid(str: string): UUID {
@@ -74,9 +74,6 @@ export async function createTestRuntime(
     agentId,
     character,
     adapter,
-    enableDocuments: false,
-    enableRelationships: false,
-    enableTrajectories: false,
     plugins: options.plugins,
   });
 

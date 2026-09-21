@@ -206,7 +206,6 @@
     "@elizaos/capacitor-websiteblocker": "workspace:*",
     "@elizaos/capacitor-wifi": "workspace:*",
     "@elizaos/evidence": "workspace:*",
-    "@elizaos/logger": "workspace:*",
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-blocker": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
@@ -242,7 +241,9 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.10.0",
-    "three": "^0.184.0"
+    "three": "^0.184.0",
+    "@elizaos/cloud-routing": "workspace:*",
+    "@elizaos/common": "workspace:*"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2",
@@ -271,7 +272,8 @@
     "vite": "^8.3.0",
     "vitest": "^4.1.10",
     "ws": "^8.21.3",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.0",
+    "@elizaos/testing": "workspace:*"
   },
   "private": true,
   "elizaos": {

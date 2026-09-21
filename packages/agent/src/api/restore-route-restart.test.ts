@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Proves the POST /api/restore HTTP boundary rebuilds the live runtime after
  * replacing PGlite files, using a real snapshot, TCP API host, and PGlite dump.
@@ -14,7 +15,8 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { AgentRuntime, InMemoryDatabaseAdapter } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startApiServer } from "./server.ts";
 
@@ -134,7 +136,7 @@ describe("POST /api/restore runtime lifecycle", () => {
 
       runtime = new AgentRuntime({ logLevel: "fatal", plugins: [] });
       runtime.registerDatabaseAdapter(new PgliteDumpAdapter(sourceDir, dump));
-      await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+      await initializeTestRuntime(runtime, { skipMigrations: true });
 
       let restartCalls = 0;
       let failNextRestart = true;
@@ -157,10 +159,7 @@ describe("POST /api/restore runtime lifecycle", () => {
           });
           replacementRuntimes.push(replacement);
           replacement.registerDatabaseAdapter(new InMemoryDatabaseAdapter());
-          await replacement.initialize({
-            allowNoDatabase: true,
-            skipMigrations: true,
-          });
+          await initializeTestRuntime(replacement, { skipMigrations: true });
           return replacement;
         },
       });

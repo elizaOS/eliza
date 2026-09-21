@@ -15,7 +15,7 @@
  */
 
 import type { ReleaseChannel } from "@elizaos/agent";
-import { theme } from "@elizaos/shared";
+import { theme } from "@elizaos/shared/terminal/theme";
 import type { Command } from "commander";
 import { CLI_VERSION } from "../version";
 

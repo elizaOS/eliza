@@ -12,25 +12,30 @@ import path from "node:path";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import {
   AgentRuntime as AgentRuntimeCtor,
-  createBasicCapabilitiesPlugin,
   createCharacter,
   logger,
   ModelType,
   NotificationService,
-  trajectoriesPlugin,
 } from "@elizaos/core";
 import {
-  createDeterministicModelPlugin,
-  type DeterministicModelDiagnostics,
-  type DeterministicModelFixtureRegistry,
-  type LiveProviderConfig,
-  type LiveProviderName,
-  selectLiveProvider,
-} from "@elizaos/core/testing";
+  createAssistantPlugin,
+  trajectoriesPlugin,
+} from "@elizaos/plugin-assistant";
 import {
   DEFAULT_SCENARIO_EXECUTION_PROFILE,
   type ScenarioExecutionProfile,
 } from "@elizaos/scenario-runner/schema";
+import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
+import {
+  createDeterministicModelPlugin,
+  type DeterministicModelDiagnostics,
+  type DeterministicModelFixtureRegistry,
+} from "@elizaos/testing/deterministic-model-plugin";
+import {
+  type LiveProviderConfig,
+  type LiveProviderName,
+  selectLiveProvider,
+} from "@elizaos/testing/live-provider";
 import type { ScenarioModelFixtureMode } from "./model-fixtures.ts";
 import {
   assertProviderQualifiedPluginPackages,
@@ -99,8 +104,8 @@ const POST_TURN_EVALUATION_PROMPT_PREFIX = "# Task: Post-turn evaluation";
 
 async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
   const [knowledgeGraphModule, approvalModule] = await Promise.all([
-    import("@elizaos/agent/services/knowledge-graph"),
-    import("@elizaos/agent/services/approval/index"),
+    import("@elizaos/plugin-relationships/knowledge-graph"),
+    import("@elizaos/plugin-assistant"),
   ]);
   const { KnowledgeGraphService, knowledgeGraphSchema } = knowledgeGraphModule;
   const { ApprovalService } = approvalModule;
@@ -111,7 +116,7 @@ async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
     typeof knowledgeGraphSchema !== "object"
   ) {
     throw new Error(
-      "[scenario-runner] @elizaos/agent did not expose production host services and knowledgeGraphSchema",
+      "[scenario-runner] Assistant and relationships plugins did not expose approval and knowledge-graph services",
     );
   }
 
@@ -979,6 +984,7 @@ export async function createScenarioRuntime(
     // deterministic. Provider-qualified runs inherit the production defaults.
     settings: scenarioRuntimeSettings,
   });
+  installHttpPluginLifecycle(runtime);
   const registeredPluginPackages = new Set<string>();
 
   const { default: pluginSql } = (await import("@elizaos/plugin-sql")) as {
@@ -996,9 +1002,7 @@ export async function createScenarioRuntime(
   // registers contact/message actions (ADD_CONTACT, MESSAGE, ...).
   // Without this plugin the runtime has no conversational reply action and
   // nearly every scenario fails with "expected 1 call(s) to REPLY, saw 0".
-  await runtime.registerPlugin(
-    createBasicCapabilitiesPlugin({ advancedCapabilities: true }),
-  );
+  await runtime.registerPlugin(createAssistantPlugin());
 
   // Simulated scenarios omit embeddings because their assertions do not score
   // semantic retrieval. AgentRuntime treats an absent embedding provider as an

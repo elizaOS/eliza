@@ -3,7 +3,7 @@
 import {
   resetDevCloudEnvAuthorityForTests,
   resolveDevCloudAuthorityEnvValue,
-} from "@elizaos/shared";
+} from "@elizaos/shared/elizacloud/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { promoteLauncherScopedDevCloudApiKey } from "./entry-cloud-api-key";
 

@@ -32,8 +32,8 @@ import {
   loadElizaConfig,
   saveElizaConfig,
 } from "@elizaos/agent";
-import { createIsolatedAccountStoragePolicy } from "@elizaos/auth/account-storage";
-import { createDeterministicModelPlugin } from "@elizaos/core/testing";
+import { createIsolatedAccountStoragePolicy } from "@elizaos/credentials/auth/account-storage";
+import { createDeterministicModelPlugin } from "@elizaos/testing";
 import {
   _clearCompatPgliteDataDirForTests,
   startApiServer,

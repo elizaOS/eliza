@@ -11,11 +11,20 @@ import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type ElizaCapabilityRouter,
   type IAgentRuntime,
-  type Plugin,
-  type RouteHelpers,
-  type RouteRequestMeta,
   type UUID,
 } from "@elizaos/core";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
+import {
+  getHttpRuntime,
+  registerHttpPluginRoutes,
+} from "@elizaos/shared/api/http-plugin-runtime";
+import type {
+  RouteHelpers,
+  RouteRequestMeta,
+} from "@elizaos/shared/api/route-helpers";
 import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RemotePluginSyncResult } from "../services/remote-plugin-adapter";
@@ -78,7 +87,7 @@ function makePluginRuntime(): IAgentRuntime {
     actions: [] as NonNullable<Plugin["actions"]>,
     providers: [] as NonNullable<Plugin["providers"]>,
     evaluators: [] as NonNullable<Plugin["evaluators"]>,
-    routes: [] as NonNullable<Plugin["routes"]>,
+
     services: new Map() as IAgentRuntime["services"],
     getService: (serviceType: string) =>
       runtime.services.get(serviceType as never)?.[0] ?? null,
@@ -92,14 +101,14 @@ function makePluginRuntime(): IAgentRuntime {
       runtime.actions.push(...(plugin.actions ?? []));
       runtime.providers.push(...(plugin.providers ?? []));
       runtime.evaluators.push(...(plugin.evaluators ?? []));
-      runtime.routes.push(...(plugin.routes ?? []));
+      registerHttpPluginRoutes(runtime, plugin);
     },
     reloadPlugin: async (plugin: Plugin) => {
       await runtime.registerPlugin(plugin);
     },
     unloadPlugin: async () => null,
     getAllPluginOwnership: () =>
-      runtime.plugins.map((plugin) => ({
+      runtime.plugins.map((plugin: Plugin) => ({
         pluginName: plugin.name,
         plugin,
         actions: plugin.actions ?? [],
@@ -114,6 +123,9 @@ function makePluginRuntime(): IAgentRuntime {
     evaluators: NonNullable<Plugin["evaluators"]>;
     routes: NonNullable<Plugin["routes"]>;
   };
+  getHttpRuntime(runtime).routes = [] as NonNullable<
+    Plugin["routes"]
+  > as Route[];
   return runtime;
 }
 
@@ -684,7 +696,7 @@ describe("handleRemoteCapabilityRoutes", () => {
     await expect(handleRemoteCapabilityRoutes(first.ctx)).resolves.toBe(true);
     await expect(handleRemoteCapabilityRoutes(second.ctx)).resolves.toBe(true);
 
-    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+    expect(runtime.plugins.map((plugin: Plugin) => plugin.name)).toEqual([
       "@remote/device-a",
       "@remote/device-b",
     ]);
@@ -848,7 +860,7 @@ describe("handleRemoteCapabilityRoutes", () => {
     await expect(handleRemoteCapabilityRoutes(direct.ctx)).resolves.toBe(true);
     await expect(handleRemoteCapabilityRoutes(cloud.ctx)).resolves.toBe(true);
 
-    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+    expect(runtime.plugins.map((plugin: Plugin) => plugin.name)).toEqual([
       "@remote/local-device",
       "@remote/cloud-plugin",
     ]);

@@ -219,7 +219,7 @@ describe("navigation execution policy", () => {
 
 	it("finishes a corrected navigation without reviving its missing-step failure", async () => {
 		const { runPlannerLoop, actionResultToPlannerToolResult } = await import(
-			"../../../../packages/core/src/runtime/planner-loop"
+			"../../../plugin-assistant/src/runtime/planner-loop.ts"
 		);
 		let modelCalls = 0;
 		let evaluations = 0;
@@ -456,7 +456,7 @@ for (const alias of ["CLOSE_VIEW", "CLOSE_ALL_VIEWS"] as const) {
 
 it("keeps an undelivered HTTP navigation in the planner's failure path", async () => {
 	const { runPlannerLoop, TURN_SCOPE_ARG, TURN_SCOPE_FINAL } = await import(
-		"../../../../packages/core/src/runtime/planner-loop"
+		"../../../plugin-assistant/src/runtime/planner-loop.ts"
 	);
 	reply = "false";
 	let evaluations = 0;

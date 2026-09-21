@@ -14,8 +14,8 @@ import {
   type ConnectorAccountStorage,
   getConnectorAccountManager,
   type IAgentRuntime,
-  InMemoryDatabaseAdapter,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
 import {
   CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES,

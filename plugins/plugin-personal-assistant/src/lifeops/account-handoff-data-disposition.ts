@@ -3,8 +3,9 @@
  * disconnected. Cleanup uses domain-owned, account-scoped local projections;
  * retries need no credentials and never delete events from a provider.
  */
-import { ApprovalDispatchControlStore } from "@elizaos/agent";
+
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import { ApprovalDispatchControlStore } from "@elizaos/plugin-assistant";
 import type { CalendarService } from "@elizaos/plugin-calendar";
 import { z } from "zod";
 import {

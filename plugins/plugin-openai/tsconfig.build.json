@@ -3,24 +3,25 @@
   "compilerOptions": {
     "outDir": "dist",
     "declaration": true,
-    "declarationMap": true,
-    "emitDeclarationOnly": true,
+    "declarationMap": false,
+    "emitDeclarationOnly": false,
     "ignoreDeprecations": "6.0",
-    "noEmit": false,
+    "noEmit": true,
     "paths": {
       "@elizaos/core": [
-        "../../../packages/core/dist"
+        "../../packages/core/dist/index.d.ts"
       ]
     },
     "types": [
       "node",
       "bun-types"
-    ]
+    ],
+    "incremental": false,
+    "composite": false
   },
   "include": [
     "index.ts",
-    "index.node.ts",
-    "index.browser.ts"
+    "utils/config.ts"
   ],
   "exclude": [
     "node_modules",

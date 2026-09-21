@@ -106,6 +106,16 @@ export interface ActionParameter {
 	 */
 	requiredForSubactions?: readonly string[];
 	/**
+	 * Explicit legacy string selectors that may satisfy this required parameter
+	 * at runtime admission. Each alternative must also be a declared parameter,
+	 * supplied as an own, nonempty string and valid against both schemas. Only an
+	 * absent canonical parameter may be waived; arguments are never renamed.
+	 * Native tool schemas still require the canonical name. Use this only when
+	 * the owning handler deliberately supports these alternatives and validates
+	 * conflicting values. Other required parameters remain required.
+	 */
+	legacyRequiredAlternatives?: readonly string[];
+	/**
 	 * Accepted arg-name synonyms for this parameter. The pre-validation
 	 * normalizer renames an incoming alias key to this param's name when the
 	 * param itself is absent from the args and exactly one declared param claims
@@ -307,7 +317,7 @@ export type Handler = (
 	options?: HandlerOptions | Record<string, JsonValue | undefined>,
 	callback?: HandlerCallback,
 	responses?: Memory[],
-) => Promise<ActionResult | undefined>;
+) => Promise<ActionResult>;
 
 /**
  * Validator function type for actions/evaluators
@@ -424,6 +434,13 @@ export interface Action {
 	/** Example usages */
 	examples?: ActionExample[][];
 
+	/** Complete model-facing call examples authored by this action's owner. */
+	exampleCalls?: readonly {
+		user: string;
+		actions: readonly string[];
+		params?: Record<string, Record<string, JsonValue>>;
+	}[];
+
 	/** Optional priority for action ordering */
 	priority?: number;
 
@@ -488,7 +505,7 @@ export interface Action {
 	 * CANONICAL "when to use / when NOT to use" carrier. Prefer this field over
 	 * burying disambiguation in `description`: `routingHint` is prepended
 	 * VERBATIM to the planner tool description (see `actions/to-tool.ts`) — it is
-	 * NOT run through `compressPromptDescription`, so it is never abbreviated and
+	 * never abbreviated, and
 	 * is captured in recorded trajectories via the planner stage's `model.tools`.
 	 * Any action that shares
 	 * a noun or simile with a sibling (e.g. TASKS vs SCHEDULED_TASKS, WEB_SEARCH
@@ -497,8 +514,7 @@ export interface Action {
 	 *   "coding/software delegation -> TASKS; reminders/check-ins/recurring
 	 *    personal items -> SCHEDULED_TASKS/OWNER_REMINDERS (NOT this action)".
 	 * Reference an UPPER_SNAKE_CASE sibling action name explicitly — those tokens
-	 * also survive description compression, so the cross-reference stays intact
-	 * even in the compressed form.
+	 * remain explicit in the authored routing hint.
 	 */
 	routingHint?: string;
 
@@ -989,6 +1005,15 @@ export function isActionConfirmationStatus(
 export interface ActionResult {
 	/** Whether the action succeeded */
 	success: boolean;
+
+	/** Tool-owned verification of its observed execution; never inferred from prose.
+	 * Workspace/effect receipts still determine what scope this can verify. */
+	verification?: {
+		kind: string;
+		status: "passed" | "failed" | "no_tests";
+		family?: string;
+		exitCode: number;
+	};
 
 	/** Optional text description of the result */
 	text?: string;

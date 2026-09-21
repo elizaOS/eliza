@@ -9,7 +9,7 @@ import {
   type RemoteCommandBody,
   type RemoteControllerGrant,
   type SignedRemoteCommand,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/remote-control";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { digestRemoteCommand } from "./remote-control-crypto.js";
 import {

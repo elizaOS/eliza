@@ -8,14 +8,15 @@
  */
 
 import { describe, expect, mock, test } from "bun:test";
+import type { Memory } from "@elizaos/common";
+import { ChannelType } from "@elizaos/common";
 import type {
   HandlerCallback,
   IAgentRuntime,
   IMessageService,
-  Memory,
   MessageProcessingResult,
 } from "@elizaos/core";
-import { ChannelType, stringToUuid } from "@elizaos/core";
+import { stringToUuid } from "@elizaos/core";
 import { dispatchEvent, EventBodySchema, type JsonObject } from "./event";
 
 const OK_RESULT = {

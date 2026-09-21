@@ -9,14 +9,13 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
   type DeferredMessageScheduleResult,
   type DraftRecord,
-  ElizaError,
   getDefaultTriageService,
-  type IAgentRuntime,
   registerDeferredMessageScheduler,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import {
   type DispatchResult,
   getScheduledTaskRunner,

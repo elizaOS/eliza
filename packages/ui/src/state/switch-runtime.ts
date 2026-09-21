@@ -4,7 +4,7 @@
  * active-server records and clearing chat drafts, without wiping persisted
  * state. Consumed by the runtime picker and connect deep-links.
  */
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { client } from "../api";
 import {
   isMobileLocalAgentIpcBase,

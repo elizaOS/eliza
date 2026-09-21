@@ -1,5 +1,5 @@
 /**
- * `eliza auth adopt-codex` drives the real adoption in @elizaos/auth against a
+ * `eliza auth adopt-codex` drives the real adoption in @elizaos/credentials/auth against a
  * temp HOME/ELIZA_HOME/CODEX_HOME — no simulation layer. Covers the explicit
  * --yes confirmation gate, the successful ownership transfer, typed failure
  * surfacing, and the commander wiring (subcommand present under `auth` with the

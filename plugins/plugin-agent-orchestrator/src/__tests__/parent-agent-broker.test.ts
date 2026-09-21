@@ -101,7 +101,12 @@ describe("runParentAgentBroker", () => {
       expect(memory.content.text).toContain("Use my calendar");
       expect(options).toEqual({ continueAfterActions: true });
       await callback({ text: "Calendar says tomorrow at 2pm works." });
-      return { responseContent: { text: "" } };
+      return {
+        outcome: { status: "completed" as const, effects: [] },
+        didRespond: true,
+        responseMessages: [],
+        responseContent: { text: "" },
+      };
     });
     const runtime = createRuntime({
       createMemory,
@@ -136,6 +141,7 @@ describe("runParentAgentBroker", () => {
       async (_runtime, _memory, _callback, options) => {
         observedOptions.push(options);
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: "Parent turn complete." },
           responseMessages: [],
@@ -181,7 +187,11 @@ describe("runParentAgentBroker", () => {
         didRespond: true,
         responseContent: null,
         responseMessages: [],
-        terminalFailure,
+        outcome: {
+          status: "failed" as const,
+          error: terminalFailure,
+          effects: [],
+        },
       };
     });
     const runtime = createRuntime({
@@ -203,6 +213,37 @@ describe("runParentAgentBroker", () => {
     expect(result.text).not.toContain("Done.");
   });
 
+  it.each(["cancelled", "denied"] as const)(
+    "preserves %s as a non-successful parent turn",
+    async (status) => {
+      const runtime = createRuntime({
+        createMemory: vi.fn().mockResolvedValue(undefined),
+        messageService: {
+          handleMessage: vi.fn(async () => ({
+            outcome: { status, reason: "Turn stopped", effects: [] },
+            didRespond: true,
+            responseContent: { text: "Provisional response" },
+            responseMessages: [],
+          })),
+        },
+      } as Partial<IAgentRuntime>);
+      const result = await runParentAgentBroker({
+        runtime,
+        sessionId: "session-1",
+        args: { request: "Complete this task." },
+      });
+      expect(result).toMatchObject({
+        success: false,
+        terminalFailure: {
+          kind: `turn_${status}`,
+          transient: false,
+          message: "Turn stopped",
+        },
+      });
+      expect(result.text).not.toContain("Provisional response");
+    },
+  );
+
   it("does not let result or callback prose override a terminal failure", async () => {
     const terminalFailure = {
       kind: "coding_mutation_unverified",
@@ -215,7 +256,11 @@ describe("runParentAgentBroker", () => {
         didRespond: true,
         responseContent: { text: "Result says everything passed." },
         responseMessages: [],
-        terminalFailure,
+        outcome: {
+          status: "failed" as const,
+          error: terminalFailure,
+          effects: [],
+        },
       };
     });
     const runtime = createRuntime({

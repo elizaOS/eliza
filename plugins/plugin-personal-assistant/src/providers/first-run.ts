@@ -12,7 +12,7 @@
  * `enabled_skills`.
  */
 
-import { hasOwnerAccess, listLocalAgentBackups } from "@elizaos/agent";
+import { listLocalAgentBackups } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,
@@ -20,7 +20,12 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { ChannelType, logger, timeInferenceSpan } from "@elizaos/core";
+import {
+  ChannelType,
+  hasRoleAccess,
+  logger,
+  timeInferenceSpan,
+} from "@elizaos/core";
 import { createFirstRunStateStore } from "../lifeops/first-run/state.js";
 
 export interface FirstRunAffordance {
@@ -120,7 +125,7 @@ export const firstRunProvider: Provider = {
   ): Promise<ProviderResult> {
     if (
       !(await timeInferenceSpan("provider:firstRun:owner-access", () =>
-        hasOwnerAccess(runtime, message),
+        hasRoleAccess(runtime, message, "OWNER"),
       ))
     ) {
       return QUIET_RESULT;

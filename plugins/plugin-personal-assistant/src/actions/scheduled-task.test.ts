@@ -103,7 +103,8 @@ vi.mock("../lifeops/access.js", () => ({
   hasLifeOpsAccess: vi.fn(async () => true),
 }));
 
-vi.mock("../lifeops/pending-prompts/store.js", () => ({
+vi.mock("@elizaos/plugin-assistant", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/plugin-assistant")>()),
   resolvePendingPromptsStore: vi.fn(() => ({
     forgetTask: vi.fn(async () => {}),
   })),

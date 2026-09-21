@@ -12,7 +12,7 @@
  */
 
 import { createHmac } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { Hono } from "hono";
 import {
   type AgentBillingOrganization,

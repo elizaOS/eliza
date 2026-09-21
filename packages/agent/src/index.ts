@@ -21,7 +21,7 @@ export {
   readRequestBodyBuffer,
   sendJson,
   sendJsonError,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-helpers";
 
 export interface CloudConfigLike {
   apiKey?: string | null;
@@ -68,7 +68,7 @@ export async function validateCloudBaseUrl(
   const { validateCloudBaseUrl } = await loadElizaCloudRoutes();
   return validateCloudBaseUrl(value);
 }
-export * from "@elizaos/auth";
+export * from "@elizaos/credentials/auth";
 export type { ElizaConfig, ReleaseChannel, RolesConfig } from "@elizaos/shared";
 export {
   CONNECTOR_PLUGINS,
@@ -86,11 +86,6 @@ export {
   resolveCloudApiBaseUrl,
   setRestartHandler,
 } from "@elizaos/shared";
-export {
-  type ExtractActionParamsArgs,
-  extractActionParamsViaLlm,
-  type ParamSchemaDescriptor,
-} from "./actions/extract-params.ts";
 export * from "./actions/index.ts";
 export * from "./api/config-env.ts";
 export { handleConnectorAccountRoutes } from "./api/connector-account-routes.ts";
@@ -303,68 +298,6 @@ export * from "./runtime/version.ts";
 export * from "./security/index.ts";
 export * from "./services/agent-backup.ts";
 export * from "./services/agent-export.ts";
-// Runtime owner-approval queue promoted from LifeOps (Slice 4). Named
-// re-export — same rationale as the knowledge graph / pending-prompts below:
-// keep it out of the broad services barrel to avoid TS2308.
-export {
-  APPROVAL_EXECUTION_CAPABILITY,
-  APPROVAL_EXECUTION_PROTOCOL_VERSION,
-  APPROVAL_SERVICE,
-  type ApprovalAction,
-  type ApprovalChannel,
-  type ApprovalDispatchControl,
-  type ApprovalDispatchControlMutation,
-  ApprovalDispatchControlStore,
-  type ApprovalEnqueueInput,
-  type ApprovalEnqueueResult,
-  type ApprovalExecution,
-  type ApprovalExecutionClaim,
-  type ApprovalExecutionCompletion,
-  type ApprovalExecutionFailure,
-  type ApprovalExecutionMutation,
-  type ApprovalExecutionReconciliation,
-  ApprovalIdempotencyConflictError,
-  type ApprovalListFilter,
-  ApprovalNotFoundError,
-  type ApprovalPayload,
-  type ApprovalQueue,
-  type ApprovalQueueOptions,
-  type ApprovalRequest,
-  type ApprovalRequestState,
-  type ApprovalResolution,
-  ApprovalService,
-  ApprovalStateTransitionError,
-  type ApprovalTravelCalendarSync,
-  type ApprovalTravelPassenger,
-  approvalDispatchAdmissionCte,
-  createApprovalQueue,
-  PgApprovalQueue,
-  resolveApprovalService,
-} from "./services/approval/index.ts";
-export {
-  createGlobalPauseStore,
-  GLOBAL_PAUSE_CACHE_KEY,
-  GLOBAL_PAUSE_SERVICE,
-  GlobalPauseService,
-  type GlobalPauseStatus,
-  type GlobalPauseStore,
-  type GlobalPauseWindow,
-  resolveGlobalPauseService,
-} from "./services/global-pause/index.ts";
-export {
-  createHandoffStore,
-  describeResumeCondition,
-  evaluateResume,
-  HANDOFF_SERVICE,
-  type HandoffEnterOpts,
-  HandoffService,
-  type HandoffStatus,
-  type HandoffStore,
-  type ResumeCondition,
-  type ResumeEvaluation,
-  type ResumeEvaluationInput,
-  resolveHandoffService,
-} from "./services/handoff/index.ts";
 export * from "./services/index.ts";
 export {
   type JsRuntimeBridge,
@@ -376,36 +309,6 @@ export {
   registerJsRuntimeFactory,
   resolveJsRuntimeBridge,
 } from "./services/js-runtime-bridge.ts";
-// Runtime knowledge graph (entity/relationship stores + service). Named
-// re-export to mirror the relationships-graph surface and avoid colliding
-// with the broad services barrel.
-export {
-  archiveCoreRelationshipsInventory,
-  type CoreRelationshipsInventoryDatabase,
-  type CoreRelationshipsInventoryReport,
-  type CoreRelationshipsInventorySession,
-  type CoreRelationshipsSourceKind,
-  EntityStore,
-  KNOWLEDGE_GRAPH_SERVICE,
-  KnowledgeGraphService,
-  knowledgeGraphSchema,
-  RelationshipStore,
-  resolveKnowledgeGraphService,
-} from "./services/knowledge-graph/index.ts";
-// Cache-backed runtime stores promoted from LifeOps (pending-prompts /
-// global-pause / handoff). Named re-exports — same rationale as the knowledge
-// graph above: keep them out of the broad services barrel to avoid TS2308.
-export {
-  createPendingPromptsStore,
-  type ExpectedReplyKind,
-  PENDING_PROMPTS_SERVICE,
-  type PendingPrompt,
-  type PendingPromptRecordInput,
-  PendingPromptsService,
-  type PendingPromptsStore,
-  type RecordedPendingPrompt,
-  resolvePendingPromptsService,
-} from "./services/pending-prompts/index.ts";
 export * from "./services/plugin-installer";
 export type {
   CoreManagerLike,

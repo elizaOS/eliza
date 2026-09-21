@@ -4,18 +4,21 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { configureLocalEmbeddingPlugin } from "@elizaos/agent/runtime/eliza";
 import type { Plugin } from "@elizaos/core";
 import {
   AgentRuntime,
   createCharacter,
-  DEFAULT_CEREBRAS_TEXT_MODEL,
   logger,
+  OPTIMIZED_PROMPT_SERVICE,
 } from "@elizaos/core";
+import { createAssistantPlugin } from "@elizaos/plugin-assistant";
+import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import {
   createTestPgliteDataDir,
   isInMemoryPgliteDataDir,
-} from "@elizaos/core/testing";
-import { configureLocalEmbeddingPlugin } from "../../../agent/src/runtime/eliza";
+} from "@elizaos/shared/utils/pglite-storage";
 import type { LiveProviderConfig, LiveProviderName } from "./live-provider";
 
 const helperDir = path.dirname(fileURLToPath(import.meta.url));
@@ -36,8 +39,6 @@ function importOptionalPlugin(
 export interface RealTestRuntimeOptions {
   /** Name for the test agent character. Defaults to "TestAgent". */
   characterName?: string;
-  /** Enable built-in advanced capabilities (for example MODIFY_CHARACTER). */
-  advancedCapabilities?: boolean;
   /** Additional plugins to register. */
   plugins?: Plugin[];
   /** Register a real LLM plugin based on available API keys. Default: false. */
@@ -131,7 +132,7 @@ async function importPluginSql(): Promise<Plugin> {
   } catch (packageError) {
     const fallbackPath = path.resolve(
       helperDir,
-      "../../../../plugins/plugin-sql/src/index.node.ts",
+      "../../../../plugins/plugin-sql/src/index.ts",
     );
     try {
       const { default: pluginSql } = await import(
@@ -330,11 +331,12 @@ export async function createRealTestRuntime(
 
     const runtime = new AgentRuntime({
       character,
-      plugins: [],
+      plugins: [createAssistantPlugin()],
       logLevel: "warn",
-      advancedCapabilities: options?.advancedCapabilities ?? false,
       enableAutonomy: false,
     });
+
+    installHttpPluginLifecycle(runtime);
 
     // Always register plugin-sql for PGLite database.
     await runtime.registerPlugin(await importPluginSql());
@@ -439,7 +441,7 @@ export async function createRealTestRuntime(
         const { default: localEmbeddingPlugin } = await importOptionalPlugin(
           "@elizaos/plugin-local-inference",
         );
-        configureLocalEmbeddingPlugin(localEmbeddingPlugin as Plugin);
+        await configureLocalEmbeddingPlugin(localEmbeddingPlugin as Plugin);
         await runtime.registerPlugin(localEmbeddingPlugin as Plugin);
         logger.info(
           "[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",
@@ -504,9 +506,8 @@ export async function createRealTestRuntime(
     // are intentionally optional in a given test stay best-effort.
     for (const plugin of options?.plugins ?? []) {
       for (const service of plugin.services ?? []) {
-        const serviceType = (
-          service as unknown as { serviceType?: string }
-        ).serviceType;
+        const serviceType = (service as unknown as { serviceType?: string })
+          .serviceType;
         if (!serviceType) continue;
         try {
           await runtime.getServiceLoadPromise(serviceType);
@@ -524,8 +525,8 @@ export async function createRealTestRuntime(
     // lazy (via basicServices) and the first N planner calls fall back to
     // the baseline template before lazy start completes.
     try {
-      const { OptimizedPromptService, OPTIMIZED_PROMPT_SERVICE } = await import(
-        "@elizaos/core"
+      const { OptimizedPromptService } = await import(
+        "@elizaos/plugin-assistant"
       );
       const existing = runtime.getService(OPTIMIZED_PROMPT_SERVICE);
       if (!existing) {

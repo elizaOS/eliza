@@ -397,13 +397,13 @@ describe("run-all-tests plan mode", () => {
       cloudStep: false,
     });
     expect(plan.tasks).toEqual([
-      {
+      expect.objectContaining({
         packageName: "@elizaos/core",
         relativeDir: "packages/core",
         scriptName: "test",
         label: "@elizaos/core (packages/core)#test",
         parallelSafe: true,
-      },
+      }),
     ]);
     expect(plan.cloudStep).toBeNull();
   });

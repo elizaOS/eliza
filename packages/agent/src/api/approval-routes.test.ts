@@ -10,18 +10,15 @@
 import type http from "node:http";
 import type { PendingUserAction, Task, UUID } from "@elizaos/core";
 import { ApprovalService, ServiceType } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/core/testing";
-import { describe, expect, it, vi } from "vitest";
-import { APPROVAL_SERVICE } from "../services/approval/service.ts";
-import type {
-  ApprovalQueue,
-  ApprovalRequest,
-} from "../services/approval/types.ts";
+import type { ApprovalQueue, ApprovalRequest } from "@elizaos/plugin-assistant";
 import {
   APPROVAL_EXECUTION_CAPABILITY,
   APPROVAL_EXECUTION_PROTOCOL_VERSION,
-} from "../services/approval/types.ts";
-import { PENDING_PROMPTS_SERVICE } from "../services/pending-prompts/service.ts";
+  APPROVAL_SERVICE,
+  PENDING_PROMPTS_SERVICE,
+} from "@elizaos/plugin-assistant";
+import { createMockRuntime } from "@elizaos/testing";
+import { describe, expect, it, vi } from "vitest";
 import {
   approvalTaskToPendingAction,
   handleApprovalRoute,

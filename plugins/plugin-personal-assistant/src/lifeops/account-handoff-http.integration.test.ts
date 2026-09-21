@@ -2,7 +2,7 @@
 
 import { ElizaClient } from "@elizaos/ui/api/client-base";
 import "../api/client-lifeops.js";
-import { createApprovalQueue } from "@elizaos/agent";
+import { createApprovalQueue } from "@elizaos/plugin-assistant";
 import { CalendarService } from "@elizaos/plugin-calendar";
 import { LinkedCalendarRepository } from "@elizaos/plugin-calendar/service/linked-calendar-sync";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";

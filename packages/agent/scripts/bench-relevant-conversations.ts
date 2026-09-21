@@ -18,17 +18,17 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
+import type { Plugin } from "@elizaos/core";
 import {
   AgentRuntime,
   buildAccessContext,
-  embedRecallQuery,
   ModelType,
-  type Plugin,
   type Room,
   type State,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { embedRecallQuery } from "@elizaos/plugin-assistant";
 import { HASH_MEMORY_SOURCE, rankByKeyword } from "../src/api/memory-routes.ts";
 import { relevantConversationsProvider } from "../src/providers/relevant-conversations.ts";
 import {

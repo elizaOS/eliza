@@ -1,3 +1,4 @@
+import { flattenRuntimeSettings } from "./runtime-settings.ts";
 /** Owns one agent’s public runtime identity, registries, settings, and initialization. Model dispatch, structured prompts, provider composition, service startup, embeddings, and data mutations have dedicated owners that share this runtime’s state. Settings remain agent-scoped, and embedding width stays pinned to the provider that passed the boot probe. */
 
 import { RuntimeDataMutations } from "./runtime/data-mutations.js";
@@ -37,11 +38,7 @@ import { ProviderStateComposer } from "./runtime/state-composition/composer.js";
 
 export { calculateProviderOverlaps } from "./runtime/state-composition/provider-execution.js";
 
-import { v4 as uuidv4 } from "uuid";
-import {
-	withCanonicalActionDocs,
-	withCanonicalProviderDocs,
-} from "./action-docs";
+import { randomUUID as uuidv4 } from "node:crypto";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { registerConnectorSourceDefinitions } from "./connectors";
 import { deriveKnownSecrets } from "./constants/secrets";
@@ -49,52 +46,35 @@ import {
 	validateQueryEntitiesPagination,
 	validateTaskQueryPagination,
 } from "./database";
-import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import {
 	mergeWorldMetadataForLegacyWrite,
 	worldMetadataValueEquals,
 } from "./database/world-metadata-cas";
 import { ElizaError, type ReportedError, toElizaError } from "./errors";
-import {
-	type CapabilityConfig,
-	type CapabilitySettingFlags,
-	createBasicCapabilitiesPlugin,
-	resolveCapabilityConfig,
-} from "./features/basic-capabilities/index";
 import { createLogger } from "./logger";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
 import { createCoreSecurityHooksPlugin } from "./plugins/core-security-hooks";
-import {
-	getNativeRuntimeFeaturePlugin,
-	type NativeRuntimeFeature,
-	nativeRuntimeFeatureDefaults,
-	nativeRuntimeFeaturePluginNames,
-	resolveNativeRuntimeFeatureFromPluginName,
-	resolveNativeRuntimeFeatureFromServiceType,
-} from "./plugins/native-features";
 import { resolveActionEventWorldId } from "./runtime/action-event-world";
 import { settleActionHandler } from "./runtime/action-handler-settlement";
 import { getActionRolePolicyWarnings } from "./runtime/action-role-policy";
 import { runWithActionRoutingContext } from "./runtime/action-routing-context";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-field-evaluators";
+import { ActivePromptTraces } from "./runtime/active-prompt-traces";
 import { ChatPreHandlerRegistry } from "./runtime/chat-pre-handler-registry";
+import { RuntimeConnectorRegistry } from "./runtime/connector-registry.js";
 import { ContextRegistry } from "./runtime/context-registry";
-import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
+import { resolveProviderModelString } from "./runtime/model-dispatch/model-name";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
 import { RoomHandlerQueue } from "./runtime/room-handler-queue";
 import { ShortcutRegistry } from "./runtime/shortcut-registry";
 import { SingleFlightMemo } from "./runtime/single-flight-memo";
-import { ActivePromptTraces } from "./runtime/structured-prompt/active-traces";
-import { StructuredPromptExecutor } from "./runtime/structured-prompt/executor";
 import {
 	buildCanonicalSystemPrompt,
 	resolveEffectiveSystemPrompt,
 	textFromChatMessageContent,
 } from "./runtime/system-prompt";
 import { TurnControllerRegistry } from "./runtime/turn-controller";
-import { BM25 } from "./search";
 import {
 	locateConfiguredSecretFragmentTaint,
 	type SecretFragment,
@@ -124,7 +104,6 @@ import {
 	SECRET_SWAP_EXEMPT_VALUES_SETTING,
 	SecretSwapSession,
 } from "./security/secret-swap";
-import { DefaultMessageService } from "./services/message";
 import {
 	drainPostDeliveryTasks,
 	pendingPostDeliveryTaskCount,
@@ -145,7 +124,6 @@ import {
 	type ActionResult,
 	type Agent,
 	type AppendConnectorAccountAuditEventParams,
-	assertPublicRouteIntent,
 	ChannelType,
 	type Character,
 	type Component,
@@ -203,7 +181,6 @@ import {
 	type RemotePluginInstallOptions,
 	type RemotePluginInstanceHandle,
 	type Room,
-	type Route,
 	type RuntimeEventStorage,
 	type RuntimeSettings,
 	type RuntimeStopOptions,
@@ -244,18 +221,8 @@ import { stringToUuid, validateUuid } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
 import { createHash } from "./utils/crypto-compat";
 import { getNumberEnv } from "./utils/environment";
-import { PromptBatcher, PromptDispatcher } from "./utils/prompt-batcher";
-import { resolvePromptBatcherSettings } from "./utils/prompt-batcher/config";
 import { getOptimizationRootDir } from "./utils/state-dir";
 import { isPlainObject } from "./utils/type-guards";
-
-export {
-	mergeProviderOptionsWithCachePlan,
-	resolveDefaultOutputFormat,
-	resolveDynamicPromptStreamFields,
-} from "./runtime/structured-prompt/options.js";
-
-import { RuntimeConnectorRegistry } from "./runtime/connector-registry.js";
 
 const DEFAULT_SERVICE_START_SHUTDOWN_TIMEOUT_MS = 1_000;
 const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
@@ -385,8 +352,6 @@ export class AgentRuntime implements IAgentRuntime {
 	});
 	private readonly serviceLifecycle = new RuntimeServiceLifecycle(this, {
 		stopRequested: () => this.stopRequested,
-		isNativeFeatureServiceEnabled: (...args) =>
-			this.isNativeFeatureServiceEnabled(...args),
 		resolveServiceTypeAlias: (...args) => this.resolveServiceTypeAlias(...args),
 		initResolver: () => this.initResolver,
 		serviceTypes: () => this.serviceTypes,
@@ -402,7 +367,6 @@ export class AgentRuntime implements IAgentRuntime {
 	private readonly embeddings = new RuntimeEmbeddings(this, {
 		resolveModelRegistrations: (...args) =>
 			this.resolveModelRegistrations(...args),
-		fetch: (...args) => this.fetch(...args),
 	});
 	private readonly modelDispatch = new RuntimeModelDispatch(this, {
 		models: () => this.models,
@@ -432,10 +396,7 @@ export class AgentRuntime implements IAgentRuntime {
 		this.sendHandlers,
 	);
 	private readonly promptTraces = new ActivePromptTraces();
-	private readonly structuredPrompts = new StructuredPromptExecutor(
-		this,
-		this.promptTraces,
-	);
+	structuredPromptExecutor?: IAgentRuntime["dynamicPromptExecFromState"];
 	/** The runtime invokes request preparation before each resolved model handler. */
 	readonly supportsModelAttemptPreparation = true;
 	#conversationLength = 100;
@@ -515,7 +476,6 @@ export class AgentRuntime implements IAgentRuntime {
 		invalidateTurnMemoPrefix(`identity-cluster:${this.agentId}:`);
 	}
 	readonly fetch = fetch;
-	promptBatcher: PromptBatcher;
 	services = new Map<ServiceTypeName, Service[]>();
 	private serviceTypes = new Map<ServiceTypeName, ServiceClass[]>();
 
@@ -529,7 +489,6 @@ export class AgentRuntime implements IAgentRuntime {
 	/** Re-entrancy latch so a failure inside reportError stays warn-only (J7). */
 	private inReportError = false;
 	models = new Map<string, ModelHandler[]>();
-	routes: Route[] = [];
 	private secretRedactionProfileSignature = "";
 	private secretRedactionProfileRevision = 0;
 	private taskWorkers = new Map<string, TaskWorker>();
@@ -543,19 +502,12 @@ export class AgentRuntime implements IAgentRuntime {
 	private allAvailablePlugins = new Map<string, Plugin>();
 	// The initial list of plugins specified by the character configuration.
 	private characterPlugins: Plugin[] = [];
-	// Capability options for basic capabilities configuration
-	private capabilityOptions: CapabilityConfig = {};
-	private readonly nativeFeatureOptions: Partial<
-		Record<NativeRuntimeFeature, boolean>
-	>;
 	// Action planning option (undefined means use settings, true/false is explicit)
 	private actionPlanningOption?: boolean;
 	// LLM mode option for overriding model selection (undefined means use settings)
 	private llmModeOption?: import("./types").LLMModeType;
 	// Check should respond option (undefined means use settings, defaults to true)
 	private checkShouldRespondOption?: boolean;
-	// Flag to track if the character was auto-generated (no character provided)
-	private isAnonymousCharacter = false;
 
 	public logger;
 	public enableAutonomy: boolean;
@@ -578,7 +530,6 @@ export class AgentRuntime implements IAgentRuntime {
 	private currentRunId?: UUID; // Track the current run ID
 	private currentRoomId?: UUID; // Track the current room for logging
 	public messageService: IMessageService | null = null; // Lazily initialized
-	public companionUrl?: string;
 	/** Set when stop() has completed service teardown. */
 	private stopped = false;
 	/** Set permanently at the first stop request, before any drain can yield. */
@@ -599,7 +550,7 @@ export class AgentRuntime implements IAgentRuntime {
 		character?: Character;
 		plugins?: Plugin[];
 		fetch?: typeof fetch;
-		/** Database adapter. Use InMemoryDatabaseAdapter for in-memory-only runs. WHY: Caller owns DB lifecycle; no plugin registration race; single source of truth. */
+		/** Database adapter supplied by a persistence plugin or the host. WHY: Caller owns DB lifecycle; no plugin registration race; single source of truth. */
 		adapter?: IDatabaseAdapter;
 		settings?: RuntimeSettings;
 		allAvailablePlugins?: Plugin[];
@@ -608,12 +559,6 @@ export class AgentRuntime implements IAgentRuntime {
 		 * Valid levels: "trace", "debug", "info", "warn", "error", "fatal"
 		 */
 		logLevel?: "trace" | "debug" | "info" | "warn" | "error" | "fatal";
-		/** Disable basic basic-capabilities capabilities (reply, ignore, none, core providers) */
-		disableBasicCapabilities?: boolean;
-		/** Enable extended/advanced basic-capabilities capabilities (facts, roles, settings, room actions, etc.) */
-		enableExtendedCapabilities?: boolean;
-		/** Alias for enableExtendedCapabilities - Enable advanced basic-capabilities capabilities */
-		advancedCapabilities?: boolean;
 		/**
 		 * Enable action planning mode for multi-action execution.
 		 * When true (default), agent can plan and execute multiple actions per response.
@@ -644,23 +589,11 @@ export class AgentRuntime implements IAgentRuntime {
 		 * Can be enabled at construction time or lazily via settings.
 		 */
 		enableAutonomy?: boolean;
-		/** Enable trust engine, security, and permissions infrastructure. */
-		enableTrust?: boolean;
-		/** Enable encrypted secrets management and dynamic plugin activation. */
-		enableSecretsManager?: boolean;
-		/** Enable plugin introspection, install/eject/sync. */
-		enablePluginManager?: boolean;
-		enableDocuments?: boolean;
-		enableRelationships?: boolean;
-		enableTrajectories?: boolean;
-		/** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. WHY: Thin runtimes (e.g. serverless) delegate embeddings and task-dirty notifications without blocking. */
-		companionUrl?: string;
 	}) {
 		// Create default anonymous character if none provided
 		let character: Character;
 		if (opts.character) {
 			character = opts.character;
-			this.isAnonymousCharacter = false;
 		} else {
 			AgentRuntime.#anonymousAgentCounter++;
 			character = {
@@ -675,38 +608,8 @@ export class AgentRuntime implements IAgentRuntime {
 				plugins: [],
 				secrets: {},
 			} as Character;
-			this.isAnonymousCharacter = true;
 		}
 
-		// Resolve the full capability config once, at construction: explicit
-		// constructor options win, and any option left unspecified falls back to
-		// the matching character setting. initialize() then builds the
-		// basic-capabilities plugin from this config, so registerPlugin needs no
-		// name-keyed branch to re-derive it. Anonymous characters have no character
-		// provider to inject, so skipCharacterProvider is forced on.
-		this.capabilityOptions = resolveCapabilityConfig(
-			{
-				disableBasic: opts.disableBasicCapabilities,
-				enableExtended: opts.enableExtendedCapabilities,
-				advancedCapabilities: opts.advancedCapabilities,
-				skipCharacterProvider: this.isAnonymousCharacter,
-				enableAutonomy: opts.enableAutonomy,
-				enableTrust: opts.enableTrust,
-				enableSecretsManager: opts.enableSecretsManager,
-				enablePluginManager: opts.enablePluginManager,
-			},
-			character.settings as CapabilitySettingFlags | undefined,
-		);
-		this.nativeFeatureOptions = {
-			documents: opts.enableDocuments,
-			relationships: opts.enableRelationships,
-			trajectories: opts.enableTrajectories,
-			// Character flags are the explicit override for these two features
-			// (default false in the registry); build-character-config surfaces
-			// them as flags deliberately.
-			advancedPlanning: character.advancedPlanning,
-			advancedMemory: character.advancedMemory,
-		};
 		// Generate deterministic UUID from character name
 		// Falls back to random UUID only if no character name is provided
 		this.agentId =
@@ -742,7 +645,6 @@ export class AgentRuntime implements IAgentRuntime {
 		if (opts.adapter) {
 			this.registerDatabaseAdapter(opts.adapter);
 		}
-		this.companionUrl = opts.companionUrl;
 		this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
 		this.settings = { ...opts.settings };
 		const enableAutonomyFromSettings =
@@ -752,12 +654,6 @@ export class AgentRuntime implements IAgentRuntime {
 
 		this.plugins = []; // Initialize plugins as an empty array
 		this.characterPlugins = opts.plugins ?? []; // Store the original character plugins
-		const promptBatcherSettings = resolvePromptBatcherSettings();
-		this.promptBatcher = new PromptBatcher(
-			this,
-			new PromptDispatcher(promptBatcherSettings.dispatcher),
-			promptBatcherSettings.batcher,
-		);
 
 		// Store action planning option (undefined means check settings at runtime)
 		this.actionPlanningOption = opts.actionPlanning;
@@ -852,27 +748,6 @@ export class AgentRuntime implements IAgentRuntime {
 		serviceType: ServiceTypeName | string,
 	): string {
 		return serviceType;
-	}
-
-	private nativeRuntimeFeatureSettingKey(
-		feature: NativeRuntimeFeature,
-	): string {
-		return `ENABLE_${feature.toUpperCase()}`;
-	}
-
-	private resolveNativeFeatureEnabled(feature: NativeRuntimeFeature): boolean {
-		const explicit = this.nativeFeatureOptions[feature];
-		if (explicit !== undefined) {
-			return explicit;
-		}
-
-		const settingKey = this.nativeRuntimeFeatureSettingKey(feature);
-		const settingValue = parseBooleanValue(this.getSetting(settingKey));
-		if (settingValue !== undefined) {
-			return settingValue;
-		}
-
-		return nativeRuntimeFeatureDefaults[feature];
 	}
 
 	private isSecretSwapEnabled(): boolean {
@@ -970,86 +845,6 @@ export class AgentRuntime implements IAgentRuntime {
 		return collectPiiPromptText(params, systemPrompt);
 	}
 
-	private hasNativeRuntimeFeature(feature: NativeRuntimeFeature): boolean {
-		const pluginName = nativeRuntimeFeaturePluginNames[feature];
-		return this.plugins.some((plugin) => plugin.name === pluginName);
-	}
-
-	private resolveNativeFeatureForServiceType(
-		serviceType: ServiceTypeName | string,
-	): NativeRuntimeFeature | null {
-		return resolveNativeRuntimeFeatureFromServiceType(serviceType);
-	}
-
-	private isNativeFeatureServiceEnabled(
-		serviceType: ServiceTypeName | string,
-	): boolean {
-		const feature = this.resolveNativeFeatureForServiceType(serviceType);
-		if (!feature) {
-			return true;
-		}
-		return this.hasNativeRuntimeFeature(feature);
-	}
-
-	private isPluginManagedAsNativeFeature(
-		plugin: Plugin | null | undefined,
-	): boolean {
-		return resolveNativeRuntimeFeatureFromPluginName(plugin?.name) !== null;
-	}
-
-	private async setNativeRuntimeFeatureEnabled(
-		feature: NativeRuntimeFeature,
-		enabled: boolean,
-	): Promise<void> {
-		const current = this.hasNativeRuntimeFeature(feature);
-		if (current === enabled) {
-			return;
-		}
-
-		if (enabled) {
-			await this.registerPlugin(getNativeRuntimeFeaturePlugin(feature));
-		} else {
-			await this.unloadPlugin(nativeRuntimeFeaturePluginNames[feature]);
-		}
-
-		this.setSetting(this.nativeRuntimeFeatureSettingKey(feature), enabled);
-	}
-
-	async enableDocuments(): Promise<void> {
-		await this.setNativeRuntimeFeatureEnabled("documents", true);
-	}
-
-	async disableDocuments(): Promise<void> {
-		await this.setNativeRuntimeFeatureEnabled("documents", false);
-	}
-
-	isDocumentsEnabled(): boolean {
-		return this.hasNativeRuntimeFeature("documents");
-	}
-
-	async enableRelationships(): Promise<void> {
-		await this.setNativeRuntimeFeatureEnabled("relationships", true);
-	}
-
-	async disableRelationships(): Promise<void> {
-		await this.setNativeRuntimeFeatureEnabled("relationships", false);
-	}
-
-	isRelationshipsEnabled(): boolean {
-		return this.hasNativeRuntimeFeature("relationships");
-	}
-
-	async enableTrajectories(): Promise<void> {
-		await this.setNativeRuntimeFeatureEnabled("trajectories", true);
-	}
-
-	async disableTrajectories(): Promise<void> {
-		await this.setNativeRuntimeFeatureEnabled("trajectories", false);
-	}
-
-	isTrajectoriesEnabled(): boolean {
-		return this.hasNativeRuntimeFeature("trajectories");
-	}
 	private hooksForPhase(
 		...args: Parameters<RuntimePipelineHooks["hooksForPhase"]>
 	): ReturnType<RuntimePipelineHooks["hooksForPhase"]> {
@@ -1081,7 +876,7 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.pipelineHooks.applyPipelineHooks(...args);
 	}
 
-	async registerPlugin(plugin: Plugin): Promise<void> {
+	async registerPlugin<T extends Plugin>(plugin: T): Promise<void> {
 		if (!plugin.name) {
 			// Ensure plugin.name is defined
 			const errorMsg = "Plugin or plugin name is undefined";
@@ -1114,12 +909,7 @@ export class AgentRuntime implements IAgentRuntime {
 			return;
 		}
 
-		// Registration is purely structural: whatever plugin the caller declares —
-		// including basic-capabilities, already built from the resolved capability
-		// config by initialize() — is registered as-is. No name-keyed branch
-		// re-derives or rebuilds a specific plugin; capability configuration is
-		// owned by the declaring plugin (via resolveCapabilityConfig +
-		// createBasicCapabilitiesPlugin), not by this method.
+		// Hosts compose plugins; registration preserves their declared contributions.
 		const pluginToRegister = plugin;
 		(this.plugins as Plugin[]).push(pluginToRegister);
 		this.logger.debug(
@@ -1252,20 +1042,6 @@ export class AgentRuntime implements IAgentRuntime {
 				pluginToRegister.name,
 			);
 		}
-		if (pluginToRegister.routes) {
-			for (const route of pluginToRegister.routes) {
-				assertPublicRouteIntent(route, pluginToRegister.name);
-				const routePath = route.path.startsWith("/")
-					? route.path
-					: `/${route.path}`;
-				this.routes.push({
-					...route,
-					path: route.rawPath
-						? routePath
-						: `/${pluginToRegister.name}${routePath}`,
-				});
-			}
-		}
 		if (pluginToRegister.events) {
 			for (const [eventName, eventHandlers] of Object.entries(
 				pluginToRegister.events,
@@ -1332,9 +1108,9 @@ export class AgentRuntime implements IAgentRuntime {
 				},
 				"Registering database adapter",
 			);
-			const basicCapabilitiesSettings = this.getBasicCapabilitiesSettings();
+			const adapterSettings = flattenRuntimeSettings(this.character);
 			const adapter = await Promise.resolve(
-				pluginToRegister.adapter(this.agentId, basicCapabilitiesSettings),
+				pluginToRegister.adapter(this.agentId, adapterSettings),
 			);
 			assertRuntimeActive();
 			this.registerDatabaseAdapter(adapter);
@@ -1460,6 +1236,7 @@ export class AgentRuntime implements IAgentRuntime {
 				await drainPostDeliveryTasks(this);
 			}
 		}
+		await this.modelDispatch.drainDiagnostics();
 		const previousFastShutdown = process.env.ELIZA_FAST_SHUTDOWN;
 		if (fast) {
 			process.env.ELIZA_FAST_SHUTDOWN = "1";
@@ -1591,7 +1368,6 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		// Clear caches and handlers to avoid use-after-stop and release references
-		this.promptBatcher.dispose();
 		this.eventHandlers.clear();
 		this.events = {};
 		this.stateCache.clear();
@@ -1627,11 +1403,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Does NOT run migrations, agent/entity/room creation, or embedding dimension.
 	 * WHY: Those belong to provisioning (once at daemon boot); edge/ephemeral skip them.
 	 */
-	async initialize(options?: {
-		skipMigrations?: boolean;
-		/** Allow running without a persistent database adapter (benchmarks/tests). */
-		allowNoDatabase?: boolean;
-	}): Promise<void> {
+	async initialize(options?: { skipMigrations?: boolean }): Promise<void> {
 		this.initializationFailed = false;
 		try {
 			await this._initializeCore(options);
@@ -1651,96 +1423,13 @@ export class AgentRuntime implements IAgentRuntime {
 
 	private async _initializeCore(options?: {
 		skipMigrations?: boolean;
-		allowNoDatabase?: boolean;
 	}): Promise<void> {
-		// Seed the per-runtime context registry with the first-party taxonomy
-		// before any plugin registers. Subsequent plugin/extension calls to
-		// `runtime.contexts.tryRegister(...)` will be idempotent on these ids.
-		const { skipped: skippedContexts } = this.contexts.tryRegisterMany(
-			DEFAULT_CONTEXT_DEFINITIONS,
-		);
-		for (const id of skippedContexts) {
-			this.logger.warn(
-				{ src: "agent", agentId: this.agentId, context: id },
-				"First-party context already registered, skipping",
-			);
-		}
-
-		// Register the canonical core response-handler field evaluators. These
-		// own the top-level properties of the Stage-1 LLM's structured output
-		// (shouldRespond, contexts, intents, candidateActionNames, replyText,
-		// facts, relationships, addressedTo). Plugins may register additional
-		// fields (e.g. app-lifeops contributes `threadOps`).
-		for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
-			this.registerResponseHandlerFieldEvaluator(evaluator);
-		}
-
-		const pluginRegistrationPromises: Promise<void>[] = [];
-
-		// Basic capabilities are now built into core - auto-register it first
-		const basicCapabilitiesPlugin = createBasicCapabilitiesPlugin(
-			this.capabilityOptions,
-		);
-		// Extended capabilities predate the native relationships feature and still
-		// export its MESSAGE/POST actions, relationship providers, and evaluators
-		// for compatibility. When the native feature is enabled (the default), it
-		// owns those components. Remove the legacy copies before registration so
-		// startup does not register the same capability family twice.
-		if (this.resolveNativeFeatureEnabled("relationships")) {
-			const nativeRelationships =
-				getNativeRuntimeFeaturePlugin("relationships");
-			const actionNames = new Set(
-				(nativeRelationships.actions ?? []).map((action) => action.name),
-			);
-			const providerNames = new Set(
-				(nativeRelationships.providers ?? []).map((provider) => provider.name),
-			);
-			const evaluatorNames = new Set(
-				(nativeRelationships.evaluators ?? []).map(
-					(evaluator) => evaluator.name,
-				),
-			);
-			basicCapabilitiesPlugin.actions = basicCapabilitiesPlugin.actions?.filter(
-				(action) => !actionNames.has(action.name),
-			);
-			basicCapabilitiesPlugin.providers =
-				basicCapabilitiesPlugin.providers?.filter(
-					(provider) => !providerNames.has(provider.name),
-				);
-			basicCapabilitiesPlugin.evaluators =
-				basicCapabilitiesPlugin.evaluators?.filter(
-					(evaluator) => !evaluatorNames.has(evaluator.name),
-				);
-		}
-		pluginRegistrationPromises.push(
-			this.registerPlugin(basicCapabilitiesPlugin),
-		);
-
-		// Always-on core message-path security defenses. Registered through the
-		// plugin lifecycle (GHSA-gh63-5vpj-39qp incoming-message hardening + #9949
-		// injection-risk stamping) so their pipeline hooks appear in plugin
-		// bookkeeping and dispose with the runtime, rather than a lazy dynamic
-		// import buried in initialize.
-		pluginRegistrationPromises.push(
+		const pluginRegistrationPromises = [
 			this.registerPlugin(createCoreSecurityHooksPlugin()),
-		);
-
-		for (const feature of Object.keys(
-			nativeRuntimeFeatureDefaults,
-		) as NativeRuntimeFeature[]) {
-			const enabled = this.resolveNativeFeatureEnabled(feature);
-			if (enabled) {
-				pluginRegistrationPromises.push(
-					this.registerPlugin(getNativeRuntimeFeaturePlugin(feature)),
-				);
-			}
-		}
-
-		for (const plugin of this.characterPlugins) {
-			if (plugin && !this.isPluginManagedAsNativeFeature(plugin)) {
-				pluginRegistrationPromises.push(this.registerPlugin(plugin));
-			}
-		}
+			...this.characterPlugins
+				.filter(Boolean)
+				.map((plugin) => this.registerPlugin(plugin)),
+		];
 		await Promise.all(pluginRegistrationPromises);
 		for (const warning of getActionRolePolicyWarnings(this.actions)) {
 			if (warning.type === "unmatched") {
@@ -1767,37 +1456,16 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 		}
 
-		const allowNoDatabase =
-			options?.allowNoDatabase === true ||
-			String(this.getSetting("ALLOW_NO_DATABASE") ?? "").toLowerCase() ===
-				"true" ||
-			String(process.env.ALLOW_NO_DATABASE ?? "").toLowerCase() === "true";
-
 		if (!this.adapter) {
-			if (allowNoDatabase) {
-				this.logger.warn(
-					{ src: "agent", agentId: this.agentId },
-					"Database adapter not initialized; using in-memory adapter (ALLOW_NO_DATABASE)",
-				);
-				this.registerDatabaseAdapter(new InMemoryDatabaseAdapter(this.agentId));
-			} else {
-				this.logger.error(
-					{ src: "agent", agentId: this.agentId },
-					"Database adapter not initialized",
-				);
-				throw new Error(
-					"Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.",
-				);
-			}
+			throw new Error(
+				"Database adapter not initialized. Register a persistence plugin or supply an adapter.",
+			);
 		}
 
 		// Make adapter init idempotent - check if already initialized
 		if (!(await this.adapter.isReady())) {
 			await this.adapter.initialize();
 		}
-
-		// Initialize message service
-		this.messageService = new DefaultMessageService();
 
 		// Run migrations for all loaded plugins (unless explicitly skipped for serverless mode)
 		const skipMigrations = options?.skipMigrations ?? false;
@@ -2153,53 +1821,6 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 	}
 
-	private getBasicCapabilitiesSettings(): Record<string, string> {
-		const out: Record<string, string> = {};
-
-		for (const [key, value] of Object.entries(process.env)) {
-			if (value !== undefined && value !== null && key) {
-				out[key] = String(value);
-			}
-		}
-
-		const settings =
-			this.character.settings && typeof this.character.settings === "object"
-				? this.character.settings
-				: {};
-		for (const [key, value] of Object.entries(settings)) {
-			if (value === undefined || value === null) {
-				continue;
-			}
-			if (key === "secrets" && typeof value === "object") {
-				continue;
-			}
-			out[key] = typeof value === "string" ? value : String(value);
-		}
-
-		const secrets =
-			this.character.settings?.secrets &&
-			typeof this.character.settings.secrets === "object"
-				? this.character.settings.secrets
-				: {};
-		for (const [key, value] of Object.entries(secrets)) {
-			if (value !== undefined && value !== null) {
-				out[key] = String(value);
-			}
-		}
-
-		const topSecrets =
-			this.character.secrets && typeof this.character.secrets === "object"
-				? this.character.secrets
-				: {};
-		for (const [key, value] of Object.entries(topSecrets)) {
-			if (value !== undefined && value !== null) {
-				out[key] = String(value);
-			}
-		}
-
-		return out;
-	}
-
 	registerDatabaseAdapter(adapter: IDatabaseAdapter) {
 		if (this.adapter) {
 			this.logger.warn(
@@ -2547,12 +2168,20 @@ export class AgentRuntime implements IAgentRuntime {
 		optionsModel?: string,
 		effectiveModelId?: string,
 	): string {
-		return this.structuredPrompts.resolveProviderModelString(
+		return resolveProviderModelString(
+			this,
 			resolvedModelType,
 			optionsModel,
 			effectiveModelId,
 		);
 	}
+	recordPromptTrace(trace: ExecutionTrace): void {
+		this.promptTraces.record(trace);
+	}
+	purgePromptTraces(): void {
+		this.promptTraces.purgeStaleActiveTraces();
+	}
+
 	enrichTrace(runId: string, signal: ScoreSignal): void {
 		this.promptTraces.enrichTrace(runId, signal);
 	}
@@ -2631,8 +2260,6 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			return;
 		}
-		const canonical = withCanonicalProviderDocs(provider);
-		Object.assign(provider, canonical);
 		const existingIndex = this.providers.findIndex(
 			(p) => p.name === provider.name,
 		);
@@ -2663,8 +2290,6 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			return;
 		}
-		const canonical = withCanonicalActionDocs(action);
-		Object.assign(action, canonical);
 		const existingIndex = this.actions.findIndex((a) => a.name === action.name);
 		if (existingIndex !== -1) {
 			if (
@@ -3665,9 +3290,6 @@ export class AgentRuntime implements IAgentRuntime {
 	getService<T extends Service = Service>(
 		serviceName: ServiceTypeName | string,
 	): T | null {
-		if (!this.isNativeFeatureServiceEnabled(serviceName)) {
-			return null;
-		}
 		const key = this.resolveServiceTypeAlias(serviceName) as ServiceTypeName;
 		const instances = this.services.get(key);
 		if (instances && instances.length > 0) {
@@ -3697,9 +3319,6 @@ export class AgentRuntime implements IAgentRuntime {
 	getServicesByType<T extends Service = Service>(
 		serviceName: ServiceTypeName | string,
 	): T[] {
-		if (!this.isNativeFeatureServiceEnabled(serviceName)) {
-			return [];
-		}
 		const key = this.resolveServiceTypeAlias(serviceName) as ServiceTypeName;
 		const serviceInstances = this.services.get(key);
 		if (!serviceInstances || serviceInstances.length === 0) {
@@ -3728,9 +3347,6 @@ export class AgentRuntime implements IAgentRuntime {
 	 * @returns true if the service is registered
 	 */
 	hasService(serviceType: ServiceTypeName | string): boolean {
-		if (!this.isNativeFeatureServiceEnabled(serviceType)) {
-			return false;
-		}
 		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
 		const classes = this.serviceTypes.get(key);
 		return classes !== undefined && classes.length > 0;
@@ -3744,9 +3360,6 @@ export class AgentRuntime implements IAgentRuntime {
 	getServiceRegistrationStatus(
 		serviceType: ServiceTypeName | string,
 	): "pending" | "registering" | "registered" | "failed" | "unknown" {
-		if (!this.isNativeFeatureServiceEnabled(serviceType)) {
-			return "unknown";
-		}
 		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
 		return this.serviceRegistrationStatus.get(key) || "unknown";
 	}
@@ -4301,7 +3914,12 @@ export class AgentRuntime implements IAgentRuntime {
 	async dynamicPromptExecFromState(
 		args: Parameters<IAgentRuntime["dynamicPromptExecFromState"]>[0],
 	): Promise<Record<string, unknown> | null> {
-		return this.structuredPrompts.dynamicPromptExecFromState(args);
+		if (!this.structuredPromptExecutor) {
+			throw new Error(
+				"Structured prompt execution requires an explicitly registered executor",
+			);
+		}
+		return this.structuredPromptExecutor(args);
 	}
 
 	registerEvent<T extends keyof EventPayloadMap>(
@@ -4594,6 +4212,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Closes the database adapter. Call after stop() for full teardown (stops services then closes DB/connection).
 	 */
 	async close(): Promise<void> {
+		await this.modelDispatch.drainDiagnostics();
 		if (this.adapter) {
 			await this.adapter.close();
 		}
@@ -5075,39 +4694,9 @@ export class AgentRuntime implements IAgentRuntime {
 		tableName: string;
 		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
-		const memories = await this.adapter.searchMemories({
-			...params,
-			tableName: params.tableName,
-		});
-		if (params.query) {
-			const rerankedMemories = await this.rerankMemories(
-				params.query,
-				memories,
-			);
-			return rerankedMemories;
-		}
-		return memories;
+		return this.adapter.searchMemories(params);
 	}
-	async rerankMemories(query: string, memories: Memory[]): Promise<Memory[]> {
-		const docs = memories.map((memory) => ({
-			title: memory.id,
-			content: memory.content.text,
-		}));
-		const bm25 = new BM25(docs);
-		const results = bm25.search(query, memories.length);
-		const rankedIndexes = new Set(results.map((result) => result.index));
-		const rerankedMemories = results.map((result) => memories[result.index]);
 
-		// BM25 is a reranker, not a filter. Keep zero-overlap vector hits
-		// after scored matches so semantic recall cannot disappear.
-		for (let index = 0; index < memories.length; index++) {
-			if (!rankedIndexes.has(index)) {
-				rerankedMemories.push(memories[index]);
-			}
-		}
-
-		return rerankedMemories;
-	}
 	/**
 	 * Get the secrets to redact from character settings.
 	 * Returns an empty object if no secrets are configured.
@@ -5479,30 +5068,7 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.adapter.getTasksByName(name);
 	}
 
-	/** WHY fire-and-forget: Notify companion that tasks changed so it can poll/process; no need to block. */
-	private _notifyCompanionTasksDirty(): void {
-		if (!this.companionUrl) return;
-		const url = `${this.companionUrl.replace(/\/$/, "")}/task-dirty`;
-		void this.fetch(url, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ agentId: this.agentId }),
-		}).catch((err) =>
-			// error-policy:J7 diagnostics-must-not-kill-the-loop — the notify is
-			// fire-and-forget (no need to block), but a dead companion means tasks
-			// stop being processed, so the failure must surface.
-			this.reportError("AgentRuntime.companionTasksDirty", err, {
-				url,
-				agentId: this.agentId,
-			}),
-		);
-	}
-
-	/**
-	 * Nudge the local TaskService (same process) so its dirty-gated tick re-queries the DB.
-	 * WHY: the companion POST above only reaches a REMOTE receiver; without this, in-process
-	 * task mutations never re-arm the tick and tasks created after boot are never seen.
-	 */
+	/** Wake the registered task service after committed task mutations. */
 	private _markLocalTasksDirty(): void {
 		const taskService = this.getService<TaskService>(ServiceType.TASK);
 		taskService?.markDirty();
@@ -5511,7 +5077,6 @@ export class AgentRuntime implements IAgentRuntime {
 	async createTask(task: Task): Promise<UUID> {
 		const ids = await this.adapter.createTasks([task]);
 		this._markLocalTasksDirty();
-		this._notifyCompanionTasksDirty();
 		return ids[0];
 	}
 
@@ -5526,7 +5091,6 @@ export class AgentRuntime implements IAgentRuntime {
 			false;
 		if (updated) {
 			this._markLocalTasksDirty();
-			this._notifyCompanionTasksDirty();
 		}
 		return updated;
 	}
@@ -5540,7 +5104,6 @@ export class AgentRuntime implements IAgentRuntime {
 		const patched = await patcher.call(this.adapter, id, patch);
 		if (patched) {
 			this._markLocalTasksDirty();
-			this._notifyCompanionTasksDirty();
 		}
 		return patched ? "patched" : "missing";
 	}
@@ -5548,7 +5111,6 @@ export class AgentRuntime implements IAgentRuntime {
 	async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
 		await this.adapter.updateTasks([{ id, task }]);
 		this._markLocalTasksDirty();
-		this._notifyCompanionTasksDirty();
 	}
 
 	async deleteTask(id: UUID): Promise<void> {
@@ -5586,7 +5148,6 @@ export class AgentRuntime implements IAgentRuntime {
 	async createTasks(tasks: Task[]): Promise<UUID[]> {
 		const ids = await this.adapter.createTasks(tasks);
 		this._markLocalTasksDirty();
-		this._notifyCompanionTasksDirty();
 		return ids;
 	}
 
@@ -5599,7 +5160,6 @@ export class AgentRuntime implements IAgentRuntime {
 	): Promise<void> {
 		await this.adapter.updateTasks(updates);
 		this._markLocalTasksDirty();
-		this._notifyCompanionTasksDirty();
 	}
 
 	async deleteTasks(taskIds: UUID[]): Promise<void> {

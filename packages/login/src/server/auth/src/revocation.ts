@@ -8,7 +8,7 @@
  * back to in-memory state suitable only for single-instance/embedded mode.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { Redis } from "ioredis";
 import { assertRedisUrlTls } from "../../redis/src/index.ts";
 import { redactedThrownDiagnostics } from "../../shared/src/index.ts";

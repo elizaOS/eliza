@@ -4,7 +4,8 @@
  * drift into parallel transport contracts.
  */
 
-import { isElizaError, type Route, toElizaError } from "@elizaos/core";
+import { isElizaError, toElizaError } from "@elizaos/core";
+import type { Route } from "@elizaos/shared/api/http-plugin";
 import { getNotesService } from "./service.js";
 
 export const notesRoutes: Route[] = [

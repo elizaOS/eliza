@@ -176,8 +176,6 @@ export const styleSchema = z
 // Settings schema - flexible object allowing any JSON-serializable values
 const settingsKnownKeys = new Set([
 	"shouldRespondModel",
-	"basic-capabilitiesDefllmoff",
-	"basic-capabilitiesKeepResp",
 	"providersTotalTimeoutMs",
 	"alwaysRespondChannels",
 	"alwaysRespondSources",
@@ -186,16 +184,12 @@ const settingsKnownKeys = new Set([
 	"maxReplyTokens",
 	"defaultFrequencyPenalty",
 	"defaultPresencePenalty",
-	"disableBasicCapabilities",
-	"enableExtendedCapabilities",
 	"extra",
 ]);
 
 export const settingsSchema = z
 	.object({
 		shouldRespondModel: z.string().optional(),
-		"basic-capabilitiesDefllmoff": z.boolean().optional(),
-		"basic-capabilitiesKeepResp": z.boolean().optional(),
 		providersTotalTimeoutMs: z.number().int().optional(),
 		alwaysRespondChannels: z.string().optional(),
 		alwaysRespondSources: z.string().optional(),
@@ -207,8 +201,6 @@ export const settingsSchema = z
 		maxReplyTokens: z.never().optional(),
 		defaultFrequencyPenalty: z.number().optional(),
 		defaultPresencePenalty: z.number().optional(),
-		disableBasicCapabilities: z.boolean().optional(),
-		enableExtendedCapabilities: z.boolean().optional(),
 		extra: z.record(z.string(), jsonValueSchema).optional(),
 	})
 	.passthrough()

@@ -8,7 +8,7 @@
  * store or provider API is touched.
  */
 import { logger } from "@elizaos/core";
-import type { LinkedAccountConfig } from "@elizaos/shared";
+import type { LinkedAccountConfig } from "@elizaos/shared/contracts/service-routing-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AccountPool,

@@ -56,7 +56,7 @@ fixture, or session report. Set `GOOGLE_REDIRECT_URI` to exactly
 and register that exact URI on the nonproduction Google OAuth client. Verify
 only name presence and the callback URI; do not print or copy secret values.
 
-The general `lifeops:hitl` credential dashboard still supports connectors that
+The general `node scripts/lifeops/hitl-credential-dashboard.mjs` credential dashboard still supports connectors that
 use layered environment configuration, but it is not the intake path for the
 Google OAuth client in this acceptance run. Google client credentials and the
 resulting account tokens must remain in the protected settings and connector

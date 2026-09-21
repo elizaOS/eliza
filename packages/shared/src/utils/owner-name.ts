@@ -1,5 +1,5 @@
 /** Normalizes a user-supplied owner name without shortening its content. */
-import { toWellFormedUnicode } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/common";
 
 export function normalizeOwnerName(value: string | null | undefined): string {
   if (typeof value !== "string") {

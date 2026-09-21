@@ -5,7 +5,7 @@
  * instead of this journal.
  */
 import path from "node:path";
-import { readJsonFile, writeJsonAtomic } from "@elizaos/core/atomic-json";
+import { readJsonFile, writeJsonAtomic } from "@elizaos/core";
 import {
   canonicalizeRemoteControlValue,
   type EncryptedRemoteControlEnvelope,

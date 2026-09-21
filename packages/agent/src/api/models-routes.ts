@@ -9,11 +9,11 @@
  * access are injected through the route context so the handler stays
  * transport-agnostic and unit-testable.
  */
-import {
-  parseBooleanValue,
-  type RouteHelpers,
-  type RouteRequestMeta,
-} from "@elizaos/core";
+import { parseBooleanValue } from "@elizaos/core";
+import type {
+  RouteHelpers,
+  RouteRequestMeta,
+} from "@elizaos/shared/api/route-helpers";
 import { buildModelCatalog, type ModelCatalog } from "./model-catalog.ts";
 import { MODEL_PROVIDER_ID_PATTERN } from "./model-provider-helpers.ts";
 

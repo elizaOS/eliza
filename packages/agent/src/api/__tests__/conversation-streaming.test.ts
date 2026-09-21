@@ -127,6 +127,7 @@ function createStreamingMessageService(tokens: string[]): MessageService {
         await options?.onStreamChunk?.(token);
       }
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text: tokens.join("") },
         responseMessages: [],
@@ -614,6 +615,7 @@ describe("generateChatResponse token streaming", () => {
             async () => postDeliveryGate,
           );
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: { text: "ready before receipts" },
             responseMessages: [],
@@ -777,6 +779,7 @@ describe("generateChatResponse token streaming", () => {
         await options?.onStreamChunk?.(internalToolPayload);
         await options?.onStreamChunk?.(internalEvaluationPayload);
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: "Navigated to Notes (gui)." },
           responseMessages: [],
@@ -815,6 +818,7 @@ describe("generateChatResponse token streaming", () => {
       async handleMessage(_runtime, _message, callback) {
         await callback?.({ text }, "VIEWS");
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text, transcriptVisibility: "internal" as const },
           responseMessages: [],
@@ -877,6 +881,7 @@ describe("generateChatResponse token streaming", () => {
         // actual reply, delivered with no actionName.
         await callback?.({ text: reply });
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: reply },
           responseMessages: [],
@@ -921,6 +926,7 @@ describe("generateChatResponse token streaming", () => {
         await Promise.resolve();
         await options?.onStreamChunk?.("l", undefined, "hello world");
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: "hello world" },
           responseMessages: [],
@@ -964,6 +970,7 @@ describe("generateChatResponse token streaming", () => {
         await options?.onStreamChunk?.(first, undefined, first);
         await options?.onStreamChunk?.("op, HTTP SSE", undefined, complete);
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: complete },
           responseMessages: [],
@@ -1006,6 +1013,7 @@ describe("generateChatResponse token streaming", () => {
           await options?.onStreamChunk?.(delta, undefined, accumulated);
         }
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: accumulated },
           responseMessages: [],
@@ -1093,6 +1101,7 @@ describe("generateChatResponse token streaming", () => {
         ...createStreamingMessageService(["Navigated to Settings."]),
         async handleMessage() {
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: { text: "Navigated to Settings." },
             responseMessages: [],
@@ -1177,6 +1186,7 @@ describe("generateChatResponse token streaming", () => {
   it("keeps contextual Android local turns on the normal message runtime", async () => {
     const useModel = createUseModelMock(async () => "generic local reply");
     const handleMessage = vi.fn(async () => ({
+      outcome: { status: "completed" as const, effects: [] },
       didRespond: true,
       responseContent: { text: "You just told me your name is Ada." },
       responseMessages: [],
@@ -1216,6 +1226,7 @@ describe("generateChatResponse token streaming", () => {
   it("keeps tool-like Android local turns on the normal message runtime", async () => {
     const useModel = createUseModelMock(async () => "generic local reply");
     const handleMessage = vi.fn(async () => ({
+      outcome: { status: "completed" as const, effects: [] },
       didRespond: true,
       responseContent: { text: "I need the normal runtime for that." },
       responseMessages: [],
@@ -1274,6 +1285,7 @@ describe("generateChatResponse token streaming", () => {
             );
           });
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: false,
             responseContent: null,
             responseMessages: [],
@@ -1318,6 +1330,7 @@ describe("generateChatResponse token streaming", () => {
         await options?.onStreamChunk?.("completed reply");
         caller.abort(new DOMException("socket closed", "AbortError"));
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: "completed reply" },
           responseMessages: [],
@@ -1377,6 +1390,7 @@ describe("generateChatResponse token streaming", () => {
         handleMessage: vi.fn(async () => {
           caller.abort(new DOMException("socket closed", "AbortError"));
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: {
               text: "Starting the block now.",
@@ -1535,6 +1549,7 @@ describe("generateChatResponse token streaming", () => {
   it("rejects ingress hook failures before starting message generation", async () => {
     const hookFailure = new Error("trajectory persistence failed");
     const handleMessage = vi.fn(async () => ({
+      outcome: { status: "completed" as const, effects: [] },
       didRespond: true,
       responseContent: { text: "must not be generated" },
       responseMessages: [],

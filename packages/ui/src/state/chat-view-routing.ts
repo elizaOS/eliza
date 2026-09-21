@@ -4,7 +4,7 @@
  * context scopes, and capability hints stay independent of transport state.
  */
 
-import { asRecord } from "@elizaos/shared";
+import { asRecord } from "@elizaos/shared/type-guards";
 import { readSettingsHashSectionId } from "../components/settings/settings-route";
 import { getWindowNavigationPath, type Tab } from "../navigation";
 import { getClientBrowserSurface } from "../platform/browser-surface";

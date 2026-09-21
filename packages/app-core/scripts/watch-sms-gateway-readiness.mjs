@@ -16,8 +16,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const installScript = path.join(scriptDir, "install-android-sms-gateway.mjs");
+const androidSdkRoot =
+  process.env.ANDROID_HOME?.trim() || process.env.ANDROID_SDK_ROOT?.trim();
 const adbPath =
-  "/opt/homebrew/share/android-commandlinetools/platform-tools/adb";
+  process.env.ADB?.trim() ||
+  (androidSdkRoot
+    ? path.join(androidSdkRoot, "platform-tools", "adb")
+    : "/opt/homebrew/share/android-commandlinetools/platform-tools/adb");
 
 function usage() {
   return [
@@ -115,12 +120,6 @@ function run(command, args) {
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? (result.error ? String(result.error) : ""),
   };
-}
-
-function listAdbDevices() {
-  return listAdbDeviceRows()
-    .filter((device) => device.state === "device")
-    .map((device) => device.serial);
 }
 
 function listAdbDeviceRows() {
@@ -255,7 +254,9 @@ async function main() {
     // bounded, but a sequence of near-budget probes must not stack.
     const adbDeviceRows = listAdbDeviceRows();
     if (expired()) break;
-    const devices = listAdbDevices();
+    const devices = adbDeviceRows
+      .filter((device) => device.state === "device")
+      .map((device) => device.serial);
     if (expired()) break;
     const wirelessAdb = listWirelessAdbServices();
     if (expired()) break;

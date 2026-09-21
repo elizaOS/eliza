@@ -1,3 +1,7 @@
+<#
+Launches the packaged Windows desktop with isolated state, validates its assets
+and backend, and preserves the invoking process ancestry during cleanup.
+#>
 param(
   [string]$ArtifactsDir = $(
     if ($env:ELIZA_TEST_WINDOWS_ARTIFACTS_DIR) { $env:ELIZA_TEST_WINDOWS_ARTIFACTS_DIR }
@@ -14,6 +18,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+Write-Host "Preparing packaged Windows smoke test"
 
 $resolvedArtifactsDir = (Resolve-Path $ArtifactsDir).Path
 $resolvedBuildDir = $null
@@ -76,19 +81,23 @@ $startupSessionId = "eliza-windows-smoke-" + [Guid]::NewGuid().ToString("N")
 $startupStateFile = Join-Path $tempRoot ($startupSessionId + ".state.json")
 $startupEventsFile = Join-Path $tempRoot ($startupSessionId + ".events.jsonl")
 $startupBootstrapFile = $null
-$stopProtectedProcessIds = [System.Collections.Generic.HashSet[int]]::new()
-[void]$stopProtectedProcessIds.Add([int]$PID)
-try {
-  $currentPid = $PID
-  while ($currentPid -gt 0) {
-    $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $currentPid"
-    if (-not $proc -or -not $proc.ParentProcessId -or $proc.ParentProcessId -eq $currentPid) { break }
-    [void]$stopProtectedProcessIds.Add([int]$proc.ParentProcessId)
-    $currentPid = $proc.ParentProcessId
+function Get-ProtectedAncestorProcessIds([int]$ProcessId) {
+  $protected = [System.Collections.Generic.HashSet[int]]::new()
+  $currentPid = $ProcessId
+  # Parent IDs can refer to exited processes and be reused. Stop at a visited
+  # PID so such a cycle cannot prevent the packaged application from launching.
+  while ($currentPid -gt 0 -and $protected.Add($currentPid)) {
+    Write-Host "Protecting smoke ancestor PID $currentPid"
+    $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $currentPid" -OperationTimeoutSec 10 -ErrorAction Stop
+    if (-not $proc -or -not $proc.ParentProcessId) { break }
+    $currentPid = [int]$proc.ParentProcessId
   }
-} catch {
-  # Best effort only; on failure we still protect the current PowerShell host.
+  return ,$protected
 }
+
+# Discovery errors stop before teardown rather than risking an unprotected
+# invoking process. Every successfully discovered ancestor remains protected.
+$stopProtectedProcessIds = Get-ProtectedAncestorProcessIds -ProcessId $PID
 
 function Find-Launcher([string]$Root) {
   if (-not (Test-Path $Root)) {

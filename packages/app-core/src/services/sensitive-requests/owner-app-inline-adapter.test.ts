@@ -7,9 +7,9 @@
  * channel, non-secret kind, missing sendMessageToTarget, transport failure).
  * Uses a vi.fn runtime capture plus core's real resolveSensitiveRequestDelivery.
  */
+
+import { ChannelType, type Content } from "@elizaos/common";
 import {
-  ChannelType,
-  type Content,
   type DispatchSensitiveRequest,
   defaultSensitiveRequestPolicy,
   resolveSensitiveRequestDelivery,

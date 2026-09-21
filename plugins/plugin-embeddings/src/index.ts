@@ -108,6 +108,12 @@ export const embeddingsPlugin: Plugin = {
   },
 
   // ONLY the embedding slots are registered — this plugin is embedding-only.
+  modelMetadata: {
+    [ModelType.TEXT_EMBEDDING]: {
+      displayModelSetting: "EMBEDDING_MODEL",
+    },
+  },
+
   models: {
     [ModelType.TEXT_EMBEDDING]: async (
       runtime: IAgentRuntime,

@@ -8,8 +8,10 @@ a startup audit for the retired `app_relationships` schema.
 
 ## Status
 
-The action and provider are implemented facades over the runtime-owned
-`KnowledgeGraphService`. It does not register the retired `app_relationships`
+The package owns `KnowledgeGraphService` and its stores in the Node-only
+`@elizaos/plugin-relationships/knowledge-graph` entry. The host registers the
+service and existing `app_lifeops` tables; the action and provider consume the
+registered service. Importing the graph entry does not load the React views. It does not register the retired `app_relationships`
 schema. Startup fails closed when that schema contains rows because its legacy
 tables do not carry the agent ownership needed for an automatic import.
 Identity observation, verification, and merging are deliberately absent from

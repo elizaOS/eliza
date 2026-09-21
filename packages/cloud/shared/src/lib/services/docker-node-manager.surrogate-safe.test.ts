@@ -5,7 +5,7 @@
  * remains well-formed without lone surrogates.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 
 describe("docker-node-manager surrogate-safe output truncation", () => {

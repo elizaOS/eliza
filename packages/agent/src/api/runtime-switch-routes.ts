@@ -36,7 +36,7 @@
 import { randomUUID } from "node:crypto";
 import type http from "node:http";
 
-import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   createSelfApiRequestHeaders,
   DEFAULT_ELIGIBLE_MODEL_IDS,
@@ -46,6 +46,7 @@ import {
   type ProviderId,
   readJsonBody,
 } from "@elizaos/shared";
+import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
 import { PendingRequestMap } from "./pending-request-map.ts";
 
 // Provider ids as registered with the routing layer. Typed against the shared

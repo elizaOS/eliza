@@ -17,8 +17,8 @@ import { type Dirent, existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-
-import { ElizaError, logger, type Plugin } from "@elizaos/core";
+import type { Plugin } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { formatError, isMobilePlatform } from "@elizaos/shared";
 import {
   type AppManifestBlock,
@@ -157,9 +157,7 @@ const SOURCE_STAGED_ROOT_ENTRYPOINTS: Record<
 > = {
   "@elizaos/agent": {
     path: "./src/staged-runtime-index.ts",
-    source: `export { extractActionParamsViaLlm } from "./actions/extract-params.ts";
-export { renderGroundedActionReply } from "./actions/grounded-action-reply.ts";
-export { extractConversationMetadataFromRoom, isPageScopedConversationMetadata } from "./api/conversation-metadata.ts";
+    source: `export { extractConversationMetadataFromRoom, isPageScopedConversationMetadata } from "./api/conversation-metadata.ts";
 export { handleConnectorAccountRoutes } from "./api/connector-account-routes.ts";
 export { checkRateLimit } from "./api/rate-limiter.ts";
 export { loadEffectiveElizaConfig, loadElizaConfig, saveElizaConfig } from "./config/config.ts";
@@ -171,11 +169,6 @@ export { resolveOwnerEntityId } from "./runtime/owner-entity.ts";
 export { hasOwnerAccess } from "./security/access.ts";
 export { createLocalAgentBackup, listLocalAgentBackups } from "./services/agent-backup.ts";
 export { gatePluginSessionForHostedApp } from "./services/app-session-gate.ts";
-export { APPROVAL_EXECUTION_CAPABILITY, APPROVAL_EXECUTION_PROTOCOL_VERSION, ApprovalDispatchControlStore, ApprovalIdempotencyConflictError, ApprovalNotFoundError, ApprovalStateTransitionError, approvalDispatchAdmissionCte, createApprovalQueue, PgApprovalQueue, resolveApprovalService } from "./services/approval/index.ts";
-export { createGlobalPauseStore, GLOBAL_PAUSE_CACHE_KEY, resolveGlobalPauseService } from "./services/global-pause/index.ts";
-export { createHandoffStore, describeResumeCondition, evaluateResume, resolveHandoffService } from "./services/handoff/index.ts";
-export { EntityStore, KNOWLEDGE_GRAPH_SERVICE, RelationshipStore, resolveKnowledgeGraphService } from "./services/knowledge-graph/index.ts";
-export { createPendingPromptsStore, resolvePendingPromptsService } from "./services/pending-prompts/index.ts";
 export { registerEscalationChannel } from "./services/escalation.ts";
 export { buildTriggerConfig, buildTriggerMetadata, computeNextCronRunAtMs, normalizeTriggerDraft, parseCronExpression } from "./triggers/scheduling.ts";
 export { getTriggerLimit, listTriggerTasks, readTriggerConfig, taskToTriggerSummary, triggersFeatureEnabled, TRIGGER_TASK_NAME, TRIGGER_TASK_TAGS } from "./triggers/runtime.ts";

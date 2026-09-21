@@ -8,13 +8,13 @@
  */
 
 import crypto from "node:crypto";
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import {
   ElizaError,
   type IAgentRuntime,
   type Memory,
   Service,
 } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { type Entity, SELF_ENTITY_ID } from "@elizaos/shared";
 import { resolveAuthenticatedFamilyPrincipal } from "../family-communications/production-wiring.js";
 import {

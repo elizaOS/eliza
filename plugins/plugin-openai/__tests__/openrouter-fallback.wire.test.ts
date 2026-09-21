@@ -175,7 +175,9 @@ describe("explicit OpenRouter fallback", () => {
     const { runtime: agent, events } = runtime();
     const result = await handleTextSmall(agent, params);
     expect(result).toMatchObject({
-      toolCalls: [{ toolName: "VIEWS", input: { operation: "show", viewId: "chat" } }],
+      toolCalls: [
+        { id: "tool-home", name: "VIEWS", arguments: { operation: "show", viewId: "chat" } },
+      ],
       providerMetadata: { provider: "openrouter", modelName: "qwen/qwen3.8-27b" },
     });
     expect(requests).toHaveLength(2);

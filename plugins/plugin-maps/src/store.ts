@@ -9,12 +9,12 @@ import {
   ChannelType,
   createUniqueUuid,
   type IAgentRuntime,
-  InMemoryDatabaseAdapter,
   type Memory,
   type MemoryMetadata,
   MemoryType,
   type UUID,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/plugin-inmemorydb/runtime";
 import * as z from "zod";
 import { MapsError } from "./errors.js";
 import {

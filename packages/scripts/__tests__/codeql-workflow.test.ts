@@ -3,8 +3,10 @@
  * production coverage, permissions, provisionable runner, category, and
  * immutable-action contracts without executing a scan.
  */
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
+import { execFileSync } from "../lib/spawn-sync-captured.mjs";
 
 const workflowText = readFileSync(
   new URL("../../../.github/workflows/codeql.yml", import.meta.url),
@@ -177,24 +179,33 @@ describe("on-demand CodeQL workflow", () => {
       "examples",
       "research",
       "test",
+      "testing",
     ]);
-    const maintainedPackages = readdirSync(
-      new URL("../../../packages", import.meta.url),
-      { withFileTypes: true },
-    )
+    // Removed workspaces may leave ignored build/dependency directories behind.
+    // Only tracked source roots are maintained CodeQL analysis inputs.
+    const trackedRoots = [
+      ...new Set(
+        execFileSync("git", ["ls-files", "--", "packages", "plugins"], {
+          cwd: fileURLToPath(new URL("../../../", import.meta.url)),
+          encoding: "utf8",
+        })
+          .trim()
+          .split("\n")
+          .filter((file) => file.split("/").length > 2)
+          .map((file) => file.split("/").slice(0, 2).join("/")),
+      ),
+    ];
+    const maintainedPackages = trackedRoots
       .filter(
-        (entry) => entry.isDirectory() && !excludedPackageRoots.has(entry.name),
+        (root) =>
+          root.startsWith("packages/") &&
+          !excludedPackageRoots.has(root.split("/")[1]),
       )
-      .map(({ name }) => `packages/${name}/**`)
+      .map((root) => `${root}/**`)
       .sort();
-    const maintainedPlugins = readdirSync(
-      new URL("../../../plugins", import.meta.url),
-      { withFileTypes: true },
-    )
-      .filter(
-        (entry) => entry.isDirectory() && entry.name.startsWith("plugin-"),
-      )
-      .map(({ name }) => `plugins/${name}/**`)
+    const maintainedPlugins = trackedRoots
+      .filter((root) => root.startsWith("plugins/plugin-"))
+      .map((root) => `${root}/**`)
       .sort();
 
     expect(

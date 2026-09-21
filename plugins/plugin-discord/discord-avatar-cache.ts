@@ -6,11 +6,11 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 import {
 	type FetchMediaOptions,
 	fetchRemoteMedia,
-	resolveStateDir,
-} from "@elizaos/core";
+} from "@elizaos/shared/media";
 
 const DISCORD_AVATAR_ROUTE_PREFIX = "/api/avatar/discord";
 const MAX_DISCORD_AVATAR_BYTES = 2 * 1024 * 1024;

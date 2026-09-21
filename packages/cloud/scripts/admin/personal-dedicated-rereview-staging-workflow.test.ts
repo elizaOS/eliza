@@ -171,11 +171,7 @@ describe("personal Dedicated staging re-review workflow", () => {
       "run-postinstall": "false",
     });
     const linkedBuild = step("Build required linked runtime").run;
-    expect(linkedBuild).toContain(
-      "bun run --cwd packages/prompts build:package",
-    );
-    expect(linkedBuild).toContain("bun run --cwd packages/shared build");
-    expect(linkedBuild).toContain("bun run --cwd packages/core build");
+    expect(linkedBuild).toContain("bun run build:core");
     expect(step("Probe fixed runtime dependencies").run).toBe(
       "bun run packages/cloud/scripts/admin/preflight-database-identity.ts --probe-dependencies",
     );

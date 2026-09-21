@@ -10,7 +10,7 @@
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { APICallError } from "ai";
-import { isInsufficientCreditsError } from "../../../core/src/services/message/fallback-reply";
+import { isInsufficientCreditsError } from "../../../core/src/security/model-failure";
 
 // Spread the real module so other test files importing from "ai" are not
 // stranded by the process-wide registry replacement; restore in afterAll.

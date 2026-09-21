@@ -9,19 +9,20 @@ import { promises as fs, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime, Memory, ReadView, UUID } from "@elizaos/core";
-import { getDefaultTriageService, stringToUuid } from "@elizaos/core";
+import { stringToUuid } from "@elizaos/core";
+import { getDefaultTriageService } from "@elizaos/plugin-assistant";
 import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import codingToolsPlugin from "../../../../plugins/plugin-coding-tools/src/index.ts";
-import { GoogleGmailAdapter } from "../../../../plugins/plugin-google-workspace/src/lifeops-message-adapter.ts";
 import {
   DocumentService,
   documentsPlugin,
-} from "../../../core/src/features/documents/index.ts";
+} from "../../../../plugins/plugin-assistant/src/features/documents/index.ts";
+import codingToolsPlugin from "../../../../plugins/plugin-coding-tools/src/index.ts";
+import { GoogleGmailAdapter } from "../../../../plugins/plugin-google-workspace/src/lifeops-message-adapter.ts";
 
 const SCENARIO_ID = "deterministic-progressive-content-actions";
 let fixtureRoot = "";

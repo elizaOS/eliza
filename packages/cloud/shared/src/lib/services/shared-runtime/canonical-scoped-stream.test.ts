@@ -6,7 +6,7 @@
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/common";
 import { RateLimitError } from "../../api/errors";
 import * as coordinatorActual from "./conversation-coordinator";
 

@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
 import { z } from "zod";
@@ -770,7 +770,7 @@ describe("Shared Eliza runtime in Workerd", () => {
       new URL("../../../core/", import.meta.url),
     );
     const coreBuild = Bun.spawn({
-      cmd: [process.execPath, "build.ts", "--edge-only"],
+      cmd: [process.execPath, "build.ts"],
       cwd: coreDirectory,
       stderr: "pipe",
       stdout: "pipe",
@@ -780,9 +780,7 @@ describe("Shared Eliza runtime in Workerd", () => {
       new Response(coreBuild.stderr).text(),
     ]);
     if (coreBuildExitCode !== 0) {
-      throw new Error(
-        `Failed to build @elizaos/core/edge:\n${coreBuildStderr}`,
-      );
+      throw new Error(`Failed to build @elizaos/core:\n${coreBuildStderr}`);
     }
 
     const entrypoint = fileURLToPath(
@@ -791,58 +789,58 @@ describe("Shared Eliza runtime in Workerd", () => {
         import.meta.url,
       ),
     );
-    const outputPath = join(buildDirectory, "worker.mjs");
-    const repositoryDirectory = fileURLToPath(
-      new URL("../../../../", import.meta.url),
+    const apiDirectory = fileURLToPath(new URL("../", import.meta.url));
+    const workerConfig = z
+      .object({
+        compatibility_date: z.string(),
+        compatibility_flags: z.array(z.string()),
+        define: z.record(z.string(), z.string()),
+        alias: z.record(z.string(), z.string()),
+      })
+      .parse(
+        Bun.TOML.parse(
+          await readFile(join(apiDirectory, "wrangler.toml"), "utf8"),
+        ),
+      );
+    const configPath = join(buildDirectory, "wrangler.json");
+    await Bun.write(
+      configPath,
+      JSON.stringify({
+        name: "shared-eliza-runtime-test",
+        main: entrypoint,
+        compatibility_date: workerConfig.compatibility_date,
+        compatibility_flags: workerConfig.compatibility_flags,
+        define: workerConfig.define,
+        alias: Object.fromEntries(
+          Object.entries(workerConfig.alias).map(([name, target]) => [
+            name,
+            target.startsWith(".") ? resolve(apiDirectory, target) : target,
+          ]),
+        ),
+      }),
     );
-    const coreEdgeArtifact = join(coreDirectory, "dist/edge/index.edge.js");
-    const todosEdgeSource = fileURLToPath(
-      new URL("../../../../plugins/plugin-todos/src/edge.ts", import.meta.url),
-    );
+    const outputPath = join(buildDirectory, "shared-eliza-runtime-worker.js");
     const bundle = Bun.spawn({
       cmd: [
         process.execPath,
-        "-e",
-        `const result = await Bun.build({
-          entrypoints: [process.env.SHARED_ELIZA_ENTRY],
-          target: "browser",
-          format: "esm",
-          conditions: ["worker"],
-          external: ["node:*"],
-          plugins: [{
-            name: "eliza-core-edge-boundary",
-            setup(build) {
-              build.onResolve({ filter: /^@elizaos\\/core\\/edge$/ }, () => ({
-                path: process.env.ELIZA_CORE_EDGE_ARTIFACT,
-              }));
-              build.onResolve({ filter: /^@elizaos\\/plugin-todos\\/edge$/ }, () => ({
-                path: process.env.ELIZA_TODOS_EDGE_SOURCE,
-              }));
-            },
-          }],
-        });
-        if (!result.success) {
-          for (const log of result.logs) console.error(log);
-          process.exit(1);
-        }
-        const output = result.outputs[0];
-        if (!output) throw new Error("Shared Eliza runtime bundle was not emitted");
-        await Bun.write(process.env.SHARED_ELIZA_OUTPUT, output);`,
+        "x",
+        "--no-install",
+        "wrangler",
+        "deploy",
+        "--dry-run",
+        "--config",
+        configPath,
+        "--outdir",
+        buildDirectory,
       ],
-      cwd: repositoryDirectory,
-      env: {
-        ...process.env,
-        ELIZA_CORE_EDGE_ARTIFACT: coreEdgeArtifact,
-        ELIZA_TODOS_EDGE_SOURCE: todosEdgeSource,
-        SHARED_ELIZA_ENTRY: entrypoint,
-        SHARED_ELIZA_OUTPUT: outputPath,
-      },
+      cwd: apiDirectory,
       stderr: "pipe",
       stdout: "pipe",
     });
     const [bundleExitCode, bundleStderr] = await Promise.all([
       bundle.exited,
       new Response(bundle.stderr).text(),
+      new Response(bundle.stdout).text(),
     ]);
     if (bundleExitCode !== 0) {
       throw new Error(`Failed to bundle Shared Eliza runtime: ${bundleStderr}`);
@@ -850,8 +848,8 @@ describe("Shared Eliza runtime in Workerd", () => {
 
     const failureCapture = await createPrivateWorkerdFailureCapture();
     miniflare = new Miniflare({
-      compatibilityDate: "2026-04-01",
-      compatibilityFlags: ["nodejs_compat"],
+      compatibilityDate: workerConfig.compatibility_date,
+      compatibilityFlags: workerConfig.compatibility_flags,
       serviceBindings: { FAILURE_DIAGNOSTICS: failureCapture.fetch },
       outboundService: async (request: Request) => {
         outboundRequests.push(request.url);

@@ -8,12 +8,13 @@
  */
 
 import { EventType, type Memory } from "@elizaos/core";
+import { resolvePendingPromptsStore } from "@elizaos/plugin-assistant";
 import { afterEach, describe, expect, it } from "vitest";
+import { trajectoriesPlugin } from "../../../../plugin-assistant/src/features/trajectories/index.ts";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.ts";
-import { resolvePendingPromptsStore } from "../pending-prompts/store.ts";
 import { LifeOpsRepository } from "../repository.ts";
 import {
   detachInboundScan,
@@ -29,7 +30,9 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** Owner-gated so the completion pass's owner check resolves (same pattern as
  * scheduler.integration.test.ts / inbound-reply-completion.integration.test.ts). */
 async function createOwnerScopedRuntime(): Promise<RealTestRuntimeResult> {
-  const result = await createLifeOpsTestRuntime();
+  const result = await createLifeOpsTestRuntime({
+    plugins: [trajectoriesPlugin],
+  });
   result.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", OWNER_ENTITY_ID, false);
   return result;
 }
@@ -159,7 +162,7 @@ describe("deferred inbound scans — TTFT independence (#15255)", () => {
     ).toBeUndefined();
     await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { message });
 
-    // The REAL core trajectories handler (active in this DB-backed runtime)
+    // The assistant trajectories handler (active in this DB-backed runtime)
     // stamped the turn inside emitEvent's awaited Promise.all, so message.ts
     // can read the authoritative trajectoryStepId the instant emitEvent
     // resolves...

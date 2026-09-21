@@ -15,19 +15,18 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { extractPlugin, type TestPluginModule } from "@elizaos/agent";
+import { ChannelType, type UUID } from "@elizaos/common";
 import {
   AgentRuntime,
-  ChannelType,
   createCharacter,
   createMessageMemory,
   logger,
   type Plugin,
   stringToUuid,
-  type UUID,
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { USER_PREFS_TABLE } from "../../../core/src/features/advanced-capabilities/personality/types.ts";
+import { USER_PREFS_TABLE } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/types.ts";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../helpers/live-provider.ts";
 import { withTimeout } from "../helpers/test-utils";
@@ -126,7 +125,6 @@ describeIf(hasModelProvider)("Personality Routing E2E", () => {
     runtime = new AgentRuntime({
       character,
       plugins,
-      advancedCapabilities: true,
       logLevel: "error",
     });
 

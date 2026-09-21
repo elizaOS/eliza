@@ -75,7 +75,9 @@ describe("Schema Evolution Test: Constraint Modifications", () => {
     if (check) {
       expect(check.warnings.length).toBeGreaterThan(0);
       console.log("  ⚠️ Warnings detected:");
-      check.warnings.forEach((w) => console.log(`    - ${w}`));
+      check.warnings.forEach((w) => {
+        console.log(`    - ${w}`);
+      });
     }
 
     console.log("\n❌ Attempting migration with NULL values...");
@@ -151,7 +153,9 @@ describe("Schema Evolution Test: Constraint Modifications", () => {
     if (check) {
       console.log("  ⚠️ Migration check results:");
       if (check.warnings.length > 0) {
-        check.warnings.forEach((w) => console.log(`    - ${w}`));
+        check.warnings.forEach((w) => {
+          console.log(`    - ${w}`);
+        });
       }
     }
 
@@ -237,7 +241,9 @@ describe("Schema Evolution Test: Constraint Modifications", () => {
     if (check2) {
       console.log("  ⚠️ Migration analysis:");
       if (check2.warnings.length > 0) {
-        check2.warnings.forEach((w) => console.log(`    - ${w}`));
+        check2.warnings.forEach((w) => {
+          console.log(`    - ${w}`);
+        });
       }
     }
 
@@ -355,7 +361,9 @@ describe("Schema Evolution Test: Constraint Modifications", () => {
     }
 
     console.log("\n✅ All constraints enforced:");
-    violations.forEach((v) => console.log(`  - ${v}`));
+    violations.forEach((v) => {
+      console.log(`  - ${v}`);
+    });
     expect(violations.length).toBeGreaterThanOrEqual(3);
   });
 });

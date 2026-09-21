@@ -6,7 +6,7 @@
  * runtime.
  */
 import { describe, expect, test } from "vitest";
-import { privacyDenialReplyForReasons } from "../message";
+import { privacyDenialReplyForReasons } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 
 const R = (reason: string) => `Action OWNER_TODOS is not allowed: ${reason}`;
 

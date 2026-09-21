@@ -2,11 +2,11 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
+import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
 import {
   createDeterministicModelFixtureRegistry,
   type DeterministicModelFixtureRegistry,
-} from "@elizaos/core/testing";
-import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import {
   beginScenarioModelFixtureAttempt,

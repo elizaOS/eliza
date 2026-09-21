@@ -34,7 +34,7 @@ import {
   type InstallMethod,
   resolveRunnableMethods,
   type SecretsManager,
-} from "@elizaos/vault";
+} from "@elizaos/credentials/vault";
 
 export type InstallableBackendId = Exclude<BackendId, "in-house">;
 

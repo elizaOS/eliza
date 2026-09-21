@@ -20,11 +20,11 @@ import {
   createIsolatedAccountStoragePolicy,
   loadAccount,
   saveAccount,
-} from "@elizaos/auth/account-storage";
+} from "@elizaos/credentials/auth/account-storage";
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
   DIRECT_ACCOUNT_PROVIDER_IDS,
-} from "@elizaos/auth/types";
+} from "@elizaos/credentials/auth/types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ElizaConfig } from "../config/types.eliza";
 import {

@@ -6,8 +6,8 @@
  * model.
  */
 import { describe, expect, it } from "vitest";
-import { AgentRuntime } from "../runtime";
 import type { Character, Memory, Provider, UUID } from "../types";
+import { createInitializedRuntime } from "./initialized-runtime";
 
 const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
 const ENTITY_ID = "22222222-2222-2222-2222-222222222222" as UUID;
@@ -41,7 +41,7 @@ function makeMessage(id: string): Memory {
 
 describe("composeState refreshProviders", () => {
 	it("reuses cached providers and re-runs only the named one", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createInitializedRuntime({
 			character: { name: "refresh-test" } as Character,
 		});
 		const a = countingProvider("AAA");
@@ -79,7 +79,7 @@ describe("composeState refreshProviders", () => {
 	});
 
 	it("uses an empty refresh list as maximum reuse", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createInitializedRuntime({
 			character: { name: "refresh-max-reuse" } as Character,
 		});
 		const a = countingProvider("AAA");
@@ -104,7 +104,7 @@ describe("composeState refreshProviders", () => {
 	});
 
 	it("without refreshProviders re-runs every requested provider (default unchanged)", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createInitializedRuntime({
 			character: { name: "refresh-default" } as Character,
 		});
 		const a = countingProvider("AAA");
@@ -126,7 +126,7 @@ describe("composeState refreshProviders", () => {
 	});
 
 	it("runs an uncached provider even when not named in refreshProviders", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createInitializedRuntime({
 			character: { name: "refresh-uncached" } as Character,
 		});
 		const a = countingProvider("AAA");

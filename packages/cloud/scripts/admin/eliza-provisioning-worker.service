@@ -18,7 +18,6 @@ Environment=PATH=/home/deploy/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:
 # Defaults bound the preflight below 7m30s; retain teardown headroom while
 # keeping crash/reboot activation independent of the manager-wide default.
 TimeoutStartSec=8min
-ExecStartPre=/opt/eliza/packages/cloud/scripts/admin/ensure-generated-keywords.sh
 # The deploy workflow checks before its intentional restart, while this guard
 # also covers systemd recovery after a crash or host reboot. A worker must never
 # load job-interruption readers against an unverified catalog or migration hash.

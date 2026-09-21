@@ -9,7 +9,7 @@
  * exit non-zero when any check fails.
  */
 import { spawnSync } from "node:child_process";
-import { theme } from "@elizaos/shared";
+import { theme } from "@elizaos/shared/terminal/theme";
 import type { Command } from "commander";
 import { runCommandWithRuntime } from "../cli-utils";
 import type { CheckCategory, CheckResult, CheckStatus } from "../doctor/checks";

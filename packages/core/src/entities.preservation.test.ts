@@ -7,7 +7,7 @@
  * stubs at runtime adapter seams; findEntityByName is the real module.
  */
 import { describe, expect, it } from "vitest";
-import { findEntityByName } from "./entities";
+import { findEntityByName } from "../../../plugins/plugin-assistant/src/entities.ts";
 import type {
 	Entity,
 	IAgentRuntime,

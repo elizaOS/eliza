@@ -8,8 +8,8 @@ import {
   EventType,
   ModelType,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../core/src/database/inMemoryAdapter.ts";
 import { isJudgeIndependent } from "./judge-independence.ts";
 import {
   compareJudgeModels,

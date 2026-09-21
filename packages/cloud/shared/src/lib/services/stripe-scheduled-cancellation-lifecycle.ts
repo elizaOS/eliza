@@ -1,7 +1,7 @@
 /** Retrieves canonical Stripe authority to reconcile a previously applied cancellation or undo command; unrelated active lifecycle remains retryable. */
 
 import { createHash, randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type Stripe from "stripe";
 import { z } from "zod";

@@ -5,7 +5,7 @@
  * the existing "… (N more chars)" preview suffix.
  */
 
-import { toWellFormedUnicode } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import { truncateMessageForDisplay } from "../components/pages/browser-wallet-consent-format";
 

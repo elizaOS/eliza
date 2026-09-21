@@ -5,15 +5,15 @@
  * No Google account, live model, or evaluator/model-handler mock is used.
  */
 import { createServer } from "node:http";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../packages/core/src/database/inMemoryAdapter";
 import { AgentRuntime } from "../../../packages/core/src/runtime";
-import { EvaluatorService } from "../../../packages/core/src/services/evaluator";
 import {
   type Evaluator,
   type Memory,
   ModelType,
 } from "../../../packages/core/src/types";
+import { EvaluatorService } from "../../plugin-assistant/src/services/evaluator.ts";
 import { handleTextSmall } from "../models/text";
 
 afterEach(() => {
@@ -116,7 +116,6 @@ it.each([
           },
         },
         adapter: new InMemoryDatabaseAdapter(),
-        disableBasicCapabilities: true,
         enableAutonomy: false,
         logLevel: "fatal",
       });

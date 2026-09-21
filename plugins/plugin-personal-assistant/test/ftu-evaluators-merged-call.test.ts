@@ -13,7 +13,7 @@ import {
   type Memory,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { EvaluatorService } from "../../../packages/core/src/services/evaluator.ts";
+import { EvaluatorService } from "../../plugin-assistant/src/services/evaluator.ts";
 import { anticipationFeedbackEvaluator } from "../src/lifeops/anticipation/evaluator.ts";
 import {
   listUnprocessedDispatches,

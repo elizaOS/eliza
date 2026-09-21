@@ -96,10 +96,6 @@ jobs:
         run: bun install --frozen-lockfile --ignore-scripts || bun install --ignore-scripts
 
       # ---- REQUIRED: codegen before core build (bun does not run prebuild) ----
-      - name: Generate core i18n keyword data
-        shell: bash
-        run: node packages/shared/scripts/generate-keywords.mjs
-
       # ---- REQUIRED: build core to dist (fixes eliza-source/@opentelemetry ESM) ----
       - name: Build @elizaos/core (Node target)
         shell: bash

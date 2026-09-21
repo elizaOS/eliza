@@ -2,4 +2,4 @@
 export {
   isAospElizaUserAgent,
   userAgentHasElizaOSMarker,
-} from "@elizaos/shared";
+} from "@elizaos/shared/platform/aosp-user-agent";

@@ -9,8 +9,8 @@ import type { Content } from "@elizaos/core";
 import {
   _resetBuildVariantForTests,
   getBuildVariant,
-  isLocalCodeExecutionAllowed,
-} from "@elizaos/core";
+} from "@elizaos/shared/platform/build-variant";
+import { isLocalCodeExecutionAllowed } from "@elizaos/shared/platform/sandbox-policy";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createTerminalUnsupportedTasksAction,

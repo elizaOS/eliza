@@ -16,7 +16,7 @@ import {
   resolveSurfaceManifest,
   type SurfaceManifestBearer,
   type ViewKind,
-} from "@elizaos/core";
+} from "@elizaos/common";
 import { hasStewardAuthedCookie } from "@elizaos/shared/steward-session-client";
 import { X } from "lucide-react";
 import "./components/chat/chat-source-registration";

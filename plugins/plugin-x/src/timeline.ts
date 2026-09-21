@@ -7,17 +7,17 @@
  */
 import {
   ChannelType,
-  composePromptFromState,
   createUniqueUuid,
   ElizaError,
   type IAgentRuntime,
   logger,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
   type State,
   type UUID,
 } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
+import { composePromptFromState } from "@elizaos/prompts/rendering";
 import {
   type ClientBase,
   NO_REQUEST_RETRY,

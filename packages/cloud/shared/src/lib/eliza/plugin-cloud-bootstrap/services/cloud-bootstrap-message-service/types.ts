@@ -6,7 +6,8 @@
  * class file.
  */
 
-import type { Content, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+import type { Content, Memory } from "@elizaos/common";
+import type { HandlerCallback, IAgentRuntime, State } from "@elizaos/core";
 import type { NativePlannerActionResult, StrategyMode } from "../../types";
 
 export type RuntimeWithEvaluators = IAgentRuntime & {
@@ -19,13 +20,7 @@ export type RuntimeWithEvaluators = IAgentRuntime & {
   ) => Promise<unknown>;
 };
 
-export interface MessageProcessingResult {
-  didRespond: boolean;
-  responseContent: Content | null;
-  responseMessages: Memory[];
-  state: State;
-  mode: StrategyMode;
-}
+export type { MessageProcessingResult } from "@elizaos/core";
 
 export interface ResponseDecision {
   shouldRespond: boolean;

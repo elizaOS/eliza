@@ -12,8 +12,6 @@ import {
 	createUniqueUuid,
 	type EventPayload,
 	EventType,
-	type FetchedDocumentUrl as FetchedKnowledgeUrl,
-	fetchDocumentFromUrl,
 	type HandlerCallback,
 	type IAgentRuntime,
 	isInAllowlist,
@@ -31,6 +29,10 @@ import {
 	truncateWellFormed,
 	type UUID,
 } from "@elizaos/core";
+import {
+	type FetchedDocumentUrl as FetchedKnowledgeUrl,
+	fetchDocumentFromUrl,
+} from "@elizaos/plugin-assistant";
 import {
 	type ActionRowBuilder,
 	type AttachmentBuilder,

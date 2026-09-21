@@ -4,7 +4,7 @@
  * compensation, strict serialized receipts, and reset isolation without
  * replacing the stores under test.
  */
-import { resolveApprovalService } from "@elizaos/agent/services/approval/index";
+
 import {
   ChannelType,
   NotificationService,
@@ -12,6 +12,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { resolveApprovalService } from "@elizaos/plugin-assistant";
 import { getScheduledTaskRunner } from "@elizaos/plugin-scheduling";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {

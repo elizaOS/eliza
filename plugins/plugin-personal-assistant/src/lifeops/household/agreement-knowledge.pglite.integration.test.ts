@@ -11,34 +11,38 @@ import fs from "node:fs";
 import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import { createLocalAgentBackup } from "@elizaos/agent/services/agent-backup";
 import { withAgentBackupAuthority } from "@elizaos/agent/services/agent-backup-authority";
 import { AuthStore } from "@elizaos/app-core/services/auth-store";
+import type { Plugin } from "@elizaos/core";
 import {
   type AgentRuntime,
   attestAuthenticatedApiDeliveryAudience,
   ChannelType,
-  DocumentService,
-  documentsPluginCore,
   ElizaError,
   type IAgentRuntime,
   type IFileStorageService,
   type Memory,
   type ModelHandler,
   ModelType,
-  type Plugin,
   Service,
   ServiceType,
   type UUID,
 } from "@elizaos/core";
+import {
+  createDocumentsPlugin,
+  DocumentService,
+  TrajectoriesService,
+} from "@elizaos/plugin-assistant";
 import type { PdfService } from "@elizaos/plugin-pdf";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import {
   getScheduledTaskRunner,
   registerScheduledTaskChannelDispatcher,
   unregisterScheduledTaskChannelDispatcher,
 } from "@elizaos/plugin-scheduling";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
 import {
   afterAll,
   afterEach,
@@ -57,8 +61,10 @@ import {
   createBrowserSession,
   createMachineSession,
 } from "../../../../../packages/app-core/src/api/auth/sessions.ts";
-import { selectV5PlannerStateProviderNames } from "../../../../../packages/core/src/services/message/provider-state.js";
-import { TrajectoriesService } from "../../../../../packages/core/src/services/trajectories.ts";
+import {
+  composeResponseState,
+  selectV5PlannerStateProviderNames,
+} from "../../../../plugin-assistant/src/services/message/provider-state.ts";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
@@ -189,6 +195,7 @@ function createAgreement(
 }
 
 function createAgreementServer(runtime: AgentRuntime) {
+  installHttpPluginLifecycle(runtime);
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const handled = await tryHandleRuntimePluginRoute({
@@ -422,7 +429,10 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     );
     vi.stubEnv("ELIZA_STATE_DIR", mediaStateDir);
     runtimeResult = await createLifeOpsTestRuntime({
-      plugins: [fileStoragePlugin, documentsPluginCore],
+      plugins: [
+        fileStoragePlugin,
+        createDocumentsPlugin({ enableActions: false }),
+      ],
     });
     runtime = runtimeResult.runtime;
     initialTextModels = [...(runtime.models.get(ModelType.TEXT_LARGE) ?? [])];
@@ -765,6 +775,10 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         kind: "owner_session",
         principalId: ownerId,
       });
+      const responseState = await composeResponseState(runtime, message);
+      expect(responseState.text).not.toContain(
+        "Share school notices within twenty-four hours.",
+      );
       return runtime.composeState(
         message,
         selectV5PlannerStateProviderNames({
@@ -774,8 +788,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
           userRoles: ["OWNER"],
         }),
         true,
-        false,
-        [],
+        true,
       );
     };
     let pin = await service.pin({
@@ -4634,7 +4647,10 @@ describe("reviewed workspace deletion — real database and disk", () => {
     vi.stubEnv("ELIZA_STATE_DIR", mediaDir);
     const result = await createLifeOpsTestRuntime({
       pgliteDir: path.join(mediaDir, "pglite"),
-      plugins: [fileStoragePlugin, documentsPluginCore],
+      plugins: [
+        fileStoragePlugin,
+        createDocumentsPlugin({ enableActions: false }),
+      ],
     });
     const runtime = result.runtime;
     const server = createAgreementServer(runtime);
@@ -4921,7 +4937,10 @@ describe("reviewed workspace deletion — real database and disk", () => {
     const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), "family-delete-"));
     vi.stubEnv("ELIZA_STATE_DIR", mediaDir);
     const result = await createLifeOpsTestRuntime({
-      plugins: [fileStoragePlugin, documentsPluginCore],
+      plugins: [
+        fileStoragePlugin,
+        createDocumentsPlugin({ enableActions: false }),
+      ],
     });
     const runtime = result.runtime;
     try {

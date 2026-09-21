@@ -1,5 +1,5 @@
 /** Runs bounded, read-only missed-event recovery on the existing cron lane; every claimed outcome is retained with primary lease and retry ownership. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   claimSubscriptionReconciliation,
   failSubscriptionReconciliation,

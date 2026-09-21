@@ -53,6 +53,31 @@ afterEach(() => {
 });
 
 describe("rendererBuildManifestPlugin", () => {
+  it("preserves the prior stamp and original error when recompilation fails", async () => {
+    const outDir = path.join(tmp, "dist");
+    const input = path.join(tmp, "main.js");
+    fs.writeFileSync(
+      path.join(tmp, "index.html"),
+      '<script type="module" src="/main.js"></script>',
+    );
+    fs.writeFileSync(input, "globalThis.revision = 1;");
+    const compile = () =>
+      build({
+        root: tmp,
+        configFile: false,
+        logLevel: "silent",
+        plugins: [rendererBuildManifestPlugin()],
+        build: { outDir, minify: false },
+      });
+    await compile();
+    const manifestPath = path.join(outDir, "eliza-renderer-build.json");
+    const previousStamp = fs.readFileSync(manifestPath, "utf8");
+    fs.writeFileSync(input, 'import "./missing-renderer-input.js";');
+
+    await expect(compile()).rejects.toThrow("missing-renderer-input.js");
+    expect(fs.readFileSync(manifestPath, "utf8")).toBe(previousStamp);
+  });
+
   it("refuses to stamp a bundle when an input changes during compilation", async () => {
     const outDir = path.join(tmp, "dist");
     fs.mkdirSync(path.join(tmp, "src"));

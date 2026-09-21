@@ -8,14 +8,14 @@
  * can be used in auth-gated components before the main client is initialised.
  */
 
-import type { RoleGateRole } from "@elizaos/core";
-import { getElizaApiToken } from "@elizaos/shared";
+import type { RoleGateRole } from "@elizaos/common";
 import {
   clearStoredStewardToken,
   hasStewardAuthedCookie,
   readStoredStewardToken,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
+import { getElizaApiToken } from "@elizaos/shared/utils/eliza-globals";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { normalizeCloudApiKeyToken } from "../cloud/lib/cloud-api-key-token";

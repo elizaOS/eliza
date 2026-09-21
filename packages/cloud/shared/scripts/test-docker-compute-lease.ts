@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { DOCKER_COMPUTE_GUARD_PROGRAM } from "../src/lib/services/docker-compute-lease";
 
 const { values } = parseArgs({ options: { image: { type: "string" } }, strict: true });

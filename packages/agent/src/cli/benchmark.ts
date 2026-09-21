@@ -106,21 +106,25 @@ export async function runBenchmarkTask(
     });
     abortSignal.throwIfAborted();
 
+    const context = task.context ? JSON.stringify(task.context) : undefined;
     const message = createMessageMemory({
       id: crypto.randomUUID() as UUID,
       entityId: userId,
       roomId,
       content: {
-        text: task.prompt,
+        text:
+          context === undefined
+            ? task.prompt
+            : `${task.prompt}\n\nTask context (JSON):\n${context}`,
         source: "benchmark",
         channelType: ChannelType.DM,
       },
     });
-    if (task.context) {
+    if (context !== undefined) {
       if (message.metadata?.type !== "message") {
         throw new Error("Benchmark message is missing message metadata");
       }
-      message.metadata.benchmarkContext = JSON.stringify(task.context);
+      message.metadata.benchmarkContext = context;
     }
 
     if (!runtime.messageService) {
@@ -154,6 +158,8 @@ export async function runBenchmarkTask(
       },
     );
 
+    const terminalFailure =
+      result.outcome.status === "failed" ? result.outcome.error : undefined;
     const resultText = result.responseContent?.text ?? "";
     const messagesText = result.responseMessages
       .map((m) => m.content?.text ?? "")
@@ -166,7 +172,7 @@ export async function runBenchmarkTask(
     const responseText =
       resultText || messagesText || streamText || callbackText || "";
     const success =
-      result.terminalFailure === undefined &&
+      result.outcome.status === "completed" &&
       result.didRespond &&
       responseText.trim().length > 0;
 
@@ -180,16 +186,16 @@ export async function runBenchmarkTask(
       ...(!success
         ? {
             error:
-              result.terminalFailure?.message ??
+              terminalFailure?.message ??
               result.reason ??
               "Agent completed without a response",
-            ...(result.terminalFailure
+            ...(terminalFailure
               ? {
-                  failure_kind: result.terminalFailure.kind,
-                  ...(result.terminalFailure.code
-                    ? { failure_code: result.terminalFailure.code }
+                  failure_kind: terminalFailure.kind,
+                  ...(terminalFailure.code
+                    ? { failure_code: terminalFailure.code }
                     : {}),
-                  transient: result.terminalFailure.transient,
+                  transient: terminalFailure.transient,
                 }
               : {}),
           }

@@ -8,14 +8,15 @@
  */
 // Registration-surface contracts live in @elizaos/shared (React-free canonical
 // home); import them from there rather than the React package.
-export {
-  type AppDetailExtensionProps,
-  type OverlayApp,
-  type OverlayAppContext,
-  registerDetailExtension,
-  registerOverlayApp,
-  resolveAppBranding,
-} from "@elizaos/shared";
+
+export { registerDetailExtension } from "@elizaos/shared/apps/detail-extension-registry";
+export type { AppDetailExtensionProps } from "@elizaos/shared/apps/detail-extension-types";
+export type {
+  OverlayApp,
+  OverlayAppContext,
+} from "@elizaos/shared/apps/overlay-app-api";
+export { registerOverlayApp } from "@elizaos/shared/apps/overlay-app-registry";
+export { resolveAppBranding } from "@elizaos/shared/config/app-config";
 export {
   type AppRunSummary,
   type AppSessionJsonValue,
@@ -51,7 +52,7 @@ export {
   type AutomationNodeContributorContext,
   registerAutomationNodeContributor,
 } from "./api/automation-node-contributors";
-export { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./platform/chat-failure-strings.generated";
+export { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./platform/chat-failure-strings";
 export {
   IOS_FULL_BUN_SMOKE_REQUEST_KEY,
   IOS_FULL_BUN_SMOKE_RESULT_KEY,

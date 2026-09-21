@@ -4,19 +4,9 @@
  * is not reachable, using the shared market-provider helpers.
  */
 
-import { logger } from "@elizaos/logger";
-import {
-  asRecord,
-  buildCoinGeckoMarketsUrl,
-  buildMarketMovers,
-  buildMarketPriceSnapshots,
-  COINGECKO_MARKET_PROVIDER,
-  formatError,
-  POLYMARKET_MARKET_PROVIDER,
-  type ProviderStatus,
-  parseCanonicalInteger,
-  parseCoinGeckoMarkets,
-} from "@elizaos/shared";
+import { formatError } from "@elizaos/common";
+import type { ProviderStatus } from "@elizaos/shared/local-inference/providers-types";
+import { logger } from "@elizaos/shared/logger";
 import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import {
   summarizeTranscript,
@@ -27,6 +17,16 @@ import {
   transcriptDurationMs,
   transcriptSpeakerCount,
 } from "@elizaos/shared/transcripts";
+import { asRecord } from "@elizaos/shared/type-guards";
+import { parseCanonicalInteger } from "@elizaos/shared/utils/number-parsing";
+import {
+  buildCoinGeckoMarketsUrl,
+  buildMarketMovers,
+  buildMarketPriceSnapshots,
+  COINGECKO_MARKET_PROVIDER,
+  POLYMARKET_MARKET_PROVIDER,
+  parseCoinGeckoMarkets,
+} from "@elizaos/shared/wallet/market-overview";
 import { getBootConfig } from "../config/boot-config-store";
 import {
   findCatalogModel,

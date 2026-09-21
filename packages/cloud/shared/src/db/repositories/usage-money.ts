@@ -1,6 +1,6 @@
 /** Preserves exact persisted MCP usage money at the repository boundary. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 const NON_NEGATIVE_DECIMAL = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
 

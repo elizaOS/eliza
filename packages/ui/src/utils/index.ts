@@ -2,8 +2,14 @@
  * Barrel for the UI utils surface: numeric parsers, formatters, and the
  * re-exported shared helpers.
  */
+
+export { stripAssistantStageDirections } from "@elizaos/shared/utils/assistant-text";
 export {
-  isSafeExecutableValue,
+  resolveElizaPackageRoot,
+  resolveElizaPackageRootSync,
+} from "@elizaos/shared/utils/eliza-root";
+export { isSafeExecutableValue } from "@elizaos/shared/utils/exec-safety";
+export {
   type ParseClampedIntegerOptions,
   type ParseClampedNumberOptions,
   type ParsePositiveNumberOptions,
@@ -11,10 +17,7 @@ export {
   parseClampedInteger,
   parsePositiveFloat,
   parsePositiveInteger,
-  resolveElizaPackageRoot,
-  resolveElizaPackageRootSync,
-  stripAssistantStageDirections,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/number-parsing";
 export * from "../lib/floating-layers";
 export { cn } from "../lib/utils";
 export * from "./asset-url";

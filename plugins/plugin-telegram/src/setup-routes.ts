@@ -21,11 +21,13 @@ import {
   ElizaError,
   type IAgentRuntime,
   logger,
-  type Route,
-  type RouteRequest,
-  type RouteResponse,
   type SetupState,
 } from "@elizaos/core";
+import type {
+  Route,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/shared/api/http-plugin";
 
 import { DEFAULT_ACCOUNT_ID } from "./accounts";
 import { resolveTelegramBotCredential } from "./bot-credential";

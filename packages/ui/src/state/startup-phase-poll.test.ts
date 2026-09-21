@@ -95,8 +95,9 @@ vi.mock("../bridge", async (importOriginal) => {
   };
 });
 
-vi.mock("@elizaos/shared", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@elizaos/shared")>();
+vi.mock("@elizaos/shared/character-presets", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@elizaos/shared/character-presets")>();
   return {
     ...actual,
     getStylePresets: () => [],

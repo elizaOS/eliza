@@ -6,7 +6,7 @@
  * re-instantiate them (which would lead to duplicate connections / inconsistent state).
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { and, eq, gte, sql } from "drizzle-orm";
 import type { Context, Next } from "hono";
 import {

@@ -97,7 +97,7 @@ scripts (schema and gates in [`VOICE_LIVE_MATRIX.md`](./VOICE_LIVE_MATRIX.md)):
   `eliza_voice_stage_b_stt_eval_v1` report covering `ios-sfspeechrecognizer`,
   `android-speechrecognizer`, and `fused-asr` with real hardware, latency, WER,
   and power telemetry:
-  `ELIZA_VOICE_STAGE_B_REPORT=<report.json> bun run voice:matrix -- --run --platform stt.stage-b.evaluation`.
+  `ELIZA_VOICE_STAGE_B_REPORT=<report.json> node packages/app-core/scripts/voice/voice-matrix.mjs --run --platform stt.stage-b.evaluation`.
 
 ## How to benchmark additional model candidates
 

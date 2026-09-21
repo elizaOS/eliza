@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Integration coverage for service-start truth on GET /api/health (#16309):
  * boots a real AgentRuntime (no database, no mocks around the runtime), and
@@ -76,7 +77,7 @@ class ExplodingService extends Service {
 
 async function bootRuntime(): Promise<AgentRuntime> {
   const runtime = new RealAgentRuntime({ logLevel: "fatal" });
-  await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+  await initializeTestRuntime(runtime, { skipMigrations: true });
   return runtime;
 }
 

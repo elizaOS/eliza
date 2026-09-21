@@ -9,7 +9,7 @@
 // opens the auth URL in a popup and never prints the URL in chat. jsdom render
 // with the typed ElizaClient mocked (no backend).
 
-import type { PermissionState } from "@elizaos/shared";
+import type { PermissionState } from "@elizaos/shared/contracts/permissions";
 import {
   act,
   cleanup,

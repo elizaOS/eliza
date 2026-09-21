@@ -110,19 +110,21 @@ it.each(["node", "bun"])(
           await fs.writeFile(path.join(directory, "plugin.js"), fixture.source);
       }
       const runner = path.join(root, "run.mjs");
+      const resultPath = path.join(root, "result.json");
       await fs.writeFile(
         runner,
         `
+      import { writeFileSync } from "node:fs";
       import { importAppPlugin } from ${JSON.stringify(new URL("./app-package-modules.ts", import.meta.url).href)};
       const result = {};
       for (const name of ${JSON.stringify(cases.map((fixture) => fixture.name))}) {
         try { result[name] = (await importAppPlugin(${JSON.stringify(scope)} + "/" + name))?.name ?? null; }
         catch (error) { result[name] = error.code; }
       }
-      console.log(JSON.stringify(result));
+      writeFileSync(${JSON.stringify(resultPath)}, JSON.stringify(result));
     `,
       );
-      const output = execFileSync(
+      execFileSync(
         executable,
         [
           ...(executable === "bun"
@@ -141,9 +143,7 @@ it.each(["node", "bun"])(
           },
         },
       );
-      expect(
-        JSON.parse(output.trim().slice(output.trim().lastIndexOf("\n") + 1)),
-      ).toEqual(
+      expect(JSON.parse(await fs.readFile(resultPath, "utf8"))).toEqual(
         Object.fromEntries(
           cases.map((fixture) => [fixture.name, fixture.expected]),
         ),

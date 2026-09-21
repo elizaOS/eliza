@@ -3,6 +3,11 @@
  * parameters without extractor calls, RESOLVE_REQUEST and CALENDAR consume planner fields
  * directly, and CALENDAR is a flat action-valued umbrella. Deterministic, mocked extractor.
  */
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: mocks.hasOwnerAccess,
+}));
+
 import {
   type HandlerOptions,
   type IAgentRuntime,
@@ -38,7 +43,6 @@ const mocks = vi.hoisted(() => ({
 // for the subclass — same pattern as first-run-provider.test.ts.
 vi.mock("@elizaos/agent", async () => ({
   ...(await import("./stubs/agent.ts")),
-  hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
 vi.mock("../src/lifeops/approval-queue.js", () => ({

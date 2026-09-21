@@ -39,7 +39,7 @@ jobs:
 
       - name: Validate release workflow and regression inventory
         run: |
-          bun run test:regression-matrix:release-contract
+          node packages/app-core/scripts/validate-regression-matrix.mjs --workflow release-contract
           bun run test:release:contract
 
   flatpak-e2e:

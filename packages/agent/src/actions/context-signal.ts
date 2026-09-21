@@ -14,8 +14,10 @@
 
 import {
   type AgentContext,
+  recentConversationTexts as collectRecentConversationTexts,
   getActiveRoutingContextsForTurn,
   type Memory,
+  recentConversationTextsFromState,
   type State,
 } from "@elizaos/core";
 import {
@@ -30,10 +32,6 @@ import {
   type ContextSignalKey,
   resolveContextSignalSpec,
 } from "./context-signal-lexicon.ts";
-import {
-  recentConversationTexts as collectRecentConversationTexts,
-  recentConversationTextsFromState,
-} from "./recent-conversation-texts.ts";
 
 export { collectKeywordTermMatches, textIncludesKeywordTerm };
 

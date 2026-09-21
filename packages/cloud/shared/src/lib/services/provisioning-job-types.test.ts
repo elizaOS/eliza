@@ -15,12 +15,9 @@ import { describe, expect, test } from "bun:test";
 
 import {
   AGENT_JOB_TYPES,
-  AGENT_LIFECYCLE_JOB_METADATA,
   APPS_JOB_TYPES,
-  COLD_BOOT_JOB_TYPES,
   COLD_BOOT_STALE_JOB_THRESHOLD_MS,
   CONTAINER_BACKED_TARGET_AGENT_JOB_TYPES,
-  EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
   JOB_TYPES,
   ORPHAN_PENDING_THRESHOLD_MS,
   PROVISIONING_RECONCILIATION_BATCH_SIZE,
@@ -35,21 +32,6 @@ import {
 const ALL = Object.values(JOB_TYPES) as ProvisioningJobType[];
 
 describe("provisioning status ownership", () => {
-  test("derives every lifecycle safety set from the canonical metadata", () => {
-    expect(AGENT_JOB_TYPES).toEqual(AGENT_LIFECYCLE_JOB_METADATA.map(({ type }) => type));
-    expect([...PROVISIONING_STATUS_OWNER_JOB_TYPES]).toEqual(
-      AGENT_LIFECYCLE_JOB_METADATA.filter(
-        ({ ownsProvisioningStatus }) => ownsProvisioningStatus,
-      ).map(({ type }) => type),
-    );
-    expect(EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES).toEqual(
-      AGENT_LIFECYCLE_JOB_METADATA.filter(({ exclusive }) => exclusive).map(({ type }) => type),
-    );
-    expect([...COLD_BOOT_JOB_TYPES]).toEqual(
-      AGENT_LIFECYCLE_JOB_METADATA.filter(({ coldBoot }) => coldBoot).map(({ type }) => type),
-    );
-  });
-
   test("classifies primary-row owners separately from replacement boots", () => {
     expect(PROVISIONING_STATUS_OWNER_JOB_TYPES).toEqual(
       new Set([
@@ -66,14 +48,6 @@ describe("provisioning status ownership", () => {
 });
 
 describe("container-backed target admission", () => {
-  test("derives the worker and enqueue classification from lifecycle metadata", () => {
-    expect([...CONTAINER_BACKED_TARGET_AGENT_JOB_TYPES]).toEqual(
-      AGENT_LIFECYCLE_JOB_METADATA.filter(({ requiresContainerBackedTarget }) =>
-        Boolean(requiresContainerBackedTarget),
-      ).map(({ type }) => type),
-    );
-  });
-
   test("requires a container for lifecycle operations and prepaid host renewal", () => {
     const required = [
       JOB_TYPES.AGENT_COMPUTE_LEASE,

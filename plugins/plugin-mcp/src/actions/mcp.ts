@@ -10,7 +10,6 @@
 import {
   type Action,
   type ActionResult,
-  composePromptFromState,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -18,6 +17,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
+import { composePromptFromState } from "@elizaos/prompts/rendering";
 import type { McpService } from "../service";
 import { resourceSelectionTemplate } from "../templates/resourceSelectionTemplate";
 import { MCP_SERVICE_NAME, type McpServer, type McpServerInfo } from "../types";

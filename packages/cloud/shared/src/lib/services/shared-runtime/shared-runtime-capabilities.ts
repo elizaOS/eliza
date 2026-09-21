@@ -3,18 +3,18 @@
  * handoff action without provisioning compute or accepting billing consent.
  */
 
+import type { Memory } from "@elizaos/common";
+import { ElizaError } from "@elizaos/common";
 import type {
   Action,
   ActionResult,
   HandlerCallback,
   IAgentRuntime,
-  Memory,
   Plugin,
   Provider,
   ProviderResult,
   State,
-} from "@elizaos/core/edge";
-import { ElizaError } from "@elizaos/core/edge";
+} from "@elizaos/core";
 import {
   type AgentCapabilityDescriptor,
   type AgentCapabilityId,

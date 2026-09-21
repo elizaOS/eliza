@@ -1,14 +1,17 @@
 /** Runs the hosted agent-server manager boundary for cloud runtime containers. */
+
+import {
+  ChannelType,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/common";
 import {
   AgentRuntime,
-  ChannelType,
   createMessageMemory,
   type IAgentRuntime,
   mergeCharacterDefaults,
   type Plugin,
   stringToUuid,
-  toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import sqlPlugin from "@elizaos/plugin-sql";
 import workflowPlugin from "@elizaos/plugin-workflow";

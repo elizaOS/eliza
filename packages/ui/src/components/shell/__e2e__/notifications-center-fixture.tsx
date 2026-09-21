@@ -6,7 +6,7 @@
  * onboarding "Take the tour" row the capture asserts appears after the pull
  * gesture expands the shade).
  */
-import type { AgentNotification } from "@elizaos/core";
+import type { AgentNotification } from "@elizaos/common";
 import { createRoot } from "react-dom/client";
 import {
   __ingestNotificationForTests,

@@ -6,8 +6,8 @@
  * `runtime.useModel(...)`. Closes W1-R2.
  */
 
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import {
 	type Action,
@@ -212,7 +212,9 @@ describe("action model routing — runtime integration", () => {
 		runtime3.composeState = async () => ({ values: {}, data: {}, text: "" });
 
 		const ollamaFails = vi.fn(async () => {
-			throw new Error("ollama: connection refused");
+			throw Object.assign(new Error("ollama: connection refused"), {
+				code: "ECONNREFUSED",
+			});
 		});
 		const openaiOk = vi.fn(async () => "openai-after-fallback");
 		const anthropicOk = vi.fn(async () => "anthropic-unused");

@@ -45,14 +45,7 @@ import {
   handleTranscription,
 } from "./models";
 import type { ImageGenerationResult, TextStreamResult } from "./types";
-import {
-  getApiKey,
-  getAuthHeader,
-  getBaseURL,
-  getSetting,
-  isBrowser,
-  isCerebrasMode,
-} from "./utils/config";
+import { getApiKey, getAuthHeader, getBaseURL, getSetting, isCerebrasMode } from "./utils/config";
 
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined") {
@@ -146,7 +139,7 @@ export function registerMediaModels(runtime: IAgentRuntime): void {
 }
 
 function warnWhenApiKeyIsMissing(runtime: IAgentRuntime): void {
-  if (isBrowser() || getApiKey(runtime)) return;
+  if (getApiKey(runtime)) return;
   logger.warn(
     "[OpenAI] No API key is configured for the selected OpenAI-compatible endpoint; model calls will fail until credentials are provided"
   );
@@ -235,6 +228,13 @@ export const openaiPlugin: Plugin = {
   async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
     warnWhenApiKeyIsMissing(runtime);
     registerMediaModels(runtime);
+  },
+
+  modelMetadata: {
+    [ModelType.TEXT_EMBEDDING]: {
+      displayModelSetting: "OPENAI_EMBEDDING_MODEL",
+      displayModelDefault: "text-embedding-3-small",
+    },
   },
 
   models: {

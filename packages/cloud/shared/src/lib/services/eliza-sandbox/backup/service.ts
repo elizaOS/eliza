@@ -1,6 +1,6 @@
 /** Captures, persists, and transfers complete sandbox backup state under the caller’s existing lifecycle transaction. Transport and lifecycle locks remain explicit host boundaries; no replacement provider or database connection is created. */
 
-import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
 import {
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   SnapshotPayloadTooLargeError,

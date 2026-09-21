@@ -5,10 +5,10 @@
  * invoking a real TTS provider.
  */
 import { describe, expect, it, vi } from "vitest";
+import { deliverFirstSentenceVoice } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 import { wrapExternalContent } from "../../security/external-content";
 import type { HandlerCallback, IAgentRuntime } from "../../types";
 import { ContentType } from "../../types/primitives";
-import { deliverFirstSentenceVoice } from "../message";
 
 // The sentence a model echoing the envelope streams first — exactly what
 // extractFirstSentence hands this path in the leak scenario.

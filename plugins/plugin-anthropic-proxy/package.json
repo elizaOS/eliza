@@ -54,7 +54,9 @@
     }
   },
   "sideEffects": false,
-  "dependencies": {},
+  "dependencies": {
+    "@elizaos/shared": "workspace:*"
+  },
   "devDependencies": {
     "@elizaos/core": "workspace:*",
     "@types/node": "^25.0.3",

@@ -4,8 +4,9 @@
  * PKCE-secret handling, and owner-binding policy — driven against a stub runtime
  * and the real `InMemoryDatabaseAdapter` (no live connector, no network).
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { ElizaError } from "../errors";
 import type { TargetInfo } from "../types";
 import type {

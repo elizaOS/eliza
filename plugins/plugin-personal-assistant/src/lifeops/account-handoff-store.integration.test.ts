@@ -5,7 +5,7 @@
 import {
   ApprovalDispatchControlStore,
   createApprovalQueue,
-} from "@elizaos/agent";
+} from "@elizaos/plugin-assistant";
 import { CalendarService } from "@elizaos/plugin-calendar";
 import { LinkedCalendarRepository } from "@elizaos/plugin-calendar/service/linked-calendar-sync";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

@@ -541,7 +541,3 @@ runs:
       run: |
         node packages/scripts/ensure-workspace-symlinks.mjs || echo "::warning::ensure-workspace-symlinks failed"
         node packages/scripts/ensure-native-plugins-linked.mjs || echo "::warning::ensure-native-plugins-linked failed"
-
-    - name: Ensure generated shared i18n data
-      shell: bash
-      run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs

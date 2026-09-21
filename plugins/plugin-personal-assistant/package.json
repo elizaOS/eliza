@@ -61,7 +61,7 @@
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "bun run clean && tsup --config tsup.config.ts",
-    "build:views": "bunx --bun vite build --config vite.config.views.ts",
+    "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.build.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -103,7 +103,10 @@
     "lucide-react": "^1.0.0",
     "react-plaid-link": "^5.0.0",
     "sharp": "^0.35.3",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/plugin-relationships": "workspace:*",
+    "@elizaos/common": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.1",
@@ -122,7 +125,8 @@
     "tsup": "^8.5.1",
     "react-dom": "*",
     "vite": "^8.3.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@elizaos/testing": "workspace:*"
   },
   "peerDependencies": {
     "react": "*",

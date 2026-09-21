@@ -1,5 +1,5 @@
 /** Delivery transport selected for a provider-managed phone OTP challenge. */
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 export type ManagedOtpDeliveryChannel = "sms" | "whatsapp";
 
 /**

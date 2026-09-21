@@ -11,26 +11,22 @@
     "resolveJsonModule": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "lib": ["ES2023", "DOM"],
+    "lib": ["ES2024", "DOM"],
     "types": ["node"],
     "paths": {
-      "@elizaos/core": ["../core/src/index.node.ts"],
-      "@elizaos/core/edge": ["../core/src/index.edge.ts"],
-      "@elizaos/core/node": ["../core/src/index.node.ts"],
-      "@elizaos/core/testing": ["../core/src/testing/index.ts"],
+      "@elizaos/core": ["../core/src/index.ts"],
+      "@elizaos/testing": ["../testing/src/index.ts"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/agent/*": ["../agent/src/*"],
-      "@elizaos/auth": ["../auth/src/index.ts"],
-      "@elizaos/auth/*": ["../auth/src/*"],
+      "@elizaos/credentials/auth": ["../credentials/src/auth/index.ts"],
+      "@elizaos/credentials/auth/*": ["../credentials/src/auth/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/local-inference": [
         "../shared/src/local-inference/index.ts"
       ],
       "@elizaos/shared/*": ["../shared/src/*"],
-      "@elizaos/logger": ["../logger/src/index.ts"],
-      "@elizaos/logger/*": ["../logger/src/*"],
-      "@elizaos/vault": ["../vault/src/index.ts"],
-      "@elizaos/vault/*": ["../vault/src/*"],
+      "@elizaos/credentials/vault": ["../credentials/src/vault/index.ts"],
+      "@elizaos/credentials/vault/*": ["../credentials/src/vault/*"],
       "@elizaos/cloud-routing": ["../cloud/routing/src/index.ts"],
       "@elizaos/cloud-routing/*": ["../cloud/routing/src/*"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
@@ -125,7 +121,8 @@
       ],
       "@elizaos/capacitor-system": [
         "../../plugins/plugin-native-system/src/index.ts"
-      ]
+      ],
+      "@elizaos/testing/*": ["../testing/src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts"]

@@ -19,10 +19,10 @@ import {
   logger,
   type Memory,
   type Plugin,
-  roleAction,
   setEntityRoleCas,
   type UUID,
 } from "@elizaos/core";
+import { roleAction } from "@elizaos/plugin-assistant";
 import { rolesProvider } from "./provider.ts";
 import type { RolesConfig, RolesWorldMetadata } from "./types.ts";
 import {

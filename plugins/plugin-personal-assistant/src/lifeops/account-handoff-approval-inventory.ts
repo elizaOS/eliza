@@ -3,8 +3,9 @@
  * Legacy unbound owner approvals require explicit retirement because their default
  * account may change. Explicit other-account and non-Google work is preserved.
  */
-import type { ApprovalRequest } from "@elizaos/agent";
+
 import { ElizaError } from "@elizaos/core";
+import type { ApprovalRequest } from "@elizaos/plugin-assistant";
 
 export type AccountHandoffRetirementCandidate = Pick<
   ApprovalRequest,

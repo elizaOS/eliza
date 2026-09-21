@@ -1,7 +1,7 @@
 /** Exercises lossless trajectory JSON normalization for large prompt evidence. */
 
 import { describe, expect, it } from "vitest";
-import { sanitizeTrajectoryJsonObject } from "./trajectory-json";
+import { sanitizeTrajectoryJsonObject } from "./trajectory-json.ts";
 
 describe("trajectory JSON normalization", () => {
 	it("preserves strings and collections beyond the former capture limits", () => {

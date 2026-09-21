@@ -1,6 +1,6 @@
 /** Storybook stories for CustomActionEditor across handler types and create/edit modes, under the shared MockAppProvider. */
 
-import type { CustomActionDef } from "@elizaos/shared";
+import type { CustomActionDef } from "@elizaos/shared/contracts/config";
 import type { Meta, StoryObj } from "@storybook/react";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import { CustomActionEditor } from "./CustomActionEditor";

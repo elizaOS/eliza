@@ -5,8 +5,8 @@ import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ElizaError } from "@elizaos/core";
-import { MemoryKmsAdapter } from "@elizaos/core/security/kms";
+import { ElizaError } from "@elizaos/common";
+import { MemoryKmsAdapter } from "@elizaos/credentials/kms";
 import {
   AGENT_BACKUP_MANIFEST_FORMAT,
   AGENT_BACKUP_OPERATION_CONTENT_HMAC_DERIVATION,

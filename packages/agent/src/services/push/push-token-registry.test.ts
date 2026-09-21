@@ -25,7 +25,7 @@
  * runtime cache — no real storage.
  */
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/core/testing";
+import { createMockRuntime } from "@elizaos/testing";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   MAX_PERSISTED_PUSH_TOKENS,

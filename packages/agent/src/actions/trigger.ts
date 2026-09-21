@@ -21,13 +21,11 @@ import {
   type Action,
   type ActionExample,
   type ActionResult,
-  AUTONOMY_SERVICE_TYPE,
   type EffectReceipt,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
   type Memory,
-  resolveMessageTimeZone,
   type State,
   stringToUuid,
   type Task,
@@ -40,6 +38,10 @@ import {
   unwrapUserMessageText,
   validateUuid,
 } from "@elizaos/core";
+import {
+  AUTONOMY_SERVICE_TYPE,
+  resolveMessageTimeZone,
+} from "@elizaos/plugin-assistant";
 import { textStatesExplicitRecurrence } from "@elizaos/shared";
 import {
   describeCronSchedule,

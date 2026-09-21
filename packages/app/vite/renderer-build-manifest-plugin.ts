@@ -44,11 +44,13 @@ export function rendererBuildManifestPlugin(): Plugin {
   let playwrightTestAuth = false;
   let iosApnsEnabled: boolean | null = null;
   let startedAt = 0;
+  let outputWritten = false;
   return {
     name: "renderer-build-manifest",
     apply: "build",
     buildStart() {
       startedAt = Date.now();
+      outputWritten = false;
     },
     configResolved(config) {
       root = config.root;
@@ -61,7 +63,13 @@ export function rendererBuildManifestPlugin(): Plugin {
           ? config.env.VITE_ELIZA_APNS_ENABLED === "1"
           : null;
     },
+    writeBundle() {
+      outputWritten = true;
+    },
     closeBundle() {
+      // Failed compilation still closes the bundle; its existing output is not
+      // evidence of this build and the original error must remain visible.
+      if (!outputWritten) return;
       // Model-tester and other secondary single-file builds emit no index.html;
       // only stamp a real app bundle.
       try {

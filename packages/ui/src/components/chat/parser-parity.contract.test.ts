@@ -19,7 +19,7 @@
  * flips to agreement and this file documents that the contract is now exact.
  */
 
-import { findInteractionRegions } from "@elizaos/core";
+import { findInteractionRegions } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import { findChoiceRegions } from "./message-choice-parser";
 import { findFollowupsRegions } from "./message-followups-parser";

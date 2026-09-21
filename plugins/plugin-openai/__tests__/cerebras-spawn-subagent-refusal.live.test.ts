@@ -34,7 +34,7 @@
  * `ELIZA_RUN_LIVE_TESTS=1` — to keep CI quiet.
  */
 
-import { parseMessageHandlerOutput } from "@elizaos/core";
+import { parseMessageHandlerOutput } from "@elizaos/plugin-assistant";
 import { describe, expect, it } from "vitest";
 
 const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim();

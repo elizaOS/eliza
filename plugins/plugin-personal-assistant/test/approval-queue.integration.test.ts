@@ -14,17 +14,17 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  ApprovalDispatchControlStore,
-  KnowledgeGraphService,
-  knowledgeGraphSchema,
-} from "@elizaos/agent";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import {
   AgentEventService,
   getConnectorAccountManager,
   parseInteractionBlocks,
 } from "@elizaos/core";
+import { ApprovalDispatchControlStore } from "@elizaos/plugin-assistant";
+import {
+  KnowledgeGraphService,
+  knowledgeGraphSchema,
+} from "@elizaos/plugin-relationships/knowledge-graph";
 import {
   type DispatchResult,
   schedulingPlugin,

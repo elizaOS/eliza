@@ -7,6 +7,7 @@
  * coding sub-agent is exempted from those rewrites so its explicit commands run
  * verbatim. Gated to coding contexts with OWNER role.
  */
+
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
@@ -43,6 +44,7 @@ import {
   type ShellOutputArtifactStream,
 } from "../lib/shell-output-artifact.js";
 import { resolveHostShell } from "../lib/terminal-capabilities.js";
+import { shellVerificationReceipt } from "../lib/verification";
 import {
   beginLocalWorkspaceDeltaObservation,
   finishLocalWorkspaceDeltaObservation,
@@ -2190,33 +2192,45 @@ export const shellAction: Action = {
         },
       );
     }
-    if (result.exitCode !== 0) {
-      return failureToActionResult(
-        {
-          reason: "command_failed",
-          message: `command exited with code ${result.exitCode}`,
-        },
-        {
-          command: redactedCommand,
-          exit_code: result.exitCode,
-          cwd: redactedCwd,
-          output: text,
-          signal,
-          output_truncated: false,
-          ...workspaceDeltaData,
-        },
-      );
-    }
-    const actionResult = successActionResult(text, {
+    const verification = shellVerificationReceipt({
       command: redactedCommand,
-      exit_code: result.exitCode,
-      cwd: redactedCwd,
-      execution_route: result.sandbox === "host" ? "host" : "sandbox",
-      sandbox_backend: result.sandbox,
+      exitCode: result.exitCode,
+      output: text,
       signal,
-      output_truncated: false,
-      ...workspaceDeltaData,
     });
+    if (result.exitCode !== 0) {
+      return {
+        verification,
+        ...failureToActionResult(
+          {
+            reason: "command_failed",
+            message: `command exited with code ${result.exitCode}`,
+          },
+          {
+            command: redactedCommand,
+            exit_code: result.exitCode,
+            cwd: redactedCwd,
+            output: text,
+            signal,
+            output_truncated: false,
+            ...workspaceDeltaData,
+          },
+        ),
+      };
+    }
+    const actionResult = {
+      verification,
+      ...successActionResult(text, {
+        command: redactedCommand,
+        exit_code: result.exitCode,
+        cwd: redactedCwd,
+        execution_route: result.sandbox === "host" ? "host" : "sandbox",
+        sandbox_backend: result.sandbox,
+        signal,
+        output_truncated: false,
+        ...workspaceDeltaData,
+      }),
+    };
     // The crypto / disk / memory / status projections are CHAT conveniences
     // keyed on the *message text*, and the coding sub-agent's message text is
     // its task brief plus the "you make real changes on disk" preamble — which

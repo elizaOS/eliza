@@ -1,5 +1,6 @@
 import type { IAgentRuntime, TranscriptionParams } from "@elizaos/core";
-import { fetchWithSsrfGuard, logger, readResponseWithLimit } from "@elizaos/core";
+import { fetchWithSsrfGuard, logger } from '@elizaos/core';
+import { readResponseWithLimit } from '@elizaos/shared/media';
 import type { OpenAITranscriptionParams } from "../types";
 import { isCloudSttAvailable, resolveCloudTimeoutMs } from "../utils/config";
 import { detectAudioMimeType } from "../utils/helpers";

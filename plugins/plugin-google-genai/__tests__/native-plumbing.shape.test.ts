@@ -349,11 +349,6 @@ describe("Google GenAI text native plumbing", () => {
         id: "weather-call-1",
         name: "lookup_weather",
         arguments: { city: "Paris", unit: "celsius" },
-        toolName: "lookup_weather",
-        toolCallId: "weather-call-1",
-        type: "function",
-        args: { city: "Paris", unit: "celsius" },
-        input: { city: "Paris", unit: "celsius" },
       },
     ];
 
@@ -373,6 +368,8 @@ describe("Google GenAI text native plumbing", () => {
         responseId: "response-1",
       },
     });
+
+    expect(result.toolCalls).toEqual(expectedToolCalls);
 
     const details = mocks.recordLlmCall.mock.calls.at(-1)?.[1];
     expect(details).toMatchObject({
@@ -443,7 +440,7 @@ describe("Google GenAI text native plumbing", () => {
       } as never,
     )) as unknown as {
       text: string;
-      toolCalls: Array<{ id: string; name: string; input: unknown }>;
+      toolCalls: Array<{ id: string; name: string; arguments: unknown }>;
       finishReason: string;
     };
 
@@ -453,12 +450,12 @@ describe("Google GenAI text native plumbing", () => {
       {
         id: "google-genai-tool-call-1",
         name: "lookup_weather",
-        input: { city: "Paris" },
+        arguments: { city: "Paris" },
       },
       {
         id: "timezone-call-1",
         name: "lookup_timezone",
-        input: { city: "Paris" },
+        arguments: { city: "Paris" },
       },
     ]);
   });

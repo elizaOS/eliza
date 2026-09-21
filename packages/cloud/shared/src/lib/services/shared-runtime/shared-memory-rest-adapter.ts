@@ -5,7 +5,7 @@
  * existing Memories-view DTOs without leaking database row shape.
  */
 
-import { validateUuid } from "@elizaos/core/edge";
+import { validateUuid } from "@elizaos/core";
 import {
   type SharedAgentMemoriesReader,
   type SharedAgentMemoryScope,

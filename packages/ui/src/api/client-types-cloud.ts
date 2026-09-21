@@ -43,7 +43,7 @@ import type {
   AppViewerAuthMessage,
   AppViewerConfig,
   RegistryAppInfo,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/apps";
 import type { TrajectoryExportFormat } from "./client-types-core";
 
 export type {

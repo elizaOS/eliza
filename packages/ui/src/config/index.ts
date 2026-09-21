@@ -11,8 +11,8 @@ export type {
   AppDesktopConfig,
   AppPackagingConfig,
   AppWebConfig,
-} from "@elizaos/shared";
-export { resolveAppBranding } from "@elizaos/shared";
+} from "@elizaos/shared/config/app-config";
+export { resolveAppBranding } from "@elizaos/shared/config/app-config";
 export * from "./allowed-hosts";
 export * from "./boot-config";
 // boot-config-react.hooks eagerly imports React; not barrel-exported so node-side

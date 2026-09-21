@@ -8,6 +8,7 @@ import type { HandlerCallback } from "./components";
 import type { Entity, Room, World } from "./environment";
 import type { MembershipMutationReceipt, MembershipScope } from "./membership";
 import type { Memory } from "./memory";
+import type { TurnOutcome } from "./message-service";
 import type { ControlMessage } from "./messaging";
 import type {
 	LocalInferencePriority,
@@ -252,22 +253,10 @@ export interface InvokePayload extends EventPayload {
 /**
  * Run event payload type
  */
-export type RunEventStatus =
-	| "started"
-	| "completed"
-	| "timeout"
-	| "error"
-	| "self"
-	| "off"
-	| "muted"
-	| "personality_gate"
-	| "bot_group_address_gate"
-	| "bot_noise_triage"
-	| "bot_loop_gate"
-	| "replaced"
-	| "noMessageId";
+export type RunEventStatus = "started" | "timeout" | TurnOutcome["status"];
 
 export interface RunEventPayload extends EventPayload {
+	outcome?: TurnOutcome;
 	runId: UUID;
 	messageId: UUID;
 	roomId: UUID;

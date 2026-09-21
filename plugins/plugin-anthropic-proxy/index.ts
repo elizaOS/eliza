@@ -12,7 +12,8 @@
  *   off:              load the plugin but don't start anything
  */
 
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { proxyStatusAction } from "./src/actions/proxy-status.action.js";
 import { anthropicProxyRoutes } from "./src/routes/status-route.js";
 import { AnthropicProxyService, resolveConfig } from "./src/services/proxy-service.js";

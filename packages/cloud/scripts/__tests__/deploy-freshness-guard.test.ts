@@ -235,18 +235,33 @@ describe("isAncestor — shallow checkout hydration", () => {
     execFileSync("git", ["config", "user.name", "Deploy Guard Test"], {
       cwd: origin,
     });
-    const commits: string[] = [];
+    const records: string[] = [];
     for (let i = 0; i < commitCount; i += 1) {
-      execFileSync("git", ["commit", "--allow-empty", "-m", `commit ${i}`], {
-        cwd: origin,
-        stdio: "ignore",
-      });
-      commits.push(
-        execFileSync("git", ["rev-parse", "HEAD"], { cwd: origin })
-          .toString()
-          .trim(),
+      const message = `commit ${i}`;
+      records.push(
+        "commit refs/heads/main",
+        `mark :${i + 1}`,
+        `committer Deploy Guard Test <test@example.com> ${i + 1} +0000`,
+        `data ${Buffer.byteLength(message)}`,
+        message,
+        ...(i > 0 ? [`from :${i}`] : []),
+        "",
       );
     }
+    execFileSync("git", ["fast-import", "--quiet"], {
+      cwd: origin,
+      input: `${records.join("\n")}\n`,
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+    execFileSync("git", ["symbolic-ref", "HEAD", "refs/heads/main"], {
+      cwd: origin,
+    });
+    const commits = execFileSync("git", ["rev-list", "--reverse", "HEAD"], {
+      cwd: origin,
+    })
+      .toString()
+      .trim()
+      .split("\n");
     return { origin, commits };
   }
 

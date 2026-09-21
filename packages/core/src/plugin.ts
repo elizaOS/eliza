@@ -18,7 +18,6 @@
 import { logger } from "./logger";
 
 import type { Plugin } from "./types";
-import { detectEnvironment } from "./utils/environment";
 
 /**
  * Resolves a plugin package name to a loaded {@link Plugin} object.
@@ -353,28 +352,5 @@ export async function resolvePlugins(
 	isTestMode: boolean = false,
 	resolver?: PluginResolver,
 ): Promise<Plugin[]> {
-	const env = detectEnvironment();
-
-	if (env === "node") {
-		return resolvePluginsImpl(plugins, isTestMode, resolver);
-	}
-
-	const pluginObjects = plugins.filter(
-		(p): p is Plugin => typeof p !== "string",
-	);
-
-	if (plugins.some((p) => typeof p === "string")) {
-		const skippedPlugins = plugins.filter((p) => typeof p === "string");
-		logger.warn(
-			{ src: "core:plugin", skippedPlugins },
-			"Browser environment: String plugin references not supported",
-		);
-	}
-
-	const pluginMap = new Map<string, Plugin>();
-	for (const plugin of pluginObjects) {
-		pluginMap.set(plugin.name, plugin);
-	}
-
-	return resolvePluginDependencies(pluginMap, isTestMode);
+	return resolvePluginsImpl(plugins, isTestMode, resolver);
 }

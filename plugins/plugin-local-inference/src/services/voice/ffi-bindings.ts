@@ -1290,6 +1290,11 @@ function loadBunFfiModule(): BunFfiModule {
 	return r("bun:ffi") as BunFfiModule;
 }
 
+// GGML installs a process-wide C++ terminate callback. Windows must retain its
+// DLL across optional-symbol retries and binding close/reopen, or that callback
+// outlives the unloaded image. Model contexts and normal FFI handles still close.
+const residentWindowsLibraries = new Map<string, BunFfiLib>();
+
 function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	let ffi: BunFfiModule;
 	try {
@@ -1306,6 +1311,25 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// .dll) resolvable before dlopen, which otherwise fails with error 126. See
 	// ensureWin32DllSearchDir for the full rationale.
 	ensureWin32DllSearchDir(path.dirname(dylibPath));
+	if (process.platform === "win32") {
+		const libraryPath = path.resolve(dylibPath);
+		if (!residentWindowsLibraries.has(libraryPath)) {
+			try {
+				residentWindowsLibraries.set(
+					libraryPath,
+					ffi.dlopen(libraryPath, {
+						eliza_inference_abi_version: { args: [], returns: T.cstring },
+					}),
+				);
+			} catch (error) {
+				// error-policy:J1 The native loader boundary reports an unavailable kernel.
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					`[ffi-bindings] Cannot retain Windows library ${libraryPath}: ${formatFfiError(error)}`,
+				);
+			}
+		}
+	}
 
 	// All `char *` arguments are typed as T.ptr — Bun's `T.cstring` is a
 	// RETURN-only type for "library hands back a NUL-terminated string".

@@ -9,14 +9,12 @@
 import {
 	ContentType,
 	ElizaError,
-	fetchRemoteMedia,
 	type IAgentRuntime,
 	type IMessageService,
 	isBlockedHostname,
 	isPrivateIpAddress,
 	logger,
 	type Media,
-	MediaFetchError,
 	ModelType,
 	type ReplyToMode,
 	type SsrfPolicy,
@@ -24,6 +22,7 @@ import {
 	trimTokens,
 	truncateWellFormed,
 } from "@elizaos/core";
+import { fetchRemoteMedia, MediaFetchError } from "@elizaos/shared/media";
 
 export { normalizeDiscordMessageText } from "./discord-structured-text";
 

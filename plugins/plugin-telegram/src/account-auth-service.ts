@@ -11,7 +11,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
-import { decrypt, encrypt, loadDefaultMasterKeySync } from "@elizaos/vault";
+import {
+  decrypt,
+  encrypt,
+  loadDefaultMasterKeySync,
+} from "@elizaos/credentials/vault";
 import { Api, TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 

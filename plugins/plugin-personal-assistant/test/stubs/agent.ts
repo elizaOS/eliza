@@ -1,79 +1,18 @@
 /**
- * Test stub for @elizaos/agent: re-exports the real global-pause and handoff store surfaces
- * plus a mutable agent-backup state, so PA tests run without pulling in the full agent
+ * Test stub for @elizaos/agent: mutable agent-backup state, so PA tests run without pulling in the full agent
  * package.
  */
 
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { GroundedActionReply } from "@elizaos/core";
 
 // The LifeOps route dispatcher rate-limits state-changing routes; re-export the
 // real limiter (self-contained, in-memory) so route e2e tests run the genuine
 // dispatch path instead of a bypass.
 export { checkRateLimit } from "../../../../packages/agent/src/api/rate-limiter.ts";
-export {
-  APPROVAL_SERVICE,
-  ApprovalDispatchControlStore,
-  ApprovalService,
-  approvalDispatchAdmissionCte,
-  resolveApprovalService,
-} from "../../../../packages/agent/src/services/approval/index.ts";
-export {
-  createApprovalQueue,
-  PgApprovalQueue,
-} from "../../../../packages/agent/src/services/approval/store.ts";
-export {
-  APPROVAL_EXECUTION_CAPABILITY,
-  APPROVAL_EXECUTION_PROTOCOL_VERSION,
-  ApprovalIdempotencyConflictError,
-  ApprovalNotFoundError,
-  ApprovalStateTransitionError,
-} from "../../../../packages/agent/src/services/approval/types.ts";
-export {
-  createGlobalPauseStore,
-  GLOBAL_PAUSE_SERVICE,
-  GlobalPauseService,
-  resolveGlobalPauseService,
-} from "../../../../packages/agent/src/services/global-pause/index.ts";
-export {
-  createHandoffStore,
-  describeResumeCondition,
-  evaluateResume,
-  HANDOFF_SERVICE,
-  HandoffService,
-  resolveHandoffService,
-} from "../../../../packages/agent/src/services/handoff/index.ts";
-// The runtime knowledge graph (entity/relationship stores + service + schema)
-// is owned by @elizaos/agent. Re-export the real implementations here: they
-// are self-contained (only @elizaos/core, @elizaos/shared, drizzle-orm) and do
-// not drag the agent server graph into the e2e lane, so the e2e tests exercise
-// the genuine stores via the personal-assistant shims.
-export {
-  EntityStore,
-  KNOWLEDGE_GRAPH_SERVICE,
-  KnowledgeGraphService,
-  knowledgeGraphSchema,
-  RelationshipStore,
-  resolveKnowledgeGraphService,
-} from "../../../../packages/agent/src/services/knowledge-graph/index.ts";
-// Cache-backed runtime stores promoted from LifeOps (Slice 3). Like the
-// knowledge graph above, they are self-contained (only @elizaos/core) and the
-// personal-assistant store shims import them from `@elizaos/agent`, so re-export
-// the genuine implementations here for the test lane.
-export {
-  createPendingPromptsStore,
-  PENDING_PROMPTS_SERVICE,
-  PendingPromptsService,
-  resolvePendingPromptsService,
-} from "../../../../packages/agent/src/services/pending-prompts/index.ts";
 
 export class DatabaseSync {}
-
-export async function hasOwnerAccess(): Promise<boolean> {
-  return true;
-}
 
 export interface LocalAgentBackupStubMetadata {
   fileName: string;
@@ -167,17 +106,6 @@ export async function createLocalAgentBackup(runtime?: {
   return backup;
 }
 
-export async function extractActionParamsViaLlm(): Promise<unknown> {
-  return null;
-}
-
-export async function renderGroundedActionReply(args: {
-  fallback: string;
-}): Promise<GroundedActionReply> {
-  // Deterministic model collaborator; tests of unavailable replies override it.
-  return { kind: "model", text: args.fallback };
-}
-
 // Integration telemetry is self-contained (only the core logger), so the test
 // lane runs the real span: route tests then exercise the genuine
 // success/failure bookkeeping instead of a shape-drifted fake.
@@ -189,16 +117,6 @@ export function extractConversationMetadataFromRoom(): Record<string, unknown> {
 
 export function isPageScopedConversationMetadata(): boolean {
   return false;
-}
-
-export function computeNextCronRunAtMs(): number {
-  return Date.now() + 60_000;
-}
-
-export function parseCronExpression(expression: string): {
-  expression: string;
-} {
-  return { expression };
 }
 
 export function registerEscalationChannel(): void {}

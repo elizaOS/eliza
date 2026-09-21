@@ -3,11 +3,9 @@
  * `ELIZA_TTS_DEBUG` flag gates output, and entries are observed via the
  * logger's global listener stream — no logger mocking.
  */
-import {
-  addLogListener,
-  type LogEntry,
-  toWellFormedUnicode,
-} from "@elizaos/core";
+
+import { toWellFormedUnicode } from "@elizaos/common";
+import { addLogListener, type LogEntry } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isTtsDebugEnabled, ttsDebug, ttsDebugTextPreview } from "./tts-debug";
 

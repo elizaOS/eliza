@@ -7,4 +7,4 @@
  * scripts so editors / external tooling don't have to walk back to
  * `@elizaos/ui` to find it.
  */
-export type { AospVariantConfig } from "@elizaos/shared";
+export type { AospVariantConfig } from "@elizaos/shared/config/app-config";

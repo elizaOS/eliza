@@ -1,6 +1,6 @@
 /** Revokes paid runtime before reconciling the exact held funds; stopped data is retained. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { settleComputeRateSegments } from "../../db/repositories/compute-billing-segments";

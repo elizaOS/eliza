@@ -11,7 +11,10 @@
  * seams; findEntityByName/getEntityDetails are not replaced.
  */
 import { describe, expect, it } from "vitest";
-import { findEntityByName, getEntityDetails } from "./entities";
+import {
+	findEntityByName,
+	getEntityDetails,
+} from "../../../plugins/plugin-assistant/src/entities.ts";
 import { isElizaError } from "./errors";
 import type { Entity, IAgentRuntime, Memory, State, UUID } from "./types";
 

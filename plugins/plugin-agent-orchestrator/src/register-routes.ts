@@ -20,10 +20,8 @@
  * touching the sentinel.
  */
 
-import {
-  isLocalCodeExecutionAllowed,
-  registerAppRoutePluginLoader,
-} from "@elizaos/core";
+import { registerAppRoutePluginLoader } from "@elizaos/shared/api/app-route-plugin-registry";
+import { isLocalCodeExecutionAllowed } from "@elizaos/shared/platform/sandbox-policy";
 
 function registerCodingAgentRoutePluginLoader(): void {
   if (!isLocalCodeExecutionAllowed()) return;

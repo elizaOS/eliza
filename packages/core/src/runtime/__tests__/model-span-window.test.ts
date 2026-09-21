@@ -8,8 +8,9 @@
  * `durationMs` must reflect the handler alone. Real runtime over the in-memory
  * adapter with registered fake model handlers; deterministic.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import {
 	InferenceTurnTimer,
 	runWithInferenceTiming,

@@ -6,11 +6,11 @@
  * JNI loopback forwards literal `/api/...` paths.
  */
 
-import type { Route } from "@elizaos/core";
 import {
   normalizeScreenCaptureFailureContract,
   normalizeScreenCaptureFrameContract,
 } from "@elizaos/shared";
+import type { Route } from "@elizaos/shared/api/http-plugin";
 import {
   OCR_BRIDGE_SERVICE_TYPE,
   type OcrBridgeService,

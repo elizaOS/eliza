@@ -35,7 +35,7 @@ describe("selectLiveProvider", () => {
 
   afterEach(() => {
     vi.resetModules();
-    vi.doUnmock("@elizaos/vault");
+    vi.doUnmock("@elizaos/credentials/vault");
     vi.unstubAllEnvs();
   });
 
@@ -156,7 +156,7 @@ describe("selectLiveProvider", () => {
       return "csk_resolved_cerebras_key";
     });
     const close = vi.fn(async () => {});
-    vi.doMock("@elizaos/vault", () => ({
+    vi.doMock("@elizaos/credentials/vault", () => ({
       createVault: vi.fn(() => ({ get, close })),
     }));
 
@@ -196,7 +196,7 @@ describe("selectLiveProvider", () => {
       }),
       close: vi.fn(async () => {}),
     }));
-    vi.doMock("@elizaos/vault", () => ({ createVault }));
+    vi.doMock("@elizaos/credentials/vault", () => ({ createVault }));
 
     try {
       const { selectLiveProviderAsync } = await import("./live-provider.ts");

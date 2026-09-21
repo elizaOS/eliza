@@ -10,7 +10,11 @@
  */
 import type { Action } from "../types";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
-import { actionToJsonSchema, type JsonSchema } from "./action-schema";
+import {
+	type ActionParametersJsonSchema,
+	actionToJsonSchema,
+	type JsonSchema,
+} from "./action-schema";
 
 export type { JsonSchema } from "./action-schema";
 
@@ -395,6 +399,37 @@ function omitDeclaredModelSentinels(
 	return normalized;
 }
 
+/** Preserve explicitly declared legacy selectors without weakening native wire schemas. */
+function admitLegacyRequiredAlternatives(
+	action: Action,
+	schema: ActionParametersJsonSchema,
+	args: Record<string, unknown>,
+): ActionParametersJsonSchema {
+	const required = schema.required.filter((name) => {
+		if (hasOwn(args, name)) return true;
+		const parameter = action.parameters?.find((entry) => entry.name === name);
+		const canonical = schema.properties[name];
+		if (canonical?.type !== "string") return true;
+		return !parameter?.legacyRequiredAlternatives?.some((alternative) => {
+			if (!hasOwn(schema.properties, alternative) || !hasOwn(args, alternative))
+				return false;
+			const alternativeSchema = schema.properties[alternative];
+			const value = args[alternative];
+			if (
+				alternativeSchema.type !== "string" ||
+				typeof value !== "string" ||
+				value.trim().length === 0
+			)
+				return false;
+			const errors: string[] = [];
+			validateSchema(alternativeSchema, value, alternative, errors);
+			validateSchema(canonical, value, name, errors);
+			return errors.length === 0;
+		});
+	});
+	return { ...schema, required };
+}
+
 export function validateToolArgs(
 	action: Action,
 	args: unknown,
@@ -411,7 +446,17 @@ export function validateToolArgs(
 	}
 
 	const normalizedArgs = omitDeclaredModelSentinels(action, args);
-	const validatedArgs = validateObject(schema, normalizedArgs, "", errors);
+	const admissionSchema = admitLegacyRequiredAlternatives(
+		action,
+		schema,
+		normalizedArgs,
+	);
+	const validatedArgs = validateObject(
+		admissionSchema,
+		normalizedArgs,
+		"",
+		errors,
+	);
 	const invalidParameterNames = Object.keys(normalizedArgs).filter(
 		(name) => !Object.hasOwn(validatedArgs, name),
 	);

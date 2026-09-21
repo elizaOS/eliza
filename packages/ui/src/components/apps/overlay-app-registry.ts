@@ -12,4 +12,4 @@ export {
   type OverlayAppAvailabilityContext,
   overlayAppToRegistryInfo,
   registerOverlayApp,
-} from "@elizaos/shared";
+} from "@elizaos/shared/apps/overlay-app-registry";

@@ -21,6 +21,7 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { type IAgentRuntime, ServiceType, type UUID } from "@elizaos/core";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { issueArtifactShareViewerToken } from "../../src/api/artifact-share-role-resolver.ts";
 import { filesRoutes } from "../../src/api/files-routes.ts";
@@ -61,10 +62,11 @@ beforeAll(async () => {
 
   const runtime = {
     agentId: AGENT_ID,
-    routes: filesRoutes,
     getService: (type: string) =>
       type === ServiceType.REMOTE_FILES ? storage : null,
   } as unknown as IAgentRuntime;
+
+  getHttpRuntime(runtime).routes = filesRoutes;
 
   // The server dispatch wiring, reproduced from api/server.ts.
   server = http.createServer(async (req, res) => {

@@ -10,11 +10,10 @@ import { createHash } from "node:crypto";
 import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import {
   getViewModalities,
   logger,
-  type Plugin,
   resolveViewKind,
   type ViewDeclaration,
   type ViewType,

@@ -4,7 +4,8 @@
  * accepted delivery. Signs bodies with node:crypto against a fake runtime.
  */
 import crypto from "node:crypto";
-import type { IAgentRuntime, RouteRequest, RouteResponse, UUID } from "@elizaos/core";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
+import type { RouteRequest, RouteResponse } from "@elizaos/shared/api/http-plugin";
 import { describe, expect, it, vi } from "vitest";
 import { whatsappSetupRoutes } from "../src/setup-routes";
 

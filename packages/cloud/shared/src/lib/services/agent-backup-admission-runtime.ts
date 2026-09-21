@@ -7,7 +7,7 @@
  * before cancellation, deadline, or compensated failures are propagated.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   type AgentBackupAdmissionClaim,
   claimAgentBackupAdmissionWorkTurn,

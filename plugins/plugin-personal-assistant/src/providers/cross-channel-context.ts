@@ -15,7 +15,6 @@
  * than running a speculative search on every turn.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,
@@ -24,7 +23,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
+import { hasRoleAccess, toWellFormedUnicode } from "@elizaos/core";
 import {
   CROSS_CHANNEL_SEARCH_CHANNELS,
   type CrossChannelSearchChannel,
@@ -206,7 +205,7 @@ export const crossChannelContextProvider: Provider = {
     message: Memory,
     state: State | undefined,
   ): Promise<ProviderResult> {
-    if (!(await hasOwnerAccess(runtime, message))) {
+    if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
       return EMPTY;
     }
     const egressContext = createLifeOpsEgressContext({

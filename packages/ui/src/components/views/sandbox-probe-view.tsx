@@ -13,7 +13,7 @@
  * `surface-isolation.ts`. Consumes `SandboxedViewFrame` (the mechanism) directly.
  */
 
-import type { SurfaceManifest } from "@elizaos/core";
+import type { SurfaceManifest } from "@elizaos/common";
 import { registerAppShellPage } from "../../app-shell-registry";
 import { SandboxedViewFrame } from "./SandboxedViewFrame";
 import { SANDBOXED_VIEW_CHANNEL } from "./sandboxed-view-broker";

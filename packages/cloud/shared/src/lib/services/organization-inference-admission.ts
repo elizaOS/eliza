@@ -9,7 +9,7 @@
  * a response-side task disappears.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { writeTransaction } from "../../db/helpers";
 import {
   lockOrganizationPolicy,

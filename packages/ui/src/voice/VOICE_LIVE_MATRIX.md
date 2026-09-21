@@ -1,7 +1,7 @@
 # Voice Live Matrix
 
 Issue #9958 defines the live-voice verification product surface. This document
-is the canonical matrix and `bun run voice:matrix` is the canonical artifact
+is the canonical matrix and `node packages/app-core/scripts/voice/voice-matrix.mjs` is the canonical artifact
 producer. The matrix is evidence-oriented: every cell is either `pass`, `fail`,
 `pending`, or `skip` with an allowlisted availability code. A skipped cell is
 never platform coverage.
@@ -27,7 +27,7 @@ device boundary.
 ## Canonical Command
 
 ```bash
-bun run voice:matrix
+node packages/app-core/scripts/voice/voice-matrix.mjs
 ```
 
 By default the command probes the current host and writes:
@@ -48,9 +48,9 @@ stale or cross-cell evidence instead of relabeling it as the current run.
 Use `--run` to execute available cell commands:
 
 ```bash
-bun run voice:matrix -- --run --platform web
-bun run voice:matrix -- --run --platform android
-bun run voice:matrix -- --run --platform linux
+node packages/app-core/scripts/voice/voice-matrix.mjs --run --platform web
+node packages/app-core/scripts/voice/voice-matrix.mjs --run --platform android
+node packages/app-core/scripts/voice/voice-matrix.mjs --run --platform linux
 ```
 
 Use `--require-green` on any opted-in hardware lane; it turns `pending` or
@@ -65,7 +65,7 @@ report:
 
 ```bash
 ELIZA_VOICE_STAGE_B_REPORT=test-results/evidence/9958-stage-b/report.json \
-  bun run voice:matrix -- --run --platform stt.stage-b.evaluation
+  node packages/app-core/scripts/voice/voice-matrix.mjs --run --platform stt.stage-b.evaluation
 ```
 
 To validate the real openWakeWord head wake-context cell, point the matrix at the
@@ -73,7 +73,7 @@ reviewed report:
 
 ```bash
 ELIZA_VOICE_OPENWAKEWORD_REPORT=test-results/evidence/9958-openwakeword/report.json \
-  bun run voice:matrix -- --run --platform wake.openwakeword.real-head
+  node packages/app-core/scripts/voice/voice-matrix.mjs --run --platform wake.openwakeword.real-head
 ```
 
 ## Cells

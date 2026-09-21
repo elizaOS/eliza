@@ -3,7 +3,7 @@
  * proving Shared fallback and active Dedicated selection.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { ChannelType } from "@elizaos/core/edge";
+import { ChannelType } from "@elizaos/common";
 
 let dedicatedTarget: {
   id: string;

@@ -1,5 +1,5 @@
 /** Executes manager-authorized organization period-end cancellation and retrieves uncertain outcomes through the same durable command owner. Recovery never invents session authority or sends a provider mutation. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   assertCancellationClaimCurrent,
   type CancellationClaim,

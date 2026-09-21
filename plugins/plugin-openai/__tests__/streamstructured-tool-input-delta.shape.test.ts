@@ -78,7 +78,9 @@ function armToolForcedStream(opts?: { alsoText?: boolean }) {
         yield { type: "finish", finishReason: "tool-calls" };
       })(),
       text: Promise.resolve(""),
-      toolCalls: Promise.resolve([{ toolName: "HANDLE_RESPONSE", input: { replyText: "hello" } }]),
+      toolCalls: Promise.resolve([
+        { toolCallId: "call-test", toolName: "HANDLE_RESPONSE", input: { replyText: "hello" } },
+      ]),
       finishReason: Promise.resolve("tool-calls"),
       usage: Promise.resolve({ inputTokens: 10, outputTokens: 8 }),
     })
@@ -118,7 +120,7 @@ describe("streamStructured tool-input-delta forwarding", () => {
     expect(chunks.join("")).not.toContain("pre");
     // The authoritative envelope still arrives via the completed toolCalls.
     await expect(stream.toolCalls).resolves.toEqual([
-      { toolName: "HANDLE_RESPONSE", input: { replyText: "hello" } },
+      { id: "call-test", name: "HANDLE_RESPONSE", arguments: { replyText: "hello" } },
     ]);
   }, 20_000);
 

@@ -1,16 +1,10 @@
-/**
- * Unit coverage for `buildModelInputBudget`: per-model context-window
- * resolution, reserve-token scaling by the window fraction, pre-dispatch
- * rejection derivation, and the `MODEL_CONTEXT_WINDOWS_JSON` env override.
- * Pure deterministic assertions — no live model, no database.
- */
-import { afterEach, describe, expect, it, vi } from "vitest";
+/** Complete-request estimates honor explicit provider metadata and preserve input. */
+import { describe, expect, it, vi } from "vitest";
 import type { ChatMessage, ToolDefinition } from "../../types/model";
 import {
 	buildModelInputBudget,
 	DEFAULT_CONTEXT_WINDOW_TOKENS,
 	DEFAULT_INPUT_RESERVE_TOKENS,
-	MODEL_WINDOW_RESERVE_FRACTION,
 } from "../model-input-budget";
 
 /**
@@ -84,205 +78,31 @@ describe("buildModelInputBudget", () => {
 		});
 	});
 
-	describe("per-model lookup (modelName passed)", () => {
-		it("resolves Cerebras gpt-oss-120b to its 131k window", () => {
+	describe("explicit provider metadata", () => {
+		it("honors explicit limits and the default-valued reserve even for known model names", () => {
 			const budget = buildModelInputBudget({
-				messages: [userMessageOfChars(100)],
 				modelName: "gpt-oss-120b",
-			});
-			expect(budget.contextWindowTokens).toBe(131_000);
-			expect(budget.resolvedModelKey).toBe("gpt-oss-120b");
-		});
-
-		it("resolves Cerebras llama3.1-8b to its 32k window", () => {
-			const budget = buildModelInputBudget({
-				messages: [userMessageOfChars(100)],
-				modelName: "llama3.1-8b",
-			});
-			expect(budget.contextWindowTokens).toBe(32_000);
-			expect(budget.resolvedModelKey).toBe("llama3.1-8b");
-		});
-
-		it("resolves Claude family to 200k via prefix match (versioned id)", () => {
-			const budget = buildModelInputBudget({
-				messages: [userMessageOfChars(100)],
-				modelName: "claude-haiku-4-5-20251001",
+				contextWindowTokens: 200_000,
+				reserveTokens: DEFAULT_INPUT_RESERVE_TOKENS,
 			});
 			expect(budget.contextWindowTokens).toBe(200_000);
-			expect(budget.resolvedModelKey).toBe("claude-haiku-4-5");
-		});
-
-		it("scales reserve to 20% of window when lookup hits and reserve unset", () => {
-			// 131_000 * 0.20 = 26_200, which beats the 10k floor.
-			const budget = buildModelInputBudget({
-				messages: [userMessageOfChars(100)],
-				modelName: "gpt-oss-120b",
-			});
-			expect(budget.reserveTokens).toBe(26_200);
-			expect(budget.dispatchThresholdTokens).toBe(131_000 - 26_200);
-		});
-
-		it("keeps the 10k floor for tiny-window models (32k * 0.20 = 6.4k → 10k)", () => {
-			const budget = buildModelInputBudget({
-				messages: [userMessageOfChars(100)],
-				modelName: "llama3.1-8b",
-			});
 			expect(budget.reserveTokens).toBe(DEFAULT_INPUT_RESERVE_TOKENS);
-			expect(budget.dispatchThresholdTokens).toBe(32_000 - 10_000);
+			expect(budget.resolvedModelKey).toBeNull();
 		});
-
-		it("scales reserve to 40k for Claude Haiku (200k * 0.20)", () => {
-			const budget = buildModelInputBudget({
-				messages: [userMessageOfChars(100)],
-				modelName: "claude-haiku-4-5",
-			});
-			expect(budget.reserveTokens).toBe(40_000);
-			expect(budget.dispatchThresholdTokens).toBe(200_000 - 40_000);
-		});
-
-		it("resolves the current 1M-window Claude families (opus / sonnet)", () => {
-			for (const modelName of ["claude-opus-4-8", "claude-sonnet-5"]) {
-				const budget = buildModelInputBudget({
-					messages: [userMessageOfChars(100)],
-					modelName,
-				});
-				expect(budget.contextWindowTokens).toBe(1_000_000);
-				expect(budget.resolvedModelKey).toBe(modelName);
-				expect(budget.reserveTokens).toBe(200_000); // 1M * 0.20
-				expect(budget.dispatchThresholdTokens).toBe(800_000);
+		it("does not infer provider limits from names or global catalog overrides", () => {
+			vi.stubEnv("MODEL_CONTEXT_WINDOWS_JSON", "{invalid");
+			try {
+				for (const modelName of ["gpt-oss-120b", "unknown-model"]) {
+					const budget = buildModelInputBudget({ modelName });
+					expect(budget.contextWindowTokens).toBe(
+						DEFAULT_CONTEXT_WINDOW_TOKENS,
+					);
+					expect(budget.shouldReject).toBe(false);
+					expect(budget.shouldCompact).toBe(false);
+				}
+			} finally {
+				vi.unstubAllEnvs();
 			}
-		});
-
-		it("falls back to the 128k default for an unknown id without throwing", () => {
-			const budget = buildModelInputBudget({
-				messages: [userMessageOfChars(100)],
-				modelName: "claude-unknown-test-9",
-			});
-			expect(budget.contextWindowTokens).toBe(DEFAULT_CONTEXT_WINDOW_TOKENS);
-			expect(budget.resolvedModelKey).toBeNull();
-			expect(budget.reserveTokens).toBe(DEFAULT_INPUT_RESERVE_TOKENS);
-		});
-
-		it("respects an explicit reserveTokens override even when modelName resolves", () => {
-			const budget = buildModelInputBudget({
-				messages: [userMessageOfChars(100)],
-				modelName: "gpt-oss-120b",
-				reserveTokens: 5_000,
-			});
-			expect(budget.reserveTokens).toBe(5_000);
-			expect(budget.dispatchThresholdTokens).toBe(131_000 - 5_000);
-			// Lookup still recorded for observability.
-			expect(budget.resolvedModelKey).toBe("gpt-oss-120b");
-		});
-
-		it("treats reserveTokens === DEFAULT as 'no override' so derivation fires (planner-loop call pattern)", () => {
-			// The planner-loop's call site always forwards
-			// `params.config.compactionReserveTokens` which defaults to
-			// `DEFAULT_INPUT_RESERVE_TOKENS` (10k). Without this special-
-			// case, the explicit-10k would always beat the per-model
-			// derivation, defeating the whole point of #7594's reserve
-			// scaling. The function recognizes the default value as "carrying
-			// the legacy fallback" and lets derivation win when the lookup
-			// hits.
-			const budget = buildModelInputBudget({
-				messages: [userMessageOfChars(100)],
-				modelName: "gpt-oss-120b",
-				reserveTokens: DEFAULT_INPUT_RESERVE_TOKENS,
-			});
-			expect(budget.reserveTokens).toBe(26_200); // 131k * 0.20
-			expect(budget.dispatchThresholdTokens).toBe(131_000 - 26_200);
-			expect(budget.resolvedModelKey).toBe("gpt-oss-120b");
-		});
-
-		it("does NOT swap derivation in when reserveTokens===DEFAULT and lookup misses", () => {
-			// Lookup misses → no derived reserve available → the explicit
-			// default-equal must be honored. Otherwise we'd silently drop the
-			// caller's reserve.
-			const budget = buildModelInputBudget({
-				messages: [userMessageOfChars(100)],
-				modelName: "no-such-model-99",
-				reserveTokens: DEFAULT_INPUT_RESERVE_TOKENS,
-			});
-			expect(budget.reserveTokens).toBe(DEFAULT_INPUT_RESERVE_TOKENS);
-			expect(budget.resolvedModelKey).toBeNull();
-		});
-
-		it("explicit reserve of 0 is honored even when lookup hits (zero-reserve override is a valid edge case)", () => {
-			const budget = buildModelInputBudget({
-				messages: [userMessageOfChars(100)],
-				modelName: "gpt-oss-120b",
-				reserveTokens: 0,
-			});
-			expect(budget.reserveTokens).toBe(0);
-			expect(budget.dispatchThresholdTokens).toBe(131_000);
-			expect(budget.resolvedModelKey).toBe("gpt-oss-120b");
-		});
-
-		it("lookup wins over an explicit contextWindowTokens (model is authoritative)", () => {
-			// A caller carrying the legacy 128k default on ChainingLoopConfig
-			// AND setting modelName should get the per-model ceiling, not 128k.
-			const budget = buildModelInputBudget({
-				messages: [userMessageOfChars(100)],
-				modelName: "gpt-oss-120b",
-				contextWindowTokens: 128_000,
-			});
-			expect(budget.contextWindowTokens).toBe(131_000);
-			expect(budget.resolvedModelKey).toBe("gpt-oss-120b");
-		});
-
-		it("falls through to explicit window when modelName has no lookup entry", () => {
-			const budget = buildModelInputBudget({
-				messages: [userMessageOfChars(100)],
-				modelName: "some-unknown-model-99",
-				contextWindowTokens: 50_000,
-			});
-			expect(budget.contextWindowTokens).toBe(50_000);
-			expect(budget.resolvedModelKey).toBeNull();
-		});
-
-		it("keeps legacy 10k reserve when lookup misses and reserve unset", () => {
-			// Lookup miss → derived reserve is undefined → legacy default applies.
-			const budget = buildModelInputBudget({
-				messages: [userMessageOfChars(100)],
-				modelName: "some-unknown-model-99",
-			});
-			expect(budget.reserveTokens).toBe(DEFAULT_INPUT_RESERVE_TOKENS);
-		});
-	});
-
-	describe("env-override context windows (MODEL_CONTEXT_WINDOWS_JSON)", () => {
-		afterEach(() => {
-			vi.unstubAllEnvs();
-		});
-
-		it("resolves an id absent from the static table via the env override", () => {
-			vi.stubEnv(
-				"MODEL_CONTEXT_WINDOWS_JSON",
-				JSON.stringify({ "acme-frontier-9000": 500_000 }),
-			);
-			const budget = buildModelInputBudget({
-				messages: [userMessageOfChars(100)],
-				modelName: "acme-frontier-9000",
-			});
-			expect(budget.contextWindowTokens).toBe(500_000);
-			expect(budget.resolvedModelKey).toBe("acme-frontier-9000");
-			expect(budget.reserveTokens).toBe(100_000); // 500k * 0.20
-		});
-
-		it("rejects malformed context-window override JSON", () => {
-			vi.stubEnv("MODEL_CONTEXT_WINDOWS_JSON", "{oops");
-			expect(() =>
-				buildModelInputBudget({
-					messages: [userMessageOfChars(100)],
-					modelName: "claude-unknown-test-9",
-				}),
-			).toThrow("MODEL_CONTEXT_WINDOWS_JSON is not valid JSON");
-		});
-	});
-
-	describe("MODEL_WINDOW_RESERVE_FRACTION constant", () => {
-		it("is exposed as 0.20 for callers that need to mirror the calc", () => {
-			expect(MODEL_WINDOW_RESERVE_FRACTION).toBe(0.2);
 		});
 	});
 

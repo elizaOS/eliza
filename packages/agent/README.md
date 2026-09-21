@@ -399,3 +399,19 @@ text snapshot and vocabulary identity. Edits, removals, changed state or locale
 are rechecked; weak message keys release retained snapshots. This does not cache
 action validation or permission decisions, remove history, change vocabulary,
 or alter the complete match collector used by consumers that need every match.
+
+### Windows installation identity
+
+Windows runtime boot stores its durable installation identity in the current
+user's Windows Credential Manager, using the existing credentials package.
+The normalized configured absolute state path identifies the credential account;
+filesystem redirects and file contents do not supply the identity. Changing
+that configured path selects a separate identity. Clearing state files at the
+same path does not clear this OS-owned identity. No plaintext identity file or
+passphrase fallback is used on Windows.
+
+A current-user/SYSTEM-only global Windows mutex serializes credential creation
+across processes and login sessions. Boot fails explicitly if Windows
+PowerShell 5.1, the protected mutex or the native keyring is unavailable, or if
+the stored key is malformed. POSIX hosts retain their existing filesystem
+ownership and durability checks.

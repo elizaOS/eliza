@@ -1,6 +1,4 @@
-/**
- * Coverage for private action gate.
- */
+/** Exercises private-action admission and rejection of malformed autonomy metadata. */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -33,6 +31,14 @@ describe("isAutonomousTurn", () => {
 		).toBe(false);
 		expect(
 			isAutonomousTurn({ content: { metadata: { isAutonomous: 1 } } } as never),
+		).toBe(false);
+	});
+
+	it("does not treat a textual true marker as autonomy authority", () => {
+		expect(
+			isAutonomousTurn({
+				content: { metadata: { isAutonomous: "true" } },
+			} as never),
 		).toBe(false);
 	});
 

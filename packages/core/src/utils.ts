@@ -1,33 +1,10 @@
-/**
- * Shared runtime helpers re-exported from `@elizaos/core`: prompt composition,
- * message/post formatting, structured-response parsing, and deterministic
- * identity.
- *
- * `composePrompt` / `composePromptFromState` render `{{binding}}` templates via
- * Handlebars — double-brace bindings are rewritten to triple-brace so values are
- * not HTML-escaped — and fall back to an eval-free replacer under a restricted
- * CSP (browser-extension) environment. `formatMessages` / `formatPosts` turn
- * `Memory[]` into the transcript the model reads. `parseKeyValueXml` (legacy
- * `<response>` XML), `parseToonKeyValue`, and `parseJSONObjectFromText` recover
- * structured fields from chatty model output, tolerating malformed input by
- * returning null rather than throwing. Hostile nested or prefix-extended tags
- * that used to quadratic-hang `findMatchingXmlClose` fail closed.
- *
- * `stringToUuid` derives a deterministic, RFC-4122-shaped UUID from an arbitrary
- * string via an in-tree pure-JS SHA-1 (with a WebCrypto-backed cache), so the
- * same external id always maps to the same entity across Node and browser; it is
- * idempotent on an already-valid UUID. This module is also the barrel that
- * `export * from "./utils"` resolves to, so helpers under `utils/` that must be
- * reachable from the package are re-exported at the bottom.
- */
+/** Shared runtime formatting, identity and structured text utilities. */
 
-import Handlebars from "handlebars";
+import { createHash } from "node:crypto";
 import z from "zod";
 import { ElizaError } from "./errors";
 import logger from "./logger";
-import { replaceIndexedNameTokens } from "./name-tokens";
 import { renderStoredEnvelopesForPrompt } from "./security/external-content";
-import type { TemplateType } from "./types/agent";
 import type { Entity } from "./types/environment";
 import type { Memory } from "./types/memory";
 import type { ModelRegistrationMetadata } from "./types/model";
@@ -38,13 +15,7 @@ import {
 	type UUID,
 } from "./types/primitives";
 import type { IAgentRuntime } from "./types/runtime";
-import type { State } from "./types/state";
 import { unwrapWholeCodeFence } from "./utils/code-fence.ts";
-import {
-	buildDeterministicSeed,
-	getDeterministicNames,
-} from "./utils/deterministic";
-import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 import { RecursiveCharacterTextSplitter } from "./utils/recursive-character-text-splitter";
 import { formatTimestamp as formatTimestampBase } from "./utils/time-format";
 import {
@@ -53,286 +24,6 @@ import {
 } from "./utils/well-formed.js";
 
 // Text Utils
-
-/**
- * Detect if we're in a restricted CSP environment (browser extension)
- * where eval() and new Function() are not allowed.
- */
-let _isRestrictedCSP: boolean | null = null;
-const COMPILED_TEMPLATE_CACHE = new Map<
-	string,
-	Handlebars.TemplateDelegate<Record<string, unknown>>
->();
-const COMPILED_TEMPLATE_CACHE_LIMIT = 256;
-
-function isRestrictedCSPEnvironment(): boolean {
-	if (_isRestrictedCSP !== null) return _isRestrictedCSP;
-
-	// Check if we're in a browser extension context
-	const isBrowserExtension =
-		typeof globalThis !== "undefined" &&
-		typeof (globalThis as Record<string, unknown>).chrome === "object" &&
-		(globalThis as Record<string, unknown>).chrome !== null &&
-		typeof (
-			(globalThis as Record<string, unknown>).chrome as Record<string, unknown>
-		)?.runtime === "object" &&
-		typeof (
-			(
-				(globalThis as Record<string, unknown>).chrome as Record<
-					string,
-					unknown
-				>
-			)?.runtime as Record<string, unknown>
-		)?.id === "string";
-
-	if (isBrowserExtension) {
-		_isRestrictedCSP = true;
-		return true;
-	}
-
-	// Try to detect if eval is blocked by testing it
-	try {
-		// eslint-disable-next-line @typescript-eslint/no-implied-eval
-		new Function("return 1");
-		_isRestrictedCSP = false;
-	} catch {
-		// error-policy:J4 Restricted CSP explicitly selects the safe template engine.
-		_isRestrictedCSP = true;
-	}
-
-	return _isRestrictedCSP;
-}
-
-/**
- * CSP-safe simple template replacement function.
- * Handles basic {{variable}} and {{{variable}}} syntax without eval.
- * Does not support Handlebars helpers, conditionals, or loops.
- */
-function simpleTemplateReplace(
-	template: string,
-	context: Record<string, unknown>,
-): string {
-	// First handle triple-brace (unescaped) - {{{varName}}}
-	let result = template.replace(
-		/\{\{\{([^{}]+)\}\}\}/g,
-		(_match, varName: string) => {
-			const key = varName.trim();
-			const value = context[key];
-			if (value === undefined || value === null) return "";
-			return String(value);
-		},
-	);
-
-	// Then handle double-brace - {{varName}}
-	result = result.replace(/\{\{([^{}]+)\}\}/g, (_match, varName: string) => {
-		const key = varName.trim();
-		// Skip block helpers like {{#if}}, {{/if}}, {{else}}, {{>partial}}
-		if (
-			key.startsWith("#") ||
-			key.startsWith("/") ||
-			key.startsWith(">") ||
-			key === "else"
-		) {
-			return "";
-		}
-		const value = context[key];
-		if (value === undefined || value === null) return "";
-		return String(value);
-	});
-
-	return result;
-}
-
-/**
- * Convert all double-brace bindings in a Handlebars template
- * to triple-brace bindings, so the output is NOT HTML-escaped.
- *
- * - Ignores block/partial/comment tags that start with # / ! >.
- * - Ignores the else keyword.
- * - Ignores bindings that are already triple-braced.
- *
- * @param  tpl  Handlebars template source
- * @return      Transformed template
- */
-function upgradeDoubleToTriple(tpl: string) {
-	return tpl.replace(
-		// ────────╮ negative-LB: not already "{{{"
-		//          │   {{     ─ opening braces
-		//          │    ╰──── negative-LA: not {, #, /, !, >
-		//          ▼
-		/(?<!{){{(?![{#/!>])([\s\S]*?)}}/g,
-		(_match: string, inner: string) => {
-			// keep the block keyword {{else}} unchanged
-			if (inner.trim() === "else") return `{{${inner}}}`;
-			return `{{{${inner}}}}`;
-		},
-	);
-}
-
-function getCompiledTemplate(
-	template: string,
-): Handlebars.TemplateDelegate<Record<string, unknown>> {
-	// Key by the raw template. upgradeDoubleToTriple is a pure function, so the
-	// raw string maps 1:1 to its upgraded form — keying on the raw template lets
-	// a cache hit skip the regex transform entirely (it only runs on a miss).
-	const cached = COMPILED_TEMPLATE_CACHE.get(template);
-	if (cached) {
-		return cached;
-	}
-
-	const upgraded = upgradeDoubleToTriple(template);
-	const compiled = Handlebars.compile(upgraded);
-	COMPILED_TEMPLATE_CACHE.set(template, compiled);
-	if (COMPILED_TEMPLATE_CACHE.size > COMPILED_TEMPLATE_CACHE_LIMIT) {
-		const oldestKey = COMPILED_TEMPLATE_CACHE.keys().next().value;
-		if (typeof oldestKey === "string") {
-			COMPILED_TEMPLATE_CACHE.delete(oldestKey);
-		}
-	}
-
-	return compiled;
-}
-
-function resolvePromptSeed(
-	stateLike: Record<string, unknown>,
-	stateValues?: Record<string, unknown>,
-	stateData?: Record<string, unknown>,
-): string {
-	const normalizeSeedValue = (value: unknown): string | number | undefined => {
-		if (typeof value === "string" || typeof value === "number") {
-			return value;
-		}
-		return undefined;
-	};
-
-	return buildDeterministicSeed(
-		normalizeSeedValue(stateValues?.__conversationSeed),
-		normalizeSeedValue(stateData?.__conversationSeed),
-		normalizeSeedValue(stateLike.__conversationSeed),
-		normalizeSeedValue(stateValues?.agentName),
-		normalizeSeedValue(stateLike.agentName),
-		normalizeSeedValue(stateLike.roomId),
-		"prompt",
-	);
-}
-
-/**
- * Composes a context string by replacing placeholders in a template with corresponding values from the state.
- *
- * This function takes a template string with placeholders in the format `{{placeholder}}` and a state object.
- * It replaces each placeholder with the value from the state object that matches the placeholder's name.
- * If a matching key is not found in the state object for a given placeholder, the placeholder is replaced with an empty string.
- *
- * @param {Object} params - The parameters for composing the context.
- * @param {State} params.state - The state object containing values to replace the placeholders in the template.
- * @param {TemplateType} params.template - The template string or function containing placeholders to be replaced with state values.
- * @returns {string} The composed context string with placeholders replaced by corresponding state values.
- *
- * @example
- * // Given a state object and a template
- * const state = { userName: "Alice", userAge: 30 };
- * const template = "Hello, {{userName}}! You are {{userAge}} years old";
- *
- * // Composing the context with simple string replacement will result in:
- * // "Hello, Alice! You are 30 years old."
- * const contextSimple = composePromptFromState({ state, template });
- *
- * // Using composePromptFromState with a template function for dynamic template
- * const template = ({ state }) => {
- * const tone = Math.random() > 0.5 ? "kind" : "rude";
- *   return `Hello, {{userName}}! You are {{userAge}} years old. Be ${tone}`;
- * };
- * const contextSimple = composePromptFromState({ state, template });
- */
-
-/**
- * Function to compose a prompt using a provided template and state.
- * It compiles the template (upgrading double braces to triple braces for non-HTML escaping)
- * and then populates it with values from the state. Additionally, it processes the
- * resulting string with `composeRandomUser` to replace placeholders like `{{nameX}}`.
- *
- * @param {Object} options - Object containing state and template information.
- * @param {State} options.state - The state object containing values to fill the template.
- * @param {TemplateType} options.template - The template string or function to be used for composing the prompt.
- * @returns {string} The composed prompt output, with state values and random user names populated.
- */
-export const composePrompt = ({
-	state,
-	template,
-}: {
-	state: { [key: string]: string };
-	template: TemplateType;
-}) => {
-	const templateStr =
-		typeof template === "function" ? template({ state }) : template;
-
-	let rendered: string;
-	if (isRestrictedCSPEnvironment()) {
-		// Use CSP-safe simple replacement (no eval)
-		const upgraded = upgradeDoubleToTriple(templateStr);
-		rendered = simpleTemplateReplace(upgraded, state);
-	} else {
-		const templateFunction = getCompiledTemplate(templateStr);
-		rendered = templateFunction(state);
-	}
-
-	const output = composeRandomUser(rendered, 10, resolvePromptSeed(state));
-	return output;
-};
-
-/**
- * Function to compose a prompt using a provided template and state.
- *
- * @param {Object} options - Object containing state and template information.
- * @param {State} options.state - The state object containing values to fill the template.
- * @param {TemplateType} options.template - The template to be used for composing the prompt.
- * @returns {string} The composed prompt output.
- */
-export const composePromptFromState = ({
-	state,
-	template,
-}: {
-	state: State;
-	template: TemplateType;
-}) => {
-	const templateStr =
-		typeof template === "function" ? template({ state }) : template;
-
-	// get any keys that are in state but are not named text, values or data
-	const stateKeys = Object.keys(state);
-	const filteredKeys = stateKeys.filter(
-		(key) => !["text", "values", "data"].includes(key),
-	);
-
-	// this flattens out key/values in text/values/data
-	const filteredState = filteredKeys.reduce(
-		(acc: Record<string, unknown>, key) => {
-			acc[key] = state[key];
-			return acc;
-		},
-		{},
-	);
-
-	const context = { ...filteredState, ...state.values };
-
-	let rendered: string;
-	if (isRestrictedCSPEnvironment()) {
-		// Use CSP-safe simple replacement (no eval)
-		const upgraded = upgradeDoubleToTriple(templateStr);
-		rendered = simpleTemplateReplace(upgraded, context);
-	} else {
-		const templateFunction = getCompiledTemplate(templateStr);
-		rendered = templateFunction(context);
-	}
-
-	// and then we flat state.values again
-	const output = composeRandomUser(
-		rendered,
-		10,
-		resolvePromptSeed(filteredState, state.values, state.data),
-	);
-	return output;
-};
 
 /**
  * Adds a header to a body of text.
@@ -382,41 +73,6 @@ export const CONVERSATION_MESSAGES_HEADER_PREFIX = "# Conversation Messages (";
 
 export const conversationMessagesHeader = (visibleCount: number): string =>
 	`${CONVERSATION_MESSAGES_HEADER_PREFIX}${visibleCount} retained)`;
-
-/**
- * Generates a string with random user names populated in a template.
- *
- * This function generates random user names and populates placeholders
- * in the provided template with these names. Placeholders in the template should follow the format
- * `{{nameX}}` or `{{userX}}`, where `X` is the position of the user.
- *
- * @param {string} template - The template string containing placeholders for random user names.
- * @param {number} length - The number of random user names to generate.
- * @returns {string} The template string with placeholders replaced by random user names.
- *
- * @example
- * // Given a template and a length
- * const template = "Hello, {{name1}}! Meet {{name2}} and {{name3}}.";
- * const length = 3;
- *
- * // Composing the random user string will result in:
- * // "Hello, John! Meet Alice and Bob."
- * const result = composeRandomUser(template, length);
- */
-const composeRandomUser = (
-	template: string,
-	length: number,
-	seed = "prompt-users",
-) => {
-	// {{nameX}}/{{userX}} placeholders only appear in example-conversation
-	// templates; production system/response templates have none. Skip the
-	// deterministic-name generation entirely when no placeholder is present.
-	if (!template.includes("{{name") && !template.includes("{{user")) {
-		return template;
-	}
-	const exampleNames = getDeterministicNames(length, seed);
-	return replaceIndexedNameTokens(template, exampleNames);
-};
 
 export const formatPosts = ({
 	messages,
@@ -993,36 +649,6 @@ function unescapeBasicXmlEntities(value: string): string {
 }
 
 /**
- * Parses a JSON object from raw text or a code block. JSON5 accepts common
- * model-output variations such as trailing commas, unquoted keys, and single
- * quotes. Invalid or non-object input returns null.
- *
- * @param text - The input text from which to extract and parse the JSON object.
- * @returns An object parsed from the JSON string if successful; otherwise null.
- */
-export function parseJSONObjectFromText(
-	text: string,
-): Record<string, unknown> | null {
-	try {
-		const result = extractAndParseJSONObjectFromText(text);
-		// JSON5 parses bare scalars ("42", '"hi"', "true") as valid JSON, and
-		// those are truthy and non-array, so screen on the type itself.
-		if (
-			typeof result !== "object" ||
-			result === null ||
-			Array.isArray(result)
-		) {
-			return null;
-		}
-		return result;
-	} catch (_error) {
-		// error-policy:J3 model output is untrusted input; null is the explicit
-		// invalid signal consumed by callers that request repair or retry.
-		return null;
-	}
-}
-
-/**
  * Truncate text to fit within the character limit, ensuring it ends at a complete sentence.
  */
 export function truncateToCompleteSentence(
@@ -1156,8 +782,8 @@ export function stringToUuid(target: string | number): UUID {
 	const escapedStr = encodeURIComponent(target);
 
 	// Deterministic UUID derived from SHA-1(escapedStr)
-	// Use WebCrypto if available (sync via cache), otherwise pure JS
-	const digest = getCachedSha1(escapedStr); // 20 bytes
+	// Keep the historical escaping and version bits: persisted IDs cannot change.
+	const digest = createHash("sha1").update(escapedStr).digest();
 	const bytes = digest.slice(0, 16);
 
 	// Set RFC4122 variant bits: 10xxxxxx
@@ -1166,217 +792,6 @@ export function stringToUuid(target: string | number): UUID {
 	bytes[6] = (bytes[6] & 0x0f) | 0x00;
 
 	return bytesToUuid(bytes) as UUID;
-}
-
-/**
- * Pre-warm the SHA-1 cache with common values using WebCrypto
- * Call this during initialization to improve performance
- */
-export async function prewarmUuidCache(values: string[]): Promise<void> {
-	if (!checkWebCrypto()) return;
-
-	const promises = values.map(async (value) => {
-		const escapedStr = encodeURIComponent(value);
-		const digest = await sha1BytesAsync(escapedStr);
-		sha1Cache.set(escapedStr, digest);
-	});
-
-	await Promise.all(promises);
-}
-
-// Cache for SHA-1 digests to enable synchronous WebCrypto usage
-const sha1Cache = new Map<string, Uint8Array>();
-let webCryptoAvailable: boolean | null = null;
-
-/**
- * Check if WebCrypto is available for SHA-1
- */
-function checkWebCrypto(): boolean {
-	if (webCryptoAvailable !== null) return webCryptoAvailable;
-
-	// Check for crypto.subtle (WebCrypto API)
-	if (
-		typeof globalThis !== "undefined" &&
-		globalThis.crypto &&
-		globalThis.crypto.subtle &&
-		typeof globalThis.crypto.subtle.digest === "function"
-	) {
-		webCryptoAvailable = true;
-		return true;
-	}
-
-	webCryptoAvailable = false;
-	return false;
-}
-
-/**
- * Get SHA-1 digest using cache for synchronous operation
- * Uses WebCrypto when available (via background pre-computation), falls back to pure JS
- */
-function getCachedSha1(message: string): Uint8Array {
-	// Check cache first
-	const cached = sha1Cache.get(message);
-	if (cached) return cached;
-
-	// Use synchronous pure JS implementation for immediate result
-	const digest = sha1Bytes(message);
-	sha1Cache.set(message, digest);
-
-	// Asynchronously compute with WebCrypto for next time (if available)
-	if (checkWebCrypto()) {
-		sha1BytesAsync(message).then((webDigest) => {
-			// Update cache with WebCrypto result (should be identical)
-			sha1Cache.set(message, webDigest);
-		});
-	}
-
-	// Limit cache size to prevent memory leaks
-	if (sha1Cache.size > 10000) {
-		// Remove oldest entries (first ones in iteration order)
-		const keysToDelete = Array.from(sha1Cache.keys()).slice(0, 5000);
-		for (const key of keysToDelete) {
-			sha1Cache.delete(key);
-		}
-	}
-
-	return digest;
-}
-
-/**
- * Async SHA-1 using WebCrypto when available
- * This can be used to pre-warm the cache
- */
-async function sha1BytesAsync(message: string): Promise<Uint8Array> {
-	if (checkWebCrypto()) {
-		const encoder = new TextEncoder();
-		const data = encoder.encode(message);
-		const hashBuffer = await globalThis.crypto.subtle.digest("SHA-1", data);
-		return new Uint8Array(hashBuffer);
-	}
-
-	// Fallback to pure JS implementation
-	return sha1Bytes(message);
-}
-
-/**
- * Minimal SHA-1 implementation returning raw bytes.
- * Source adapted from public-domain references for portability (browser/Node).
- * Used as fallback when WebCrypto is not available.
- */
-function sha1Bytes(message: string): Uint8Array {
-	const bytes = utf8Encode(message);
-	const ml = bytes.length;
-
-	// Pre-processing (padding)
-	const withOne = new Uint8Array(((ml + 9 + 63) >>> 6) << 6); // multiple of 64
-	withOne.set(bytes);
-	withOne[ml] = 0x80;
-	const bitLen = ml * 8;
-	// Append length as 64-bit big-endian
-	const dv = new DataView(withOne.buffer);
-	dv.setUint32(withOne.length - 4, bitLen >>> 0, false);
-	dv.setUint32(withOne.length - 8, Math.floor(bitLen / 2 ** 32) >>> 0, false);
-
-	// Initialize hash values
-	let h0 = 0x67452301;
-	let h1 = 0xefcdab89;
-	let h2 = 0x98badcfe;
-	let h3 = 0x10325476;
-	let h4 = 0xc3d2e1f0;
-
-	const w = new Uint32Array(80);
-
-	for (let i = 0; i < withOne.length; i += 64) {
-		// Break chunk into sixteen 32-bit big-endian words
-		for (let j = 0; j < 16; j++) {
-			w[j] = dv.getUint32(i + j * 4, false);
-		}
-		// Extend to 80 words
-		for (let j = 16; j < 80; j++) {
-			const t = w[j - 3] ^ w[j - 8] ^ w[j - 14] ^ w[j - 16];
-			w[j] = (t << 1) | (t >>> 31);
-		}
-
-		// Initialize working vars
-		let a = h0;
-		let b = h1;
-		let c = h2;
-		let d = h3;
-		let e = h4;
-
-		for (let j = 0; j < 80; j++) {
-			let f: number;
-			let k: number;
-			if (j < 20) {
-				f = (b & c) | (~b & d);
-				k = 0x5a827999;
-			} else if (j < 40) {
-				f = b ^ c ^ d;
-				k = 0x6ed9eba1;
-			} else if (j < 60) {
-				f = (b & c) | (b & d) | (c & d);
-				k = 0x8f1bbcdc;
-			} else {
-				f = b ^ c ^ d;
-				k = 0xca62c1d6;
-			}
-			const temp = (((a << 5) | (a >>> 27)) + f + e + k + w[j]) >>> 0;
-			e = d;
-			d = c;
-			c = ((b << 30) | (b >>> 2)) >>> 0;
-			b = a;
-			a = temp;
-		}
-
-		h0 = (h0 + a) >>> 0;
-		h1 = (h1 + b) >>> 0;
-		h2 = (h2 + c) >>> 0;
-		h3 = (h3 + d) >>> 0;
-		h4 = (h4 + e) >>> 0;
-	}
-
-	const out = new Uint8Array(20);
-	const outDv = new DataView(out.buffer);
-	outDv.setUint32(0, h0, false);
-	outDv.setUint32(4, h1, false);
-	outDv.setUint32(8, h2, false);
-	outDv.setUint32(12, h3, false);
-	outDv.setUint32(16, h4, false);
-	return out;
-}
-
-function utf8Encode(str: string): Uint8Array {
-	if (typeof TextEncoder !== "undefined") {
-		return new TextEncoder().encode(str);
-	}
-	// Fallback
-	const utf8: number[] = [];
-	for (let i = 0; i < str.length; i++) {
-		const charcode = str.charCodeAt(i);
-		if (charcode < 0x80) utf8.push(charcode);
-		else if (charcode < 0x800) {
-			utf8.push(0xc0 | (charcode >> 6), 0x80 | (charcode & 0x3f));
-		} else if (charcode < 0xd800 || charcode >= 0xe000) {
-			utf8.push(
-				0xe0 | (charcode >> 12),
-				0x80 | ((charcode >> 6) & 0x3f),
-				0x80 | (charcode & 0x3f),
-			);
-		} else {
-			// surrogate pair
-			i++;
-			// UTF-16 to Unicode code point
-			const codePoint =
-				0x10000 + (((charcode & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff));
-			utf8.push(
-				0xf0 | (codePoint >> 18),
-				0x80 | ((codePoint >> 12) & 0x3f),
-				0x80 | ((codePoint >> 6) & 0x3f),
-				0x80 | (codePoint & 0x3f),
-			);
-		}
-	}
-	return new Uint8Array(utf8);
 }
 
 function bytesToUuid(bytes: Uint8Array): string {
@@ -1438,7 +853,6 @@ export {
 	setContextRoutingMetadata,
 	shouldIncludeByContext,
 } from "./utils/context-routing";
-export { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 export {
 	extractUserText,
 	getUserMessageText,
@@ -1446,7 +860,7 @@ export {
 	normalizeUserMessageText,
 	stripAugmentationForPersistence,
 } from "./utils/message-text";
-// `export * from "./utils"` (in index.node.ts etc.) resolves to this file, not
+// `export * from "./utils"` (in index.ts etc.) resolves to this file, not
 // to a `./utils/index.ts`. Any helper in the `utils/` directory that needs to be
 // reachable from `@elizaos/core` must be re-exported here.
 export { getLocalServerUrl } from "./utils/node";

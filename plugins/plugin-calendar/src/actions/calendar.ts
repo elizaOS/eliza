@@ -10,11 +10,11 @@ import {
   ModelType,
   modelProviderErrorDetail,
   NoModelProviderConfiguredError,
-  parseJSONObjectFromText,
   parseJsonModelRecord,
   recentConversationTexts,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 import { createCalendarActionRunner } from "./calendar-handler.js";
 import type { CalendarActionDeps, CalendarModelCallArgs } from "./deps.js";
 

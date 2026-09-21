@@ -40,8 +40,6 @@
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
-      "@elizaos/logger/*": ["../../packages/logger/src/*"],
       "@elizaos/plugin-coding-tools": [
         "../plugin-coding-tools/dist/index.d.ts"
       ],

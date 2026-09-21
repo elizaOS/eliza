@@ -10,7 +10,7 @@ import {
 const platformNames: Record<string, string> = {
   darwin: "macos",
   linux: "linux",
-  win32: "windows",
+  win32: "win",
 };
 
 const archNames: Record<string, string> = {
@@ -62,7 +62,7 @@ fs.writeFileSync(
 const nativeHostTargets: Record<string, Record<string, string>> = {
   macos: { arm64: "bun-darwin-arm64", x64: "bun-darwin-x64" },
   linux: { arm64: "bun-linux-arm64", x64: "bun-linux-x64" },
-  windows: { x64: "bun-windows-x64" },
+  win: { x64: "bun-windows-x64" },
 };
 const nativeHostTarget = nativeHostTargets[osName]?.[archName];
 if (!nativeHostTarget) {
@@ -72,7 +72,7 @@ if (!nativeHostTarget) {
 }
 const nativeHostOutput = path.join(
   "build",
-  `browser-bridge-native-host${osName === "windows" ? ".exe" : ""}`,
+  `browser-bridge-native-host${osName === "win" ? ".exe" : ""}`,
 );
 const compile = Bun.spawnSync([
   process.execPath,

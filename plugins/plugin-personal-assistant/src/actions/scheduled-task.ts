@@ -39,6 +39,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { stableStringify } from "@elizaos/core";
+import { resolvePendingPromptsStore } from "@elizaos/plugin-assistant";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,
@@ -47,7 +48,6 @@ import {
   lifeOpsNoopEffect,
 } from "../lifeops/action-effect-result.js";
 import { messageText } from "../lifeops/google/format-helpers.js";
-import { resolvePendingPromptsStore } from "../lifeops/pending-prompts/store.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
   bindScheduledTaskToInboundChat,

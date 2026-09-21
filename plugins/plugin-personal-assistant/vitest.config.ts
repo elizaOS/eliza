@@ -27,14 +27,6 @@ const appCoreTestSetup = path.join(
 );
 const lifeopsTestSetup = path.join(here, "test", "setup.ts");
 const lifeopsTestStubsRoot = path.join(here, "test", "stubs");
-const appCoreNativeLibraryPolicy = path.join(
-  elizaRoot,
-  "packages",
-  "app-core",
-  "src",
-  "platform",
-  "native-library-policy.ts",
-);
 const appCoreTaskHostCapabilities = path.join(
   elizaRoot,
   "packages",
@@ -46,6 +38,12 @@ const appCoreTaskHostCapabilities = path.join(
 const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
 const corePackageRequire = createRequire(
   path.join(elizaRoot, "packages", "core", "package.json"),
+);
+const assistantPackageRequire = createRequire(
+  path.join(elizaRoot, "plugins", "plugin-assistant", "package.json"),
+);
+const sharedPackageRequire = createRequire(
+  path.join(elizaRoot, "packages", "shared", "package.json"),
 );
 const lifeopsPackageRequire = createRequire(path.join(here, "package.json"));
 const escapedAgentSourceRoot = agentSourceRoot.replace(
@@ -169,16 +167,6 @@ function resolveNodePackageRoot(packageName: string): string {
   return path.join(here, "node_modules", packageName);
 }
 
-function resolveCorePackageEntry(packageName: string): string {
-  return corePackageRequire.resolve(packageName);
-}
-
-function resolveCorePackageRoot(packageName: string): string {
-  return path.dirname(
-    corePackageRequire.resolve(path.join(packageName, "package.json")),
-  );
-}
-
 const reactRoot = resolveNodePackageRoot("react");
 const reactDomRoot = resolveNodePackageRoot("react-dom");
 // Bun's isolated install puts the logger's transitive deps deep under
@@ -190,11 +178,13 @@ const reactDomRoot = resolveNodePackageRoot("react-dom");
 // real install dirs so resolution is one hop on every platform.
 const adzeRoot = resolveNodePackageRoot("adze");
 const fastRedactRoot = resolveNodePackageRoot("fast-redact");
-const aiEntry = resolveCorePackageEntry("ai");
+const aiEntry = assistantPackageRequire.resolve("ai");
 const fsExtraEntry = lifeopsPackageRequire.resolve("fs-extra");
-const handlebarsEntry = resolveCorePackageEntry("handlebars");
-const mammothEntry = resolveCorePackageEntry("mammoth");
-const markdownItRoot = resolveCorePackageRoot("markdown-it");
+const handlebarsEntry = corePackageRequire.resolve("handlebars");
+const mammothEntry = assistantPackageRequire.resolve("mammoth");
+const markdownItRoot = path.dirname(
+  sharedPackageRequire.resolve("markdown-it/package.json"),
+);
 const telegramSessionsEntry = path.join(
   elizaRoot,
   "plugins",
@@ -341,10 +331,6 @@ export default defineConfig({
           "plugin-collector.ts",
         ),
       },
-      {
-        find: /^@elizaos\/app-core\/platform\/native-library-policy$/,
-        replacement: appCoreNativeLibraryPolicy,
-      },
       // Registered HTTP routes must exercise the real owner authentication
       // boundary even when app-core's distribution has not been built.
       {
@@ -383,12 +369,13 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/vault$/,
+        find: /^@elizaos\/credentials\/vault$/,
         replacement: path.join(
           elizaRoot,
           "packages",
-          "vault",
+          "credentials",
           "src",
+          "vault",
           "index.ts",
         ),
       },
@@ -494,17 +481,6 @@ export default defineConfig({
         find: "@elizaos/ui",
         replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
       },
-      // `@elizaos/plugin-calendar`'s built dist pulls `renderGroundedActionReply`
-      // from the `@elizaos/agent/actions/grounded-action-reply` subpath (to dodge
-      // the full agent barrel in the Plugin Tests lane). The bare-specifier alias
-      // below prefix-matches that subpath and rewrites it to `agent.ts/actions/...`,
-      // which is unresolvable — so anchor the subpath to the stub explicitly first.
-      // Other agent subpaths (e.g. services/app-session-gate) must keep resolving
-      // to the real source, so this stays narrow rather than a `/(.+)` catch-all.
-      {
-        find: /^@elizaos\/agent\/actions\/grounded-action-reply$/,
-        replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
-      },
       {
         find: /^@elizaos\/agent\/security\/access$/,
         replacement: path.join(agentSourceRoot, "security", "access.ts"),
@@ -521,25 +497,18 @@ export default defineConfig({
         replacement: path.join(agentSourceRoot, "api", "client-chat-admin.ts"),
       },
       {
+        find: /^@elizaos\/agent\/runtime\/eliza$/,
+        replacement: path.join(agentSourceRoot, "runtime", "eliza.ts"),
+      },
+      {
         find: /^@elizaos\/agent\/runtime\/owner-entity$/,
         replacement: path.join(agentSourceRoot, "runtime", "owner-entity.ts"),
       },
       {
-        find: /^@elizaos\/agent\/services\/knowledge-graph$/,
-        replacement: path.join(
-          agentSourceRoot,
-          "services",
-          "knowledge-graph",
-          "index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/agent\/services\/knowledge-graph\/service$/,
-        replacement: path.join(
-          agentSourceRoot,
-          "services",
-          "knowledge-graph",
-          "service.ts",
+        find: /^@elizaos\/plugin-relationships\/knowledge-graph$/,
+        replacement: path.resolve(
+          here,
+          "../plugin-relationships/src/knowledge-graph/index.ts",
         ),
       },
       {
@@ -759,6 +728,10 @@ export default defineConfig({
       // never gets built. Anchor PA self-subpaths to source (the base workspace-app
       // config only source-aliases the barrel, and the exports-alias builder skips
       // the wildcard entry).
+      {
+        find: /^@elizaos\/plugin-personal-assistant$/,
+        replacement: path.join(here, "src", "index.ts"),
+      },
       {
         find: /^@elizaos\/plugin-personal-assistant\/(.+)$/,
         replacement: path.join(

@@ -27,7 +27,7 @@
  *    bfcache pageshow arriving together) do not stampede reconnects/refetches.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import type { MutableRefObject } from "react";
 import { useEffect, useRef } from "react";
 import { type ConversationMessage, client } from "../api";

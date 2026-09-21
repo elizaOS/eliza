@@ -15,7 +15,7 @@
  * polling `getLatestDeployment` regardless of which backend is wired.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { ApiError } from "../api/cloud-worker-errors";
 import { logger } from "../utils/logger";
 import type { AppDeployRunner, AppDeployRunOptions } from "./app-deploy-orchestrator";

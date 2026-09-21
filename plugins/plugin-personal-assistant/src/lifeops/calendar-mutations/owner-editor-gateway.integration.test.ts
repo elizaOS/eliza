@@ -3,12 +3,13 @@
  * calendar claim ledger, suppress replay across service restarts, and preserve
  * Apple add-only receipts without fabricating readable events.
  */
+
+import type { AgentRuntime } from "@elizaos/core";
 import {
   APPROVAL_SERVICE,
   ApprovalService,
   resolveApprovalService,
-} from "@elizaos/agent";
-import type { AgentRuntime } from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import { CalendarServiceError } from "@elizaos/plugin-calendar";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";

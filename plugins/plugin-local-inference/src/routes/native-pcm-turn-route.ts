@@ -9,7 +9,12 @@
  */
 
 import type http from "node:http";
-import { logger, readJsonBody, sendJson, sendJsonError } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import {
+	readJsonBody,
+	sendJson,
+	sendJsonError,
+} from "@elizaos/shared/api/http-helpers";
 import { localInferenceEngine } from "../services/engine";
 import type { VoicePipelineEvents } from "../services/voice/pipeline";
 

@@ -23,7 +23,7 @@
  */
 
 import type http from "node:http";
-import type { RouteHelpers } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/shared/api/route-helpers";
 import {
   NOTIFICATION_PUSH_SERVICE_TYPE,
   NotificationPushService,

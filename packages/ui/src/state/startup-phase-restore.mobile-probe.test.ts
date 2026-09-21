@@ -8,7 +8,7 @@
 // desktop bridge, and the existing-install probe stubbed — the probe-wiring and
 // the J1 surface-don't-onboard boundary under test are real.
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client-types-core";
 import {
