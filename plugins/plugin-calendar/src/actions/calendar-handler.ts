@@ -1715,9 +1715,10 @@ function parseRelativeDayOffset(text: string): number | null {
 export function parseExplicitLocalDate(
   value: string,
   timeZone: string,
+  now: Date = new Date(),
 ): { year: number; month: number; day: number } | null {
   const normalized = normalizeText(value);
-  const localToday = getZonedDateParts(new Date(), timeZone);
+  const localToday = getZonedDateParts(now, timeZone);
 
   const isoMatch = normalized.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
   if (isoMatch) {
@@ -2423,7 +2424,18 @@ export function resolveUpdateTimeRange(args: {
   timeZone?: string;
 }): { startAt?: string; endAt?: string } {
   const startAt = args.explicitStart ?? args.extractedStart;
-  const endAt = args.explicitEnd ?? args.extractedEnd;
+  // An extracted end belongs to its extracted start, never a different
+  // explicit start. Supplied explicit bounds retain their authority.
+  let endAt =
+    args.explicitEnd ?? (args.explicitStart ? undefined : args.extractedEnd);
+  if (
+    startAt &&
+    endAt &&
+    args.explicitEnd === undefined &&
+    !endFollowsStart(startAt, endAt, args.timeZone)
+  ) {
+    endAt = undefined;
+  }
   if (!startAt || endAt) return { startAt, endAt };
   const durationMs =
     Date.parse(args.target.endAt) - Date.parse(args.target.startAt);
@@ -2439,6 +2451,17 @@ export function resolveUpdateTimeRange(args: {
       ? end.toISOString()
       : formatLocalDateTimeInZone(end, timeZone),
   };
+}
+
+function endFollowsStart(
+  startAt: string,
+  endAt: string,
+  timeZone: string | undefined,
+): boolean {
+  const zone = timeZone?.trim() || "UTC";
+  const start = parseDateTimeInZone(startAt, zone);
+  const end = parseDateTimeInZone(endAt, zone);
+  return start !== null && end !== null && end.getTime() > start.getTime();
 }
 
 function createStartDetail(
@@ -2459,11 +2482,12 @@ const DATE_SEGMENT_SPLIT_PATTERN =
 function distinctStatedLocalDates(
   text: string,
   timeZone: string,
+  now?: Date,
 ): LocalDateOnly[] {
   const dates: LocalDateOnly[] = [];
   for (const segment of text.split(DATE_SEGMENT_SPLIT_PATTERN)) {
     if (segment.trim().length === 0) continue;
-    const parsed = parseExplicitLocalDate(segment, timeZone);
+    const parsed = parseExplicitLocalDate(segment, timeZone, now);
     if (parsed && !dates.some((d) => compareLocalDates(d, parsed) === 0)) {
       dates.push(parsed);
     }
@@ -2753,11 +2777,11 @@ function verifyAppliedCalendarMutationOrThrow(
     }
   }
 
-  const scopeDates = distinctStatedLocalDates(scope, timeZone);
+  const scopeDates = distinctStatedLocalDates(scope, timeZone, now);
   const messageDates =
     scope === requestText
       ? scopeDates
-      : distinctStatedLocalDates(requestText, timeZone);
+      : distinctStatedLocalDates(requestText, timeZone, now);
   if (scopeDates.length > 1) return null;
   if (scopeDates.length === 0 && messageDates.length > 1) return null;
   const statedDay = scopeDates[0] ?? messageDates[0];
