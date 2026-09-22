@@ -155,14 +155,6 @@ export {
   type RealTestRuntimeOptions,
   type RealTestRuntimeResult,
 } from "./real-runtime";
-// Shared test utilities (env snapshots, timeouts, deferred promises)
-export {
-  createDeferred,
-  envSnapshot,
-  saveEnv,
-  sleep,
-  withTimeout,
-} from "./shared-test-utils";
 // Test helper utilities (pure functions, no mocks)
 export {
   createTestCharacter,
