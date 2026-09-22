@@ -52,7 +52,10 @@ afterEach(() => {
     fs.rmSync(directory, { recursive: true, force: true });
 });
 
-async function harness(binding = true) {
+async function harness(
+  binding = true,
+  options: { connectionError?: Error; identity?: Api.User } = {},
+) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "tg-personal-"));
   directories.push(directory);
   process.env.ELIZA_STATE_DIR = directory;
@@ -106,12 +109,18 @@ async function harness(binding = true) {
       );
       vi.spyOn(client, "connect").mockImplementation(async () => {
         await saved.load();
+        if (options.connectionError) throw options.connectionError;
         return true;
       });
       vi.spyOn(client, "disconnect").mockResolvedValue(undefined);
       vi.spyOn(client, "checkAuthorization").mockResolvedValue(true);
       vi.spyOn(client, "getMe").mockResolvedValue(
-        new Api.User({ id: userId, phone: "15551234567", firstName: "Owner" }),
+        options.identity ??
+          new Api.User({
+            id: userId,
+            phone: "15551234567",
+            firstName: "Owner",
+          }),
       );
       vi.spyOn(client, "getInputEntity").mockResolvedValue(
         new Api.InputPeerUser({ userId, accessHash: userId }),
@@ -382,6 +391,59 @@ describe("personal service account-bound history", () => {
     expect(clients).toHaveLength(0);
     expect(service.getAccountStatus("me:personal")).toBe("error");
   });
+
+  it("classifies connection failure and tears down the unusable client", async () => {
+    const cause = new Error("fixture connection rejected");
+    const { runtime, service, clients } = await harness(true, {
+      connectionError: cause,
+    });
+    try {
+      await expect(service.refreshAccount("me:personal")).rejects.toMatchObject(
+        {
+          code: "TELEGRAM_ACCOUNT_CONNECT_FAILED",
+          cause,
+        },
+      );
+      expect(service.getAccountStatus("me:personal")).toBe("error");
+      expect(service.isConnected("me:personal")).toBe(false);
+      expect(runtime.getMessageConnectors()).toHaveLength(0);
+      expect(clients[0].disconnect).toHaveBeenCalled();
+    } finally {
+      await service.stop();
+    }
+  });
+
+  it.each([
+    {
+      field: "phone",
+      identity: new Api.User({ id: userId, phone: "15557654321" }),
+    },
+    {
+      field: "subject",
+      identity: new Api.User({
+        id: readBigIntFromBuffer(Buffer.from([72])),
+        phone: "15551234567",
+      }),
+    },
+  ])(
+    "rejects a mismatched $field before registering or reading history",
+    async ({ identity }) => {
+      const { runtime, service, clients } = await harness(true, { identity });
+      try {
+        await expect(
+          service.refreshAccount("me:personal"),
+        ).rejects.toMatchObject({
+          code: "TELEGRAM_ACCOUNT_IDENTITY_MISMATCH",
+        });
+        expect(service.getAccountStatus("me:personal")).toBe("error");
+        expect(runtime.getMessageConnectors()).toHaveLength(0);
+        expect(clients[0].invoke).not.toHaveBeenCalled();
+        expect(clients[0].disconnect).toHaveBeenCalled();
+      } finally {
+        await service.stop();
+      }
+    },
+  );
 
   it("reports invalid configured credentials as account error", async () => {
     const { runtime, service, clients } = await harness();

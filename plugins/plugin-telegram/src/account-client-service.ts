@@ -300,10 +300,18 @@ export class TelegramAccountService extends Service {
         });
       } catch (cause) {
         // error-policy:J2 connection failures retain typed cause and explicit account health.
-        this.failures.set(
-          accountId,
-          cause instanceof Error ? cause : new Error(String(cause)),
-        );
+        const error =
+          cause instanceof ElizaError
+            ? cause
+            : new ElizaError(
+                "Telegram personal connection failed. Reconnect this account.",
+                {
+                  code: "TELEGRAM_ACCOUNT_CONNECT_FAILED",
+                  cause,
+                  context: { accountId },
+                },
+              );
+        this.failures.set(accountId, error);
         this.clients.delete(accountId);
         try {
           if (client) await client.disconnect();
@@ -313,7 +321,7 @@ export class TelegramAccountService extends Service {
             accountId,
           });
         }
-        throw cause;
+        throw error;
       }
     });
   }

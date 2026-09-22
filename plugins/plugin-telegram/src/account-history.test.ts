@@ -106,6 +106,22 @@ describe("personal MTProto complete history", () => {
     ).rejects.toMatchObject({ code: "TELEGRAM_HISTORY_PAGINATION_INVALID" });
   });
 
+  it("rejects a different peer on a later page without returning the valid prefix", async () => {
+    const { client, rpc } = transport([]);
+    const foreign = message(8, "another peer's content");
+    foreign.peerId = new Api.PeerUser({
+      userId: readBigIntFromBuffer(Buffer.from([72])),
+    });
+    rpc.mockResolvedValueOnce(page([message(9)]));
+    rpc.mockResolvedValueOnce(page([foreign]));
+    await expect(
+      readTelegramAccountHistory(client, peer),
+    ).rejects.toMatchObject({
+      code: "TELEGRAM_HISTORY_PEER_MISMATCH",
+    });
+    expect(rpc).toHaveBeenCalledTimes(2);
+  });
+
   it("fails the complete read if a later provider page fails", async () => {
     const { client, rpc } = transport([]);
     rpc.mockResolvedValueOnce(page([message(9)]));
