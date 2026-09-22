@@ -18,7 +18,11 @@ const rmRecursiveScript = join(
   "rm-path-recursive.mjs",
 );
 const bun = process.env.BUN || process.env.npm_execpath || "bun";
-const extraArgs = process.argv.slice(2);
+const extraArgs = [
+  ...process.argv.slice(2),
+  "--preload",
+  join(repoRoot, ".github/scripts/transport-request-observer.ts"),
+];
 
 // Per-run unique port offset. Self-hosted CI runners share one host/localhost,
 // so concurrent e2e runs (a production deploy + a develop-push staging deploy,

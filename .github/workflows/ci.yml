@@ -1,20 +1,22 @@
-name: Cloud transport diagnostic (nonmerge probe)
+name: Full smoke transport diagnostic (nonmerge probe)
 on:
   workflow_dispatch: null
 permissions:
   contents: read
 concurrency:
-  group: cloud-transport-diagnostic-${{ github.run_id }}
+  group: full-smoke-transport-${{ github.run_id }}
   cancel-in-progress: false
 env:
   CI: "true"
   BUN_VERSION: "1.3.14"
   NODE_VERSION: "24.15.0"
-  PGLITE_WASM_MODE: node
+  NODE_NO_WARNINGS: "1"
+  NODE_OPTIONS: --max-old-space-size=8192
 jobs:
-  original-sequence:
+  smoke_lanes:
+    name: Smoke lanes
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -32,26 +34,33 @@ jobs:
           no-vision-deps: "true"
       - name: Build core contract
         run: bun run build:core
-      - name: Observe original cloud sequence through Group E once
-        env:
-          NODE_ENV: test
-          CLOUD_E2E: "1"
-          MOCK_REDIS: "1"
-          ELIZA_KMS_BACKEND: memory
-          WRANGLER_SEND_METRICS: "false"
-          E2E_ONLY: agent-token-flow.test.ts,fixture-sandbox-state.test.ts,group-a-auth.test.ts,group-b-account-billing.test.ts,group-c-agents.test.ts,group-d-ai-media.test.ts,group-e-agent-admin.test.ts
+      - name: Initialize external process observation
         run: |
           mkdir -p "$RUNNER_TEMP/transport-observation"
-          export TEST_PGLITE_DATA_DIR="$RUNNER_TEMP/transport-pglite"
-          export DEV_CLOUD_WRANGLER_PERSIST_TO="$RUNNER_TEMP/transport-wrangler"
-          export NODE_OPTIONS="--max-old-space-size=8192 --import=$GITHUB_WORKSPACE/.github/scripts/transport-lifecycle-observer.mjs"
-          cd packages/cloud/api
-          node test/e2e/run-e2e-batches.mjs --preload "$GITHUB_WORKSPACE/.github/scripts/transport-request-observer.ts" 2>&1 | tee "$RUNNER_TEMP/transport-observation/sequence.log"
-      - name: Retain complete diagnostic receipts
+          python3 .github/scripts/transport-process-observer.py "$PPID" > "$RUNNER_TEMP/transport-observation/process-observer.log" 2>&1 &
+      - name: Desktop startup smoke
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192 --import=${{ github.workspace }}/.github/scripts/transport-lifecycle-observer.mjs
+        run: node packages/app-core/scripts/dev-startup-smoke.mjs
+      - name: Install Playwright browsers
+        run: PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium
+      - name: Deterministic end-to-end smoke (unshardable tasks)
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192 --import=${{ github.workspace }}/.github/scripts/transport-lifecycle-observer.mjs
+        run: |
+          bun run test:e2e --filter='^(?!.*packages/app\)#test:e2e)' 2>&1 | tee "$RUNNER_TEMP/transport-observation/full-smoke.log"
+      - name: Finish owned process observation
+        if: always()
+        run: |
+          touch "$RUNNER_TEMP/transport-observation/stop"
+          sleep 2
+      - name: Preserve external diagnostic records
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: cloud-transport-diagnostic
+          name: full-smoke-transport-diagnostic
           path: ${{ runner.temp }}/transport-observation
-          if-no-files-found: warn
           retention-days: 3
+          if-no-files-found: warn
+    env:
+      PGLITE_WASM_MODE: node

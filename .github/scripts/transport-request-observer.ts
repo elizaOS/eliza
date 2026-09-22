@@ -12,6 +12,7 @@ globalThis.fetch=Object.assign(async (...args:Parameters<typeof fetch>)=>{
  let response:Response;
  try{response=await originalFetch(...args);}catch(error){record('fetch-error',{id,durationMs:performance.now()-start,error:error instanceof Error?error.message:String(error)});throw error;}
  record('headers',{id,status:response.status,durationMs:performance.now()-start,headers:Object.fromEntries(['content-type','server','date','x-eliza-trace-id','x-request-id','server-timing'].flatMap(name=>{const value=response.headers.get(name);return value===null?[]:[[name,value]];}))});
+ if(response.status>=500){void response.clone().text().then(body=>record('failure-body',{id,body}),error=>record('failure-body-error',{id,error:error instanceof Error?error.message:String(error)}));}
  for(const name of ['text','json','arrayBuffer','blob','formData'] as const){const original=response[name].bind(response);Object.defineProperty(response,name,{configurable:true,value:async()=>{record('body-read-start',{id,method:name});try{const value=await original();record('body-read-end',{id,method:name});return value;}catch(error){record('body-read-error',{id,method:name});throw error;}}});}
  return response;
 },originalFetch);
