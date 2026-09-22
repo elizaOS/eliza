@@ -356,6 +356,8 @@ export class PersonalityStore extends Service {
         )
           return { before, after: clone(before) };
         const after = args.build(before);
+        // Returning the unchanged snapshot is an explicit no-op under the lock.
+        if (after === before) return { before, after: clone(before) };
         if (args.extractionEvidenceId)
           after.extraction_evidence_ids = [
             ...(before.extraction_evidence_ids ?? []),
@@ -617,24 +619,15 @@ export class PersonalityStore extends Service {
     agentId: UUID;
     actorId: UUID;
     directive: string;
-    /** Passive inference may retract only a proven inferred directive. */
-    requiredSource?: PersonalitySource;
-    extractionEvidenceId?: string;
   }): Promise<{ before: PersonalitySlot; after: PersonalitySlot }> {
     return this.mutateSlot({
       scope: "user",
       targetId: args.userId,
       agentId: args.agentId,
       actorId: args.actorId,
-      extractionEvidenceId: args.extractionEvidenceId,
       build: (before) => {
-        // Gate under the slot lock, not against a stale extractor snapshot.
-        if (
-          !before.custom_directives.includes(args.directive) ||
-          (args.requiredSource &&
-            before.directive_sources?.[args.directive] !== args.requiredSource)
-        )
-          return before;
+        // Resolve the exact rule under the same slot lock as the write.
+        if (!before.custom_directives.includes(args.directive)) return before;
         const sources = { ...before.directive_sources };
         delete sources[args.directive];
         return {
@@ -644,7 +637,7 @@ export class PersonalityStore extends Service {
           ),
           directive_sources: sources,
           updated_at: new Date().toISOString(),
-          source: args.requiredSource ?? "user",
+          source: "user",
         };
       },
       action: () => `remove_directive:${args.directive}`,

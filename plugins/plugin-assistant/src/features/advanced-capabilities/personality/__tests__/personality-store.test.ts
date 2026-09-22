@@ -4,7 +4,7 @@
  * lossless directive retention, profile load/save, and the seeded default
  * profiles. Deterministic — no live model.
  */
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { defaultProfiles } from "../profiles/index.ts";
 import {
   GLOBAL_PERSONALITY_SCOPE,
@@ -291,35 +291,38 @@ describe("PersonalityStore", () => {
   });
 });
 
-describe("directive retraction persistence and ordering", () => {
-  test("checks provenance after a concurrent explicit write and preserves replay receipts", async () => {
+describe("directive removal persistence and ordering", () => {
+  test("a missing rule performs no persistence or removal audit", async () => {
+    const fake = makeFakeRuntime({ agentId: AGENT });
+    const writes = vi.spyOn(fake.runtime, "upsertMemory");
+    const before = structuredClone(fake.memories);
+    const audit = fake.store.getRecentAudit();
+    const result = await fake.store.removeDirective({
+      userId: USER_A,
+      agentId: AGENT,
+      actorId: USER_A,
+      directive: "absent rule",
+    });
+    expect(result.after).toEqual(result.before);
+    expect(writes).not.toHaveBeenCalled();
+    expect(fake.memories).toEqual(before);
+    expect(fake.store.getRecentAudit()).toEqual(audit);
+  });
+  test("serializes removal before a subsequent explicit re-add", async () => {
     const store = bareStore();
     const args = {
       userId: USER_A,
       agentId: AGENT,
-      actorId: AGENT,
+      actorId: USER_A,
       directive: "one question at a time",
     };
-    await store.addDirective({ ...args, source: "agent_inferred" });
-    const [_, retraction] = await Promise.all([
-      store.addDirective({ ...args, actorId: USER_A, source: "user" }),
-      store.removeDirective({
-        ...args,
-        requiredSource: "agent_inferred",
-        extractionEvidenceId: "cancel-1",
-      }),
+    await store.addDirective(args);
+    const [removed] = await Promise.all([
+      store.removeDirective(args),
+      store.addDirective(args),
     ]);
-    expect(retraction.after.custom_directives).toEqual([args.directive]);
-    expect(retraction.after.directive_sources?.[args.directive]).toBe("user");
-    await store.removeDirective({
-      ...args,
-      extractionEvidenceId: "explicit-cancel-2",
-    });
-    await store.addDirective({ ...args, source: "user" });
-    await store.removeDirective({
-      ...args,
-      extractionEvidenceId: "explicit-cancel-2",
-    });
+    expect(removed.before.custom_directives).toEqual([args.directive]);
+    expect(removed.after.custom_directives).toEqual([]);
     expect(store.getSlot(USER_A, AGENT).custom_directives).toEqual([
       args.directive,
     ]);
