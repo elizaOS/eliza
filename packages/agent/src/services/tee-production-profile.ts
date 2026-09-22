@@ -2,8 +2,8 @@
  * The non-negotiable production floor for confidential-AI TEE trust: the claim
  * set, simulated-evidence rejection, and freshness ceiling a deployment cannot
  * accidentally relax. `mergeTeeProductionProfile` intersects it into the
- * resolved boot policy, only ever tightening. Does not by itself assert hardware
- * trust — quote-signature verification is still blocked on hardware.
+ * resolved boot policy, only ever tightening. The evidence provider owns quote
+ * verification; this profile alone cannot establish hardware trust.
  */
 import type { TeeClaims } from "./tee-evidence.ts";
 import type { TeeEvidencePolicy } from "./tee-policy.ts";
@@ -17,11 +17,9 @@ import type { TeeEvidencePolicy } from "./tee-policy.ts";
  * {@link mergeTeeProductionProfile}); the intersection only ever tightens the
  * policy — it never relaxes a stricter caller setting.
  *
- * It does NOT and cannot assert hardware trust on its own: real TDX/CoVE quote
- * signature verification is BLOCKED on hardware (plan Phase B/C). Until that
- * lands the profile rejects self-declared non-production markers
- * (`rejectSimulatedEvidence`) but the system must not claim hardware-verified
- * trust.
+ * It cannot assert hardware trust on its own: the evidence provider must verify
+ * quote signatures and platform appraisal. Rejecting self-declared development
+ * markers is an additional check, never a substitute for that verification.
  */
 export const TEE_PRODUCTION_MAX_AGE_MS = 300_000;
 
