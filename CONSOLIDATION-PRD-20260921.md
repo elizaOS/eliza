@@ -1,3 +1,5 @@
+> September 22 correction: integration acceptance is OPEN. Earlier focused results and peer ancestry did not prove behavioral parity. The existing integration checkout now includes develop `754d06a627a0`. Notes port: 212 tests pass; owning typecheck, lint and build pass, along with 14 affected assistant provider-selection tests. This is offline coverage; candidate live acceptance remains open. Calendar write safeguards, context/history recovery, acknowledgement delivery, preference behavior and final same-candidate UI QA still require reconciliation. The running demo on port 5288 is a separate saved branch.
+
 # Eliza consolidation PRD and acceptance record
 
 This is the compact handoff contract for the demo product. It keeps the scope tied to the original August comparison and does not turn historical timing into a three-second SLA.

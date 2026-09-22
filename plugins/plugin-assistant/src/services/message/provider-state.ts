@@ -28,6 +28,7 @@ export const STAGE1_RESPONSE_STATE_PROVIDERS = [
   "RECENT_MESSAGES",
   "CHARACTER_GATE_NOTICE",
   "userPersonalityPreferences",
+  "NAMED_NOTES",
   "recent-conversations",
   "relevant-conversations",
   "BOT_AWARENESS",
