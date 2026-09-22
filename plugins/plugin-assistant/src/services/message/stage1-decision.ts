@@ -79,6 +79,7 @@ import {
   isEmptyStage1Result,
   parseMessageHandlerModelOutput,
   readStage1EmptyRetryLimit,
+  readStage1TerminalReaskSetting,
   shouldRetryStage1Generation,
   shouldUseStage1PlannerFallback,
   synthesizePlannerFallbackFromStage1Failure,
@@ -490,22 +491,26 @@ export async function generateStage1Decision(
       ? null
       : getStage1RetryReason(rawMessageHandler);
   }
-  // An explicit RESPOND without an answer or pending work gets one repaired
-  // re-ask. Consistent STOP and IGNORE decisions retain their terminal meaning. The retry
-  // still passes through ordinary terminal routing and reply validation.
+  // Terminal review shares a budget with direct IGNORE review below. A
+  // repeated terminal decision still passes through ordinary routing.
+  let terminalDecisionReviewed = false;
   // Voice keeps its complete path: its spoken answer need not sit in replyText.
   if (!args.codingMode && !voiceDirectMessageChannel) {
-    const unusableRepair = getStage1UnusableDecisionRepair(
-      extractMessageHandlerRawParsed(rawMessageHandler),
-    );
+    const parsedForRepair = extractMessageHandlerRawParsed(rawMessageHandler);
+    const unusableRepair = getStage1UnusableDecisionRepair(parsedForRepair, {
+      reaskTerminal: readStage1TerminalReaskSetting(args.runtime),
+    });
     if (
       unusableRepair &&
       shouldUseStage1PlannerFallback(args.runtime, args.message)
     ) {
       args.runtime.logger?.warn?.(
         { src: "service:message", roomId: args.message.roomId },
-        "[message] Stage 1 ended an addressed turn without an answer — one repaired re-ask",
+        "[message] Stage 1 decision receives one response-contract review",
       );
+      terminalDecisionReviewed =
+        parsedForRepair?.shouldRespond === "STOP" ||
+        parsedForRepair?.shouldRespond === "IGNORE";
       const repairedInput = {
         ...messageHandlerInput,
         messages: [
@@ -560,7 +565,6 @@ export async function generateStage1Decision(
   let routingRepairAttempted = false;
   let historyIdentityRepairAttempted = false;
   let historyReadForDecision = false;
-  let directIgnoreReviewed = false;
   while (discoveryEnabled) {
     const nativeRead = extractContextRead(
       rawMessageHandler,
@@ -602,7 +606,7 @@ export async function generateStage1Decision(
           contentMetadata.isAutonomous === true)) ||
       (isObjectRecord(messageMetadata) && messageMetadata.fromBot === true);
     const ignoreReview =
-      !directIgnoreReviewed &&
+      !terminalDecisionReviewed &&
       !routingRepair &&
       !repairHistoryIdentity &&
       requested.length === 0 &&
@@ -625,7 +629,7 @@ export async function generateStage1Decision(
       // contradictory, normal pending-intent guards still own routing.
       if (routingRepair) routingRepairAttempted = true;
       if (ignoreReview && decisionRepair === ignoreReview)
-        directIgnoreReviewed = true;
+        terminalDecisionReviewed = true;
       if (repairHistoryIdentity) historyIdentityRepairAttempted = true;
       messageHandlerInput = {
         ...messageHandlerInput,

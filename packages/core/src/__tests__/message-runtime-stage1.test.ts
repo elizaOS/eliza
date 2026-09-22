@@ -3647,6 +3647,92 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it.each([
+		[true, "STOP", "STOP", 2],
+		[true, "IGNORE", "IGNORE", 2],
+		[true, "STOP", "IGNORE", 2],
+		[true, "IGNORE", "STOP", 2],
+		[false, "STOP", "STOP", 1],
+		[false, "IGNORE", "IGNORE", 2],
+	] as const)(
+		"shares one terminal review: optIn=%s first=%s repeated=%s calls=%s",
+		async (optIn, first, repeated, expectedCalls) => {
+			const runtime = makeRuntime(
+				[
+					stage1Response({ shouldRespond: first, contexts: [] }),
+					stage1Response({ shouldRespond: repeated, contexts: [] }),
+				],
+				optIn ? { ELIZA_STAGE1_TERMINAL_REASK: "1" } : {},
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "ok that's all",
+					channelType: ChannelType.DM,
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result).toMatchObject({
+				kind: "terminal",
+				action: expectedCalls === 1 ? first : repeated,
+			});
+			expect(useModelCalls(runtime).map(([type]) => type)).toEqual(
+				Array.from({ length: expectedCalls }, () => ModelType.RESPONSE_HANDLER),
+			);
+		},
+	);
+
+	it.each([ChannelType.VOICE_DM, ChannelType.GROUP])(
+		"does not opt voice or unaddressed group traffic into terminal review: %s",
+		async (channelType) => {
+			const runtime = makeRuntime(
+				[stage1Response({ shouldRespond: "STOP", contexts: [] })],
+				{ ELIZA_STAGE1_TERMINAL_REASK: "1" },
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "ok that's all", channelType }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
+			expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+			]);
+		},
+	);
+
+	it.each(["STOP", "IGNORE"] as const)(
+		"delivers a corrected reply after one opt-in terminal review of %s",
+		async (first) => {
+			const runtime = makeRuntime(
+				[
+					stage1Response({ shouldRespond: first, contexts: [] }),
+					stage1Response({ contexts: ["simple"], replyText: "Santiago." }),
+				],
+				{ ELIZA_STAGE1_TERMINAL_REASK: "1" },
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "one line: what's the capital of chile?",
+					channelType: ChannelType.DM,
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe("Santiago.");
+			}
+			expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+		},
+	);
+
 	it("still defers empty, whitespace, refusal-stub, and degenerate-run replies (#11504)", async () => {
 		for (const badReply of [
 			"",
