@@ -38,6 +38,9 @@ export const dstackEvidenceConfiguration = z.object({
   composeHash: sha256,
   osImageHash: sha256,
   variant: z.enum(["dstack-tdx", "dstack-nitro-enclave"]),
+  releaseValidity: z
+    .object({ notBefore: z.iso.datetime(), expiresAt: z.iso.datetime() })
+    .optional(),
   timeoutMs: z.number().int().positive().max(300_000).default(60_000),
 });
 export type DstackEvidenceConfig = z.input<typeof dstackEvidenceConfiguration>;
@@ -242,6 +245,16 @@ export function createDstackEvidenceProvider(
   ): Promise<TeeEvidence>;
 } {
   const config = dstackEvidenceConfiguration.parse(input);
+  const assertReleaseCurrent = () => {
+    const validity = config.releaseValidity;
+    if (
+      validity &&
+      (Date.now() < Date.parse(validity.notBefore) ||
+        Date.now() >= Date.parse(validity.expiresAt))
+    ) {
+      throw failure("Signed release identity is outside its validity interval");
+    }
+  };
   const collect = async (
     challenge: TeeReportDataChallenge,
     abortSignal?: AbortSignal,
@@ -254,6 +267,7 @@ export function createDstackEvidenceProvider(
       : timeout;
     signal.throwIfAborted();
     try {
+      assertReleaseCurrent();
       const attestation = await attest(
         config.socketPath,
         challenge.reportDataHex,
@@ -263,6 +277,7 @@ export function createDstackEvidenceProvider(
         JSON.parse(await verify(config, attestation, signal)),
       );
       signal.throwIfAborted();
+      assertReleaseCurrent();
       const d = result.details;
       if (
         d.tee_variant !== config.variant ||

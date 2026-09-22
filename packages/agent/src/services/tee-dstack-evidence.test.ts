@@ -3,7 +3,7 @@
  * synthetic verifier executable. Tests prove admission and lifecycle contracts,
  * not hardware quote cryptography, which belongs to pinned dstack-verifier.
  */
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
@@ -13,6 +13,7 @@ import {
   createDstackEvidenceProvider,
   type DstackEvidenceConfig,
 } from "./tee-dstack-evidence.ts";
+import { DSTACK_RELEASE_SIGNATURE_DOMAIN } from "./tee-dstack-release.ts";
 import { resolveTeeEvidenceProvider } from "./tee-evidence-provider.ts";
 
 const challenge = { nonce: "ab".repeat(32), reportDataHex: "cd".repeat(32) };
@@ -111,6 +112,33 @@ afterEach(async () => {
   );
   await rm(dir, { recursive: true, force: true });
 });
+function signedReleaseEnv() {
+  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+  const payload = Buffer.from(
+    JSON.stringify({
+      schemaVersion: 1,
+      appId: config.appId,
+      composeHash: config.composeHash,
+      osImageHash: config.osImageHash,
+      variant: config.variant,
+      notBefore: new Date(Date.now() - 1000).toISOString(),
+      expiresAt: new Date(Date.now() + 60000).toISOString(),
+    }),
+  );
+  return {
+    ELIZA_DSTACK_RELEASE_PUBKEY: publicKey
+      .export({ type: "spki", format: "pem" })
+      .toString(),
+    ELIZA_DSTACK_RELEASE_POLICY_JSON: JSON.stringify({
+      payload: payload.toString("base64"),
+      signature: sign(
+        null,
+        Buffer.concat([Buffer.from(DSTACK_RELEASE_SIGNATURE_DOMAIN), payload]),
+        privateKey,
+      ).toString("base64"),
+    }),
+  };
+}
 async function collect() {
   return createDstackEvidenceProvider(config).collectEvidenceWithReportData(
     challenge,
@@ -164,6 +192,7 @@ describe("dstack evidence adapter protocol", () => {
     async (variant) => {
       config.variant = variant;
       const env = {
+        ...signedReleaseEnv(),
         ELIZA_TEE_PRODUCTION_PROFILE: "dstack-cpu",
         ELIZA_DSTACK_EVIDENCE_CONFIG_JSON: JSON.stringify(config),
       };
@@ -182,6 +211,7 @@ describe("dstack evidence adapter protocol", () => {
   );
   it("CPU profile preserves stricter caller claims and refuses conflicting measurements", async () => {
     const env = {
+      ...signedReleaseEnv(),
       ELIZA_TEE_PRODUCTION_PROFILE: "dstack-cpu",
       ELIZA_DSTACK_EVIDENCE_CONFIG_JSON: JSON.stringify(config),
       ELIZA_TEE_POLICY_JSON: JSON.stringify({
@@ -201,6 +231,7 @@ describe("dstack evidence adapter protocol", () => {
   });
   it("CPU profile rejects a normalized JSON provider even when its id resembles the adapter", async () => {
     const env = {
+      ...signedReleaseEnv(),
       ELIZA_TEE_PRODUCTION_PROFILE: "dstack-cpu",
       ELIZA_DSTACK_EVIDENCE_CONFIG_JSON: JSON.stringify(config),
     };

@@ -4,7 +4,7 @@
  * this profile cannot authorize an inference destination or assert GPU trust.
  */
 import { ElizaError } from "@elizaos/core";
-import { dstackEvidenceConfiguration } from "./tee-dstack-evidence.ts";
+import { resolveDstackEvidenceConfiguration } from "./tee-dstack-release.ts";
 import { teeMeasurementDigestMatches } from "./tee-evidence.ts";
 import type { TeeEvidencePolicy } from "./tee-policy.ts";
 import { TEE_PRODUCTION_MAX_AGE_MS } from "./tee-production-profile.ts";
@@ -12,12 +12,10 @@ import { TEE_PRODUCTION_MAX_AGE_MS } from "./tee-production-profile.ts";
 /** Intersects pinned deployment identity with every stricter caller constraint. */
 export function mergeDstackCpuProductionProfile(
   policy: TeeEvidencePolicy | undefined,
-  configuration: string | undefined,
+  env: Record<string, string | undefined>,
 ): TeeEvidencePolicy {
   try {
-    if (configuration === undefined)
-      throw new Error("Missing dstack configuration");
-    const config = dstackEvidenceConfiguration.parse(JSON.parse(configuration));
+    const config = resolveDstackEvidenceConfiguration(env);
     const base = policy ?? {};
     const kind = config.variant === "dstack-tdx" ? "tdx" : "nitro";
     const pinned = { compose: config.composeHash, os: config.osImageHash };

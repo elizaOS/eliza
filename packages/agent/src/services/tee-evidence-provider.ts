@@ -4,10 +4,8 @@
  * required boot gate fails closed; conflicting providers reject configuration.
  */
 import { ElizaError } from "@elizaos/core";
-import {
-  createDstackEvidenceProvider,
-  dstackEvidenceConfiguration,
-} from "./tee-dstack-evidence.ts";
+import { createDstackEvidenceProvider } from "./tee-dstack-evidence.ts";
+import { resolveDstackEvidenceConfiguration } from "./tee-dstack-release.ts";
 import type { TeeEvidenceProvider } from "./tee-evidence.ts";
 
 export type TeeEvidenceProviderFactoryOptions = {
@@ -56,7 +54,7 @@ export function resolveTeeEvidenceProvider(
     }
     try {
       return createDstackEvidenceProvider(
-        dstackEvidenceConfiguration.parse(JSON.parse(configured)),
+        resolveDstackEvidenceConfiguration(env),
       );
     } catch (error) {
       // error-policy:J2 Malformed configuration must never disable the provider.

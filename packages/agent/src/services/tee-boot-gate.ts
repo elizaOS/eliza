@@ -93,10 +93,7 @@ export async function evaluateTeeBootGate(
   }
 
   const policy = useDstackCpuProfile
-    ? mergeDstackCpuProductionProfile(
-        resolved,
-        env.ELIZA_DSTACK_EVIDENCE_CONFIG_JSON,
-      )
+    ? mergeDstackCpuProductionProfile(resolved, env)
     : useProductionProfile
       ? mergeTeeProductionProfile(resolved, options.profileOptions ?? {})
       : resolved;
