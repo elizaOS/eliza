@@ -5,6 +5,7 @@ import {
   type Memory,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { renderProviderOriginalMessages } from "../../runtime/provider-originals.ts";
 import type { HistoryDiscovery } from "./history-discovery";
 import {
   bindSourceReplyContent,
@@ -91,6 +92,63 @@ function fixture() {
   return { memory, context, projection, snapshot, raw };
 }
 describe("source-backed native replies", () => {
+  it("combines history and provider originals without storing a cross-room history link", () => {
+    const f = fixture();
+    const originalMessages = {
+      header: "Relevant past conversations:",
+      sources: [
+        {
+          id: "recalled1",
+          prefix: "[chat] Other author: ",
+          originalText: "Provider original",
+          memoryId: "other",
+          agentId: "agent",
+          roomId: "other-room",
+          entityId: "other-author",
+          createdAt: 1,
+        },
+      ],
+    };
+    f.context.events.push({
+      id: "provider:recall",
+      type: "provider",
+      name: "recall",
+      text: renderProviderOriginalMessages(originalMessages),
+      data: { originalMessages },
+    });
+    f.projection.sourceSetId = completionContextSources(f.context).sourceSetId;
+    const snapshot = createSourceReplySnapshot(f.context, f.projection, [
+      f.memory,
+    ]);
+    if (!snapshot) throw Error("snapshot missing");
+    let rendering: SourceReplyRendering | undefined;
+    const result = resolveSourceReply(
+      f.context,
+      snapshot,
+      {
+        ...f.raw,
+        completionContext: {
+          ...f.raw.completionContext,
+          sourceSetId: f.projection.sourceSetId,
+        },
+        replyText: [
+          { kind: "source", value: "h1" },
+          { kind: "text", value: "\n\n" },
+          { kind: "source", value: "recalled1" },
+        ],
+      },
+      (value) => {
+        rendering = value;
+      },
+    );
+    expect(result?.replyText).toBe(
+      `${f.memory.content.text}\n\nProvider original`,
+    );
+    expect(
+      rendering?.references?.sources.map((source) => source.eventId),
+    ).toEqual(["history:source"]);
+  });
+
   it("exempts only one complete literal from newly authored claim checks", () => {
     const f = fixture();
     const render = (replyText: { kind: string; value: string }[]) => {

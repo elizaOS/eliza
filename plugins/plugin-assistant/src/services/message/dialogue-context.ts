@@ -10,6 +10,7 @@ import {
   toWellFormedUnicode,
   unwrapUserMessageText,
 } from "@elizaos/core";
+import { readProviderOriginalMessages } from "../../runtime/provider-originals.ts";
 import { resolveExplicitContinuationRequestText } from "./direct-action-heuristics.ts";
 import {
   readSourceReplyReferences,
@@ -22,6 +23,7 @@ export function asProviderRecord(value: unknown):
       text?: unknown;
       discoveryText?: unknown;
       providerName?: unknown;
+      data?: unknown;
     }
   | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -31,6 +33,7 @@ export function asProviderRecord(value: unknown):
     text?: unknown;
     discoveryText?: unknown;
     providerName?: unknown;
+    data?: unknown;
   };
 }
 
@@ -633,6 +636,10 @@ export function appendStateProviderEvents(
     if (!text) {
       continue;
     }
+    const originals = readProviderOriginalMessages(
+      text,
+      asPlainRecord(provider.data)?.originalMessages,
+    );
     const resolvedName =
       typeof provider.providerName === "string"
         ? provider.providerName
@@ -643,6 +650,7 @@ export function appendStateProviderEvents(
       source: "composeState",
       name: resolvedName,
       text,
+      ...(originals ? { data: { originalMessages: originals } } : {}),
       ...(typeof provider.discoveryText === "string"
         ? { discoveryText: provider.discoveryText }
         : {}),
