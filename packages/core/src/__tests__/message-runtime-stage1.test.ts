@@ -4097,6 +4097,81 @@ describe("runV5MessageRuntimeStage1", () => {
 		});
 
 		it.each([
+			[ChannelType.DM, false, true],
+			[ChannelType.API, false, true],
+			[ChannelType.SELF, false, true],
+			[ChannelType.VOICE_DM, false, false],
+			[ChannelType.GROUP, false, false],
+			[undefined, false, false],
+			[ChannelType.DM, true, false],
+		] as const)(
+			"scopes tool reasoning preference to direct text planning (%s, coding=%s)",
+			async (channelType, codingMode, preferred) => {
+				const reply = {
+					text: "",
+					toolCalls: [
+						{
+							id: "reply-1",
+							name: "REPLY",
+							arguments: { text: "Planner response." },
+						},
+					],
+				};
+				const runtime = makeRuntime(
+					codingMode
+						? [reply]
+						: [
+								stage1Response({
+									contexts: ["general"],
+									addressedTo: ["Test Agent"],
+									extra: { requiresTool: true },
+								}),
+								reply,
+							],
+				);
+				await runStage1({
+					runtime,
+					codingMode,
+					message: makeMessage({
+						text: "Test Agent, check status.",
+						channelType,
+					}),
+				});
+				const calls = useModelCalls(runtime);
+				const planner = calls.filter(
+					(call) => call[0] === ModelType.ACTION_PLANNER,
+				);
+				expect(planner).toHaveLength(1);
+				expect(calls).toHaveLength(codingMode ? 1 : 2);
+				const options = (
+					planner[0][1] as {
+						providerOptions: {
+							eliza: {
+								preferToolReasoning?: boolean;
+								thinking?: string;
+								modelInputBudget?: unknown;
+							};
+						};
+					}
+				).providerOptions.eliza;
+				expect(options.preferToolReasoning).toBe(preferred ? true : undefined);
+				expect(options.thinking).toBe("off");
+				expect(options.modelInputBudget).toBeDefined();
+				for (const call of calls.filter(
+					(call) => call[0] !== ModelType.ACTION_PLANNER,
+				)) {
+					expect(
+						(
+							call[1] as {
+								providerOptions?: { eliza?: { preferToolReasoning?: boolean } };
+							}
+						).providerOptions?.eliza?.preferToolReasoning,
+					).toBeUndefined();
+				}
+			},
+		);
+
+		it.each([
 			{
 				name: "preserves complete provider text in the planner",
 				text: "Open Notes.",

@@ -229,6 +229,48 @@ describe("Qwen3.8 response-schema wire contract", () => {
     }
   );
 
+  it.each([false, true])(
+    "transmits preferred native-tool reasoning with explicit override=%s",
+    async (override) => {
+      vi.stubEnv("OPENAI_REASONING_EFFORT", "");
+      const body = "Keep  two spaces and Mira’s 'literal' quotes.";
+      replyToolCall = {
+        id: "literal-1",
+        type: "function",
+        function: { name: "SAVE_LITERAL", arguments: JSON.stringify({ body }) },
+      };
+      const tools = buildPlannerToolsFromActions([
+        {
+          name: "SAVE_LITERAL",
+          description: "Save exact supplied text.",
+          parameters: [
+            {
+              name: "body",
+              description: "Literal content",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+        },
+      ]);
+      const result = await handleActionPlanner(runtime(), {
+        model: "qwen-3.8-27b",
+        messages: [{ role: "user", content: "Save the exact supplied literal." }],
+        toolChoice: "required",
+        stream: false,
+        tools,
+        providerOptions: {
+          eliza: { thinking: "off", preferToolReasoning: true },
+          ...(override ? { openai: { reasoningEffort: "none" as const } } : {}),
+        },
+      } as never);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({ tool_choice: "required" });
+      expect(requests[0].reasoning_effort).toBe(override ? "none" : "low");
+      expect(result).toMatchObject({ toolCalls: [{ name: "SAVE_LITERAL", arguments: { body } }] });
+    }
+  );
+
   it("restores opted-in aggregator maps after the actual native tool response", async () => {
     const customFields = { label: "complete value", nested: { id: "task-1", values: [1, false] } };
     const tools = withTurnScopeToolArg(

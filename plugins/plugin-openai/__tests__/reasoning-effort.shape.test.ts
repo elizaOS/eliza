@@ -377,6 +377,63 @@ describe("explicit reasoning for original-source reconciliation", () => {
   });
 });
 
+describe("provider-gated tool reasoning preference", () => {
+  const params = {
+    prompt: "Create the supplied literal",
+    providerOptions: { eliza: { thinking: "off", preferToolReasoning: true } },
+  } as never;
+  it.each([
+    ["qwen-3.8-27b", "low"],
+    ["cerebras/qwen-3.8-27b", "low"],
+    ["zai-glm-4.7", "none"],
+    ["gemma-4-31b", "none"],
+    ["gpt-oss-120b", "low"],
+    ["qwen-custom", undefined],
+  ])("keeps the provider capability boundary for %s", (model, expected) => {
+    const options = __INTERNAL_resolveProviderOptions(
+      params,
+      buildRuntime({ CEREBRAS_API_KEY: "csk-test" }),
+      model
+    );
+    expect(options?.openai).toMatchObject(
+      expected === undefined ? {} : { reasoningEffort: expected }
+    );
+    expect((options?.openai as { reasoningEffort?: string })?.reasoningEffort).toBe(expected);
+  });
+  it("preserves explicit disabled effort and unknown endpoint behavior", () => {
+    const disabled = __INTERNAL_resolveProviderOptions(
+      params,
+      buildRuntime({ CEREBRAS_API_KEY: "csk-test", OPENAI_REASONING_EFFORT: "none" }),
+      "qwen-3.8-27b"
+    );
+    expect(disabled?.openai).toMatchObject({ reasoningEffort: "none" });
+    const explicit = __INTERNAL_resolveProviderOptions(
+      {
+        providerOptions: {
+          eliza: { thinking: "off", preferToolReasoning: true },
+          openai: { reasoningEffort: "none" },
+        },
+      } as never,
+      buildRuntime({ CEREBRAS_API_KEY: "csk-test" }),
+      "qwen-3.8-27b"
+    );
+    expect(explicit?.openai).toMatchObject({ reasoningEffort: "none" });
+    const deepseek = __INTERNAL_resolveProviderOptions(
+      params,
+      buildRuntime({ OPENAI_API_KEY: "sk-test", OPENAI_BASE_URL: "https://opencode.ai/zen/go/v1" }),
+      "deepseek-v4-flash"
+    );
+    expect(deepseek?.openai).toMatchObject({ reasoningEffort: "none" });
+    const other = __INTERNAL_resolveProviderOptions(
+      params,
+      buildRuntime({ OPENAI_API_KEY: "sk-test" }),
+      "qwen-3.8-27b"
+    );
+    expect((other?.openai as { reasoningEffort?: string })?.reasoningEffort).toBeUndefined();
+    expect(other?.eliza).toMatchObject({ thinking: "off" });
+  });
+});
+
 describe("Cerebras Qwen 3.8 reasoning contract", () => {
   it("accepts an explicit none effort for the supported Qwen endpoint", () => {
     const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test", OPENAI_REASONING_EFFORT: "none" });

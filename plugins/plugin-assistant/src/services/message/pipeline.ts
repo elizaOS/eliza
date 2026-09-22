@@ -48,6 +48,7 @@ import {
   isProviderContextOverflowFailure,
   isTrajectoryRecordingEnabled,
   looksLikeRawFieldTranscript,
+  ModelType,
   promotedSubactionParent,
   type RecordedStage,
   readEnv,
@@ -1466,12 +1467,33 @@ export async function runV5MessageRuntimeStage1(
         typeof runtimeWithOptionalServices.getService === "function"
           ? runtimeWithOptionalServices.getService(service)
           : null,
-      useModel: (modelType, modelParams, provider) =>
-        args.runtime.useModel(
+      useModel: (modelType, modelParams, provider) => {
+        if (
+          modelType === ModelType.ACTION_PLANNER &&
+          directMessageChannel &&
+          args.message.content?.channelType !== ChannelType.VOICE_DM &&
+          args.codingMode !== true
+        ) {
+          // The provider owns capability checks. Unsupported lanes retain the
+          // planner's existing thinking policy; no model names belong here.
+          const eliza = modelParams.providerOptions?.eliza;
+          modelParams = {
+            ...modelParams,
+            providerOptions: {
+              ...modelParams.providerOptions,
+              eliza: {
+                ...(isRecord(eliza) ? eliza : {}),
+                preferToolReasoning: true,
+              },
+            },
+          };
+        }
+        return args.runtime.useModel(
           modelType,
           modelParams as GenerateTextParams,
           provider,
-        ),
+        );
+      },
       logger: args.runtime.logger as PlannerRuntime["logger"],
     };
     const plannerTools = collectPlannerTools(
