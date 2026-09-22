@@ -369,3 +369,5 @@ The local developer tab relay reads synchronous, conversation-owned transcript s
 Terminal streaming replies retain the server-confirmed userMessageId as replyToMessageId even when text is already fully streamed or the assistant reply is ephemeral. Preserve ephemeral retirement and non-persistence policy; never infer request ownership from adjacent rows or invent a durable assistant ID to attach telemetry.
 
 When merging ephemeral reply overlays, an explicit replyToMessageId keeps the row after its matching user request despite client/server timestamp skew. Preserve original timestamps, all rows, ownership fences and normal ephemeral removals; missing links do not authorize pairing with an unrelated request.
+
+Stop invalidates chat admission and setup awaits as well as active streaming. Command resolution, conversation hydration/creation and recreation cannot resume a cancelled turn. Restore unsent composer text/images only for the still-owning conversation generation; cancellation and cold-start failure share that cleanup, preserving a newly typed draft. Unmount invalidates setup without writing UI state.
