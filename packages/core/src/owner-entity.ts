@@ -4,9 +4,9 @@
  * metadata carries ownership.ownerId, and finally falls back to core's
  * deterministic agent-ID-seeded owner id — the same fallback the chat, pendant,
  * and LifeOps surfaces use, so owner trust attaches to the entity those
- * surfaces write under. Used to attribute owner-scoped trust and permissions.
+ * surfaces write under. Lookup failures reject instead of selecting another identity. Used to attribute owner-scoped trust and permissions.
  */
-import { logger } from "./logger";
+import { ElizaError } from "./errors";
 import { deterministicOwnerEntityId, resolveCanonicalOwnerId } from "./roles";
 import type { IAgentRuntime } from "./types";
 
@@ -28,34 +28,33 @@ export async function resolveOwnerEntityId(
 		return configuredOwnerId;
 	}
 
+	let phase = "rooms";
+	let roomId: string | undefined;
+	let worldId: string | undefined;
 	try {
 		const roomIds = await runtime.getRoomsForParticipant(runtime.agentId);
-		for (const roomId of roomIds) {
-			try {
-				const room = await runtime.getRoom(roomId);
-				if (!room?.worldId) {
-					continue;
-				}
-				const world = await runtime.getWorld(room.worldId);
-				const metadata = (world?.metadata ?? {}) as WorldMetadataShape;
-				if (metadata.ownership?.ownerId) {
-					return metadata.ownership.ownerId;
-				}
-			} catch (error) {
-				// Preserved lookup fallback: failure is logged but is not an unavailable identity result.
-				logger.debug(
-					`[owner-entity] World ownership lookup failed for room ${roomId}: ${
-						error instanceof Error ? error.message : String(error)
-					}`,
-				);
-			}
+		for (const candidateRoomId of roomIds) {
+			phase = "room";
+			roomId = candidateRoomId;
+			worldId = undefined;
+			const room = await runtime.getRoom(candidateRoomId);
+			if (!room?.worldId) continue;
+			phase = "world";
+			worldId = room.worldId;
+			const world = await runtime.getWorld(room.worldId);
+			const metadata = (world?.metadata ?? {}) as WorldMetadataShape;
+			if (metadata.ownership?.ownerId) return metadata.ownership.ownerId;
 		}
-	} catch (error) {
-		// Preserved identity fallback: lookup failure still returns a synthetic owner.
-		logger.warn(
-			`[owner-entity] Failed to resolve owner from world metadata; falling back to synthetic owner id: ${
-				error instanceof Error ? error.message : String(error)
-			}`,
+	} catch (cause) {
+		// error-policy:J2 an unreadable earlier world cannot establish owner precedence or absence.
+		throw new ElizaError(
+			"Owner identity lookup failed; restore storage access and retry.",
+			{
+				code: "OWNER_ENTITY_LOOKUP_FAILED",
+				cause,
+				context: { agentId: runtime.agentId, phase, roomId, worldId },
+				severity: "ephemeral",
+			},
 		);
 	}
 

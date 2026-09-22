@@ -8,7 +8,6 @@
 import {
 	deterministicOwnerEntityId,
 	type IAgentRuntime,
-	logger,
 	resolveCanonicalOwnerId,
 	stringToUuid,
 	type UUID,
@@ -275,66 +274,56 @@ describe("resolveOwnerEntityId", () => {
 		await expect(resolveOwnerEntityId(runtime)).resolves.toBe("   ");
 	});
 
-	it("continues after a missing room lookup and a per-room Error, then takes a later owner", async () => {
-		const debug = vi.spyOn(logger, "debug").mockImplementation(() => undefined);
-		const runtime = stubRuntime({
-			rooms: [ROOM_A, ROOM_B, ROOM_C],
-			roomsById: {
-				[ROOM_C]: { worldId: WORLD_B },
-			},
-			roomErrors: { [ROOM_B]: new Error("room lookup failed") },
-			worldsById: { [WORLD_B]: worldWithOwner(WORLD_OWNER) },
-		});
+	it.each([new Error("room lookup failed"), "room unavailable"])(
+		"rejects failed room reads before selecting a later owner: %s",
+		async (cause) => {
+			const runtime = stubRuntime({
+				rooms: [ROOM_A, ROOM_B],
+				roomErrors: { [ROOM_A]: cause },
+				roomsById: { [ROOM_B]: { worldId: WORLD_B } },
+				worldsById: { [WORLD_B]: worldWithOwner(WORLD_OWNER) },
+			});
+			await expect(resolveOwnerEntityId(runtime)).rejects.toMatchObject({
+				code: "OWNER_ENTITY_LOOKUP_FAILED",
+				cause,
+				context: { phase: "room", roomId: ROOM_A, agentId: AGENT_ID },
+			});
+			expect(runtime.getRoom).toHaveBeenCalledTimes(1);
+			expect(runtime.getWorld).not.toHaveBeenCalled();
+		},
+	);
 
-		await expect(resolveOwnerEntityId(runtime)).resolves.toBe(WORLD_OWNER);
-		expect(debug).toHaveBeenCalledWith(
-			`[owner-entity] World ownership lookup failed for room ${ROOM_B}: room lookup failed`,
-		);
-		expect(runtime.getRoom).toHaveBeenCalledTimes(3);
-	});
-
-	it("stringifies a non-Error per-room failure and keeps scanning", async () => {
-		const debug = vi.spyOn(logger, "debug").mockImplementation(() => undefined);
+	it("rejects an unreadable world rather than selecting a later owner", async () => {
+		const cause = new Error("world unavailable");
 		const runtime = stubRuntime({
 			rooms: [ROOM_A, ROOM_B],
 			roomsById: {
 				[ROOM_A]: { worldId: WORLD_A },
 				[ROOM_B]: { worldId: WORLD_B },
 			},
-			worldErrors: { [WORLD_A]: "world down" },
+			worldErrors: { [WORLD_A]: cause },
 			worldsById: { [WORLD_B]: worldWithOwner(WORLD_OWNER) },
 		});
-
-		await expect(resolveOwnerEntityId(runtime)).resolves.toBe(WORLD_OWNER);
-		expect(debug).toHaveBeenCalledWith(
-			`[owner-entity] World ownership lookup failed for room ${ROOM_A}: world down`,
-		);
-	});
-
-	it("falls back when listing rooms throws an Error", async () => {
-		const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
-		const runtime = stubRuntime({
-			roomsError: new Error("participant rooms failed"),
+		await expect(resolveOwnerEntityId(runtime)).rejects.toMatchObject({
+			code: "OWNER_ENTITY_LOOKUP_FAILED",
+			cause,
+			context: { phase: "world", roomId: ROOM_A, worldId: WORLD_A },
 		});
-		await expect(resolveOwnerEntityId(runtime)).resolves.toBe(
-			deterministicOwnerEntityId(AGENT_ID),
-		);
-		expect(warn).toHaveBeenCalledWith(
-			"[owner-entity] Failed to resolve owner from world metadata; falling back to synthetic owner id: participant rooms failed",
-		);
-		expect(runtime.getRoom).not.toHaveBeenCalled();
+		expect(runtime.getRoom).toHaveBeenCalledTimes(1);
 	});
 
-	it("falls back when listing rooms throws a non-Error and stringifies it", async () => {
-		const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
-		const runtime = stubRuntime({ roomsError: 42 });
-		await expect(resolveOwnerEntityId(runtime)).resolves.toBe(
-			resolveFallbackOwnerEntityId(runtime),
-		);
-		expect(warn).toHaveBeenCalledWith(
-			"[owner-entity] Failed to resolve owner from world metadata; falling back to synthetic owner id: 42",
-		);
-	});
+	it.each([new Error("rooms unavailable"), 42])(
+		"rejects room inventory failures instead of inventing an owner: %s",
+		async (cause) => {
+			const runtime = stubRuntime({ roomsError: cause });
+			await expect(resolveOwnerEntityId(runtime)).rejects.toMatchObject({
+				code: "OWNER_ENTITY_LOOKUP_FAILED",
+				cause,
+				context: { phase: "rooms", agentId: AGENT_ID },
+			});
+			expect(runtime.getRoom).not.toHaveBeenCalled();
+		},
+	);
 
 	it("does not treat a non-string configured owner as canonical", async () => {
 		const runtime = stubRuntime({
