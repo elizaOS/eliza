@@ -1427,6 +1427,7 @@ describe("runV5MessageRuntimeStage1", () => {
 
 	it.each([
 		"target",
+		"native-bound",
 		"literal",
 		"full",
 		"changed",
@@ -1541,15 +1542,22 @@ describe("runV5MessageRuntimeStage1", () => {
 					if (["full", "changed", "repeated-progress"].includes(mode))
 						expect(text).toContain(rows[2].content.text);
 					else expect(text).not.toContain(rows[2].content.text);
+					if (mode === "native-bound") {
+						expect(JSON.stringify(input.tools)).toContain(
+							'"enum":["current_request"]',
+						);
+						expect(JSON.stringify(args[1])).toContain("current_request");
+					}
 					return stage1Response({
 						replyText: "Read original evidence.",
 						extra: {
 							completionContext: {
 								mode: "relevant_prior_dialogue",
 								complete: true,
-								sourceSetId: text.match(
-									/completion_source_set: ([a-f0-9]{64})/,
-								)?.[1],
+								sourceSetId:
+									mode === "native-bound"
+										? "current_request"
+										: text.match(/completion_source_set: ([a-f0-9]{64})/)?.[1],
 								relevantSourceIds: ["h2"],
 								constraintSourceIds: ["h1"],
 								referentSourceIds: [],
@@ -1598,6 +1606,12 @@ describe("runV5MessageRuntimeStage1", () => {
 				expect(dispatch.mock.calls[0]?.[0].rawParsed.replyText).toBe(
 					"Read original evidence.",
 				);
+				if (mode === "native-bound")
+					expect(
+						dispatch.mock.calls[0]?.[0].rawParsed.completionContext,
+					).toMatchObject({
+						sourceSetId: expect.stringMatching(/^[a-f0-9]{64}$/),
+					});
 			}
 		},
 	);

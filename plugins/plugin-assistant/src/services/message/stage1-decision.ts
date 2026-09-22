@@ -32,7 +32,11 @@ import {
   withRequiredCompletionSourceIdentity,
 } from "@elizaos/core";
 import { canPublishProgressBeforeResponseDecision } from "../../features/trust/should-respond-risk-gate.ts";
-import { withDirectTextBuiltinSchemaDescriptions } from "../../runtime/builtin-field-evaluators";
+import {
+  completionContextFieldEvaluator,
+  contextRequestsFieldEvaluator,
+  withDirectTextBuiltinSchemaDescriptions,
+} from "../../runtime/builtin-field-evaluators";
 import { getMessageHandlerReply } from "../../runtime/message-handler";
 import { cacheProviderOptions } from "../../runtime/planner-loop";
 import { getEvaluatorProgressState } from "../evaluator-progress.ts";
@@ -71,6 +75,7 @@ import {
 import { withInactiveArrayFields } from "./inactive-field-schema.js";
 import { composeResponseState } from "./provider-state.js";
 import { restorePiiInUserReplyText } from "./reply-policy.ts";
+import { createSourceSelectionBinding } from "./source-selection-binding.ts";
 import {
   getStage1FinishReason,
   stage1HitCompletionLimit,
@@ -282,6 +287,7 @@ export async function generateStage1Decision(
     hashString(`stage1:${stage1SystemContent}`);
   let compactInactiveFields = discoveryEnabled;
   let repairHistoryIdentity = false;
+  let sourceSelectionBinding: ReturnType<typeof createSourceSelectionBinding>;
   const createMessageHandlerTools = () => {
     const fieldSchema = compactInactiveFields
       ? withInactiveArrayFields(
@@ -297,18 +303,33 @@ export async function generateStage1Decision(
       discoveryEnabled && discovery.available.size > 0
         ? createContextReadTool(referenceSchema, contextReadProgressEnabled)
         : undefined;
+    const parameters = voiceDirectMessageChannel
+      ? referenceSchema
+      : withRequiredCompletionSourceIdentity(
+          history
+            ? withReviewedHistorySelection(referenceSchema)
+            : referenceSchema,
+          discovery.context,
+          repairHistoryIdentity,
+        );
+    // Only the registered native text-history contract supports request binding.
+    sourceSelectionBinding =
+      history &&
+      readTool &&
+      !voiceDirectMessageChannel &&
+      !repairHistoryIdentity &&
+      selectedResponseHandlerFields.includes(completionContextFieldEvaluator) &&
+      selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
+      canonicalResponseHandlerSchema.properties?.completionContext ===
+        completionContextFieldEvaluator.schema &&
+      canonicalResponseHandlerSchema.properties?.contextRequests ===
+        contextRequestsFieldEvaluator.schema
+        ? createSourceSelectionBinding(parameters, discovery.context)
+        : undefined;
     return [
       createHandleResponseTool({
         directMessage: directMessageChannel,
-        parameters: voiceDirectMessageChannel
-          ? referenceSchema
-          : withRequiredCompletionSourceIdentity(
-              history
-                ? withReviewedHistorySelection(referenceSchema)
-                : referenceSchema,
-              discovery.context,
-              repairHistoryIdentity,
-            ),
+        parameters: sourceSelectionBinding?.parameters ?? parameters,
         description:
           "Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
       }),
@@ -465,6 +486,8 @@ export async function generateStage1Decision(
         ModelType.RESPONSE_HANDLER,
         stage1ModelParams,
       )) as string | GenerateTextResult);
+  rawMessageHandler =
+    sourceSelectionBinding?.resolve(rawMessageHandler) ?? rawMessageHandler;
   const contextReadEnabled = () =>
     messageHandlerTools.some((tool) => tool.name === READ_CONTEXT_TOOL_NAME);
   let stage1RetryReason = extractContextRead(
@@ -496,6 +519,8 @@ export async function generateStage1Decision(
       ModelType.RESPONSE_HANDLER,
       stage1ModelParams,
     )) as string | GenerateTextResult;
+    rawMessageHandler =
+      sourceSelectionBinding?.resolve(rawMessageHandler) ?? rawMessageHandler;
     stage1RetryReason = extractContextRead(
       rawMessageHandler,
       contextReadEnabled(),
@@ -562,7 +587,8 @@ export async function generateStage1Decision(
         },
       )) as string | GenerateTextResult;
       if (extractMessageHandlerRawParsed(repaired)) {
-        rawMessageHandler = repaired;
+        rawMessageHandler =
+          sourceSelectionBinding?.resolve(repaired) ?? repaired;
       }
     }
   }
@@ -887,6 +913,8 @@ export async function generateStage1Decision(
       ModelType.RESPONSE_HANDLER,
       stage1ModelParams,
     )) as string | GenerateTextResult;
+    rawMessageHandler =
+      sourceSelectionBinding?.resolve(rawMessageHandler) ?? rawMessageHandler;
   }
   const messageHandlerEndedAt = Date.now();
   // Capture the provider that served the Stage-1 (RESPONSE_HANDLER) call
