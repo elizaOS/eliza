@@ -2,13 +2,8 @@
  * Unit tests for advanced contacts provider grouping, categorization, and graceful error degradation.
  */
 
+import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  State,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import { advancedContactsProvider } from "./contacts.ts";
 
 describe("advancedContactsProvider", () => {
@@ -73,10 +68,12 @@ describe("advancedContactsProvider", () => {
 
     const runtime = {
       getService: vi.fn().mockReturnValue(relationshipsService),
-      getEntityById: vi.fn().mockImplementation(async (id: string) => {
-        if (id === "ent-2") return { names: ["Bob Developer"] };
-        return null;
-      }),
+      getEntitiesByIds: vi
+        .fn()
+        .mockResolvedValue([{ id: "ent-2", names: ["Bob Developer"] }]),
+      getEntityById: vi.fn(async (id: string) =>
+        id === "ent-2" ? { id, names: ["Bob Developer"] } : null,
+      ),
     } as unknown as IAgentRuntime;
 
     const result = await advancedContactsProvider.get(
@@ -121,5 +118,75 @@ describe("advancedContactsProvider", () => {
     );
     expect(result.text).toBe("Contact context is unavailable.");
     expect(result.values).toEqual({ contactsAvailable: false });
+  });
+  it("keeps every contact in order with unordered, missing and repeated entity rows", async () => {
+    const contacts = [
+      ["first", "First fallback"],
+      ["missing", "Missing fallback"],
+      ["last", "Last fallback"],
+      ["first", "Repeated fallback"],
+      ["unnamed", ""],
+    ].map(([entityId, displayName]) => ({
+      entityId,
+      customFields: { displayName },
+      categories: ["friend"],
+      tags: [],
+      preferences: {},
+      lastModified: 1,
+    }));
+    const entities = [
+      { id: "last", names: ["Last"] },
+      { id: "unnamed", names: [] },
+      { id: "first", names: ["First"] },
+    ];
+    const getEntitiesByIds = vi.fn().mockResolvedValue(entities);
+    const getEntityById = vi.fn(
+      async (id: string) => entities.find((entity) => entity.id === id) ?? null,
+    );
+    const runtime = {
+      getService: () => ({ searchContacts: async () => contacts }),
+      getEntitiesByIds,
+      getEntityById,
+    } as unknown as IAgentRuntime;
+    const result = await advancedContactsProvider.get(
+      runtime,
+      dummyMessage,
+      dummyState,
+    );
+    expect(result).toEqual({
+      text: "You have 5 contacts in your relationships:\n\nFriends (5):\n- First\n- Missing fallback\n- Last\n- First\n- Unknown",
+      values: { contactCount: 5, friend: 5 },
+      data: { friend: 5 },
+    });
+    expect(getEntitiesByIds).toHaveBeenCalledExactlyOnceWith([
+      "first",
+      "missing",
+      "last",
+      "unnamed",
+    ]);
+    expect(getEntityById).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed entity batch as unavailable rather than an empty contact list", async () => {
+    const error = new Error("Entity query failed");
+    const reportError = vi.fn();
+    const runtime = {
+      getService: () => ({
+        searchContacts: async () => [{ entityId: "first" }],
+      }),
+      getEntitiesByIds: vi.fn().mockRejectedValue(error),
+      getEntityById: vi.fn().mockRejectedValue(error),
+      reportError,
+    } as unknown as IAgentRuntime;
+    expect(
+      await advancedContactsProvider.get(runtime, dummyMessage, dummyState),
+    ).toEqual({
+      text: "Contact context is unavailable.",
+      values: { contactsAvailable: false },
+      data: { available: false, error: "Entity query failed" },
+    });
+    expect(reportError).toHaveBeenCalledWith("ContactsProvider.get", error, {
+      roomId: "room-1",
+    });
   });
 });

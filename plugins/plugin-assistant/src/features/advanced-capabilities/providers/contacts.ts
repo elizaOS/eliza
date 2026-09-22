@@ -40,23 +40,26 @@ export const advancedContactsProvider: Provider = {
         };
       }
       // Get entity details and categorize
-      const contactDetails = await Promise.all(
-        contacts.map(async (contact) => {
-          const entity = await runtime.getEntityById(contact.entityId);
-          const displayName =
-            typeof contact.customFields.displayName === "string"
-              ? contact.customFields.displayName
-              : null;
-          return {
-            id: contact.entityId,
-            name: entity?.names[0] || displayName || "Unknown",
-            categories: contact.categories,
-            tags: contact.tags,
-            preferences: contact.preferences,
-            lastModified: contact.lastModified,
-          };
-        }),
-      );
+      const entityIds = [
+        ...new Set(contacts.map((contact) => contact.entityId)),
+      ];
+      const entities = await runtime.getEntitiesByIds(entityIds);
+      const entityMap = new Map(entities.map((entity) => [entity.id, entity]));
+      const contactDetails = contacts.map((contact) => {
+        const entity = entityMap.get(contact.entityId);
+        const displayName =
+          typeof contact.customFields.displayName === "string"
+            ? contact.customFields.displayName
+            : null;
+        return {
+          id: contact.entityId,
+          name: entity?.names[0] || displayName || "Unknown",
+          categories: contact.categories,
+          tags: contact.tags,
+          preferences: contact.preferences,
+          lastModified: contact.lastModified,
+        };
+      });
       // Group by category
       const grouped: Record<string, typeof contactDetails> = {};
       for (const contact of contactDetails) {

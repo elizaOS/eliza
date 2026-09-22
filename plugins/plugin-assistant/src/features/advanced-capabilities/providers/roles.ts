@@ -174,16 +174,8 @@ export const roleProvider: Provider = {
     const admins: RoleUser[] = [];
     const members: RoleUser[] = [];
     const entityIds = Object.keys(roles) as UUID[];
-    const entities = await Promise.all(
-      entityIds.map((entityId) => runtime.getEntityById(entityId)),
-    );
-    const entityMap = new Map<UUID, (typeof entities)[number]>();
-    for (let i = 0; i < entityIds.length; i += 1) {
-      const entity = entities[i];
-      if (entity) {
-        entityMap.set(entityIds[i], entity);
-      }
-    }
+    const entities = await runtime.getEntitiesByIds(entityIds);
+    const entityMap = new Map(entities.map((entity) => [entity.id, entity]));
     const seenUsernames = new Set<string>();
     // Process roles
     for (const entityId of entityIds) {
