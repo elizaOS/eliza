@@ -1,14 +1,10 @@
 /**
  * Deterministic contract tests for browser and native computer-use adapters.
- * The harness uses an in-process adapter rather than a mocked model or OS, and
- * exercises validation, side-effect classification, confirmation, isolation,
+ * The harness exercises real contract normalization, authorization,
+ * side-effect classification, confirmation, isolation,
  * stale references, and concurrent resource leases.
  */
 
-import {
-	REQUIRED_INTERACTION_CONFORMANCE_CASES,
-	runInteractionAdapterConformance,
-} from "@elizaos/testing/computer-use-conformance";
 import { describe, expect, it } from "vitest";
 import { ElizaError } from "../errors.ts";
 import {
@@ -19,7 +15,6 @@ import {
 	INTERACTION_CONTRACT_VERSION,
 	type InteractionAction,
 	type InteractionActionResult,
-	type InteractionAdapter,
 	type InteractionCapabilitySet,
 	InteractionConfirmationCoordinator,
 	InteractionLeaseCoordinator,
@@ -225,13 +220,6 @@ function resultFor(input: InteractionAction): InteractionActionResult {
 		traceEvents: [],
 	} as InteractionActionResult;
 }
-
-const adapter: InteractionAdapter = {
-	id: adapterId,
-	capabilities: async () => capabilities,
-	observe: async () => observation,
-	execute: async (input) => resultFor(input),
-};
 
 function authorize(value: unknown) {
 	return authorizeInteractionDispatch(value, {
@@ -970,207 +958,6 @@ describe("computer-use interaction contracts", () => {
 		actionClock = Number.NaN;
 		expect(() => actionLeases.assertHeld(renewed)).toThrowError(
 			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
-		);
-	});
-});
-
-describe("computer-use adapter conformance", () => {
-	it("covers every required action outcome and lease contention", async () => {
-		const report = await runInteractionAdapterConformance({
-			adapter,
-			session,
-			surface,
-			now: Date.parse(later),
-			fixtures: REQUIRED_INTERACTION_CONFORMANCE_CASES.map((name) => ({
-				name,
-				action: action(
-					`case-${name}`,
-					name === "unsupported" ? "evaluate" : "observe",
-				),
-			})),
-		});
-		expect(report.passed).toBe(true);
-		expect(report.checks.map((check) => check.name)).toEqual([
-			"capabilities",
-			"observation",
-			...REQUIRED_INTERACTION_CONFORMANCE_CASES,
-			"lease_contention",
-			"lease_expiry",
-		]);
-	});
-
-	it("rejects advertised unsupported and non-stale observation fixtures", async () => {
-		const fixtures = REQUIRED_INTERACTION_CONFORMANCE_CASES.map((name) => ({
-			name,
-			action: action(
-				`case-${name}`,
-				name === "unsupported" ? "evaluate" : "observe",
-			),
-		}));
-		await expect(
-			runInteractionAdapterConformance({
-				adapter,
-				session,
-				surface,
-				now: Date.parse(later),
-				fixtures: fixtures.map((fixture) =>
-					fixture.name === "unsupported"
-						? { ...fixture, action: action("case-unsupported") }
-						: fixture,
-				),
-			}),
-		).rejects.toEqual(
-			expect.objectContaining({
-				code: "INTERACTION_ADAPTER_CONFORMANCE_FAILED",
-			}),
-		);
-		await expect(
-			runInteractionAdapterConformance({
-				adapter,
-				session,
-				surface,
-				now: Date.parse(later),
-				fixtures: fixtures.map((fixture) =>
-					fixture.name === "stale_observation"
-						? {
-								...fixture,
-								action: {
-									...fixture.action,
-									observationSequence: observation.sequence,
-								},
-							}
-						: fixture,
-				),
-			}),
-		).rejects.toEqual(
-			expect.objectContaining({
-				code: "INTERACTION_ADAPTER_CONFORMANCE_FAILED",
-			}),
-		);
-	});
-
-	it("forwards explicit-profile verification through conformance", async () => {
-		const profileCapabilities: InteractionCapabilitySet = {
-			...capabilities,
-			profileAccess: {
-				modes: ["existing_explicit"],
-				requiresExplicitGrant: true,
-			},
-		};
-		const profileSession: InteractionSession = {
-			...session,
-			profileMode: "existing_explicit",
-			profileGrant: {
-				grantId: "profile-conformance-grant",
-				sessionId,
-				ownerId: session.ownerId,
-				adapterId,
-				profileHandle: "signed-in-profile",
-				issuedAt: now,
-				expiresAt: "2026-01-01T00:05:00.000Z",
-			},
-		};
-		const profileAdapter: InteractionAdapter = {
-			...adapter,
-			capabilities: async () => profileCapabilities,
-		};
-		const fixtures = REQUIRED_INTERACTION_CONFORMANCE_CASES.map((name) => ({
-			name,
-			action: action(
-				`case-${name}`,
-				name === "unsupported" ? "evaluate" : "observe",
-			),
-		}));
-		await expect(
-			runInteractionAdapterConformance({
-				adapter: profileAdapter,
-				session: profileSession,
-				surface,
-				now: Date.parse(later),
-				fixtures,
-			}),
-		).rejects.toEqual(
-			expect.objectContaining({ code: "INVALID_INTERACTION_CONTRACT" }),
-		);
-		const report = await runInteractionAdapterConformance({
-			adapter: profileAdapter,
-			session: profileSession,
-			surface,
-			now: Date.parse(later),
-			fixtures,
-			profileGrantVerifier: { verify: () => true },
-		});
-		expect(report.passed).toBe(true);
-	});
-
-	it("fails closed when a required scenario is missing", async () => {
-		await expect(
-			runInteractionAdapterConformance({
-				adapter,
-				session,
-				surface,
-				now: Date.parse(later),
-				fixtures: [],
-			}),
-		).rejects.toEqual(
-			expect.objectContaining({
-				code: "INTERACTION_ADAPTER_CONFORMANCE_FAILED",
-			}),
-		);
-	});
-
-	it("fails closed when an adapter lies about result identity", async () => {
-		const lyingAdapter: InteractionAdapter = {
-			...adapter,
-			execute: async (input) => ({
-				...resultFor(input),
-				sessionId: "other-session",
-			}),
-		};
-		await expect(
-			runInteractionAdapterConformance({
-				adapter: lyingAdapter,
-				session,
-				surface,
-				now: Date.parse(later),
-				fixtures: REQUIRED_INTERACTION_CONFORMANCE_CASES.map((name) => ({
-					name,
-					action: action(
-						`case-${name}`,
-						name === "unsupported" ? "evaluate" : "observe",
-					),
-				})),
-			}),
-		).rejects.toEqual(
-			expect.objectContaining({
-				code: "INTERACTION_ADAPTER_CONFORMANCE_FAILED",
-			}),
-		);
-	});
-
-	it("fails closed when observations exceed advertised capabilities", async () => {
-		const lyingAdapter: InteractionAdapter = {
-			...adapter,
-			observe: async () => ({ ...observation, channels: ["ocr"] }),
-		};
-		await expect(
-			runInteractionAdapterConformance({
-				adapter: lyingAdapter,
-				session,
-				surface,
-				now: Date.parse(later),
-				fixtures: REQUIRED_INTERACTION_CONFORMANCE_CASES.map((name) => ({
-					name,
-					action: action(
-						`case-${name}`,
-						name === "unsupported" ? "evaluate" : "observe",
-					),
-				})),
-			}),
-		).rejects.toEqual(
-			expect.objectContaining({
-				code: "INTERACTION_ADAPTER_CONFORMANCE_FAILED",
-			}),
 		);
 	});
 });

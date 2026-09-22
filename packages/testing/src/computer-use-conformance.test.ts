@@ -276,20 +276,6 @@ function runConformance(
 }
 
 describe("computer-use-conformance", () => {
-  describe("REQUIRED_INTERACTION_CONFORMANCE_CASES", () => {
-    it("exposes the seven required case names in canonical order", () => {
-      expect([...REQUIRED_INTERACTION_CONFORMANCE_CASES]).toEqual([
-        "success",
-        "failed_no_effect",
-        "uncertain_effect",
-        "policy_block",
-        "confirmation",
-        "unsupported",
-        "stale_observation",
-      ]);
-    });
-  });
-
   describe("runInteractionLeaseConformance", () => {
     it("returns passed, frozen, deterministic contention and expiry checks", () => {
       const checks = runInteractionLeaseConformance();
@@ -599,6 +585,77 @@ describe("computer-use-conformance", () => {
           }),
         }),
       );
+    });
+
+    it("requires and forwards explicit-profile verification", async () => {
+      const profileSession: InteractionSession = {
+        ...session,
+        profileMode: "existing_explicit",
+        profileGrant: {
+          grantId: "profile-conformance-grant",
+          sessionId,
+          ownerId: session.ownerId,
+          adapterId,
+          profileHandle: "signed-in-profile",
+          issuedAt: now,
+          expiresAt: "2026-01-01T00:05:00.000Z",
+        },
+      };
+      const profileAdapter: InteractionAdapter = {
+        ...truthfulAdapter,
+        capabilities: async () => ({
+          ...capabilities,
+          profileAccess: {
+            modes: ["existing_explicit"],
+            requiresExplicitGrant: true,
+          },
+        }),
+      };
+      const options = { session: profileSession, adapter: profileAdapter };
+      await expect(runConformance(options)).rejects.toMatchObject({
+        code: "INVALID_INTERACTION_CONTRACT",
+      });
+      const report = await runConformance({
+        ...options,
+        profileGrantVerifier: { verify: () => true },
+      });
+      expect(report.passed).toBe(true);
+    });
+
+    it("rejects result identity from another session", async () => {
+      await expect(
+        runConformance({
+          adapter: {
+            ...truthfulAdapter,
+            execute: async (input) => ({
+              ...resultFor(input, statusByCase[caseNameOf(input.actionId)]),
+              sessionId: "other-session",
+            }),
+          },
+        }),
+      ).rejects.toMatchObject({
+        code: "INTERACTION_ADAPTER_CONFORMANCE_FAILED",
+      });
+    });
+
+    it("rejects a stale fixture bound to the current observation sequence", async () => {
+      await expect(
+        runConformance({
+          fixtures: conformanceFixtures().map((fixture) =>
+            fixture.name === "stale_observation"
+              ? {
+                  ...fixture,
+                  action: {
+                    ...fixture.action,
+                    observationSequence: observation.sequence,
+                  },
+                }
+              : fixture,
+          ),
+        }),
+      ).rejects.toMatchObject({
+        code: "INTERACTION_ADAPTER_CONFORMANCE_FAILED",
+      });
     });
   });
 });
