@@ -617,7 +617,9 @@ export async function generateStage1Decision(
       getActionInferenceMessageText(args.message).trim().length > 0
         ? (getStage1DirectIgnoreReview(parsedDecision) ??
           (terminalReaskEnabled &&
-          parsedDecision?.shouldRespond === "STOP" &&
+          parsedDecision &&
+          "shouldRespond" in parsedDecision &&
+          parsedDecision.shouldRespond === "STOP" &&
           shouldUseStage1PlannerFallback(args.runtime, args.message)
             ? getStage1UnusableDecisionRepair(parsedDecision, {
                 reaskTerminal: true,
