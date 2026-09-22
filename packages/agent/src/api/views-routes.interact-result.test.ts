@@ -1,23 +1,24 @@
 /**
  * Verifies POST /api/views/interact-result and the pending-request handshake it
- * completes: an interact on a serverInteract-less view parks on the module-level
+ * completes: an interact on a serverInteract-less view parks on the host-owned
  * pending map and broadcasts a requestId, which interact-result then resolves so
  * the parked interact route echoes the posted result. Also covers an orphan
  * requestId ack and a missing-requestId rejection. In-process route calls with
- * real body parsing — no HTTP server, no runtime.
+ * real body parsing and runtime ownership; no HTTP server.
  */
+
 import type http from "node:http";
 import { Readable } from "node:stream";
+import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { claimRendererReply } from "../__tests__/view-renderer-test-utils.ts";
+import { getActiveViewContext } from "../runtime/view-action-affinity.ts";
+import { closeViewInteractionHost } from "./view-interaction-host.ts";
 import {
-  getActiveViewContext,
-  setActiveViewContext,
-} from "../runtime/view-action-affinity.ts";
-import {
+  closeRuntimeViewRegistry,
   getView,
   registerBuiltinViews,
   registerPluginViews,
-  unregisterPluginViews,
 } from "./views-registry.ts";
 import {
   clearCurrentViewState,
@@ -32,12 +33,14 @@ import {
 // pending-request handshake it completes.
 //
 // The handshake: POST /api/views/:id/interact for a view *without* a
-// serverInteract handler registers a pending slot in the module-level
+// serverInteract handler registers a pending slot in the host-owned
 // PendingRequestMap (via waitFor), broadcasts a `view:interact` frame carrying
 // the generated requestId, and awaits the result. POST
 // /api/views/interact-result?requestId=… resolves that slot, fulfilling the
 // interact promise so its handler responds with the posted result.
 
+let runtime: AgentRuntime;
+let hostKey: object;
 const TEST_PLUGIN = "@test/views-interact-result";
 const mixedServerInteract = vi.fn(
   async (capability: string, params?: Record<string, unknown>) => ({
@@ -69,6 +72,8 @@ function makeCtx(
   const broadcastWs = vi.fn();
   const broadcastWsToClientId = vi.fn(() => 1);
   const ctx: ViewsRouteContext = {
+    runtime,
+    hostKey,
     req,
     res,
     method,
@@ -84,10 +89,16 @@ function makeCtx(
 
 describe("POST /api/views/interact-result resolves a pending interact", () => {
   beforeEach(async () => {
-    registerBuiltinViews();
-    clearCurrentViewState();
+    runtime = new AgentRuntime({
+      character: createCharacter({ name: "Interact result" }),
+      enableAutonomy: false,
+    });
+    hostKey = {};
+    registerBuiltinViews(runtime);
+    clearCurrentViewState(runtime);
     mixedServerInteract.mockClear();
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "Synthetic interact-result test plugin.",
@@ -117,13 +128,14 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
           },
         ],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
   });
 
   afterEach(() => {
-    clearCurrentViewState();
-    unregisterPluginViews(TEST_PLUGIN);
+    clearCurrentViewState(runtime);
+    closeRuntimeViewRegistry(runtime);
+    closeViewInteractionHost(hostKey);
     vi.restoreAllMocks();
   });
 
@@ -165,7 +177,13 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
       "POST",
       "/api/views/interact-result",
       {
-        requestId,
+        ...claimRendererReply(runtime, hostKey, "client-one", {
+          requestId,
+          viewId: "frontend-only",
+          viewType: "gui",
+          installationId: getView(runtime, "frontend-only")?.installationId,
+        }),
+        clientId: "client-one",
         success: true,
         result: { text: "state was read", value: 42 },
       },
@@ -221,7 +239,8 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
     );
 
     const { ctx: resultCtx } = makeCtx("POST", "/api/views/interact-result", {
-      requestId: frame?.requestId,
+      ...claimRendererReply(runtime, hostKey, "maps-shell", frame ?? {}),
+      clientId: "maps-shell",
       success: true,
       result: { ok: true, activated: "maps-search-submit" },
     });
@@ -277,9 +296,10 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
       requestId: expect.any(String),
       success: false,
       error: "provider exploded",
+      failureKind: "unknown",
       result: {
         success: false,
-        text: 'Cannot invoke capability "maps-search-places" on view "mixed-view": provider exploded.',
+        text: 'Unknown outcome for capability "maps-search-places" on view "mixed-view": provider exploded.',
       },
     });
   });
@@ -340,7 +360,7 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
   });
 
   it("uses the same targeted frontend selection for internal dispatch", async () => {
-    const entry = getView("mixed-view");
+    const entry = getView(runtime, "mixed-view");
     if (!entry) throw new Error("mixed view is missing");
     let frame: Record<string, unknown> | undefined;
     const dispatchPromise = dispatchViewInteract(
@@ -349,6 +369,8 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
       "agent-focus",
       { id: "maps-search-query" },
       {
+        runtime,
+        hostKey,
         clientId: "internal-shell",
         broadcastWsToClientId: (clientId, payload) => {
           expect(clientId).toBe("internal-shell");
@@ -364,8 +386,8 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
       capability: "agent-focus",
       params: { id: "maps-search-query" },
     });
-    resolveViewInteractResult({
-      requestId: String(frame?.requestId),
+    resolveViewInteractResult(runtime, hostKey, "internal-shell", {
+      ...claimRendererReply(runtime, hostKey, "internal-shell", frame ?? {}),
       success: true,
       result: { ok: true },
     });
@@ -399,64 +421,31 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
     );
   });
 
-  it("targets the mounted active-view owner when interact has no explicit client id", async () => {
-    setActiveViewContext({
-      viewId: "frontend-only",
-      viewLabel: "Frontend Only",
-      viewType: "gui",
-      viewPath: "/frontend-only",
-    });
+  it("does not borrow another client's mounted view when caller identity is absent", async () => {
     const { ctx: elementsCtx } = makeCtx(
       "POST",
       "/api/views/frontend-only/elements",
       {
         clientId: "mounted-shell",
+        viewType: "gui",
+        installationId: getView(runtime, "frontend-only")?.installationId,
+        viewPath: "/frontend-only",
         elements: [{ id: "refresh", role: "button", label: "Refresh" }],
       },
     );
-    await expect(handleViewsRoutes(elementsCtx)).resolves.toBe(true);
-
-    const { ctx, broadcastWs, broadcastWsToClientId, json } = makeCtx(
+    await handleViewsRoutes(elementsCtx);
+    const { ctx, json, broadcastWsToClientId } = makeCtx(
       "POST",
       "/api/views/frontend-only/interact",
-      {
-        capability: "get-state",
-        timeoutMs: 5_000,
-      },
+      { capability: "get-state" },
     );
-    const interactPromise = handleViewsRoutes(ctx);
-
-    let requestId: string | undefined;
-    for (let i = 0; i < 50 && !requestId; i++) {
-      const frame = broadcastWsToClientId.mock.calls
-        .filter(([clientId]) => clientId === "mounted-shell")
-        .map((c) => c[1] as Record<string, unknown>)
-        .find((p) => p.type === "view:interact");
-      if (frame && typeof frame.requestId === "string") {
-        requestId = frame.requestId;
-        break;
-      }
-      await new Promise((r) => setImmediate(r));
-    }
-
-    expect(requestId).toBeTruthy();
-    expect(broadcastWs).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: "view:interact" }),
-    );
-
-    const { ctx: resultCtx } = makeCtx("POST", "/api/views/interact-result", {
-      requestId,
-      success: true,
-      result: { text: "mounted owner handled it" },
-    });
-    await expect(handleViewsRoutes(resultCtx)).resolves.toBe(true);
-    await expect(interactPromise).resolves.toBe(true);
+    await handleViewsRoutes(ctx);
+    expect(broadcastWsToClientId).not.toHaveBeenCalled();
     expect(json).toHaveBeenCalledWith(
       ctx.res,
       expect.objectContaining({
-        requestId,
-        success: true,
-        result: { text: "mounted owner handled it" },
+        success: false,
+        error: expect.stringContaining("Missing client id"),
       }),
     );
   });
@@ -464,6 +453,7 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
   it("restores a mounted foreground view after backend state restarts", async () => {
     const { ctx, json } = makeCtx("POST", "/api/views/frontend-only/elements", {
       clientId: "restored-shell",
+      installationId: getView(runtime, "frontend-only")?.installationId,
       viewPath: "/frontend-only?restored=1",
       viewType: "gui",
       elements: [{ id: "card-1", role: "card", label: "Current card" }],
@@ -477,14 +467,21 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
       accepted: true,
       count: 1,
     });
-    expect(getCurrentViewState()).toMatchObject({
+    expect(
+      getCurrentViewState(runtime, { hostKey, clientId: "restored-shell" }),
+    ).toMatchObject({
       viewId: "frontend-only",
       viewPath: "/frontend-only",
       viewLabel: "Frontend Only",
       viewType: "gui",
     });
-    expect(getCurrentViewState()?.switchedAt).toBeUndefined();
-    expect(getActiveViewContext()).toMatchObject({
+    expect(
+      getCurrentViewState(runtime, { hostKey, clientId: "restored-shell" })
+        ?.switchedAt,
+    ).toBeUndefined();
+    expect(
+      getActiveViewContext(runtime, { hostKey, clientId: "restored-shell" }),
+    ).toMatchObject({
       viewId: "frontend-only",
       clientId: "restored-shell",
       elements: [{ id: "card-1", label: "Current card" }],
@@ -494,6 +491,8 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
   it("does not restore a background view whose route is not visible", async () => {
     const { ctx, json } = makeCtx("POST", "/api/views/frontend-only/elements", {
       viewPath: "/chat",
+      clientId: "restored-shell",
+      installationId: getView(runtime, "frontend-only")?.installationId,
       viewType: "gui",
       elements: [{ id: "card-1", role: "card", label: "Hidden card" }],
     });
@@ -506,8 +505,12 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
       accepted: false,
       count: 1,
     });
-    expect(getCurrentViewState()).toBeNull();
-    expect(getActiveViewContext()).toBeNull();
+    expect(
+      getCurrentViewState(runtime, { hostKey, clientId: "restored-shell" }),
+    ).toBeNull();
+    expect(
+      getActiveViewContext(runtime, { hostKey, clientId: "restored-shell" }),
+    ).toBeNull();
   });
 
   it("acks gracefully for an unknown requestId without throwing", async () => {
@@ -515,6 +518,7 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
     // still matches and acks. This must not throw or hang.
     const { ctx, json, error } = makeCtx("POST", "/api/views/interact-result", {
       requestId: "00000000-0000-0000-0000-000000000000",
+      clientId: "client-one",
       success: true,
       result: { text: "orphan" },
     });

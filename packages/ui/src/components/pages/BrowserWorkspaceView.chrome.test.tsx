@@ -33,6 +33,12 @@ const authorityState = vi.hoisted(() => ({
 
 const openExternalUrlMock = vi.hoisted(() => vi.fn());
 
+// This standalone page fixture has no connected runtime view installation.
+// Catalog binding and reporting are exercised by the shell/catalog integration tests.
+vi.mock("../../hooks/useAvailableViews", () => ({
+  useAvailableViews: () => ({ views: [] }),
+}));
+
 vi.mock("../../hooks/useActiveAgentAuthority", () => ({
   useActiveAgentAuthority: () => authorityState.value,
 }));

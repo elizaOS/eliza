@@ -7,9 +7,9 @@
  * surfaces everything (so the client can apply the user's Settings toggles).
  */
 
-import type { Plugin } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
-import { listViews, unregisterPluginViews } from "./views-registry.js";
+import { AgentRuntime, createCharacter, type Plugin } from "@elizaos/core";
+import { beforeEach, describe, expect, it } from "vitest";
+import { listViews } from "./views-registry.js";
 
 const PLUGIN_NAME = "@elizaos/plugin-view-kind-fixture";
 
@@ -36,26 +36,24 @@ function fixturePlugin(): Plugin {
 
 async function register() {
   const { registerPluginViews } = await import("./views-registry.js");
-  await registerPluginViews(fixturePlugin(), "/tmp/does-not-matter");
+  await registerPluginViews(runtime, fixturePlugin(), {
+    pluginDir: "/tmp/does-not-matter",
+  });
 }
 
 function ids(entries: { id: string }[]): string[] {
   return entries.map((e) => e.id).filter((id) => id.startsWith("vk-"));
 }
 
-afterEach(() => {
-  unregisterPluginViews(PLUGIN_NAME);
-});
-
 describe("listViews kind filtering", () => {
   it("default (no flags): only system + release", async () => {
     await register();
-    expect(ids(listViews()).sort()).toEqual(["vk-release", "vk-system"]);
+    expect(ids(listViews(runtime)).sort()).toEqual(["vk-release", "vk-system"]);
   });
 
   it("developerMode: adds developer (incl. legacy developerOnly), not preview", async () => {
     await register();
-    expect(ids(listViews({ developerMode: true })).sort()).toEqual([
+    expect(ids(listViews(runtime, { developerMode: true })).sort()).toEqual([
       "vk-dev",
       "vk-legacy",
       "vk-release",
@@ -65,7 +63,7 @@ describe("listViews kind filtering", () => {
 
   it("includeAllKinds: surfaces every kind including preview", async () => {
     await register();
-    expect(ids(listViews({ includeAllKinds: true })).sort()).toEqual([
+    expect(ids(listViews(runtime, { includeAllKinds: true })).sort()).toEqual([
       "vk-dev",
       "vk-legacy",
       "vk-preview",
@@ -76,9 +74,17 @@ describe("listViews kind filtering", () => {
 
   it("preserves app-shell grouping metadata for client launcher curation", async () => {
     await register();
-    const grouped = listViews({ includeAllKinds: true }).find(
+    const grouped = listViews(runtime, { includeAllKinds: true }).find(
       (view) => view.id === "vk-preview",
     );
     expect(grouped?.group).toBe("wallet");
+  });
+});
+
+let runtime: AgentRuntime;
+beforeEach(() => {
+  runtime = new AgentRuntime({
+    character: createCharacter({ name: "View fixture" }),
+    enableAutonomy: false,
   });
 });

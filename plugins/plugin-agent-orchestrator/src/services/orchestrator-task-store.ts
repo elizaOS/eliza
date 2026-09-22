@@ -43,6 +43,8 @@ export type TaskStoreBackend = "runtime-db" | "file" | "memory";
 export interface InterruptStuckTaskInput {
   taskId: string;
   expectedTaskUpdatedAt: string;
+  /** Reclaim a dead verifier instead of an active worker. */
+  expectedVerificationOwner?: { pid: number; scopeId: string };
   expectedSessions: Array<
     Pick<OrchestratorTaskSession, "sessionId" | "status" | "updatedAt">
   >;
@@ -406,7 +408,19 @@ function applyStuckTaskInterrupt(
   doc: OrchestratorTaskDocument,
   input: InterruptStuckTaskInput,
 ): boolean {
-  if (doc.task.status !== "active" || doc.task.paused) return false;
+  const owner = input.expectedVerificationOwner;
+  if (doc.task.status !== (owner ? "validating" : "active") || doc.task.paused)
+    return false;
+  if (owner) {
+    const current = doc.task.metadata.autoVerifyOwner;
+    if (
+      !isRecord(current) ||
+      current.pid !== owner.pid ||
+      !isRecord(current.scope) ||
+      current.scope.id !== owner.scopeId
+    )
+      return false;
+  }
   if (doc.task.updatedAt !== input.expectedTaskUpdatedAt) return false;
 
   const expectedSessions = input.expectedSessions
@@ -434,7 +448,10 @@ function applyStuckTaskInterrupt(
   const liveSessionIds = doc.sessions
     .filter((session) => !TERMINAL_TASK_SESSION_STATUSES.has(session.status))
     .map((session) => session.sessionId);
-  if (liveSessionIds.some((sessionId) => !deadSessionIds.has(sessionId))) {
+  if (
+    !owner &&
+    liveSessionIds.some((sessionId) => !deadSessionIds.has(sessionId))
+  ) {
     return false;
   }
 

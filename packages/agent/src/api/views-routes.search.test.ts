@@ -1,16 +1,16 @@
 /**
- * Exercises the GET /api/views/search keyword-scoring path with no runtime
- * attached, so ranking is fully deterministic (semantic weight 0): exact-label
+ * Exercises the GET /api/views/search keyword-scoring path without an embedding index, so ranking is fully deterministic (semantic weight 0): exact-label
  * beats a partial match, exact-tag matches, empty/whitespace queries short-circuit
  * to no results, limit clamps to [1,20], and viewType filters to tui views. No
  * embeddings, PGLite, or LLM.
  */
 import type http from "node:http";
 import { Readable } from "node:stream";
+import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  closeRuntimeViewRegistry,
   registerPluginViews,
-  unregisterPluginViews,
 } from "./views-registry.ts";
 import {
   clearCurrentViewState,
@@ -26,6 +26,9 @@ import {
 // == 60, description.includes == 40. The combined score is `kw * 0.4`, and the
 // route drops anything with score <= 5 then slices to `topK`.
 
+let runtime: AgentRuntime;
+let hostKey: object;
+
 const TEST_PLUGIN = "@test/views-search";
 
 function makeSearchCtx(search: string): {
@@ -40,6 +43,8 @@ function makeSearchCtx(search: string): {
   const error = vi.fn();
   const pathname = "/api/views/search";
   const ctx: ViewsRouteContext = {
+    runtime,
+    hostKey,
     req,
     res,
     method: "GET",
@@ -48,7 +53,7 @@ function makeSearchCtx(search: string): {
     json,
     error,
     broadcastWs: vi.fn(),
-    // Intentionally NO runtime — forces keyword-only scoring.
+    // No embedding index is installed; ranking is keyword-only.
   };
   return { ctx, json, error };
 }
@@ -69,9 +74,15 @@ function resultsFrom(json: ReturnType<typeof vi.fn>): SearchResult[] {
 
 describe("GET /api/views/search keyword scoring", () => {
   beforeEach(async () => {
-    clearCurrentViewState();
+    runtime = new AgentRuntime({
+      character: createCharacter({ name: "View route" }),
+      enableAutonomy: false,
+    });
+    hostKey = {};
+    clearCurrentViewState(runtime);
     // Keep the keyword fixtures isolated: shipped views reserve their own ids.
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "Synthetic search test plugin.",
@@ -101,13 +112,13 @@ describe("GET /api/views/search keyword scoring", () => {
           },
         ],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
   });
 
   afterEach(() => {
-    clearCurrentViewState();
-    unregisterPluginViews(TEST_PLUGIN);
+    clearCurrentViewState(runtime);
+    closeRuntimeViewRegistry(runtime);
     vi.restoreAllMocks();
   });
 
@@ -124,7 +135,7 @@ describe("GET /api/views/search keyword scoring", () => {
       semanticEnabled: boolean;
     };
     expect(payload.query).toBe("wallet");
-    // No runtime was passed → semantic search is disabled.
+    // No embedding index was installed → semantic search is disabled.
     expect(payload.semanticEnabled).toBe(false);
 
     const results = payload.results;

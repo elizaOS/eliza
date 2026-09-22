@@ -7,11 +7,11 @@
  */
 import type http from "node:http";
 import { Readable } from "node:stream";
+import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  registerBuiltinViews,
+  closeRuntimeViewRegistry,
   registerPluginViews,
-  unregisterPluginViews,
 } from "./views-registry.ts";
 import {
   clearCurrentViewState,
@@ -19,6 +19,9 @@ import {
   parseViewTypeParam,
   type ViewsRouteContext,
 } from "./views-routes.ts";
+
+let runtime: AgentRuntime;
+let hostKey: object;
 
 const TEST_PLUGIN = "@test/views-viewtype";
 
@@ -37,6 +40,8 @@ function makeCtx(
   const json = vi.fn();
   const error = vi.fn();
   const ctx: ViewsRouteContext = {
+    runtime,
+    hostKey,
     req,
     res,
     method: "GET",
@@ -73,9 +78,15 @@ describe("parseViewTypeParam", () => {
 
 describe("GET /api/views viewType identity", () => {
   beforeEach(async () => {
-    registerBuiltinViews();
-    clearCurrentViewState();
+    runtime = new AgentRuntime({
+      character: createCharacter({ name: "View search" }),
+      enableAutonomy: false,
+    });
+    hostKey = {};
+
+    clearCurrentViewState(runtime);
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "Synthetic viewType identity plugin.",
@@ -95,13 +106,13 @@ describe("GET /api/views viewType identity", () => {
           },
         ],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
   });
 
   afterEach(() => {
-    clearCurrentViewState();
-    unregisterPluginViews(TEST_PLUGIN);
+    clearCurrentViewState(runtime);
+    closeRuntimeViewRegistry(runtime);
     vi.restoreAllMocks();
   });
 

@@ -1,18 +1,22 @@
-/**
- * Views System End-to-End Smoke Test
- *
- * Documents and verifies the full views system lifecycle:
- *
- *   Plugin declares views → registered in registry at plugin load
- *     → served via HTTP routes (list, metadata, bundle, hero)
- *     → navigate endpoint broadcasts WS event
- *     → frontend dispatches eliza:navigate:view custom event
- *     → ViewManagerPage renders view cards from /api/views
- *     → DynamicViewLoader fetches bundle from /api/views/:id/bundle.js
- *
- * This file acts as living documentation for how the system works.
- * Each test verifies one stage of the pipeline.
- */
+/** Registry and in-process HTTP route smoke tests using actual runtimes and disk fixtures. WebSocket delivery is observed through spies; no browser, native device, or inference is exercised. */
+import { AgentRuntime, createCharacter } from "@elizaos/core";
+import { closeRuntimeViewRegistry } from "../api/view-installations.ts";
+import { closeViewInteractionHost } from "../api/view-interaction-host.ts";
+import { bindCatalogAssetRequest } from "./view-renderer-test-utils.ts";
+
+let runtime: AgentRuntime;
+let hostKey: object;
+const installed = new Map<string, Awaited<ReturnType<typeof registerViews>>>();
+async function registerPluginViews(...args: Parameters<typeof registerViews>) {
+  const lease = await registerViews(...args);
+  installed.set(args[1].name, lease);
+  return lease;
+}
+function unregisterPluginViews(name: string) {
+  const lease = installed.get(name);
+  if (lease) unregisterViews(runtime, lease);
+  installed.delete(name);
+}
 
 import { EventEmitter } from "node:events";
 import {
@@ -36,8 +40,8 @@ import {
   getHeroDiskPath,
   getView,
   listViews,
-  registerPluginViews,
-  unregisterPluginViews,
+  registerPluginViews as registerViews,
+  unregisterPluginViews as unregisterViews,
 } from "../api/views-registry.js";
 import type { ViewsRouteContext } from "../api/views-routes.js";
 import {
@@ -81,11 +85,14 @@ function makeCtx(
   const json = vi.fn();
   const error = vi.fn();
   const url = new URL(`http://localhost${pathname}`);
+
   const req =
     opts.body !== undefined || method === "POST"
       ? makeReqWithBody(opts.body)
       : ({ headers: opts.headers ?? {} } as http.IncomingMessage);
   const ctx: ViewsRouteContext = {
+    runtime,
+    hostKey,
     req,
     res: opts.res ?? ({} as http.ServerResponse),
     method,
@@ -96,6 +103,7 @@ function makeCtx(
     broadcastWs: opts.broadcastWs,
     developerMode: opts.developerMode,
   };
+  bindCatalogAssetRequest(runtime, ctx);
   return { ctx, json, error };
 }
 
@@ -114,12 +122,20 @@ function makeReqWithBody(body?: unknown): http.IncomingMessage {
 }
 
 beforeEach(() => {
+  runtime = new AgentRuntime({
+    character: createCharacter({ name: "View smoke" }),
+    enableAutonomy: false,
+  });
+  hostKey = {};
+  installed.clear();
   vi.spyOn(console, "info").mockImplementation(() => {});
 });
 
 afterEach(() => {
   unregisterPluginViews(SMOKE_PLUGIN);
-  clearCurrentViewState();
+  clearCurrentViewState(runtime);
+  closeRuntimeViewRegistry(runtime);
+  closeViewInteractionHost(hostKey);
   vi.restoreAllMocks();
 });
 
@@ -130,16 +146,17 @@ afterEach(() => {
 describe("stage 1: plugin declares views → registry populated", () => {
   it("registerPluginViews stores the view entry keyed by id", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
         actions: [],
         views: [SMOKE_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
-    const entry = getView("smoke.main");
+    const entry = getView(runtime, "smoke.main");
     expect(entry).toBeDefined();
     expect(entry?.pluginName).toBe(SMOKE_PLUGIN);
     expect(entry?.label).toBe("Smoke View");
@@ -151,6 +168,7 @@ describe("stage 1: plugin declares views → registry populated", () => {
 
   it("expands one multimodal declaration into concrete viewType entries", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
@@ -164,96 +182,102 @@ describe("stage 1: plugin declares views → registry populated", () => {
           },
         ],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     for (const viewType of ["gui", "xr", "tui"] as const) {
-      const entry = getView("smoke.multimodal", { viewType });
+      const entry = getView(runtime, "smoke.multimodal", { viewType });
       expect(entry).toBeDefined();
       expect(entry?.viewType).toBe(viewType);
       expect(entry?.modalities).toEqual(["gui", "xr", "tui"]);
       expect(
-        listViews({ developerMode: true, viewType }).filter(
+        listViews(runtime, { developerMode: true, viewType }).filter(
           (view) => view.id === "smoke.multimodal",
         ),
       ).toHaveLength(1);
     }
 
-    expect(getView("smoke.multimodal")?.bundleUrl).not.toContain("viewType=");
+    expect(getView(runtime, "smoke.multimodal")?.bundleUrl).not.toContain(
+      "viewType=",
+    );
     expect(
-      getView("smoke.multimodal", { viewType: "tui" })?.bundleUrl,
-    ).toContain("viewType=tui");
+      getView(runtime, "smoke.multimodal", { viewType: "tui" })?.bundleUrl,
+    ).toContain("/tui/bundle/");
     expect(
-      getView("smoke.multimodal", { viewType: "xr" })?.heroImageUrl,
+      getView(runtime, "smoke.multimodal", { viewType: "xr" })?.heroImageUrl,
     ).toContain("viewType=xr");
   });
 
   it("entry includes derived fields: bundleUrl and heroImageUrl", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
         actions: [],
         views: [SMOKE_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
-    const entry = getView("smoke.main");
+    const entry = getView(runtime, "smoke.main");
     expect(entry?.bundleUrl).toMatch(
-      /^\/api\/views\/smoke\.main\/bundle\.js\?v=\d+$/,
+      /^\/api\/views\/smoke\.main\/installations\/[a-f0-9-]{36}\/gui\/bundle\/bundle\.js(?:\?v=[a-f0-9]{64})?$/,
     );
     expect(entry?.heroImageUrl).toBe("/api/views/smoke.main/hero");
   });
 
   it("entry includes viewType in derived TUI asset URLs", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
         actions: [],
         views: [{ ...SMOKE_VIEW, viewType: "tui", path: "/smoke/tui" }],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
-    const entry = getView("smoke.main", { viewType: "tui" });
+    const entry = getView(runtime, "smoke.main", { viewType: "tui" });
     expect(entry?.bundleUrl).toMatch(
-      /^\/api\/views\/smoke\.main\/bundle\.js\?viewType=tui&v=\d+$/,
+      /^\/api\/views\/smoke\.main\/installations\/[a-f0-9-]{36}\/tui\/bundle\/bundle\.js(?:\?v=[a-f0-9]{64})?$/,
     );
     expect(entry?.heroImageUrl).toBe("/api/views/smoke.main/hero?viewType=tui");
   });
 
   it("entry marks available=false when pluginDir is not resolvable", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
         actions: [],
         views: [SMOKE_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
-    const entry = getView("smoke.main");
+    const entry = getView(runtime, "smoke.main");
     // Without a resolvable pluginDir and an actual dist/views/bundle.js, available=false.
     expect(entry?.available).toBe(false);
   });
 
   it("unregisterPluginViews removes all views owned by that plugin", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
         actions: [],
         views: [SMOKE_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
-    expect(getView("smoke.main")).toBeDefined();
+    expect(getView(runtime, "smoke.main")).toBeDefined();
 
     unregisterPluginViews(SMOKE_PLUGIN);
-    expect(getView("smoke.main")).toBeUndefined();
+    expect(getView(runtime, "smoke.main")).toBeUndefined();
   });
 });
 
@@ -264,13 +288,14 @@ describe("stage 1: plugin declares views → registry populated", () => {
 describe("stage 2: HTTP GET /api/views returns views list", () => {
   it("GET /api/views returns a views array containing registered views", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
         actions: [],
         views: [SMOKE_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, json } = makeCtx("GET", "/api/views");
@@ -286,13 +311,14 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
 
   it("GET /api/views response includes bundleUrl and heroImageUrl for views with bundlePath", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
         actions: [],
         views: [SMOKE_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, json } = makeCtx("GET", "/api/views");
@@ -304,7 +330,7 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
     ];
     const view = body.views.find((v) => v.id === "smoke.main");
     expect(view?.bundleUrl).toMatch(
-      /^\/api\/views\/smoke\.main\/bundle\.js\?v=\d+$/,
+      /^\/api\/views\/smoke\.main\/installations\/[a-f0-9-]{36}\/gui\/bundle\/bundle\.js(?:\?v=[a-f0-9]{64})?$/,
     );
     expect(view?.heroImageUrl).toBe("/api/views/smoke.main/hero");
   });
@@ -319,6 +345,7 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
       );
 
       await registerPluginViews(
+        runtime,
         {
           name: SMOKE_PLUGIN,
           description: "smoke plugin",
@@ -332,7 +359,7 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
             },
           ],
         },
-        pluginDir,
+        { pluginDir: pluginDir, indexEmbeddings: false },
       );
 
       const { ctx, json } = makeCtx("GET", "/api/views");
@@ -352,10 +379,10 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
       const view = body.views.find((v) => v.id === "smoke.main");
       expect(view?.bundleUrl).toBeUndefined();
       expect(view?.frameUrl).toMatch(
-        /^\/api\/views\/smoke\.main\/frame\.html\?v=\d+$/,
+        /^\/api\/views\/smoke\.main\/installations\/[a-f0-9-]{36}\/gui\/frame\/frame\.html(?:\?v=[a-f0-9]{64})?$/,
       );
       expect(view?.available).toBe(true);
-      const registryEntry = getView("smoke.main");
+      const registryEntry = getView(runtime, "smoke.main");
       expect(registryEntry).toBeTruthy();
       expect(registryEntry ? getFrameDiskPath(registryEntry) : null).toBe(
         await realpath(path.join(pluginDir, "dist", "views", "frame.html")),
@@ -375,6 +402,7 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
       );
 
       await registerPluginViews(
+        runtime,
         {
           name: SMOKE_PLUGIN,
           description: "smoke plugin",
@@ -387,7 +415,7 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
             },
           ],
         },
-        pluginDir,
+        { pluginDir: pluginDir, indexEmbeddings: false },
       );
 
       const { ctx, json } = makeCtx("GET", "/api/views");
@@ -406,10 +434,10 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
       ];
       const view = body.views.find((v) => v.id === "smoke.main");
       expect(view?.bundleUrl).toMatch(
-        /^\/api\/views\/smoke\.main\/bundle\.js\?v=\d+$/,
+        /^\/api\/views\/smoke\.main\/installations\/[a-f0-9-]{36}\/gui\/bundle\/bundle\.js(?:\?v=[a-f0-9]{64})?$/,
       );
       expect(view?.frameUrl).toMatch(
-        /^\/api\/views\/smoke\.main\/frame\.html\?v=\d+$/,
+        /^\/api\/views\/smoke\.main\/installations\/[a-f0-9-]{36}\/gui\/frame\/frame\.html(?:\?v=[a-f0-9]{64})?$/,
       );
       expect(view?.available).toBe(false);
     } finally {
@@ -417,7 +445,7 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
     }
   });
 
-  it("filters sandbox frame documents from restricted native platforms", async () => {
+  it("keeps installation metadata without executable frame URLs on restricted native platforms", async () => {
     const pluginDir = await mkdtemp(path.join(os.tmpdir(), "eliza-frame-"));
     try {
       await mkdir(path.join(pluginDir, "dist", "views"), { recursive: true });
@@ -427,6 +455,7 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
       );
 
       await registerPluginViews(
+        runtime,
         {
           name: SMOKE_PLUGIN,
           description: "smoke plugin",
@@ -440,7 +469,7 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
             },
           ],
         },
-        pluginDir,
+        { pluginDir: pluginDir, indexEmbeddings: false },
       );
 
       const { ctx, json } = makeCtx("GET", "/api/views", {
@@ -450,9 +479,25 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
 
       const [, body] = json.mock.calls[0] as [
         unknown,
-        { views: { id: string }[] },
+        {
+          views: Array<{
+            id: string;
+            installationId?: string;
+            metadataOnly?: boolean;
+            available: boolean;
+            bundleUrl?: string;
+            frameUrl?: string;
+          }>;
+        },
       ];
-      expect(body.views.some((v) => v.id === "smoke.main")).toBe(false);
+      const metadata = body.views.find((view) => view.id === "smoke.main");
+      expect(metadata).toMatchObject({
+        installationId: getView(runtime, "smoke.main")?.installationId,
+        available: false,
+        metadataOnly: true,
+      });
+      expect(metadata?.bundleUrl).toBeUndefined();
+      expect(metadata?.frameUrl).toBeUndefined();
     } finally {
       await rm(pluginDir, { recursive: true, force: true });
     }
@@ -466,13 +511,14 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
 describe("stage 3: GET /api/views/:id returns single view metadata", () => {
   it("returns the full view entry as JSON", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
         actions: [],
         views: [SMOKE_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, json } = makeCtx("GET", "/api/views/smoke.main");
@@ -505,13 +551,14 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
   it("returns 404 when no bundlePath is configured", async () => {
     const viewNoBundlePath = { ...SMOKE_VIEW, bundlePath: undefined };
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
         actions: [],
         views: [viewNoBundlePath],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, error } = makeCtx("GET", "/api/views/smoke.main/bundle.js");
@@ -523,16 +570,17 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
 
   it("getBundleDiskPath returns null when pluginDir is undefined", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
         actions: [],
         views: [SMOKE_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
-    const entry = getView("smoke.main");
+    const entry = getView(runtime, "smoke.main");
     expect(entry).toBeDefined();
     // Without a pluginDir, getBundleDiskPath returns null.
     if (!entry) throw new Error("Expected smoke.main to be registered");
@@ -541,16 +589,17 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
 
   it("getBundleDiskPath resolves correctly given a pluginDir", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
         actions: [],
         views: [SMOKE_VIEW],
       },
-      "/some/plugin/dir",
+      { pluginDir: "/some/plugin/dir", indexEmbeddings: false },
     );
 
-    const entry = getView("smoke.main");
+    const entry = getView(runtime, "smoke.main");
     expect(entry).toBeDefined();
     if (!entry) throw new Error("Expected smoke.main to be registered");
     const diskPath = getBundleDiskPath(entry);
@@ -566,6 +615,7 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
     const pluginDir = await mkdtemp(path.join(os.tmpdir(), "eliza-view-root-"));
     try {
       await registerPluginViews(
+        runtime,
         {
           name: SMOKE_PLUGIN,
           description: "plugin-root confinement fixture",
@@ -579,10 +629,10 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
             },
           ],
         },
-        pluginDir,
+        { pluginDir: pluginDir, indexEmbeddings: false },
       );
 
-      const entry = getView("smoke.main");
+      const entry = getView(runtime, "smoke.main");
       expect(entry).toBeDefined();
       if (!entry) throw new Error("Expected smoke.main to be registered");
       expect(entry.available).toBe(false);
@@ -613,16 +663,17 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
         );
         await symlink(outsideDir, path.join(pluginDir, "dist"), "dir");
         await registerPluginViews(
+          runtime,
           {
             name: SMOKE_PLUGIN,
             description: "symlink confinement fixture",
             actions: [],
             views: [SMOKE_VIEW],
           },
-          pluginDir,
+          { pluginDir: pluginDir, indexEmbeddings: false },
         );
 
-        const entry = getView("smoke.main");
+        const entry = getView(runtime, "smoke.main");
         expect(entry).toBeDefined();
         expect(entry ? getBundleDiskPath(entry) : null).toBeNull();
       } finally {
@@ -638,16 +689,21 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
     await mkdir(viewsDir, { recursive: true });
     await writeFile(path.join(viewsDir, "bundle.js"), "import './chunk.js';");
     await writeFile(path.join(viewsDir, "chunk.js"), "export const ok = true;");
+    await writeFile(
+      path.join(viewsDir, "bundle.js.assets.json"),
+      JSON.stringify({ version: 1, files: ["bundle.js", "chunk.js"] }),
+    );
 
     try {
       await registerPluginViews(
+        runtime,
         {
           name: SMOKE_PLUGIN,
           description: "smoke plugin",
           actions: [],
           views: [SMOKE_VIEW],
         },
-        pluginDir,
+        { pluginDir: pluginDir, indexEmbeddings: false },
       );
 
       const writeHead = vi.fn();
@@ -681,6 +737,7 @@ describe("stage 4b: GET /api/views/:id/frame.html serves sandbox frame documents
       );
 
       await registerPluginViews(
+        runtime,
         {
           name: SMOKE_PLUGIN,
           description: "smoke plugin",
@@ -694,7 +751,7 @@ describe("stage 4b: GET /api/views/:id/frame.html serves sandbox frame documents
             },
           ],
         },
-        pluginDir,
+        { pluginDir: pluginDir, indexEmbeddings: false },
       );
 
       const res = {
@@ -732,6 +789,7 @@ describe("stage 4b: GET /api/views/:id/frame.html serves sandbox frame documents
       );
 
       await registerPluginViews(
+        runtime,
         {
           name: SMOKE_PLUGIN,
           description: "smoke plugin",
@@ -745,7 +803,7 @@ describe("stage 4b: GET /api/views/:id/frame.html serves sandbox frame documents
             },
           ],
         },
-        pluginDir,
+        { pluginDir: pluginDir, indexEmbeddings: false },
       );
 
       const { ctx, error } = makeCtx(
@@ -760,7 +818,7 @@ describe("stage 4b: GET /api/views/:id/frame.html serves sandbox frame documents
       expect(handled).toBe(true);
       expect(error).toHaveBeenCalledWith(
         expect.anything(),
-        "Dynamic view frame loading is not permitted on this platform.",
+        "Dynamic view asset loading is not permitted on this platform.",
         403,
       );
     } finally {
@@ -770,13 +828,14 @@ describe("stage 4b: GET /api/views/:id/frame.html serves sandbox frame documents
 
   it("does not serve bundle.js as the sandbox frame document fallback", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
         actions: [],
         views: [SMOKE_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, error } = makeCtx("GET", "/api/views/smoke.main/frame.html");
@@ -790,7 +849,7 @@ describe("stage 4b: GET /api/views/:id/frame.html serves sandbox frame documents
       number,
     ];
     expect(status).toBe(404);
-    expect(message).toContain("has no frame path configured");
+    expect(message).toContain("has no local root");
   });
 });
 
@@ -801,13 +860,14 @@ describe("stage 4b: GET /api/views/:id/frame.html serves sandbox frame documents
 describe("stage 5: GET /api/views/:id/hero serves hero image or SVG placeholder", () => {
   it("returns an SVG placeholder when no hero image exists on disk", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
         actions: [],
         views: [SMOKE_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     // The handler calls sendGeneratedHero for entries without a resolvable hero.
@@ -853,13 +913,14 @@ describe("stage 5: GET /api/views/:id/hero serves hero image or SVG placeholder"
 describe("stage 6: POST /api/views/:id/navigate broadcasts WS event", () => {
   it("calls broadcastWs with shell:navigate:view type and viewId", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
         actions: [],
         views: [SMOKE_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const broadcasts: object[] = [];
@@ -893,13 +954,14 @@ describe("stage 6: POST /api/views/:id/navigate broadcasts WS event", () => {
 
   it("propagates alwaysOnTop through navigate responses and broadcasts", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
         actions: [],
         views: [SMOKE_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const broadcasts: object[] = [];
@@ -964,13 +1026,14 @@ describe("stage 6: POST /api/views/:id/navigate broadcasts WS event", () => {
 
   it("navigate without broadcastWs still returns 200 (broadcastWs is optional)", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
         actions: [],
         views: [SMOKE_VIEW],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const { ctx, json } = makeCtx("POST", "/api/views/smoke.main/navigate");
@@ -983,6 +1046,7 @@ describe("stage 6: POST /api/views/:id/navigate broadcasts WS event", () => {
 
   it("records the current view for agent-side awareness", async () => {
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
@@ -998,16 +1062,20 @@ describe("stage 6: POST /api/views/:id/navigate broadcasts WS event", () => {
           },
         ],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
     const navigate = makeCtx(
       "POST",
       "/api/views/smoke.main/navigate?viewType=tui",
+      { body: { source: "user" } },
     );
+    navigate.ctx.req.headers["x-elizaos-client-id"] = "smoke-client";
     await handleViewsRoutes(navigate.ctx);
 
-    const current = makeCtx("GET", "/api/views/current");
+    const current = makeCtx("GET", "/api/views/current", {
+      headers: { "x-elizaos-client-id": "smoke-client" },
+    });
     const handled = await handleViewsRoutes(current.ctx);
 
     expect(handled).toBe(true);
@@ -1044,11 +1112,12 @@ describe("stage 7: registry ordering and developer mode filtering", () => {
     ];
 
     await registerPluginViews(
+      runtime,
       { name: SMOKE_PLUGIN, description: "smoke plugin", actions: [], views },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
-    const listed = listViews().filter((v) =>
+    const listed = listViews(runtime).filter((v) =>
       ["smoke.a", "smoke.m", "smoke.z"].includes(v.id),
     );
     expect(listed.map((v) => v.id)).toEqual(["smoke.a", "smoke.m", "smoke.z"]);
@@ -1064,19 +1133,20 @@ describe("stage 7: registry ordering and developer mode filtering", () => {
       developerOnly: true,
     };
     await registerPluginViews(
+      runtime,
       {
         name: SMOKE_PLUGIN,
         description: "smoke plugin",
         actions: [],
         views: [devOnlyView],
       },
-      undefined,
+      { pluginDir: undefined, indexEmbeddings: false },
     );
 
-    const normal = listViews({ developerMode: false });
+    const normal = listViews(runtime, { developerMode: false });
     expect(normal.find((v) => v.id === "smoke.devonly")).toBeUndefined();
 
-    const dev = listViews({ developerMode: true });
+    const dev = listViews(runtime, { developerMode: true });
     expect(dev.find((v) => v.id === "smoke.devonly")).toBeDefined();
 
     unregisterPluginViews(SMOKE_PLUGIN);

@@ -7,6 +7,7 @@ import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
  */
 
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -22,10 +23,12 @@ import {
   createAppControlClient,
 } from "@elizaos/plugin-app-control";
 import { afterEach, describe, expect, it } from "vitest";
+import WebSocket from "ws";
 import { startApiServer } from "./server.ts";
 
 const TEST_APP = "guard-proof";
 const TEST_PLUGIN = "@test/guard-proof";
+const VIEW_CLIENT_ID = "guard-live-view-client";
 
 type ApiServer = Awaited<ReturnType<typeof startApiServer>>;
 
@@ -93,7 +96,10 @@ async function invokeCloudAppsShow(
     agentId: runtime.agentId,
     entityId: runtime.agentId,
     roomId,
-    content: { text: "Open the requested deployment studio." },
+    content: {
+      text: "Open the requested deployment studio.",
+      metadata: { viewClientId: VIEW_CLIENT_ID },
+    },
   } as Memory;
   const result = await requireAction(runtime, "VIEWS").handler(
     runtime,
@@ -197,6 +203,7 @@ describe("My Apps semantic route parity (#16944)", () => {
     const root = await mkdtemp(path.join(tmpdir(), "eliza-app-stop-guard-"));
     let runtime: AgentRuntime | null = null;
     let api: ApiServer | null = null;
+    let renderer: WebSocket | null = null;
     try {
       await seedInstalledApp(root);
       runtime = new AgentRuntime({
@@ -214,6 +221,16 @@ describe("My Apps semantic route parity (#16944)", () => {
       });
       process.env.ELIZA_PORT = String(api.port);
       process.env.ELIZA_API_PORT = String(api.port);
+
+      renderer = new WebSocket(
+        `ws://127.0.0.1:${api.port}/ws?clientId=${VIEW_CLIENT_ID}`,
+        { headers: { Authorization: "Bearer guard-live-route-token" } },
+      );
+      const frames: Record<string, unknown>[] = [];
+      renderer.on("message", (bytes) =>
+        frames.push(JSON.parse(bytes.toString())),
+      );
+      await once(renderer, "open", { signal: AbortSignal.timeout(10_000) });
 
       const client = createAppControlClient();
       const shown = await invokeCloudAppsShow(runtime, randomUUID() as UUID);
@@ -234,11 +251,18 @@ describe("My Apps semantic route parity (#16944)", () => {
           }),
         }),
       );
+      await expect
+        .poll(
+          () => frames.find((frame) => frame.type === "shell:navigate:view"),
+          { timeout: 10_000 },
+        )
+        .toMatchObject({ viewId: "cloud-apps", viewPath: "/cloud-apps" });
       const currentViewResponse = await fetch(
         `http://127.0.0.1:${api.port}/api/views/current`,
         {
           headers: {
             Authorization: "Bearer guard-live-route-token",
+            "X-ElizaOS-Client-Id": VIEW_CLIENT_ID,
           },
         },
       );
@@ -251,6 +275,21 @@ describe("My Apps semantic route parity (#16944)", () => {
           }),
         }),
       );
+
+      // Renderer navigation is private to its caller, never process-global.
+      const peerViewResponse = await fetch(
+        `http://127.0.0.1:${api.port}/api/views/current`,
+        {
+          headers: {
+            Authorization: "Bearer guard-live-route-token",
+            "X-ElizaOS-Client-Id": "unrelated-client",
+          },
+        },
+      );
+      expect(peerViewResponse.ok).toBe(true);
+      await expect(peerViewResponse.json()).resolves.toMatchObject({
+        currentView: null,
+      });
 
       const launched = await client.launchApp(TEST_APP);
       expect(launched.run).toEqual(
@@ -292,6 +331,7 @@ describe("My Apps semantic route parity (#16944)", () => {
       );
       await expect(client.listAppRuns()).resolves.toEqual([]);
     } finally {
+      renderer?.terminate();
       if (api) await api.close();
       if (runtime) {
         await runtime.stop({ fast: true });

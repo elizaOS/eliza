@@ -9,6 +9,7 @@
  * the unit under test: validate() reads the real active-view context and the
  * handler runs the real dispatch + missing-element detection.
  */
+
 import type http from "node:http";
 import { Readable } from "node:stream";
 import type {
@@ -17,14 +18,23 @@ import type {
   Memory,
   ViewScopedAction,
 } from "@elizaos/core";
-import { type ElizaError, isElizaError } from "@elizaos/core";
+import {
+  AgentRuntime,
+  createCharacter,
+  type ElizaError,
+  isElizaError,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { validateToolArgs } from "../../../core/src/actions/validate-tool-args.ts";
+import { claimRendererReply } from "../__tests__/view-renderer-test-utils.ts";
 import { BUILTIN_VIEWS } from "../api/builtin-views.ts";
 import {
-  registerPluginViews,
-  unregisterPluginViews,
-} from "../api/views-registry.ts";
+  beginViewInstallation,
+  closeRuntimeViewRegistry,
+  commitViewInstallation,
+} from "../api/view-installations.ts";
+import { closeViewInteractionHost } from "../api/view-interaction-host.ts";
+import { getView, registerPluginViews } from "../api/views-registry.ts";
 import {
   clearCurrentViewState,
   handleViewsRoutes,
@@ -33,14 +43,17 @@ import {
   type ViewsRouteContext,
 } from "../api/views-routes.ts";
 import { clearActiveViewContext } from "./view-action-affinity.ts";
+import { runWithViewClient } from "./view-client-context.ts";
 import {
-  __resetViewScopedActionRegistryForTests,
   buildViewScopedAction,
   registerViewScopedActions,
   scopedActionNames,
   unregisterViewScopedActions,
 } from "./view-scoped-actions.ts";
 
+let runtime: AgentRuntime;
+let hostKey: object;
+let scope: { hostKey: object; clientId: string };
 const TEST_PLUGIN = "@test/view-scoped-actions";
 const INTERACTIVE_VIEW_ID = "settings_fixture";
 
@@ -110,23 +123,32 @@ function makeInteractiveView(id: string, mountedIds: Set<string>) {
 }
 
 /** Drive the REAL navigate route so setActiveViewContext runs as it does live. */
-async function navigateTo(id: string): Promise<void> {
+async function navigateTo(
+  id: string,
+  viewType: "gui" | "tui" = "gui",
+): Promise<void> {
   const req = Readable.from([
-    Buffer.from(JSON.stringify({})),
+    Buffer.from(JSON.stringify({ source: "user" })),
   ]) as unknown as http.IncomingMessage;
-  req.headers = { "content-type": "application/json" };
+  req.headers = {
+    "content-type": "application/json",
+    "x-elizaos-client-id": scope.clientId,
+  };
   const pathname = `/api/views/${encodeURIComponent(id)}/navigate`;
   const ctx: ViewsRouteContext = {
+    runtime,
+    hostKey,
     req,
     res: {} as http.ServerResponse,
     method: "POST",
     pathname,
-    url: new URL(`http://local${pathname}`),
+    url: new URL(`http://local${pathname}?viewType=${viewType}`),
     json: vi.fn(),
     error: vi.fn(),
     broadcastWs: vi.fn(),
   };
   await handleViewsRoutes(ctx);
+  expect(ctx.error).not.toHaveBeenCalled();
 }
 
 /** Report the mounted shell owner through the real elements route. */
@@ -136,14 +158,21 @@ async function reportMountedClient(
 ): Promise<void> {
   const body = {
     clientId,
+    viewType: "gui",
+    installationId: getView(runtime, id)?.installationId,
     elements: [{ id: "provider-select", role: "select", label: "Provider" }],
   };
   const req = Readable.from([
     Buffer.from(JSON.stringify(body)),
   ]) as unknown as http.IncomingMessage;
-  req.headers = { "content-type": "application/json" };
+  req.headers = {
+    "content-type": "application/json",
+    "x-elizaos-client-id": scope.clientId,
+  };
   const pathname = `/api/views/${encodeURIComponent(id)}/elements`;
   const ctx: ViewsRouteContext = {
+    runtime,
+    hostKey,
     req,
     res: {} as http.ServerResponse,
     method: "POST",
@@ -155,56 +184,56 @@ async function reportMountedClient(
   await handleViewsRoutes(ctx);
 }
 
-/**
- * Minimal runtime whose registerAction/unregisterAction mutate a name→action
- * map, so the test can register scoped actions and then invoke the real
- * validate()/handler() the mechanism built.
- */
-function makeRuntime(): {
-  runtime: Pick<
-    IAgentRuntime,
-    "actions" | "registerAction" | "unregisterAction"
-  >;
-  actions: Map<string, Action>;
-} {
-  const actions = new Map<string, Action>();
-  const actionList: Action[] = [];
-  return {
-    actions,
-    runtime: {
-      actions: actionList,
-      registerAction: (action: Action) => {
-        if (actions.has(action.name)) return;
-        actions.set(action.name, action);
-        actionList.push(action);
-      },
-      unregisterAction: (name: string) => {
-        const removed = actions.delete(name);
-        const index = actionList.findIndex((action) => action.name === name);
-        if (index >= 0) actionList.splice(index, 1);
-        return removed;
-      },
-    } as Pick<IAgentRuntime, "actions" | "registerAction" | "unregisterAction">,
-  };
+function registerScopedFixture(
+  ownerRuntime: AgentRuntime,
+  owner: string,
+  views: Parameters<typeof registerViewScopedActions>[2],
+) {
+  const installation = beginViewInstallation(ownerRuntime, owner);
+  commitViewInstallation(
+    ownerRuntime,
+    installation,
+    views.map((view) => ({
+      label: view.id,
+      ...view,
+      pluginName: owner,
+      viewType: "gui",
+      hasHeroImage: false,
+      available: true,
+      loadedAt: 0,
+      platform: "web",
+    })),
+  );
+  return registerViewScopedActions(ownerRuntime, owner, views);
 }
 
 const fakeMessage = { content: {} } as Memory;
 
 beforeEach(async () => {
-  __resetViewScopedActionRegistryForTests();
-  clearCurrentViewState();
-  clearActiveViewContext();
+  runtime = new AgentRuntime({
+    character: createCharacter({ name: "Scoped actions" }),
+    enableAutonomy: false,
+  });
+  hostKey = {};
+  scope = { hostKey, clientId: "mounted-settings-shell" };
+  await registerPluginViews(runtime, {
+    name: "chat-fixture",
+    description: "Other active page",
+    views: [{ id: "chat", label: "Chat", path: "/chat" }],
+  });
+  clearCurrentViewState(runtime, scope);
+  clearActiveViewContext(runtime, scope);
   // Give the module a broadcaster so the "no shell to reach" guard never fires
   // in this test — the mounted serverInteract is what actually resolves steps.
-  setViewsBroadcastWs(() => {});
+  setViewsBroadcastWs(hostKey, () => {});
 });
 
 afterEach(() => {
-  unregisterPluginViews(TEST_PLUGIN);
-  clearCurrentViewState();
-  clearActiveViewContext();
-  setViewsBroadcastWs(null);
-  __resetViewScopedActionRegistryForTests();
+  closeRuntimeViewRegistry(runtime);
+  closeViewInteractionHost(hostKey);
+  clearCurrentViewState(runtime, scope);
+  clearActiveViewContext(runtime, scope);
+  setViewsBroadcastWs(hostKey, null);
   vi.restoreAllMocks();
 });
 
@@ -212,61 +241,80 @@ describe("view-scoped action validate() gating on the active view", () => {
   it("returns false when the declaring view is not active and true when it is", async () => {
     const settings = makeInteractiveView(INTERACTIVE_VIEW_ID, new Set());
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "scoped action fixtures",
         views: [settings.view],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
     const action = buildViewScopedAction(
+      runtime,
       INTERACTIVE_VIEW_ID,
       settings.view.scopedActions[0],
     );
 
     // No active view → gated closed.
-    expect(await action.validate({} as IAgentRuntime, fakeMessage)).toBe(false);
+    expect(
+      await runWithViewClient(scope, () =>
+        action.validate(runtime, fakeMessage),
+      ),
+    ).toBe(false);
 
     // Switch to a DIFFERENT view → still closed.
     await navigateTo("chat");
-    expect(await action.validate({} as IAgentRuntime, fakeMessage)).toBe(false);
+    expect(
+      await runWithViewClient(scope, () =>
+        action.validate(runtime, fakeMessage),
+      ),
+    ).toBe(false);
 
     // Switch INTO the declaring view via the real navigate route → open.
     await navigateTo(INTERACTIVE_VIEW_ID);
-    expect(await action.validate({} as IAgentRuntime, fakeMessage)).toBe(true);
+    expect(
+      await runWithViewClient(scope, () =>
+        action.validate(runtime, fakeMessage),
+      ),
+    ).toBe(true);
 
     // Switch away again → closes without any restart.
     await navigateTo("chat");
-    expect(await action.validate({} as IAgentRuntime, fakeMessage)).toBe(false);
+    expect(
+      await runWithViewClient(scope, () =>
+        action.validate(runtime, fakeMessage),
+      ),
+    ).toBe(false);
   });
 });
 
 describe("view-scoped action handler drives the interact protocol", () => {
   it.each([undefined, "requesting-shell"])(
-    "targets the requesting renderer (%s), falling back to the mounted client",
+    "keeps scoped actions on their owning client (%s)",
     async (requestingClient) => {
       const settings = makeInteractiveView(
         INTERACTIVE_VIEW_ID,
         new Set(["provider-select", "save-button"]),
       );
       await registerPluginViews(
+        runtime,
         {
           name: TEST_PLUGIN,
           description: "scoped action fixtures",
           views: [settings.view],
         },
-        process.cwd(),
+        { pluginDir: process.cwd() },
       );
       await navigateTo(INTERACTIVE_VIEW_ID);
       await reportMountedClient(INTERACTIVE_VIEW_ID, "mounted-settings-shell");
 
       const targetedFrames: Array<Record<string, unknown>> = [];
-      setViewsBroadcastWs(vi.fn(), (clientId, payload) => {
+      setViewsBroadcastWs(hostKey, vi.fn(), (clientId, payload) => {
         expect(clientId).toBe(requestingClient ?? "mounted-settings-shell");
         const frame = payload as Record<string, unknown>;
         targetedFrames.push(frame);
-        resolveViewInteractResult({
-          requestId: String(frame.requestId),
+        resolveViewInteractResult(runtime, hostKey, clientId, {
+          ...claimRendererReply(runtime, hostKey, clientId, frame),
           success: true,
           result: {
             ok: true,
@@ -277,24 +325,35 @@ describe("view-scoped action handler drives the interact protocol", () => {
       });
 
       const action = buildViewScopedAction(
+        runtime,
         INTERACTIVE_VIEW_ID,
         settings.view.scopedActions[0],
       );
-      const result = await action.handler(
-        { agentId: "runtime-owner" } as unknown as IAgentRuntime,
-        {
-          ...fakeMessage,
-          content: {
-            ...fakeMessage.content,
-            metadata: requestingClient
-              ? { viewClientId: requestingClient }
-              : undefined,
+      const pending = runWithViewClient(scope, () =>
+        action.handler(
+          runtime,
+          {
+            ...fakeMessage,
+            content: {
+              ...fakeMessage.content,
+              metadata: requestingClient
+                ? { viewClientId: requestingClient }
+                : undefined,
+            },
           },
-        },
-        undefined,
-        { parameters: { provider: "anthropic" } },
+          undefined,
+          { parameters: { provider: "anthropic" } },
+        ),
       );
 
+      if (requestingClient) {
+        await expect(pending).rejects.toMatchObject({
+          code: "VIEW_SCOPED_ACTION_VIEW_INACTIVE",
+        });
+        expect(targetedFrames).toEqual([]);
+        return;
+      }
+      const result = await pending;
       expect(result?.success).toBe(true);
       expect(targetedFrames).toHaveLength(3);
       expect(targetedFrames.map((frame) => frame.capability)).toEqual([
@@ -312,23 +371,26 @@ describe("view-scoped action handler drives the interact protocol", () => {
       new Set(["provider-select", "save-button"]),
     );
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "scoped action fixtures",
         views: [settings.view],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
     await navigateTo(INTERACTIVE_VIEW_ID);
 
     const action = buildViewScopedAction(
+      runtime,
       INTERACTIVE_VIEW_ID,
       settings.view.scopedActions[0],
     );
-    const runtime = { agentId: "runtime-owner" } as unknown as IAgentRuntime;
-    const result = await action.handler(runtime, fakeMessage, undefined, {
-      parameters: { provider: "anthropic" },
-    });
+    const result = await runWithViewClient(scope, () =>
+      action.handler(runtime, fakeMessage, undefined, {
+        parameters: { provider: "anthropic" },
+      }),
+    );
 
     expect(result?.success).toBe(true);
     // The fill drove the real serverInteract with the resolved param value…
@@ -350,30 +412,34 @@ describe("view-scoped action handler drives the interact protocol", () => {
       new Set(["calendar-day-2026-09-06"]),
     );
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "calendar target",
         views: [calendar.view],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
     await navigateTo(INTERACTIVE_VIEW_ID);
-    const action = buildViewScopedAction(INTERACTIVE_VIEW_ID, {
+    const action = buildViewScopedAction(runtime, INTERACTIVE_VIEW_ID, {
       name: "SELECT_DAY",
       description: "Select the displayed day",
       parameters: ["date"],
       steps: [{ kind: "agent-click", target: "calendar-day-{{date}}" }],
     });
-    const runtime = { agentId: "runtime-owner" } as unknown as IAgentRuntime;
     await expect(
-      action.handler(runtime, fakeMessage, undefined, { parameters: {} }),
+      runWithViewClient(scope, () =>
+        action.handler(runtime, fakeMessage, undefined, { parameters: {} }),
+      ),
     ).rejects.toMatchObject({ code: "VIEW_SCOPED_ACTION_PARAM_MISSING" });
     expect(calendar.clicked).toEqual([]);
-    const result = await action.handler(runtime, fakeMessage, undefined, {
-      parameters: validateToolArgs(action, { date: "2026-09-06" }).args as {
-        date: string;
-      },
-    });
+    const result = await runWithViewClient(scope, () =>
+      action.handler(runtime, fakeMessage, undefined, {
+        parameters: validateToolArgs(action, { date: "2026-09-06" }).args as {
+          date: string;
+        },
+      }),
+    );
     expect(result?.success).toBe(true);
     expect(calendar.clicked).toEqual(["calendar-day-2026-09-06"]);
   });
@@ -384,24 +450,28 @@ describe("view-scoped action handler drives the interact protocol", () => {
       new Set(["provider-select"]),
     );
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "scoped action fixtures",
         views: [settings.view],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
     await navigateTo(INTERACTIVE_VIEW_ID);
 
     // The MISSING_TARGET action clicks "ghost-button", which is never mounted.
     const action = buildViewScopedAction(
+      runtime,
       INTERACTIVE_VIEW_ID,
       settings.view.scopedActions[1],
     );
 
     let thrown: unknown;
     try {
-      await action.handler({} as IAgentRuntime, fakeMessage, undefined, {});
+      await runWithViewClient(scope, () =>
+        action.handler(runtime, fakeMessage, undefined, {}),
+      );
     } catch (err) {
       thrown = err;
     }
@@ -418,25 +488,29 @@ describe("view-scoped action handler drives the interact protocol", () => {
       new Set(["provider-select", "save-button"]),
     );
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "scoped action fixtures",
         views: [settings.view],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
     await navigateTo(INTERACTIVE_VIEW_ID);
 
     const action = buildViewScopedAction(
+      runtime,
       INTERACTIVE_VIEW_ID,
       settings.view.scopedActions[0],
     );
     // No `provider` param → the {{provider}} fill step must fail loudly, not
     // fill an empty string into the real control.
     await expect(
-      action.handler({} as IAgentRuntime, fakeMessage, undefined, {
-        parameters: {},
-      }),
+      runWithViewClient(scope, () =>
+        action.handler(runtime, fakeMessage, undefined, {
+          parameters: {},
+        }),
+      ),
     ).rejects.toMatchObject({ code: "VIEW_SCOPED_ACTION_PARAM_MISSING" });
     // The control was never touched.
     expect(settings.filled["provider-select"]).toBeUndefined();
@@ -448,61 +522,78 @@ describe("view-scoped action handler drives the interact protocol", () => {
       new Set(["provider-select", "save-button"]),
     );
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "scoped action fixtures",
         views: [settings.view],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
     // Navigate to a different view so the handler's defense-in-depth gate fires
     // even though the executor would normally block on validate().
     await navigateTo("chat");
 
     const action = buildViewScopedAction(
+      runtime,
       INTERACTIVE_VIEW_ID,
       settings.view.scopedActions[0],
     );
     await expect(
-      action.handler({} as IAgentRuntime, fakeMessage, undefined, {
-        parameters: { provider: "anthropic" },
-      }),
+      runWithViewClient(scope, () =>
+        action.handler(runtime, fakeMessage, undefined, {
+          parameters: { provider: "anthropic" },
+        }),
+      ),
     ).rejects.toMatchObject({ code: "VIEW_SCOPED_ACTION_VIEW_INACTIVE" });
   });
 });
 
 describe("view-scoped action registration reconciliation", () => {
   it("registers a view's scoped actions and unregisters exactly its set", () => {
-    const { runtime, actions } = makeRuntime();
     const settings = makeInteractiveView("settings", new Set());
-    const registered = registerViewScopedActions(runtime, TEST_PLUGIN, [
+    const registered = registerScopedFixture(runtime, TEST_PLUGIN, [
       settings.view,
     ]);
 
     expect(registered).toEqual(scopedActionNames(settings.view.scopedActions));
-    expect(actions.has("VIEW_SETTINGS_SET_PROVIDER")).toBe(true);
-    expect(actions.has("VIEW_SETTINGS_MISSING_TARGET")).toBe(true);
+    expect(
+      runtime.actions.some(
+        (action) => action.name === "VIEW_SETTINGS_SET_PROVIDER",
+      ),
+    ).toBe(true);
+    expect(
+      runtime.actions.some(
+        (action) => action.name === "VIEW_SETTINGS_MISSING_TARGET",
+      ),
+    ).toBe(true);
 
     unregisterViewScopedActions(runtime, TEST_PLUGIN);
-    expect(actions.size).toBe(0);
+    expect(runtime.actions.length).toBe(0);
   });
 
   it("reconciles on reload: a removed scoped action is unregistered", () => {
-    const { runtime, actions } = makeRuntime();
     const settings = makeInteractiveView("settings", new Set());
-    registerViewScopedActions(runtime, TEST_PLUGIN, [settings.view]);
-    expect(actions.size).toBe(2);
+    registerScopedFixture(runtime, TEST_PLUGIN, [settings.view]);
+    expect(runtime.actions.length).toBe(2);
 
     // Reload with only the first action → the second is dropped.
-    registerViewScopedActions(runtime, TEST_PLUGIN, [
+    registerScopedFixture(runtime, TEST_PLUGIN, [
       { ...settings.view, scopedActions: [settings.view.scopedActions[0]] },
     ]);
-    expect(actions.has("VIEW_SETTINGS_SET_PROVIDER")).toBe(true);
-    expect(actions.has("VIEW_SETTINGS_MISSING_TARGET")).toBe(false);
+    expect(
+      runtime.actions.some(
+        (action) => action.name === "VIEW_SETTINGS_SET_PROVIDER",
+      ),
+    ).toBe(true);
+    expect(
+      runtime.actions.some(
+        (action) => action.name === "VIEW_SETTINGS_MISSING_TARGET",
+      ),
+    ).toBe(false);
   });
 
   it("keeps the first of a duplicate scoped-action name across views", () => {
-    const { runtime, actions } = makeRuntime();
     const warn = vi.fn();
     const a = makeInteractiveView("a", new Set());
     const dupName = a.view.scopedActions[0].name;
@@ -512,19 +603,18 @@ describe("view-scoped action registration reconciliation", () => {
         { ...a.view.scopedActions[0], description: "duplicate name" },
       ],
     };
-    const registered = registerViewScopedActions(runtime, TEST_PLUGIN, [
+    const registered = registerScopedFixture(runtime, TEST_PLUGIN, [
       { id: "a", scopedActions: [a.view.scopedActions[0]] },
       b,
     ]);
     expect(registered).toContain(dupName);
-    expect(actions.get(dupName)?.description).toBe(
-      a.view.scopedActions[0].description,
-    );
+    expect(
+      runtime.actions.find((action) => action.name === dupName)?.description,
+    ).toBe(a.view.scopedActions[0].description);
     void warn;
   });
 
   it("does not unregister an incumbent action when a scoped action collides by name", () => {
-    const { runtime, actions } = makeRuntime();
     const incumbent: Action = {
       name: "VIEW_SETTINGS_SET_PROVIDER",
       description: "global incumbent",
@@ -534,16 +624,28 @@ describe("view-scoped action registration reconciliation", () => {
     runtime.registerAction(incumbent);
     const settings = makeInteractiveView("settings", new Set());
 
-    const registered = registerViewScopedActions(runtime, TEST_PLUGIN, [
+    const registered = registerScopedFixture(runtime, TEST_PLUGIN, [
       settings.view,
     ]);
 
     expect(registered).toEqual(["VIEW_SETTINGS_MISSING_TARGET"]);
-    expect(actions.get("VIEW_SETTINGS_SET_PROVIDER")).toBe(incumbent);
+    expect(
+      runtime.actions.find(
+        (action) => action.name === "VIEW_SETTINGS_SET_PROVIDER",
+      ),
+    ).toBe(incumbent);
 
     unregisterViewScopedActions(runtime, TEST_PLUGIN);
-    expect(actions.get("VIEW_SETTINGS_SET_PROVIDER")).toBe(incumbent);
-    expect(actions.has("VIEW_SETTINGS_MISSING_TARGET")).toBe(false);
+    expect(
+      runtime.actions.find(
+        (action) => action.name === "VIEW_SETTINGS_SET_PROVIDER",
+      ),
+    ).toBe(incumbent);
+    expect(
+      runtime.actions.some(
+        (action) => action.name === "VIEW_SETTINGS_MISSING_TARGET",
+      ),
+    ).toBe(false);
   });
 });
 
@@ -644,60 +746,65 @@ describe("character view scoped actions (#14155)", () => {
   });
 
   it("registers exactly the three Character actions and gates them on the view being active", async () => {
-    const { runtime, actions } = makeRuntime();
     const char = characterView();
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "character scoped action fixtures",
         views: [char.view],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
-    const registered = registerViewScopedActions(runtime, TEST_PLUGIN, [
-      char.view,
-    ]);
+    const registered = registerScopedFixture(runtime, TEST_PLUGIN, [char.view]);
     expect(registered).toEqual([
       "VIEW_CHARACTER_FILL_BIO",
       "VIEW_CHARACTER_ADD_STYLE_RULE",
       "VIEW_CHARACTER_ADD_MESSAGE_EXAMPLE",
     ]);
 
-    const fillBio = actions.get("VIEW_CHARACTER_FILL_BIO");
+    const fillBio = runtime.actions.find(
+      (action) => action.name === "VIEW_CHARACTER_FILL_BIO",
+    );
     expect(fillBio).toBeDefined();
 
     // Gated closed everywhere but the declaring view.
     await navigateTo("chat");
-    expect(await fillBio?.validate?.({} as IAgentRuntime, fakeMessage)).toBe(
-      false,
-    );
+    expect(
+      await runWithViewClient(scope, () =>
+        fillBio?.validate?.(runtime, fakeMessage),
+      ),
+    ).toBe(false);
     await navigateTo(CHARACTER_TEST_VIEW_ID);
-    expect(await fillBio?.validate?.({} as IAgentRuntime, fakeMessage)).toBe(
-      true,
-    );
+    expect(
+      await runWithViewClient(scope, () =>
+        fillBio?.validate?.(runtime, fakeMessage),
+      ),
+    ).toBe(true);
   });
 
   it("FILL_BIO fills the identity-bio control from the {{bio}} param", async () => {
     const char = characterView();
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "character scoped action fixtures",
         views: [char.view],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
     await navigateTo(CHARACTER_TEST_VIEW_ID);
 
     const action = buildViewScopedAction(
+      runtime,
       CHARACTER_TEST_VIEW_ID,
       findAction(char.scopedActions, "VIEW_CHARACTER_FILL_BIO"),
     );
-    const result = await action.handler(
-      {} as IAgentRuntime,
-      fakeMessage,
-      undefined,
-      { parameters: { bio: "A calm, precise onchain research agent." } },
+    const result = await runWithViewClient(scope, () =>
+      action.handler(runtime, fakeMessage, undefined, {
+        parameters: { bio: "A calm, precise onchain research agent." },
+      }),
     );
     expect(result?.success).toBe(true);
     expect(char.filled["identity-bio"]).toBe(
@@ -709,24 +816,25 @@ describe("character view scoped actions (#14155)", () => {
   it("ADD_STYLE_RULE fills the pending input then clicks add", async () => {
     const char = characterView();
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "character scoped action fixtures",
         views: [char.view],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
     await navigateTo(CHARACTER_TEST_VIEW_ID);
 
     const action = buildViewScopedAction(
+      runtime,
       CHARACTER_TEST_VIEW_ID,
       findAction(char.scopedActions, "VIEW_CHARACTER_ADD_STYLE_RULE"),
     );
-    const result = await action.handler(
-      {} as IAgentRuntime,
-      fakeMessage,
-      undefined,
-      { parameters: { rule: "Keep replies under three sentences." } },
+    const result = await runWithViewClient(scope, () =>
+      action.handler(runtime, fakeMessage, undefined, {
+        parameters: { rule: "Keep replies under three sentences." },
+      }),
     );
     expect(result?.success).toBe(true);
     expect(char.filled["style-add-input-all"]).toBe(
@@ -742,24 +850,23 @@ describe("character view scoped actions (#14155)", () => {
   it("ADD_MESSAGE_EXAMPLE clicks add-conversation with no params", async () => {
     const char = characterView();
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "character scoped action fixtures",
         views: [char.view],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
     await navigateTo(CHARACTER_TEST_VIEW_ID);
 
     const action = buildViewScopedAction(
+      runtime,
       CHARACTER_TEST_VIEW_ID,
       findAction(char.scopedActions, "VIEW_CHARACTER_ADD_MESSAGE_EXAMPLE"),
     );
-    const result = await action.handler(
-      {} as IAgentRuntime,
-      fakeMessage,
-      undefined,
-      {},
+    const result = await runWithViewClient(scope, () =>
+      action.handler(runtime, fakeMessage, undefined, {}),
     );
     expect(result?.success).toBe(true);
     expect(char.clicked).toContain("example-add-conversation");
@@ -792,16 +899,18 @@ describe("character view scoped actions (#14155)", () => {
       }),
     };
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "character scoped action fixtures (unmounted)",
         views: [bareView],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
     await navigateTo(CHARACTER_TEST_VIEW_ID);
 
     const action = buildViewScopedAction(
+      runtime,
       CHARACTER_TEST_VIEW_ID,
       findAction(
         (source?.scopedActions ?? []) as ViewScopedAction[],
@@ -811,9 +920,11 @@ describe("character view scoped actions (#14155)", () => {
 
     let thrown: unknown;
     try {
-      await action.handler({} as IAgentRuntime, fakeMessage, undefined, {
-        parameters: { rule: "never fills" },
-      });
+      await runWithViewClient(scope, () =>
+        action.handler(runtime, fakeMessage, undefined, {
+          parameters: { rule: "never fills" },
+        }),
+      );
     } catch (err) {
       thrown = err;
     }
@@ -822,4 +933,44 @@ describe("character view scoped actions (#14155)", () => {
     expect(elizaErr.code).toBe("VIEW_SCOPED_ACTION_ELEMENT_MISSING");
     expect(elizaErr.context?.target).toBe("style-add-input-all");
   });
+});
+
+it("binds scoped action effects to the declared modality, not the GUI fallback", async () => {
+  const effects: string[] = [];
+  const scoped = {
+    name: "TUI_ONLY_CLICK",
+    description: "TUI control",
+    steps: [{ kind: "agent-click" as const, target: "save" }],
+  };
+  const views = (["gui", "tui"] as const).map((viewType) => ({
+    id: "modality-owner",
+    label: viewType,
+    path: "/modality",
+    viewType,
+    surface: { capabilities: ["agent-surface"] as const },
+    scopedActions: viewType === "tui" ? [scoped] : [],
+    serverInteract: async () => {
+      effects.push(viewType);
+      return { ok: true };
+    },
+  }));
+  await registerPluginViews(runtime, {
+    name: TEST_PLUGIN,
+    description: "Modality authority",
+    views,
+  });
+  registerViewScopedActions(runtime, TEST_PLUGIN, views);
+  const action = runtime.actions.find((action) => action.name === scoped.name);
+  if (!action) throw new Error("TUI scoped action missing");
+  await navigateTo("modality-owner", "tui");
+  await runWithViewClient(scope, () => action.handler(runtime, fakeMessage));
+  expect(effects).toEqual(["tui"]);
+  await navigateTo("modality-owner", "gui");
+  expect(
+    await runWithViewClient(scope, () => action.validate(runtime, fakeMessage)),
+  ).toBe(false);
+  await expect(
+    runWithViewClient(scope, () => action.handler(runtime, fakeMessage)),
+  ).rejects.toMatchObject({ code: "VIEW_SCOPED_ACTION_VIEW_INACTIVE" });
+  expect(effects).toEqual(["tui"]);
 });

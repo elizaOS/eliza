@@ -1,6 +1,6 @@
 /** Builds the shared single-module Vite configuration for plugin views. */
 import path from "node:path";
-import type { UserConfig } from "vite";
+import type { Plugin, UserConfig } from "vite";
 
 type ViewBundleOptions = {
   packageName: string;
@@ -37,6 +37,23 @@ function isKnownToleratedViewBundleWarning(message: unknown): boolean {
   );
 }
 
+/** Record only this build's emitted files, never unrelated dist siblings. */
+function viewAssetManifest(): Plugin {
+  return {
+    name: "eliza-view-asset-manifest",
+    generateBundle(_options, bundle) {
+      const files = Object.keys(bundle)
+        .filter((name) => !name.endsWith(".map"))
+        .sort();
+      this.emitFile({
+        type: "asset",
+        fileName: "bundle.js.assets.json",
+        source: `${JSON.stringify({ version: 1, files })}\n`,
+      });
+    },
+  };
+}
+
 export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
   const outDir = options.outDir ?? "dist/views";
   const externals = new Set([
@@ -52,6 +69,7 @@ export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
   ]);
 
   return {
+    plugins: [viewAssetManifest()],
     resolve: options.aliases ? { alias: options.aliases } : undefined,
     build: {
       emptyOutDir: false,

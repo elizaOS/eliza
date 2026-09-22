@@ -51,11 +51,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { persistConfigEnv } from "../api/config-env.ts";
 import { dispatchRoute } from "../api/dispatch-route.ts";
 import { handleRemoteCapabilityRoutes } from "../api/remote-capability-routes.ts";
-import {
-  getView,
-  registerPluginViews,
-  unregisterPluginViews,
-} from "../api/views-registry.ts";
+import { getView, registerPluginViews } from "../api/views-registry.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { installRuntimePluginLifecycle } from "../runtime/plugin-lifecycle.ts";
 import {
@@ -319,23 +315,15 @@ const dockerSmoke =
 // works) still exercise the path and CI doesn't fail on infra plumbing.
 const esbuildSmoke =
   process.env.ELIZA_REMOTE_PLUGIN_BUILD_SMOKE === "1" ? it : it.skip;
-const registeredViewPlugins = [
-  "@remote/device-tools",
-  "@remote/cloud-tools",
-  "@remote/device-a",
-  "@remote/device-b",
-  "@remote/localhost-tools",
-  "@remote/built-source",
-  "@remote/process-plugin",
-  "@remote/docker-plugin",
-];
+const viewRuntimes = new Set<IAgentRuntime>();
+
+import { closeRuntimeViewRegistry } from "../api/view-installations.ts";
 
 describe("remote plugin adapter", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    for (const pluginName of registeredViewPlugins) {
-      unregisterPluginViews(pluginName);
-    }
+    for (const runtime of viewRuntimes) closeRuntimeViewRegistry(runtime);
+    viewRuntimes.clear();
     unregisterRuntimeAppRouteModule("@remote/demo");
     unregisterRuntimeAppRouteModule("@remote/plugin-weather");
     unregisterRuntimeAppRouteModule("@remote/weather");
@@ -2427,7 +2415,7 @@ describe("remote plugin adapter", () => {
     expect(getHttpRuntime(runtime).routes.map((route) => route.path)).toEqual([
       "/volatile/route",
     ]);
-    expect(getView("volatile.view")).toMatchObject({
+    expect(getView(runtime, "volatile.view")).toMatchObject({
       pluginName: "@remote/volatile",
       bundleUrl: "https://device-a.example/volatile-view.js",
     });
@@ -2455,7 +2443,7 @@ describe("remote plugin adapter", () => {
     expect(runtime.actions).toEqual([]);
     expect(runtime.providers).toEqual([]);
     expect(getHttpRuntime(runtime).routes).toEqual([]);
-    expect(getView("volatile.view")).toBeUndefined();
+    expect(getView(runtime, "volatile.view")).toBeUndefined();
     await runtime.unloadPlugin("local-plugin");
   });
 
@@ -2557,8 +2545,8 @@ describe("remote plugin adapter", () => {
     expect(getHttpRuntime(runtime).routes.map((route) => route.path)).toEqual([
       "/device-b/route",
     ]);
-    expect(getView("device-a.view")).toBeUndefined();
-    expect(getView("device-b.view")).toMatchObject({
+    expect(getView(runtime, "device-a.view")).toBeUndefined();
+    expect(getView(runtime, "device-b.view")).toMatchObject({
       pluginName: "@remote/device-b",
       bundleUrl: "https://device-b.example/view.js",
     });
@@ -3121,7 +3109,7 @@ describe("remote plugin adapter", () => {
         ],
       });
 
-      const reopenedView = getView("cloud.restart.view");
+      const reopenedView = getView(restartRuntime, "cloud.restart.view");
       expect(reopenedView).toMatchObject({
         pluginName: "@remote/cloud-product",
         bundleUrl:
@@ -3187,7 +3175,6 @@ describe("remote plugin adapter", () => {
       } else {
         process.env.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT = previousTrustAudit;
       }
-      unregisterPluginViews("@remote/cloud-product");
       await rm(stateDir, { force: true, recursive: true });
     }
   });
@@ -3561,7 +3548,7 @@ describe("remote plugin adapter", () => {
         bundleUrl: expectedBundleUrl,
         frameUrl: expectedFrameUrl,
       });
-      expect(getView("localhost.panel")).toMatchObject({
+      expect(getView(runtime, "localhost.panel")).toMatchObject({
         id: "localhost.panel",
         pluginName: "@remote/localhost-tools",
         bundleUrl: expectedBundleUrl,
@@ -3823,7 +3810,7 @@ export function createRouter() {
 
         const expectedBundleUrl =
           "/api/capability-router/assets/primary/built-source-plugin/assets/remote-view.js";
-        expect(getView("built-source.view")).toMatchObject({
+        expect(getView(runtime, "built-source.view")).toMatchObject({
           id: "built-source.view",
           pluginName: "@remote/built-source",
           bundleUrl: expectedBundleUrl,
@@ -4201,7 +4188,7 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
 
         const bundleUrl =
           "/api/capability-router/assets/primary/process-plugin/assets/process-view.js";
-        expect(getView("process.view")).toMatchObject({
+        expect(getView(runtime, "process.view")).toMatchObject({
           id: "process.view",
           pluginName: "@remote/process-plugin",
           bundleUrl,
@@ -4557,13 +4544,13 @@ createServer(async (req, res) => {
 
         const bundleUrl =
           "/api/capability-router/assets/primary/docker-plugin/assets/docker-view.js";
-        expect(getView("docker.view")).toMatchObject({
+        expect(getView(runtime, "docker.view")).toMatchObject({
           id: "docker.view",
           pluginName: "@remote/docker-plugin",
           bundleUrl,
           available: true,
         });
-        expect(getView("docker.tools.view")).toMatchObject({
+        expect(getView(runtime, "docker.tools.view")).toMatchObject({
           id: "docker.tools.view",
           pluginName: "@remote/docker-tools-plugin",
           bundleUrl:
@@ -4980,7 +4967,8 @@ function makeExecutableRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
     for (const ServiceClass of plugin.services ?? []) {
       services.set(ServiceClass.serviceType, await ServiceClass.start(runtime));
     }
-    await registerPluginViews(plugin);
+    viewRuntimes.add(runtime);
+    await registerPluginViews(runtime, plugin, { indexEmbeddings: false });
   };
   installHttpPluginLifecycle(runtime);
   return runtime;
@@ -5001,6 +4989,7 @@ function makeLifecycleRuntime(
       runPluginMigrations,
     } as IDatabaseAdapter;
   }
+  viewRuntimes.add(runtime);
   installRuntimePluginLifecycle(runtime as never);
   return runtime;
 }
@@ -5037,7 +5026,8 @@ function makeProductConnectRuntime(
       runtime.actions.push(...(plugin.actions ?? []));
       runtime.providers.push(...(plugin.providers ?? []));
       runtime.evaluators.push(...(plugin.evaluators ?? []));
-      await registerPluginViews(plugin);
+      viewRuntimes.add(runtime);
+      await registerPluginViews(runtime, plugin, { indexEmbeddings: false });
     },
   });
   return runtime;

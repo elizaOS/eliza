@@ -147,6 +147,7 @@ import {
   isServerTokenAuthorized,
 } from "./server-helpers-auth.ts";
 import type { ChatImageAttachment } from "./server-types.ts";
+import { listViews } from "./views-registry.ts";
 import { updateWorldMetadataWithRetry } from "./world-metadata-retry.ts";
 
 export type { ChatImageAttachment, LogEntry };
@@ -2471,6 +2472,7 @@ export async function readChatRequestPayload(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   helpers: {
+    runtime?: AgentRuntime | null;
     readJsonBody: <T extends object>(
       req: http.IncomingMessage,
       res: http.ServerResponse,
@@ -2545,7 +2547,16 @@ export async function readChatRequestPayload(
     !Array.isArray(body.metadata)
       ? body.metadata
       : undefined;
-  const metadata = enrichChatUiViewMetadata(rawMetadata);
+  const metadata = enrichChatUiViewMetadata(
+    rawMetadata,
+    helpers.runtime
+      ? listViews(helpers.runtime, {
+          developerMode: true,
+          includeAllKinds: true,
+          viewType: "gui",
+        })
+      : [],
+  );
   const clientMessageId = normalizeClientMessageId(body.clientMessageId);
   if (body.clientMessageId !== undefined && clientMessageId === null) {
     helpers.error(

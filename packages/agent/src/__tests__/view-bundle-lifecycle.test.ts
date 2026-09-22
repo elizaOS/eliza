@@ -1,9 +1,9 @@
+import { closeRuntimeViewRegistry } from "../api/view-installations.ts";
 /**
  * View bundle lifecycle tests.
  *
  * Verifies that plugins declaring `views` properly contribute to and clean up
- * from a mock view registry on load/unload cycles. Tests use a lightweight
- * in-process registry to avoid depending on the full views-registry service.
+ * from the real runtime-owned registry on load/unload cycles.
  */
 
 import { readFileSync } from "node:fs";
@@ -11,11 +11,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin, ViewDeclaration } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import {
-  getView,
-  listViews,
-  unregisterPluginViews,
-} from "../api/views-registry.js";
+import { getView, listViews } from "../api/views-registry.js";
 import { installRuntimePluginLifecycle } from "../runtime/plugin-lifecycle.js";
 import { createTestRuntime } from "./plugin-lifecycle-test-utils.ts";
 
@@ -109,166 +105,6 @@ function productionViewDeclarations(manifestPath: string): ViewDeclaration[] {
     .filter((view): view is ViewDeclaration => view !== null);
 }
 
-/**
- * Minimal view registry that mirrors the contract used by the real
- * views-registry service: register on plugin load, remove on plugin unload.
- */
-class MockViewRegistry {
-  private entries = new Map<string, ViewDeclaration & { pluginName: string }>();
-
-  register(pluginName: string, view: ViewDeclaration): void {
-    this.entries.set(view.id, { ...view, pluginName });
-  }
-
-  unregisterByPlugin(pluginName: string): void {
-    for (const [id, entry] of this.entries) {
-      if (entry.pluginName === pluginName) {
-        this.entries.delete(id);
-      }
-    }
-  }
-
-  has(viewId: string): boolean {
-    return this.entries.has(viewId);
-  }
-
-  getAll(): Array<ViewDeclaration & { pluginName: string }> {
-    return [...this.entries.values()];
-  }
-
-  size(): number {
-    return this.entries.size;
-  }
-}
-
-function makeViewPlugin(
-  pluginName: string,
-  views: ViewDeclaration[],
-  registry: MockViewRegistry,
-): Plugin {
-  return {
-    name: pluginName,
-    description: `Plugin contributing views: ${views.map((v) => v.id).join(", ")}`,
-    init: async () => {
-      for (const view of views) {
-        registry.register(pluginName, view);
-      }
-    },
-    dispose: async () => {
-      registry.unregisterByPlugin(pluginName);
-    },
-    views,
-  };
-}
-
-describe("view registry — register on load, remove on unload", () => {
-  it("registering a plugin with views adds them to the view registry", async () => {
-    const registry = new MockViewRegistry();
-    const views: ViewDeclaration[] = [
-      {
-        id: "wallet.inventory",
-        label: "Wallet Inventory",
-        description: "User token inventory",
-        path: "/wallet",
-      },
-    ];
-
-    const plugin = makeViewPlugin("wallet-plugin", views, registry);
-    const runtime = createTestRuntime();
-
-    await runtime.registerPlugin(plugin);
-
-    expect(registry.has("wallet.inventory")).toBe(true);
-    expect(registry.size()).toBe(1);
-  });
-
-  it("unregistering a plugin removes its views from the registry", async () => {
-    const registry = new MockViewRegistry();
-    const views: ViewDeclaration[] = [
-      {
-        id: "market.chart",
-        label: "Market Chart",
-        path: "/market",
-      },
-    ];
-
-    const plugin = makeViewPlugin("market-plugin", views, registry);
-    const runtime = createTestRuntime();
-
-    await runtime.registerPlugin(plugin);
-    expect(registry.has("market.chart")).toBe(true);
-
-    await runtime.unloadPlugin("market-plugin");
-    expect(registry.has("market.chart")).toBe(false);
-    expect(registry.size()).toBe(0);
-  });
-
-  it("view registry does not retain stale entries after multiple load/unload cycles", async () => {
-    const registry = new MockViewRegistry();
-    const views: ViewDeclaration[] = [
-      { id: "cycle.view", label: "Cycle View", path: "/cycle" },
-    ];
-
-    const plugin = makeViewPlugin("cycle-plugin", views, registry);
-    const runtime = createTestRuntime();
-    const cycles = 5;
-
-    for (let i = 0; i < cycles; i++) {
-      await runtime.registerPlugin(plugin);
-      expect(registry.size()).toBe(1);
-
-      await runtime.unloadPlugin("cycle-plugin");
-      expect(registry.size()).toBe(0);
-      expect(registry.has("cycle.view")).toBe(false);
-    }
-  });
-
-  it("two plugins with different views coexist; unloading one does not affect the other", async () => {
-    const registry = new MockViewRegistry();
-
-    const pluginA = makeViewPlugin(
-      "plugin-a",
-      [{ id: "view.alpha", label: "Alpha", path: "/alpha" }],
-      registry,
-    );
-    const pluginB = makeViewPlugin(
-      "plugin-b",
-      [{ id: "view.beta", label: "Beta", path: "/beta" }],
-      registry,
-    );
-
-    const runtime = createTestRuntime();
-    await runtime.registerPlugin(pluginA);
-    await runtime.registerPlugin(pluginB);
-
-    expect(registry.has("view.alpha")).toBe(true);
-    expect(registry.has("view.beta")).toBe(true);
-
-    await runtime.unloadPlugin("plugin-a");
-
-    expect(registry.has("view.alpha")).toBe(false);
-    expect(registry.has("view.beta")).toBe(true);
-  });
-
-  it("reloading a plugin after unload re-registers views without duplicates", async () => {
-    const registry = new MockViewRegistry();
-    const views: ViewDeclaration[] = [
-      { id: "reload.view", label: "Reload View", path: "/reload" },
-    ];
-
-    const plugin = makeViewPlugin("reload-view-plugin", views, registry);
-    const runtime = createTestRuntime();
-
-    await runtime.registerPlugin(plugin);
-    await runtime.unloadPlugin("reload-view-plugin");
-    await runtime.registerPlugin(plugin);
-
-    // Should be registered exactly once, not twice
-    expect(registry.size()).toBe(1);
-    expect(registry.has("reload.view")).toBe(true);
-  });
-});
-
 describe("view bundle plugin — views field propagation through Plugin interface", () => {
   it("a plugin with views declared is registered and unloaded cleanly by the runtime", async () => {
     const runtime = createTestRuntime();
@@ -329,7 +165,7 @@ describe("agent runtime view sync — real view registry", () => {
 
         for (const view of views) {
           const viewType = view.viewType ?? "gui";
-          const entry = getView(view.id, { viewType });
+          const entry = getView(runtime, view.id, { viewType });
           if (
             entry?.pluginName !== pluginName ||
             entry.viewType !== viewType ||
@@ -345,14 +181,14 @@ describe("agent runtime view sync — real view registry", () => {
 
         for (const view of views) {
           const viewType = view.viewType ?? "gui";
-          if (getView(view.id, { viewType }) !== undefined) {
+          if (getView(runtime, view.id, { viewType }) !== undefined) {
             failures.push(
               `${manifestPath}:stale-after-unload:${viewType}:${view.id}`,
             );
           }
         }
 
-        const stale = listViews({ developerMode: true }).filter(
+        const stale = listViews(runtime, { developerMode: true }).filter(
           (view) => view.pluginName === pluginName,
         );
         if (stale.length > 0) {
@@ -363,7 +199,7 @@ describe("agent runtime view sync — real view registry", () => {
           );
         }
       } finally {
-        unregisterPluginViews(pluginName);
+        closeRuntimeViewRegistry(runtime);
       }
     }
 
@@ -396,7 +232,7 @@ describe("agent runtime view sync — real view registry", () => {
     };
 
     const cycleViews = () =>
-      listViews({ developerMode: true }).filter((view) =>
+      listViews(runtime, { developerMode: true }).filter((view) =>
         view.id.startsWith(viewIdPrefix),
       );
 
@@ -405,23 +241,23 @@ describe("agent runtime view sync — real view registry", () => {
         await runtime.registerPlugin(plugin);
 
         expect(cycleViews()).toHaveLength(2);
-        expect(getView("runtime-cycle.primary")).toMatchObject({
+        expect(getView(runtime, "runtime-cycle.primary")).toMatchObject({
           id: "runtime-cycle.primary",
           pluginName,
         });
-        expect(getView("runtime-cycle.secondary")).toMatchObject({
+        expect(getView(runtime, "runtime-cycle.secondary")).toMatchObject({
           id: "runtime-cycle.secondary",
           pluginName,
         });
 
         await runtime.unloadPlugin(pluginName);
 
-        expect(getView("runtime-cycle.primary")).toBeUndefined();
-        expect(getView("runtime-cycle.secondary")).toBeUndefined();
+        expect(getView(runtime, "runtime-cycle.primary")).toBeUndefined();
+        expect(getView(runtime, "runtime-cycle.secondary")).toBeUndefined();
         expect(cycleViews()).toHaveLength(0);
       }
     } finally {
-      unregisterPluginViews(pluginName);
+      closeRuntimeViewRegistry(runtime);
     }
   });
 
@@ -449,7 +285,7 @@ describe("agent runtime view sync — real view registry", () => {
     };
     const viewIds = plugin.views?.map((view) => view.id) ?? [];
     const repeatViews = () =>
-      listViews({ developerMode: true }).filter((view) =>
+      listViews(runtime, { developerMode: true }).filter((view) =>
         view.id.startsWith(viewIdPrefix),
       );
 
@@ -460,19 +296,19 @@ describe("agent runtime view sync — real view registry", () => {
         await runtime.registerPlugin(plugin);
 
         for (const id of viewIds) {
-          expect(getView(id)).toMatchObject({ id, pluginName });
+          expect(getView(runtime, id)).toMatchObject({ id, pluginName });
         }
         expect(repeatViews()).toHaveLength(viewIds.length);
 
         await runtime.unloadPlugin(pluginName);
 
         for (const id of viewIds) {
-          expect(getView(id)).toBeUndefined();
+          expect(getView(runtime, id)).toBeUndefined();
         }
         expect(repeatViews()).toHaveLength(0);
       }
     } finally {
-      unregisterPluginViews(pluginName);
+      closeRuntimeViewRegistry(runtime);
     }
   });
 
@@ -521,36 +357,36 @@ describe("agent runtime view sync — real view registry", () => {
     try {
       await runtime.registerPlugin(initialPlugin);
 
-      expect(getView("runtime-sync.primary")).toMatchObject({
+      expect(getView(runtime, "runtime-sync.primary")).toMatchObject({
         id: "runtime-sync.primary",
         pluginName,
         path: "/runtime-sync/primary",
       });
-      expect(getView("runtime-sync.secondary")).toMatchObject({
+      expect(getView(runtime, "runtime-sync.secondary")).toMatchObject({
         id: "runtime-sync.secondary",
         pluginName,
       });
 
       await runtime.reloadPlugin(reloadedPlugin);
 
-      expect(getView("runtime-sync.secondary")).toBeUndefined();
-      expect(getView("runtime-sync.primary")).toMatchObject({
+      expect(getView(runtime, "runtime-sync.secondary")).toBeUndefined();
+      expect(getView(runtime, "runtime-sync.primary")).toMatchObject({
         id: "runtime-sync.primary",
         pluginName,
         label: "Runtime Sync Primary Reloaded",
         path: "/runtime-sync/primary-reloaded",
       });
-      expect(getView("runtime-sync.tertiary")).toMatchObject({
+      expect(getView(runtime, "runtime-sync.tertiary")).toMatchObject({
         id: "runtime-sync.tertiary",
         pluginName,
       });
 
       await runtime.unloadPlugin(pluginName);
 
-      expect(getView("runtime-sync.primary")).toBeUndefined();
-      expect(getView("runtime-sync.tertiary")).toBeUndefined();
+      expect(getView(runtime, "runtime-sync.primary")).toBeUndefined();
+      expect(getView(runtime, "runtime-sync.tertiary")).toBeUndefined();
     } finally {
-      unregisterPluginViews(pluginName);
+      closeRuntimeViewRegistry(runtime);
     }
   });
 
@@ -620,7 +456,7 @@ describe("agent runtime view sync — real view registry", () => {
       label: string,
       viewPath: string,
     ) => {
-      expect(getView(viewId, { viewType })).toMatchObject({
+      expect(getView(runtime, viewId, { viewType })).toMatchObject({
         id: viewId,
         pluginName,
         viewType,
@@ -628,7 +464,7 @@ describe("agent runtime view sync — real view registry", () => {
         path: viewPath,
       });
       expect(
-        listViews({ developerMode: true, viewType }).filter(
+        listViews(runtime, { developerMode: true, viewType }).filter(
           (view) => view.id === viewId,
         ),
       ).toHaveLength(1);
@@ -636,9 +472,9 @@ describe("agent runtime view sync — real view registry", () => {
 
     const expectNoVariants = () => {
       for (const viewType of ["gui", "tui", "xr"] as const) {
-        expect(getView(viewId, { viewType })).toBeUndefined();
+        expect(getView(runtime, viewId, { viewType })).toBeUndefined();
         expect(
-          listViews({ developerMode: true, viewType }).filter(
+          listViews(runtime, { developerMode: true, viewType }).filter(
             (view) => view.id === viewId,
           ),
         ).toHaveLength(0);
@@ -674,7 +510,7 @@ describe("agent runtime view sync — real view registry", () => {
 
       expectNoVariants();
     } finally {
-      unregisterPluginViews(pluginName);
+      closeRuntimeViewRegistry(runtime);
     }
   });
 });

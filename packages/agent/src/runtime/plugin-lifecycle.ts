@@ -5,10 +5,14 @@ import type {
   Plugin,
   PluginOwnership,
 } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
 import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
 import {
+  beginViewInstallation,
+  closeRuntimeViewRegistry,
   registerPluginViews,
   unregisterPluginViews,
+  type ViewInstallation,
 } from "../api/views-registry.ts";
 import { applyPluginRoleGating } from "./plugin-role-gating.ts";
 import {
@@ -221,14 +225,39 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
   }
   runtime.__elizaPluginViewSyncInstalled = true;
 
+  const viewInstallations = new Map<string, ViewInstallation>();
+  const generations = new Map<string, number>();
+  const generationFor = (name: string) => generations.get(name) ?? 0;
+  const invalidate = (name: string) => {
+    generations.set(name, generationFor(name) + 1);
+    const installation = viewInstallations.get(name);
+    if (installation) unregisterPluginViews(runtime, installation);
+  };
+  const baseStop = runtime.stop.bind(runtime);
+  runtime.stop = async (...args: Parameters<typeof runtime.stop>) => {
+    closeRuntimeViewRegistry(runtime);
+    return baseStop(...args);
+  };
   const baseRegisterPlugin = runtime.registerPlugin.bind(runtime);
   const baseUnloadPlugin = runtime.unloadPlugin?.bind(runtime);
-  const registerPluginOperation = async (plugin: Plugin): Promise<void> => {
+  const registerPluginOperation = async (
+    plugin: Plugin,
+    generation: number,
+  ): Promise<void> => {
+    const assertCurrent = () => {
+      if (generationFor(plugin.name) !== generation) {
+        throw new ElizaError("Plugin registration was superseded", {
+          code: "VIEW_INSTALLATION_INVALID",
+        });
+      }
+    };
+    assertCurrent();
     if (runtime.plugins.some((registered) => registered.name === plugin.name)) {
       await baseRegisterPlugin(plugin);
       return;
     }
     let registeredHere = false;
+    let installation: ViewInstallation | undefined;
     try {
       // #12087 Item 1: gate this plugin's sensitive providers (SECRETS_STATUS,
       // walletPortfolio, shellHistory, …) at the moment it registers, not via a
@@ -238,8 +267,15 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
       // so a gating failure fails closed — the plugin is unloaded, not left with
       // ungated providers. provider gating is idempotent, so boot plugins already
       // covered by the boot pass are unaffected.
+      installation = beginViewInstallation(
+        runtime,
+        plugin.name,
+        plugin.packageName,
+      );
+      viewInstallations.set(plugin.name, installation);
       applyPluginRoleGating([plugin]);
       await migratePluginSchemasIfReady(runtime, plugin);
+      assertCurrent();
       if (
         runtime.plugins.some((registered) => registered.name === plugin.name)
       ) {
@@ -248,10 +284,15 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
       }
       await baseRegisterPlugin(plugin);
       registeredHere = runtime.plugins.includes(plugin);
-      await registerPluginViews(plugin);
+      assertCurrent();
+      await registerPluginViews(runtime, plugin, { installation });
       registerViewScopedActions(runtime, plugin.name, plugin.views ?? []);
     } catch (error) {
-      unregisterPluginViews(plugin.name);
+      if (installation) {
+        unregisterPluginViews(runtime, installation);
+        if (viewInstallations.get(plugin.name) === installation)
+          viewInstallations.delete(plugin.name);
+      }
       unregisterViewScopedActions(runtime, plugin.name);
       if (baseUnloadPlugin && registeredHere) {
         await baseUnloadPlugin(plugin.name);
@@ -259,29 +300,44 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
       throw error;
     }
   };
-  runtime.registerPlugin = ((plugin: Plugin) =>
-    registerPluginOnce(runtime, plugin.name, () =>
-      registerPluginOperation(plugin),
-    )) as typeof runtime.registerPlugin;
+  runtime.registerPlugin = ((plugin: Plugin) => {
+    const generation = generationFor(plugin.name);
+    return registerPluginOnce(runtime, plugin.name, () =>
+      registerPluginOperation(plugin, generation),
+    );
+  }) as typeof runtime.registerPlugin;
 
   if (baseUnloadPlugin) {
     const unloadPluginOperation = async (pluginName: string) => {
-      const ownership = await baseUnloadPlugin(pluginName);
-      unregisterPluginViews(pluginName);
+      const installation = viewInstallations.get(pluginName);
+      if (installation) {
+        unregisterPluginViews(runtime, installation);
+        viewInstallations.delete(pluginName);
+      }
       unregisterViewScopedActions(runtime, pluginName);
+      const ownership = await baseUnloadPlugin(pluginName);
       return ownership as RuntimePluginOwnership | null;
     };
-    runtime.unloadPlugin = (pluginName: string) =>
-      enqueuePluginLifecycleMutation(runtime, pluginName, () =>
+    runtime.unloadPlugin = (pluginName: string) => {
+      invalidate(pluginName);
+      return enqueuePluginLifecycleMutation(runtime, pluginName, () =>
         unloadPluginOperation(pluginName),
       );
+    };
 
     if (runtime.reloadPlugin) {
-      runtime.reloadPlugin = (plugin: Plugin) =>
-        enqueuePluginLifecycleMutation(runtime, plugin.name, async () => {
-          await unloadPluginOperation(plugin.name);
-          await registerPluginOperation(plugin);
-        });
+      runtime.reloadPlugin = (plugin: Plugin) => {
+        invalidate(plugin.name);
+        const generation = generationFor(plugin.name);
+        return enqueuePluginLifecycleMutation(
+          runtime,
+          plugin.name,
+          async () => {
+            await unloadPluginOperation(plugin.name);
+            await registerPluginOperation(plugin, generation);
+          },
+        );
+      };
     }
   }
 }

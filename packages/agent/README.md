@@ -415,3 +415,41 @@ across processes and login sessions. Boot fails explicitly if Windows
 PowerShell 5.1, the protected mutex or the native keyring is unavailable, or if
 the stored key is malformed. POSIX hosts retain their existing filesystem
 ownership and durability checks.
+
+## Plugin view assets
+
+Use the `bundleUrl` or `frameUrl` returned by the view catalog. Local URLs bind
+all relative resources to one runtime installation and modality:
+`/api/views/<id>/installations/<installation>/<gui|tui|xr>/<bundle|frame>/<file>`.
+Replacing or removing a plugin invalidates its old URLs. Clients must reload the
+catalog rather than construct a URL or retry an old installation against a new one.
+
+A local root file can declare its published siblings in an adjacent sidecar:
+
+```json
+{"version":1,"files":["frame.html","main.js","styles/main.css","media/icon.svg","engine.wasm"]}
+```
+
+For `frame.html`, name the file `frame.html.assets.json`; for `bundle.js`, use
+`bundle.js.assets.json`. Paths are relative to the root file's directory. The
+root itself is always included. Registration captures the declared bytes and
+rejects paths outside that directory. Delivery checks role, installation and
+content for GET, HEAD and conditional requests. Unlisted files are not served;
+changed files require a new registration. The server never publishes a directory
+by scanning it.
+
+The shared view Vite configuration emits this manifest from that build's actual
+outputs, excluding source maps. It does not include unrelated compiler output,
+types or test fixtures. Custom frame builds must emit their own sidecar, including
+CSS, media, WASM and modules used by relative imports. Existing single-file views
+work without a sidecar; existing views with siblings must add one. Legacy root
+requests with a current installation binding redirect to the catalog URL;
+unbound roots and legacy sibling paths require migration.
+
+Host-external bundles loaded through a blob factory must be a single module.
+The canonical build inlines dynamic imports. Relative imports and nonliteral
+dynamic imports in custom factory bundles return `VIEW_MODULE_GRAPH_UNSUPPORTED`
+before execution; use a self-contained build, or a frame/raw module graph with
+an explicit asset manifest. Remote capability URLs remain owned by their host.
+Hero images use the same view role and installation checks, with private caching;
+authorized mobile clients can load images without permission to load remote code.

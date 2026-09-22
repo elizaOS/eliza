@@ -148,14 +148,16 @@ function bundleCacheKey(
   bundleUrl: string,
   componentExport: string,
   scope: SurfaceRealmScope | null,
+  installationId?: string,
 ): string {
-  if (!scope) return `${bundleUrl}::${componentExport}`;
+  if (!scope)
+    return `${bundleUrl}::${componentExport}::${installationId ?? "unbound"}`;
   let scopeId = bundleScopeIds.get(scope);
   if (scopeId === undefined) {
     scopeId = nextBundleScopeId++;
     bundleScopeIds.set(scope, scopeId);
   }
-  return `${bundleUrl}::${componentExport}::scope-${scopeId}`;
+  return `${bundleUrl}::${componentExport}::scope-${scopeId}::${installationId ?? "unbound"}`;
 }
 const DEFAULT_BUNDLE_CACHE_TTL_MS = 5 * 60_000;
 const LOW_MEMORY_BUNDLE_CACHE_TTL_MS = 60_000;
@@ -943,8 +945,14 @@ function ensureBundleModuleEntry(
   bundleUrl: string,
   componentExport: string,
   scope: SurfaceRealmScope | null,
+  installationId?: string,
 ): ViewBundleCacheEntry {
-  const cacheKey = bundleCacheKey(bundleUrl, componentExport, scope);
+  const cacheKey = bundleCacheKey(
+    bundleUrl,
+    componentExport,
+    scope,
+    installationId,
+  );
   const cached = bundleModuleCache.get(cacheKey);
   if (cached) {
     cached.lastUsedAt = Date.now();
@@ -1016,13 +1024,19 @@ function acquireBundleModule(
   bundleUrl: string,
   componentExport: string,
   scope: SurfaceRealmScope | null,
+  installationId?: string,
 ): {
   cacheKey: string;
   promise: Promise<ViewBundleModule>;
   release: () => void;
 } {
   installBundleCacheLifecycle();
-  const entry = ensureBundleModuleEntry(bundleUrl, componentExport, scope);
+  const entry = ensureBundleModuleEntry(
+    bundleUrl,
+    componentExport,
+    scope,
+    installationId,
+  );
   entry.refCount += 1;
   entry.lastUsedAt = Date.now();
   if (entry.retentionTimer) {
@@ -1427,6 +1441,7 @@ async function handleStandardCapability(
 }
 
 interface DynamicViewLoaderProps {
+  installationId?: string;
   /** The URL of the JS bundle to dynamically import. */
   bundleUrl?: string;
   /** HTML document URL for sandboxed-iframe views. */
@@ -1463,6 +1478,7 @@ interface DynamicViewLoaderProps {
  * ```
  */
 export const DynamicViewLoader = memo(function DynamicViewLoader({
+  installationId,
   bundleUrl,
   frameUrl,
   componentExport = "default",
@@ -1481,7 +1497,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   // view's authority. Null is the standalone host/test lane with no shell scope.
   const scopeOwnsView = surfaceScope === null || surfaceScope.ownsView(viewId);
   const cacheKey = bundleUrl
-    ? bundleCacheKey(bundleUrl, componentExport, surfaceScope)
+    ? bundleCacheKey(bundleUrl, componentExport, surfaceScope, installationId)
     : null;
   // Resolve the declared manifest once per surface declaration so the interact
   // broker gate reads a stable {@link ResolvedSurfaceManifest}. An absent
@@ -1539,7 +1555,12 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     if (getActiveSurfaceRealmScope() !== surfaceScope) return;
 
     let cancelled = false;
-    const lease = acquireBundleModule(bundleUrl, componentExport, surfaceScope);
+    const lease = acquireBundleModule(
+      bundleUrl,
+      componentExport,
+      surfaceScope,
+      installationId,
+    );
 
     setLoadedBundle(null);
     setFailedLoad(null);
@@ -1566,6 +1587,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     };
   }, [
     bundleUrl,
+    installationId,
     componentExport,
     dynamicLoadingAllowed,
     isSandboxed,
@@ -1590,7 +1612,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
         viewId,
         resolvedManifest,
         async (capability, params) => {
-          const registry = getViewRegistry(viewId, viewType);
+          const registry = getViewRegistry(viewId, viewType, installationId);
           // Generic agent-surface capabilities (list-elements, agent-fill, …)
           // operate on the view's element registry.
           if (isAgentSurfaceCapability(capability)) {
@@ -1619,7 +1641,12 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
               containerRef.current,
               setReloadKey,
               cacheKey ??
-                bundleCacheKey(bundleUrl, componentExport, surfaceScope),
+                bundleCacheKey(
+                  bundleUrl,
+                  componentExport,
+                  surfaceScope,
+                  installationId,
+                ),
               registry,
             );
           }
@@ -1632,11 +1659,13 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
           );
         },
       ),
+      installationId,
     );
 
     return unregister;
   }, [
     bundle,
+    installationId,
     bundleUrl,
     cacheKey,
     componentExport,
@@ -1798,7 +1827,12 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
       data-agent-surface-kind="dynamic"
       data-agent-surface-view-id={viewId}
     >
-      <AgentSurfaceProvider viewId={viewId} viewType={viewType}>
+      <AgentSurfaceProvider
+        key={installationId ?? "unbound"}
+        viewId={viewId}
+        viewType={viewType}
+        installationId={installationId}
+      >
         {/* Keyed by bundleUrl+reloadKey so a successful reload (refresh
             capability / dev HMR / Retry) remounts the boundary with cleared
             state instead of staying latched on a stale render crash. */}

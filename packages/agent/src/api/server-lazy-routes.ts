@@ -26,7 +26,6 @@ type RuntimeRouteOptions = {
 // path below is a safety net for the case where the first /api/views request
 // arrives before startup registration completes; gate it so it runs at most
 // once instead of on every (hot) nav request.
-let builtinViewsRegistered = false;
 
 function routeContext(args: readonly unknown[]): RouteContext | null {
   const value = args[0];
@@ -688,17 +687,17 @@ export async function handleViewsRoutes(
   const ctx = routeContext(args);
   if (!ctx?.pathname.startsWith("/api/views")) return false;
   const { handleViewsRoutes } = await import("./views-routes.ts");
-  if (!builtinViewsRegistered) {
-    (await import("./views-registry.ts")).registerBuiltinViews();
-    builtinViewsRegistered = true;
-  }
+  const runtime = args[0].runtime;
+  if (runtime)
+    (await import("./views-registry.ts")).registerBuiltinViews(runtime);
   return handleViewsRoutes(...args);
 }
 
 export async function registerBuiltinViews(
   runtime?: import("@elizaos/core").IAgentRuntime | null,
 ): Promise<void> {
-  (await import("./views-registry.ts")).registerBuiltinViews();
+  if (!runtime) return;
+  (await import("./views-registry.ts")).registerBuiltinViews(runtime);
   // Register the built-in shell views' scoped actions once the runtime exists.
   // The Character view declares FILL_BIO / ADD_STYLE_RULE / ADD_MESSAGE_EXAMPLE
   // (#14155); other builtin views carry none yet. registerViewScopedActions is

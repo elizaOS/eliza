@@ -5019,6 +5019,7 @@ async function streamConversationMessage(
   };
 
   const chatPayload = await readChatRequestPayload(req, res, {
+    runtime: state.runtime,
     readJsonBody,
     error,
   });
@@ -6177,6 +6178,7 @@ async function sendConversationMessage(
     return true;
   }
   const chatPayload = await readChatRequestPayload(req, res, {
+    runtime: state.runtime,
     readJsonBody,
     error,
   });

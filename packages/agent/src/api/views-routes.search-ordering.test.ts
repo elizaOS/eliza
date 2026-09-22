@@ -1,22 +1,26 @@
 /**
  * Exercises GET /api/views/search ranking when two views score identically.
- * No runtime is attached, so scoring is keyword-only and fully deterministic;
+ * No embedding index is installed, so scoring is keyword-only and deterministic;
  * the assertion is that the route's comparator imposes a total order instead of
  * echoing registration order. Real registry, no embeddings, no LLM.
  */
 import type http from "node:http";
 import { Readable } from "node:stream";
+import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  closeRuntimeViewRegistry,
   registerBuiltinViews,
   registerPluginViews,
-  unregisterPluginViews,
 } from "./views-registry.ts";
 import {
   clearCurrentViewState,
   handleViewsRoutes,
   type ViewsRouteContext,
 } from "./views-routes.ts";
+
+let runtime: AgentRuntime;
+let hostKey: object;
 
 const TEST_PLUGIN = "@test/views-search-ordering";
 
@@ -35,6 +39,8 @@ function makeSearchCtx(search: string): {
   const json = vi.fn();
   const pathname = "/api/views/search";
   const ctx: ViewsRouteContext = {
+    runtime,
+    hostKey,
     req,
     res,
     method: "GET",
@@ -43,16 +49,22 @@ function makeSearchCtx(search: string): {
     json,
     error: vi.fn(),
     broadcastWs: vi.fn(),
-    // Intentionally NO runtime — forces keyword-only scoring.
+    // No embedding index is installed; search uses the deterministic keyword path.
   };
   return { ctx, json };
 }
 
 describe("GET /api/views/search tie ordering", () => {
   beforeEach(async () => {
-    registerBuiltinViews();
-    clearCurrentViewState();
+    runtime = new AgentRuntime({
+      character: createCharacter({ name: "View search" }),
+      enableAutonomy: false,
+    });
+    hostKey = {};
+    registerBuiltinViews(runtime);
+    clearCurrentViewState(runtime);
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "Synthetic search ordering plugin.",
@@ -77,13 +89,13 @@ describe("GET /api/views/search tie ordering", () => {
           },
         ],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
   });
 
   afterEach(() => {
-    clearCurrentViewState();
-    unregisterPluginViews(TEST_PLUGIN);
+    clearCurrentViewState(runtime);
+    closeRuntimeViewRegistry(runtime);
     vi.restoreAllMocks();
   });
 

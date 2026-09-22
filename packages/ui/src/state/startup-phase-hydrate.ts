@@ -28,7 +28,6 @@ import { fetchWithCsrf } from "../api/csrf-client";
 import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
 import { dispatchCompletedActionNavigation } from "../completed-action-navigation";
 import { prefetchAppsCatalog } from "../components/apps/load-apps-catalog";
-import { registerDeviceControlInteractHandler } from "../components/views/device-control-interact";
 import {
   type AppEmoteEventDetail,
   dispatchAppEmoteEvent,
@@ -407,7 +406,6 @@ export function bindReadyPhase(
 ): () => void {
   let ptyPollInterval: ReturnType<typeof setInterval> | null = null;
   let handleVis: (() => void) | null = null;
-  const unbindDeviceControl = registerDeviceControlInteractHandler();
 
   const doHydratePty = () => {
     if (!depsRef.current?.codingAgentsEnabledRef.current) return;
@@ -841,7 +839,9 @@ export function bindReadyPhase(
           : undefined;
       const requestId =
         typeof data.requestId === "string" ? data.requestId : null;
-      if (!viewId || !capability || !requestId) return;
+      const installationId =
+        typeof data.installationId === "string" ? data.installationId : null;
+      if (!viewId || !capability || !requestId || !installationId) return;
       const params =
         data.params !== null &&
         typeof data.params === "object" &&
@@ -851,15 +851,17 @@ export function bindReadyPhase(
       // Lazy-import to avoid pulling the registry into the startup bundle.
       import("../components/views/view-interact-registry")
         .then(({ dispatchViewInteract }) =>
-          dispatchViewInteract(viewId, viewType, capability, params, requestId),
+          dispatchViewInteract(
+            viewId,
+            viewType,
+            capability,
+            params,
+            requestId,
+            installationId,
+          ),
         )
         .catch(() => {
-          client.sendWsMessage({
-            type: "view:interact:result",
-            requestId,
-            success: false,
-            error: "view-interact-registry not available",
-          });
+          // No renderer claimed execution. The owning host times out without replay.
         });
     },
   );
@@ -1149,7 +1151,6 @@ export function bindReadyPhase(
     unbindManageRuntime();
     unbindViewEvent();
     unbindViewInteract();
-    unbindDeviceControl();
     unbindConvUp();
     unbindPty();
     if (ptyPollInterval) clearInterval(ptyPollInterval);

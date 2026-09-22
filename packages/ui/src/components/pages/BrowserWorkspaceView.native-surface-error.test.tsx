@@ -36,6 +36,12 @@ const openExternalHarness = vi.hoisted(() => ({
 
 // Force the native mobile shell so resolveBrowserTabRenderPath picks
 // `native-mobile-webview` for the manifest's `native-webview` isolation.
+// This standalone page fixture has no connected runtime view installation.
+// Catalog binding and reporting are exercised by the shell/catalog integration tests.
+vi.mock("../../hooks/useAvailableViews", () => ({
+  useAvailableViews: () => ({ views: [] }),
+}));
+
 vi.mock("@capacitor/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@capacitor/core")>();
   return {

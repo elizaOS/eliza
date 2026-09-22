@@ -111,6 +111,7 @@ import {
   serializeTaskDueAt,
   TaskTimingValidationError,
   taskMetadataForWrite,
+  taskMetadataPatchForWrite,
 } from "./stores/task-timing";
 
 function agentBioRowsFromDb(bio: unknown): string[] {
@@ -5563,23 +5564,53 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .offset(params.offset ?? 0);
         const result = params.limit === undefined ? await query : await query.limit(params.limit);
 
-        return result.map((row) => {
-          const metadata = (row.metadata || {}) as TaskMetadata;
-          return {
-            id: row.id as UUID,
-            agentId: row.agentId as UUID,
-            name: row.name,
-            description: row.description ?? "",
-            roomId: row.roomId as UUID,
-            worldId: row.worldId as UUID,
-            entityId: row.entityId as UUID,
-            tags: row.tags || [],
-            dueAt: readTaskDueAt(metadata),
-            metadata,
-          };
-        });
+        return result.map((row) => this.taskFromListRow(row));
       });
     });
+  }
+
+  /**
+   * Maps a listed task row while keeping one unreadable `scheduledAt` from
+   * hiding every other task of the agent. The scheduler tick lists all tasks in
+   * one call, so a throwing mapper would stop every queued task; the damaged row
+   * retains its raw metadata and an explicit `scheduleError` for inspection and
+   * repair. The scheduler rejects this state; single-row reads stay strict.
+   */
+  private taskFromListRow(row: typeof taskTable.$inferSelect): Task {
+    const metadata = (row.metadata || {}) as TaskMetadata;
+    let dueAt: number | undefined;
+    let scheduleError: string | undefined;
+    try {
+      dueAt = readTaskDueAt(metadata);
+    } catch (error) {
+      // error-policy:J4 only TaskTimingValidationError degrades this one row to an
+      // explicit schedule failure; raw metadata stays visible and anything else rethrows.
+      if (!(error instanceof TaskTimingValidationError)) throw error;
+      logger.warn(
+        {
+          src: "plugin:sql",
+          agentId: row.agentId,
+          taskId: row.id,
+          scheduledAt: metadata.scheduledAt,
+          error: error.message,
+        },
+        "BaseDrizzleAdapter: task row has unreadable metadata.scheduledAt; listing it with a scheduleError"
+      );
+      scheduleError = error.message;
+    }
+    return {
+      id: row.id as UUID,
+      agentId: row.agentId as UUID,
+      name: row.name,
+      description: row.description ?? "",
+      roomId: row.roomId as UUID,
+      worldId: row.worldId as UUID,
+      entityId: row.entityId as UUID,
+      tags: row.tags || [],
+      dueAt,
+      ...(scheduleError === undefined ? {} : { scheduleError }),
+      metadata,
+    };
   }
 
   /**
@@ -5595,21 +5626,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .from(taskTable)
           .where(and(eq(taskTable.name, name), eq(taskTable.agentId, this.agentId)));
 
-        return result.map((row) => {
-          const metadata = (row.metadata || {}) as TaskMetadata;
-          return {
-            id: row.id as UUID,
-            agentId: row.agentId as UUID,
-            name: row.name,
-            description: row.description ?? "",
-            roomId: row.roomId as UUID,
-            worldId: row.worldId as UUID,
-            entityId: row.entityId as UUID,
-            tags: row.tags || [],
-            dueAt: readTaskDueAt(metadata),
-            metadata,
-          };
-        });
+        return result.map((row) => this.taskFromListRow(row));
       });
     });
   }
@@ -7574,14 +7591,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }
 
   async updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean> {
+    const replacementMetadata =
+      task.metadata === undefined ? undefined : taskMetadataForWrite(task.metadata, task.dueAt);
     return this.withRetry(async () => {
       return this.withDatabase(async () => {
         const updateValues: Partial<typeof taskTable.$inferInsert> = {
           updatedAt: new Date(),
         };
         if (task.tags !== undefined) updateValues.tags = task.tags;
-        if (task.metadata !== undefined) {
-          updateValues.metadata = task.metadata as typeof taskTable.$inferInsert.metadata;
+        if (replacementMetadata !== undefined) {
+          updateValues.metadata = replacementMetadata;
         }
         const updated = await this.db
           .update(taskTable)
@@ -7607,11 +7626,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * Returns false when no task row matched (deleted or foreign agent).
    */
   async patchTaskMetadata(id: UUID, patch: TaskMetadataPatch): Promise<boolean> {
+    const guarded = taskMetadataPatchForWrite(patch);
     // JSON.stringify drops undefined values, so an `undefined` in `set` never
     // reaches storage; callers remove keys through `unset`.
-    const merged = JSON.stringify(patch.set ?? {});
+    const merged = JSON.stringify(guarded.set ?? {});
     let metadata = sql`(COALESCE(${taskTable.metadata}, '{}'::jsonb) || ${merged}::jsonb)`;
-    for (const key of patch.unset ?? []) {
+    for (const key of guarded.unset ?? []) {
       metadata = sql`(${metadata} - ${String(key)})`;
     }
     return this.withRetry(async () => {

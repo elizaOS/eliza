@@ -10,14 +10,20 @@
  */
 import type http from "node:http";
 import { Readable } from "node:stream";
-import { EventType, type IAgentRuntime } from "@elizaos/core";
+import { AgentRuntime, createCharacter, EventType } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { closeRuntimeViewRegistry } from "./view-installations.ts";
+import { closeViewInteractionHost } from "./view-interaction-host.ts";
 import { registerBuiltinViews } from "./views-registry.ts";
 import {
   clearCurrentViewState,
   handleViewsRoutes,
   type ViewsRouteContext,
 } from "./views-routes.ts";
+
+let runtime: AgentRuntime;
+let hostKey: object;
+const clientId = "proactive-client";
 
 function makeCtx(
   id: string,
@@ -29,9 +35,13 @@ function makeCtx(
   const req = Readable.from(
     body === null ? [] : [Buffer.from(JSON.stringify(body))],
   ) as unknown as http.IncomingMessage;
-  req.headers = { "content-type": "application/json" };
+  req.headers = {
+    "content-type": "application/json",
+    "x-elizaos-client-id": clientId,
+  };
   const res = {} as http.ServerResponse;
-  const emitEvent = vi.fn(async () => {});
+  const emitEvent = vi.spyOn(runtime, "emitEvent").mockResolvedValue(undefined);
+  emitEvent.mockClear();
   const pathname = `/api/views/${encodeURIComponent(id)}/navigate`;
   const ctx: ViewsRouteContext = {
     req,
@@ -42,7 +52,8 @@ function makeCtx(
     json: vi.fn(),
     error: vi.fn(),
     broadcastWs: vi.fn(),
-    runtime: { emitEvent } as unknown as IAgentRuntime,
+    runtime,
+    hostKey,
   };
   return { ctx, emitEvent };
 }
@@ -55,11 +66,18 @@ function viewSwitchedCalls(emitEvent: ReturnType<typeof vi.fn>) {
 
 describe("POST /api/views/:id/navigate — VIEW_SWITCHED emission (#8792)", () => {
   beforeEach(() => {
-    registerBuiltinViews();
-    clearCurrentViewState();
+    runtime = new AgentRuntime({
+      character: createCharacter({ name: "Proactive view events" }),
+      enableAutonomy: false,
+    });
+    hostKey = {};
+    registerBuiltinViews(runtime);
+    clearCurrentViewState(runtime, { hostKey, clientId });
   });
   afterEach(() => {
-    clearCurrentViewState();
+    closeRuntimeViewRegistry(runtime);
+    closeViewInteractionHost(hostKey);
+    clearCurrentViewState(runtime, { hostKey, clientId });
     vi.restoreAllMocks();
   });
 
@@ -126,23 +144,13 @@ describe("POST /api/views/:id/navigate — VIEW_SWITCHED emission (#8792)", () =
     expect(viewSwitchedCalls(emitEvent)).toHaveLength(0);
   });
 
-  it("does not throw when no runtime is bound (event emission is best-effort)", async () => {
-    const req = Readable.from([
-      Buffer.from(JSON.stringify({ source: "user" })),
-    ]) as unknown as http.IncomingMessage;
-    req.headers = { "content-type": "application/json" };
-    const pathname = "/api/views/wallet/navigate";
-    const ctx: ViewsRouteContext = {
-      req,
-      res: {} as http.ServerResponse,
-      method: "POST",
-      pathname,
-      url: new URL(`http://local${pathname}`),
-      json: vi.fn(),
-      error: vi.fn(),
-      broadcastWs: vi.fn(),
-      runtime: null,
-    };
-    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+  it("keeps foreground history separate for different clients", async () => {
+    await handleViewsRoutes(makeCtx("wallet", { source: "user" }).ctx);
+    const other = makeCtx("calendar", { source: "user" });
+    other.ctx.req.headers["x-elizaos-client-id"] = "other-client";
+    await handleViewsRoutes(other.ctx);
+    expect(viewSwitchedCalls(other.emitEvent)[0]?.[1]).toEqual(
+      expect.objectContaining({ viewId: "calendar", previousViewId: null }),
+    );
   });
 });

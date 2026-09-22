@@ -16,10 +16,7 @@ import type {
 } from "@elizaos/shared/api/http-plugin";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  registerPluginViews,
-  unregisterPluginViews,
-} from "../api/views-registry.ts";
+import { registerPluginViews } from "../api/views-registry.ts";
 import {
   installRemoteCapabilityEndpoint,
   provisionCloudCapabilitySandbox,
@@ -48,13 +45,15 @@ const cloudLiveTestTimeoutMs = Math.max(
   cloudProvisionTimeoutMs + cloudAvailabilityTimeoutMs + 120_000,
   720_000,
 );
-const registeredPluginNames: string[] = [];
+
+import { closeRuntimeViewRegistry } from "../api/view-installations.ts";
+
+const registeredRuntimes = new Set<IAgentRuntime>();
 
 describe("cloud capability sandbox live smoke", () => {
   afterEach(() => {
-    for (const pluginName of registeredPluginNames.splice(0)) {
-      unregisterPluginViews(pluginName);
-    }
+    for (const runtime of registeredRuntimes) closeRuntimeViewRegistry(runtime);
+    registeredRuntimes.clear();
   });
 
   cloudLive(
@@ -213,8 +212,8 @@ function makeRuntime(): IAgentRuntime {
       runtime.providers.push(...(plugin.providers ?? []));
       runtime.evaluators.push(...(plugin.evaluators ?? []));
       getHttpRuntime(runtime).routes.push(...(plugin.routes ?? []));
-      registeredPluginNames.push(plugin.name);
-      await registerPluginViews(plugin);
+      registeredRuntimes.add(runtime);
+      await registerPluginViews(runtime, plugin, { indexEmbeddings: false });
     },
     reloadPlugin: async (plugin: Plugin) => {
       await runtime.registerPlugin(plugin);

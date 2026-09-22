@@ -15,6 +15,8 @@ export interface ViewRegistryEntry extends ViewDeclaration {
   viewType: ViewType;
   /** Owning plugin name. */
   pluginName: string;
+  /** Published installation provenance. Never grants authority without registry ownership. */
+  installationId?: string;
   /** Absolute path to the plugin's package root, if resolvable. */
   pluginDir?: string;
   /** Resolved URL served by the agent: `/api/views/<id>/bundle.js`. */
@@ -40,13 +42,13 @@ export interface ViewRegistryEntry extends ViewDeclaration {
    * restricted platforms (iOS App Store, Google Play).
    */
   platform: AgentPlatform;
-  /** First 12 hex chars of the SHA-256 content hash of the bundle file. */
+  /** Full hexadecimal SHA-256 content hash of the bundle file. */
   bundleHash?: string;
   /** Bundle URL with `?v=<hash>` for immutable long-lived caching. */
   bundleUrlVersioned?: string;
   /** Bundle file size in bytes. */
   bundleSize?: number;
-  /** First 12 hex chars of the SHA-256 content hash of the frame document. */
+  /** Full hexadecimal SHA-256 content hash of the frame document. */
   frameHash?: string;
   /** Frame URL with `?v=<hash>` for immutable long-lived caching. */
   frameUrlVersioned?: string;

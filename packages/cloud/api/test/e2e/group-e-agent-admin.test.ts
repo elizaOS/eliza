@@ -91,17 +91,31 @@ const FAKE_UUID = "00000000-0000-4000-8000-000000000000";
  * exactly 401. (403 would mean a handler ran; 404 would mean the route is not
  * mounted at all — both are regressions.)
  */
-function expectAuthGate(status: number, path: string): void {
-  if (status !== 401) {
-    throw new Error(`Expected 401 from unauthenticated ${path}, got ${status}`);
+async function expectAuthGate(response: Response, path: string): Promise<void> {
+  if (response.status !== 401) {
+    const headers = Object.fromEntries(
+      [
+        "content-type",
+        "x-eliza-trace-id",
+        "x-request-id",
+        "cf-ray",
+        "server-timing",
+      ]
+        .map((name) => [name, response.headers.get(name)])
+        .filter(([, value]) => value !== null),
+    );
+    throw new Error(
+      `Expected 401 from unauthenticated ${path}, got ${response.status}; ` +
+        JSON.stringify({ headers, body: await response.clone().text() }),
+    );
   }
-  expect(status).toBe(401);
+  expect(response.status).toBe(401);
 }
 
 describeE2E("Group E: admin / redemptions", () => {
   test("GET /api/admin/redemptions rejects unauthenticated", async () => {
     const res = await api.get("/api/admin/redemptions");
-    expectAuthGate(res.status, "GET /api/admin/redemptions");
+    await expectAuthGate(res, "GET /api/admin/redemptions");
   });
 
   test("GET /api/admin/redemptions rejects non-admin bearer with 403", async () => {
@@ -142,7 +156,7 @@ describeE2E("Group E: admin / redemptions", () => {
 describeE2E("Group E: admin / ai-pricing", () => {
   test("GET /api/v1/admin/ai-pricing rejects unauthenticated", async () => {
     const res = await api.get("/api/v1/admin/ai-pricing");
-    expectAuthGate(res.status, "GET /api/v1/admin/ai-pricing");
+    await expectAuthGate(res, "GET /api/v1/admin/ai-pricing");
   });
 
   test("GET /api/v1/admin/ai-pricing rejects non-admin bearer", async () => {
@@ -184,7 +198,7 @@ describeE2E("Group E: admin / ai-pricing", () => {
 describeE2E("Group E: admin / cloud-observability", () => {
   test("GET /api/v1/admin/cloud-observability rejects unauthenticated", async () => {
     const res = await api.get("/api/v1/admin/cloud-observability");
-    expectAuthGate(res.status, "GET /api/v1/admin/cloud-observability");
+    await expectAuthGate(res, "GET /api/v1/admin/cloud-observability");
   });
 
   test("GET /api/v1/admin/cloud-observability returns request telemetry for admin", async () => {
@@ -214,7 +228,7 @@ describeE2E("Group E: admin / cloud-observability", () => {
 describeE2E("Group E: admin / docker-containers (live + 501 stubs)", () => {
   test("GET /api/v1/admin/docker-containers rejects unauthenticated", async () => {
     const res = await api.get("/api/v1/admin/docker-containers");
-    expectAuthGate(res.status, "GET /api/v1/admin/docker-containers");
+    await expectAuthGate(res, "GET /api/v1/admin/docker-containers");
   });
 
   test("GET /api/v1/admin/docker-containers rejects non-super-admin bearer", async () => {
@@ -240,7 +254,7 @@ describeE2E("Group E: admin / docker-containers (live + 501 stubs)", () => {
     const unauthed = await api.get(
       `/api/v1/admin/docker-containers/${FAKE_UUID}/logs`,
     );
-    expectAuthGate(unauthed.status, "GET docker-containers/:id/logs (unauth)");
+    await expectAuthGate(unauthed, "GET docker-containers/:id/logs (unauth)");
 
     const authed = await api.get(
       `/api/v1/admin/docker-containers/${FAKE_UUID}/logs`,
@@ -255,7 +269,7 @@ describeE2E("Group E: admin / docker-containers (live + 501 stubs)", () => {
 
   test("GET /api/v1/admin/docker-containers/audit returns the Worker boundary fallback", async () => {
     const unauthed = await api.get("/api/v1/admin/docker-containers/audit");
-    expectAuthGate(unauthed.status, "GET docker-containers/audit (unauth)");
+    await expectAuthGate(unauthed, "GET docker-containers/audit (unauth)");
 
     const authed = await api.get("/api/v1/admin/docker-containers/audit", {
       headers: bearerHeaders(),
@@ -271,8 +285,8 @@ describeE2E("Group E: admin / docker-containers (live + 501 stubs)", () => {
         containerId: FAKE_UUID,
       },
     );
-    expectAuthGate(
-      unauthed.status,
+    await expectAuthGate(
+      unauthed,
       "POST infrastructure/containers/actions (unauth)",
     );
 
@@ -290,7 +304,7 @@ describeE2E("Group E: admin / docker-containers (live + 501 stubs)", () => {
 describeE2E("Group E: advertising / accounts", () => {
   test("GET /api/v1/advertising/accounts/:id rejects unauthenticated", async () => {
     const res = await api.get(`/api/v1/advertising/accounts/${FAKE_UUID}`);
-    expectAuthGate(res.status, "GET advertising/accounts/:id");
+    await expectAuthGate(res, "GET advertising/accounts/:id");
   });
 
   test("GET /api/v1/advertising/accounts/:id returns 404 for unknown id", async () => {
@@ -304,7 +318,7 @@ describeE2E("Group E: advertising / accounts", () => {
 
   test("DELETE /api/v1/advertising/accounts/:id rejects unauthenticated", async () => {
     const res = await api.delete(`/api/v1/advertising/accounts/${FAKE_UUID}`);
-    expectAuthGate(res.status, "DELETE advertising/accounts/:id");
+    await expectAuthGate(res, "DELETE advertising/accounts/:id");
   });
 
   test("POST /api/v1/advertising/accounts/:id/media rejects unauthenticated", async () => {
@@ -315,7 +329,7 @@ describeE2E("Group E: advertising / accounts", () => {
         url: "https://example.com/creative.png",
       },
     );
-    expectAuthGate(res.status, "POST advertising/accounts/:id/media");
+    await expectAuthGate(res, "POST advertising/accounts/:id/media");
   });
 
   test("POST /api/v1/advertising/accounts/:id/media rejects invalid body with 400", async () => {
@@ -341,7 +355,7 @@ describeE2E("Group E: advertising / accounts", () => {
 describeE2E("Group E: advertising / campaigns", () => {
   test("GET /api/v1/advertising/campaigns/:id rejects unauthenticated", async () => {
     const res = await api.get(`/api/v1/advertising/campaigns/${FAKE_UUID}`);
-    expectAuthGate(res.status, "GET advertising/campaigns/:id");
+    await expectAuthGate(res, "GET advertising/campaigns/:id");
   });
 
   test("GET /api/v1/advertising/campaigns/:id returns 404 for unknown id", async () => {
@@ -363,14 +377,14 @@ describeE2E("Group E: advertising / campaigns", () => {
 
   test("DELETE /api/v1/advertising/campaigns/:id rejects unauthenticated", async () => {
     const res = await api.delete(`/api/v1/advertising/campaigns/${FAKE_UUID}`);
-    expectAuthGate(res.status, "DELETE advertising/campaigns/:id");
+    await expectAuthGate(res, "DELETE advertising/campaigns/:id");
   });
 
   test("GET /api/v1/advertising/campaigns/:id/analytics rejects unauthenticated", async () => {
     const res = await api.get(
       `/api/v1/advertising/campaigns/${FAKE_UUID}/analytics`,
     );
-    expectAuthGate(res.status, "GET advertising/campaigns/:id/analytics");
+    await expectAuthGate(res, "GET advertising/campaigns/:id/analytics");
   });
 
   test("GET /api/v1/advertising/campaigns/:id/analytics rejects bad date range with 400", async () => {
@@ -387,7 +401,7 @@ describeE2E("Group E: advertising / campaigns", () => {
     const res = await api.get(
       `/api/v1/advertising/campaigns/${FAKE_UUID}/creatives`,
     );
-    expectAuthGate(res.status, "GET advertising/campaigns/:id/creatives");
+    await expectAuthGate(res, "GET advertising/campaigns/:id/creatives");
   });
 
   test("POST /api/v1/advertising/campaigns/:id/creatives rejects invalid body with 400", async () => {
@@ -404,14 +418,14 @@ describeE2E("Group E: advertising / campaigns", () => {
     const res = await api.post(
       `/api/v1/advertising/campaigns/${FAKE_UUID}/pause`,
     );
-    expectAuthGate(res.status, "POST advertising/campaigns/:id/pause");
+    await expectAuthGate(res, "POST advertising/campaigns/:id/pause");
   });
 
   test("POST /api/v1/advertising/campaigns/:id/start rejects unauthenticated", async () => {
     const res = await api.post(
       `/api/v1/advertising/campaigns/${FAKE_UUID}/start`,
     );
-    expectAuthGate(res.status, "POST advertising/campaigns/:id/start");
+    await expectAuthGate(res, "POST advertising/campaigns/:id/start");
   });
 
   test("POST /api/v1/advertising/campaigns/:id/start returns 404 for unknown campaign", async () => {
@@ -430,7 +444,7 @@ describeE2E("Group E: advertising / campaigns", () => {
 describeE2E("Group E: advertising / creatives", () => {
   test("GET /api/v1/advertising/creatives/:id rejects unauthenticated", async () => {
     const res = await api.get(`/api/v1/advertising/creatives/${FAKE_UUID}`);
-    expectAuthGate(res.status, "GET advertising/creatives/:id");
+    await expectAuthGate(res, "GET advertising/creatives/:id");
   });
 
   test("PATCH /api/v1/advertising/creatives/:id rejects invalid body with 400", async () => {
@@ -444,7 +458,7 @@ describeE2E("Group E: advertising / creatives", () => {
 
   test("DELETE /api/v1/advertising/creatives/:id rejects unauthenticated", async () => {
     const res = await api.delete(`/api/v1/advertising/creatives/${FAKE_UUID}`);
-    expectAuthGate(res.status, "DELETE advertising/creatives/:id");
+    await expectAuthGate(res, "DELETE advertising/creatives/:id");
   });
 });
 
@@ -453,7 +467,7 @@ describeE2E("Group E: training / vertex tune Worker boundary", () => {
     const res = await api.post("/api/training/vertex/tune", {
       datasetUri: "gs://demo",
     });
-    expectAuthGate(res.status, "POST training/vertex/tune");
+    await expectAuthGate(res, "POST training/vertex/tune");
   });
 
   test("POST /api/training/vertex/tune returns 501 (node:fs blocker)", async () => {
@@ -470,7 +484,7 @@ describeE2E("Group E: training / vertex tune Worker boundary", () => {
 
   test("GET /api/training/vertex/tune rejects unauthenticated", async () => {
     const res = await api.get("/api/training/vertex/tune");
-    expectAuthGate(res.status, "GET training/vertex/tune");
+    await expectAuthGate(res, "GET training/vertex/tune");
   });
 });
 
@@ -486,8 +500,8 @@ describeE2E("Group E: admin / docker control-plane forwarding", () => {
     const unauthed = await api.post(
       `/api/v1/admin/docker-nodes/${FAKE_UUID}/health-check`,
     );
-    expectAuthGate(
-      unauthed.status,
+    await expectAuthGate(
+      unauthed,
       "POST docker-nodes/:nodeId/health-check (unauth)",
     );
 

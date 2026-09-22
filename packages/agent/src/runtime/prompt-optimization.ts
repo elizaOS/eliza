@@ -14,6 +14,7 @@ import {
   ElizaError,
   EventType,
   getTrajectoryContext,
+  type IAgentRuntime,
   isLlmGenerationModelType,
   isTextGenerationModelType,
   normalizeTrajectoryLlmPurpose,
@@ -1008,8 +1009,9 @@ export function serializeCompactorMessagesForModel(
  * from them, since a quoted Active View block can be original source evidence.
  */
 function applyActiveViewAwarenessToMessages(
+  runtime: IAgentRuntime,
   messages: CompactorMessage[],
-  view: Parameters<typeof applyActiveViewAwareness>[1],
+  view: Parameters<typeof applyActiveViewAwareness>[2],
 ): CompactorMessage[] {
   let userMessageIndex = -1;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -1022,7 +1024,7 @@ function applyActiveViewAwarenessToMessages(
 
   const message = messages[userMessageIndex];
   if (!view) return messages;
-  const block = renderActiveViewContextBlock(view);
+  const block = renderActiveViewContextBlock(runtime, view);
   const awareContent =
     message.content.length > 0 ? `${message.content}\n\n${block}` : block;
 
@@ -1460,7 +1462,7 @@ export function installPromptOptimizations(
     // /api/views/:id/navigate (stored in view-action-affinity). Read it once so
     // both the action-weighting (keep view-scoped actions at full param detail)
     // and the awareness block below stay consistent for this prompt.
-    const activeView = getActiveViewContext();
+    const activeView = getActiveViewContext(runtime);
 
     if (shouldApplyPromptBudget(modelType)) {
       const budget = resolvePromptBudget(runtime, modelType, {
@@ -1487,7 +1489,11 @@ export function installPromptOptimizations(
         modelType === "ACTION_PLANNER")
     ) {
       if (promptKey) {
-        const awarePrompt = applyActiveViewAwareness(nextPrompt, activeView);
+        const awarePrompt = applyActiveViewAwareness(
+          runtime,
+          nextPrompt,
+          activeView,
+        );
         if (awarePrompt !== nextPrompt) {
           promptOptimizationTelemetry.transformations.push(
             `active-view-awareness:${activeView.viewId}`,
@@ -1496,6 +1502,7 @@ export function installPromptOptimizations(
         }
       } else if (nextMessages) {
         const awareMessages = applyActiveViewAwarenessToMessages(
+          runtime,
           nextMessages,
           activeView,
         );

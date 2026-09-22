@@ -113,6 +113,10 @@ describe("view bundle import guard", () => {
       "export {};\n",
     );
     fs.writeFileSync(path.join(bundleDir, "styles.css"), "body {}\n");
+    fs.writeFileSync(
+      path.join(bundleDir, "bundle.js.assets.json"),
+      JSON.stringify({ version: 1, files: ["bundle.js"] }),
+    );
 
     const result = await validateViewBundles({
       ...options,

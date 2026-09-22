@@ -7,13 +7,9 @@
  */
 
 import { ElizaError } from "@elizaos/core";
+import type { ViewInteractResult } from "@elizaos/shared/views/view-interact-protocol";
 
-export interface ViewInteractResult {
-  requestId: string;
-  success: boolean;
-  result?: unknown;
-  error?: string;
-}
+export type { ViewInteractResult } from "@elizaos/shared/views/view-interact-protocol";
 
 export class PendingRequestMap {
   private readonly map = new Map<
@@ -74,6 +70,23 @@ export class PendingRequestMap {
     clearTimeout(pending.timer);
     this.map.delete(requestId);
     pending.resolve(result);
+  }
+
+  reject(requestId: string, reason: Error): void {
+    const pending = this.map.get(requestId);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.map.delete(requestId);
+    pending.reject(reason);
+  }
+
+  /** Stop all waiters owned by the closing host. */
+  rejectAll(reason: Error): void {
+    for (const pending of this.map.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(reason);
+    }
+    this.map.clear();
   }
 
   /** Number of in-flight requests. Useful for diagnostics. */

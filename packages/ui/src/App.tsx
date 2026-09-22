@@ -19,6 +19,7 @@ import {
 } from "@elizaos/common";
 import { hasStewardAuthedCookie } from "@elizaos/shared/steward-session-client";
 import { X } from "lucide-react";
+import { registerDeviceControlInteractHandler } from "./components/views/device-control-interact";
 import "./components/chat/chat-source-registration";
 import {
   type ComponentType,
@@ -1330,6 +1331,7 @@ function renderRemoteView(
       title={view.label}
     >
       <DynamicViewLoader
+        installationId={view.installationId}
         bundleUrl={view.bundleUrl}
         frameUrl={view.frameUrl}
         componentExport={view.componentExport}
@@ -1460,6 +1462,7 @@ function ViewLayoutSurface({
                 <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
                   {view.bundleUrl || view.frameUrl ? (
                     <DynamicViewLoader
+                      installationId={view.installationId}
                       bundleUrl={view.bundleUrl}
                       frameUrl={view.frameUrl}
                       componentExport={view.componentExport}
@@ -2003,6 +2006,14 @@ function ViewRouter({
   // Available views from /api/views — used to route to DynamicViewLoader
   // when a tab ID matches a view entry that ships a remote bundle URL.
   const { views: availableViews } = useAvailableViews();
+  const deviceInstallationId = availableViews.find(
+    (entry) =>
+      entry.id === "device-control" && (entry.viewType ?? "gui") === "gui",
+  )?.installationId;
+  useEffect(
+    () => registerDeviceControlInteractHandler(deviceInstallationId),
+    [deviceInstallationId],
+  );
   const view = renderViewRouterContent({
     tab,
     dynamicPage,

@@ -206,6 +206,7 @@ describe("bindReadyPhase view interaction bridge", () => {
 
     clientMock.handlers.get("view:interact")?.({
       requestId: "req-1",
+      installationId: "fixture-installation",
       viewId: "remote-ledger",
       viewType: "gui",
       capability: "get-state",
@@ -220,6 +221,7 @@ describe("bindReadyPhase view interaction bridge", () => {
           "get-state",
           { selector: "[data-view-state]" },
           "req-1",
+          "fixture-installation",
         ),
       { timeout: 10_000 },
     );
@@ -234,6 +236,7 @@ describe("bindReadyPhase view interaction bridge", () => {
 
     clientMock.handlers.get("view:interact")?.({
       requestId: "req-xr-1",
+      installationId: "fixture-installation",
       viewId: "spatial-room",
       viewType: "xr",
       capability: "get-state",
@@ -247,6 +250,7 @@ describe("bindReadyPhase view interaction bridge", () => {
           "get-state",
           undefined,
           "req-xr-1",
+          "fixture-installation",
         ),
       { timeout: 10_000 },
     );
@@ -263,6 +267,7 @@ describe("bindReadyPhase view interaction bridge", () => {
     });
     clientMock.handlers.get("view:interact")?.({
       requestId: "req-array-params",
+      installationId: "fixture-installation",
       viewId: "remote-ledger",
       capability: "get-state",
       params: ["not", "an", "object"],
@@ -276,6 +281,7 @@ describe("bindReadyPhase view interaction bridge", () => {
           "get-state",
           undefined,
           "req-array-params",
+          "fixture-installation",
         ),
       { timeout: 10_000 },
     );
