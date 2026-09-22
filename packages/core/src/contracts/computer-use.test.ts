@@ -134,10 +134,7 @@ function action(actionId: string, kind: "observe" | "evaluate" = "observe") {
 		kind,
 		payload: {},
 		observationId: observation.observationId,
-		observationSequence:
-			actionId === "case-stale_observation"
-				? observation.sequence - 1
-				: observation.sequence,
+		observationSequence: observation.sequence,
 		requestedAt: now,
 		confirmationGrant: null,
 		leaseIds: [],
@@ -148,11 +145,7 @@ const statusByActionId: Readonly<Record<string, InteractionOutcomeStatus>> = {
 	"case-success": "SUCCEEDED",
 	"case-failed_no_effect": "FAILED_NO_EFFECT",
 	"case-uncertain_effect": "UNCERTAIN_EFFECT",
-	"case-policy_block": "BLOCKED_BY_POLICY",
 	"case-confirmation": "NEEDS_CONFIRMATION",
-	"case-unsupported": "UNSUPPORTED",
-	"case-stale_observation": "STALE_OBSERVATION",
-	"case-lease_conflict": "LEASE_CONFLICT",
 };
 
 function resultFor(input: InteractionAction): InteractionActionResult {
