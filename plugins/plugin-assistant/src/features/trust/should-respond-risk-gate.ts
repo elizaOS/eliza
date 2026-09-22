@@ -425,6 +425,21 @@ function readCachedGateResult(
   };
 }
 
+/** Progress before the final response decision may use only existing admission.
+ * Pending risk verification withholds progress without starting another model call. */
+export function canPublishProgressBeforeResponseDecision(
+  message: Memory,
+  role: string | undefined,
+): boolean {
+  const text = textOf(message);
+  const cached = readCachedGateResult(message, text, roleKey(role));
+  if (cached) return !cached.blocked;
+  return !evaluateRoleKeyedRisk(
+    role,
+    readRiskFactors(message) ?? extractRiskFactors(text),
+  ).shouldVerify;
+}
+
 /**
  * The full gate, called from the message service only when `shouldRespond === true`.
  * Reads the deterministic `RiskFactors` (or computes them if the hook did not run),

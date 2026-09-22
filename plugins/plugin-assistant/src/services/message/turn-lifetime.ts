@@ -29,6 +29,7 @@ import {
   getInferenceTimer,
   getModelStreamChunkDeliveryDepth,
   getTrajectoryContext,
+  guardOutboundEnvelopeText,
   InferenceTurnTimer,
   logger,
   ModelType,
@@ -517,7 +518,22 @@ export class MessageTurnLifetime {
               String(runtime.getSetting("CONTINUE_AFTER_ACTIONS") ?? "true"),
             ),
           onStreamChunk: wrappedOnStreamChunk,
-          onPlanningAcknowledgment: options?.onPlanningAcknowledgment,
+          onPlanningAcknowledgment: options?.onPlanningAcknowledgment
+            ? (text) => {
+                // Progress cannot be recalled. Sensitive turns use final audience
+                // revalidation, and blocked envelope material is never a status label.
+                if (ownerExclusiveDisclosureWasUsed(message)) return;
+                if (
+                  guardOutboundEnvelopeText(
+                    runtime,
+                    text,
+                    "planning-acknowledgment",
+                  ) !== text
+                )
+                  return;
+                options.onPlanningAcknowledgment?.(text);
+              }
+            : undefined,
           keepExistingResponses:
             options?.keepExistingResponses ??
             parseBooleanFromText(

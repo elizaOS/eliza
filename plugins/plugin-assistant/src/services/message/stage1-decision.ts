@@ -19,6 +19,7 @@ import {
   getCandidateActionBackstopRules,
   getStreamingContext,
   getUserMessageText,
+  guardOutboundEnvelopeText,
   HANDLE_RESPONSE_TOOL_NAME,
   hashString,
   isObjectRecord,
@@ -30,6 +31,7 @@ import {
   withModelInputBudgetProviderOptions,
   withRequiredCompletionSourceIdentity,
 } from "@elizaos/core";
+import { canPublishProgressBeforeResponseDecision } from "../../features/trust/should-respond-risk-gate.ts";
 import { withDirectTextBuiltinSchemaDescriptions } from "../../runtime/builtin-field-evaluators";
 import { getMessageHandlerReply } from "../../runtime/message-handler";
 import { cacheProviderOptions } from "../../runtime/planner-loop";
@@ -748,8 +750,14 @@ export async function generateStage1Decision(
       // Read progress follows fresh authorization and never enters final delivery.
       if (
         contextReadProgressEnabled &&
+        canPublishProgressBeforeResponseDecision(args.message, refreshedRole) &&
         !contextReadAcknowledgmentSent &&
-        nativeRead?.acknowledgment
+        nativeRead?.acknowledgment &&
+        guardOutboundEnvelopeText(
+          args.runtime,
+          nativeRead.acknowledgment,
+          "context-read-progress",
+        ) === nativeRead.acknowledgment
       ) {
         const progress = sanitizeUserVisibleModelOutput(
           nativeRead.acknowledgment,
@@ -930,6 +938,21 @@ export async function generateStage1Decision(
   if (rawFieldParsed) {
     const normalizedRawParsed =
       normalizeRawParsedForFieldRegistry(rawFieldParsed);
+    // Reject progress armor before reply formatting can turn it into a partial
+    // visible fragment. The original wire output remains in the trajectory.
+    if (
+      args.onPlanningAcknowledgment &&
+      typeof normalizedRawParsed.replyEffectStatus === "string" &&
+      normalizedRawParsed.replyEffectStatus.trim().toLowerCase() ===
+        "pending" &&
+      typeof normalizedRawParsed.replyText === "string" &&
+      guardOutboundEnvelopeText(
+        args.runtime,
+        normalizedRawParsed.replyText,
+        "planning-progress",
+      ) !== normalizedRawParsed.replyText
+    )
+      normalizedRawParsed.replyText = "";
     fieldRunResult = await timeInferenceSpan(
       "evaluators:response-handler-fields",
       () =>
