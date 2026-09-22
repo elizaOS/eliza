@@ -42,6 +42,8 @@ describe("getElizaCoreEntry", () => {
       '{"name":"@elizaos/core"}\n',
     );
     await writeFile(sourceEntry, "export {};\n");
+    await mkdir(path.join(coreRoot, "dist"), { recursive: true });
+    await writeFile(path.join(coreRoot, "dist", "index.js"), "export {};\n");
 
     expect(getElizaCoreEntry(isolatedRepoRoot)).toBe(sourceEntry);
   });

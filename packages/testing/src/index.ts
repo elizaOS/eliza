@@ -66,7 +66,6 @@ export {
   getAutonomousSourceRoot,
   getElizaCoreEntry,
   getInstalledPackageEntry,
-  getInstalledPackageNamedExport,
   getInstalledPackageRoot,
   getSharedSourceRoot,
   getUiSourceRoot,
