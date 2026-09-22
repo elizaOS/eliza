@@ -1,3 +1,4 @@
+/** Renders authorized world settings with configured secrets concealed in every provider surface. */
 import type {
   IAgentRuntime,
   Memory,
@@ -16,18 +17,11 @@ import {
   unsaltWorldSettings,
 } from "@elizaos/core";
 
-/**
- * Formats a setting value for display, respecting privacy flags
- */
-const formatSettingValue = (setting: Setting, isSetup: boolean): string => {
-  if (setting.value === null) {
-    return "Not set";
-  }
-  if (setting.secret && !isSetup) {
-    return "****************";
-  }
-  return String(setting.value);
-};
+import {
+  formatSettingValue,
+  redactSettingsForProvider,
+} from "../../secrets/setting-presentation.ts";
+
 /**
  * Generates a status message based on the current settings state
  */
@@ -65,7 +59,7 @@ function generateStatusMessage(
       return {
         key,
         name: setting.name,
-        value: formatSettingValue(setting, isSetup),
+        value: formatSettingValue(setting),
         description,
         usageDescription,
         required: setting.required,
@@ -353,7 +347,7 @@ export const settingsProvider: Provider = {
       );
       return {
         data: {
-          settings: worldSettings,
+          settings: redactSettingsForProvider(worldSettings),
         },
         values: {
           settings: output,
