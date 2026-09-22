@@ -259,6 +259,16 @@ Session state is persisted with a tiered backend:
 2. Otherwise, JSON file at `$ELIZA_ACP_STATE_DIR/sessions.json` (atomic writes via temp+rename).
 3. Last resort: in-memory `Map` (warns that sessions won't survive restart).
 
+When automatic completion verification starts, its process owner is persisted
+with the `validating` transition. Locality requires the same OS boot identity
+and, on Linux, PID namespace; hostname is not an identity. After a process
+restart, verification owned by a confirmed dead local process becomes `interrupted`, with a retryable audit
+event and unchanged correction counters. Re-report completion to retry. Recovery
+preserves paused tasks, live or remote owners, and legacy records without an
+identifiable owner; those require explicit operator review. Platforms without a
+supported kernel identity (currently Windows) also require explicit review. The conditional
+store update prevents recovery from replacing a concurrent new verifier.
+
 ## End-to-end smoke tests
 
 These live smokes ship with the repo:

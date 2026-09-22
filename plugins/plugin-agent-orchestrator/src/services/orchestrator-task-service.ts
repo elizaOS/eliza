@@ -238,6 +238,7 @@ import {
   subscriptionExecutionAuthorizationFromMetadata,
   TERMINAL_SESSION_STATUSES,
 } from "./types.js";
+import { getVerifierProcessScope } from "./verifier-process-owner.js";
 import {
   WAVE_SUPERVISOR_SERVICE_TYPE,
   WaveConcurrencyCapError,
@@ -1190,6 +1191,13 @@ export class OrchestratorTaskService extends Service {
       }, STUCK_TASK_REAP_INTERVAL_MS);
       this.stuckTaskReaperTimer.unref?.();
     }
+    try {
+      await this.recoverInterruptedVerifications();
+    } catch (error) {
+      // error-policy:J2 preserve startup failure after releasing owned timers.
+      await this.stop();
+      throw error;
+    }
     const acp = this.acp();
     if (acp) {
       this.subscribeToAcp(acp);
@@ -1293,6 +1301,87 @@ export class OrchestratorTaskService extends Service {
         {},
       );
     });
+  }
+
+  /** A process restart loses verifier promises, but not their durable task state. */
+  private async recoverInterruptedVerifications(): Promise<void> {
+    if (!shouldAutoVerifyGoal()) return;
+    const docs = await this.store.listTaskDocuments({
+      includeArchived: false,
+      status: "validating",
+    });
+    if (docs.length === 0) return;
+    const localScope = await getVerifierProcessScope();
+    if (!("id" in localScope)) {
+      this.log(
+        "warn",
+        "Verification recovery requires explicit operator review",
+        { reason: localScope.unavailableReason, taskCount: docs.length },
+      );
+      return;
+    }
+    for (const candidate of docs) {
+      if (this.autoVerifyInFlight.has(candidate.task.id)) continue;
+      await this.withTaskWriteLock(candidate.task.id, async () => {
+        const doc = await this.store.getTask(candidate.task.id);
+        if (doc?.task.status !== "validating" || doc.task.paused) return;
+        // The file/SQL store may be shared with another live host. Only reclaim
+        // verification whose recorded local process is positively gone.
+        const owner = doc.task.metadata.autoVerifyOwner;
+        if (
+          !isRecord(owner) ||
+          !isRecord(owner.scope) ||
+          owner.scope.id !== localScope.id ||
+          typeof owner.pid !== "number" ||
+          !Number.isInteger(owner.pid) ||
+          owner.pid <= 0
+        ) {
+          this.log(
+            "info",
+            "Verification owner locality is unproven; leaving task unchanged for operator review",
+            { taskId: doc.task.id },
+          );
+          return;
+        }
+        try {
+          process.kill(owner.pid, 0);
+          return;
+        } catch (error) {
+          // error-policy:J4 only ESRCH in the verified local kernel/namespace
+          // proves death; denied or ambiguous probes require operator review.
+          if (!isRecord(error) || error.code !== "ESRCH") return;
+        }
+        const recovered = await this.store.interruptStuckTaskIfUnchanged({
+          taskId: doc.task.id,
+          expectedTaskUpdatedAt: doc.task.updatedAt,
+          expectedVerificationOwner: { pid: owner.pid, scopeId: localScope.id },
+          expectedSessions: doc.sessions.map(
+            ({ sessionId, status, updatedAt }) => ({
+              sessionId,
+              status,
+              updatedAt,
+            }),
+          ),
+          deadSessionIds: [],
+          nowMs: Date.now(),
+          event: {
+            id: randomUUID(),
+            taskId: doc.task.id,
+            eventType: "auto_verify_inconclusive",
+            summary:
+              "Verification was interrupted by a process restart. Re-report completion to retry; no corrective attempt was charged.",
+            data: {
+              verifier: "auto-verifier-infrastructure",
+              retryable: true,
+              reason: "process_restart",
+            },
+            timestamp: Date.now(),
+            createdAt: nowIso(),
+          },
+        });
+        if (recovered) this.emitChange(doc.task.id);
+      });
+    }
   }
 
   /** Retry persisted coordinator-review deliveries after a runtime restart. */
@@ -3161,7 +3250,20 @@ export class OrchestratorTaskService extends Service {
     if (doc.task.paused) return;
     const next = resolveTaskTransition(doc.task.status, trigger);
     if (next === null || next === doc.task.status) return;
-    await this.store.updateTask(taskId, { status: next });
+    await this.store.updateTask(taskId, {
+      status: next,
+      ...(next === "validating" && shouldAutoVerifyGoal()
+        ? {
+            metadata: {
+              ...doc.task.metadata,
+              autoVerifyOwner: {
+                pid: process.pid,
+                scope: await getVerifierProcessScope(),
+              },
+            },
+          }
+        : {}),
+    });
   }
 
   /**
