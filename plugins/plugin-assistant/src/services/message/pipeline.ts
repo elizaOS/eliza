@@ -115,7 +115,7 @@ import {
 } from "./addressing.js";
 import { createV5MessageContextObject } from "./context-assembly.js";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
-import { withoutIntermediateVisibleText } from "./delivery.js";
+import { filterIntermediateCallbackContent } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import {
   captureMessageReplyRecovery,
@@ -1628,7 +1628,7 @@ export async function runV5MessageRuntimeStage1(
       : undefined;
     const intermediateCallback: HandlerCallback | undefined = recordingCallback
       ? async (content, ...rest) => {
-          const nonTextContent = withoutIntermediateVisibleText(content);
+          const nonTextContent = filterIntermediateCallbackContent(content);
           return nonTextContent
             ? recordingCallback(nonTextContent, ...rest)
             : [];
@@ -2028,15 +2028,10 @@ export async function runV5MessageRuntimeStage1(
                         ctx.trajectory,
                         exposedPlannerActions,
                       ),
-                      // A pending batch has not earned transcript prose, but its
-                      // media and interactive payloads still belong to the user.
-                      ...(recordingCallback
-                        ? {
-                            callback:
-                              ctx.plannerCompleted === false
-                                ? intermediateCallback
-                                : recordingCallback,
-                          }
+                      // A predicted final batch can still need evaluation or retry.
+                      // Preserve controls/media while final prose stays planner-owned.
+                      ...(intermediateCallback
+                        ? { callback: intermediateCallback }
                         : {}),
                     }),
                     plannerRuntime,

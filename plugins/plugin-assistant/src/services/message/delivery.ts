@@ -24,6 +24,7 @@ import {
   isObjectRecord as isRecord,
   ModelType,
   parseBooleanFromText,
+  parseInteractionBlocks,
   reportOutboundEnvelopeBlock,
   runWithSuppressedModelStream,
   sanitizeOutboundText,
@@ -70,9 +71,15 @@ export function hasIntermediateCallbackPayload(content: Content): boolean {
   });
 }
 
-export function withoutIntermediateVisibleText(
+export function filterIntermediateCallbackContent(
   content: Content,
 ): Content | null {
+  // Controls require their explanatory question; ordinary narration waits for final publication.
+  if (content.interactions?.length) return content;
+  if (typeof content.text === "string") {
+    const { blocks } = parseInteractionBlocks(content.text);
+    if (blocks.length > 0) return { ...content, interactions: blocks };
+  }
   const filtered = { ...content };
   delete filtered.text;
   return hasIntermediateCallbackPayload(filtered) ? filtered : null;
@@ -394,6 +401,7 @@ export function shouldRewriteActionCallback(
   // The settlement boundary marks only a byte-exact canonical action reply.
   // Re-voicing it would violate verifiedUserFacing's do-not-paraphrase contract.
   if (response.agentVoiced === true) return false;
+  if (response.interactions?.length) return false;
   if (getEffectDeliveryBinding(response)) {
     return false;
   }
