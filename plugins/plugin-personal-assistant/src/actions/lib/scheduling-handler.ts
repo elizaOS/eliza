@@ -35,8 +35,11 @@ import {
   parseJsonModelRecord,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
-  toWellFormedUnicode,
 } from "@elizaos/core";
+import {
+  buildWideLookupRange,
+  resolveCalendarMutationCandidates,
+} from "@elizaos/plugin-calendar/actions/calendar-handler";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -73,7 +76,10 @@ import {
   withRequiredTransaction,
 } from "../../lifeops/sql.js";
 import { inferTimeZoneFromLocationText } from "../../lifeops/time/timezone.js";
-import { getZonedDateParts } from "../../lifeops/time.js";
+import {
+  buildUtcDateFromLocalParts,
+  getZonedDateParts,
+} from "../../lifeops/time.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
@@ -149,6 +155,7 @@ export type ProposedMeetingSlot = {
 
 export type ProposeMeetingTimesParameters = {
   durationMinutes?: number;
+  duration?: { minutes?: number; existingEventQuery?: string };
   daysAhead?: number;
   slotCount?: number;
   windowStart?: string;
@@ -157,9 +164,14 @@ export type ProposeMeetingTimesParameters = {
   counterparties?: string[];
 };
 
-export type CheckAvailabilityParameters = {
+type AvailabilityInterval = {
   startAt?: string;
   endAt?: string;
+  durationMinutes?: number;
+};
+
+export type CheckAvailabilityParameters = AvailabilityInterval & {
+  interval?: AvailabilityInterval;
 };
 
 function parseTimeOfDayToMinutes(value: string): number {
@@ -286,6 +298,7 @@ export function computeProposedSlots(args: {
 
   const results: ProposedMeetingSlot[] = [];
   const seenDays = new Set<string>();
+  const seenStarts = new Set<number>();
 
   const step = SLOT_STEP_MINUTES * MS_PER_MINUTE;
   const cursor =
@@ -314,6 +327,7 @@ export function computeProposedSlots(args: {
         slotEndMin <= preferredEnd;
 
       if (
+        !seenStarts.has(t) &&
         withinPreferred &&
         !overlapsBusy(slotStart.getTime(), slotEnd.getTime(), busy) &&
         !overlapsBlackout(slotStart, slotEnd, tz, preferences.blackoutWindows)
@@ -321,6 +335,7 @@ export function computeProposedSlots(args: {
         const dayKey = `${parts.year}-${parts.month}-${parts.day}`;
         if (!onePerDay || !seenDays.has(dayKey)) {
           seenDays.add(dayKey);
+          seenStarts.add(t);
           results.push({
             startAt: slotStart.toISOString(),
             endAt: slotEnd.toISOString(),
@@ -351,46 +366,6 @@ function formatSlotsText(slots: readonly ProposedMeetingSlot[]): string {
       `${idx + 1}. ${slot.localStart} – ${slot.localEnd} (${slot.durationMinutes} min)`,
   );
   return `Here ${slots.length === 1 ? "is an available option" : `are ${slots.length} options`} you can offer:\n${lines.join("\n")}`;
-}
-
-function cleanBundledCounterparty(value: string): string {
-  return toWellFormedUnicode(value)
-    .replace(/^(?:with|for|and|also|maybe|please)\s{1,32}/iu, "")
-    .replace(/\s{1,32}(?:at|if|while|during|thanks|please)\b.{0,1024}$/iu, "")
-    .replace(/[.?!,;:]+$/u, "")
-    .trim();
-}
-
-export function extractBundledMeetingCounterparties(
-  messageText: string,
-): string[] {
-  const trimmed = toWellFormedUnicode(messageText.trim());
-  if (trimmed.length === 0) {
-    return [];
-  }
-
-  const patterns = [
-    /\bschedule\s{1,32}(.{1,2048}?)(?:\s{1,32}at\s{1,32}the\s{1,32}same\s{1,32}time\b|\s{1,32}same\s{1,32}day\b|\s{1,32}if\s{1,32}possible\b|[.?!]|$)/iu,
-    /\bbundle\s{1,32}(.{1,2048}?)(?:\s{1,32}together\b|\s{1,32}on\s{1,32}the\s{1,32}same\s{1,32}day\b|\s{1,32}if\s{1,32}possible\b|[.?!]|$)/iu,
-    /\bmeetings?\s{1,32}with\s{1,32}(.{1,2048}?)(?:\s{1,32}on\s{1,32}the\s{1,32}same\s{1,32}day\b|\s{1,32}at\s{1,32}the\s{1,32}same\s{1,32}time\b|\s{1,32}if\s{1,32}possible\b|[.?!]|$)/iu,
-  ];
-
-  for (const pattern of patterns) {
-    const match = pattern.exec(trimmed);
-    const raw = match?.[1]?.trim();
-    if (!raw) {
-      continue;
-    }
-    const counterparties = raw
-      .split(/\s{0,32}(?:,|&|\band\b)\s{0,32}/iu)
-      .map(cleanBundledCounterparty)
-      .filter((value) => value.length > 0);
-    if (counterparties.length >= 2) {
-      return counterparties;
-    }
-  }
-
-  return [];
 }
 
 function formatCounterpartyList(counterparties: readonly string[]): string {
@@ -463,6 +438,36 @@ function parseOptionalIso(value: unknown): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+/** Local proposal bounds use the requested zone, never the server timezone. */
+function parseProposalBound(value: unknown, timeZone: string): Date | null {
+  if (typeof value !== "string") return null;
+  const local = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(
+    value,
+  );
+  if (!local) return parseOptionalIso(value);
+  const parts = {
+    year: Number(local[1]),
+    month: Number(local[2]),
+    day: Number(local[3]),
+    hour: Number(local[4]),
+    minute: Number(local[5]),
+    second: Number(local[6] ?? 0),
+  };
+  try {
+    const instant = buildUtcDateFromLocalParts(timeZone, parts);
+    const resolved = getZonedDateParts(instant, timeZone);
+    // Reject nonexistent clocks and invalid dates rather than shifting the window.
+    return Object.entries(parts).every(
+      ([key, value]) => resolved[key as keyof typeof resolved] === value,
+    )
+      ? instant
+      : null;
+  } catch {
+    // error-policy:J3 Invalid civil-time input remains invalid, never a shifted slot.
+    return null;
+  }
+}
+
 function getParams<T>(options: HandlerOptions | undefined): Partial<T> {
   const params = (options as HandlerOptions | undefined)?.parameters as
     | Partial<T>
@@ -483,6 +488,7 @@ type SchedulingRespondPayload<
   success: boolean;
   scenario: string;
   fallback: string;
+  error?: string;
   context?: Record<string, unknown>;
   data?: T;
   values?: ActionResult["values"];
@@ -515,14 +521,30 @@ function makeSchedulingRespond(args: {
         action: args.actionName,
       });
     }
-    return applyGroundedActionReply(
+    const result = applyGroundedActionReply(
       {
         success: payload.success,
+        ...(payload.error ? { error: payload.error } : {}),
         ...(payload.values ? { values: payload.values } : {}),
         ...(payload.data ? { data: payload.data } : {}),
       },
       reply,
     );
+    // A successful availability observation can feed a dependent planner step.
+    // Its final prose still belongs to completion; no intermediate verdict is
+    // needed merely because that prose was deferred.
+    if (
+      args.actionName === "CHECK_AVAILABILITY" &&
+      payload.success &&
+      reply.kind === "deferred"
+    ) {
+      const { turnComplete: _deferredReply, ...observation } = result;
+      return {
+        ...observation,
+        data: { ...observation.data, readOnlyOperation: true },
+      };
+    }
+    return result;
   };
 }
 
@@ -564,16 +586,16 @@ export async function runProposeMeetingTimesHandler(
   const effectivePreferences = inferredTimeZone
     ? { ...preferences, timeZone: inferredTimeZone }
     : preferences;
-  const counterparties =
-    Array.isArray(params.counterparties) && params.counterparties.length > 0
-      ? params.counterparties
-      : extractBundledMeetingCounterparties(messageBody);
+  // Names must come from structured arguments, not punctuation in the request.
+  // The reply model still receives the authored request for conversational context.
+  const counterparties = params.counterparties ?? [];
   const bundleLocationLabel = deriveBundleLocationLabel(messageBody);
-  const durationMinutes =
-    typeof params.durationMinutes === "number" &&
-    params.durationMinutes >= 5 &&
-    params.durationMinutes <= 480
-      ? Math.floor(params.durationMinutes)
+  const requestedDuration = params.duration?.minutes ?? params.durationMinutes;
+  let durationMinutes =
+    typeof requestedDuration === "number" &&
+    requestedDuration >= 5 &&
+    requestedDuration <= 480
+      ? Math.floor(requestedDuration)
       : effectivePreferences.defaultDurationMinutes;
   const slotCount =
     typeof params.slotCount === "number" &&
@@ -589,16 +611,119 @@ export async function runProposeMeetingTimesHandler(
       : DEFAULT_DAYS_LOOKAHEAD;
 
   const now = new Date();
-  const explicitStart = parseOptionalIso(params.windowStart);
-  const explicitEnd = parseOptionalIso(params.windowEnd);
+  const explicitStart = parseProposalBound(
+    params.windowStart,
+    effectivePreferences.timeZone,
+  );
+  const explicitEnd = parseProposalBound(
+    params.windowEnd,
+    effectivePreferences.timeZone,
+  );
   const windowStart = explicitStart ?? now;
   const windowEnd =
     explicitEnd ??
     new Date(windowStart.getTime() + daysAhead * 24 * 60 * 60_000);
+  if (
+    (params.windowStart !== undefined && !explicitStart) ||
+    (params.windowEnd !== undefined && !explicitEnd) ||
+    windowEnd <= windowStart
+  ) {
+    return respond({
+      success: false,
+      scenario: "scheduling_invalid_window",
+      error:
+        "INVALID_WINDOW: Supplied windowStart/windowEnd must be valid ISO timestamps, with the end after the start. No calendar read was performed. Correct the arguments from the user request before retrying.",
+      fallback:
+        "The proposed search window is invalid. Supply valid start and end timestamps in the requested timezone.",
+      data: { error: "INVALID_WINDOW" },
+    });
+  }
 
   const { LifeOpsService, LifeOpsServiceError } =
     await loadLifeOpsServiceModule();
   const service = new LifeOpsService(runtime);
+  let existingEvent: LifeOpsCalendarEvent | undefined;
+  let targetSnapshot:
+    | ReturnType<typeof calendarSnapshotEffectProof>
+    | undefined;
+  const existingEventQuery = params.duration?.existingEventQuery?.trim();
+  if (
+    params.duration &&
+    requestedDuration === undefined &&
+    !existingEventQuery
+  ) {
+    return respond({
+      success: false,
+      scenario: "scheduling_duration_missing",
+      fallback:
+        "How long should this meeting be, or which existing event should I use?",
+      data: { awaitingUserInput: true, error: "DURATION_REQUIRED" },
+    });
+  }
+  if (existingEventQuery) {
+    const targetFeed = await service.getCalendarFeed(INTERNAL_URL, {
+      includeHiddenCalendars: true,
+      ...buildWideLookupRange(effectivePreferences.timeZone),
+      timeZone: effectivePreferences.timeZone,
+    });
+    if (targetFeed.state !== "complete") {
+      return incompleteCalendarResponse({
+        feed: targetFeed,
+        respond,
+        scenario: "scheduling_calendar_incomplete",
+      });
+    }
+    targetSnapshot = calendarSnapshotEffectProof(targetFeed);
+    const candidates = resolveCalendarMutationCandidates({
+      action: "update",
+      events: targetFeed.events,
+      titleHint: existingEventQuery,
+      // This field identifies the current event. The proposal window and the
+      // surrounding request describe its destination, not its current date.
+      texts: [existingEventQuery],
+      timeZone: effectivePreferences.timeZone,
+    });
+    if (candidates.length !== 1) {
+      return respond({
+        success: false,
+        scenario: "scheduling_event_target_unresolved",
+        fallback:
+          candidates.length === 0
+            ? "I couldn't find that event. Which event should I find a new time for?"
+            : "More than one event matches. Which one should I find a new time for?",
+        context: { candidates },
+        data: {
+          awaitingUserInput: true,
+          candidates,
+          calendarSnapshot: targetSnapshot,
+        },
+      });
+    }
+    existingEvent = candidates[0];
+    if (requestedDuration === undefined) {
+      durationMinutes =
+        (Date.parse(existingEvent.endAt) - Date.parse(existingEvent.startAt)) /
+        MS_PER_MINUTE;
+      if (
+        !Number.isFinite(durationMinutes) ||
+        durationMinutes < 5 ||
+        durationMinutes > 480
+      ) {
+        return respond({
+          success: false,
+          scenario: "scheduling_event_duration_invalid",
+          fallback:
+            "The existing event needs an explicit meeting duration before I can suggest times.",
+          context: { existingEvent },
+          data: {
+            awaitingUserInput: true,
+            error: "INVALID_EVENT_DURATION",
+            calendarSnapshot: targetSnapshot,
+          },
+        });
+      }
+    }
+  }
   let feed: LifeOpsCalendarFeed;
   try {
     feed = await service.getCalendarFeed(INTERNAL_URL, {
@@ -642,7 +767,9 @@ export async function runProposeMeetingTimesHandler(
     durationMinutes,
     slotCount,
     preferences: effectivePreferences,
-    events: feed.events,
+    events: existingEvent
+      ? feed.events.filter((event) => event.id !== existingEvent.id)
+      : feed.events,
   });
 
   const fallback = formatProposedSlotsReply({
@@ -659,6 +786,8 @@ export async function runProposeMeetingTimesHandler(
     fallback,
     context: {
       slotCount: slots.length,
+      availabilityEvidence:
+        "These are selected slot options, not a complete free/busy timeline. Do not infer availability before, between, or after the listed slots.",
       durationMinutes,
       timeZone: effectivePreferences.timeZone,
       counterparties,
@@ -674,6 +803,26 @@ export async function runProposeMeetingTimesHandler(
       counterparties,
       bundleLocationLabel,
       calendarSnapshot: calendarSnapshotEffectProof(feed),
+      // A preview supplies choices, not an accepted time. This applies to
+      // both new bookings and moves; success describes the availability read.
+      awaitingUserInput: true,
+      ...(existingEvent
+        ? {
+            existingEvent,
+            existingEventDisplay: {
+              localStart: formatLocalForDisplay(
+                existingEvent.startAt,
+                effectivePreferences.timeZone,
+              ),
+              localEnd: formatLocalForDisplay(
+                existingEvent.endAt,
+                effectivePreferences.timeZone,
+              ),
+              timeZone: effectivePreferences.timeZone,
+            },
+            targetSnapshot,
+          }
+        : {}),
     },
   });
 }
@@ -705,15 +854,42 @@ export async function runCheckAvailabilityHandler(
     });
   }
 
-  const params = getParams<CheckAvailabilityParameters>(options);
+  const supplied = getParams<CheckAvailabilityParameters>(options);
+  const params = supplied.interval ?? supplied;
+  const mixedInterval =
+    supplied.interval !== undefined &&
+    (supplied.startAt !== undefined ||
+      supplied.endAt !== undefined ||
+      supplied.durationMinutes !== undefined);
   const windowStart = parseOptionalIso(params.startAt);
-  const windowEnd = parseOptionalIso(params.endAt);
-  if (!windowStart || !windowEnd || windowEnd <= windowStart) {
+  const explicitEnd = parseOptionalIso(params.endAt);
+  const hasDuration = params.durationMinutes !== undefined;
+  const durationMs =
+    typeof params.durationMinutes === "number"
+      ? params.durationMinutes * 60_000
+      : Number.NaN;
+  const durationEnd =
+    windowStart && hasDuration
+      ? new Date(windowStart.getTime() + durationMs)
+      : undefined;
+  const windowEnd = hasDuration ? durationEnd : explicitEnd;
+  if (
+    mixedInterval ||
+    !windowStart ||
+    !windowEnd ||
+    !Number.isFinite(windowEnd.getTime()) ||
+    windowEnd <= windowStart ||
+    (hasDuration && (!Number.isFinite(durationMs) || durationMs <= 0)) ||
+    (params.endAt !== undefined &&
+      (!explicitEnd || explicitEnd.getTime() !== windowEnd.getTime()))
+  ) {
     return respond({
       success: false,
       scenario: "scheduling_invalid_window",
+      error:
+        "INVALID_WINDOW: Missing or invalid interval arguments. Supply startAt and either a positive durationMinutes or endAt; if both are supplied they must agree. No calendar read was performed. Correct the arguments from the user request before retrying.",
       fallback:
-        "I need a valid ISO start and end time to check availability (end must be after start).",
+        "Supply an ISO start time and either an end time or a positive durationMinutes. If both are supplied they must agree; preserve the requested duration.",
       data: { error: "INVALID_WINDOW" },
     });
   }

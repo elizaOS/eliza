@@ -76,6 +76,30 @@ function makeMessage(runtime: AgentRuntime, text: string) {
 }
 
 describe("life-ops scheduling-with-others (pure slot logic)", () => {
+  it("offers distinct slots when the second pass fills one morning", () => {
+    const slots = computeProposedSlots({
+      now: new Date("2026-09-17T12:00:00Z"),
+      windowStart: new Date("2026-09-18T13:00:00Z"),
+      windowEnd: new Date("2026-09-18T16:00:00Z"),
+      durationMinutes: 15,
+      slotCount: 2,
+      preferences: {
+        timeZone: "America/New_York",
+        preferredStartLocal: "09:00",
+        preferredEndLocal: "17:00",
+        defaultDurationMinutes: 30,
+        travelBufferMinutes: 0,
+        blackoutWindows: [],
+        updatedAt: null,
+      },
+      events: [],
+    });
+    expect(slots.map((slot) => slot.startAt)).toEqual([
+      "2026-09-18T13:00:00.000Z",
+      "2026-09-18T13:15:00.000Z",
+    ]);
+  });
+
   it("computeProposedSlots returns 3 slots within preferred hours, avoiding busy intervals and blackouts", () => {
     const now = new Date();
     const windowStart = new Date(localIso(1, 0, 0));

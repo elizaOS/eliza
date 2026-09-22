@@ -21,6 +21,7 @@ import {
   type CalendarActionDeps,
   createCalendarActionRunner,
 } from "../src/index.js";
+import { freshCalendarSources } from "./calendar-source-fixture.js";
 
 function fakeDeps(service: StubService): CalendarActionDeps {
   return {
@@ -85,11 +86,7 @@ function stubService(feedEvents: LifeOpsCalendarEvent[]) {
       events: feedEvents,
       source: "cache" as const,
       state: "complete" as const,
-      sources: [
-        {
-          status: "fresh" as const,
-        },
-      ],
+      sources: freshCalendarSources(feedEvents),
       timeMin: "2026-07-01T00:00:00.000Z",
       timeMax: "2026-07-31T00:00:00.000Z",
       syncedAt: null,
@@ -140,6 +137,7 @@ type StubService = ReturnType<typeof stubService>;
 function fakeRuntime(service: StubService): IAgentRuntime {
   return {
     agentId: "agent-1",
+    reportError: vi.fn(),
     logger: {
       info: () => undefined,
       warn: () => undefined,
@@ -163,8 +161,20 @@ async function runHandler(args: {
   service: StubService;
   text: string;
   parameters: Record<string, unknown>;
+  extractedUpdate?: Record<string, unknown>;
 }) {
-  const action = createCalendarActionRunner(fakeDeps(args.service));
+  const actionDeps = fakeDeps(args.service);
+  if (args.extractedUpdate) {
+    actionDeps.runJsonModel = vi.fn(async ({ actionType }) =>
+      actionType === "lifeops.calendar.extract_update_event"
+        ? {
+            rawResponse: JSON.stringify(args.extractedUpdate),
+            parsed: args.extractedUpdate,
+          }
+        : null,
+    );
+  }
+  const action = createCalendarActionRunner(actionDeps);
   const callback = vi.fn(async () => []);
   const result = await action.handler(
     fakeRuntime(args.service),
@@ -230,12 +240,128 @@ describe("CALENDAR delete_event disambiguation", () => {
     service = stubService([LUNCH_MAYA, LUNCH_GRANDMA]);
   });
 
+  it("resolves a promoted delete query without requiring an invented event ID", async () => {
+    const result = await runHandler({
+      service,
+      text: "Delete Lunch with Grandma. Keep all other events.",
+      parameters: {
+        subaction: "delete_event",
+        targetKind: "query",
+        target: "Lunch with Grandma",
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(service.getConditionalCalendarMutationTarget).not.toHaveBeenCalled();
+    expect(service.cancelApproval).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ targetEvent: LUNCH_GRANDMA }),
+    );
+  });
+
+  it.each(["update_event", "delete_event"])(
+    "rejects contradictory %s target selectors before lookup or mutation",
+    async (subaction) => {
+      const result = await runHandler({
+        service,
+        text: "Change only Lunch with Grandma.",
+        parameters: {
+          subaction,
+          targetKind: "query",
+          target: "Lunch with Grandma",
+          details: { eventId: "evt-1" },
+        },
+      });
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({
+        error: "CALENDAR_TARGET_SELECTOR_INVALID",
+        coachingFailure: true,
+      });
+      expect(result.effectReceipts?.[0]).toMatchObject({
+        outcome: "failed",
+        failure: { acceptance: "rejected" },
+      });
+      expect(service.getCalendarFeed).not.toHaveBeenCalled();
+      expect(
+        service.getConditionalCalendarMutationTarget,
+      ).not.toHaveBeenCalled();
+      expect(service.cancelApproval).not.toHaveBeenCalled();
+      expect(service.modifyApproval).not.toHaveBeenCalled();
+      expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
+      expect(service.updateCalendarEvent).not.toHaveBeenCalled();
+    },
+  );
+
+  it("uses an explicit source target when a follow-up supplies a different destination date", async () => {
+    const result = await runHandler({
+      service,
+      text: "Use July 10, 2026 at 9:15 AM UTC for 15 minutes. Keep everything else the same.",
+      parameters: {
+        subaction: "update_event",
+        targetKind: "query",
+        target: "Lunch with Grandma",
+      },
+      extractedUpdate: {
+        startAt: "2026-07-10T09:15:00",
+        endAt: "2026-07-10T09:30:00",
+        timeZone: "UTC",
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(service.modifyApproval).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        targetEvent: LUNCH_GRANDMA,
+        request: expect.objectContaining({
+          startAt: "2026-07-10T09:15:00",
+          endAt: "2026-07-10T09:30:00",
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    { target: "Lunch with Grandma July 9, 2026", duplicate: false },
+    { target: "Lunch with Grandma", duplicate: true },
+  ])(
+    "does not relax an explicit source mismatch or duplicate target: $target / $duplicate",
+    async ({ target, duplicate }) => {
+      if (duplicate) {
+        service = stubService([
+          LUNCH_GRANDMA,
+          event({
+            externalId: "duplicate-grandma",
+            title: LUNCH_GRANDMA.title,
+            startAt: "2026-07-10T17:00:00.000Z",
+          }),
+        ]);
+      }
+      const result = await runHandler({
+        service,
+        text: "Use July 10, 2026 at 9:15 AM UTC for 15 minutes.",
+        parameters: { subaction: "update_event", targetKind: "query", target },
+        extractedUpdate: {
+          startAt: "2026-07-10T09:15:00",
+          endAt: "2026-07-10T09:30:00",
+          timeZone: "UTC",
+        },
+      });
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({
+        awaitingUserInput: true,
+        retryable: false,
+      });
+      expect(replyFacts(result)).toMatch(/couldn't find|multiple/);
+      expect(service.modifyApproval).not.toHaveBeenCalled();
+      expect(service.updateCalendarEvent).not.toHaveBeenCalled();
+      expect(result.effectReceipts?.[0]).toMatchObject({ outcome: "noop" });
+    },
+  );
+
   it.each(["query", "details.oldTitle"])(
     "uses the explicit update target in %s without treating the replacement as its identity",
     async (field) => {
       const result = await runHandler({
         service,
-        text: "update the selected lunch",
+        text: "Rename the selected lunch to Family lunch.",
+        extractedUpdate: { title: "Family lunch" },
         parameters: {
           subaction: "update_event",
           title: "Family lunch",
@@ -578,6 +704,7 @@ describe("CALENDAR update_event disambiguation", () => {
     const result = await runHandler({
       service,
       text: "move lunch with grandma to 6pm",
+      extractedUpdate: { startAt: "2026-07-08T18:00:00Z" },
       parameters: { subaction: "update_event", query: "grandma" },
     });
     expect(result.success).toBe(true);
@@ -598,7 +725,8 @@ describe("CALENDAR update_event disambiguation", () => {
   it("explicit eventId → proceeds directly without a feed lookup", async () => {
     const result = await runHandler({
       service,
-      text: "rename that event",
+      text: "rename that event to Lunch with Grandma (moved)",
+      extractedUpdate: { title: "Lunch with Grandma (moved)" },
       parameters: {
         subaction: "update_event",
         title: "Lunch with Grandma (moved)",

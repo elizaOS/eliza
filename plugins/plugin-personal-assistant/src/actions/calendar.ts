@@ -15,6 +15,7 @@ import { createHash } from "node:crypto";
 import type {
   Action,
   ActionExample,
+  ActionParameterSchema,
   ActionResult,
   EffectReceipt,
   HandlerCallback,
@@ -46,6 +47,7 @@ import {
   isMicrosoftCalendarGrantId,
 } from "@elizaos/plugin-calendar";
 import {
+  CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
@@ -536,24 +538,8 @@ export function createCalendarMutationApprovalGateway(options?: {
  * injected rather than moved.
  */
 const calendarActionDeps: CalendarActionDeps = {
-  runTextModel: (args) =>
-    runLifeOpsTextModel({
-      runtime: args.runtime,
-      prompt: args.prompt,
-      actionType: args.actionType,
-      failureMessage: args.failureMessage,
-      source: args.source,
-      ...(args.purpose ? { purpose: args.purpose } : {}),
-    }),
-  runJsonModel: (args) =>
-    runLifeOpsJsonModel({
-      runtime: args.runtime,
-      prompt: args.prompt,
-      actionType: args.actionType,
-      failureMessage: args.failureMessage,
-      source: args.source,
-      ...(args.purpose ? { purpose: args.purpose } : {}),
-    }),
+  runTextModel: runLifeOpsTextModel,
+  runJsonModel: runLifeOpsJsonModel,
   recentConversationTexts: (args) => recentConversationTexts(args),
   renderGroundedReply: (args) =>
     renderGroundedActionReply({
@@ -674,6 +660,51 @@ type OwnerCalendarSubaction =
   | "update_preferences";
 
 const ACTION_NAME = "CALENDAR";
+
+const proposalDurationProperties: Record<string, ActionParameterSchema> = {
+  minutes: { type: "number", minimum: 5, maximum: 480 },
+  existingEventQuery: { type: "string", minLength: 1 },
+};
+
+const availabilityIntervalProperties = {
+  startAt: {
+    type: "string",
+    minLength: 1,
+    description: "ISO start with the requested local clock and its offset.",
+  },
+  endAt: {
+    type: "string",
+    minLength: 1,
+    description:
+      "Explicit ISO end, if the user supplied an end rather than a duration.",
+  },
+  durationMinutes: {
+    type: "number",
+    minimum: 0,
+    description: "Requested duration in minutes; code calculates the end.",
+  },
+} satisfies Record<string, ActionParameterSchema>;
+
+const availabilityIntervalSchema: ActionParameterSchema = {
+  type: "object",
+  properties: availabilityIntervalProperties,
+  required: ["startAt"],
+  additionalProperties: false,
+  anyOf: [
+    {
+      type: "object",
+      properties: availabilityIntervalProperties,
+      required: ["startAt", "durationMinutes"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: availabilityIntervalProperties,
+      required: ["startAt", "endAt"],
+      additionalProperties: false,
+    },
+  ],
+};
 
 interface OwnerCalendarParameters {
   subaction?: OwnerCalendarSubaction | string;
@@ -864,7 +895,7 @@ function calendarWrapperEffectReceipt(args: {
       receiptId: calendarEffectReceiptId(
         args.message,
         operation,
-        snapshot.resource.id,
+        `${snapshot.resource.id}:${createHash("sha256").update(stableStringify(data)).digest("hex")}`,
       ),
       operation,
       resource: snapshot.resource,
@@ -1153,7 +1184,7 @@ async function guardProtectedSleepCreate(args: {
 const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
   feed: {
     description:
-      "Read the full unfiltered agenda for a date or time range. Use details.timeMin/timeMax and timeZone. A date-only request or no-keyword-filter request belongs here, not search_events.",
+      "Read the full unfiltered agenda. For whole dates use details.date and optional inclusive endDate with timeZone; for partial days use timeMin/timeMax. A date-only request or no-keyword-filter request belongs here, not search_events.",
     descriptionCompressed:
       "full unfiltered agenda/date/time-range; dates are bounds, not keywords",
     required: [],
@@ -1204,10 +1235,18 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
     optional: ["timeZone", "intent"],
   },
   check_availability: {
-    description: "Check owner free/busy. ISO start/end.",
-    descriptionCompressed: "check free|busy ISO-window",
+    description:
+      "Check owner free/busy from an ISO start plus the requested durationMinutes (end calculated by code), or an explicit start/end interval. If both end and duration are supplied they must agree.",
+    descriptionCompressed: "check free|busy start plus duration or end",
     required: [],
-    optional: ["startAt", "endAt", "intent"],
+    optional: [
+      "interval",
+      "startAt",
+      "endAt",
+      "durationMinutes",
+      "intent",
+      "timeZone",
+    ],
   },
   propose_times: {
     description: "Propose meeting slots. Window.",
@@ -1215,6 +1254,7 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
     required: [],
     optional: [
       "durationMinutes",
+      "duration",
       "daysAhead",
       "slotCount",
       "windowStart",
@@ -1794,7 +1834,7 @@ export const calendarAction: Action & {
     {
       name: "details",
       description:
-        "For feed/search_events: details.timeMin/timeMax bound the date range and details.timeZone supplies its IANA timezone. For a full agenda use feed without query/queries. " +
+        "For feed/search_events: use details.date and optional inclusive endDate for whole dates; use timeMin/timeMax for partial days. details.timeZone supplies the IANA timezone. For a full agenda use feed without query/queries. " +
         "Structured fields for create_event/update_event/delete_event. " +
         "`start`/`end`: local wall-clock ISO-8601 WITHOUT any offset or Z (e.g. 2026-09-10T18:00:00 for 6pm); never convert to UTC. When supplying the owner's local new start/end, explicitly include `details.timeZone` with the owner's configured IANA timezone; an update otherwise interprets them in the existing event's timezone, which may differ. If the user names another timezone, use that IANA zone for these values. " +
         "For a move or reschedule the time the user names ('to 6pm') is the new `start`; keep the event's previous duration for `end` unless the user gives a new end. " +
@@ -1819,12 +1859,36 @@ export const calendarAction: Action & {
     {
       name: "durationMinutes",
       description:
-        "TOP-LEVEL flat. propose_times length minutes. " +
-        "Example: `{ subaction: 'propose_times', durationMinutes: 30, slotCount: 3, windowStart: '...', windowEnd: '...' }`. " +
-        "Do NOT wrap propose_times args in `details`.",
+        "Requested length in minutes. For check_availability, supply the user's duration directly with startAt and omit endAt; code calculates the end. For propose_times, this is each suggested slot's length for legacy callers. Top-level field, not inside details.",
+      required: false,
+      subactions: ["propose_times", "check_availability"],
+      schema: { type: "number" },
+    },
+    {
+      name: "duration",
+      description:
+        "For a new event, supply minutes only. Use existingEventQuery only to reschedule an event already on the calendar, never for a new event's title. Also supply minutes when changing that existing event's duration. This proposes slots without changing events.",
       required: false,
       subactions: ["propose_times"],
-      schema: { type: "number" as const },
+      schema: {
+        type: "object",
+        properties: proposalDurationProperties,
+        anyOf: [
+          {
+            type: "object",
+            properties: proposalDurationProperties,
+            required: ["minutes"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: proposalDurationProperties,
+            required: ["existingEventQuery"],
+            additionalProperties: false,
+          },
+        ],
+        additionalProperties: false,
+      },
     },
     {
       name: "daysAhead",
@@ -1843,17 +1907,35 @@ export const calendarAction: Action & {
     },
     {
       name: "windowStart",
-      description: "propose_times window earliest start. ISO-8601.",
+      description:
+        "propose_times earliest local clock, YYYY-MM-DDTHH:mm:ss without offset or Z. Code applies timeZone; do not convert to UTC.",
       required: false,
       subactions: ["propose_times"],
       schema: { type: "string" as const },
     },
     {
+      name: "counterparties",
+      description:
+        "People explicitly named in the scheduling request. Omit when no participants are named.",
+      required: false,
+      subactions: ["propose_times"],
+      schema: { type: "array" as const, items: { type: "string" as const } },
+    },
+    {
       name: "windowEnd",
-      description: "propose_times window latest end. ISO-8601.",
+      description:
+        "propose_times latest local clock, YYYY-MM-DDTHH:mm:ss without offset or Z. Code applies timeZone; do not convert to UTC.",
       required: false,
       subactions: ["propose_times"],
       schema: { type: "string" as const },
+    },
+    {
+      name: "interval",
+      description:
+        "The complete availability interval: startAt with durationMinutes or endAt. Do not convert a local clock to UTC and also keep the local offset.",
+      required: false,
+      subactions: ["check_availability"],
+      schema: availabilityIntervalSchema,
     },
     {
       name: "startAt",
@@ -1863,19 +1945,21 @@ export const calendarAction: Action & {
         "Do NOT wrap check_availability args in `details`.",
       required: false,
       subactions: ["check_availability"],
-      schema: { type: "string" as const },
+      requiredForSubactions: ["check_availability"],
+      schema: { type: "string" as const, minLength: 1 },
     },
     {
       name: "endAt",
       description:
-        "TOP-LEVEL flat. check_availability end. ISO-8601. See `startAt`.",
+        "TOP-LEVEL flat. Explicit check_availability end, ISO-8601. Omit when supplying durationMinutes. If both are supplied they must agree.",
       required: false,
       subactions: ["check_availability"],
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, minLength: 1 },
     },
     {
       name: "timeZone",
-      description: "IANA timeZone for update_preferences hours.",
+      description:
+        "IANA timezone for local proposal bounds and meeting preference hours.",
       required: false,
       subactions: ["check_availability", "propose_times", "update_preferences"],
       schema: { type: "string" as const },
@@ -2068,10 +2152,77 @@ export const calendarAction: Action & {
   ] as ActionExample[][],
 };
 
-/** Author the read contract at the domain boundary; promotion still owns
- * discriminator pinning, delegation and the inherited authorization gates. */
+/** Updates and deletions share one explicit event selector; legacy umbrella
+ * parameters remain available for compatible domain callers. */
+const calendarMutationTargetParameters: NonNullable<Action["parameters"]> = [
+  ...(calendarAction.parameters ?? []),
+  {
+    name: "targetKind",
+    required: true,
+    description:
+      "How target identifies the existing event: query for its current title/subject, eventId for an exact externalId copied from a Calendar result. Do not supply a separate details.eventId for a query target.",
+    schema: { type: "string", enum: ["query", "eventId"] },
+  },
+  {
+    name: "target",
+    required: true,
+    description:
+      "Existing event title/subject with any user-specified source date, or exact externalId, according to targetKind. Preserve source constraints from the dialogue. Never include the destination date/time, replacement title, or a JSON object.",
+    schema: { type: "string", minLength: 1 },
+  },
+];
+
 export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
   overrides: {
+    create_event: {
+      parameters: calendarAction.parameters?.map((parameter) =>
+        parameter.name === "details"
+          ? {
+              ...parameter,
+              schema: CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
+              description:
+                "New event fields. Use start/end as local wall-clock ISO timestamps with the IANA timeZone, or durationMinutes for its length. Supply only requested details; title is top-level. No existing-event lookup or rename fields belong here.",
+              descriptionCompressed:
+                "New event fields; start/end local ISO with IANA timeZone, or durationMinutes. Only requested details; title top-level.",
+            }
+          : parameter,
+      ),
+      description:
+        "Create an authorized event at the requested or accepted time. This action validates scheduling details and checks fresh availability before writing; a conflict or incomplete coverage prevents creation and returns the reason and checked alternatives when available. Use it directly for 'book this if I am free'; a separate availability call is unnecessary. Missing timing needs clarification. Do not book a suggested alternative until the user accepts it or explicitly delegates choosing a time.",
+    },
+    check_availability: {
+      parameters: calendarAction.parameters
+        ?.filter(
+          (parameter) =>
+            !["startAt", "endAt", "durationMinutes"].includes(parameter.name),
+        )
+        .map((parameter) =>
+          parameter.name === "interval"
+            ? { ...parameter, required: true }
+            : parameter,
+        ),
+      description:
+        "Read free/busy for one interval; never moves or creates events. Supply the required interval object with startAt plus either durationMinutes or endAt. When the user gives a duration, pass it directly in durationMinutes and omit endAt; code calculates the end. Use the requested local clock with its ISO offset, without also converting the clock to UTC. If inputs are rejected, correct the call from the original request; invalid arguments say nothing about calendar availability or working hours.",
+    },
+    update_event: {
+      parameters: calendarMutationTargetParameters,
+      description:
+        "Apply a specified edit to an existing event. For a morning/afternoon window without an accepted clock time, use CALENDAR_PROPOSE_TIMES first to read current openings; this write tool is for the accepted time or another specified field change. Supply targetKind and target in this call, including follow-ups accepting a suggested time. No separate search is needed when the event is uniquely identified by query. Time changes check the proposed slot for conflicts before writing, excluding the event itself; conflicts or unknown availability pause the move. Use this tool directly for an authorized move conditional on the slot being free. title/details.newTitle are replacement names, not the target.",
+    },
+    delete_event: {
+      parameters: calendarMutationTargetParameters,
+      description:
+        "Delete the authorized existing event identified by targetKind and target. A query target resolves the current event within this action; a separate search is unnecessary for a unique title. An eventId target must be copied from a Calendar result. Missing or ambiguous matches never delete another event. Preserve any user-specified source date and recurring-event scope.",
+    },
+    propose_times: {
+      description:
+        "Read free slots without booking. Supply the requested date/window as local clocks without offsets or Z and the IANA timeZone; code converts to UTC. Morning spans 06:00 to 12:00 local, and meeting preferences further restrict the available slots. For a move, supply duration.existingEventQuery to resolve the event and preserve its duration in this operation; no separate search is needed. An explicit new duration remains supported. Return choices for the user to accept before any write.",
+      parameters: calendarAction.parameters?.map((parameter) =>
+        ["duration", "windowStart", "windowEnd"].includes(parameter.name)
+          ? { ...parameter, required: true }
+          : parameter,
+      ),
+    },
     ...Object.fromEntries(
       (
         [
@@ -2081,16 +2232,34 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
       ).map(([name, schema]) => [
         name,
         {
-          parameters: calendarAction.parameters?.map((parameter) =>
-            parameter.name === "details"
+          ...(name === "search_events"
+            ? {
+                description:
+                  "Find existing events matching required query text within their CURRENT time window. Additional queries can broaden the content filter. A date alone is not a content filter; use CALENDAR_FEED for an unfiltered agenda. Filtered results cannot establish free time: use CALENDAR_CHECK_AVAILABILITY or CALENDAR_PROPOSE_TIMES. For rescheduling, use CALENDAR_UPDATE_EVENT with the existing title or ID, not a search of the destination window. Empty results never authorize a replacement event.",
+              }
+            : {
+                description:
+                  "Read the complete agenda for a day or range. For whole dates supply details.date as the first YYYY-MM-DD date, optional endDate as the last included date, and timeZone; code calculates the local midnight boundaries. For partial-day ranges use timeMin/timeMax instead. Report only the actual returned window; empty results do not establish that a different day is free.",
+              }),
+          parameters: calendarAction.parameters?.map((parameter) => {
+            if (name === "search_events" && parameter.name === "query") {
+              return {
+                ...parameter,
+                required: true,
+                description:
+                  "Required event-content search text, such as a title, attendee, location or topic. Put date bounds in details; use CALENDAR_FEED for an unfiltered agenda.",
+                schema: { type: "string", minLength: 1 },
+              };
+            }
+            return parameter.name === "details"
               ? {
                   ...parameter,
                   description:
                     "Optional calendar read bounds, IANA timezone, exact connector/calendar scope and refresh controls. Omit unknown values. Feed reads use selected calendars; searches include hidden calendars unless explicitly restricted.",
                   schema,
                 }
-              : parameter,
-          ),
+              : parameter;
+          }),
         },
       ]),
     ),
