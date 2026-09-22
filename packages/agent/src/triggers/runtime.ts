@@ -28,6 +28,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  ElizaError,
   inspectSendHandlerResult,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
   registerRuntimeManagedInternalActor,
@@ -623,6 +624,14 @@ export async function executeTriggerTask(
 ): Promise<TriggerExecutionResult> {
   if (!task.id) {
     return { status: "skipped", taskDeleted: false };
+  }
+
+  if (task.scheduleError !== undefined) {
+    throw new ElizaError(task.scheduleError, {
+      code: "TASK_SCHEDULE_INVALID",
+      context: { taskId: task.id, field: "metadata.scheduledAt" },
+      severity: "fatal",
+    });
   }
 
   const trigger = readTriggerConfig(task);

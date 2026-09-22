@@ -307,6 +307,17 @@ export class TaskService extends Service {
 				continue;
 			}
 
+			if (task.scheduleError !== undefined) {
+				errors.push(
+					new ElizaError(task.scheduleError, {
+						code: "TASK_SCHEDULE_INVALID",
+						context: { ...context, field: "metadata.scheduledAt" },
+						severity: "fatal",
+					}),
+				);
+				continue;
+			}
+
 			const worker = this.runtime.getTaskWorker(task.name);
 			if (!worker) {
 				// Boot ordering: the tick can run before every plugin has registered
