@@ -13724,6 +13724,152 @@ describe("explicit discovery survives planner surface construction", () => {
 	);
 
 	it.each([false, true])(
+		"canonicalizes discovered families across repeated reads with an initial child=%s",
+		async (selectedChild) => {
+			const answer = "Ledger entry created.";
+			const discover = (id: string, names: string[]) => ({
+				text: "",
+				toolCalls: [
+					{
+						id,
+						name: "DISCOVER_TOOLS",
+						arguments: {
+							names,
+							eliza_turn_scope: "more_work_pending",
+						},
+					},
+				],
+			});
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["general"],
+					intents: ["record a ledger entry"],
+					candidateActionNames: selectedChild
+						? ["CHECK_RUNTIME", "LEDGER_CREATE"]
+						: ["CHECK_RUNTIME"],
+					extra: { requiresTool: true },
+				}),
+				discover("discover-ledger", ["LEDGER"]),
+				discover("rediscover-ledger-operations", [
+					"LEDGER_CREATE",
+					"LEDGER_DELETE",
+				]),
+				{
+					text: "",
+					toolCalls: [
+						{
+							id: "create-entry",
+							name: "LEDGER",
+							arguments: {
+								action: "create",
+								id: "entry-1",
+								eliza_turn_scope: "final",
+							},
+						},
+					],
+				},
+				JSON.stringify({
+					decision: "FINISH",
+					success: true,
+					thought: "The ledger result is available.",
+					messageToUser: answer,
+				}),
+			]);
+			const checkHandler = vi.fn<Action["handler"]>(async () => ({
+				success: true,
+				text: "Checked.",
+			}));
+			const ledgerHandler = vi.fn<Action["handler"]>(
+				async (_runtime, _message, _state, options) => {
+					expect(options?.parameters).toMatchObject({
+						action: "create",
+						id: "entry-1",
+					});
+					return { success: true, text: "Entry created." };
+				},
+			);
+			const ledger: Action = {
+				name: "LEDGER",
+				description: "Create and remove ledger entries.",
+				parameters: [
+					{
+						name: "action",
+						description: "Operation",
+						required: true,
+						schema: { type: "string", enum: ["create", "delete"] },
+					},
+					{
+						name: "id",
+						description: "Entry identity",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: ledgerHandler,
+			};
+			runtime.actions = [
+				{
+					name: "CHECK_RUNTIME",
+					description: "Check the runtime without editing ledger entries.",
+					contexts: ["general"],
+					examples: [],
+					validate: async () => true,
+					handler: checkHandler,
+				},
+				...promoteSubactionsToActions(ledger),
+			];
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "record a ledger entry for the lease" }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+			});
+			expect(result.kind).toBe("planned_reply");
+			if (result.kind === "planned_reply")
+				expect(result.result.responseContent?.text).toBe(answer);
+			expect(ledgerHandler).toHaveBeenCalledTimes(1);
+			expect(checkHandler).not.toHaveBeenCalled();
+			const calls = useModelCalls(runtime);
+			expect(calls.map(([type]) => type)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.ACTION_PLANNER,
+				ModelType.ACTION_PLANNER,
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			const plannerTools = (index: number) =>
+				(
+					calls[index]?.[1] as
+						| { tools?: Array<{ name: string; description?: string }> }
+						| undefined
+				)?.tools ?? [];
+			const initial = plannerTools(1);
+			const initialNames = initial.map(({ name }) => name);
+			expect(initialNames).toContain("CHECK_RUNTIME");
+			expect(initialNames).toContain("DISCOVER_TOOLS");
+			expect(initialNames.includes("LEDGER_CREATE")).toBe(selectedChild);
+			expect(initialNames).not.toContain("LEDGER");
+			for (const expanded of [plannerTools(2), plannerTools(3)]) {
+				expect(expanded.find(({ name }) => name === "CHECK_RUNTIME")).toEqual(
+					initial.find(({ name }) => name === "CHECK_RUNTIME"),
+				);
+				expect(expanded.map(({ name }) => name)).toContain("DISCOVER_TOOLS");
+				expect(
+					expanded
+						.filter(({ name }) => name.startsWith("LEDGER"))
+						.map(({ name }) => name),
+				).toEqual(["LEDGER"]);
+				const umbrella = expanded.find(({ name }) => name === "LEDGER");
+				expect(umbrella?.description).toContain("LEDGER_CREATE");
+				expect(umbrella?.description).toContain("LEDGER_DELETE");
+			}
+			expect(plannerTools(3)).toEqual(plannerTools(2));
+		},
+	);
+
+	it.each([false, true])(
 		"retains discovery when all domain candidates selected=%s",
 		async (includeDomain) => {
 			const runtime = makeRuntime([
