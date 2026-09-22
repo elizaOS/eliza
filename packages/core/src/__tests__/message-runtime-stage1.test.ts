@@ -29,6 +29,7 @@ import {
 	messageHandlerFromFieldResult,
 	resolveZeroDeliveryRecovery,
 	runV5MessageRuntimeStage1,
+	wrapSingleTurnVisibleCallback,
 } from "../../../../plugins/plugin-assistant/src/services/message.ts";
 import { promoteSubactionsToActions } from "../actions/promote-subactions";
 import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "../connectors/account-manager";
@@ -432,6 +433,297 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
+	it("rejects competing source decisions with identical text but different origins", async () => {
+		const original = {
+			...makeMessage({ text: "The repeated original." }),
+			id: "00000000-0000-0000-0000-000000000011" as UUID,
+			createdAt: 1,
+		};
+		const repeated = {
+			...original,
+			id: "00000000-0000-0000-0000-000000000012" as UUID,
+			createdAt: 2,
+		};
+		const decision = (sourceId: string) =>
+			stage1Response({
+				contexts: ["simple"],
+				extra: {
+					replyEffectStatus: "none",
+					replyText: [{ kind: "source", value: sourceId }],
+					completionContext: {
+						mode: "relevant_prior_dialogue",
+						complete: true,
+						sourceSetId: "current_request",
+						relevantSourceIds: [sourceId],
+						constraintSourceIds: [],
+						referentSourceIds: [],
+						pendingIntentSourceIds: [],
+					},
+				},
+			});
+		const raw = decision("h1");
+		raw.toolCalls.push({
+			...decision("h2").toolCalls[0],
+			id: "second-response",
+		});
+		const before = JSON.stringify(raw);
+		const runtime = makeRuntime([raw]);
+		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
+		const state = makeState();
+		state.data.providers = {
+			RECENT_MESSAGES: { data: { recentMessages: [original, repeated] } },
+		};
+		await expect(
+			runStage1({
+				runtime,
+				state,
+				message: makeMessage({
+					channelType: ChannelType.DM,
+					text: "Quote the first message exactly.",
+				}),
+			}),
+		).rejects.toMatchObject({ code: "STAGE1_DUPLICATE_SOURCE_REPLY" });
+		expect(dispatch).not.toHaveBeenCalled();
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(JSON.stringify(raw)).toBe(before);
+	});
+
+	it.each([
+		"  Original with boundary whitespace.\n",
+		"Checking the weather now.",
+		"<final>literal original</final>",
+		'{"replyText":"these are original words"}',
+	])("keeps a source-only reply as literal data: %s", async (text) => {
+		const original = {
+			...makeMessage({ text }),
+			id: "00000000-0000-0000-0000-000000000011" as UUID,
+			createdAt: 1,
+		};
+		const raw = stage1Response({
+			contexts: ["simple"],
+			extra: {
+				replyEffectStatus: "none",
+				replyText: [{ kind: "source", value: "h1" }],
+				completionContext: {
+					mode: "relevant_prior_dialogue",
+					complete: true,
+					sourceSetId: "current_request",
+					relevantSourceIds: ["h1"],
+					constraintSourceIds: [],
+					referentSourceIds: [],
+					pendingIntentSourceIds: [],
+				},
+			},
+		});
+		const runtime = makeRuntime([raw]);
+		const state = makeState();
+		state.data.providers = {
+			RECENT_MESSAGES: { data: { recentMessages: [original] } },
+		};
+		const result = await runStage1({
+			runtime,
+			state,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "Quote my original message exactly.",
+			}),
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind !== "direct_reply") throw Error("Expected literal reply");
+		expect(result.result.responseContent.text).toBe(text);
+		const callback = vi.fn(
+			async (_content: import("../types/primitives").Content) => [],
+		);
+		const deliver = wrapSingleTurnVisibleCallback(
+			runtime,
+			makeMessage({ channelType: ChannelType.DM }),
+			callback,
+		);
+		await deliver?.(result.result.responseContent, "REPLY");
+		expect(callback.mock.calls[0]?.[0]).toMatchObject({ text });
+
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not let a quoted answer cancel a strong tool candidate", async () => {
+		const original = {
+			...makeMessage({ text: "Old source" }),
+			id: "00000000-0000-0000-0000-000000000011" as UUID,
+			createdAt: 1,
+		};
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				candidateActionNames: ["CHECK_RUNTIME"],
+				extra: {
+					replyEffectStatus: "none",
+					replyText: [{ kind: "source", value: "h1" }],
+					completionContext: {
+						mode: "relevant_prior_dialogue",
+						complete: true,
+						sourceSetId: "current_request",
+						relevantSourceIds: ["h1"],
+						constraintSourceIds: [],
+						referentSourceIds: [],
+						pendingIntentSourceIds: [],
+					},
+				},
+			}),
+		]);
+		const state = makeState();
+		state.data.providers = {
+			RECENT_MESSAGES: { data: { recentMessages: [original] } },
+		};
+		const result = await runStage1({
+			runtime,
+			state,
+			stage1DecisionOnly: true,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "Quote my original and check runtime",
+			}),
+		});
+		expect(result.kind).toBe("decision");
+		if (result.kind !== "decision") throw Error("Expected decision");
+		expect(result.messageHandler.plan.requiresTool).toBe(true);
+	});
+	it("keeps an authoritative field reply override instead of restoring a quote", async () => {
+		const original = {
+			...makeMessage({ text: "Old source" }),
+			id: "00000000-0000-0000-0000-000000000011" as UUID,
+			createdAt: 1,
+		};
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				extra: {
+					replyEffectStatus: "none",
+					abortTest: true,
+					replyText: [{ kind: "source", value: "h1" }],
+					completionContext: {
+						mode: "relevant_prior_dialogue",
+						complete: true,
+						sourceSetId: "current_request",
+						relevantSourceIds: ["h1"],
+						constraintSourceIds: [],
+						referentSourceIds: [],
+						pendingIntentSourceIds: [],
+					},
+				},
+			}),
+		]);
+		runtime.responseHandlerFieldRegistry.register({
+			name: "abortTest",
+			description: "Test authoritative override",
+			priority: 25,
+			schema: { type: "boolean" },
+			parse: (value) => value === true,
+			handle: async () => ({
+				mutateResult: (result) => {
+					result.replyText = "Stopped.";
+				},
+				preempt: { mode: "ack-and-stop", reason: "test" },
+			}),
+		});
+		const state = makeState();
+		state.data.providers = {
+			RECENT_MESSAGES: { data: { recentMessages: [original] } },
+		};
+		const result = await runStage1({
+			runtime,
+			state,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "Quote my original",
+			}),
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind !== "direct_reply") throw Error("Expected reply");
+		expect(result.result.responseContent.text).toBe("Stopped.");
+		expect(result.result.responseContent.sourceReplyReferences).toBeUndefined();
+	});
+	it.each([false, true])(
+		"resolves native original-message parts before fields (invalid=%s)",
+		async (invalid) => {
+			const original = {
+				...makeMessage({ text: "Mira’s bag is orange.\nKeep  two spaces." }),
+				id: "00000000-0000-0000-0000-000000000011" as UUID,
+				createdAt: 1,
+			};
+			const raw = stage1Response({
+				contexts: ["simple"],
+				extra: {
+					replyEffectStatus: "none",
+					replyText: [
+						{ kind: "text", value: "Your original:\n" },
+						{ kind: "source", value: invalid ? "h999" : "h1" },
+					],
+					completionContext: {
+						mode: "relevant_prior_dialogue",
+						complete: true,
+						sourceSetId: "current_request",
+						relevantSourceIds: ["h1"],
+						constraintSourceIds: [],
+						referentSourceIds: [],
+						pendingIntentSourceIds: [],
+					},
+				},
+			});
+			const before = JSON.stringify(raw);
+			const runtime = makeRuntime([raw]);
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			const state = makeState();
+			state.data.providers = {
+				RECENT_MESSAGES: { data: { recentMessages: [original] } },
+			};
+			const run = runStage1({
+				runtime,
+				state,
+				message: makeMessage({
+					channelType: ChannelType.DM,
+					text: "Quote my original message exactly.",
+				}),
+			});
+			if (invalid) {
+				await expect(run).rejects.toMatchObject({
+					code: "STAGE1_INVALID_SOURCE_REPLY",
+				});
+				expect(dispatch).not.toHaveBeenCalled();
+			} else {
+				const result = await run;
+				expect(result.kind).toBe("direct_reply");
+				if (result.kind !== "direct_reply")
+					throw Error("expected direct reply");
+				expect(result.result.responseContent.text).toContain(
+					original.content.text,
+				);
+				expect(
+					result.result.responseContent.sourceReplyReferences?.sources,
+				).toEqual([
+					expect.objectContaining({ eventId: `history:${original.id}` }),
+				]);
+				expect(dispatch).toHaveBeenCalledTimes(1);
+			}
+			expect(runtime.useModel).toHaveBeenCalledTimes(1);
+			expect(JSON.stringify(raw)).toBe(before);
+			const params = useModelCalls(runtime)[0][1] as {
+				responseSkeleton: { spans: { key?: string; kind: string }[] };
+				tools: { parameters?: { properties?: { replyText?: unknown } } }[];
+			};
+			expect(params.tools[0].parameters?.properties?.replyText).toHaveProperty(
+				"anyOf",
+			);
+			expect(
+				params.responseSkeleton.spans.find(
+					(span) => span.key === "replyText" && span.kind !== "literal",
+				)?.kind,
+			).toBe("free-json");
+		},
+	);
+
 	it.each(["unchanged", "edited", "revoked"])(
 		"reads a fully quoted deferred source before dispatching the draft: %s",
 		async (mode) => {

@@ -1324,7 +1324,7 @@ it("retains Stage-1 evaluator patch evidence during direct recovery", async () =
   expect(JSON.stringify(evidence)).toContain(correction);
 });
 
-it("retains earlier settled receipts during a later planner callback recovery", async () => {
+it("retains settled receipts for final evaluation while withholding intermediate claims", async () => {
   const receiptId = "receipt-archive-first-tool-31494";
   const recovered = "The appointment change is not verified.";
   const harness = await createHarness(
@@ -1392,9 +1392,11 @@ it("retains earlier settled receipts during a later planner callback recovery", 
     }),
     plannerFinish(recovered),
   ];
+  const decisionInputs: string[] = [];
   harness.runtime.registerModel(
     ModelType.RESPONSE_HANDLER,
-    async () => {
+    async (_runtime, params) => {
+      decisionInputs.push(JSON.stringify(params.messages ?? params.prompt));
       const next = responses.shift();
       if (!next) throw new Error("Unexpected response-handler call");
       return next;
@@ -1430,10 +1432,8 @@ it("retains earlier settled receipts during a later planner callback recovery", 
     async () => {
       const next = plans.shift();
       if (!next && finalSynthesisCalls++ === 0) {
-        const delivered = harness.callbacks[0]?.text;
-        if (!delivered)
-          throw new Error("Final synthesis requires a grounded callback");
-        return { text: delivered, toolCalls: [] };
+        expect(harness.callbacks).toHaveLength(0);
+        return { text: recovered, toolCalls: [] };
       }
       if (!next) throw new Error("Unexpected planner call");
       return next;
@@ -1458,12 +1458,13 @@ it("retains earlier settled receipts during a later planner callback recovery", 
   const calls = harness.voiceHandler.mock.calls.filter((call) =>
     call[1].prompt.startsWith("Compose a user-facing response"),
   );
-  expect(calls.length).toBeGreaterThan(0);
-  expect(calls[0][1].prompt).toContain(receiptId);
-  expect(calls[0][1].prompt).toContain(
-    "Calendar change rejected before any write.",
+  expect(calls).toHaveLength(0);
+  expect(harness.callbacks[0].text).toBe(recovered);
+  expect(harness.sent[0].text).toBe(recovered);
+  const finalEvidence = decisionInputs.find((input) =>
+    input.includes("Calendar change rejected before any write."),
   );
-  expect(calls[0][1].prompt).toContain(
-    "The second requested operation is pending.",
-  );
+  expect(finalEvidence).toBeDefined();
+  expect(finalEvidence).toContain(receiptId);
+  expect(finalEvidence).toContain("The second requested operation is pending.");
 });

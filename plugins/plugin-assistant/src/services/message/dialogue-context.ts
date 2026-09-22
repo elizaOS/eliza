@@ -11,6 +11,10 @@ import {
   unwrapUserMessageText,
 } from "@elizaos/core";
 import { resolveExplicitContinuationRequestText } from "./direct-action-heuristics.ts";
+import {
+  readSourceReplyReferences,
+  sourceReplyTextHash,
+} from "./source-reply-references.ts";
 import { parseSubAgentTaskCompleteRelay } from "./task-completion-relay.ts";
 
 export function asProviderRecord(value: unknown):
@@ -106,6 +110,17 @@ export function verifiedCrossRoomContent(memory: Memory): string {
   return [text, attachmentText].filter(Boolean).join(" ");
 }
 
+/** The unaugmented original behind a rendered dialogue segment. */
+export function priorDialogueOriginalText(memory: Memory): string | undefined {
+  const raw =
+    typeof memory.content?.currentMessageText === "string"
+      ? memory.content.currentMessageText
+      : memory.content?.text;
+  return typeof raw === "string" && getUserMessageText(memory) === raw.trim()
+    ? raw
+    : undefined;
+}
+
 /** Preserve ordered user and assistant dialogue while excluding non-dialogue artifacts. */
 export function appendPriorDialogueEvents(
   events: ContextEvent[],
@@ -179,6 +194,19 @@ export function appendPriorDialogueEvents(
     const speakerName = isOwnReply
       ? (runtime.character?.name ?? priorDialogueSpeakerName(memory))
       : priorDialogueSpeakerName(memory);
+    const originalText = priorDialogueOriginalText(memory);
+    const storedReferences =
+      isOwnReply && originalText !== undefined
+        ? readSourceReplyReferences(
+            memory.content.sourceReplyReferences,
+            originalText,
+          )
+        : undefined;
+    // Context presentation trims the boundary; validate the stored exact text
+    // first, then bind the read hint to this displayed representation.
+    const sourceReplyReferences = storedReferences
+      ? { ...storedReferences, replySha256: sourceReplyTextHash(text) }
+      : undefined;
     events.push({
       id: `history:${memory.id}`,
       type: "segment",
@@ -193,6 +221,10 @@ export function appendPriorDialogueEvents(
           roomId: memory.roomId,
           entityId: memory.entityId,
           ...(speakerName ? { speakerName } : {}),
+          ...(sourceReplyReferences ? { sourceReplyReferences } : {}),
+          ...(originalText !== undefined && originalText !== text
+            ? { originalTextSha256: sourceReplyTextHash(originalText) }
+            : {}),
         },
       },
     });
@@ -268,7 +300,7 @@ export function currentMessageContentForContext(
   // These client-chat carriers belong to replay protection and UI dispatch,
   // not the model's request. Never mutate the Memory used by persistence,
   // recovery or action execution, and retain every other content/metadata key.
-  const modelContent = { ...projected };
+  const modelContent: Memory["content"] = { ...projected };
   delete modelContent.chatIdempotency;
   const metadata = modelContent.metadata;
   if (

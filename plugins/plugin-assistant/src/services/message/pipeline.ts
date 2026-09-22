@@ -9,6 +9,12 @@ import {
 } from "@elizaos/core";
 import type { EvaluatorService } from "../evaluator";
 import { withHistoryReadEvidence } from "./history-discovery.js";
+import {
+  getSourceReplyRendering,
+  sourceReplyAssertionText,
+  sourceReplyScopeMatches,
+  transformSourceReplyProse,
+} from "./source-reply.ts";
 import { generateStage1Decision } from "./stage1-decision.ts";
 
 export { directCodingResponseHandlerResult } from "./stage1-decision.ts";
@@ -364,6 +370,7 @@ export async function runV5MessageRuntimeStage1(
       providerDiscoveryEnabled,
       loadedContextProviders,
       historyReadEvidence,
+      sourceReplyRendering,
       contextCatalogRead,
       contextReadAcknowledgmentSent,
     } = await generateStage1Decision(
@@ -731,8 +738,29 @@ export async function runV5MessageRuntimeStage1(
         "[message] Turn addressed to another participant — engagement gate ignores it",
       );
     }
+    const routingSourceReply = getSourceReplyRendering(sourceReplyRendering);
+    const sourceReplyForRouting =
+      routingSourceReply &&
+      routingSourceReply.prose.trim() ===
+        (messageHandler.plan.reply ?? "").trim() &&
+      !fieldRunResult?.preempt &&
+      !responseHandlerEvaluation.appliedPatches.some((patch) =>
+        patch.changed.some((change) => change.startsWith("reply:")),
+      ) &&
+      sourceReplyScopeMatches(routingSourceReply, {
+        agentId: args.runtime.agentId,
+        roomId: args.message.roomId,
+        messageId: args.message.id ?? "",
+      })
+        ? routingSourceReply
+        : undefined;
+    if (sourceReplyForRouting)
+      messageHandler.plan.reply = sourceReplyForRouting.text;
     const route = routeMessageHandlerOutput(messageHandler, {
       addressedToOtherParticipant,
+      replyTextForInference: sourceReplyForRouting
+        ? sourceReplyAssertionText(sourceReplyForRouting)
+        : undefined,
       candidateActionsClearedByEvaluators:
         responseHandlerEvaluation.candidateActionsClearedByEvaluators,
       messageText: getUserMessageText(args.message) ?? "",
@@ -775,6 +803,23 @@ export async function runV5MessageRuntimeStage1(
       // instead of a blank/garbled bubble, but keep a valid-but-terse answer
       // (e.g. "144" to a math question).
       let reply = route.reply;
+      let protectedReply = sourceReplyForRouting;
+      if (
+        protectedReply &&
+        sourceReplyScopeMatches(protectedReply, {
+          agentId: args.runtime.agentId,
+          roomId: args.message.roomId,
+          messageId: args.message.id ?? "",
+        }) &&
+        reply === protectedReply.text.trim()
+      ) {
+        protectedReply = transformSourceReplyProse(
+          protectedReply,
+          restorePiiInUserReplyText,
+        );
+        reply = protectedReply.text;
+      } else protectedReply = undefined;
+
       // Voice-gate provenance (#14873): `route.reply` is the Stage-1
       // RESPONSE_HANDLER model's own composed reply — already genuine agent
       // voice — so it must skip the last-mile re-voice pass. Only the
@@ -792,7 +837,7 @@ export async function runV5MessageRuntimeStage1(
       // diagnosing a transcript the user pasted) — are exempt: the detector
       // fires only when the skeleton IS the reply, so a legitimate diagnosis
       // is never rewritten down to its quoted replyText tail.
-      if (looksLikeRawFieldTranscript(reply)) {
+      if (looksLikeRawFieldTranscript(protectedReply?.prose ?? reply)) {
         const recovered = extractReplyTextFromTranscript(reply);
         args.runtime.logger?.warn?.(
           {
@@ -806,8 +851,10 @@ export async function runV5MessageRuntimeStage1(
         // recover a reply, blank it so the unusable-reply guard below owns
         // the failure path (already logged above).
         reply = recovered !== null ? recovered : "";
+        protectedReply = undefined;
       }
       if (
+        !protectedReply &&
         isUnusableStage1Reply(reply) &&
         !isTerseReplyWorthKeeping({
           reply,
@@ -820,11 +867,14 @@ export async function runV5MessageRuntimeStage1(
       const directReplyEgressDecision = evaluatePlannedReplyEgress({
         providers: args.state.data.providers,
         request: args.message.content.text,
-        reply,
+        reply: protectedReply
+          ? sourceReplyAssertionText(protectedReply)
+          : reply,
         actionResults: [],
         actions: args.runtime.actions,
       });
       if (directReplyEgressDecision.verdict === "reject") {
+        protectedReply = undefined;
         reply = (
           await resolvePlannedReplyEgress({
             providers: args.state.data.providers,
@@ -845,6 +895,7 @@ export async function runV5MessageRuntimeStage1(
           text: reply,
           thought: messageHandler.thought,
           agentVoiced: replyIsModelVoice,
+          sourceReplyRendering: protectedReply,
         }),
       };
     }

@@ -46,8 +46,13 @@ import {
 } from "./direct-action-heuristics";
 import { getV5ModelText } from "./generate-text-result";
 import {
+  getSourceReplyRendering,
+  type SourceReplyRendering,
+} from "./source-reply.ts";
+import {
   delegationCandidateNames,
   hasAckOnlyActionableIntent,
+  hasOnlyWeakDirectReplyPlanningSignals,
   inferAckIntentCandidateActions,
   inferDirectCurrentRequestCandidateInference,
   modelProvidedRunnableDelegationCandidate,
@@ -285,6 +290,7 @@ export function messageHandlerFromFieldResult(
     messageText?: string;
     candidateBackstopRules?: readonly CandidateActionBackstopRule[];
     subAgentCompletionRelay?: boolean;
+    sourceReplyRendering?: SourceReplyRendering;
   },
 ): MessageHandlerResult {
   const rawContexts = Array.isArray(result.contexts)
@@ -323,6 +329,9 @@ export function messageHandlerFromFieldResult(
     !rawContexts.some((context) => context.toLowerCase() === "code")
       ? ["code", ...rawContexts]
       : rawContexts;
+  const sourceReply = getSourceReplyRendering(
+    runtimeContext?.sourceReplyRendering,
+  );
   const replyTextRaw = stripJsonStructuralJunkReply(
     typeof result.replyText === "string" ? result.replyText : "",
   );
@@ -608,11 +617,16 @@ export function messageHandlerFromFieldResult(
     !modelCommittedToDelegation &&
     !modelCommittedToPlanning &&
     !looksLikeWebSearchRequest(currentMessageText) &&
-    shouldPreferCompleteDirectReply({
-      replyText: replyTextRaw,
-      candidateActions: runnableCandidateActions,
-      contexts: routedContexts,
-    });
+    ((sourceReply !== undefined &&
+      hasOnlyWeakDirectReplyPlanningSignals({
+        candidateActions: runnableCandidateActions,
+        contexts: routedContexts,
+      })) ||
+      shouldPreferCompleteDirectReply({
+        replyText: replyTextRaw,
+        candidateActions: runnableCandidateActions,
+        contexts: routedContexts,
+      }));
   const preferInlineCodeSnippetDirectReply =
     !preemptDirect &&
     !pendingDeclaredWork &&

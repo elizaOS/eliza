@@ -12,7 +12,10 @@
  */
 import { describe, expect, it } from "vitest";
 import { REASONING_TAG_NAMES } from "../utils/reasoning-tags.ts";
-import { sanitizeOutboundText } from "./outbound-sanitize.ts";
+import {
+	sanitizeOutboundText,
+	sanitizeOutboundTextWithLiterals,
+} from "./outbound-sanitize.ts";
 
 describe("sanitizeOutboundText — reasoning tags (Discord characterization)", () => {
 	it("strips paired reasoning tags with their contents", () => {
@@ -491,5 +494,42 @@ describe("model-invented [LINK:] pseudo-markers", () => {
 		);
 		expect(out).not.toContain("\u0000");
 		expect(out).toContain("```export PATH=/x```");
+	});
+});
+
+describe("structured outbound literals", () => {
+	it("preserves original whitespace and syntax while cleaning authored prose", () => {
+		const original = "  <thinking>quoted words</thinking>\n\n\n  ";
+		const prefix = "<thinking>private</thinking>Original: ";
+		const result = sanitizeOutboundTextWithLiterals(prefix + original, [
+			{ start: prefix.length, end: prefix.length + original.length },
+		]);
+		expect(result.text).toBe(`Original: ${original}`);
+		expect(
+			result.text.slice(
+				result.literalSpans[0].start,
+				result.literalSpans[0].end,
+			),
+		).toBe(original);
+	});
+	it("preserves a source-only original exactly", () => {
+		const original = "  <final>literal</final>\n";
+		expect(
+			sanitizeOutboundTextWithLiterals(original, [
+				{ start: 0, end: original.length },
+			]).text,
+		).toBe(original);
+	});
+	it("rejects control syntax assembled across a source boundary", () => {
+		const text = "<thinking>secret</thinking>";
+		expect(() =>
+			sanitizeOutboundTextWithLiterals(text, [{ start: 2, end: 7 }]),
+		).toThrow();
+	});
+	it("does not recover a literal removed by an enclosing private block", () => {
+		const text = "<thinking>literal</thinking>";
+		expect(() =>
+			sanitizeOutboundTextWithLiterals(text, [{ start: 10, end: 17 }]),
+		).toThrow();
 	});
 });

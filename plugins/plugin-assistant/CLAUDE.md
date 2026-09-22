@@ -63,3 +63,16 @@ Planner action callbacks retain genuine tool-owned interaction controls together
 Native text-history decisions may use current_request as the source-set identity. Bind only that explicit reference from canonical HANDLE_RESPONSE arguments to the immutable sources captured for that model request. Core source validation still rejects stale/cross-room/unknown/incomplete selections. Legacy JSON and real mismatched hashes are not repaired implicitly; custom field schemas and voice retain their established paths. Provider-owned raw model output is never mutated.
 
 The existing direct-text, noncoding planner model facade may prefer provider-validated tool reasoning. It preserves the planner thinking policy and cache options; the provider must explicitly support the preference. Handler/evaluator calls, voice, group/unknown channels and coding turns receive no preference. This adds no model call or prompt text.
+
+
+Direct-text native Stage 1 may compose replies from text and authorized complete
+same-room original-message parts. Bind source IDs and exact bytes to the current
+turn's supplied context; reject unresolved or duplicate source decisions before
+field effects. Keep raw model output in recordings. Render literals only after
+field/evaluator reply overrides have been honored. Runtime-only bindings protect
+literal bytes through cosmetic cleanup; serialized references are read hints,
+never sanitizer authority. Full audience and security-envelope checks still run.
+Only one complete source with whitespace-only framing is exempt from new-claim
+inference; mixed prose or multiple sources use the complete rendered claim checks.
+Persisted quote links may reload unchanged earlier originals through the existing
+authorized history path, with no recency floor, summary or extra foreground model.

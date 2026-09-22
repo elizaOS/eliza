@@ -95,6 +95,12 @@ export interface Content {
   /** The main text content visible to users */
   text?: string;
 
+  /** Exact quote origins are read hints, never permission or authorship proof. */
+  sourceReplyReferences?: {
+    replySha256: string;
+    sources: { eventId: string; sourceSha256: string }[];
+  };
+
   /**
    * Core-validated effect receipts grounding this exact visible text. Plugins
    * cannot establish proof by setting this field alone; the delivery boundary

@@ -1,5 +1,7 @@
 import type { MessageReplyRecoveryContext } from "@elizaos/core";
 import type { PlannedReplyClaimKind } from "./egress-policy.ts";
+import { getSourceReplyBinding } from "./source-reply.ts";
+import { readSourceReplyReferences } from "./source-reply-references.ts";
 /** Wraps visible message callbacks with shared voice rendering, duplicate-delivery suppression, and egress policy. */
 
 import { resolveCallbackActionName } from "./action-identifiers.js";
@@ -28,6 +30,7 @@ import {
   reportOutboundEnvelopeBlock,
   runWithSuppressedModelStream,
   sanitizeOutboundText,
+  sanitizeOutboundTextWithLiterals,
   stripReasoningBlocks,
 } from "@elizaos/core";
 import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
@@ -45,6 +48,7 @@ export const INTERMEDIATE_CALLBACK_METADATA_KEYS = new Set([
   "agentVoiced",
   "channelType",
   "effectReceiptIds",
+  "sourceReplyReferences",
   "inReplyTo",
   "mentionContext",
   "merge",
@@ -248,9 +252,19 @@ export function wrapSingleTurnVisibleCallback(
     // envelope guard then fail-closed blocks any security-envelope echo the
     // model produced, replacing it with the honest leak notice.
     if (typeof response?.text === "string" && response.text.length > 0) {
+      const sourceReply = getSourceReplyBinding(response, {
+        agentId: runtime.agentId,
+        roomId: message.roomId,
+        messageId: message.id ?? "",
+      });
       const guarded = guardOutboundEnvelopeText(
         fullRuntime,
-        sanitizeOutboundText(response.text),
+        sourceReply
+          ? sanitizeOutboundTextWithLiterals(
+              response.text,
+              sourceReply.literalSpans,
+            ).text
+          : sanitizeOutboundText(response.text),
         "visible-callback",
       );
       if (guarded !== response.text) {
@@ -311,6 +325,15 @@ export function wrapSingleTurnVisibleCallback(
             .filter((token) => token.length > 0),
         ),
       );
+    }
+    if (response.sourceReplyReferences) {
+      response = {
+        ...response,
+        sourceReplyReferences: readSourceReplyReferences(
+          response.sourceReplyReferences,
+          response.text ?? "",
+        ),
+      };
     }
     const delivered = await callback(response, actionName);
     if (rawUnsanitizedText) {

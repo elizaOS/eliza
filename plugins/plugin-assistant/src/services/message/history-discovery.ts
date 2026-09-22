@@ -21,6 +21,11 @@ import {
 } from "../../runtime/history-retention.ts";
 import { readContextRequests } from "./context-discovery.ts";
 
+import {
+  readSourceReplyReferences,
+  sourceReplyEventHash,
+} from "./source-reply-references.ts";
+
 /** Match source-selection semantics to the supplied originals and available reads. */
 export function withReviewedHistorySelection(schema: JSONSchema): JSONSchema {
   const selection = schema.properties?.completionContext;
@@ -97,11 +102,11 @@ export function projectReviewedHistory(
   const sourceIdByEvent = new Map(
     bound.sources.map((source) => [source.event.id, source.id]),
   );
-  return {
+  const projection = {
     sourceSetId: bound.sourceSetId,
     scope,
     visibleEventIds: visible,
-    loadedSourceIds: new Set(),
+    loadedSourceIds: new Set<string>(),
     dependencySourceGroups: (
       checkpoint as HistoryRetentionCheckpoint
     ).dependencyEventGroups?.map((group) =>
@@ -117,6 +122,18 @@ export function projectReviewedHistory(
       }),
     ),
   };
+  const visibleSources = new Set(
+    bound.sources
+      .filter((source) => visible.has(source.event.id))
+      .map((source) => source.id),
+  );
+  for (const source of referencedHistorySources(
+    bound,
+    projection,
+    visibleSources,
+  ))
+    projection.loadedSourceIds.add(source.id);
+  return projection;
 }
 
 export function historyReferences(
@@ -255,6 +272,7 @@ export function requestedHistory(
           );
         })
       : [];
+  const linked = referencedHistorySources(bound, projection, new Set(selected));
   return [
     ...new Set([
       ...requested,
@@ -269,8 +287,79 @@ export function requestedHistory(
         })
         .map((id) => `${HISTORY_REFERENCE_PREFIX}${id}`),
       ...quoted.map(({ id }) => `${HISTORY_REFERENCE_PREFIX}${id}`),
+      ...linked.map(({ id }) => `${HISTORY_REFERENCE_PREFIX}${id}`),
     ]),
   ];
+}
+
+/** Stored quote links request only unchanged, earlier originals already in this
+ * authorized room. The existing dependency closure preserves linked corrections. */
+function referencedHistorySources(
+  bound: ReturnType<typeof completionContextSources>,
+  projection: HistoryDiscovery,
+  sourceIds: ReadonlySet<string>,
+) {
+  const byId = new Map(
+    bound.sources.map((source, index) => [source.id, { source, index }]),
+  );
+  const byEvent = new Map(
+    bound.sources.map((source, index) => [source.event.id, { source, index }]),
+  );
+  const duplicateEvents = new Set<string>();
+  const seenEvents = new Set<string>();
+  for (const { event } of bound.sources) {
+    if (seenEvents.has(event.id)) duplicateEvents.add(event.id);
+    seenEvents.add(event.id);
+  }
+  const body = (segment: ContextObjectPromptSegment) => {
+    const speaker = segment.metadata?.speakerName;
+    const prefix = typeof speaker === "string" ? `${speaker}: ` : "";
+    return prefix && segment.content.startsWith(prefix)
+      ? segment.content.slice(prefix.length)
+      : segment.content;
+  };
+  const pending = new Set(sourceIds);
+  includeLinkedSources(pending, projection.dependencySourceGroups ?? []);
+  // Set iteration also visits newly added dependencies, once each.
+  for (const id of pending) {
+    const entry = byId.get(id);
+    if (entry?.source.event.segment.label !== "prior_message:agent") continue;
+    const { source: reply, index } = entry;
+    if (reply.event.segment.metadata?.roomId !== projection.scope.roomId)
+      continue;
+    const text = body(reply.event.segment);
+    const stored = reply.event.segment.metadata?.sourceReplyReferences;
+    const references =
+      readSourceReplyReferences(stored, text) ??
+      readSourceReplyReferences(stored, reply.event.segment.content);
+    for (const reference of references?.sources ?? []) {
+      const target = byEvent.get(reference.eventId);
+      if (
+        !target ||
+        duplicateEvents.has(reference.eventId) ||
+        target.index >= index
+      )
+        continue;
+      const { source } = target;
+      if (
+        source.event.segment.metadata?.roomId !== projection.scope.roomId ||
+        sourceReplyEventHash(source.event) !== reference.sourceSha256 ||
+        !body(source.event.segment) ||
+        !text.includes(body(source.event.segment))
+      )
+        continue;
+      if (!pending.has(source.id)) {
+        pending.add(source.id);
+        includeLinkedSources(pending, projection.dependencySourceGroups ?? []);
+      }
+    }
+  }
+  return bound.sources.filter(
+    (source) =>
+      pending.has(source.id) &&
+      !projection.visibleEventIds.has(source.event.id) &&
+      !projection.loadedSourceIds.has(source.id),
+  );
 }
 
 /** A draft can copy an entire original from a visible assistant recap while
@@ -346,8 +435,7 @@ export function canRepairHistoryIdentity(
   if (!projection) return false;
   const selection = parseCompletionContextSelection(raw?.completionContext);
   if (
-    !selection ||
-    !selection.complete ||
+    !selection?.complete ||
     selection.mode !== "selected" ||
     !/^[0-9a-f]{64}$/.test(selection.sourceSetId)
   )
@@ -422,6 +510,12 @@ export function loadHistoryReferences(
     loadedSourceIds,
     projection.dependencySourceGroups ?? [],
   );
+  for (const source of referencedHistorySources(
+    bound,
+    projection,
+    loadedSourceIds,
+  ))
+    loadedSourceIds.add(source.id);
   const evidence = {
     ...projection,
     loadedSourceIds,

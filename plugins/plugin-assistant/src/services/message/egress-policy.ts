@@ -52,6 +52,10 @@ import {
   replyClaimsEmptyTrackedWorkState,
 } from "./side-effect-claims.ts";
 import {
+  getSourceReplyBinding,
+  sourceReplyAssertionText,
+} from "./source-reply.ts";
+import {
   groundedCurrentTimeReply,
   statedTimeIsUngrounded,
 } from "./time-observations.ts";
@@ -603,6 +607,14 @@ export async function enforceEffectGroundedVisibleContent(
   actionName?: string,
   prepareRecovery?: () => Promise<MessageReplyRecoveryContext | undefined>,
 ): Promise<Content> {
+  const sourceReply = getSourceReplyBinding(response, {
+    agentId: runtime.agentId,
+    roomId: message.roomId,
+    messageId: message.id ?? "",
+  });
+  const assertedText = sourceReply
+    ? sourceReplyAssertionText(sourceReply)
+    : response.text;
   const hasEffectDeliveryBinding =
     getEffectDeliveryBinding(response) !== undefined;
   if (!hasEffectDeliveryBinding && response.effectReceiptIds !== undefined) {
@@ -612,8 +624,8 @@ export async function enforceEffectGroundedVisibleContent(
     hasEffectDeliveryBinding && !effectDeliveryBindingIsValid(response);
   if (
     effectDeliveryBindingInvalid ||
-    (typeof response.text === "string" &&
-      replyClaimsCompletedSideEffect(response.text) &&
+    (typeof assertedText === "string" &&
+      replyClaimsCompletedSideEffect(assertedText) &&
       !effectDeliveryBindingProvesApplication(response))
   ) {
     runtime.logger.warn(
