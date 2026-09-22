@@ -4025,11 +4025,13 @@ async function importConversation(
       importAbortTracker.signal,
     );
   } catch (err) {
+    // error-policy:J1 Withdraw this import's registration even when the caller
+    // disconnected and cannot receive the admission error response.
     importAbortTracker.dispose();
-    if (importAbortTracker.isAborted()) return true;
     if (createdConversation && state.conversations.get(convId) === conv) {
       state.conversations.delete(convId);
     }
+    if (importAbortTracker.isAborted()) return true;
     error(
       res,
       isRoomQueueBackpressureError(err)
