@@ -76,3 +76,13 @@ Only one complete source with whitespace-only framing is exempt from new-claim
 inference; mixed prose or multiple sources use the complete rendered claim checks.
 Persisted quote links may reload unchanged earlier originals through the existing
 authorized history path, with no recency floor, summary or extra foreground model.
+
+
+Authorized providers may expose complete original records through the shared
+original-message renderer. Carry source metadata into context only when it
+exactly reconstructs the supplied text (apart from its existing outer trim),
+and revalidate after discovery projection. Provider-only quotations bind to the
+current provider fingerprint independently of current-room history selection.
+Keep provider IDs out of history selectors and persisted same-room quote links;
+redaction, withheld sources, missing identity or duplicate IDs never authorize
+raw metadata reads. Full delivery-audience checks remain mandatory.

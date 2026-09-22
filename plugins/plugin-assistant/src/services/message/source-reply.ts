@@ -6,6 +6,7 @@ import {
   completionContextSources,
   ElizaError,
   getUserMessageText,
+  isObjectRecord,
   type JSONSchema,
   type Memory,
   type OutboundLiteralSpan,
@@ -13,6 +14,7 @@ import {
   sanitizeOutboundTextWithLiterals,
   stripJsonStructuralJunkReply,
 } from "@elizaos/core";
+import { providerOriginals } from "../../runtime/provider-originals.ts";
 import {
   priorDialogueContent,
   priorDialogueOriginalText,
@@ -25,12 +27,12 @@ import {
 } from "./source-reply-references";
 
 export const SOURCE_REPLY_INSTRUCTIONS =
-  'Reply parts: replyText may be an ordinary string or an ordered array. Use {kind:"source",value:"hN"} for every verbatim original-message quotation; the renderer inserts that supplied original unchanged. Use {kind:"text",value:"..."} for your own explanations or summaries, not retyped original quotations. Source parts may refer only to supplied originals; preserve speaker attribution. Use an empty string or [] when no reply is needed.';
+  'Reply parts: replyText may be an ordinary string or an ordered array. Use {kind:"source",value:"hN"} (or "recalledN" from supplied provider context) for every verbatim original-message quotation; the renderer inserts that supplied original unchanged. Use {kind:"text",value:"..."} for your own explanations or summaries, not retyped original quotations. Source parts may refer only to supplied originals; preserve speaker attribution. Provider recalledN IDs do not belong in history completionContext selections. Use an empty string or [] when no reply is needed.';
 
 export const SOURCE_REPLY_SCHEMA: JSONSchema = {
   type: "array",
   description:
-    "Ordered reply parts: text is your prose; source is a supplied hN original inserted unchanged; use text parts for paragraph separators. Use source parts for verbatim whole-message quotes, never retype them. Keep explanations and speaker attribution in text parts. Use [] for no reply.",
+    "Ordered reply parts: text is your prose; source is a supplied hN or recalledN original inserted unchanged; use text parts for paragraph separators. Use source parts for verbatim whole-message quotes, never retype them. Keep explanations and speaker attribution in text parts. Use [] for no reply.",
   items: {
     type: "object",
     additionalProperties: false,
@@ -43,6 +45,8 @@ export const SOURCE_REPLY_SCHEMA: JSONSchema = {
 };
 export type SourceReplySnapshot = {
   sourceSetId: string;
+  providerSourceSetId?: string;
+  providerIds: ReadonlySet<string>;
   scope: { agentId: string; roomId: string; messageId: string };
   suppliedIds: ReadonlySet<string>;
   originals: ReadonlyMap<string, string>;
@@ -313,7 +317,11 @@ export function createSourceReplySnapshot(
     });
   }
 
+  const providers = providerOriginals(context);
+  for (const [id, text] of providers?.originals ?? []) originals.set(id, text);
   return {
+    providerSourceSetId: providers?.sourceSetId,
+    providerIds: new Set(providers?.originals.keys()),
     sourceSetId: bound.sourceSetId,
     scope: {
       agentId: projection.scope.agentId,
@@ -363,30 +371,60 @@ export function resolveSourceReply(
       replyText: raw.replyText.map((part) => part.value).join(""),
     };
   }
-  const selection = parseCompletionContextSelection(raw.completionContext);
   if (
-    !selection?.complete ||
-    (selection.mode !== "selected" && selection.mode !== "full") ||
-    selection.sourceSetId !== snapshot.sourceSetId ||
-    completionContextSources(context).sourceSetId !== snapshot.sourceSetId
+    snapshot.providerSourceSetId &&
+    providerOriginals(context)?.sourceSetId !== snapshot.providerSourceSetId
   )
     return undefined;
-  const selected = new Set(
-    selection.mode === "full"
-      ? completionContextSources(context).sources.map((source) => source.id)
-      : [
-          ...selection.relevantSourceIds,
-          ...selection.constraintSourceIds,
-          ...selection.referentSourceIds,
-          ...selection.pendingIntentSourceIds,
-        ],
+  const historyParts = raw.replyText.filter(
+    (part) => part.kind === "source" && !snapshot.providerIds.has(part.value),
   );
-  if ([...selected].some((id) => !snapshot.suppliedIds.has(id)))
+  const selected = new Set<string>();
+  const selection = parseCompletionContextSelection(raw.completionContext);
+  const rawSelection = raw.completionContext;
+  if (
+    isObjectRecord(rawSelection) &&
+    [
+      "relevantSourceIds",
+      "constraintSourceIds",
+      "referentSourceIds",
+      "pendingIntentSourceIds",
+    ].some((field) => {
+      const ids = rawSelection[field];
+      return (
+        Array.isArray(ids) &&
+        ids.some((id) => typeof id === "string" && snapshot.providerIds.has(id))
+      );
+    })
+  )
     return undefined;
+  if (historyParts.length > 0) {
+    if (
+      !selection?.complete ||
+      (selection.mode !== "selected" && selection.mode !== "full") ||
+      selection.sourceSetId !== snapshot.sourceSetId ||
+      completionContextSources(context).sourceSetId !== snapshot.sourceSetId
+    )
+      return undefined;
+    const ids =
+      selection.mode === "full"
+        ? completionContextSources(context).sources.map((source) => source.id)
+        : [
+            ...selection.relevantSourceIds,
+            ...selection.constraintSourceIds,
+            ...selection.referentSourceIds,
+            ...selection.pendingIntentSourceIds,
+          ];
+    if (ids.some((id) => !snapshot.suppliedIds.has(id))) return undefined;
+    for (const id of ids) selected.add(id);
+  }
   const parts: SourceReplyPart[] = [];
   for (const part of raw.replyText) {
     if (part.kind === "text") parts.push({ kind: "text", text: part.value });
-    else if (selected.has(part.value) && snapshot.originals.has(part.value)) {
+    else if (
+      (selected.has(part.value) || snapshot.providerIds.has(part.value)) &&
+      snapshot.originals.has(part.value)
+    ) {
       parts.push({
         kind: "source",
         text: snapshot.originals.get(part.value) ?? "",

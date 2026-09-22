@@ -6,6 +6,7 @@
  * runtime whose useModel returns queued responses (deterministic — no live
  * model, no DB); a few cases assert directly over the services/message.ts source.
  */
+
 import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import {
@@ -13,6 +14,7 @@ import {
 	prepareHistoryRetention,
 } from "../../../../plugins/plugin-assistant/src/runtime/history-retention.ts";
 import { HANDLED_STEP_FALLBACK_MESSAGE } from "../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import { renderProviderOriginalMessages } from "../../../../plugins/plugin-assistant/src/runtime/provider-originals.ts";
 import {
 	commitEvaluatorProgress,
 	prepareEvaluatorProgress,
@@ -545,6 +547,61 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
 
+	it("delivers an authorized provider original with no current-room history", async () => {
+		const originalMessages = {
+			header: "Relevant past conversations:",
+			sources: [
+				{
+					id: "recalled1",
+					prefix: "[chat] Earlier Nubs: ",
+					originalText: "  Exact recalled text.\n",
+					memoryId: "original",
+					roomId: "earlier-room",
+					agentId: "agent",
+					entityId: "user",
+					createdAt: 1,
+				},
+			],
+		};
+		const provider = {
+			text: renderProviderOriginalMessages(originalMessages),
+			data: { originalMessages },
+		};
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				extra: {
+					replyEffectStatus: "none",
+					replyText: [{ kind: "source", value: "recalled1" }],
+					completionContext: { mode: "full", complete: false, sourceSetId: "" },
+				},
+			}),
+		]);
+		runtime.providers = [
+			{
+				name: "relevant-conversations",
+				alwaysInResponseState: true,
+				get: async () => provider,
+			},
+		];
+		const state = makeState();
+		state.data.providers = { "relevant-conversations": provider };
+		const result = await runStage1({
+			runtime,
+			state,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "Quote that original message exactly.",
+			}),
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind !== "direct_reply") throw Error("Expected source reply");
+		expect(result.result.responseContent.text).toBe(
+			originalMessages.sources[0].originalText,
+		);
+		expect(result.result.responseContent.sourceReplyReferences).toBeUndefined();
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
 	it("does not let a quoted answer cancel a strong tool candidate", async () => {
 		const original = {
 			...makeMessage({ text: "Old source" }),

@@ -385,20 +385,18 @@ export async function generateStage1Decision(
         | { data?: { recentMessages?: unknown } }
         | undefined;
       const memories = recent?.data?.recentMessages;
-      if (Array.isArray(memories)) {
-        sourceReplySnapshot = createSourceReplySnapshot(
-          discovery.context,
-          history ?? {
-            scope: {
-              agentId: args.runtime.agentId,
-              roomId: args.message.roomId,
-              entityId: args.message.entityId,
-              roles: [senderRole],
-            },
+      sourceReplySnapshot = createSourceReplySnapshot(
+        discovery.context,
+        history ?? {
+          scope: {
+            agentId: args.runtime.agentId,
+            roomId: args.message.roomId,
+            entityId: args.message.entityId,
+            roles: [senderRole],
           },
-          memories as Memory[],
-        );
-      }
+        },
+        Array.isArray(memories) ? (memories as Memory[]) : [],
+      );
       const replySchema = fieldSchema.properties?.replyText;
       if (sourceReplySnapshot?.originals.size && replySchema) {
         effectiveReplySchema = {

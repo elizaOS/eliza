@@ -32,7 +32,12 @@ import {
   searchCanonicalConversationMemories,
   stringToUuid,
 } from "@elizaos/core";
-import { embedRecallQuery } from "@elizaos/plugin-assistant";
+import {
+  embedRecallQuery,
+  type ProviderOriginalMessages,
+  priorDialogueOriginalText,
+  renderProviderOriginalMessages,
+} from "@elizaos/plugin-assistant";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
@@ -273,27 +278,42 @@ export const relevantConversationsProvider: Provider = {
         semanticRecall?.availability === "unavailable"
           ? "partial"
           : "complete";
-      const lines: string[] = [
-        availability === "partial"
-          ? "Relevant past conversations (partial; some matching messages were withheld by access policy):"
-          : "Relevant past conversations:",
-      ];
-      for (const mem of filtered) {
-        const room = roomCache.get(mem.roomId) ?? null;
-        const tag = roomSourceTag(room);
-        const age = formatRelativeTimestampPrefix(mem.createdAt);
-        const speaker = formatSpeakerLabel(runtime, mem);
-        const msgText = memoryText(mem);
-        lines.push(`${tag} ${age}${speaker}: ${msgText}`);
-      }
+      const originalMessages: ProviderOriginalMessages = {
+        header:
+          availability === "partial"
+            ? "Relevant past conversations (partial; some matching messages were withheld by access policy):"
+            : "Relevant past conversations:",
+        sources: filtered.map((mem, index) => {
+          const room = roomCache.get(mem.roomId) ?? null;
+          const body = memoryText(mem);
+          const original = priorDialogueOriginalText(mem);
+          const quoteable =
+            original !== undefined &&
+            original === body &&
+            original.length > 0 &&
+            !!mem.id &&
+            !!mem.agentId;
+          return {
+            id: `${quoteable ? "recalled" : "record"}${index + 1}`,
+            prefix: `${roomSourceTag(room)} ${formatRelativeTimestampPrefix(mem.createdAt)}${formatSpeakerLabel(runtime, mem)}: `,
+            ...(quoteable ? { originalText: body } : { text: body }),
+            memoryId: mem.id ?? null,
+            agentId: mem.agentId ?? null,
+            roomId: mem.roomId,
+            entityId: mem.entityId,
+            createdAt: typeof mem.createdAt === "number" ? mem.createdAt : null,
+          };
+        }),
+      };
 
       return {
-        text: lines.join("\n"),
+        text: renderProviderOriginalMessages(originalMessages),
         values: {
           relevantConversationCount: filtered.length,
           relevantConversationAvailability: availability,
         },
         data: {
+          originalMessages,
           messages: filtered.map((m) => ({
             id: m.id,
             roomId: m.roomId,

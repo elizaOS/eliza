@@ -232,3 +232,10 @@ states, permission rechecks, final-context restoration and reply-only recovery.
 Backup metadata listing enumerates an existing directory directly, without an unconditional existence stat. After ENOENT, distinguish an absent directory from a dangling symlink before returning an empty list. Permission and non-directory errors remain errors; per-file identity checks, complete results and encrypted restore behavior remain unchanged.
 
 Conversation SSE forwards the first planning acknowledgement as a transient ChatTurnStatus.label and retains it through subsequent phases. Status deduplication includes that label at both generation and HTTP boundaries. Progress never enters token snapshots, response text or persisted assistant messages; aborted/closed turns cannot publish it.
+
+
+The relevant-conversations provider labels authorized complete records with
+recalled source IDs using the assistant's shared original-message renderer.
+Preserve original author, room, identity and text, including hash-memory source
+presentation and partial/withheld notices. The metadata is a quotation aid, not
+a new access grant or a way to recover text removed during provider redaction.
