@@ -547,6 +547,38 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
 
+	it("supplies zero-token interruption state to the next direct reply", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "Hi." }),
+		]);
+		const original = {
+			...makeMessage({ text: "Compare my notes." }),
+			id: "00000000-0000-0000-0000-000000000011" as UUID,
+			createdAt: 1,
+		};
+		const receipt = {
+			...original,
+			id: "00000000-0000-0000-0000-000000000012" as UUID,
+			entityId: runtime.agentId,
+			createdAt: 2,
+			content: { text: "", interrupted: true, inReplyTo: original.id },
+		};
+		const state = makeState();
+		state.data.providers = {
+			RECENT_MESSAGES: { data: { recentMessages: [original, receipt] } },
+		};
+		const result = await runStage1({
+			runtime,
+			state,
+			message: makeMessage({ channelType: ChannelType.DM, text: "Hi." }),
+		});
+		expect(result.kind).toBe("direct_reply");
+		const params = useModelCalls(runtime)[0][1] as { messages: unknown[] };
+		expect(JSON.stringify(params.messages)).toContain(
+			"runtime:interrupted_turn",
+		);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
 	it("delivers an authorized provider original with no current-room history", async () => {
 		const originalMessages = {
 			header: "Relevant past conversations:",

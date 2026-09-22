@@ -86,3 +86,10 @@ current provider fingerprint independently of current-room history selection.
 Keep provider IDs out of history selectors and persisted same-room quote links;
 redaction, withheld sources, missing identity or duplicate IDs never authorize
 raw metadata reads. Full delivery-audience checks remain mandatory.
+
+
+An authenticated same-room interrupted assistant receipt remains terminal state
+when no text was delivered. Carry its status beside the uniquely linked original
+request, without rewriting either dialogue body or treating interruption as a
+rollback of committed effects/background tasks. A casual approval cannot reuse
+an interrupted preview; an explicit new continuation request remains available.
