@@ -1374,6 +1374,56 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "elizaos-plugin-agentbit": {
+      "git": {
+        "repo": "socialbitro/elizaos-plugin-agentbit",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-agentbit",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.2"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Run the best x402 tool for any task across 14,000+ tools (including external sellers) and return the result — pay-per-call in USDC on Base, signed by the agent's own wallet. Adds AGENTBIT_ROUTE and AGENTBIT_DISCOVER.",
+      "homepage": "https://agentbit.app",
+      "topics": [
+        "x402",
+        "base",
+        "usdc",
+        "payments",
+        "onchain",
+        "crypto",
+        "router",
+        "agent",
+        "tools",
+        "mcp"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "elizaos-plugin-coinrailz": {
       "git": {
         "repo": "tdnupe3/elizaos-plugin-coinrailz",

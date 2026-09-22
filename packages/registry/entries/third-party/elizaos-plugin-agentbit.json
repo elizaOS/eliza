@@ -1,0 +1,20 @@
+{
+  "package": "elizaos-plugin-agentbit",
+  "repository": "github:socialbitro/elizaos-plugin-agentbit",
+  "kind": "plugin",
+  "description": "Run the best x402 tool for any task across 14,000+ tools (including external sellers) and return the result — pay-per-call in USDC on Base, signed by the agent's own wallet. Adds AGENTBIT_ROUTE and AGENTBIT_DISCOVER.",
+  "homepage": "https://agentbit.app",
+  "version": "0.1.2",
+  "tags": [
+    "x402",
+    "base",
+    "usdc",
+    "payments",
+    "onchain",
+    "crypto",
+    "router",
+    "agent",
+    "tools",
+    "mcp"
+  ]
+}
