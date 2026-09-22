@@ -519,6 +519,7 @@ export interface AppState {
   /** Last `reason` from GET /api/cloud/status (e.g. API-key-only vs OAuth). */
   elizaCloudStatusReason: string | null;
   cloudDashboardView: "overview" | "billing";
+  elizaCloudStatusLoading: boolean;
   elizaCloudLoginBusy: boolean;
   elizaCloudLoginError: string | null;
   /**

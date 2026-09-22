@@ -13,6 +13,11 @@ import {
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const { openBillingMock } = vi.hoisted(() => ({ openBillingMock: vi.fn() }));
+vi.mock("../../billing-console", () => ({
+  openCloudBillingConsole: openBillingMock,
+}));
+
 vi.mock("../../shell/CloudI18nProvider", () => ({
   useCloudT: () => (_key: string, options?: Record<string, unknown>) => {
     let value = String(options?.defaultValue ?? _key);
@@ -900,4 +905,78 @@ describe("ActiveComputeCardView", () => {
       ),
     ).toBeTruthy();
   });
+});
+
+describe("interactive billing handoff", () => {
+  function renderInteractive() {
+    const base = computeResource();
+    const resource = computeResource({
+      cancellationControl: {
+        ...base.cancellationControl,
+        eligible: false,
+        blockers: ["interactive_session_required"],
+      },
+    });
+    const cancel = vi.fn();
+    render(
+      <ActiveComputeCardView
+        state={ready(snapshot({ resources: available([resource]) }))}
+        onRetry={vi.fn()}
+        onRequestCancellation={cancel}
+      />,
+    );
+    return cancel;
+  }
+
+  it("opens hosted billing without issuing a cancellation or allowing duplicate handoffs", async () => {
+    let finish: ((opened: boolean) => void) | undefined;
+    openBillingMock.mockReset().mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const cancel = renderInteractive();
+    fireEvent.click(screen.getByRole("button", { name: "Open Cloud billing" }));
+    expect(
+      screen
+        .getByRole("button", { name: "Opening billing..." })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(openBillingMock).toHaveBeenCalledTimes(1);
+    expect(cancel).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+    finish?.(true);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Open Cloud billing" })
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
+  });
+
+  it.each(["blocked", "rejected"])(
+    "offers retry when the browser handoff is %s",
+    async (failure) => {
+      openBillingMock.mockReset();
+      if (failure === "blocked") openBillingMock.mockResolvedValueOnce(false);
+      else
+        openBillingMock.mockRejectedValueOnce(new Error("browser unavailable"));
+      openBillingMock.mockResolvedValueOnce(true);
+      renderInteractive();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Open Cloud billing" }),
+      );
+      expect(await screen.findByRole("alert")).toHaveProperty(
+        "textContent",
+        "Could not open billing. Please try again.",
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Open Cloud billing" }),
+      );
+      await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+      expect(openBillingMock).toHaveBeenCalledTimes(2);
+    },
+  );
 });

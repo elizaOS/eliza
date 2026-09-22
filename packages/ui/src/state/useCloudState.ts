@@ -530,6 +530,8 @@ export function useCloudState({
   const [cloudDashboardView, setCloudDashboardView] = useState<
     "overview" | "billing"
   >("overview");
+  const [elizaCloudStatusLoading, setElizaCloudStatusLoading] = useState(true);
+  const cloudStatusPollsInFlight = useRef(0);
   const [elizaCloudLoginBusy, setElizaCloudLoginBusy] = useState(false);
   const [elizaCloudLoginError, setElizaCloudLoginError] = useState<
     string | null
@@ -752,7 +754,22 @@ export function useCloudState({
     }
     return isConnected;
   }
-  const pollCloudCredits = useCallback(runCloudPoll, []);
+  const runStableCloudPoll = useCallback(runCloudPoll, []);
+  const pollCloudCredits = useCallback(
+    async (intent: PollIntent = "ambient") => {
+      cloudStatusPollsInFlight.current += 1;
+      setElizaCloudStatusLoading(true);
+      try {
+        return await runStableCloudPoll(intent);
+      } finally {
+        cloudStatusPollsInFlight.current -= 1;
+        if (cloudStatusPollsInFlight.current === 0) {
+          setElizaCloudStatusLoading(false);
+        }
+      }
+    },
+    [runStableCloudPoll],
+  );
 
   const reconcileAndroidCloudSession = useCallback(
     async (cloudApiBase?: string): Promise<boolean> => {
@@ -2126,6 +2143,7 @@ export function useCloudState({
     setElizaCloudStatusReason,
     cloudDashboardView,
     setCloudDashboardView,
+    elizaCloudStatusLoading,
     elizaCloudLoginBusy,
     setElizaCloudLoginBusy,
     elizaCloudLoginError,

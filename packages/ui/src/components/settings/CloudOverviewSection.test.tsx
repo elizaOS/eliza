@@ -32,6 +32,7 @@ function t(_key: string, opts?: { defaultValue?: string; id?: string }) {
 
 function seedCloudOverviewState(
   overrides: Partial<{
+    elizaCloudStatusLoading: boolean;
     elizaCloudConnected: boolean;
     elizaCloudDisconnecting: boolean;
     elizaCloudLoginBusy: boolean;
@@ -43,6 +44,7 @@ function seedCloudOverviewState(
 ) {
   __setAppValueForTests({
     t,
+    elizaCloudStatusLoading: overrides.elizaCloudStatusLoading ?? false,
     elizaCloudConnected: overrides.elizaCloudConnected ?? false,
     elizaCloudDisconnecting: overrides.elizaCloudDisconnecting ?? false,
     elizaCloudLoginBusy: overrides.elizaCloudLoginBusy ?? false,
@@ -65,6 +67,39 @@ afterEach(() => {
 });
 
 describe("CloudOverviewSection", () => {
+  it("shows verification instead of disconnected and prevents duplicate login while checking", () => {
+    const handleInteractiveCloudLogin = vi.fn(async () => undefined);
+    seedCloudOverviewState({
+      elizaCloudStatusLoading: true,
+      handleInteractiveCloudLogin,
+    });
+    render(<CloudOverviewSection />);
+    const button = screen.getByRole<HTMLButtonElement>("button", {
+      name: "Checking Cloud account...",
+    });
+    expect(button.disabled).toBe(true);
+    expect(screen.queryByText("No Cloud account connected")).toBeNull();
+    fireEvent.click(button);
+    expect(handleInteractiveCloudLogin).not.toHaveBeenCalled();
+    expect(cloudLoginWindow.claim).not.toHaveBeenCalled();
+  });
+
+  it("keeps connected account controls available during background verification", () => {
+    seedCloudOverviewState({
+      elizaCloudStatusLoading: true,
+      elizaCloudConnected: true,
+    });
+    render(<CloudOverviewSection />);
+    expect(
+      screen.queryByText("Verifying your connection to Eliza Cloud."),
+    ).toBeNull();
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", {
+        name: "Open Cloud management",
+      }).disabled,
+    ).toBe(false);
+  });
+
   it("invokes the interactive login entry point and claims the popup inside the click gesture", () => {
     const handleInteractiveCloudLogin = vi.fn(async () => undefined);
     seedCloudOverviewState({ handleInteractiveCloudLogin });
