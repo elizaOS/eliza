@@ -347,17 +347,11 @@ describe("StewardLoginSection phone login", () => {
     const countrySelect = await screen.findByLabelText("Country calling code");
     expect(countrySelect.textContent).toContain("US +1");
     expect(countrySelect.textContent).not.toContain("United States");
-    fireEvent.pointerDown(countrySelect, {
-      button: 0,
-      ctrlKey: false,
-      pointerId: 1,
-      pointerType: "mouse",
-    });
-    fireEvent.click(
-      await screen.findByRole("option", {
-        name: "GB +44 — United Kingdom",
-      }),
-    );
+    // Use real keyboard selection without mounting the full country popover in jsdom.
+    act(() => countrySelect.focus());
+    fireEvent.keyDown(countrySelect, { key: "g" });
+    fireEvent.keyDown(countrySelect, { key: "b" });
+    expect(countrySelect.textContent).toContain("GB +44");
     fireEvent.change(screen.getByLabelText("Phone number"), {
       target: { value: "020 7946 0018" },
     });

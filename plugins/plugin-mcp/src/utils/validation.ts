@@ -38,7 +38,7 @@ const TOOL_SCHEMA_WORKER_STARTUP_TIMEOUT_MS = 2_000;
 const MAX_CONCURRENT_SCHEMA_VALIDATIONS = 4;
 let activeSchemaValidations = 0;
 
-const moduleRequire = createRequire(typeof __filename === "string" ? __filename : import.meta.url);
+const moduleRequire = createRequire(import.meta.url);
 const AJV_WORKER_MODULE_PATH = moduleRequire.resolve("ajv");
 
 interface SchemaWorkerResult {

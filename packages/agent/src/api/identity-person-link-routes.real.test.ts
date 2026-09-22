@@ -22,6 +22,7 @@ import {
 } from "@elizaos/shared/api/http-plugin-runtime";
 import { createTestRuntimeWithModelProvider } from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { applyIdentityPersonLinkAttestationGuard } from "../../../../plugins/plugin-sql/src/identity-person-link-attestation-guard";
 import {
   identityHttpPlugin,
   identityPersonLinkRoutes,
@@ -131,7 +132,13 @@ describe.sequential("authenticated identity person-link ingress", () => {
     ]);
   });
 
-  it("persists server-derived ADMIN evidence and verifies it at the committed generation", async () => {
+  it("preserves authenticated append-only evidence after concurrent guard refresh", async () => {
+    await expect(
+      Promise.all([
+        applyIdentityPersonLinkAttestationGuard(db),
+        applyIdentityPersonLinkAttestationGuard(db),
+      ]),
+    ).resolves.toEqual([true, true]);
     expect(attestRoute).toMatchObject({ type: "POST", public: false });
     expect(verifyRoute).toMatchObject({ type: "GET", public: false });
     if (!attestRoute?.routeHandler || !verifyRoute?.routeHandler)

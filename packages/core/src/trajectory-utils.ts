@@ -67,6 +67,10 @@ export const TRAJECTORY_LLM_PURPOSES = [
 export type TrajectoryLlmPurpose = (typeof TRAJECTORY_LLM_PURPOSES)[number];
 
 export type TrajectoryLlmCallDetails = {
+	runId?: string;
+	roomId?: string;
+	messageId?: string;
+	executionTraceId?: string;
 	model: string;
 	modelVersion?: string;
 	modelType?: string;
@@ -1302,10 +1306,15 @@ export function logActiveTrajectoryLlmCall(
 		return false;
 	}
 
+	const context = getTrajectoryContext();
 	trajectoryLogger.logLlmCall({
 		stepId,
 		...details,
-		purpose: getTrajectoryContext()?.purpose ?? details.purpose,
+		runId: details.runId ?? context?.runId,
+		roomId: details.roomId ?? context?.roomId,
+		messageId: details.messageId ?? context?.messageId,
+		executionTraceId: details.executionTraceId ?? context?.traceId,
+		purpose: context?.purpose ?? details.purpose,
 	});
 
 	// Mark the current model-call scope as provider-recorded. This is the

@@ -846,18 +846,36 @@ function findPostgresErrorCode(cause: unknown): string | null {
   return null;
 }
 
-async function waitForDatabaseTimeAfter(instant: Date): Promise<void> {
+async function waitForClaimExpiry(claim: AdmissionClaim): Promise<void> {
   if (!control) throw new Error("real PostgreSQL control session was not initialized");
+  // Keep PostgreSQL's sub-millisecond expiry precision; the returned Date loses it.
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
     const result = await control.query<{ elapsed: boolean }>(
-      "SELECT clock_timestamp() > $1::timestamptz AS elapsed",
-      [instant],
+      `SELECT clock_timestamp() > lease_expires_at AS elapsed
+       FROM agent_backup_admission_work
+       WHERE id = $1::uuid AND state = 'leased'
+         AND lease_owner = $2 AND lease_generation = $3::uuid
+         AND attempts = $4 AND claim_cycle_start_turn = $5::bigint
+         AND claim_proof_turn = $6::bigint AND claim_proof_xid::text = $7
+         AND claim_proof_priority_pass = $8 AND claim_proof_attempt = $4`,
+      [
+        claim.workId,
+        claim.ownerId,
+        claim.generation,
+        claim.workAttempt,
+        claim.claimCycleStartTurn,
+        claim.claimProofTurn,
+        claim.claimProofXid,
+        claim.claimProofPriorityPass,
+      ],
     );
-    if (result.rows[0]?.elapsed) return;
+    const row = result.rows[0];
+    if (!row) throw new Error(`Claim ${claim.workId} lost its exact lease fence while waiting`);
+    if (row.elapsed) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  throw new Error(`Timed out waiting for database clock to pass ${instant.toISOString()}`);
+  throw new Error(`Timed out waiting for database expiry of claim ${claim.workId}`);
 }
 
 async function expectNoPartialReservation(): Promise<void> {
@@ -1120,7 +1138,7 @@ describe("backup admission reservation on real PostgreSQL", () => {
               reason: "TEST_DONE",
             }) as Promise<boolean>;
           },
-          beforeRelease: () => waitForDatabaseTimeAfter(claim.expiresAt),
+          beforeRelease: () => waitForClaimExpiry(claim),
         });
         expect(result).toBe(operation === "settle" ? false : null);
         await expectNoPartialReservation();
@@ -1141,7 +1159,7 @@ describe("backup admission reservation on real PostgreSQL", () => {
           selectSql: "SELECT id FROM docker_nodes WHERE id = $1::uuid FOR UPDATE",
           selectValues: [NODE_RECORD_ID],
           run: () => reservationRepository!.reserveAndSettleAgentBackupAdmissionClaim({ claim }),
-          beforeRelease: () => waitForDatabaseTimeAfter(claim.expiresAt),
+          beforeRelease: () => waitForClaimExpiry(claim),
         }),
       ).rejects.toThrow(/expired while waiting|lost its final live-fence CAS/i);
       await expectNoPartialReservation();

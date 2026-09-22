@@ -136,6 +136,7 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 		shouldRun: ({ runtime, message }) => {
 			const active =
 				!messageHasNoViewSurface(message) &&
+				!messageArrivedOverProgrammaticTransport(message) &&
 				runtime.actions.some((action) => action.name === "VIEWS");
 			// Inactive fields skip parsing and must not retain an earlier decision.
 			if (!active) stageOneIntents.delete(message);

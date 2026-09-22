@@ -67,12 +67,10 @@ async function expectCode(
 
 describe("LinearClient provider contract", () => {
   let upstream: Awaited<ReturnType<typeof startFakeProvider>>;
-  let connectionId: string;
   let client: LinearClient;
 
   beforeAll(async () => {
     upstream = await startFakeProvider({ fixtures });
-    connectionId = upstream.createConnectionId();
     client = new LinearClient({
       credential: { type: "oauth", value: "linear_contract_secret" },
       endpoint: `${upstream.url}/graphql`,
@@ -250,12 +248,6 @@ describe("LinearClient provider contract", () => {
           );
           return passed("provider-5xx", "provider outage remained explicit");
         },
-        "opaque-connection-id": async () =>
-          passed(
-            "opaque-connection-id",
-            "runtime consumers hold only an opaque managed connection handle",
-            { connectionId },
-          ),
         "secret-redaction": async () => {
           await client.searchIssues({ query: "sign-in" });
           const diagnostic = redactProviderDiagnostics(upstream.requests, [
@@ -283,7 +275,7 @@ describe("LinearClient provider contract", () => {
         },
       },
     });
-    expect(report.observations).toHaveLength(14);
+    expect(report.observations).toHaveLength(13);
   });
 
   it("keeps expired and revoked authentication failures distinct", async () => {

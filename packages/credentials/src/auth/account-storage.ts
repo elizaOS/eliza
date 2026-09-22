@@ -15,7 +15,7 @@ import fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ElizaError, logger, resolveStateDir } from "@elizaos/core";
-import { decrypt, encrypt } from "../vault/crypto.js";
+import { CryptoError, decrypt, encrypt } from "../vault/crypto.js";
 import { loadDefaultMasterKeySync } from "../vault/master-key.js";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
@@ -37,6 +37,8 @@ export interface AccountCredentialRecord {
    * a distant-expiry sentinel by convention of the caller).
    */
   credentials: OAuthCredentials;
+  /** Storage-owned replacement identity; absent only on legacy records and write inputs. */
+  credentialGeneration?: string;
   createdAt: number;
   updatedAt: number;
   lastUsedAt?: number;
@@ -44,6 +46,11 @@ export interface AccountCredentialRecord {
   userId?: string;
   email?: string;
 }
+
+/** A loaded record has a persisted generation assigned under the storage lock. */
+export type LoadedAccountCredentialRecord = AccountCredentialRecord & {
+  credentialGeneration: string;
+};
 
 export type AccountStorageOwner = "runtime" | "isolated-test";
 
@@ -641,11 +648,12 @@ function isEnvelope(value: unknown): value is EncryptedAccountEnvelope {
   );
 }
 
+/** Persisted cryptographic identity; package renames must not change these bytes. */
 function accountAad(
   provider: AccountCredentialProvider,
   accountId: string,
 ): string {
-  return `@elizaos/credentials/auth/account/${provider}/${accountId}`;
+  return `@elizaos/auth/account/${provider}/${accountId}`;
 }
 
 /**
@@ -1144,6 +1152,11 @@ function isAccountCredentialRecord(
     typeof credentials.refresh === "string" &&
     finiteTimestamp(credentials.expires) &&
     optionalString(credentials.idToken) &&
+    (v.credentialGeneration === undefined ||
+      (typeof v.credentialGeneration === "string" &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+          v.credentialGeneration,
+        ))) &&
     finiteTimestamp(v.createdAt) &&
     finiteTimestamp(v.updatedAt) &&
     (v.lastUsedAt === undefined || finiteTimestamp(v.lastUsedAt)) &&
@@ -1155,16 +1168,16 @@ function isAccountCredentialRecord(
 
 interface DecodedAccountRecord {
   record: AccountCredentialRecord;
-  wasPlaintext: boolean;
+  requiresRewrite: boolean;
 }
 
 /**
  * Decode raw account-file bytes into a validated record. Envelope files are
  * decrypted with the policy-scoped master key and a per-provider/account AAD
  * so a ciphertext cannot be replayed under a different identity; legacy
- * plaintext files are accepted once and flagged for re-encryption. Any
- * decrypt or schema failure throws — a credential that cannot be proven
- * intact is never returned.
+ * plaintext files and authenticated schema-v2 compatibility envelopes are
+ * flagged for canonical re-encryption. Any decrypt or schema failure throws —
+ * a credential that cannot be proven intact is never returned.
  */
 function decodeAccountRecord(
   contents: Buffer,
@@ -1186,19 +1199,34 @@ function decodeAccountRecord(
   if (!isEnvelope(parsed)) {
     return {
       record: parseAccountCredentialRecord(parsed, file),
-      wasPlaintext: true,
+      requiresRewrite: true,
     };
   }
   let decrypted: unknown;
+  let requiresRewrite = false;
   try {
-    decrypted = JSON.parse(
-      decrypt(
-        masterKey(policy),
+    const key = masterKey(policy);
+    const accountId = path.basename(file, ".json");
+    let plaintext: string;
+    try {
+      plaintext = decrypt(
+        key,
         parsed.ciphertext,
-        accountAad(provider, path.basename(file, ".json")),
-      ),
-    );
+        accountAad(provider, accountId),
+      );
+    } catch (cause) {
+      // error-policy:J3 schema-v2 compatibility accepts only authenticated bytes under the intervening namespace.
+      if (!(cause instanceof CryptoError)) throw cause;
+      plaintext = decrypt(
+        key,
+        parsed.ciphertext,
+        `@elizaos/credentials/auth/account/${provider}/${accountId}`,
+      );
+      requiresRewrite = true;
+    }
+    decrypted = JSON.parse(plaintext);
   } catch (cause) {
+    // error-policy:J2 both authenticated formats must fail closed with the decoding cause preserved.
     throw storageError(
       "AUTH_CREDENTIAL_RECORD_CORRUPT",
       "Credential envelope failed authenticated decryption",
@@ -1208,7 +1236,7 @@ function decodeAccountRecord(
   }
   return {
     record: parseAccountCredentialRecord(decrypted, file),
-    wasPlaintext: false,
+    requiresRewrite,
   };
 }
 
@@ -1258,7 +1286,7 @@ function listAccountsUnlocked(
       policy,
       "list-account",
     );
-    const { record: parsed, wasPlaintext } = decodeAccountRecord(
+    const { record: parsed, requiresRewrite } = decodeAccountRecord(
       contents,
       filePath,
       provider,
@@ -1282,8 +1310,7 @@ function listAccountsUnlocked(
         { accountId: parsed.id, entry, filePath },
       );
     }
-    if (wasPlaintext) migratePlaintextRecord(parsed, policy);
-    records.push(parsed);
+    records.push(ensureCredentialGeneration(parsed, requiresRewrite, policy));
   }
 
   records.sort((a, b) => {
@@ -1298,7 +1325,7 @@ function loadAccountUnlocked(
   provider: AccountCredentialProvider,
   accountId: string,
   policy: AccountStoragePolicy,
-): AccountCredentialRecord | null {
+): LoadedAccountCredentialRecord | null {
   assertStoragePolicy(policy);
   const file = accountFile(provider, accountId, policy);
   let contents: Buffer;
@@ -1308,7 +1335,7 @@ function loadAccountUnlocked(
     if ((cause as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw cause;
   }
-  const { record: parsed, wasPlaintext } = decodeAccountRecord(
+  const { record: parsed, requiresRewrite } = decodeAccountRecord(
     contents,
     file,
     provider,
@@ -1327,23 +1354,26 @@ function loadAccountUnlocked(
       },
     );
   }
-  if (wasPlaintext) migratePlaintextRecord(parsed, policy);
-  return parsed;
+  return ensureCredentialGeneration(parsed, requiresRewrite, policy);
 }
 
-/**
- * Re-persist a legacy plaintext record as an encrypted envelope in place.
- * Runs inside the caller's storage lock; the rewrite is the same atomic
- * temp-file + rename path every mutation uses.
- */
-function migratePlaintextRecord(
+/** Persists legacy encryption and missing replacement identity atomically inside the storage lock. */
+function ensureCredentialGeneration(
   record: AccountCredentialRecord,
+  requiresRewrite: boolean,
   policy: AccountStoragePolicy,
-): void {
-  writeAccountFile(record.providerId, record.id, policy, record);
-  logger.info(
-    `[auth] Migrated ${record.providerId} account "${record.id}" to encrypted storage`,
-  );
+): LoadedAccountCredentialRecord {
+  const next: LoadedAccountCredentialRecord = {
+    ...record,
+    credentialGeneration: record.credentialGeneration ?? randomUUID(),
+  };
+  if (requiresRewrite || record.credentialGeneration === undefined) {
+    writeAccountFile(next.providerId, next.id, policy, next);
+    logger.info(
+      `[auth] Migrated ${next.providerId} account "${next.id}" storage`,
+    );
+  }
+  return next;
 }
 
 export function listAccounts(
@@ -1359,7 +1389,7 @@ export function loadAccount(
   provider: AccountCredentialProvider,
   accountId: string,
   policy: AccountStoragePolicy = defaultReadPolicy(),
-): AccountCredentialRecord | null {
+): LoadedAccountCredentialRecord | null {
   assertCanonicalAccountId(accountId);
   return withStorageLock(policy, "load-account", () =>
     loadAccountUnlocked(provider, accountId, policy),
@@ -1703,7 +1733,7 @@ export function resetAccountCredentialStorage(
 function saveAccountUnlocked(
   record: AccountCredentialRecord,
   policy: AccountStoragePolicy,
-): void {
+): LoadedAccountCredentialRecord {
   assertStoragePolicy(policy);
   assertCanonicalAccountId(record.id);
   const persistedRecord: unknown = record;
@@ -1715,24 +1745,71 @@ function saveAccountUnlocked(
     );
   }
   ensureProviderDir(record.providerId, policy);
-  const next: AccountCredentialRecord = {
+  const next: LoadedAccountCredentialRecord = {
     ...record,
+    credentialGeneration: randomUUID(),
     updatedAt: Date.now(),
   };
   writeAccountFile(record.providerId, record.id, policy, next);
   logger.info(
     `[auth] Saved ${record.providerId} account "${record.id}" (label="${record.label}")`,
   );
+  return next;
 }
 
 export function saveAccount(
   record: AccountCredentialRecord,
   policy: AccountStoragePolicy,
-): void {
+): LoadedAccountCredentialRecord {
   assertCanonicalAccountId(record.id);
-  withStorageLock(policy, "save-account", () =>
+  return withStorageLock(policy, "save-account", () =>
     saveAccountUnlocked(record, policy),
   );
+}
+
+/** Editable account identity fields; credentials and their generation are storage-owned. */
+export type AccountMetadataUpdate = Partial<
+  Pick<AccountCredentialRecord, "label" | "email" | "organizationId" | "userId">
+>;
+
+/** Updates current metadata under the storage lock without replacing credentials or recreating deleted accounts. */
+export function updateAccountMetadata(
+  provider: AccountCredentialProvider,
+  accountId: string,
+  metadata: AccountMetadataUpdate,
+  policy: AccountStoragePolicy,
+  expectedGeneration?: string,
+): AccountCredentialUpdateOutcome {
+  assertCanonicalAccountId(accountId);
+  return withStorageLock(policy, "update-account-metadata", () => {
+    const existing = loadAccountUnlocked(provider, accountId, policy);
+    if (!existing) return { kind: "missing" };
+    if (
+      expectedGeneration !== undefined &&
+      existing.credentialGeneration !== expectedGeneration
+    ) {
+      return { kind: "changed", record: existing };
+    }
+    const next = {
+      ...existing,
+      ...(metadata.label !== undefined ? { label: metadata.label } : {}),
+      ...(metadata.email !== undefined ? { email: metadata.email } : {}),
+      ...(metadata.organizationId !== undefined
+        ? { organizationId: metadata.organizationId }
+        : {}),
+      ...(metadata.userId !== undefined ? { userId: metadata.userId } : {}),
+      updatedAt: Date.now(),
+    };
+    if (!isAccountCredentialRecord(next)) {
+      throw storageError(
+        "AUTH_ACCOUNT_METADATA_INVALID",
+        "Account metadata must contain valid identity fields",
+        { accountId, provider },
+      );
+    }
+    writeAccountFile(provider, accountId, policy, next);
+    return { kind: "updated", record: next };
+  });
 }
 
 export function deleteAccount(
@@ -1749,6 +1826,82 @@ export function deleteAccount(
     if (commitAccountDeletionsUnlocked(plan) > 0) {
       logger.info(`[auth] Deleted ${provider} account "${accountId}"`);
     }
+  });
+}
+
+/**
+ * Result of a compare-and-swap credential update. `missing` means no record
+ * exists for the account any more (it was deleted after the caller read it);
+ * `changed` means a record exists but its storage-owned generation is no longer
+ * the one the caller started from (another writer replaced the record, even
+ * when credential values are identical) and carries that current record so the caller can act on it.
+ */
+export type AccountCredentialUpdateOutcome =
+  | { kind: "updated"; record: AccountCredentialRecord }
+  | { kind: "missing" }
+  | { kind: "changed"; record: AccountCredentialRecord };
+
+/**
+ * Keeps the stored OIDC id_token when a token grant re-issues access and
+ * refresh tokens without one. Codex's chatgpt-mode auth loader requires
+ * `tokens.id_token` to be present (a stale one is tolerated, a missing one
+ * fails "Authentication required"), and OAuth refresh grants normally omit it.
+ */
+export function carryForwardIdToken(
+  existing: OAuthCredentials,
+  incoming: OAuthCredentials,
+): OAuthCredentials {
+  return incoming.idToken === undefined && existing.idToken
+    ? { ...incoming, idToken: existing.idToken }
+    : incoming;
+}
+
+/**
+ * Replaces an existing account's credentials only if the record still exists
+ * and still holds `expectedGeneration`. This is the only commit path for a token
+ * refresh: it never creates a record, so a refresh that resolves after the
+ * account was removed cannot resurrect it, and it never overwrites credentials
+ * written by a newer login or adoption, even if refresh tokens are unchanged.
+ * Record metadata (label, source, identity, timestamps other than
+ * `updatedAt`) is preserved and the id_token is carried forward.
+ */
+export function updateAccountCredentialsIfUnchanged(
+  provider: AccountCredentialProvider,
+  accountId: string,
+  expectedGeneration: string,
+  credentials: OAuthCredentials,
+  policy: AccountStoragePolicy,
+): AccountCredentialUpdateOutcome {
+  assertCanonicalAccountId(accountId);
+  if (
+    typeof expectedGeneration !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+      expectedGeneration,
+    )
+  ) {
+    throw storageError(
+      "AUTH_CREDENTIAL_UPDATE_EXPECTATION_INVALID",
+      "A conditional credential update needs the storage generation it started from",
+      { accountId, provider },
+    );
+  }
+  return withStorageLock(policy, "update-account-credentials", () => {
+    const existing = loadAccountUnlocked(provider, accountId, policy);
+    if (!existing) return { kind: "missing" };
+    if (existing.credentialGeneration !== expectedGeneration) {
+      return { kind: "changed", record: existing };
+    }
+    const next: AccountCredentialRecord = {
+      ...existing,
+      credentials: carryForwardIdToken(existing.credentials, credentials),
+      credentialGeneration: randomUUID(),
+      updatedAt: Date.now(),
+    };
+    writeAccountFile(provider, accountId, policy, next);
+    logger.info(
+      `[auth] Updated ${provider} account "${accountId}" credentials after refresh`,
+    );
+    return { kind: "updated", record: next };
   });
 }
 

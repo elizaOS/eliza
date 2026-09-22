@@ -7,6 +7,13 @@
  * `deleteCredentials` / `hasValidCredentials` / `getAccessToken`
  * helpers all default to `accountId="default"` so callers that pre-date
  * multi-account support keep working without changes.
+ *
+ * `saveCredentials` is the login commit path and may create a record. A token
+ * refresh commits through `updateAccountCredentialsIfUnchanged` instead: the
+ * grant is spent outside the storage lock, so the result is only persisted if
+ * the account still exists and still holds the storage generation the refresh was
+ * started from. Otherwise the result is discarded in favour of the current
+ * stored state (a concurrent logout or re-login wins).
  */
 
 import fs from "node:fs";
@@ -25,12 +32,15 @@ import {
   type AccountCredentialRecord,
   type AccountDeletionPlan,
   type AccountStoragePolicy,
+  carryForwardIdToken,
   commitAccountDeletions,
   deleteAccount,
+  type LoadedAccountCredentialRecord,
   listAccounts,
   loadAccount,
   preflightProviderAccountDeletions,
   saveAccount,
+  updateAccountCredentialsIfUnchanged,
 } from "./account-storage.ts";
 import { refreshAnthropicToken } from "./anthropic.ts";
 import { refreshCodexToken } from "./openai-codex.ts";
@@ -147,19 +157,12 @@ export function saveCredentials(
   credentials: OAuthCredentials,
   accountId: string,
   storagePolicy: AccountStoragePolicy,
-): void {
+): LoadedAccountCredentialRecord {
   const existing = loadAccount(provider, accountId, storagePolicy);
   const now = Date.now();
-  // OAuth refresh grants frequently re-issue an access_token WITHOUT a fresh
-  // id_token (id_token is an OIDC login artifact). Codex's chatgpt-mode auth
-  // loader requires tokens.id_token to be present (a stale one is tolerated —
-  // Codex refreshes it — but a missing one fails "Authentication required").
-  // So carry forward the prior id_token when the incoming blob lacks one,
-  // rather than dropping it on every post-login refresh.
-  const mergedCredentials: OAuthCredentials =
-    credentials.idToken === undefined && existing?.credentials.idToken
-      ? { ...credentials, idToken: existing.credentials.idToken }
-      : credentials;
+  const mergedCredentials: OAuthCredentials = existing
+    ? carryForwardIdToken(existing.credentials, credentials)
+    : credentials;
   const record: AccountCredentialRecord = {
     id: accountId,
     providerId: provider,
@@ -179,7 +182,7 @@ export function saveCredentials(
     ...(existing?.userId !== undefined ? { userId: existing.userId } : {}),
     ...(existing?.email !== undefined ? { email: existing.email } : {}),
   };
-  saveAccount(record, storagePolicy);
+  return saveAccount(record, storagePolicy);
 }
 
 /**
@@ -376,7 +379,7 @@ export async function getAccessToken(
   return accountRefreshMutex.acquire(`${provider}:${accountId}`, async () => {
     // Re-read after acquiring the lock — a concurrent caller may have
     // already refreshed the token, in which case we want the new one.
-    const stored = loadCredentials(provider, accountId, opts?.storagePolicy);
+    const stored = loadAccount(provider, accountId, opts?.storagePolicy);
     if (!stored) {
       return finish(tokenFailure("auth", "No credential is stored"));
     }
@@ -440,7 +443,52 @@ export async function getAccessToken(
       );
     }
 
-    saveCredentials(provider, refreshed, accountId, opts.storagePolicy);
+    // The grant was spent outside the storage lock. Commit only if the record
+    // is still the one the refresh started from; a logout or re-login that
+    // landed meanwhile owns the account now and the refresh result is dropped.
+    const commit = updateAccountCredentialsIfUnchanged(
+      provider,
+      accountId,
+      stored.credentialGeneration,
+      refreshed,
+      opts.storagePolicy,
+    );
+    if (commit.kind === "missing") {
+      logger.warn(
+        `[auth] Discarded ${provider} refresh for "${accountId}": the account was removed while the refresh was in flight`,
+      );
+      return finish(
+        tokenFailure(
+          "auth",
+          "Credential was removed while the refresh was in flight",
+        ),
+      );
+    }
+    if (commit.kind === "changed") {
+      logger.warn(
+        `[auth] Discarded ${provider} refresh for "${accountId}": the stored credential was replaced while the refresh was in flight`,
+      );
+      const current = commit.record.credentials;
+      if (current.expires > Date.now() + effectiveBufferMs) {
+        return finish({
+          ok: true,
+          accessToken: current.access,
+          expiresAt: current.expires,
+          refreshed: false,
+        });
+      }
+      return finish(
+        current.expires > Date.now()
+          ? tokenFailure(
+              "insufficient-lifetime",
+              "Replacement credential does not satisfy the requested lifetime",
+              { expiresAt: current.expires, minRemainingMs: effectiveBufferMs },
+            )
+          : tokenFailure("auth", "Replacement credential is expired", {
+              expiresAt: current.expires,
+            }),
+      );
+    }
     if (refreshed.expires <= Date.now() + effectiveBufferMs) {
       return finish(
         tokenFailure(

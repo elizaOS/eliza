@@ -15,6 +15,7 @@ const fakes = vi.hoisted(() => ({
   accounts: [] as Array<Record<string, unknown>>,
   poolAccounts: [] as Array<Record<string, unknown>>,
   poolAvailable: true,
+  removeBeforeMetadataUpdate: false,
   deleteAccount: vi.fn(),
   applyAccountPoolApiCredentials: vi.fn(async () => {}),
   getAccessToken: vi.fn(async () => "access-token"),
@@ -85,6 +86,17 @@ vi.mock("@elizaos/credentials/auth/account-storage", () => ({
   loadAccount: (_providerId: string, accountId: string) =>
     fakes.accounts.find((account) => account.id === accountId),
   saveAccount: fakes.saveAccount,
+  updateAccountMetadata: (
+    _providerId: string,
+    accountId: string,
+    metadata: { label: string },
+  ) => {
+    if (fakes.removeBeforeMetadataUpdate) fakes.accounts = [];
+    const record = fakes.accounts.find((account) => account.id === accountId);
+    if (!record) return { kind: "missing" };
+    Object.assign(record, metadata);
+    return { kind: "updated", record };
+  },
   deleteAccount: fakes.deleteAccount,
   assertCanonicalAccountId: (accountId: string) => {
     if (!/^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$/.test(accountId)) {
@@ -196,6 +208,7 @@ describe("accounts routes", () => {
     fakes.accounts = [];
     fakes.poolAccounts = [];
     fakes.poolAvailable = true;
+    fakes.removeBeforeMetadataUpdate = false;
     fakes.getAccessToken.mockResolvedValue("access-token");
     fakes.probeDirectApiKey.mockResolvedValue({
       ok: true,
@@ -482,6 +495,42 @@ describe("accounts routes", () => {
     expect(clearedBody).toMatchObject({ id: "account-1", health: "ok" });
     expect(clearedBody.subscriptionEndsAt).toBeUndefined();
     expect(clearedBody.healthDetail).toBeUndefined();
+  });
+
+  it("allows a credential-less external CLI account to be renamed", async () => {
+    fakes.poolAccounts = [
+      { ...linkedAccount, providerId: "gemini-cli", source: "external" },
+    ];
+    const patched = makeContext("PATCH", "/api/accounts/gemini-cli/account-1", {
+      label: "Renamed CLI",
+    });
+    await handleAccountsRoutes(patched.ctx);
+    expect(patched.errorCalls).toEqual([]);
+    expect(patched.jsonCalls[0]?.body).toMatchObject({ label: "Renamed CLI" });
+    expect(fakes.poolAccounts[0]?.label).toBe("Renamed CLI");
+    expect(fakes.saveAccount).not.toHaveBeenCalled();
+  });
+
+  it("does not publish a pool rename if an observed credential disappears before its update", async () => {
+    fakes.poolAccounts = [{ ...linkedAccount }];
+    fakes.accounts = [
+      { id: "account-1", providerId: "openai-api", label: "Primary" },
+    ];
+    fakes.removeBeforeMetadataUpdate = true;
+    const patched = makeContext("PATCH", "/api/accounts/openai-api/account-1", {
+      label: "Renamed",
+    });
+    await handleAccountsRoutes(patched.ctx);
+    expect(patched.errorCalls).toEqual([
+      {
+        message: "Account credentials were removed during the update",
+        status: 404,
+      },
+    ]);
+    expect(patched.jsonCalls).toEqual([]);
+    expect(fakes.pool.upsert).not.toHaveBeenCalled();
+    expect(fakes.poolAccounts[0]?.label).toBe("Primary");
+    expect(fakes.saveAccount).not.toHaveBeenCalled();
   });
 
   it("creates, edits, probes, refreshes, and deletes a direct account", async () => {

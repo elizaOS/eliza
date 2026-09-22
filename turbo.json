@@ -271,10 +271,12 @@
     },
     "@elizaos/cloud-shared#typecheck": {
       "dependsOn": [
+        "@elizaos/credentials#build",
         "@elizaos/login#build",
         "@elizaos/plugin-assistant#build",
         "@elizaos/plugin-cloud-apps#build",
         "@elizaos/plugin-doordash#build",
+        "@elizaos/plugin-inmemorydb#build",
         "@elizaos/plugin-scheduling#build",
         "@elizaos/plugin-todos#build",
         "@elizaos/plugin-web-search#build"
