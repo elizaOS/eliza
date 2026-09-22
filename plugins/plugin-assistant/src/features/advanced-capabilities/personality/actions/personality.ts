@@ -6,7 +6,7 @@
  * state. Each mutation runs through the PersonalityStore service and records an
  * audit memory in the personality_audit_log table.
  *
- * Every trait/gate/directive op requires an explicit scope — "user" (the
+ * Trait/gate/directive ops except personal-only add_directive/remove_directive require an explicit scope — "user" (the
  * requesting entity's slot) or "global" (the agent-wide slot) — with no
  * auto-inference: an ambiguous request returns a clarification rather than
  * guessing. Authorization is derived from the operation's actual reach and
@@ -27,12 +27,15 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  applyGroundedActionReply,
   describeUserReference,
+  getActionReplyOwner,
   hasActionContext,
   hasRoleAccess,
   logger,
   MemoryType,
   type RoleName,
+  stringToUuid,
   userReferenceLogView,
 } from "@elizaos/core";
 import {
@@ -58,6 +61,7 @@ const PERSONALITY_OPS = [
   "set_reply_gate",
   "lift_reply_gate",
   "add_directive",
+  "remove_directive",
   "clear_directives",
   "load_profile",
   "save_profile",
@@ -77,6 +81,7 @@ const PERSONALITY_OP_SHAPE: Record<
   clear_trait: { effect: "reconfigure", reach: "scoped" },
   set_reply_gate: { effect: "reconfigure", reach: "scoped" },
   lift_reply_gate: { effect: "reconfigure", reach: "scoped" },
+  remove_directive: { effect: "reconfigure", reach: "requester" },
   add_directive: { effect: "reconfigure", reach: "scoped" },
   clear_directives: { effect: "reconfigure", reach: "scoped" },
   show_state: { effect: "inspect", reach: "scoped" },
@@ -280,7 +285,7 @@ export const personalityAction: Action = {
     "BE_COLDER",
   ],
   description:
-    "Manage personality preferences. Subactions: set_trait | clear_trait | set_reply_gate | lift_reply_gate | add_directive | clear_directives | load_profile | save_profile | list_profiles | show_state. Scope is REQUIRED for trait/gate/directive changes — 'user' affects only the requester; 'global' is agent-wide. Listing shared profiles or inspecting global state requires an admin; global changes and saving or loading profiles require the owner.",
+    "Manage personality preferences. Subactions: set_trait | clear_trait | set_reply_gate | lift_reply_gate | add_directive | remove_directive | clear_directives | load_profile | save_profile | list_profiles | show_state. add_directive and remove_directive affect only the requester and need no scope. Removal requires one exact existing rule. Other trait/gate/directive changes require scope — 'user' affects only the requester; 'global' is agent-wide. Listing shared profiles or inspecting global state requires an admin; global changes and saving or loading profiles require the owner.",
   suppressPostActionContinuation: true,
   parameters: [
     {
@@ -298,7 +303,7 @@ export const personalityAction: Action = {
     {
       name: "scope",
       description:
-        "Required for set_trait/clear_trait/set_reply_gate/lift_reply_gate/add_directive/clear_directives/show_state. Use 'user' for the requester's slot. Use 'global' only when explicitly requested; agent-wide inspection requires ADMIN and reconfiguration requires OWNER.",
+        "Required for set_trait/clear_trait/set_reply_gate/lift_reply_gate/clear_directives/show_state. add_directive and remove_directive are personal-only and need no scope. Use 'user' for the requester's slot. Use 'global' only when explicitly requested; agent-wide inspection requires ADMIN and reconfiguration requires OWNER.",
       required: false,
       schema: { type: "string", enum: [...SCOPE_VALUES] },
     },
@@ -324,8 +329,9 @@ export const personalityAction: Action = {
     },
     {
       name: "directive",
+      requiredForSubactions: ["add_directive", "remove_directive"],
       description:
-        "add_directive: a free-text directive to attach to the user's slot.",
+        "add_directive: a free-text directive to attach to the user's slot. remove_directive always targets only the requester (global removal is unsupported): exact complete existing directive text from show_state or supplied user preferences; removes only that rule. Never clear all directives to cancel one.",
       required: false,
       schema: { type: "string" },
     },
@@ -395,7 +401,10 @@ export const personalityAction: Action = {
 
     const scope: PersonalityScope | null = isPersonalityScope(params.scope)
       ? params.scope
-      : null;
+      : (op === "remove_directive" || op === "add_directive") &&
+          params.scope === undefined
+        ? "user"
+        : null;
 
     // Clarify before authorization so a missing scope cannot be silently
     // upgraded or downgraded to a different blast radius.
@@ -469,6 +478,18 @@ export const personalityAction: Action = {
         });
       case "add_directive":
         return runAddDirective({
+          runtime,
+          message,
+          store,
+          params,
+          callback,
+          userId,
+          agentId,
+          actorId,
+          scope: scope as PersonalityScope,
+        });
+      case "remove_directive":
+        return runRemoveDirective({
           runtime,
           message,
           store,
@@ -796,6 +817,51 @@ async function runLiftReplyGate(
   };
 }
 
+async function finishDirectiveChange(
+  args: OpArgs,
+  op: "add_directive" | "remove_directive",
+  before: PersonalitySlot,
+  after: PersonalitySlot,
+  directive: string,
+  text: string,
+): Promise<ActionResult> {
+  const resourceId = `${after.agentId}:${after.userId}`;
+  const result: ActionResult = {
+    success: true,
+    text,
+    userFacingText: text,
+    verifiedUserFacing: true,
+    turnComplete: true,
+    values: { scope: "user", directiveCount: after.custom_directives.length },
+    effectReceipts: [
+      {
+        receiptId: `personality-slot:${stringToUuid(JSON.stringify({ op, after }))}`,
+        operation: `personality.${op}`,
+        resource: { kind: "personality.slot", id: resourceId },
+        artifacts: [],
+        idempotency: { key: null, replayed: false },
+        observedAt: after.updated_at,
+        outcome: "applied",
+        commit: {
+          kind: "durable",
+          id: resourceId,
+          committedAt: after.updated_at,
+        },
+      },
+    ],
+    data: { action: "PERSONALITY", op, directive, before, after },
+  };
+  if (getActionReplyOwner(args.message.id) === "planner") {
+    return applyGroundedActionReply(result, {
+      kind: "deferred",
+      grounding:
+        "Describe only the personal directive change proven by data.before and data.after. Only the requester was changed.",
+    });
+  }
+  await args.callback?.({ text, actions: ["PERSONALITY"] });
+  return result;
+}
+
 async function runAddDirective(
   args: OpArgs & {
     scope: PersonalityScope;
@@ -829,23 +895,57 @@ async function runAddDirective(
     after,
   );
   const text = "Got it — I'll keep that in mind for our chats.";
-  await args.callback?.({
+  return finishDirectiveChange(
+    args,
+    "add_directive",
+    before,
+    after,
+    directive,
     text,
-    thought: `Added directive: ${directive}`,
-    actions: ["PERSONALITY"],
+  );
+}
+
+async function runRemoveDirective(
+  args: OpArgs & { scope: PersonalityScope; params: PersonalityParameters },
+): Promise<ActionResult> {
+  const directive = args.params.directive;
+  if (args.scope !== "user" || !directive) {
+    return paramError(
+      "remove_directive",
+      "Choose the exact personal directive to remove.",
+    );
+  }
+  const { before, after } = await args.store.removeDirective({
+    userId: args.userId,
+    agentId: args.agentId,
+    actorId: args.actorId,
+    directive,
   });
-  return {
+  const removed =
+    before.custom_directives.length > after.custom_directives.length;
+  if (!removed) {
+    return paramError(
+      "remove_directive",
+      "That exact directive is not present. Read the current preferences before choosing a rule to remove.",
+    );
+  }
+  await recordAuditMemory(
+    args.runtime,
+    args.message,
+    "remove_directive",
+    "user",
+    before,
+    after,
+  );
+  const text = "Removed that personal directive.";
+  return finishDirectiveChange(
+    args,
+    "remove_directive",
+    before,
+    after,
+    directive,
     text,
-    success: true,
-    userFacingText: text,
-    verifiedUserFacing: true,
-    turnComplete: true,
-    values: {
-      scope: "user",
-      directiveCount: after.custom_directives.length,
-    },
-    data: { action: "PERSONALITY", op: "add_directive", after },
-  };
+  );
 }
 
 async function runClearDirectives(
