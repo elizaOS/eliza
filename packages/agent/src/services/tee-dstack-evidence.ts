@@ -61,7 +61,6 @@ const responseSchema = z.object({
       compose_hash: sha256,
       os_image_hash: sha256,
       mr_aggregated: sha256,
-      instance_id: hex,
     }),
   }),
 });
