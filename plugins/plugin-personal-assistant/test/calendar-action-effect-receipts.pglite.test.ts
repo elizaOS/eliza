@@ -353,6 +353,11 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
   );
 
   it.each([
+    // Fractional local forms still reject a clock skipped by DST.
+    {
+      windowStart: "2027-03-14T02:30:00.250",
+      windowEnd: "2027-03-14T12:00:00.250",
+    },
     { windowStart: "2027-02-30T09:00:00", windowEnd: "2027-03-01T12:00:00" },
     { windowStart: "2027-03-14T02:30:00", windowEnd: "2027-03-14T12:00:00" },
     {
@@ -557,6 +562,28 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       expect(JSON.stringify(result.data)).toContain(EVENT_START);
     },
   );
+
+  it("interprets fractional local proposal bounds in the requested timezone", async () => {
+    const { result } = await invoke(
+      message(
+        "00000000-0000-0000-0000-000000009987",
+        "Find a one-hour opening in this window.",
+      ),
+      {
+        duration: { minutes: 60 },
+        windowStart: "2027-01-18T09:00:00.250",
+        windowEnd: "2027-01-18T12:00:00.250",
+        timeZone: "America/New_York",
+      },
+      true,
+      "CALENDAR_PROPOSE_TIMES",
+    );
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      windowStart: "2027-01-18T14:00:00.250Z",
+      windowEnd: "2027-01-18T17:00:00.250Z",
+    });
+  });
 
   it.each([undefined, "planner"] as const)(
     "proposes a new window and awaits selection without changing the event (reply owner %s)",

@@ -2391,22 +2391,11 @@ export function resolveUpdateTimeRange(args: {
   extractedEnd?: string;
   target: { startAt: string; endAt: string };
   timeZone?: string;
-  requestText?: string;
-  now?: Date;
 }): { startAt?: string; endAt?: string } {
   const startAt = args.explicitStart ?? args.extractedStart;
   // Keep supplied bounds paired; unrelated extracted ends cannot change duration.
   let endAt =
     args.explicitEnd ?? (args.explicitStart ? undefined : args.extractedEnd);
-  // A move with only a new start preserves the stored duration.
-  if (
-    args.explicitStart &&
-    args.explicitEnd &&
-    args.requestText &&
-    !requestStatesEndOrDuration(args.requestText)
-  ) {
-    endAt = undefined;
-  }
   if (
     startAt &&
     endAt &&
@@ -2441,20 +2430,6 @@ function endFollowsStart(
   const start = parseDateTimeInZone(startAt, zone);
   const end = parseDateTimeInZone(endAt, zone);
   return start !== null && end !== null && end.getTime() > start.getTime();
-}
-
-/**
- * The user's words state where the event ends: a "from … to …" or "4pm to 5pm"
- * range, several clock times, an "until"/"through" bound, or a duration
- * phrase. Anything else states at most one time and keeps the stored length.
- */
-export function requestStatesEndOrDuration(requestText: string): boolean {
-  const stated = parseStatedClockTimes(requestText);
-  if (stated.kind === "several") return true;
-  if (stated.kind === "one" && stated.end) return true;
-  return /\b(?:until|till|thru|through)\b|\b(?:for|lasting)\s+(?:an?\s+|\d+(?:\.\d+)?\s*)(?:hours?|hrs?|minutes?|mins?)\b|\b\d+(?:\.\d+)?\s*(?:hours?|hrs?|minutes?|mins?)\s+long\b|\b(?:half|quarter)\s+(?:an\s+)?hour\b/i.test(
-    requestText,
-  );
 }
 
 function createStartDetail(
@@ -6135,8 +6110,6 @@ const calendarAction: CalendarHandlerAction = {
             extractedEnd: extractedEndAt,
             target: targetEvent,
             timeZone: updateTimeZone,
-            requestText: messageText(message),
-            now: new Date(calendarMessageObservedAt(message)),
           }),
           timeZone: updateTimeZone,
           recurrence: recurrenceUpdate,

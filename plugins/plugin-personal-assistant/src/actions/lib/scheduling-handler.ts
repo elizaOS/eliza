@@ -441,10 +441,15 @@ function parseOptionalIso(value: unknown): Date | null {
 /** Local proposal bounds use the requested zone, never the server timezone. */
 function parseProposalBound(value: unknown, timeZone: string): Date | null {
   if (typeof value !== "string") return null;
-  const local = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(
-    value,
-  );
-  if (!local) return parseOptionalIso(value);
+  const local =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/.exec(
+      value,
+    );
+  // Non-local forms must identify an instant; never fall back to server time.
+  if (!local)
+    return /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(value)
+      ? parseOptionalIso(value)
+      : null;
   const parts = {
     year: Number(local[1]),
     month: Number(local[2]),
@@ -455,6 +460,7 @@ function parseProposalBound(value: unknown, timeZone: string): Date | null {
   };
   try {
     const instant = buildUtcDateFromLocalParts(timeZone, parts);
+    instant.setUTCMilliseconds(Number((local[7] ?? "0").padEnd(3, "0")));
     const resolved = getZonedDateParts(instant, timeZone);
     // Reject nonexistent clocks and invalid dates rather than shifting the window.
     return Object.entries(parts).every(
