@@ -46,7 +46,7 @@ The assistant reasoning lifecycle installs structured prompt execution together
 with batching and removes both on unload. runtime/structured-prompt owns template
 rendering, response schemas, semantic recovery and streaming interpretation.
 
-Before each planned action, pass validated dialogue selection as complete source events in an action-local selectedActionConversation value. Reuse core source-set validation; never replace cached provider history or carry a stale previous selection into a fallback. Null retains the domain's full-history fallback, while an explicitly reviewed empty selection serializes as []. This projection adds no model call and changes no action admission or receipt authority.
+Before planned actions, pass complete original prior-dialogue events from the core source-selection result in action-local selectedActionConversation. Match the planner room/message binding to the executing request, overwrite stale projections, and preserve cached state. Selected, complete, fallback and restored contexts use the same identity-bound original source contract; applied reports omission and is not an authority gate. No raw provider prose, summary, context cap or extra model call supplies authorization.
 
 Direct-text planning and READ_CONTEXT may publish a single model-authored acknowledgement through the optional onPlanningAcknowledgment callback. Reuse existing inference, recheck egress and cancellation, and publish native-read progress only after the requested sources are freshly authorized. Progress never persists an assistant message, marks an answer delivered, refreshes dialogue, or substitutes for final reply recovery. Voice/ambient/decision-only reads retain their existing gates; canonical native tool arguments remain required.
 

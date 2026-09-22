@@ -2093,7 +2093,8 @@ export async function runV5MessageRuntimeStage1(
                   await executeV5PlannedToolCall({
                     runtime: args.runtime,
                     toolCall,
-                    plannerContext: loopContext,
+                    plannerContext:
+                      ctx.trajectory.modelBaseContext ?? loopContext,
                     executorCtx: buildV5ExecutorContext({
                       message: args.message,
                       replyOwner: "planner",

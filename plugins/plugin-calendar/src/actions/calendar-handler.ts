@@ -7026,6 +7026,13 @@ const calendarAction: CalendarHandlerAction = {
             actionName: "CALENDAR",
             subaction,
             error: error.code ?? `CALENDAR_SERVICE_${error.status}`,
+            ...(error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED"
+              ? {
+                  requiresInput: true,
+                  awaitingUserInput: true,
+                  missing: ["guest email address"],
+                }
+              : {}),
             ...(rejectedArgument
               ? {
                   parameterErrors: [
