@@ -3728,11 +3728,8 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 	});
 
-	it("preserves coding-mode terminal admission with terminal review enabled", async () => {
-		const runtime = makeRuntime(
-			[stage1Response({ shouldRespond: "STOP", contexts: [] })],
-			{ ELIZA_STAGE1_TERMINAL_REASK: "1" },
-		);
+	it("preserves coding-mode Stage-1 bypass with terminal review enabled", async () => {
+		const runtime = makeRuntime([], { ELIZA_STAGE1_TERMINAL_REASK: "1" });
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage({
@@ -3741,12 +3738,11 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 			state: makeState(),
 			codingMode: true,
+			stage1DecisionOnly: true,
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
-		expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
-		expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
-			ModelType.RESPONSE_HANDLER,
-		]);
+		expect(result).toMatchObject({ kind: "decision", action: "RESPOND" });
+		expect(useModelCalls(runtime)).toHaveLength(0);
 	});
 
 	it.each(["STOP", "IGNORE"] as const)(
