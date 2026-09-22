@@ -5,9 +5,20 @@
  * under test.
  */
 
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterAll,
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
 import type {
 	CapacitorLlamaCompletionParams,
 	CapacitorLlamaCompletionResult,
@@ -28,7 +39,11 @@ vi.mock("../loader", () => ({
 	initCapacitorLlama: mocks.initCapacitorLlama,
 }));
 
-const { localAiPlugin } = await import("../index");
+const testDir = mkdtempSync(join(tmpdir(), "eliza-capacitor-compat-"));
+let localAiPlugin: typeof import("../index")["localAiPlugin"];
+
+afterAll(() => rmSync(testDir, { recursive: true, force: true }));
+afterEach(() => vi.unstubAllEnvs());
 
 let observedCompletion:
 	| ((params: CapacitorLlamaCompletionParams) => void)
@@ -69,9 +84,7 @@ function makeCompletionResult(
 	};
 }
 
-function makeCtx(
-	onCompletion?: (params: CapacitorLlamaCompletionParams) => void,
-): CapacitorLlamaContext {
+function makeCtx(): CapacitorLlamaContext {
 	return {
 		id: 1,
 		gpu: false,
@@ -81,7 +94,6 @@ function makeCtx(
 			params: CapacitorLlamaCompletionParams,
 			callback?: (data: CapacitorLlamaTokenData) => void,
 		): Promise<CapacitorLlamaCompletionResult> {
-			onCompletion?.(params);
 			observedCompletion?.(params);
 			callback?.({ token: "hel" });
 			callback?.({ token: "lo" });
@@ -120,11 +132,15 @@ function makeRuntime(): IAgentRuntime {
 }
 
 describe("local-ai compat adapter behavior", () => {
-	beforeEach(() => {
+	beforeEach(async () => {
+		vi.resetModules();
 		vi.clearAllMocks();
+		vi.stubEnv("CACHE_DIR", join(testDir, "cache"));
+		vi.stubEnv("MODELS_DIR", join(testDir, "models"));
 		observedCompletion = undefined;
 		completionResultOverrides = {};
 		mocks.initCapacitorLlama.mockImplementation(async () => makeCtx());
+		({ localAiPlugin } = await import("../index"));
 	});
 
 	it.each([null, "", "   ", { text: "" }, { text: "   " }])(
@@ -149,7 +165,6 @@ describe("local-ai compat adapter behavior", () => {
 	});
 
 	it("wires onStreamChunk through the compat text adapter", async () => {
-		mocks.initCapacitorLlama.mockResolvedValueOnce(makeCtx());
 		const onStreamChunk = vi.fn();
 
 		const result = await localAiPlugin.models?.[ModelType.TEXT_SMALL]?.(
@@ -170,10 +185,7 @@ describe("local-ai compat adapter behavior", () => {
 			"hello",
 		);
 
-		// Gemma-aware RAM defaults (#9033): this is the first text-context load,
-		// so the fresh initCapacitorLlama call carries the pinned defaults —
-		// mmap on (lever 3: PLE pages from disk) and windowed SWA KV
-		// (lever 2: swa_full=false, the dominant KV saving on Gemma-4).
+		// The native load must use mmap and windowed KV to fit mobile memory.
 		expect(mocks.initCapacitorLlama).toHaveBeenCalled();
 		const initParams = mocks.initCapacitorLlama.mock.calls[0]?.[0] as {
 			use_mmap?: boolean;

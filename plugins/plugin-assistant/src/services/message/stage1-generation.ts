@@ -94,15 +94,19 @@ export function getStage1RoutingRepair(
 
 /**
  * An explicit RESPOND decision with no answer or pending work may receive
- * one model correction. STOP and IGNORE retain their terminal meaning without
- * attempting to classify disengagement from the language of the request.
+ * one model correction. Hosts may opt terminal decisions into the same review;
+ * the caller shares its budget with the direct IGNORE review.
  * Corrected output still passes normal terminal routing and reply validation.
  */
 export function getStage1UnusableDecisionRepair(
   parsed: Record<string, unknown> | null,
+  options?: { reaskTerminal?: boolean },
 ): string | undefined {
   if (!parsed) return undefined;
   const shouldRespond = parsed.shouldRespond;
+  const terminalReask =
+    options?.reaskTerminal === true &&
+    (shouldRespond === "STOP" || shouldRespond === "IGNORE");
   const replyText =
     typeof parsed.replyText === "string" ? parsed.replyText.trim() : "";
   const contexts = Array.isArray(parsed.contexts) ? parsed.contexts : [];
@@ -117,18 +121,22 @@ export function getStage1UnusableDecisionRepair(
   const contextRequests = Array.isArray(parsed.contextRequests)
     ? parsed.contextRequests
     : [];
+  // Requested context must be loaded before reviewing an incomplete decision.
   const endedWithoutAnswer =
-    shouldRespond === "RESPOND" &&
-    replyText.length === 0 &&
-    parsed.requiresTool !== true &&
-    contexts.every((context) => context === "simple") &&
-    intents.length === 0 &&
-    candidates.length === 0 &&
-    contextRequests.length === 0;
+    (terminalReask && contextRequests.length === 0) ||
+    (shouldRespond === "RESPOND" &&
+      replyText.length === 0 &&
+      parsed.requiresTool !== true &&
+      contexts.every((context) => context === "simple") &&
+      intents.length === 0 &&
+      candidates.length === 0 &&
+      contextRequests.length === 0);
   if (!endedWithoutAnswer) return undefined;
   return [
     "response_contract_repair:",
-    "Your previous HANDLE_RESPONSE declared RESPOND but provided neither an answer nor pending work. A simple response must contain the complete nonempty answer. Reconsider the original request and all its instructions. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
+    terminalReask
+      ? `Your previous HANDLE_RESPONSE ended a directly addressed turn with ${String(shouldRespond)}. Reconsider the complete original request, standing instructions and context. Preserve STOP for explicit disengagement and IGNORE when silence is appropriate; otherwise provide an answer or actionable route. This is review of the original response, not a new user request. Nothing has been delivered or executed.`
+      : "Your previous HANDLE_RESPONSE declared RESPOND but provided neither an answer nor pending work. A simple response must contain the complete nonempty answer. Reconsider the original request and all its instructions. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
     'Return HANDLE_RESPONSE with a consistent decision for the original request: either answer it simply with a nonempty replyText, intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none", or route it to the applicable planning contexts with the known action candidates and a pending reply. If the original request calls for disengagement or silence, use STOP or IGNORE without a reply or actions. Otherwise do not declare RESPOND with an empty reply and no pending work. Do not invent tool names or claim an unverified effect.',
     "previous_model_response:",
     JSON.stringify(parsed),
@@ -182,6 +190,16 @@ export function getStage1RetryReason(
     return null;
   }
   return "malformed HANDLE_RESPONSE tool call";
+}
+
+/** Opt a directly addressed terminal decision into one shared Stage-1 review. */
+export function readStage1TerminalReaskSetting(
+  runtime: IAgentRuntime,
+): boolean {
+  const raw = runtime.getSetting("ELIZA_STAGE1_TERMINAL_REASK");
+  if (raw === undefined || raw === null) return false;
+  if (typeof raw === "boolean") return raw;
+  return /^(?:1|true|yes|on)$/i.test(String(raw).trim());
 }
 
 export function readStage1EmptyRetryLimit(runtime: IAgentRuntime): number {

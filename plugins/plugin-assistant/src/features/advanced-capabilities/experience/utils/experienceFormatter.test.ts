@@ -9,6 +9,7 @@ import type { Experience } from "../types";
 import { ExperienceType, OutcomeType } from "../types";
 import {
   extractKeywords,
+  formatExperienceForPrompt,
   formatExperienceForRAG,
   getExperienceStats,
   groupExperiencesByDomain,
@@ -104,5 +105,63 @@ describe("formatExperienceForRAG", () => {
     const text = formatExperienceForRAG(exp({ tags: ["a", "b"] }));
     expect(text).toMatch(/Experience Type: success/);
     expect(text).toMatch(/Tags: a, b/);
+  });
+});
+
+describe("formatExperienceForPrompt", () => {
+  it("preserves distinct result and rationale text without changing the stored experience", () => {
+    const experience = exp({
+      id: "e-distinct" as Experience["id"],
+      result: "  The retry succeeded.\nIts receipt was retained.  ",
+      extractionReason:
+        " The user corrected the first attempt.\nKeep the original record. ",
+    });
+    const original = structuredClone(experience);
+    const text = formatExperienceForPrompt(experience);
+    expect(text).toContain(
+      `WHY: ${experience.result}\nRATIONALE: ${experience.extractionReason}`,
+    );
+    expect(text).toContain(`DO: ${experience.learning}`);
+    expect(experience).toEqual(original);
+  });
+
+  it("renders a WHY that adds to DO", () => {
+    const text = formatExperienceForPrompt(
+      exp({ id: "e1" as Experience["id"], result: "the retry succeeded" }),
+    );
+    expect(text).toContain("DO: learned something useful");
+    expect(text).toContain("WHY: the retry succeeded");
+    expect(text).toContain("META: id=e1");
+  });
+
+  it("uses a distinct rationale or a local reference when the result repeats the learning", () => {
+    const duplicate = formatExperienceForPrompt(
+      exp({
+        id: "e2" as Experience["id"],
+        result: "learned something useful",
+        extractionReason: "the user corrected the first attempt",
+      }),
+    );
+    expect(duplicate).toContain("WHY: the user corrected the first attempt");
+    expect(duplicate).not.toContain("WHY: learned something useful");
+    const bare = formatExperienceForPrompt(
+      exp({
+        id: "e3" as Experience["id"],
+        result: "learned something useful",
+      }),
+    );
+    expect(bare).not.toContain("WHY: learned");
+    expect(bare).toMatch(
+      /WHEN: ctx\nWHY: Same text as DO above\.\nMETA: id=e3/,
+    );
+    // The comparison is byte-exact: a whitespace variant is a distinct
+    // stored rationale and is rendered verbatim, never normalized away.
+    const variant = formatExperienceForPrompt(
+      exp({
+        id: "e4" as Experience["id"],
+        result: " learned  something useful ",
+      }),
+    );
+    expect(variant).toContain("WHY:  learned  something useful ");
   });
 });

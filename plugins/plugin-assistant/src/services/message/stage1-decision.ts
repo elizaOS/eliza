@@ -99,6 +99,7 @@ import {
   isEmptyStage1Result,
   parseMessageHandlerModelOutput,
   readStage1EmptyRetryLimit,
+  readStage1TerminalReaskSetting,
   shouldRetryStage1Generation,
   shouldUseStage1PlannerFallback,
   synthesizePlannerFallbackFromStage1Failure,
@@ -651,25 +652,35 @@ export async function generateStage1Decision(
       ? null
       : getStage1RetryReason(rawMessageHandler);
   }
-  // An explicit RESPOND without an answer or pending work gets one repaired
-  // re-ask. Consistent STOP and IGNORE decisions retain their terminal meaning. The retry
-  // still passes through ordinary terminal routing and reply validation.
+  // Terminal review shares a budget with direct IGNORE review below. A
+  // repeated terminal decision still passes through ordinary routing.
+  let terminalDecisionReviewed = false;
+  const terminalReaskEnabled = readStage1TerminalReaskSetting(args.runtime);
   // Voice keeps its complete path: its spoken answer need not sit in replyText.
   if (!args.codingMode && !voiceDirectMessageChannel) {
-    const preliminary = extractMessageHandlerRawParsed(rawMessageHandler);
-    const unusableRepair =
-      sourceReplyRendering ||
-      (sourceReplySnapshot && Array.isArray(preliminary?.replyText))
-        ? undefined
-        : getStage1UnusableDecisionRepair(preliminary);
+    const parsedForRepair = extractMessageHandlerRawParsed(rawMessageHandler);
+    // A source quotation is an answer even with no model-authored prose.
+    // Terminal decisions retain the same opt-in review and shared budget.
+    const sourceReplyAnswer =
+      parsedForRepair?.shouldRespond === "RESPOND" &&
+      (sourceReplyRendering ||
+        (sourceReplySnapshot && Array.isArray(parsedForRepair.replyText)));
+    const unusableRepair = sourceReplyAnswer
+      ? undefined
+      : getStage1UnusableDecisionRepair(parsedForRepair, {
+          reaskTerminal: terminalReaskEnabled,
+        });
     if (
       unusableRepair &&
       shouldUseStage1PlannerFallback(args.runtime, args.message)
     ) {
       args.runtime.logger?.warn?.(
         { src: "service:message", roomId: args.message.roomId },
-        "[message] Stage 1 ended an addressed turn without an answer — one repaired re-ask",
+        "[message] Stage 1 decision receives one response-contract review",
       );
+      terminalDecisionReviewed =
+        parsedForRepair?.shouldRespond === "STOP" ||
+        parsedForRepair?.shouldRespond === "IGNORE";
       const repairedInput = {
         ...messageHandlerInput,
         messages: [
@@ -724,7 +735,6 @@ export async function generateStage1Decision(
   let routingRepairAttempted = false;
   let historyIdentityRepairAttempted = false;
   let historyReadForDecision = false;
-  let directIgnoreReviewed = false;
   while (discoveryEnabled) {
     const nativeRead = extractContextRead(
       rawMessageHandler,
@@ -765,8 +775,8 @@ export async function generateStage1Decision(
         (contentMetadata.fromBot === true ||
           contentMetadata.isAutonomous === true)) ||
       (isObjectRecord(messageMetadata) && messageMetadata.fromBot === true);
-    const ignoreReview =
-      !directIgnoreReviewed &&
+    const terminalReview =
+      !terminalDecisionReviewed &&
       !routingRepair &&
       !repairHistoryIdentity &&
       requested.length === 0 &&
@@ -774,11 +784,20 @@ export async function generateStage1Decision(
       !automatedSender &&
       !isSubAgentCompletionArtifact(args.message) &&
       getActionInferenceMessageText(args.message).trim().length > 0
-        ? getStage1DirectIgnoreReview(parsedDecision)
+        ? (getStage1DirectIgnoreReview(parsedDecision) ??
+          (terminalReaskEnabled &&
+          parsedDecision &&
+          "shouldRespond" in parsedDecision &&
+          parsedDecision.shouldRespond === "STOP" &&
+          shouldUseStage1PlannerFallback(args.runtime, args.message)
+            ? getStage1UnusableDecisionRepair(parsedDecision, {
+                reaskTerminal: true,
+              })
+            : undefined))
         : undefined;
     const decisionRepair =
       routingRepair ??
-      ignoreReview ??
+      terminalReview ??
       (repairHistoryIdentity
         ? "source_identity_repair: Your previous response used a sourceSetId that does not match this request. Nothing from it was processed or executed. Regenerate HANDLE_RESPONSE for the original request using the source identity required by its schema. Review the supplied originals again; request missing history through contextRequests. Do not assume the previous selection or draft was correct."
         : undefined);
@@ -788,8 +807,8 @@ export async function generateStage1Decision(
       // One correction before field processors/effects. If it remains
       // contradictory, normal pending-intent guards still own routing.
       if (routingRepair) routingRepairAttempted = true;
-      if (ignoreReview && decisionRepair === ignoreReview)
-        directIgnoreReviewed = true;
+      if (terminalReview && decisionRepair === terminalReview)
+        terminalDecisionReviewed = true;
       if (repairHistoryIdentity) historyIdentityRepairAttempted = true;
       messageHandlerInput = {
         ...messageHandlerInput,
