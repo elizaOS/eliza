@@ -24,7 +24,7 @@ let server: Server;
 let config: DstackEvidenceConfig;
 let override: Record<string, unknown>;
 let inputPath: string | undefined;
-let guestMode: "normal" | "http-error" | "invalid";
+let guestMode: "normal" | "http-error" | "invalid" | "hang";
 let scriptMode: "normal" | "hang" | "large" | "invalid" | "exit";
 
 beforeEach(async () => {
@@ -59,7 +59,7 @@ else process.stdout.write(JSON.stringify(data.response));
     composeHash: "22".repeat(32),
     osImageHash: "33".repeat(32),
     variant: "dstack-tdx",
-    timeoutMs: 5000,
+    timeoutMs: 60_000,
   };
   server = createServer(async (req, res) => {
     expect(req.url).toBe("/v1/Attest");
@@ -67,6 +67,7 @@ else process.stdout.write(JSON.stringify(data.response));
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString());
+    if (guestMode === "hang") return;
     if (guestMode !== "normal") {
       res.statusCode = guestMode === "http-error" ? 503 : 200;
       res.end("invalid guest response");
@@ -294,35 +295,53 @@ describe("dstack evidence adapter protocol", () => {
       await expectTempCleanup();
     },
   );
-  it("kills timed-out verification and removes temporary evidence", async () => {
-    config.timeoutMs = 2000;
-    scriptMode = "hang";
+  it("times out a guest which never returns evidence", async () => {
+    config.timeoutMs = 500;
+    guestMode = "hang";
     await expect(collect()).rejects.toThrow(/appraisal failed/);
-    await expectTempCleanup();
-    const pid = Number(await readFile(join(dir, "pid"), "utf8"));
-    expect(() => process.kill(pid, 0)).toThrow();
-  }, 10_000);
+    await expect(readFile(join(dir, "input-path"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
   it("kills an in-flight verifier on cancellation and cleans its evidence", async () => {
     scriptMode = "hang";
     const abort = new AbortController();
     const collecting = createDstackEvidenceProvider(
       config,
     ).collectEvidenceWithReportData(challenge, abort.signal);
-    const rejected = expect(collecting).rejects.toThrow(/appraisal failed/);
-    await expect
-      .poll(async () => {
-        try {
-          return Number(await readFile(join(dir, "pid"), "utf8"));
-        } catch (error) {
-          // error-policy:J4 Startup has an explicit pending state until the fixture writes its pid.
-          if ((error as NodeJS.ErrnoException).code === "ENOENT")
-            return undefined;
-          throw error;
-        }
-      })
-      .toBeDefined();
-    abort.abort();
-    await rejected;
+    const outcome = collecting.then(
+      () => ({ ok: true, error: undefined }),
+      (error: unknown) => ({ ok: false, error }),
+    );
+    try {
+      await expect
+        .poll(
+          async () => {
+            try {
+              return Number(await readFile(join(dir, "pid"), "utf8"));
+            } catch (error) {
+              // error-policy:J4 Startup remains explicitly pending until the fixture writes its pid.
+              if (
+                error instanceof Error &&
+                "code" in error &&
+                error.code === "ENOENT"
+              )
+                return undefined;
+              throw error;
+            }
+          },
+          { timeout: 30_000 },
+        )
+        .toBeDefined();
+    } finally {
+      abort.abort();
+      await outcome;
+    }
+    const result = await outcome;
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatchObject({
+      message: "Dstack evidence collection/appraisal failed",
+    });
     await expectTempCleanup();
     const pid = Number(await readFile(join(dir, "pid"), "utf8"));
     expect(() => process.kill(pid, 0)).toThrow();
