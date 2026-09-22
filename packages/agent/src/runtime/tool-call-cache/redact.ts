@@ -26,14 +26,38 @@
 import { type BoundedWalkRejection, boundedWalk } from "./bounded-walk.ts";
 import type { PrivacyRedactor } from "./types.ts";
 
+/**
+ * Value shapes redacted before a cached result reaches disk.
+ *
+ * Every entry here is also redacted by `@elizaos/core`'s
+ * `DEFAULT_REDACT_PATTERNS`, which that module documents as the home for
+ * value-shape detection. This list stays a separate, deliberately narrow copy:
+ * core's broader ENV-assignment and JSON-field patterns are unsuitable here
+ * because tool results routinely carry source code, and core's own comment
+ * records that the bare-`key` assignment form "corrupts code returned by READ".
+ * Only anchored credential prefixes belong in this list.
+ */
 const CREDENTIAL_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
   // The generic sk- shape also accepts hyphens, so the provider-specific
   // prefix must be classified first.
   { label: "anthropic-key", pattern: /\bsk-ant-[A-Za-z0-9_-]{16,}\b/g },
   { label: "openai-key", pattern: /\bsk-[A-Za-z0-9_-]{16,}\b/g },
   { label: "bearer", pattern: /\bBearer\s+[A-Za-z0-9._-]{16,}\b/g },
+  // ghp_ is one of several GitHub token prefixes; the fine-grained
+  // `github_pat_` shape is the one core also enumerates.
   { label: "github-token", pattern: /\bghp_[A-Za-z0-9]{20,}\b/g },
-  { label: "aws-access-key", pattern: /\bAKIA[0-9A-Z]{16}\b/g },
+  { label: "github-token", pattern: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g },
+  { label: "slack-token", pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g },
+  // Google OAuth access tokens carry no key name when echoed by a token
+  // endpoint error body. Case-sensitive so ordinary prose is not folded in.
+  { label: "google-oauth-token", pattern: /\bya29\.[A-Za-z0-9_\-.]{10,}/g },
+  // AKIA/ASIA are access-key IDs; ABIA/ACCA are bearer/context credential
+  // identifiers. Case-sensitive so ordinary words such as "Asia" are not
+  // folded into the credential shape.
+  {
+    label: "aws-access-key",
+    pattern: /\b(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}\b/g,
+  },
 ];
 
 const GEO_PATTERNS: RegExp[] = [
