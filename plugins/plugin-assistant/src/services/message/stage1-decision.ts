@@ -18,6 +18,7 @@ import {
   ElizaError,
   getCandidateActionBackstopRules,
   getStreamingContext,
+  getUserMessageText,
   HANDLE_RESPONSE_TOOL_NAME,
   hashString,
   isObjectRecord,
@@ -52,6 +53,7 @@ import {
   isSubAgentCompletionArtifact,
   resolveContinuationInferenceMessageText,
 } from "./dialogue-context.js";
+import { evaluatePlannedReplyEgress } from "./egress-policy.ts";
 import {
   canRepairHistoryIdentity,
   canRepairIncompleteHistorySelection,
@@ -66,6 +68,7 @@ import {
 } from "./history-discovery.js";
 import { withInactiveArrayFields } from "./inactive-field-schema.js";
 import { composeResponseState } from "./provider-state.js";
+import { restorePiiInUserReplyText } from "./reply-policy.ts";
 import {
   getStage1FinishReason,
   stage1HitCompletionLimit,
@@ -152,6 +155,14 @@ export async function generateStage1Decision(
 ) {
   const voiceDirectMessageChannel =
     args.message.content?.channelType === ChannelType.VOICE_DM;
+  const contextReadProgressEnabled = Boolean(
+    directMessageChannel &&
+      !voiceDirectMessageChannel &&
+      !args.codingMode &&
+      !args.stage1DecisionOnly &&
+      args.onPlanningAcknowledgment,
+  );
+  let contextReadAcknowledgmentSent = false;
   const messageHandlerStartedAt = Date.now();
   const stage1TurnSignal =
     getStreamingContext()?.abortSignal ?? new AbortController().signal;
@@ -282,7 +293,7 @@ export async function generateStage1Decision(
         : fieldSchema;
     const readTool =
       discoveryEnabled && discovery.available.size > 0
-        ? createContextReadTool(referenceSchema)
+        ? createContextReadTool(referenceSchema, contextReadProgressEnabled)
         : undefined;
     return [
       createHandleResponseTool({
@@ -734,6 +745,33 @@ export async function generateStage1Decision(
         historyReadEvidence = read.evidence;
       }
 
+      // Read progress follows fresh authorization and never enters final delivery.
+      if (
+        contextReadProgressEnabled &&
+        !contextReadAcknowledgmentSent &&
+        nativeRead?.acknowledgment
+      ) {
+        const progress = sanitizeUserVisibleModelOutput(
+          nativeRead.acknowledgment,
+        );
+        if (
+          progress.kind === "text" &&
+          evaluatePlannedReplyEgress({
+            pendingWork: true,
+            providers: args.state.data.providers,
+            request: getUserMessageText(args.message),
+            reply: progress.text,
+            actionResults: [],
+            actions: args.runtime.actions,
+          }).verdict !== "reject"
+        ) {
+          stage1TurnSignal.throwIfAborted();
+          args.onPlanningAcknowledgment?.(
+            restorePiiInUserReplyText(progress.text),
+          );
+          contextReadAcknowledgmentSent = true;
+        }
+      }
       if (historyRequested.length) historyReadForDecision = true;
       discovery = projectDiscoverableContext(
         context,
@@ -1064,6 +1102,7 @@ export async function generateStage1Decision(
 
   return {
     messageHandler,
+    contextReadAcknowledgmentSent,
     providerDiscoveryEnabled: discoveryEnabled,
     loadedContextProviders: [...loadedContext],
     historyReadEvidence,

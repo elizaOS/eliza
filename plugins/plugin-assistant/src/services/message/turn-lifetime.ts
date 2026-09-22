@@ -517,6 +517,7 @@ export class MessageTurnLifetime {
               String(runtime.getSetting("CONTINUE_AFTER_ACTIONS") ?? "true"),
             ),
           onStreamChunk: wrappedOnStreamChunk,
+          onPlanningAcknowledgment: options?.onPlanningAcknowledgment,
           keepExistingResponses:
             options?.keepExistingResponses ??
             parseBooleanFromText(

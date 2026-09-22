@@ -1433,6 +1433,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		"mixed",
 		"extra",
 		"unknown",
+		"progress",
+		"pending-done",
+		"cancel-read",
+		"repeated-progress",
 	])(
 		"resolves native context reads before any field dispatch: %s",
 		async (mode) => {
@@ -1444,10 +1448,13 @@ describe("runV5MessageRuntimeStage1", () => {
 				"dispatch",
 			);
 			let calls = 0;
+			const progress = vi.fn();
+			const abort = new AbortController();
 			runtime.useModel = vi.fn(
 				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
 					calls++;
-					if (calls > 2) throw new Error("Unexpected extra context-read call");
+					if (calls > (mode === "repeated-progress" ? 3 : 2))
+						throw new Error("Unexpected extra context-read call");
 					expect(dispatch).not.toHaveBeenCalled();
 					const input = args[1] as {
 						messages: Array<{ content: string }>;
@@ -1470,6 +1477,8 @@ describe("runV5MessageRuntimeStage1", () => {
 										? "not-authorized"
 										: "history:h2",
 						];
+						if (mode === "cancel-read")
+							abort.abort(new Error("cancelled read"));
 						return {
 							text: "Undelivered read prose",
 							toolCalls: [
@@ -1478,6 +1487,10 @@ describe("runV5MessageRuntimeStage1", () => {
 									name: "READ_CONTEXT",
 									arguments: {
 										contextRequests,
+										acknowledgment:
+											mode === "pending-done"
+												? "Done."
+												: "Checking your earlier messages.",
 										...(mode === "extra"
 											? { facts: ["Never persist this"] }
 											: {}),
@@ -1495,8 +1508,25 @@ describe("runV5MessageRuntimeStage1", () => {
 							],
 						};
 					}
+					expect(progress).toHaveBeenCalledTimes(
+						["progress", "repeated-progress"].includes(mode) ? 1 : 0,
+					);
+					if (mode === "repeated-progress" && calls === 2)
+						return {
+							text: "",
+							toolCalls: [
+								{
+									id: "read-second",
+									name: "READ_CONTEXT",
+									arguments: {
+										contextRequests: ["history:h3"],
+										acknowledgment: "This must not replace the first label.",
+									},
+								},
+							],
+						};
 					expect(text).toContain(rows[1].content.text?.trim());
-					if (["full", "changed"].includes(mode))
+					if (["full", "changed", "repeated-progress"].includes(mode))
 						expect(text).toContain(rows[2].content.text);
 					else expect(text).not.toContain(rows[2].content.text);
 					return stage1Response({
@@ -1518,20 +1548,35 @@ describe("runV5MessageRuntimeStage1", () => {
 				},
 			) as IAgentRuntime["useModel"];
 			const run = () =>
-				runV5MessageRuntimeStage1({
-					runtime,
-					message,
-					state,
-					responseId: message.id as UUID,
-					stage1DecisionOnly: true,
-				});
-			if (["mixed", "extra", "unknown"].includes(mode)) {
+				runWithStreamingContext({ abortSignal: abort.signal }, () =>
+					runV5MessageRuntimeStage1({
+						runtime,
+						message,
+						state,
+						responseId: message.id as UUID,
+						stage1DecisionOnly: ![
+							"progress",
+							"repeated-progress",
+							"pending-done",
+							"cancel-read",
+							"mixed",
+							"extra",
+							"unknown",
+						].includes(mode),
+						onPlanningAcknowledgment: progress,
+					}),
+				);
+			if (["mixed", "extra", "unknown", "cancel-read"].includes(mode)) {
 				await expect(run()).rejects.toThrow();
 				expect(dispatch).not.toHaveBeenCalled();
 				expect(calls).toBe(1);
+				expect(progress).not.toHaveBeenCalled();
 			} else {
 				await run();
-				expect(calls).toBe(2);
+				expect(calls).toBe(mode === "repeated-progress" ? 3 : 2);
+				expect(progress).toHaveBeenCalledTimes(
+					["progress", "repeated-progress"].includes(mode) ? 1 : 0,
+				);
 				expect(dispatch).toHaveBeenCalledTimes(1);
 				expect(dispatch.mock.calls[0]?.[0].rawParsed.replyText).toBe(
 					"Read original evidence.",
@@ -8565,6 +8610,154 @@ describe("runV5MessageRuntimeStage1", () => {
 				"The follow-up is complete.",
 			);
 		}
+	});
+
+	it.each([
+		'Done. The note now says "Bring the green notebook."',
+		"Checking.\u0000",
+	])(
+		"withholds invalid or prematurely completed progress without another inference: %j",
+		async (replyText) => {
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["general"],
+					replyText,
+					extra: { requiresTool: true, replyEffectStatus: "pending" },
+				}),
+				JSON.stringify({
+					thought: "Finished the check.",
+					toolCalls: [],
+					messageToUser: "I checked the request.",
+				}),
+			]);
+			const onPlanningAcknowledgment = vi.fn();
+			const earlyReply = vi.fn();
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				onPlanningAcknowledgment,
+				onResponseHandlerEarlyReply: earlyReply,
+			});
+			expect(onPlanningAcknowledgment).not.toHaveBeenCalled();
+			expect(earlyReply).not.toHaveBeenCalled();
+			expect(runtime.useModel).toHaveBeenCalledTimes(2);
+			expect(result.kind).toBe("planned_reply");
+			if (result.kind === "planned_reply") {
+				expect(result.result.responseContent?.text).toBe(
+					"I checked the request.",
+				);
+			}
+		},
+	);
+
+	it("delivers planning progress before work without consuming the final reply", async () => {
+		const order: string[] = [];
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				replyText: "I'll check that now.",
+				extra: { requiresTool: true, replyEffectStatus: "pending" },
+			}),
+			JSON.stringify({
+				thought: "Finished the follow-up.",
+				toolCalls: [],
+				messageToUser: "The follow-up is complete.",
+			}),
+		]);
+		runtime.composeState = vi.fn(async () => {
+			order.push("compose-planner-state");
+			return makeState();
+		});
+		const onPlanningAcknowledgment = vi.fn((text: string) => {
+			order.push(text);
+		});
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onPlanningAcknowledgment,
+		});
+		expect(onPlanningAcknowledgment).toHaveBeenCalledTimes(1);
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(order).toEqual(["I'll check that now.", "compose-planner-state"]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"The follow-up is complete.",
+			);
+		}
+	});
+
+	it.each([
+		{ text: "Hi!", replyEffectStatus: "none" },
+		{
+			text: "What time should I schedule it?",
+			replyEffectStatus: "non_applied",
+		},
+	])(
+		"does not acknowledge a direct reply: $text",
+		async ({ text, replyEffectStatus }) => {
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["simple"],
+					replyText: text,
+					extra: { replyEffectStatus },
+				}),
+			]);
+			const onPlanningAcknowledgment = vi.fn();
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				onPlanningAcknowledgment,
+			});
+			expect(result.kind).toBe("direct_reply");
+			expect(onPlanningAcknowledgment).not.toHaveBeenCalled();
+			expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		},
+	);
+
+	it("does not publish an acknowledgment after routing is cancelled", async () => {
+		const abort = new AbortController();
+		const runtime = makeRuntime(
+			[
+				stage1Response({
+					contexts: ["general"],
+					replyText: "I'll check that now.",
+					extra: { requiresTool: true, replyEffectStatus: "pending" },
+				}),
+			],
+			undefined,
+			[
+				{
+					name: "cancel-before-planning",
+					priority: 1,
+					shouldRun: () => true,
+					evaluate: () => {
+						abort.abort(new Error("cancelled before acknowledgment"));
+						return { requiresTool: true };
+					},
+				},
+			],
+		);
+		const onPlanningAcknowledgment = vi.fn();
+		await expect(
+			runWithStreamingContext({ abortSignal: abort.signal }, () =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message: makeMessage(),
+					state: makeState(),
+					responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+					onPlanningAcknowledgment,
+				}),
+			),
+		).rejects.toThrow("cancelled before acknowledgment");
+		expect(onPlanningAcknowledgment).not.toHaveBeenCalled();
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
 
 	it("keeps an applied effect claim buffered until the planner has a receipt", async () => {

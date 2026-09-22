@@ -230,3 +230,5 @@ never unavailable status or canned user prose; preserve receipts, clarification
 states, permission rechecks, final-context restoration and reply-only recovery.
 
 Backup metadata listing enumerates an existing directory directly, without an unconditional existence stat. After ENOENT, distinguish an absent directory from a dangling symlink before returning an empty list. Permission and non-directory errors remain errors; per-file identity checks, complete results and encrypted restore behavior remain unchanged.
+
+Conversation SSE forwards the first planning acknowledgement as a transient ChatTurnStatus.label and retains it through subsequent phases. Status deduplication includes that label at both generation and HTTP boundaries. Progress never enters token snapshots, response text or persisted assistant messages; aborted/closed turns cannot publish it.

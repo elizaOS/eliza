@@ -305,6 +305,8 @@ export type PlannedReplyEgressDecision =
  */
 export function evaluatePlannedReplyEgress(args: {
   reply: string;
+  /** Early progress for a turn whose work has not settled. */
+  pendingWork?: boolean;
   request?: string;
   providers?: StateData["providers"];
   actionResults: readonly ActionResult[];
@@ -330,7 +332,9 @@ export function evaluatePlannedReplyEgress(args: {
   ) {
     return { verdict: "reject", kind: "stated_time" };
   }
-  if (replyClaimsCompletedSideEffect(reply)) {
+  if (
+    replyClaimsCompletedSideEffect(reply, { pendingWork: args.pendingWork })
+  ) {
     if (
       plannedReplyHasClaimGroundingReceipt({
         kind: "completed_side_effect",

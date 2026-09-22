@@ -364,6 +364,7 @@ export async function runV5MessageRuntimeStage1(
       loadedContextProviders,
       historyReadEvidence,
       contextCatalogRead,
+      contextReadAcknowledgmentSent,
     } = await generateStage1Decision(
       args,
       {
@@ -877,7 +878,12 @@ export async function runV5MessageRuntimeStage1(
       messageHandler,
     )
       ? ""
-      : routedResponseHandlerReply || parsedResponseHandlerReply;
+      : routedResponseHandlerReply ||
+        parsedResponseHandlerReply ||
+        (args.onPlanningAcknowledgment &&
+        prePatchStageOneReplyEffectStatus === "pending"
+          ? (fieldRunResult?.parsed.replyText ?? "")
+          : "");
     // `replyEffectStatus: applied` is the model's prediction, not an effect
     // receipt. Keep it buffered until the planner either produces a verified
     // action result or returns the terminal failure; otherwise the client sees a
@@ -886,8 +892,15 @@ export async function runV5MessageRuntimeStage1(
       earlyReplyText = "";
     }
     const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
-    if (earlyReplyText.length > 0 && onResponseHandlerEarlyReply) {
+    if (
+      earlyReplyText.length > 0 &&
+      (onResponseHandlerEarlyReply || args.onPlanningAcknowledgment)
+    ) {
+      const visibleProgress = sanitizeUserVisibleModelOutput(earlyReplyText);
+      earlyReplyText =
+        visibleProgress.kind === "text" ? visibleProgress.text : "";
       const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
+        pendingWork: prePatchStageOneReplyEffectStatus === "pending",
         providers: args.state.data.providers,
         request: args.message.content.text,
         reply: earlyReplyText,
@@ -901,6 +914,19 @@ export async function runV5MessageRuntimeStage1(
         // (or the final-path ack fallback) owns this turn's delivery.
         earlyReplyText = "";
       }
+    }
+    // Progress does not satisfy final delivery, persist an answer, or refresh history.
+    getStreamingContext()?.abortSignal?.throwIfAborted();
+    if (
+      args.onPlanningAcknowledgment &&
+      !contextReadAcknowledgmentSent &&
+      !addressedToOtherParticipant &&
+      messageHandler.processMessage === "RESPOND" &&
+      prePatchStageOneReplyEffectStatus === "pending" &&
+      !messageHandler.plan.deterministicToolCall &&
+      earlyReplyText.trim().length > 0
+    ) {
+      args.onPlanningAcknowledgment(restorePiiInUserReplyText(earlyReplyText));
     }
     // The addressing gate above already terminal-routes addressed-to-other
     // turns to ignored, so a gated turn cannot normally reach this planning
