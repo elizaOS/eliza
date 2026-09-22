@@ -7,14 +7,6 @@ export {
   type TestPgliteStorageMode,
   testPgliteStorageMode,
 } from "@elizaos/shared/utils/pglite-storage";
-export {
-  ADVERSARIAL_KIND_DESCRIPTIONS,
-  ADVERSARIAL_KINDS,
-  type AdversarialFixtureSpec,
-  type AdversarialKind,
-  adversarialActionRouteFixtures,
-  adversarialPlannerFixture,
-} from "./adversarial-model-fixtures";
 export { contextBenchProvider } from "./benchmark-context-provider";
 // Browser API shims (Storage, Canvas, Media, console patches)
 export {
@@ -109,8 +101,6 @@ export {
   requireLiveProvider,
   selectLiveProvider,
 } from "./live-provider";
-// Loopback port availability checker
-export { canBindLoopback } from "./loopback";
 export { createMockRuntime, MOCK_AGENT_ID } from "./mock-runtime";
 export {
   createTestRuntimeWithModelProvider,
