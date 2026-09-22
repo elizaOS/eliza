@@ -10,7 +10,7 @@ import { lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { z } from "zod";
 import type { TeeEvidence, TeeEvidenceProvider } from "./tee-evidence.ts";
 import type {
@@ -108,7 +108,7 @@ async function attest(
       },
       (res) => {
         if (res.statusCode !== 200) {
-          res.resume();
+          res.destroy();
           reject(failure("Guest-v1 attestation request was rejected"));
           return;
         }
@@ -165,6 +165,9 @@ async function verify(
         {
           env: { PATH: "/usr/bin:/bin", RUST_LOG: "error" },
           stdio: ["ignore", "pipe", "pipe"],
+          // Linux verifier helpers share a process group so cancellation also
+          // stops image-measurement subprocesses retaining the output pipes.
+          detached: process.platform !== "win32",
         },
       );
       const chunks: Buffer[] = [];
@@ -172,7 +175,31 @@ async function verify(
       let rejected: Error | undefined;
       const stop = (error: Error) => {
         rejected ??= error;
-        child.kill("SIGKILL");
+        if (process.platform === "win32" || child.pid === undefined) {
+          child.kill("SIGKILL");
+          return;
+        }
+        try {
+          process.kill(-child.pid, "SIGKILL");
+        } catch (error) {
+          // error-policy:J6 An already exited process group needs no teardown.
+          if (
+            !(
+              error instanceof Error &&
+              "code" in error &&
+              error.code === "ESRCH"
+            )
+          ) {
+            logger.warn(
+              "[DstackEvidence] Could not terminate verifier process group",
+            );
+            rejected = failure(
+              "Could not terminate verifier process group",
+              error,
+            );
+            child.kill("SIGKILL");
+          }
+        }
       };
       const abort = () =>
         stop(failure("Dstack verification aborted", signal.reason));

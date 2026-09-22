@@ -23,6 +23,7 @@ let server: Server;
 let config: DstackEvidenceConfig;
 let override: Record<string, unknown>;
 let inputPath: string | undefined;
+let guestMode: "normal" | "http-error" | "invalid";
 let scriptMode: "normal" | "hang" | "large" | "invalid" | "exit";
 
 beforeEach(async () => {
@@ -30,6 +31,7 @@ beforeEach(async () => {
   override = {};
   inputPath = undefined;
   scriptMode = "normal";
+  guestMode = "normal";
   const script = `#!${process.execPath}
 const fs = require('node:fs');
 const input = process.argv[process.argv.length - 1];
@@ -64,6 +66,11 @@ else process.stdout.write(JSON.stringify(data.response));
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString());
+    if (guestMode !== "normal") {
+      res.statusCode = guestMode === "http-error" ? 503 : 200;
+      res.end("invalid guest response");
+      return;
+    }
     const response = {
       is_valid: true,
       details: {
@@ -301,6 +308,20 @@ describe("dstack evidence adapter protocol", () => {
     await expect(readFile(join(dir, "input-path"))).rejects.toMatchObject({
       code: "ENOENT",
     });
+  });
+  it.each(["http-error", "invalid"] as const)(
+    "rejects guest %s before running a verifier",
+    async (mode) => {
+      guestMode = mode;
+      await expect(collect()).rejects.toThrow(/appraisal failed/);
+      await expect(readFile(join(dir, "input-path"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    },
+  );
+  it("rejects an unexecutable pinned verifier without hanging", async () => {
+    await chmod(config.verifierPath, 0o600);
+    await expect(collect()).rejects.toThrow(/appraisal failed/);
   });
   it("rejects a non-socket endpoint", async () => {
     config.socketPath = config.verifierConfigPath;
