@@ -4,6 +4,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { collectDockerWorkspaceDirs } from "./collect-docker-runtime-deps.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import { collectWorkspaceMaps } from "./lib/workspace-discovery.mjs";
 
@@ -19,68 +20,6 @@ const { workspaceDirs } = collectWorkspaceMaps(
   repoRoot,
   rootPkg.workspaces ?? [],
 );
-const localPackages = [
-  // Foundational workspace packages. These build to ./dist/ but keep their
-  // package.json at the package root (no dist/package.json), so they are
-  // linked package-root -> package-root here rather than via
-  // relink-workspace-packages-to-dist.mjs (which targets <pkg>/dist and
-  // requires a dist/package.json). @elizaos/shared declares @elizaos/core as
-  // a runtime dep and shared/dist/api/http-helpers.js imports it eagerly, so
-  // node_modules/@elizaos/core MUST exist or boot crashes with
-  // "Cannot find package '@elizaos/core'". Listed first so they link before
-  // any per-package side effects (e.g. the app-core argon2/jose linking).
-  "eliza/packages/core",
-  "eliza/packages/cloud/routing",
-  // @elizaos/app-core's registry/index.ts eagerly re-exports
-  // `@elizaos/registry/first-party` (#9190 moved the curated app/plugin/connector
-  // registry out of app-core into this package). It must be linked or the agent
-  // boot crashes with "Cannot find package '@elizaos/registry' imported from
-  // .../app-core/dist/registry/index.js". Foundational, so listed up here.
-  "eliza/packages/registry",
-  "eliza/plugins/plugin-documents",
-  "eliza/plugins/plugin-personal-assistant",
-  "eliza/plugins/plugin-task-coordinator",
-  "eliza/plugins/plugin-agent-orchestrator",
-  "eliza/plugins/plugin-app-control",
-  "eliza/plugins/plugin-cloud-apps",
-  "eliza/plugins/plugin-commands",
-  "eliza/packages/credentials",
-  "eliza/packages/common",
-  "eliza/plugins/plugin-assistant",
-  "eliza/packages/app-core",
-  "eliza/packages/cloud/sdk",
-  "eliza/packages/shared",
-  "eliza/packages/skills",
-  "eliza/packages/ui",
-  "eliza/plugins/plugin-agent-skills",
-  "eliza/plugins/plugin-app-manager",
-  "eliza/plugins/plugin-browser",
-  "eliza/plugins/plugin-capacitor-bridge",
-  "eliza/plugins/plugin-coding-tools",
-  "eliza/plugins/plugin-computeruse",
-  "eliza/plugins/plugin-discord",
-  "eliza/plugins/plugin-elizacloud",
-  "eliza/plugins/plugin-imessage",
-  "eliza/plugins/plugin-local-inference",
-  "eliza/plugins/plugin-native-filesystem",
-  "eliza/plugins/plugin-mcp",
-  "eliza/plugins/plugin-openai",
-  "eliza/plugins/plugin-pdf",
-  "eliza/plugins/plugin-registry",
-  "eliza/plugins/plugin-notes",
-  "eliza/plugins/plugin-todos",
-  "eliza/plugins/plugin-inbox",
-  "eliza/plugins/plugin-calendar",
-  "eliza/plugins/plugin-scheduling",
-  "eliza/plugins/plugin-native-activity-tracker",
-  "eliza/plugins/plugin-sql",
-  "eliza/plugins/plugin-telegram",
-  "eliza/plugins/plugin-x",
-  "eliza/plugins/plugin-video",
-  "eliza/plugins/plugin-wallet",
-  "eliza/plugins/plugin-whatsapp",
-  "eliza/plugins/plugin-workflow",
-];
 
 function resolveSourceExportPath(packageDir, exportPath) {
   if (typeof exportPath !== "string" || !exportPath.startsWith("./dist/")) {
@@ -293,15 +232,6 @@ function resolveDependencyPackageDir(packageName, baseDirs = [repoRoot]) {
   );
 }
 
-function resolveRootPackageDir(packageName) {
-  return resolveDependencyPackageDir(packageName);
-}
-
-function linkRootDependency({ packageName, target }) {
-  const packageDir = resolveRootPackageDir(packageName);
-  linkDependencyPackage({ packageDir, target });
-}
-
 function linkDependencyPackage({ packageDir, target }) {
   if (path.resolve(packageDir) === path.resolve(target)) {
     return;
@@ -318,28 +248,6 @@ function linkDependencyPackage({ packageDir, target }) {
 function linkDependency({ packageName, target, baseDirs = [repoRoot] }) {
   const packageDir = resolveDependencyPackageDir(packageName, baseDirs);
   linkDependencyPackage({ packageDir, target });
-}
-
-function resolveLocalPackageDir(packagePath) {
-  const candidates = [packagePath];
-  if (packagePath.startsWith("eliza/")) {
-    candidates.push(packagePath.slice("eliza/".length));
-  }
-
-  for (const candidate of candidates) {
-    const packageDir = path.join(repoRoot, candidate);
-    if (fs.existsSync(path.join(packageDir, "package.json"))) {
-      return packageDir;
-    }
-  }
-
-  throw new Error(
-    `Missing local package manifest: ${candidates
-      .map((candidate) =>
-        path.relative(repoRoot, path.join(repoRoot, candidate, "package.json")),
-      )
-      .join(" or ")}`,
-  );
 }
 
 function collectScopeDirs() {
@@ -359,23 +267,33 @@ for (const scopeDir of scopeDirs) {
   fs.mkdirSync(scopeDir, { recursive: true });
 }
 
-for (const packagePath of localPackages) {
-  const packageDir = resolveLocalPackageDir(packagePath);
+const runtimeDirs = collectDockerWorkspaceDirs();
+for (const packageDir of runtimeDirs) {
   const packageJsonPath = path.join(packageDir, "package.json");
 
   let pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-  if (typeof pkg.name !== "string" || !pkg.name.startsWith("@elizaos/")) {
+  if (typeof pkg.name !== "string" || !pkg.name) {
     throw new Error(
       `Invalid local package name in ${path.relative(repoRoot, packageJsonPath)}`,
     );
   }
+  // The agent already points at its published dist manifest in Dockerfile.ci.
+  if (pkg.name === "@elizaos/agent") continue;
   const rewriteResult = rewriteDistExportsToSource(packageDir, pkg);
   pkg = rewriteResult.pkg;
 
-  const packageName = pkg.name.slice("@elizaos/".length);
-  for (const scopeDir of scopeDirs) {
+  const packageName = pkg.name.startsWith("@elizaos/")
+    ? pkg.name.slice("@elizaos/".length)
+    : pkg.name;
+  const targets = pkg.name.startsWith("@elizaos/")
+    ? scopeDirs
+    : [path.join(repoRoot, "node_modules")];
+  for (const scopeDir of targets) {
     const target = path.join(scopeDir, packageName);
-    if (scopeDir !== path.join(repoRoot, "node_modules", "@elizaos")) {
+    if (
+      scopeDir !== path.join(repoRoot, "node_modules", "@elizaos") &&
+      scopeDir !== path.join(repoRoot, "node_modules")
+    ) {
       if (!pathExists(target)) {
         continue;
       }
@@ -387,38 +305,6 @@ for (const packagePath of localPackages) {
       target,
     });
     linked += 1;
-  }
-
-  if (pkg.name === "@elizaos/plugin-sql") {
-    const pluginSqlRootDeps = [
-      "@electric-sql/pglite",
-      "@neondatabase/serverless",
-      "dotenv",
-      "drizzle-orm",
-      "pg",
-      "uuid",
-      "ws",
-    ];
-    for (const rootDep of pluginSqlRootDeps) {
-      linkRootDependency({
-        packageName: rootDep,
-        target: path.join(packageDir, "node_modules", rootDep),
-      });
-      linkRootDependency({
-        packageName: rootDep,
-        target: path.join(packageDir, "typescript", "node_modules", rootDep),
-      });
-      // Also ensure root-level node_modules has it so ESM resolution always
-      // finds the package regardless of which symlink depth Node traverses.
-      try {
-        linkRootDependency({
-          packageName: rootDep,
-          target: path.join(repoRoot, "node_modules", rootDep),
-        });
-      } catch {
-        // Not all deps may be installed; non-fatal.
-      }
-    }
   }
 
   if (pkg.name === "@elizaos/app-core") {
@@ -436,6 +322,16 @@ for (const packagePath of localPackages) {
         baseDirs: [packageDir, repoRoot],
       });
     }
+  }
+}
+
+// Only the disposable image stage opts into removing plugin sources outside its closure.
+if (process.argv.includes("--prune-unlinked-plugins")) {
+  const retained = new Set(runtimeDirs);
+  const pluginRoot = path.join(repoRoot, "plugins");
+  for (const entry of fs.readdirSync(pluginRoot, { withFileTypes: true })) {
+    const directory = path.join(pluginRoot, entry.name);
+    if (entry.isDirectory() && !retained.has(directory)) removePath(directory);
   }
 }
 

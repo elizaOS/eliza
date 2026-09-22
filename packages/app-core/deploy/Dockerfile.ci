@@ -21,45 +21,15 @@ ARG VERSION_CLEAN=""
 ARG REVISION=""
 ARG TAILSCALE_VERSION=1.98.3
 
-# Some relinked local packages expect their third-party (non-@elizaos) runtime
-# dependencies to be resolvable from /app/node_modules. Host node_modules is
-# excluded from the Docker context (see .dockerignore: **/node_modules), so
-# install that runtime set in-image.
-#
-# The set is DERIVED, not hand-maintained: collect-docker-runtime-deps.mjs
-# reads the declared `dependencies` of every workspace package that gets
-# linked into the image (see link-docker-local-app-packages.mjs +
-# relink-workspace-packages-to-dist.mjs), drops the @elizaos/* workspace
-# entries (those are linked, not installed), and emits the union pinned to
-# the versions the workspace lockfile resolves. `npm install` then pulls the
-# full transitive closure automatically.
-#
-# This replaces the previous hand-maintained allowlist, which had to be
-# extended by hand every time a newly-linked package introduced a new
-# third-party dependency. Each omission was a hard boot crash of the form
-# "Cannot find package '<dep>' imported from /app/packages/<pkg>/dist/..."
-# (zod, then @elizaos/core, then chalk, ...). Deriving the closure removes
-# that whole class of build/test loops: every dependency a linked package
-# declares is present, so the image boots and any character config can load
-# any bundled plugin without a missing-module crash.
-#
-# Pure browser/UI packages (notably @elizaos/ui and its radix/three/recharts
-# tree) are excluded inside the script: they are linked for resolution
-# integrity but never imported by the headless server runtime, so installing
-# their frontend deps would only bloat the image.
-#
-# This stage deliberately COPYs ONLY the dependency manifests (bun.lock + the
-# workspace package.json set — the sole inputs of
-# collect-docker-runtime-deps.mjs), NOT the whole source tree. That keeps the
-# expensive `npm install` layer's cache key independent of per-commit source
-# changes: it only rebuilds when the lockfile, a workspace package.json, or
-# the collector script itself changes. With the registry build cache this
-# turns ~80s of npm install into a cache hit on the typical source-only
-# commit.
+# Install the declared external dependencies of the supported runtime closure.
+# Copy manifests separately so source edits do not invalidate the install layer.
+# Browser and native exclusions are owned by the shared dependency collector.
 FROM node:${NODE_VERSION}-slim AS runtime-deps
 WORKDIR /app
 ARG APP_CORE_DIR
-COPY --parents bun.lock \
+COPY --parents package.json bun.lock \
+  packages/scripts/lib/workspaces.mjs \
+  packages/scripts/lib/repository-file-integrity.mjs \
   packages/*/package.json \
   packages/cloud/*/package.json \
   plugins/*/package.json \
@@ -97,7 +67,7 @@ RUN mkdir -p /app/node_modules \
      | while IFS= read -r dep; do [ -n "$dep" ] && rm -rf "/app/node_modules/$dep"; done
 COPY --from=runtime-deps /deps/node_modules/ /app/node_modules/
 
-RUN node "${APP_CORE_DIR}/scripts/link-docker-local-app-packages.mjs"
+RUN node "${APP_CORE_DIR}/scripts/link-docker-local-app-packages.mjs" --prune-unlinked-plugins
 
 ARG VERSION_CLEAN
 

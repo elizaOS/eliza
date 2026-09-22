@@ -1,109 +1,59 @@
 #!/usr/bin/env node
 /**
- * Collect the third-party (non-@elizaos) runtime dependency closure for the
- * agent Docker image.
- *
- * Background: the CI image (deploy/Dockerfile.ci) ships pre-transpiled
- * artifacts and links a fixed set of workspace packages into
- * /app/node_modules (see link-docker-local-app-packages.mjs). Some of those
- * packages are transpiled (tsc, not bundled), so their bare third-party imports
- * stay external and must resolve from node_modules at runtime; others are
- * bundled with a small third-partys list. The image used to install a
- * hand-maintained allowlist of those third-partys, which had to be extended by
- * hand every time a newly-linked package pulled in a new dependency, causing
- * repeated boot-crash / rebuild loops.
- *
- * This script replaces that hand-maintained list with a DERIVED one: it reads
- * the declared `dependencies` of every workspace package that is linked into
- * the image, drops the workspace (@elizaos/*) entries (those are linked
- * separately, not installed from the registry), and emits the union as
- * `name@version` install specifiers. `npm install` then resolves the full
- * transitive closure automatically.
- *
- * Versions: each dependency is pinned to the exact version the workspace
- * lockfile resolves (bun.lock), falling back to the declared range when the
- * lockfile cannot be read. This keeps the image build reproducible.
- *
- * Usage:
- *   node collect-docker-runtime-deps.mjs            # prints `name@version`, one per line
- *   node collect-docker-runtime-deps.mjs --json     # prints a JSON array
- *   node collect-docker-runtime-deps.mjs --names    # prints bare names, one per line
- *                                                   # (for pre-clean rm -rf)
- *
- * The set of linked packages MUST stay in sync with the `localPackages`
- * array in link-docker-local-app-packages.mjs. It is duplicated here (rather
- * than imported) because that module performs filesystem linking as a side
- * effect at import time.
+ * Resolves the agent image's runtime workspaces and registry dependencies from
+ * manifests. The image linker uses the same closure; development and optional
+ * dependencies do not expand it, and the linked UI stays a static asset surface.
  */
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { collectWorkspaceMaps } from "../../scripts/lib/workspaces.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // scripts/ -> app-core -> packages -> repo root
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
 
-// Workspace packages linked into the image by
-// link-docker-local-app-packages.mjs. The agent entrypoint package itself is
-// relinked separately (relink-workspace-packages-to-dist.mjs @elizaos/agent),
-// so include it here too so its declared deps are part of the closure.
-//
-// NOTE: @elizaos/ui is intentionally excluded. It is linked into the image
-// for module-resolution integrity, but it is a pure browser/React package
-// (radix-ui, three, recharts, react-router, ...). The headless server
-// runtime never imports its components; the dashboard ships as pre-built
-// static assets. Installing its ~50 frontend deps would massively bloat the
-// image (and pull native/canvas deps) for code that is never evaluated on
-// the boot or request path.
+// Supported image entrypoints; transitive runtime workspaces come from manifests.
 const LINKED_WORKSPACE_PACKAGES = [
   "packages/agent",
-  "packages/core",
-  "packages/cloud/routing",
   "packages/app-core",
-  "packages/cloud/sdk",
-  "packages/shared",
-  "packages/skills",
-  "packages/credentials",
   "plugins/plugin-documents",
   "plugins/plugin-personal-assistant",
-  "plugins/plugin-task-coordinator",
-  "packages/registry",
-  "plugins/plugin-agent-orchestrator",
-  "plugins/plugin-app-control",
-  "plugins/plugin-cloud-apps",
-  "plugins/plugin-commands",
-  "packages/common",
-  "plugins/plugin-assistant",
-  "plugins/plugin-agent-skills",
-  "plugins/plugin-app-manager",
-  "plugins/plugin-browser",
-  "plugins/plugin-capacitor-bridge",
-  "plugins/plugin-coding-tools",
-  "plugins/plugin-computeruse",
-  "plugins/plugin-discord",
-  "plugins/plugin-elizacloud",
-  "plugins/plugin-imessage",
-  "plugins/plugin-local-inference",
-  "plugins/plugin-native-filesystem",
-  "plugins/plugin-mcp",
-  "plugins/plugin-openai",
   "plugins/plugin-pdf",
-  "plugins/plugin-registry",
-  "plugins/plugin-notes",
-  "plugins/plugin-todos",
-  "plugins/plugin-inbox",
-  "plugins/plugin-calendar",
-  "plugins/plugin-scheduling",
-  "plugins/plugin-native-activity-tracker",
-  "plugins/plugin-sql",
   "plugins/plugin-telegram",
   "plugins/plugin-x",
-  "plugins/plugin-video",
-  "plugins/plugin-wallet",
-  "plugins/plugin-whatsapp",
-  "plugins/plugin-workflow",
+  "plugins/plugin-native-activity-tracker",
 ];
+
+/** Resolve declared runtime dependencies without adding development or optional peers. */
+export function collectDockerWorkspaceDirs(
+  root = repoRoot,
+  roots = LINKED_WORKSPACE_PACKAGES,
+) {
+  const manifest = readJson(path.join(root, "package.json"));
+  const { nameToDir } = collectWorkspaceMaps(root, manifest.workspaces);
+  const pending = roots.map((entry) => path.resolve(root, entry));
+  const visited = new Set();
+  for (let index = 0; index < pending.length; index += 1) {
+    const directory = pending[index];
+    if (visited.has(directory)) continue;
+    visited.add(directory);
+    const pkg = readJson(path.join(directory, "package.json"));
+    // UI is linked for resolution, but its browser dependency tree is not a server input.
+    if (pkg.name === "@elizaos/ui") continue;
+    for (const [name, version] of Object.entries(pkg.dependencies ?? {})) {
+      const dependency = nameToDir.get(name);
+      if (dependency) pending.push(dependency);
+      else if (version.startsWith("workspace:")) {
+        throw new Error(
+          `Missing runtime workspace ${name} required by ${pkg.name}`,
+        );
+      }
+    }
+  }
+  return [...visited];
+}
 
 // Native / desktop / GPU packages that the image deliberately removes or that
 // cannot install in the slim Linux runtime. Excluding them keeps `npm
@@ -172,15 +122,10 @@ function main() {
   // name -> Set of declared ranges (for diagnostics if unpinned)
   const collected = new Map();
 
-  for (const rel of LINKED_WORKSPACE_PACKAGES) {
-    const pkgJsonPath = path.join(repoRoot, rel, "package.json");
-    let pkg;
-    try {
-      pkg = readJson(pkgJsonPath);
-    } catch {
-      // A package listed for linking may not exist in every checkout; skip.
-      continue;
-    }
+  const workspaceDirs = collectDockerWorkspaceDirs();
+  for (const directory of workspaceDirs) {
+    const pkg = readJson(path.join(directory, "package.json"));
+    if (pkg.name === "@elizaos/ui") continue;
     const deps = pkg.dependencies ?? {};
     for (const [name, range] of Object.entries(deps)) {
       if (!isExternal(name)) continue;
@@ -216,7 +161,7 @@ function main() {
     );
   }
   process.stderr.write(
-    `[collect-docker-runtime-deps] ${specifiers.length} third-party runtime deps across ${LINKED_WORKSPACE_PACKAGES.length} linked packages\n`,
+    `[collect-docker-runtime-deps] ${specifiers.length} third-party runtime deps across ${workspaceDirs.length} linked packages\n`,
   );
 
   if (asJson) {
@@ -226,4 +171,8 @@ function main() {
   }
 }
 
-main();
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+)
+  main();
