@@ -97,14 +97,6 @@ export {
   type InferenceProviderInfo,
   requireInferenceProvider,
 } from "./inference-provider";
-// Integration runtime creation
-export {
-  createIntegrationTestRuntime,
-  DEFAULT_TEST_CHARACTER,
-  type IntegrationTestConfig,
-  type IntegrationTestResult,
-  withTestRuntime,
-} from "./integration-runtime";
 // Live LLM provider selection
 export {
   availableProviderNames,
@@ -137,8 +129,6 @@ export {
   type TestRuntimeOptions,
   type TestRuntimeResult,
 } from "./pglite-runtime";
-// React test-renderer helpers
-export { findButtonByText, flush, text, textOf } from "./react-test";
 // Real connector helpers (Discord, Telegram)
 export {
   createDiscordTestClient,
@@ -155,14 +145,3 @@ export {
   type RealTestRuntimeOptions,
   type RealTestRuntimeResult,
 } from "./real-runtime";
-// Test helper utilities (pure functions, no mocks)
-export {
-  createTestCharacter,
-  createTestMemory,
-  expectRejection,
-  generateTestId,
-  measureTime,
-  retry,
-  testDataGenerators,
-  waitFor,
-} from "./test-helpers";
