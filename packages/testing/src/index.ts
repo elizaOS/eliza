@@ -1,7 +1,5 @@
 /** Runtime, provider, connector, and browser utilities for package-owned tests. */
 
-export { contextBenchProvider } from "./benchmark-context-provider";
-
 // PGLite storage-mode policy (in-memory by default; disk via env or explicit dir)
 export {
   createTestPgliteDataDir,
@@ -17,6 +15,7 @@ export {
   adversarialActionRouteFixtures,
   adversarialPlannerFixture,
 } from "./adversarial-model-fixtures";
+export { contextBenchProvider } from "./benchmark-context-provider";
 // Browser API shims (Storage, Canvas, Media, console patches)
 export {
   createCanvas2DContext,
@@ -36,8 +35,6 @@ export {
   runInteractionAdapterConformance,
   runInteractionLeaseConformance,
 } from "./computer-use-conformance";
-// Conditional test helpers (describeIf, itIf, testIf)
-export { describeIf, itIf, testIf } from "./conditional-tests";
 export {
   actionSlug,
   benignExternalMessageFixture,
