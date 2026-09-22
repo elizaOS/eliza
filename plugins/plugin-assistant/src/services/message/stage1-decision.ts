@@ -494,11 +494,12 @@ export async function generateStage1Decision(
   // Terminal review shares a budget with direct IGNORE review below. A
   // repeated terminal decision still passes through ordinary routing.
   let terminalDecisionReviewed = false;
+  const terminalReaskEnabled = readStage1TerminalReaskSetting(args.runtime);
   // Voice keeps its complete path: its spoken answer need not sit in replyText.
   if (!args.codingMode && !voiceDirectMessageChannel) {
     const parsedForRepair = extractMessageHandlerRawParsed(rawMessageHandler);
     const unusableRepair = getStage1UnusableDecisionRepair(parsedForRepair, {
-      reaskTerminal: readStage1TerminalReaskSetting(args.runtime),
+      reaskTerminal: terminalReaskEnabled,
     });
     if (
       unusableRepair &&
@@ -605,7 +606,7 @@ export async function generateStage1Decision(
         (contentMetadata.fromBot === true ||
           contentMetadata.isAutonomous === true)) ||
       (isObjectRecord(messageMetadata) && messageMetadata.fromBot === true);
-    const ignoreReview =
+    const terminalReview =
       !terminalDecisionReviewed &&
       !routingRepair &&
       !repairHistoryIdentity &&
@@ -614,11 +615,18 @@ export async function generateStage1Decision(
       !automatedSender &&
       !isSubAgentCompletionArtifact(args.message) &&
       getActionInferenceMessageText(args.message).trim().length > 0
-        ? getStage1DirectIgnoreReview(parsedDecision)
+        ? (getStage1DirectIgnoreReview(parsedDecision) ??
+          (terminalReaskEnabled &&
+          parsedDecision?.shouldRespond === "STOP" &&
+          shouldUseStage1PlannerFallback(args.runtime, args.message)
+            ? getStage1UnusableDecisionRepair(parsedDecision, {
+                reaskTerminal: true,
+              })
+            : undefined))
         : undefined;
     const decisionRepair =
       routingRepair ??
-      ignoreReview ??
+      terminalReview ??
       (repairHistoryIdentity
         ? "source_identity_repair: Your previous response used a sourceSetId that does not match this request. Nothing from it was processed or executed. Regenerate HANDLE_RESPONSE for the original request using the source identity required by its schema. Review the supplied originals again; request missing history through contextRequests. Do not assume the previous selection or draft was correct."
         : undefined);
@@ -628,7 +636,7 @@ export async function generateStage1Decision(
       // One correction before field processors/effects. If it remains
       // contradictory, normal pending-intent guards still own routing.
       if (routingRepair) routingRepairAttempted = true;
-      if (ignoreReview && decisionRepair === ignoreReview)
+      if (terminalReview && decisionRepair === terminalReview)
         terminalDecisionReviewed = true;
       if (repairHistoryIdentity) historyIdentityRepairAttempted = true;
       messageHandlerInput = {
