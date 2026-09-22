@@ -151,6 +151,14 @@ export function appendPriorDialogueEvents(
   if (!Array.isArray(recentMessages)) {
     return;
   }
+  const isInterruptedReply = (memory: Memory): boolean =>
+    typeof memory.id === "string" &&
+    memory.id.length > 0 &&
+    memory.entityId === runtime.agentId &&
+    memory.agentId === runtime.agentId &&
+    memory.roomId === currentMessage.roomId &&
+    memory.content?.interrupted === true &&
+    typeof memory.content.inReplyTo === "string";
   const dialogue = recentMessages
     .filter((memory): memory is Memory => {
       if (!memory || typeof memory !== "object") return false;
@@ -178,8 +186,8 @@ export function appendPriorDialogueEvents(
       if (isSubAgentCompletionArtifact(m)) return false;
       const text =
         typeof m.content?.text === "string" ? m.content.text.trim() : "";
-      if (looksLikePriorDialogueArtifact(text)) return false;
-      return text.length > 0;
+      if (looksLikePriorDialogueArtifact(text)) return isInterruptedReply(m);
+      return text.length > 0 || isInterruptedReply(m);
     })
     .sort((a, b) => {
       const aTime = Number.isFinite(a.createdAt as unknown as number)
@@ -190,9 +198,46 @@ export function appendPriorDialogueEvents(
         : 0;
       return aTime - bTime;
     });
+  const requestsById = new Map<string, Memory | undefined>();
+  for (const entry of dialogue) {
+    if (entry.id)
+      requestsById.set(
+        entry.id,
+        requestsById.has(entry.id) ? undefined : entry,
+      );
+  }
   for (const memory of dialogue) {
+    if (isInterruptedReply(memory)) {
+      const request = requestsById.get(String(memory.content.inReplyTo));
+      if (
+        request &&
+        request.roomId === currentMessage.roomId &&
+        request.agentId === runtime.agentId &&
+        request.entityId !== runtime.agentId
+      )
+        events.push({
+          id: `interrupted-turn:${memory.id}`,
+          type: "segment",
+          source: "message-service",
+          createdAt: memory.createdAt,
+          segment: {
+            id: `interrupted-turn:${memory.id}`,
+            label: "runtime:interrupted_turn",
+            content: JSON.stringify({
+              requestSourceEventId: `history:${request.id}`,
+              requestText: getUserMessageText(request),
+              responseGeneration: "interrupted",
+              pendingWork:
+                "Do not infer continuing work from this interrupted request. Only separately recorded tasks or a new request can establish continuation.",
+              committedEffects:
+                "Interruption does not undo already committed effects.",
+            }),
+            stable: false,
+          },
+        });
+    }
     const text = getUserMessageText(memory);
-    if (!text) continue;
+    if (!text || looksLikePriorDialogueArtifact(text)) continue;
     const isOwnReply = memory.entityId === runtime.agentId;
     const speakerName = isOwnReply
       ? (runtime.character?.name ?? priorDialogueSpeakerName(memory))
