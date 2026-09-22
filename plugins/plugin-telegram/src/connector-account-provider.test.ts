@@ -26,6 +26,7 @@ function runtimeWith(telegram: TelegramConfig): IAgentRuntime {
     agentId: "agent-1",
     character: { name: "Agent", settings: { telegram } },
     getSetting: () => undefined,
+    getService: () => null,
     logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
   } as unknown as IAgentRuntime;
 }

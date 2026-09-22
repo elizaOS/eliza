@@ -836,9 +836,23 @@ export function searchTelegramMessagesWithRuntimeService(args: {
   roomId?: string;
   limit?: number;
 }): Promise<RuntimeServiceDelegationResult<Memory[]>> {
+  const accountId = resolveRuntimeConnectorAccountId(args);
+  const grantedAccountId = args.grant
+    ? resolveRuntimeConnectorAccountId({ grant: args.grant })
+    : null;
+  if (grantedAccountId && grantedAccountId !== accountId) {
+    return Promise.resolve(
+      unavailable(
+        "Telegram search account does not match the authorized grant.",
+      ),
+    );
+  }
   return searchMessagesWithRuntimeService({
     ...args,
-    serviceType: "telegram",
+    accountId,
+    serviceType: accountId.endsWith(":personal")
+      ? "telegram-account"
+      : "telegram",
     source: "telegram",
   });
 }

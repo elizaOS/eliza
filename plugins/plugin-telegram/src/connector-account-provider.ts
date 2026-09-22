@@ -21,6 +21,7 @@ import type {
   ConnectorAccountRole,
   IAgentRuntime,
 } from "@elizaos/core";
+import { TelegramAccountService } from "./account-client-service";
 import {
   DEFAULT_ACCOUNT_ID,
   listEnabledTelegramAccounts,
@@ -164,8 +165,23 @@ export function createTelegramConnectorAccountProvider(
             account.id.endsWith(PERSONAL_ACCOUNT_SUFFIX) ||
             account.metadata?.personal === true
           ) {
-            // Personal credentials establish configuration, not an identity-bound live MTProto session.
-            return { ...account, status: "pending" as const };
+            const service = runtime.getService("telegram-account");
+            const personal =
+              service instanceof TelegramAccountService ? service : null;
+            const summary = personal?.getAccountSummary(account.id);
+            return {
+              ...account,
+              role: "OWNER",
+              purpose: ["reading"],
+              accessGate: "owner_binding",
+              status: personal?.getAccountStatus(account.id) ?? "pending",
+              externalId: summary?.id ?? account.externalId,
+              metadata: {
+                ...account.metadata,
+                personal: true,
+                instanceId: String(runtime.runtimeInstanceId),
+              },
+            };
           }
           const resolved = resolveTelegramAccount(runtime, account.id);
           if (!resolved.enabled)
