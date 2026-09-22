@@ -12854,50 +12854,58 @@ describe("direct-text silence review", () => {
 		expect(action).not.toHaveBeenCalled();
 		expect(dispatch).not.toHaveBeenCalled();
 	});
-	it("honors requested context reads before reviewing the resulting silence", async () => {
-		const full =
-			"Standing instruction: keep all records unchanged. The saved label is violet.";
-		const runtime = makeRuntime([
-			stage1Response({
-				shouldRespond: "IGNORE",
-				contexts: ["simple"],
-				contextRequests: ["userPersonalityPreferences"],
-			}),
-			stage1Response({ shouldRespond: "IGNORE", contexts: ["simple"] }),
-			stage1Response({
-				contexts: ["simple"],
-				replyText: "The label was violet.",
-				extra: { replyEffectStatus: "none" },
-			}),
-		]);
-		const state = makeState();
-		state.data.providers = {
-			userPersonalityPreferences: {
-				text: full,
-				discoveryText: "context_discovery: userPersonalityPreferences",
-			},
-		};
-		runtime.composeState = vi.fn(async () => structuredClone(state));
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				text: "What was the saved label?",
-				channelType: ChannelType.DM,
-			}),
-			state,
-			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
-		});
-		const calls = useModelCalls(runtime);
-		expect(calls).toHaveLength(3);
-		expect(JSON.stringify(calls[0][1])).not.toContain(full);
-		expect(JSON.stringify(calls[1][1])).toContain(full);
-		const before = calls[1][1] as { messages: unknown[] };
-		const after = calls[2][1] as { messages: unknown[] };
-		expect(after.messages).toEqual([...before.messages, expect.any(Object)]);
-		expect(result.kind).toBe("direct_reply");
-		if (result.kind === "direct_reply")
-			expect(result.result.responseContent?.text).toBe("The label was violet.");
-	});
+	it.each([false, true])(
+		"honors requested context reads before reviewing silence with terminal opt-in=%s",
+		async (optIn) => {
+			const full =
+				"Standing instruction: keep all records unchanged. The saved label is violet.";
+			const runtime = makeRuntime(
+				[
+					stage1Response({
+						shouldRespond: "IGNORE",
+						contexts: ["simple"],
+						contextRequests: ["userPersonalityPreferences"],
+					}),
+					stage1Response({ shouldRespond: "IGNORE", contexts: ["simple"] }),
+					stage1Response({
+						contexts: ["simple"],
+						replyText: "The label was violet.",
+						extra: { replyEffectStatus: "none" },
+					}),
+				],
+				optIn ? { ELIZA_STAGE1_TERMINAL_REASK: "1" } : {},
+			);
+			const state = makeState();
+			state.data.providers = {
+				userPersonalityPreferences: {
+					text: full,
+					discoveryText: "context_discovery: userPersonalityPreferences",
+				},
+			};
+			runtime.composeState = vi.fn(async () => structuredClone(state));
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "What was the saved label?",
+					channelType: ChannelType.DM,
+				}),
+				state,
+				responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+			});
+			const calls = useModelCalls(runtime);
+			expect(calls).toHaveLength(3);
+			expect(JSON.stringify(calls[0][1])).not.toContain(full);
+			expect(JSON.stringify(calls[1][1])).toContain(full);
+			const before = calls[1][1] as { messages: unknown[] };
+			const after = calls[2][1] as { messages: unknown[] };
+			expect(after.messages).toEqual([...before.messages, expect.any(Object)]);
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply")
+				expect(result.result.responseContent?.text).toBe(
+					"The label was violet.",
+				);
+		},
+	);
 	it("rechecks an ignored direct request with every original message intact", async () => {
 		const runtime = makeRuntime([
 			stage1Response({ shouldRespond: "IGNORE", contexts: ["simple"] }),

@@ -121,8 +121,9 @@ export function getStage1UnusableDecisionRepair(
   const contextRequests = Array.isArray(parsed.contextRequests)
     ? parsed.contextRequests
     : [];
+  // Requested context must be loaded before reviewing an incomplete decision.
   const endedWithoutAnswer =
-    terminalReask ||
+    (terminalReask && contextRequests.length === 0) ||
     (shouldRespond === "RESPOND" &&
       replyText.length === 0 &&
       parsed.requiresTool !== true &&
