@@ -13,7 +13,10 @@ import {
   createDstackEvidenceProvider,
   type DstackEvidenceConfig,
 } from "./tee-dstack-evidence.ts";
-import { DSTACK_RELEASE_SIGNATURE_DOMAIN } from "./tee-dstack-release.ts";
+import {
+  DSTACK_RELEASE_SIGNATURE_DOMAIN,
+  resolveDstackEvidenceConfiguration,
+} from "./tee-dstack-release.ts";
 import { resolveTeeEvidenceProvider } from "./tee-evidence-provider.ts";
 
 const challenge = { nonce: "ab".repeat(32), reportDataHex: "cd".repeat(32) };
@@ -197,7 +200,9 @@ describe("dstack evidence adapter protocol", () => {
         ELIZA_TEE_PRODUCTION_PROFILE: "dstack-cpu",
         ELIZA_DSTACK_EVIDENCE_CONFIG_JSON: JSON.stringify(config),
       };
-      const evidenceProvider = createDstackEvidenceProvider(config);
+      const evidenceProvider = createDstackEvidenceProvider(
+        resolveDstackEvidenceConfiguration(env),
+      );
       const gate = await evaluateTeeBootGate({ env, evidenceProvider });
       expect(gate.required).toBe(true);
       expect(gate.productionProfile).toBe(true);
@@ -219,7 +224,9 @@ describe("dstack evidence adapter protocol", () => {
         requiredClaims: { gpuProtected: true },
       }),
     };
-    const evidenceProvider = createDstackEvidenceProvider(config);
+    const evidenceProvider = createDstackEvidenceProvider(
+      resolveDstackEvidenceConfiguration(env),
+    );
     expect(
       (await evaluateTeeBootGate({ env, evidenceProvider })).secretsEnabled,
     ).toBe(false);
@@ -229,6 +236,19 @@ describe("dstack evidence adapter protocol", () => {
     await expect(
       evaluateTeeBootGate({ env, evidenceProvider }),
     ).rejects.toThrow(/Invalid dstack CPU/);
+  });
+  it("CPU profile refuses an adapter which omits the signed release lifetime", async () => {
+    const env = {
+      ...signedReleaseEnv(),
+      ELIZA_TEE_PRODUCTION_PROFILE: "dstack-cpu",
+      ELIZA_DSTACK_EVIDENCE_CONFIG_JSON: JSON.stringify(config),
+    };
+    await expect(
+      evaluateTeeBootGate({
+        env,
+        evidenceProvider: createDstackEvidenceProvider(config),
+      }),
+    ).rejects.toThrow(/requires the pinned dstack evidence adapter/);
   });
   it("CPU profile rejects a normalized JSON provider even when its id resembles the adapter", async () => {
     const env = {

@@ -9,6 +9,7 @@
 import { ElizaError, logger } from "@elizaos/core";
 import { isDstackEvidenceProvider } from "./tee-dstack-evidence.ts";
 import { mergeDstackCpuProductionProfile } from "./tee-dstack-production-profile.ts";
+import { resolveDstackEvidenceConfiguration } from "./tee-dstack-release.ts";
 import type { TeeEvidenceProvider } from "./tee-evidence.ts";
 import {
   evaluateTeeEvidencePolicy,
@@ -74,7 +75,10 @@ export async function evaluateTeeBootGate(
   if (
     useDstackCpuProfile &&
     options.evidenceProvider &&
-    !isDstackEvidenceProvider(options.evidenceProvider)
+    !isDstackEvidenceProvider(
+      options.evidenceProvider,
+      resolveDstackEvidenceConfiguration(env),
+    )
   ) {
     throw new ElizaError(
       "Dstack CPU profile requires the pinned dstack evidence adapter",

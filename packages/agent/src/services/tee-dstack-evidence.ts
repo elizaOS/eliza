@@ -18,12 +18,19 @@ import type {
   TeeReportDataChallenge,
 } from "./tee-key-release.ts";
 
-const verifiedProviders = new WeakSet<TeeEvidenceProvider>();
-/** Identifies providers constructed by this pinned-verifier adapter in this process. */
+const verifiedProviders = new WeakMap<
+  TeeEvidenceProvider,
+  z.output<typeof dstackEvidenceConfiguration>
+>();
+/** Binds a concrete adapter to its complete signed deployment configuration. */
 export function isDstackEvidenceProvider(
   provider: TeeEvidenceProvider,
+  expected: z.output<typeof dstackEvidenceConfiguration>,
 ): boolean {
-  return verifiedProviders.has(provider);
+  const actual = verifiedProviders.get(provider);
+  return (
+    actual !== undefined && JSON.stringify(actual) === JSON.stringify(expected)
+  );
 }
 
 const hex = z.string().regex(/^(?:[0-9a-f]{2})+$/i);
@@ -338,6 +345,6 @@ export function createDstackEvidenceProvider(
     },
     collectEvidenceWithReportData: collect,
   };
-  verifiedProviders.add(provider);
-  return provider;
+  verifiedProviders.set(provider, config);
+  return Object.freeze(provider);
 }
