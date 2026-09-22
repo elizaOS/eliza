@@ -3,6 +3,7 @@
  * config-mutating channel changes clear those fields, but `resolveChannel` also
  * honours `ELIZA_UPDATE_CHANNEL`, which writes nothing — so the cache has to
  * record which channel produced it or it will be served under another one.
+ * Registry responses must preserve settings saved while the request is pending.
  *
  * Deterministic: real config reads/writes are isolated in a temp state dir and
  * the npm registry response is supplied by a fetch stub; no module mocks.
@@ -78,6 +79,43 @@ function freshStableCache(): ElizaConfig {
 }
 
 describe("checkForUpdate release-channel cache", () => {
+  it("preserves settings saved while the registry request is pending", async () => {
+    saveElizaConfig({
+      ...loadElizaConfig(),
+      ui: { capabilities: { wallet: false } },
+      update: { channel: "stable" },
+    });
+    const entered = Promise.withResolvers<void>();
+    const registry = Promise.withResolvers<Response>();
+    globalThis.fetch = (async () => {
+      fetchCalls += 1;
+      entered.resolve();
+      return registry.promise;
+    }) as typeof fetch;
+
+    const pending = checkForUpdate({ force: true });
+    await entered.promise;
+    const changed = {
+      ...loadElizaConfig(),
+      ui: { capabilities: { wallet: true } },
+      update: { channel: "beta" as const, checkIntervalSeconds: 60 },
+    };
+    saveElizaConfig(changed);
+    registry.resolve(Response.json({ "dist-tags": DIST_TAGS }));
+    const result = await pending;
+    const saved = loadElizaConfig();
+
+    expect(result.channel).toBe("stable");
+    expect(saved.ui).toEqual(changed.ui);
+    expect(saved.update).toMatchObject({
+      ...changed.update,
+      lastCheckVersion: DIST_TAGS.latest,
+      lastCheckChannel: "stable",
+    });
+    expect(saved.update?.lastCheckAt).toBeTruthy();
+    expect(fetchCalls).toBe(1);
+  });
+
   it("does not serve a stable cache under ELIZA_UPDATE_CHANNEL=beta", async () => {
     saveElizaConfig(freshStableCache());
     process.env.ELIZA_UPDATE_CHANNEL = "beta";
