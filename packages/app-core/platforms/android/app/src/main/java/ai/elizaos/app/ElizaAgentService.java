@@ -3430,9 +3430,10 @@ public class ElizaAgentService extends Service {
 
     private ElizaAgentWatchdogPolicy.ProbeResult probeHealth() {
         try {
-            JSONObject payload = new JSONObject()
-                .put("method", "GET")
-                .put("path", "/api/health");
+            // Health probes obey the same per-boot authentication contract as
+            // app requests; an anonymous 401 must not trigger a restart loop.
+            JSONObject payload = buildRequestPayload(new LocalAgentRequest(
+                "GET", "/api/health", new JSONObject(), null, (int) HEALTH_TIMEOUT_MS));
             JSONObject result = dispatchBufferedOverSocket(payload, (int) HEALTH_TIMEOUT_MS);
             int status = result.optInt("status", 0);
             if (status >= 200 && status < 300) {
