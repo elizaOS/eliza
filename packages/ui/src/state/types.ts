@@ -520,6 +520,8 @@ export interface AppState {
   elizaCloudStatusReason: string | null;
   cloudDashboardView: "overview" | "billing";
   elizaCloudStatusLoading: boolean;
+  elizaCloudStatusUnavailable: boolean;
+  refreshCloudStatus: () => Promise<boolean>;
   elizaCloudLoginBusy: boolean;
   elizaCloudLoginError: string | null;
   /**

@@ -133,6 +133,26 @@ describe("useCloudState — dedicated-agent status polling gate", () => {
     unmount();
   });
 
+  it("exposes unavailable status after a failed initial poll and clears it on a successful retry", async () => {
+    bridgeState.electrobun = true;
+    getCloudStatusSpy.mockRejectedValueOnce(
+      new Error("status transport unavailable"),
+    );
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    await act(async () => {
+      expect(await result.current.pollCloudCredits()).toBe(false);
+    });
+    expect(result.current.elizaCloudStatusLoading).toBe(false);
+    expect(result.current.elizaCloudStatusUnavailable).toBe(true);
+    expect(result.current.elizaCloudConnected).toBe(false);
+    await act(async () => {
+      expect(await result.current.pollCloudCredits()).toBe(true);
+    });
+    expect(result.current.elizaCloudStatusUnavailable).toBe(false);
+    expect(result.current.elizaCloudConnected).toBe(true);
+    unmount();
+  });
+
   it("keeps verification pending until every overlapping poll settles", async () => {
     bridgeState.electrobun = true;
     type Status = Awaited<ReturnType<typeof client.getCloudStatus>>;

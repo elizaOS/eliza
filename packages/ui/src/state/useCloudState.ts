@@ -532,6 +532,8 @@ export function useCloudState({
   >("overview");
   const [elizaCloudStatusLoading, setElizaCloudStatusLoading] = useState(true);
   const cloudStatusPollsInFlight = useRef(0);
+  const [elizaCloudStatusUnavailable, setElizaCloudStatusUnavailable] =
+    useState(false);
   const [elizaCloudLoginBusy, setElizaCloudLoginBusy] = useState(false);
   const [elizaCloudLoginError, setElizaCloudLoginError] = useState<
     string | null
@@ -612,15 +614,18 @@ export function useCloudState({
           { err },
           "[useCloudState] direct Cloud session verification failed",
         );
+        setElizaCloudStatusUnavailable(true);
         throw new CloudSessionVerificationTransientError(err);
       });
       cloudStatus = verification.status;
       prefetchedCloudCredits = verification.credits;
     } else {
-      // error-policy:J4 transient poll failure degrades to the last known
-      // snapshot (below) rather than flapping the UI into a false "disconnected"
-      // state; a persistent failure surfaces via that stale-but-visible state.
-      cloudStatus = await client.getCloudStatus().catch(() => null);
+      // error-policy:J4 Retain the last snapshot and expose unavailable verification;
+      // a failed first request must not establish that the account is signed out.
+      cloudStatus = await client.getCloudStatus().catch(() => {
+        setElizaCloudStatusUnavailable(true);
+        return null;
+      });
     }
     if (elizaCloudDisconnectInFlightRef.current) {
       return lastElizaCloudPollConnectedRef.current;
@@ -628,6 +633,7 @@ export function useCloudState({
     if (!cloudStatus) {
       return lastElizaCloudPollConnectedRef.current;
     }
+    setElizaCloudStatusUnavailable(false);
     const enabled = Boolean(cloudStatus.enabled ?? false);
     let cloudVoiceProxyAvailable = Boolean(
       cloudStatus.cloudVoiceProxyAvailable ?? false,
@@ -2144,6 +2150,7 @@ export function useCloudState({
     cloudDashboardView,
     setCloudDashboardView,
     elizaCloudStatusLoading,
+    elizaCloudStatusUnavailable,
     elizaCloudLoginBusy,
     setElizaCloudLoginBusy,
     elizaCloudLoginError,
