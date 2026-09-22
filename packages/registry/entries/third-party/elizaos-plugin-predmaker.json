@@ -1,0 +1,10 @@
+{
+  "package": "elizaos-plugin-predmaker",
+  "repository": "github:They-made-me-do-it/PredMaker",
+  "kind": "plugin",
+  "description": "US-only Kalshi + Polymarket US arbitrage, short-DTR velocity, and SEC EDGAR M&A alpha for ElizaOS / Base agents via Base L2 x402.",
+  "homepage": "https://predmaker.com",
+  "version": "0.2.0",
+  "directory": "connectors/plugin-predmaker",
+  "tags": ["predmaker", "x402", "kalshi", "polymarket", "base", "prediction-markets"]
+}

@@ -1560,6 +1560,52 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "elizaos-plugin-predmaker": {
+      "git": {
+        "repo": "They-made-me-do-it/PredMaker",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-predmaker",
+        "v0": null,
+        "v1": null,
+        "v2": "0.2.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "US-only Kalshi + Polymarket US arbitrage, short-DTR velocity, and SEC EDGAR M&A alpha for ElizaOS / Base agents via Base L2 x402.",
+      "homepage": "https://predmaker.com",
+      "topics": [
+        "predmaker",
+        "x402",
+        "kalshi",
+        "polymarket",
+        "base",
+        "prediction-markets"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "connectors/plugin-predmaker"
+    },
     "elizaos-plugin-quantumscan": {
       "git": {
         "repo": "quantumscan-io/elizaos-plugin-quantumscan",
