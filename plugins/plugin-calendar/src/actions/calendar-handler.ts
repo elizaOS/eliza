@@ -4077,15 +4077,15 @@ async function inferCreateEventDetails(
     "If the current request is a follow-up, recover the event subject from recent conversation and apply new timing or location constraints from the current request.",
     "Calendar availability is not permission to invent a time. Use timing the user stated or clearly accepted for this event in the conversation. A planner intent is only a routing hint, never evidence of user-supplied details.",
     "Preserve names and places in their original language or script when useful.",
-    "Return JSON only as a single object. No prose. Omit optional fields that have no source in the request or conversation; do not invent values to fill them. Preserve literal user-provided titles, descriptions, and locations.",
+    "Return all schema fields as one JSON object, without prose. Use null for unknown or unstated values; do not invent values to fill them. Preserve literal user-provided titles, descriptions, and locations.",
     "If a start time or window is implied but duration is not explicit, infer a reasonable positive duration.",
     "For short prep or reminder blocks, use at least 15 minutes instead of 0.",
     "Set isShortPreparation=true when the event is a brief prep/reminder/leave-for/get-ready block (any language) where 15 minutes is the right default.",
-    "If the user explicitly asks you to choose an available time within a stated day/window, use the calendar context to choose it without obvious overlaps. Otherwise a date without a time needs clarification: omit startAt and windowPreset. With no scheduling details, omit both even if the planner proposed a complete timestamp. Never borrow timing from unrelated earlier events or assistant suggestions the user did not accept.",
-    "Morning, afternoon and evening alone are windows, not permission to choose an exact time. Leave startAt and windowPreset empty and ask for a clock time unless the user explicitly delegates choosing a free slot. Only then may windowPreset represent an explicitly stated tomorrow morning/afternoon/evening window.",
+    "If the user explicitly asks you to choose an available time within a stated day/window, use the calendar context to choose it without obvious overlaps. Otherwise a date without a time needs clarification: set startAt and windowPreset to null. With no scheduling details, set both to null even if the planner proposed a complete timestamp. Never borrow timing from unrelated earlier events or assistant suggestions the user did not accept.",
+    "Morning, afternoon and evening alone are windows, not permission to choose an exact time. Set startAt and windowPreset to null and ask for a clock time unless the user explicitly delegates choosing a free slot. Only then may windowPreset represent an explicitly stated tomorrow morning/afternoon/evening window.",
     "If the user asks for travel time, commute time, or a buffer from a place, capture the origin separately as travelOriginAddress.",
-    "Omit travelOriginAddress unless the request explicitly names the origin or departure place.",
-    "When the user asks for a repeating event (every day, every week, every two weeks, weekdays, every month, etc.), emit the matching RFC 5545 RRULE in recurrence. Use BYDAY for weekly day selection, INTERVAL for every-N spacing, and COUNT or UNTIL only when the user bounds the repetition. Leave recurrence empty for one-off events.",
+    "Use null for travelOriginAddress unless the request explicitly names the origin or departure place.",
+    "When the user asks for a repeating event (every day, every week, every two weeks, weekdays, every month, etc.), emit the matching RFC 5545 RRULE in recurrence. Use BYDAY for weekly day selection, INTERVAL for every-N spacing, and COUNT or UNTIL only when the user bounds the repetition. Use null for recurrence for one-off events.",
     "",
     "title: event title",
     "description: optional description",
@@ -4118,6 +4118,7 @@ async function inferCreateEventDetails(
     prompt,
     actionType: "lifeops.calendar.extract_create_event",
     temperature: 0,
+    responseSchema: createExtractionSchema,
     failureMessage: "Calendar create-event extraction model call failed",
     source: "action:calendar",
   });
@@ -4127,19 +4128,42 @@ async function inferCreateEventDetails(
 type CalendarExtractionSchema = NonNullable<
   CalendarModelCallArgs["responseSchema"]
 >;
-const nullableUpdateText: CalendarExtractionSchema = {
+const nullableExtractionText: CalendarExtractionSchema = {
   type: ["string", "null"],
 };
+const createExtractionProperties = {
+  title: nullableExtractionText,
+  description: nullableExtractionText,
+  location: nullableExtractionText,
+  startAt: nullableExtractionText,
+  endAt: nullableExtractionText,
+  timeZone: nullableExtractionText,
+  recurrence: nullableExtractionText,
+  travelOriginAddress: nullableExtractionText,
+  durationMinutes: { type: ["number", "null"] },
+  windowPreset: {
+    type: ["string", "null"],
+    enum: ["tomorrow_morning", "tomorrow_afternoon", "tomorrow_evening", null],
+  },
+  isShortPreparation: { type: "boolean" },
+} satisfies Record<string, CalendarExtractionSchema>;
+const createExtractionSchema: CalendarExtractionSchema = {
+  type: "object",
+  properties: createExtractionProperties,
+  required: Object.keys(createExtractionProperties),
+  additionalProperties: false,
+};
+
 const updateExtractionProperties = {
   requiresInput: { type: "boolean" },
-  clarification: nullableUpdateText,
-  title: nullableUpdateText,
-  description: nullableUpdateText,
-  location: nullableUpdateText,
-  startAt: nullableUpdateText,
-  endAt: nullableUpdateText,
-  timeZone: nullableUpdateText,
-  recurrence: nullableUpdateText,
+  clarification: nullableExtractionText,
+  title: nullableExtractionText,
+  description: nullableExtractionText,
+  location: nullableExtractionText,
+  startAt: nullableExtractionText,
+  endAt: nullableExtractionText,
+  timeZone: nullableExtractionText,
+  recurrence: nullableExtractionText,
   recurrenceScope: {
     type: ["string", "null"],
     enum: ["instance", "this_and_following", "series", null],

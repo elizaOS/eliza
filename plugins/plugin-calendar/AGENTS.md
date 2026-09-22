@@ -107,7 +107,7 @@ Calendar create/update field extraction explicitly requests temperature zero thr
 
 Calendar clarification results translate requiresInput into the canonical awaitingUserInput marker at the action adapter. Preserve failure/no-op receipts and grounded reply facts; a user-input pause must not become another attempt to perform the unresolved mutation.
 
-Update extraction uses a native response schema with required nullable fields, an explicit requiresInput flag and explicit clearFields. Null means unchanged/unknown, never clear. The host and standalone runners preserve the schema through the existing TEXT_LARGE adapter. Semantic write authorization, ambiguity and conflict checks remain in the handler.
+Create and update extraction use native response schemas with required nullable fields. Create includes only its consumed scheduling fields; unknown timing stays null and cannot fall back to planner guesses. Update also includes an explicit requiresInput flag and explicit clearFields. Null means unchanged/unknown, never clear. The host and standalone runners preserve the schema through the existing TEXT_LARGE adapter. Semantic write authorization, ambiguity and conflict checks remain in the handler.
 
 Calendar model runners must preserve both bare-string and native `{ text, ... }` model results. Passing responseSchema can select native result envelopes; discarding their text turns valid extracted changes into empty updates. Host wiring must forward the entire model-call contract.
 
