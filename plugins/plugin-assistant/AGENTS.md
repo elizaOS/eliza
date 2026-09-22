@@ -56,6 +56,8 @@ History review checkpoints preserve original correction/dependency groups with t
 
 Transient acknowledgements obey the normal owner-exclusive and outbound-envelope boundaries. Native context-read progress requires existing response admission and cannot trigger an extra adjudication; pending or blocked risk review withholds it. Final-response admission and recovery remain authoritative.
 
+For an internal nonterminal text result that requires a model reply, the evaluator native schema requires messageToUser in the same call; CONTINUE/context reads use an empty string. Visible, terminal and coding results retain their existing optional reply contract. Hosts without clipboard handling declare copyToClipboard:false so the evaluator cannot advertise or silently discard that effect. Standalone result consumers and actual callbacks remain supported.
+
 Planner action callbacks retain genuine tool-owned interaction controls together with their explanatory text and media. Ordinary action prose waits for final publication even when a planner predicts its last batch. Verified action text remains exact at the final boundary without an unnecessary paraphrase call. Interactive controls are not restyled by the action-voice rewrite.
 
 Native text-history decisions may use current_request as the source-set identity. Bind only that explicit reference from canonical HANDLE_RESPONSE arguments to the immutable sources captured for that model request. Core source validation still rejects stale/cross-room/unknown/incomplete selections. Legacy JSON and real mismatched hashes are not repaired implicitly; custom field schemas and voice retain their established paths. Provider-owned raw model output is never mutated.

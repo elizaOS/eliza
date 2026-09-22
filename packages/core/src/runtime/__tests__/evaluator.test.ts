@@ -22,6 +22,174 @@ import {
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 describe("v5 evaluator skeleton", () => {
+	it.each([
+		["internal required", false, false, "internal", true, undefined, true],
+		["internal optional", false, false, "internal", false, undefined, false],
+		["visible result", false, false, "visible", true, "Already shown", false],
+		["terminal reply", false, true, "internal", true, undefined, false],
+		["coding", true, false, "internal", true, undefined, false],
+	] as const)(
+		"requires reply field only for unpublished model-owned outcomes: %s",
+		async (_label, codingMode, terminalOnly, transcriptVisibility, modelReplyRequired, userFacingText, required) => {
+			const useModel = vi.fn(async () =>
+				JSON.stringify({
+					thought: "More work is needed.",
+					success: false,
+					decision: "CONTINUE",
+					messageToUser: "",
+					replyEffectStatus: "none",
+				}),
+			);
+			const result = await runEvaluator({
+				runtime: { useModel },
+				context: { id: "reply-contract", events: [] },
+				trajectory: {
+					context: { id: "reply-contract" },
+					codingMode,
+					steps: [
+						{
+							iteration: 1,
+							terminalOnly,
+							result: {
+								success: true,
+								transcriptVisibility,
+								modelReplyRequired,
+								userFacingText,
+							},
+						},
+					],
+					archivedSteps: [],
+					plannedQueue: [],
+					evaluatorOutputs: [],
+				},
+			});
+			expect(
+				useModel.mock.calls[0][1].responseSchema.required.includes(
+					"messageToUser",
+				),
+			).toBe(required);
+			expect(result.messageToUser).toBeUndefined();
+			expect(result.decision).toBe("CONTINUE");
+			expect(evaluatorSchema.required).not.toContain("messageToUser");
+		},
+	);
+
+	it("allows an empty required reply field while requesting context", () => {
+		const result = parseEvaluatorOutput(
+			JSON.stringify({
+				thought: "Read the original before replying.",
+				success: false,
+				decision: "CONTINUE",
+				contextRequest: "history",
+				messageToUser: "",
+			}),
+		);
+		expect(result.raw?.contextRequest).toBe("history");
+		expect(result.protocolFailure).not.toBe(true);
+		expect(result.messageToUser).toBeUndefined();
+		for (const messageToUser of ["Working on it", " ", null]) {
+			expect(
+				parseEvaluatorOutput(
+					JSON.stringify({
+						thought: "Read first.",
+						success: false,
+						decision: "CONTINUE",
+						contextRequest: "history",
+						messageToUser,
+					}),
+				).protocolFailure,
+			).toBe(true);
+		}
+	});
+	it.each(["disabled", "callback", "standalone"] as const)(
+		"matches clipboard schema and prompt to the host: %s",
+		async (host) => {
+			const copyToClipboard = vi.fn();
+			const messageToUser = vi.fn();
+			const useModel = vi.fn(async () =>
+				JSON.stringify({
+					thought: "The read returned the requested text.",
+					success: true,
+					decision: "FINISH",
+					messageToUser: "Here is the text.",
+					...(host === "disabled"
+						? {}
+						: {
+								copyToClipboard: {
+									title: "Text",
+									content: "Keep  two spaces. Mira’s notebook.",
+								},
+							}),
+				}),
+			);
+			const result = await runEvaluator({
+				runtime: { useModel },
+				context: { id: "clipboard-host", events: [] },
+				trajectory: {
+					context: { id: "clipboard-host" },
+					steps: [],
+					archivedSteps: [],
+					plannedQueue: [],
+					evaluatorOutputs: [],
+				},
+				effects:
+					host === "standalone"
+						? undefined
+						: {
+								copyToClipboard: host === "disabled" ? false : copyToClipboard,
+								messageToUser,
+							},
+			});
+			const request = useModel.mock.calls[0][1];
+			expect(Boolean(request.responseSchema.properties.copyToClipboard)).toBe(
+				host !== "disabled",
+			);
+			expect(
+				request.messages[0].content.includes("copyToClipboard optional"),
+			).toBe(host !== "disabled");
+			expect(result.protocolFailure).not.toBe(true);
+			expect(result.messageToUser).toBe("Here is the text.");
+			expect(copyToClipboard).toHaveBeenCalledTimes(
+				host === "callback" ? 1 : 0,
+			);
+			if (host === "standalone")
+				expect(result.copyToClipboard?.content).toBe(
+					"Keep  two spaces. Mira’s notebook.",
+				);
+		},
+	);
+
+	it("rejects unsupported clipboard output without delivering accompanying effects", async () => {
+		const messageToUser = vi.fn();
+		const raw = JSON.stringify({
+			thought: "Return the requested text.",
+			success: true,
+			decision: "FINISH",
+			messageToUser: "Copied it.",
+			copyToClipboard: { title: "Text", content: "Exact text." },
+		});
+		const result = await runEvaluator({
+			runtime: { useModel: vi.fn(async () => raw) },
+			context: { id: "unsupported-clipboard", events: [] },
+			trajectory: {
+				context: { id: "unsupported-clipboard" },
+				steps: [],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+			effects: { copyToClipboard: false, messageToUser },
+		});
+		expect(result.protocolFailure).toBe(true);
+		expect(result.parseError).toBe(
+			"Clipboard output is unavailable in this host",
+		);
+		expect(result.raw?.copyToClipboard).toEqual({
+			title: "Text",
+			content: "Exact text.",
+		});
+		expect(messageToUser).not.toHaveBeenCalled();
+	});
 	it.each([true, false, undefined])(
 		"constrains reported success only for unresolved runtime failure: %s",
 		async (hasUnresolvedToolFailure) => {

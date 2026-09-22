@@ -55,7 +55,10 @@ import {
   toWellFormedUnicode,
   withModelInputBudgetProviderOptions,
 } from "@elizaos/core";
-import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator.ts";
+import {
+  buildEvaluatorTemplate,
+  evaluatorSchema,
+} from "../prompts/evaluator.ts";
 import { referenceRepeatedHistory } from "../services/message/history-wire.ts";
 import { computeCallCostUsd } from "./model-pricing";
 import {
@@ -314,10 +317,32 @@ export async function runEvaluator(
     .filter((id) => redactDiagnosticText(id) === id);
   // Match the canonical proof boundary without changing the recorded results
   // or forgiving invalid IDs returned by a provider that ignores its schema.
+  const clipboardAvailable = params.effects?.copyToClipboard !== false;
+  const properties = { ...evaluatorSchema.properties };
+  if (!clipboardAvailable) delete properties.copyToClipboard;
+  const latestStep = params.trajectory.steps.at(-1);
+  const requiresReplyField =
+    params.trajectory.codingMode === false &&
+    !latestStep?.terminalOnly &&
+    latestStep?.result?.transcriptVisibility === "internal" &&
+    latestStep.result.modelReplyRequired === true &&
+    !latestStep.result.userFacingText?.trim();
   const responseSchema = {
     ...evaluatorSchema,
+    ...(requiresReplyField
+      ? { required: [...(evaluatorSchema.required ?? []), "messageToUser"] }
+      : {}),
     properties: {
-      ...evaluatorSchema.properties,
+      ...properties,
+      ...(requiresReplyField
+        ? {
+            messageToUser: {
+              ...evaluatorSchema.properties?.messageToUser,
+              description:
+                "This internal result requires a model-authored reply. For FINISH, provide the grounded outcome or necessary question here. For CONTINUE or contextRequest, use an empty string; do not publish a progress draft.",
+            },
+          }
+        : {}),
       // Match terminal failure authority without rewriting the model output.
       ...(params.hasUnresolvedToolFailure
         ? { success: { ...evaluatorSchema.properties?.success, enum: [false] } }
@@ -337,6 +362,7 @@ export async function runEvaluator(
     context: params.context,
     trajectory: params.trajectory,
     redactText: redactDiagnosticText,
+    clipboardAvailable,
   };
   const renderedInput = renderEvaluatorModelInput(renderArgs);
   const modelInputBudget = buildModelInputBudget({
@@ -450,6 +476,7 @@ export async function runEvaluator(
       context: params.context,
       trajectory: params.trajectory,
       redactText: redactDiagnosticText,
+      clipboardAvailable,
     });
     const attemptBudget = buildModelInputBudget({
       messages: attemptInput.messages,
@@ -598,6 +625,13 @@ export async function runEvaluator(
     throw error;
   }
   let output = finalizeEvaluatorOutput(raw, params.context, params.trajectory);
+  if (!clipboardAvailable && output.copyToClipboard) {
+    output = {
+      ...output,
+      protocolFailure: true,
+      parseError: "Clipboard output is unavailable in this host",
+    };
+  }
   const snapshot = selectedCall?.preparedAttempt;
   const recordOutput = () =>
     recordEvaluationStage({
@@ -848,6 +882,7 @@ function renderEvaluatorModelInput(params: {
   context: ContextObject;
   trajectory: PlannerTrajectory;
   template?: string;
+  clipboardAvailable?: boolean;
   redactText: ToolDiagnosticTextRedactor;
 }): {
   messages: ChatMessage[];
@@ -881,7 +916,8 @@ function renderEvaluatorModelInput(params: {
       content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nOnly Stage-1-selected prior dialogue sources are shown. All original sources remain available in this turn. If any constraint, correction, referent or requested historical evidence is missing, request contextRequest=history with decision=CONTINUE, success=false, and no user reply or clipboard effect. The runtime restores complete original dialogue without expanding unrelated provider references for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
     });
   }
-  const template = params.template ?? evaluatorTemplate;
+  const template =
+    params.template ?? buildEvaluatorTemplate(params.clipboardAvailable);
   const instructions = (
     template.split("context_object:")[0] ?? template
   ).trim();
@@ -1092,10 +1128,10 @@ function evaluatorEnvelopeProtocolError(
     ) ||
       output.success !== false ||
       parseEvaluatorRoute(output.decision ?? output.route) !== "CONTINUE" ||
-      Object.hasOwn(output, "messageToUser") ||
+      (Object.hasOwn(output, "messageToUser") && output.messageToUser !== "") ||
       Object.hasOwn(output, "copyToClipboard"))
   )
-    return "contextRequest must be full, history or providers with CONTINUE, success=false, and no messageToUser or copyToClipboard";
+    return "contextRequest must be full, history or providers with CONTINUE, success=false, no reply text, and no copyToClipboard";
   if (
     Object.hasOwn(output, "messageToUser") &&
     typeof output.messageToUser !== "string"
