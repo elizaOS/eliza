@@ -509,7 +509,11 @@ signing the supplied bytes; reserializing the payload requires a new signature.
 The CPU profile requires the envelope and pinned authority, rejects identity
 conflicts, and checks the signed validity interval at resolution and before and
 after each evidence collection. Release expiry bounds replay; shorter validity
-and signed revocation policies are still needed for emergency withdrawal. Do not
+and signed revocation policies are still needed for emergency withdrawal.
+Validity uses the CVM wall clock; deployments must establish clock discipline.
+Cached boot trust does not continuously reattest or revoke already released
+secrets. Fresh KMS authorization and revocation enforcement remain separate
+operational requirements. Do not
 replace the expected identity with unchecked guest `Info` fields.
 
 Use `ELIZA_TEE_PRODUCTION_PROFILE=dstack-cpu` for a CPU-only confidential-agent
