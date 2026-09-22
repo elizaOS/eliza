@@ -8,6 +8,8 @@
  * sub-planner path (live 2026-09-14 tj-22eb87cbbbfac0: `MEMORY {text, kind,
  * tags}` routed through the sub-planner before MEMORY_CREATE ran).
  */
+
+import { type ContextObject, completionContextSources } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   pinnedDiscriminatorForPromotedChild,
@@ -52,6 +54,7 @@ type InferSubaction = NonNullable<Action["inferSubaction"]>;
 /** Mirrors a promoted umbrella: enum discriminator, optional operands. */
 function ledgerFamily(inferSubaction?: InferSubaction) {
   const handled: Array<Record<string, unknown>> = [];
+  const states: Array<State | undefined> = [];
   const parent: Action = {
     name: "LEDGER",
     description: "Manage ledger entries",
@@ -59,6 +62,7 @@ function ledgerFamily(inferSubaction?: InferSubaction) {
     handler: async (_runtime, _message, _state, options) => {
       const params = (options?.parameters ?? {}) as Record<string, unknown>;
       handled.push(params);
+      states.push(_state);
       return { success: true, text: `ran ${String(params.action)}` };
     },
     parameters: [
@@ -90,7 +94,7 @@ function ledgerFamily(inferSubaction?: InferSubaction) {
     ...(inferSubaction ? { inferSubaction } : {}),
   };
   const actions = [...promoteSubactionsToActions(parent)];
-  return { parent, actions, handled };
+  return { parent, actions, handled, states };
 }
 
 function makeRuntime(actions: Action[]) {
@@ -119,6 +123,8 @@ async function execute(args: {
   actions: Action[];
   runtimeActions?: Action[];
   toolCall: PlannerToolCall;
+  plannerContext?: ContextObject;
+  state?: State;
 }) {
   const { runtime, useModel } = makeRuntime(
     args.runtimeActions ?? args.actions,
@@ -126,17 +132,19 @@ async function execute(args: {
   const result = await executeV5PlannedToolCall({
     runtime,
     toolCall: args.toolCall,
-    plannerContext: createContextObject({
-      id: "umbrella-infer-subaction",
-      events: args.actions.map((action) => ({
-        id: `tool:${action.name}`,
-        type: "tool",
-        tool: { name: action.name, action },
-      })),
-    }),
+    plannerContext:
+      args.plannerContext ??
+      createContextObject({
+        id: "umbrella-infer-subaction",
+        events: args.actions.map((action) => ({
+          id: `tool:${action.name}`,
+          type: "tool",
+          tool: { name: action.name, action },
+        })),
+      }),
     executorCtx: buildV5ExecutorContext({
       message,
-      state: { values: {}, data: {}, text: "" } as State,
+      state: args.state ?? ({ values: {}, data: {}, text: "" } as State),
       selectedContexts: [],
       senderRole: "OWNER",
       previousResults: [],
@@ -384,4 +392,87 @@ it("does not substitute an umbrella for an independently implemented child", () 
       () => child,
     ),
   ).toBeUndefined();
+});
+
+// Domain extraction must see the same reviewed originals as the planner while
+// cached provider state stays complete and reusable by later turns.
+describe("action-local conversation evidence", () => {
+  it.each(["selected", "empty", "stale", "missing"] as const)(
+    "supplies %s source selection without mutating cached state",
+    async (mode) => {
+      const { actions, states } = ledgerFamily();
+      const plannerContext: ContextObject = {
+        id: message.id,
+        metadata: { roomId: message.roomId, messageId: message.id },
+        events: [
+          "Owner: Keep this exact\nmultiline correction.",
+          "Old unrelated task.",
+        ].map((content, index) => ({
+          id: `history:original-${index}`,
+          type: "segment",
+          source: "prior-dialogue",
+          createdAt: index,
+          segment: {
+            id: `history:original-${index}`,
+            label: "prior_message:user",
+            content,
+            stable: false,
+            metadata: {
+              roomId: message.roomId,
+              entityId: message.entityId,
+              speakerName: "Owner",
+            },
+          },
+        })),
+      };
+      if (mode !== "missing") {
+        plannerContext.metadata = {
+          ...plannerContext.metadata,
+          completionContext: {
+            mode: "selected",
+            complete: true,
+            sourceSetId:
+              mode === "stale"
+                ? "stale"
+                : completionContextSources(plannerContext).sourceSetId,
+            relevantSourceIds: mode === "empty" ? [] : ["h1"],
+            constraintSourceIds: [],
+            referentSourceIds: [],
+            pendingIntentSourceIds: [],
+          },
+        };
+      }
+      const state: State = {
+        text: "Complete provider history",
+        values: {
+          recentMessages: "Complete provider history",
+          selectedActionConversation: "stale previous turn",
+        },
+        data: {},
+      };
+      const before = structuredClone({ state, plannerContext });
+      const { result, useModel } = await execute({
+        actions,
+        state,
+        plannerContext,
+        toolCall: {
+          id: "read-evidence",
+          name: "LEDGER",
+          params: { action: "create", text: "hello" },
+        },
+      });
+      expect(result.success).toBe(true);
+      expect(useModel).not.toHaveBeenCalled();
+      expect(states).toHaveLength(1);
+      const evidence = states[0]?.values.selectedActionConversation;
+      if (mode === "selected" || mode === "empty") {
+        expect(typeof evidence).toBe("string");
+        expect(JSON.parse(String(evidence))).toEqual(
+          mode === "empty" ? [] : [plannerContext.events[0]],
+        );
+      } else expect(evidence).toBeNull();
+      expect({ state, plannerContext }).toEqual(before);
+      expect(states[0]).not.toBe(state);
+    },
+  );
 });

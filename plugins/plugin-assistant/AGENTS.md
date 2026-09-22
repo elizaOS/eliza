@@ -45,3 +45,5 @@ worker. Batcher configuration is validated when assistant is composed.
 The assistant reasoning lifecycle installs structured prompt execution together
 with batching and removes both on unload. runtime/structured-prompt owns template
 rendering, response schemas, semantic recovery and streaming interpretation.
+
+Before each planned action, pass validated dialogue selection as complete source events in an action-local selectedActionConversation value. Reuse core source-set validation; never replace cached provider history or carry a stale previous selection into a fallback. Null retains the domain's full-history fallback, while an explicitly reviewed empty selection serializes as []. This projection adds no model call and changes no action admission or receipt authority.
