@@ -269,7 +269,12 @@ describe("POST /api/conversations — failed room initialization", () => {
       if (kind === "existing") {
         state.conversations.set(id, existing);
         await adapter.createRooms([
-          { id: roomId, agentId: AGENT_ID, type: ChannelType.DM },
+          {
+            id: roomId,
+            agentId: AGENT_ID,
+            type: ChannelType.DM,
+            source: "test",
+          },
         ]);
       }
       const ensure = vi.spyOn(runtime, "ensureConnection");
@@ -320,7 +325,12 @@ describe("POST /api/conversations — failed room initialization", () => {
       if (preexisting) {
         state.conversations.set(id, existing);
         await adapter.createRooms([
-          { id: roomId, agentId: AGENT_ID, type: ChannelType.DM },
+          {
+            id: roomId,
+            agentId: AGENT_ID,
+            type: ChannelType.DM,
+            source: "test",
+          },
         ]);
       }
       const importing = startImport(state, id);
