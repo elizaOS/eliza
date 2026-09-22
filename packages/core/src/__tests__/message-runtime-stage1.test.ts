@@ -3703,6 +3703,52 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it("keeps an explicitly addressed group terminal review within one re-ask", async () => {
+		const runtime = makeRuntime(
+			[
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+				stage1Response({ shouldRespond: "IGNORE", contexts: [] }),
+			],
+			{ ELIZA_STAGE1_TERMINAL_REASK: "1" },
+		);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "ok that's all",
+				channelType: ChannelType.GROUP,
+				mentionContext: { isMention: true },
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result).toMatchObject({ kind: "terminal", action: "IGNORE" });
+		expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+	});
+
+	it("preserves coding-mode terminal admission with terminal review enabled", async () => {
+		const runtime = makeRuntime(
+			[stage1Response({ shouldRespond: "STOP", contexts: [] })],
+			{ ELIZA_STAGE1_TERMINAL_REASK: "1" },
+		);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "ok that's all",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			codingMode: true,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
+		expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
+	});
+
 	it.each(["STOP", "IGNORE"] as const)(
 		"delivers a corrected reply after one opt-in terminal review of %s",
 		async (first) => {
