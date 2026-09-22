@@ -693,7 +693,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
         startAt: "2026-09-18T19:00:00.000Z",
         endAt: "2026-09-18T19:30:00.000Z",
         timeZone: "America/New_York",
-        idempotencyKey: "notary-gate-180",
+        idempotencyKey: "notary-time-test",
       });
       const action = createCalendarActionRunner({
         runTextModel: vi.fn(async () => null),
