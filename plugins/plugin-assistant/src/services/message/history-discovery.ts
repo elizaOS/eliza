@@ -10,10 +10,13 @@ import type {
 import {
   collectCompletionContextSources,
   completionContextSources,
+  ElizaError,
   parseCompletionContextSelection,
 } from "@elizaos/core";
 import {
+  type HistoryRetentionCheckpoint,
   type HistoryRetentionScope,
+  includeLinkedSources,
   visibleHistoryEventIds,
 } from "../../runtime/history-retention.ts";
 import { readContextRequests } from "./context-discovery.ts";
@@ -67,6 +70,8 @@ export interface HistoryDiscovery {
   scope: HistoryRetentionScope;
   visibleEventIds: ReadonlySet<string>;
   loadedSourceIds: ReadonlySet<string>;
+  /** Validated original-source relationships from the same reviewed prefix. */
+  dependencySourceGroups?: readonly string[][];
   /** Exact literal misses over this bound source set, never semantic absence. */
   emptySearchResults?: readonly { query: string; scannedSources: number }[];
   /** Complete literal hits, bound to the same originals as the loaded bodies. */
@@ -89,11 +94,28 @@ export function projectReviewedHistory(
     !bound.sources.some((source) => !visible.has(source.event.id))
   )
     return undefined;
+  const sourceIdByEvent = new Map(
+    bound.sources.map((source) => [source.event.id, source.id]),
+  );
   return {
     sourceSetId: bound.sourceSetId,
     scope,
     visibleEventIds: visible,
     loadedSourceIds: new Set(),
+    dependencySourceGroups: (
+      checkpoint as HistoryRetentionCheckpoint
+    ).dependencyEventGroups?.map((group) =>
+      group.map((eventId) => {
+        // visibleHistoryEventIds already validated every member against this prefix.
+        const sourceId = sourceIdByEvent.get(eventId);
+        if (!sourceId)
+          throw new ElizaError(
+            "Validated history dependency lost its original",
+            { code: "HISTORY_RETENTION_INVALID_DEPENDENCY" },
+          );
+        return sourceId;
+      }),
+    ),
   };
 }
 
@@ -394,6 +416,12 @@ export function loadHistoryReferences(
       loadedSourceIds.add(name.slice(HISTORY_REFERENCE_PREFIX.length));
     }
   }
+  // A literal hit still reports only its actual matches. Supply the complete
+  // validated correction/cancellation chain as additional original evidence.
+  includeLinkedSources(
+    loadedSourceIds,
+    projection.dependencySourceGroups ?? [],
+  );
   const evidence = {
     ...projection,
     loadedSourceIds,
