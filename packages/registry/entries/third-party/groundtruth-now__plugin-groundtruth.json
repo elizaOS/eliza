@@ -1,0 +1,16 @@
+{
+  "package": "@groundtruth-now/plugin-groundtruth",
+  "repository": "github:groundtruth-now/plugin-groundtruth",
+  "kind": "plugin",
+  "description": "GROUNDTRUTH memecoin records for elizaOS agents: what happened to a coin, its creator's other launches, and a launch venue's outcome figures (Solana pump.fun, Robinhood Chain), from the live API. Records, not safety ratings.",
+  "homepage": "https://groundtruths.xyz/integrations",
+  "version": "0.1.0",
+  "tags": [
+    "groundtruth",
+    "solana",
+    "robinhood-chain",
+    "memecoin",
+    "rug",
+    "x402"
+  ]
+}

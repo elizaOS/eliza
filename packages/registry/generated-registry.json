@@ -234,6 +234,52 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@groundtruth-now/plugin-groundtruth": {
+      "git": {
+        "repo": "groundtruth-now/plugin-groundtruth",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@groundtruth-now/plugin-groundtruth",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "GROUNDTRUTH memecoin records for elizaOS agents: what happened to a coin, its creator's other launches, and a launch venue's outcome figures (Solana pump.fun, Robinhood Chain), from the live API. Records, not safety ratings.",
+      "homepage": "https://groundtruths.xyz/integrations",
+      "topics": [
+        "groundtruth",
+        "solana",
+        "robinhood-chain",
+        "memecoin",
+        "rug",
+        "x402"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@human.tech/plugin-waap": {
       "git": {
         "repo": "holonym-foundation/eliza-plugin-waap",
