@@ -864,89 +864,108 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     });
   });
 
-  it("preserves create extraction fields and pauses unknown timing without using planner guesses", async () => {
-    const useModel = runtime.useModel.bind(runtime);
-    let extractionCalls = 0;
-    vi.spyOn(runtime, "useModel").mockImplementation((async (type, params) => {
-      if (
-        type === ModelType.TEXT_LARGE &&
-        String(params?.prompt).includes(
-          "Extract calendar event creation fields",
-        )
-      ) {
-        extractionCalls += 1;
-        expect(params).toMatchObject({
-          temperature: 0,
-          responseSchema: {
-            type: "object",
-            additionalProperties: false,
-            required: expect.arrayContaining([
-              "title",
-              "startAt",
-              "endAt",
-              "durationMinutes",
-              "windowPreset",
-            ]),
-            properties: { startAt: { type: ["string", "null"] } },
-          },
-        });
-        return {
-          text: JSON.stringify({
-            title: "Create extraction timing check",
-            description: null,
-            location: null,
-            startAt: null,
-            endAt: null,
+  it.each([
+    {
+      id: "00000000-0000-0000-0000-000000009978",
+      requiresInput: false,
+      startAt: null,
+    },
+    {
+      id: "00000000-0000-0000-0000-000000009977",
+      requiresInput: true,
+      startAt: "2026-07-30T10:00:00Z",
+    },
+  ])(
+    "blocks preset-only or clarification-required creation ($requiresInput)",
+    async ({ id, requiresInput, startAt }) => {
+      const useModel = runtime.useModel.bind(runtime);
+      let extractionCalls = 0;
+      vi.spyOn(runtime, "useModel").mockImplementation((async (
+        type,
+        params,
+      ) => {
+        if (
+          type === ModelType.TEXT_LARGE &&
+          String(params?.prompt).includes(
+            "Extract calendar event creation fields",
+          )
+        ) {
+          extractionCalls += 1;
+          expect(params).toMatchObject({
+            temperature: 0,
+            responseSchema: {
+              type: "object",
+              additionalProperties: false,
+              required: expect.arrayContaining([
+                "title",
+                "startAt",
+                "endAt",
+                "durationMinutes",
+                "requiresInput",
+              ]),
+              properties: { startAt: { type: ["string", "null"] } },
+            },
+          });
+          return {
+            text: JSON.stringify({
+              requiresInput,
+              clarification: "What time in the morning?",
+              title: "Create extraction timing check",
+              description: null,
+              location: null,
+              startAt,
+              endAt: null,
+              timeZone: "UTC",
+              recurrence: null,
+              travelOriginAddress: null,
+              durationMinutes: 15,
+              windowPreset: "tomorrow_morning",
+              isShortPreparation: false,
+            }),
+            toolCalls: [],
+            finishReason: "stop",
+          };
+        }
+        return useModel(type, params);
+      }) as typeof runtime.useModel);
+      const { result } = await invoke(
+        message(
+          id,
+          "Create an event called Create extraction timing check on July 30, 2026 in the morning for 15 minutes.",
+        ),
+        {
+          action: "create_event",
+          title: "Create extraction timing check",
+          details: {
+            start: "2026-07-30T10:00:00Z",
+            end: "2026-07-30T10:15:00Z",
             timeZone: "UTC",
-            recurrence: null,
-            travelOriginAddress: null,
-            durationMinutes: 15,
-            windowPreset: null,
-            isShortPreparation: false,
-          }),
-          toolCalls: [],
-          finishReason: "stop",
-        };
-      }
-      return useModel(type, params);
-    }) as typeof runtime.useModel);
-    const { result } = await invoke(
-      message(
-        "00000000-0000-0000-0000-000000009978",
-        "Create an event called Create extraction timing check on July 30, 2026 in the morning for 15 minutes.",
-      ),
-      {
-        action: "create_event",
-        title: "Create extraction timing check",
-        details: {
-          start: "2026-07-30T10:00:00Z",
-          end: "2026-07-30T10:15:00Z",
-          timeZone: "UTC",
-          calendarId: ELIZA_CALENDAR_ID,
-          grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+          },
         },
-      },
-      false,
-      calendarAction.name,
-      "planner",
-    );
-    expect(extractionCalls, JSON.stringify(result)).toBe(1);
-    expect(result.data?.awaitingUserInput, JSON.stringify(result)).toBe(true);
-    expect(result.effectReceipts?.[0]?.outcome).toBe("noop");
-    const feed = await calendar.getCalendarFeed(
-      new URL("http://internal.local"),
-      {
-        timeMin: WINDOW_START,
-        timeMax: WINDOW_END,
-        includeHiddenCalendars: true,
-      },
-    );
-    expect(
-      feed.events.filter(
-        (event) => event.title === "Create extraction timing check",
-      ),
-    ).toEqual([]);
-  });
+        false,
+        calendarAction.name,
+        "planner",
+      );
+      expect(extractionCalls, JSON.stringify(result)).toBe(1);
+      expect(result.data?.awaitingUserInput, JSON.stringify(result)).toBe(true);
+      expect(result.effectReceipts?.[0]?.outcome).toBe("noop");
+      const feed = await calendar.getCalendarFeed(
+        new URL("http://internal.local"),
+        {
+          timeMin: WINDOW_START,
+          timeMax: WINDOW_END,
+          includeHiddenCalendars: true,
+        },
+      );
+      expect(
+        feed.events.filter(
+          (event) => event.title === "Create extraction timing check",
+        ),
+      ).toEqual([]);
+    },
+  );
 
   it("preserves update extraction controls through the registered host action", async () => {
     const created = await calendar.createCalendarEventMutation(

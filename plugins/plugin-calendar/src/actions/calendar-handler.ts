@@ -3821,7 +3821,9 @@ export function buildCreateEventRequest(
     | undefined;
   if (args.requireExtractedTiming) {
     resolvedStartAt = extractedStartAt;
-    resolvedWindowPreset = extractedStartAt ? undefined : extractedWindowPreset;
+    // A broad window cannot authorize its preset default clock time. The
+    // conversational extractor must propose a concrete start or ask for input.
+    resolvedWindowPreset = undefined;
   } else if (args.preferExtractedDetails && extractedStartAt) {
     resolvedStartAt = extractedStartAt;
     resolvedWindowPreset = undefined;
@@ -4075,14 +4077,15 @@ async function inferCreateEventDetails(
     "Use the full recent conversation below, not just the latest message.",
     "Treat the latest user request as authoritative, but recover missing event subject, date, or location from earlier turns when needed.",
     "If the current request is a follow-up, recover the event subject from recent conversation and apply new timing or location constraints from the current request.",
+    "Set requiresInput:true and ask for the missing detail in clarification when the user has not supplied or accepted an exact time and has not explicitly asked you to choose one. Morning, afternoon, and evening alone require a clock-time question. Set requiresInput:false only when the creation request is sufficiently specified.",
     "Calendar availability is not permission to invent a time. Use timing the user stated or clearly accepted for this event in the conversation. A planner intent is only a routing hint, never evidence of user-supplied details.",
     "Preserve names and places in their original language or script when useful.",
     "Return all schema fields as one JSON object, without prose. Use null for unknown or unstated values; do not invent values to fill them. Preserve literal user-provided titles, descriptions, and locations.",
     "If a start time or window is implied but duration is not explicit, infer a reasonable positive duration.",
     "For short prep or reminder blocks, use at least 15 minutes instead of 0.",
     "Set isShortPreparation=true when the event is a brief prep/reminder/leave-for/get-ready block (any language) where 15 minutes is the right default.",
-    "If the user explicitly asks you to choose an available time within a stated day/window, use the calendar context to choose it without obvious overlaps. Otherwise a date without a time needs clarification: set startAt and windowPreset to null. With no scheduling details, set both to null even if the planner proposed a complete timestamp. Never borrow timing from unrelated earlier events or assistant suggestions the user did not accept.",
-    "Morning, afternoon and evening alone are windows, not permission to choose an exact time. Set startAt and windowPreset to null and ask for a clock time unless the user explicitly delegates choosing a free slot. Only then may windowPreset represent an explicitly stated tomorrow morning/afternoon/evening window.",
+    "If the user explicitly asks you to choose an available time within a stated day/window, use the calendar context to choose it without obvious overlaps. Return a concrete startAt for that delegated choice. Otherwise a date without a time needs clarification: set startAt to null, even if the planner proposed a complete timestamp. Never borrow timing from unrelated earlier events or assistant suggestions the user did not accept.",
+    "Morning, afternoon and evening alone are windows, not permission to choose an exact time. Set startAt to null and ask for a clock time unless the user explicitly delegates choosing a free slot. For a delegated choice, return a concrete proposed startAt from the supplied calendar context.",
     "If the user asks for travel time, commute time, or a buffer from a place, capture the origin separately as travelOriginAddress.",
     "Use null for travelOriginAddress unless the request explicitly names the origin or departure place.",
     "When the user asks for a repeating event (every day, every week, every two weeks, weekdays, every month, etc.), emit the matching RFC 5545 RRULE in recurrence. Use BYDAY for weekly day selection, INTERVAL for every-N spacing, and COUNT or UNTIL only when the user bounds the repetition. Use null for recurrence for one-off events.",
@@ -4093,7 +4096,6 @@ async function inferCreateEventDetails(
     "startAt: RFC 3339 datetime if explicit or resolvable from a date phrase; include the numeric UTC offset that represents the requested wall-clock time in the calendar timezone",
     "endAt: RFC 3339 datetime if explicit; use the same offset rules as startAt",
     "durationMinutes: number if implied",
-    "windowPreset: tomorrow_morning|tomorrow_afternoon|tomorrow_evening",
     "timeZone: IANA timezone if stated",
     "recurrence: RFC 5545 RRULE string, e.g. RRULE:FREQ=WEEKLY;BYDAY=MO or RRULE:FREQ=DAILY;COUNT=10, only for repeating events",
     "travelOriginAddress: optional origin address for travel-time calculation",
@@ -4132,6 +4134,12 @@ const nullableExtractionText: CalendarExtractionSchema = {
   type: ["string", "null"],
 };
 const createExtractionProperties = {
+  requiresInput: {
+    type: "boolean",
+    description:
+      "True when a necessary detail is missing. A morning/afternoon/evening window without explicit permission to choose a slot requires clarification.",
+  },
+  clarification: nullableExtractionText,
   title: nullableExtractionText,
   description: nullableExtractionText,
   location: nullableExtractionText,
@@ -4141,10 +4149,6 @@ const createExtractionProperties = {
   recurrence: nullableExtractionText,
   travelOriginAddress: nullableExtractionText,
   durationMinutes: { type: ["number", "null"] },
-  windowPreset: {
-    type: ["string", "null"],
-    enum: ["tomorrow_morning", "tomorrow_afternoon", "tomorrow_evening", null],
-  },
   isShortPreparation: { type: "boolean" },
 } satisfies Record<string, CalendarExtractionSchema>;
 const createExtractionSchema: CalendarExtractionSchema = {
@@ -5496,6 +5500,22 @@ const calendarAction: CalendarHandlerAction = {
           calendarContext,
           planningTimeZone,
         );
+        if (extractedDetails.requiresInput === true) {
+          return respond({
+            success: false,
+            text: await renderReply(
+              "clarify_create_event_details",
+              "No event was created. Ask for the missing scheduling details.",
+              { clarification: extractedDetails.clarification },
+            ),
+            effectReceipt: calendarRequestNoopReceipt({
+              message,
+              operation: "calendar.event.create",
+              reason: "The requested event needs clarification before writing.",
+            }),
+            data: { requiresInput: true, missing: ["creation details"] },
+          });
+        }
         const createEventBuild = buildCreateEventRequest({
           details,
           extractedDetails,
