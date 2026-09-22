@@ -7,14 +7,6 @@ export {
   type TestPgliteStorageMode,
   testPgliteStorageMode,
 } from "@elizaos/shared/utils/pglite-storage";
-export {
-  ADVERSARIAL_KIND_DESCRIPTIONS,
-  ADVERSARIAL_KINDS,
-  type AdversarialFixtureSpec,
-  type AdversarialKind,
-  adversarialActionRouteFixtures,
-  adversarialPlannerFixture,
-} from "./adversarial-model-fixtures";
 export { contextBenchProvider } from "./benchmark-context-provider";
 // Browser API shims (Storage, Canvas, Media, console patches)
 export {
@@ -97,14 +89,6 @@ export {
   type InferenceProviderInfo,
   requireInferenceProvider,
 } from "./inference-provider";
-// Integration runtime creation
-export {
-  createIntegrationTestRuntime,
-  DEFAULT_TEST_CHARACTER,
-  type IntegrationTestConfig,
-  type IntegrationTestResult,
-  withTestRuntime,
-} from "./integration-runtime";
 // Live LLM provider selection
 export {
   availableProviderNames,
@@ -117,8 +101,6 @@ export {
   requireLiveProvider,
   selectLiveProvider,
 } from "./live-provider";
-// Loopback port availability checker
-export { canBindLoopback } from "./loopback";
 export { createMockRuntime, MOCK_AGENT_ID } from "./mock-runtime";
 export {
   createTestRuntimeWithModelProvider,
@@ -137,8 +119,6 @@ export {
   type TestRuntimeOptions,
   type TestRuntimeResult,
 } from "./pglite-runtime";
-// React test-renderer helpers
-export { findButtonByText, flush, text, textOf } from "./react-test";
 // Real connector helpers (Discord, Telegram)
 export {
   createDiscordTestClient,
@@ -155,22 +135,3 @@ export {
   type RealTestRuntimeOptions,
   type RealTestRuntimeResult,
 } from "./real-runtime";
-// Shared test utilities (env snapshots, timeouts, deferred promises)
-export {
-  createDeferred,
-  envSnapshot,
-  saveEnv,
-  sleep,
-  withTimeout,
-} from "./shared-test-utils";
-// Test helper utilities (pure functions, no mocks)
-export {
-  createTestCharacter,
-  createTestMemory,
-  expectRejection,
-  generateTestId,
-  measureTime,
-  retry,
-  testDataGenerators,
-  waitFor,
-} from "./test-helpers";

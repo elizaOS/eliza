@@ -1,32 +1,7 @@
 /**
- * Typed partial runtime for isolated unit tests.
- *
- * This is the unit-test counterpart to {@link ./integration-runtime}. Integration
- * tests use a real {@link AgentRuntime} backed by real infrastructure (the
- * "NO MOCKS" rule in `./index.ts`); unit tests that exercise a single
- * action/provider/service in isolation legitimately need a lightweight stand-in
- * runtime instead.
- *
- * Before this helper, ~200 unit tests each hand-rolled
- * `{ getSetting: () => …, useModel: vi.fn() } as unknown as IAgentRuntime`.
- * Every one of those was an `as unknown as` escape with zero type-checking on the
- * mocked surface. `createMockRuntime` replaces them with a single, typed factory:
- *
- * - The `overrides` parameter is `Partial<IAgentRuntime>`, so the fields a test
- *   supplies are now **type-checked** against the real runtime contract.
- * - The unavoidable partial→full cast lives in exactly one audited place here
- *   (a plain `as`, since `IAgentRuntime` is assignable to `Partial<IAgentRuntime>`),
- *   instead of being copy-pasted as `as unknown as` across the suite.
- *
- * @example
- * ```ts
- * import { createMockRuntime } from "@elizaos/testing";
- *
- * const runtime = createMockRuntime({
- *   getSetting: (key) => (key === "MODE" ? "chatty" : undefined),
- *   useModel: vi.fn(async () => "ok"),
- * });
- * ```
+ * Builds typed partial runtimes for isolated action, provider and service tests.
+ * Callers explicitly supply behavior-bearing collaborators through overrides;
+ * the partial-to-runtime cast is confined to this factory.
  */
 
 import type { Character, IAgentRuntime, UUID } from "@elizaos/core";
