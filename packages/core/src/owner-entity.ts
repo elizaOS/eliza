@@ -42,7 +42,7 @@ export async function resolveOwnerEntityId(
 					return metadata.ownership.ownerId;
 				}
 			} catch (error) {
-				// error-policy:J4 unavailable room ownership retains the existing ordered lookup fallback.
+				// Preserved lookup fallback: failure is logged but is not an unavailable identity result.
 				logger.debug(
 					`[owner-entity] World ownership lookup failed for room ${roomId}: ${
 						error instanceof Error ? error.message : String(error)
@@ -51,7 +51,7 @@ export async function resolveOwnerEntityId(
 			}
 		}
 	} catch (error) {
-		// error-policy:J4 unavailable room inventory retains the deterministic identity fallback.
+		// Preserved identity fallback: lookup failure still returns a synthetic owner.
 		logger.warn(
 			`[owner-entity] Failed to resolve owner from world metadata; falling back to synthetic owner id: ${
 				error instanceof Error ? error.message : String(error)
