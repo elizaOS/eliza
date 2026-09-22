@@ -102,6 +102,41 @@ describe("deferred originals quoted by a Stage-1 draft", () => {
 		expect(requestedHistory(context, projection, raw, [])).toEqual([]);
 	});
 
+	it("does not read a later matching message as the source of an earlier assistant quote", () => {
+		const { context, projection, raw } = fixture();
+		const later = structuredClone(context.events[0]);
+		later.id = "history:later-copy";
+		if (later.type !== "segment") throw new Error("Expected source segment");
+		later.segment.id = later.id;
+		later.segment.label = "prior_message:agent";
+		later.segment.content = `Eliza: ${original}`;
+		later.segment.metadata = { speakerName: "Eliza" };
+		context.events.push(later);
+		projection.sourceSetId = completionContextSources(context).sourceSetId;
+		raw.completionContext.sourceSetId = projection.sourceSetId;
+		raw.replyText = "I will check the saved record.";
+		const before = structuredClone(context);
+		// The earlier original still needs a read; the later matching reply
+		// cannot have supplied the selected recap at h2.
+		expect(requestedHistory(context, projection, raw, [])).toEqual([
+			"history:h1",
+		]);
+		projection.loadedSourceIds = new Set(["h1"]);
+		expect(requestedHistory(context, projection, raw, [])).toEqual([]);
+		// Explicit selection and quotation in the CURRENT draft still read
+		// the later source. Chronology only bounds inferred recap provenance.
+		raw.completionContext.relevantSourceIds = ["h4"];
+		expect(requestedHistory(context, projection, raw, [])).toEqual([
+			"history:h4",
+		]);
+		raw.completionContext.relevantSourceIds = ["h2"];
+		raw.replyText = `You said: “${original}”`;
+		expect(requestedHistory(context, projection, raw, [])).toEqual([
+			"history:h4",
+		]);
+		expect(context).toEqual(before);
+	});
+
 	it("does not infer source dependencies from a selected user's quoted text", () => {
 		const { context, projection, raw } = fixture();
 		const recap = context.events[1];
