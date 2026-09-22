@@ -27,6 +27,7 @@ function handlerKey(viewId: string, viewType: ViewType): string {
 
 interface HandlerRegistration {
   handler: InteractHandler;
+  installationId: string | undefined;
   token: symbol;
 }
 
@@ -44,9 +45,10 @@ export function registerViewInteractHandler(
   viewId: string,
   viewType: ViewType,
   handler: InteractHandler,
+  installationId?: string,
 ): () => void {
   const key = handlerKey(viewId, viewType);
-  const registration = { handler, token: Symbol(key) };
+  const registration = { handler, installationId, token: Symbol(key) };
   const registrations = handlers.get(key) ?? [];
   registrations.push(registration);
   handlers.set(key, registrations);
@@ -81,28 +83,24 @@ export async function dispatchViewInteract(
   capability: string,
   params: Record<string, unknown> | undefined,
   requestId: string,
+  installationId: string,
 ): Promise<void> {
   const resolvedViewType = viewType ?? "gui";
-  const handler = currentHandler(viewId, resolvedViewType);
+  if (!installationId) return;
+  const registration = handlers
+    .get(handlerKey(viewId, resolvedViewType))
+    ?.at(-1);
+  const handler =
+    registration?.installationId === installationId
+      ? registration.handler
+      : undefined;
+  const identity = { viewId, viewType: resolvedViewType, installationId };
 
-  if (!handler) {
-    // Native page reads are directed to one specific client, never broadcast
-    // discovery. A missing view is an actionable precondition failure, not a
-    // disconnected phone: the planner must show it before requesting its DOM.
-    if (capability === "get-text" && params?.nativeOnly === true) {
-      client.sendWsMessage({
-        type: "view:interact:result",
-        requestId,
-        success: false,
-        error: `The ${viewId} view is not mounted on the requesting client. Show that view with VIEWS before reading its native page.`,
-      });
-      return;
-    }
-    // The API broadcasts view-interact requests to every connected shell.
-    // Clients that do not currently mount the target view must stay silent so
-    // they do not race the mounted client and resolve the request as failed.
-    return;
-  }
+  const missingNativeReader =
+    !handler && capability === "get-text" && params?.nativeOnly === true;
+  // A retained or differently installed view cannot claim a replacement's work.
+  if (!handler && !missingNativeReader) return;
+  if (registration && registration.installationId !== installationId) return;
   if (handledRequestIds.has(requestId)) {
     return;
   }
@@ -112,17 +110,49 @@ export async function dispatchViewInteract(
   (timeout as { unref?: () => void }).unref?.();
   handledRequestIds.set(requestId, timeout);
 
+  let claimId: string | undefined;
   try {
+    const claim = await client.fetch<{ claimId: string }>(
+      "/api/views/interact-claim",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...identity,
+          requestId,
+          clientId: client.clientId,
+        }),
+      },
+    );
+    claimId = claim.claimId;
+    if (!claimId) return;
+    if (
+      handlers.get(handlerKey(viewId, resolvedViewType))?.at(-1) !==
+      registration
+    )
+      throw new Error(
+        "The mounted view changed before execution; no effect was started.",
+      );
+    if (!handler)
+      throw new Error(
+        `The ${viewId} view is not mounted on the requesting client. Show that view with VIEWS before reading its native page.`,
+      );
     const result = await handler(capability, params);
     client.sendWsMessage({
       type: "view:interact:result",
+      ...identity,
+      claimId,
       requestId,
       success: true,
       result,
     });
   } catch (err) {
+    // A lost claim response is an unknown outcome. Never execute or retry it.
+    if (!claimId) return;
     client.sendWsMessage({
       type: "view:interact:result",
+      ...identity,
+      claimId,
       requestId,
       success: false,
       error: err instanceof Error ? err.message : String(err),

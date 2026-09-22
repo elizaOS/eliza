@@ -9,22 +9,25 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { type Action, type IAgentRuntime, Service } from "@elizaos/core";
+import {
+  AgentRuntime,
+  createCharacter,
+  type IAgentRuntime,
+  Service,
+} from "@elizaos/core";
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearActiveViewContext } from "../runtime/view-action-affinity.ts";
-import {
-  __resetViewScopedActionRegistryForTests,
-  buildViewScopedAction,
-} from "../runtime/view-scoped-actions.ts";
-import {
-  registerPluginViews,
-  unregisterPluginViews,
-} from "./views-registry.ts";
-import {
-  clearCurrentViewState,
-  handleViewsRoutes,
-  setViewsBroadcastWs,
-} from "./views-routes.ts";
+import { runWithViewClient } from "../runtime/view-client-context.ts";
+import { closeRuntimeViewRegistry } from "./view-installations.ts";
+import { closeViewInteractionHost } from "./view-interaction-host.ts";
+
+let hostKey: object;
+let scope: { hostKey: object; clientId: string };
+const runtimes: AgentRuntime[] = [];
+
+import { buildViewScopedAction } from "../runtime/view-scoped-actions.ts";
+import { getView, registerPluginViews } from "./views-registry.ts";
+import { handleViewsRoutes, setViewsBroadcastWs } from "./views-routes.ts";
 
 const TEST_PLUGIN = "@test/runtime-owned-view";
 const VIEW_ID = "runtime-owned-records";
@@ -94,26 +97,24 @@ function errorResponder(
   jsonResponder(res, { error: message }, status);
 }
 
-function makeRuntime(service: RuntimeOwnedRecordsService): IAgentRuntime {
-  const actions: Action[] = [];
-  return {
-    agentId: "runtime-owner",
-    actions,
-    getService: (serviceType: string) =>
-      serviceType === SERVICE_TYPE ? service : null,
-    emitEvent: async () => {},
-    registerAction: (action: Action) => {
-      if (!actions.some((candidate) => candidate.name === action.name)) {
-        actions.push(action);
-      }
-    },
-    unregisterAction: (name: string) => {
-      const index = actions.findIndex((action) => action.name === name);
-      if (index < 0) return false;
-      actions.splice(index, 1);
-      return true;
-    },
-  } as unknown as IAgentRuntime;
+async function makeRuntime(
+  service: RuntimeOwnedRecordsService,
+): Promise<AgentRuntime> {
+  const runtime = new AgentRuntime({
+    character: createCharacter({ name: "Runtime records" }),
+    enableAutonomy: false,
+  });
+  runtimes.push(runtime);
+  await initializeTestRuntime(runtime, { skipMigrations: true });
+  class RecordsService extends RuntimeOwnedRecordsService {
+    static override async start(): Promise<RuntimeOwnedRecordsService> {
+      return service;
+    }
+  }
+  await runtime.registerService(RecordsService);
+  await runtime.getServiceLoadPromise(SERVICE_TYPE);
+  expect(runtime.getService(SERVICE_TYPE)).toBe(service);
+  return runtime;
 }
 
 async function startViewsServer(runtime: IAgentRuntime): Promise<{
@@ -132,6 +133,7 @@ async function startViewsServer(runtime: IAgentRuntime): Promise<{
       error: errorResponder,
       broadcastWs: vi.fn(),
       runtime,
+      hostKey,
     });
     if (!handled && !res.headersSent) {
       res.statusCode = 404;
@@ -151,7 +153,10 @@ async function postJson(
 ): Promise<Record<string, unknown>> {
   const response = await fetch(`${baseUrl}${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      "x-elizaos-client-id": scope.clientId,
+    },
     body: JSON.stringify(body),
   });
   expect(response.status).toBe(expectedStatus);
@@ -163,7 +168,9 @@ async function getJson(
   path: string,
   expectedStatus = 200,
 ): Promise<Record<string, unknown>> {
-  const response = await fetch(`${baseUrl}${path}`);
+  const response = await fetch(`${baseUrl}${path}`, {
+    headers: { "x-elizaos-client-id": scope.clientId },
+  });
   expect(response.status).toBe(expectedStatus);
   return (await response.json()) as Record<string, unknown>;
 }
@@ -171,19 +178,17 @@ async function getJson(
 let server: http.Server | null = null;
 let pluginRoot: string | null = null;
 
-beforeEach(async () => {
-  clearCurrentViewState();
-  clearActiveViewContext();
-  __resetViewScopedActionRegistryForTests();
-  setViewsBroadcastWs(() => {});
+beforeEach(() => {
+  hostKey = {};
+  scope = { hostKey, clientId: "records-client" };
+  setViewsBroadcastWs(hostKey, () => {});
 });
-
 afterEach(async () => {
-  unregisterPluginViews(TEST_PLUGIN);
-  clearCurrentViewState();
-  clearActiveViewContext();
-  setViewsBroadcastWs(null);
-  __resetViewScopedActionRegistryForTests();
+  closeViewInteractionHost(hostKey);
+  for (const runtime of runtimes.splice(0)) {
+    closeRuntimeViewRegistry(runtime);
+    await runtime.stop({ fast: true });
+  }
   vi.restoreAllMocks();
   if (server) {
     const activeServer = server;
@@ -212,7 +217,7 @@ afterEach(async () => {
 describe("runtime-owned view interactions over the real HTTP route", () => {
   it("rejects malformed asset encoding while preserving encoded asset names", async () => {
     const service = new RuntimeOwnedRecordsService();
-    const runtime = makeRuntime(service);
+    const runtime = await makeRuntime(service);
     pluginRoot = await mkdtemp(path.join(tmpdir(), "eliza-view-assets-"));
     const bundleDir = path.join(pluginRoot, "dist", "views");
     await mkdir(bundleDir, { recursive: true });
@@ -243,7 +248,16 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
       await symlink("loop-a", path.join(bundleDir, "loop-b"));
     }
 
+    await writeFile(
+      path.join(bundleDir, "bundle.js.assets.json"),
+      JSON.stringify({
+        version: 1,
+        files: ["bundle.js", "chunk name.js", "chunks/nested.js", "..safe.js"],
+      }),
+    );
+
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "Static asset encoding fixture.",
@@ -255,10 +269,15 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
           },
         ],
       },
-      pluginRoot,
-      runtime,
+      { pluginDir: pluginRoot, indexEmbeddings: false },
     );
 
+    const bundleUrl = getView(runtime, VIEW_ID)?.bundleUrl;
+    if (!bundleUrl) throw new Error("Missing published fixture bundle");
+    const assetPrefix = new URL(bundleUrl, "http://local").pathname.replace(
+      /bundle\.js$/,
+      "",
+    );
     const started = await startViewsServer(runtime);
     server = started.server;
 
@@ -267,18 +286,16 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
       "/api/views/missing-view/%E0%A4",
       400,
     );
-    expect(malformedMissingView.error).toBe(
-      "Invalid view asset path: malformed URL encoding",
-    );
+    expect(malformedMissingView.error).toBe("Malformed view asset path");
 
     const encodedAsset = await fetch(
-      `${started.baseUrl}/api/views/${VIEW_ID}/chunk%20name.js`,
+      `${started.baseUrl}${assetPrefix}chunk%20name.js`,
     );
     expect(encodedAsset.status).toBe(200);
     expect(await encodedAsset.text()).toBe("export const asset = true;\n");
 
     const encodedNestedAsset = await fetch(
-      `${started.baseUrl}/api/views/${VIEW_ID}/chunks%2Fnested.js`,
+      `${started.baseUrl}${assetPrefix}chunks%2Fnested.js`,
     );
     expect(encodedNestedAsset.status).toBe(200);
     expect(await encodedNestedAsset.text()).toBe(
@@ -286,7 +303,7 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
     );
 
     const safeDotPrefixedAsset = await fetch(
-      `${started.baseUrl}/api/views/${VIEW_ID}/..safe.js`,
+      `${started.baseUrl}${assetPrefix}..safe.js`,
     );
     expect(safeDotPrefixedAsset.status).toBe(200);
     expect(await safeDotPrefixedAsset.text()).toBe(
@@ -296,27 +313,25 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
     if (process.platform !== "win32") {
       const symlinkEscape = await getJson(
         started.baseUrl,
-        `/api/views/${VIEW_ID}/escape%2Foutside.js`,
-        400,
+        `${assetPrefix}escape%2Foutside.js`,
+        404,
       );
-      expect(symlinkEscape.error).toBe("Malformed view asset path");
+      expect(symlinkEscape.code).toBe("VIEW_ASSET_NOT_PUBLISHED");
 
       const symlinkLoop = await getJson(
         started.baseUrl,
-        `/api/views/${VIEW_ID}/loop-a%2Fasset.js`,
-        400,
+        `${assetPrefix}loop-a%2Fasset.js`,
+        404,
       );
-      expect(symlinkLoop.error).toBe("Malformed view asset path");
+      expect(symlinkLoop.code).toBe("VIEW_ASSET_NOT_PUBLISHED");
     }
 
     const malformedEncoding = await getJson(
       started.baseUrl,
-      `/api/views/${VIEW_ID}/%E0%A4`,
+      `${assetPrefix}%E0%A4`,
       400,
     );
-    expect(malformedEncoding.error).toBe(
-      "Invalid view asset path: malformed URL encoding",
-    );
+    expect(malformedEncoding.error).toBe("Malformed view asset path");
 
     for (const adversarialPath of [
       "..%2Foutside.js",
@@ -328,23 +343,21 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
     ]) {
       const rejected = await getJson(
         started.baseUrl,
-        `/api/views/${VIEW_ID}/${adversarialPath}`,
+        `${assetPrefix}${adversarialPath}`,
         400,
       );
-      expect(rejected.error).toBe("Malformed view asset path");
+      expect(rejected.error).toBe("Malformed view asset path or modality");
     }
 
     const doubleEncodedTraversal = await getJson(
       started.baseUrl,
-      `/api/views/${VIEW_ID}/%252E%252E%252Foutside.js`,
+      `${assetPrefix}%252E%252E%252Foutside.js`,
       404,
     );
-    expect(doubleEncodedTraversal.error).toBe(
-      'View asset "%2E%2E%2Foutside.js" not found',
-    );
+    expect(doubleEncodedTraversal.code).toBe("VIEW_ASSET_NOT_PUBLISHED");
 
     const malformedHead = await fetch(
-      `${started.baseUrl}/api/views/${VIEW_ID}/%E0%A4`,
+      `${started.baseUrl}${assetPrefix}%E0%A4`,
       { method: "HEAD" },
     );
     expect(malformedHead.status).toBe(400);
@@ -352,7 +365,7 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
 
   it("keeps CRUD on one runtime service across interact, activate, and planner paths", async () => {
     const service = new RuntimeOwnedRecordsService();
-    const runtime = makeRuntime(service);
+    const runtime = await makeRuntime(service);
     const scopedAction = {
       name: "VIEW_RUNTIME_OWNED_RECORDS_DELETE_ACTIVE",
       description: "Delete the active runtime-owned record.",
@@ -360,6 +373,7 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
     };
 
     await registerPluginViews(
+      runtime,
       {
         name: TEST_PLUGIN,
         description: "Stateful view used to prove runtime service ownership.",
@@ -409,8 +423,7 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
           },
         ],
       },
-      process.cwd(),
-      runtime,
+      { pluginDir: process.cwd(), indexEmbeddings: false },
     );
 
     const started = await startViewsServer(runtime);
@@ -538,7 +551,7 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
     const navigated = await postJson(
       started.baseUrl,
       `/api/views/${VIEW_ID}/navigate`,
-      { payload: { recordId: "record-1" } },
+      { source: "user", payload: { recordId: "record-1" } },
     );
     expect(navigated).toMatchObject({
       ok: true,
@@ -550,10 +563,16 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
     expect(current.currentView).toMatchObject({ viewId: VIEW_ID });
     expect(current.justSwitched).toBe(true);
 
+    const installedView = await getJson(
+      started.baseUrl,
+      `/api/views/${VIEW_ID}`,
+    );
     const elements = await postJson(
       started.baseUrl,
       `/api/views/${VIEW_ID}/elements`,
       {
+        viewType: installedView.viewType,
+        installationId: installedView.installationId,
         elements: [
           {
             id: "activate-current",
@@ -577,13 +596,15 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
     });
     expect(service.records.get("record-1")).toBe("activated");
 
-    const action = buildViewScopedAction(VIEW_ID, scopedAction);
-    const deleted = await action.handler(runtime, {} as never);
+    const action = buildViewScopedAction(runtime, VIEW_ID, scopedAction);
+    const deleted = await runWithViewClient(scope, () =>
+      action.handler(runtime, {} as never),
+    );
     expect(deleted?.success).toBe(true);
     expect(service.records.size).toBe(0);
 
-    await expect(action.handler(runtime, {} as never)).rejects.toThrow(
-      "No active record.",
-    );
+    await expect(
+      runWithViewClient(scope, () => action.handler(runtime, {} as never)),
+    ).rejects.toThrow("No active record.");
   });
 });

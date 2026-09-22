@@ -1,3 +1,22 @@
+import { closeRuntimeViewRegistry } from "./view-installations.ts";
+import { closeViewInteractionHost } from "./view-interaction-host.ts";
+
+let runtime: AgentRuntime;
+let hostKey: object;
+let scope: { hostKey: object; clientId: string };
+beforeEach(() => {
+  runtime = new AgentRuntime({
+    character: createCharacter({ name: "Interact coverage" }),
+    enableAutonomy: false,
+  });
+  hostKey = {};
+  scope = { hostKey, clientId: "interact-client" };
+});
+afterEach(() => {
+  closeRuntimeViewRegistry(runtime);
+  closeViewInteractionHost(hostKey);
+});
+
 /**
  * Covers the per-view interact path POST /api/views/:id/interact end to end
  * headlessly: capability validation against a view's declared allowlist plus
@@ -8,7 +27,11 @@
  */
 import type http from "node:http";
 import { Readable } from "node:stream";
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  AgentRuntime,
+  createCharacter,
+  type IAgentRuntime,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { viewActionAffinityMap } from "../runtime/view-action-affinity.ts";
@@ -16,7 +39,6 @@ import {
   getView,
   registerBuiltinViews,
   registerPluginViews,
-  unregisterPluginViews,
 } from "./views-registry.ts";
 import {
   clearCurrentViewState,
@@ -96,7 +118,7 @@ function makeCtx(
   method: "POST",
   pathname: string,
   body: Record<string, unknown> | null,
-  runtime?: IAgentRuntime,
+  ownerRuntime: IAgentRuntime = runtime,
   callerAuthorization?: AgentHttpRequestAuthorization,
 ): {
   ctx: ViewsRouteContext;
@@ -107,6 +129,7 @@ function makeCtx(
   const req = Readable.from(
     body === null ? [] : [Buffer.from(JSON.stringify(body))],
   ) as unknown as http.IncomingMessage;
+  req.headers = { "x-elizaos-client-id": scope.clientId };
   const res = {} as http.ServerResponse;
   const json = vi.fn();
   const error = vi.fn();
@@ -120,7 +143,8 @@ function makeCtx(
     json,
     error,
     broadcastWs,
-    runtime,
+    runtime: ownerRuntime,
+    hostKey,
     callerAuthorization,
   };
   return { ctx, json, error, broadcastWs };
@@ -128,14 +152,15 @@ function makeCtx(
 
 describe("per-view interact e2e — serverInteract reaches view capabilities headlessly (#8798)", () => {
   beforeEach(async () => {
-    registerBuiltinViews();
-    clearCurrentViewState();
+    registerBuiltinViews(runtime);
+    clearCurrentViewState(runtime, scope);
     lastOpenedViewId = null;
     lastInteractionRuntime = undefined;
 
     // (a) reference view: capabilities + a headless serverInteract, mirroring
     // the plugin-app-control views-manager declaration.
     await registerPluginViews(
+      runtime,
       {
         name: REFERENCE_PLUGIN,
         description: "Synthetic views-manager reference for interact e2e.",
@@ -165,10 +190,11 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
           },
         ],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
 
     await registerPluginViews(
+      runtime,
       {
         name: PRIVATE_PLUGIN,
         description: "Synthetic owner-private view.",
@@ -185,13 +211,14 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
           },
         ],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
 
     // (b) a view that declares capabilities AND has a serverInteract, so a
     // declared capability dispatches and an undeclared one is rejected before
     // dispatch.
     await registerPluginViews(
+      runtime,
       {
         name: DECLARED_PLUGIN,
         description: "Synthetic view with a declared-capability allowlist.",
@@ -212,10 +239,11 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
           },
         ],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
 
     await registerPluginViews(
+      runtime,
       {
         name: SURFACE_PLUGIN,
         description: "Synthetic views for server-side surface grant coverage.",
@@ -241,16 +269,12 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
           },
         ],
       },
-      process.cwd(),
+      { pluginDir: process.cwd() },
     );
   });
 
   afterEach(() => {
-    clearCurrentViewState();
-    unregisterPluginViews(REFERENCE_PLUGIN);
-    unregisterPluginViews(DECLARED_PLUGIN);
-    unregisterPluginViews(SURFACE_PLUGIN);
-    unregisterPluginViews(PRIVATE_PLUGIN);
+    clearCurrentViewState(runtime, scope);
     privateServerInteract.mockClear();
     declaredServerInteract.mockClear();
     vi.restoreAllMocks();
@@ -280,7 +304,6 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
   });
 
   it("passes the owning runtime through the direct interact route", async () => {
-    const runtime = { agentId: "runtime-owner" } as unknown as IAgentRuntime;
     const { ctx, json, error } = makeCtx(
       "POST",
       "/api/views/views-manager-ref/interact",
@@ -402,14 +425,14 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
   });
 
   it("rejects direct dispatch of a human-only capability before effects", async () => {
-    const entry = getView("declared-caps");
+    const entry = getView(runtime, "declared-caps");
     if (!entry) throw new Error("declared-caps fixture was not registered");
     const result = await dispatchViewInteract(
       entry,
       "declared-caps",
       "human-only-thing",
       { humanOverride: true },
-      {},
+      { runtime, hostKey },
     );
 
     expect(result.success).toBe(false);
@@ -456,7 +479,7 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
       expect(privateServerInteract).toHaveBeenCalledWith(
         capability,
         undefined,
-        expect.objectContaining({ runtime: undefined }),
+        expect.objectContaining({ runtime }),
       );
     },
   );
@@ -535,8 +558,8 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
 
 describe("view action affinity completeness (#8798)", () => {
   it("maps every affinity view id to a non-empty, reachable action list", () => {
-    registerBuiltinViews();
-    const entries = Object.entries(viewActionAffinityMap());
+    registerBuiltinViews(runtime);
+    const entries = Object.entries(viewActionAffinityMap(runtime));
     // Guard against an empty map silently passing the per-view assertions.
     expect(entries.length).toBeGreaterThan(0);
 

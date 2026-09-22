@@ -3,20 +3,23 @@
  * Coverage for element-reporter.hooks: `buildPayload` snapshot-to-report
  * mapping against a real `ViewAgentRegistry`, and the subscribe/POST hook's
  * debounce, inertness, and cleanup behaviour. The registry and payload builder
- * are exercised for real; only the transport boundary (`fetchWithCsrf`) and
+ * are exercised for real; only the transport boundary (`client.fetch`) and
  * navigation/url helpers are mocked, and debounce timing uses fake timers.
  */
 import { type RenderHookResult, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchWithCsrf } from "../api/csrf-client";
+import { client } from "../api";
 import {
   buildPayload,
   useAgentSurfaceElementReporter,
 } from "./element-reporter.hooks";
 import { ViewAgentRegistry } from "./registry";
 
-vi.mock("../api/csrf-client", () => ({
-  fetchWithCsrf: vi.fn(async () => new Response(null, { status: 204 })),
+vi.mock("../api", () => ({
+  client: {
+    fetch: vi.fn(async () => ({ ok: true })),
+    clientId: "reporting-client",
+  },
 }));
 
 vi.mock("../navigation", () => ({
@@ -27,13 +30,13 @@ vi.mock("../utils/asset-url", () => ({
   resolveApiUrl: (path: string) => path,
 }));
 
-const fetchWithCsrfMock = vi.mocked(fetchWithCsrf);
+const postSnapshot = vi.mocked(client.fetch);
 
 function makeRegistry(
   viewId = "wallet",
   viewType: "gui" | "tui" | "xr" = "gui",
 ): ViewAgentRegistry {
-  return new ViewAgentRegistry(viewId, viewType);
+  return new ViewAgentRegistry(viewId, viewType, "fixture-installation");
 }
 
 describe("buildPayload", () => {
@@ -157,7 +160,12 @@ describe("buildPayload", () => {
   it("returns an empty element list for an empty view", () => {
     const registry = makeRegistry("empty", "xr");
     const payload = buildPayload(registry);
-    expect(payload).toEqual({ viewId: "empty", viewType: "xr", elements: [] });
+    expect(payload).toEqual({
+      viewId: "empty",
+      viewType: "xr",
+      installationId: "fixture-installation",
+      elements: [],
+    });
   });
 });
 
@@ -177,7 +185,7 @@ describe("useAgentSurfaceElementReporter", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    fetchWithCsrfMock.mockClear();
+    postSnapshot.mockClear();
   });
 
   afterEach(() => {
@@ -193,7 +201,7 @@ describe("useAgentSurfaceElementReporter", () => {
   }
 
   function lastPostBody(): Record<string, unknown> {
-    const calls = fetchWithCsrfMock.mock.calls;
+    const calls = postSnapshot.mock.calls;
     const init = calls[calls.length - 1]?.[1];
     return JSON.parse(String(init?.body));
   }
@@ -207,7 +215,7 @@ describe("useAgentSurfaceElementReporter", () => {
     renderReporter(registry);
 
     await advancePastDebounce();
-    expect(fetchWithCsrfMock).not.toHaveBeenCalled();
+    expect(postSnapshot).not.toHaveBeenCalled();
   });
 
   it("does nothing with a null registry even outside the test environment", async () => {
@@ -215,7 +223,7 @@ describe("useAgentSurfaceElementReporter", () => {
     renderReporter(null);
 
     await advancePastDebounce();
-    expect(fetchWithCsrfMock).not.toHaveBeenCalled();
+    expect(postSnapshot).not.toHaveBeenCalled();
   });
 
   it("posts the initial debounced snapshot to the view elements endpoint", async () => {
@@ -235,11 +243,13 @@ describe("useAgentSurfaceElementReporter", () => {
 
     await advancePastDebounce();
 
-    expect(fetchWithCsrfMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchWithCsrfMock.mock.calls[0];
+    expect(postSnapshot).toHaveBeenCalledTimes(1);
+    const [url, init] = postSnapshot.mock.calls[0];
     expect(url).toBe("/api/views/wallet/elements");
     expect(init?.method).toBe("POST");
     expect(lastPostBody()).toEqual({
+      installationId: "fixture-installation",
+      clientId: "reporting-client",
       elements: [
         {
           id: "send.amount",
@@ -266,11 +276,11 @@ describe("useAgentSurfaceElementReporter", () => {
 
     await advancePastDebounce();
 
-    expect(fetchWithCsrfMock).toHaveBeenCalledTimes(1);
+    expect(postSnapshot).toHaveBeenCalledTimes(1);
     expect(lastPostBody().elements).toHaveLength(2);
   });
 
-  it("skips the POST when the snapshot has no elements", async () => {
+  it("reports an empty snapshot to clear removed controls", async () => {
     process.env.NODE_ENV = "production";
     const registry = makeRegistry("blank");
     renderReporter(registry);
@@ -279,7 +289,8 @@ describe("useAgentSurfaceElementReporter", () => {
     registry.touch();
     await advancePastDebounce();
 
-    expect(fetchWithCsrfMock).not.toHaveBeenCalled();
+    expect(postSnapshot).toHaveBeenCalledTimes(2);
+    expect(lastPostBody().elements).toEqual([]);
   });
 
   it("cancels the pending flush on unmount and ignores later updates", async () => {
@@ -292,7 +303,7 @@ describe("useAgentSurfaceElementReporter", () => {
     registry.touch(); // after unsubscribe this must not schedule anything
 
     await advancePastDebounce();
-    expect(fetchWithCsrfMock).not.toHaveBeenCalled();
+    expect(postSnapshot).not.toHaveBeenCalled();
   });
 
   it("re-subscribes when the registry instance changes, dropping the old flush", async () => {
@@ -308,10 +319,8 @@ describe("useAgentSurfaceElementReporter", () => {
     await advancePastDebounce();
 
     // view-a's pending timer was cancelled by the effect cleanup; only view-b reports.
-    expect(fetchWithCsrfMock).toHaveBeenCalledTimes(1);
-    expect(fetchWithCsrfMock.mock.calls[0][0]).toBe(
-      "/api/views/view-b/elements",
-    );
+    expect(postSnapshot).toHaveBeenCalledTimes(1);
+    expect(postSnapshot.mock.calls[0][0]).toBe("/api/views/view-b/elements");
     expect(lastPostBody().elements).toEqual([
       { id: "b", role: "region", label: "B", visible: false },
     ]);

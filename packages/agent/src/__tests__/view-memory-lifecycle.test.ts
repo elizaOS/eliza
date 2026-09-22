@@ -3,21 +3,23 @@
  *
  * Exercises the real `registerPluginViews` / `unregisterPluginViews` functions
  * from `views-registry.ts` and verifies:
- *   - the module-level registry Map stays bounded across repeated cycles,
+ *   - each runtime registry stays bounded across repeated cycles,
  *   - views disappear from `listViews()` and `getView()` after unregister,
  *   - multiple concurrent plugins coexist and clean up independently,
- *   - WeakRef-held entries become collectable after removal (GC-gated),
- *   - no EventEmitter listener accumulation occurs across load/unload cycles.
- */
+ * * */
 
-import { EventEmitter } from "node:events";
-import type { Plugin, ViewDeclaration } from "@elizaos/core";
+import {
+  AgentRuntime,
+  createCharacter,
+  type Plugin,
+  type ViewDeclaration,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getView,
   listViews,
   registerPluginViews,
-  unregisterPluginViews,
+  unregisterPluginViews as unregisterViews,
 } from "../api/views-registry.js";
 
 // ---------------------------------------------------------------------------
@@ -49,40 +51,48 @@ function requirePluginViews(plugin: Plugin): ViewDeclaration[] {
 
 /** Collect all view ids currently in the registry that start with `prefix`. */
 function viewsWithPrefix(prefix: string): string[] {
-  return listViews({ developerMode: true })
+  return listViews(runtime, { developerMode: true })
     .map((e) => e.id)
     .filter((id) => id.startsWith(prefix));
 }
 
 // ---------------------------------------------------------------------------
 // Cleanup between tests: unregister everything we registered so tests are
-// independent even when running in the same module-level registry.
+// independent with a fresh runtime registry.
 // ---------------------------------------------------------------------------
 
-const registeredPluginNames: string[] = [];
+import {
+  closeRuntimeViewRegistry,
+  type ViewInstallation,
+} from "../api/view-installations.ts";
 
-beforeEach(() => {
-  registeredPluginNames.length = 0;
-});
-
-afterEach(() => {
-  for (const name of registeredPluginNames) {
-    unregisterPluginViews(name);
-  }
-  registeredPluginNames.length = 0;
-});
-
-async function register(plugin: Plugin): Promise<void> {
-  await registerPluginViews(plugin);
-  if (!registeredPluginNames.includes(plugin.name)) {
-    registeredPluginNames.push(plugin.name);
-  }
+let runtime: AgentRuntime;
+const registeredPlugins = new Map<string, ViewInstallation>();
+function unregisterPluginViews(name: string): void {
+  const lease = registeredPlugins.get(name);
+  if (lease) unregisterViews(runtime, lease);
+  registeredPlugins.delete(name);
 }
 
-function unregister(pluginName: string): void {
-  unregisterPluginViews(pluginName);
-  const idx = registeredPluginNames.indexOf(pluginName);
-  if (idx !== -1) registeredPluginNames.splice(idx, 1);
+beforeEach(() => {
+  runtime = new AgentRuntime({
+    character: createCharacter({ name: "View cycles" }),
+    enableAutonomy: false,
+  });
+  registeredPlugins.clear();
+});
+afterEach(() => {
+  closeRuntimeViewRegistry(runtime);
+  registeredPlugins.clear();
+});
+async function register(plugin: Plugin): Promise<void> {
+  const lease = await registerPluginViews(runtime, plugin, {
+    indexEmbeddings: false,
+  });
+  registeredPlugins.set(plugin.name, lease);
+}
+function unregister(name: string): void {
+  unregisterPluginViews(name);
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +142,7 @@ describe("module cache isolation", () => {
 
     unregister("isolation-plugin");
 
-    const allIds = listViews({ developerMode: true }).map((e) => e.id);
+    const allIds = listViews(runtime, { developerMode: true }).map((e) => e.id);
     for (const view of requirePluginViews(plugin)) {
       expect(allIds).not.toContain(view.id);
     }
@@ -165,7 +175,7 @@ describe("bundle URL cleanup", () => {
     await register(plugin);
 
     for (const view of requirePluginViews(plugin)) {
-      const entry = getView(view.id);
+      const entry = getView(runtime, view.id);
       // bundleUrl is present when bundlePath is set (no real pluginDir, so
       // available=false, but bundleUrl is still assigned from the path).
       expect(entry).toBeDefined();
@@ -175,7 +185,7 @@ describe("bundle URL cleanup", () => {
     unregister("bundle-plugin");
 
     for (const view of requirePluginViews(plugin)) {
-      expect(getView(view.id)).toBeUndefined();
+      expect(getView(runtime, view.id)).toBeUndefined();
     }
   });
 });
@@ -191,14 +201,14 @@ describe("multiple plugins simultaneously", () => {
     );
 
     const baselineIds = new Set(
-      listViews({ developerMode: true }).map((e) => e.id),
+      listViews(runtime, { developerMode: true }).map((e) => e.id),
     );
 
     for (const p of plugins) {
       await register(p);
     }
 
-    const afterRegistration = listViews({ developerMode: true });
+    const afterRegistration = listViews(runtime, { developerMode: true });
     const pluginViewCount = afterRegistration.filter((e) =>
       e.id.startsWith("multi-plugin-"),
     ).length;
@@ -208,7 +218,9 @@ describe("multiple plugins simultaneously", () => {
       unregister(p.name);
     }
 
-    const afterUnregister = listViews({ developerMode: true }).map((e) => e.id);
+    const afterUnregister = listViews(runtime, { developerMode: true }).map(
+      (e) => e.id,
+    );
     // All multi-plugin views gone
     expect(
       afterUnregister.filter((id) => id.startsWith("multi-plugin-")),
@@ -217,97 +229,6 @@ describe("multiple plugins simultaneously", () => {
     for (const id of baselineIds) {
       expect(afterUnregister).toContain(id);
     }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 6. No event listener leaks across plugin load/unload cycles
-// ---------------------------------------------------------------------------
-
-describe("no EventEmitter listener accumulation", () => {
-  it("EventEmitter listener count does not grow across 10 register/unregister cycles", async () => {
-    // We track listener accumulation on a standalone emitter that mirrors the
-    // pattern a plugin might use: registering one listener per load and
-    // removing it on unload.
-    const emitter = new EventEmitter();
-    const EVENT = "view:registered";
-
-    const listenerFns: Array<() => void> = [];
-
-    async function loadCycle(): Promise<void> {
-      const fn = () => {};
-      listenerFns.push(fn);
-      emitter.on(EVENT, fn);
-    }
-
-    function unloadCycle(): void {
-      const fn = listenerFns.pop();
-      if (fn) emitter.off(EVENT, fn);
-    }
-
-    const baseline = emitter.listenerCount(EVENT);
-
-    let remainingCycles = 10;
-    while (remainingCycles > 0) {
-      remainingCycles -= 1;
-      await loadCycle();
-      unloadCycle();
-    }
-
-    // Each load adds one listener and each unload removes it — net zero.
-    expect(emitter.listenerCount(EVENT)).toBe(baseline);
-    expect(listenerFns).toHaveLength(0);
-  });
-
-  it("leaking listener pattern is detectable: count grows when off() is omitted", () => {
-    const emitter = new EventEmitter();
-    const EVENT = "view:leak";
-    emitter.setMaxListeners(50);
-
-    const baseline = emitter.listenerCount(EVENT);
-
-    const cycles = 10;
-    for (let i = 0; i < cycles; i++) {
-      // Intentionally omit off() to simulate a leak
-      emitter.on(EVENT, () => {});
-    }
-
-    // Confirms our detection approach works: without cleanup, count grows.
-    expect(emitter.listenerCount(EVENT)).toBe(baseline + cycles);
-
-    // Clean up so no warnings are emitted after the test
-    emitter.removeAllListeners(EVENT);
-  });
-
-  it("view registry register/unregister cycles do not leak listeners on a shared emitter", async () => {
-    // Attach a listener to track registry mutations via EventEmitter,
-    // then confirm the count is stable across cycles.
-    const emitter = new EventEmitter();
-    const EVENT = "view:change";
-
-    // Simulate what a plugin host might do: register a listener when a plugin
-    // view is registered, unregister on unload.
-    let count = 0;
-    const sharedListener = (): void => {
-      count++;
-    };
-
-    const cycles = 10;
-    const plugin = makePlugin("emitter-cycle-plugin", 2);
-
-    for (let i = 0; i < cycles; i++) {
-      emitter.on(EVENT, sharedListener);
-      await register(plugin);
-      emitter.emit(EVENT);
-
-      unregister("emitter-cycle-plugin");
-      emitter.off(EVENT, sharedListener);
-    }
-
-    // Listener was added and removed each cycle — net zero.
-    expect(emitter.listenerCount(EVENT)).toBe(0);
-    // Listener fired exactly once per cycle.
-    expect(count).toBe(cycles);
   });
 });
 
@@ -343,9 +264,9 @@ describe("plugin with no views", () => {
       views: [],
     };
 
-    const before = listViews({ developerMode: true }).length;
-    await registerPluginViews(plugin);
-    const after = listViews({ developerMode: true }).length;
+    const before = listViews(runtime, { developerMode: true }).length;
+    await registerPluginViews(runtime, plugin);
+    const after = listViews(runtime, { developerMode: true }).length;
 
     expect(after).toBe(before);
   });
@@ -356,9 +277,9 @@ describe("plugin with no views", () => {
       description: "Plugin with no views field",
     };
 
-    const before = listViews({ developerMode: true }).length;
-    await registerPluginViews(plugin);
-    const after = listViews({ developerMode: true }).length;
+    const before = listViews(runtime, { developerMode: true }).length;
+    await registerPluginViews(runtime, plugin);
+    const after = listViews(runtime, { developerMode: true }).length;
 
     expect(after).toBe(before);
   });

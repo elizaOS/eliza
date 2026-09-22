@@ -12,8 +12,14 @@ import { realpathSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { Plugin, ViewDeclaration } from "@elizaos/core";
+import {
+  AgentRuntime,
+  createCharacter,
+  type Plugin,
+  type ViewDeclaration,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { ViewInstallation } from "./view-installations.ts";
 import type { ViewRegistryEntry } from "./views-registry.js";
 import {
   bindPluginPackageDirectory,
@@ -95,16 +101,24 @@ function realPathUnder(root: string, ...parts: string[]): string {
   return path.join(realpathSync(root), ...parts);
 }
 
+let runtime: AgentRuntime;
+const installations = new Map<string, ViewInstallation>();
+async function registerFixturePlugin(plugin: Plugin, pluginDir?: string) {
+  const installation = await registerPluginViews(runtime, plugin, {
+    pluginDir,
+  });
+  installations.set(plugin.name, installation);
+  return installation;
+}
 beforeEach(() => {
-  unregisterPluginViews(PLUGIN);
-  unregisterPluginViews(PLUGIN_B);
-  unregisterPluginViews(BUILTIN_PLUGIN);
+  runtime = new AgentRuntime({
+    character: createCharacter({ name: "Registry test" }),
+    enableAutonomy: false,
+  });
+  installations.clear();
 });
 
 afterEach(async () => {
-  unregisterPluginViews(PLUGIN);
-  unregisterPluginViews(PLUGIN_B);
-  unregisterPluginViews(BUILTIN_PLUGIN);
   await Promise.all(
     tmpDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
   );
@@ -134,23 +148,49 @@ describe("pluginPackageNameCandidates", () => {
 
 describe("listViews", () => {
   it("returns an empty list when the registry has no entries", () => {
-    expect(listViews()).toEqual([]);
-    expect(listViews({ includeAllKinds: true })).toEqual([]);
+    expect(listViews(runtime)).toEqual([]);
+    expect(listViews(runtime, { includeAllKinds: true })).toEqual([]);
   });
 
   it("returns the single registered view", async () => {
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [urlView("vr-solo", { label: "Solo" })]),
       FIXTURE_DIR,
     );
-    const listed = listViews({ includeAllKinds: true });
+    const listed = listViews(runtime, { includeAllKinds: true });
     expect(fixtureIds(listed)).toEqual(["vr-solo"]);
     expect(listed[0]?.label).toBe("Solo");
     expect(listed[0]?.pluginName).toBe(PLUGIN);
   });
 
+  it("preserves declared metadata and stamps runtime installation time", async () => {
+    const view = {
+      id: "vr-metadata",
+      label: "Wallet",
+      description: "Token inventory",
+      icon: "Wallet",
+      path: "/wallet",
+      order: 10,
+      tags: ["finance", "crypto"],
+      componentExport: "WalletView",
+      desktopTabEnabled: true,
+      visibleInManager: true,
+      capabilities: [{ id: "check-balance", description: "Read balances" }],
+    };
+    const before = Date.now();
+    await registerFixturePlugin(pluginWith(PLUGIN, [view]));
+    const entry = getView(runtime, view.id);
+    expect(entry).toMatchObject({
+      ...view,
+      pluginName: PLUGIN,
+      available: false,
+    });
+    expect(entry?.loadedAt).toBeGreaterThanOrEqual(before);
+    expect(entry?.loadedAt).toBeLessThanOrEqual(Date.now());
+  });
+
   it("orders by order ascending, defaulting a missing order to 100", async () => {
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [
         urlView("vr-late", { label: "Late", order: 50 }),
         urlView("vr-early", { label: "Early", order: 1 }),
@@ -159,7 +199,7 @@ describe("listViews", () => {
       ]),
       FIXTURE_DIR,
     );
-    expect(fixtureIds(listViews({ includeAllKinds: true }))).toEqual([
+    expect(fixtureIds(listViews(runtime, { includeAllKinds: true }))).toEqual([
       "vr-zero",
       "vr-early",
       "vr-late",
@@ -168,7 +208,7 @@ describe("listViews", () => {
   });
 
   it("breaks order ties by label, then by id", async () => {
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [
         urlView("vr-b", { label: "Same", order: 10 }),
         urlView("vr-a", { label: "Same", order: 10 }),
@@ -176,7 +216,7 @@ describe("listViews", () => {
       ]),
       FIXTURE_DIR,
     );
-    expect(fixtureIds(listViews({ includeAllKinds: true }))).toEqual([
+    expect(fixtureIds(listViews(runtime, { includeAllKinds: true }))).toEqual([
       "vr-c",
       "vr-a",
       "vr-b",
@@ -184,20 +224,24 @@ describe("listViews", () => {
   });
 
   it("omits a tui-only view from the default gui listing", async () => {
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [
         urlView("vr-tui-only", { label: "TUI", viewType: "tui" }),
       ]),
       FIXTURE_DIR,
     );
-    expect(fixtureIds(listViews({ includeAllKinds: true }))).toEqual([]);
+    expect(fixtureIds(listViews(runtime, { includeAllKinds: true }))).toEqual(
+      [],
+    );
     expect(
-      fixtureIds(listViews({ includeAllKinds: true, viewType: "tui" })),
+      fixtureIds(
+        listViews(runtime, { includeAllKinds: true, viewType: "tui" }),
+      ),
     ).toEqual(["vr-tui-only"]);
   });
 
   it("prefers the requested viewType over the gui fallback for the same id", async () => {
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [
         urlView("vr-dual", {
           label: "Dual",
@@ -206,10 +250,10 @@ describe("listViews", () => {
       ]),
       FIXTURE_DIR,
     );
-    const asGui = listViews({ includeAllKinds: true }).find(
+    const asGui = listViews(runtime, { includeAllKinds: true }).find(
       (entry) => entry.id === "vr-dual",
     );
-    const asTui = listViews({
+    const asTui = listViews(runtime, {
       includeAllKinds: true,
       viewType: "tui",
     }).find((entry) => entry.id === "vr-dual");
@@ -218,32 +262,34 @@ describe("listViews", () => {
   });
 
   it("still lists a gui view when a different viewType is requested", async () => {
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [urlView("vr-gui-fallback", { label: "GUI" })]),
       FIXTURE_DIR,
     );
     expect(
-      fixtureIds(listViews({ includeAllKinds: true, viewType: "xr" })),
+      fixtureIds(listViews(runtime, { includeAllKinds: true, viewType: "xr" })),
     ).toEqual(["vr-gui-fallback"]);
   });
 });
 
 describe("getView", () => {
   it("returns undefined for a missing id", () => {
-    expect(getView("vr-does-not-exist")).toBeUndefined();
+    expect(getView(runtime, "vr-does-not-exist")).toBeUndefined();
   });
 
   it("returns the registered gui entry and falls back from a missing type", async () => {
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [urlView("vr-lookup", { label: "Lookup" })]),
       FIXTURE_DIR,
     );
-    expect(getView("vr-lookup")?.label).toBe("Lookup");
-    expect(getView("vr-lookup", { viewType: "tui" })?.viewType).toBe("gui");
+    expect(getView(runtime, "vr-lookup")?.label).toBe("Lookup");
+    expect(getView(runtime, "vr-lookup", { viewType: "tui" })?.viewType).toBe(
+      "gui",
+    );
   });
 
   it("returns the exact tui entry when that type is registered", async () => {
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [
         urlView("vr-typed", {
           label: "Typed",
@@ -252,82 +298,94 @@ describe("getView", () => {
       ]),
       FIXTURE_DIR,
     );
-    expect(getView("vr-typed", { viewType: "tui" })?.viewType).toBe("tui");
-    expect(getView("vr-typed")?.viewType).toBe("gui");
+    expect(getView(runtime, "vr-typed", { viewType: "tui" })?.viewType).toBe(
+      "tui",
+    );
+    expect(getView(runtime, "vr-typed")?.viewType).toBe("gui");
   });
 });
 
 describe("registerPluginViews / unregisterPluginViews", () => {
   it("is a no-op for a missing views array or an empty views array", async () => {
-    await registerPluginViews(
+    await registerFixturePlugin(
       { name: PLUGIN, description: "none" } as Plugin,
       FIXTURE_DIR,
     );
-    await registerPluginViews(pluginWith(PLUGIN, []), FIXTURE_DIR);
-    expect(listViews({ includeAllKinds: true })).toEqual([]);
+    await registerFixturePlugin(pluginWith(PLUGIN, []), FIXTURE_DIR);
+    expect(listViews(runtime, { includeAllKinds: true })).toEqual([]);
   });
 
-  it("does not unregister existing entries when a later call has no views", async () => {
-    await registerPluginViews(
+  it("replaces an installation with an empty declared view set", async () => {
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [urlView("vr-keep", { label: "Keep" })]),
       FIXTURE_DIR,
     );
-    await registerPluginViews(pluginWith(PLUGIN, []), FIXTURE_DIR);
-    expect(fixtureIds(listViews({ includeAllKinds: true }))).toEqual([
-      "vr-keep",
-    ]);
+    await registerFixturePlugin(pluginWith(PLUGIN, []), FIXTURE_DIR);
+    expect(fixtureIds(listViews(runtime, { includeAllKinds: true }))).toEqual(
+      [],
+    );
   });
 
   it("replaces a plugin's views on a non-empty re-register", async () => {
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [urlView("vr-old", { label: "Old" })]),
       FIXTURE_DIR,
     );
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [urlView("vr-new", { label: "New" })]),
       FIXTURE_DIR,
     );
-    expect(fixtureIds(listViews({ includeAllKinds: true }))).toEqual([
+    expect(fixtureIds(listViews(runtime, { includeAllKinds: true }))).toEqual([
       "vr-new",
     ]);
-    expect(getView("vr-old")).toBeUndefined();
+    expect(getView(runtime, "vr-old")).toBeUndefined();
   });
 
   it("keeps the first plugin when a second plugin reuses the same id", async () => {
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [urlView("vr-conflict", { label: "First" })]),
       FIXTURE_DIR,
     );
-    await registerPluginViews(
-      pluginWith(PLUGIN_B, [urlView("vr-conflict", { label: "Second" })]),
-      FIXTURE_DIR,
-    );
-    expect(getView("vr-conflict")?.pluginName).toBe(PLUGIN);
-    expect(getView("vr-conflict")?.label).toBe("First");
+    await expect(
+      registerFixturePlugin(
+        pluginWith(PLUGIN_B, [urlView("vr-conflict", { label: "Second" })]),
+        FIXTURE_DIR,
+      ),
+    ).rejects.toMatchObject({ code: "VIEW_REGISTRY_COLLISION" });
+    expect(getView(runtime, "vr-conflict")?.pluginName).toBe(PLUGIN);
+    expect(getView(runtime, "vr-conflict")?.label).toBe("First");
   });
 
   it("treats unregistering a missing plugin as a no-op", async () => {
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [urlView("vr-stay", { label: "Stay" })]),
       FIXTURE_DIR,
     );
-    unregisterPluginViews("@elizaos/plugin-vr-unit-missing");
-    expect(fixtureIds(listViews({ includeAllKinds: true }))).toEqual([
+    unregisterPluginViews(
+      runtime,
+      installations.get("@elizaos/plugin-vr-unit-missing") ?? { id: "unknown" },
+    );
+    expect(fixtureIds(listViews(runtime, { includeAllKinds: true }))).toEqual([
       "vr-stay",
     ]);
   });
 
   it("removes only the named plugin's views", async () => {
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [urlView("vr-a", { label: "A" })]),
       FIXTURE_DIR,
     );
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN_B, [urlView("vr-b", { label: "B" })]),
       FIXTURE_DIR,
     );
-    unregisterPluginViews(PLUGIN);
-    expect(fixtureIds(listViews({ includeAllKinds: true }))).toEqual(["vr-b"]);
+    unregisterPluginViews(
+      runtime,
+      installations.get(PLUGIN) ?? { id: "unknown" },
+    );
+    expect(fixtureIds(listViews(runtime, { includeAllKinds: true }))).toEqual([
+      "vr-b",
+    ]);
   });
 
   it("uses an explicit pluginDir over a bound directory", async () => {
@@ -341,8 +399,8 @@ describe("registerPluginViews / unregisterPluginViews", () => {
       }),
     ]);
     bindPluginPackageDirectory(plugin, boundDir);
-    await registerPluginViews(plugin, explicitDir);
-    expect(getView("vr-dir")?.pluginDir).toBe(explicitDir);
+    await registerFixturePlugin(plugin, explicitDir);
+    expect(getView(runtime, "vr-dir")?.pluginDir).toBe(explicitDir);
   });
 
   it("falls back to a directory bound on the plugin object", async () => {
@@ -355,15 +413,17 @@ describe("registerPluginViews / unregisterPluginViews", () => {
       }),
     ]);
     bindPluginPackageDirectory(plugin, boundDir);
-    await registerPluginViews(plugin);
-    expect(getView("vr-bound")?.pluginDir).toBe(path.resolve(boundDir));
+    await registerFixturePlugin(plugin);
+    expect(getView(runtime, "vr-bound")?.pluginDir).toBe(
+      path.resolve(boundDir),
+    );
   });
 
   it("marks a bundleUrl view available even without a package directory", async () => {
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [urlView("vr-remote", { label: "Remote" })]),
     );
-    const entry = getView("vr-remote");
+    const entry = getView(runtime, "vr-remote");
     expect(entry?.available).toBe(true);
     expect(entry?.pluginDir).toBeUndefined();
     expect(entry?.hasHeroImage).toBe(false);
@@ -372,7 +432,7 @@ describe("registerPluginViews / unregisterPluginViews", () => {
 
   it("marks a path-only view unavailable when the bundle file is missing", async () => {
     const pluginDir = await makeTempDir("vr-missing-bundle-");
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [
         urlView("vr-missing-file", {
           label: "Missing",
@@ -382,7 +442,7 @@ describe("registerPluginViews / unregisterPluginViews", () => {
       ]),
       pluginDir,
     );
-    expect(getView("vr-missing-file")?.available).toBe(false);
+    expect(getView(runtime, "vr-missing-file")?.available).toBe(false);
   });
 
   it("records hash, size, and versioned URL when the bundle file exists", async () => {
@@ -392,12 +452,9 @@ describe("registerPluginViews / unregisterPluginViews", () => {
     await mkdir(path.dirname(absolute), { recursive: true });
     const contents = "export default { id: 'vr-hashed' };\n";
     await writeFile(absolute, contents);
-    const expectedHash = createHash("sha256")
-      .update(contents)
-      .digest("hex")
-      .slice(0, 12);
+    const expectedHash = createHash("sha256").update(contents).digest("hex");
 
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [
         urlView("vr-hashed", {
           label: "Hashed",
@@ -407,15 +464,15 @@ describe("registerPluginViews / unregisterPluginViews", () => {
       ]),
       pluginDir,
     );
-    const entry = getView("vr-hashed");
+    const entry = getView(runtime, "vr-hashed");
     expect(entry?.available).toBe(true);
     expect(entry?.bundleHash).toBe(expectedHash);
     expect(entry?.bundleSize).toBe(Buffer.byteLength(contents));
     expect(entry?.bundleUrl).toMatch(
-      /^\/api\/views\/vr-hashed\/bundle\.js\?v=/,
+      /^\/api\/views\/vr-hashed\/installations\/[a-f0-9-]{36}\/gui\/bundle\/bundle\.js\?v=/,
     );
     expect(entry?.bundleUrlVersioned).toBe(
-      `/api/views/vr-hashed/bundle.js?v=${expectedHash}`,
+      `/api/views/vr-hashed/installations/${entry?.installationId}/gui/bundle/bundle.js?v=${expectedHash}`,
     );
   });
 
@@ -427,7 +484,7 @@ describe("registerPluginViews / unregisterPluginViews", () => {
     const oversized = Buffer.alloc(1024 * 1024 + 1, 0x61);
     await writeFile(absolute, oversized);
 
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [
         urlView("vr-large", {
           label: "Large",
@@ -437,8 +494,8 @@ describe("registerPluginViews / unregisterPluginViews", () => {
       ]),
       pluginDir,
     );
-    expect(getView("vr-large")?.bundleSize).toBe(oversized.length);
-    expect(getView("vr-large")?.available).toBe(true);
+    expect(getView(runtime, "vr-large")?.bundleSize).toBe(oversized.length);
+    expect(getView(runtime, "vr-large")?.available).toBe(true);
   });
 
   it("does not treat a disk bundle as making a sandboxed-iframe view available", async () => {
@@ -447,7 +504,7 @@ describe("registerPluginViews / unregisterPluginViews", () => {
     await mkdir(path.join(pluginDir, "dist"), { recursive: true });
     await writeFile(path.join(pluginDir, bundleRel), "export default {}\n");
 
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [
         urlView("vr-sandbox", {
           label: "Sandbox",
@@ -458,7 +515,7 @@ describe("registerPluginViews / unregisterPluginViews", () => {
       ]),
       pluginDir,
     );
-    expect(getView("vr-sandbox")?.available).toBe(false);
+    expect(getView(runtime, "vr-sandbox")?.available).toBe(false);
   });
 
   it("marks a sandboxed view available when its frame document exists", async () => {
@@ -467,12 +524,9 @@ describe("registerPluginViews / unregisterPluginViews", () => {
     await mkdir(path.join(pluginDir, "dist"), { recursive: true });
     const html = "<html><body>frame</body></html>";
     await writeFile(path.join(pluginDir, frameRel), html);
-    const expectedHash = createHash("sha256")
-      .update(html)
-      .digest("hex")
-      .slice(0, 12);
+    const expectedHash = createHash("sha256").update(html).digest("hex");
 
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [
         urlView("vr-frame", {
           label: "Frame",
@@ -483,16 +537,16 @@ describe("registerPluginViews / unregisterPluginViews", () => {
       ]),
       pluginDir,
     );
-    const entry = getView("vr-frame");
+    const entry = getView(runtime, "vr-frame");
     expect(entry?.available).toBe(true);
     expect(entry?.frameHash).toBe(expectedHash);
     expect(entry?.frameUrlVersioned).toBe(
-      `/api/views/vr-frame/frame.html?v=${expectedHash}`,
+      `/api/views/vr-frame/installations/${entry?.installationId}/gui/frame/frame.html?v=${expectedHash}`,
     );
   });
 
-  it("encodes the view id and appends viewType on non-gui asset URLs", async () => {
-    await registerPluginViews(
+  it("encodes the view id and binds the non-gui modality in asset URLs", async () => {
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [
         urlView("vr unit/slash", {
           label: "Encoded",
@@ -503,16 +557,16 @@ describe("registerPluginViews / unregisterPluginViews", () => {
       ]),
       FIXTURE_DIR,
     );
-    const entry = getView("vr unit/slash", { viewType: "tui" });
+    const entry = getView(runtime, "vr unit/slash", { viewType: "tui" });
     expect(entry?.bundleUrl).toContain(
-      "/api/views/vr%20unit%2Fslash/bundle.js",
+      "/api/views/vr%20unit%2Fslash/installations/",
     );
-    expect(entry?.bundleUrl).toContain("viewType=tui");
+    expect(entry?.bundleUrl).toContain("/tui/bundle/bundle.js");
     expect(entry?.heroImageUrl).toContain("viewType=tui");
   });
 
   it("takes the first declared platform and defaults to web", async () => {
-    await registerPluginViews(
+    await registerFixturePlugin(
       pluginWith(PLUGIN, [
         urlView("vr-ios", {
           label: "iOS",
@@ -522,8 +576,8 @@ describe("registerPluginViews / unregisterPluginViews", () => {
       ]),
       FIXTURE_DIR,
     );
-    expect(getView("vr-ios")?.platform).toBe("ios");
-    expect(getView("vr-web-default")?.platform).toBe("web");
+    expect(getView(runtime, "vr-ios")?.platform).toBe("ios");
+    expect(getView(runtime, "vr-web-default")?.platform).toBe("web");
   });
 });
 
@@ -655,7 +709,7 @@ describe("registerBuiltinViews", () => {
   it.each([true, false])(
     "restores the wallet fallback after unload (builtins first: %s)",
     async (builtinsFirst) => {
-      if (builtinsFirst) registerBuiltinViews();
+      if (builtinsFirst) registerBuiltinViews(runtime);
       const plugin = {
         ...pluginWith(PLUGIN, [
           urlView("wallet", {
@@ -666,64 +720,73 @@ describe("registerBuiltinViews", () => {
         ]),
         packageName: "@elizaos/plugin-wallet",
       };
-      await registerPluginViews(plugin, FIXTURE_DIR);
-      registerBuiltinViews();
-      expect(getView("wallet")?.pluginName).toBe(PLUGIN);
-      expect(getView("wallet")?.relatedActions).toEqual(["WALLET"]);
-      expect(listViews().filter((view) => view.id === "wallet")).toHaveLength(
-        1,
+      await registerFixturePlugin(plugin, FIXTURE_DIR);
+      registerBuiltinViews(runtime);
+      expect(getView(runtime, "wallet")?.pluginName).toBe(PLUGIN);
+      expect(getView(runtime, "wallet")?.relatedActions).toEqual(["WALLET"]);
+      expect(
+        listViews(runtime).filter((view) => view.id === "wallet"),
+      ).toHaveLength(1);
+      unregisterPluginViews(
+        runtime,
+        installations.get(PLUGIN) ?? { id: "unknown" },
       );
-      unregisterPluginViews(PLUGIN);
-      expect(getView("wallet")?.builtin).toBe(true);
-      expect(getView("wallet")?.label).toBe("Wallet");
-      expect(getView("wallet")?.path).toBe("/wallet");
+      expect(getView(runtime, "wallet")?.builtin).toBe(true);
+      expect(getView(runtime, "wallet")?.label).toBe("Wallet");
+      expect(getView(runtime, "wallet")?.path).toBe("/wallet");
     },
   );
 
   it("does not yield a fallback to a different package or route", async () => {
-    registerBuiltinViews();
-    await registerPluginViews(
-      pluginWith(PLUGIN, [
-        urlView("wallet", { label: "Other", path: "/wallet" }),
-      ]),
-      FIXTURE_DIR,
-    );
-    expect(getView("wallet")?.builtin).toBe(true);
-    await registerPluginViews(
-      {
-        ...pluginWith(PLUGIN, [
-          urlView("wallet", { label: "Other", path: "/different" }),
+    registerBuiltinViews(runtime);
+    await expect(
+      registerFixturePlugin(
+        pluginWith(PLUGIN, [
+          urlView("wallet", { label: "Other", path: "/wallet" }),
         ]),
-        packageName: "@elizaos/plugin-wallet",
-      },
-      FIXTURE_DIR,
-    );
-    expect(getView("wallet")?.builtin).toBe(true);
+        FIXTURE_DIR,
+      ),
+    ).rejects.toMatchObject({ code: "VIEW_REGISTRY_COLLISION" });
+    expect(getView(runtime, "wallet")?.builtin).toBe(true);
+    await expect(
+      registerFixturePlugin(
+        {
+          ...pluginWith(PLUGIN, [
+            urlView("wallet", { label: "Other", path: "/different" }),
+          ]),
+          packageName: "@elizaos/plugin-wallet",
+        },
+        FIXTURE_DIR,
+      ),
+    ).rejects.toMatchObject({ code: "VIEW_REGISTRY_COLLISION" });
+    expect(getView(runtime, "wallet")?.builtin).toBe(true);
   });
   it("registers first-party views as available builtins and is idempotent", () => {
-    registerBuiltinViews();
-    const first = listViews({ includeAllKinds: true }).filter(
+    registerBuiltinViews(runtime);
+    const first = listViews(runtime, { includeAllKinds: true }).filter(
       (entry) => entry.pluginName === BUILTIN_PLUGIN,
     );
     expect(first.length).toBeGreaterThan(0);
     expect(first.every((entry) => entry.builtin === true)).toBe(true);
     expect(first.every((entry) => entry.available === true)).toBe(true);
-    expect(getView("chat")?.pluginName).toBe(BUILTIN_PLUGIN);
+    expect(getView(runtime, "chat")?.pluginName).toBe(BUILTIN_PLUGIN);
 
-    registerBuiltinViews();
-    const second = listViews({ includeAllKinds: true }).filter(
+    registerBuiltinViews(runtime);
+    const second = listViews(runtime, { includeAllKinds: true }).filter(
       (entry) => entry.pluginName === BUILTIN_PLUGIN,
     );
     expect(second).toHaveLength(first.length);
   });
 
   it("keeps a built-in entry when a plugin later claims the same id", async () => {
-    registerBuiltinViews();
-    await registerPluginViews(
-      pluginWith(PLUGIN, [urlView("chat", { label: "Hijack" })]),
-      FIXTURE_DIR,
-    );
-    expect(getView("chat")?.pluginName).toBe(BUILTIN_PLUGIN);
-    expect(getView("chat")?.builtin).toBe(true);
+    registerBuiltinViews(runtime);
+    await expect(
+      registerFixturePlugin(
+        pluginWith(PLUGIN, [urlView("chat", { label: "Hijack" })]),
+        FIXTURE_DIR,
+      ),
+    ).rejects.toMatchObject({ code: "VIEW_REGISTRY_COLLISION" });
+    expect(getView(runtime, "chat")?.pluginName).toBe(BUILTIN_PLUGIN);
+    expect(getView(runtime, "chat")?.builtin).toBe(true);
   });
 });

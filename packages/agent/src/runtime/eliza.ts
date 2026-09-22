@@ -6016,6 +6016,7 @@ export async function startEliza(
     // and diagnostic views intentionally use universal element capabilities,
     // so repeating that lint as a runtime warning mislabels healthy boots.
     validateViewActionMap(
+      runtime,
       runtime.actions.map((a) => a.name),
       runtime.logger,
     );

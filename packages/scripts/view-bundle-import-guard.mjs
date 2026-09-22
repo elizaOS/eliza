@@ -1184,7 +1184,8 @@ async function listUnexpectedOutputs(expected) {
       }
       if (
         !isSymlink &&
-        path.resolve(file) === path.resolve(`${entry.bundle}.map`)
+        (path.resolve(file) === path.resolve(`${entry.bundle}.map`) ||
+          path.resolve(file) === path.resolve(`${entry.bundle}.assets.json`))
       ) {
         continue;
       }
@@ -1308,7 +1309,7 @@ if (import.meta.main || process.argv[1] === fileURLToPath(import.meta.url)) {
   }
   if (unexpectedArtifacts.length > 0) {
     console.error(
-      `[view-bundle-guard] ${unexpectedArtifacts.length} unexpected sidecar artifact(s) found; only bundle.js and bundle.js.map may be emitted.\n`,
+      `[view-bundle-guard] ${unexpectedArtifacts.length} unexpected sidecar artifact(s) found; only bundle.js, bundle.js.map and bundle.js.assets.json may be emitted.\n`,
     );
     for (const artifact of unexpectedArtifacts) {
       console.error(`  ✗ ${artifact.name}: ${artifact.relativeArtifact}`);

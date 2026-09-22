@@ -14,6 +14,7 @@ const signedInProcessView: ViewRegistryEntry = {
   available: true,
 };
 const remoteNotes: ViewRegistryEntry = {
+  installationId: "notes-installation",
   id: "notes",
   label: "Notes",
   path: "/notes",
@@ -22,6 +23,7 @@ const remoteNotes: ViewRegistryEntry = {
   available: true,
 };
 const remoteFrame: ViewRegistryEntry = {
+  installationId: "frame-installation",
   id: "remote-frame",
   label: "Remote frame",
   path: "/remote-frame",
@@ -31,13 +33,33 @@ const remoteFrame: ViewRegistryEntry = {
 };
 
 describe("enforceDynamicViewPolicy", () => {
-  it("removes leaked remote bundles and frames on restricted native clients", () => {
+  it("preserves metadata bindings without remote bundles or frames on restricted native clients", () => {
     expect(
       enforceDynamicViewPolicy(
         [signedInProcessView, remoteNotes, remoteFrame],
         false,
       ),
-    ).toEqual([signedInProcessView]);
+    ).toEqual([
+      signedInProcessView,
+      {
+        ...remoteNotes,
+        bundleUrl: undefined,
+        frameUrl: undefined,
+        bundleUrlVersioned: undefined,
+        frameUrlVersioned: undefined,
+        available: false,
+        metadataOnly: true,
+      },
+      {
+        ...remoteFrame,
+        bundleUrl: undefined,
+        frameUrl: undefined,
+        bundleUrlVersioned: undefined,
+        frameUrlVersioned: undefined,
+        available: false,
+        metadataOnly: true,
+      },
+    ]);
   });
 
   it("preserves remote views on web and desktop clients", () => {

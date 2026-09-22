@@ -17,16 +17,27 @@
  * `resolveViewInteractResult` stub stand in for the async view-interact
  * round-trip that a live shell client would complete.
  */
+
 import { EventEmitter } from "node:events";
 import { readdirSync, readFileSync } from "node:fs";
 import type http from "node:http";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Plugin, ViewDeclaration } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
 import {
-  registerPluginViews,
-  unregisterPluginViews,
+  AgentRuntime,
+  createCharacter,
+  type Plugin,
+  type ViewDeclaration,
+} from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  closeRuntimeViewRegistry,
+  type ViewInstallation,
+} from "../api/view-installations.ts";
+import { closeViewInteractionHost } from "../api/view-interaction-host.ts";
+import {
+  registerPluginViews as registerViews,
+  unregisterPluginViews as unregisterViews,
 } from "../api/views-registry.js";
 import {
   clearCurrentViewState,
@@ -34,6 +45,37 @@ import {
   resolveViewInteractResult,
   type ViewsRouteContext,
 } from "../api/views-routes.js";
+import { claimRendererReply } from "./view-renderer-test-utils.ts";
+
+let runtime: AgentRuntime;
+let hostKey: object;
+const installed = new Map<string, ViewInstallation>();
+beforeEach(() => {
+  runtime = new AgentRuntime({
+    character: createCharacter({ name: "View manifest inventory" }),
+    enableAutonomy: false,
+  });
+  hostKey = {};
+  installed.clear();
+});
+afterEach(() => {
+  closeRuntimeViewRegistry(runtime);
+  closeViewInteractionHost(hostKey);
+  installed.clear();
+});
+async function registerPluginViews(plugin: Plugin, pluginDir?: string) {
+  const lease = await registerViews(runtime, plugin, {
+    pluginDir,
+    indexEmbeddings: false,
+  });
+  installed.set(plugin.name, lease);
+  return lease;
+}
+function unregisterPluginViews(name: string) {
+  const lease = installed.get(name);
+  if (lease) unregisterViews(runtime, lease);
+  installed.delete(name);
+}
 
 type RoutedViewType = "gui" | "tui" | "xr";
 
@@ -207,6 +249,8 @@ function makeCtx(
     process.nextTick(() => req.emit("end"));
   }
   return {
+    runtime,
+    hostKey,
     req,
     res: {} as http.ServerResponse,
     method,
@@ -303,7 +347,7 @@ describe("plugin view coverage", () => {
       expect(failures).toEqual([]);
     } finally {
       for (const pluginName of pluginNames) unregisterPluginViews(pluginName);
-      clearCurrentViewState();
+      clearCurrentViewState(runtime);
     }
   });
 
@@ -333,15 +377,25 @@ describe("plugin view coverage", () => {
                 event.type === "view:interact" &&
                 typeof event.requestId === "string"
               ) {
-                resolveViewInteractResult({
-                  requestId: event.requestId,
-                  success: true,
-                  result: {
-                    viewId: event.viewId,
-                    viewType: event.viewType,
-                    state: "ok",
+                resolveViewInteractResult(
+                  runtime,
+                  hostKey,
+                  "plugin-view-inventory-guard-client",
+                  {
+                    ...claimRendererReply(
+                      runtime,
+                      hostKey,
+                      "plugin-view-inventory-guard-client",
+                      event,
+                    ),
+                    success: true,
+                    result: {
+                      viewId: event.viewId,
+                      viewType: event.viewType,
+                      state: "ok",
+                    },
                   },
-                });
+                );
               }
             },
             { capability: "get-state", timeoutMs: 1_000 },
@@ -382,7 +436,7 @@ describe("plugin view coverage", () => {
       expect(failures).toEqual([]);
     } finally {
       for (const pluginName of pluginNames) unregisterPluginViews(pluginName);
-      clearCurrentViewState();
+      clearCurrentViewState(runtime);
     }
   });
 
@@ -437,7 +491,7 @@ describe("plugin view coverage", () => {
       expect(failures).toEqual([]);
     } finally {
       for (const pluginName of pluginNames) unregisterPluginViews(pluginName);
-      clearCurrentViewState();
+      clearCurrentViewState(runtime);
     }
   });
 
@@ -466,11 +520,24 @@ describe("plugin view coverage", () => {
                   event.type === "view:interact" &&
                   typeof event.requestId === "string"
                 ) {
-                  resolveViewInteractResult({
-                    requestId: event.requestId,
-                    success: true,
-                    result: { viewId: event.viewId, viewType: event.viewType },
-                  });
+                  resolveViewInteractResult(
+                    runtime,
+                    hostKey,
+                    "plugin-view-inventory-guard-client",
+                    {
+                      ...claimRendererReply(
+                        runtime,
+                        hostKey,
+                        "plugin-view-inventory-guard-client",
+                        event,
+                      ),
+                      success: true,
+                      result: {
+                        viewId: event.viewId,
+                        viewType: event.viewType,
+                      },
+                    },
+                  );
                 }
               },
               { capability: "get-state", timeoutMs: 1_000 },
@@ -506,7 +573,7 @@ describe("plugin view coverage", () => {
       expect(failures).toEqual([]);
     } finally {
       for (const pluginName of pluginNames) unregisterPluginViews(pluginName);
-      clearCurrentViewState();
+      clearCurrentViewState(runtime);
     }
   });
 
@@ -538,7 +605,7 @@ describe("plugin view coverage", () => {
       }
     } finally {
       for (const pluginName of pluginNames) unregisterPluginViews(pluginName);
-      clearCurrentViewState();
+      clearCurrentViewState(runtime);
     }
   });
 });

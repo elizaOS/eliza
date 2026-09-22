@@ -46,7 +46,7 @@ import {
   PendantSessionRevisionConflictError,
   type StoredPendantSessionDocument,
 } from "../services/pendant-session/repository.ts";
-import { getViewsBroadcastWs } from "./views-routes.ts";
+import { getViewRequestBroadcast } from "./view-interaction-host.ts";
 
 const PREFIX = "/api/pendant/sessions";
 const MAX_SEGMENTS = 20_000;
@@ -365,7 +365,7 @@ function broadcastMutation(
   ctx: PendantSessionRouteContext,
   snapshot: PendantSessionSnapshot,
 ): void {
-  // The existing websocket fan-out is process-wide, so publish only an
+  // The host websocket fan-out reaches its connected clients, so publish only an
   // invalidation cursor. Authenticated clients fetch the owner-scoped snapshot.
   ctx.state.broadcastWs?.({
     type: "pendant-session:updated",
@@ -987,7 +987,7 @@ export function buildPendantSessionRouteContext(
     state: {
       runtime,
       adminEntityId: routeOwnerEntityId(runtime),
-      broadcastWs: getViewsBroadcastWs() ?? undefined,
+      broadcastWs: getViewRequestBroadcast(req) ?? undefined,
     },
     readJsonBody: readRouteJsonBody,
     json,

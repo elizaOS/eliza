@@ -422,4 +422,37 @@ describe("handleAgentSurfaceCapability", () => {
     const b = getViewRegistry("test-view", "gui");
     expect(a).toBe(b);
   });
+  it("does not share controls or teardown between replacement installations", () => {
+    const old = getOrCreateViewRegistry("test-view", "gui", "old-installation");
+    const current = getOrCreateViewRegistry(
+      "test-view",
+      "gui",
+      "new-installation",
+    );
+    const oldEffect = vi.fn();
+    const newEffect = vi.fn();
+    const releaseOld = retainViewRegistry(old);
+    const releaseCurrent = retainViewRegistry(current);
+    old.register(
+      { id: "save", role: "button", label: "Save", onActivate: oldEffect },
+      () => null,
+    );
+    current.register(
+      { id: "save", role: "button", label: "Save", onActivate: newEffect },
+      () => null,
+    );
+    try {
+      expect(current).not.toBe(old);
+      releaseOld();
+      expect(getViewRegistry("test-view", "gui", "new-installation")).toBe(
+        current,
+      );
+      current.click("save");
+      expect(newEffect).toHaveBeenCalledTimes(1);
+      expect(oldEffect).not.toHaveBeenCalled();
+    } finally {
+      releaseOld();
+      releaseCurrent();
+    }
+  });
 });

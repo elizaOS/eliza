@@ -10,7 +10,7 @@ import {
   ModelType,
   runWithTrajectoryContext,
 } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { ElizaConfig } from "../config/types.ts";
 import {
   type CapturedModelUsage,
@@ -22,7 +22,6 @@ import {
 } from "./prompt-optimization.ts";
 import {
   applyActiveViewAwareness,
-  clearActiveViewContext,
   renderActiveViewContextBlock,
   setActiveViewContext,
 } from "./view-action-affinity.ts";
@@ -34,8 +33,14 @@ const VIEW = {
   viewPath: "/chat",
 };
 
-afterEach(() => {
-  clearActiveViewContext();
+import {
+  runWithViewClient,
+  type ViewClientScope,
+} from "./view-client-context.ts";
+
+let scope: ViewClientScope;
+beforeEach(() => {
+  scope = { hostKey: {}, clientId: "prompt-client" };
 });
 
 function createRuntime(): AgentRuntime {
@@ -60,10 +65,8 @@ function callModel(
   payload?: unknown,
   ...rest: unknown[]
 ): Promise<unknown> {
-  return (runtime.useModel as unknown as LooseUseModel)(
-    modelType,
-    payload,
-    ...rest,
+  return runWithViewClient(scope, () =>
+    (runtime.useModel as unknown as LooseUseModel)(modelType, payload, ...rest),
   );
 }
 
@@ -455,8 +458,8 @@ describe("installPromptOptimizations", () => {
   });
 
   it("appends fresh active-view awareness to the last user message", async () => {
-    setActiveViewContext(VIEW);
     const { runtime, calls } = installRecordingRuntime();
+    setActiveViewContext(runtime, VIEW, scope);
     await callModel(runtime, ModelType.ACTION_PLANNER, {
       messages: [
         { role: "user", content: "first" },
@@ -469,7 +472,7 @@ describe("installPromptOptimizations", () => {
     ).messages;
     expect(messages[0]?.content).toBe("first");
     expect(messages[2]?.content).toBe(
-      `latest\n\n${renderActiveViewContextBlock(VIEW)}`,
+      `latest\n\n${renderActiveViewContextBlock(runtime, VIEW)}`,
     );
     expect(promptOptimizationOf(payloadAt(calls, 0))?.transformations).toEqual([
       "active-view-awareness:chat",
@@ -477,8 +480,8 @@ describe("installPromptOptimizations", () => {
   });
 
   it("preserves the base prefix and native tool receipts as the current view changes", async () => {
-    setActiveViewContext(VIEW);
     const { runtime, calls } = installRecordingRuntime();
+    setActiveViewContext(runtime, VIEW, scope);
     const baseText =
       "Complete provider context.\nRead the note, then open Calendar if green.";
     const feedbackText = "Read completed. Continue the pending request.";
@@ -525,7 +528,7 @@ describe("installPromptOptimizations", () => {
       viewLabel: "Calendar",
       viewPath: "/calendar",
     };
-    setActiveViewContext(calendar);
+    setActiveViewContext(runtime, calendar, scope);
     await callModel(runtime, ModelType.ACTION_PLANNER, {
       messages: [...base, ...receipt],
     });
@@ -539,14 +542,14 @@ describe("installPromptOptimizations", () => {
     expect(second.slice(0, 2)).toEqual(base);
     expect(second.slice(2, 4)).toEqual(receipt.slice(0, 2));
     expect(second[4]?.content).toBe(
-      `${feedbackText}\n\n${renderActiveViewContextBlock(calendar)}`,
+      `${feedbackText}\n\n${renderActiveViewContextBlock(runtime, calendar)}`,
     );
     expect({ base, receipt }).toEqual(originals);
   });
 
   it("keeps literal view headings, whitespace and multimodal envelopes intact", async () => {
-    setActiveViewContext(VIEW);
     const { runtime, calls } = installRecordingRuntime();
+    setActiveViewContext(runtime, VIEW, scope);
     const literal =
       "  Quote exactly:\n# Active View\nThis is source text, not an injected snapshot.  ";
     const image = {
@@ -568,7 +571,7 @@ describe("installPromptOptimizations", () => {
           image,
           {
             type: "text",
-            text: `${literal}\n\n${renderActiveViewContextBlock(VIEW)}`,
+            text: `${literal}\n\n${renderActiveViewContextBlock(runtime, VIEW)}`,
           },
         ],
       },
@@ -577,18 +580,20 @@ describe("installPromptOptimizations", () => {
   });
 
   it("injects active-view awareness into a prompt that already lists available actions", async () => {
-    setActiveViewContext(VIEW);
     const { runtime, calls } = installRecordingRuntime();
+    setActiveViewContext(runtime, VIEW, scope);
     const original = "plan this\n# Available Actions\n- wait";
     await callModel(runtime, ModelType.TEXT_LARGE, { prompt: original });
     const payload = payloadAt(calls, 0) as { prompt: string };
-    expect(payload.prompt).toBe(applyActiveViewAwareness(original, VIEW));
+    expect(payload.prompt).toBe(
+      applyActiveViewAwareness(runtime, original, VIEW),
+    );
     expect(payload.prompt).toContain("# Active View");
   });
 
   it("does not inject active-view awareness when no user message exists", async () => {
-    setActiveViewContext(VIEW);
     const { runtime, calls } = installRecordingRuntime();
+    setActiveViewContext(runtime, VIEW, scope);
     await callModel(runtime, ModelType.ACTION_PLANNER, {
       messages: [
         { role: "system", content: "sys" },

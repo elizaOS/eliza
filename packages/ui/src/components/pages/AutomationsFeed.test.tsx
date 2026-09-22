@@ -47,6 +47,12 @@ const platformMock = vi.hoisted(() => ({
   platform: "web" as "web" | "ios" | "android" | "desktop",
 }));
 
+// This standalone page fixture has no connected runtime view installation.
+// Catalog binding and reporting are exercised by the shell/catalog integration tests.
+vi.mock("../../hooks/useAvailableViews", () => ({
+  useAvailableViews: () => ({ views: [] }),
+}));
+
 vi.mock("../../api", () => ({
   client: clientMock,
 }));

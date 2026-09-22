@@ -4,18 +4,30 @@
  * branches, and dispatchViewInteract success/deny/timeout/fallback. Drives the
  * real module plus the in-process view registry; no live model or HTTP server.
  */
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  bindCatalogAssetRequest,
+  claimRendererReply,
+} from "../__tests__/view-renderer-test-utils.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
+import {
+  beginViewInstallation,
+  closeRuntimeViewRegistry,
+  commitViewInstallation,
+} from "./view-installations.ts";
+import { closeViewInteractionHost } from "./view-interaction-host.ts";
 import type { ViewRegistryEntry } from "./view-registry-types.ts";
 import {
+  getView,
   registerBuiltinViews,
   registerPluginViews,
-  unregisterPluginViews,
 } from "./views-registry.ts";
 import {
   type CurrentViewState,
@@ -38,6 +50,9 @@ const TEST_PLUGIN = "@test/views-routes-coverage";
 const BUNDLE_PLUGIN = "@test/views-routes-bundle";
 const PRIVATE_PLUGIN = "@test/views-routes-private";
 
+let runtime: AgentRuntime;
+let hostKey: object;
+let scope: { hostKey: object; clientId: string };
 let pluginDir = "";
 
 function seedPluginDir(): string {
@@ -63,6 +78,13 @@ function seedPluginDir(): string {
   writeFileSync(
     path.join(dir, "package.json"),
     '{"name":"@test/views-routes-bundle"}\n',
+  );
+  writeFileSync(
+    path.join(dir, "dist/views/bundle.js.assets.json"),
+    JSON.stringify({
+      version: 1,
+      files: ["bundle.js", "chunk.css", "data.json", "picture.svg"],
+    }),
   );
   return dir;
 }
@@ -93,7 +115,8 @@ function makeEntry(
   if (extras.surface) entry.surface = extras.surface;
   if (extras.serverInteract) entry.serverInteract = extras.serverInteract;
   if (extras.roleGate) entry.roleGate = extras.roleGate;
-  return entry;
+  const installation = beginViewInstallation(runtime, TEST_PLUGIN);
+  return commitViewInstallation(runtime, installation, [entry])[0];
 }
 
 function makeCtx(options: {
@@ -125,7 +148,7 @@ function makeCtx(options: {
   const writeHead = options.writeHead ?? vi.fn();
   const setHeader = options.setHeader ?? vi.fn();
   const end = options.end ?? vi.fn();
-  const headers = options.headers ?? {};
+  const headers = { "x-elizaos-client-id": "shell-1", ...options.headers };
   let req: http.IncomingMessage;
   if (options.noStream) {
     req = { headers } as unknown as http.IncomingMessage;
@@ -144,6 +167,8 @@ function makeCtx(options: {
   } as unknown as http.ServerResponse;
   const pathname = options.pathname;
   const ctx: ViewsRouteContext = {
+    runtime,
+    hostKey,
     req,
     res,
     method: options.method,
@@ -154,6 +179,7 @@ function makeCtx(options: {
     broadcastWs,
     broadcastWsToClientId,
   };
+  bindCatalogAssetRequest(runtime, ctx);
   if (options.callerAuthorization) {
     ctx.callerAuthorization = options.callerAuthorization;
   }
@@ -173,13 +199,20 @@ function makeCtx(options: {
 }
 
 beforeEach(async () => {
+  runtime = new AgentRuntime({
+    character: createCharacter({ name: "View routes" }),
+    enableAutonomy: false,
+  });
+  hostKey = {};
+  scope = { hostKey, clientId: "shell-1" };
   pluginDir = seedPluginDir();
-  registerBuiltinViews();
-  clearCurrentViewState();
-  setViewsBroadcastWs(null, null);
+  clearCurrentViewState(runtime, scope);
+  setViewsBroadcastWs(hostKey, null, null);
   await registerPluginViews(
+    runtime,
     {
       name: TEST_PLUGIN,
+      packageName: "@elizaos/plugin-wallet",
       description: "Synthetic views-routes coverage plugin.",
       views: [
         {
@@ -198,9 +231,10 @@ beforeEach(async () => {
         },
       ],
     },
-    process.cwd(),
+    { pluginDir: process.cwd() },
   );
   await registerPluginViews(
+    runtime,
     {
       name: PRIVATE_PLUGIN,
       description: "Owner-gated view.",
@@ -213,9 +247,10 @@ beforeEach(async () => {
         },
       ],
     },
-    process.cwd(),
+    { pluginDir: process.cwd() },
   );
   await registerPluginViews(
+    runtime,
     {
       name: BUNDLE_PLUGIN,
       description: "On-disk bundle/frame/asset fixture.",
@@ -229,16 +264,15 @@ beforeEach(async () => {
         },
       ],
     },
-    pluginDir,
+    { pluginDir: pluginDir },
   );
 });
 
 afterEach(() => {
-  clearCurrentViewState();
-  setViewsBroadcastWs(null, null);
-  unregisterPluginViews(TEST_PLUGIN);
-  unregisterPluginViews(PRIVATE_PLUGIN);
-  unregisterPluginViews(BUNDLE_PLUGIN);
+  clearCurrentViewState(runtime, scope);
+  setViewsBroadcastWs(hostKey, null, null);
+  closeRuntimeViewRegistry(runtime);
+  closeViewInteractionHost(hostKey);
   rmSync(pluginDir, { recursive: true, force: true });
   vi.restoreAllMocks();
 });
@@ -291,23 +325,23 @@ describe("parseViewTypeParam / parseViewTypeValue", () => {
 
 describe("views broadcast WS wiring", () => {
   it("starts unset and round-trips the process broadcasters", () => {
-    expect(getViewsBroadcastWs()).toBeNull();
-    expect(getViewsBroadcastWsToClientId()).toBeNull();
+    expect(getViewsBroadcastWs(hostKey)).toBeNull();
+    expect(getViewsBroadcastWsToClientId(hostKey)).toBeNull();
 
     const broadcast = vi.fn();
     const toClient = vi.fn(() => 1);
-    setViewsBroadcastWs(broadcast, toClient);
+    setViewsBroadcastWs(hostKey, broadcast, toClient);
 
-    expect(getViewsBroadcastWs()).toBe(broadcast);
-    expect(getViewsBroadcastWsToClientId()).toBe(toClient);
+    expect(getViewsBroadcastWs(hostKey)).toBe(broadcast);
+    expect(getViewsBroadcastWsToClientId(hostKey)).toBe(toClient);
 
-    setViewsBroadcastWs(broadcast);
-    expect(getViewsBroadcastWs()).toBe(broadcast);
-    expect(getViewsBroadcastWsToClientId()).toBeNull();
+    setViewsBroadcastWs(hostKey, broadcast);
+    expect(getViewsBroadcastWs(hostKey)).toBe(broadcast);
+    expect(getViewsBroadcastWsToClientId(hostKey)).toBeNull();
 
-    setViewsBroadcastWs(null, null);
-    expect(getViewsBroadcastWs()).toBeNull();
-    expect(getViewsBroadcastWsToClientId()).toBeNull();
+    setViewsBroadcastWs(hostKey, null, null);
+    expect(getViewsBroadcastWs(hostKey)).toBeNull();
+    expect(getViewsBroadcastWsToClientId(hostKey)).toBeNull();
   });
 });
 
@@ -350,9 +384,9 @@ describe("isViewSwitchFresh / current view state", () => {
       body: {},
     });
     await handleViewsRoutes(ctx);
-    expect(getCurrentViewState()?.viewId).toBe("wallet");
-    clearCurrentViewState();
-    expect(getCurrentViewState()).toBeNull();
+    expect(getCurrentViewState(runtime, scope)?.viewId).toBe("wallet");
+    clearCurrentViewState(runtime, scope);
+    expect(getCurrentViewState(runtime, scope)).toBeNull();
   });
 });
 
@@ -442,6 +476,7 @@ describe("handleViewsRoutes prefix and identity routes", () => {
   });
 
   it("GET /api/views lists GUI views and marks builtins", async () => {
+    registerBuiltinViews(runtime);
     const { ctx, json, error } = makeCtx({
       method: "GET",
       pathname: "/api/views",
@@ -569,7 +604,7 @@ describe("GET /api/views/:id bundle, frame, and assets", () => {
     expect(json).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalledWith(
       ctx.res,
-      "Dynamic view bundle loading is not permitted on this platform.",
+      "Dynamic view asset loading is not permitted on this platform.",
       403,
     );
   });
@@ -583,7 +618,7 @@ describe("GET /api/views/:id bundle, frame, and assets", () => {
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
     expect(error).toHaveBeenCalledWith(
       ctx.res,
-      "Dynamic view frame loading is not permitted on this platform.",
+      "Dynamic view asset loading is not permitted on this platform.",
       403,
     );
   });
@@ -602,7 +637,7 @@ describe("GET /api/views/:id bundle, frame, and assets", () => {
     );
   });
 
-  it("404s a view with no bundle path configured", async () => {
+  it("404s a view with no local root", async () => {
     const { ctx, error } = makeCtx({
       method: "GET",
       pathname: "/api/views/wallet/bundle.js",
@@ -610,12 +645,12 @@ describe("GET /api/views/:id bundle, frame, and assets", () => {
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
     expect(error).toHaveBeenCalledWith(
       ctx.res,
-      'View "wallet" has no bundle path configured. Build the plugin bundle first.',
+      "View asset is not built or has no local root",
       404,
     );
   });
 
-  it("404s a view with no frame path configured", async () => {
+  it("404s a view with no local root", async () => {
     const { ctx, error } = makeCtx({
       method: "GET",
       pathname: "/api/views/wallet/frame.html",
@@ -623,7 +658,7 @@ describe("GET /api/views/:id bundle, frame, and assets", () => {
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
     expect(error).toHaveBeenCalledWith(
       ctx.res,
-      'View "wallet" has no frame path configured. Build or declare the sandboxed frame document first.',
+      "View asset is not built or has no local root",
       404,
     );
   });
@@ -639,24 +674,26 @@ describe("GET /api/views/:id bundle, frame, and assets", () => {
       200,
       expect.objectContaining({
         "Content-Type": "application/javascript; charset=utf-8",
-        "Cache-Control": "no-cache",
+        "Cache-Control": "private, no-cache",
       }),
     );
     const headers = writeHead.mock.calls[0][1] as Record<string, string>;
-    expect(headers.ETag).toMatch(/^"[0-9a-f]{16}"$/);
+    expect(headers.ETag).toMatch(/^"[0-9a-f]{64}"$/);
     expect(headers["X-Content-Hash"]).toMatch(/^sha256-/);
     expect(end).toHaveBeenCalledWith(Buffer.from("export default 1;\n"));
   });
 
-  it("HEAD of the bundle returns no body and no content hash", async () => {
+  it("HEAD of the bundle returns GET representation metadata without a body", async () => {
     const { ctx, writeHead, end } = makeCtx({
       method: "HEAD",
       pathname: "/api/views/bundled/bundle.js",
     });
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
     const headers = writeHead.mock.calls[0][1] as Record<string, string>;
-    expect(headers["Content-Length"]).toBe(0);
-    expect(headers["X-Content-Hash"]).toBeUndefined();
+    expect(headers["Content-Length"]).toBe(
+      Buffer.byteLength("export default 1;\n"),
+    );
+    expect(headers["X-Content-Hash"]).toMatch(/^sha256-/);
     expect(end).toHaveBeenCalledWith(undefined);
   });
 
@@ -674,7 +711,10 @@ describe("GET /api/views/:id bundle, frame, and assets", () => {
       headers: { "if-none-match": etag },
     });
     await expect(handleViewsRoutes(second.ctx)).resolves.toBe(true);
-    expect(second.writeHead).toHaveBeenCalledWith(304, {});
+    expect(second.writeHead).toHaveBeenCalledWith(
+      304,
+      first.writeHead.mock.calls[0][1],
+    );
     expect(second.end).toHaveBeenCalled();
     expect(second.error).not.toHaveBeenCalled();
   });
@@ -737,9 +777,9 @@ describe("GET /api/views/:id bundle, frame, and assets", () => {
       pathname: "/api/views/bundled/nope.wasm",
     });
     await handleViewsRoutes(missing.ctx);
-    expect(missing.error).toHaveBeenCalledWith(
+    expect(missing.json).toHaveBeenCalledWith(
       missing.ctx.res,
-      'View asset "nope.wasm" not found',
+      expect.objectContaining({ code: "VIEW_ASSET_NOT_PUBLISHED" }),
       404,
     );
   });
@@ -754,7 +794,7 @@ describe("GET /api/views/:id bundle, frame, and assets", () => {
       await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
       expect(error).toHaveBeenCalledWith(
         ctx.res,
-        "Malformed view asset path",
+        "Malformed view asset path or modality",
         400,
       );
       expect(writeHead).not.toHaveBeenCalled();
@@ -847,6 +887,8 @@ describe("POST /api/views/:id/elements", () => {
       method: "POST",
       pathname: "/api/views/wallet/elements",
       body: {
+        installationId: getView(runtime, "wallet")?.installationId,
+        viewType: "gui",
         elements: [
           null,
           12,
@@ -882,7 +924,11 @@ describe("POST /api/views/:id/elements", () => {
     const report = makeCtx({
       method: "POST",
       pathname: "/api/views/wallet/elements",
-      body: { elements: { id: "send" } },
+      body: {
+        installationId: getView(runtime, "wallet")?.installationId,
+        viewType: "gui",
+        elements: { id: "send" },
+      },
     });
     await handleViewsRoutes(report.ctx);
     expect(report.json).toHaveBeenCalledWith(
@@ -892,11 +938,13 @@ describe("POST /api/views/:id/elements", () => {
   });
 
   it("restores foreground state after a backend restart when the path matches", async () => {
-    clearCurrentViewState();
+    clearCurrentViewState(runtime, scope);
     const report = makeCtx({
       method: "POST",
       pathname: "/api/views/wallet/elements",
       body: {
+        installationId: getView(runtime, "wallet")?.installationId,
+        viewType: "gui",
         viewPath: "/wallet?tab=send",
         elements: [{ id: "send", role: "button", label: "Send" }],
       },
@@ -906,16 +954,18 @@ describe("POST /api/views/:id/elements", () => {
       report.ctx.res,
       expect.objectContaining({ accepted: true, count: 1 }),
     );
-    expect(getCurrentViewState()?.viewId).toBe("wallet");
-    expect(getCurrentViewState()?.viewPath).toBe("/wallet");
+    expect(getCurrentViewState(runtime, scope)?.viewId).toBe("wallet");
+    expect(getCurrentViewState(runtime, scope)?.viewPath).toBe("/wallet");
   });
 
   it("does not restore a background view whose reported path does not match", async () => {
-    clearCurrentViewState();
+    clearCurrentViewState(runtime, scope);
     const report = makeCtx({
       method: "POST",
       pathname: "/api/views/wallet/elements",
       body: {
+        installationId: getView(runtime, "wallet")?.installationId,
+        viewType: "gui",
         viewPath: "/settings",
         elements: [{ id: "send" }],
       },
@@ -925,7 +975,7 @@ describe("POST /api/views/:id/elements", () => {
       report.ctx.res,
       expect.objectContaining({ accepted: false, count: 1 }),
     );
-    expect(getCurrentViewState()).toBeNull();
+    expect(getCurrentViewState(runtime, scope)).toBeNull();
   });
 });
 
@@ -998,7 +1048,7 @@ describe("dispatchViewInteract", () => {
       "dispatch-wallet",
       "get-state",
       undefined,
-      { userRoles: ["USER"] },
+      { runtime, hostKey, userRoles: ["USER"] },
     );
     expect(result.success).toBe(false);
     expect(result.error).toBe(
@@ -1012,7 +1062,7 @@ describe("dispatchViewInteract", () => {
       "dispatch-wallet",
       "click-element",
       { elementId: "send" },
-      {},
+      { runtime, hostKey },
     );
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/does not grant `agent-surface`/);
@@ -1032,7 +1082,7 @@ describe("dispatchViewInteract", () => {
       "dispatch-wallet",
       "confirm-send",
       undefined,
-      {},
+      { runtime, hostKey },
     );
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/requires direct human interaction/);
@@ -1049,7 +1099,7 @@ describe("dispatchViewInteract", () => {
       "dispatch-wallet",
       "click-element",
       { elementId: "send" },
-      { broadcastWs },
+      { runtime, hostKey, broadcastWs },
     );
     expect(result.success).toBe(true);
     expect(result.result).toEqual({ success: true, text: "ok" });
@@ -1069,7 +1119,7 @@ describe("dispatchViewInteract", () => {
       "dispatch-wallet",
       "get-state",
       undefined,
-      {},
+      { runtime, hostKey },
     );
     expect(result.success).toBe(true);
     expect(result.result).toBe("pong");
@@ -1085,13 +1135,13 @@ describe("dispatchViewInteract", () => {
       "dispatch-wallet",
       "get-state",
       undefined,
-      {},
+      { runtime, hostKey },
     );
     expect(result.success).toBe(false);
     expect(result.error).toBe("disk full");
     expect(result.result).toEqual({
       success: false,
-      text: 'Cannot invoke capability "get-state" on view "dispatch-wallet": disk full.',
+      text: 'Unknown outcome for capability "get-state" on view "dispatch-wallet": disk full.',
     });
   });
 
@@ -1105,7 +1155,7 @@ describe("dispatchViewInteract", () => {
       "dispatch-wallet",
       "get-state",
       undefined,
-      {},
+      { runtime, hostKey },
     );
     expect(result.success).toBe(false);
     expect(result.error).toBe("nope");
@@ -1117,7 +1167,7 @@ describe("dispatchViewInteract", () => {
       "dispatch-wallet",
       "get-state",
       undefined,
-      {},
+      { runtime, hostKey },
     );
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/Missing client id/);
@@ -1129,7 +1179,7 @@ describe("dispatchViewInteract", () => {
       "dispatch-wallet",
       "get-state",
       undefined,
-      { clientId: "shell-1" },
+      { runtime, hostKey, clientId: "shell-1" },
     );
     expect(result.success).toBe(false);
     expect(result.error).toBe(
@@ -1144,11 +1194,13 @@ describe("dispatchViewInteract", () => {
       "get-state",
       undefined,
       {
+        runtime,
+        hostKey,
         clientId: "shell-1",
         broadcastWsToClientId: (_clientId, payload) => {
           const frame = payload as { requestId: string };
-          resolveViewInteractResult({
-            requestId: frame.requestId,
+          resolveViewInteractResult(runtime, hostKey, "shell-1", {
+            ...claimRendererReply(runtime, hostKey, "shell-1", frame),
             success: true,
             result: { visible: "Wallet" },
           });
@@ -1167,15 +1219,12 @@ describe("dispatchViewInteract", () => {
       "dispatch-wallet",
       "get-state",
       undefined,
-      {
-        clientId: "shell-1",
-        broadcastWsToClientId: () => 1,
-      },
+      { runtime, hostKey, clientId: "shell-1", broadcastWsToClientId: () => 1 },
       25,
     );
     expect(result.success).toBe(false);
     expect(result.failureKind).toBe("timeout");
-    expect(result.error).toMatch(/within 25ms/);
+    expect(result.error).toMatch(/timed out after 25ms/);
   });
 
   it("reports an unavailable client when targeted delivery sends to 0 sockets", async () => {
@@ -1185,6 +1234,8 @@ describe("dispatchViewInteract", () => {
       "get-state",
       undefined,
       {
+        runtime,
+        hostKey,
         clientId: "shell-missing",
         broadcastWsToClientId: () => 0,
       },
@@ -1193,7 +1244,7 @@ describe("dispatchViewInteract", () => {
     expect(result.error).toMatch(/No connected view client "shell-missing"/);
   });
 
-  it("falls back to serverInteract when targeted delivery throws", async () => {
+  it("does not replay through serverInteract after targeted delivery throws", async () => {
     const serverInteract = vi.fn(async () => ({
       success: true,
       via: "server",
@@ -1207,20 +1258,22 @@ describe("dispatchViewInteract", () => {
       "click-element",
       { elementId: "send" },
       {
+        runtime,
+        hostKey,
         clientId: "shell-1",
         broadcastWsToClientId: () => {
           throw new Error("socket down");
         },
       },
     );
-    expect(result.success).toBe(true);
-    expect(result.result).toEqual({ success: true, via: "server" });
-    expect(serverInteract).toHaveBeenCalledTimes(1);
+    expect(result.success).toBe(false);
+    expect(result.failureKind).toBe("unknown");
+    expect(serverInteract).not.toHaveBeenCalled();
   });
 
   it("is a no-op when resolveViewInteractResult gets an unknown requestId", () => {
     expect(() =>
-      resolveViewInteractResult({
+      resolveViewInteractResult(runtime, hostKey, "shell-1", {
         requestId: "missing-request",
         success: true,
       }),

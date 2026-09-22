@@ -671,7 +671,7 @@ export interface ViewScopedAction {
  * A UI view contributed by a plugin.
  *
  * Views are compiled to JavaScript bundles, served by the agent router at
- * `/api/views/<id>/bundle.js`, and loaded dynamically by the frontend shell
+ * an installation-bound catalog URL, and loaded dynamically by the frontend shell
  * via `import()`. Views that declare `surface.isolation: "sandboxed-iframe"`
  * instead supply a complete HTML document via `framePath`/`frameUrl`; the shell
  * mounts that document in `<iframe sandbox>` and never substitutes a JS bundle
@@ -688,7 +688,7 @@ export interface ViewScopedAction {
 export interface ViewDeclaration {
 	/**
 	 * Stable unique id scoped to the owning plugin (e.g. "wallet.inventory").
-	 * Used as the URL segment: `/api/views/<id>/bundle.js`.
+	 * Used as the view identifier in catalog and asset URLs.
 	 */
 	id: string;
 	/** Built-in fallback only: package that may replace this view at the same id and path. */
@@ -823,8 +823,8 @@ export interface ViewDeclaration {
 	/**
 	 * Path from the plugin's package root to the compiled view bundle.
 	 * Convention: `"dist/views/bundle.js"` or `"dist/views/<id>/bundle.js"`.
-	 * The view registry resolves this to an absolute `/api/views/<id>/bundle.js`
-	 * URL at startup and on plugin hot-reload.
+	 * The view registry publishes an installation-bound URL at startup and on
+	 * plugin hot-reload. Consumers use the catalog URL without constructing it.
 	 */
 	bundlePath?: string;
 	/**
@@ -836,7 +836,7 @@ export interface ViewDeclaration {
 	/**
 	 * Path from the plugin's package root to a complete HTML document for
 	 * `surface.isolation: "sandboxed-iframe"` views. The registry resolves this
-	 * to `/api/views/<id>/frame.html`; it is a document URL, never a JS bundle.
+	 * to an installation-bound catalog URL; it is a document, never a JS bundle.
 	 */
 	framePath?: string;
 	/**
@@ -1327,7 +1327,7 @@ export interface Plugin {
 
 	/**
 	 * UI views this plugin contributes. Views are compiled to bundles, served
-	 * by the agent at `/api/views/<id>/bundle.js`, and dynamically loaded by
+	 * by the agent at an installation-bound catalog URL, and dynamically loaded by
 	 * the frontend shell. Replaces the static import pattern in `main.tsx`.
 	 *
 	 * The view registry scans loaded plugins for this field at startup and on

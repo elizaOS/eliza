@@ -194,7 +194,13 @@ describe("ViewCapabilityDeniedError", () => {
 
 // ── Real-path: a mounted DynamicViewLoader gated by its manifest ─────────────
 const { sendWsMessage } = vi.hoisted(() => ({ sendWsMessage: vi.fn() }));
-vi.mock("../../api", () => ({ client: { sendWsMessage } }));
+vi.mock("../../api", () => ({
+  client: {
+    sendWsMessage,
+    fetch: vi.fn(async () => ({ claimId: "execution-claim" })),
+    clientId: "fixture-client",
+  },
+}));
 
 // Import after the api mock so DynamicViewLoader binds the mocked client.
 const { __resetDynamicViewLoaderCacheForTests, DynamicViewLoader } =
@@ -247,6 +253,7 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
     }));
     return render(
       <DynamicViewLoader
+        installationId="fixture-installation"
         bundleUrl={`https://capability.example.test/assets/${viewId}.js`}
         viewId={viewId}
         viewType="gui"
@@ -268,6 +275,7 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
         "agent-fill",
         { id: "field", value: "pwn" },
         "req-denied",
+        "fixture-installation",
       );
     });
 
@@ -276,6 +284,10 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
     await waitFor(() => {
       expect(sendWsMessage).toHaveBeenCalledWith(
         expect.objectContaining({
+          viewId: "ungranted.view",
+          viewType: "gui",
+          installationId: "fixture-installation",
+          claimId: "execution-claim",
           type: "view:interact:result",
           requestId: "req-denied",
           success: false,
@@ -306,12 +318,17 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
         "fill-input",
         { name: "field", value: "hello" },
         "req-allowed",
+        "fixture-installation",
       );
     });
 
     await waitFor(() => {
       expect(sendWsMessage).toHaveBeenCalledWith(
         expect.objectContaining({
+          viewId: "granted.view",
+          viewType: "gui",
+          installationId: "fixture-installation",
+          claimId: "execution-claim",
           type: "view:interact:result",
           requestId: "req-allowed",
           success: true,
@@ -334,12 +351,17 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
         "get-text",
         undefined,
         "req-read",
+        "fixture-installation",
       );
     });
 
     await waitFor(() => {
       expect(sendWsMessage).toHaveBeenCalledWith(
         expect.objectContaining({
+          viewId: "readonly.view",
+          viewType: "gui",
+          installationId: "fixture-installation",
+          claimId: "execution-claim",
           type: "view:interact:result",
           requestId: "req-read",
           success: true,
@@ -364,6 +386,7 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
         "agent-click",
         { id: "field" },
         "req-immersive",
+        "fixture-installation",
       );
     });
 

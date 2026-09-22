@@ -10,28 +10,56 @@ import os from "node:os";
 import path from "node:path";
 import { AgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getBundleDiskPath, getView } from "../api/views-registry.ts";
 import {
-  getBundleDiskPath,
-  getView,
-  unregisterPluginViews,
-} from "../api/views-registry.ts";
-import {
-  _resetLoadedDirectoryPluginsForTests,
-  getLoadedDirectoryPlugins,
   loadPluginFromDirectory,
   unloadPluginFromDirectory,
 } from "./load-plugin-from-directory.ts";
 
 let tmpDir: string;
 
+it("keeps same-name directory plugins independent across runtime instances", async () => {
+  const a = new AgentRuntime({ logLevel: "fatal" });
+  const b = new AgentRuntime({ logLevel: "fatal" });
+  const first = await scaffold(
+    "first",
+    { main: "index.js" },
+    {
+      "index.js": reloadableViewPluginSource("A"),
+      "dist/views/bundle.js": "export const version = 'A';",
+    },
+  );
+  const second = await scaffold(
+    "second",
+    { main: "index.js" },
+    {
+      "index.js": reloadableViewPluginSource("B"),
+      "dist/views/bundle.js": "export const version = 'B';",
+    },
+  );
+  try {
+    await loadPluginFromDirectory({ runtime: a, directory: first });
+    await loadPluginFromDirectory({ runtime: b, directory: second });
+    expect(getView(a, "dir-loaded-view")?.label).toBe("Dir Loaded A");
+    const peer = getView(b, "dir-loaded-view");
+    expect(peer?.label).toBe("Dir Loaded B");
+    await unloadPluginFromDirectory({
+      runtime: a,
+      pluginName: "view-dir-plugin",
+    });
+    expect(getView(a, "dir-loaded-view")).toBeUndefined();
+    expect(getView(b, "dir-loaded-view")).toBe(peer);
+    expect(b.plugins.map((plugin) => plugin.name)).toEqual(["view-dir-plugin"]);
+  } finally {
+    await Promise.all([a.stop(), b.stop()]);
+  }
+});
+
 beforeEach(async () => {
-  _resetLoadedDirectoryPluginsForTests();
   tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "agent-load-dir-plugin-"));
 });
 
 afterEach(async () => {
-  _resetLoadedDirectoryPluginsForTests();
-  unregisterPluginViews("view-dir-plugin");
   await fsp.rm(tmpDir, { recursive: true, force: true });
 });
 
@@ -103,7 +131,7 @@ async function expectIncumbentViewPlugin(
   incumbentDirectory: string,
 ): Promise<void> {
   const realIncumbentDirectory = await fsp.realpath(incumbentDirectory);
-  expect(getView("dir-loaded-view")).toMatchObject({
+  expect(getView(runtime, "dir-loaded-view")).toMatchObject({
     label: "Dir Loaded v1",
     pluginDir: realIncumbentDirectory,
     available: true,
@@ -118,12 +146,6 @@ async function expectIncumbentViewPlugin(
   await expect(
     actions[0]?.handler?.(runtime as never, {} as never, {} as never),
   ).resolves.toEqual({ version: "v1" });
-  expect(getLoadedDirectoryPlugins()).toEqual([
-    expect.objectContaining({
-      pluginName: "view-dir-plugin",
-      directory: realIncumbentDirectory,
-    }),
-  ]);
 }
 
 describe("loadPluginFromDirectory", () => {
@@ -150,7 +172,7 @@ describe("loadPluginFromDirectory", () => {
     )) as { pong?: boolean } | undefined;
     expect(result?.pong).toBe(true);
 
-    expect(getLoadedDirectoryPlugins().map((e) => e.pluginName)).toContain(
+    expect(runtime.plugins.map((plugin) => plugin.name)).toContain(
       "dir-loader-test-plugin",
     );
 
@@ -162,7 +184,7 @@ describe("loadPluginFromDirectory", () => {
     expect(runtime.actions.some((a) => a.name === "DIR_LOADER_PING")).toBe(
       false,
     );
-    expect(getLoadedDirectoryPlugins()).toHaveLength(0);
+    expect(runtime.plugins).toHaveLength(0);
   });
 
   it("falls back to dist/index.js when package.json has no usable entry", async () => {
@@ -214,7 +236,7 @@ describe("loadPluginFromDirectory", () => {
     expect(loaded.pluginName).toBe("view-dir-plugin");
     const realDir = await fsp.realpath(dir);
 
-    const view = getView("dir-loaded-view");
+    const view = getView(runtime, "dir-loaded-view");
     expect(view).toMatchObject({
       pluginName: "view-dir-plugin",
       pluginDir: realDir,
@@ -225,7 +247,7 @@ describe("loadPluginFromDirectory", () => {
     );
 
     await unloadPluginFromDirectory({ runtime, pluginName: "view-dir-plugin" });
-    expect(getView("dir-loaded-view")).toBeUndefined();
+    expect(getView(runtime, "dir-loaded-view")).toBeUndefined();
   });
 
   it("reloads an edited directory plugin against the rebuilt view bundle", async () => {
@@ -261,7 +283,7 @@ describe("loadPluginFromDirectory", () => {
     const realDir = await fsp.realpath(dir);
 
     await loadPluginFromDirectory({ runtime, directory: dir });
-    const initial = getView("dir-loaded-view");
+    const initial = getView(runtime, "dir-loaded-view");
     expect(initial?.label).toBe("Dir Loaded v1");
     expect(initial?.available).toBe(true);
     const initialAction = runtime.actions.find(
@@ -277,14 +299,14 @@ describe("loadPluginFromDirectory", () => {
       "export function DirLoadedView(){ return 'v2'; }\n",
     );
     await loadPluginFromDirectory({ runtime, directory: dir });
-    const edited = getView("dir-loaded-view");
+    const edited = getView(runtime, "dir-loaded-view");
     expect(edited).toMatchObject({
       label: "Dir Loaded v2",
       pluginDir: realDir,
       available: true,
     });
     expect(edited?.bundleHash).not.toBe(initial?.bundleHash);
-    expect(getLoadedDirectoryPlugins()).toHaveLength(1);
+    expect(runtime.plugins).toHaveLength(1);
     expect(
       runtime.plugins.filter((plugin) => plugin.name === "view-dir-plugin"),
     ).toHaveLength(1);
@@ -465,8 +487,8 @@ describe("loadPluginFromDirectory", () => {
     expect(
       runtime.plugins.some((plugin) => plugin.name === "view-dir-plugin"),
     ).toBe(false);
-    expect(getView("dir-loaded-view")).toBeUndefined();
-    expect(getLoadedDirectoryPlugins()).toHaveLength(0);
+    expect(getView(runtime, "dir-loaded-view")).toBeUndefined();
+    expect(runtime.plugins).toHaveLength(0);
   });
 
   it("throws a clear error when the directory has no built entry", async () => {

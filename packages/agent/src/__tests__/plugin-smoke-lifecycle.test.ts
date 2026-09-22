@@ -113,7 +113,7 @@ function expectFixtureComponentsAbsent(
     false,
   );
   expect(runtime.hasService(fixture.serviceType)).toBe(false);
-  expect(getView(fixture.viewId)).toBeUndefined();
+  expect(getView(runtime, fixture.viewId)).toBeUndefined();
 }
 
 function expectFixturePresent(
@@ -130,7 +130,7 @@ function expectFixturePresent(
     true,
   );
   expect(runtime.hasService(fixture.serviceType)).toBe(true);
-  expect(getView(fixture.viewId)).toMatchObject({
+  expect(getView(runtime, fixture.viewId)).toMatchObject({
     pluginName: fixture.plugin.name,
   });
   expect(
@@ -619,7 +619,7 @@ describe("schema-bearing plugin registration", () => {
     expect(
       hasRoutePath(getHttpRuntime(runtime).routes, "/api/concurrent-failure"),
     ).toBe(false);
-    expect(getView("concurrent-failure-view")).toBeUndefined();
+    expect(getView(runtime, "concurrent-failure-view")).toBeUndefined();
 
     await runtime.registerPlugin({
       ...plugin,
@@ -638,12 +638,12 @@ describe("schema-bearing plugin registration", () => {
     expect(
       hasRoutePath(getHttpRuntime(runtime).routes, "/api/concurrent-failure"),
     ).toBe(true);
-    expect(getView("concurrent-failure-view")).toMatchObject({
+    expect(getView(runtime, "concurrent-failure-view")).toMatchObject({
       pluginName: plugin.name,
     });
 
     await runtime.unloadPlugin(plugin.name);
-    expect(getView("concurrent-failure-view")).toBeUndefined();
+    expect(getView(runtime, "concurrent-failure-view")).toBeUndefined();
   });
 });
 
@@ -673,7 +673,12 @@ for (const mode of [
       await initEntered.promise;
       const unload = runtime.unloadPlugin(fixture.plugin.name);
       initRelease.resolve();
-      await Promise.all([registration, unload]);
+      await Promise.all([
+        expect(registration).rejects.toMatchObject({
+          code: "VIEW_INSTALLATION_INVALID",
+        }),
+        unload,
+      ]);
 
       expectPluginAbsent(runtime, fixture);
 
@@ -705,7 +710,12 @@ for (const mode of [
       await initEntered.promise;
       const reload = runtime.reloadPlugin(replacement.plugin);
       initRelease.resolve();
-      await Promise.all([registration, reload]);
+      await Promise.all([
+        expect(registration).rejects.toMatchObject({
+          code: "VIEW_INSTALLATION_INVALID",
+        }),
+        reload,
+      ]);
 
       expectFixtureComponentsAbsent(runtime, initial);
       expectFixturePresent(runtime, replacement);

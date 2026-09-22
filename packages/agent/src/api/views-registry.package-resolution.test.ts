@@ -10,14 +10,13 @@
  */
 
 import path from "node:path";
-import type { Plugin } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { AgentRuntime, createCharacter, type Plugin } from "@elizaos/core";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   bindPluginPackageDirectory,
   listViews,
   pluginPackageNameCandidates,
   registerPluginViews,
-  unregisterPluginViews,
 } from "./views-registry.js";
 
 describe("pluginPackageNameCandidates", () => {
@@ -48,10 +47,6 @@ describe("pluginPackageNameCandidates", () => {
 describe("registerPluginViews package-dir resolution", () => {
   const PLUGIN_NAME = "blocker";
 
-  afterEach(() => {
-    unregisterPluginViews(PLUGIN_NAME);
-  });
-
   it("resolves a short-named workspace plugin to its plugins/plugin-<name> dir", async () => {
     const plugin: Plugin = {
       name: PLUGIN_NAME,
@@ -65,9 +60,9 @@ describe("registerPluginViews package-dir resolution", () => {
       ],
     } as Plugin;
 
-    await registerPluginViews(plugin);
+    await registerPluginViews(runtime, plugin);
 
-    const entry = listViews({ includeAllKinds: true }).find(
+    const entry = listViews(runtime, { includeAllKinds: true }).find(
       (view) => view.id === "blocker-resolution-fixture",
     );
     expect(entry).toBeDefined();
@@ -79,10 +74,6 @@ describe("registerPluginViews package-dir resolution", () => {
 
 describe("registerPluginViews prefixed runtime name resolution", () => {
   const PLUGIN_NAME = "plugin-health";
-
-  afterEach(() => {
-    unregisterPluginViews(PLUGIN_NAME);
-  });
 
   it("resolves a plugin-prefixed runtime name to the real workspace package", async () => {
     const plugin: Plugin = {
@@ -97,9 +88,9 @@ describe("registerPluginViews prefixed runtime name resolution", () => {
       ],
     } as Plugin;
 
-    await registerPluginViews(plugin);
+    await registerPluginViews(runtime, plugin);
 
-    const entry = listViews({ includeAllKinds: true }).find(
+    const entry = listViews(runtime, { includeAllKinds: true }).find(
       (view) => view.id === "health-resolution-fixture",
     );
     expect(entry).toBeDefined();
@@ -110,10 +101,6 @@ describe("registerPluginViews prefixed runtime name resolution", () => {
 
 describe("registerPluginViews packageName override", () => {
   const PLUGIN_NAME = "elizaOSCloud";
-
-  afterEach(() => {
-    unregisterPluginViews(PLUGIN_NAME);
-  });
 
   it("resolves via plugin.packageName when the runtime name is not the npm package name", async () => {
     // "elizaOSCloud" is a runtime/model-provider identity: its name-derived
@@ -132,9 +119,9 @@ describe("registerPluginViews packageName override", () => {
       ],
     } as Plugin;
 
-    await registerPluginViews(plugin);
+    await registerPluginViews(runtime, plugin);
 
-    const entry = listViews({ includeAllKinds: true }).find(
+    const entry = listViews(runtime, { includeAllKinds: true }).find(
       (view) => view.id === "elizacloud-resolution-fixture",
     );
     expect(entry).toBeDefined();
@@ -145,10 +132,6 @@ describe("registerPluginViews packageName override", () => {
 
 describe("registerPluginViews directory binding", () => {
   const PLUGIN_NAME = "generated-view-resolution-fixture";
-
-  afterEach(() => {
-    unregisterPluginViews(PLUGIN_NAME);
-  });
 
   it("uses the directory bound to an imported plugin object", async () => {
     const fixtureDir = path.resolve(
@@ -169,11 +152,19 @@ describe("registerPluginViews directory binding", () => {
     } as Plugin;
     bindPluginPackageDirectory(plugin, fixtureDir);
 
-    await registerPluginViews(plugin);
+    await registerPluginViews(runtime, plugin);
 
-    const entry = listViews({ includeAllKinds: true }).find(
+    const entry = listViews(runtime, { includeAllKinds: true }).find(
       (view) => view.id === "generated-view-resolution-fixture",
     );
     expect(entry?.pluginDir).toBe(fixtureDir);
+  });
+});
+
+let runtime: AgentRuntime;
+beforeEach(() => {
+  runtime = new AgentRuntime({
+    character: createCharacter({ name: "View fixture" }),
+    enableAutonomy: false,
   });
 });

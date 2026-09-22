@@ -1,7 +1,7 @@
 /**
  * End-to-end server pipeline for proactive interaction comments (#8792).
  *
- * Wires the REAL pieces together with a faithful fake runtime + minimal
+ * Wires the real runtime event/model registration with a deterministic provider + minimal
  * ServerState and drives one client-reported view switch through the whole
  * chain, deterministically and offline:
  *
@@ -17,7 +17,14 @@
  */
 import type http from "node:http";
 import { Readable } from "node:stream";
-import type { EventPayload, IAgentRuntime, UUID } from "@elizaos/core";
+import {
+  AgentRuntime,
+  createCharacter,
+  type IAgentRuntime,
+  ModelType,
+  type UUID,
+} from "@elizaos/core";
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PROACTIVE_CHATTINESS_SETTING_KEY,
@@ -31,14 +38,20 @@ import {
 } from "./interactions-routes.ts";
 import { routeAutonomyTextToUser } from "./server-helpers-swarm.ts";
 import type { ServerState } from "./server-types.ts";
+import { closeRuntimeViewRegistry } from "./view-installations.ts";
+import { closeViewInteractionHost } from "./view-interaction-host.ts";
 import { registerBuiltinViews } from "./views-registry.ts";
-import {
-  clearCurrentViewState,
-  handleViewsRoutes,
-  type ViewsRouteContext,
-} from "./views-routes.ts";
+import { handleViewsRoutes, type ViewsRouteContext } from "./views-routes.ts";
 
-type Handler = (params: EventPayload) => Promise<void> | void;
+let hostKey: object;
+const runtimes: AgentRuntime[] = [];
+beforeEach(() => {
+  hostKey = {};
+});
+afterEach(() => {
+  for (const runtime of runtimes.splice(0)) closeRuntimeViewRegistry(runtime);
+  closeViewInteractionHost(hostKey);
+});
 type Frame = Record<string, unknown>;
 
 const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
@@ -51,8 +64,7 @@ interface HarnessOptions {
   documents?: unknown[];
 }
 
-function buildHarness(judgeOutput: string, options: HarnessOptions = {}) {
-  const events: Record<string, Handler[]> = {};
+async function buildHarness(judgeOutput: string, options: HarnessOptions = {}) {
   const frames: Frame[] = [];
   const createdMemories: unknown[] = [];
   // Prompts handed to the small-model judge — asserted to prove the per-view
@@ -60,46 +72,40 @@ function buildHarness(judgeOutput: string, options: HarnessOptions = {}) {
   const judgePrompts: string[] = [];
   const documents = options.documents ?? [];
 
-  const runtime = {
+  const runtime = new AgentRuntime({
     agentId: AGENT_ID,
-    events,
-    registerEvent(event: string, handler: Handler) {
-      let handlers = events[event];
-      if (!handlers) {
-        handlers = [];
-        events[event] = handlers;
-      }
-      handlers.push(handler);
-    },
-    async emitEvent(event: string, params: Frame) {
-      const handlers = events[event];
-      if (!handlers) return;
-      const payload = {
-        ...params,
-        runtime: runtime as unknown as IAgentRuntime,
-        source: typeof params.source === "string" ? params.source : "runtime",
-      } as EventPayload;
-      await Promise.all(handlers.map((h) => h(payload)));
-    },
-    useModel: vi.fn(async (_type: unknown, params: { prompt: string }) => {
-      judgePrompts.push(params.prompt);
-      const rewriteMatch = params.prompt.match(
-        /Message to rewrite:\n([\s\S]*?)\n\nRewritten message:/,
-      );
-      if (rewriteMatch) return rewriteMatch[1];
-      return judgeOutput;
-    }),
-    getMemories: vi.fn(async () => documents),
-    reportError: vi.fn(),
-    getSetting: (key: string) =>
-      key === PROACTIVE_CHATTINESS_SETTING_KEY
-        ? (options.chattiness ?? "subtle")
-        : undefined,
-    createMemory: vi.fn(async (memory: unknown) => {
-      createdMemories.push(memory);
-      return memory;
-    }),
-  };
+    character: createCharacter({ name: "Proactive pipeline" }),
+    enableAutonomy: false,
+  });
+  runtimes.push(runtime);
+  await initializeTestRuntime(runtime, { skipMigrations: true });
+  registerBuiltinViews(runtime);
+  for (const modelType of [ModelType.TEXT_SMALL, ModelType.TEXT_LARGE]) {
+    runtime.registerModel(
+      modelType,
+      async (_runtime, params) => {
+        const prompt = String(params.prompt ?? "");
+        judgePrompts.push(prompt);
+        const rewriteMatch = prompt.match(
+          /Message to rewrite:\n([\s\S]*?)\n\nRewritten message:/,
+        );
+        return rewriteMatch?.[1] ?? judgeOutput;
+      },
+      "deterministic-proactive-fixture",
+    );
+  }
+  vi.spyOn(runtime, "getMemories").mockResolvedValue(
+    documents as Awaited<ReturnType<IAgentRuntime["getMemories"]>>,
+  );
+  vi.spyOn(runtime, "getSetting").mockImplementation((key) =>
+    key === PROACTIVE_CHATTINESS_SETTING_KEY
+      ? (options.chattiness ?? "subtle")
+      : null,
+  );
+  vi.spyOn(runtime, "createMemory").mockImplementation(async (memory) => {
+    createdMemories.push(memory);
+    return memory.id ?? ROOM_ID;
+  });
 
   const state = {
     runtime: runtime as unknown as IAgentRuntime,
@@ -144,7 +150,10 @@ function navigateCtx(
   const req = Readable.from([
     Buffer.from(JSON.stringify(body)),
   ]) as unknown as http.IncomingMessage;
-  req.headers = { "content-type": "application/json" };
+  req.headers = {
+    "content-type": "application/json",
+    "x-elizaos-client-id": "proactive-client",
+  };
   const pathname = `/api/views/${encodeURIComponent(id)}/navigate`;
   return {
     req,
@@ -156,6 +165,7 @@ function navigateCtx(
     error: vi.fn(),
     broadcastWs: vi.fn(),
     runtime,
+    hostKey,
   };
 }
 
@@ -192,15 +202,12 @@ describe("proactive interaction pipeline — navigate → comment (#8792)", () =
     savedEnv = process.env.ELIZA_PROACTIVE_INTERACTIONS;
     delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
     delete process.env.ELIZA_PROACTIVE_INTERACTIONS;
-    registerBuiltinViews();
-    clearCurrentViewState();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
   });
 
   afterEach(() => {
     vi.useRealTimers();
-    clearCurrentViewState();
     if (savedKill === undefined)
       delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
     else process.env.ELIZA_DISABLE_PROACTIVE_AGENT = savedKill;
@@ -210,7 +217,7 @@ describe("proactive interaction pipeline — navigate → comment (#8792)", () =
   });
 
   it("turns a user-reported view switch into a persisted, broadcast proactive-message", async () => {
-    const { runtime, frames, createdMemories } = buildHarness(
+    const { runtime, frames, createdMemories } = await buildHarness(
       '{"comment":"Want me to pull your latest balances?"}',
     );
 
@@ -233,7 +240,9 @@ describe("proactive interaction pipeline — navigate → comment (#8792)", () =
   });
 
   it("governs a rapid burst — a second switch within the global cooldown is suppressed", async () => {
-    const { runtime, frames } = buildHarness('{"comment":"Here is an offer."}');
+    const { runtime, frames } = await buildHarness(
+      '{"comment":"Here is an offer."}',
+    );
 
     await handleViewsRoutes(navigateCtx(runtime, "wallet", { source: "user" }));
     await vi.advanceTimersByTimeAsync(2_000);
@@ -247,7 +256,7 @@ describe("proactive interaction pipeline — navigate → comment (#8792)", () =
   });
 
   it("stays silent when the judge declines (no proactive-message at all)", async () => {
-    const { runtime, frames } = buildHarness('{"comment":"none"}');
+    const { runtime, frames } = await buildHarness('{"comment":"none"}');
 
     await handleViewsRoutes(
       navigateCtx(runtime, "settings", { source: "user" }),
@@ -258,7 +267,7 @@ describe("proactive interaction pipeline — navigate → comment (#8792)", () =
   });
 
   it("turns a reported keyboard shortcut into a broadcast proactive-message", async () => {
-    const { runtime, frames } = buildHarness(
+    const { runtime, frames } = await buildHarness(
       '{"comment":"Want a hand finding something?"}',
     );
 
@@ -289,15 +298,12 @@ describe("per-view anticipatory greeting (#13587)", () => {
     savedEnv = process.env.ELIZA_PROACTIVE_INTERACTIONS;
     delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
     delete process.env.ELIZA_PROACTIVE_INTERACTIONS;
-    registerBuiltinViews();
-    clearCurrentViewState();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
   });
 
   afterEach(() => {
     vi.useRealTimers();
-    clearCurrentViewState();
     if (savedKill === undefined)
       delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
     else process.env.ELIZA_DISABLE_PROACTIVE_AGENT = savedKill;
@@ -307,7 +313,7 @@ describe("per-view anticipatory greeting (#13587)", () => {
   });
 
   it("(a) settings entry emits a greeting whose prompt carries the declared intent", async () => {
-    const { runtime, frames, judgePrompts } = buildHarness(
+    const { runtime, frames, judgePrompts } = await buildHarness(
       '{"comment":"Want to finish setting up your model provider?","confidence":0.9}',
     );
 
@@ -324,7 +330,7 @@ describe("per-view anticipatory greeting (#13587)", () => {
 
   it("(b) documents entry greeting references live knowledge state in the judge prompt", async () => {
     const now = Date.parse("2026-01-01T00:00:00.000Z");
-    const { runtime, frames, judgePrompts } = buildHarness(
+    const { runtime, frames, judgePrompts } = await buildHarness(
       '{"comment":"You have new attachments — want me to triage them?","confidence":0.9}',
       {
         documents: [
@@ -352,7 +358,7 @@ describe("per-view anticipatory greeting (#13587)", () => {
   });
 
   it("(c) a re-navigate within the global cooldown is suppressed by the gate", async () => {
-    const { runtime, frames } = buildHarness(
+    const { runtime, frames } = await buildHarness(
       '{"comment":"An offer.","confidence":0.9}',
     );
 
@@ -369,7 +375,7 @@ describe("per-view anticipatory greeting (#13587)", () => {
   });
 
   it("(d) chattiness=off suppresses the greeting (judge is never even asked)", async () => {
-    const { runtime, frames, judgePrompts } = buildHarness(
+    const { runtime, frames, judgePrompts } = await buildHarness(
       '{"comment":"An offer.","confidence":0.9}',
       { chattiness: "off" },
     );
@@ -384,7 +390,7 @@ describe("per-view anticipatory greeting (#13587)", () => {
   });
 
   it("(e) an agent-initiated switch produces no greeting (no double-talk with the ack)", async () => {
-    const { runtime, frames } = buildHarness(
+    const { runtime, frames } = await buildHarness(
       '{"comment":"An offer.","confidence":0.9}',
     );
 

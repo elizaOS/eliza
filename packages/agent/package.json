@@ -292,6 +292,7 @@
     "directory": "dist"
   },
   "dependencies": {
+    "es-module-lexer": "^2.3.2",
     "@elizaos/plugin-web-search": "workspace:*",
     "@ai-sdk/anthropic": "^3.0.13",
     "@ai-sdk/google": "^3.0.75",

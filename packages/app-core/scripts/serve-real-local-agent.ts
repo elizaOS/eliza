@@ -248,11 +248,7 @@ async function main(): Promise<void> {
       ...workflowPlugins,
     ],
   });
-  await registerPluginViews(
-    taskCoordinatorPlugin,
-    undefined,
-    runtimeResult.runtime,
-  );
+  await registerPluginViews(runtimeResult.runtime, taskCoordinatorPlugin);
   if (process.env.ELIZA_UI_SMOKE_WORKFLOW_JOURNEY === "1") {
     registerTriggerTaskWorker(runtimeResult.runtime);
   }
