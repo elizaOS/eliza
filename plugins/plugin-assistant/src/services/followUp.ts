@@ -23,7 +23,10 @@ import {
   Service,
   stringToUuid,
 } from "@elizaos/core";
+import { mapWithConcurrency } from "../utils/bounded-map.ts";
 import type { ContactInfo, RelationshipsService } from "./relationships.ts";
+
+const MAX_CONCURRENT_RELATIONSHIP_ANALYSES = 4;
 
 const FOLLOW_UP_WORKER_NAME = "follow_up";
 
@@ -391,10 +394,23 @@ export class FollowUpService extends Service {
       return Boolean(needsAttention && needsAttention.daysSinceContact > 14);
     });
 
+    // One batched entity read, then a bounded number of relationship
+    // analyses in flight: the candidate list is data-driven, and each
+    // analysis loads the pair's shared-room history.
+    const entityById = new Map(
+      (candidates.length > 0
+        ? await this.runtime.getEntitiesByIds(
+            candidates.map((contact) => contact.entityId),
+          )
+        : []
+      ).map((entity) => [entity.id, entity] as const),
+    );
     const suggestionResults: Array<FollowUpSuggestion | null> =
-      await Promise.all(
-        candidates.map(async (contact) => {
-          const entity = await this.runtime.getEntityById(contact.entityId);
+      await mapWithConcurrency(
+        candidates,
+        MAX_CONCURRENT_RELATIONSHIP_ANALYSES,
+        async (contact) => {
+          const entity = entityById.get(contact.entityId);
           if (!entity) return null;
 
           const needsAttention = needsAttentionById.get(contact.entityId);
@@ -426,7 +442,7 @@ export class FollowUpService extends Service {
               needsAttention.daysSinceContact,
             ),
           };
-        }),
+        },
       );
 
     const suggestions = suggestionResults.filter(

@@ -1,3 +1,4 @@
+/** Resolves complete follow-up context with bounded contact-name lookups. */
 import type {
   IAgentRuntime,
   Memory,
@@ -6,6 +7,10 @@ import type {
   State,
 } from "@elizaos/core";
 import type { FollowUpService } from "../../../services/followUp.ts";
+import { mapWithConcurrency } from "../../../utils/bounded-map.ts";
+
+const MAX_CONCURRENT_ENTITY_LOOKUPS = 8;
+
 export const followUpsProvider: Provider = {
   name: "FOLLOW_UPS",
   description:
@@ -46,8 +51,10 @@ export const followUpsProvider: Provider = {
       const contactIds = Array.from(
         new Set(upcomingFollowUps.map((f) => f.contact.entityId)),
       );
-      const entities = await Promise.all(
-        contactIds.map((id) => runtime.getEntityById(id)),
+      const entities = await mapWithConcurrency(
+        contactIds,
+        MAX_CONCURRENT_ENTITY_LOOKUPS,
+        (id) => runtime.getEntityById(id),
       );
       const entityNames = new Map<string, string>();
       for (let i = 0; i < contactIds.length; i += 1) {
