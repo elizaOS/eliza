@@ -80,24 +80,31 @@ function freshStableCache(): ElizaConfig {
 
 describe("checkForUpdate release-channel cache", () => {
   it("preserves settings saved while the registry request is pending", async () => {
+    const initialUi = {
+      theme: "eliza" as const,
+      capabilities: { wallet: false },
+    };
     saveElizaConfig({
       ...loadElizaConfig(),
-      ui: { capabilities: { wallet: false } },
+      ui: initialUi,
       update: { channel: "stable" },
     });
     const entered = Promise.withResolvers<void>();
     const registry = Promise.withResolvers<Response>();
-    globalThis.fetch = (async () => {
-      fetchCalls += 1;
-      entered.resolve();
-      return registry.promise;
-    }) as typeof fetch;
+    globalThis.fetch = Object.assign(
+      async () => {
+        fetchCalls += 1;
+        entered.resolve();
+        return registry.promise;
+      },
+      { preconnect: originalFetch.preconnect },
+    );
 
     const pending = checkForUpdate({ force: true });
     await entered.promise;
     const changed = {
       ...loadElizaConfig(),
-      ui: { capabilities: { wallet: true } },
+      ui: { theme: "haxor" as const, capabilities: { wallet: true } },
       update: { channel: "beta" as const, checkIntervalSeconds: 60 },
     };
     saveElizaConfig(changed);
