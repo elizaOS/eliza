@@ -1,5 +1,8 @@
 /** Exercises mobile BGE routing and admission with the real shared tokenizer and a controlled native boundary. */
-import { BGE_SMALL_VECTOR_SPACE, getEmbeddingVectorSpace } from "@elizaos/common";
+import {
+  BGE_SMALL_VECTOR_SPACE,
+  getEmbeddingVectorSpace,
+} from "@elizaos/common";
 import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
 import { afterEach, expect, it, vi } from "vitest";
 
