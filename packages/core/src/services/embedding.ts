@@ -19,6 +19,7 @@ import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 import { type BatchItemOutcome, BatchQueue } from "../utils/batch-queue";
 import { isExpectedLocalEmbeddingUnavailability } from "../utils/expected-local-embedding-unavailability";
+import { isModelFundingAuthorityError } from "../utils/model-errors";
 
 interface EmbeddingQueueItem {
 	memory: Memory;
@@ -145,6 +146,7 @@ export class EmbeddingGenerationService extends Service {
 			getPriority: (item) => item.priority,
 			maxParallel: 10,
 			maxRetriesAfterFailure: 3,
+			shouldRetry: (_item, error) => !isModelFundingAuthorityError(error),
 			process: (item) => this.generateEmbedding(item),
 			onDrainBatchOutcomes: (outcomes) => {
 				for (const { item } of outcomes) {

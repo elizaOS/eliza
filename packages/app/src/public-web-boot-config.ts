@@ -23,11 +23,19 @@ export function seedPublicWebBootConfig(
   const runtime = resolveIosRuntimeConfig(env);
   configureStoredStewardTokenScope(runtime.cloudApiBase);
   const current = getBootConfig();
-  if (current.cloudApiBase === runtime.cloudApiBase) {
+  const applicationBillingSlot =
+    typeof env.VITE_ELIZA_APPLICATION_SLOT === "string"
+      ? env.VITE_ELIZA_APPLICATION_SLOT
+      : undefined;
+  if (
+    current.cloudApiBase === runtime.cloudApiBase &&
+    current.applicationBillingSlot === applicationBillingSlot
+  ) {
     return;
   }
   setBootConfig({
     ...current,
     cloudApiBase: runtime.cloudApiBase,
+    applicationBillingSlot,
   });
 }

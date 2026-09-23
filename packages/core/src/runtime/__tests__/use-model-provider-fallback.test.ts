@@ -6,6 +6,7 @@
  * model handlers — no live model calls.
  */
 
+import { ElizaError } from "@elizaos/common";
 import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../runtime";
@@ -30,6 +31,40 @@ function statusError(statusCode: number, message: string): Error {
 }
 
 describe("AgentRuntime.useModel provider fallback", () => {
+	it("never changes payer after a funded operation fails, even through nested provider retry wrappers", async () => {
+		const runtime = makeRuntime();
+		const fundingError = new ElizaError(
+			"Recover the original funded operation",
+			{
+				code: "MODEL_FUNDING_AUTHORITY_FAILED",
+				cause: statusError(503, "Gateway timeout"),
+			},
+		);
+		let wrapped: Error = fundingError;
+		for (let i = 0; i < 20; i++)
+			wrapped = new Error("Gateway timeout", { cause: wrapped });
+		const preferred = vi.fn(async () => {
+			throw wrapped;
+		});
+		const otherPayer = vi.fn(async () => "personal purchase");
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			preferred,
+			"application-provider",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			otherPayer,
+			"personal-provider",
+			10,
+		);
+		await expect(
+			runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hello" }),
+		).rejects.toBe(wrapped);
+		expect(preferred).toHaveBeenCalledTimes(1);
+		expect(otherPayer).not.toHaveBeenCalled();
+	});
 	it("falls through to the next provider when the preferred provider is rate-limited", async () => {
 		const runtime = makeRuntime();
 		const cliSdkFails = vi.fn(async () => {

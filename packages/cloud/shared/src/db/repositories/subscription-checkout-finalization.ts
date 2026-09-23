@@ -1,5 +1,5 @@
 /** Publishes the first captured subscription payment, allowance and entitlement atomically behind the durable checkout command. */
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { getCloudAwareEnv } from "../../lib/runtime/cloud-bindings";
 import {
@@ -86,6 +86,8 @@ export async function finalizeSubscriptionCheckout(
       .from(billingSubscriptionCommands)
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.organization_id, orgId),
           eq(billingSubscriptionCommands.id, session.metadata.command_id),
         ),
@@ -105,6 +107,7 @@ export async function finalizeSubscriptionCheckout(
         .from(billingSubscriptions)
         .where(
           and(
+            isNull(billingSubscriptions.billing_scope_id),
             eq(billingSubscriptions.organization_id, orgId),
             eq(billingSubscriptions.id, command.id),
           ),
@@ -114,6 +117,7 @@ export async function finalizeSubscriptionCheckout(
         .from(subscriptionAllowancePeriods)
         .where(
           and(
+            isNull(subscriptionAllowancePeriods.billing_scope_id),
             eq(subscriptionAllowancePeriods.organization_id, orgId),
             eq(subscriptionAllowancePeriods.subscription_id, command.id),
             eq(subscriptionAllowancePeriods.stripe_invoice_id, invoice.id),
@@ -143,6 +147,12 @@ export async function finalizeSubscriptionCheckout(
     )
       renewalUnavailable("checkout_invoice_mismatch");
     const source: BillingSubscription = {
+      billing_scope_id: null,
+      merchant_key: "platform",
+      plan_revision_id: null,
+      quantity: 1,
+      trial_start: null,
+      trial_end: null,
       id: command.id,
       organization_id: orgId,
       provider: "stripe",
@@ -192,7 +202,13 @@ export async function finalizeSubscriptionCheckout(
     const [projection] = await tx
       .select()
       .from(organizationEntitlements)
-      .where(eq(organizationEntitlements.organization_id, orgId))
+      .where(
+        and(
+          isNull(organizationEntitlements.billing_scope_id),
+          eq(organizationEntitlements.organization_id, orgId),
+          isNull(organizationEntitlements.billing_scope_id),
+        ),
+      )
       .for("update");
     await subscriptionEntitlementsRepository.rebuildInTransaction(tx, {
       organizationId: orgId,
@@ -213,6 +229,8 @@ export async function finalizeSubscriptionCheckout(
       })
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.id, command.id),
           eq(billingSubscriptionCommands.organization_id, orgId),
         ),

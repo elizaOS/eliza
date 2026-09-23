@@ -94,6 +94,7 @@ export async function listDueSubscriptionReconciliations(limit: number) {
           isNull(subscriptionBillingFences.organization_id),
           eq(subscriptionBillingFences.state, "open"),
         ),
+        isNull(billingSubscriptions.billing_scope_id),
         eq(billingSubscriptions.provider, "stripe"),
         eq(billingSubscriptions.catalog_version, "v1"),
         inArray(billingSubscriptions.status, [...eligibleStatuses]),
@@ -128,7 +129,12 @@ async function lockOrganization(tx: DbTransaction, organizationId: string) {
   const [fence] = await tx
     .select()
     .from(subscriptionBillingFences)
-    .where(eq(subscriptionBillingFences.organization_id, organizationId));
+    .where(
+      and(
+        eq(subscriptionBillingFences.organization_id, organizationId),
+        isNull(subscriptionBillingFences.billing_scope_id),
+      ),
+    );
   return {
     org,
     association,
@@ -164,6 +170,7 @@ export async function claimSubscriptionReconciliation(input: {
       .from(billingSubscriptions)
       .where(
         and(
+          isNull(billingSubscriptions.billing_scope_id),
           eq(billingSubscriptions.id, input.subscriptionId),
           eq(billingSubscriptions.organization_id, input.organizationId),
         ),
@@ -206,7 +213,13 @@ export async function claimSubscriptionReconciliation(input: {
     const [projection] = await tx
       .select()
       .from(organizationEntitlements)
-      .where(eq(organizationEntitlements.organization_id, input.organizationId));
+      .where(
+        and(
+          isNull(organizationEntitlements.billing_scope_id),
+          eq(organizationEntitlements.organization_id, input.organizationId),
+          isNull(organizationEntitlements.billing_scope_id),
+        ),
+      );
     const expectedProjectionRevision = projection?.projection_revision ?? null;
     const identityDigest = reconciliationDigest({
       source,
@@ -352,6 +365,7 @@ export async function finalizeSubscriptionReconciliation(
       .from(billingSubscriptions)
       .where(
         and(
+          isNull(billingSubscriptions.billing_scope_id),
           eq(billingSubscriptions.id, input.subscriptionId),
           eq(billingSubscriptions.organization_id, input.organizationId),
         ),
@@ -359,7 +373,13 @@ export async function finalizeSubscriptionReconciliation(
     const [projection] = await tx
       .select()
       .from(organizationEntitlements)
-      .where(eq(organizationEntitlements.organization_id, input.organizationId));
+      .where(
+        and(
+          isNull(organizationEntitlements.billing_scope_id),
+          eq(organizationEntitlements.organization_id, input.organizationId),
+          isNull(organizationEntitlements.billing_scope_id),
+        ),
+      );
     if (
       !source ||
       source.lifecycle_revision !== input.expectedRevision ||

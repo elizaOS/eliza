@@ -13,6 +13,7 @@ import {
   STEWARD_TOKEN_SCOPE_KEY,
 } from "@elizaos/shared/steward-session-client";
 import type { Page, Request, Route } from "@playwright/test";
+import { billingFixture } from "../../../../ui/src/cloud/billing/apps/billing-fixture";
 
 function requestBodyMatches(request: Request, expected: object): boolean {
   try {
@@ -117,6 +118,7 @@ export const BILLING_AUDIT_RESOURCE_EXPECTATIONS = [
 ] as const;
 /** ApplicationDetailPage requires a valid UUID id (redirects otherwise). */
 export const SMOKE_APP_UUID = "6f9619ff-8b86-4d01-b42d-00c04fc964ff";
+const APP_BILLING_FIXTURE = billingFixture({ appId: SMOKE_APP_UUID });
 
 const SMOKE_APP = {
   id: SMOKE_APP_UUID,
@@ -494,6 +496,41 @@ const STUB_RULES: StubRule[] = [
   },
   // billing/ — credits, settings, invoices, crypto (fail-soft), checkout.
   {
+    match: path_("/api/v1/billing/application-slots/audit-product"),
+    body: {
+      success: true,
+      data: {
+        slotKey: "audit-product",
+        appId: SMOKE_APP_UUID,
+        appName: "Field Notes",
+        productFamilyKey: "workspace",
+        environment: "test",
+      },
+    },
+  },
+  {
+    match: path_(`/api/v1/apps/${SMOKE_APP_UUID}/billing/catalog`),
+    body: { success: true, data: APP_BILLING_FIXTURE.catalog },
+  },
+  {
+    method: "POST",
+    match: path_(`/api/v1/apps/${SMOKE_APP_UUID}/billing/accounts/resolve`),
+    body: { success: true, data: APP_BILLING_FIXTURE.snapshot.account },
+  },
+  {
+    match: path_(
+      `/api/v1/apps/${SMOKE_APP_UUID}/billing/accounts/account-1/subscriptions/workspace`,
+    ),
+    body: { success: true, data: APP_BILLING_FIXTURE.snapshot },
+  },
+  {
+    match: (pathname) =>
+      new RegExp(
+        `^/api/v1/apps/${SMOKE_APP_UUID}/billing/accounts/account-1/subscriptions/workspace/(seats|invoices|usage)$`,
+      ).test(pathname),
+    body: { success: true, data: { items: [], nextCursor: null } },
+  },
+  {
     match: path_("/api/v1/billing/limits"),
     body: {
       success: true,
@@ -782,6 +819,26 @@ const STUB_RULES: StubRule[] = [
   {
     match: path_("/api/v1/referrals"),
     body: { code: "SMOKE20", total_referrals: 0, is_active: true },
+  },
+  // api-keys/
+  {
+    match: path_("/api/v1/api-keys"),
+    body: {
+      keys: [
+        {
+          id: "api-key-smoke-1",
+          name: "Smoke API key",
+          description: "Deterministic audit fixture",
+          key_prefix: "test_smoke",
+          is_active: true,
+          last_used_at: null,
+          created_at: NOW_ISO,
+          usage_count: 0,
+          rate_limit: 100,
+          expires_at: null,
+        },
+      ],
+    },
   },
   // api-explorer/
   { match: path_("/api/v1/api-keys/explorer"), body: { apiKey: null } },

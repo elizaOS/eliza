@@ -1,5 +1,5 @@
 /** Publishes verified paid renewal source, immutable allowance grant, entitlement generation and receipt in one organization-fenced transaction. */
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { getCloudAwareEnv } from "../../lib/runtime/cloud-bindings";
 import {
   type PaidRenewalObjects,
@@ -107,6 +107,7 @@ export async function finalizePaidRenewal(input: FinalizePaidRenewalInput) {
       .from(billingSubscriptions)
       .where(
         and(
+          isNull(billingSubscriptions.billing_scope_id),
           eq(billingSubscriptions.id, input.subscriptionId),
           eq(billingSubscriptions.organization_id, input.organizationId),
         ),
@@ -123,6 +124,7 @@ export async function finalizePaidRenewal(input: FinalizePaidRenewalInput) {
       .from(subscriptionAllowancePeriods)
       .where(
         and(
+          isNull(subscriptionAllowancePeriods.billing_scope_id),
           eq(subscriptionAllowancePeriods.provider, source.provider),
           eq(subscriptionAllowancePeriods.provider_environment, source.provider_environment),
           eq(subscriptionAllowancePeriods.stripe_invoice_id, input.invoiceId),

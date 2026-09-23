@@ -1,7 +1,7 @@
 /** Retrieves platform Stripe authority for known organization subscriptions before atomically publishing terminal lifecycle and its durable receipt. Unsupported policy and ambiguous observations remain retryable. */
 import { createHash, randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/common";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type Stripe from "stripe";
 import { z } from "zod";
 import { dbWrite } from "../../db/helpers";
@@ -15,6 +15,7 @@ import {
 import type { StripeEventMessage } from "../../types/stripe-queue-message";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { requireStripe } from "../stripe";
+import { assertOrganizationSubscription } from "./organization-subscription-source";
 import {
   resolveSubscriptionPlanDefinition,
   resolveSubscriptionProviderBinding,
@@ -104,6 +105,7 @@ export async function reconcileStripeTerminalLifecycle(message: StripeEventMessa
     .from(billingSubscriptions)
     .where(
       and(
+        isNull(billingSubscriptions.billing_scope_id),
         eq(billingSubscriptions.provider, "stripe"),
         eq(billingSubscriptions.provider_environment, event.livemode ? "live" : "test"),
         eq(billingSubscriptions.stripe_subscription_id, event.data.object.id),
@@ -143,6 +145,7 @@ export async function reconcileStripeTerminalLifecycle(message: StripeEventMessa
     reject("receipt_lease_unavailable");
   try {
     // Capture both revisions before any provider request. A conflict requires a new retrieval.
+    assertOrganizationSubscription(source);
     const projection = await subscriptionEntitlementsRepository.find(source.organization_id);
     const binding = resolveSubscriptionProviderBinding(
       getCloudAwareEnv(),
@@ -178,6 +181,7 @@ export function validateStripeTerminalObservation(
   source: BillingSubscription,
   environment: Record<string, string | undefined>,
 ) {
+  assertOrganizationSubscription(source);
   const binding = resolveSubscriptionProviderBinding(
     environment,
     source.plan_key,

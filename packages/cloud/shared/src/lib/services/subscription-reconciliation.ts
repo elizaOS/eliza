@@ -9,6 +9,7 @@ import {
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { createStripeRecoveryClient } from "../stripe";
 import { logger } from "../utils/logger";
+import { assertOrganizationSubscription } from "./organization-subscription-source";
 import {
   validateCancellationCustomer,
   validatePeriodEndCancellationObservation,
@@ -25,6 +26,7 @@ export async function recoverMissedSubscriptionEvents() {
     const claim = await claimSubscriptionReconciliation(candidate);
     if (!claim) continue;
     try {
+      assertOrganizationSubscription(claim.source);
       const environment = getCloudAwareEnv();
       const binding = resolveSubscriptionProviderBinding(
         environment,
