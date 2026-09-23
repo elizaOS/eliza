@@ -2,6 +2,7 @@
 
 export { userRequestFromAugmentedText } from "./augmented-request.js";
 export { mnemonicValid } from "./bip39-wordlist.js";
+export * from "./confidential-inference.js";
 export {
 	CompositeEntityRecognizer,
 	canonicalKind,

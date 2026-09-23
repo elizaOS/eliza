@@ -8,6 +8,7 @@
 import { createOpenAI, type OpenAIProvider } from "@ai-sdk/openai";
 import {
   composeToolDiagnosticRedactor,
+  fetchWithConfidentialInference,
   getInferenceTimer,
   getTrajectoryContext,
   type IAgentRuntime,
@@ -144,7 +145,7 @@ export function createOpenAIClient(
         });
         let response: Response;
         try {
-          response = await globalThis.fetch(input, init);
+          response = await fetchWithConfidentialInference(input, init, globalThis.fetch);
         } catch (error) {
           // error-policy:J2 transport owns the original rejection; observers are isolated.
           const endedAt = Date.now();

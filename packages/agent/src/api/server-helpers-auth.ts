@@ -894,7 +894,9 @@ export function rejectWebSocketUpgrade(
         ? "Forbidden"
         : statusCode === 404
           ? "Not Found"
-          : "Bad Request";
+          : statusCode === 503
+            ? "Service Unavailable"
+            : "Bad Request";
   const body = `${message}\n`;
   socket.write(
     `HTTP/1.1 ${statusCode} ${statusText}\r\n` +

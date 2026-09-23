@@ -30,6 +30,8 @@ export function createApiEventHub<Socket extends EventSocket>(options: {
   clientIds: WeakMap<Socket, string>;
   activeConversations: WeakMap<Socket, string>;
   reportSendError(error: unknown): void;
+  /** A host may queue delivery for current admission; counts mean accepted sends. */
+  sendMessage?(socket: Socket, message: string): void;
   maxBufferedEvents?: number;
 }): ApiEventHub {
   const sendWhere = (
@@ -41,7 +43,8 @@ export function createApiEventHub<Socket extends EventSocket>(options: {
     for (const client of options.clients) {
       if (client.readyState !== 1 || !include(client)) continue;
       try {
-        client.send(message);
+        if (options.sendMessage) options.sendMessage(client, message);
+        else client.send(message);
         delivered += 1;
       } catch (error) {
         options.reportSendError(error);

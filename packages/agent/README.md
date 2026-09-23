@@ -643,3 +643,106 @@ performing destination DNS resolution. The sidecar must itself restrict its
 outbound destination in measured configuration. Local forwarding tests do not
 prove Linux namespace/DNS isolation or constrain verifier collateral egress;
 those require separate deployment controls and packet-level acceptance evidence.
+
+### Required host API admission
+
+A measured host may supply `startApiServer({ hostAdmission })` to require an
+additional decision before HTTP middleware, built-in routes, in-process dispatch
+and WebSocket authentication. A denial remains a denial even with a valid static
+token or host session; policy exceptions return a sanitized unavailable response.
+Approval still requires the normal route and authentication checks. The host
+callback is captured at construction and may consult current revocation policy.
+
+This mode disables automatic mobile device-bridge attachment because that bridge
+uses an independent upgrade listener. Trusted `configureServer` callbacks must
+not attach alternative request or upgrade handlers. This option constrains the
+built-in API boundary; it does not itself configure a confidential host, TLS,
+network isolation, end-user permissions or immutable access evidence.
+
+The measured host bootstrap `runtime/confidential-host-bootstrap.ts` prepares
+signed processor policy, local CPU admission and same-agent SQLite audit records
+before the caller initializes reviewed model handlers. It accepts exact handler
+identities from measured code. Local admission uses a separately signed local
+release and fresh guest evidence at startup, API admission and each outbound
+attempt; it cannot substitute the inference server's identity for the agent VM.
+Expired policy, invalid evidence or failed audit prevents dispatch. Closing the
+bootstrap revokes its admission callback and authority before closing SQLite.
+
+The transport reappraises local trust after remote TLS attestation, then commits
+the dispatch intent before sending application headers or payload. Optional
+measured `inferenceTransport.caPem` supplies a private CA;
+`inferenceTransport.unixSocketPath` uses a fixed private byte relay while retaining
+the approved logical TLS origin and no TCP fallback. Processor policy is reread
+from its signed file; changing the caller's environment does not change captured
+local release authority. A new signed local release requires host restart.
+
+This bootstrap is a composition foundation. The fixed runtime and process entry
+described below compose plugin initialization. API wiring, enforced network
+isolation, encrypted guest volume and hardware acceptance remain required work. Its
+SQLite logs are mutable local records, not an independent immutable audit ledger.
+
+`runtime/confidential-runtime.ts` now provides `startConfidentialRuntime` for the
+measured entry. Its strict `eliza-confidential-runtime-v1` configuration contains
+the host configuration, one signed text route covering all seven text slots, one
+signed embedding route covering single and batch embeddings, separate absolute
+credential-file paths, and the required 384-dimensional storage width. Model
+names and base URLs come from those signed routes. The dimension does not prove
+which model or weights produced a vector. A changed route needs a host restart;
+revocation remains effective immediately through the current signed policy.
+
+Local admission precedes optional plugin imports. The runtime registers only the
+reviewed OpenAI-compatible text handlers, the guarded embedding handlers and the
+assistant behavior. It does not invoke provider init, preconnect, media/research
+registration or embedding warmup. Actual attested embedding inference must
+succeed after runtime initialization: the ordinary local null-probe vector is
+insufficient for confidential readiness. Startup failure stops services and
+closes SQLite; shutdown revokes admission before draining the runtime.
+
+The measured process must resolve `ELIZA_STATE_DIR` to the configured state
+directory, and an explicit `ELIZA_TRAJECTORY_DIR` must be its `trajectories`
+child. This prevents accidental default trajectory placement but does not prove
+the directory is encrypted. The headless entry below owns process lifetime;
+authenticated API binding remains to be composed. This function opens no listener and
+does not sandbox assistant code or enforce whole-process network isolation.
+
+A measured API host can supply `startApiServer({ hostConfig, hostAdmission })`.
+The server clones `hostConfig` before startup instead of reading the mutable
+configuration files and rejects its `reloadConfigFromDisk` control in this mode.
+Visibility and remote-forwarding gates use a mode snapshot resolved from the same
+captured configuration; ordinary servers retain their disk-backed resolver.
+This fixes the source of initial configuration; it does not authorize routes or
+make route-owned state immutable. The measured caller must still deny settings,
+plugin installation, config reload and other unapproved management requests,
+constrain startup environment values and implement persistent-session revocation.
+
+
+`runtime/confidential-entry.ts` is the headless process entry for the measured
+bootstrap (built as `dist/runtime/confidential-entry.js`). It requires
+`ELIZA_CONFIDENTIAL_RUNTIME_CONFIG`, an absolute JSON file path, and
+`ELIZA_CONFIDENTIAL_RUNTIME_CONFIG_SHA256`, the lowercase SHA-256 of the complete
+file bytes. Both environment values must be authenticated by the outer
+bootstrap's complete signed environment manifest and permitted by its measured
+configuration. The digest is not an independent trust authority. The entry
+checks bytes before importing application code, parses the strict runtime
+schema and starts the fixed runtime. SIGINT/SIGTERM request shutdown, including
+when received during startup; completed startup is drained before exit. Failed
+startup or shutdown exits unsuccessfully with a sanitized diagnostic. There is
+no HTTP listener or externally published readiness signal in this entry.
+
+
+For persistent WebSocket connections, `hostAdmission` also receives
+`websocket-send` before each built-in application frame and `websocket-message`
+before interpreting an incoming frame. This covers initial status, replay,
+broadcasts, targeted events and PTY output. Per-socket outgoing queues preserve
+ordering and recheck policy at delivery; an earlier approval cannot authorize a
+later queued frame. Denial closes the socket with code 1008, and unavailable
+policy closes it with 1011, without exposing policy diagnostics. Ordinary hosts
+without this callback retain their existing synchronous send path.
+
+The callback sees the original upgrade request and must consult current host
+policy. This does not automatically revalidate credentials accepted through
+in-band authentication, create a per-person principal or scope conversations.
+A measured host must compose those identity controls explicitly. Checks cannot
+recall already delivered bytes or undo effects accepted before revocation.
+Event-hub targeted-send counts represent accepted send attempts, including queued
+attempts, and are not application delivery receipts.

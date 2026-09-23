@@ -28,6 +28,7 @@ import {
 	type ResolvedModelRegistration,
 	TEXT_GENERATION_MODEL_KEYS,
 } from "./runtime/model-dispatch/policy.js";
+import type { ConfidentialInferenceAuthority } from "./security/confidential-inference.js";
 
 export {
 	NoModelProviderConfiguredError,
@@ -375,7 +376,11 @@ export class AgentRuntime implements IAgentRuntime {
 		resolveModelRegistrations: (...args) =>
 			this.resolveModelRegistrations(...args),
 	});
+	private readonly confidentialInference:
+		| ConfidentialInferenceAuthority
+		| undefined;
 	private readonly modelDispatch = new RuntimeModelDispatch(this, {
+		confidentialInference: () => this.confidentialInference,
 		models: () => this.models,
 		pinnedEmbeddingProvider: () => this.embeddings.getPinnedProvider(),
 		validateEmbeddingOutput: (...args) =>
@@ -552,6 +557,8 @@ export class AgentRuntime implements IAgentRuntime {
 	private strictStopPromise: Promise<void> | null = null;
 
 	constructor(opts: {
+		/** Measured host authority; never populated from character or client settings. */
+		confidentialInference?: ConfidentialInferenceAuthority;
 		conversationLength?: number;
 		agentId?: UUID;
 		/** Host-persisted installation identity. Omitted only by ephemeral/test runtimes. */
@@ -600,6 +607,7 @@ export class AgentRuntime implements IAgentRuntime {
 		 */
 		enableAutonomy?: boolean;
 	}) {
+		this.confidentialInference = opts.confidentialInference;
 		// Create default anonymous character if none provided
 		let character: Character;
 		if (opts.character) {
