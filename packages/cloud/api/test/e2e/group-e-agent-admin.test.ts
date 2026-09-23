@@ -43,6 +43,7 @@ import {
   memberBearerHeaders,
   sameOriginBrowserHeaders,
 } from "./_helpers/api";
+import { expectAuthGate } from "./_helpers/auth-gate";
 
 const serverReachable = await isServerReachable();
 const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
@@ -85,32 +86,6 @@ function adminHeaders(): Record<string, string> {
 }
 
 const FAKE_UUID = "00000000-0000-4000-8000-000000000000";
-
-/**
- * Assert the global auth middleware rejected an unauthenticated request with
- * exactly 401. (403 would mean a handler ran; 404 would mean the route is not
- * mounted at all — both are regressions.)
- */
-async function expectAuthGate(response: Response, path: string): Promise<void> {
-  if (response.status !== 401) {
-    const headers = Object.fromEntries(
-      [
-        "content-type",
-        "x-eliza-trace-id",
-        "x-request-id",
-        "cf-ray",
-        "server-timing",
-      ]
-        .map((name) => [name, response.headers.get(name)])
-        .filter(([, value]) => value !== null),
-    );
-    throw new Error(
-      `Expected 401 from unauthenticated ${path}, got ${response.status}; ` +
-        JSON.stringify({ headers, body: await response.clone().text() }),
-    );
-  }
-  expect(response.status).toBe(401);
-}
 
 describeE2E("Group E: admin / redemptions", () => {
   test("GET /api/admin/redemptions rejects unauthenticated", async () => {
