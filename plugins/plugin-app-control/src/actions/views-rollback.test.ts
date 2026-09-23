@@ -1,10 +1,19 @@
 /**
- * Tests for the VIEWS `rollback` sub-mode + git snapshot helpers (#8915).
- *
- * Deterministic: the git runner and the loopback re-registration call are both
- * injected/stubbed, so no real `git` process runs and no network is touched.
+ * Exercises snapshot-to-rollback filesystem restoration in a real temporary Git
+ * repository, with deterministic Git failures and an external reload stub.
  */
-
+import { execFileSync } from "node:child_process";
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const coreMock = vi.hoisted(() => ({
@@ -77,15 +86,23 @@ function message(text: string, roomId = "room-1") {
 	} as never;
 }
 
-type RuntimeTask = { id: string; metadata?: Record<string, unknown> };
+type RuntimeTask = {
+	id: string;
+	tags?: string[];
+	metadata?: Record<string, unknown>;
+};
 
 function createRuntime(tasks: RuntimeTask[] = []) {
 	return {
 		agentId: "agent-1",
-		getTasks: vi.fn(async () => tasks),
-		createTask: vi.fn(async (task: { metadata?: Record<string, unknown> }) => {
-			tasks.push({ id: `task-${tasks.length + 1}`, metadata: task.metadata });
-		}),
+		getTasks: vi.fn(async ({ tags }: { tags: string[] }) =>
+			tasks.filter((task) => tags.every((tag) => task.tags?.includes(tag))),
+		),
+		createTask: vi.fn(
+			async (task: { tags?: string[]; metadata?: Record<string, unknown> }) => {
+				tasks.push({ id: `task-${tasks.length + 1}`, ...task });
+			},
+		),
 		deleteTask: vi.fn(async (taskId: string) => {
 			const idx = tasks.findIndex((t) => t.id === taskId);
 			if (idx >= 0) tasks.splice(idx, 1);
@@ -96,11 +113,12 @@ function createRuntime(tasks: RuntimeTask[] = []) {
 beforeEach(() => {
 	coreMock.logger.info.mockClear();
 	coreMock.logger.warn.mockClear();
-	delete process.env.ELIZA_BUILD_VARIANT;
-	delete process.env.ELIZA_PLATFORM;
+	vi.stubEnv("ELIZA_BUILD_VARIANT", undefined);
+	vi.stubEnv("ELIZA_PLATFORM", undefined);
 });
 
 afterEach(() => {
+	vi.unstubAllEnvs();
 	vi.restoreAllMocks();
 });
 
@@ -117,29 +135,6 @@ describe("isLikelySha", () => {
 });
 
 describe("createPreEditSnapshot", () => {
-	it("commits a non-destructive snapshot and returns the HEAD sha", async () => {
-		const sha = "deadbeefcafef00d";
-		const { git, calls } = fakeGit({
-			"rev-parse:--is-inside-work-tree": { stdout: "true\n" },
-			add: {},
-			commit: {},
-			"rev-parse:HEAD": { stdout: `${sha}\n` },
-		});
-
-		const result = await createPreEditSnapshot("/work/dir", { git });
-		expect(result).toEqual({ ok: true, sha });
-
-		// The snapshot must stage everything and commit with --no-verify (skip
-		// hooks) + --allow-empty (no diff still produces a snapshot point).
-		const addCall = calls.find((c) => c.args[0] === "add");
-		expect(addCall?.args).toEqual(["add", "-A", "--", "."]);
-		const commitCall = calls.find((c) => c.args[0] === "commit");
-		expect(commitCall?.args).toContain("--no-verify");
-		expect(commitCall?.args).toContain("--allow-empty");
-		// Crucially it never resets/discards the working tree.
-		expect(calls.some((c) => c.args[0] === "reset")).toBe(false);
-	});
-
 	it("fails gracefully when the workdir is not a git work tree", async () => {
 		const { git } = fakeGit({
 			"rev-parse:--is-inside-work-tree": {
@@ -153,25 +148,6 @@ describe("createPreEditSnapshot", () => {
 });
 
 describe("rollbackToSnapshot", () => {
-	it("restores ONLY the workdir (checkout + clean, never reset --hard)", async () => {
-		const sha = "abc1234";
-		const { git, calls } = fakeGit({
-			"rev-parse:--is-inside-work-tree": { stdout: "true\n" },
-			checkout: {},
-			clean: {},
-		});
-		const result = await rollbackToSnapshot("/work/dir", sha, { git });
-		expect(result).toEqual({ ok: true, sha });
-		// A repo-wide `git reset --hard` would discard unrelated uncommitted work.
-		expect(calls.some((c) => c.args[0] === "reset")).toBe(false);
-		const checkoutCall = calls.find((c) => c.args[0] === "checkout");
-		expect(checkoutCall?.args).toEqual(["checkout", sha, "--", "."]);
-		expect(checkoutCall?.cwd).toBe("/work/dir");
-		const cleanCall = calls.find((c) => c.args[0] === "clean");
-		expect(cleanCall?.args).toEqual(["clean", "-fd", "--", "."]);
-		expect(cleanCall?.cwd).toBe("/work/dir");
-	});
-
 	it("refuses an invalid sha without touching git", async () => {
 		const { git, calls } = fakeGit({});
 		const result = await rollbackToSnapshot("/work/dir", "garbage", { git });
@@ -240,23 +216,6 @@ describe("snapshot record persistence", () => {
 		});
 		expect(await findSnapshotRecord(runtime as never, "room-1")).toBeNull();
 	});
-
-	it("tags records with the snapshot tag", async () => {
-		const tasks: RuntimeTask[] = [];
-		const runtime = createRuntime(tasks);
-		await persistSnapshotRecord(runtime as never, {
-			sha: "4444444",
-			workdir: "/repo/plugins/plugin-y",
-			pluginName: "@elizaos/plugin-y",
-			created: true,
-			roomId: "room-1",
-			snapshotCreatedAt: "2026-04-01T00:00:00.000Z",
-		});
-		const created = runtime.createTask.mock.calls[0][0] as {
-			tags?: string[];
-		};
-		expect(created.tags).toContain(VIEWS_SNAPSHOT_TAG);
-	});
 });
 
 describe("isRollbackRequest", () => {
@@ -282,57 +241,81 @@ describe("isRollbackRequest", () => {
 });
 
 describe("runViewsRollback", () => {
-	it("resets to the recorded snapshot and re-registers the plugin", async () => {
-		const sha = "feedface";
-		const tasks: RuntimeTask[] = [
-			{
-				id: "snap-1",
-				metadata: {
-					sha,
-					workdir: "/repo/plugins/plugin-habits",
-					pluginName: "@elizaos/plugin-habits",
-					created: true,
-					roomId: "room-1",
-					snapshotCreatedAt: "2026-05-01T00:00:00.000Z",
-				},
-			},
-		];
-		const runtime = createRuntime(tasks);
-		const { git, calls } = fakeGit({
-			"rev-parse:--is-inside-work-tree": { stdout: "true\n" },
-			checkout: {},
-			clean: {},
-		});
-		const reregister = vi.fn(async () => ({
-			ok: true,
-			pluginName: "@elizaos/plugin-habits",
-		}));
-		const callback = vi.fn(async () => []);
+	it("snapshots and restores only the plugin workdir, then consumes its record", async () => {
+		const repo = mkdtempSync(path.join(tmpdir(), "views-rollback-"));
+		const workdir = path.join(repo, "plugin");
+		const git = (...args: string[]) =>
+			execFileSync("git", args, { cwd: repo, encoding: "utf8" });
+		try {
+			mkdirSync(workdir);
+			git("init", "--quiet");
+			git("config", "user.name", "Rollback test");
+			git("config", "user.email", "rollback@example.invalid");
+			git("config", "commit.gpgsign", "false");
+			const hooks = path.join(repo, "hooks");
+			git("config", "core.hooksPath", hooks);
+			const file = path.join(workdir, "view.txt");
+			const unrelated = path.join(repo, "unrelated.txt");
+			writeFileSync(file, "initial");
+			writeFileSync(unrelated, "initial outside");
+			writeFileSync(path.join(workdir, ".gitignore"), "cache.bin\n");
+			git("add", ".");
+			git("commit", "--quiet", "-m", "initial");
+			mkdirSync(hooks);
+			writeFileSync(path.join(hooks, "pre-commit"), "#!/bin/sh\nexit 1\n");
+			chmodSync(path.join(hooks, "pre-commit"), 0o755);
+			writeFileSync(file, "snapshot contents");
+			writeFileSync(unrelated, "uncommitted outside");
+			const snapshot = await createPreEditSnapshot(workdir);
+			if (!snapshot.ok) throw new Error(snapshot.reason);
+			expect((await createPreEditSnapshot(workdir)).ok).toBe(true);
+			const head = git("rev-parse", "HEAD").trim();
+			expect(git("show", `${snapshot.sha}:unrelated.txt`)).toBe(
+				"initial outside",
+			);
+			expect(readFileSync(file, "utf8")).toBe("snapshot contents");
 
-		const result = await runViewsRollback({
-			runtime: runtime as never,
-			message: message("rollback"),
-			options: { action: "rollback" },
-			callback,
-			git,
-			reregister,
-		});
-
-		expect(result.success).toBe(true);
-		// scoped checkout restored the recorded workdir (never reset --hard).
-		expect(calls.some((c) => c.args[0] === "reset")).toBe(false);
-		const checkoutCall = calls.find((c) => c.args[0] === "checkout");
-		expect(checkoutCall?.args).toEqual(["checkout", sha, "--", "."]);
-		expect(checkoutCall?.cwd).toBe("/repo/plugins/plugin-habits");
-		// re-registration was triggered with the same workdir.
-		expect(reregister).toHaveBeenCalledWith("/repo/plugins/plugin-habits");
-		// the consumed snapshot record was deleted.
-		expect(runtime.deleteTask).toHaveBeenCalledWith("snap-1");
-		// success surfaced to the user.
-		const said = callback.mock.calls.map(
-			(c) => (c[0] as { text: string }).text,
-		);
-		expect(said.join("\n")).toMatch(/rolled .*back/i);
+			const runtime = createRuntime();
+			await persistSnapshotRecord(runtime as never, {
+				sha: snapshot.sha,
+				workdir,
+				pluginName: "@local/plugin-test",
+				created: false,
+				roomId: "room-1",
+				snapshotCreatedAt: "2026-05-01T00:00:00.000Z",
+			});
+			writeFileSync(file, "broken edit");
+			const added = path.join(workdir, "new-file.txt");
+			const ignored = path.join(workdir, "cache.bin");
+			writeFileSync(added, "discard this addition");
+			writeFileSync(ignored, "preserve generated output");
+			const reregister = vi.fn(async () => ({
+				ok: true,
+				pluginName: "@local/plugin-test",
+			}));
+			const callback = vi.fn();
+			const result = await runViewsRollback({
+				runtime: runtime as never,
+				message: message("rollback"),
+				callback,
+				reregister,
+			});
+			expect(result.success).toBe(true);
+			expect(readFileSync(file, "utf8")).toBe("snapshot contents");
+			expect(existsSync(added)).toBe(false);
+			expect(readFileSync(ignored, "utf8")).toBe("preserve generated output");
+			expect(readFileSync(unrelated, "utf8")).toBe("uncommitted outside");
+			expect(git("rev-parse", "HEAD").trim()).toBe(head);
+			expect(reregister).toHaveBeenCalledExactlyOnceWith(workdir);
+			expect(await findSnapshotRecord(runtime as never, "room-1")).toBeNull();
+			expect(callback).toHaveBeenCalledWith(
+				expect.objectContaining({
+					text: expect.stringMatching(/rolled .*back/i),
+				}),
+			);
+		} finally {
+			rmSync(repo, { recursive: true, force: true });
+		}
 	});
 
 	it("reports honestly when no snapshot is on record", async () => {
@@ -377,6 +360,7 @@ describe("runViewsRollback", () => {
 		const tasks: RuntimeTask[] = [
 			{
 				id: "snap-2",
+				tags: [VIEWS_SNAPSHOT_TAG],
 				metadata: {
 					sha: "abcdef0",
 					workdir: "/repo/plugins/plugin-z",
