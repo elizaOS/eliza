@@ -9,8 +9,13 @@
  * files onto this base so one owner-facing service exposes every domain surface.
  */
 import crypto from "node:crypto";
-import { getAgentEventService, resolveOwnerEntityId } from "@elizaos/agent";
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import { getAgentEventService } from "@elizaos/agent";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  logger,
+  resolveOwnerEntityId,
+} from "@elizaos/core";
 import {
   BROWSER_BRIDGE_COMPANION_CONNECTION_STATES,
   BROWSER_BRIDGE_KINDS,
@@ -204,7 +209,24 @@ export class LifeOpsServiceBase {
     if (!this.ownerRoutingEntityIdPromise) {
       this.ownerRoutingEntityIdPromise = resolveOwnerEntityId(this.runtime);
     }
-    return await this.ownerRoutingEntityIdPromise;
+    const pending = this.ownerRoutingEntityIdPromise;
+    try {
+      return await pending;
+    } catch (cause) {
+      // error-policy:J2 release the failed lookup for retry and preserve its typed cause.
+      if (this.ownerRoutingEntityIdPromise === pending) {
+        this.ownerRoutingEntityIdPromise = null;
+      }
+      throw new ElizaError(
+        "LifeOps owner routing is unavailable; retry after restoring storage access.",
+        {
+          code: "LIFEOPS_OWNER_ROUTING_UNAVAILABLE",
+          cause,
+          context: { agentId: this.runtime.agentId },
+          severity: "ephemeral",
+        },
+      );
+    }
   }
 
   // -----------------------------------------------------------------------
