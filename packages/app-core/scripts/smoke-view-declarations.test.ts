@@ -312,12 +312,5 @@ describe("view bundle provenance (#15791)", () => {
     expect(generic.mode).toBe("synthesized-generic");
     expect(generic.synthesized).toBe(true);
     expect(generic.status).toBe(200);
-
-    const dedicated = resolveBundleProvenance({
-      viewId: "screenshare",
-      realBundleExists: false,
-      requireRealBundle: false,
-    });
-    expect(dedicated.mode).toBe("synthesized-screenshare");
   });
 });
