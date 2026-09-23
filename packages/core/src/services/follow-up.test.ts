@@ -412,7 +412,8 @@ describe("FollowUpService suggestion completeness", () => {
 		};
 		const runtime = {
 			agentId: AGENT_ID,
-			getEntityById: async (id: UUID) => ({ id, names: [`Contact ${id}`] }),
+			getEntitiesByIds: async (ids: UUID[]) =>
+				ids.map((id) => ({ id, names: [`Contact ${id}`] })),
 		};
 		const followUps = new FollowUpService(runtime as never);
 		(
