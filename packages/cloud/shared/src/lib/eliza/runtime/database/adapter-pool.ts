@@ -15,6 +15,7 @@ const adapterEmbeddingDimensions = new Map<string, number>();
 
 export class DbAdapterPool {
   private adapters = new Map<string, IDatabaseAdapter>();
+  private readonly ownedAdapters = new Set<IDatabaseAdapter>();
   private initPromises = new Map<string, Promise<IDatabaseAdapter>>();
   private generations = new Map<string, symbol>();
 
@@ -107,6 +108,7 @@ export class DbAdapterPool {
     const startTime = Date.now();
     const adapterConfig = resolveRuntimeDatabaseAdapterConfig(process.env);
     const adapter = applyLegacyDatabaseAdapterCompat(this.adapterFactory(adapterConfig, agentId));
+    this.ownedAdapters.add(adapter);
     await adapter.initialize();
     this.assertGeneration(agentId, generation);
 
@@ -161,6 +163,23 @@ export class DbAdapterPool {
     if (adapter) {
       await safeClose(adapter, "DbAdapterPool", agentId);
     }
+  }
+
+  /** Transfers full-shutdown ownership after the factory has joined every creation.
+   * Invalidated and failed initializations still own shared connection resources.
+   */
+  takeForShutdown(): IDatabaseAdapter[] {
+    if (this.initPromises.size > 0) {
+      throw new ElizaError("Join runtime creations before releasing database adapters", {
+        code: "RUNTIME_ADAPTER_SHUTDOWN_PENDING",
+      });
+    }
+    const adapters = [...this.ownedAdapters];
+    this.ownedAdapters.clear();
+    for (const agentId of this.generations.keys()) adapterEmbeddingDimensions.delete(agentId);
+    this.adapters.clear();
+    this.generations.clear();
+    return adapters;
   }
 
   entriesForTesting(): Map<string, IDatabaseAdapter> {

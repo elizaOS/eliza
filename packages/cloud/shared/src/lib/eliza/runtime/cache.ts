@@ -1,7 +1,11 @@
-/** Owns hosted runtime reuse and revokes an exact cache entry before awaiting its service teardown. Replacement runtimes and adapters must survive completion of an older eviction; Evicted generations remain owned until strict retirement succeeds; an empty reuse map is not a migration drain. Shared-pool closure remains restricted to full shutdown. */
+/**
+ * Owns hosted runtime reuse and retains evicted generations until strict teardown.
+ * Per-agent eviction keeps shared storage open; full shutdown joins all admitted
+ * work before closing adapters, including those retained after completed eviction.
+ */
 import { createHash } from "node:crypto";
-import { type UUID } from "@elizaos/common";
-import { type AgentRuntime, elizaLogger } from "@elizaos/core";
+import { ElizaError, type UUID } from "@elizaos/common";
+import { type AgentRuntime, elizaLogger, type IDatabaseAdapter } from "@elizaos/core";
 import type { DbAdapterPool } from "./database/adapter-pool";
 import { safeClose, stopRuntimeServices } from "./lifecycle";
 import { stableSerialize } from "./stable-serialize";
@@ -41,6 +45,8 @@ export function buildRuntimeCacheKey(parts: RuntimeCacheKeyParts): string {
 
 export class RuntimeCache {
   private cache = new Map<string, CachedRuntime>();
+  private clearing: Promise<void> | undefined;
+  private readonly retiredAdapters = new Set<IDatabaseAdapter>();
   private readonly retired = new Map<
     AgentRuntime,
     {
@@ -59,6 +65,7 @@ export class RuntimeCache {
   /** Own teardown of an evicted or unpublished runtime without closing its adapter. */
   retire(runtime: AgentRuntime): void {
     const agentId = runtime.agentId;
+    this.retiredAdapters.add(runtime.adapter);
     if (this.retired.has(runtime)) return;
     // Defer hooks until the retirement is visible, including to reentrant callers.
     const completion = Promise.resolve().then(() => runtime.stop({ requireQuiescence: true }));
@@ -71,7 +78,7 @@ export class RuntimeCache {
         }
       },
       (error) => {
-        // error-policy:J5 The original rejection stays retained and is observed by drainRetiredByAgentId.
+        // error-policy:J5 Agent drain or full shutdown observes the retained original rejection.
         elizaLogger.warn(
           { agentId, error },
           "[RuntimeCache] Runtime retirement remains incomplete",
@@ -108,6 +115,7 @@ export class RuntimeCache {
   }
 
   async get(agentId: string): Promise<AgentRuntime | null> {
+    if (this.clearing) return null;
     const entry = this.cache.get(agentId);
     if (!entry) return null;
 
@@ -126,6 +134,7 @@ export class RuntimeCache {
     dbPool: DbAdapterPool,
     currentMcpVersion?: number,
   ): Promise<AgentRuntime | null> {
+    if (this.clearing) return null;
     const entry = this.cache.get(agentId);
     if (!entry) return null;
 
@@ -162,10 +171,12 @@ export class RuntimeCache {
     mcpVersion = 0,
     assertAdmission?: () => void,
   ): Promise<void> {
+    this.assertOpen();
     assertAdmission?.();
     if (!this.cache.has(cacheKey) && this.cache.size >= this.MAX_SIZE) {
       await this.evictOldest();
     }
+    this.assertOpen();
     assertAdmission?.();
 
     // Capacity eviction may yield while another creator publishes this same key.
@@ -269,14 +280,45 @@ export class RuntimeCache {
     return removed.filter(Boolean).length;
   }
 
-  /** Clear all cached runtimes. WARNING: Closes shared connection pool. */
-  async clear(): Promise<void> {
-    const entries = Array.from(this.cache.entries());
-    await Promise.all(
-      entries.map(([id, entry]) => stopRuntimeServices(entry.runtime, id, "RuntimeCache")),
-    );
-    await Promise.all(entries.map(([id, entry]) => safeClose(entry.runtime, "RuntimeCache", id)));
-    this.cache.clear();
+  private assertOpen(): void {
+    if (this.clearing) {
+      throw new ElizaError("Runtime cache shutdown is in progress or failed", {
+        code: "RUNTIME_CACHE_SHUTTING_DOWN",
+      });
+    }
+  }
+
+  /** Full shutdown only: the factory must first fence and join its creations.
+   * Shared adapters stay open until every active or evicted runtime is quiescent.
+   */
+  clear(dbPool: DbAdapterPool): Promise<void> {
+    if (this.clearing) return this.clearing;
+    this.clearing = Promise.resolve().then(async () => {
+      const entries = [...this.cache.values()];
+      this.cache.clear();
+      for (const entry of entries) this.retire(entry.runtime);
+      while (this.retired.size > 0) {
+        await Promise.all([...this.retired.values()].map((entry) => entry.completion));
+      }
+      // Include adapters whose initialization never produced a runtime, and
+      // completed evictions whose shared connection remained deliberately open.
+      for (const adapter of dbPool.takeForShutdown()) this.retiredAdapters.add(adapter);
+      const closed = await Promise.allSettled(
+        [...this.retiredAdapters].map(async (adapter) => {
+          await adapter.close();
+          this.retiredAdapters.delete(adapter);
+        }),
+      );
+      const failure = closed.find((result) => result.status === "rejected");
+      if (failure?.status === "rejected") {
+        throw new ElizaError("Hosted runtime database shutdown failed; admission remains closed", {
+          code: "RUNTIME_DATABASE_SHUTDOWN_FAILED",
+          cause: failure.reason,
+        });
+      }
+      this.clearing = undefined;
+    });
+    return this.clearing;
   }
 
   entriesForTesting(): Map<string, CachedRuntime> {

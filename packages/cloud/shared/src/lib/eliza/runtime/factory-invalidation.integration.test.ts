@@ -202,3 +202,102 @@ test("a loaded identity cannot escape the agent admission scope", async () => {
   });
   expect(runtimeCache.keysForAgentForTesting(f.agentId)).toEqual([]);
 });
+
+test.each(["loader", "adapter", "initialization"] as const)(
+  "full shutdown joins a pending %s creation and closes admission until teardown completes",
+  async (stage) => {
+    const f = fixture();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const stopped = Promise.withResolvers<void>();
+    const finishStop = Promise.withResolvers<void>();
+    const adapter = new InMemoryDatabaseAdapter(f.agentId);
+    const close = boundary(spyOn(adapter, "close"));
+    let stops = 0;
+    const reentryErrors: Error[] = [];
+    class ShutdownService extends Service {
+      static override serviceType = "factory-shutdown-fixture";
+      capabilityDescription = "Controlled shutdown at the real runtime service boundary";
+      static override async start(owner: IAgentRuntime) {
+        return new ShutdownService(owner);
+      }
+      override async stop() {
+        stops++;
+        reentryErrors.push(
+          await f.factory.createRuntimeForUser(f.context).then(
+            () => new Error("Shutdown unexpectedly admitted a reentrant creation"),
+            (error: Error) => error,
+          ),
+        );
+        stopped.resolve();
+        await finishStop.promise;
+      }
+    }
+    boundary(spyOn(dbAdapterPool, "getOrCreate")).mockImplementation(async () => {
+      if (stage === "adapter") {
+        entered.resolve();
+        await release.promise;
+      }
+      return adapter;
+    });
+    if (stage === "loader") {
+      boundary(spyOn(agentLoader, "loadCharacter")).mockImplementation(async () => {
+        entered.resolve();
+        await release.promise;
+        return f.loaded;
+      });
+    }
+    if (stage === "initialization") {
+      f.loaded.plugins.push({
+        name: "shutdown-initialization-fixture",
+        description: "Blocks a real runtime before publication",
+        services: [ShutdownService],
+        async init() {
+          entered.resolve();
+          await release.promise;
+        },
+      });
+    }
+    const outcome = f.factory.createRuntimeForUser(f.context).then(
+      () => undefined,
+      (error: Error) => error,
+    );
+    await entered.promise;
+    const shutdown = f.factory.clearCaches();
+    let completed = false;
+    const joined = shutdown.then(() => {
+      completed = true;
+    });
+    try {
+      expect(f.factory.clearCaches()).toBe(shutdown);
+      await expect(f.factory.createRuntimeForUser(f.context)).rejects.toMatchObject({
+        code: "RUNTIME_FACTORY_SHUTTING_DOWN",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(completed).toBe(false);
+      expect(close).not.toHaveBeenCalled();
+      release.resolve();
+      expect(await outcome).toMatchObject({ code: "RUNTIME_CREATION_INVALIDATED" });
+      if (stage === "initialization") {
+        await stopped.promise;
+        expect(reentryErrors).toMatchObject([{ code: "RUNTIME_FACTORY_SHUTTING_DOWN" }]);
+        expect(completed).toBe(false);
+        expect(close).not.toHaveBeenCalled();
+        finishStop.resolve();
+      }
+      await joined;
+      expect(runtimeCache.keysForAgentForTesting(f.agentId)).toEqual([]);
+      expect(stops).toBe(stage === "initialization" ? 1 : 0);
+      if (stage === "initialization") expect(close).toHaveBeenCalledTimes(1);
+      // A completed clear remains reusable, with fresh runtime admission.
+      const fresh = await f.factory.createRuntimeForUser(f.context);
+      expect(fresh.agentId).toBe(f.agentId);
+      await f.factory.clearCaches();
+    } finally {
+      release.resolve();
+      finishStop.resolve();
+      await outcome;
+      await joined;
+    }
+  },
+);

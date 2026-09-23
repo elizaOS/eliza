@@ -1,5 +1,5 @@
 /** Exercises cache retirement against real runtimes and controlled service teardown. An old eviction must not erase a replacement published while its cleanup waits. */
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { AgentRuntime, type IAgentRuntime, Service } from "@elizaos/core";
 import { InMemoryDatabaseAdapter } from "@elizaos/plugin-inmemorydb/runtime";
@@ -317,5 +317,98 @@ test("admission revoked while capacity eviction waits prevents publication", asy
         runtime.stop({ requireQuiescence: true }),
       ),
     );
+  }
+});
+
+test("full shutdown joins evicted and cached services before closing any shared adapter", async () => {
+  const cache = new RuntimeCache();
+  const pool = new DbAdapterPool();
+  const evicted = await controlledRetirement(randomUUID());
+  const active = await controlledRetirement(randomUUID());
+  const closeEvicted = spyOn(evicted.runtime.adapter, "close");
+  const closeActive = spyOn(active.runtime.adapter, "close");
+  await cache.set(evicted.runtime.agentId, evicted.runtime, "Evicted", evicted.runtime.agentId);
+  await cache.set(active.runtime.agentId, active.runtime, "Active", active.runtime.agentId);
+  const eviction = cache.remove(evicted.runtime.agentId);
+  await evicted.entered.promise;
+  const shutdown = cache.clear(pool);
+  try {
+    expect(cache.clear(pool)).toBe(shutdown);
+    expect(await cache.get(active.runtime.agentId)).toBeNull();
+    await active.entered.promise;
+    active.finish.resolve();
+    await expectDrainPending(shutdown);
+    expect(closeActive).not.toHaveBeenCalled();
+    expect(closeEvicted).not.toHaveBeenCalled();
+    await expect(
+      cache.set(active.runtime.agentId, active.runtime, "Rejected", active.runtime.agentId),
+    ).rejects.toMatchObject({ code: "RUNTIME_CACHE_SHUTTING_DOWN" });
+    evicted.finish.resolve();
+    await Promise.all([eviction, shutdown]);
+    expect(closeActive).toHaveBeenCalledTimes(1);
+    expect(closeEvicted).toHaveBeenCalledTimes(1);
+    expect(cache.getStats().size).toBe(0);
+  } finally {
+    active.finish.resolve();
+    evicted.finish.resolve();
+    await Promise.all([eviction, shutdown]);
+    closeEvicted.mockRestore();
+    closeActive.mockRestore();
+  }
+});
+
+test("failed retirement leaves storage open and shutdown admission closed", async () => {
+  const cache = new RuntimeCache();
+  const pool = new DbAdapterPool();
+  const fixture = await controlledRetirement(randomUUID(), true);
+  const close = spyOn(fixture.runtime.adapter, "close");
+  await cache.set(fixture.runtime.agentId, fixture.runtime, "Failing", fixture.runtime.agentId);
+  const outcome = cache.clear(pool).then(
+    () => undefined,
+    (error: Error) => error,
+  );
+  await fixture.entered.promise;
+  fixture.finish.resolve();
+  try {
+    expect(await outcome).toMatchObject({ code: "RUNTIME_QUIESCENCE_FAILED" });
+    await expect(cache.clear(pool)).rejects.toMatchObject({ code: "RUNTIME_QUIESCENCE_FAILED" });
+    await expect(
+      cache.set(fixture.runtime.agentId, fixture.runtime, "Rejected", fixture.runtime.agentId),
+    ).rejects.toMatchObject({ code: "RUNTIME_CACHE_SHUTTING_DOWN" });
+    expect(close).not.toHaveBeenCalled();
+    expect(fixture.stops()).toBe(1);
+  } finally {
+    close.mockRestore();
+  }
+});
+
+test("adapter close failure remains observable and cannot reopen runtime admission", async () => {
+  const cache = new RuntimeCache();
+  const pool = new DbAdapterPool();
+  const fixture = await controlledRetirement(randomUUID());
+  const failure = new Error("Fixture storage close failure");
+  const close = spyOn(fixture.runtime.adapter, "close").mockRejectedValue(failure);
+  await cache.set(
+    fixture.runtime.agentId,
+    fixture.runtime,
+    "Failing close",
+    fixture.runtime.agentId,
+  );
+  fixture.finish.resolve();
+  try {
+    await expect(cache.clear(pool)).rejects.toMatchObject({
+      code: "RUNTIME_DATABASE_SHUTDOWN_FAILED",
+      cause: failure,
+    });
+    await expect(cache.clear(pool)).rejects.toMatchObject({
+      code: "RUNTIME_DATABASE_SHUTDOWN_FAILED",
+    });
+    await expect(
+      cache.set(fixture.runtime.agentId, fixture.runtime, "Rejected", fixture.runtime.agentId),
+    ).rejects.toMatchObject({ code: "RUNTIME_CACHE_SHUTTING_DOWN" });
+    expect(close).toHaveBeenCalledTimes(1);
+  } finally {
+    close.mockRestore();
+    await fixture.runtime.adapter.close();
   }
 });

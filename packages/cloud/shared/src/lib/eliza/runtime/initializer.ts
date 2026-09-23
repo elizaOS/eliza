@@ -87,6 +87,7 @@ interface RuntimeCreation {
 export class RuntimeFactory {
   private static instance: RuntimeFactory;
   private readonly creations = new Set<RuntimeCreation>();
+  private clearing: Promise<void> | undefined;
   private readonly DEFAULT_AGENT_ID = stringToUuid(DEFAULT_AGENT_ID_STRING) as UUID;
 
   private constructor() {
@@ -104,8 +105,20 @@ export class RuntimeFactory {
     return { runtime: runtimeCache.getStats() };
   }
 
-  async clearCaches(): Promise<void> {
-    await runtimeCache.clear();
+  /** Full shutdown joins every admitted creation before closing shared storage.
+   * Admission reopens only after successful teardown; failures remain observable.
+   */
+  clearCaches(): Promise<void> {
+    if (this.clearing) return this.clearing;
+    const creations = [...this.creations];
+    for (const creation of creations) creation.invalidated = true;
+    // Publish the barrier before loaders or teardown hooks can reenter the factory.
+    this.clearing = Promise.resolve().then(async () => {
+      await Promise.all(creations.map((creation) => creation.completion));
+      await runtimeCache.clear(dbAdapterPool);
+      this.clearing = undefined;
+    });
+    return this.clearing;
   }
 
   async invalidateRuntime(agentId: string): Promise<boolean> {
@@ -167,6 +180,14 @@ export class RuntimeFactory {
   }
 
   async createRuntimeForUser(context: UserContext): Promise<AgentRuntime> {
+    if (this.clearing) {
+      throw new ElizaError(
+        "Hosted runtime shutdown is in progress or failed; wait for successful teardown",
+        {
+          code: "RUNTIME_FACTORY_SHUTTING_DOWN",
+        },
+      );
+    }
     const finished = Promise.withResolvers<void>();
     const creation: RuntimeCreation = {
       agentId: stringToUuid(context.characterId || DEFAULT_AGENT_ID_STRING),

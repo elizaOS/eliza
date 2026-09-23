@@ -346,3 +346,43 @@ test("a completed health read cannot return a retired runtime", async () => {
     ]);
   }
 }, 30_000);
+
+test.each(["cached", "invalidated", "failed-initialization"] as const)(
+  "full shutdown closes a real %s adapter even when no runtime was published",
+  async (kind) => {
+    const agentId = randomUUID();
+    let owned: IDatabaseAdapter | undefined;
+    const pool = new DbAdapterPool((config, id) => {
+      const adapter = realFactory(config, id);
+      owned = adapter;
+      if (kind === "failed-initialization") {
+        adapter.ensureEmbeddingDimension = async () => {
+          throw new Error("Fixture dimension initialization failed");
+        };
+      }
+      return adapter;
+    });
+    if (kind === "failed-initialization") {
+      await expect(pool.getOrCreate(agentId)).rejects.toMatchObject({
+        code: "RUNTIME_ADAPTER_DIMENSION_FAILED",
+      });
+    } else {
+      await pool.getOrCreate(agentId);
+      if (kind === "invalidated") pool.removeAdapter(agentId);
+    }
+    if (!owned) throw new Error("Adapter fixture did not initialize");
+    expect(await owned.getEntitiesByIds([randomUUID()])).toEqual([]);
+    const cache = new RuntimeCache();
+    await cache.clear(pool);
+    adapters.delete(owned);
+    expect(pool.entriesForTesting().size).toBe(0);
+    await expect(owned.getEntitiesByIds([randomUUID()])).rejects.toThrow();
+    if (kind !== "failed-initialization") {
+      const previous = owned;
+      const fresh = await pool.getOrCreate(agentId);
+      expect(fresh === previous).toBe(false);
+      expect(await fresh.getEntitiesByIds([randomUUID()])).toEqual([]);
+    }
+  },
+  30_000,
+);
