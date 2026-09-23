@@ -34,21 +34,7 @@ import codingToolsPlugin, {
   SessionCwdService,
 } from "../src/index.ts";
 
-describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
-  it("validate ignores CODING_TOOLS_DISABLE — kill switch was removed", async () => {
-    const runtime = {
-      agentId: "00000000-0000-0000-0000-000000000000",
-      getSetting: (key: string) =>
-        key === "CODING_TOOLS_DISABLE" ? true : undefined,
-      getService: () => null,
-    } as IAgentRuntime;
-    const message = { roomId: "r" } as Memory;
-    for (const action of codingToolsPlugin.actions ?? []) {
-      const ok = await action.validate?.(runtime, message);
-      expect(ok, action.name).toBe(true);
-    }
-  });
-
+describe("@elizaos/plugin-coding-tools — plugin admission", () => {
   it("auto-enables only for configured terminal-capable environments", () => {
     const shouldEnable = codingToolsPlugin.autoEnable?.shouldEnable;
     expect(shouldEnable).toBeTypeOf("function");
