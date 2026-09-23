@@ -401,6 +401,31 @@ describe("Develop Full impact graph", () => {
     expect(digest(changed, "leaf")).not.toBe(digest(baseline, "leaf"));
   });
 
+  test("plain-scalar punctuation preserves transitive workflow invalidation", () => {
+    const sources = {
+      "leaf.yml": [
+        "name: Review the workflow's inputs",
+        'description: A literal trailing quote"',
+        "concurrency:",
+        "  group: ci-${{ format('dispatch-{0}', github.run_id) }}",
+        "jobs:",
+        "  test:",
+        "    uses: './.github/workflows/reusable.yml' # owner's comment",
+        "",
+      ].join("\n"),
+      ".github/workflows/reusable.yml": "jobs: { test: { steps: [] } }\n",
+    };
+    const baseline = manifest([], { tracked: tracked(sources) });
+    const changed = manifest([".github/workflows/reusable.yml"], {
+      tracked: tracked({
+        ...sources,
+        ".github/workflows/reusable.yml":
+          "jobs: { test: { steps: [{ run: echo changed }] } }\n",
+      }),
+    });
+    expect(digest(changed, "leaf")).not.toBe(digest(baseline, "leaf"));
+  });
+
   test("fails closed for missing, invalid, and cyclic local uses targets", () => {
     const missing = tracked({
       "leaf.yml": "jobs:\n  test:\n    uses: ./.github/workflows/missing.yml\n",

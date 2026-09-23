@@ -5,8 +5,10 @@
  */
 import { fileURLToPath } from "node:url";
 import {
+  getView,
   registerPluginViews,
   unregisterPluginViews,
+  type ViewInstallation,
 } from "@elizaos/agent/api/views-registry";
 import {
   handleViewsRoutes,
@@ -15,9 +17,9 @@ import {
 import { installPromptOptimizations } from "@elizaos/agent/runtime/prompt-optimization";
 import {
   clearActiveViewContext,
-  setActiveViewContext,
-  setActiveViewElements,
+  getActiveViewContext,
 } from "@elizaos/agent/runtime/view-action-affinity";
+import { runWithViewClient } from "@elizaos/agent/runtime/view-client-context";
 import type {
   AgentRuntime,
   IAgentRuntime,
@@ -75,6 +77,25 @@ const state: ScenarioState = {
 };
 
 let restoreFetch: (() => void) | null = null;
+let scenarioRuntime: IAgentRuntime | null = null;
+let viewInstallation: ViewInstallation | null = null;
+let restoreMessageHandler: (() => void) | null = null;
+const hostKey = {};
+const clientId = "active-ledger-scenario";
+const elementReport = {
+  clientId,
+  installationId: "",
+  elements: [
+    {
+      id: "ledger-title",
+      role: "textbox",
+      label: "Ledger title",
+      value: "Untitled Ledger",
+      focused: true,
+    },
+    { id: "save-ledger", role: "button", label: "Save ledger" },
+  ],
+};
 
 const activeLedgerView: ViewDeclaration = {
   id: VIEW_ID,
@@ -121,7 +142,11 @@ const activeLedgerView: ViewDeclaration = {
 const viewRoutes = [
   { type: "GET", path: "/api/views" },
   { type: "GET", path: "/api/views/current" },
-  { type: "GET", path: `/api/views/${VIEW_ID}/frame.html` },
+  { type: "GET", path: `/api/views/${VIEW_ID}` },
+  {
+    type: "GET",
+    path: `/api/views/${VIEW_ID}/installations/:lease/:type/:kind/:file`,
+  },
   { type: "POST", path: `/api/views/${VIEW_ID}/navigate` },
   { type: "POST", path: `/api/views/${VIEW_ID}/elements` },
   { type: "POST", path: `/api/views/${VIEW_ID}/interact` },
@@ -137,6 +162,7 @@ function toViewsRouteContext(
     req: req as never,
     res: res as never,
     runtime,
+    hostKey,
     pathname: url.pathname,
     method: (req.method ?? "GET").toUpperCase(),
     url,
@@ -501,15 +527,32 @@ export default scenario({
         state.title = "Untitled Ledger";
         state.interactions.length = 0;
         state.broadcasts.length = 0;
-        clearActiveViewContext();
-        installScenarioInteractFetchShim(() => state.apiBaseUrl);
-        unregisterPluginViews(scenarioViewsRoutePlugin.name);
-        await registerPluginViews(
-          scenarioViewsRoutePlugin,
-          fileURLToPath(new URL("../../", import.meta.url)),
-        );
-
         const runtime = ctx.runtime as RuntimeWithScenarioPlugins;
+        scenarioRuntime = runtime;
+        clearActiveViewContext(runtime, { hostKey, clientId });
+        const messageService = runtime.messageService;
+        if (!messageService)
+          throw new Error("Scenario message service missing");
+        const handleMessage = messageService.handleMessage;
+        // Model turns must carry the same renderer identity as the HTTP reports.
+        messageService.handleMessage = (...args) =>
+          runWithViewClient({ hostKey, clientId }, () =>
+            handleMessage.apply(messageService, args),
+          );
+        restoreMessageHandler = () => {
+          messageService.handleMessage = handleMessage;
+          restoreMessageHandler = null;
+        };
+        installScenarioInteractFetchShim(() => state.apiBaseUrl);
+        viewInstallation = await registerPluginViews(
+          runtime,
+          scenarioViewsRoutePlugin,
+          { pluginDir: fileURLToPath(new URL("../../", import.meta.url)) },
+        );
+        const entry = getView(runtime, VIEW_ID);
+        if (!entry?.installationId)
+          throw new Error("Ledger view installation missing");
+        elementReport.installationId = entry.installationId;
         if (!runtime?.registerPlugin) {
           return "runtime.registerPlugin unavailable";
         }
@@ -621,9 +664,15 @@ export default scenario({
       name: "restore scenario active-view fetch shim",
       apply: () => {
         restoreFetch?.();
-        clearActiveViewContext();
+        restoreMessageHandler?.();
+        if (scenarioRuntime) {
+          clearActiveViewContext(scenarioRuntime, { hostKey, clientId });
+          if (viewInstallation)
+            unregisterPluginViews(scenarioRuntime, viewInstallation);
+        }
+        scenarioRuntime = null;
+        viewInstallation = null;
         state.apiBaseUrl = undefined;
-        unregisterPluginViews(scenarioViewsRoutePlugin.name);
         state.catalogReadCount = 0;
         return undefined;
       },
@@ -648,9 +697,17 @@ export default scenario({
     },
     {
       kind: "api",
+      name: "read installation-bound ledger frame URL",
+      method: "GET",
+      path: `/api/views/${VIEW_ID}`,
+      expectedStatus: 200,
+      captures: { ledgerFrameUrl: "frameUrl" },
+    },
+    {
+      kind: "api",
       name: "scenario ledger document is served by the registered view route",
       method: "GET",
-      path: `/api/views/${VIEW_ID}/frame.html`,
+      path: "{{capture:ledgerFrameUrl}}",
       expectedStatus: 200,
       assertResponse: (_status, body) =>
         typeof body === "string" &&
@@ -664,21 +721,20 @@ export default scenario({
       name: "shell navigates to active ledger",
       method: "POST",
       path: `/api/views/${VIEW_ID}/navigate`,
-      body: { source: "user", viewType: "gui" },
+      body: { source: "user", viewType: "gui", clientId },
       expectedStatus: 200,
       assertResponse: (_status, body) => {
         const response = body as { ok?: unknown; viewId?: unknown };
         if (response.ok !== true || response.viewId !== VIEW_ID) {
           return `expected active ledger navigate response, saw ${JSON.stringify(body)}`;
         }
-        setActiveViewContext({
-          viewId: VIEW_ID,
-          viewLabel: VIEW_LABEL,
-          viewPath: "/scenario/active-ledger",
-          viewType: "gui",
-          source: "user",
-          switchedAt: new Date().toISOString(),
+        if (!scenarioRuntime) return "Ledger runtime missing";
+        const active = getActiveViewContext(scenarioRuntime, {
+          hostKey,
+          clientId,
         });
+        if (active?.viewId !== VIEW_ID)
+          return "Navigation did not select the client view";
         return undefined;
       },
     },
@@ -687,22 +743,7 @@ export default scenario({
       name: "shell reports active ledger elements",
       method: "POST",
       path: `/api/views/${VIEW_ID}/elements`,
-      body: {
-        elements: [
-          {
-            id: "ledger-title",
-            role: "textbox",
-            label: "Ledger title",
-            value: "Untitled Ledger",
-            focused: true,
-          },
-          {
-            id: "save-ledger",
-            role: "button",
-            label: "Save ledger",
-          },
-        ],
-      },
+      body: elementReport,
       expectedStatus: 200,
       assertResponse: (_status, body) => {
         const response = body as {
@@ -717,21 +758,12 @@ export default scenario({
         ) {
           return `expected accepted element report, saw ${JSON.stringify(body)}`;
         }
-        const accepted = setActiveViewElements(VIEW_ID, [
-          {
-            id: "ledger-title",
-            role: "textbox",
-            label: "Ledger title",
-            value: "Untitled Ledger",
-            focused: true,
-          },
-          {
-            id: "save-ledger",
-            role: "button",
-            label: "Save ledger",
-          },
-        ]);
-        return accepted
+        if (!scenarioRuntime) return "Ledger runtime missing";
+        const active = getActiveViewContext(scenarioRuntime, {
+          hostKey,
+          clientId,
+        });
+        return active?.elements?.length === 2
           ? undefined
           : "expected active-view element snapshot to attach to prompt optimizer context";
       },
