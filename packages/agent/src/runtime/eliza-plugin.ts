@@ -116,6 +116,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
   const plugin: Plugin = {
     name: "eliza",
+    databaseBackends: ["postgres", "pglite", "sqlite"],
     description: "Eliza workspace context, session keys, and lifecycle actions",
 
     // Runtime-owned app_lifeops tables. Registered here so the SQL plugin

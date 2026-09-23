@@ -7,6 +7,7 @@
  * route layer enforces the domain state machine.
  */
 
+import { type DurableRecordStore, ElizaError } from "@elizaos/core";
 import {
   type PendantInsightRef,
   PendantInsightRefSchema,
@@ -17,6 +18,7 @@ import {
   PendantSessionStateSchema,
 } from "@elizaos/shared/contracts/pendant-session-sync";
 import { extractRows } from "@elizaos/shared/db/raw-sql";
+import { RecordPendantSessionRepository } from "./record-repository.ts";
 
 type RuntimeDb = {
   execute: (query: RawSqlQuery) => Promise<unknown>;
@@ -28,8 +30,10 @@ type RawSqlQuery = {
 };
 
 type RuntimeWithDatabase = {
+  agentId?: string;
   adapter: {
     db?: unknown;
+    recordStore?: DurableRecordStore;
   };
 };
 
@@ -155,13 +159,16 @@ export interface PendantSessionRepository {
   }): Promise<void>;
 }
 
-export class PendantSessionRevisionConflictError extends Error {
+export class PendantSessionRevisionConflictError extends ElizaError {
+  override readonly name = "PendantSessionRevisionConflictError";
   constructor(
     readonly currentRevision: number,
     message = "Pendant session revision does not match",
   ) {
-    super(message);
-    this.name = "PendantSessionRevisionConflictError";
+    super(message, {
+      code: "PENDANT_SESSION_REVISION_CONFLICT",
+      context: { currentRevision },
+    });
   }
 }
 
@@ -656,5 +663,10 @@ export class InMemoryPendantSessionRepository
 export function createPendantSessionRepository(
   runtime: RuntimeWithDatabase,
 ): PendantSessionRepository {
+  if (runtime.adapter.recordStore)
+    return new RecordPendantSessionRepository(
+      runtime.adapter.recordStore,
+      runtime.agentId,
+    );
   return new SqlPendantSessionRepository(runtime);
 }

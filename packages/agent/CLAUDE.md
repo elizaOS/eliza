@@ -239,3 +239,19 @@ recalled source IDs using the assistant's shared original-message renderer.
 Preserve original author, room, identity and text, including hash-memory source
 presentation and partial/withheld notices. The metadata is a quotation aid, not
 a new access grant or a way to recover text removed during provider redaction.
+
+## Native SQLite host persistence
+
+The built-in `eliza` plugin supports the explicit SQLite database selection for
+its canonical graph and pendant sessions. Native records live in the same
+agent-bound database as the runtime. Pendant session revisions, lease digests,
+ordered transcript segments and insight references commit atomically; stale
+writes preserve the revision-conflict response. Reads and writes reject another
+agent and unsupported record schema versions. Owners remain separate inside the
+agent database. Complete transcript text survives restart without truncation.
+
+PostgreSQL/PGlite keeps its normalized tables. SQLite does not import historical
+PostgreSQL data, qualify other domain plugins, provide encrypted storage or
+establish a confidential hardware boundary. Unported plugins remain rejected by
+the host's selected-database guard. This host port is not acceptance of the full
+confidential API, household permissions or regulatory control program.
