@@ -731,9 +731,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.result.responseContent.text).toBe("Stopped.");
 		expect(result.result.responseContent.sourceReplyReferences).toBeUndefined();
 	});
-	it.each([false, true])(
-		"resolves native original-message parts before fields (invalid=%s)",
-		async (invalid) => {
+	it.each([
+		{ invalid: false, transport: "native" },
+		{ invalid: true, transport: "native" },
+		{ invalid: false, transport: "json" },
+		{ invalid: false, transport: "wrapped-json" },
+	])(
+		"resolves original-message parts before fields ($transport, invalid=$invalid)",
+		async ({ invalid, transport }) => {
 			const original = {
 				...makeMessage({ text: "Mira’s bag is orange.\nKeep  two spaces." }),
 				id: "00000000-0000-0000-0000-000000000011" as UUID,
@@ -760,6 +765,25 @@ describe("runV5MessageRuntimeStage1", () => {
 			});
 			const before = JSON.stringify(raw);
 			const runtime = makeRuntime([raw]);
+			if (transport !== "native")
+				vi.mocked(runtime.useModel).mockImplementationOnce(
+					async (_type, params) => {
+						const identity = JSON.stringify(params).match(
+							/completion_source_set: ([a-f0-9]{64})/,
+						)?.[1];
+						if (!identity) throw Error("Missing source identity");
+						const args = raw.toolCalls[0].arguments;
+						const text = JSON.stringify({
+							...args,
+							completionContext: {
+								...(args.completionContext as Record<string, unknown>),
+								sourceSetId: identity,
+							},
+						});
+						return transport === "json" ? text : { text, finishReason: "stop" };
+					},
+				);
+
 			const dispatch = vi.spyOn(
 				runtime.responseHandlerFieldRegistry,
 				"dispatch",
@@ -802,9 +826,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				responseSkeleton: { spans: { key?: string; kind: string }[] };
 				tools: { parameters?: { properties?: { replyText?: unknown } } }[];
 			};
-			expect(params.tools[0].parameters?.properties?.replyText).toHaveProperty(
-				"anyOf",
-			);
+			expect(params.tools[0].parameters?.properties?.replyText).toMatchObject({
+				type: "array",
+			});
 			expect(
 				params.responseSkeleton.spans.find(
 					(span) => span.key === "replyText" && span.kind !== "literal",

@@ -93,3 +93,10 @@ when no text was delivered. Carry its status beside the uniquely linked original
 request, without rewriting either dialogue body or treating interruption as a
 rollback of committed effects/background tasks. A casual approval cannot reuse
 an interrupted preview; an explicit new continuation request remains available.
+
+
+When supplied original sources enable native source replies, advertise an ordered
+reply-parts array rather than an equal legacy string alternative. Ordinary prose
+uses text parts; original source parts render as separate blocks without changing
+literal bytes. Legacy string responses remain accepted, and JSON-envelope parts
+still require an actual source identity (never an implicit native request alias).

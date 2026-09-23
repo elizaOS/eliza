@@ -308,12 +308,36 @@ export async function generateStage1Decision(
     sourceReplyRendering = undefined;
     const bound = sourceSelectionBinding?.resolve(raw) ?? raw;
     const snapshot = sourceReplySnapshot;
+    if (!snapshot) return bound;
+    const resolveParts = (parsed: Record<string, unknown>) => {
+      if (!Array.isArray(parsed.replyText)) return parsed;
+      const resolved = resolveSourceReply(
+        discovery.context,
+        snapshot,
+        parsed,
+        (rendering) => {
+          sourceReplyRendering = rendering;
+        },
+      );
+      return typeof resolved?.replyText === "string"
+        ? {
+            ...resolved,
+            replyText: sourceReplyRendering?.prose ?? resolved.replyText,
+          }
+        : parsed;
+    };
     if (
-      !snapshot ||
       typeof bound === "string" ||
-      !Array.isArray(bound.toolCalls)
-    )
-      return bound;
+      !Array.isArray(bound.toolCalls) ||
+      bound.toolCalls.length === 0
+    ) {
+      const parsed = extractMessageHandlerRawParsed(bound);
+      if (!parsed || !Array.isArray(parsed.replyText)) return bound;
+      const resolved = resolveParts(parsed);
+      if (resolved === parsed) return bound;
+      const text = JSON.stringify(resolved);
+      return typeof bound === "string" ? text : { ...bound, text };
+    }
     const decisions = bound.toolCalls.filter(
       (entry) => entry?.name === HANDLE_RESPONSE_TOOL_NAME,
     );
@@ -334,27 +358,15 @@ export async function generateStage1Decision(
         if (entry?.name !== HANDLE_RESPONSE_TOOL_NAME) return entry;
         const parsed = parseToolArguments(entry.arguments);
         if (!parsed || !Array.isArray(parsed.replyText)) return entry;
-        const resolved = resolveSourceReply(
-          discovery.context,
-          snapshot,
-          parsed,
-          (references) => {
-            sourceReplyRendering = references;
-          },
-        );
-        if (typeof resolved?.replyText !== "string") return entry;
+        const resolved = resolveParts(parsed);
+        if (resolved === parsed || typeof resolved.replyText !== "string")
+          return entry;
         return {
           ...entry,
           arguments:
             typeof entry.arguments === "string"
-              ? JSON.stringify({
-                  ...parsed,
-                  replyText: sourceReplyRendering?.prose ?? resolved.replyText,
-                })
-              : {
-                  ...entry.arguments,
-                  replyText: sourceReplyRendering?.prose ?? resolved.replyText,
-                },
+              ? JSON.stringify(resolved)
+              : { ...entry.arguments, replyText: resolved.replyText },
         };
       }),
     };
@@ -399,7 +411,7 @@ export async function generateStage1Decision(
       const replySchema = fieldSchema.properties?.replyText;
       if (sourceReplySnapshot?.originals.size && replySchema) {
         effectiveReplySchema = {
-          anyOf: [replySchema, SOURCE_REPLY_SCHEMA],
+          ...SOURCE_REPLY_SCHEMA,
           description: SOURCE_REPLY_INSTRUCTIONS,
         };
         fieldSchema = {
