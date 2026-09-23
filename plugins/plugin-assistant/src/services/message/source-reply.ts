@@ -27,12 +27,12 @@ import {
 } from "./source-reply-references";
 
 export const SOURCE_REPLY_INSTRUCTIONS =
-  'Reply parts: replyText may be an ordinary string or an ordered array. Use {kind:"source",value:"hN"} (or "recalledN" from supplied provider context) for every verbatim original-message quotation; the renderer inserts that supplied original unchanged. Use {kind:"text",value:"..."} for your own explanations or summaries, not retyped original quotations. Source parts may refer only to supplied originals; preserve speaker attribution. Provider recalledN IDs do not belong in history completionContext selections. Use an empty string or [] when no reply is needed.';
+  'Reply parts: replyText is an ordered array. Use one text part for ordinary prose. Use {kind:"source",value:"hN"} (or "recalledN" from supplied provider context) for every verbatim original-message quotation; the renderer inserts that supplied original unchanged. Use {kind:"text",value:"..."} for your own explanations or summaries, not retyped original quotations. Source parts may refer only to supplied originals; preserve speaker attribution. Provider recalledN IDs do not belong in history completionContext selections. Use [] when no reply is needed.';
 
 export const SOURCE_REPLY_SCHEMA: JSONSchema = {
   type: "array",
   description:
-    "Ordered reply parts: text is your prose; source is a supplied hN or recalledN original inserted unchanged; use text parts for paragraph separators. Use source parts for verbatim whole-message quotes, never retype them. Keep explanations and speaker attribution in text parts. Use [] for no reply.",
+    "Ordered reply parts: text is your prose; source is a supplied hN or recalledN original inserted unchanged as its own paragraph. Use source parts for verbatim whole-message quotes, never retype them. Keep explanations and speaker attribution in text parts. Use [] for no reply.",
   items: {
     type: "object",
     additionalProperties: false,
@@ -86,10 +86,24 @@ function createRendering(
   parts: readonly SourceReplyPart[],
   scope: SourceReplySnapshot["scope"],
 ): SourceReplyRendering {
+  const displayedParts: SourceReplyPart[] = [];
+  for (const part of parts) {
+    if (part.kind === "text" && part.text === "") continue;
+    const previous = displayedParts.at(-1);
+    if (
+      previous &&
+      (previous.kind === "source" || part.kind === "source") &&
+      !/[\r\n]$/.test(previous.text) &&
+      !/^[\r\n]/.test(part.text)
+    ) {
+      displayedParts.push({ kind: "text", text: "\n\n" });
+    }
+    displayedParts.push(part);
+  }
   let offset = 0;
   const spans: OutboundLiteralSpan[] = [];
-  const originals = parts.filter((part) => part.kind === "source");
-  const text = parts
+  const originals = displayedParts.filter((part) => part.kind === "source");
+  const text = displayedParts
     .map((part) => {
       if (part.kind === "source")
         spans.push({ start: offset, end: offset + part.text.length });

@@ -7,6 +7,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { renderProviderOriginalMessages } from "../../runtime/provider-originals.ts";
 import type { HistoryDiscovery } from "./history-discovery";
+import { replyClaimsCompletedSideEffect } from "./side-effect-claims.ts";
 import {
   bindSourceReplyContent,
   createSourceReplySnapshot,
@@ -92,6 +93,48 @@ function fixture() {
   return { memory, context, projection, snapshot, raw };
 }
 describe("source-backed native replies", () => {
+  it("separates typed source blocks without weakening mixed-claim checks", () => {
+    const f = fixture();
+    f.memory.content.text = "the note.";
+    const event = f.context.events[0];
+    if (event.type !== "segment" || !("segment" in event))
+      throw Error("source expected");
+    event.segment.content = "Nubs: the note.";
+    event.segment.metadata = {
+      ...event.segment.metadata,
+      originalTextSha256: sourceReplyTextHash("the note."),
+    };
+    f.projection.sourceSetId = completionContextSources(f.context).sourceSetId;
+    const snapshot = createSourceReplySnapshot(f.context, f.projection, [
+      f.memory,
+    ]);
+    if (!snapshot) throw Error("snapshot expected");
+    let rendering: SourceReplyRendering | undefined;
+    const result = resolveSourceReply(
+      f.context,
+      snapshot,
+      {
+        ...f.raw,
+        completionContext: {
+          ...f.raw.completionContext,
+          sourceSetId: f.projection.sourceSetId,
+        },
+        replyText: [
+          { kind: "text", value: "Created " },
+          { kind: "source", value: "h1" },
+        ],
+      },
+      (value) => {
+        rendering = value;
+      },
+    );
+    expect(result?.replyText).toBe("Created \n\nthe note.");
+    if (!rendering) throw Error("rendering expected");
+    expect(
+      replyClaimsCompletedSideEffect(sourceReplyAssertionText(rendering)),
+    ).toBe(true);
+  });
+
   it("combines history and provider originals without storing a cross-room history link", () => {
     const f = fixture();
     const originalMessages = {
