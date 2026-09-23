@@ -198,11 +198,23 @@ remain required; build caches cannot substitute for a green validation result.
 
 The shared setup action restores dependency and Turbo caches independently of
 validation. `publish-caches` defaults to `true`; the smoke and plugin matrices
-select shard 1 as their publisher and use restore-only actions in the other
-shards, with unchanged keys and restore prefixes. Every shard still installs and
-runs its own tasks. If the publisher fails, later runs may have a cold cache;
-that failure still fails the required matrix. Story shards serve the catalog
-artifact and disable Turbo caching because they do not execute Turbo tasks.
+retain shard 1 as their Turbo publisher. `publish-bun-install-cache` separately
+controls the large Bun download archive and inherits `publish-caches` when
+omitted. Canonical CI's Quality job owns that archive; other canonical jobs
+restore it without scheduling archive publication. Every job still performs its
+normal pinned install and required tests, including on a cache miss.
+
+Full validation chooses one writer for the shared Linux/Bun/lockfile key:
+canonical Quality when canonical CI runs, otherwise UI fixture contracts when
+that family runs, otherwise the Storybook catalog builder. Standalone UI fixture
+and Storybook calls retain their designated writer by default; Storybook manual
+dispatch exposes the same opt-out. A failed writer leaves a cold cache for later
+runs and still fails its normal required job. No consumer waits for cache
+publication. PR source smoke owns its Bun archive; the subscription authority
+PostgreSQL job restores without publishing, retaining its separate Turbo cache.
+Other operating-system caches and Docker's separate cache key are
+unchanged. Story shards serve the catalog artifact and disable Turbo caching
+because they do not execute Turbo tasks.
 
 Physical-device and live-model evidence remains explicit through the existing
 manual/device entry points. `live-smoke.yml` with `suite=remote-capabilities`

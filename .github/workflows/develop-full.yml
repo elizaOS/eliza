@@ -124,12 +124,15 @@ jobs:
     if: needs.plan.outputs.run_ui_core == 'true'
     uses: ./.github/workflows/ui-e2e-gate.yml
     with:
+      publish_bun_install_cache: ${{ needs.plan.outputs.run_canonical != 'true' }}
       concurrency_scope: promotion-full-${{ github.ref_name }}
     secrets: inherit
   ui-stories:
     needs: plan
     if: needs.plan.outputs.run_ui_stories == 'true'
     uses: ./.github/workflows/ui-story-gate.yml
+    with:
+      publish_bun_install_cache: ${{ needs.plan.outputs.run_canonical != 'true' && needs.plan.outputs.run_ui_core != 'true' }}
     secrets: inherit
   complete:
     name: Complete manifest

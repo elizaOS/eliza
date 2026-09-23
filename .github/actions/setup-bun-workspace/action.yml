@@ -43,6 +43,10 @@ inputs:
     description: "Publish caches after a successful job. Equivalent matrix readers disable publication while retaining the same restores and task execution."
     required: false
     default: "true"
+  publish-bun-install-cache:
+    description: "Publish the Bun download archive independently of Turbo; empty inherits publish-caches."
+    required: false
+    default: ""
   cache-turbo:
     description: "Restore and save Turbo task outputs; disable for consumers that do not run Turbo. Use independently of the Bun download cache."
     required: false
@@ -427,14 +431,14 @@ runs:
     - name: Cache Bun install
       # An exact lockfile key avoids restoring unrelated multi-gigabyte stores.
       # On a miss Bun fetches the frozen lockfile's required dependencies.
-      if: ${{ inputs.cache-bun-install == 'true' && inputs.publish-caches == 'true' }}
+      if: ${{ inputs.cache-bun-install == 'true' && (inputs.publish-bun-install-cache == 'true' || (inputs.publish-bun-install-cache == '' && inputs.publish-caches == 'true')) }}
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: ~/.bun/install/cache
         key: bun-${{ runner.os }}-${{ inputs.bun-version }}-${{ hashFiles('bun.lock') }}
 
     - name: Restore Bun install cache without publication
-      if: ${{ inputs.cache-bun-install == 'true' && inputs.publish-caches != 'true' }}
+      if: ${{ inputs.cache-bun-install == 'true' && !(inputs.publish-bun-install-cache == 'true' || (inputs.publish-bun-install-cache == '' && inputs.publish-caches == 'true')) }}
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: ~/.bun/install/cache
