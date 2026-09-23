@@ -28,17 +28,39 @@ jobs:
         env:
           BUN_INSTALL_CACHE_DIR: ${{ runner.temp }}/bun-install-cache
         run: bun install --frozen-lockfile --ignore-scripts
+      - name: Preserve Vitest installation before native probes
+        if: ${{ always() && steps.install.outcome != 'skipped' }}
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/vitest-install-evidence" | Out-Null
+          node .github/scripts/capture-vitest-install.mjs after-install "$env:RUNNER_TEMP/vitest-install-evidence" "$env:RUNNER_TEMP/bun-install-cache"
       - name: Execute Windows PowerShell 5.1 security helpers
         shell: powershell
         run: .\packages/app-core/platforms/electrobun/scripts/test-browser-bridge-windows-security.ps1
       - name: Compile and probe staged Windows native host
         shell: powershell
         run: .\packages/app-core/platforms/electrobun/scripts/test-browser-bridge-windows-native-host.ps1
+      - name: Preserve Vitest installation after native probes
+        if: ${{ always() && steps.install.outcome == 'success' }}
+        shell: powershell
+        run: node .github/scripts/capture-vitest-install.mjs after-native "$env:RUNNER_TEMP/vitest-install-evidence" "$env:RUNNER_TEMP/bun-install-cache"
       - name: Run browser broker security contracts
         id: contracts
         shell: powershell
         working-directory: packages/app-core/platforms/electrobun
         run: bunx vitest run --config vitest.electrobun.config.ts src/native/browser-bridge-broker-secret.test.ts src/native/browser-bridge-broker-server.test.ts src/native/browser-bridge-registration.test.ts src/native/browser-bridge-unregister.test.ts src/native/browser-bridge-windows-native-host-proof.test.ts
+      - name: Preserve Vitest installation after broker contracts
+        if: ${{ always() && steps.install.outcome == 'success' }}
+        shell: powershell
+        run: node .github/scripts/capture-vitest-install.mjs after-contracts "$env:RUNNER_TEMP/vitest-install-evidence" "$env:RUNNER_TEMP/bun-install-cache"
+      - name: Upload Vitest installation evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: windows-vitest-install-evidence
+          path: ${{ runner.temp }}/vitest-install-evidence
+          if-no-files-found: error
+          retention-days: 7
       - name: Diagnose broker test installation failure
         if: ${{ failure() && (steps.install.outcome == 'failure' || steps.contracts.outcome == 'failure') }}
         shell: powershell
