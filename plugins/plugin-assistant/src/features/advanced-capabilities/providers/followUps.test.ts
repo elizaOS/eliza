@@ -111,4 +111,20 @@ describe("followUpsProvider", () => {
     expect(result.values?.followUpCount).toBeUndefined();
     expect(h.service.getFollowUpSuggestions).not.toHaveBeenCalled();
   });
+  it("matches canonical entity rows to uppercase stored follow-up contact IDs", async () => {
+    const id = "aabbccdd-1111-4111-8111-112233445566";
+    const storedId = id.toUpperCase();
+    const h = harness([
+      followUp("first", storedId),
+      followUp("again", storedId),
+    ]);
+    h.getEntitiesByIds.mockResolvedValue([{ id, names: ["Canonical Person"] }]);
+    const result = await followUpsProvider.get(h.runtime, message, state);
+    expect(
+      result.text?.split("\n").filter((line) => line.startsWith("- ")),
+    ).toEqual(["- Canonical Person - first", "- Canonical Person - again"]);
+    expect(result.values?.followUpCount).toBe(2);
+    expect(h.getEntitiesByIds).toHaveBeenCalledExactlyOnceWith([storedId]);
+    expect(h.getEntityById).not.toHaveBeenCalled();
+  });
 });
