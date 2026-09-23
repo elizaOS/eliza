@@ -1,18 +1,23 @@
 /**
- * Exercises VIEWS create against packaged templates and state-directory plugin storage.
+ * Exercises VIEWS create, generated builds and rendered registered components.
+ * Build/test commands reuse workspace dependencies, not a clean installation.
  */
 
+import { execFileSync } from "node:child_process";
 import {
 	chmodSync,
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ViewSummary } from "./views-client";
@@ -158,24 +163,64 @@ describe("runViewsCreate from a packaged install", () => {
 		);
 		expect(pkg.name).not.toContain("__PLUGIN_NAME__");
 		expect(existsSync(path.join(workdir, "SCAFFOLD.md"))).toBe(true);
-		const index = readFileSync(path.join(workdir, "src/index.ts"), "utf8");
-		expect(index).toContain('bundlePath: "dist/views/bundle.js"');
-		expect(index).toContain('componentExport: "PluginView"');
-		expect(index).toContain('viewKind: "release"');
-		const component = readFileSync(
-			path.join(workdir, "src/views/PluginView.tsx"),
-			"utf8",
+		const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
+		const modules = path.join(workdir, "node_modules");
+		for (const dependency of Object.keys({
+			...pkg.dependencies,
+			...pkg.devDependencies,
+		})) {
+			const target = path.join(modules, dependency);
+			mkdirSync(path.dirname(target), { recursive: true });
+			symlinkSync(
+				path.join(repoRoot, "node_modules", dependency),
+				target,
+				"junction",
+			);
+		}
+		const execution = {
+			cwd: workdir,
+			env: {
+				...process.env,
+				PATH: `${path.join(repoRoot, "plugins/plugin-app-control/node_modules/.bin")}${path.delimiter}${process.env.PATH}`,
+			},
+			encoding: "utf8" as const,
+			timeout: 60_000,
+		};
+		for (const script of ["build", "test"])
+			execFileSync("bun", ["run", script], execution);
+		const rendered = JSON.parse(
+			execFileSync(
+				process.execPath,
+				[
+					"--input-type=module",
+					"-e",
+					`
+			import plugin from "./dist/index.js";
+			import { createElement } from "react";
+			import { renderToStaticMarkup } from "react-dom/server";
+			const view = plugin.views[0];
+			const bundle = await import("./" + view.bundlePath);
+			const html = renderToStaticMarkup(createElement(bundle[view.componentExport]));
+			process.stdout.write(JSON.stringify({ name: plugin.name, view, html }));
+		`,
+				],
+				execution,
+			),
 		);
-		expect(component).toContain("VIEW_SCAFFOLD_MARKER");
-		expect(component).toContain("build me a crypto price ticker view");
-		expect(
-			readFileSync(path.join(workdir, "tests/view-render.test.tsx"), "utf8"),
-		).toContain("renderToStaticMarkup(<PluginView />)");
-		expect(
-			readFileSync(path.join(workdir, "vite.config.views.ts"), "utf8"),
-		).toContain('fileName: () => "bundle.js"');
-		expect(pkg.scripts.build).toContain(
-			"vite build --config vite.config.views.ts",
+		expect(rendered).toMatchObject({
+			name: pkg.name,
+			view: {
+				id: result.values?.name,
+				viewKind: "release",
+				modalities: ["gui"],
+			},
+		});
+		expect(rendered.html).toContain(
+			`data-eliza-view-id="${result.values?.name}"`,
+		);
+		expect(rendered.html).toContain("build me a crypto price ticker view");
+		expect(rendered.html).toContain(
+			`eliza-view-scaffold:${result.values?.name}`,
 		);
 		await expect(
 			locatePluginSourceDir(packagedRoot, {
@@ -190,7 +235,7 @@ describe("runViewsCreate from a packaged install", () => {
 		expect(String(dispatched[0].task)).toContain(`sourceDir: ${workdir}`);
 		// Human-voiced dispatch message (single-delivery contract).
 		expect(texts.join("\n")).toContain("view now");
-	});
+	}, 60_000);
 
 	it("answers with setup guidance and scaffolds nothing when the orchestrator is missing", async () => {
 		const packagedRoot = tempDir("packaged-install-");
