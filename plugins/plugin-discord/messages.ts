@@ -10,6 +10,7 @@ import {
 	type Content,
 	ContentType,
 	createUniqueUuid,
+	ElizaError,
 	type EventPayload,
 	EventType,
 	type HandlerCallback,
@@ -777,16 +778,40 @@ export async function runGenerationWithAbortableTimeout(
 	}
 }
 
+/** Runtime surface the persist-once helper needs; `updateMemory` only for merges. */
+type DiscordMemoryPersistRuntime = Pick<
+	IAgentRuntime,
+	"agentId" | "createMemory" | "getMemoryById" | "logger"
+> &
+	Partial<Pick<IAgentRuntime, "updateMemory">>;
+
+interface DiscordMemoryPersistContext {
+	operation: string;
+	platformMessageId?: string;
+	/**
+	 * The row may already exist because the message service persisted the reply
+	 * under the same id: merge the delivery fields into it instead of skipping.
+	 */
+	mergeIntoExisting?: boolean;
+}
+
+const UUID_PATTERN =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The reply memory id the message service persists this outgoing content under. */
+function canonicalReplyMemoryId(content: Content): UUID | undefined {
+	return typeof content.responseId === "string" &&
+		UUID_PATTERN.test(content.responseId)
+		? content.responseId
+		: undefined;
+}
+
 export async function createDiscordMessageMemoryOnce(
-	runtime: Pick<
-		IAgentRuntime,
-		"agentId" | "createMemory" | "getMemoryById" | "logger"
-	>,
+	runtime: DiscordMemoryPersistRuntime,
 	memory: Memory,
-	context: {
-		operation: string;
-		platformMessageId?: string;
-	} = { operation: "discord-message-persist" },
+	context: DiscordMemoryPersistContext = {
+		operation: "discord-message-persist",
+	},
 ): Promise<Memory | null> {
 	const result = await persistDiscordMessageMemoryOnce(
 		runtime,
@@ -802,22 +827,94 @@ interface DiscordMessageMemoryPersistenceResult {
 }
 
 async function persistDiscordMessageMemoryOnce(
-	runtime: Pick<
-		IAgentRuntime,
-		"agentId" | "createMemory" | "getMemoryById" | "logger"
-	>,
+	runtime: DiscordMemoryPersistRuntime,
 	memory: Memory,
-	context: {
-		operation: string;
-		platformMessageId?: string;
-	} = { operation: "discord-message-persist" },
+	context: DiscordMemoryPersistContext = {
+		operation: "discord-message-persist",
+	},
 ): Promise<DiscordMessageMemoryPersistenceResult> {
 	if (!memory.id) {
 		const id = await runtime.createMemory(memory, "messages");
 		return { memory: { ...memory, id }, created: true };
 	}
 
-	const existing = await runtime.getMemoryById(memory.id);
+	if (
+		context.mergeIntoExisting &&
+		(memory.agentId !== runtime.agentId || memory.entityId !== runtime.agentId)
+	) {
+		throw new ElizaError(
+			"Discord reply memory ownership does not match delivery.",
+			{
+				code: "DISCORD_REPLY_MEMORY_OWNERSHIP_MISMATCH",
+				context: { memoryId: memory.id },
+			},
+		);
+	}
+	let existing = await runtime.getMemoryById(memory.id);
+	if (!existing && context.mergeIntoExisting) {
+		// SQL inserts ignore duplicate ids. Core may insert after our lookup,
+		// so read the stored winner before attaching delivery facts.
+		await runtime.createMemory(memory, "messages");
+		existing = await runtime.getMemoryById(memory.id);
+		if (!existing) {
+			throw new ElizaError("Discord reply memory was not persisted.", {
+				code: "DISCORD_REPLY_MEMORY_NOT_PERSISTED",
+				context: { memoryId: memory.id },
+			});
+		}
+	}
+	if (existing && context.mergeIntoExisting) {
+		if (
+			existing.agentId !== runtime.agentId ||
+			existing.entityId !== memory.entityId ||
+			existing.roomId !== memory.roomId
+		) {
+			throw new ElizaError(
+				"Discord reply memory ownership does not match delivery.",
+				{
+					code: "DISCORD_REPLY_MEMORY_OWNERSHIP_MISMATCH",
+					context: { memoryId: memory.id },
+				},
+			);
+		}
+		if (!runtime.updateMemory) {
+			throw new ElizaError("Discord reply delivery requires memory updates.", {
+				code: "DISCORD_REPLY_MEMORY_UPDATE_UNAVAILABLE",
+				context: { memoryId: memory.id },
+			});
+		}
+		// The message service won the write race: keep its row and add the
+		// delivery facts (platform ids, url, inbound reference) to it.
+		const merged: Memory = {
+			...existing,
+			content: {
+				...existing.content,
+				source: memory.content.source,
+				inReplyTo: memory.content.inReplyTo,
+				url: memory.content.url,
+				channelType: memory.content.channelType,
+			},
+			metadata: {
+				...(existing.metadata ?? {}),
+				...(memory.metadata ?? {}),
+			} as Memory["metadata"],
+		};
+		const updated = await runtime.updateMemory({
+			id: memory.id,
+			content: merged.content,
+			metadata: merged.metadata,
+		});
+		if (!updated) {
+			throw new ElizaError(
+				"Discord reply delivery metadata was not persisted.",
+				{
+					code: "DISCORD_REPLY_METADATA_NOT_PERSISTED",
+					context: { memoryId: memory.id },
+				},
+			);
+		}
+		return { memory: merged, created: false };
+	}
 	if (existing) {
 		runtime.logger.debug(
 			{
@@ -2748,25 +2845,30 @@ export class MessageManager {
 							scope: coordinationScope,
 						});
 					}
+					const canonicalReplyId = canonicalReplyMemoryId(content);
 					const memories: Memory[] = [];
-					for (const m of messages) {
-						const actions = content.actions;
-						// Only attach files to the memory for the message that actually carries them
-						const hasAttachments = m.attachments?.size > 0;
-
-						const memory: Memory = {
-							id: createUniqueUuid(this.runtime, m.id),
+					if (canonicalReplyId && messages[0]) {
+						// One dialogue row per reply. The message service persists the
+						// reply under content.responseId; the delivery record merges the
+						// platform ids into that same row instead of adding a second row
+						// that renders the reply twice in every later prompt. A chunked
+						// reply keeps its complete text once and lists every chunk id.
+						const first = messages[0];
+						const hasAttachments = messages.some(
+							(m) => m.attachments?.size > 0,
+						);
+						memories.push({
+							id: canonicalReplyId,
 							entityId: this.runtime.agentId,
 							agentId: this.runtime.agentId,
 							content: {
 								...content,
 								source: "discord",
-								text: m.content || textContent || " ",
-								actions,
+								text: textContent || first.content || " ",
+								actions: content.actions,
 								inReplyTo: messageId,
-								url: m.url,
+								url: first.url,
 								channelType: type,
-								// Only include attachments for the message chunk that actually has them
 								attachments:
 									hasAttachments && content.attachments
 										? content.attachments
@@ -2776,16 +2878,52 @@ export class MessageManager {
 							metadata: {
 								type: MemoryType.MESSAGE,
 								accountId: this.accountId,
-								platformMessageId: m.id,
+								platformMessageId: first.id,
+								platformMessageIds: messages.map((m) => m.id),
 								// Trusted scope stamp at ingestion: the reply belongs to the
 								// room it was delivered into.
 								scope: "room",
 							},
-							createdAt: m.createdTimestamp,
-						};
-						memories.push(memory);
-					}
+							createdAt: first.createdTimestamp,
+						});
+					} else {
+						for (const m of messages) {
+							const actions = content.actions;
+							// Only attach files to the memory for the message that actually carries them
+							const hasAttachments = m.attachments?.size > 0;
 
+							const memory: Memory = {
+								id: createUniqueUuid(this.runtime, m.id),
+								entityId: this.runtime.agentId,
+								agentId: this.runtime.agentId,
+								content: {
+									...content,
+									source: "discord",
+									text: m.content || textContent || " ",
+									actions,
+									inReplyTo: messageId,
+									url: m.url,
+									channelType: type,
+									// Only include attachments for the message chunk that actually has them
+									attachments:
+										hasAttachments && content.attachments
+											? content.attachments
+											: undefined,
+								},
+								roomId,
+								metadata: {
+									type: MemoryType.MESSAGE,
+									accountId: this.accountId,
+									platformMessageId: m.id,
+									// Trusted scope stamp at ingestion: the reply belongs to the
+									// room it was delivered into.
+									scope: "room",
+								},
+								createdAt: m.createdTimestamp,
+							};
+							memories.push(memory);
+						}
+					}
 					const persistedMemories: Memory[] = [];
 					const persistenceFailures: SendHandlerPersistenceFailure[] = [];
 					for (let index = 0; index < memories.length; index += 1) {
@@ -2799,6 +2937,7 @@ export class MessageManager {
 								{
 									operation: "discord-response-callback",
 									platformMessageId: providerMessage.id,
+									mergeIntoExisting: candidate.id === canonicalReplyId,
 								},
 							);
 							if (!persisted) {
