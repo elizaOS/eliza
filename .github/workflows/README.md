@@ -192,6 +192,15 @@ direct model-provider credentials; billable local onboarding is excluded from
 automatic branch validation. `gitleaks.yml` scans branch commits once; PR
 admission retains its own diff scan.
 
+UI fixture contracts, Discord gateway source tests, and Gitleaks also accept
+manual dispatch on a fixed source ref when newer branch pushes repeatedly
+cancel the full graph. Use `gh workflow run <workflow>.yml --ref <fixed-ref>`;
+the selected ref supplies both the workflow and its checkout. Gitleaks retains
+its tip-commit scan when no push range is available. UI fixtures expose
+`publish_bun_install_cache=false` to disable their designated cache writer.
+These runs provide supplemental source evidence only: they do not create a
+full-graph completion certificate, deployment authority, or promotion receipt.
+
 The retired `test.yml`, `quality.yml`, `scenario-pr.yml`, UI extended and chat
 wrappers and reusable classifier have no independent status
 authority. Manual canonical CI runs the same complete deterministic contract.
@@ -214,7 +223,7 @@ normal pinned install and required tests, including on a cache miss.
 Full validation chooses one writer for the shared Linux/Bun/lockfile key:
 canonical Quality when canonical CI runs, otherwise UI fixture contracts when
 that family runs, otherwise the Storybook catalog builder. Standalone UI fixture
-and Storybook calls retain their designated writer by default; Storybook manual
+and Storybook calls retain their designated writer by default; their manual
 dispatch exposes the same opt-out. A failed writer leaves a cold cache for later
 runs and still fails its normal required job. No consumer waits for cache
 publication. PR source smoke owns its Bun archive; the subscription authority
