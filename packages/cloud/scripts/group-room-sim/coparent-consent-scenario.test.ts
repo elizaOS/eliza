@@ -9,6 +9,10 @@
 
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { createHash, createHmac } from "node:crypto";
+import {
+  BGE_SMALL_VECTOR_SPACE,
+  identifyEmbeddingVector,
+} from "@elizaos/common";
 import type { PlatformAdapter } from "../../services/gateway-webhook/src/adapters/types";
 import type { GatewayRedis } from "../../services/gateway-webhook/src/redis";
 import { pushSchema } from "../../shared/node_modules/drizzle-kit/api.mjs";
@@ -843,9 +847,17 @@ describe("synthetic iMessage co-parent consent scenario", () => {
           userId: USER_B,
           organizationId: ORGANIZATION_B,
         });
+        // This synthetic encoder makes every vector identical so only real
+        // tenant and room predicates can keep private markers out of recall.
+        const syntheticEmbedding = () =>
+          identifyEmbeddingVector(
+            Array.from({ length: 384 }, (_, index) => (index === 0 ? 1 : 0)),
+            BGE_SMALL_VECTOR_SPACE,
+          );
         const embed = {
           model: "synthetic-room-isolation",
-          embedTexts: async (texts: string[]) => texts.map(() => [1, 0, 0]),
+          embedTexts: async (texts: string[]) =>
+            texts.map(() => syntheticEmbedding()),
         };
         const groupStore = new SharedMemoryStore(
           {
@@ -915,12 +927,14 @@ describe("synthetic iMessage co-parent consent scenario", () => {
           groupRoomId: binding.conversationId,
           parentADmRoomId: parentAAgent.id,
           parentBDmRoomId: parentBAgent.id,
-          groupRecall: texts(await groupStore.searchByEmbedding([1, 0, 0], 10)),
+          groupRecall: texts(
+            await groupStore.searchByEmbedding(syntheticEmbedding(), 10),
+          ),
           parentADmRecall: texts(
-            await parentAStore.searchByEmbedding([1, 0, 0], 10),
+            await parentAStore.searchByEmbedding(syntheticEmbedding(), 10),
           ),
           parentBDmRecall: texts(
-            await parentBStore.searchByEmbedding([1, 0, 0], 10),
+            await parentBStore.searchByEmbedding(syntheticEmbedding(), 10),
           ),
           expectedGroupMarker: groupMarker,
           expectedParentAMarker: parentAMarker,
