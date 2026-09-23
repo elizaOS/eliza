@@ -240,6 +240,7 @@ import {
 } from "./lifeops/scheduled-task/message-draft-dispatch.js";
 import {
   installLifeOpsScheduledTaskEventBridge,
+  registerDossierActivityAnchor,
   registerLifeOpsScheduledTaskRunnerDeps,
 } from "./lifeops/scheduled-task/runtime-wiring.js";
 import { handleScheduledTaskInboundMessage } from "./lifeops/scheduled-task/scheduler.js";
@@ -1094,6 +1095,7 @@ const rawPersonalAssistantPlugin: Plugin = {
 
     const anchorRegistry = createAnchorRegistry();
     registerAppLifeOpsAnchors(anchorRegistry);
+    registerDossierActivityAnchor(runtime, anchorRegistry);
     registerAnchorRegistry(runtime, anchorRegistry);
     (
       runtime as IAgentRuntime & { anchorRegistry?: typeof anchorRegistry }

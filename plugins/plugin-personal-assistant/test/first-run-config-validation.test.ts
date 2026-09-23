@@ -153,7 +153,7 @@ describe("first-run config validation", () => {
     const morningBrief = pack.find((p) => p.metadata?.slot === "morningBrief");
     expect(morningBrief?.trigger.kind).toBe("relative_to_anchor");
     if (morningBrief?.trigger.kind === "relative_to_anchor") {
-      expect(morningBrief.trigger.anchorKey).toBe("wake.confirmed");
+      expect(morningBrief.trigger.anchorKey).toBe("dossier.owner_activity");
     }
     // The weekly-review starter ships PAUSED: a manual trigger means it exists
     // and is owner-visible but never fires on its own.

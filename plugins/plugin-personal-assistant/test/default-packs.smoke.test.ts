@@ -76,7 +76,8 @@ function simulateOneDay(args: {
       // ownerVisible:false do not contribute to the user-facing nudge count.
       if (record.trigger.kind === "relative_to_anchor") {
         const minuteOfDay =
-          record.trigger.anchorKey === "wake.confirmed"
+          record.trigger.anchorKey === "wake.confirmed" ||
+          record.trigger.anchorKey === "dossier.owner_activity"
             ? args.wakeMinuteOfDay + record.trigger.offsetMinutes
             : record.trigger.anchorKey === "bedtime.target"
               ? args.bedtimeMinuteOfDay + record.trigger.offsetMinutes
@@ -204,7 +205,7 @@ describe("W1-D default-pack smoke — 24h simulated nudge budget", () => {
     });
     const nudges = applyConsolidation(fires, DEFAULT_CONSOLIDATION_POLICIES);
 
-    // wake.confirmed @ offset 0 has: gm + morning-brief (visible).
+    // Owner activity has its own brief; wake.confirmed retains the gm batch.
     // wake.confirmed @ offset 0 also has: quiet-watcher + followup-watcher
     // but ownerVisible=false on both, so they don't count toward nudges.
     // wake.confirmed @ offset 30 has: checkin (visible).
@@ -216,11 +217,14 @@ describe("W1-D default-pack smoke — 24h simulated nudge budget", () => {
       (batch) => batch[0]?.fireMinuteOfDay === 7 * 60,
     );
     expect(offsetZeroBatch).toBeDefined();
-    // offset-0 visible: gm (low) + morning-brief (medium). Sorted priority_desc.
-    expect(offsetZeroBatch?.map((f) => f.recordKey).sort()).toEqual(
-      ["gm", "morning-brief"].sort(),
-    );
-    expect(offsetZeroBatch?.[0]?.priority).toBe("medium");
+    // The wake batch contains gm; the dossier uses its independent activity anchor.
+    expect(offsetZeroBatch?.map((f) => f.recordKey).sort()).toEqual(["gm"]);
+    expect(offsetZeroBatch?.[0]?.priority).toBe("low");
+    expect(
+      nudges.some((batch) =>
+        batch.some((fire) => fire.anchorKey === "dossier.owner_activity"),
+      ),
+    ).toBe(true);
   });
 
   it("watcher tasks (ownerVisible=false) do not count toward the nudge budget", () => {

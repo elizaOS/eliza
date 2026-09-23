@@ -7,10 +7,12 @@
  * the runner computes `next_fire_at`, while this adapter owns atomic claims,
  * idempotency lookup, filtering, and state-log retention.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type {
   ScheduledTaskClaimExpectation,
   ScheduledTaskClaimResult,
+  ScheduledTaskConditionalUpsertOptions,
+  ScheduledTaskDefinition,
   ScheduledTaskStore,
   ScheduledTaskUpsertOptions,
 } from "./runner.js";
@@ -234,6 +236,49 @@ function schedulingSqlExecutor(
     : createRuntimeSchedulingSqlExecutor(options.runtime);
 }
 
+/** Compare the definition returned by parseScheduledTaskRow, including its optional-record normalization. */
+function expectedDefinitionGuard(expected: ScheduledTaskDefinition): string {
+  const optionalRecord = (column: string) =>
+    `NULLIF(NULLIF(${column}, '')::jsonb, '{}'::jsonb)`;
+  const expressions = {
+    taskId: "to_jsonb(id)",
+    kind: "to_jsonb(kind)",
+    promptInstructions: "to_jsonb(prompt_instructions)",
+    contextRequest: optionalRecord("context_request_json"),
+    trigger: "trigger_json::jsonb",
+    priority: "to_jsonb(COALESCE(priority, 'medium'))",
+    shouldFire: optionalRecord("should_fire_json"),
+    completionCheck: optionalRecord("completion_check_json"),
+    escalation: optionalRecord("escalation_json"),
+    output: optionalRecord("output_json"),
+    pipeline: optionalRecord("pipeline_json"),
+    subject:
+      "CASE WHEN COALESCE(subject_kind, '') <> '' AND COALESCE(subject_id, '') <> '' THEN jsonb_build_object('kind', subject_kind, 'id', subject_id) ELSE NULL END",
+    idempotencyKey: "to_jsonb(NULLIF(idempotency_key, ''))",
+    respectsGlobalPause: "to_jsonb(COALESCE(respects_global_pause, TRUE))",
+    source: "to_jsonb(COALESCE(source, 'user_chat'))",
+    createdBy: "to_jsonb(COALESCE(created_by, ''))",
+    ownerVisible: "to_jsonb(COALESCE(owner_visible, TRUE))",
+    executionProfile: "to_jsonb(execution_profile)",
+  } satisfies Record<keyof ScheduledTaskDefinition, string>;
+  return Object.entries(expressions)
+    .map(([field, expression]) => {
+      const value = expected[field as keyof ScheduledTaskDefinition];
+      return `AND (${expression}) IS NOT DISTINCT FROM ${value === undefined ? "NULL" : `${sqlJson(value)}::jsonb`}`;
+    })
+    .join("\n");
+}
+
+/** Match the metadata projection visible to host admission, including legacy creation time. */
+function expectedMetadataGuard(
+  expected: NonNullable<ScheduledTask["metadata"]>,
+): string {
+  return `AND (CASE WHEN jsonb_typeof(metadata_json::jsonb->'createdAtIso') = 'string'
+    THEN metadata_json::jsonb
+    ELSE metadata_json::jsonb || jsonb_build_object('createdAtIso', created_at)
+    END) = ${sqlJson(expected)}::jsonb`;
+}
+
 export function createSchedulingSqlScheduledTaskStore(
   opts: SchedulingSqlStoreOptions,
 ): ScheduledTaskStore {
@@ -328,7 +373,7 @@ export function createSchedulingSqlScheduledTaskStore(
   const guardedUpdateStatement = (
     task: ScheduledTask,
     nextFireAtIso: string | null | undefined,
-    guardStatus: ScheduledTask["state"]["status"],
+    options: ScheduledTaskConditionalUpsertOptions,
   ): string => {
     const now = isoNow();
     const nextFireAtSql =
@@ -363,7 +408,10 @@ export function createSchedulingSqlScheduledTaskStore(
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(task.taskId)}
           AND transfer_status IS NULL
-          AND (state_json::jsonb ->> 'status') = ${sqlQuote(guardStatus)}
+          AND (state_json::jsonb ->> 'status') = ${sqlQuote(options.expectedStatus)}
+          ${options.expectedState === undefined ? "" : `AND state_json::jsonb = ${sqlJson(options.expectedState)}::jsonb`}
+          ${options.expectedMetadata === undefined ? "" : expectedMetadataGuard(options.expectedMetadata)}
+          ${options.expectedDefinition === undefined ? "" : expectedDefinitionGuard(options.expectedDefinition)}
         RETURNING id`;
   };
   return {
@@ -372,11 +420,7 @@ export function createSchedulingSqlScheduledTaskStore(
     },
     async upsertIfStatus(task, options) {
       const rows = await executeSql(
-        guardedUpdateStatement(
-          task,
-          options.nextFireAtIso,
-          options.expectedStatus,
-        ),
+        guardedUpdateStatement(task, options.nextFireAtIso, options),
       );
       // Zero rows means the row is gone, transferred, or no longer in the
       // expected status — all three are "a concurrent writer moved it", which
@@ -388,7 +432,24 @@ export function createSchedulingSqlScheduledTaskStore(
       firedAtIso: string;
       expected?: ScheduledTaskClaimExpectation;
       expectedMetadata?: NonNullable<ScheduledTask["metadata"]>;
+      expectedState?: ScheduledTask["state"];
+      expectedDefinition?: ScheduledTaskDefinition;
+      claimedMetadata?: NonNullable<ScheduledTask["metadata"]>;
     }): Promise<ScheduledTaskClaimResult> {
+      if (
+        args.claimedMetadata !== undefined &&
+        (args.expectedMetadata === undefined ||
+          args.expectedState === undefined ||
+          args.expectedDefinition === undefined)
+      ) {
+        throw new ElizaError(
+          "Claim metadata requires the observed state, metadata, and definition",
+          {
+            code: "SCHEDULED_TASK_CLAIM_EXPECTATION_REQUIRED",
+            context: { taskId: args.taskId },
+          },
+        );
+      }
       const now = isoNow();
       const expected = args.expected;
       // Admission observes parseScheduledTaskRow's metadata, including its
@@ -414,20 +475,16 @@ export function createSchedulingSqlScheduledTaskStore(
                                 to_jsonb(${sqlQuote(args.firedAtIso)}::text),
                                 true
                               )::text,
+                ${args.claimedMetadata === undefined ? "" : `metadata_json = ${sqlJson(args.claimedMetadata)},`}
                 next_fire_at = NULL,
                 updated_at = ${sqlQuote(now)},
                 version = version + 1
           WHERE agent_id = ${sqlQuote(agentId)}
             AND id = ${sqlQuote(args.taskId)}
             AND transfer_status IS NULL
-            ${
-              args.expectedMetadata === undefined
-                ? ""
-                : `AND (CASE WHEN jsonb_typeof(metadata_json::jsonb->'createdAtIso') = 'string'
-              THEN metadata_json::jsonb
-              ELSE metadata_json::jsonb || jsonb_build_object('createdAtIso', created_at)
-              END) = ${sqlJson(args.expectedMetadata)}::jsonb`
-            }
+            ${args.expectedMetadata === undefined ? "" : expectedMetadataGuard(args.expectedMetadata)}
+            ${args.expectedState === undefined ? "" : `AND state_json::jsonb = ${sqlJson(args.expectedState)}::jsonb`}
+            ${args.expectedDefinition === undefined ? "" : expectedDefinitionGuard(args.expectedDefinition)}
             AND COALESCE(
               metadata_json::jsonb #>> '{sharedCutoverImport,status}',
               ''
@@ -439,7 +496,15 @@ export function createSchedulingSqlScheduledTaskStore(
       if (!row) return { kind: "raced" };
       return { kind: "fired", task: parseScheduledTaskRow(row) };
     },
-    async commitApply({ task, receiptKey, commit, nextFireAtIso }) {
+    async commitApply({
+      task,
+      receiptKey,
+      commit,
+      nextFireAtIso,
+      expectedState,
+      expectedMetadata,
+      expectedDefinition,
+    }) {
       const now = isoNow();
       const nextFireAtSql =
         nextFireAtIso === null || nextFireAtIso.length === 0
@@ -475,6 +540,9 @@ export function createSchedulingSqlScheduledTaskStore(
            WHERE agent_id = ${sqlQuote(agentId)}
              AND id = ${sqlQuote(task.taskId)}
              AND transfer_status IS NULL
+             ${expectedState === undefined ? "" : `AND state_json::jsonb = ${sqlJson(expectedState)}::jsonb`}
+             ${expectedMetadata === undefined ? "" : expectedMetadataGuard(expectedMetadata)}
+             ${expectedDefinition === undefined ? "" : expectedDefinitionGuard(expectedDefinition)}
              AND NOT (
                COALESCE(
                  metadata_json::jsonb -> 'schedulingApplyReceipts',
@@ -540,6 +608,19 @@ export function createSchedulingSqlScheduledTaskStore(
           task: parseScheduledTaskRow(parseJsonRecord(replayRow.task_row)),
           commit: parseScheduledTaskLogRow(parseJsonRecord(replayRow.log_row)),
         };
+      }
+      if (
+        expectedState !== undefined ||
+        expectedMetadata !== undefined ||
+        expectedDefinition !== undefined
+      ) {
+        throw new ElizaError(
+          "Scheduled task changed before the mutation committed; retry against the current task",
+          {
+            code: "SCHEDULED_TASK_MUTATION_RACED",
+            context: { taskId: task.taskId, receiptKey, retryable: true },
+          },
+        );
       }
       throw new Error(
         `commitApply: task ${task.taskId} could not commit receipt ${receiptKey}`,
