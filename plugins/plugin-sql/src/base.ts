@@ -3583,14 +3583,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     // silently fell back to the default 10 rows.
     const effectiveLimit = params.limit ?? params.count ?? 10;
 
-    // Use withEntityContext for RLS only when entityId is provided
-    // Without entityId, bypass RLS to see all logs (for non-RLS mode)
+    // entityId is both the RLS principal and a WHERE filter: PGlite and any
+    // Postgres without ENABLE_DATA_ISOLATION apply no row policy, so the
+    // predicate is the only thing keeping other entities' logs out.
     return this.withEntityContext(entityId ?? null, async (tx) => {
       const result = await tx
         .select()
         .from(logTable)
         .where(
           and(
+            entityId ? eq(logTable.entityId, entityId) : undefined,
             roomId ? eq(logTable.roomId, roomId) : undefined,
             type ? eq(logTable.type, type) : undefined
           )
