@@ -1,12 +1,11 @@
 /**
- * Seeds a local cloud DB with development fixtures: a test organization with a
- * large credit balance, test users (dev@local.test plus the developer's own
- * USER_EMAIL/DEVELOPER_EMAIL when set), the credit-pack catalog with Stripe
- * test-mode fallbacks, and the default Eliza agent. Idempotent via
- * on-conflict upserts, so it is safe to re-run.
+ * Seeds local development users, credit packs and the default agent.
+ * Each run adds 1,000,000 credits to the development organization; other
+ * fixtures are upserted without duplication. USER_EMAIL/DEVELOPER_EMAIL may
+ * attach the developer's account to that organization.
  */
 import { sql } from "drizzle-orm";
-import { loadEnvFiles } from "./local-dev-helpers";
+import { loadEnvFiles } from "../../scripts/admin/local-dev-helpers";
 
 loadEnvFiles([".env", { path: ".env.local", override: true }]);
 
@@ -14,9 +13,9 @@ const DEFAULT_ELIZA_ID = "b850bc30-45f8-0041-a00a-83df46d8555d";
 
 async function seedLocalDev() {
   const [{ db }, schema, { agentTable, entityTable }] = await Promise.all([
-    import("../../shared/src/db/client"),
-    import("../../shared/src/db/schemas"),
-    import("../../shared/src/db/schemas/eliza"),
+    import("../src/db/client"),
+    import("../src/db/schemas"),
+    import("../src/db/schemas/eliza"),
   ]);
 
   console.log("🌱 Seeding Local Development Data");
@@ -165,16 +164,8 @@ async function seedLocalDev() {
     console.log("\n📋 Test Account:");
     console.log("   Email: dev@local.test");
     console.log("   Organization: Local Dev Organization");
-    console.log("   Credits: 1,000,000");
-    console.log("\n⚠️  CRITICAL: Clear your browser cookies NOW!");
-    console.log("   Your session references the old remote database.");
-    console.log("\n📋 Steps to fix:");
-    console.log("   1. Open browser DevTools (F12)");
-    console.log("   2. Application → Cookies → http://localhost:3000");
-    console.log("   3. Click 'Clear all cookies'");
-    console.log("   4. Close all localhost:3000 tabs");
-    console.log("   5. Run: bun run dev");
-    console.log("   6. Open fresh tab: http://localhost:3000");
+    console.log(`   Credits: ${org.credit_balance}`);
+
   } catch (error) {
     console.error(
       "\n❌ Seeding failed:",
