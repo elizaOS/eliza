@@ -198,6 +198,29 @@ export function denyOnAuthStoreError(scope: string): (error: unknown) => null {
 }
 
 /**
+ * Revalidate persisted session authority without touching activity or extending
+ * expiry. Use this at stream-delivery boundaries to check current revocation
+ * without turning each frame into a durable write. It never caches authority.
+ */
+export async function readActiveSession(
+  store: AuthRepository,
+  sessionId: string,
+  now: number = Date.now(),
+): Promise<AuthSessionRow | null> {
+  const found = await store.findSession(sessionId, now);
+  if (!found) return null;
+  if (found.kind === "browser") {
+    const cap =
+      found.createdAt +
+      (found.rememberDevice
+        ? BROWSER_SESSION_REMEMBER_CAP_MS
+        : BROWSER_SESSION_TTL_MS);
+    if (cap <= now) return null;
+  }
+  return found;
+}
+
+/**
  * Look up an active session by id and slide its expiry forward when it is a
  * browser session. Machine sessions get `lastSeenAt` updated but no expiry
  * extension (absolute TTL by spec).
@@ -210,7 +233,7 @@ export async function findActiveSession(
   sessionId: string,
   now: number = Date.now(),
 ): Promise<AuthSessionRow | null> {
-  const found = await store.findSession(sessionId, now);
+  const found = await readActiveSession(store, sessionId, now);
   if (!found) return null;
 
   if (found.kind === "browser") {

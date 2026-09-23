@@ -12,8 +12,11 @@ import {
   resolveSessionTokenRole,
 } from "../api/auth";
 import {
+  BROWSER_SESSION_TTL_MS,
   CSRF_HEADER_NAME,
   deriveCsrfToken,
+  findActiveSession,
+  readActiveSession,
   SESSION_COOKIE_NAME,
 } from "../api/auth/sessions";
 import {
@@ -304,4 +307,53 @@ it("uses the selected SQLite store for real HTTP cookie, CSRF and bearer decisio
     (await fetch(url, { headers: { authorization: "Bearer machine-token" } }))
       .status,
   ).toBe(401);
+});
+
+it.each(["browser", "machine"] as const)(
+  "revalidates %s streaming sessions without writes or stale revocation",
+  async (kind) => {
+    await identity();
+    const initial = await store.createSession({
+      ...session("stream-session"),
+      kind,
+    });
+    const checkAt = now + 1000;
+    for (let index = 0; index < 3; index++) {
+      expect(
+        await readActiveSession(store, initial.id, checkAt + index),
+      ).toEqual(initial);
+    }
+    expect(await store.findSession(initial.id, checkAt)).toEqual(initial);
+    await adapter.close();
+    await open();
+    expect(await readActiveSession(store, initial.id, checkAt)).toEqual(
+      initial,
+    );
+    const refreshed = await findActiveSession(store, initial.id, checkAt);
+    expect(refreshed?.lastSeenAt).toBe(checkAt);
+    expect(refreshed?.expiresAt).toBe(
+      kind === "browser" ? now + BROWSER_SESSION_TTL_MS : initial.expiresAt,
+    );
+    await store.revokeSession(initial.id, checkAt + 1);
+    expect(await readActiveSession(store, initial.id, checkAt + 2)).toBeNull();
+  },
+);
+
+it("rejects expired and over-cap sessions during read-only revalidation", async () => {
+  await identity();
+  await store.createSession(session("expired-stream"));
+  expect(
+    await readActiveSession(store, "expired-stream", now + 60000),
+  ).toBeNull();
+  await store.createSession({
+    ...session("over-cap-stream"),
+    expiresAt: now + BROWSER_SESSION_TTL_MS * 2,
+  });
+  expect(
+    await readActiveSession(
+      store,
+      "over-cap-stream",
+      now + BROWSER_SESSION_TTL_MS,
+    ),
+  ).toBeNull();
 });
