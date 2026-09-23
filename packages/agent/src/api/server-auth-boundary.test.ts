@@ -701,6 +701,79 @@ describe("persistent host WebSocket admission", () => {
     });
     return { socket, messages, closed };
   }
+  it("filters outbound audiences without closing an admitted session", async () => {
+    let revoked = false;
+    const baseUrl = await bootServer(
+      undefined,
+      undefined,
+      (_request, boundary, message) => {
+        if (revoked) return false;
+        if (
+          boundary === "websocket-send" &&
+          message?.includes("other-audience-phase")
+        )
+          return "skip";
+        return true;
+      },
+    );
+    const { socket, messages, closed } = connect(baseUrl);
+    try {
+      await vi.waitFor(() => expect(messages.length).toBeGreaterThan(0));
+      updateStartup("other-audience-phase");
+      updateStartup("own-audience-phase");
+      await vi.waitFor(() =>
+        expect(
+          messages.some((message) => message.includes("own-audience-phase")),
+        ).toBe(true),
+      );
+      expect(
+        messages.some((message) => message.includes("other-audience-phase")),
+      ).toBe(false);
+      expect(socket.readyState).toBe(WebSocket.OPEN);
+      socket.send(JSON.stringify({ type: "ping" }));
+      await vi.waitFor(() =>
+        expect(
+          messages.some((message) => JSON.parse(message).type === "pong"),
+        ).toBe(true),
+      );
+      revoked = true;
+      updateStartup("revoked-audience-phase");
+      expect((await closed).code).toBe(1008);
+      expect(
+        messages.some((message) => message.includes("revoked-audience-phase")),
+      ).toBe(false);
+    } finally {
+      socket.terminate();
+    }
+  }, 120_000);
+
+  it("does not treat outbound filtering as HTTP or upgrade permission", async () => {
+    const baseUrl = await bootServer(undefined, undefined, () => "skip");
+    expect((await fetch(`${baseUrl}/api/health`)).status).toBe(403);
+    expect(
+      await wsUpgradeResponse(Number(new URL(baseUrl).port), "/ws"),
+    ).toMatch(/^HTTP\/1\.1 403 /);
+  }, 120_000);
+
+  it("rejects skip decisions on inbound application messages", async () => {
+    const baseUrl = await bootServer(
+      undefined,
+      undefined,
+      (_request, boundary) =>
+        boundary === "websocket-message" ? "skip" : true,
+    );
+    const { socket, messages, closed } = connect(baseUrl);
+    try {
+      await vi.waitFor(() => expect(messages.length).toBeGreaterThan(0));
+      socket.send(JSON.stringify({ type: "ping" }));
+      expect((await closed).code).toBe(1008);
+      expect(
+        messages.some((message) => JSON.parse(message).type === "pong"),
+      ).toBe(false);
+    } finally {
+      socket.terminate();
+    }
+  }, 120_000);
   it.each([false, "exception"])(
     "revokes outbound broadcasts on policy result %s",
     async (result) => {

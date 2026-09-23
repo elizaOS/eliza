@@ -3814,13 +3814,17 @@ export type ApiServerConfigurator = (
   server: http.Server,
 ) => void | Promise<void>;
 
-/** Mandatory host policy precedes built-in authentication; true grants no identity. */
+/**
+ * Mandatory policy precedes built-in authentication; true grants no identity.
+ * "skip" filters only an outbound WebSocket frame without revoking the session;
+ * every other boundary treats it as denial. False always revokes admission.
+ */
 export type ApiHostAdmission = (
   request: http.IncomingMessage,
   boundary: "request" | "upgrade" | "websocket-send" | "websocket-message",
   /** Complete serialized application frame for either WebSocket boundary. */
   message?: string,
-) => boolean | Promise<boolean>;
+) => boolean | "skip" | Promise<boolean | "skip">;
 
 export type WebSocketAuthorizer = (
   request: http.IncomingMessage,
@@ -3918,12 +3922,12 @@ export async function startApiServer(opts?: {
     request: http.IncomingMessage,
     boundary: "request" | "upgrade" | "websocket-send" | "websocket-message",
     message?: string,
-  ): Promise<403 | 503 | null> {
+  ): Promise<403 | 503 | "skip" | null> {
     if (!hostAdmission) return null;
     try {
-      return (await hostAdmission(request, boundary, message)) === true
-        ? null
-        : 403;
+      const decision = await hostAdmission(request, boundary, message);
+      if (decision === "skip" && boundary === "websocket-send") return "skip";
+      return decision === true ? null : 403;
     } catch {
       // error-policy:J1 Admission failure denies access without exposing policy or credentials.
       logger.warn("[eliza-api] Required host admission unavailable");
@@ -4194,7 +4198,11 @@ export async function startApiServer(opts?: {
     dispatch: async (req, res) => {
       const rejection = await admitHostRequest(req, "request");
       if (rejection !== null) {
-        error(res, "Host admission denied", rejection);
+        error(
+          res,
+          "Host admission denied",
+          rejection === "skip" ? 403 : rejection,
+        );
         return;
       }
       const dispatch = () => handleRequest(req, res, state, requestContext);
@@ -4300,6 +4308,7 @@ export async function startApiServer(opts?: {
   ): Promise<boolean> => {
     if (ws.readyState !== WebSocket.OPEN) return false;
     const rejection = await admitHostRequest(request, boundary, message);
+    if (rejection === "skip") return false;
     if (rejection !== null) {
       ws.close(rejection === 403 ? 1008 : 1011, "Host admission rejected");
       return false;
@@ -4634,7 +4643,11 @@ export async function startApiServer(opts?: {
     try {
       const hostRejection = await admitHostRequest(request, "upgrade");
       if (hostRejection !== null) {
-        rejectWebSocketUpgrade(socket, hostRejection, "Host admission denied");
+        rejectWebSocketUpgrade(
+          socket,
+          hostRejection === "skip" ? 403 : hostRejection,
+          "Host admission denied",
+        );
         return;
       }
       const wsUrl = new URL(
