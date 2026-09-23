@@ -20,6 +20,7 @@ import {
   getEffectDeliveryBinding,
   getStreamingContext,
   getTrustedDeliveryAudience,
+  getUserMessageText,
   hashString,
   isObjectRecord as isRecord,
   mergeEffectReceipts,
@@ -386,7 +387,7 @@ export async function resolvePlannedReplyEgress(args: {
 }): Promise<{ text: string; effectReceiptIds: readonly string[] }> {
   const decision = evaluatePlannedReplyEgress({
     reply: args.reply,
-    request: args.message.content.text,
+    request: getUserMessageText(args.message),
     providers: args.providers,
     actionResults: args.actionResults,
     actions: args.runtime.actions,
@@ -519,7 +520,7 @@ export async function resolvePlannedReplyEgress(args: {
   const rewrittenDecision = reply
     ? evaluatePlannedReplyEgress({
         reply,
-        request: args.message.content.text,
+        request: getUserMessageText(args.message),
         providers: args.providers,
         actionResults: actionResults(),
         actions: args.runtime.actions,

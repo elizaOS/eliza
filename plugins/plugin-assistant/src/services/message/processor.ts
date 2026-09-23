@@ -27,6 +27,7 @@ import {
   EventType,
   getStreamingContext,
   getTrajectoryContext,
+  getUserMessageText,
   INFERENCE_MARKS,
   incomingPipelineHookContext,
   isCanonicalModelCapabilityDisabled,
@@ -675,7 +676,7 @@ export class MessageProcessor {
           const proposedText = event.text.trim();
           const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
             providers: state.data.providers,
-            request: message.content.text,
+            request: getUserMessageText(message),
             reply: proposedText,
             actionResults: [],
             actions: runtime.actions,

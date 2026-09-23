@@ -17,6 +17,7 @@ import {
 } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
+import { installTrajectoryRetention } from "../../runtime/trajectory-retention.ts";
 import { serializeTrajectoryExport } from "../../services/trajectory-export.ts";
 
 /** Public alias for {@link CanonicalTrajectoryExportOptions} (canonical type lives in services). */
@@ -1210,8 +1211,13 @@ export class TrajectoriesService extends Service {
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new TrajectoriesService(runtime);
     await service.initialize();
+    if (service.isEnabled()) {
+      service.stopRetention = await installTrajectoryRetention(runtime);
+    }
     return service;
   }
+
+  private stopRetention: (() => Promise<void>) | undefined;
 
   async stop(): Promise<void> {
     if (this.stopPromise) return this.stopPromise;
@@ -1226,6 +1232,7 @@ export class TrajectoriesService extends Service {
   }
 
   private async finishStop(): Promise<void> {
+    const retention = await Promise.allSettled([this.stopRetention?.()]);
     await this.drainInflightOperations();
     const results = await Promise.allSettled(
       [...this.ownedTrajectoryIds].map((trajectoryId) =>
@@ -1239,7 +1246,7 @@ export class TrajectoriesService extends Service {
     for (const trajectoryId of this.activeStepIds.keys()) {
       this.releaseTrajectoryRouting(trajectoryId);
     }
-    const failures = results.flatMap((result) =>
+    const failures = [...retention, ...results].flatMap((result) =>
       result.status === "rejected" ? [result.reason] : [],
     );
     if (failures.length > 0) {

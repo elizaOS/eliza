@@ -140,33 +140,46 @@ function useModelHarness(rewriteText: string) {
 }
 
 describe("resolvePlannedReplyEgress stated time", () => {
-  it("answers a current-time question from the provider without a model pass when the reply invented a date", async () => {
-    const { runtime, useModel } = makeRuntime("unused");
-    const result = await resolvePlannedReplyEgress({
-      runtime,
-      message: makeMessage("what time is it right now for me?"),
-      reply:
-        "Sunday, November 22, 2026 at 5:01:28 PM EST. (in your local time)",
-      providers: {
-        ...providers,
-        CURRENT_TIME: {
-          text: "",
-          values: {},
-          data: {
-            iso: "2026-09-11T15:18:30.625Z",
-            date: "2026-09-11",
-            time: "11:18:30",
-            dayOfWeek: "Friday",
-            humanReadable: "Friday, September 11, 2026 at 11:18:30 AM EDT",
-            timeZone: "America/New_York",
+  it.each([false, true])(
+    "answers the actual current-time request without a model pass (connector envelope=%s)",
+    async (wrapped) => {
+      const { runtime, useModel } = makeRuntime("unused");
+      const result = await resolvePlannedReplyEgress({
+        runtime,
+        message: wrapped
+          ? {
+              ...makeMessage(
+                "Earlier user: discuss a calendar event. Current message: what time is it right now for me?",
+              ),
+              content: {
+                text: "Earlier user: discuss a calendar event. Current message: what time is it right now for me?",
+                currentMessageText: "what time is it right now for me?",
+              },
+            }
+          : makeMessage("what time is it right now for me?"),
+        reply:
+          "Sunday, November 22, 2026 at 5:01:28 PM EST. (in your local time)",
+        providers: {
+          ...providers,
+          CURRENT_TIME: {
+            text: "",
+            values: {},
+            data: {
+              iso: "2026-09-11T15:18:30.625Z",
+              date: "2026-09-11",
+              time: "11:18:30",
+              dayOfWeek: "Friday",
+              humanReadable: "Friday, September 11, 2026 at 11:18:30 AM EDT",
+              timeZone: "America/New_York",
+            },
           },
-        },
-      } as never,
-      actionResults: [] as ActionResult[],
-    });
-    expect(result.text).toBe(
-      "It's Friday, September 11, 2026 at 11:18:30 AM EDT.",
-    );
-    expect(useModel).not.toHaveBeenCalled();
-  });
+        } as never,
+        actionResults: [] as ActionResult[],
+      });
+      expect(result.text).toBe(
+        "It's Friday, September 11, 2026 at 11:18:30 AM EDT.",
+      );
+      expect(useModel).not.toHaveBeenCalled();
+    },
+  );
 });

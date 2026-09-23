@@ -71,3 +71,17 @@ shares its budget with the existing direct-text IGNORE review, so a repeated
 terminal decision does not start another silence review. Requested context is
 loaded before review; malformed output and conflicting routing retain their
 existing validation paths.
+
+## File trajectory retention
+
+When the trajectory service has usable SQL-backed task storage, it registers an
+agent-scoped repeating task on core TaskService to remove completed JSON file
+trajectories older than 14 days. Set `ELIZA_TRAJECTORY_RETENTION_DAYS=0` to
+disable cleanup, or use a nonnegative integer day count. Invalid settings fail
+service setup. The task checks every six hours while the host runs its normal
+task clock; serverless hosts must drive due tasks as usual.
+
+Cleanup retains running records, temporary writes, unrelated files and records
+belonging to another agent. It does not prune SQL trajectories or Markdown
+review artifacts. Filesystem failures remain visible through normal task error
+handling. Shutdown unregisters the worker and waits for accepted cleanup.

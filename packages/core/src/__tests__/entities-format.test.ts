@@ -27,6 +27,31 @@ describe("formatEntities", () => {
 		expect(rendered).toContain("x".repeat(2_500));
 	});
 
+	it("preserves metadata field identity and exact values even when names repeat", () => {
+		const metadata = {
+			default: { language: "ja", timezone: "Asia/Tokyo" },
+			originalId: "Alice",
+			manager: "Alice",
+			emergencyContact: "Alice",
+			accountId: "AB12",
+			referenceId: "ab12",
+			avatarUrl: "https://example.test/alice.png",
+		};
+		const rendered = formatEntities({
+			entities: [
+				{
+					id: "00000000-0000-0000-0000-000000000123",
+					names: ["Alice"],
+					metadata,
+				},
+			] as Entity[],
+		});
+		const data = rendered.split("\nData: ")[1];
+		expect(data).toBeDefined();
+		if (!data) throw new Error("Entity metadata was omitted");
+		expect(JSON.parse(data.trim())).toEqual(metadata);
+	});
+
 	it("renders every entity", () => {
 		const entities = Array.from({ length: 30 }, (_, index) => ({
 			id: `00000000-0000-0000-0000-${String(index + 1).padStart(12, "0")}`,
