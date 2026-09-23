@@ -130,7 +130,11 @@ for (const viewport of [
         route.fulfill({
           json: {
             data: [],
-            stats: { totalEntities: 0, totalRelationships: 0, totalPeople: 0 },
+            stats: {
+              totalIdentities: 0,
+              totalRelationships: 0,
+              totalPeople: 0,
+            },
           },
         }),
       );
