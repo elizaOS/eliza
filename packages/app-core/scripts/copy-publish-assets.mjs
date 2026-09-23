@@ -47,7 +47,6 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/build-native-plugins.mjs",
   "scripts/build-patched-electrobun-cli.mjs",
   "scripts/check-i18n.mjs",
-  "scripts/check-upstream-drift.mjs",
   "scripts/clean-repo.mjs",
   "scripts/codesign-mas.mjs",
   "scripts/container-entrypoint.mjs",
