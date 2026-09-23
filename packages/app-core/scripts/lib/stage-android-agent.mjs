@@ -304,10 +304,12 @@ pkill -f "\${BUN_PATH}" 2>/dev/null
 pkill -f "\${AGENT_BUNDLE_PATH}" 2>/dev/null
 sleep 1
 
+# The APK ships its dependency graph. Missing optional packages must fail
+# locally instead of triggering Bun auto-install and network retry delays.
 if [ -n "\${AGENT_COMMAND}" ]; then
-  set -- "\${LD_PATH}" "\${BUN_PATH}" "\${AGENT_BUNDLE_PATH}" "\${AGENT_COMMAND}"
+  set -- "\${LD_PATH}" "\${BUN_PATH}" --no-install "\${AGENT_BUNDLE_PATH}" "\${AGENT_COMMAND}"
 else
-  set -- "\${LD_PATH}" "\${BUN_PATH}" "\${AGENT_BUNDLE_PATH}"
+  set -- "\${LD_PATH}" "\${BUN_PATH}" --no-install "\${AGENT_BUNDLE_PATH}"
 fi
 
 (
