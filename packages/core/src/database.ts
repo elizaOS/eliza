@@ -481,6 +481,10 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	abstract searchMemories(params: {
 		tableName: string;
 		embedding: number[];
+		/** Omit returned vectors only; similarity still uses the stored embedding. */
+		includeEmbedding?: boolean;
+		/** Narrow eligible rooms before ranking and pagination. */
+		excludeRoomIds?: UUID[];
 		match_threshold?: number;
 		count?: number;
 		limit?: number;

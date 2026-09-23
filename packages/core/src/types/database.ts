@@ -1394,6 +1394,10 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * vector candidates before reranking; retain semantic-only candidates. */
 	searchMemories(params: {
 		embedding: number[];
+		/** Omit returned vectors only; similarity still uses the stored embedding. */
+		includeEmbedding?: boolean;
+		/** Narrow eligible rooms before ranking and pagination. */
+		excludeRoomIds?: UUID[];
 		match_threshold?: number;
 		count?: number;
 		limit?: number;

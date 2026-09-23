@@ -85,3 +85,5 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+Both adapters apply semantic excludeRoomIds before vector ranking and page selection. includeEmbedding:false removes vectors only from copied results after scoring; stored vectors and text reranking remain intact. Defaults retain existing output, and exclusions never relax access-context or explicit room/world/entity bounds.

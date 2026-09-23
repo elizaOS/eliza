@@ -592,6 +592,9 @@ export function buildCanonicalRecall(
 interface CanonicalMemorySearchBaseInput {
 	runtime: IAgentRuntime;
 	embedding: number[];
+	includeEmbedding?: boolean;
+	/** Selection-only exclusions; these never grant cross-room authority. */
+	excludeRoomIds?: UUID[];
 	query?: string;
 	/** @deprecated Production recall derives the agent from `runtime.agentId`. */
 	agentId?: UUID;
@@ -775,6 +778,7 @@ export async function searchCanonicalConversationMemories(
 		? normalizeConnectorSource(input.source)
 		: undefined;
 	const allCandidates: Memory[] = [];
+	const excludedRooms = new Set(input.excludeRoomIds);
 	let candidateWindowComplete = true;
 	const seenIds = new Set<string>();
 	let roundCount = initialCount;
@@ -784,6 +788,12 @@ export async function searchCanonicalConversationMemories(
 		try {
 			roundCandidates = await input.runtime.searchMemories({
 				embedding: input.embedding,
+				...(input.includeEmbedding === undefined
+					? {}
+					: { includeEmbedding: input.includeEmbedding }),
+				...(input.excludeRoomIds
+					? { excludeRoomIds: input.excludeRoomIds }
+					: {}),
 				tableName: "messages",
 				match_threshold: input.matchThreshold,
 				count: roundCount,
@@ -817,6 +827,7 @@ export async function searchCanonicalConversationMemories(
 
 		// Deduplicate against what we already have and accumulate.
 		for (const mem of roundCandidates) {
+			if (excludedRooms.has(mem.roomId)) continue;
 			const memId = mem.id?.toString();
 			if (memId && seenIds.has(memId)) continue;
 			if (memId) seenIds.add(memId);

@@ -3908,6 +3908,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async searchMemories(params: {
     tableName: string;
     embedding: number[];
+    includeEmbedding?: boolean;
+    excludeRoomIds?: UUID[];
     match_threshold?: number;
     count?: number;
     limit?: number;
@@ -3933,6 +3935,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       unique: params.unique,
       tableName: params.tableName,
       accessContext: params.accessContext,
+      includeEmbedding: params.includeEmbedding,
+      excludeRoomIds: params.excludeRoomIds,
     });
     return rerankMemories(params.query, memories);
   }
@@ -3961,6 +3965,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       entityId?: UUID;
       unique?: boolean;
       tableName: string;
+      includeEmbedding?: boolean;
+      excludeRoomIds?: UUID[];
       accessContext?: AccessContext;
     }
   ): Promise<Memory[]> {
@@ -4005,6 +4011,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       if (params.roomId) {
         conditions.push(eq(memoryTable.roomId, params.roomId));
       }
+      if (params.excludeRoomIds?.length) {
+        conditions.push(notInArray(memoryTable.roomId, params.excludeRoomIds));
+      }
       if (params.worldId) {
         conditions.push(eq(memoryTable.worldId, params.worldId));
       }
@@ -4016,7 +4025,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .select({
           memory: memoryTable,
           similarity,
-          embedding: activeColumn,
+          embedding: params.includeEmbedding === false ? sql<null>`NULL` : activeColumn,
         })
         .from(embeddingTable)
         .innerJoin(memoryTable, eq(memoryTable.id, embeddingTable.memoryId))

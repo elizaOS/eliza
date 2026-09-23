@@ -1326,6 +1326,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async searchMemories(params: {
     tableName: string;
     embedding: number[];
+    includeEmbedding?: boolean;
+    excludeRoomIds?: UUID[];
     match_threshold?: number;
     count?: number;
     limit?: number;
@@ -1341,6 +1343,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       const threshold = params.match_threshold ?? 0.5;
       const limit = params.count ?? params.limit;
       const offset = params.offset ?? 0;
+      const excludedRooms = new Set(params.excludeRoomIds);
 
       // Scope eligibility must be applied BEFORE the top-K cut so the result is
       // "top K among eligible memories". Mirrors the plugin-sql adapter, whose
@@ -1361,6 +1364,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         (memory) =>
           (!params.tableName || storedMemoryTableName(memory) === params.tableName) &&
           (!params.roomId || memory.roomId === params.roomId) &&
+          !excludedRooms.has(memory.roomId) &&
           (!params.worldId || memory.worldId === params.worldId) &&
           (!params.entityId || memory.entityId === params.entityId) &&
           (!params.unique || !!memory.unique)
@@ -1390,7 +1394,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         const memory = memoriesById.get(result.id);
         return memory ? [{ ...memory, similarity: result.similarity }] : [];
       });
-      return rerankMemories(params.query, memories);
+      const ranked = rerankMemories(params.query, memories);
+      return params.includeEmbedding === false
+        ? ranked.map(({ embedding, ...memory }) => memory)
+        : ranked;
     });
   }
 

@@ -1419,6 +1419,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
   async searchMemories(params: {
     tableName: string;
     embedding: number[];
+    includeEmbedding?: boolean;
+    excludeRoomIds?: UUID[];
     match_threshold?: number;
     count?: number;
     limit?: number;
@@ -1439,6 +1441,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
       await this.getMemories({
         tableName: params.tableName,
         roomId: params.roomId,
+        excludeRoomIds: params.excludeRoomIds,
         worldId: params.worldId,
         unique: params.unique,
         accessContext: params.accessContext,
@@ -1464,7 +1467,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
     }
     scored.sort((left, right) => (right.similarity ?? -1) - (left.similarity ?? -1));
     const offset = params.offset ?? 0;
-    return rerankMemories(params.query, scored.slice(offset, offset + limit));
+    const ranked = rerankMemories(params.query, scored.slice(offset, offset + limit));
+    return params.includeEmbedding === false
+      ? ranked.map(({ embedding, ...memory }) => memory)
+      : ranked;
   }
 
   // Batch memory methods

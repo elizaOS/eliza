@@ -4685,6 +4685,10 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 	async searchMemories(params: {
 		embedding: number[];
+		/** Omit returned vectors only; similarity still uses the stored embedding. */
+		includeEmbedding?: boolean;
+		/** Narrow eligible rooms before ranking and pagination. */
+		excludeRoomIds?: UUID[];
 		query?: string;
 		match_threshold?: number;
 		count?: number;

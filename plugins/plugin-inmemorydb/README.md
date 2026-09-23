@@ -83,3 +83,5 @@ receives no vector or completion event; database failures throw. Custom database
 adapters must implement this contract when upgrading core. A separate read followed
 by an unconditional update is insufficient. Vector-only runtime writes retain the
 existing reconciliation-lease bypass and invalidate the room cache on success.
+
+Both semantic-search adapters support `includeEmbedding: false` to omit vectors from returned copies and `excludeRoomIds` to narrow the scoped candidate set before ranking. Neither option mutates stored memories or replaces authorization.

@@ -315,3 +315,5 @@ generic model dispatch, trace enrichment and authorization, not prompt templates
 or semantic recovery.
 
 Direct voice messages share the canonical direct-message handler schema, context discovery, source selection, planner reasoning preference, response review and transient acknowledgement path with typed messages. Speech capture, speaker attribution, turn-taking and playback remain transport responsibilities. Acknowledgements never enter the authoritative reply buffer or durable assistant history; cancellation prevents later speech from the same turn. Equivalent model inputs use the same stable cache prefix and conversation/stage key, with cache hits reported only from provider usage.
+
+Semantic memory search supports explicit includeEmbedding:false and excludeRoomIds query options. Projection omits returned vectors, never similarity computation or stored embeddings. Room exclusions narrow the existing audience/room predicates before ranking and pagination; they cannot grant cross-room authority. Canonical recall retains its defensive exclusion and complete refill behavior even when a legacy adapter ignores the optimization.

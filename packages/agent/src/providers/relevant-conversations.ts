@@ -195,6 +195,8 @@ export const relevantConversationsProvider: Provider = {
             agentId: runtime.agentId,
             deliveryMessage: message,
             matchThreshold: MATCH_THRESHOLD,
+            includeEmbedding: false,
+            excludeRoomIds: [message.roomId],
           });
         })(),
       ]);

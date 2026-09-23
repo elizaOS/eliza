@@ -241,3 +241,5 @@ presentation and partial/withheld notices. The metadata is a quotation aid, not
 a new access grant or a way to recover text removed during provider redaction.
 
 Caller-scoped voice navigation may request the existing completed-action handoff receipt while retaining originating-client delivery. Return literal delivery confirmation and the validated handoff ID only from actual targeted WebSocket delivery; disconnected voice callers get no global or terminal fallback and cannot commit a new current-view state. This confirms server transport delivery, not a browser-mounted acknowledgement.
+
+The relevant-conversations provider requests semantic results without returned embedding vectors and excludes its current room before vector ranking. Current-room dialogue remains owned by RECENT_MESSAGES; the existing audience/provenance gate and final access filtering remain in force. This restores retrieval I/O optimizations without shortening model-facing memory text.
