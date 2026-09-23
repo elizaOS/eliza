@@ -384,7 +384,7 @@
     "hono": "^4.13.8",
     "node-edge-tts": "^1.2.9",
     "pg": "^8.23.0",
-    "tailwind-merge": "3.4.0",
+    "tailwind-merge": "3.7.0",
     "zod": "^4.4.3",
     "@elizaos/cloud-routing": "workspace:*"
   }
