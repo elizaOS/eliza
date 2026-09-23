@@ -151,7 +151,8 @@ export function BillingSectionBody(props: BillingSectionBodyProps = {}) {
   );
 }
 
-function DeveloperBillingSectionBody({
+/** Account billing can load without a selected native runtime or agent. */
+export function DeveloperBillingSectionBody({
   onSignIn,
   signInBusy = false,
   signInError = null,
