@@ -13,31 +13,23 @@ import {
 import { resolveIntentView } from "./views-show.js";
 
 const RECALL_CASES = nounRecallCases();
-const ALL_VIEW_IDS = new Set(MATCHER_VIEW_IDS);
 
 describe("view matrix — exhaustive noun recall (every view × every language noun)", () => {
 	it.each(RECALL_CASES)(
 		"resolves $viewId noun '$noun' under its arbitration policy",
 		({ viewId, phrases, navigationOnly }) => {
-			// Every noun must be reachable through an explicit verb and a possessive,
-			// and as a bare whole-message noun. The resolved view must be registered
-			// (a higher-priority view may legitimately win a shared substring, but it
-			// is always a real navigable view — never null/garbage).
-			const verb = matchViewCommand(phrases.verb);
-			const poss = matchViewCommand(phrases.possessive);
-			const bare = matchViewCommand(phrases.bare);
-			if (navigationOnly) {
-				expect(verb, `verb form: "${phrases.verb}"`).toBe(viewId);
-				expect(poss, `inventory form: "${phrases.possessive}"`).toBeNull();
-				expect(bare, `bare form: "${phrases.bare}"`).toBeNull();
-				return;
+			for (const [form, phrase] of Object.entries(phrases)) {
+				if (navigationOnly && form !== "verb") {
+					expect(matchViewCommand(phrase), `${form}: ${phrase}`).toBeNull();
+					continue;
+				}
+				expect(matchViewCommand(phrase), `matcher ${form}: ${phrase}`).toBe(
+					viewId,
+				);
+				expect(resolveIntentView(phrase), `intent ${form}: ${phrase}`).toBe(
+					viewId,
+				);
 			}
-			expect(verb, `verb form: "${phrases.verb}"`).not.toBeNull();
-			expect(poss, `possessive form: "${phrases.possessive}"`).not.toBeNull();
-			expect(bare, `bare form: "${phrases.bare}"`).not.toBeNull();
-			expect(ALL_VIEW_IDS.has(verb as string)).toBe(true);
-			expect(ALL_VIEW_IDS.has(poss as string)).toBe(true);
-			expect(ALL_VIEW_IDS.has(bare as string)).toBe(true);
 		},
 	);
 });
