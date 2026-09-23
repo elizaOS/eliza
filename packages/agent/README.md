@@ -586,3 +586,60 @@ mount a host Docker socket, or treat per-container SQLite as hardware isolation.
 Use an encrypted state volume, authenticated ingress, and measured pinned images.
 The adapter does not provision storage, authorize support access, establish
 HIPAA/SOC 2/GDPR compliance, or prove a live hardware deployment.
+
+### Attested inference transport
+
+`services/tee-attested-inference` provides a fetch-compatible client and a
+measured server using the versioned TLS ALPN `eliza-attested-inference/1`.
+This is a dedicated framed protocol, not an ordinary HTTP endpoint. It buffers
+complete request/response bodies; configurable payload limits reject the whole
+payload and never truncate model content. Streaming delivery, connection pooling
+and automatic retries are not supported in this version. It does not provide
+incremental SSE or real-time voice latency. Provider SDK retries and runtime
+failover must also be disabled after ambiguous confidential dispatch; transport
+errors expose a conservative `dispatchState` in their typed context.
+
+The client validates the normal TLS certificate chain and DNS name, then sends
+only a fresh nonce and approved route policy. Both peers compute a SHA-256
+transcript containing the protocol domain, nonce, actual certificate SPKI, a
+TLS exporter from that exact socket, route ID and policy revision. The server
+constructs these values itself, obtains raw guest-v1 evidence, and returns it.
+The client independently appraises that raw evidence using the same pinned
+verifier as local boot admission, including the expected remote deployment
+identity. It never substitutes its own local guest evidence for remote proof.
+
+After proof verification, the required `beforeDispatch` hook must commit the
+same-agent durable audit and recheck current route authority. Only then are
+application headers and the complete body sent over that same socket. Configure
+this transport per approved attempt; the host confidential profile must prohibit
+ordinary-fetch fallback. A request always gets a fresh connection, and ambiguous
+failures are returned without retry. The hook receives only routing metadata and
+proof/session digests; never record prompts, credentials or raw quotes there.
+
+`services/tee-dstack-tls-identity` obtains a fresh key and certificate through the
+private guest-v1 `IssueCert` endpoint and constructs the listener without
+exporting the key through its public interface. The pinned image/compose must
+confine that socket and the listener process inside the same approved CVM.
+Dstack returns the private key to this process, so this is not non-exportable
+HSM storage. The listener's measured handler must independently enforce any
+second inference hop; a valid CPU quote does not establish GPU confidentiality.
+
+Tests use actual TLS connections, certificates, exporters, Unix sockets and
+subprocesses, with explicitly synthetic platform quote responses. Captured
+platform cryptography tests and these transport tests do not replace a live
+hardware run with current collateral and approved measurements.
+
+A local timeout or disconnect closes the session and cancels any late response
+stream. It cannot undo a remote handler effect already accepted before abort;
+reconciliation or explicit application idempotency is required before redispatch.
+
+The client optionally accepts a constructor-owned absolute `unixSocketPath`
+for a measured byte-forwarding sidecar. This changes only the physical dial
+path: the approved HTTPS URL, TLS SNI, certificate chain/name checks, peer SPKI
+and same-session exporter remain unchanged. The path is snapshotted and must
+name a real Unix socket; requests cannot select a different path and failures
+never fall back to TCP. A network-disabled agent can use this path without
+performing destination DNS resolution. The sidecar must itself restrict its
+outbound destination in measured configuration. Local forwarding tests do not
+prove Linux namespace/DNS isolation or constrain verifier collateral egress;
+those require separate deployment controls and packet-level acceptance evidence.
