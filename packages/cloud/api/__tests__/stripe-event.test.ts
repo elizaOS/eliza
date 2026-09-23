@@ -82,15 +82,20 @@ mock.module("@/lib/security/safe-fetch", () => ({
 mock.module("@/lib/services/app-charge-callbacks", () => ({
   appChargeCallbacksService: { failChargeAndEnqueue },
 }));
-const processPurchase = mock(async () => ({
+const settlePurchase = mock(async () => ({
   creditsAdded: 10,
   platformOffset: 0,
   creatorEarnings: 0,
   newBalance: 10,
 }));
-const markPaid = mock(async () => undefined);
 mock.module("@/lib/services/app-charge-settlement", () => ({
-  appChargeSettlementService: { markPaid },
+  appChargeSettlementService: { settlePurchase },
+}));
+const processPurchase = mock(async () => ({
+  creditsAdded: 10,
+  platformOffset: 0,
+  creatorEarnings: 0,
+  newBalance: 10,
 }));
 mock.module("@/lib/services/app-credits", () => ({
   appCreditsService: { processPurchase },
@@ -198,6 +203,13 @@ beforeEach(() => {
   clawbackCredits.mockClear();
   refundCredits.mockClear();
   failChargeAndEnqueue.mockClear();
+  settlePurchase.mockClear();
+  settlePurchase.mockResolvedValue({
+    creditsAdded: 10,
+    platformOffset: 0,
+    creatorEarnings: 0,
+    newBalance: 10,
+  });
   processPurchase.mockClear();
   processPurchase.mockResolvedValue({
     creditsAdded: 10,
@@ -205,8 +217,6 @@ beforeEach(() => {
     creatorEarnings: 0,
     newBalance: 10,
   });
-  markPaid.mockClear();
-  markPaid.mockResolvedValue(undefined);
   getByStripeInvoiceId.mockClear();
   getByStripeInvoiceId.mockResolvedValue(null);
   createInvoice.mockClear();
@@ -314,7 +324,7 @@ describe("processStripeEvent dispatch", () => {
     expect(getTransactionByStripePaymentIntent).not.toHaveBeenCalled();
   });
 
-  test("acks a paid checkout that has no payment intent id", async () => {
+  test("dlqs a paid checkout that has no payment intent id", async () => {
     expect(
       await processStripeEvent(
         delivery("checkout.session.completed", {
@@ -325,11 +335,11 @@ describe("processStripeEvent dispatch", () => {
           metadata: { organization_id: "org-1", credits: "10.00" },
         }),
       ),
-    ).toBe("ack");
+    ).toBe("dlq");
     expect(addCredits).not.toHaveBeenCalled();
   });
 
-  test("extracts an expanded checkout payment_intent.id then acks invalid authority", async () => {
+  test("extracts an expanded checkout payment_intent.id then dlqs invalid authority", async () => {
     expect(
       await processStripeEvent(
         delivery("checkout.session.completed", {
@@ -340,7 +350,7 @@ describe("processStripeEvent dispatch", () => {
           metadata: { credits: "0" },
         }),
       ),
-    ).toBe("ack");
+    ).toBe("dlq");
     expect(addCredits).not.toHaveBeenCalled();
   });
 
@@ -401,6 +411,7 @@ describe("processStripeEvent dispatch", () => {
       ).toBe("ack");
       expect(addCredits).not.toHaveBeenCalled();
       expect(createInvoice).not.toHaveBeenCalled();
+      expect(settlePurchase).not.toHaveBeenCalled();
       expect(processPurchase).not.toHaveBeenCalled();
     }
   });
@@ -456,24 +467,73 @@ describe("processStripeEvent dispatch", () => {
       ),
     ).toBe("ack");
     expect(addCredits).not.toHaveBeenCalled();
-    expect(processPurchase).toHaveBeenCalledWith(
+    expect(settlePurchase).toHaveBeenCalledWith(
       expect.objectContaining({
         appId: "app-1",
         userId: "user-1",
         organizationId: "org-1",
-        purchaseAmount: 10,
-        stripePaymentIntentId: "pi_app_credit",
-      }),
-    );
-    expect(markPaid).toHaveBeenCalledWith(
-      expect.objectContaining({
-        appId: "app-1",
         chargeRequestId: "cr-1",
         provider: "stripe",
         providerPaymentId: "pi_app_credit",
         amountUsd: 10,
       }),
     );
+  });
+
+  test("checkout.session.completed preserves direct app-credit purchases", async () => {
+    expect(
+      await processStripeEvent(
+        delivery("checkout.session.completed", {
+          id: "cs_direct_app_credit",
+          payment_status: "paid",
+          payment_intent: "pi_direct_app_credit",
+          amount_total: 1000,
+          currency: "usd",
+          customer: "cus_1",
+          metadata: {
+            type: "app_credit_purchase",
+            source: "miniapp_app",
+            organization_id: "org-1",
+            user_id: "user-1",
+            app_id: "app-1",
+            credits: "10.00",
+          },
+        }),
+      ),
+    ).toBe("ack");
+    expect(settlePurchase).not.toHaveBeenCalled();
+    expect(processPurchase).toHaveBeenCalledWith({
+      appId: "app-1",
+      userId: "user-1",
+      organizationId: "org-1",
+      purchaseAmount: 10,
+      stripePaymentIntentId: "pi_direct_app_credit",
+    });
+  });
+
+  test("dlqs a charge-backed app checkout whose provider amount differs", async () => {
+    expect(
+      await processStripeEvent(
+        delivery("checkout.session.completed", {
+          id: "cs_app_credit_amount_mismatch",
+          payment_status: "paid",
+          payment_intent: "pi_app_credit_amount_mismatch",
+          amount_total: 500,
+          currency: "usd",
+          metadata: {
+            type: "app_credit_purchase",
+            source: "miniapp_app",
+            organization_id: "org-1",
+            user_id: "user-1",
+            app_id: "app-1",
+            charge_request_id: "cr-1",
+            credits: "10.00",
+          },
+        }),
+      ),
+    ).toBe("dlq");
+    expect(settlePurchase).not.toHaveBeenCalled();
+    expect(processPurchase).not.toHaveBeenCalled();
   });
 
   test("skips payment intents with no purchase type and no auto-top-up marker", async () => {
@@ -557,7 +617,7 @@ describe("processStripeEvent payment_intent.succeeded one-time purchase", () => 
     expect(addCredits).not.toHaveBeenCalled();
   });
 
-  test("acks invalid one-time metadata instead of retrying", async () => {
+  test("dlqs invalid one-time fulfillment authority", async () => {
     expect(
       await processStripeEvent(
         delivery("payment_intent.succeeded", {
@@ -569,11 +629,18 @@ describe("processStripeEvent payment_intent.succeeded one-time purchase", () => 
           metadata: { type: "one_time", credits: "not-a-number" },
         }),
       ),
-    ).toBe("ack");
+    ).toBe("dlq");
     expect(addCredits).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("cannot complete; sending to DLQ"),
+      expect.objectContaining({
+        paymentIntentId: "pi_bad_meta",
+        code: "STRIPE_PAID_EVENT_INVALID_AUTHORITY",
+      }),
+    );
   });
 
-  test("acks a non-finite affiliate fee as a permanent metadata failure", async () => {
+  test("dlqs a non-finite affiliate fee as invalid paid authority", async () => {
     expect(
       await processStripeEvent(
         delivery("payment_intent.succeeded", {
@@ -590,8 +657,15 @@ describe("processStripeEvent payment_intent.succeeded one-time purchase", () => 
           },
         }),
       ),
-    ).toBe("ack");
+    ).toBe("dlq");
     expect(addCredits).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("cannot complete; sending to DLQ"),
+      expect.objectContaining({
+        paymentIntentId: "pi_bad_affiliate",
+        code: "STRIPE_PAID_EVENT_INVALID_AUTHORITY",
+      }),
+    );
   });
 
   test("retains invoice-backed payment before metadata can grant global credits", async () => {
@@ -939,7 +1013,7 @@ function miniAppPaidCheckout(overrides?: {
 
 describe("processStripeEvent paid-event classification", () => {
   test("dlqs a paid checkout when the app is gone", async () => {
-    processPurchase.mockRejectedValueOnce(
+    settlePurchase.mockRejectedValueOnce(
       new ElizaError("App not found: app-deleted", {
         code: "APP_NOT_FOUND",
         context: { appId: "app-deleted" },
@@ -948,7 +1022,6 @@ describe("processStripeEvent paid-event classification", () => {
     expect(await processStripeEvent(miniAppPaidCheckout())).toBe("dlq");
     expect(addCredits).not.toHaveBeenCalled();
     expect(createInvoice).not.toHaveBeenCalled();
-    expect(markPaid).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining("cannot complete; sending to DLQ"),
       expect.objectContaining({
@@ -997,22 +1070,19 @@ describe("processStripeEvent paid-event classification", () => {
   });
 
   test("does not ack a paid checkout on an English 'not found' substring", async () => {
-    processPurchase.mockRejectedValueOnce(
-      new Error("Charge request not found"),
-    );
+    settlePurchase.mockRejectedValueOnce(new Error("Charge request not found"));
     expect(await processStripeEvent(miniAppPaidCheckout())).toBe("retry");
-    expect(markPaid).not.toHaveBeenCalled();
   });
 
   test("dlqs a paid checkout for a missing charge request ElizaError", async () => {
-    markPaid.mockRejectedValueOnce(
+    settlePurchase.mockRejectedValueOnce(
       new ElizaError("Charge request not found", {
         code: "APP_CHARGE_REQUEST_NOT_FOUND",
         context: { chargeRequestId: "cr-1" },
       }),
     );
     expect(await processStripeEvent(miniAppPaidCheckout())).toBe("dlq");
-    expect(processPurchase).toHaveBeenCalled();
+    expect(settlePurchase).toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining("cannot complete; sending to DLQ"),
       expect.objectContaining({
@@ -1025,7 +1095,7 @@ describe("processStripeEvent paid-event classification", () => {
   });
 
   test("dlqs a paid checkout when app monetization numbers are corrupt", async () => {
-    processPurchase.mockRejectedValueOnce(
+    settlePurchase.mockRejectedValueOnce(
       new CorruptAppMonetizationNumberError("creditsToAdd", undefined),
     );
     expect(await processStripeEvent(miniAppPaidCheckout())).toBe("dlq");
@@ -1039,13 +1109,13 @@ describe("processStripeEvent paid-event classification", () => {
   });
 
   test("retries a paid checkout on a transient failure", async () => {
-    processPurchase.mockRejectedValueOnce(new Error("connection timed out"));
+    settlePurchase.mockRejectedValueOnce(new Error("connection timed out"));
     expect(await processStripeEvent(miniAppPaidCheckout())).toBe("retry");
   });
 
   test("the real queue sends a deleted-app paid checkout straight to DLQ", async () => {
     queueLists.clear();
-    processPurchase.mockRejectedValue(
+    settlePurchase.mockRejectedValue(
       new ElizaError("App not found: app-deleted", {
         code: "APP_NOT_FOUND",
         context: { appId: "app-deleted" },

@@ -143,4 +143,15 @@ describe("app charge settlement payable status", () => {
     });
     expect(await chargeStatus()).toBe("requested");
   });
+
+  test("rejects a provider amount that differs from the charge authority", async () => {
+    await seedCharge("requested");
+    await expect(
+      settlementService.markPaid({ ...settlement, amountUsd: "9.99" }),
+    ).rejects.toMatchObject({
+      code: "APP_CHARGE_REQUEST_MISMATCH",
+    });
+    expect(await chargeStatus()).toBe("requested");
+    expect(await callbackCount()).toBe(0);
+  });
 });

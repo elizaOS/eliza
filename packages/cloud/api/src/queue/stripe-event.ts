@@ -32,7 +32,7 @@
  */
 
 import { createHmac } from "node:crypto";
-import { isElizaError } from "@elizaos/core";
+import { ElizaError, isElizaError } from "@elizaos/core";
 import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
 import { dbRead } from "@/db/helpers";
@@ -120,6 +120,7 @@ const STRIPE_QUEUE_PERMANENT_ERROR_CODES = new Set([
   "APP_CHARGE_ALREADY_SETTLED",
   "INVALID_APP_CHARGE_STATUS",
   "INVALID_APP_CHARGE_SETTLEMENT_AMOUNT",
+  "STRIPE_PAID_EVENT_INVALID_AUTHORITY",
 ]);
 
 function stripeQueueFailureCode(error: unknown): string | undefined {
@@ -462,14 +463,20 @@ async function handleCheckoutSessionCompleted(
   const chargeRequestId = session.metadata?.charge_request_id;
   const agentId = session.metadata?.agent_id;
   const checkoutOrderId = session.metadata?.checkout_order_id;
+  const checkoutAmountUsd =
+    typeof session.amount_total === "number" &&
+    Number.isInteger(session.amount_total) &&
+    session.amount_total > 0
+      ? session.amount_total / 100
+      : null;
 
-  const isAppPurchase = purchaseSource === "miniapp_app" && appId && userId;
+  const isAppPurchase = purchaseSource === "miniapp_app";
 
   if (!paymentIntentId) {
-    logger.warn(
-      `[Stripe Queue] Permanent failure - No payment intent ID in checkout session ${session.id}`,
-    );
-    return;
+    throw new ElizaError("Paid Checkout Session has no PaymentIntent", {
+      code: "STRIPE_PAID_EVENT_INVALID_AUTHORITY",
+      context: { eventId: event.id, checkoutSessionId: session.id },
+    });
   }
 
   let durableAlreadyApplied = false;
@@ -527,16 +534,31 @@ async function handleCheckoutSessionCompleted(
     legacyAlreadyApplied = settlement.alreadyApplied;
   }
 
-  if (!organizationId || !credits || !purchaseAmountUsd) {
-    logger.warn(
-      `[Stripe Queue] Permanent failure - Invalid checkout authority for session ${session.id}`,
+  if (
+    !organizationId ||
+    !credits ||
+    !purchaseAmountUsd ||
+    (isAppPurchase && (!appId || !userId)) ||
+    (isAppPurchase &&
+      !!chargeRequestId &&
+      (session.currency?.toLowerCase() !== "usd" ||
+        checkoutAmountUsd !== credits))
+  ) {
+    throw new ElizaError(
+      "Paid Checkout Session has invalid fulfillment authority",
       {
-        hasOrgId: !!organizationId,
-        hasValidCredits: !!credits,
-        hasCheckoutOrder: !!checkoutOrderId,
+        code: "STRIPE_PAID_EVENT_INVALID_AUTHORITY",
+        context: {
+          eventId: event.id,
+          checkoutSessionId: session.id,
+          hasOrgId: !!organizationId,
+          hasValidCredits: !!credits,
+          hasCheckoutOrder: !!checkoutOrderId,
+          checkoutAmountUsd,
+          currency: session.currency,
+        },
       },
     );
-    return;
   }
 
   const existingTransaction =
@@ -557,27 +579,44 @@ async function handleCheckoutSessionCompleted(
     );
   }
 
-  // App purchases ALWAYS go through processPurchase — NOT gated on the org-credit
-  // `isDuplicate`. processPurchase is internally idempotent (its own app-earnings
-  // dedup via appEarningsRepository.findTransactionByPaymentIntent + addCredits'
-  // ON CONFLICT(stripe_payment_intent_id)), so this is safe on true duplicates
-  // AND lets a retry after a PARTIAL failure — org credit committed but creator
-  // earnings not yet written — re-enter and record the missing earnings. Gating
-  // on the org-credit dedup skipped that re-entry, permanently losing the
-  // creator's purchase-share earnings (org-credit and creator-earnings are
-  // written non-atomically; the org credit alone flips isDuplicate to true).
+  // App purchases are not gated on the generic org-credit dedupe. The direct
+  // checkout lane relies on processPurchase's own payment-intent identity;
+  // charge-backed purchases additionally commit the charge, callback, credit,
+  // and earnings projections in one transaction.
   if (isAppPurchase) {
+    if (!appId || !userId) {
+      throw new ElizaError(
+        "Paid app Checkout Session has incomplete fulfillment authority",
+        {
+          code: "STRIPE_PAID_EVENT_INVALID_AUTHORITY",
+          context: { eventId: event.id, checkoutSessionId: session.id },
+        },
+      );
+    }
     logger.info(
       `[Stripe Queue] Processing app-specific credit purchase for app ${appId}`,
     );
 
-    const result = await appCreditsService.processPurchase({
-      appId,
-      userId: userId!,
-      organizationId,
-      purchaseAmount: credits,
-      stripePaymentIntentId: paymentIntentId,
-    });
+    const result = chargeRequestId
+      ? await appChargeSettlementService.settlePurchase({
+          appId,
+          userId,
+          organizationId,
+          chargeRequestId,
+          provider: "stripe",
+          providerPaymentId: paymentIntentId,
+          amountUsd: credits,
+          metadata: {
+            stripe_checkout_session_id: session.id,
+          },
+        })
+      : await appCreditsService.processPurchase({
+          appId,
+          userId,
+          organizationId,
+          purchaseAmount: credits,
+          stripePaymentIntentId: paymentIntentId,
+        });
 
     // processPurchase credits the org ledger directly (with this
     // paymentIntentId on the credit transaction), so no separate
@@ -667,21 +706,6 @@ async function handleCheckoutSessionCompleted(
       userId,
       paymentIntentId,
       sessionId: session.id,
-    });
-  }
-
-  if (isAppPurchase && appId && userId && chargeRequestId) {
-    await appChargeSettlementService.markPaid({
-      appId,
-      chargeRequestId,
-      provider: "stripe",
-      providerPaymentId: paymentIntentId,
-      amountUsd: credits,
-      payerUserId: userId,
-      payerOrganizationId: organizationId,
-      metadata: {
-        stripe_checkout_session_id: session.id,
-      },
     });
   }
 
@@ -1106,11 +1130,18 @@ async function handlePaymentIntentSucceeded(
   const credits = creditsStr ? parseAndValidateCredits(creditsStr) : null;
 
   if (!organizationId || !credits) {
-    logger.warn(
-      `[Stripe Queue] Permanent failure - Invalid metadata in payment intent ${paymentIntent.id}`,
-      { hasOrgId: !!organizationId, hasValidCredits: !!credits },
+    throw new ElizaError(
+      "Paid PaymentIntent has invalid fulfillment authority",
+      {
+        code: "STRIPE_PAID_EVENT_INVALID_AUTHORITY",
+        context: {
+          eventId: event.id,
+          paymentIntentId: paymentIntent.id,
+          hasOrgId: !!organizationId,
+          hasValidCredits: !!credits,
+        },
+      },
     );
-    return;
   }
 
   const affiliateFeeStr = paymentIntent.metadata?.affiliate_fee_amount;
@@ -1124,11 +1155,14 @@ async function handlePaymentIntentSucceeded(
     affiliateFeeStr &&
     (!Number.isFinite(affiliateFeeAmount) || affiliateFeeAmount < 0)
   ) {
-    logger.warn(
-      `[Stripe Queue] Permanent failure - Invalid affiliate metadata in payment intent ${paymentIntent.id}`,
-      { affiliateFeeStr },
-    );
-    return;
+    throw new ElizaError("Paid PaymentIntent has invalid affiliate authority", {
+      code: "STRIPE_PAID_EVENT_INVALID_AUTHORITY",
+      context: {
+        eventId: event.id,
+        paymentIntentId: paymentIntent.id,
+        affiliateFeeAmount: affiliateFeeStr,
+      },
+    });
   }
 
   const existingTransaction =

@@ -1,18 +1,27 @@
 /**
- * Adversarial card-payment replay through the real local Worker and PGlite.
+ * Adversarial card-payment replay and mini-app settlement through the real
+ * local Worker, signed webhook boundary, queue consumer, and PGlite ledger.
  *
  * The only simulated boundary is a loopback Stripe-compatible provider. The
  * first Checkout creation commits at that provider and loses its response. The
  * Worker must leave durable ambiguity, recover the same Session on an
  * application retry, and settle one credit/ledger/invoice receipt from
- * duplicate signed webhooks.
+ * duplicate signed webhooks. The mini-app lane also proves PaymentIntent-first
+ * delivery cannot double-credit and malformed paid authority reaches the DLQ.
  */
 
 import { createHmac } from "node:crypto";
+import { writeFile } from "node:fs/promises";
+import { appEarningsRepository } from "@elizaos/cloud-shared/db/repositories/app-earnings";
+import { cryptoPaymentsRepository } from "@elizaos/cloud-shared/db/repositories/crypto-payments";
 import { webhookEventsRepository } from "@elizaos/cloud-shared/db/repositories/webhook-events";
 import { creditsService } from "@elizaos/cloud-shared/lib/services/credits";
 import { invoicesService } from "@elizaos/cloud-shared/lib/services/invoices";
 import { stripeCheckoutOrdersService } from "@elizaos/cloud-shared/lib/services/stripe-checkout-orders";
+import {
+  approveAppForMonetizationTest,
+  authedClient,
+} from "../src/helpers/monetization";
 import {
   createCloudAgent,
   getPersistedAgentSummary,
@@ -71,6 +80,19 @@ interface InvoiceListResponse {
     creditsAdded?: number;
   }>;
   count?: number;
+}
+
+interface CreateAppResponse {
+  app?: { id?: string };
+}
+
+interface CreateChargeResponse {
+  success?: boolean;
+  charge?: {
+    id?: string;
+    status?: string;
+    amountUsd?: number;
+  };
 }
 
 test.use({
@@ -565,7 +587,6 @@ test("lost provider response and duplicate webhook settle exactly once", async (
     await expect(
       invoiceRow.getByRole("button", { name: "View", exact: true }),
     ).toBeVisible();
-
     // Direct account management no longer boots an agent. Prove the selected
     // agent is unavailable, then reload billing and require fresh account data
     // without another agent-status request.
@@ -616,4 +637,336 @@ test("lost provider response and duplicate webhook settle exactly once", async (
   expect(fakeStripe.state.sessions.get(session.id)?.id).toBe(session.id);
   expect(fakeStripe.state.effects).toHaveLength(1);
   expect(fakeStripe.state.counters.checkoutSessionsCreated).toBe(1);
+});
+
+test("mini-app card charge settles only on Checkout and retains malformed paid events", async ({
+  stack,
+  seededUser,
+}, testInfo) => {
+  test.setTimeout(240_000);
+  const authed = authedClient(stack.urls.api, seededUser.apiKey);
+  const startingBalance = await creditsService.getOrganizationBalanceUsd(
+    seededUser.organizationId,
+  );
+
+  const createdApp = await authed<CreateAppResponse>("POST", "/api/v1/apps", {
+    name: `Stripe app-charge E2E ${Date.now().toString(36)}`,
+    app_url: "https://example.com",
+    skipGitHubRepo: true,
+  });
+  expect([200, 201]).toContain(createdApp.status);
+  const appId = createdApp.json.app?.id;
+  expect(appId, "apps.create must return an app id").toBeTruthy();
+  if (!appId) throw new Error("apps.create did not return an app id");
+  await approveAppForMonetizationTest(appId, authed);
+
+  const createdCharge = await authed<CreateChargeResponse>(
+    "POST",
+    `/api/v1/apps/${appId}/charges`,
+    {
+      amount: 10,
+      providers: ["stripe"],
+      success_url: "https://example.com/payment/success",
+      cancel_url: "https://example.com/payment/cancel",
+    },
+  );
+  expect(createdCharge.status).toBe(200);
+  expect(createdCharge.json.success).toBe(true);
+  expect(createdCharge.json.charge).toMatchObject({
+    status: "requested",
+    amountUsd: 10,
+  });
+  const chargeRequestId = createdCharge.json.charge?.id;
+  expect(chargeRequestId, "charge creation must return an id").toBeTruthy();
+  if (!chargeRequestId) throw new Error("charge creation returned no id");
+
+  const paymentIntentId = `pi_app_charge_${Date.now().toString(36)}`;
+  const checkoutSessionId = `cs_app_charge_${Date.now().toString(36)}`;
+  const customerId = `cus_app_charge_${Date.now().toString(36)}`;
+  const metadata = {
+    type: "app_credit_purchase",
+    source: "miniapp_app",
+    app_id: appId,
+    charge_request_id: chargeRequestId,
+    user_id: seededUser.userId,
+    organization_id: seededUser.organizationId,
+    credits: "10.00",
+    amount: "10.00",
+  };
+
+  const signEvent = (
+    eventId: string,
+    type: "payment_intent.succeeded" | "checkout.session.completed",
+    object: Record<string, unknown>,
+  ) => {
+    const timestamp = Math.floor(Date.now() / 1_000);
+    const rawEvent = JSON.stringify({
+      id: eventId,
+      object: "event",
+      api_version: "2024-11-20.acacia",
+      created: timestamp,
+      data: { object },
+      livemode: false,
+      pending_webhooks: 1,
+      request: { id: null, idempotency_key: null },
+      type,
+    });
+    return {
+      rawEvent,
+      signature: createHmac("sha256", WEBHOOK_SECRET)
+        .update(`${timestamp}.${rawEvent}`)
+        .digest("hex"),
+      timestamp,
+    };
+  };
+  const deliver = (event: ReturnType<typeof signEvent>) =>
+    fetch(`${stack.urls.api}${WEBHOOK_PATH}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Stripe-Signature": `t=${event.timestamp},v1=${event.signature}`,
+      },
+      body: event.rawEvent,
+    });
+  const drain = async () => {
+    const response = await fetch(
+      `${stack.urls.api}/api/cron/process-stripe-queue`,
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer test-cron-secret" },
+      },
+    );
+    expect(response.status).toBe(200);
+    return (await response.json()) as Record<string, unknown>;
+  };
+
+  const paymentIntentEvent = signEvent(
+    "evt_app_charge_pi_succeeded",
+    "payment_intent.succeeded",
+    {
+      id: paymentIntentId,
+      object: "payment_intent",
+      invoice: null,
+      amount: 1000,
+      amount_received: 1000,
+      currency: "usd",
+      customer: customerId,
+      metadata,
+    },
+  );
+  expect((await deliver(paymentIntentEvent)).status).toBe(200);
+  const paymentIntentDrain = await drain();
+  expect(paymentIntentDrain).toMatchObject({
+    before: 1,
+    after: 0,
+    attempted: 1,
+    acked: 1,
+    retried: 0,
+    dlqed: 0,
+  });
+  expect(
+    (await cryptoPaymentsRepository.findById(chargeRequestId))?.status,
+  ).toBe("requested");
+  expect(
+    await creditsService.getTransactionByStripePaymentIntent(paymentIntentId),
+  ).toBeUndefined();
+
+  const checkoutEvent = signEvent(
+    "evt_app_charge_checkout_completed",
+    "checkout.session.completed",
+    {
+      id: checkoutSessionId,
+      object: "checkout.session",
+      mode: "payment",
+      payment_status: "paid",
+      status: "complete",
+      payment_intent: paymentIntentId,
+      amount_total: 1000,
+      currency: "usd",
+      customer: customerId,
+      metadata,
+    },
+  );
+  expect((await deliver(checkoutEvent)).status).toBe(200);
+  const checkoutDrain = await drain();
+  expect(checkoutDrain).toMatchObject({
+    before: 1,
+    after: 0,
+    attempted: 1,
+    acked: 1,
+    retried: 0,
+    dlqed: 0,
+  });
+
+  const settledCharge =
+    await cryptoPaymentsRepository.findById(chargeRequestId);
+  expect(settledCharge).toMatchObject({
+    status: "confirmed",
+    received_amount: "10",
+    credits_to_add: "10",
+  });
+  expect(settledCharge?.metadata).toMatchObject({
+    kind: "app_charge_request",
+    app_id: appId,
+    paid_provider: "stripe",
+    paid_provider_payment_id: paymentIntentId,
+    payer_user_id: seededUser.userId,
+    payer_organization_id: seededUser.organizationId,
+    stripe_checkout_session_id: checkoutSessionId,
+  });
+
+  const creditTransaction =
+    await creditsService.getTransactionByStripePaymentIntent(paymentIntentId);
+  expect(creditTransaction).toMatchObject({
+    organization_id: seededUser.organizationId,
+    amount: "10.000000",
+    type: "credit",
+  });
+  const appEarningsTransaction =
+    await appEarningsRepository.findTransactionByPaymentIntent(
+      appId,
+      paymentIntentId,
+    );
+  expect(appEarningsTransaction).toMatchObject({
+    app_id: appId,
+    user_id: seededUser.userId,
+    type: "credit_purchase",
+    amount: "0.000000",
+  });
+  const callbacks = await (
+    await import("@elizaos/cloud-shared/db/helpers")
+  ).dbRead.query.appChargeCallbackOutbox.findMany();
+  const matchingCallbacks = callbacks.filter(
+    (callback) => callback.charge_request_id === chargeRequestId,
+  );
+  expect(matchingCallbacks).toHaveLength(1);
+  expect(matchingCallbacks[0]?.payload).toMatchObject({
+    version: 1,
+    params: {
+      chargeRequestId,
+      appId,
+      status: "paid",
+      provider: "stripe",
+      providerPaymentId: paymentIntentId,
+    },
+    envelope: {
+      event: "app_charge.paid",
+      charge: { id: chargeRequestId, appId, status: "paid" },
+      payment: {
+        provider: "stripe",
+        providerPaymentId: paymentIntentId,
+      },
+    },
+  });
+  expect(
+    await creditsService.getOrganizationBalanceUsd(seededUser.organizationId),
+  ).toBe(startingBalance + 10);
+
+  const malformedPaidEvent = signEvent(
+    "evt_app_charge_missing_payment_intent",
+    "checkout.session.completed",
+    {
+      id: `${checkoutSessionId}_malformed`,
+      object: "checkout.session",
+      mode: "payment",
+      payment_status: "paid",
+      status: "complete",
+      payment_intent: null,
+      amount_total: 1000,
+      currency: "usd",
+      customer: customerId,
+      metadata,
+    },
+  );
+  expect((await deliver(malformedPaidEvent)).status).toBe(200);
+  const malformedDrain = await drain();
+  expect(malformedDrain).toMatchObject({
+    before: 1,
+    after: 0,
+    attempted: 1,
+    acked: 0,
+    retried: 0,
+    dlqed: 1,
+  });
+
+  const missingChargePaymentIntentId = `pi_app_charge_missing_${Date.now().toString(36)}`;
+  const balanceBeforeMissingCharge =
+    await creditsService.getOrganizationBalanceUsd(seededUser.organizationId);
+  const missingChargeEvent = signEvent(
+    "evt_app_charge_missing_request",
+    "checkout.session.completed",
+    {
+      id: `${checkoutSessionId}_missing_request`,
+      object: "checkout.session",
+      mode: "payment",
+      payment_status: "paid",
+      status: "complete",
+      payment_intent: missingChargePaymentIntentId,
+      amount_total: 700,
+      currency: "usd",
+      customer: customerId,
+      metadata: {
+        ...metadata,
+        charge_request_id: "00000000-0000-4000-8000-00000000dead",
+        credits: "7.00",
+        amount: "7.00",
+      },
+    },
+  );
+  expect((await deliver(missingChargeEvent)).status).toBe(200);
+  const missingChargeDrain = await drain();
+  expect(missingChargeDrain).toMatchObject({
+    before: 1,
+    after: 0,
+    attempted: 1,
+    acked: 0,
+    retried: 0,
+    dlqed: 1,
+  });
+  const missingChargeCreditTransaction =
+    await creditsService.getTransactionByStripePaymentIntent(
+      missingChargePaymentIntentId,
+    );
+  const missingChargeEarningsTransaction =
+    await appEarningsRepository.findTransactionByPaymentIntent(
+      appId,
+      missingChargePaymentIntentId,
+    );
+  expect(missingChargeCreditTransaction).toBeUndefined();
+  expect(missingChargeEarningsTransaction).toBeUndefined();
+  expect(
+    await creditsService.getOrganizationBalanceUsd(seededUser.organizationId),
+  ).toBe(balanceBeforeMissingCharge);
+
+  const domainArtifactPath = testInfo.outputPath(
+    "mini-app-charge-domain-artifacts.json",
+  );
+  await writeFile(
+    domainArtifactPath,
+    JSON.stringify(
+      {
+        paymentIntentDrain,
+        checkoutDrain,
+        malformedDrain,
+        missingChargeDrain,
+        missingChargeCreditTransaction: missingChargeCreditTransaction ?? null,
+        missingChargeEarningsTransaction:
+          missingChargeEarningsTransaction ?? null,
+        balanceBeforeMissingCharge,
+        charge: settledCharge,
+        creditTransaction,
+        appEarningsTransaction,
+        callback: matchingCallbacks[0],
+        endingBalance: await creditsService.getOrganizationBalanceUsd(
+          seededUser.organizationId,
+        ),
+      },
+      null,
+      2,
+    ),
+  );
+  await testInfo.attach("mini-app-charge-domain-artifacts.json", {
+    path: domainArtifactPath,
+    contentType: "application/json",
+  });
 });
