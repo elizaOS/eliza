@@ -207,16 +207,18 @@ describe("scanSqlForReadOnly", () => {
     expect(scan.keywordText).toBe("SELECT 1  ");
   });
 
-  it("concatenates tokens split by a non-nested block comment", () => {
-    const scan = scanSqlForReadOnly("DE/*x*/LETE FROM t");
-    expectOk(scan);
-    expect(scan.keywordText).toBe("DELETE FROM t");
+  it("rejects a block comment between identifier characters", () => {
+    expect(scanSqlForReadOnly("DE/*x*/LETE FROM t")).toEqual({
+      ok: false,
+      reason:
+        "Block comments between identifier characters are not allowed in read-only mode.",
+    });
   });
 
   it("nests block comments until depth returns to zero", () => {
     const scan = scanSqlForReadOnly("SELECT /* a /* b */ c */ 1");
     expectOk(scan);
-    expect(scan.keywordText).toBe("SELECT  1");
+    expect(scan.keywordText).toBe("SELECT   1");
   });
 
   it("rejects an unterminated block comment", () => {
