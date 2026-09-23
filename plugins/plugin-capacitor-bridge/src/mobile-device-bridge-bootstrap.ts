@@ -1492,6 +1492,8 @@ const BIONIC_MAX_FRAME_BYTES = 64 * 1024 * 1024;
 
 interface BionicGenerateResponse {
 	ok: boolean;
+	incomplete?: boolean;
+	finishReason?: string;
 	text?: string;
 	error?: string;
 	tokens?: number;
@@ -1873,7 +1875,9 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 				bundleDir: installed ? deriveBionicBundleDir(installed.modelPath) : "",
 				drafterPath: installed?.draftModelPath ?? "",
 				prompt: lane.prompt,
-				maxTokens: lane.maxTokens ?? 256,
+				// Omission delegates capacity to the native host, as on the canonical
+				// local-inference loader. Preserve explicit caller boundaries exactly.
+				...(lane.maxTokens !== undefined ? { maxTokens: lane.maxTokens } : {}),
 				stopSequences: resolveBionicStopSequences(params.stopSequences),
 			};
 			const res = await getInferencePriorityGate().runExclusive(
@@ -1917,16 +1921,19 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 				);
 			}
 			if (
-				typeof res.tokens === "number" &&
-				res.tokens >= baseRequest.maxTokens
+				res.incomplete === true ||
+				(typeof res.tokens === "number" &&
+					typeof baseRequest.maxTokens === "number" &&
+					res.tokens >= baseRequest.maxTokens)
 			) {
 				throw new ElizaError(
 					"Bionic local model output reached the decode boundary before a stop condition",
 					{
 						code: "MODEL_OUTPUT_INCOMPLETE",
 						context: {
-							maxTokens: baseRequest.maxTokens,
+							maxTokens: baseRequest.maxTokens ?? null,
 							outputTokens: res.tokens,
+							finishReason: res.finishReason ?? null,
 						},
 					},
 				);
