@@ -12,7 +12,7 @@ import {
 } from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createAssistantPlugin } from "../../../../plugins/plugin-assistant/src/index.ts";
-import { trajectoryLoggerPlugin } from "../../../../plugins/plugin-trajectory-logger/src/index.ts";
+import { createJsonFileTrajectoryRecorder } from "../../../../plugins/plugin-assistant/src/runtime/trajectory-recorder.ts";
 import {
 	ChannelType,
 	createMessageMemory,
@@ -21,23 +21,6 @@ import {
 	stringToUuid,
 	type UUID,
 } from "../index.ts";
-
-interface LiveTrajectoryDetail {
-	metrics?: { finalStatus?: string };
-	steps?: Array<{
-		llmCalls?: Array<{
-			provider?: string;
-			response?: string;
-		}>;
-	}>;
-}
-
-interface LiveTrajectoryService {
-	flushWriteQueue?: (trajectoryId: string) => Promise<void>;
-	getTrajectoryDetail?: (
-		trajectoryId: string,
-	) => Promise<LiveTrajectoryDetail | null>;
-}
 
 const liveDescribe =
 	process.env.ELIZA_RUN_LIVE_TESTS === "1" &&
@@ -51,7 +34,7 @@ liveDescribe("group addressing gate — live Cerebras message loop", () => {
 	beforeAll(async () => {
 		harness = await createRealTestRuntime({
 			characterName: "AddressingProofAgent",
-			plugins: [createAssistantPlugin(), trajectoryLoggerPlugin],
+			plugins: [createAssistantPlugin()],
 			withLLM: true,
 			preferredProvider: "openai",
 		});
@@ -66,7 +49,7 @@ liveDescribe("group addressing gate — live Cerebras message loop", () => {
 		await harness?.cleanup();
 	});
 
-	async function runGroupTurn(text: string, requireTrajectory = true) {
+	async function runGroupTurn(text: string) {
 		const roomId = stringToUuid(`addressing-gate-room:${text}`) as UUID;
 		const worldId = stringToUuid(`addressing-gate-world:${text}`) as UUID;
 		const senderId = stringToUuid(`addressing-gate-sender:${text}`) as UUID;
@@ -108,55 +91,42 @@ liveDescribe("group addressing gate — live Cerebras message loop", () => {
 		};
 		const service = harness.runtime.messageService;
 		if (!service) throw new Error("message service was not initialized");
+		const startedAt = Date.now();
 		const result = await service.handleMessage(
 			harness.runtime,
 			message,
 			callback,
 			{},
 		);
-		const trajectoryId = (message.metadata as { trajectoryId?: unknown } | null)
-			?.trajectoryId;
-		if (typeof trajectoryId !== "string" || !trajectoryId.trim()) {
-			if (requireTrajectory)
-				throw new Error("live group turn did not create a trajectory");
-			return {
-				delivered,
-				message,
-				modelResponses: [],
-				result,
-				trajectory: null,
-			};
-		}
-		const trajectoryService = harness.runtime.getService(
-			"trajectories",
-		) as LiveTrajectoryService | null;
-		if (typeof trajectoryService?.getTrajectoryDetail !== "function") {
-			throw new Error("live group turn has no readable trajectory service");
-		}
-		let trajectory: LiveTrajectoryDetail | null = null;
-		for (let attempt = 0; attempt < 50; attempt += 1) {
-			await trajectoryService.flushWriteQueue?.(trajectoryId);
-			trajectory = await trajectoryService.getTrajectoryDetail(trajectoryId);
-			if (trajectory?.metrics?.finalStatus === "completed") break;
-			await new Promise((resolve) => setTimeout(resolve, 20));
-		}
-		if (!trajectory) throw new Error("live group trajectory was not persisted");
+		const recorder = createJsonFileTrajectoryRecorder();
+		const read = async () =>
+			(
+				await recorder.list({
+					agentId: harness.runtime.agentId,
+					since: startedAt,
+				})
+			).find((record) => record.rootMessage.id === message.id);
+		await expect
+			.poll(async () => (await read())?.status, { timeout: 10000 })
+			.toMatch(/^(finished|errored)$/);
+		const trajectory = await read();
+		if (!trajectory)
+			throw new Error(
+				"Live group turn has no recorded model evidence; enable ELIZA_TRAJECTORY_LOGGING",
+			);
 		const modelResponses =
-			trajectory.steps
-				?.flatMap((step) => step.llmCalls ?? [])
-				.map((call) => call.response)
-				.filter((response): response is string => Boolean(response?.trim())) ??
-			[];
+			trajectory?.stages.flatMap((stage) =>
+				stage.model ? [stage.model.response] : [],
+			) ?? [];
 		return { delivered, message, modelResponses, result, trajectory };
 	}
 
 	it("suppresses an ambient Alice-addressed turn while preserving an agent-addressed control", async () => {
 		const overheard = await runGroupTurn(
 			"Alice, what is two plus two? Anyone who knows should jump in with the answer.",
-			false,
 		);
-		expect(overheard.trajectory).toBeNull();
-		expect(overheard.modelResponses).toEqual([]);
+		expect(overheard.trajectory.status).toBe("finished");
+		expect(overheard.modelResponses.length).toBeGreaterThan(0);
 		expect(overheard.delivered).toEqual([]);
 		expect(overheard.result.responseContent?.text?.trim() ?? "").toBe("");
 		const overheardMessageId = overheard.message.id;
@@ -170,11 +140,11 @@ liveDescribe("group addressing gate — live Cerebras message loop", () => {
 		const direct = await runGroupTurn(
 			"AddressingProofAgent, how are you today?",
 		);
-		expect(direct.trajectory?.metrics?.finalStatus).toBe("completed");
+		expect(direct.trajectory?.status).toBe("finished");
 		expect(direct.modelResponses.length).toBeGreaterThan(0);
 		expect(
 			direct.modelResponses.some((response) =>
-				/"shouldRespond"\s*:\s*"RESPOND"/i.test(response),
+				/"(?:shouldRespond|processMessage)"\s*:\s*"RESPOND"/i.test(response),
 			),
 		).toBe(true);
 		expect(
