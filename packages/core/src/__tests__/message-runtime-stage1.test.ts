@@ -2738,7 +2738,7 @@ describe("runV5MessageRuntimeStage1", () => {
 	});
 
 	it.each([1, 360])(
-		"exposes %i authorized names without descriptions and rechecks permissions",
+		"keeps %i action names and descriptions out of greeting input while preserving discovery",
 		async (count) => {
 			const description =
 				count === 1
@@ -2789,7 +2789,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			const request = calls[0][1] as { messages: Array<{ content: string }> };
 			const wire = request.messages.map(({ content }) => content).join("\n");
 			for (const action of actions)
-				expect(wire).toContain(JSON.stringify(action.name));
+				expect(wire).not.toContain(JSON.stringify(action.name));
 			expect(wire).not.toContain("PRIVATE_OPERATION");
 			expect(wire).not.toContain("OWNER_OPERATION");
 			expect(wire).not.toContain(description);
@@ -2800,7 +2800,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(
 				request.messages[1].content.startsWith("available_actions:\n"),
 			).toBe(true);
-			// Each turn rechecks the index instead of caching authorization.
+			// Availability changes never turn this reference into an authorization cache.
 			actions[0].validate = async () => false;
 			await runStage1({
 				runtime,
@@ -2820,7 +2820,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(next.messages[1].content).not.toContain("OWNER_OPERATION");
 			expect(next.messages[1].content).not.toContain(description);
 			for (const action of actions.slice(1))
-				expect(next.messages[1].content).toContain(JSON.stringify(action.name));
+				expect(next.messages[1].content).not.toContain(JSON.stringify(action.name));
 			const rankedActions = [...runtime.actions].reverse();
 			runtime.actions = rankedActions;
 			await runStage1({

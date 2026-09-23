@@ -272,7 +272,7 @@ export async function runV5MessageRuntimeStage1(
   const context = await timeInferenceSpan("message:stage1:context", () =>
     createV5MessageContextObject({
       ...args,
-      includeActionDiscovery: progressiveContextChannel ? "index" : true,
+      includeActionDiscovery: progressiveContextChannel ? "reference" : true,
       userRoles: [senderRole],
       availableContexts,
       ambientTurn,
