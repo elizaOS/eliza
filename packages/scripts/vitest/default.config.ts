@@ -171,7 +171,7 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-coding-tools",
   "plugin-commands",
   "plugin-computeruse",
-  "plugin-contacts",
+  "plugin-native-contacts",
   "plugin-discord",
   "plugin-elizacloud",
   "plugin-health",
@@ -181,14 +181,14 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-mcp",
   "plugin-native-filesystem",
   "plugin-openai",
-  "plugin-phone",
+  "plugin-native-phone",
   "plugin-pty",
   "plugin-scheduling",
   "plugin-task-coordinator",
   "plugin-video",
   "plugin-vision",
   "plugin-whatsapp",
-  "plugin-wifi",
+  "plugin-native-wifi",
   "plugin-workflow",
 ]);
 const pluginPdfSrc = path.join(elizaWorkspaceRoot, "plugins", "plugin-pdf");
@@ -425,7 +425,7 @@ const vitestResolveAlias: ModuleAlias[] = [
   }),
   ...getWorkspaceAppAliases(repoRoot, [
     "plugin-personal-assistant",
-    "plugin-documents",
+    "plugin-knowledge",
     "plugin-wallet",
   ]),
   ...getSharedSourceAliases(sharedSourceRoot, {

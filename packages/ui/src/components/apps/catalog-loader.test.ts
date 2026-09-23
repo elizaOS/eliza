@@ -93,7 +93,7 @@ describe("loadMergedCatalogApps AOSP filter", () => {
   beforeEach(() => {
     resetUiRegistryHostForTests();
     registerOverlayApp({
-      name: "@elizaos/plugin-phone",
+      name: "@elizaos/plugin-native-phone",
       displayName: "Phone",
       description: "phone",
       category: "system",
@@ -102,7 +102,7 @@ describe("loadMergedCatalogApps AOSP filter", () => {
       Component: () => null as never,
     });
     registerOverlayApp({
-      name: "@elizaos/plugin-contacts",
+      name: "@elizaos/plugin-native-contacts",
       displayName: "Contacts",
       description: "contacts",
       category: "system",
@@ -111,7 +111,7 @@ describe("loadMergedCatalogApps AOSP filter", () => {
       Component: () => null as never,
     });
     registerOverlayApp({
-      name: "@elizaos/plugin-wifi",
+      name: "@elizaos/plugin-native-wifi",
       displayName: "WiFi",
       description: "wifi",
       category: "system",
@@ -124,9 +124,9 @@ describe("loadMergedCatalogApps AOSP filter", () => {
     listAppsMock.mockReset();
     listCatalogAppsMock.mockResolvedValue([]);
     listAppsMock.mockResolvedValue([
-      makeServerApp("@elizaos/plugin-phone"),
-      makeServerApp("@elizaos/plugin-contacts"),
-      makeServerApp("@elizaos/plugin-wifi"),
+      makeServerApp("@elizaos/plugin-native-phone"),
+      makeServerApp("@elizaos/plugin-native-contacts"),
+      makeServerApp("@elizaos/plugin-native-wifi"),
       makeServerApp("@elizaos/plugin-feed"),
     ]);
     capacitorState.platform = "android";
@@ -138,9 +138,9 @@ describe("loadMergedCatalogApps AOSP filter", () => {
   });
 
   const ANDROID_ONLY_APP_NAMES = [
-    "@elizaos/plugin-contacts",
-    "@elizaos/plugin-phone",
-    "@elizaos/plugin-wifi",
+    "@elizaos/plugin-native-contacts",
+    "@elizaos/plugin-native-phone",
+    "@elizaos/plugin-native-wifi",
   ];
 
   function pickAndroidOnly(names: string[]): string[] {

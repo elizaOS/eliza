@@ -57,11 +57,7 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
         (key) => BUILTIN_TAB_PATHS[key] !== navigationPaths[key],
       ),
     ).toEqual([]);
-    const pluginOwnedPaths = new Set([
-      "/phone",
-      "/messages",
-      "/contacts",
-    ]);
+    const pluginOwnedPaths = new Set(["/phone", "/messages", "/contacts"]);
     const hostOwnedNavigationPaths = Object.values(navigationPaths).filter(
       (path) => !pluginOwnedPaths.has(path),
     );

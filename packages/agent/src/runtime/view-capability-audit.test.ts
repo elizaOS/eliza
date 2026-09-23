@@ -75,14 +75,14 @@ const VIEW_SOURCE_DIRS: Readonly<Record<string, string>> = {
   goals: "plugin-goals",
   todos: "plugin-todos",
   relationships: "plugin-relationships",
-  documents: "plugin-documents",
+  documents: "plugin-knowledge",
   orchestrator: "plugin-task-coordinator",
 };
 
 /**
  * Audited views whose `ViewDeclaration` is owned by the HOST registry rather
  * than by the plugin that ships the view `.tsx`. `documents` is the standing
- * case: `plugins/plugin-documents` deliberately registers no view of its own
+ * case: `plugins/plugin-knowledge` deliberately registers no view of its own
  * (a second `documents` declaration collided with the shell's built-in
  * Knowledge view and presented a smaller duplicate surface at `/documents`),
  * so its relatedActions live on the built-in entry while its spatial source —

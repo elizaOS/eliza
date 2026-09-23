@@ -1,80 +1,55 @@
-# @elizaos/capacitor-wifi
+# @elizaos/plugin-native-wifi
 
-Android Wi-Fi bridge for elizaOS apps built on Capacitor. Exposes `WifiManager` and `ConnectivityManager` APIs to JavaScript running inside a Capacitor Android shell.
+Wi-Fi overlay app for the elizaOS Android agent. Scan, inspect, and connect to nearby Wi-Fi networks from within the elizaOS mobile interface.
 
-## What this plugin does
+## What it does
 
-This Capacitor plugin gives a Capacitor-hosted elizaOS app access to the Android Wi-Fi stack from JavaScript/TypeScript:
+- Displays the currently connected Wi-Fi network (SSID, signal strength, frequency).
+- Scans for nearby networks and lists them sorted by signal strength.
+- Lets the user tap a network, enter a password if required, and connect.
+- Surfaces nearby network data (SSID, BSSID, RSSI, frequency, security) to the agent planner as the `wifiNetworks` provider.
 
-- Read the current Wi-Fi radio state (enabled, connected, signal strength).
-- Retrieve the active connection details (SSID, BSSID, frequency, RSSI).
-- Scan for nearby networks and receive a deduplicated list sorted by signal strength.
-- Connect to a network by SSID (open or WPA2-protected, visible or hidden).
-- Disconnect from the current network.
+## Android-only
 
-On web/desktop, all methods resolve safely with empty data and a one-time console warning — the app compiles and runs without errors, but real Wi-Fi operations only work on Android.
+This plugin is only functional on Android. The overlay app is registered in the elizaOS app catalog exclusively when running inside the elizaOS Android host. On other platforms (iOS, desktop, web) the side-effect registration leaves the app catalog unchanged. `@elizaos/plugin-native-wifi/bridge` uses Android's `WifiManager` API directly.
 
-## Capabilities
+## Capabilities added to an Eliza agent
 
-| Method | What it does |
-|--------|-------------|
-| `WiFi.getWifiState()` | Returns `{ enabled, connected, rssi }` for the Wi-Fi radio. |
-| `WiFi.getConnectedNetwork()` | Returns the active `WiFiNetwork` or `null`. |
-| `WiFi.listAvailableNetworks(opts?)` | Triggers (or reuses) a scan and returns a deduplicated `WiFiNetwork[]`. |
-| `WiFi.connectToNetwork({ ssid, password?, hidden? })` | Requests a connection; uses `WifiNetworkSuggestion` on Android 10+ and the legacy `WifiConfiguration` path on Android 6–9. |
-| `WiFi.disconnectFromNetwork()` | Disconnects the active network. |
+| Surface | Name | Description |
+|---------|------|-------------|
+| Provider | `wifiNetworks` | Dynamic provider gated to the `system` context (`contextGate: { anyOf: ["system"] }`); injects every deduplicated nearby Wi-Fi network when that context is selected for a turn. Fields per network: `ssid`, `bssid`, `rssi` (dBm), `frequency` (MHz), `secured` (boolean). |
+| Overlay UI | WiFi | Full-screen app accessible from the elizaOS app catalog. Scan, view connected network, connect/disconnect. |
 
-## Requirements
+## Required permissions
 
-- Android only. Minimum SDK: 23 (Android 6.0).
-- `@capacitor/core ^8.3.1` as a peer dependency.
+Android `ACCESS_FINE_LOCATION` must be granted at the OS level before Wi-Fi scans can return results. The plugin does not prompt for this permission itself — it relies on the host app's permission flow.
 
-### Android permissions
+## Enabling the plugin
 
-Declared in the plugin's `AndroidManifest.xml`; the host app must request runtime grants where required:
+Register it in your elizaOS agent configuration by importing from the `/plugin` export:
 
-| Permission | Required by |
-|-----------|-------------|
-| `ACCESS_WIFI_STATE` | `getConnectedNetwork`, `listAvailableNetworks` |
-| `CHANGE_WIFI_STATE` | `connectToNetwork`, `disconnectFromNetwork` |
-| `ACCESS_FINE_LOCATION` | `listAvailableNetworks` on Android 8+ (API 26+) — without it the plugin rejects with an error (does NOT silently return an empty list) |
-| `ACCESS_NETWORK_STATE`, `CHANGE_NETWORK_STATE` | `connectToNetwork` on Android 10+ (`WifiNetworkSuggestion` path) |
-
-## Installation
-
-```bash
-npm install @elizaos/capacitor-wifi
-npx cap sync android
+```ts
+import wifiPlugin from "@elizaos/plugin-native-wifi/plugin";
+// or
+import { appWifiPlugin } from "@elizaos/plugin-native-wifi/plugin";
 ```
 
-Then sync the Capacitor project so Gradle includes the plugin:
+The overlay UI registers itself automatically when the package is loaded on an elizaOS Android host (via the `register.ts` side-effect entry). No additional setup is required.
 
-```bash
-npx cap sync
-```
+## Package exports
 
-## Usage
+| Export path | Contents |
+|-------------|----------|
+| `@elizaos/plugin-native-wifi` | Full barrel: plugin, UI components, registration helpers |
+| `@elizaos/plugin-native-wifi/plugin` | `appWifiPlugin` (the `Plugin` object with the `wifiNetworks` provider) |
 
-```typescript
-import { WiFi } from '@elizaos/capacitor-wifi';
+## Dependencies
 
-// Read radio state
-const state = await WiFi.getWifiState();
-console.log('Wi-Fi enabled:', state.enabled, 'Connected:', state.connected);
+- `@elizaos/plugin-native-wifi/bridge` — Capacitor plugin wrapping Android WifiManager.
+- `@elizaos/capacitor-system` — Used by the UI to open Android network settings.
+- `@elizaos/ui` — Overlay app registry + shared UI primitives.
+- `@elizaos/core` — elizaOS plugin and provider types.
 
-// List nearby networks
-const { networks } = await WiFi.listAvailableNetworks({ maxAge: 15000, limit: 20 });
-for (const net of networks) {
-  console.log(net.ssid, net.rssi, 'dBm', net.secured ? '(secured)' : '(open)');
-}
+## Native bridge
 
-// Connect
-const result = await WiFi.connectToNetwork({ ssid: 'MyNetwork', password: 'secret' });
-if (!result.success) console.error(result.message);
-```
-
-## Notes
-
-- `connectToNetwork` on Android 10+ submits a `WifiNetworkSuggestion`. The call resolving with `success: true` means the suggestion was accepted by the system, not that the device is connected. Poll `getConnectedNetwork()` to observe connection state.
-- Wi-Fi scanning is rate-limited by Android (roughly 4 scans per 2 minutes in the foreground). Use the `maxAge` option to reuse a recent scan and avoid hitting the throttle.
-- The plugin rejects `listAvailableNetworks` with a clear error on API 26+ when `ACCESS_FINE_LOCATION` is not granted, rather than silently returning an empty list.
+The Android implementation and web fallback ship in this workspace. Import device APIs from `@elizaos/plugin-native-wifi/bridge`; this entry does not load UI registration. The package root exports the application surface, `/plugin` the runtime plugin, and `/register` the app-shell registration. Capacitor discovers the Android implementation through the package manifest. Builds emit ESM and declarations into `dist/`.

@@ -37,8 +37,12 @@
       "@elizaos/plugin-todos/db/schema": [
         "../../plugins/plugin-todos/src/db/schema.ts"
       ],
-      "@elizaos/plugin-phone": ["../../plugins/plugin-phone/src/index.ts"],
-      "@elizaos/plugin-phone/*": ["../../plugins/plugin-phone/src/*"],
+      "@elizaos/plugin-native-phone": [
+        "../../plugins/plugin-native-phone/src/index.ts"
+      ],
+      "@elizaos/plugin-native-phone/*": [
+        "../../plugins/plugin-native-phone/src/*"
+      ],
       "@elizaos/plugin-coding-tools/*": [
         "../../plugins/plugin-coding-tools/src/*"
       ],
@@ -63,9 +67,11 @@
       "@elizaos/plugin-wallet/diagnostic": [
         "../../plugins/plugin-wallet/src/diagnostic.ts"
       ],
-      "@elizaos/plugin-wifi": ["../../plugins/plugin-wifi/src/index.ts"],
-      "@elizaos/plugin-wifi/plugin": [
-        "../../plugins/plugin-wifi/src/plugin.ts"
+      "@elizaos/plugin-native-wifi": [
+        "../../plugins/plugin-native-wifi/src/index.ts"
+      ],
+      "@elizaos/plugin-native-wifi/plugin": [
+        "../../plugins/plugin-native-wifi/src/plugin.ts"
       ],
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
@@ -75,11 +81,11 @@
       "@elizaos/plugin-task-coordinator": [
         "../../plugins/plugin-task-coordinator/src/index.ts"
       ],
-      "@elizaos/plugin-contacts": [
-        "../../plugins/plugin-contacts/src/index.ts"
+      "@elizaos/plugin-native-contacts": [
+        "../../plugins/plugin-native-contacts/src/index.ts"
       ],
-      "@elizaos/plugin-contacts/plugin": [
-        "../../plugins/plugin-contacts/src/plugin.ts"
+      "@elizaos/plugin-native-contacts/plugin": [
+        "../../plugins/plugin-native-contacts/src/plugin.ts"
       ],
       "@elizaos/agent": ["./src/index.ts"],
       "@elizaos/agent/*": ["./src/*"],
@@ -162,18 +168,18 @@
       "@elizaos/capacitor-mobile-signals": [
         "../../plugins/plugin-native-mobile-signals/src/index.ts"
       ],
-      "@elizaos/capacitor-wifi": [
-        "../../plugins/plugin-native-wifi/src/index.ts"
+      "@elizaos/plugin-native-wifi/bridge": [
+        "../../plugins/plugin-native-wifi/src/bridge.ts"
       ],
-      "@elizaos/capacitor-contacts": [
-        "../../plugins/plugin-native-contacts/src/index.ts"
+      "@elizaos/plugin-native-contacts/bridge": [
+        "../../plugins/plugin-native-contacts/src/bridge.ts"
       ],
       "@elizaos/capacitor-*": ["../../plugins/plugin-native-*/src/index.ts"],
       "@elizaos/capacitor-llama": [
         "../../plugins/plugin-native-llama/src/index.ts"
       ],
-      "@elizaos/capacitor-phone": [
-        "../../plugins/plugin-native-phone/src/index.ts"
+      "@elizaos/plugin-native-phone/bridge": [
+        "../../plugins/plugin-native-phone/src/bridge.ts"
       ],
       "@elizaos/plugin-local-inference": [
         "../../plugins/plugin-local-inference/src/index.ts"

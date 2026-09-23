@@ -448,7 +448,7 @@
         "packages/app-core/test/live-agent/views-routes.real.e2e.test.ts",
         "plugins/plugin-computeruse/src/__tests__/runtime.live.e2e.test.ts",
         "plugins/plugin-computeruse/test/computeruse.real.e2e.test.ts",
-        "plugins/plugin-documents/test/documents-api.live.e2e.test.ts",
+        "plugins/plugin-knowledge/test/documents-api.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/assistant-user-journeys.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/journey-cerebras-eval.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/knowledge-graph-service.real.e2e.test.ts",

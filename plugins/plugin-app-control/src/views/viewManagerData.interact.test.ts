@@ -21,7 +21,7 @@ const viewList = {
 			viewType: "gui",
 			path: "/messages",
 			available: true,
-			pluginName: "@elizaos/plugin-messages",
+			pluginName: "@elizaos/plugin-native-messages",
 		},
 	],
 };

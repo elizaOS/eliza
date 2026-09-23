@@ -487,7 +487,7 @@
       "requires": {
         "plugins": [
           "@elizaos/plugin-personal-assistant",
-          "@elizaos/plugin-phone"
+          "@elizaos/plugin-native-phone"
         ]
       },
       "tags": ["provider-canary", "twilio", "sms", "external-observer"],
@@ -533,7 +533,7 @@
       "requires": {
         "plugins": [
           "@elizaos/plugin-personal-assistant",
-          "@elizaos/plugin-phone"
+          "@elizaos/plugin-native-phone"
         ]
       },
       "tags": ["provider-canary", "twilio", "external-observer"],

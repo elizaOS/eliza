@@ -36,7 +36,7 @@ const LEVELS = [
   },
   {
     name: "plugin view contacts",
-    file: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
+    file: "plugins/plugin-native-contacts/src/components/ContactsAppView.tsx",
   },
   {
     // The /cloud launcher view (Eliza Cloud account at a glance), served as
@@ -61,7 +61,7 @@ const LEVELS = [
   },
   {
     name: "plugin view documents",
-    file: "plugins/plugin-documents/src/components/documents/DocumentsView.tsx",
+    file: "plugins/plugin-knowledge/src/components/documents/DocumentsView.tsx",
   },
   {
     name: "plugin view finances",
@@ -93,7 +93,7 @@ const LEVELS = [
   },
   {
     name: "plugin view messages",
-    file: "plugins/plugin-messages/src/components/MessagesView.tsx",
+    file: "plugins/plugin-native-messages/src/components/MessagesView.tsx",
   },
   {
     name: "plugin view maps",
@@ -101,7 +101,7 @@ const LEVELS = [
   },
   {
     name: "plugin view phone",
-    file: "plugins/plugin-phone/src/components/PhoneView.tsx",
+    file: "plugins/plugin-native-phone/src/components/PhoneView.tsx",
   },
   {
     name: "plugin view wallet",

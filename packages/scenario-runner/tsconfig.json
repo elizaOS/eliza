@@ -101,20 +101,20 @@
       "@elizaos/capacitor-appblocker": [
         "../../plugins/plugin-native-appblocker/src/index.ts"
       ],
-      "@elizaos/capacitor-contacts": [
-        "../../plugins/plugin-native-contacts/src/index.ts"
+      "@elizaos/plugin-native-contacts/bridge": [
+        "../../plugins/plugin-native-contacts/src/bridge.ts"
       ],
       "@elizaos/capacitor-calendar": [
         "../../plugins/plugin-native-calendar/src/index.ts"
       ],
-      "@elizaos/capacitor-messages": [
-        "../../plugins/plugin-native-messages/src/index.ts"
+      "@elizaos/plugin-native-messages/bridge": [
+        "../../plugins/plugin-native-messages/src/bridge.ts"
       ],
       "@elizaos/capacitor-mobile-signals": [
         "../../plugins/plugin-native-mobile-signals/src/index.ts"
       ],
-      "@elizaos/capacitor-phone": [
-        "../../plugins/plugin-native-phone/src/index.ts"
+      "@elizaos/plugin-native-phone/bridge": [
+        "../../plugins/plugin-native-phone/src/bridge.ts"
       ],
       "@elizaos/capacitor-secure-store": [
         "../../plugins/plugin-native-secure-store/src/index.ts"

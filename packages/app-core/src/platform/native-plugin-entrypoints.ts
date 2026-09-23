@@ -9,15 +9,15 @@
  */
 import "@elizaos/capacitor-camera";
 import "@elizaos/capacitor-canvas";
-import "@elizaos/capacitor-contacts";
+import "@elizaos/plugin-native-contacts/bridge";
 import "@elizaos/capacitor-gateway";
 import "@elizaos/capacitor-location";
-import "@elizaos/capacitor-messages";
+import "@elizaos/plugin-native-messages/bridge";
 import "@elizaos/capacitor-mobile-agent-bridge";
 import "@elizaos/capacitor-mobile-signals";
 import "@elizaos/capacitor-appblocker";
 import "@elizaos/capacitor-bun-runtime";
-import "@elizaos/capacitor-phone";
+import "@elizaos/plugin-native-phone/bridge";
 import "@elizaos/capacitor-screencapture";
 import "@elizaos/capacitor-swabble";
 import "@elizaos/capacitor-system";

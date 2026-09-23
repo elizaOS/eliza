@@ -129,7 +129,7 @@ const documentsView = {
   id: "documents",
   label: "Knowledge",
   available: true,
-  pluginName: "@elizaos/plugin-documents",
+  pluginName: "@elizaos/plugin-knowledge",
   path: "/documents",
   bundleUrl: "/api/views/documents/bundle.js",
   viewType: "gui" as const,

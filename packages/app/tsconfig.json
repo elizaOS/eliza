@@ -16,8 +16,12 @@
       "@elizaos/plugin-blocker/native": [
         "../../plugins/plugin-blocker/src/native.ts"
       ],
-      "@elizaos/plugin-phone": ["../../plugins/plugin-phone/src/index.ts"],
-      "@elizaos/plugin-phone/*": ["../../plugins/plugin-phone/src/*"],
+      "@elizaos/plugin-native-phone": [
+        "../../plugins/plugin-native-phone/src/index.ts"
+      ],
+      "@elizaos/plugin-native-phone/*": [
+        "../../plugins/plugin-native-phone/src/*"
+      ],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
@@ -102,10 +106,10 @@
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"
       ],
-      "@elizaos/capacitor-contacts": [
-        "../../plugins/plugin-native-contacts/src/index.ts"
+      "@elizaos/plugin-native-contacts/bridge": [
+        "../../plugins/plugin-native-contacts/src/bridge.ts"
       ],
-      "@elizaos/capacitor-contacts/*": [
+      "@elizaos/plugin-native-contacts/bridge/*": [
         "../../plugins/plugin-native-contacts/src/*"
       ],
       "@elizaos/capacitor-mobile-agent-bridge": [

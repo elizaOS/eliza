@@ -10,7 +10,10 @@ export default buildProviderCanary({
   provider: "twilio",
   connectorProvider: "twilio",
   operation: "call-create",
-  plugins: ["@elizaos/plugin-personal-assistant", "@elizaos/plugin-phone"],
+  plugins: [
+    "@elizaos/plugin-personal-assistant",
+    "@elizaos/plugin-native-phone",
+  ],
   effectLabel: "voice call",
   targetLabel: "Twilio canary number",
   payload: "Twilio voice provider canary call",

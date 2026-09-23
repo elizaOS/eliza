@@ -21,9 +21,9 @@ const repoRoot = resolve(
 );
 
 const PLUGIN_VIEW_MANIFESTS = [
-  "plugins/plugin-contacts/src/plugin.ts",
-  "plugins/plugin-messages/src/plugin.ts",
-  "plugins/plugin-phone/src/plugin.ts",
+  "plugins/plugin-native-contacts/src/plugin.ts",
+  "plugins/plugin-native-messages/src/plugin.ts",
+  "plugins/plugin-native-phone/src/plugin.ts",
   "plugins/plugin-wallet/src/ui/plugin.ts",
   "plugins/plugin-app-control/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",

@@ -308,7 +308,7 @@ Validation run:
 - `bun run --cwd packages/app test -- plugin-registrations.test.ts`
   passed again after the explicit wallet register import and side-effect loader
   scheduler changes.
-- `bun run --cwd plugins/plugin-phone test -- PhoneCompanionApp.test.tsx`
+- `bun run --cwd plugins/plugin-native-phone test -- PhoneCompanionApp.test.tsx`
   passed after converting Phone Companion shell registration to a loader.
 - `bun run --cwd plugins/plugin-task-coordinator test`
   passed: 15 files, 177 tests.

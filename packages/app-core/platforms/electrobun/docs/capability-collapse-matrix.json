@@ -172,8 +172,8 @@
       "notes": "Local repository status, diff, and worktree operations should route through eliza.git. Remote GitHub API calls remain plugin-owned."
     },
     {
-      "pluginId": "plugin-documents",
-      "path": "plugins/plugin-documents",
+      "pluginId": "plugin-knowledge",
+      "path": "plugins/plugin-knowledge",
       "capability": "app-semantics",
       "semanticLayerShouldRemain": true,
       "implementationShouldCollapse": false,
@@ -185,8 +185,8 @@
       "notes": "Document/RAG semantics stay in the app plugin."
     },
     {
-      "pluginId": "plugin-documents",
-      "path": "plugins/plugin-documents",
+      "pluginId": "plugin-knowledge",
+      "path": "plugins/plugin-knowledge",
       "capability": "filesystem",
       "semanticLayerShouldRemain": true,
       "implementationShouldCollapse": true,

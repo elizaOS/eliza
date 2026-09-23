@@ -46,16 +46,18 @@ describe("AppSessionService", () => {
     process.env.ELIZA_STATE_DIR = dir;
     writeAppRunStore(
       // biome-ignore lint/suspicious/noExplicitAny: fixture is normalized on read.
-      [minimalRun("@elizaos/plugin-wifi", "running") as any],
+      [minimalRun("@elizaos/plugin-native-wifi", "running") as any],
       dir,
     );
 
     const service = await AppSessionService.start({} as IAgentRuntime);
     const runs = service.getRuns();
 
-    expect(runs.map((run) => run.appName)).toContain("@elizaos/plugin-wifi");
+    expect(runs.map((run) => run.appName)).toContain(
+      "@elizaos/plugin-native-wifi",
+    );
     expect(
-      runs.find((run) => run.appName === "@elizaos/plugin-wifi")?.status,
+      runs.find((run) => run.appName === "@elizaos/plugin-native-wifi")?.status,
     ).toBe("running");
     await service.stop();
   });

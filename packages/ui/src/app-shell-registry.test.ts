@@ -149,7 +149,7 @@ describe("app-shell-registry", () => {
         ],
         [
           {
-            name: "@elizaos/plugin-contacts",
+            name: "@elizaos/plugin-native-contacts",
             displayName: "Contacts",
             description: "Contacts",
             category: "system",

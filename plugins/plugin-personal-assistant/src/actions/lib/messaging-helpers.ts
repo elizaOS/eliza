@@ -9,7 +9,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   readTwilioCredentialsFromEnv,
   sendTwilioSms,
-} from "@elizaos/plugin-phone/twilio";
+} from "@elizaos/plugin-native-phone/twilio";
 import {
   assertCalendarCardSender,
   type CalendarCardSenderBinding,

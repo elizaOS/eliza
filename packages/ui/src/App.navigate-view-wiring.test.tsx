@@ -291,7 +291,7 @@ const documentsView = {
   id: "documents",
   label: "Knowledge",
   available: true,
-  pluginName: "@elizaos/plugin-documents",
+  pluginName: "@elizaos/plugin-knowledge",
   path: "/documents",
   bundleUrl: "/api/views/documents/bundle.js",
   viewType: "gui" as const,
@@ -1400,7 +1400,7 @@ describe("App navigate-view event wiring", () => {
     async (path) => {
       registerAppShellPage({
         id: "documents",
-        pluginId: "@elizaos/plugin-documents",
+        pluginId: "@elizaos/plugin-knowledge",
         label: "Knowledge",
         path: "/documents",
         pathPatterns: ["/character/documents"],

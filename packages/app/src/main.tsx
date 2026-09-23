@@ -321,8 +321,8 @@ function importPersonalAssistant() {
 
 function importAppPhone() {
   return cachedDynamicImport(
-    "@elizaos/plugin-phone",
-    () => import("@elizaos/plugin-phone"),
+    "@elizaos/plugin-native-phone",
+    () => import("@elizaos/plugin-native-phone"),
   );
 }
 
@@ -947,7 +947,7 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
       key: "@elizaos/plugin-relationships/register",
       load: importAppRelationshipsRegister,
     },
-    { key: "@elizaos/plugin-phone", load: importAppPhone },
+    { key: "@elizaos/plugin-native-phone", load: importAppPhone },
   ];
 
 function initializeAppModules(): Promise<void> {

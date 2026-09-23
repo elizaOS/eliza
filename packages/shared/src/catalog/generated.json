@@ -507,84 +507,6 @@
       "subtype": "devtools"
     },
     {
-      "id": "cli-inference",
-      "name": "CLI Inference",
-      "description": "Node-only model provider that shells out to sanctioned local Claude or Codex CLIs.",
-      "npmName": "@elizaos/plugin-cli-inference",
-      "version": "2.0.0-beta.0",
-      "source": "bundled",
-      "tags": ["ai-provider", "llm", "cli", "claude", "codex"],
-      "config": {
-        "ELIZA_CHAT_VIA_CLI": {
-          "type": "select",
-          "required": false,
-          "sensitive": false,
-          "label": "CLI Backend",
-          "help": "Enable CLI-backed large-tier inference with claude or codex.",
-          "advanced": false,
-          "options": [
-            {
-              "value": "claude",
-              "label": "Claude"
-            },
-            {
-              "value": "codex",
-              "label": "Codex"
-            }
-          ],
-          "autoEnableProvider": true
-        },
-        "ELIZA_CLI_CLAUDE_MODEL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "default": "claude-opus-4-8",
-          "label": "Claude CLI Model",
-          "help": "Model passed to claude --print.",
-          "advanced": true
-        },
-        "ELIZA_CLI_CODEX_MODEL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "default": "gpt-5.5",
-          "label": "Codex CLI Model",
-          "help": "Model passed to codex exec.",
-          "advanced": true
-        },
-        "ELIZA_CLI_TIMEOUT_MS": {
-          "type": "number",
-          "required": false,
-          "sensitive": false,
-          "default": "120000",
-          "label": "Timeout",
-          "help": "Per-call CLI spawn timeout in milliseconds. Must be an integer from 1 through 2147483647 when configured.",
-          "advanced": true,
-          "min": 1,
-          "max": 2147483647,
-          "unit": "ms"
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "Terminal",
-        "group": "models",
-        "groupOrder": 20,
-        "actions": ["enable", "configure"]
-      },
-      "resources": {
-        "homepage": "https://github.com/elizaOS/eliza",
-        "repository": "https://github.com/elizaOS/eliza"
-      },
-      "dependsOn": [],
-      "channels": [],
-      "shortIds": [],
-      "kind": "plugin",
-      "subtype": "ai-provider"
-    },
-    {
       "id": "clipboard",
       "name": "Clipboard",
       "description": "File-based memory storage plugin for ElizaOS - persistent notes and clipboard",
@@ -845,8 +767,8 @@
     {
       "id": "contacts",
       "name": "Contacts",
-      "description": "Android Contacts overlay app — wraps the @elizaos/capacitor-contacts native plugin.",
-      "npmName": "@elizaos/plugin-contacts",
+      "description": "Android Contacts overlay app — wraps the @elizaos/plugin-native-contacts/bridge native plugin.",
+      "npmName": "@elizaos/plugin-native-contacts",
       "version": "2.0.3-beta.2",
       "source": "bundled",
       "tags": ["device", "contacts"],
@@ -1220,9 +1142,9 @@
       "id": "documents",
       "name": "Knowledge",
       "description": "Character Knowledge documents, fragments, and search routes for the agent.",
-      "npmName": "@elizaos/plugin-documents",
+      "npmName": "@elizaos/plugin-knowledge",
       "source": "bundled",
-      "tags": ["documents", "documents"],
+      "tags": ["knowledge", "documents"],
       "config": {},
       "render": {
         "visible": false,
@@ -1243,124 +1165,8 @@
         "type": "server-launch",
         "capabilities": ["documents"],
         "routePlugin": {
-          "specifier": "@elizaos/plugin-documents/plugin",
-          "exportName": "documentsPlugin"
-        }
-      }
-    },
-    {
-      "id": "doordash",
-      "name": "DoorDash",
-      "description": "Search DoorDash restaurants, browse menus, manage carts, preview checkout, and track orders through a configured MCP adapter. Final checkout requires explicit preview-bound confirmation.",
-      "npmName": "@elizaos/plugin-doordash",
-      "version": "2.0.3-beta.7",
-      "source": "bundled",
-      "tags": ["doordash", "food", "delivery", "ordering", "mcp"],
-      "config": {
-        "features.doordash": {
-          "type": "boolean",
-          "required": false,
-          "default": false,
-          "label": "Enable DoorDash",
-          "help": "Enable DoorDash through a configured MCP adapter."
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "ShoppingBag",
-        "group": "connectors",
-        "groupOrder": 30,
-        "actions": ["enable", "configure"]
-      },
-      "resources": {
-        "homepage": "https://github.com/elizaos/eliza#readme",
-        "repository": "https://github.com/elizaos/eliza"
-      },
-      "dependsOn": ["mcp"],
-      "channels": [],
-      "shortIds": [],
-      "kind": "plugin",
-      "subtype": "feature"
-    },
-    {
-      "id": "dropbox",
-      "name": "Dropbox",
-      "description": "Dropbox connector for file listing, search, text reads, uploads, temporary links, and citation deep links. Uses PKCE offline OAuth; local mode accepts a generated access token.",
-      "npmName": "@elizaos/plugin-dropbox",
-      "version": "2.0.0-beta.0",
-      "source": "bundled",
-      "tags": [
-        "dropbox",
-        "files",
-        "storage",
-        "documents",
-        "connector",
-        "productivity"
-      ],
-      "config": {
-        "DROPBOX_CLIENT_ID": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "App Key",
-          "help": "Dropbox app key (OAuth client ID). Not needed when using Eliza Cloud OAuth.",
-          "advanced": true
-        },
-        "DROPBOX_CLIENT_SECRET": {
-          "type": "secret",
-          "required": false,
-          "sensitive": true,
-          "label": "App Secret",
-          "help": "Dropbox app secret (OAuth client secret). Not needed when using Eliza Cloud OAuth.",
-          "advanced": true
-        },
-        "DROPBOX_REDIRECT_URI": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "OAuth Redirect URI",
-          "help": "Redirect URI registered on the Dropbox app.",
-          "advanced": true
-        },
-        "DROPBOX_ACCESS_TOKEN": {
-          "type": "secret",
-          "required": false,
-          "sensitive": true,
-          "label": "Access Token",
-          "help": "Local BYO access token for self-hosted mode. Short-lived tokens without a refresh token stop working when they expire.",
-          "advanced": false
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "setup-panel",
-        "icon": "FolderOpen",
-        "group": "connector",
-        "groupOrder": 1,
-        "actions": ["enable", "configure", "setup-guide"]
-      },
-      "resources": {
-        "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-dropbox#readme",
-        "repository": "https://github.com/elizaOS/eliza"
-      },
-      "dependsOn": [],
-      "channels": [],
-      "shortIds": [],
-      "kind": "connector",
-      "subtype": "other",
-      "auth": {
-        "kind": "oauth",
-        "credentialKeys": ["DROPBOX_ACCESS_TOKEN"]
-      },
-      "accounts": {
-        "owner": {
-          "supported": true,
-          "authKind": "oauth-cloud",
-          "credentialKeys": [],
-          "notes": "The user's Dropbox account, connected via PKCE offline OAuth with read scopes by default and an explicit write-scope escalation."
+          "specifier": "@elizaos/plugin-knowledge/plugin",
+          "exportName": "knowledgePlugin"
         }
       }
     },
@@ -1848,147 +1654,6 @@
       "subtype": "storage"
     },
     {
-      "id": "fish-audio",
-      "name": "Fish Audio",
-      "description": "Governance-gated Fish Audio realtime text-to-speech provider for elizaOS.",
-      "npmName": "@elizaos/plugin-fish-audio",
-      "version": "0.1.0",
-      "source": "bundled",
-      "tags": ["ai-provider", "voice", "text-to-speech", "tts", "streaming"],
-      "config": {
-        "ELIZA_TTS_FISH_ENABLED": {
-          "type": "boolean",
-          "required": false,
-          "sensitive": false,
-          "default": false,
-          "label": "Enable Fish Audio",
-          "help": "Registers the Fish Audio TTS handler only when governance approval and credentials are also present.",
-          "advanced": false
-        },
-        "FISH_AUDIO_DATA_GOVERNANCE_APPROVED": {
-          "type": "boolean",
-          "required": false,
-          "sensitive": false,
-          "default": false,
-          "label": "Data Governance Approved",
-          "help": "Operator attestation that sending text and voice references to Fish Audio is approved for this deployment.",
-          "advanced": false
-        },
-        "FISH_AUDIO_API_KEY": {
-          "type": "secret",
-          "required": true,
-          "sensitive": true,
-          "label": "Fish Audio API Key",
-          "advanced": false
-        },
-        "FISH_AUDIO_MODEL": {
-          "type": "select",
-          "required": false,
-          "sensitive": false,
-          "default": "s2.1-pro",
-          "label": "Fish Audio Model",
-          "advanced": false,
-          "options": [
-            {
-              "value": "s1",
-              "label": "S1"
-            },
-            {
-              "value": "s2-pro",
-              "label": "S2 Pro"
-            },
-            {
-              "value": "s2.1-pro",
-              "label": "S2.1 Pro"
-            },
-            {
-              "value": "s2.1-pro-free",
-              "label": "S2.1 Pro Free"
-            }
-          ]
-        },
-        "FISH_AUDIO_REFERENCE_ID": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Reference ID",
-          "help": "Consented Fish Audio voice/reference identifier.",
-          "advanced": false
-        },
-        "FISH_AUDIO_VOICE_ID": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Voice ID",
-          "help": "Compatibility alias for the consented reference identifier.",
-          "advanced": true
-        },
-        "FISH_AUDIO_FORMAT": {
-          "type": "select",
-          "required": false,
-          "sensitive": false,
-          "default": "pcm",
-          "label": "Audio Format",
-          "advanced": true,
-          "options": [
-            {
-              "value": "pcm",
-              "label": "PCM16"
-            }
-          ]
-        },
-        "FISH_AUDIO_SAMPLE_RATE": {
-          "type": "number",
-          "required": false,
-          "sensitive": false,
-          "default": 24000,
-          "label": "Sample Rate",
-          "advanced": true,
-          "min": 24000,
-          "max": 24000,
-          "unit": "Hz"
-        },
-        "FISH_AUDIO_MAX_BUFFER_BYTES": {
-          "type": "number",
-          "required": false,
-          "sensitive": false,
-          "default": 16777216,
-          "label": "Maximum Buffered Audio",
-          "advanced": true,
-          "min": 1,
-          "unit": "bytes"
-        },
-        "FISH_AUDIO_SYNTHESIS_TIMEOUT_MS": {
-          "type": "number",
-          "required": false,
-          "sensitive": false,
-          "default": 120000,
-          "label": "Synthesis Timeout",
-          "advanced": true,
-          "min": 1,
-          "unit": "ms"
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "AudioWaveform",
-        "group": "ai-provider",
-        "groupOrder": 30,
-        "actions": ["enable", "configure"]
-      },
-      "resources": {
-        "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-fish-audio#readme",
-        "repository": "https://github.com/elizaOS/eliza"
-      },
-      "dependsOn": [],
-      "channels": [],
-      "shortIds": [],
-      "kind": "plugin",
-      "subtype": "ai-provider"
-    },
-    {
       "id": "form",
       "name": "Form",
       "description": "Structured conversational forms — FORM service, form context provider, form evaluator, and restore action provided by @elizaos/plugin-form.",
@@ -2302,133 +1967,6 @@
           "notes": "A separate Google account that represents the agent's own identity. Same OAuth flow, different Google account at the OAuth screen."
         }
       }
-    },
-    {
-      "id": "google-genai",
-      "name": "Google Genai",
-      "description": "LLM ElizaOS plugin for google genai",
-      "npmName": "@elizaos/plugin-google-genai",
-      "version": "2.0.0-beta.0",
-      "source": "bundled",
-      "tags": ["ai-provider", "llm", "google-genai", "google", "genai"],
-      "config": {
-        "GOOGLE_GENERATIVE_AI_API_KEY": {
-          "type": "secret",
-          "required": true,
-          "sensitive": true,
-          "label": "Generative Ai Api Key",
-          "help": "API key for Google Generative AI (Gemini) obtained from Google AI Studio.",
-          "advanced": false,
-          "autoEnableProvider": true
-        },
-        "GOOGLE_API_KEY": {
-          "type": "secret",
-          "required": false,
-          "sensitive": true,
-          "label": "Google Api Key",
-          "help": "Compatibility auto-enable key for Google Generative AI.",
-          "advanced": false,
-          "autoEnableProvider": true
-        },
-        "GEMINI_API_KEY": {
-          "type": "secret",
-          "required": false,
-          "sensitive": true,
-          "label": "Gemini Api Key",
-          "help": "Compatibility auto-enable key for Gemini.",
-          "advanced": false,
-          "autoEnableProvider": true
-        },
-        "GOOGLE_EMBEDDING_MODEL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "default": "gemini-embedding-001",
-          "label": "Embedding Model",
-          "help": "Overrides the default text embedding model used by Google Generative AI.",
-          "placeholder": "e.g., gemini-embedding-001, gemini-embedding-2",
-          "advanced": false
-        },
-        "GOOGLE_IMAGE_MODEL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "default": "gemini-2.0-flash-001",
-          "label": "Image Model",
-          "help": "Overrides the default image analysis model used by Google Generative AI.",
-          "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
-          "advanced": false
-        },
-        "GOOGLE_SMALL_MODEL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "default": "gemini-2.0-flash-001",
-          "label": "Small Model",
-          "help": "Overrides the default small language model used for fast text/object generation.",
-          "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
-          "advanced": false
-        },
-        "GOOGLE_LARGE_MODEL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "default": "gemini-2.0-flash-001",
-          "label": "Large Model",
-          "help": "Overrides the default large language model used for complex text/object generation.",
-          "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
-          "advanced": false
-        },
-        "SMALL_MODEL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "default": "gemini-2.0-flash-001",
-          "label": "Model",
-          "help": "General fallback environment variable for the small model name when GOOGLE_SMALL_MODEL is not set.",
-          "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
-          "advanced": false
-        },
-        "LARGE_MODEL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "default": "gemini-2.0-flash-001",
-          "label": "Model",
-          "help": "General fallback environment variable for the large model name when GOOGLE_LARGE_MODEL is not set.",
-          "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
-          "advanced": false
-        },
-        "IMAGE_MODEL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "default": "gemini-2.0-flash-001",
-          "label": "Model",
-          "help": "General fallback environment variable for the image model name when GOOGLE_IMAGE_MODEL is not set.",
-          "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
-          "advanced": false
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "Sparkles",
-        "group": "ai-provider",
-        "groupOrder": 0,
-        "actions": ["enable", "configure"]
-      },
-      "resources": {
-        "homepage": "https://github.com/elizaos-plugins/plugin-google-genai#readme",
-        "repository": "https://github.com/elizaos-plugins/plugin-google-genai",
-        "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#google-gemini"
-      },
-      "dependsOn": [],
-      "channels": [],
-      "shortIds": [],
-      "kind": "plugin",
-      "subtype": "ai-provider"
     },
     {
       "id": "hedera",
@@ -2934,109 +2472,6 @@
         "type": "internal-tab",
         "target": "logs",
         "capabilities": ["logs", "debug", "viewer"]
-      }
-    },
-    {
-      "id": "matrix",
-      "name": "Matrix",
-      "description": "Matrix connector for rooms, bots, and federated chat workflows.",
-      "npmName": "@elizaos/plugin-matrix",
-      "version": "2.0.0-beta.0",
-      "source": "bundled",
-      "tags": [
-        "connector",
-        "messaging",
-        "matrix",
-        "chat",
-        "social",
-        "social-chat"
-      ],
-      "config": {
-        "MATRIX_ROOMS": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Rooms",
-          "help": "Comma-separated room/channel list",
-          "advanced": false
-        },
-        "MATRIX_USER_ID": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "User Id",
-          "help": "User identifier",
-          "advanced": false
-        },
-        "MATRIX_AUTO_JOIN": {
-          "type": "boolean",
-          "required": false,
-          "sensitive": false,
-          "label": "Auto Join",
-          "help": "Automatically join/discover channels",
-          "advanced": false
-        },
-        "MATRIX_DEVICE_ID": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Device Id",
-          "help": "Device identifier",
-          "advanced": false
-        },
-        "MATRIX_ENCRYPTION": {
-          "type": "boolean",
-          "required": false,
-          "sensitive": false,
-          "label": "Encryption",
-          "help": "Enable encryption",
-          "advanced": false
-        },
-        "MATRIX_HOMESERVER": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Homeserver",
-          "help": "Homeserver URL",
-          "advanced": false
-        },
-        "MATRIX_ACCESS_TOKEN": {
-          "type": "secret",
-          "required": true,
-          "sensitive": true,
-          "label": "Access Token",
-          "help": "Access token for Matrix",
-          "advanced": false
-        },
-        "MATRIX_REQUIRE_MENTION": {
-          "type": "boolean",
-          "required": false,
-          "sensitive": false,
-          "label": "Require Mention",
-          "help": "Only respond when mentioned",
-          "advanced": false
-        }
-      },
-      "render": {
-        "visible": false,
-        "pinTo": [],
-        "style": "setup-panel",
-        "icon": "Link",
-        "group": "connector",
-        "groupOrder": 1,
-        "actions": ["enable", "configure", "setup-guide"]
-      },
-      "resources": {
-        "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#matrix"
-      },
-      "dependsOn": [],
-      "channels": ["matrix"],
-      "shortIds": [],
-      "kind": "connector",
-      "subtype": "messaging",
-      "auth": {
-        "kind": "token",
-        "credentialKeys": ["MATRIX_ACCESS_TOKEN"]
       }
     },
     {
@@ -3808,33 +3243,6 @@
       }
     },
     {
-      "id": "omarchy",
-      "name": "Omarchy",
-      "description": "Safe Omarchy desktop integration: shell status, explicit notifications, and the Eliza quick-chat pill.",
-      "npmName": "@elizaos/plugin-omarchy",
-      "version": "2.0.3-beta.7",
-      "source": "bundled",
-      "tags": ["desktop", "linux", "omarchy", "system"],
-      "config": {},
-      "render": {
-        "visible": false,
-        "pinTo": ["os-shell"],
-        "style": "card",
-        "icon": "MonitorCog",
-        "group": "system",
-        "actions": ["enable"]
-      },
-      "resources": {
-        "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-omarchy",
-        "repository": "https://github.com/elizaOS/eliza"
-      },
-      "dependsOn": [],
-      "channels": [],
-      "shortIds": [],
-      "kind": "plugin",
-      "subtype": "feature"
-    },
-    {
       "id": "openai",
       "name": "Openai",
       "description": "Integrates OpenAI's GPT models for automated text generation with customizable prompts.",
@@ -4090,8 +3498,8 @@
     {
       "id": "phone",
       "name": "Phone",
-      "description": "Phone app for Eliza — Android dialer/call-log overlay (@elizaos/capacitor-phone) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
-      "npmName": "@elizaos/plugin-phone",
+      "description": "Phone app for Eliza — Android dialer/call-log overlay (@elizaos/plugin-native-phone/bridge) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
+      "npmName": "@elizaos/plugin-native-phone",
       "version": "2.0.3-beta.2",
       "source": "bundled",
       "tags": ["device", "phone"],
@@ -5536,8 +4944,8 @@
     {
       "id": "wifi",
       "name": "Wifi",
-      "description": "Wi-Fi overlay app for the Eliza Android build — scan, inspect, and connect to nearby networks via @elizaos/capacitor-wifi.",
-      "npmName": "@elizaos/plugin-wifi",
+      "description": "Wi-Fi overlay app for the Eliza Android build — scan, inspect, and connect to nearby networks via @elizaos/plugin-native-wifi/bridge.",
+      "npmName": "@elizaos/plugin-native-wifi",
       "version": "2.0.3-beta.2",
       "source": "bundled",
       "tags": ["device", "wifi"],
@@ -5879,80 +5287,6 @@
       }
     },
     {
-      "id": "zai",
-      "name": "z.ai",
-      "description": "z.ai model provider for text generation.",
-      "npmName": "@elizaos/plugin-zai",
-      "version": "2.0.0-beta.0",
-      "source": "bundled",
-      "tags": ["ai-provider", "llm", "zai", "z.ai", "glm"],
-      "config": {
-        "ZAI_API_KEY": {
-          "type": "secret",
-          "required": true,
-          "sensitive": true,
-          "label": "z.ai API Key",
-          "help": "Primary API key for z.ai model requests.",
-          "advanced": false,
-          "autoEnableProvider": true
-        },
-        "Z_AI_API_KEY": {
-          "type": "secret",
-          "required": false,
-          "sensitive": true,
-          "label": "Legacy z.ai API Key",
-          "help": "Legacy API key alias accepted when ZAI_API_KEY is absent.",
-          "advanced": true,
-          "autoEnableProvider": true
-        },
-        "ZAI_BASE_URL": {
-          "type": "url",
-          "required": false,
-          "sensitive": false,
-          "default": "https://api.z.ai/api/paas/v4",
-          "label": "z.ai Base URL",
-          "help": "Base URL for z.ai OpenAI-compatible API requests.",
-          "advanced": true
-        },
-        "ZAI_SMALL_MODEL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "default": "glm-4.5-air",
-          "label": "Small Model",
-          "help": "Model identifier for TEXT_SMALL.",
-          "advanced": false
-        },
-        "ZAI_LARGE_MODEL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "default": "glm-5.1",
-          "label": "Large Model",
-          "help": "Model identifier for TEXT_LARGE.",
-          "advanced": false
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "Brain",
-        "group": "models",
-        "groupOrder": 10,
-        "actions": ["enable", "configure"]
-      },
-      "resources": {
-        "homepage": "https://z.ai",
-        "repository": "https://github.com/elizaOS/eliza"
-      },
-      "dependsOn": [],
-      "channels": [],
-      "shortIds": [],
-      "kind": "plugin",
-      "subtype": "ai-provider"
-    },
-    {
       "id": "zalo",
       "name": "Zalo",
       "description": "Zalo connector for official account messaging and support workflows.",
@@ -6196,125 +5530,6 @@
         "kind": "token",
         "credentialKeys": []
       }
-    },
-    {
-      "id": "zerollama",
-      "name": "Ollama / zerollama",
-      "description": "Local and self-hosted Ollama-compatible inference for text, embeddings, tool calls, structured output, speech, and transcription.",
-      "npmName": "@elizaos/plugin-zerollama",
-      "version": "2.0.3-beta.7",
-      "source": "bundled",
-      "tags": [
-        "ai-provider",
-        "llm",
-        "ollama",
-        "zerollama",
-        "local-models",
-        "self-hosted",
-        "embedding",
-        "voice",
-        "tts",
-        "transcription"
-      ],
-      "config": {
-        "OLLAMA_BASE_URL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "default": "http://127.0.0.1:11434",
-          "label": "Ollama Base URL",
-          "help": "Base URL of the Ollama-compatible server. A trailing /api is optional.",
-          "advanced": false,
-          "autoEnableProvider": true
-        },
-        "OLLAMA_API_ENDPOINT": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Ollama API Endpoint",
-          "help": "Higher-precedence endpoint alias; values with or without /api are accepted.",
-          "advanced": true,
-          "autoEnableProvider": true
-        },
-        "OLLAMA_API_URL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Ollama API URL",
-          "help": "Compatibility endpoint alias used when OLLAMA_API_ENDPOINT is unset.",
-          "advanced": true,
-          "autoEnableProvider": true
-        },
-        "OLLAMA_SMALL_MODEL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "default": "eliza-1-2b",
-          "label": "Small Model",
-          "help": "Model tag for nano, small, and medium text calls unless separately overridden.",
-          "advanced": false
-        },
-        "OLLAMA_LARGE_MODEL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "default": "eliza-1-4b",
-          "label": "Large Model",
-          "help": "Model tag for large and mega text calls unless separately overridden.",
-          "advanced": false
-        },
-        "OLLAMA_EMBEDDING_MODEL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "default": "eliza-1-2b",
-          "label": "Embedding Model",
-          "help": "Ollama model tag used for TEXT_EMBEDDING.",
-          "advanced": false
-        },
-        "OLLAMA_TTS_MODEL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Speech Model",
-          "help": "Enables TEXT_TO_SPEECH through POST /v1/audio/speech when set.",
-          "advanced": true
-        },
-        "OLLAMA_TTS_VOICE": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Speech Voice",
-          "help": "Optional voice identifier sent to the speech endpoint.",
-          "advanced": true
-        },
-        "OLLAMA_TRANSCRIPTION_MODEL": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Transcription Model",
-          "help": "Enables TRANSCRIPTION through POST /v1/audio/transcriptions when set.",
-          "advanced": true
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "Cpu",
-        "group": "ai-provider",
-        "groupOrder": 10,
-        "actions": ["enable", "configure"]
-      },
-      "resources": {
-        "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-zerollama#readme",
-        "repository": "https://github.com/elizaOS/eliza"
-      },
-      "dependsOn": [],
-      "channels": [],
-      "shortIds": ["ollama", "zerollama"],
-      "kind": "plugin",
-      "subtype": "ai-provider"
     }
   ]
 }

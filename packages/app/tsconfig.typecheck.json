@@ -22,7 +22,7 @@
       "@elizaos/plugin-blocker/native": [
         "../../plugins/plugin-blocker/src/native.ts"
       ],
-      "@elizaos/plugin-phone": ["./src/types/app-plugin-modules.d.ts"],
+      "@elizaos/plugin-native-phone": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/dist/ui/index.d.ts"
       ],
@@ -129,10 +129,10 @@
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"
       ],
-      "@elizaos/capacitor-contacts": [
-        "../../plugins/plugin-native-contacts/src/index.ts"
+      "@elizaos/plugin-native-contacts/bridge": [
+        "../../plugins/plugin-native-contacts/src/bridge.ts"
       ],
-      "@elizaos/capacitor-contacts/*": [
+      "@elizaos/plugin-native-contacts/bridge/*": [
         "../../plugins/plugin-native-contacts/src/*"
       ],
       "@elizaos/capacitor-mobile-agent-bridge": [
@@ -144,8 +144,8 @@
       "@elizaos/capacitor-websiteblocker": [
         "../../plugins/plugin-native-websiteblocker/src/index.ts"
       ],
-      "@elizaos/capacitor-messages": [
-        "../../plugins/plugin-native-messages/src/index.ts"
+      "@elizaos/plugin-native-messages/bridge": [
+        "../../plugins/plugin-native-messages/src/bridge.ts"
       ]
     }
   }

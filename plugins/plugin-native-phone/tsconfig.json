@@ -1,24 +1,80 @@
 {
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "allowSyntheticDefaultImports": true,
-    "declaration": true,
-    "declarationMap": true,
-    "esModuleInterop": true,
-    "lib": ["ES2022", "DOM"],
-    "module": "ESNext",
+    "composite": false,
+    "jsx": "react-jsx",
     "moduleResolution": "bundler",
-    "noEmitOnError": false,
-    "noFallthroughCasesInSwitch": true,
-    "noImplicitAny": true,
-    "noImplicitReturns": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "outDir": "dist/esm",
-    "rootDir": "src",
-    "skipLibCheck": true,
-    "sourceMap": true,
     "strict": true,
-    "target": "ES2022"
+    "skipLibCheck": true,
+    "types": ["node", "bun-types"],
+    "typeRoots": [
+      "./node_modules/@types",
+      "./node_modules",
+      "../../node_modules/@types",
+      "../../node_modules",
+      "../../node_modules/.bun/node_modules/@types",
+      "../../node_modules/.bun/node_modules",
+      "../../../node_modules/@types",
+      "../../../node_modules/.bun/node_modules/@types",
+      "../../../node_modules",
+      "../../../node_modules/.bun/node_modules"
+    ],
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "paths": {
+      "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
+      "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
+      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
+      "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/plugin-app-manager": [
+        "../../plugins/plugin-app-manager/src/index.ts"
+      ],
+      "@elizaos/plugin-agent-skills": [
+        "../plugin-agent-skills/dist/index.d.ts"
+      ],
+      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
+      "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/plugin-coding-tools": [
+        "../plugin-coding-tools/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-commands": ["../plugin-commands/src/index.ts"],
+      "@elizaos/plugin-commands/*": ["../plugin-commands/src/*"],
+      "@elizaos/plugin-health": ["../plugin-health/src/index.ts"],
+      "@elizaos/plugin-health/*": ["../plugin-health/src/*"],
+      "@elizaos/plugin-task-coordinator": [
+        "../../plugins/plugin-task-coordinator/src/index.ts"
+      ],
+      "@elizaos/plugin-task-coordinator/*": [
+        "../../plugins/plugin-task-coordinator/src/*"
+      ],
+      "@elizaos/plugin-wallet/ui": [
+        "../../plugins/plugin-wallet/src/ui/index.ts"
+      ],
+      "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
+      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/plugin-native-phone/bridge": [
+        "../../plugins/plugin-native-phone/src/bridge.ts"
+      ],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-secure-store": [
+        "../../plugins/plugin-native-secure-store/src/index.ts"
+      ],
+      "@elizaos/capacitor-camera": [
+        "../../plugins/plugin-native-camera/src/index.ts"
+      ]
+    }
   },
-  "include": ["src"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
 }

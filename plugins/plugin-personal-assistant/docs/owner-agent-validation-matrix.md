@@ -88,7 +88,7 @@ live-LLM journeys, set `ELIZA_LIVE_TEST=1` plus a provider key.
 | WhatsApp | OWNER WhatsApp | AGENT WhatsApp | `ELIZA_WHATSAPP_ACCESS_TOKEN`, `ELIZA_WHATSAPP_PHONE_NUMBER_ID` | as above |
 | X | OWNER X | AGENT X | `@elizaos/plugin-x` configured | as above |
 | iMessage | OWNER macOS bridge | n/a | macOS host; `ELIZA_IMESSAGE_BACKEND` | native (not CI) |
-| Phone / SMS / voice | Twilio number | recipient allowlist | `@elizaos/plugin-phone/twilio` env | `ELIZA_LIVE_TEST=1` |
+| Phone / SMS / voice | Twilio number | recipient allowlist | `@elizaos/plugin-native-phone/twilio` env | `ELIZA_LIVE_TEST=1` |
 | Health | Apple Health / Google Fit / Fitbit / Oura / Strava / Withings | n/a | per-provider OAuth / `ELIZA_HEALTHKIT_CLI_PATH`, `ELIZA_GOOGLE_FIT_ACCESS_TOKEN` | native / live OAuth |
 | Blocker / focus | macOS SelfControl / admin | n/a | `SELFCONTROL_HOSTS_FILE_PATH` | native (not CI) |
 | Finances | Gmail billing corpus / CSV / Plaid sandbox | n/a | CSV fixture or sandbox creds | `ELIZA_LIVE_TEST=1` |

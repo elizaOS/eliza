@@ -130,8 +130,8 @@
       "@elizaos/capacitor-secure-store": [
         "../../plugins/plugin-native-secure-store/src/index.ts"
       ],
-      "@elizaos/capacitor-phone": [
-        "../../plugins/plugin-native-phone/src/index.ts"
+      "@elizaos/plugin-native-phone/bridge": [
+        "../../plugins/plugin-native-phone/src/bridge.ts"
       ],
       "@elizaos/capacitor-screencapture": [
         "../../plugins/plugin-native-screencapture/src/index.ts"

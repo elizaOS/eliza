@@ -848,7 +848,7 @@ export const legacyPlugin: Plugin = {
     ]);
     expect(
       serialized.declarationSources.some(
-        (source) => source.owner === "@elizaos/plugin-documents",
+        (source) => source.owner === "@elizaos/plugin-knowledge",
       ),
     ).toBe(false);
   }, 30_000);

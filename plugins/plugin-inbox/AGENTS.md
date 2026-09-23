@@ -4,7 +4,7 @@ Unified cross-channel inbox triage with unresolved-item tracking, snooze, archiv
 
 ## Purpose / role
 
-Adds the inbox-zero workflow to an agent: a single `INBOX` umbrella action (op-based dispatch), `INBOX_TRIAGE` + `CROSS_CHANNEL_CONTEXT` providers that surface unresolved threads to the planner each turn, and a registered `/inbox` view for human review. Aggregates threads across email, Discord, Telegram, WhatsApp, Slack, X, Farcaster, iMessage, and similar non-SMS channels. Android SMS stays in `@elizaos/plugin-messages`.
+Adds the inbox-zero workflow to an agent: a single `INBOX` umbrella action (op-based dispatch), `INBOX_TRIAGE` + `CROSS_CHANNEL_CONTEXT` providers that surface unresolved threads to the planner each turn, and a registered `/inbox` view for human review. Aggregates threads across email, Discord, Telegram, WhatsApp, Slack, X, Farcaster, iMessage, and similar non-SMS channels. Android SMS stays in `@elizaos/plugin-native-messages`.
 
 This package owns the triage domain carved out of `plugin-personal-assistant`: the persisted queue, queue operations, providers, schema, migration, and terminal/app view registration. It also owns the cross-channel **aggregation domain** (`src/inbox/aggregate.ts`: channel normalization, `buildInbox` thread grouping, `resolveInboxRequest`, LLM priority orchestration, and the cached read-through `InboxDomain`) plus the LLM priority scorer (`src/inbox/priority-scoring.ts`). `@elizaos/plugin-personal-assistant` keeps the transport route (`GET /api/lifeops/inbox`), the `life_inbox_messages` cache tables in `app_lifeops`, and the Gmail/X connector projections — it composes the `InboxDomain` by injecting those through the typed seams (`InboxMessageCache`, `PriorityScoringSettingsLoader`, `GmailInboxSource`/`XDmInboxSource`) and keeps behavior-identical re-export shims at the old import paths.
 
@@ -118,7 +118,7 @@ the operation truly needs lifecycle ownership; export public contracts from
 ## Conventions / gotchas
 
 - **`@elizaos/plugin-sql` must be loaded first.** The schema registration relies on the runtime's `runtime.db`. The plugin declares this in `dependencies: ["@elizaos/plugin-sql"]`.
-- **No Android SMS.** SMS routing intentionally stays in `plugin-messages`. Do not add SMS channel handling here.
+- **No Android SMS.** SMS routing intentionally stays in `plugin-native-messages`. Do not add SMS channel handling here.
 - **Complete planner choices.** Triage responses emit an actionable choice block for every returned entry. Do not cap the entry count in `appendInboxTriageChoiceMarkers`; connector-specific hard limits belong in the connector adapter, which must preserve every option through native controls or a truthful free-text fallback.
 - **Schema name is `app_inbox`** (not `inbox`) to avoid collisions with any host-app `inbox` table the runtime might also surface.
 - **Snooze is additive.** `snoozed_until` is append-only schema growth on `life_inbox_triage_entries`; migration repairs old targets and maps old `app_lifeops` rows with `NULL AS snoozed_until`.

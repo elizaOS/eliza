@@ -11,7 +11,7 @@ import {
 import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
 import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
-import { documentsPlugin } from "../../../../plugins/plugin-documents/src/plugin.ts";
+import { knowledgePlugin } from "../../../../plugins/plugin-knowledge/src/plugin.ts";
 import { startApiServer } from "./server.ts";
 
 const owner = "f4350000-0000-4000-8000-000000000001" as UUID;
@@ -40,7 +40,7 @@ beforeAll(async () => {
   fixture = await createTestRuntime({
     characterName: "PinHttpAcceptance",
     settings: { ELIZA_ADMIN_ENTITY_ID: owner, LOAD_DOCS_ON_STARTUP: false },
-    plugins: [createDocumentsPlugin(), documentsPlugin],
+    plugins: [createDocumentsPlugin(), knowledgePlugin],
   });
   await fixture.runtime.ensureConnection({
     entityId: owner,

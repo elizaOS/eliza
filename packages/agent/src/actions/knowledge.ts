@@ -17,7 +17,7 @@
  * All three resolve items and enforce scope through `@elizaos/plugin-assistant`
  * — the same wall the REST routes use — so the two surfaces cannot drift. They
  * live in `@elizaos/agent` (always-loaded) rather than the support-only
- * `@elizaos/plugin-documents` so they are genuinely global.
+ * `@elizaos/plugin-knowledge` so they are genuinely global.
  */
 import {
   type Action,

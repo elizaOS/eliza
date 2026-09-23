@@ -91,7 +91,7 @@ declare module "@elizaos/app-phone" {
   export const PhoneCompanionApp: EmptyComponent;
 }
 
-declare module "@elizaos/plugin-phone" {
+declare module "@elizaos/plugin-native-phone" {
   export * from "@elizaos/app-phone";
 }
 

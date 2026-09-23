@@ -843,11 +843,11 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/plugin-phone\/twilio$/,
+        find: /^@elizaos\/plugin-native-phone\/twilio$/,
         replacement: path.join(
           elizaRoot,
           "plugins",
-          "plugin-phone",
+          "plugin-native-phone",
           "src",
           "twilio.ts",
         ),

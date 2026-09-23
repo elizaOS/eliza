@@ -313,7 +313,7 @@
       "dependsOn": ["@elizaos/plugin-computeruse#build"],
       "outputs": []
     },
-    "@elizaos/plugin-contacts#typecheck": {
+    "@elizaos/plugin-native-contacts#typecheck": {
       "dependsOn": ["^build"],
       "outputs": []
     },

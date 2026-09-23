@@ -108,7 +108,7 @@ export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
   "@elizaos/plugin-todos": {
     importSubpath: "./plugin",
   },
-  "@elizaos/plugin-documents": {
+  "@elizaos/plugin-knowledge": {
     importSubpath: "./plugin",
   },
   "@elizaos/plugin-calendar": {

@@ -89,7 +89,7 @@
     "@elizaos/plugin-health": "workspace:*",
     "@elizaos/plugin-imessage": "workspace:*",
     "@elizaos/plugin-inbox": "workspace:*",
-    "@elizaos/plugin-phone": "workspace:*",
+    "@elizaos/plugin-native-phone": "workspace:*",
     "@elizaos/plugin-pdf": "workspace:*",
     "@elizaos/plugin-reminders": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",

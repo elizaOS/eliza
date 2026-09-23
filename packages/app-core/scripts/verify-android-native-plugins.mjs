@@ -14,7 +14,7 @@
  * when the snapshot drifts.
  *
  * This is a pure-Node check (no Android SDK, no gradle, runs in any CI lane). It
- * asserts: every `@elizaos/capacitor-*` plugin that is BOTH a declared app
+ * asserts: every native plugin that is BOTH a declared app
  * dependency AND ships an Android module (`android/build.gradle`) is present in
  * the generated gradle project list. It also reports Android-capable plugins
  * that are not declared app deps (visible drift, non-fatal).
@@ -50,9 +50,7 @@ function readJson(path) {
 function declaredCapacitorDeps() {
   const pkg = readJson(APP_PKG);
   const all = { ...pkg.dependencies, ...pkg.devDependencies };
-  return new Set(
-    Object.keys(all).filter((name) => name.startsWith("@elizaos/capacitor-")),
-  );
+  return new Set(Object.keys(all));
 }
 
 /** Every native plugin's package name + whether it ships an Android module. */
@@ -89,8 +87,11 @@ function gradleIncludes() {
  * @returns {{ required: {name:string,gradleProject:string}[], missing: {name:string,gradleProject:string}[], undeclared: string[], declaredCount: number, androidCount: number }}
  */
 export function verifyAndroidNativePlugins() {
-  const declared = declaredCapacitorDeps();
   const plugins = nativePlugins();
+  const nativeNames = new Set(plugins.map((plugin) => plugin.name));
+  const declared = new Set(
+    [...declaredCapacitorDeps()].filter((name) => nativeNames.has(name)),
+  );
   const includes = gradleIncludes();
 
   const required = plugins
@@ -100,12 +101,7 @@ export function verifyAndroidNativePlugins() {
 
   // Android-capable but not a declared app dep → visible drift, not a hard failure.
   const undeclared = plugins
-    .filter(
-      (p) =>
-        p.hasAndroid &&
-        p.name.startsWith("@elizaos/capacitor-") &&
-        !declared.has(p.name),
-    )
+    .filter((p) => p.hasAndroid && !declared.has(p.name))
     .map((p) => p.name);
 
   return {
@@ -122,7 +118,7 @@ function main() {
     verifyAndroidNativePlugins();
 
   console.log(
-    `[verify-android-native-plugins] declared @elizaos/capacitor-* deps: ${declaredCount}; ` +
+    `[verify-android-native-plugins] declared native plugin deps: ${declaredCount}; ` +
       `Android-capable native plugins: ${androidCount}; ` +
       `required-and-compiled: ${required.length - missing.length}/${required.length}`,
   );

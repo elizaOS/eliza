@@ -751,11 +751,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-personal-assistant/src/actions/voice-call.ts": [
 		/listRelationships\(\{\s*limit:/,
 	],
-	"plugins/plugin-contacts/src/providers/contacts.ts": [
+	"plugins/plugin-native-contacts/src/providers/contacts.ts": [
 		/CONTACTS_PROVIDER_LIMIT/,
 		/listContacts\(\{\s*limit:/,
 	],
-	"plugins/plugin-phone/src/providers/call-log.ts": [
+	"plugins/plugin-native-phone/src/providers/call-log.ts": [
 		/CALL_LOG_LIMIT/,
 		/listRecentCalls\(\{\s*limit:/,
 	],
@@ -1059,7 +1059,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/ui/src/voice/voice-chat-playback.ts": [/MAX_SPOKEN_CHARS/],
 	"packages/ui/src/chat/model-choices.ts": [/MAX_MODEL_CHOICES/],
-	"plugins/plugin-documents/src/components/documents/documents-detail.tsx": [
+	"plugins/plugin-knowledge/src/components/documents/documents-detail.tsx": [
 		/previewText\.slice\(/,
 	],
 	"packages/ui/src/components/composites/chat/permission-card.helpers.ts": [
@@ -1076,10 +1076,12 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/MAX_MODEL_PROVIDERS/,
 		/MAX_MODELS_PER_PROVIDER/,
 	],
-	"plugins/plugin-wifi/src/components/WifiAppView.tsx": [
+	"plugins/plugin-native-wifi/src/components/WifiAppView.tsx": [
 		/VISIBLE_NETWORK_LIMIT/,
 	],
-	"plugins/plugin-wifi/src/providers/networks.ts": [/WIFI_NETWORKS_LIMIT/],
+	"plugins/plugin-native-wifi/src/providers/networks.ts": [
+		/WIFI_NETWORKS_LIMIT/,
+	],
 	"plugins/plugin-agent-orchestrator/src/services/completion-residuals.ts": [
 		/MAX_RESIDUAL_PATHS/,
 	],

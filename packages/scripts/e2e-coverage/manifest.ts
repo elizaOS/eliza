@@ -126,7 +126,7 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-calendar": existing(
     "plugins/plugin-calendar/test/calendar-routes.test.ts",
   ),
-  "plugin-documents": existing("plugins/plugin-documents/test/routes.test.ts"),
+  "plugin-knowledge": existing("plugins/plugin-knowledge/test/routes.test.ts"),
   "plugin-elizacloud": existing(
     "plugins/plugin-elizacloud/__tests__/cloud-billing-routes.test.ts",
   ),

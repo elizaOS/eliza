@@ -544,14 +544,14 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, ScopedHostExternalImporter> = {
   "@elizaos/app-core/browser": importAppCoreViewCompat,
   "@elizaos/app-core/ui-compat": importAppCoreViewCompat,
   "@elizaos/core": importCoreViewCompat,
-  "@elizaos/capacitor-contacts": () =>
-    importHostExternal("@elizaos/capacitor-contacts"),
-  "@elizaos/capacitor-messages": () =>
-    importHostExternal("@elizaos/capacitor-messages"),
+  "@elizaos/plugin-native-contacts/bridge": () =>
+    importHostExternal("@elizaos/plugin-native-contacts/bridge"),
+  "@elizaos/plugin-native-messages/bridge": () =>
+    importHostExternal("@elizaos/plugin-native-messages/bridge"),
   "@elizaos/capacitor-mobile-signals": () =>
     importHostExternal("@elizaos/capacitor-mobile-signals"),
-  "@elizaos/capacitor-phone": () =>
-    importHostExternal("@elizaos/capacitor-phone"),
+  "@elizaos/plugin-native-phone/bridge": () =>
+    importHostExternal("@elizaos/plugin-native-phone/bridge"),
   "@elizaos/capacitor-system": () =>
     importHostExternal("@elizaos/capacitor-system"),
   "@elizaos/shared": () => import("@elizaos/shared"),

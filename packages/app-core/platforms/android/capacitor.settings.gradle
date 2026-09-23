@@ -76,8 +76,8 @@ project(':elizaos-capacitor-camera').projectDir = new File('../../../../plugins/
 include ':elizaos-capacitor-canvas'
 project(':elizaos-capacitor-canvas').projectDir = new File('../../../../plugins/plugin-native-canvas/android')
 
-include ':elizaos-capacitor-contacts'
-project(':elizaos-capacitor-contacts').projectDir = new File('../../../../plugins/plugin-native-contacts/android')
+include ':elizaos-plugin-native-contacts'
+project(':elizaos-plugin-native-contacts').projectDir = new File('../../../../plugins/plugin-native-contacts/android')
 
 include ':elizaos-capacitor-gateway'
 project(':elizaos-capacitor-gateway').projectDir = new File('../../../../plugins/plugin-native-gateway/android')
@@ -85,8 +85,8 @@ project(':elizaos-capacitor-gateway').projectDir = new File('../../../../plugins
 include ':elizaos-capacitor-location'
 project(':elizaos-capacitor-location').projectDir = new File('../../../../plugins/plugin-native-location/android')
 
-include ':elizaos-capacitor-messages'
-project(':elizaos-capacitor-messages').projectDir = new File('../../../../plugins/plugin-native-messages/android')
+include ':elizaos-plugin-native-messages'
+project(':elizaos-plugin-native-messages').projectDir = new File('../../../../plugins/plugin-native-messages/android')
 
 include ':elizaos-capacitor-mlkit-text'
 project(':elizaos-capacitor-mlkit-text').projectDir = new File('../../../../plugins/plugin-native-mlkit-text/android')
@@ -97,8 +97,8 @@ project(':elizaos-capacitor-mobile-agent-bridge').projectDir = new File('../../.
 include ':elizaos-capacitor-mobile-signals'
 project(':elizaos-capacitor-mobile-signals').projectDir = new File('../../../../plugins/plugin-native-mobile-signals/android')
 
-include ':elizaos-capacitor-phone'
-project(':elizaos-capacitor-phone').projectDir = new File('../../../../plugins/plugin-native-phone/android')
+include ':elizaos-plugin-native-phone'
+project(':elizaos-plugin-native-phone').projectDir = new File('../../../../plugins/plugin-native-phone/android')
 
 include ':elizaos-capacitor-screencapture'
 project(':elizaos-capacitor-screencapture').projectDir = new File('../../../../plugins/plugin-native-screencapture/android')
@@ -118,5 +118,5 @@ project(':elizaos-capacitor-talkmode').projectDir = new File('../../../../plugin
 include ':elizaos-capacitor-websiteblocker'
 project(':elizaos-capacitor-websiteblocker').projectDir = new File('../../../../plugins/plugin-native-websiteblocker/android')
 
-include ':elizaos-capacitor-wifi'
-project(':elizaos-capacitor-wifi').projectDir = new File('../../../../plugins/plugin-native-wifi/android')
+include ':elizaos-plugin-native-wifi'
+project(':elizaos-plugin-native-wifi').projectDir = new File('../../../../plugins/plugin-native-wifi/android')

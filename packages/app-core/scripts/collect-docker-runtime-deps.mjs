@@ -18,7 +18,7 @@ const repoRoot = path.resolve(__dirname, "..", "..", "..");
 const LINKED_WORKSPACE_PACKAGES = [
   "packages/agent",
   "packages/app-core",
-  "plugins/plugin-documents",
+  "plugins/plugin-knowledge",
   "plugins/plugin-personal-assistant",
   "plugins/plugin-pdf",
   "plugins/plugin-telegram",

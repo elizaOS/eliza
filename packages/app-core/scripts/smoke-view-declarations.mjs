@@ -43,7 +43,13 @@ export const smokeViewDeclarations = [
     "gui",
     { header: "fullscreen", capabilities: ["agent-surface", "navigate"] },
   ],
-  ["contacts", "Contacts", "plugin-contacts", "/contacts", "ContactsView"],
+  [
+    "contacts",
+    "Contacts",
+    "plugin-native-contacts",
+    "/contacts",
+    "ContactsView",
+  ],
   // The decomposed personal-assistant domain views are the real surfaces (the
   // old monolithic `lifeops` overview view was removed). `documents` is
   // intentionally absent — its `/documents` path collides with the built-in
@@ -87,8 +93,14 @@ export const smokeViewDeclarations = [
     "/relationships",
     "RelationshipsView",
   ],
-  ["messages", "Messages", "plugin-messages", "/messages", "MessagesView"],
-  ["phone", "Phone", "plugin-phone", "/phone", "PhoneView"],
+  [
+    "messages",
+    "Messages",
+    "plugin-native-messages",
+    "/messages",
+    "MessagesView",
+  ],
+  ["phone", "Phone", "plugin-native-phone", "/phone", "PhoneView"],
   [
     "wallet",
     "Wallet",

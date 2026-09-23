@@ -10,7 +10,7 @@ A single design-system + runtime-glue package consumed by every elizaOS
 front-end and by plugin UIs. Importers include `@elizaos/app` (web + desktop
 shell), `@elizaos/app-core`, the Cloud surfaces in `@elizaos/app`, the `eliza-app`
 homepage, and many plugin UI packages (`plugin-wallet`,
-`plugin-messages`, `plugin-notes`, etc.).
+`plugin-native-messages`, `plugin-notes`, etc.).
 Plugins consume the agent-surface hooks, the registries (`app-shell-registry`,
 widgets, overlay-apps), and the component/primitive exports. React/react-dom are
 **peer** deps (19.2.7) — the host owns React; plugin view bundles externalise

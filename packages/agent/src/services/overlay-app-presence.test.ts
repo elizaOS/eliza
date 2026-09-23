@@ -95,9 +95,11 @@ describe("overlay-app-presence", () => {
   it("replaces the previous name so only the last writer is active", async () => {
     const mod = await loadPresence();
     mod.setOverlayAppPresence("companion");
-    mod.setOverlayAppPresence("@elizaos/plugin-phone");
+    mod.setOverlayAppPresence("@elizaos/plugin-native-phone");
     expect(mod.isOverlayAppPresenceActive("companion")).toBe(false);
-    expect(mod.isOverlayAppPresenceActive("@elizaos/plugin-phone")).toBe(true);
+    expect(mod.isOverlayAppPresenceActive("@elizaos/plugin-native-phone")).toBe(
+      true,
+    );
   });
 
   it("clears a previously active name when set to null", async () => {

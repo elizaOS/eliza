@@ -9,7 +9,7 @@ declare module "@elizaos/plugin-personal-assistant" {
   export default personalAssistantPlugin;
 }
 
-declare module "@elizaos/plugin-phone" {
+declare module "@elizaos/plugin-native-phone" {
   export const PhoneCompanionApp: import("react").ComponentType<
     Record<string, never>
   >;

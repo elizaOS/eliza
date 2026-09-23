@@ -16,7 +16,10 @@ export default scenario({
   evidenceScope: "provider-certification",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-personal-assistant", "@elizaos/plugin-phone"],
+    plugins: [
+      "@elizaos/plugin-personal-assistant",
+      "@elizaos/plugin-native-phone",
+    ],
   },
   tags: ["provider-canary", "twilio", "sms", "external-observer"],
   turns: [

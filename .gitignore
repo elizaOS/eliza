@@ -813,7 +813,7 @@ waifu.fun/
 /packages/shared/assets/concepts/billboard_concept.jpg
 /plugins/plugin-trajectory-logger/assets/hero.png
 /packages/docs/images/shakespeare-discord-screenshot.jpeg
-/plugins/plugin-documents/assets/hero.png
+/plugins/plugin-knowledge/assets/hero.png
 /packages/cloud-frontend/public/brand/elizaos-phone.png
 /plugins/plugin-companion/public_src/animations/mixamo/Angry.fbx
 /packages/cloud-frontend/public/brand/elizaos-phone-transparent.png
@@ -829,9 +829,9 @@ waifu.fun/
 /packages/homepage/public/product/elizaos-usb-key-concept.png
 /plugins/plugin-companion/public_src/animations/mixamo/Hip Hop Dancing 2.fbx
 /packages/cloud-frontend/public/product/elizaos-usb-key-concept.png
-/plugins/plugin-contacts/assets/hero.png
-/plugins/plugin-phone/assets/hero.png
-/plugins/plugin-wifi/assets/hero.png
+/plugins/plugin-native-contacts/assets/hero.png
+/plugins/plugin-native-phone/assets/hero.png
+/plugins/plugin-native-wifi/assets/hero.png
 /plugins/plugin-companion/public_src/animations/mixamo/Look Around.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Bashful.fbx
 /plugins/plugin-personal-assistant/assets/hero.png

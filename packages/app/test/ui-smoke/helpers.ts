@@ -1299,7 +1299,7 @@ function populatedTodos() {
 // KnowledgeDocumentsView fetches, so `documents:gui` renders its `documents-populated`
 // branch (a document row + stats line) instead of the empty/upload-prompt
 // state. Shapes mirror the PresentedDocument + stats responses from
-// plugin-documents/src/routes.ts.
+// plugin-knowledge/src/routes.ts.
 function populatedDocumentsList() {
   return {
     ok: true,

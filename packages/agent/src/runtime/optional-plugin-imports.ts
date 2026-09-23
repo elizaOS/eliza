@@ -31,10 +31,10 @@ export const OPTIONAL_PLUGIN_IMPORTERS: Record<string, () => Promise<unknown>> =
       // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
       // @ts-ignore: todos is peer-linked to avoid the todos -> agent runtime dependency cycle; the deferred import runs after agent module initialization.
       import("@elizaos/plugin-todos/plugin"),
-    "@elizaos/plugin-documents": () =>
+    "@elizaos/plugin-knowledge": () =>
       // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
       // @ts-ignore: documents is peer-linked to avoid the documents -> agent runtime dependency cycle; the deferred import runs after agent module initialization.
-      import("@elizaos/plugin-documents/plugin"),
+      import("@elizaos/plugin-knowledge/plugin"),
     "@elizaos/plugin-calendar": () =>
       // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
       // @ts-ignore: calendar is peer-linked to avoid the calendar -> agent runtime dependency cycle; the deferred import runs after agent module initialization.

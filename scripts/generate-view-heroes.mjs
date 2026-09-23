@@ -145,7 +145,7 @@ export const views = [
     icon: VIEW_HERO_ICONS.modelTester,
   },
   {
-    out: "plugins/plugin-documents/assets/hero.svg",
+    out: "plugins/plugin-knowledge/assets/hero.svg",
     id: "documents",
     label: "Documents",
     hue: 190,
@@ -194,7 +194,7 @@ export const views = [
     icon: VIEW_HERO_ICONS.todos,
   },
   {
-    out: "plugins/plugin-messages/assets/hero.svg",
+    out: "plugins/plugin-native-messages/assets/hero.svg",
     id: "messages",
     label: "Messages",
     hue: 256,

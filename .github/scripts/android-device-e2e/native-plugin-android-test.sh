@@ -25,11 +25,11 @@ adb shell settings put secure location_mode 3 || true
 "$GRADLEW" -p "$ANDROID_DIR" --no-daemon \
   :app:connectedDebugAndroidTest \
   :elizaos-capacitor-system:connectedDebugAndroidTest \
-  :elizaos-capacitor-wifi:connectedDebugAndroidTest \
-  :elizaos-capacitor-phone:connectedDebugAndroidTest \
+  :elizaos-plugin-native-wifi:connectedDebugAndroidTest \
+  :elizaos-plugin-native-phone:connectedDebugAndroidTest \
   :elizaos-capacitor-camera:connectedDebugAndroidTest \
-  :elizaos-capacitor-contacts:connectedDebugAndroidTest \
-  :elizaos-capacitor-messages:connectedDebugAndroidTest \
+  :elizaos-plugin-native-contacts:connectedDebugAndroidTest \
+  :elizaos-plugin-native-messages:connectedDebugAndroidTest \
   :elizaos-capacitor-mobile-signals:connectedDebugAndroidTest \
   :elizaos-capacitor-location:connectedDebugAndroidTest
 

@@ -54,7 +54,7 @@ export const APPS_VIEW_HIDDEN_APP_NAMES = [
   "@elizaos/browser-bridge-extension",
   "app-counter",
   "@elizaos/plugin-form",
-  "@elizaos/plugin-documents",
+  "@elizaos/plugin-knowledge",
   "@elizaos/plugin-screenshare",
   "@elizaos/plugin-task-coordinator",
   // Shared wallet/inventory system package — provides components used by the

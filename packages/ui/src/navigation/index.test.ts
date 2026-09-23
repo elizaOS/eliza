@@ -173,7 +173,7 @@ describe("navigation tabFromPath", () => {
   it("routes phone companion from its registration metadata", () => {
     registerAppShellPage({
       id: "test.phone-companion",
-      pluginId: "@elizaos/plugin-phone",
+      pluginId: "@elizaos/plugin-native-phone",
       label: "Phone Companion",
       path: "/test/phone-companion",
       tabAffinity: "test.phone-companion",

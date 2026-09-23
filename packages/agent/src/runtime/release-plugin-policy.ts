@@ -35,7 +35,7 @@ const BASELINE_PLUGIN_SUPPORT_PACKAGES = [
   "@elizaos/plugin-wallet",
   "@elizaos/plugin-imessage",
   "@elizaos/ui",
-  "@elizaos/plugin-documents",
+  "@elizaos/plugin-knowledge",
   // `viewEveryPlatform` plugins (MOBILE_VIEW_PLUGINS in ./core-plugins.ts).
   // The runtime always loads these so their home tiles resolve, so a packaged
   // build that omits them boots degraded, not lean: the plugins fail to

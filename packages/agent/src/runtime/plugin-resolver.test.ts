@@ -34,8 +34,8 @@ describe("resolveRuntimePluginImportSpecifier", () => {
       "@elizaos/plugin-notes/plugin",
     );
     expect(
-      resolveRuntimePluginImportSpecifier("@elizaos/plugin-documents"),
-    ).toBe("@elizaos/plugin-documents/plugin");
+      resolveRuntimePluginImportSpecifier("@elizaos/plugin-knowledge"),
+    ).toBe("@elizaos/plugin-knowledge/plugin");
   });
 
   it("keeps regular plugin package roots unchanged", () => {

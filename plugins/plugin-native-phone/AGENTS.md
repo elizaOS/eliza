@@ -1,94 +1,120 @@
-# @elizaos/capacitor-phone
+# @elizaos/plugin-native-phone
 
-Android phone and Telecom bridge for elizaOS — a Capacitor plugin that exposes native Android phone capabilities (call placement, dialer, call-log access, transcript storage) to Eliza agents running in a Capacitor-wrapped Android app.
+Android dialer overlay + iOS Phone Companion (pairing, chat-mirror, remote-session) for Eliza agents.
 
 ## Purpose / role
 
-This is a **Capacitor plugin** (not a standalone elizaOS plugin registered via `Plugin` object). It bridges Android's Telecom and CallLog APIs to JavaScript via `@capacitor/core`'s `registerPlugin`. On Android the Kotlin implementation runs natively; on web/browser every mutating method throws and `listRecentCalls` returns an empty array. The plugin is opt-in: it must be added to the Capacitor app's plugin list in the host Android project.
+Adds two distinct surfaces to elizaOS. The Android surface provides a full-screen dialer overlay backed by `@elizaos/plugin-native-phone/bridge` and exposes recent call history to the agent runtime via the `phoneCallLog` provider. The iOS companion surface (Phone Companion) runs inside the main iOS Capacitor bundle, pairs with a desktop Eliza agent via QR code, mirrors agent chat, and relays touch input into a remote VNC/noVNC session on the paired Mac. The plugin is opt-in: register it by importing and passing `appPhonePlugin` to the elizaOS runtime.
 
 ## Plugin surface
 
-This package does not register elizaOS actions/providers/services/evaluators. It exports a single Capacitor plugin instance and its TypeScript types.
+**Provider**
+- `phoneCallLog` — Dynamic, read-only. Fetches the complete Android call log via `@elizaos/plugin-native-phone/bridge`. Available in `contacts` and `messaging` contexts; requires `ADMIN` role. Returns `{ count, items }` where each item has `id`, `number`, `cachedName`, `date`, `durationSeconds`, `type`, `isNew`.
 
-**Exported plugin object:** `Phone` (registered as `"ElizaPhone"`)
+**Actions**
+- None registered here. The canonical `VOICE_CALL` action is currently
+  host-adapted by `@elizaos/plugin-personal-assistant`, which owns owner gating,
+  approval queue flow, recipient policy, and Twilio dispatch. The Twilio helpers
+  (`sendTwilioSms`, `sendTwilioVoiceCall`) live in `src/twilio.ts` for the
+  future provider/action migration.
 
-**Methods on `PhonePlugin`:**
+**Views** (registered in `plugin.ts` under `plugin.views`)
+- `phone` — one shipped GUI declaration (`modalities: ["gui"]`, componentExport `PhoneView`), mounted at `/phone`. `PhoneView` owns the live Android data and renders the single presentational `PhoneSpatialView` inside a `SpatialSurface`. The address book is the separate Contacts view; a "Contacts" control links to it via the `eliza:navigate:view` bus.
 
-| Method | Description |
-|---|---|
-| `getStatus()` | Returns `PhoneStatus` — whether Telecom is available, `CALL_PHONE` permission granted, whether the app is the default dialer, and the current default dialer package name. |
-| `placeCall({ number })` | Initiates a call via `TelecomManager.placeCall`. Requires `CALL_PHONE` permission at runtime on Android. |
-| `openDialer({ number? })` | Opens the system dialer pre-filled with an optional number. Works without CALL_PHONE permission. |
-| `listRecentCalls({ limit?, number? })` | Queries `CallLog.Calls.CONTENT_URI`. Returns every matching entry ordered newest-first unless the caller explicitly supplies a positive limit. Merges in agent-authored transcripts from SharedPreferences. Requires `READ_CALL_LOG` permission. |
-| `saveCallTranscript({ callId, transcript, summary? })` | Persists an agent-authored transcript and optional summary into Android SharedPreferences under the `"eliza_phone_call_transcripts"` store. Returns `{ updatedAt: number }` (epoch ms). |
-
-**Key exported types:** `PhonePlugin`, `PhoneStatus`, `PlaceCallOptions`, `ListRecentCallsOptions`, `SaveCallTranscriptOptions`, `CallLogEntry`, `CallLogType`.
+**App nav tab** (registered under `plugin.app.navTabs`)
+- `phone-companion` — Mounts `PhoneCompanionApp` at `/phone-companion`; declared for hosts that do not side-effect-import `register-companion-page.ts`.
 
 ## Layout
 
 ```
-plugins/plugin-native-phone/
-  src/
-    definitions.ts      TypeScript interfaces and types (PhonePlugin, PhoneStatus, CallLogEntry, etc.)
-    index.ts            registerPlugin call — exports Phone + re-exports definitions
-    web.ts              PhoneWeb: WebPlugin fallback — getStatus returns all-false; call/transcript methods throw
-    web.test.ts         Vitest unit tests for the PhoneWeb fallback
-  android/
-    src/main/
-      AndroidManifest.xml         Declares permissions: CALL_PHONE, READ_PHONE_STATE, ANSWER_PHONE_CALLS,
-                                  MANAGE_OWN_CALLS, READ_CALL_LOG, WRITE_CALL_LOG
-      java/ai/eliza/plugins/phone/
-        PhonePlugin.kt            @CapacitorPlugin(name="ElizaPhone") — all five PluginMethods
-  rollup.config.mjs               Bundles dist/esm → dist/plugin.js (IIFE) + dist/plugin.cjs.js
-  package.json
-  tsconfig.json
+src/
+  index.ts                       Package barrel — public exports
+  plugin.ts                      Plugin object (appPhonePlugin / default)
+  register.ts                    Side-effect entry: registers the companion page
+  register-companion-page.ts     Registers PhoneCompanionApp with @elizaos/ui app-shell-registry
+  ui.ts                          Re-exports all UI components under public names
+  twilio.ts                      Twilio helpers: sendTwilioSms, sendTwilioVoiceCall,
+                                 readTwilioCredentialsFromEnv, billing calc
+  providers/
+    call-log.ts                  phoneCallLog provider (dynamic, ADMIN-gated)
+  components/
+    phone-view-bundle.ts         View bundle entry: re-exports PhoneView + interact
+    PhonePage.tsx                App-shell page chrome and launcher back affordance
+    PhoneView.tsx                GUI data wrapper (owns hooks/fetch),
+                                 renders <SpatialSurface><PhoneSpatialView/></SpatialSurface>
+    PhoneSpatialView.tsx         Pure spatial-primitive phone surface
+    phone-view-helpers.ts        Pure data helpers (normalizeNumber, callLabelFor, loadPhoneState)
+    phone-interact.ts            interact() view capability handler
+  companion/
+    index.ts                     Companion barrel
+    components/
+      PhoneCompanionApp.tsx      Root companion component (3-view: Chat/Pairing/RemoteSession)
+      Chat.tsx                   Chat-mirror view
+      Pairing.tsx                QR scan + pairing handshake view
+      RemoteSession.tsx          VNC touch-relay view
+      index.ts                   Component barrel
+    services/
+      eliza-intent.ts            Capacitor plugin facade (ElizaIntent) + web fallback
+      env.ts                     Vite env accessors: agentUrl(), apnsEnabled(), isDev()
+      intent-bridge.ts           forwardIntent() — thin wrapper around ElizaIntent.receiveIntent
+      logger.ts                  Scoped logger instance
+      navigation.ts              useNavigation() hook — 3-screen push/pop stack, persisted
+                                 via @capacitor/preferences, haptics on transition
+      push.ts                    APNs registration (registerPush), session.start intent handling
+      session-client.ts          SessionClient (WebSocket to VNC ingress), touchToInput(),
+                                 decodePairingPayload()
+      index.ts                   Services barrel
 ```
 
 ## Commands
 
-Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
-
 ```bash
-bun run --cwd plugins/plugin-native-phone clean           # remove build output
-bun run --cwd plugins/plugin-native-phone build           # build package artifacts
-bun run --cwd plugins/plugin-native-phone typecheck       # TypeScript typecheck
-bun run --cwd plugins/plugin-native-phone lint            # mutating Biome check
-bun run --cwd plugins/plugin-native-phone lint:check      # read-only Biome check
-bun run --cwd plugins/plugin-native-phone format          # write formatting
-bun run --cwd plugins/plugin-native-phone format:check    # read-only formatting check
-bun run --cwd plugins/plugin-native-phone test            # run package tests
-bun run --cwd plugins/plugin-native-phone prepublishOnly  # publish-time build hook
-bun run --cwd plugins/plugin-native-phone build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
+bun run --cwd plugins/plugin-native-phone typecheck   # tsc type-check (no emit)
+bun run --cwd plugins/plugin-native-phone lint        # biome check src/
+bun run --cwd plugins/plugin-native-phone test        # vitest run
+bun run --cwd plugins/plugin-native-phone build       # tsup + vite views + tsc types
+bun run --cwd plugins/plugin-native-phone clean       # rm -rf dist
 ```
 
 ## Config / env vars
 
-No environment variables. No runtime config keys. Android permissions are declared in `AndroidManifest.xml` and must be granted at runtime by the user:
+All companion env vars are Vite build-time (`import.meta.env`). Twilio vars are runtime (`process.env`), read by `src/twilio.ts`.
 
-- `android.permission.CALL_PHONE` — required for `placeCall`
-- `android.permission.READ_CALL_LOG` — required for `listRecentCalls`
-- `android.permission.READ_PHONE_STATE`, `ANSWER_PHONE_CALLS`, `MANAGE_OWN_CALLS`, `WRITE_CALL_LOG` — declared for future Telecom connection service use
+| Var | Required | Description |
+|-----|----------|-------------|
+| `VITE_ELIZA_AGENT_URL` | No | Pre-configured agent ingress URL for the companion; shown in Chat view as fallback when not paired via QR |
+| `VITE_ELIZA_APNS_ENABLED` | No | Set to `"1"` to enable APNs push registration on iOS (disabled by default) |
+| `VITE_ELIZA_LOG_LEVEL` | No | Log level for companion surface logger |
+| `TWILIO_ACCOUNT_SID` | Yes (for Twilio) | Twilio account SID used by `readTwilioCredentialsFromEnv` |
+| `TWILIO_AUTH_TOKEN` | Yes (for Twilio) | Twilio auth token |
+| `TWILIO_PHONE_NUMBER` | Yes (for Twilio) | Twilio from-number (E.164) |
+| `TWILIO_SMS_COST_PER_SEGMENT_USD` | No | Override per-segment SMS cost for billing calc (default: $0.0075) |
+| `ELIZA_MOCK_TWILIO_BASE` | No | Override Twilio base URL for testing (default: `https://api.twilio.com`) |
+
+The `phoneCallLog` provider reads no env vars; it calls `Phone.listRecentCalls` which reads from the native Android `READ_CALL_LOG` permission at runtime.
 
 ## How to extend
 
-**Add a new method:**
+**Add a provider:** Create `src/providers/<name>.ts` exporting a `Provider` object. Add it to the `providers` array in `src/plugin.ts`.
 
-1. Define the method signature in `src/definitions.ts` on `PhonePlugin`, adding any new option/return interfaces alongside it.
-2. Add a web fallback implementation in `src/web.ts` on `PhoneWeb` (throw or return a safe default).
-3. Implement the method in `android/src/main/java/ai/eliza/plugins/phone/PhonePlugin.kt` with `@PluginMethod`.
-4. If new Android permissions are needed, declare them in `android/src/main/AndroidManifest.xml`.
-5. Run `bun run --cwd plugins/plugin-native-phone build` to verify the TypeScript compiles.
+**Add a companion service:** Create `src/companion/services/<name>.ts` and export from `src/companion/services/index.ts`. Keep the module pure (no React) when it needs to be unit-testable.
+
+**Add a companion view:** Add a React component under `src/companion/components/`. Add the view name to the `ViewName` union in `src/companion/services/navigation.ts`. Add the render branch in `PhoneCompanionApp.tsx`'s `renderView`.
+
+**Add a view capability:** Extend the `interact()` function in `src/components/phone-interact.ts` with a new `if (capability === "...")` branch.
 
 ## Conventions / gotchas
 
-- This is a **Capacitor plugin**, not an elizaOS `Plugin` (no actions/providers/evaluators array). Registering it requires adding it to the Capacitor app's plugin list in the Android host project.
-- The Capacitor plugin name is `"ElizaPhone"` — this must match the `@CapacitorPlugin(name = "ElizaPhone")` annotation in Kotlin exactly.
-- **Instrumented test (issue #9967).** The dialer-status device read lives in `PhoneStatusReader` so it can be exercised on a real device/emulator via `./gradlew :elizaos-capacitor-phone:connectedDebugAndroidTest` (from `packages/app-core/platforms/android`) without a Capacitor `Bridge`/WebView; `getStatus` delegates to it (JS shape unchanged).
-- Agent-authored transcripts are stored in Android `SharedPreferences` under the key `"eliza_phone_call_transcripts"`. They are merged into `CallLogEntry` fields `agentTranscript`, `agentSummary`, `agentTranscriptUpdatedAt` at read time. The system-level `transcription` field (from the OS) is a separate field.
-- `listRecentCalls` is complete by default. An explicit `limit` must be positive and is treated as caller-requested pagination, with no arbitrary upper ceiling.
-- The web fallback for `listRecentCalls` returns `{ calls: [] }` rather than throwing, so call-log-reading code on web will silently get no results rather than an error.
-- Build output: `tsc` emits to `dist/esm/`, then rollup bundles to `dist/plugin.js` (IIFE for browsers) and `dist/plugin.cjs.js` (CJS for Node). The `clean` script uses the repo-shared `packages/scripts/rm-path-recursive.mjs`.
-- See the repo root `CLAUDE.md` for global architecture rules, logger conventions, and ESM constraints.
+- **One GUI view, no overlay app.** The dialer + recent-calls surface ships only as the `phone` plugin view (`PhoneView` → `PhoneSpatialView`). The native app-shell registration mounts `PhonePage`, which owns the launcher back button; `src/register.ts` also registers the companion page for hosts that mount it.
+- **VOICE_CALL is host-adapted.** Do not add a second phone action here unless
+  the PA-hosted owner gating, approval queue flow, recipient policy, and Twilio
+  dispatch move with parity tests.
+- **Contacts live in their own view.** The Phone view has no contacts pane — it links to the separate `@elizaos/plugin-native-contacts` view via `eliza:navigate:view` (`{ viewId: "contacts", viewPath: "/contacts" }`). Do not re-embed a contacts list or add a `@elizaos/plugin-native-contacts/bridge` dependency here.
+- **Cross-view number handoff.** The Phone view consumes a one-shot `{ number }` payload via `consumeNavigateViewPayload("phone")` from `@elizaos/ui/app-navigate-view` on mount, pre-seeding the dialer. Callers dispatch `eliza:navigate:view` with `{ viewId: "phone", viewPath: "/phone", payload: { number } }`; the shared UI module must stay generic and contain no Phone-specific pending state.
+- **`ElizaIntentWeb` does not simulate success.** The web fallback for the iOS native bridge explicitly returns `paired: false` and throws on `scheduleAlarm` — intentional, to prevent dev builds from appearing to work without a simulator.
+- **Two build outputs.** The `build` script runs `tsup` (main ESM bundle) and then a separate Vite build for `dist/views/bundle.js` (the plugin view bundle loaded by the elizaOS view registry). The types pass uses `tsc --noCheck`.
+- **Navigation persistence key.** `eliza.companion.nav.v1` in `@capacitor/preferences` — bump the key suffix if the `ViewName` union changes in a breaking way.
+- **Session token is appended as `?token=`.** `SessionClient.connect` appends the token as a query param to the WebSocket URL; the ingress side must read it from there.
 
 ## Verification
 
@@ -97,3 +123,7 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+## Native bridge ownership
+
+This workspace also owns `src/bridge.ts`, `src/definitions.ts`, `src/web.ts`, and `android/`. Import the device API through `/bridge` to avoid loading the application barrel. Preserve Capacitor registration names and Android permissions. Native device tests remain under `android/src/androidTest`; the package test command includes web fallback tests.

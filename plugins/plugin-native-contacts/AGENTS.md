@@ -1,101 +1,93 @@
-# @elizaos/capacitor-contacts
+# @elizaos/plugin-native-contacts
 
-Capacitor plugin that exposes Android's `ContactsContract` to an Eliza agent's JavaScript/TypeScript runtime, with an explicit web fallback.
+Android address-book overlay app for elizaOS: provides a full-screen UI surface for browsing, searching, creating, and importing contacts, plus a read-only dynamic provider that injects address-book context into the agent planner.
 
 ## Purpose / role
 
-This is a [Capacitor](https://capacitorjs.com/) plugin (not an elizaOS `Plugin` object). It does not register elizaOS actions, providers, or evaluators directly. Instead it exposes a typed JS bridge (`Contacts`) that elizaOS actions in other packages can call to read, create, and import contacts on Android. On web/node the bridge explicitly rejects unsupported reads, writes and permission operations.
+This plugin adds Android address-book capability to an Eliza agent. It ships two surfaces:
 
-The plugin is opt-in: it must be registered with Capacitor in the host Android app and imported explicitly by any elizaOS action that needs it.
+1. A **dynamic provider** (`androidContacts`) that reads the complete contact list from the device and injects it as planning context — scoped to `contacts` and `messaging` conversation contexts, gated to `ADMIN` role sessions, cached per-turn.
+2. A **full-screen app-shell page** (`ContactsAppView`) and one shipped GUI view declaration (`ContactsView`) registered via `@elizaos/ui`; the renderer page wrapper and launcher back button live in `ContactsPage`. A legacy overlay descriptor remains exported for explicit consumers, but the startup module does not auto-register it because both renderers would otherwise claim the same agent-surface identity.
+
+The plugin is Android-only (`elizaos.app.androidOnly: true`). The `src/register.ts` side-effect module skips registration on non-elizaOS runtimes. The `/plugin` export is the entry point for the elizaOS runtime adapter.
 
 ## Plugin surface
 
-This is a Capacitor bridge plugin, not an elizaOS plugin. It exposes one global object:
+Registered in `appContactsPlugin` (`src/plugin.ts`):
 
-| Export | Description |
-|--------|-------------|
-| `Contacts` | Registered Capacitor plugin instance (`ElizaContacts` bridge) |
-| `ContactsPlugin` | TypeScript interface for the three bridge methods |
-| `ContactSummary` | Type for a returned contact record |
-| `ListContactsOptions` | Options for `listContacts` |
-| `CreateContactOptions` | Options for `createContact` |
-| `ImportVCardOptions` | Options for `importVCard` |
-| `ImportedContactSummary` | Extended `ContactSummary` with `sourceName` |
+| Kind | Name | Description |
+|------|------|-------------|
+| Provider | `androidContacts` | Read-only: fetches all contacts (id, displayName, phones, emails, starred) from `@elizaos/plugin-native-contacts/bridge` and emits JSON context. Dynamic; contexts: `contacts`, `messaging`; roleGate: ADMIN; cacheScope: turn. |
+| View | `contacts` | GUI address-book view — `ContactsView` component, path `/contacts`. |
 
-### Bridge methods
-
-| Method | Platform | Notes |
-|--------|----------|-------|
-| `listContacts(options?)` | Android | Requires `READ_CONTACTS`. Optional `query` (case-insensitive search across name/phone/email) and positive `limit`. With no limit, returns every match. Returns `{ contacts: ContactSummary[] }`. |
-| `createContact(options)` | Android | Requires `WRITE_CONTACTS`. `displayName` required; accepts `phoneNumber`/`phoneNumbers` and `emailAddress`/`emailAddresses`. Returns `{ id: string }`. |
-| `importVCard(options)` | Android | Requires `WRITE_CONTACTS`. Parses RFC 6350 vCard text (handles line folding, `FN`/`N`/`TEL`/`EMAIL` fields, `\`-escapes). Returns `{ imported: ImportedContactSummary[] }`. |
-
-Web fallback (`ContactsWeb`): reads, writes and permission operations reject with Capacitor code `UNAVAILABLE`; an unsupported address book is never reported as empty or granted.
+No actions, services, evaluators, events, or routes are registered.
 
 ## Layout
 
 ```
-plugins/plugin-native-contacts/
-  src/
-    index.ts          — registerPlugin("ElizaContacts") + re-exports everything from definitions
-    definitions.ts    — all TypeScript interfaces (ContactSummary, ContactsPlugin, …)
-    web.ts            — ContactsWeb (unsupported-platform reads/writes/permissions)
-  android/
-    src/main/
-      AndroidManifest.xml                         — READ_CONTACTS + WRITE_CONTACTS permissions
-      java/ai/eliza/plugins/contacts/
-        ContactsPlugin.kt                         — full Kotlin implementation: listContacts, createContact, importVCard, vCard parser
-    build.gradle
-  rollup.config.mjs   — bundles dist/esm → dist/plugin.js (IIFE) + dist/plugin.cjs.js
-  tsconfig.json
-  package.json
+src/
+  index.ts                          Public package entry — re-exports plugin, app, register, ui
+  plugin.ts                         appContactsPlugin definition (providers + views)
+  register.ts                       Side-effect: registers the overlay app and Contacts page when isElizaOS()
+  ui.ts                             Re-exports ContactsAppView, contactsApp, registerContactsApp
+  providers/
+    contacts.ts                     androidContacts provider implementation
+    contacts.test.ts                Vitest unit tests for the provider
+  components/
+    contacts-app.ts                 Legacy OverlayApp descriptor + explicit registerContactsApp()
+    contacts-app.test.ts            Tests for OverlayApp descriptor
+    contacts-view-bundle.ts         View bundle registration helpers
+    contacts-contract.test.ts       Contract tests for the overlay-app view surface
+    ContactsAppView.tsx             Full-screen overlay UI (list / detail / new modes)
+    ContactsPage.tsx                App-shell page chrome and launcher back affordance
+    ContactsAppView.helpers.ts      Helper utilities for ContactsAppView
+    ContactsAppView.interact.ts     Exports interact(capability, params) for programmatic view actions
+    ContactsAppView.test.ts         Tests for ContactsAppView
+    ContactsSpatialView.tsx         Presentational spatial-primitives view
 ```
+
+The `./plugin` export (declared in `package.json` exports map) resolves to `dist/plugin.js` / `dist/plugin.d.ts` and is the entry the runtime adapter imports directly.
 
 ## Commands
 
-Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
+Only scripts that exist in this package's `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-native-contacts clean           # remove build output
-bun run --cwd plugins/plugin-native-contacts build           # build package artifacts
-bun run --cwd plugins/plugin-native-contacts typecheck       # TypeScript typecheck
-bun run --cwd plugins/plugin-native-contacts lint            # mutating Biome check
-bun run --cwd plugins/plugin-native-contacts lint:check      # read-only Biome check
-bun run --cwd plugins/plugin-native-contacts format          # write formatting
-bun run --cwd plugins/plugin-native-contacts format:check    # read-only formatting check
-bun run --cwd plugins/plugin-native-contacts test            # run package tests
-bun run --cwd plugins/plugin-native-contacts prepublishOnly  # publish-time build hook
-bun run --cwd plugins/plugin-native-contacts build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
+bun run --cwd plugins/plugin-native-contacts typecheck    # tsc --noEmit
+bun run --cwd plugins/plugin-native-contacts lint         # biome check src/
+bun run --cwd plugins/plugin-native-contacts test         # vitest run
+bun run --cwd plugins/plugin-native-contacts build        # build:js + build:views + build:types
+bun run --cwd plugins/plugin-native-contacts build:js     # tsup (shared config)
+bun run --cwd plugins/plugin-native-contacts build:views  # vite build for overlay bundle
+bun run --cwd plugins/plugin-native-contacts build:types  # tsc declaration emit
+bun run --cwd plugins/plugin-native-contacts clean        # rm -rf dist
 ```
 
 ## Config / env vars
 
-None. This plugin requires no env vars. Android runtime permissions (`READ_CONTACTS`, `WRITE_CONTACTS`) are declared in the plugin's `AndroidManifest.xml` and merged by the host app's build system. The host app must grant them at runtime before calling bridge methods.
+This plugin reads no environment variables and has no settings keys. All address-book access goes through `@elizaos/plugin-native-contacts/bridge` Contacts native API, which requires the Android `READ_CONTACTS` / `WRITE_CONTACTS` permissions to be granted at the OS level.
+
+The provider intentionally omits the native bridge's optional pagination limit so planner context receives the complete address book.
 
 ## How to extend
 
-### Add a new bridge method
+**Add a provider:** create `src/providers/<name>.ts` exporting a `Provider` object, then add it to the `providers` array in `src/plugin.ts`.
 
-1. Add the method signature to `src/definitions.ts` in `ContactsPlugin`.
-2. Implement the web fallback in `src/web.ts` (`ContactsWeb`).
-3. Implement the real method in `android/src/main/java/ai/eliza/plugins/contacts/ContactsPlugin.kt` — annotate with `@PluginMethod`, check permissions with `hasPermission(Manifest.permission.*)`, resolve or reject the `PluginCall`.
-4. Run `bun run --cwd plugins/plugin-native-contacts build` to regenerate `dist/`.
-5. Rebuild the host Android app so the new method is available in the webview bridge.
+**Add a view:** define a new `ViewDeclaration` descriptor object in `src/plugin.ts` `views` array with a unique `id` + `viewType`. Add the corresponding React component to `src/components/ContactsAppView.tsx` or a new file, then re-export it from `src/ui.ts` and `src/index.ts`.
 
-### Add a new type
-
-Add the interface/type to `src/definitions.ts` and re-export via `src/index.ts` (already covered by `export * from "./definitions"`).
+**Add an action:** the current design intentionally uses no actions (reads are providers; writes happen in the UI layer via the native Contacts API directly). If you add an action, import it in `src/plugin.ts` and add it to the `actions` array.
 
 ## Conventions / gotchas
 
-- **Capacitor, not elizaOS Plugin.** Import `Contacts` from this package and call its methods; do not try to load it via `elizaOS`'s plugin loader.
-- **Instrumented test (issue #9967).** The `ContactsContract` query lives in `ContactsReader` and is covered by an on-device **write→read round-trip** (`android/src/androidTest/.../ContactsReaderInstrumentedTest.kt`, `GrantPermissionRule`): insert a contact → read it back → assert name+phone → clean up. Run via `./gradlew :elizaos-capacitor-contacts:connectedDebugAndroidTest` from `packages/app-core/platforms/android`. `listContacts` and `createContact`'s summary both delegate to the reader (JS shape unchanged).
-- **Android only.** Contacts reads, writes and permission operations fail explicitly on web. Design any elizaOS action that calls them to check the platform first.
-- **Permissions are feature-gated, not app-required.** The plugin declares the `contacts` alias (`READ_CONTACTS`/`WRITE_CONTACTS`) in `@CapacitorPlugin(permissions=…)`, so the Capacitor base `Plugin` auto-provides `checkPermissions()` / `requestPermissions()` (`{ contacts: PermissionState }`; web rejects with `UNAVAILABLE`). The Contacts view calls `requestPermissions()` on first open (idempotent — already-granted never re-prompts) and shows a grant-in-settings message if denied. Nothing requests contacts at app launch. The bridge methods still reject if not granted (defensive); do NOT add a launch-time or app-wide contacts gate.
-- **Complete by default.** `listContacts` returns every matching contact unless the caller explicitly requests a positive pagination limit.
-- **vCard parser is internal.** `parseVCards` in `ContactsPlugin.kt` handles RFC 6350 line folding and the `FN`/`N`/`TEL`/`EMAIL` properties. It intentionally ignores other vCard fields. Photo data is not imported.
-- **Build output.** The published package ships `dist/esm/` (ESM, consumed by bundlers) and `dist/plugin.cjs.js` (CJS). The explicit `eliza-source` export condition points directly to `src/index.ts` for zero-build dev.
-- **Peer dep.** `@capacitor/core ^8.3.1` must be present in the consuming app.
+- **Android-only.** `isElizaOS()` guard in `src/register.ts` prevents the app-shell page from registering on web/iOS/desktop. The legacy overlay helper is never auto-registered alongside that page because both would claim the `contacts` agent-surface id. The provider will still be instantiated anywhere the plugin is loaded, but `Contacts.listContacts` will throw on non-Android runtimes — the provider catches the error and returns `contactsAvailable: false`.
+- **No update or delete.** The `@elizaos/plugin-native-contacts/bridge` native plugin does not expose contact mutation beyond create and import. The detail panel is read-only; the "Edit" path was intentionally omitted.
+- **In-app Call/Text linking.** The detail view phone rows do not use a `tel:` OS handoff. Each number renders "Call" and "Text" controls that dispatch `eliza:navigate:view` with `{ viewId, viewPath, payload }` for the in-app Phone and Messages views, pre-seeding the target through the generic navigation payload handoff. Email keeps its `mailto:` anchor (there is no in-app email view). Do not reintroduce `tel:`.
+- **Provider roleGate.** `roleGate: { minRole: "ADMIN" }` means the `androidContacts` provider only fires in admin-role sessions. Do not change this without reviewing the address-book privacy model.
+- **View interact() function.** `src/components/ContactsAppView.interact.ts` exports `interact(capability, params)` which handles `list-contacts`, `create-contact`, and `import-vcard` capability strings for programmatic view actions.
+- **Spatial view.** `ContactsSpatialView.tsx` is authored with the spatial-UI vocabulary and is purely presentational (snapshot + action callback) with no Capacitor runtime imports.
+- **Views bundle.** The overlay UI is built separately via `vite.config.views.ts` into `dist/views/bundle.js`. `bundlePath` in the view descriptors points there. The tsup build (`build:js`) and the vite build (`build:views`) are independent steps.
+- **Peer deps.** React 19 and react-dom 19 are peer dependencies. The host app must provide them.
+- See the root `CLAUDE.md` for repo-wide architecture rules, logging conventions, and git workflow.
 
 ## Verification
 
@@ -104,3 +96,7 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+## Native bridge ownership
+
+This workspace also owns `src/bridge.ts`, `src/definitions.ts`, `src/web.ts`, and `android/`. Import the device API through `/bridge` to avoid loading the application barrel. Preserve Capacitor registration names and Android permissions. Native device tests remain under `android/src/androidTest`; the package test command includes web fallback tests.

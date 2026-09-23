@@ -261,7 +261,7 @@ const realResolveAlias: ModuleAlias[] = [
   },
   ...getWorkspaceAppAliases(repoRoot, ["plugin-wallet"]),
   ...getWorkspacePluginAliases(repoRoot, [
-    "plugin-documents",
+    "plugin-knowledge",
     "plugin-personal-assistant",
     "plugin-scheduling",
     "plugin-local-inference",

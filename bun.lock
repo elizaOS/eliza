@@ -125,17 +125,18 @@
         "@elizaos/plugin-commands": "workspace:*",
         "@elizaos/plugin-companion": "workspace:*",
         "@elizaos/plugin-computeruse": "workspace:*",
-        "@elizaos/plugin-contacts": "workspace:*",
         "@elizaos/plugin-discord": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-imessage": "workspace:*",
         "@elizaos/plugin-local-inference": "workspace:*",
         "@elizaos/plugin-mcp": "workspace:*",
+        "@elizaos/plugin-native-contacts": "workspace:*",
         "@elizaos/plugin-native-filesystem": "workspace:*",
         "@elizaos/plugin-native-inference": "workspace:*",
+        "@elizaos/plugin-native-phone": "workspace:*",
+        "@elizaos/plugin-native-wifi": "workspace:*",
         "@elizaos/plugin-notes": "workspace:*",
         "@elizaos/plugin-openai": "workspace:*",
-        "@elizaos/plugin-phone": "workspace:*",
         "@elizaos/plugin-pty": "workspace:*",
         "@elizaos/plugin-registry": "workspace:*",
         "@elizaos/plugin-relationships": "workspace:*",
@@ -149,7 +150,6 @@
         "@elizaos/plugin-wallet": "workspace:*",
         "@elizaos/plugin-web-search": "workspace:*",
         "@elizaos/plugin-whatsapp": "workspace:*",
-        "@elizaos/plugin-wifi": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
         "@elizaos/plugin-zerollama": "workspace:*",
         "@elizaos/prompts": "workspace:*",
@@ -195,14 +195,14 @@
       },
       "peerDependencies": {
         "@elizaos/plugin-calendar": "workspace:*",
-        "@elizaos/plugin-documents": "workspace:*",
+        "@elizaos/plugin-knowledge": "workspace:*",
         "@elizaos/plugin-inbox": "workspace:*",
         "@elizaos/plugin-todos": "workspace:*",
         "@elizaos/plugin-x402": "*",
       },
       "optionalPeers": [
         "@elizaos/plugin-calendar",
-        "@elizaos/plugin-documents",
+        "@elizaos/plugin-knowledge",
         "@elizaos/plugin-inbox",
         "@elizaos/plugin-todos",
         "@elizaos/plugin-x402",
@@ -238,22 +238,18 @@
         "@elizaos/capacitor-calendar": "workspace:*",
         "@elizaos/capacitor-camera": "workspace:*",
         "@elizaos/capacitor-canvas": "workspace:*",
-        "@elizaos/capacitor-contacts": "workspace:*",
         "@elizaos/capacitor-desktop": "workspace:*",
         "@elizaos/capacitor-gateway": "workspace:*",
         "@elizaos/capacitor-location": "workspace:*",
-        "@elizaos/capacitor-messages": "workspace:*",
         "@elizaos/capacitor-mlkit-text": "workspace:*",
         "@elizaos/capacitor-mobile-agent-bridge": "workspace:*",
         "@elizaos/capacitor-mobile-signals": "workspace:*",
-        "@elizaos/capacitor-phone": "workspace:*",
         "@elizaos/capacitor-screencapture": "workspace:*",
         "@elizaos/capacitor-secure-store": "workspace:*",
         "@elizaos/capacitor-swabble": "workspace:*",
         "@elizaos/capacitor-system": "workspace:*",
         "@elizaos/capacitor-talkmode": "workspace:*",
         "@elizaos/capacitor-websiteblocker": "workspace:*",
-        "@elizaos/capacitor-wifi": "workspace:*",
         "@elizaos/cloud-routing": "workspace:*",
         "@elizaos/common": "workspace:*",
         "@elizaos/evidence": "workspace:*",
@@ -262,20 +258,20 @@
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-calendar": "workspace:*",
         "@elizaos/plugin-computeruse": "workspace:*",
-        "@elizaos/plugin-contacts": "workspace:*",
-        "@elizaos/plugin-documents": "workspace:*",
+        "@elizaos/plugin-knowledge": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-maps": "workspace:*",
-        "@elizaos/plugin-messages": "workspace:*",
+        "@elizaos/plugin-native-contacts": "workspace:*",
+        "@elizaos/plugin-native-messages": "workspace:*",
+        "@elizaos/plugin-native-phone": "workspace:*",
         "@elizaos/plugin-native-settings": "workspace:*",
+        "@elizaos/plugin-native-wifi": "workspace:*",
         "@elizaos/plugin-notes": "workspace:*",
         "@elizaos/plugin-personal-assistant": "workspace:*",
-        "@elizaos/plugin-phone": "workspace:*",
         "@elizaos/plugin-relationships": "workspace:*",
         "@elizaos/plugin-task-coordinator": "workspace:*",
         "@elizaos/plugin-trajectory-logger": "workspace:*",
         "@elizaos/plugin-wallet": "workspace:*",
-        "@elizaos/plugin-wifi": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
@@ -410,20 +406,20 @@
         "@elizaos/capacitor-bun-runtime": "workspace:*",
         "@elizaos/capacitor-camera": "workspace:*",
         "@elizaos/capacitor-canvas": "workspace:*",
-        "@elizaos/capacitor-contacts": "workspace:*",
         "@elizaos/capacitor-gateway": "workspace:*",
         "@elizaos/capacitor-location": "workspace:*",
-        "@elizaos/capacitor-messages": "workspace:*",
         "@elizaos/capacitor-mlkit-text": "workspace:*",
         "@elizaos/capacitor-mobile-agent-bridge": "workspace:*",
         "@elizaos/capacitor-mobile-signals": "workspace:*",
-        "@elizaos/capacitor-phone": "workspace:*",
         "@elizaos/capacitor-screencapture": "workspace:*",
         "@elizaos/capacitor-secure-store": "workspace:*",
         "@elizaos/capacitor-swabble": "workspace:*",
         "@elizaos/capacitor-system": "workspace:*",
         "@elizaos/capacitor-talkmode": "workspace:*",
         "@elizaos/capacitor-websiteblocker": "workspace:*",
+        "@elizaos/plugin-native-contacts": "workspace:*",
+        "@elizaos/plugin-native-messages": "workspace:*",
+        "@elizaos/plugin-native-phone": "workspace:*",
         "sharp": "^0.35.3",
       },
       "peerDependencies": {
@@ -1730,33 +1726,6 @@
         "react-dom": "^19.0.0",
       },
     },
-    "plugins/plugin-contacts": {
-      "name": "@elizaos/plugin-contacts",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/capacitor-contacts": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-        "lucide-react": "^1.0.0",
-      },
-      "devDependencies": {
-        "@biomejs/biome": "2.5.8",
-        "@testing-library/react": "^16.3.3",
-        "@types/react": "^19.0.0",
-        "@types/react-dom": "^19.0.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
-        "tsup": "^8.5.1",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.0",
-        "vitest": "^4.1.10",
-      },
-      "peerDependencies": {
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
-      },
-    },
     "plugins/plugin-discord": {
       "name": "@elizaos/plugin-discord",
       "version": "2.0.3-beta.7",
@@ -1805,8 +1774,8 @@
         "@elizaos/core": "workspace:*",
       },
     },
-    "plugins/plugin-documents": {
-      "name": "@elizaos/plugin-documents",
+    "plugins/plugin-knowledge": {
+      "name": "@elizaos/plugin-knowledge",
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
@@ -2341,36 +2310,6 @@
         "@elizaos/core": "workspace:*",
       },
     },
-    "plugins/plugin-messages": {
-      "name": "@elizaos/plugin-messages",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/app-core": "workspace:*",
-        "@elizaos/capacitor-messages": "workspace:*",
-        "@elizaos/capacitor-system": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/shared": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-        "lucide-react": "^1.0.0",
-      },
-      "devDependencies": {
-        "@testing-library/react": "^16.3.3",
-        "@types/react": "^19.0.0",
-        "@types/react-dom": "^19.0.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "jsdom": "^29.0.0",
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
-        "tsup": "^8.5.1",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.0",
-        "vitest": "^4.1.10",
-      },
-      "peerDependencies": {
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
-      },
-    },
     "plugins/plugin-native-activity-tracker": {
       "name": "@elizaos/native-activity-tracker",
       "version": "2.0.3-beta.7",
@@ -2486,17 +2425,33 @@
       },
     },
     "plugins/plugin-native-contacts": {
-      "name": "@elizaos/capacitor-contacts",
+      "name": "@elizaos/plugin-native-contacts",
       "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@capacitor/core": "8.4.0",
+        "@elizaos/core": "workspace:*",
+        "@elizaos/ui": "workspace:*",
+        "lucide-react": "^1.0.0",
+      },
       "devDependencies": {
+        "@biomejs/biome": "2.5.8",
         "@capacitor/core": "^8.3.1",
+        "@testing-library/react": "^16.3.3",
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
         "rollup": "^4.62.4",
+        "tsup": "^8.5.1",
         "typescript": "^6.0.3",
+        "vite": "^8.3.0",
         "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
       },
     },
     "plugins/plugin-native-desktop": {
@@ -2634,18 +2589,37 @@
       },
     },
     "plugins/plugin-native-messages": {
-      "name": "@elizaos/capacitor-messages",
+      "name": "@elizaos/plugin-native-messages",
       "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@capacitor/core": "8.4.0",
+        "@elizaos/app-core": "workspace:*",
+        "@elizaos/capacitor-system": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+        "@elizaos/ui": "workspace:*",
+        "lucide-react": "^1.0.0",
+      },
       "devDependencies": {
         "@capacitor/core": "^8.3.1",
         "@rollup/plugin-node-resolve": "^16.0.0",
+        "@testing-library/react": "^16.3.3",
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
+        "jsdom": "^29.0.0",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
         "rollup": "^4.62.4",
+        "tsup": "^8.5.1",
         "typescript": "^6.0.3",
+        "vite": "^8.3.0",
         "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
       },
     },
     "plugins/plugin-native-mlkit-text": {
@@ -2707,17 +2681,40 @@
       },
     },
     "plugins/plugin-native-phone": {
-      "name": "@elizaos/capacitor-phone",
+      "name": "@elizaos/plugin-native-phone",
       "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@capacitor/barcode-scanner": "^3.0.0",
+        "@capacitor/core": "8.4.0",
+        "@capacitor/haptics": "8.0.2",
+        "@capacitor/preferences": "^8.0.1",
+        "@capacitor/push-notifications": "^8.0.0",
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-browser": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+        "@elizaos/ui": "workspace:*",
+        "lucide-react": "^1.0.0",
+      },
       "devDependencies": {
         "@capacitor/core": "^8.3.1",
+        "@testing-library/react": "^16.3.3",
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
+        "bun-types": "^1.3.14",
+        "jsdom": "^29.0.0",
+        "react": "19.2.7",
+        "react-dom": "19.2.7",
         "rollup": "^4.62.4",
+        "tsup": "^8.5.1",
         "typescript": "^6.0.3",
+        "vite": "^8.3.0",
         "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
       },
     },
     "plugins/plugin-native-reminders": {
@@ -2848,17 +2845,28 @@
       },
     },
     "plugins/plugin-native-wifi": {
-      "name": "@elizaos/capacitor-wifi",
+      "name": "@elizaos/plugin-native-wifi",
       "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@capacitor/core": "8.4.0",
+        "@elizaos/capacitor-system": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+        "@elizaos/ui": "workspace:*",
+        "lucide-react": "^1.0.0",
+      },
       "devDependencies": {
         "@capacitor/core": "^8.3.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
+        "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
       },
     },
     "plugins/plugin-notes": {
@@ -2985,8 +2993,8 @@
         "@elizaos/plugin-health": "workspace:*",
         "@elizaos/plugin-imessage": "workspace:*",
         "@elizaos/plugin-inbox": "workspace:*",
+        "@elizaos/plugin-native-phone": "workspace:*",
         "@elizaos/plugin-pdf": "workspace:*",
-        "@elizaos/plugin-phone": "workspace:*",
         "@elizaos/plugin-relationships": "workspace:*",
         "@elizaos/plugin-reminders": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
@@ -3025,41 +3033,6 @@
       "peerDependencies": {
         "react": "*",
         "react-dom": "*",
-      },
-    },
-    "plugins/plugin-phone": {
-      "name": "@elizaos/plugin-phone",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@capacitor/barcode-scanner": "^3.0.0",
-        "@capacitor/core": "8.4.0",
-        "@capacitor/haptics": "8.0.2",
-        "@capacitor/preferences": "^8.0.1",
-        "@capacitor/push-notifications": "^8.0.0",
-        "@elizaos/capacitor-phone": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-browser": "workspace:*",
-        "@elizaos/shared": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-        "lucide-react": "^1.0.0",
-      },
-      "devDependencies": {
-        "@testing-library/react": "^16.3.3",
-        "@types/react": "^19.0.0",
-        "@types/react-dom": "^19.0.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.3.14",
-        "jsdom": "^29.0.0",
-        "react": "19.2.7",
-        "react-dom": "19.2.7",
-        "tsup": "^8.5.1",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.0",
-        "vitest": "^4.1.10",
-      },
-      "peerDependencies": {
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
       },
     },
     "plugins/plugin-pty": {
@@ -3520,28 +3493,6 @@
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
-      },
-    },
-    "plugins/plugin-wifi": {
-      "name": "@elizaos/plugin-wifi",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/capacitor-system": "workspace:*",
-        "@elizaos/capacitor-wifi": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/shared": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-        "lucide-react": "^1.0.0",
-      },
-      "devDependencies": {
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "tsup": "^8.5.1",
-        "typescript": "^6.0.3",
-        "vitest": "^4.1.10",
-      },
-      "peerDependencies": {
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
       },
     },
     "plugins/plugin-workflow": {
@@ -4195,8 +4146,6 @@
 
     "@elizaos/capacitor-canvas": ["@elizaos/capacitor-canvas@workspace:plugins/plugin-native-canvas"],
 
-    "@elizaos/capacitor-contacts": ["@elizaos/capacitor-contacts@workspace:plugins/plugin-native-contacts"],
-
     "@elizaos/capacitor-desktop": ["@elizaos/capacitor-desktop@workspace:plugins/plugin-native-desktop"],
 
     "@elizaos/capacitor-eliza-tasks": ["@elizaos/capacitor-eliza-tasks@workspace:plugins/plugin-native-eliza-tasks"],
@@ -4207,8 +4156,6 @@
 
     "@elizaos/capacitor-location": ["@elizaos/capacitor-location@workspace:plugins/plugin-native-location"],
 
-    "@elizaos/capacitor-messages": ["@elizaos/capacitor-messages@workspace:plugins/plugin-native-messages"],
-
     "@elizaos/capacitor-mlkit-text": ["@elizaos/capacitor-mlkit-text@workspace:plugins/plugin-native-mlkit-text"],
 
     "@elizaos/capacitor-mobile-agent-bridge": ["@elizaos/capacitor-mobile-agent-bridge@workspace:plugins/plugin-native-mobile-agent-bridge"],
@@ -4216,8 +4163,6 @@
     "@elizaos/capacitor-mobile-signals": ["@elizaos/capacitor-mobile-signals@workspace:plugins/plugin-native-mobile-signals"],
 
     "@elizaos/capacitor-network-policy": ["@elizaos/capacitor-network-policy@workspace:plugins/plugin-native-network-policy"],
-
-    "@elizaos/capacitor-phone": ["@elizaos/capacitor-phone@workspace:plugins/plugin-native-phone"],
 
     "@elizaos/capacitor-screencapture": ["@elizaos/capacitor-screencapture@workspace:plugins/plugin-native-screencapture"],
 
@@ -4230,8 +4175,6 @@
     "@elizaos/capacitor-talkmode": ["@elizaos/capacitor-talkmode@workspace:plugins/plugin-native-talkmode"],
 
     "@elizaos/capacitor-websiteblocker": ["@elizaos/capacitor-websiteblocker@workspace:plugins/plugin-native-websiteblocker"],
-
-    "@elizaos/capacitor-wifi": ["@elizaos/capacitor-wifi@workspace:plugins/plugin-native-wifi"],
 
     "@elizaos/cloud-api": ["@elizaos/cloud-api@workspace:packages/cloud/api"],
 
@@ -4325,11 +4268,9 @@
 
     "@elizaos/plugin-computeruse": ["@elizaos/plugin-computeruse@workspace:plugins/plugin-computeruse"],
 
-    "@elizaos/plugin-contacts": ["@elizaos/plugin-contacts@workspace:plugins/plugin-contacts"],
-
     "@elizaos/plugin-discord": ["@elizaos/plugin-discord@workspace:plugins/plugin-discord"],
 
-    "@elizaos/plugin-documents": ["@elizaos/plugin-documents@workspace:plugins/plugin-documents"],
+    "@elizaos/plugin-knowledge": ["@elizaos/plugin-knowledge@workspace:plugins/plugin-knowledge"],
 
     "@elizaos/plugin-doordash": ["@elizaos/plugin-doordash@workspace:plugins/plugin-doordash"],
 
@@ -4375,13 +4316,19 @@
 
     "@elizaos/plugin-meetings": ["@elizaos/plugin-meetings@workspace:plugins/plugin-meetings"],
 
-    "@elizaos/plugin-messages": ["@elizaos/plugin-messages@workspace:plugins/plugin-messages"],
+    "@elizaos/plugin-native-contacts": ["@elizaos/plugin-native-contacts@workspace:plugins/plugin-native-contacts"],
 
     "@elizaos/plugin-native-filesystem": ["@elizaos/plugin-native-filesystem@workspace:plugins/plugin-native-filesystem"],
 
     "@elizaos/plugin-native-inference": ["@elizaos/plugin-native-inference@workspace:plugins/plugin-native-inference"],
 
+    "@elizaos/plugin-native-messages": ["@elizaos/plugin-native-messages@workspace:plugins/plugin-native-messages"],
+
+    "@elizaos/plugin-native-phone": ["@elizaos/plugin-native-phone@workspace:plugins/plugin-native-phone"],
+
     "@elizaos/plugin-native-settings": ["@elizaos/plugin-native-settings@workspace:plugins/plugin-native-settings"],
+
+    "@elizaos/plugin-native-wifi": ["@elizaos/plugin-native-wifi@workspace:plugins/plugin-native-wifi"],
 
     "@elizaos/plugin-notes": ["@elizaos/plugin-notes@workspace:plugins/plugin-notes"],
 
@@ -4394,8 +4341,6 @@
     "@elizaos/plugin-pdf": ["@elizaos/plugin-pdf@workspace:plugins/plugin-pdf"],
 
     "@elizaos/plugin-personal-assistant": ["@elizaos/plugin-personal-assistant@workspace:plugins/plugin-personal-assistant"],
-
-    "@elizaos/plugin-phone": ["@elizaos/plugin-phone@workspace:plugins/plugin-phone"],
 
     "@elizaos/plugin-pty": ["@elizaos/plugin-pty@workspace:plugins/plugin-pty"],
 
@@ -4436,8 +4381,6 @@
     "@elizaos/plugin-wechat": ["@elizaos/plugin-wechat@workspace:plugins/plugin-wechat"],
 
     "@elizaos/plugin-whatsapp": ["@elizaos/plugin-whatsapp@workspace:plugins/plugin-whatsapp"],
-
-    "@elizaos/plugin-wifi": ["@elizaos/plugin-wifi@workspace:plugins/plugin-wifi"],
 
     "@elizaos/plugin-workflow": ["@elizaos/plugin-workflow@workspace:plugins/plugin-workflow"],
 
@@ -10319,8 +10262,6 @@
 
     "@elizaos/capacitor-canvas/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 
-    "@elizaos/capacitor-contacts/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
-
     "@elizaos/capacitor-desktop/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 
     "@elizaos/capacitor-eliza-tasks/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
@@ -10331,8 +10272,6 @@
 
     "@elizaos/capacitor-location/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 
-    "@elizaos/capacitor-messages/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
-
     "@elizaos/capacitor-mlkit-text/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 
     "@elizaos/capacitor-mobile-agent-bridge/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
@@ -10340,8 +10279,6 @@
     "@elizaos/capacitor-mobile-signals/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 
     "@elizaos/capacitor-network-policy/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
-
-    "@elizaos/capacitor-phone/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 
     "@elizaos/capacitor-screencapture/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 
@@ -10354,8 +10291,6 @@
     "@elizaos/capacitor-talkmode/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 
     "@elizaos/capacitor-websiteblocker/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
-
-    "@elizaos/capacitor-wifi/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 
     "@elizaos/cloud-api/hono": ["hono@4.13.1", "", {}, "sha512-kdJoFVv2xmayw6cY09H7AbMJMt8Jn5jdlEdXsP7AGBdF2DIptVlKlOLKXP41yPip4/a3yQPv9gVcJYI8YY04dw=="],
 
@@ -10384,6 +10319,14 @@
     "@elizaos/plugin-elizacloud/@noble/hashes": ["@noble/hashes@1.8.0", "", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
 
     "@elizaos/plugin-elizacloud/@scure/bip32": ["@scure/bip32@2.2.0", "", { "dependencies": { "@noble/curves": "2.2.0", "@noble/hashes": "2.2.0", "@scure/base": "2.2.0" } }, "sha512-zFr7t2F+a9+5tB7QbarF2HQNYrgjCNaoLAupZdKkrFMYMozJf5zqH2WJCQibMzm1qQ0QogrxVGO3qXfQDYMaQg=="],
+
+    "@elizaos/plugin-native-contacts/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
+
+    "@elizaos/plugin-native-messages/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
+
+    "@elizaos/plugin-native-phone/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
+
+    "@elizaos/plugin-native-wifi/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 
     "@elizaos/plugin-wallet/@solana/spl-token": ["@solana/spl-token@0.4.14", "", { "dependencies": { "@solana/buffer-layout": "^4.0.0", "@solana/buffer-layout-utils": "^0.2.0", "@solana/spl-token-group": "^0.0.7", "@solana/spl-token-metadata": "^0.1.6", "buffer": "^6.0.3" }, "peerDependencies": { "@solana/web3.js": "^1.95.5" } }, "sha512-u09zr96UBpX4U685MnvQsNzlvw9TiY005hk1vJmJr7gMJldoPG1eYU5/wNEyOA5lkMLiR/gOi9SFD4MefOYEsA=="],
 

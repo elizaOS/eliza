@@ -28,7 +28,7 @@ These implementation paths are intentionally narrow. The FILE, SHELL, and WORKTR
 | `plugin-codex-cli` | terminal | `eliza.pty` | CLI process execution belongs behind PTY in desktop mode. |
 | `plugin-commands` | terminal | `eliza.pty` | Command semantics remain plugin-owned. |
 | `plugin-github` | local Git | `eliza.git` | GitHub API remains plugin-owned; local repo work routes to Git. |
-| `plugin-documents` | local files | `eliza.fs` | RAG/document semantics remain plugin-owned. |
+| `plugin-knowledge` | local files | `eliza.fs` | RAG/document semantics remain plugin-owned. |
 | `plugin-local-inference` | desktop model control | `eliza.local-model` | Provider runtime remains plugin-owned; desktop control routes through the Remote. |
 | `plugin-browser` | packaging/artifact filesystem | `eliza.fs` | Browser bridge semantics remain plugin-owned. |
 
@@ -37,7 +37,7 @@ These implementation paths are intentionally narrow. The FILE, SHELL, and WORKTR
 | Plugin | Capability | Reason |
 | --- | --- | --- |
 | `plugin-github` | GitHub API | External connector semantics stay in the connector. |
-| `plugin-documents` | document/RAG semantics | App/plugin semantics stay in the plugin. |
+| `plugin-knowledge` | document/RAG semantics | App/plugin semantics stay in the plugin. |
 | `plugin-local-inference` | model provider/runtime | Actual provider runtime stays plugin-owned. |
 | `plugin-native-talkmode` | voice pipeline semantics | `eliza.voice` observes and coordinates; it does not replace talk mode. |
 | connector plugins | connector | Discord, Google, Farcaster, Matrix, iMessage, and similar connectors stay plugins. |

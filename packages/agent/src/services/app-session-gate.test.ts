@@ -22,7 +22,7 @@ import {
   isHostedAppActiveForAgentActions,
 } from "./app-session-gate.ts";
 
-const APP = "@elizaos/plugin-wifi";
+const APP = "@elizaos/plugin-native-wifi";
 
 function run(appName: string, status: string): AppRunSummary {
   return { appName, status } as AppRunSummary;
@@ -66,7 +66,7 @@ describe("app-session-gate service seam", () => {
     expect(hasActiveAppRunForCanonicalName(stopped.runtime, APP)).toBe(false);
 
     const foreign = makeRuntime(
-      serviceWith([run("@elizaos/plugin-phone", "running")]),
+      serviceWith([run("@elizaos/plugin-native-phone", "running")]),
     );
     expect(hasActiveAppRunForCanonicalName(foreign.runtime, APP)).toBe(false);
   });

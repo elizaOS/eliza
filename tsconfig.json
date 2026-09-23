@@ -55,7 +55,9 @@
       "@elizaos/plugin-computeruse/mobile/*": [
         "./plugins/plugin-computeruse/src/mobile/*"
       ],
-      "@elizaos/plugin-contacts": ["./plugins/plugin-contacts/src/index.ts"],
+      "@elizaos/plugin-native-contacts": [
+        "./plugins/plugin-native-contacts/src/index.ts"
+      ],
       "@elizaos/plugin-discord": ["./plugins/plugin-discord/index.ts"],
       "@elizaos/plugin-elizacloud": [
         "./plugins/plugin-elizacloud/src/index.ts"
@@ -68,13 +70,17 @@
         "./plugins/plugin-personal-assistant/src/index.ts"
       ],
       "@elizaos/plugin-mcp": ["./plugins/plugin-mcp/src/index.ts"],
-      "@elizaos/plugin-messages": ["./plugins/plugin-messages/src/index.ts"],
+      "@elizaos/plugin-native-messages": [
+        "./plugins/plugin-native-messages/src/index.ts"
+      ],
       "@elizaos/plugin-openai": ["./plugins/plugin-openai/index.ts"],
       "@elizaos/plugin-openai/endpoint-config": [
         "./plugins/plugin-openai/utils/config.ts"
       ],
-      "@elizaos/plugin-phone": ["./plugins/plugin-phone/src/index.ts"],
-      "@elizaos/plugin-phone/*": ["./plugins/plugin-phone/src/*"],
+      "@elizaos/plugin-native-phone": [
+        "./plugins/plugin-native-phone/src/index.ts"
+      ],
+      "@elizaos/plugin-native-phone/*": ["./plugins/plugin-native-phone/src/*"],
       "@elizaos/plugin-registry": ["./plugins/plugin-registry/src/index.ts"],
       "@elizaos/plugin-sql": ["./plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-task-coordinator": [
@@ -87,7 +93,9 @@
       "@elizaos/plugin-wallet": ["./plugins/plugin-wallet/src/index.ts"],
       "@elizaos/plugin-wechat": ["./plugins/plugin-wechat/src/index.ts"],
       "@elizaos/plugin-whatsapp": ["./plugins/plugin-whatsapp/src/index.ts"],
-      "@elizaos/plugin-wifi": ["./plugins/plugin-wifi/src/index.ts"],
+      "@elizaos/plugin-native-wifi": [
+        "./plugins/plugin-native-wifi/src/index.ts"
+      ],
       "@elizaos/plugin-workflow": ["./plugins/plugin-workflow/src/index.ts"],
       "@elizaos/credentials/auth": ["./packages/credentials/src/auth/index.ts"],
       "@elizaos/credentials/auth/*": ["./packages/credentials/src/auth/*"],
@@ -123,8 +131,8 @@
       "@elizaos/capacitor-canvas": [
         "./plugins/plugin-native-canvas/src/index.ts"
       ],
-      "@elizaos/capacitor-contacts": [
-        "./plugins/plugin-native-contacts/src/index.ts"
+      "@elizaos/plugin-native-contacts/bridge": [
+        "./plugins/plugin-native-contacts/src/bridge.ts"
       ],
       "@elizaos/capacitor-desktop": [
         "./plugins/plugin-native-desktop/src/index.ts"
@@ -135,8 +143,8 @@
       "@elizaos/capacitor-location": [
         "./plugins/plugin-native-location/src/index.ts"
       ],
-      "@elizaos/capacitor-messages": [
-        "./plugins/plugin-native-messages/src/index.ts"
+      "@elizaos/plugin-native-messages/bridge": [
+        "./plugins/plugin-native-messages/src/bridge.ts"
       ],
       "@elizaos/capacitor-mobile-agent-bridge": [
         "./plugins/plugin-native-mobile-agent-bridge/src/index.ts"
@@ -144,8 +152,8 @@
       "@elizaos/capacitor-mobile-signals": [
         "./plugins/plugin-native-mobile-signals/src/index.ts"
       ],
-      "@elizaos/capacitor-phone": [
-        "./plugins/plugin-native-phone/src/index.ts"
+      "@elizaos/plugin-native-phone/bridge": [
+        "./plugins/plugin-native-phone/src/bridge.ts"
       ],
       "@elizaos/capacitor-screencapture": [
         "./plugins/plugin-native-screencapture/src/index.ts"
@@ -162,7 +170,9 @@
       "@elizaos/capacitor-websiteblocker": [
         "./plugins/plugin-native-websiteblocker/src/index.ts"
       ],
-      "@elizaos/capacitor-wifi": ["./plugins/plugin-native-wifi/src/index.ts"],
+      "@elizaos/plugin-native-wifi/bridge": [
+        "./plugins/plugin-native-wifi/src/bridge.ts"
+      ],
       "@elizaos/plugin-native-inference": [
         "./plugins/plugin-native-inference/src/index.ts"
       ],

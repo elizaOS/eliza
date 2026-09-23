@@ -455,7 +455,7 @@ const reactRouterDomExportEntry = reactRouterEntry
 const reactRouterCookieEntry = reactRouterEntry
   ? tryResolvePackageModuleEntryFrom("cookie", reactRouterEntry)
   : undefined;
-// yaml / uuid / adze are transitive deps (logger, core, plugin-documents) that
+// yaml / uuid / adze are transitive deps (logger, core, plugin-knowledge) that
 // are listed in optimizeDeps.include but are not direct deps of packages/app.
 // Resolve each browser entry from the app scope and alias the bare specifier so
 // Vite can pre-bundle them instead of serving unresolved bare imports. `default`
@@ -2798,20 +2798,20 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-wallet/src/register.ts",
         ],
         [
-          "@elizaos/plugin-contacts/register",
-          "plugins/plugin-contacts/src/register.ts",
+          "@elizaos/plugin-native-contacts/register",
+          "plugins/plugin-native-contacts/src/register.ts",
         ],
         [
-          "@elizaos/plugin-phone/register",
-          "plugins/plugin-phone/src/register.ts",
+          "@elizaos/plugin-native-phone/register",
+          "plugins/plugin-native-phone/src/register.ts",
         ],
         [
           "@elizaos/plugin-task-coordinator/register",
           "plugins/plugin-task-coordinator/src/register.ts",
         ],
         [
-          "@elizaos/plugin-wifi/register",
-          "plugins/plugin-wifi/src/register.ts",
+          "@elizaos/plugin-native-wifi/register",
+          "plugins/plugin-native-wifi/src/register.ts",
         ],
         // The browser-safe native-backend registration seam. The bare
         // `@elizaos/plugin-blocker` specifier is aliased (via the dynamic
