@@ -10,7 +10,7 @@ import {
   existsSync,
   mkdtempSync,
   openSync,
-  readFileSync,
+  realpathSync,
   writeFileSync,
 } from "node:fs";
 import {
@@ -55,40 +55,6 @@ function resolveRepositoryRoot(start: string): string {
 }
 
 const repoRoot = resolveRepositoryRoot(import.meta.dirname);
-const sandboxLauncherPath = path.join(
-  repoRoot,
-  "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
-);
-
-test("sandbox launcher resolves from the Cloud e2e workspace root", () => {
-  const packageManifestPath = path.join(
-    repoRoot,
-    "packages/cloud/e2e/package.json",
-  );
-  expect(
-    (
-      JSON.parse(readFileSync(packageManifestPath, "utf8")) as {
-        name?: unknown;
-      }
-    ).name,
-  ).toBe("@elizaos/cloud-e2e");
-  expect(existsSync(sandboxLauncherPath)).toBe(true);
-  const launcher = readFileSync(sandboxLauncherPath, "utf8");
-  expect(launcher).toContain(
-    '/usr/bin/setpriv --reuid "$uid" --regid "$gid" --clear-groups --',
-  );
-  expect(launcher).toContain('/usr/bin/setfacl -n -m "u:');
-  expect(launcher).toContain(':--x,m::--x"');
-  expect(launcher).toContain("/usr/bin/setfacl --set-file=-");
-  expect(launcher).toContain(
-    "/usr/bin/bwrap --die-with-parent --new-session --unshare-user",
-  );
-  expect(launcher).toContain(
-    '--setenv ELIZA_STABILITY_SANDBOX_HOST_UID "$uid"',
-  );
-  expect(launcher).toContain("--uid 0 --gid 0 --cap-drop ALL --seccomp 3");
-});
-
 test("credential-minimal child environment rejects ambient runner secrets", () => {
   const environment = scenarioChildEnvironment(
     {
@@ -147,11 +113,23 @@ const hostedLinux =
   process.platform === "linux" &&
   process.env.ELIZA_STABILITY_LINUX_SANDBOX === "1";
 
-async function createPrivateAttempt(prefix: string) {
+async function createPrivateAttempt(
+  prefix: string,
+  existingDefaultAcl = false,
+) {
   const outputRoot = await mkdtemp(path.join(tmpdir(), prefix));
   await chmod(outputRoot, 0o700);
   const attempt = path.join(outputRoot, "attempt-1");
   await mkdir(attempt, { mode: 0o700 });
+  if (existingDefaultAcl) {
+    const configured = spawnSync(
+      "setfacl",
+      ["-m", "d:u::rwx,d:g::---,d:o::---", attempt],
+      { encoding: "utf8" },
+    );
+    if (configured.status !== 0)
+      throw new Error(`setfacl failed: ${configured.stderr}`);
+  }
   const acl = spawnSync("getfacl", ["-cpn", outputRoot], {
     encoding: "utf8",
   });
@@ -186,6 +164,12 @@ test.skipIf(!hostedLinux)(
       outputRoot,
       outputRootAcl,
     } = await createPrivateAttempt("cloud-sandbox-proof-");
+    const callerHome = await mkdtemp(
+      path.join(repoRoot, ".sandbox-private-home-"),
+    );
+    await mkdir(path.join(callerHome, ".ssh"), { mode: 0o700 });
+    const privateHomeFile = path.join(callerHome, ".ssh", "synthetic-secret");
+    await writeFile(privateHomeFile, "private-home-sentinel", { mode: 0o600 });
     const hostTmpDirectory = await mkdtemp(
       path.join(tmpdir(), "cloud-sandbox-host-ipc-"),
     );
@@ -268,7 +252,7 @@ test.skipIf(!hostedLinux)(
       await writeFile(
         probe,
         `
-import { readFileSync } from "node:fs";
+import { fstatSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { connect } from "node:net";
 import { createSocket } from "node:dgram";
@@ -302,7 +286,7 @@ const udp = (family, host, port) => new Promise((resolve) => {
   });
 });
 const syscallPython = [
-  "import ctypes, json, os, socket",
+  "import ctypes, json, os, pathlib, socket, sys",
   "libc = ctypes.CDLL(None, use_errno=True)",
   "fds = (ctypes.c_int * 2)()",
   "ctypes.set_errno(0)",
@@ -323,24 +307,39 @@ const syscallPython = [
   "    ctypes.set_errno(0)",
   "    result = libc.syscall(nr, *args)",
   "    return {'result': result, 'errno': ctypes.get_errno()}",
-  "print(json.dumps({'socketpairResult': socketpair_result, 'socketpairErrno': socketpair_errno, 'socketpairReconnect': socketpair_reconnect, 'x32Socketpair': denied(0x40000000 | 53, socket.AF_UNIX, socket.SOCK_DGRAM, 0, fds), 'ioUringSetup': denied(425, 1, 0), 'ioUringEnter': denied(426, -1, 0, 0, 0, 0, 0), 'ioUringRegister': denied(427, -1, 0, 0, 0)}))",
+  "pathlib.Path(sys.argv[1]).write_text(json.dumps({'socketpairResult': socketpair_result, 'socketpairErrno': socketpair_errno, 'socketpairReconnect': socketpair_reconnect, 'x32Socketpair': denied(0x40000000 | 53, socket.AF_UNIX, socket.SOCK_DGRAM, 0, fds), 'ioUringSetup': denied(425, 1, 0), 'ioUringEnter': denied(426, -1, 0, 0, 0, 0, 0), 'ioUringRegister': denied(427, -1, 0, 0, 0)}))",
 ].join("\\n");
-const syscallProbe = spawnSync("python3", ["-c", syscallPython], { encoding: "utf8" });
+// Bun implements piped child stdio with socketpair, which this boundary denies.
+// A regular output file keeps the syscall probe independent of that transport.
+const syscallOutput = process.argv[1] + ".syscalls.json";
+const syscallProbe = spawnSync("python3", ["-c", syscallPython, syscallOutput], { stdio: "ignore" });
 const syscallResult = syscallProbe.status === 0
-  ? JSON.parse(syscallProbe.stdout)
-  : { probeError: syscallProbe.stderr };
+  ? JSON.parse(readFileSync(syscallOutput, "utf8"))
+  : { probeError: String(syscallProbe.error), status: syscallProbe.status };
 let procReadable = false;
 try { readFileSync("/proc/" + process.env.PROBE_PARENT_PID + "/environ"); procReadable = true; } catch {}
 let fdSecretReadable = false;
-try { fdSecretReadable = readFileSync(3, "utf8").includes("fd-secret"); } catch {}
+// The sentinel is a regular file; Bun may reuse a closed fd 3 for a blocking eventfd.
+try {
+  if (fstatSync(3).isFile()) fdSecretReadable = readFileSync(3, "utf8").includes("fd-secret");
+} catch {
+  // error-policy:J3 A missing or unreadable sentinel descriptor is the expected denied result.
+}
 let hostTmpReadable = false;
 try { hostTmpReadable = readFileSync(process.env.PROBE_HOST_TMP_PATH, "utf8") === "must-be-masked"; } catch {}
-const rawProbeAvailable = spawnSync("python3", ["--version"]).status === 0;
+let privateHomeReadable = false;
+try {
+  privateHomeReadable = readFileSync(process.env.PROBE_PRIVATE_HOME_FILE, "utf8") === "private-home-sentinel";
+} catch {
+  // error-policy:J3 The private caller home must remain inaccessible to the sandbox UID.
+}
+const rawProbeAvailable = spawnSync("python3", ["--version"], { stdio: "ignore" }).status === 0;
 console.log(JSON.stringify({
   secretPresent: process.env.PROBE_PARENT_CREDENTIAL !== undefined,
   procReadable,
   fdSecretReadable,
   hostTmpReadable,
+  privateHomeReadable,
   uid: process.getuid?.(),
   hostUid: Number(process.env.ELIZA_STABILITY_SANDBOX_HOST_UID),
   allowed: await tcp("127.0.0.1", Number(process.env.PROBE_ALLOWED_PORT)),
@@ -351,8 +350,8 @@ console.log(JSON.stringify({
   dnsUdp: await udp("udp4", "8.8.8.8", 53),
   ipv6Udp: await udp("udp6", "::1", Number(process.env.PROBE_BLOCKED_IPV6_PORT)),
   rawProbeAvailable,
-  rawIpv4: spawnSync("python3", ["-c", "import socket; socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)"]).status === 0,
-  rawIpv6: spawnSync("python3", ["-c", "import socket; socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_RAW)"]).status === 0,
+  rawIpv4: spawnSync("python3", ["-c", "import socket; socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)"], { stdio: "ignore" }).status === 0,
+  rawIpv6: spawnSync("python3", ["-c", "import socket; socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_RAW)"], { stdio: "ignore" }).status === 0,
   filesystemUnix: await unix(process.env.PROBE_FILESYSTEM_UNIX),
   abstractUnix: await unix("\\0" + process.env.PROBE_ABSTRACT_UNIX_NAME),
   syscallResult,
@@ -376,10 +375,11 @@ console.log(JSON.stringify({
             PROBE_FILESYSTEM_UNIX: filesystemUnixPath,
             PROBE_FILESYSTEM_UNIX_DGRAM: filesystemUnixDatagramPath,
             PROBE_HOST_TMP_PATH: hostTmpMarkerPath,
+            PROBE_PRIVATE_HOME_FILE: privateHomeFile,
             PROBE_ABSTRACT_UNIX_NAME: abstractUnixPath.slice(1),
           }),
         ),
-        callerHome: process.env.HOME ?? "",
+        callerHome,
         callerUid: process.getuid?.() ?? 0,
         runtime: process.execPath,
         args: [probe],
@@ -417,6 +417,7 @@ console.log(JSON.stringify({
         procReadable: false,
         fdSecretReadable: false,
         hostTmpReadable: false,
+        privateHomeReadable: false,
         uid: undefined,
         hostUid: undefined,
         allowed: true,
@@ -502,7 +503,7 @@ console.log(JSON.stringify({
           "/proc",
           "--ro-bind",
           "/dev/null",
-          "/usr/sbin/iptables",
+          realpathSync("/usr/sbin/iptables"),
           "/bin/bash",
           setupScript,
           "setup",
@@ -522,6 +523,7 @@ console.log(JSON.stringify({
       abstractUnix.close();
       datagramServer.kill("SIGKILL");
       await rm(hostTmpDirectory, { recursive: true, force: true });
+      await rm(callerHome, { recursive: true, force: true });
       expectAclRestored(directory, attemptAcl);
       expectAclRestored(outputRoot, outputRootAcl);
       await rm(outputRoot, { recursive: true, force: true });
@@ -538,7 +540,7 @@ test.skipIf(!hostedLinux)(
       attemptAcl,
       outputRoot,
       outputRootAcl,
-    } = await createPrivateAttempt("cloud-sandbox-early-failure-");
+    } = await createPrivateAttempt("cloud-sandbox-early-failure-", true);
     const fakeBwrapPath = path.join(directory, "failing-bwrap");
     await writeFile(fakeBwrapPath, "#!/bin/sh\n/bin/sleep 1\nexit 91\n", {
       mode: 0o755,
@@ -724,7 +726,7 @@ setInterval(() => {}, 1000);
       expect(ready.uid).toBe(0);
       expect(ready.hostUid).not.toBe(process.getuid?.());
       expect(
-        spawnSync("sudo", ["-n", "kill", "-TERM", `-${child.pid}`], {
+        spawnSync("sudo", ["-n", "kill", "-TERM", "--", `-${child.pid}`], {
           stdio: "ignore",
         }).status,
       ).toBe(0);

@@ -98,7 +98,10 @@ sandbox_cleanup() {
       SANDBOX_CLEANUP_STATUS=1
     fi
     if [ "$SANDBOX_OUTPUT_ACL_CAPTURED" -eq 1 ]; then
-      if ! /usr/bin/printf '%s\n' "$SANDBOX_OUTPUT_ACL_SNAPSHOT" | /usr/bin/setfacl --set-file=- "$SANDBOX_OUTPUT_DIR"; then
+      # An access-only snapshot does not remove default ACLs added for the child.
+      if ! /usr/bin/setfacl -k "$SANDBOX_OUTPUT_DIR"; then
+        SANDBOX_CLEANUP_STATUS=1
+      elif ! /usr/bin/printf '%s\n' "$SANDBOX_OUTPUT_ACL_SNAPSHOT" | /usr/bin/setfacl --set-file=- "$SANDBOX_OUTPUT_DIR"; then
         SANDBOX_CLEANUP_STATUS=1
       elif ! acl_state="$(/usr/bin/getfacl -cpn "$SANDBOX_OUTPUT_DIR" 2>/dev/null)" || [ "$acl_state" != "$SANDBOX_OUTPUT_ACL_SNAPSHOT" ]; then
         SANDBOX_CLEANUP_STATUS=1
@@ -123,8 +126,9 @@ sandbox_cleanup() {
 setup() {
   require_root
   [ "$(/usr/bin/uname -m)" = "x86_64" ] || die "seccomp policy requires x86_64"
+  local command_path
   for command in bwrap getfacl grep iptables ip6tables iptables-save ip6tables-save prlimit setfacl setpriv useradd userdel pkill pgrep python3; do
-    command -v "$command" >/dev/null 2>&1 || die "missing required command: $command"
+    command_path="$(command -v "$command")" && [ -f "$command_path" ] && [ -x "$command_path" ] || die "missing required command: $command"
   done
   printf 'ready\n'
 }
@@ -198,6 +202,8 @@ run() {
 
   SANDBOX_OUTPUT_ACL_SNAPSHOT="$(/usr/bin/getfacl -cpn "$output_dir")" || die "failed to snapshot output ACL"
   SANDBOX_OUTPUT_ACL_CAPTURED=1
+  # Default ACLs cover new artifacts, but the scenario inputs already exist.
+  /usr/bin/setfacl -R -m "u:${uid}:rwX" "$output_dir"
   /usr/bin/setfacl -m "u:${uid}:rwx" -m "d:u:${uid}:rwx" -m "d:u:${caller_uid}:rwx" "$output_dir"
   grant_output_search_acls
   sandbox_root="$(/usr/bin/mktemp -d /var/tmp/eliza-stability-sandbox.XXXXXX)"
@@ -227,6 +233,11 @@ PY
   local candidate
   for candidate in "$repo_root/.git" "$caller_home/.gitconfig" "$caller_home/.npmrc" "$caller_home/.config/gh" "$caller_home/.ssh" "$caller_home/.docker"; do
     [ -n "$candidate" ] || continue
+    # Private ancestors already deny this UID access; bwrap cannot traverse them
+    # to mount a mask, and granting access would weaken that existing boundary.
+    if ! /usr/bin/setpriv --reuid "$uid" --regid "$gid" --clear-groups -- /usr/bin/test -e "$candidate"; then
+      continue
+    fi
     if [ -d "$candidate" ]; then masks+=(--tmpfs "$candidate"); fi
     if [ -f "$candidate" ]; then masks+=(--ro-bind /dev/null "$candidate"); fi
   done
@@ -244,7 +255,11 @@ PY
         "${masks[@]}" --proc /proc --dev /dev --chdir "$repo_root" --setenv HOME "$sandbox_root" \
         --setenv ELIZA_STABILITY_SANDBOX_HOST_UID "$uid" \
         --uid 0 --gid 0 --cap-drop ALL --seccomp 3 \
-        "$sandbox_root/runtime" "$@" 3<"$sandbox_root/socket-domain.bpf"
+        "$sandbox_root/runtime" "$@" 3<"$sandbox_root/socket-domain.bpf" &
+  # Waiting on a background job lets Bash run teardown traps immediately even
+  # when a scenario descendant ignores termination signals.
+  local execution_pid=$!
+  wait "$execution_pid"
   execution_status=$?
   sandbox_cleanup
   cleanup_status=$?

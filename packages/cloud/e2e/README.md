@@ -120,6 +120,21 @@ pinned-Bun preload remains application-level diagnostics; private `/run`,
 io_uring entry points close host AF_UNIX delegation paths. The kernel boundary
 also rejects direct TCP, UDP, DNS, and raw-socket bypasses.
 
+Linux containment requires x86_64, executable Bubblewrap/ACL/firewall tools,
+passwordless sudo for the launcher, and permission for Bubblewrap to create user
+namespaces. Ubuntu 24.04 hosts with restricted unprivileged user namespaces need
+an administrator-provisioned AppArmor policy permitting `/usr/bin/bwrap` to use
+`userns`; installing the binary alone is insufficient. Keep the global namespace
+restriction enabled. Before supplying model credentials, run:
+
+```bash
+ELIZA_STABILITY_LINUX_SANDBOX=1 bun run --cwd packages/cloud/e2e test:containment
+```
+
+The suite exercises the kernel boundary, private caller-home denial,
+pre-existing scenario inputs, and exact ACL/firewall/identity cleanup on success,
+launch failure, and forced teardown.
+
 Attempts retain trajectories, tool receipts, transitions, bounded logs,
 network and mock-service ledgers, and authority hashes. The aggregate retains
 first-attempt success, failure clusters, 3/3 status, a canonical report hash,
