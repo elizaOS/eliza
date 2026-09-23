@@ -326,6 +326,9 @@ export async function navigateToView(
 	// chain's verifiedUserFacing logic.
 	const base = getAppControlApiBase();
 	const resolvedSubview = resolveSubviewForView(view, subview);
+	const deliveryReceiptRequested =
+		delivery === "completed-action" ||
+		(delivery === "originating-client" && Boolean(completedActionHandoffId));
 
 	try {
 		const resp = await fetch(
@@ -371,9 +374,9 @@ export async function navigateToView(
 				ok: true,
 				status: "accepted",
 				receiptStatus:
-					malformedReceipt && delivery === "completed-action"
+					malformedReceipt && deliveryReceiptRequested
 						? "malformed"
-						: delivery === "completed-action"
+						: deliveryReceiptRequested
 							? confirmsCompletedActionDelivery(responseBody) &&
 								(!completedActionHandoffId || echoedCompletedActionHandoffId)
 								? "delivered"
@@ -386,7 +389,7 @@ export async function navigateToView(
 					subview: resolvedSubview,
 				}),
 				subview: resolvedSubview,
-				...(delivery === "completed-action" &&
+				...(deliveryReceiptRequested &&
 				confirmsCompletedActionDelivery(responseBody) &&
 				(!completedActionHandoffId || echoedCompletedActionHandoffId)
 					? { completedActionDelivered: true as const }
@@ -632,8 +635,7 @@ export async function runViewsShow({
 		readStringOpt(options, "subview") ?? readStringOpt(options, "section");
 	const navigationLabel =
 		canonicalTarget?.viewId === view.id ? canonicalTarget.label : view.label;
-	const completedActionDelivery =
-		!isRealtimeVoiceTurn(message) && Boolean(originatingClientId);
+	const completedActionDelivery = Boolean(originatingClientId);
 	const completedActionHandoffId = completedActionDelivery
 		? message.id
 			? createHash("sha256")
@@ -659,7 +661,7 @@ export async function runViewsShow({
 		viewType,
 		subview ?? undefined,
 		navigationLabel,
-		!completedActionDelivery && isRealtimeVoiceTurn(message)
+		isRealtimeVoiceTurn(message)
 			? "originating-client"
 			: completedActionDelivery
 				? "completed-action"

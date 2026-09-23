@@ -277,7 +277,7 @@ describe("model-owned app-control choices", () => {
 						return [];
 					},
 				);
-				expect(deliveredTexts).toContain("Canceled. No app changes made.");
+				expect(deliveredTexts).toEqual(["Canceled. No app changes made."]);
 				expect(result.actionResults).toContainEqual(
 					expect.objectContaining({
 						success: true,

@@ -189,3 +189,5 @@ trusted import/lifecycle work. Graph writes use the target agent; the importing
 adapter and its entity context remain unchanged. The callback must not close or
 retain that temporary adapter. SQL failures roll back the new agent and graph;
 filesystem artifacts remain the host's responsibility.
+
+Semantic memory search may omit returned vectors with `includeEmbedding: false` and narrow eligible rooms with `excludeRoomIds`. Similarity still uses stored vectors; exclusions intersect the existing access scope before ranking and pagination.

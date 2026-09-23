@@ -89,3 +89,5 @@ same ephemeral records. Cache storage keys include the agent ID to keep lifecycl
 scopes independent. This does not add atomic rollback to the memory store. The
 single-owner SQLite subclass retains its existing persistent cache keys and rejects
 a different agent scope.
+
+Both semantic-search adapters support `includeEmbedding: false` to omit vectors from returned copies and `excludeRoomIds` to narrow the scoped candidate set before ranking. Neither option mutates stored memories or replaces authorization.

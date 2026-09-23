@@ -142,3 +142,5 @@ artifacts and failure behavior; do not substitute mocked success for the system
 under test.
 
 The base plugin has no Electric sync, cloud write forwarding, or Neon serverless driver. Use ordinary PostgreSQL connections for hosted Postgres. PGlite local live queries are available only through explicitly supplied extensions.
+
+Semantic search intersects excludeRoomIds with every existing scope predicate before distance ordering and pagination. includeEmbedding:false selects no returned vector payload while retaining the vector join, similarity calculation, threshold behavior and text reranking. Omission preserves the existing full-vector result contract; storage is never changed by projection.

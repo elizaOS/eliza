@@ -15,7 +15,6 @@ import {
   buildModelInputBudget,
   buildResponseGrammar,
   buildSpanSamplerPlan,
-  ChannelType,
   computePrefixHashes,
   createHandleResponseTool,
   ElizaError,
@@ -100,6 +99,7 @@ import {
   getStage1RetryReason,
   getStage1RoutingRepair,
   getStage1UnusableDecisionRepair,
+  hasNavigationWithoutPendingIntent,
   isEmptyStage1Result,
   parseMessageHandlerModelOutput,
   readStage1EmptyRetryLimit,
@@ -177,11 +177,8 @@ export async function generateStage1Decision(
   },
   registerStageTask: (task: Promise<void>) => void,
 ) {
-  const voiceDirectMessageChannel =
-    args.message.content?.channelType === ChannelType.VOICE_DM;
   const contextReadProgressEnabled = Boolean(
     directMessageChannel &&
-      !voiceDirectMessageChannel &&
       !args.codingMode &&
       !args.stage1DecisionOnly &&
       args.onPlanningAcknowledgment,
@@ -207,8 +204,7 @@ export async function generateStage1Decision(
   const canonicalResponseHandlerSchema =
     args.runtime.responseHandlerFieldRegistry.composeSchema();
   const loadedContext = new Set<string>();
-  const discoveryEnabled =
-    directMessageChannel && !voiceDirectMessageChannel && !args.codingMode;
+  const discoveryEnabled = directMessageChannel && !args.codingMode;
   const responseHandlerSchema = discoveryEnabled
     ? withDirectTextBuiltinSchemaDescriptions(
         canonicalResponseHandlerSchema,
@@ -282,7 +278,6 @@ export async function generateStage1Decision(
     availableContexts,
     {
       directMessage: directMessageChannel,
-      voiceDirectMessage: voiceDirectMessageChannel,
       responseHandlerFields: responseHandlerFieldPrompt.rendered,
       contextCatalog,
       history,
@@ -385,10 +380,9 @@ export async function generateStage1Decision(
       ...context.metadata,
       loadedContextProviders: [...loadedContext],
     };
-    providerReviewSourceSetId =
-      discoveryEnabled && !voiceDirectMessageChannel
-        ? providerReviewSources(context)?.sourceSetId
-        : undefined;
+    providerReviewSourceSetId = discoveryEnabled
+      ? providerReviewSources(context)?.sourceSetId
+      : undefined;
     let fieldSchema = compactInactiveFields
       ? withInactiveArrayFields(
           responseHandlerSchema,
@@ -440,7 +434,7 @@ export async function generateStage1Decision(
         };
       } else sourceReplySnapshot = undefined;
     }
-    if (discoveryEnabled && !voiceDirectMessageChannel)
+    if (discoveryEnabled)
       fieldSchema = withProviderReviewSchema(fieldSchema, context);
     const referenceSchema =
       discoveryEnabled && !history
@@ -462,23 +456,20 @@ export async function generateStage1Decision(
         canonicalResponseHandlerSchema.properties?.contextRequests ===
           contextRequestsFieldEvaluator.schema,
     );
-    const parameters = voiceDirectMessageChannel
-      ? referenceSchema
-      : withRequiredCompletionSourceIdentity(
-          history
-            ? withReviewedHistorySelection(
-                referenceSchema,
-                nativeHistoryRead,
-                repairHistorySourceIds,
-              )
-            : referenceSchema,
-          discovery.context,
-          repairHistoryIdentity,
-        );
-    // Only the registered native text-history contract supports request binding.
+    const parameters = withRequiredCompletionSourceIdentity(
+      history
+        ? withReviewedHistorySelection(
+            referenceSchema,
+            nativeHistoryRead,
+            repairHistorySourceIds,
+          )
+        : referenceSchema,
+      discovery.context,
+      repairHistoryIdentity,
+    );
+    // Only the registered native direct-message history contract supports request binding.
     sourceSelectionBinding =
       (history || sourceReplySnapshot) &&
-      !voiceDirectMessageChannel &&
       !repairHistoryIdentity &&
       selectedResponseHandlerFields.includes(completionContextFieldEvaluator) &&
       selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
@@ -700,8 +691,7 @@ export async function generateStage1Decision(
   // repeated terminal decision still passes through ordinary routing.
   let terminalDecisionReviewed = false;
   const terminalReaskEnabled = readStage1TerminalReaskSetting(args.runtime);
-  // Voice keeps its complete path: its spoken answer need not sit in replyText.
-  if (!args.codingMode && !voiceDirectMessageChannel) {
+  if (!args.codingMode) {
     const parsedForRepair = extractMessageHandlerRawParsed(rawMessageHandler);
     // A source quotation is an answer even with no model-authored prose.
     // Terminal decisions retain the same opt-in review and shared budget.
@@ -1014,11 +1004,7 @@ export async function generateStage1Decision(
         loadedContext,
       );
       const restoredProviders: string[] = [];
-      if (
-        historyRequested.length &&
-        nativeHistoryRead &&
-        !voiceDirectMessageChannel
-      ) {
+      if (historyRequested.length && nativeHistoryRead) {
         // A missing-dialogue read can refer to recalled originals from another
         // room. Restore only freshly authorized, provider-indexed originals;
         // leave the current-room search scope and its match receipt unchanged.
@@ -1083,7 +1069,6 @@ export async function generateStage1Decision(
         availableContexts,
         {
           directMessage: directMessageChannel,
-          voiceDirectMessage: voiceDirectMessageChannel,
           responseHandlerFields: responseHandlerFieldPrompt.rendered,
           contextCatalog,
           history,
@@ -1188,12 +1173,13 @@ export async function generateStage1Decision(
   }
   if (
     routingRepairAttempted &&
-    (rawFieldParsed?.replyEffectStatus === "non_applied" ||
+    (hasNavigationWithoutPendingIntent(rawFieldParsed) ||
+      rawFieldParsed?.replyEffectStatus === "non_applied" ||
       rawFieldParsed?.shouldRespond === "STOP" ||
       rawFieldParsed?.shouldRespond === "IGNORE") &&
     getStage1RoutingRepair(rawFieldParsed)
   ) {
-    // A repeated preview/pending-work conflict cannot authorize effects or a
+    // A repeated preview/pending-work or unclaimed-navigation conflict cannot authorize effects or a
     // terminal reply. Keep the recorded model attempts and reject before fields.
     throw new ElizaError(
       "Stage-1 decision still conflicts with pending work after repair; retry with a consistent routing decision",

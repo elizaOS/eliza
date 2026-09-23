@@ -34,15 +34,41 @@ for (const kind of ["stored", "isolated"] as const) {
       const attachment = memory(undefined, 0.3);
       const outsidePage = memory("automobile purchase", 0.4);
       const outsideRoom = memory("automobile purchase", 0, randomUUID() as UUID);
+      const missingVector = memory("automobile purchase without an indexed vector", 0);
+      delete missingVector.embedding;
       try {
         await adapter.createMemories(
-          [semantic, keyword, attachment, outsidePage, outsideRoom].map((memory) => ({
-            memory,
-            tableName: "messages",
-          }))
+          [semantic, keyword, attachment, outsidePage, outsideRoom, missingVector].map(
+            (memory) => ({
+              memory,
+              tableName: "messages",
+            })
+          )
         );
         const params = { tableName: "messages", embedding: vector(0), roomId, limit: 3 };
         const ids = (rows: Memory[]) => rows.map((row) => row.id);
+        const projectedParams = {
+          ...params,
+          roomId: undefined,
+          excludeRoomIds: [outsideRoom.roomId],
+          query: "automobile purchase",
+        };
+        const full = await runtime.searchMemories(projectedParams);
+        const projected = await runtime.searchMemories({
+          ...projectedParams,
+          includeEmbedding: false,
+        });
+        expect(ids(full)).toEqual([keyword.id, semantic.id, attachment.id]);
+        expect(projected.map(({ embedding, ...row }) => row)).toEqual(
+          full.map(({ embedding, ...row }) => row)
+        );
+        expect(full.every((row) => Array.isArray(row.embedding))).toBe(true);
+        expect(projected.every((row) => row.embedding === undefined)).toBe(true);
+        expect((await runtime.searchMemories(projectedParams)).map((row) => row.embedding)).toEqual(
+          full.map((row) => row.embedding)
+        );
+        expect(await runtime.searchMemories({ ...params, excludeRoomIds: [roomId] })).toEqual([]);
+
         expect(ids(await runtime.searchMemories(params))).toEqual([
           semantic.id,
           keyword.id,

@@ -380,7 +380,7 @@ describe("EvaluatorService", () => {
     expect(runtime.getMemories).toHaveBeenCalledTimes(2);
   });
 
-  it.each([ChannelType.VOICE_DM, ChannelType.VOICE_GROUP])(
+  it.each([ChannelType.VOICE_GROUP])(
     "does not serialize %s turns behind optional post-turn reflection",
     async (channelType) => {
       const runtime = makeRuntime();

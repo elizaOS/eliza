@@ -184,6 +184,7 @@ describe("relevantConversationsProvider on AgentRuntime + PGlite", () => {
       "messages",
     );
 
+    const semanticSearch = vi.spyOn(runtime, "searchMemories");
     const telegramResult = await relevantConversationsProvider.get(
       runtime,
       await ownerTurn(TELEGRAM_ROOM, "telegram"),
@@ -195,6 +196,25 @@ describe("relevantConversationsProvider on AgentRuntime + PGlite", () => {
     expect(telegramResult.text).not.toContain(
       "Telegram says the launch code is soliza-beta.",
     );
+
+    expect(semanticSearch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        includeEmbedding: false,
+        excludeRoomIds: [TELEGRAM_ROOM],
+      }),
+    );
+    const firstSearch = semanticSearch.mock.results[0];
+    if (firstSearch?.type !== "return")
+      throw new Error("Expected real semantic query");
+    const candidates = await firstSearch.value;
+    expect(candidates.length).toBeGreaterThan(0);
+    expect(
+      candidates.every(
+        (memory) =>
+          memory.roomId !== TELEGRAM_ROOM && memory.embedding === undefined,
+      ),
+    ).toBe(true);
+    semanticSearch.mockRestore();
 
     const discordResult = await relevantConversationsProvider.get(
       runtime,

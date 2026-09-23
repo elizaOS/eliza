@@ -243,7 +243,7 @@ result is bound in memory to the exact runtime, message, actor, room, request
 text and sender role; caller metadata cannot supply it. Non-navigation decisions
 set the existing deny constraint. Requested/optional destinations still require
 the fresh authorized catalog, with canonical action execution and transport gates.
-A fresh requested client-chat DM decision with navigationOnly=false and a
+A fresh requested client-chat DM or VOICE_DM decision with navigationOnly=false and a
 VIEWS_SHOW candidate may leave its destination blank: the existing planner
 resolves it from the complete original request and a fresh role-filtered
 id/label/path index. Full descriptions and schemas remain available through
@@ -285,3 +285,7 @@ A resolved VIEWS read capability stays a read across prerequisites, later steps 
 An explicit requested, single-view, navigation-only Stage-1 decision may omit redundant action retrieval hints. Empty hints do not block direct navigation; conflicting domain hints, multiple intents, forbidden navigation and unresolved destinations retain their normal gates. Canonical aliases still resolve against the authorized live catalog. No raw-utterance shortcut or execution/reply gate changes.
 
 Navigation repair prompts may factor identical scalar viewType/available values into catalog defaults only when the complete encoded text is smaller. Reconstruct each entry by merging defaults then entry fields; preserve every field, ordering and duplicate ID from the existing navigation reference. Filtering, authorization, custom character instructions, the complete request and execution/receipt gates remain unchanged. Small or mixed catalogs retain the original representation.
+
+Client-chat direct voice and text reuse the same typed navigation-only decision. Group channels and other sources do not gain the deterministic route. Fresh catalog authorization, source/actor/room binding, cancellation and the matching navigation receipt still govern execution and release of the held model reply.
+
+Known originating text and voice renderers request the same stable navigation handoff receipt. Voice retains originating-client transport; only literal true with the matching handoff ID establishes delivered status. Missing, false, malformed or mismatched receipts cannot release a held completed-navigation claim. The voice SSE bridge suppresses a duplicate terminal handoff only for a confirmed, identified delivery.

@@ -672,7 +672,7 @@ export const REGISTER_RESPONSE_POLICY = registerResponsePolicy;
 export const navigationReplyPolicy = `navigation_reply:
 - UI navigation still belongs to Eliza: mention the requested destination in your own concise wording
 - never use a generic bare acknowledgement such as "On it." as the whole navigation reply
-- when visualContinuation.navigationOnly=true, draft the concise destination confirmation to deliver IF navigation succeeds, without progress or waiting language; the runtime holds it for the matching navigation receipt. Do not claim any record was read or changed`;
+- when visualContinuation.navigationOnly=true, replyText is a held final confirmation that the destination is now open, not a progress acknowledgment. Retain the pending navigation action; deliver this sentence only after matching success. Do not claim any record was read or changed`;
 
 export const NAVIGATION_REPLY_POLICY = navigationReplyPolicy;
 
@@ -700,7 +700,7 @@ Routing:
 - Clarify simply only when no useful lookup or independent work can proceed. Keep executable work; omit actions awaiting an answer. Prohibited, hypothetical and cancelled intentions are not execution requests; cancelling a persisted record/job requires its own operation.
 
 Reply:
-- Simple means a complete nonempty final answer; no planner follows. For tools, acknowledge briefly without claiming completion or refusing prematurely. Navigation uses the held confirmation above. Only long-running asynchronous handoffs send an early acknowledgment; synchronous work delivers the grounded result.
+- Simple means a complete nonempty final answer; no planner follows. Navigation uses the held final confirmation above. For other tools, acknowledge briefly without claiming completion or refusing prematurely. Only long-running asynchronous handoffs send an early acknowledgment; synchronous work delivers the grounded result.
 - Follow the character and registered field instructions. Prefer familiar dates/times; hide IDs, tools, JSON and backend jargon unless requested. Preserve exact code/user values when relevant. Refuse in first person; never invent moderation blocks or runtime errors.
 - Claim investigation/effects only from real current results; tense such as "I'm checking" is not evidence. Current prices/weather/news -> web with WEB_FETCH or WEB_SEARCH, not coding delegation. Use CURRENT_TIME for dates; retain the agent's identity, without volunteering training-cutoff metadata or third-person model labels.
 

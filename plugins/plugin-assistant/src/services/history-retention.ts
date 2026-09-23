@@ -164,7 +164,7 @@ export const historyRetentionEvaluator: Evaluator<
       evidence.messages.length < HISTORY_CONTINUITY_SOURCE_COUNT
     )
       return false;
-    // Reviewed-history projection applies only to supported direct-text conversations.
+    // Reviewed-history projection applies to supported direct text and voice conversations.
     // Older stored messages
     // may omit channelType, so use their authoritative room in that case.
     const channelType =
@@ -172,6 +172,7 @@ export const historyRetentionEvaluator: Evaluator<
       (await runtime.getRoom(message.roomId))?.type;
     return (
       channelType === ChannelType.DM ||
+      channelType === ChannelType.VOICE_DM ||
       channelType === ChannelType.API ||
       channelType === ChannelType.SELF
     );

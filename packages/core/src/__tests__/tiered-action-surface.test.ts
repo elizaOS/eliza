@@ -334,7 +334,7 @@ describe("v5 tiered action surface", () => {
 		{
 			channel: ChannelType.VOICE_DM,
 			candidates: ["CUSTOM_READ"],
-			deferred: false,
+			deferred: true,
 		},
 		{
 			channel: ChannelType.GROUP,
