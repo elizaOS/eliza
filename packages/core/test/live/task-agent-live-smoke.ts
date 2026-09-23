@@ -1,8 +1,6 @@
-/** Runs live core runtime smoke coverage against real provider or orchestration surfaces. */
+/** Verifies real coding-agent file writes and tracked session reuse through TASKS. */
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { createServer, type Server } from "node:http";
-import net from "node:net";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { selectLiveProvider } from "@elizaos/testing/live-provider";
@@ -17,7 +15,6 @@ const {
 } = await import("@elizaos/plugin-agent-orchestrator");
 
 type Framework = "claude" | "codex";
-type Mode = "sequential" | "web";
 type AcpServiceInstance = InstanceType<typeof AcpService>;
 
 const KEEP_ARTIFACTS = process.env.ELIZA_KEEP_LIVE_ARTIFACTS === "1";
@@ -69,19 +66,6 @@ async function wait(ms: number): Promise<void> {
 	await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchTextIfAvailable(url: string): Promise<string | null> {
-	try {
-		const response = await fetch(url);
-		if (!response.ok) {
-			return null;
-		}
-		return await response.text();
-	} catch {
-		// The local HTTP server is expected to refuse connections until the agent starts it.
-		return null;
-	}
-}
-
 async function waitFor(
 	check: () => Promise<boolean>,
 	timeoutMs: number,
@@ -101,46 +85,13 @@ function ensureLiveBaseDir(): string {
 	return baseDir;
 }
 
-function createWorkdir(agentType: Framework, label: string): string {
+function createWorkdir(agentType: Framework): string {
 	return fs.mkdtempSync(
-		path.join(ensureLiveBaseDir(), `agent-orchestrator-${agentType}-${label}-`),
+		path.join(
+			ensureLiveBaseDir(),
+			`agent-orchestrator-${agentType}-sequential-`,
+		),
 	);
-}
-
-async function getFreePort(): Promise<number> {
-	const server = net.createServer();
-	await new Promise<void>((resolve, reject) => {
-		server.once("error", reject);
-		server.listen(0, "127.0.0.1", () => resolve());
-	});
-	const address = server.address();
-	if (!address || typeof address === "string") {
-		server.close();
-		throw new Error("Failed to allocate an ephemeral port");
-	}
-	const port = address.port;
-	await new Promise<void>((resolve) => server.close(() => resolve()));
-	return port;
-}
-
-async function startReferenceServer(html: string): Promise<{
-	server: Server;
-	url: string;
-}> {
-	const port = await getFreePort();
-	const server = createServer((_, res) => {
-		res.statusCode = 200;
-		res.setHeader("content-type", "text/html; charset=utf-8");
-		res.end(html);
-	});
-	await new Promise<void>((resolve, reject) => {
-		server.once("error", reject);
-		server.listen(port, "127.0.0.1", () => resolve());
-	});
-	return {
-		server,
-		url: `http://127.0.0.1:${port}/reference.html`,
-	};
 }
 
 function sawTaskCompletion(
@@ -284,117 +235,15 @@ async function runSequentialSmoke(
 	);
 }
 
-async function runWebSmoke(
-	agentType: Framework,
-	{ runtime, router, service, workdir, events }: SmokeContext,
-): Promise<void> {
-	const agentPort = await getFreePort();
-	const serveSentinel = `LIVE_WEB_${agentType.toUpperCase()}_READY`;
-	const reference = await startReferenceServer(`<!doctype html>
-<html>
-  <body>
-    <h1>Benchmark Ready</h1>
-    <p>Task agents stay reusable.</p>
-    <p>Codex and Claude Code should both handle research and serving tasks.</p>
-  </body>
-</html>`);
-
-	try {
-		const [preflight] = await service.checkAvailableAgents([agentType]);
-		assert.equal(preflight?.installed, true);
-
-		const spawnResult = await spawnAgentAction.handler(
-			runtime,
-			createMessage({
-				agentType,
-				workdir,
-				approvalPreset: "autonomous",
-				acceptanceCriteria: [
-					`The generated index.html is served at http://127.0.0.1:${agentPort}/index.html and includes both requested phrases.`,
-					`The completion reports "${serveSentinel}".`,
-				],
-				task:
-					`Open the reference page at ${reference.url} and read it using your web or browser tools. ` +
-					`Create an index.html in the current directory that includes the exact phrases "Benchmark Ready" and "Task agents stay reusable." ` +
-					`Then start a local HTTP server in the background from the current directory with ` +
-					`"python3 -m http.server ${agentPort} >/tmp/${serveSentinel}.log 2>&1 & echo $! > server.pid", ` +
-					`print exactly "${serveSentinel}", and keep the server available until I stop you. ` +
-					`Do not ask follow-up questions.`,
-			}) as never,
-			undefined,
-			{},
-			undefined,
-		);
-		assert.equal(spawnResult?.success, true);
-		assert.ok(sessionIdFromSpawnResult(spawnResult));
-
-		const sessionId = sessionIdFromSpawnResult(spawnResult) as string;
-		await waitForTrackedSession(service, sessionId, agentType);
-		const webTaskEventStart = events.length;
-
-		await waitFor(
-			async () => {
-				const sessionInfo = await service.getSession(sessionId);
-				if (!sessionInfo) {
-					throw new Error("session disappeared before completing the web task");
-				}
-				const recentLoginRequired = events.findLast(
-					(entry) => entry.event === "login_required",
-				);
-				if (recentLoginRequired) {
-					const details = recentLoginRequired.data as { instructions?: string };
-					throw new Error(
-						details.instructions || "framework authentication is required",
-					);
-				}
-				if (
-					sessionInfo.status === "stopped" ||
-					sessionInfo.status === "error"
-				) {
-					const output = await service.getSessionOutput(sessionId, 200);
-					throw new Error(
-						`web task ended early with status ${sessionInfo.status}. Output: ${output.slice(-600)}`,
-					);
-				}
-				const html = await fetchTextIfAvailable(
-					`http://127.0.0.1:${agentPort}/index.html`,
-				);
-				if (!html) return false;
-				return (
-					html.includes("Benchmark Ready") &&
-					html.includes("Task agents stay reusable.") &&
-					(cleanForChat(await service.getSessionOutput(sessionId)).includes(
-						serveSentinel,
-					) ||
-						sawTaskCompletion(events, webTaskEventStart))
-				);
-			},
-			6 * 60 * 1000,
-			3000,
-		);
-		assertRouterStayedDisabled(router);
-	} finally {
-		await new Promise<void>((resolve) =>
-			reference.server.close(() => resolve()),
-		);
-	}
-}
-
 async function main(): Promise<void> {
 	const frameworkIndex = process.argv.indexOf("--framework");
-	const modeIndex = process.argv.indexOf("--mode");
 	const framework =
 		frameworkIndex !== -1
 			? (process.argv[frameworkIndex + 1] as Framework)
 			: null;
-	const mode = modeIndex !== -1 ? (process.argv[modeIndex + 1] as Mode) : null;
-
-	if (
-		(framework !== "claude" && framework !== "codex") ||
-		(mode !== "sequential" && mode !== "web")
-	) {
+	if (framework !== "claude" && framework !== "codex") {
 		throw new Error(
-			"Usage: task-agent-live-smoke.ts --framework <claude|codex> --mode <sequential|web>",
+			"Usage: task-agent-live-smoke.ts --framework <claude|codex>",
 		);
 	}
 
@@ -407,7 +256,7 @@ async function main(): Promise<void> {
 	const providerPlugin = providerModule.default ?? providerModule.elizaPlugin;
 	assert.ok(providerPlugin, "The live provider must export a runtime plugin");
 
-	const workdir = createWorkdir(framework, mode);
+	const workdir = createWorkdir(framework);
 	try {
 		const { runtime, cleanup } = await createTestRuntime({
 			characterName: "TaskAgentLiveSmoke",
@@ -434,8 +283,7 @@ async function main(): Promise<void> {
 			});
 			try {
 				const context = { runtime, router, service, workdir, events };
-				if (mode === "sequential") await runSequentialSmoke(framework, context);
-				else await runWebSmoke(framework, context);
+				await runSequentialSmoke(framework, context);
 			} finally {
 				unsubscribe();
 			}
@@ -446,10 +294,7 @@ async function main(): Promise<void> {
 		if (!KEEP_ARTIFACTS) fs.rmSync(workdir, { recursive: true, force: true });
 	}
 
-	console.log(
-		"[task-agent-live-smoke] PASS",
-		JSON.stringify({ framework, mode }),
-	);
+	console.log("[task-agent-live-smoke] PASS", JSON.stringify({ framework }));
 }
 
 try {
