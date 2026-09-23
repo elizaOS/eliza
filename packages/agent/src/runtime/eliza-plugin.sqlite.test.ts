@@ -20,13 +20,11 @@ it("initializes the selected native host and persists graph and pendant state in
     join(directory, "agent.sqlite"),
     agentId,
   );
-  const plugin = preparePluginForSelectedDatabase(
-    createElizaPlugin({
-      workspaceDir: join(directory, "workspace"),
-      sessionStorePath: join(directory, "sessions.json"),
-      agentId,
-    }),
-  );
+  const plugin = createElizaPlugin({
+    workspaceDir: join(directory, "workspace"),
+    sessionStorePath: join(directory, "sessions.json"),
+    agentId,
+  });
   const runtime = new AgentRuntime({
     agentId,
     adapter,

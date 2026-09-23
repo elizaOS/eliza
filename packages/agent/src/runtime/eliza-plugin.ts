@@ -84,6 +84,7 @@ import { NotificationPushService } from "../services/push/notification-push-serv
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import { registerTriggerTaskWorker } from "../triggers/runtime.ts";
 import { setCustomActionsRuntime } from "./custom-actions.ts";
+import { preparePluginForSelectedDatabase } from "./database-selection.ts";
 import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
@@ -331,5 +332,5 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     },
   };
 
-  return plugin;
+  return preparePluginForSelectedDatabase(plugin);
 }
