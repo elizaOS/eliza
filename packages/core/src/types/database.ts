@@ -959,6 +959,17 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		options?: { entityContext?: UUID },
 	): Promise<T>;
 
+	/**
+	 * Runs a trusted lifecycle operation with a separate agent-bound adapter.
+	 * Must retain the connection's tenant/entity authority and leave the caller's
+	 * scope unchanged. Single-agent stores may reject a different agent id.
+	 * The callback must not close or retain the temporary adapter.
+	 */
+	withAgentScope?<T>(
+		agentId: UUID,
+		callback: (scoped: IDatabaseAdapter<DB>) => Promise<T>,
+	): Promise<T>;
+
 	/** Get entities for multiple rooms (one entry per roomId, same order). */
 	getEntitiesForRooms(
 		roomIds: UUID[],

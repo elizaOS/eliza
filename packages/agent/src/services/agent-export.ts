@@ -27,6 +27,7 @@ import type {
   Character,
   Component,
   Entity,
+  IDatabaseAdapter,
   Log,
   Memory,
   Relationship,
@@ -973,12 +974,51 @@ function createIdRemapper(
 // Data restoration
 // ---------------------------------------------------------------------------
 
+/** Rehydrates database timestamps only after the JSON manifest has been verified. */
+function restoreGraphCreatedAt<T extends Entity | Room | World>(row: T): T {
+  if (!("createdAt" in row) || row.createdAt === undefined) return row;
+  const value = row.createdAt;
+  if (typeof value !== "string" && typeof value !== "number") {
+    throw new AgentExportError(
+      "Imported graph createdAt must be a valid timestamp",
+    );
+  }
+  const createdAt = new Date(value);
+  if (!Number.isFinite(createdAt.getTime())) {
+    throw new AgentExportError(
+      "Imported graph createdAt must be a valid timestamp",
+    );
+  }
+  return { ...row, createdAt };
+}
+
 async function restoreAgentData(
   runtime: AgentRuntime,
   payload: AgentExportPayload,
 ): Promise<ImportResult> {
-  const db = runtime.adapter;
   const newAgentId = crypto.randomUUID() as UUID;
+  if (!runtime.adapter.withAgentScope) {
+    throw new AgentExportError(
+      "This database adapter cannot safely import a separate agent",
+      {
+        code: "AGENT_IMPORT_SCOPE_UNSUPPORTED",
+      },
+    );
+  }
+  return runtime.adapter.withAgentScope(newAgentId, (db) =>
+    restoreAgentDataInScope(db, payload, newAgentId),
+  );
+}
+
+async function restoreAgentDataInScope(
+  db: IDatabaseAdapter,
+  payload: AgentExportPayload,
+  newAgentId: UUID,
+): Promise<ImportResult> {
+  // Validate every graph timestamp before creating the target agent or any rows.
+  const worlds = payload.worlds.map(restoreGraphCreatedAt);
+  const rooms = payload.rooms.map(restoreGraphCreatedAt);
+  const entities = payload.entities.map(restoreGraphCreatedAt);
   const remap = createIdRemapper(
     new Map([[payload.sourceAgentId, newAgentId]]),
   );
@@ -1015,7 +1055,7 @@ async function restoreAgentData(
 
   // 2. Create worlds
   let worldsImported = 0;
-  for (const world of payload.worlds) {
+  for (const world of worlds) {
     const newWorld: World = {
       ...world,
       id: remap(world.id) as UUID,
@@ -1029,7 +1069,7 @@ async function restoreAgentData(
   // 3. Create rooms
   let roomsImported = 0;
   const roomBatch: Room[] = [];
-  for (const room of payload.rooms) {
+  for (const room of rooms) {
     const newRoom: Room = {
       ...room,
       id: remap(room.id) as UUID,
@@ -1047,7 +1087,7 @@ async function restoreAgentData(
   // 4. Create entities
   let entitiesImported = 0;
   const entityBatch: Entity[] = [];
-  for (const entity of payload.entities) {
+  for (const entity of entities) {
     const newEntity: Entity = {
       ...entity,
       id: remap(entity.id ?? "") as UUID,
@@ -1244,7 +1284,14 @@ export async function exportAgent(
     includeLogs: options.includeLogs ?? false,
   });
 
-  const jsonString = JSON.stringify(payload);
+  // Extraction has already applied the bounded manifest walk to each collection.
+  // Hash the serialized snapshot too: database Date values become ISO strings
+  // on the wire, and import verifies that representation rather than Date objects.
+  const wirePayload = toAgentExportPayload(
+    PayloadSchema.parse(JSON.parse(JSON.stringify(payload))),
+  );
+  wirePayload.manifest = buildExportManifest(wirePayload);
+  const jsonString = JSON.stringify(wirePayload);
   const compressed = gzipSync(Buffer.from(jsonString, "utf-8"));
 
   logger.info(

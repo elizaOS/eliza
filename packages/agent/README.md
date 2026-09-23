@@ -746,3 +746,23 @@ A measured host must compose those identity controls explicitly. Checks cannot
 recall already delivered bytes or undo effects accepted before revocation.
 Event-hub targeted-send counts represent accepted send attempts, including queued
 attempts, and are not application delivery receipts.
+
+## Transfer archive restoration
+
+Transfer exports authenticate the JSON representation of each collection, including
+serialized database timestamps. Import verifies that manifest before rehydrating
+graph timestamps or writing data. A new agent is restored through the adapter's
+`withAgentScope` lifecycle capability; adapters without it fail before creating
+rows. PostgreSQL/PGlite perform the scoped database writes in a transaction while
+retaining the importing connection's entity authority and original agent scope.
+
+SQLite files have a single owner and reject imports for a different agent; create
+a separate database rather than weakening the file's ownership checks. The
+ephemeral adapter supports separate agent scopes and cache keys but retains its
+existing non-atomic transaction semantics.
+
+A transfer archive is not an exact storage rollback: IDs are remapped and vectors
+are intentionally omitted. BGE migration still requires a verified full storage
+snapshot. Historical exports with mismatched manifests are not silently accepted;
+retain the original encrypted artifact and validate any deliberate recovery copy
+separately before using it.

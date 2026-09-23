@@ -837,3 +837,20 @@ describe("durable SQLite agent adapter", () => {
     expect((await reopened.getCaches(["crash"])).has("crash")).toBe(false);
   });
 });
+
+it("rejects a different lifecycle agent scope before invoking the callback", async () => {
+  const adapter = await open();
+  let called = false;
+  await expect(
+    adapter.withAgentScope(id(), async () => {
+      called = true;
+    }),
+  ).rejects.toMatchObject({ code: "SQLITE_AGENT_MISMATCH" });
+  expect(called).toBe(false);
+  await adapter.withAgentScope(agentId, (scoped) =>
+    scoped.setCaches([{ key: "scope-proof", value: "owner" }]),
+  );
+  expect((await adapter.getCaches(["scope-proof"])).get("scope-proof")).toBe(
+    "owner",
+  );
+});
