@@ -51,7 +51,11 @@ describe("planner-loop — terminal-only FINISH without evaluator message", () =
 					.mockResolvedValueOnce({
 						text: "",
 						toolCalls: [
-							{ id: "call-1", name: "CAPTURE_ANSWER", arguments: {} },
+							{
+								id: "call-1",
+								name: "CAPTURE_ANSWER",
+								arguments: { eliza_turn_scope: "final" },
+							},
 						],
 						usage: {
 							promptTokens: 100,
@@ -76,6 +80,8 @@ describe("planner-loop — terminal-only FINISH without evaluator message", () =
 						text: JSON.stringify({
 							success: true,
 							decision: "FINISH",
+							thought:
+								"The terminal answer agrees with the recorded capture or its grounded correction.",
 							...(correction ? { messageToUser: correction } : {}),
 						}),
 					}),
@@ -93,6 +99,7 @@ describe("planner-loop — terminal-only FINISH without evaluator message", () =
 				executeToolCall,
 			});
 
+			expect(executeToolCall).toHaveBeenCalledTimes(1);
 			expect(result.status).toBe("finished");
 			expect(result.finalMessage).toBe(correction ?? proposed);
 			// Planner ×2 + evaluator ×2 — no extra replan rounds.
