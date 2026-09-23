@@ -6,6 +6,8 @@ import {
   createPublicKey,
   diffieHellman,
   generateKeyPairSync,
+  sign,
+  verify,
 } from "node:crypto";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
@@ -384,6 +386,115 @@ it("runs the real encryption CLI and writes exclusive private ciphertext without
     expect(second.code).toBe(1);
     expect(second.text).not.toContain("complete-雪-");
     expect(await readFile(output, "utf8")).toBe(saved);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("rejects genuinely signed malformed release fields before importing application code", async () => {
+  const f = await fixture();
+  const directory = await mkdtemp(
+    join(tmpdir(), "eliza-signed-bootstrap-schema-"),
+  );
+  try {
+    const entry = join(directory, "entry.mjs");
+    const marker = join(directory, "imported");
+    const config = join(directory, "config.json");
+    await writeFile(
+      entry,
+      `import {writeFileSync} from "node:fs"; writeFileSync(${JSON.stringify(marker)}, "imported");`,
+    );
+    await writeFile(
+      config,
+      JSON.stringify({
+        entry,
+        publicKey: f.publicPem,
+        environmentNames: ["SYNTHETIC_SECRET"],
+      }),
+    );
+    const bootstrap = fileURLToPath(
+      new URL("../../deploy/confidential-bootstrap.mjs", import.meta.url),
+    );
+    const valid = {
+      ...JSON.parse(Buffer.from(f.input.envelope.payload, "base64").toString()),
+      notBefore: new Date(Date.now() - 86400000).toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+    };
+    const signedEnvelope = (value: object, domain: string) => {
+      const payload = Buffer.from(JSON.stringify(value));
+      const message = Buffer.concat([Buffer.from(domain), payload]);
+      const signature = sign(null, message, f.privatePem);
+      expect(verify(null, message, f.publicPem, signature)).toBe(true);
+      return {
+        payload: payload.toString("base64"),
+        signature: signature.toString("base64"),
+      };
+    };
+    const invoke = (payload: object) => {
+      const release = signedEnvelope(payload, "eliza-dstack-release-v1\0");
+      const records = [
+        {
+          key: "ELIZA_DSTACK_RELEASE_POLICY_JSON",
+          value: JSON.stringify(release),
+        },
+        { key: "SYNTHETIC_SECRET", value: "synthetic-complete-value" },
+      ];
+      const launch = signedEnvelope(
+        {
+          schemaVersion: 1,
+          releasePayloadHash: createHash("sha256")
+            .update(Buffer.from(release.payload, "base64"))
+            .digest("hex"),
+          environmentHash: createHash("sha256")
+            .update(JSON.stringify(records))
+            .digest("hex"),
+        },
+        "eliza-dstack-launch-v1\0",
+      );
+      return spawnSync(process.execPath, [bootstrap, config], {
+        env: {
+          ...Object.fromEntries(records.map(({ key, value }) => [key, value])),
+          ELIZA_DSTACK_LAUNCH_AUTHORIZATION_JSON: JSON.stringify(launch),
+        },
+        encoding: "utf8",
+      });
+    };
+    for (const [field, value] of [
+      ["appId", [valid.appId]],
+      ["composeHash", [valid.composeHash]],
+      ["osImageHash", [valid.osImageHash]],
+      ["notBefore", [valid.notBefore]],
+      ["expiresAt", [valid.expiresAt]],
+      ["notBefore", new Date(valid.notBefore).toUTCString()],
+      ["expiresAt", valid.expiresAt.replace("Z", "+00:00")],
+      ["notBefore", "2025-02-29T00:00:00Z"],
+      ["notBefore", `${valid.notBefore}\n`],
+    ] as const) {
+      const result = invoke({ ...valid, [field]: value });
+      expect(result.status, `${field}: ${result.stderr}`).toBe(1);
+      await expect(readFile(marker)).rejects.toThrow();
+    }
+    for (const precision of ["minutes", "seconds", "fractional"]) {
+      const format = (value: string) =>
+        precision === "minutes"
+          ? value.replace(/:\d{2}\.\d{3}Z$/, "Z")
+          : precision === "seconds"
+            ? value.replace(/\.\d{3}Z$/, "Z")
+            : value.replace(/\.\d{3}Z$/, ".123456789Z");
+      const release = {
+        ...f.input.release,
+        notBefore: format(valid.notBefore),
+        expiresAt: format(valid.expiresAt),
+      };
+      // The real writer must accept every timestamp form admitted by this test.
+      const writerEnvelope = signConfidentialRelease(release, f.privatePem);
+      const result = invoke(
+        JSON.parse(Buffer.from(writerEnvelope.payload, "base64").toString()),
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(await readFile(marker, "utf8")).toBe("imported");
+      await rm(marker);
+    }
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

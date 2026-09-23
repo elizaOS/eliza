@@ -35,6 +35,26 @@ function envelope(value, key, domain) {
   return { bytes, payload: JSON.parse(bytes.toString("utf8")) };
 }
 
+function utcTimestamp(value) {
+  // Match the release writer's UTC ISO form without loading application dependencies.
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?Z$/.test(
+      value,
+    ) ||
+    !value.endsWith("Z")
+  )
+    throw new Error("Invalid release timestamp");
+  const timestamp = Date.parse(value);
+  if (
+    !Number.isFinite(timestamp) ||
+    new Date(timestamp).toISOString().slice(0, 10) !== value.slice(0, 10)
+  ) {
+    throw new Error("Invalid release calendar date");
+  }
+  return timestamp;
+}
+
 try {
   if (
     process.versions.node !== "24.15.0" ||
@@ -81,14 +101,21 @@ try {
   ]);
   if (
     release.payload.schemaVersion !== 1 ||
+    typeof release.payload.appId !== "string" ||
+    release.payload.appId.length !== 40 ||
+    typeof release.payload.composeHash !== "string" ||
+    release.payload.composeHash.length !== 64 ||
+    typeof release.payload.osImageHash !== "string" ||
+    release.payload.osImageHash.length !== 64 ||
+    typeof release.payload.variant !== "string" ||
     !/^[a-f0-9]{40}$/.test(release.payload.appId) ||
     !/^[a-f0-9]{64}$/.test(release.payload.composeHash) ||
     !/^[a-f0-9]{64}$/.test(release.payload.osImageHash) ||
     !["dstack-tdx", "dstack-nitro-enclave"].includes(release.payload.variant)
   )
     throw new Error("Invalid release identity");
-  const before = Date.parse(release.payload.notBefore);
-  const expires = Date.parse(release.payload.expiresAt);
+  const before = utcTimestamp(release.payload.notBefore);
+  const expires = utcTimestamp(release.payload.expiresAt);
   if (
     !Number.isFinite(before) ||
     !Number.isFinite(expires) ||
