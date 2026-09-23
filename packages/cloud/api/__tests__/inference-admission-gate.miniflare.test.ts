@@ -170,7 +170,11 @@ describe("Miniflare Durable Object integration", () => {
     path: string,
     body: Record<string, unknown>,
     gateName = "org-miniflare",
-  ): Promise<{ readonly status: number; text(): Promise<string> }> {
+  ): Promise<{
+    readonly status: number;
+    readonly handlerMs: string | null;
+    text(): Promise<string>;
+  }> {
     const response = await miniflare.dispatchFetch(`https://gate.test${path}`, {
       method: "POST",
       headers: {
@@ -182,9 +186,30 @@ describe("Miniflare Durable Object integration", () => {
     });
     return {
       status: response.status,
+      handlerMs: response.headers.get("x-eliza-gate-handler-ms"),
       text: async () => await response.text(),
     };
   }
+
+  test("internal handler timing crosses a real Durable Object binding without changing quota", async () => {
+    const gate = "rate-limit:v2:handler-timing";
+    const policy = {
+      endpointType: "completions",
+      windowMs: 60000,
+      maxRequests: 1,
+    };
+    const warm = await post("/rate-limit-warm", {}, gate);
+    const allowed = await post("/rate-limit", policy, gate);
+    const denied = await post("/rate-limit", policy, gate);
+    expect(allowed.status).toBe(200);
+    expect(denied.status).toBe(429);
+    expect(JSON.parse(await denied.text()).allowed).toBe(false);
+    for (const response of [warm, allowed, denied]) {
+      expect(response.handlerMs).not.toBeNull();
+      expect(Number.isFinite(Number(response.handlerMs))).toBe(true);
+      expect(Number(response.handlerMs)).toBeGreaterThanOrEqual(0);
+    }
+  });
 
   // Match the cloud test lane's budget because Miniflare startup can be delayed
   // when this integration test runs alongside the rest of the batched suite.
