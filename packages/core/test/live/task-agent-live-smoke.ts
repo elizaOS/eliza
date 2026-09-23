@@ -5,6 +5,7 @@ import { createServer, type Server } from "node:http";
 import net from "node:net";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
+import { selectLiveProvider } from "@elizaos/testing/live-provider";
 import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 
 const {
@@ -192,6 +193,10 @@ async function runSequentialSmoke(
 			agentType,
 			workdir,
 			approvalPreset: "autonomous",
+			acceptanceCriteria: [
+				`The file ${firstFileName} contains exactly "${agentType}-first".`,
+				`The completion reports "${firstSentinel}".`,
+			],
 			task:
 				`Create a file named ${firstFileName} in the current directory containing exactly "${agentType}-first". ` +
 				`Then print exactly "${firstSentinel}". Do not ask follow-up questions.`,
@@ -304,6 +309,10 @@ async function runWebSmoke(
 				agentType,
 				workdir,
 				approvalPreset: "autonomous",
+				acceptanceCriteria: [
+					`The generated index.html is served at http://127.0.0.1:${agentPort}/index.html and includes both requested phrases.`,
+					`The completion reports "${serveSentinel}".`,
+				],
 				task:
 					`Open the reference page at ${reference.url} and read it using your web or browser tools. ` +
 					`Create an index.html in the current directory that includes the exact phrases "Benchmark Ready" and "Task agents stay reusable." ` +
@@ -389,13 +398,26 @@ async function main(): Promise<void> {
 		);
 	}
 
+	const provider = selectLiveProvider();
+	assert.ok(
+		provider,
+		"A live model provider is required for parent goal verification",
+	);
+	const providerModule = await import(provider.pluginPackage);
+	const providerPlugin = providerModule.default ?? providerModule.elizaPlugin;
+	assert.ok(providerPlugin, "The live provider must export a runtime plugin");
+
 	const workdir = createWorkdir(framework, mode);
 	try {
 		const { runtime, cleanup } = await createTestRuntime({
 			characterName: "TaskAgentLiveSmoke",
 			// "1" survives runtime setting normalization; the router stays disabled.
-			settings: { SERVER_PORT: "31337", ACPX_SUB_AGENT_ROUTER_DISABLED: "1" },
-			plugins: [agentOrchestratorPlugin],
+			settings: {
+				...provider.env,
+				SERVER_PORT: "31337",
+				ACPX_SUB_AGENT_ROUTER_DISABLED: "1",
+			},
+			plugins: [providerPlugin, agentOrchestratorPlugin],
 		});
 		try {
 			const router = (await runtime.getServiceLoadPromise(
