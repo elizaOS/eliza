@@ -754,6 +754,8 @@ describe("AcpService", () => {
     closeOk(reg);
     const result = await promise;
 
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(nativeClientMock.instances).toHaveLength(0);
     expect(result.name).toBe("s1");
     expect(result.status).toBe("ready");
     expect(await service.listSessions()).toHaveLength(1);
@@ -1323,47 +1325,6 @@ describe("AcpService", () => {
     expect(nativeClientMock.instances[0]?.opts.command).toBe("pi-agent");
   });
 
-  it("still supports the legacy CLI transport when explicitly configured", async () => {
-    const reg = nextProc();
-    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "cli" }));
-    await service.start();
-
-    const spawned = service.spawnSession({
-      name: "explicit-cli",
-      agentType: "codex",
-      workdir: "/tmp/acp-test",
-    });
-    await waitForSpawn(reg);
-    closeOk(reg);
-    await spawned;
-
-    expect(spawnMock).toHaveBeenCalledTimes(1);
-    expect(nativeClientMock.instances).toHaveLength(0);
-  });
-
-  it("uses configured native commands when explicitly configured", async () => {
-    const service = new AcpService(
-      runtime({
-        ELIZA_ACP_TRANSPORT: "native",
-        ELIZA_CODEX_ACP_COMMAND: "codex-acp --stdio",
-      }),
-    );
-    await service.start();
-
-    const result = await service.spawnSession({
-      name: "native",
-      agentType: "codex",
-      workdir: "/tmp/acp-test",
-    });
-
-    expect(result.status).toBe("ready");
-    expect(spawnMock).not.toHaveBeenCalled();
-    expect(nativeClientMock.instances).toHaveLength(1);
-    expect(nativeClientMock.instances[0]?.opts.command).toBe(
-      "codex-acp --stdio",
-    );
-  });
-
   it("preserves custom Codex ACP commands verbatim", async () => {
     const service = new AcpService(
       runtime({
@@ -1725,6 +1686,7 @@ describe("AcpService", () => {
     const client = firstNativeClient();
 
     expect(spawnMock).not.toHaveBeenCalled();
+    expect(nativeClientMock.instances).toHaveLength(1);
     expect(client?.opts.command).toBe("codex-acp --stdio");
     expect(client?.opts.cwd).toBe(resolvedNativeWorkdir);
     expect(client?.createSession).toHaveBeenCalledWith(resolvedNativeWorkdir);
@@ -3034,35 +2996,6 @@ describe("AcpService", () => {
     ]);
   });
 
-  it("native sendPrompt rejects overlapping prompts before swapping event handlers", async () => {
-    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
-    await service.start();
-    const { sessionId } = await service.spawnSession({
-      name: "native-overlap",
-      agentType: "codex",
-      workdir: "/tmp/acp-test",
-    });
-    const client = firstNativeClient();
-    let resolvePrompt: (value: { stopReason: string }) => void = () =>
-      undefined;
-    client.prompt.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolvePrompt = resolve;
-        }),
-    );
-
-    const first = service.sendPrompt(sessionId, "first");
-    await new Promise((resolve) => setImmediate(resolve));
-
-    await expect(service.sendPrompt(sessionId, "second")).rejects.toThrow(
-      /already busy/,
-    );
-    resolvePrompt({ stopReason: "end_turn" });
-    await first;
-    expect(client.prompt).toHaveBeenCalledTimes(1);
-  });
-
   it("claims a promptable session before an idle reclaim can race a follow-up", async () => {
     const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
     await service.start();
@@ -3510,61 +3443,46 @@ describe("AcpService", () => {
     expect((await service.getSession(sessionId))?.status).toBe("cancelled");
   });
 
-  it("cancelSession sends SIGTERM then SIGKILL after grace", async () => {
-    const create = nextProc();
-    const service = new AcpService(runtime());
-    await service.start();
-    const spawned = service.spawnSession({
-      name: "s3",
-      agentType: "codex",
-      workdir: "/tmp/acp-test",
-    });
-    await waitForSpawn(create);
-    closeOk(create);
-    const { sessionId } = await spawned;
+  it.each(["SIGTERM", "SIGKILL"] as const)(
+    "settles cancellation after the child exits on %s",
+    async (exitSignal) => {
+      const create = nextProc();
+      const service = new AcpService(runtime());
+      const events: string[] = [];
+      service.onSessionEvent((_sid, event) => events.push(event));
+      await service.start();
+      const spawned = service.spawnSession({
+        name: "cancel-active",
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+      });
+      await waitForSpawn(create);
+      closeOk(create);
+      const { sessionId } = await spawned;
 
-    const prompt = nextProc();
-    void service.sendPrompt(sessionId, "long running").catch(() => undefined);
-    await waitForSpawn(prompt);
-    void service.cancelSession(sessionId).catch(() => undefined);
-    // give cancelSession a tick to call kill
-    await new Promise((resolve) => setImmediate(resolve));
+      const prompt = nextProc();
+      const sent = service.sendPrompt(sessionId, "long running");
+      await waitForSpawn(prompt);
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const cancelled = service.cancelSession(sessionId);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(prompt.proc.kill).toHaveBeenCalledWith("SIGTERM");
+      expect(prompt.proc.kill).not.toHaveBeenCalledWith("SIGKILL");
+      if (exitSignal === "SIGKILL") {
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(prompt.proc.kill).toHaveBeenCalledWith("SIGKILL");
+      }
+      prompt.proc.emit("close", 130, exitSignal);
 
-    expect(prompt.proc.kill).toHaveBeenCalledWith("SIGTERM");
-    prompt.proc.emit("close", 130, "SIGTERM");
-  });
-
-  it("preserves cancelled status when cancelling an in-flight prompt", async () => {
-    const create = nextProc();
-    const service = new AcpService(runtime());
-    const events: string[] = [];
-    service.onSessionEvent((_sid, event) => events.push(event));
-    await service.start();
-    const spawned = service.spawnSession({
-      name: "cancel-active",
-      agentType: "codex",
-      workdir: "/tmp/acp-test",
-    });
-    await waitForSpawn(create);
-    closeOk(create);
-    const { sessionId } = await spawned;
-
-    const prompt = nextProc();
-    const sent = service.sendPrompt(sessionId, "long running");
-    await waitForSpawn(prompt);
-    const cancelled = service.cancelSession(sessionId);
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(prompt.proc.kill).toHaveBeenCalledWith("SIGTERM");
-    prompt.proc.emit("close", 130, "SIGTERM");
-
-    await cancelled;
-    const result = await sent;
-    expect(result.stopReason).toBe("cancelled");
-    expect(result.error).toBeUndefined();
-    expect((await service.getSession(sessionId))?.status).toBe("cancelled");
-    expect(events).toContain("cancelled");
-    expect(events).not.toContain("error");
-  });
+      await cancelled;
+      const result = await sent;
+      expect(result.stopReason).toBe("cancelled");
+      expect(result.error).toBeUndefined();
+      expect((await service.getSession(sessionId))?.status).toBe("cancelled");
+      expect(events).toContain("cancelled");
+      expect(events).not.toContain("error");
+    },
+  );
 
   it("keeps a typed CLI terminal failure authoritative over a later cancellation", async () => {
     const create = nextProc();
@@ -4403,6 +4321,7 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
     finishA?.();
     await promptA;
 
+    expect(client.prompt).toHaveBeenCalledTimes(1);
     expect(terminal).toHaveLength(1);
     expect(terminal[0]?.snapshot?.metadata?.taskId).toBe("task-a");
     expect(terminal[0]?.turnId).toMatch(/^[0-9a-f-]{36}$/);
