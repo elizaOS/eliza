@@ -37,7 +37,7 @@ public class ElizaBootReceiver extends BroadcastReceiver {
         // installs must not try hidden AppOpsManager#setMode because Android
         // will reject it with MANAGE_APP_OPS_MODES and log a scary startup
         // warning even though local chat/voice still work.
-        if (isAospBuild(context) && isBrandedDevice()) {
+        if (BuildConfig.AOSP_BUILD && isBrandedDevice()) {
             allowUsageStatsAppOp(context);
         } else {
             Log.i(TAG, "Skipping GET_USAGE_STATS appop auto-grant on non-privileged APK install.");
@@ -60,15 +60,6 @@ public class ElizaBootReceiver extends BroadcastReceiver {
         return Intent.ACTION_BOOT_COMPLETED.equals(action)
             || Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action)
             || "android.intent.action.MY_PACKAGE_REPLACED".equals(action);
-    }
-
-    private static boolean isAospBuild(Context context) {
-        try {
-            Class<?> buildConfig = Class.forName(context.getPackageName() + ".BuildConfig");
-            return buildConfig.getField("AOSP_BUILD").getBoolean(null);
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
-            return false;
-        }
     }
 
     private static void allowUsageStatsAppOp(Context context) {
