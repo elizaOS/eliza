@@ -49,7 +49,7 @@ elizaOS runtime and explicitly select the model-provider plugin they require.
 ## Commands
 
 ```bash
-bun run --cwd packages/test test         # discover and validate every scenario
+bun run --cwd packages/test test         # run guard tests, then validate every scenario
 bun run --cwd packages/test typecheck    # typecheck the scenario corpus
 bun run --cwd packages/test format:check
 ```
