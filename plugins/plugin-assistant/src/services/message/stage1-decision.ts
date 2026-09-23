@@ -957,7 +957,7 @@ export async function generateStage1Decision(
       );
       const refreshedContext = await createV5MessageContextObject({
         ...args,
-        includeActionDiscovery: discoveryEnabled ? "index" : true,
+        includeActionDiscovery: args.codingMode ? true : "reference",
         userRoles: [refreshedRole],
         availableContexts,
       });

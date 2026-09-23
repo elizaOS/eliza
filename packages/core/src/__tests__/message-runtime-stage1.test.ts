@@ -2863,6 +2863,16 @@ describe("runV5MessageRuntimeStage1", () => {
 				replyText: "The reference is available.",
 			}),
 		]);
+		runtime.actions = [
+			{
+				name: "UNRELATED_CATALOG_ACTION",
+				description: "A complete unrelated plugin operation.",
+				similes: [],
+				examples: [],
+				validate: async () => true,
+				handler: async () => ({ success: true }),
+			},
+		];
 		runtime.contexts = new ContextRegistry([
 			{ id: "simple", description: "Direct replies." },
 			{
@@ -2884,6 +2894,12 @@ describe("runV5MessageRuntimeStage1", () => {
 				},
 		);
 		expect(calls).toHaveLength(2);
+		for (const call of calls) {
+			const input = JSON.stringify(call.messages);
+			expect(input).not.toContain("UNRELATED_CATALOG_ACTION");
+			expect(input).not.toContain("A complete unrelated plugin operation.");
+			expect(input).toContain("DISCOVER_TOOLS");
+		}
 		expect(calls[0].messages[0]).toEqual(calls[1].messages[0]);
 		expect(calls[0].providerOptions.eliza.prefixHash).toBe(
 			calls[1].providerOptions.eliza.prefixHash,
@@ -2971,7 +2987,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(wire).toContain(retained.trim());
 		expect(wire).not.toContain(removed.trim());
 		expect(wire).not.toContain("removed_context");
-		expect(wire).toContain("CURRENT_ACTION");
+		expect(wire).not.toContain("CURRENT_ACTION");
 		expect(wire).not.toContain("Current action-only reference body Ω.");
 		expect(wire).toContain("DISCOVER_TOOLS");
 		expect(wire).not.toContain("REVOKED_ACTION");
