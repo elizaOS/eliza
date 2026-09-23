@@ -10,9 +10,11 @@
 
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "vitest";
+import { runOwnedChild } from "../../scripts/live-pi-linked-account.mjs";
 
 const RUN_LIVE = process.env.ORCHESTRATOR_LIVE === "1";
 const RUN_WEB_LIVE = process.env.ORCHESTRATOR_LIVE_WEB === "1";
@@ -42,47 +44,40 @@ async function runLiveSmokeScript(
   framework: Framework,
   mode: "sequential" | "web",
 ): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const bunBinary = process.execPath;
-    const child = spawn(
-      bunBinary,
-      [
-        runNodeTsxScript,
-        liveSmokeScript,
-        "--framework",
-        framework,
-        "--mode",
-        mode,
-      ],
-      {
-        cwd: repoRoot,
-        env: { ...process.env, ORCHESTRATOR_LIVE: "1", PWD: repoRoot },
-        stdio: "inherit",
-      },
+  const args = [
+    runNodeTsxScript,
+    liveSmokeScript,
+    "--framework",
+    framework,
+    "--mode",
+    mode,
+  ];
+  const options = {
+    cwd: repoRoot,
+    env: { ...process.env, ORCHESTRATOR_LIVE: "1", PWD: repoRoot },
+    stdio: "inherit" as const,
+  };
+  // Leave time for owned teardown before Vitest's twelve-minute deadline.
+  const timeout = 12 * 60 * 1000 - 10_000;
+  let code: number | null;
+  if (process.platform === "win32") {
+    // Windows retains direct child supervision; POSIX group checks are not portable.
+    const child = spawn(process.execPath, args, { ...options, timeout });
+    const [exitCode, signal] = await once(child, "exit");
+    assert.equal(
+      signal,
+      null,
+      `${framework} ${mode} live smoke was terminated`,
     );
-
-    child.on("error", reject);
-    child.on("exit", (code, signal) => {
-      if (signal) {
-        reject(
-          new Error(
-            `${framework} ${mode} live smoke exited via signal ${signal}`,
-          ),
-        );
-        return;
-      }
-      try {
-        assert.equal(
-          code,
-          0,
-          `${framework} ${mode} live smoke exited with code ${code ?? -1}`,
-        );
-        resolve();
-      } catch (error) {
-        reject(error);
-      }
-    });
-  });
+    code = exitCode;
+  } else {
+    ({ code } = await runOwnedChild(process.execPath, args, options, timeout));
+  }
+  assert.equal(
+    code,
+    0,
+    `${framework} ${mode} live smoke exited with code ${code}`,
+  );
 }
 
 liveDescribe("task-agent live smoke (claude)", () => {
