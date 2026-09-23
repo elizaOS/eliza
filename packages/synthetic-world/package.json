@@ -26,7 +26,7 @@
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/cloud-test-mocks": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "bun-types": "*",
+    "bun-types": "1.3.14",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "0.45.2"
   },

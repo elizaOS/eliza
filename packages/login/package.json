@@ -80,7 +80,7 @@
     "@elizaos/common": "workspace:*"
   },
   "devDependencies": {
-    "@types/bun": "1.4.2",
+    "@types/bun": "1.3.14",
     "typescript": "^6.0.3",
     "@playwright/test": "^1.63.0",
     "@typescript/native": "npm:typescript@^7.0.2"
