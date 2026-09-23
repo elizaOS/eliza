@@ -4,7 +4,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { normalizeChatIdempotencyKey, REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
+import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
+import { normalizeChatIdempotencyKey } from "@elizaos/shared/conversation-chat-marker";
 
 import {
   type ElizaServerTimingReceipt,

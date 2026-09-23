@@ -76,8 +76,6 @@ import {
 } from "@elizaos/plugin-scheduling";
 import type { ChatFailureKind, ChatTerminalFailure } from "@elizaos/shared";
 import {
-  conversationClientUserMemoryId,
-  type DurableConversationChatMarker,
   isChatFailureKind,
   LOCAL_VOICE_RUNTIME_AGENT_HEADER,
   LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
@@ -89,9 +87,13 @@ import {
   parseChatFailureKind,
   parseChatTerminalFailure,
   parsePositiveInteger,
-  readDurableConversationChatMarker,
 } from "@elizaos/shared";
 import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
+import {
+  conversationClientUserMemoryId,
+  type DurableConversationChatMarker,
+  readDurableConversationChatMarker,
+} from "@elizaos/shared/conversation-chat-marker";
 import {
   parseSharedTodoCutoverSnapshot,
   TodoCutoverContractError,

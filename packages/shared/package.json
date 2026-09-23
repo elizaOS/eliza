@@ -712,6 +712,16 @@
       },
       "import": "./dist/contracts/service-routing.js",
       "default": "./dist/contracts/service-routing.js"
+    },
+    "./conversation-chat-marker": {
+      "types": "./dist/conversation-chat-marker.d.ts",
+      "eliza-source": {
+        "types": "./src/conversation-chat-marker.ts",
+        "import": "./src/conversation-chat-marker.ts",
+        "default": "./src/conversation-chat-marker.ts"
+      },
+      "import": "./dist/conversation-chat-marker.js",
+      "default": "./dist/conversation-chat-marker.js"
     }
   },
   "publishConfig": {

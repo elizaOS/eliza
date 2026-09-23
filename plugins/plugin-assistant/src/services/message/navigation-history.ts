@@ -5,7 +5,7 @@ import { ChannelType, isObjectRecord, type Memory } from "@elizaos/core";
 import {
   conversationClientUserMemoryId,
   readDurableConversationChatMarker,
-} from "@elizaos/shared";
+} from "@elizaos/shared/conversation-chat-marker";
 
 const NAVIGATION_FIELDS = new Set([
   "effect",

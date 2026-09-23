@@ -4,7 +4,7 @@
  * this service enforces active-turn ownership and settled-result retention.
  */
 import { ElizaError } from "@elizaos/core";
-import { normalizeChatIdempotencyKey } from "@elizaos/shared";
+import { normalizeChatIdempotencyKey } from "@elizaos/shared/conversation-chat-marker";
 
 export interface ChatIdempotencyReservation {
   readonly scope: string;

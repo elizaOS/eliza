@@ -244,7 +244,6 @@ export {
 // import the runtime helpers (`ELIZA_DEFAULT_THEME`, `applyThemeToDocument`,
 // etc.) from `@elizaos/ui`.
 export * from "./contracts/theme.js";
-export * from "./conversation-chat-marker.js";
 // db types — canonical handles for the runtime Drizzle database so consumers
 // don't reverse-import the plugin-sql package for type-only uses.
 export type { DrizzleDatabase } from "./db/drizzle-database.js";
