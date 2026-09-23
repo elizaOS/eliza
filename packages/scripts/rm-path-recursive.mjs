@@ -4,7 +4,7 @@
  * macOS/APFS under parallel builds (shell rm -rf can sporadically fail with
  * "Directory not empty" when the tree is huge or files are busy).
  */
-import { rmSync } from "node:fs";
+import { existsSync, realpathSync, rmSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
@@ -63,7 +63,8 @@ export async function removePathRecursive(rel, cwd = process.cwd()) {
 
 if (
   process.argv[1] &&
-  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
+  existsSync(process.argv[1]) &&
+  import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href
 ) {
   const rels = process.argv.slice(2);
   if (rels.length === 0) {
