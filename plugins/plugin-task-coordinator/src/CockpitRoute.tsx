@@ -42,12 +42,11 @@ function TerminalLaunchButtons({
   return (
     <div
       style={{
-        position: "absolute",
-        right: 16,
-        bottom: 16,
         display: "flex",
+        flexShrink: 0,
+        justifyContent: "flex-end",
         gap: 8,
-        zIndex: 10,
+        padding: 16,
       }}
     >
       <Button
@@ -194,11 +193,11 @@ export function CockpitRoute() {
   }
 
   return (
-    <div style={{ position: "relative", height: "100%", minHeight: 0 }}>
+    <div className="eliza-chat-scroll relative flex h-full min-h-0 flex-col overflow-hidden">
       <CockpitView
         rooms={rooms}
         onCreateSession={onCreateSession}
-        className="pb-20"
+        className="min-h-0 flex-1"
         knownRepos={knownRepos}
         repoSuggestionsUnavailable={repoSuggestionsUnavailable}
         busy={busy}

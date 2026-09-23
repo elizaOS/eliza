@@ -57,11 +57,7 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
         (key) => BUILTIN_TAB_PATHS[key] !== navigationPaths[key],
       ),
     ).toEqual([]);
-    const pluginOwnedPaths = new Set([
-      "/phone",
-      "/messages",
-      "/contacts",
-    ]);
+    const pluginOwnedPaths = new Set(["/phone", "/messages", "/contacts"]);
     const hostOwnedNavigationPaths = Object.values(navigationPaths).filter(
       (path) => !pluginOwnedPaths.has(path),
     );
@@ -92,10 +88,6 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
       { slug: "builtin-camera", applicability: "native-platform-gated" },
       {
         slug: "plugin-lifeops-live-test-gui",
-        applicability: "unregistered-remote-bundle",
-      },
-      {
-        slug: "plugin-cockpit-gui",
         applicability: "unregistered-remote-bundle",
       },
     ]);

@@ -4,8 +4,10 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { createZipArchive } from "../../../agent/src/api/zip-utils";
 import { expect, type Locator, type Page, type Route } from "@playwright/test";
+import { createZipArchive } from "../../../agent/src/api/zip-utils";
+
+import { installPersistentSseFixture } from "./helpers/persistent-sse";
 
 const ONE_PX_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -2422,8 +2424,8 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
   // Orchestrator task-progress rail (orchestrator-task-widget) — polls a compact
   // snapshot (`GET /api/orchestrator/widgets`) and subscribes to its SSE stream
   // (`/widgets/stream`) wherever it mounts. The Node-only agent-orchestrator
-  // plugin is absent from the keyless smoke stack, so these routes answer 501
-  // exactly like /orchestrator/status and /tasks above; a fresh agent has no
+  // plugin is absent from the keyless smoke stack. A persistent HTTP fixture
+  // owns the SSE connection just as the JSON fixtures own status/tasks; a fresh agent has no
   // orchestrator tasks, so the canonical empty snapshot matches real zero-state
   // and keeps the diagnostics guard clean.
   const emptyOrchestratorWidgetSnapshot = {
@@ -2438,17 +2440,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       return;
     }
     const pathname = new URL(route.request().url()).pathname;
-    if (pathname === "/api/orchestrator/widgets/stream") {
-      await route.fulfill({
-        status: 200,
-        contentType: "text/event-stream",
-        headers: { "cache-control": "no-cache, no-transform" },
-        body: `event: snapshot\ndata: ${JSON.stringify(
-          emptyOrchestratorWidgetSnapshot,
-        )}\n\n`,
-      });
-      return;
-    }
     if (pathname === "/api/orchestrator/widgets") {
       await route.fulfill({
         status: 200,
@@ -2459,6 +2450,13 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     }
     await route.fallback();
   });
+
+  await installPersistentSseFixture(
+    page,
+    "**/api/orchestrator/widgets/stream?*",
+    "snapshot",
+    emptyOrchestratorWidgetSnapshot,
+  );
 
   await page.route("**/api/auth/status", async (route) => {
     if (route.request().method() !== "GET") {
