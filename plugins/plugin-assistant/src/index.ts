@@ -174,3 +174,10 @@ export * from "./services/relationships-graph-builder.ts";
 export * from "./services/trajectories.ts";
 export { serializeTrajectoryExport } from "./services/trajectory-export.ts";
 export * from "./utils/prompt-batcher.ts";
+
+export { visibleHistoryEventIds } from "./runtime/history-retention.ts";
+export { getEvaluatorProgressState } from "./services/evaluator-progress.ts";
+export {
+  HISTORY_RETENTION_EVALUATOR,
+  historyRetentionContext,
+} from "./services/history-retention.ts";

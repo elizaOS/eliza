@@ -14,6 +14,7 @@ import type {
   ToolDefinition,
 } from "@elizaos/core";
 import {
+  normalizeActionJsonSchema,
   actionGateRejection,
   DISCOVER_TOOLS_NAME,
   ElizaError,
@@ -89,7 +90,7 @@ function renderDiscoveryNameIndex(
 
 export function createPlannerToolDiscoveryAction(
   authorizedActions: readonly Action[],
-  onDiscover: (actions: Action[]) => void,
+  onDiscover: (actions: Action[], requestedNames: readonly string[]) => void,
   /** Resolve named operations; [] requests fresh admission of the full catalog. */
   resolveAdditionalActions?: (names: string[]) => Promise<Action[]>,
   /** Keep legacy callers inline; reference mode uses the existing catalog read. */
@@ -116,12 +117,13 @@ export function createPlannerToolDiscoveryAction(
           names.has(typeof child === "string" ? child : child.name),
         ),
       })),
+      { includeSearchMetadata: false },
     );
   };
   const catalog = catalogFor(authorizedActions);
   const inlineDescription =
     "Load complete tool schemas from the authorized name index below when an exposed tool does not cover an intent. " +
-    "Pass exact child names to load those operations, or parent names to load their complete authorized families. For capability questions, use mode=describe with exact names from the index to read their complete descriptions without loading schemas. Use names=[] only when you need the complete catalog across families. " +
+    "Pass exact child names to load those operations, or parent names to load their complete authorized families. For capability or parameter questions, use mode=describe with exact names to read descriptions and parameter schemas without enabling tools. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
     (resolveAdditionalActions
       ? "The inline index lists families admitted for the current routing contexts. If the needed domain is absent or its name is unknown, names=[] reads a fresh catalog across routing contexts. Other exact registered names may also be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
       : "") +
@@ -129,7 +131,7 @@ export function createPlannerToolDiscoveryAction(
     renderDiscoveryNameIndex(catalog.parents);
   const referenceDescription =
     "Load complete tool schemas when an exposed tool does not cover an intent. " +
-    "Pass exact known child names to load those operations, or parent names to load their complete authorized families. For capability questions, use mode=describe with exact known names to read their complete descriptions without loading schemas. Use names=[] only when you need the complete catalog across families. " +
+    "Pass exact known child names to load those operations, or parent names to load their complete authorized families. For capability or parameter questions, use mode=describe with exact names to read descriptions and parameter schemas without enabling tools. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
     "No name index is preloaded here. " +
     (resolveAdditionalActions
       ? "If the needed domain is absent or its name is unknown, names=[] reads a fresh catalog across routing contexts. Other exact registered names may also be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
@@ -158,7 +160,7 @@ export function createPlannerToolDiscoveryAction(
       {
         name: "mode",
         description:
-          "load (default) adds exact named schemas; describe reads only their complete descriptions. Neither executes domain work.",
+          "load (default) enables named tools; describe reads complete descriptions and, for named tools, parameter schemas. Neither executes domain work.",
         required: false,
         schema: { type: "string", enum: ["load", "describe"] },
       },
@@ -215,7 +217,7 @@ export function createPlannerToolDiscoveryAction(
             data: { readOnlyOperation: true, coachingFailure: true },
           };
         }
-        const completeCatalog = catalogFor(
+        const describedActions =
           names.length === 0
             ? freshActions
             : collectBudgetedStageOneCandidateActions({
@@ -223,7 +225,15 @@ export function createPlannerToolDiscoveryAction(
                 candidateActions: names,
                 contexts: [],
                 deferUnselectedContexts: true,
-              }),
+              });
+        const completeCatalog = catalogFor(describedActions);
+        const parameterSchemas = new Map(
+          names.length === 0
+            ? []
+            : describedActions.map((action) => [
+                action.name,
+                normalizeActionJsonSchema(action),
+              ]),
         );
         if (catalogIndex && names.length === 0 && mode !== "describe") {
           return {
@@ -251,12 +261,15 @@ export function createPlannerToolDiscoveryAction(
           text:
             names.length === 0
               ? "Complete authorized catalog descriptions. Select exact names to load schemas; no domain work was performed."
-              : "Complete descriptions for the requested authorized tools. Other families remain discoverable with names=[]. No schemas were loaded or domain work performed.",
+              : "Complete descriptions and parameter schemas for the requested authorized tools. Other families remain discoverable with names=[]. No tools were enabled or domain work performed.",
           data: {
             readOnlyOperation: true,
             catalog: completeCatalog.parents.map((parent) => ({
               name: parent.name,
               description: parent.source.description,
+              ...(names.length > 0
+                ? { parameters: parameterSchemas.get(parent.name) }
+                : {}),
               contexts: parent.source.contexts,
               similes: parent.source.similes,
               routingHint: parent.routingHint,
@@ -264,6 +277,9 @@ export function createPlannerToolDiscoveryAction(
               childDefinitions: parent.children.map((child) => ({
                 name: child.name,
                 description: child.source.description,
+                ...(names.length > 0
+                  ? { parameters: parameterSchemas.get(child.name) }
+                  : {}),
                 contexts: child.source.contexts,
                 similes: child.source.similes,
               })),
@@ -300,14 +316,16 @@ export function createPlannerToolDiscoveryAction(
         contexts: [],
         deferUnselectedContexts: true,
       });
-      onDiscover(selected);
+      onDiscover(selected, names);
       return {
         success: true,
         transcriptVisibility: "internal",
         modelReplyRequired: true,
-        text: "Tool schemas loaded. Only schema discovery ran; no domain action or data mutation ran. Continue with any requested domain work.",
+        text: "Named tools enabled for execution. This receipt contains no parameter definitions; use mode=describe with exact names to inspect them. No domain work or data mutation ran. Continue with requested work.",
         data: {
           readOnlyOperation: true,
+          // Operations may share a canonical parent on the native tool wire.
+          loadedOperationCount: selected.length,
           loadedTools: selected.map((action) => action.name),
         },
       };
@@ -316,15 +334,24 @@ export function createPlannerToolDiscoveryAction(
   };
 }
 
-/** Discovery adds only the requested operations' complete schemas. Preserve the
- * existing budgeted definitions instead of expanding unrelated umbrellas. */
+/** Keep explicitly requested operations direct. Represent generated siblings
+ * through their complete parent contract, as in initial planner assembly.
+ * Callers without requested names retain the legacy expanded surface. Existing
+ * definitions and backing execution actions remain unchanged. */
 export function appendDiscoveredPlannerTools(
   context: ContextObject,
   current: ToolDefinition[],
   discovered: readonly Action[],
+  requestedNames?: readonly string[],
 ): void {
   const names = new Set(current.map((tool) => tool.name));
-  for (const tool of collectPlannerTools(context, discovered)) {
+  // A discovery load that named its operations expands as canonical families
+  // (develop's umbrella contract: an alias rides on its umbrella's pinned
+  // discriminator, so no per-alias schema copies); a legacy load without names
+  // keeps the flat expansion.
+  for (const tool of collectPlannerTools(context, discovered, {
+    canonicalFamilies: requestedNames !== undefined,
+  })) {
     if (!names.has(tool.name)) {
       current.push(tool);
       names.add(tool.name);

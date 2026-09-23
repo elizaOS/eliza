@@ -9,6 +9,9 @@ import {
   hashStableJson,
 } from "@elizaos/core";
 
+/** Complete recent sources always supplied to the foreground. */
+export const HISTORY_CONTINUITY_SOURCE_COUNT = 10;
+
 export type HistoryRetentionScope = {
   agentId: string;
   roomId: string;
@@ -137,11 +140,10 @@ export function validateHistoryRetention(
   return structuredClone(cp);
 }
 
-/** Preserve complete connected originals without inferring links from prose. */
-export function includeLinkedSources(
-  retained: Set<string>,
+/** Shared source relationships form connected groups, independent of retention. */
+export function linkedSourceNeighbors(
   groups: readonly string[][],
-): void {
+): Map<string, Set<string>> {
   const neighbors = new Map<string, Set<string>>();
   for (const group of groups) {
     const first = group[0];
@@ -152,6 +154,15 @@ export function includeLinkedSources(
       neighbors.get(id)?.add(first);
     }
   }
+  return neighbors;
+}
+
+/** Preserve complete connected originals without inferring links from prose. */
+export function includeLinkedSources(
+  retained: Set<string>,
+  groups: readonly string[][],
+): void {
+  const neighbors = linkedSourceNeighbors(groups);
   const pending = [...retained];
   while (pending.length) {
     const id = pending.pop();
@@ -336,6 +347,13 @@ export function visibleHistoryEventIds(
     sources[start - 1].event.segment.label === "prior_message:user"
   )
     start--;
+  // Keep conversational continuity even when the background reviewer has
+  // deferred ordinary recent exchanges. This is a floor, never a cap on
+  // retained constraints, unreviewed originals or the current exchange.
+  start = Math.min(
+    start,
+    Math.max(0, sources.length - HISTORY_CONTINUITY_SOURCE_COUNT),
+  );
   for (const [i, source] of sources.entries())
     if (i >= cp.reviewedCount || i >= start) result.add(source.event.id);
   includeLinkedSources(result, cp.dependencyEventGroups ?? []);

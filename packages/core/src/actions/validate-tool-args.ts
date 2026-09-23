@@ -14,6 +14,7 @@ import {
 	type ActionParametersJsonSchema,
 	actionToJsonSchema,
 	type JsonSchema,
+	untypedUnionConstraintKeys,
 } from "./action-schema";
 
 export type { JsonSchema } from "./action-schema";
@@ -220,6 +221,8 @@ export function validateSchema(
 	path: string,
 	errors: string[],
 ): unknown {
+	let unionValue = value;
+	let hasUnion = false;
 	if (schema.anyOf && schema.anyOf.length > 0) {
 		let matched: unknown = value;
 		let ok = false;
@@ -237,7 +240,8 @@ export function validateSchema(
 				`Argument '${formatPath(path)}' did not satisfy any anyOf branch`,
 			);
 		}
-		return matched;
+		unionValue = matched;
+		hasUnion = true;
 	}
 
 	if (schema.oneOf && schema.oneOf.length > 0) {
@@ -260,7 +264,27 @@ export function validateSchema(
 				`Argument '${formatPath(path)}' satisfied multiple oneOf branches (${matches})`,
 			);
 		}
-		return matched;
+		unionValue = matched;
+		hasUnion = true;
+	}
+
+	// Check the authored common type and constraints against the original input:
+	// branch defaults/normalization must not hide a sibling constraint failure.
+	if (hasUnion) {
+		const { anyOf: _anyOf, oneOf: _oneOf, ...siblings } = schema;
+		if (!siblings.type) {
+			const unsupported = untypedUnionConstraintKeys(siblings);
+			if (unsupported.length)
+				errors.push(
+					`Argument '${formatPath(path)}' has an unsupported untyped union schema: declare a common type or move ${unsupported.join(", ")} into typed branches`,
+				);
+			return unionValue;
+		}
+		const before = errors.length;
+		const normalized = validateSchema(siblings, value, path, errors);
+		return errors.length === before && unionValue !== value
+			? validateSchema(siblings, unionValue, path, errors)
+			: normalized;
 	}
 
 	switch (schema.type) {

@@ -114,7 +114,11 @@ describe("planner-loop failed-operation correlation", () => {
 			const rescue = runtime.useModel.mock.calls[3]?.[1];
 			expect(JSON.stringify(rescue)).toContain("Saved title A.");
 			expect(JSON.stringify(rescue)).not.toContain("did not complete");
-			expect(JSON.stringify(rescue)).not.toContain("revision conflict");
+			expect(JSON.stringify(rescue)).toContain("revision conflict");
+			expect(
+				result.trajectory.steps.filter((step) => step.result).at(-1)?.result
+					?.success,
+			).toBe(true);
 			expect(
 				result.trajectory.steps.filter(
 					(step) => step.result?.success === false,

@@ -88,6 +88,8 @@ export type ActionCatalog = {
 
 export type BuildActionCatalogOptions = {
   includeReferencedChildrenAsParents?: boolean;
+  /** Exact-name discovery needs grouping, not the keyword/search index. */
+  includeSearchMetadata?: boolean;
   /**
    * Optional locale-aware example swapper. When provided, every
    * `ActionExample[][]` row on a source action is run through this resolver
@@ -151,6 +153,7 @@ export function buildActionCatalog(
 
   const childEntriesByParent = new Map<string, ActionCatalogChild[]>();
   const localizedExamples = options.localizedExamples;
+  const includeSearchMetadata = options.includeSearchMetadata !== false;
 
   for (const action of actionByName.values()) {
     const parentNormalizedName = normalizeActionName(action.name);
@@ -165,6 +168,7 @@ export function buildActionCatalog(
         actionByName,
         warnings,
         localizedExamples,
+        includeSearchMetadata,
       });
 
       if (!resolved) {
@@ -213,6 +217,7 @@ export function buildActionCatalog(
       action,
       explicitChildren,
       localizedExamples,
+      includeSearchMetadata,
     );
     parents.push(parent);
     children.push(...explicitChildren);
@@ -286,6 +291,7 @@ function resolveSubAction(params: {
   actionByName: Map<string, RuntimeActionLike>;
   warnings: ActionCatalogWarning[];
   localizedExamples?: LocalizedActionExampleResolver;
+  includeSearchMetadata: boolean;
 }): ActionCatalogChild | undefined {
   const {
     parent,
@@ -294,6 +300,7 @@ function resolveSubAction(params: {
     actionByName,
     warnings,
     localizedExamples,
+    includeSearchMetadata,
   } = params;
 
   if (typeof subAction === "string") {
@@ -309,7 +316,12 @@ function resolveSubAction(params: {
       return undefined;
     }
 
-    return materializeChild(source, parent, localizedExamples);
+    return materializeChild(
+      source,
+      parent,
+      localizedExamples,
+      includeSearchMetadata,
+    );
   }
 
   if (!isRuntimeActionLike(subAction)) {
@@ -331,7 +343,12 @@ function resolveSubAction(params: {
   }
 
   return {
-    ...materializeEntry(subAction, [], localizedExamples),
+    ...materializeEntry(
+      subAction,
+      [],
+      localizedExamples,
+      includeSearchMetadata,
+    ),
     kind: "child",
     parentName: parent.name,
     parentNormalizedName,
@@ -342,8 +359,14 @@ function materializeParent(
   action: RuntimeActionLike,
   children: ActionCatalogChild[],
   localizedExamples?: LocalizedActionExampleResolver,
+  includeSearchMetadata = true,
 ): ActionCatalogParent {
-  const entry = materializeEntry(action, children, localizedExamples);
+  const entry = materializeEntry(
+    action,
+    children,
+    localizedExamples,
+    includeSearchMetadata,
+  );
 
   return {
     ...entry,
@@ -358,9 +381,10 @@ function materializeChild(
   action: RuntimeActionLike,
   parent: RuntimeActionLike,
   localizedExamples?: LocalizedActionExampleResolver,
+  includeSearchMetadata = true,
 ): ActionCatalogChild {
   return {
-    ...materializeEntry(action, [], localizedExamples),
+    ...materializeEntry(action, [], localizedExamples, includeSearchMetadata),
     kind: "child",
     parentName: parent.name,
     parentNormalizedName: normalizeActionName(parent.name),
@@ -371,13 +395,16 @@ function materializeEntry(
   action: RuntimeActionLike,
   children: ActionCatalogEntry[] = [],
   localizedExamples?: LocalizedActionExampleResolver,
+  includeSearchMetadata = true,
 ): ActionCatalogEntry {
   const normalizedName = normalizeActionName(action.name);
   const description = String(action.description ?? "").trim();
-  const ownKeywordSources = getActionSearchKeywordSources({
-    name: action.name,
-    contexts: action.contexts,
-  });
+  const ownKeywordSources = includeSearchMetadata
+    ? getActionSearchKeywordSources({
+        name: action.name,
+        contexts: action.contexts,
+      })
+    : [];
   const childKeywordSources = children.flatMap((child) => child.keywordSources);
   const keywordSources = dedupeKeywordSources([
     ...ownKeywordSources,
@@ -405,9 +432,13 @@ function materializeEntry(
     cacheScope: normalizeOptionalString(action.cacheScope),
     routingHint: normalizeOptionalString(action.routingHint),
     keywordKeys,
-    keywordText: actionEntryKeywordText(action, children),
+    keywordText: includeSearchMetadata
+      ? actionEntryKeywordText(action, children)
+      : "",
     keywordSources,
-    searchText: actionEntrySearchText(action, children),
+    searchText: includeSearchMetadata
+      ? actionEntrySearchText(action, children)
+      : "",
     source: action,
   };
 }

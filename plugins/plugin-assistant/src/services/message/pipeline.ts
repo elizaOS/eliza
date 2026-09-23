@@ -367,6 +367,7 @@ export async function runV5MessageRuntimeStage1(
       parsedResponseHandlerReply,
       messageHandlerEndedAt,
       providerDiscoveryEnabled,
+      providerReview,
       loadedContextProviders,
       historyReadEvidence,
       sourceReplyRendering,
@@ -1407,6 +1408,7 @@ export async function runV5MessageRuntimeStage1(
     plannerContext.metadata = {
       ...plannerContext.metadata,
       providerDiscoveryEnabled,
+      providerReview,
       historyReferenceEncoding: providerDiscoveryEnabled,
       loadedContextProviders,
     };
@@ -1465,7 +1467,6 @@ export async function runV5MessageRuntimeStage1(
                   })),
               }
             : {}),
-          actionSurface: actionSurface.summary,
         } as JsonValue,
         thought: messageHandler.thought,
       },

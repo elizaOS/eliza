@@ -281,7 +281,6 @@ function hasRecoverableContentLocator(value: unknown): boolean {
   const visited = new WeakSet<object>();
   while (pending.length > 0) {
     const current = pending.pop();
-    if (!current) break;
     if (isReadView(current)) {
       return true;
     }
@@ -321,11 +320,19 @@ function hasRecoverableContentLocator(value: unknown): boolean {
 export function projectToolResultForModel(
   result: PlannerToolResult,
 ): PlannerToolResult {
-  if (result.promptDataMode === "replace-data" && result.promptData) {
-    const { data: _data, promptData, promptDataMode: _mode, ...rest } = result;
+  // This registered default correlates retries in code. The raw trajectory
+  // retains it; repeating it to the model adds no result or source evidence.
+  const { registeredSubaction: _registered, ...projected } = result;
+  if (projected.promptDataMode === "replace-data" && projected.promptData) {
+    const {
+      data: _data,
+      promptData,
+      promptDataMode: _mode,
+      ...rest
+    } = projected;
     return { ...rest, data: promptData };
   }
-  return { ...result };
+  return projected;
 }
 
 export function cacheProviderOptions(

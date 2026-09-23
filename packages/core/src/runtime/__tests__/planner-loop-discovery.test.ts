@@ -95,9 +95,14 @@ describe("explicit catalog-only requests", () => {
 		{ domainTools: true, candidates: ["DISCOVER_TOOLS"] },
 		{ domainTools: false, candidates: ["DISCOVER_TOOLS"] },
 		{ domainTools: true, candidates: ["DISCOVER_TOOLS", "READ"] },
+		{
+			domainTools: true,
+			candidates: ["DISCOVER_TOOLS"],
+			draft: "The family exposes READ, as we discussed earlier.",
+		},
 	])(
 		"finishes after successful requested discovery (domain tools exposed=%s)",
-		async ({ domainTools, candidates }) => {
+		async ({ domainTools, candidates, draft }) => {
 			const useModel = vi.fn<PlannerRuntime["useModel"]>(async (type) =>
 				type === ModelType.ACTION_PLANNER
 					? call("DISCOVER_TOOLS")
@@ -124,6 +129,8 @@ describe("explicit catalog-only requests", () => {
 							metadata: {
 								plan: {
 									candidateActions: candidates,
+									reply: draft,
+									replyEffectStatus: draft ? "none" : undefined,
 									intents: ["inspect available tools"],
 								},
 							},

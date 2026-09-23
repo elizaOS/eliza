@@ -15,8 +15,6 @@ import type {
   LifeOpsWindowPolicy,
 } from "../contracts/index.js";
 
-// The time-zone helpers are runtime-level primitives in `@elizaos/shared`,
-// re-exported here for `./defaults.js` callers.
 export {
   isValidTimeZone,
   normalizeTimeZone,

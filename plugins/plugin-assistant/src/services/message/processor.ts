@@ -1022,6 +1022,7 @@ export class MessageProcessor {
             responseId,
             "running the native tool message runtime",
             failureCause,
+            error,
           );
           _usedV5Runtime = true;
           state = strategyResult.state;

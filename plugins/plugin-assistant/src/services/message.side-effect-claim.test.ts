@@ -1765,6 +1765,8 @@ describe("replyClaimsInProgressWork", () => {
     "Let me pull that up",
     "One sec.",
     "Working on it 👍",
+    "On it. I'm saving the task now.",
+    "On it! Checking the weather now.",
   ])("matches a bare progress promise: %s", (reply) => {
     expect(replyClaimsInProgressWork(reply)).toBe(true);
   });
@@ -1778,6 +1780,9 @@ describe("replyClaimsInProgressWork", () => {
     "I'll check tomorrow, but today you have three events: standup, lunch, and the demo.",
     // Real answers and confirmations.
     "You have 3 todos: rent, demo prep, and groceries.",
+    "On it. Send me the two numbers whenever you're ready.",
+    "On it! What are the two numbers?",
+    "On it. The answer is 23.",
     "done — you're on Notes.",
     "31,283",
     "",

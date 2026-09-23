@@ -535,11 +535,10 @@ describe("answer-clobber rescue", () => {
 
 		const { finalText } = await runTurn({ runtime, callback });
 
-		// The action's own delivery is the single copy of the answer; neither the
-		// evaluator echo nor the preserved-answer fallback adds a second bubble.
-		const copies = delivered.filter((t) => t === SUBSTANTIVE_ANSWER).length;
-		expect(copies).toBe(1);
-		expect(finalText ?? "").not.toBe(SUBSTANTIVE_ANSWER);
+		// The action draft remains internal; the one returned final answer is
+		// the delivery boundary's payload, without an earlier duplicate bubble.
+		expect(delivered).toEqual([]);
+		expect(finalText).toBe(SUBSTANTIVE_ANSWER);
 	});
 
 	it("surfaces the preserved answer when the required-tool miss budget exhausts", async () => {
@@ -591,6 +590,54 @@ describe("answer-clobber rescue", () => {
 
 describe("media deliverable suppresses the trailing progress ack", () => {
 	const IMAGE_URL = "https://example.test/neon-cat.png";
+
+	it("delivers the evaluator's source citation after a successful web fetch", async () => {
+		const url = "https://example.test/public-data?currency=usd";
+		const answer = `Current value: 42.\n\nSource: ${url}\nNo records changed.`;
+		const webFetch: Action = {
+			name: "WEB_FETCH",
+			description: "Read public data from a URL",
+			parameters: [],
+			validate: async () => true,
+			handler: async () => ({
+				success: true,
+				text: '{"value":42}',
+				data: { actionName: "WEB_FETCH", url, kind: "json" },
+			}),
+		};
+		const runtime = makeRuntime({
+			responses: [
+				{
+					expectModelType: String(ModelType.RESPONSE_HANDLER),
+					body: stage1Response({
+						contexts: ["web"],
+						replyText: PROGRESS_ACK,
+						extra: { candidateActionNames: ["WEB_FETCH"] },
+					}),
+				},
+				{
+					expectModelType: String(ModelType.ACTION_PLANNER),
+					body: {
+						text: "",
+						toolCalls: [{ id: "fetch-1", name: "WEB_FETCH", arguments: {} }],
+					},
+				},
+				{
+					expectModelType: String(ModelType.RESPONSE_HANDLER),
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Public source returned the value.",
+						messageToUser: answer,
+					}),
+				},
+			],
+			evaluators: [],
+			actions: [webFetch],
+		});
+		const { finalText } = await runTurn({ runtime, noEarlyReply: true });
+		expect(finalText).toBe(answer);
+	});
 
 	function generateMediaAction(): Action {
 		const attachment: Media = {

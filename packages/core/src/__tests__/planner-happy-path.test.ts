@@ -862,7 +862,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(getCalls(runtime)).toHaveLength(4);
 	});
 
-	it("preserves an unverified-mutation failure when callback delivery suppresses response content", async () => {
+	it("preserves an unverified-mutation failure until the final delivery boundary", async () => {
 		const failureMessage =
 			"I changed files but could not complete the required command verification. The coding task is incomplete.";
 		const writeAction = makeMockAction({
@@ -942,7 +942,8 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind !== "planned_reply") throw new Error("expected reply");
-		expect(result.result.responseContent).toBeNull();
+		expect(deliveredVisibleTexts.size).toBe(0);
+		expect(result.result.responseContent?.text).toBe(failureMessage);
 		expect(result.result.terminalFailure).toEqual({
 			kind: "coding_mutation_unverified",
 			transient: false,
@@ -950,7 +951,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		});
 	});
 
-	it("preserves a typed coding-tool failure when callback delivery suppresses response content", async () => {
+	it("preserves a typed coding-tool failure until the final delivery boundary", async () => {
 		const failureMessage =
 			"The build failed because the source did not compile.";
 		const buildAction = makeMockAction({
@@ -1014,7 +1015,8 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind !== "planned_reply") throw new Error("expected reply");
-		expect(result.result.responseContent).toBeNull();
+		expect(deliveredVisibleTexts.size).toBe(0);
+		expect(result.result.responseContent?.text).toBe(failureMessage);
 		expect(result.result.terminalFailure).toEqual({
 			kind: "handler_error",
 			code: "BUILD_FAILED",
@@ -1811,10 +1813,16 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			deliveredVisibleTexts,
 		});
 
+		expect(delivered).toEqual([]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind !== "planned_reply" || !result.result.responseContent)
+			throw new Error("Expected a pending final delivery");
+		await wrappedCallback(result.result.responseContent);
+
 		expect(delivered).toEqual([canonicalText]);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent).toBeNull();
+			expect(result.result.responseContent?.text).toBe(canonicalText);
 		}
 		expect(callback).toHaveBeenCalledTimes(1);
 		expect(getCalls(runtime).map((c) => c.modelType)).toEqual([
@@ -1985,6 +1993,12 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			deliveredVisibleTexts,
 		});
 
+		expect(delivered).toEqual([]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind !== "planned_reply" || !result.result.responseContent)
+			throw new Error("Expected a pending final delivery");
+		await wrappedCallback(result.result.responseContent);
+
 		expect(delivered).toEqual([confirmation]);
 		expect(callback).toHaveBeenCalledTimes(1);
 		for (const text of delivered) {
@@ -1992,7 +2006,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		}
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent).toBeNull();
+			expect(result.result.responseContent?.text).toBe(confirmation);
 		}
 		// The settled action owns the turn: no rewrite call, no evaluator call,
 		// no second planner iteration composing a duplicate reply.
@@ -2002,13 +2016,8 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		]);
 	});
 
-	it("delivers the raw callback text when the voice rewrite fails on an unsettled callback", async () => {
-		// The other half of the live incident: a non-canonical action callback
-		// entered the character-voice rewrite, the TEXT_SMALL call returned no
-		// usable text, and the old fallback fabricated an internal formatting
-		// apology as the wire text — shipped one second before the evaluator's
-		// real reply. A failed rewrite must degrade to the raw callback text;
-		// the meta-apology must never reach a delivery.
+	it("delivers one evaluated reply without publishing an unsettled callback draft", async () => {
+		// Unsettled callback drafts remain internal until evaluation selects one final reply.
 		const raw = "Reply gate set to on_mention for this user.";
 		const evaluatorReply = "word. reply gate set to on_mention.";
 		const delivered: string[] = [];
@@ -2042,8 +2051,6 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						toolCalls: [{ id: "call-1", name: "SETTINGS_NOTE", arguments: {} }],
 					},
 				},
-				// The character-voice rewrite fails by returning no usable text.
-				{ expectModelType: ModelType.TEXT_SMALL, body: "" },
 				{
 					expectModelType: ModelType.RESPONSE_HANDLER,
 					body: JSON.stringify({
@@ -2073,14 +2080,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			deliveredVisibleTexts,
 		});
 
-		// The callback delivery is the RAW action text — before the fix this was
-		// the fabricated formatting apology.
-		expect(delivered).toEqual([raw]);
-		expect(callback).toHaveBeenCalledTimes(1);
+		expect(delivered).toEqual([]);
 		expect(result.kind).toBe("planned_reply");
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe(evaluatorReply);
-		}
+		if (result.kind !== "planned_reply" || !result.result.responseContent)
+			throw new Error("Expected evaluated final reply");
+		expect(result.result.responseContent.text).toBe(evaluatorReply);
+		await wrappedCallback(result.result.responseContent);
+		expect(delivered).toEqual([evaluatorReply]);
+		expect(callback).toHaveBeenCalledTimes(1);
+
 		const surfacedTexts = [
 			...delivered,
 			...(result.kind === "planned_reply"
@@ -2093,7 +2101,6 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
-			ModelType.TEXT_SMALL,
 			ModelType.RESPONSE_HANDLER,
 		]);
 	});
@@ -3742,12 +3749,8 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(result.kind).toBe("planned_reply");
 	});
 
-	it("sanitizes drifted callback text at the wire while planner-echo suppression still matches the raw form (#15888)", async () => {
-		// The voice rewrite is itself model text and can drift into native tool
-		// syntax. The visible-callback wrap must deliver the SANITIZED text, but
-		// record the raw form too: the planner's finalMessage echoes the raw
-		// string, and suppression compares against this set — recording only the
-		// sanitized form would deliver a duplicate bubble on every drift turn.
+	it("sanitizes the evaluated final reply without publishing the tool callback draft", async () => {
+		// Tool drafts stay internal; only the evaluated final reply reaches the wire.
 		const rawPayload = '{"status":"ok","taskId":"abc123"}';
 		// NOTE: the rewrite must not CLAIM a completed side effect ("Task created:")
 		// — the planned-reply egress gate fails such claims closed without a
@@ -3787,10 +3790,6 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					},
 				},
 				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: JSON.stringify({ response: driftedRewrite }),
-				},
-				{
 					expectModelType: ModelType.RESPONSE_HANDLER,
 					body: JSON.stringify({
 						success: true,
@@ -3819,16 +3818,14 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			deliveredVisibleTexts,
 		});
 
-		// The connector saw ONLY the sanitized wire text.
-		expect(delivered).toEqual(["Here's the task id: abc123."]);
-		// Both forms were recorded: raw for suppression, sanitized as sent.
-		expect(deliveredVisibleTexts).toContain(driftedRewrite.toLowerCase());
-		expect(deliveredVisibleTexts).toContain("here's the task id: abc123.");
-		// The planner's raw-drift echo was suppressed against the raw record.
+		expect(delivered).toEqual([]);
 		expect(result.kind).toBe("planned_reply");
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent).toBeNull();
-		}
+		if (result.kind !== "planned_reply" || !result.result.responseContent)
+			throw new Error("Expected sanitized final reply");
+		expect(result.result.responseContent.text).toBe(driftedRewrite);
+		await wrappedCallback(result.result.responseContent);
+		expect(delivered).toEqual(["Here's the task id: abc123."]);
+		expect(deliveredVisibleTexts).toContain("here's the task id: abc123.");
 		expect(callback).toHaveBeenCalledTimes(1);
 	});
 

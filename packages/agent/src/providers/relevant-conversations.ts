@@ -23,6 +23,7 @@ import type {
 } from "@elizaos/core";
 import {
   buildAccessContext,
+  ChannelType,
   filterByAccessContext,
   getUserMessageText,
   markOwnerExclusiveDisclosureUsed,
@@ -34,6 +35,10 @@ import {
 } from "@elizaos/core";
 import {
   embedRecallQuery,
+  getEvaluatorProgressState,
+  HISTORY_RETENTION_EVALUATOR,
+  historyRetentionContext,
+  visibleHistoryEventIds,
   type ProviderOriginalMessages,
   priorDialogueOriginalText,
   renderProviderOriginalMessages,
@@ -195,6 +200,8 @@ export const relevantConversationsProvider: Provider = {
             agentId: runtime.agentId,
             deliveryMessage: message,
             matchThreshold: MATCH_THRESHOLD,
+            includeEmbedding: false,
+            excludeRoomIds: [message.roomId],
           });
         })(),
       ]);
@@ -209,13 +216,15 @@ export const relevantConversationsProvider: Provider = {
         accessContext,
         runtime.agentId,
       );
-      const filtered = readable
-        .filter((m) => m.content.text && m.roomId !== currentRoomId)
-        .filter(
-          (memory, index, all) =>
-            !memory.id ||
-            all.findIndex((candidate) => candidate.id === memory.id) === index,
-        );
+      const seenIds = new Set<string>();
+      const filtered = readable.filter((memory) => {
+        if (!memory.content.text || memory.roomId === currentRoomId)
+          return false;
+        if (!memory.id) return true;
+        if (seenIds.has(memory.id)) return false;
+        seenIds.add(memory.id);
+        return true;
+      });
 
       if (
         filtered.some(
@@ -306,8 +315,130 @@ export const relevantConversationsProvider: Provider = {
         }),
       };
 
+      // The checkpoint is an internal index, never a disclosure grant. Validate
+      // its original room snapshot, then only defer records already admitted
+      // above. No body read for index validation enters the provider output.
+      const deferred = new Set<string>();
+      if (
+        accessContext.role === "OWNER" &&
+        accessContext.worldId &&
+        message.content.channelType !== ChannelType.VOICE_DM &&
+        currentRoom?.type !== ChannelType.VOICE_DM
+      ) {
+        await Promise.all(
+          roomIds.map(async (roomId) => {
+            const room = roomCache.get(roomId);
+            if (
+              !room ||
+              room.worldId !== accessContext.worldId ||
+              ![
+                ChannelType.DM,
+                ChannelType.API,
+                ChannelType.SELF,
+                ChannelType.VOICE_DM,
+              ].some((type) => type === room.type)
+            )
+              return;
+            try {
+              const sourceMessage = { ...message, roomId };
+              const checkpoint = await getEvaluatorProgressState(
+                runtime,
+                sourceMessage,
+                HISTORY_RETENTION_EVALUATOR,
+              );
+              if (!checkpoint) return;
+              const originals = await runtime.getMemories({
+                agentId: runtime.agentId,
+                roomId,
+                tableName: "messages",
+                unique: false,
+                includeEmbedding: false,
+                orderDirection: "asc",
+              });
+              const context = historyRetentionContext(
+                runtime,
+                sourceMessage,
+                originals,
+              );
+              const visible = visibleHistoryEventIds(
+                context,
+                {
+                  agentId: runtime.agentId,
+                  roomId,
+                  entityId: message.entityId,
+                  roles: ["OWNER"],
+                },
+                checkpoint,
+              );
+              if (!visible) return;
+              const originalIds = new Set(
+                context.events.map((event) => event.id),
+              );
+              const byId = new Map(
+                originals.map((original) => [original.id, original]),
+              );
+              const roomDeferred: string[] = [];
+              for (const memory of filtered) {
+                if (!memory.id || memory.roomId !== roomId) continue;
+                const original = byId.get(memory.id);
+                if (
+                  !original ||
+                  original.entityId !== memory.entityId ||
+                  original.roomId !== memory.roomId ||
+                  original.createdAt !== memory.createdAt ||
+                  JSON.stringify(original.content) !==
+                    JSON.stringify(memory.content) ||
+                  JSON.stringify(original.metadata) !==
+                    JSON.stringify(memory.metadata)
+                )
+                  continue;
+                const eventId = `history:${memory.id}`;
+                if (originalIds.has(eventId) && !visible.has(eventId))
+                  roomDeferred.push(memory.id);
+              }
+              for (const id of roomDeferred) deferred.add(id);
+            } catch (error) {
+              // error-policy:J4 Optional index failure preserves full admitted recall.
+              runtime.reportError(
+                "RelevantConversationsProvider.retention",
+                error,
+                { roomId },
+              );
+            }
+          }),
+        );
+      }
+      const fullText = renderProviderOriginalMessages(originalMessages);
+      const discoveryText = deferred.size
+        ? renderProviderOriginalMessages({
+            ...originalMessages,
+            sources: originalMessages.sources.filter(
+              (_, index) => !deferred.has(filtered[index].id ?? ""),
+            ),
+          }) +
+          "\nOther reviewed conversation originals are deferred, not absent. Request relevant-conversations for complete recalled originals when a fact, correction, quotation or dependency is missing. Retention is not proof of relevance or permission."
+        : undefined;
       return {
-        text: renderProviderOriginalMessages(originalMessages),
+        text: fullText,
+        ...(discoveryText && discoveryText.length < fullText.length
+          ? { discoveryText }
+          : {}),
+        reviewableSources: {
+          notice: originalMessages.header,
+          sources: originalMessages.sources.map((source, index) => ({
+            id: source.id,
+            text: `${source.prefix}${memoryText(filtered[index])}`,
+            ...(source.originalText !== undefined
+              ? { originalText: source.originalText }
+              : {}),
+            metadata: {
+              recordId: source.memoryId,
+              roomId: source.roomId,
+              entityId: source.entityId,
+              createdAt: source.createdAt,
+            },
+          })),
+        },
         values: {
           relevantConversationCount: filtered.length,
           relevantConversationAvailability: availability,

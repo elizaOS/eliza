@@ -85,6 +85,54 @@ interface MemoryListItem {
   createdAt: number;
 }
 
+type MemorySearchRecord = MemoryListItem & {
+  createdAtIso?: string;
+  authorRole?: "requester" | "assistant" | "other speaker";
+};
+
+/** Factor identical metadata only; each complete source reconstructs by merging. */
+function sharedMemoryRecordFields(records: readonly MemorySearchRecord[]) {
+  if (records.length < 2) return undefined;
+  const fields = [
+    "type",
+    "entityId",
+    "roomId",
+    "agentId",
+    "authorRole",
+    "evidenceStatus",
+  ] as const;
+  const sharedMemoryFields: Record<string, string | null> = {};
+  for (const key of fields) {
+    const value = records[0][key];
+    if (
+      value !== undefined &&
+      records.every(
+        (record) => Object.hasOwn(record, key) && record[key] === value,
+      )
+    ) {
+      sharedMemoryFields[key] = value;
+    }
+  }
+  if (Object.keys(sharedMemoryFields).length === 0) return undefined;
+  const memories = records.map((source) => {
+    const record: Partial<MemorySearchRecord> = { ...source };
+    for (const key of fields) {
+      if (Object.hasOwn(sharedMemoryFields, key)) delete record[key];
+    }
+    return record;
+  });
+  const encoded = {
+    memoryRecordEncoding:
+      "Every memories entry inherits sharedMemoryFields; merge them to reconstruct its complete original record. Entries retain the search order: literal/no-query results are newest first by createdAt, so the last entry is earliest ON THIS PAGE, not necessarily across all matches. Keyword results rank relevance first. No source text was summarized.",
+    sharedMemoryFields,
+    memories,
+  };
+  return JSON.stringify(encoded).length <
+    JSON.stringify({ memories: records }).length
+    ? encoded
+    : undefined;
+}
+
 const SEARCH_QUERY_STOP_WORDS = new Set([
   "a",
   "am",
@@ -257,7 +305,7 @@ function parseUuidParam(
     return {
       ok: false,
       result: fail(
-        `${name} "${trimmed}" is not a valid UUID. Omit it or use an id from a previous search result.`,
+        `${name} "${trimmed}" is not a valid UUID. Use a UUID from recorded context or a previous result; keep the intended scope.`,
         "MEMORY_INVALID_UUID",
       ),
     };
@@ -998,22 +1046,21 @@ async function collectCandidates(
     );
   }
 
+  const scores = new Map<MemoryCandidate, number>();
   if (scope.query) {
     const query = scope.query;
     filtered = filtered.filter((c) => {
       const text = searchableMemoryText(c.memory);
-      return scope.queryMode === "literal"
-        ? text.includes(query)
-        : scoreText(text, query) > 0;
+      if (scope.queryMode === "literal") return text.includes(query);
+      const score = scoreText(text, query);
+      scores.set(c, score);
+      return score > 0;
     });
   }
 
   filtered.sort((a, b) => {
     if (scope.query && scope.queryMode !== "literal") {
-      const leftText = searchableMemoryText(a.memory);
-      const rightText = searchableMemoryText(b.memory);
-      const relevance =
-        scoreText(rightText, scope.query) - scoreText(leftText, scope.query);
+      const relevance = (scores.get(b) ?? 0) - (scores.get(a) ?? 0);
       if (relevance !== 0) return relevance;
     }
     return (b.memory.createdAt ?? 0) - (a.memory.createdAt ?? 0);
@@ -1031,7 +1078,7 @@ function describeSearchScope(scope: {
 }): string {
   const parts: string[] = [];
   if (scope.query) parts.push(`query="${scope.query}"`);
-  if (scope.queryMode === "literal") parts.push("queryMode=literal");
+  if (scope.query) parts.push(`queryMode=${scope.queryMode ?? "keywords"}`);
   if (scope.type) parts.push(`type=${scope.type}`);
   if (scope.entityId) parts.push(`entityId=${scope.entityId}`);
   if (scope.roomId) parts.push(`roomId=${scope.roomId}`);
@@ -1125,31 +1172,11 @@ async function doSearch(
       }
     }
   }
-  // Read-only salvage (matrix F16): a mangled planner-copied UUID is an
-  // unusable *filter*, and failing the whole search over it turns a
-  // recoverable turn into a failed one. Searching without the filter is a
-  // superset of the intended scope, so ignore the id and say so in the
-  // result. Destructive ops keep parseUuidParam's hard fail — a mangled id
-  // must never widen a delete's scope.
+  // An explicit invalid filter must not turn into a broader successful read.
   const entityParam = parseUuidParam(params.entityId, "entityId");
+  if (!entityParam.ok) return entityParam.result;
   const roomParam = parseUuidParam(params.roomId, "roomId");
-  if (countOnly && (!entityParam.ok || !roomParam.ok)) {
-    return fail(
-      "Count scope requires valid entityId and roomId UUIDs.",
-      "MEMORY_INVALID_SCOPE",
-    );
-  }
-  const ignoredIdNotes: string[] = [];
-  if (!entityParam.ok) {
-    ignoredIdNotes.push(
-      `ignored invalid entityId "${params.entityId?.trim()}" (searched all entities)`,
-    );
-  }
-  if (!roomParam.ok) {
-    ignoredIdNotes.push(
-      `ignored invalid roomId "${params.roomId?.trim()}" (searched all rooms)`,
-    );
-  }
+  if (!roomParam.ok) return roomParam.result;
   const query =
     params.queryMode === "literal" ? params.query : params.query?.trim();
   const limit = params.limit;
@@ -1177,8 +1204,8 @@ async function doSearch(
 
   const scope = {
     type,
-    entityId: authorId ?? (entityParam.ok ? entityParam.id : undefined),
-    roomId: roomParam.ok ? roomParam.id : undefined,
+    entityId: authorId ?? entityParam.id,
+    roomId: roomParam.id,
     query,
     queryMode: params.queryMode,
   };
@@ -1219,10 +1246,14 @@ async function doSearch(
     return {
       success: true,
       transcriptVisibility: "internal",
+      ...(getActionReplyOwner(message.id) === "planner"
+        ? { modelReplyRequired: true }
+        : {}),
       text: "Fresh complete count of searchable memory records under the returned scope. Use totalMatches directly; categories partition that total. Newest timestamps are per category, not per returned page. Notes and personality settings are separate stores. This is a storage count, not the number of distinct human memories or active facts.",
       data: {
         actionName: "MEMORY",
         op: "count",
+        readOnlyOperation: true,
         totalMatches,
         categories,
         searchScope: {
@@ -1245,9 +1276,7 @@ async function doSearch(
           action: "search",
           ...(type ? { type } : {}),
           ...(params.author ? { author: params.author } : {}),
-          ...(entityParam.ok && entityParam.id
-            ? { entityId: entityParam.id }
-            : {}),
+          ...(entityParam.id ? { entityId: entityParam.id } : {}),
           ...(scope.roomId ? { roomId: scope.roomId } : {}),
           ...(query ? { query } : {}),
           ...(params.queryMode === "literal" ? { queryMode: "literal" } : {}),
@@ -1262,6 +1291,15 @@ async function doSearch(
       `The complete search has ${totalMatches} matches, which exceeds the maximum safe result size of ${MAX_MEMORY_PAGE_ITEMS} records. Retry with limit at most ${MAX_MEMORY_PAGE_ITEMS}. If narrowing the query, author or other filters, start at offset 0 without snapshot; the snapshot below belongs only to the current filters.`,
       "MEMORY_SEARCH_REQUIRES_PAGINATION",
       {
+        // This call needs an explicit page size, not a failure summary after
+        // a corrected read succeeds. The planner's existing malformed-call
+        // recovery still requires every supplied search target to survive.
+        parameterErrors: [
+          {
+            path: "limit",
+            message: "A page size is required for this result set.",
+          },
+        ],
         totalMatches,
         maxLimit: MAX_MEMORY_PAGE_ITEMS,
         suggestedLimit: Math.min(20, MAX_MEMORY_PAGE_ITEMS),
@@ -1280,13 +1318,31 @@ async function doSearch(
   // Keeping strings structured also lets the model boundary redact credentials
   // before JSON escaping, without changing any stored source.
   const plannerOwnsReply = getActionReplyOwner(message.id) === "planner";
-  const authorRole = (entityId: string | null): string => {
+  const authorRole = (
+    entityId: string | null,
+  ): "requester" | "assistant" | "other speaker" => {
     if (entityId === runtime.agentId) return "assistant";
     return entityId !== null && entityId === message.entityId
       ? "requester"
       : "other speaker";
   };
-  const records = plannerOwnsReply
+  // Count the already-filtered records, not the full storage scan. Keep page
+  // counts separate so the reply never treats a partial page as the whole set.
+  const countMessageAuthors = (records: MemoryListItem[]) => {
+    const counts = { requester: 0, assistant: 0, "other speaker": 0 };
+    for (const record of records) {
+      if (record.type === "messages") counts[authorRole(record.entityId)]++;
+    }
+    return counts;
+  };
+  const messageAuthorCounts =
+    type === "messages" || allItems.some((item) => item.type === "messages")
+      ? {
+          matching: countMessageAuthors(allItems),
+          returned: countMessageAuthors(items),
+        }
+      : undefined;
+  const records: MemorySearchRecord[] = plannerOwnsReply
     ? items.map((m) => ({
         ...m,
         createdAtIso: new Date(m.createdAt).toISOString(),
@@ -1318,11 +1374,11 @@ async function doSearch(
 
   const result: ActionResult = {
     success: true,
+    ...(plannerOwnsReply
+      ? { transcriptVisibility: "internal" as const, modelReplyRequired: true }
+      : {}),
     text: [
       `${renderNote} (filters: ${describeSearchScope(scope)}).`,
-      ...(ignoredIdNotes.length > 0
-        ? [`Note: ${ignoredIdNotes.join("; ")}.`]
-        : []),
       describeCompleteScan(scan),
       ...(items.some((item) => item.type === "messages")
         ? [
@@ -1344,16 +1400,9 @@ async function doSearch(
     data: {
       actionName: "MEMORY",
       op: "search" as const,
+      readOnlyOperation: true,
       memories: records,
-      totalMatches,
-      scanned: scan.scanned,
-      offset,
-      nextOffset: nextOffset ?? null,
-      snapshot,
-    },
-    promptData: {
-      actionName: "MEMORY",
-      op: "search" as const,
+      ...(messageAuthorCounts ? { messageAuthorCounts } : {}),
       totalMatches,
       rendered: items.length,
       scanned: scan.scanned,
@@ -1408,6 +1457,16 @@ async function doSearch(
         snapshot,
       },
     );
+  }
+  // Keep the existing complete-result budget and runtime payload unchanged.
+  // Only a trusted planner gets the reversible wire representation, and only
+  // when its full legend plus records is smaller than the original records.
+  const encoded = plannerOwnsReply
+    ? sharedMemoryRecordFields(records)
+    : undefined;
+  if (encoded) {
+    result.promptData = { ...result.data, ...encoded };
+    result.promptDataMode = "replace-data";
   }
   return result;
 }
@@ -2155,12 +2214,8 @@ export const memoryAction: Action = {
         enum: ["requester", "assistant", "any"],
       },
     },
-    // entityId/roomId carry no schema `pattern` on purpose (matrix F16): a
-    // planner-copied UUID arrives mangled often enough (live: a dropped hex
-    // char in the roomId first segment, tj-b0c123243cb39e) that the
-    // validate-tool-args pattern check failed the whole call before the
-    // handler could apply its per-op policy — search salvages by ignoring the
-    // unusable filter, destructive ops still hard-fail via parseUuidParam.
+    // Keep id validation in the handler so malformed model filters return a
+    // typed error before any read, rather than broadening the search scope.
     {
       name: "entityId",
       description:

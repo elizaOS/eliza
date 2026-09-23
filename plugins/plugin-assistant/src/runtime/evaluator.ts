@@ -56,8 +56,8 @@ import {
   withModelInputBudgetProviderOptions,
 } from "@elizaos/core";
 import {
-  buildEvaluatorTemplate,
   evaluatorSchema,
+  evaluatorTemplateForQueue,
 } from "../prompts/evaluator.ts";
 import { referenceRepeatedHistory } from "../services/message/history-wire.ts";
 import { computeCallCostUsd } from "./model-pricing";
@@ -295,6 +295,19 @@ function finalizeEvaluatorOutput(
   );
 }
 
+function evaluatorQueuedCallIds(
+  trajectory: PlannerTrajectory,
+  redactText: ToolDiagnosticTextRedactor,
+): string[] {
+  return [
+    ...new Set(
+      trajectory.plannedQueue
+        .map((call) => call.id ?? call.name)
+        .filter((id) => id.trim().length > 0 && redactText(id) === id),
+    ),
+  ];
+}
+
 export async function runEvaluator(
   params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
@@ -315,11 +328,16 @@ export async function runEvaluator(
   )
     .map((receipt) => receipt.receiptId)
     .filter((id) => redactDiagnosticText(id) === id);
+  const queuedCallIds = evaluatorQueuedCallIds(
+    params.trajectory,
+    redactDiagnosticText,
+  );
+  const clipboardAvailable = params.effects?.copyToClipboard !== false;
+  const { recommendedToolCallId, ...baseProperties } =
+    evaluatorSchema.properties ?? {};
+  if (!clipboardAvailable) delete baseProperties.copyToClipboard;
   // Match the canonical proof boundary without changing the recorded results
   // or forgiving invalid IDs returned by a provider that ignores its schema.
-  const clipboardAvailable = params.effects?.copyToClipboard !== false;
-  const properties = { ...evaluatorSchema.properties };
-  if (!clipboardAvailable) delete properties.copyToClipboard;
   const latestStep = params.trajectory.steps.at(-1);
   const requiresReplyField =
     params.trajectory.codingMode === false &&
@@ -333,7 +351,22 @@ export async function runEvaluator(
       ? { required: [...(evaluatorSchema.required ?? []), "messageToUser"] }
       : {}),
     properties: {
-      ...properties,
+      ...baseProperties,
+      // Candidate action names and past calls are not an executable queue.
+      // The planner's existing dispatch/fallback checks remain authoritative.
+      ...(queuedCallIds.length
+        ? {
+            recommendedToolCallId: {
+              ...recommendedToolCallId,
+              enum: queuedCallIds,
+            },
+          }
+        : {
+            decision: {
+              ...baseProperties.decision,
+              enum: ["FINISH", "CONTINUE"],
+            },
+          }),
       ...(requiresReplyField
         ? {
             messageToUser: {
@@ -917,7 +950,11 @@ function renderEvaluatorModelInput(params: {
     });
   }
   const template =
-    params.template ?? buildEvaluatorTemplate(params.clipboardAvailable);
+    params.template ??
+    evaluatorTemplateForQueue(
+      evaluatorQueuedCallIds(params.trajectory, params.redactText).length > 0,
+      params.clipboardAvailable,
+    );
   const instructions = (
     template.split("context_object:")[0] ?? template
   ).trim();
@@ -980,6 +1017,7 @@ const ACTION_SURFACE_DIAGNOSTIC_FIELDS = new Set([
   "actionSurfaceHash",
   "warnings",
   "queryTokens",
+  "queryTokenCount",
   "candidateActions",
   "parentActionHints",
   "codingActionProfile",

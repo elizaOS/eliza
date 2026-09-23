@@ -281,6 +281,37 @@ export function isModelProviderError(error: unknown): boolean {
 	return false;
 }
 
+/** A rejected output/tool schema cannot be repaired by generating an apology. */
+export function isProviderSchemaRejection(error: unknown): boolean {
+	const status = modelProviderErrorStatus(error);
+	if (status !== undefined && status !== 400 && status !== 422) return false;
+	for (const node of modelErrorChain(error)) {
+		const status = readHttpStatus(node);
+		const code = (node as { code?: unknown }).code;
+		const name = (node as { name?: unknown }).name;
+		const providerEvidence =
+			status === 400 ||
+			status === 422 ||
+			code === "MODEL_PROVIDER_FAILED" ||
+			name === "AI_APICallError";
+		if (
+			!providerEvidence ||
+			(status !== undefined && status !== 400 && status !== 422)
+		)
+			continue;
+		const texts = nodeOverflowTexts(node);
+		if (
+			texts.some((text) =>
+				/failed to compile the JSON schema grammar|invalid schema for (?:response_format|function)|unsupported JSON schema/i.test(
+					text,
+				),
+			)
+		)
+			return true;
+	}
+	return false;
+}
+
 /** Classification code for a typed provider context-overflow rejection. */
 export const PROVIDER_CONTEXT_OVERFLOW = "PROVIDER_CONTEXT_OVERFLOW";
 

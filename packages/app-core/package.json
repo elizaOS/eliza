@@ -82,7 +82,10 @@
     "sms-gateway:verify": "node ./scripts/verify-android-sms-gateway-e2e.mjs",
     "sms-gateway:watch": "node ./scripts/watch-sms-gateway-readiness.mjs",
     "sms-gateway:watch:pair": "node ./scripts/watch-sms-gateway-readiness.mjs --timeout 300 --interval 5 --run-install",
-    "test:app-real-e2e": "node ../scripts/run-vitest.mjs run --config vitest.app-real-e2e.config.ts"
+    "test:app-real-e2e": "node ../scripts/run-vitest.mjs run --config vitest.app-real-e2e.config.ts",
+    "release:confidential:sign": "bun scripts/sign-confidential-release.ts",
+    "deploy:confidential:provision": "bun scripts/provision-confidential-vm.ts",
+    "deploy:confidential:encrypt-env": "bun scripts/encrypt-confidential-environment.ts"
   },
   "exports": {
     "./package.json": "./package.json",
