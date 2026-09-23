@@ -193,3 +193,9 @@ Successful responses carry `embedding_space`, so the runtime separates this
 representation from legacy vectors even when their dimensions match. Replacing a
 GTE/OpenAI endpoint requires a scoped backup and verified re-indexing of retained
 memories; changing a model label alone is not a migration.
+
+Self-hosted BGE pricing is owned by the local `selfhosted` catalog source. It
+retains the platform tariff independently of external provider credentials or
+catalog availability. The default catalog refresh includes this source; an
+operator can refresh only `selfhosted` through the existing admin pricing API.
+This does not bypass inference reservation/settlement or change the tariff.
