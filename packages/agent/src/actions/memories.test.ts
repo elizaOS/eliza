@@ -12,6 +12,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  ChannelType,
   composeToolDiagnosticRedactor,
   promoteSubactionsToActions,
   validateToolArgs,
@@ -2547,7 +2548,7 @@ describe("MEMORY op:search complete traversal", () => {
         id: ROOM_ID,
         worldId: SIBLING_ID,
         agentId: AGENT_ID,
-        type: "DM",
+        type: ChannelType.DM,
         source: "test",
       }));
       runtime.getWorld = vi.fn(async () => ({
@@ -2555,7 +2556,7 @@ describe("MEMORY op:search complete traversal", () => {
         agentId: AGENT_ID,
         metadata: {
           ownership: { ownerId: USER_ID },
-          roles: { [USER_ID]: "OWNER" },
+          roles: { [USER_ID]: "OWNER" as const },
         },
       }));
       runtime.reportError = vi.fn();
@@ -2698,7 +2699,7 @@ describe("MEMORY op:search complete traversal", () => {
         id: ROOM_ID,
         worldId: SIBLING_ID,
         agentId: AGENT_ID,
-        type: "DM",
+        type: ChannelType.DM,
         source: "test",
       }));
       runtime.getWorld = vi.fn(async () => ({
@@ -2706,7 +2707,7 @@ describe("MEMORY op:search complete traversal", () => {
         agentId: AGENT_ID,
         metadata: {
           ownership: { ownerId: USER_ID },
-          roles: { [USER_ID]: "OWNER" },
+          roles: { [USER_ID]: "OWNER" as const },
         },
       }));
       runtime.reportError = vi.fn();
