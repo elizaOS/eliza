@@ -155,7 +155,19 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+      - name: Resolve broad core bootstrap
+        id: core_scope
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+        run: node packages/scripts/pr-core-build-scope.mjs "$MERGE_BASE" "$GITHUB_OUTPUT"
+
+      - name: Build affected workspace closure
+        env:
+          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
+        run: node packages/scripts/run-turbo.mjs run build --concurrency=4 --affected --output-logs=errors-only
+
       - name: Build core contract
+        if: steps.core_scope.outputs.core_bootstrap_required == 'true'
         run: bun run build:core
 
       - name: Run synthetic-world transaction tests
@@ -171,11 +183,6 @@ jobs:
         env:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
         run: node packages/scripts/run-turbo.mjs run typecheck --concurrency=4 --affected
-
-      - name: Build affected workspace closure
-        env:
-          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/run-turbo.mjs run build --concurrency=4 --affected --output-logs=errors-only
 
   billing-payment-replay-e2e:
     name: Billing payment replay E2E
