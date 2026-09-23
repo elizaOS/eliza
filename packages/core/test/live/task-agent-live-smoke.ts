@@ -128,111 +128,87 @@ async function runSequentialSmoke(
 	agentType: Framework,
 	{ runtime, router, service, workdir, events }: SmokeContext,
 ): Promise<void> {
-	const firstFileName = `FIRST_${agentType.toUpperCase()}.txt`;
-	const secondFileName = `SECOND_${agentType.toUpperCase()}.txt`;
-	const firstFilePath = path.join(workdir, firstFileName);
-	const secondFilePath = path.join(workdir, secondFileName);
-	const firstSentinel = `LIVE_REUSE_${agentType.toUpperCase()}_FIRST_DONE`;
-	const secondSentinel = `LIVE_REUSE_${agentType.toUpperCase()}_SECOND_DONE`;
-
 	const [preflight] = await service.checkAvailableAgents([agentType]);
 	assert.equal(preflight?.installed, true);
+	let sessionId: string | undefined;
 
-	const spawnResult = await spawnAgentAction.handler(
-		runtime,
-		createMessage({
-			agentType,
-			workdir,
-			approvalPreset: "autonomous",
-			acceptanceCriteria: [
-				`The file ${firstFileName} contains exactly "${agentType}-first".`,
-				`The completion reports "${firstSentinel}".`,
-			],
-			task:
-				`Create a file named ${firstFileName} in the current directory containing exactly "${agentType}-first". ` +
-				`Then print exactly "${firstSentinel}". Do not ask follow-up questions.`,
-		}) as never,
-		undefined,
-		{},
-		undefined,
-	);
-	assert.equal(spawnResult?.success, true);
-	assert.ok(sessionIdFromSpawnResult(spawnResult));
-
-	const sessionId = sessionIdFromSpawnResult(spawnResult) as string;
-	await waitForTrackedSession(service, sessionId, agentType);
-	const firstTaskEventStart = events.length;
-
-	await waitFor(
-		async () => {
-			const sessionInfo = await service.getSession(sessionId);
-			if (!sessionInfo) {
-				throw new Error("session disappeared before completing the first task");
-			}
-			const recentLoginRequired = events.findLast(
-				(entry) => entry.event === "login_required",
+	for (const step of ["first", "second"]) {
+		const filename = `${step.toUpperCase()}_${agentType.toUpperCase()}.txt`;
+		const expectedText = `${agentType}-${step}`;
+		const sentinel = `LIVE_REUSE_${agentType.toUpperCase()}_${step.toUpperCase()}_DONE`;
+		const task =
+			`Create a file named ${filename} containing exactly "${expectedText}". ` +
+			`Then print exactly "${sentinel}". Stay available for more work afterward and do not ask follow-up questions.`;
+		const eventStart = events.length;
+		if (!sessionId) {
+			const result = await spawnAgentAction.handler(
+				runtime,
+				createMessage({
+					agentType,
+					workdir,
+					approvalPreset: "autonomous",
+					task,
+					acceptanceCriteria: [
+						`The file ${filename} contains exactly "${expectedText}".`,
+						`The completion reports "${sentinel}".`,
+					],
+				}) as never,
+				undefined,
+				{},
+				undefined,
 			);
-			if (recentLoginRequired) {
-				const details = recentLoginRequired.data as { instructions?: string };
-				throw new Error(
-					details.instructions || "framework authentication is required",
+			assert.equal(result?.success, true);
+			sessionId = sessionIdFromSpawnResult(result);
+			assert.ok(sessionId);
+			await waitForTrackedSession(service, sessionId, agentType);
+		} else {
+			const result = await sendToAgentAction.handler(
+				runtime,
+				createMessage({ sessionId }) as never,
+				undefined,
+				{ parameters: { action: "send", input: task } },
+				undefined,
+			);
+			assert.equal(result?.success, true);
+		}
+		const trackedSessionId = sessionId;
+		const filePath = path.join(workdir, filename);
+		await waitFor(
+			async () => {
+				const session = await service.getSession(trackedSessionId);
+				assert.ok(session, "session disappeared before completing the task");
+				const loginRequired = events.findLast(
+					(entry) => entry.event === "login_required",
 				);
-			}
-			if (!fs.existsSync(firstFilePath)) return false;
-			const fileText = fs.readFileSync(firstFilePath, "utf8").trim();
-			if (fileText !== `${agentType}-first`) return false;
-			const output = cleanForChat(await service.getSessionOutput(sessionId));
-			if (
-				(output.includes(firstSentinel) ||
-					sawTaskCompletion(events, firstTaskEventStart)) &&
-				sessionInfo.status === "ready"
-			)
-				return true;
-			if (sessionInfo.status === "stopped" || sessionInfo.status === "error") {
-				throw new Error(
-					`session ended before verified completion with status ${sessionInfo.status}. Output: ${output.slice(-600)}`,
+				if (loginRequired) {
+					const details = loginRequired.data as { instructions?: string };
+					throw new Error(
+						details.instructions || "framework authentication is required",
+					);
+				}
+				if (["stopped", "errored", "cancelled"].includes(session.status)) {
+					throw new Error(
+						`session ended before completion with status ${session.status}`,
+					);
+				}
+				if (
+					!fs.existsSync(filePath) ||
+					fs.readFileSync(filePath, "utf8").trim() !== expectedText
+				)
+					return false;
+				const output = cleanForChat(
+					await service.getSessionOutput(trackedSessionId),
 				);
-			}
-			return false;
-		},
-		6 * 60 * 1000,
-		3000,
-	);
-	assertRouterStayedDisabled(router);
-
-	const secondTaskEventStart = events.length;
-	const sendResult = await sendToAgentAction.handler(
-		runtime,
-		createMessage({ sessionId }) as never,
-		undefined,
-		{
-			parameters: {
-				action: "send",
-				input:
-					`Now create a second file named ${secondFileName} containing exactly "${agentType}-second". ` +
-					`Then print exactly "${secondSentinel}". Stay available for more work afterward and do not ask follow-up questions.`,
+				return (
+					session.status === "ready" &&
+					(output.includes(sentinel) || sawTaskCompletion(events, eventStart))
+				);
 			},
-		},
-		undefined,
-	);
-	assert.equal(sendResult?.success, true);
-
-	await waitFor(
-		async () => {
-			if (!fs.existsSync(secondFilePath)) return false;
-			const fileText = fs.readFileSync(secondFilePath, "utf8").trim();
-			if (fileText !== `${agentType}-second`) return false;
-			const output = cleanForChat(await service.getSessionOutput(sessionId));
-			const sessionInfo = await service.getSession(sessionId);
-			return (
-				(output.includes(secondSentinel) ||
-					sawTaskCompletion(events, secondTaskEventStart)) &&
-				sessionInfo?.status === "ready"
-			);
-		},
-		6 * 60 * 1000,
-		3000,
-	);
+			6 * 60 * 1000,
+			3000,
+		);
+		assertRouterStayedDisabled(router);
+	}
 }
 
 async function main(): Promise<void> {
