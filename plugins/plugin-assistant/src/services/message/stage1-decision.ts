@@ -115,6 +115,7 @@ import {
 } from "./stage1-input.ts";
 import {
   extractMessageHandlerRawParsed,
+  hasHandleResponseToolCall,
   messageHandlerFromFieldResult,
   normalizeRawParsedForFieldRegistry,
   reportRejectedUserVisibleModelOutput,
