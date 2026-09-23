@@ -1,7 +1,12 @@
 /** Exercises real SQLite auth persistence, atomic claims and HTTP session authority. */
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
+import {
+  createServer,
+  request as httpRequest,
+  type IncomingMessage,
+  type Server,
+} from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { UUID } from "@elizaos/core";
@@ -11,6 +16,7 @@ import {
   resolveAuthorizedRouteRole,
   resolveSessionTokenRole,
 } from "../api/auth";
+import { createPersistentSessionAdmission } from "../api/auth/persistent-session-admission";
 import {
   BROWSER_SESSION_TTL_MS,
   CSRF_HEADER_NAME,
@@ -356,4 +362,129 @@ it("rejects expired and over-cap sessions during read-only revalidation", async 
       now + BROWSER_SESSION_TTL_MS,
     ),
   ).toBeNull();
+});
+
+it("pins actual HTTP requests to persistent identities and rechecks revocation without activity writes", async () => {
+  await identity();
+  await identity("device", "machine");
+  const timestamp = Date.now();
+  const browser = await store.createSession({
+    ...session("browser-admission"),
+    createdAt: timestamp,
+    lastSeenAt: timestamp,
+    expiresAt: timestamp + 60000,
+  });
+  await store.createSession({
+    ...session("machine-admission", "device"),
+    kind: "machine",
+    createdAt: timestamp,
+    lastSeenAt: timestamp,
+    expiresAt: timestamp + 60000,
+  });
+  const admission = createPersistentSessionAdmission({
+    store,
+    allowedOrigins: ["https://paired.example"],
+  });
+  const requests = new Map<string, IncomingMessage>();
+  const captureServer = createServer(async (request, response) => {
+    requests.set(request.url ?? "/", request);
+    try {
+      const actor = await admission.capture(request);
+      response.writeHead(actor ? 200 : 401, {
+        "content-type": "application/json",
+      });
+      response.end(JSON.stringify(actor));
+    } catch {
+      // error-policy:J1 The real test transport translates storage failure without exposing credentials.
+      response.writeHead(503);
+      response.end();
+    }
+  });
+  server = captureServer;
+  await new Promise<void>((resolve) =>
+    captureServer.listen(0, "127.0.0.1", resolve),
+  );
+  const address = captureServer.address();
+  if (!address || typeof address === "string")
+    throw new Error("Missing listener address");
+  const url = `http://127.0.0.1:${address.port}`;
+  const cookie = `${SESSION_COOKIE_NAME}=${browser.id}`;
+  expect(
+    (await fetch(`${url}/missing-origin`, { headers: { cookie } })).status,
+  ).toBe(401);
+  expect(
+    (
+      await fetch(`${url}/wrong-origin`, {
+        headers: { cookie, origin: "https://unapproved.example" },
+      })
+    ).status,
+  ).toBe(401);
+  expect(
+    (
+      await fetch(`${url}/unknown-token`, {
+        headers: { authorization: "Bearer not-a-persisted-session" },
+      })
+    ).status,
+  ).toBe(401);
+  expect(
+    (
+      await fetch(`${url}/csrf-denied`, {
+        method: "POST",
+        headers: { cookie, origin: "https://paired.example" },
+      })
+    ).status,
+  ).toBe(401);
+  expect(
+    (
+      await fetch(`${url}/csrf-allowed`, {
+        method: "POST",
+        headers: {
+          cookie,
+          origin: "https://paired.example",
+          [CSRF_HEADER_NAME]: deriveCsrfToken(browser),
+        },
+      })
+    ).status,
+  ).toBe(200);
+  const readWithHost = (host: string) =>
+    new Promise<number>((resolve, reject) => {
+      const request = httpRequest(
+        `${url}/same-origin-read`,
+        {
+          headers: { cookie, host, "sec-fetch-site": "same-origin" },
+        },
+        (response) => {
+          response.resume();
+          if (response.statusCode === undefined)
+            reject(new Error("Missing HTTP status"));
+          else resolve(response.statusCode);
+        },
+      );
+      request.once("error", reject);
+      request.end();
+    });
+  expect(await readWithHost("paired.example")).toBe(200);
+  expect(await readWithHost("unapproved.example")).toBe(401);
+  const allowed = await fetch(`${url}/stream`, {
+    headers: { authorization: "Bearer machine-admission" },
+  });
+  expect(await allowed.json()).toEqual({
+    identityId: "device",
+    identityKind: "machine",
+    source: "bearer-session",
+    scopes: [],
+  });
+  const request = requests.get("/stream");
+  if (!request) throw new Error("Missing captured request");
+  const persisted = await store.findSession("machine-admission", Date.now());
+  expect(await admission.revalidate(request)).toMatchObject({
+    identityId: "device",
+  });
+  expect(await store.findSession("machine-admission", Date.now())).toEqual(
+    persisted,
+  );
+  await store.revokeSession("machine-admission", Date.now());
+  expect(await admission.revalidate(request)).toBeNull();
+  request.headers.authorization = `Bearer ${browser.id}`;
+  expect(await admission.capture(request)).toBeNull();
 });

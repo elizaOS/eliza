@@ -67,7 +67,8 @@ function firstHeaderValue(value: string | string[] | undefined): string | null {
   return value?.trim() || null;
 }
 
-function sessionAllowedForRequest(
+/** Applies persisted transport restrictions without granting any data authority. */
+export function sessionAllowedForRequest(
   session: AuthSessionRow,
   req: Pick<http.IncomingMessage, "headers" | "socket">,
 ): boolean {
@@ -86,6 +87,14 @@ function sessionAllowedForRequest(
 export async function ensureSessionForRequest(
   req: Pick<http.IncomingMessage, "headers" | "socket">,
   _res: http.ServerResponse,
+  options: EnsureSessionOptions,
+): Promise<ResolvedAuthContext | null> {
+  return resolveSessionForRequest(req, options);
+}
+
+/** Resolves the same canonical session contract before a response or WebSocket exists. */
+export async function resolveSessionForRequest(
+  req: Pick<http.IncomingMessage, "headers" | "socket">,
   options: EnsureSessionOptions,
 ): Promise<ResolvedAuthContext | null> {
   const { store } = options;
