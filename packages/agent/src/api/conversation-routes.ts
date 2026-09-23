@@ -3417,6 +3417,9 @@ async function createConversation(
     createdAt: now,
     updatedAt: now,
   };
+  // Registered before room setup so a concurrent request for this id (the
+  // greeting route discovers in-flight conversations through the list)
+  // serializes on the room queue instead of answering 404.
   state.conversations.set(id, conv);
   let greeting:
     | {
@@ -3426,9 +3429,6 @@ async function createConversation(
         persisted: boolean;
       }
     | undefined;
-
-  // Soft cap: evict the oldest conversation when the map exceeds 500
-  evictOldestConversation(state.conversations, 500);
 
   const runtime = state.runtime;
   if (runtime) {
@@ -3457,6 +3457,12 @@ async function createConversation(
         }
       }
     } catch (err) {
+      // error-policy:J1 boundary translation — withdraw the registration
+      // so the failed room setup leaves no listed conversation without a
+      // backing room; the identity check keeps a replaced entry intact.
+      if (state.conversations.get(id) === conv) {
+        state.conversations.delete(id);
+      }
       error(
         res,
         `Failed to initialize conversation: ${getErrorMessage(err)}`,
@@ -3465,6 +3471,9 @@ async function createConversation(
       return true;
     }
   }
+  // Soft cap: evict the oldest conversation when the map exceeds 500. Runs
+  // only after room setup succeeded so a failed create evicts nothing.
+  evictOldestConversation(state.conversations, 500);
   json(res, { conversation: conv, ...(greeting ? { greeting } : {}) });
   return true;
 }
@@ -3995,7 +4004,6 @@ async function importConversation(
       updatedAt: now,
     };
     state.conversations.set(convId, conv);
-    evictOldestConversation(state.conversations, 500);
     createdConversation = true;
   }
 
@@ -4017,7 +4025,12 @@ async function importConversation(
       importAbortTracker.signal,
     );
   } catch (err) {
+    // error-policy:J1 Withdraw this import's registration even when the caller
+    // disconnected and cannot receive the admission error response.
     importAbortTracker.dispose();
+    if (createdConversation && state.conversations.get(convId) === conv) {
+      state.conversations.delete(convId);
+    }
     if (importAbortTracker.isAborted()) return true;
     error(
       res,
@@ -4044,12 +4057,20 @@ async function importConversation(
     try {
       await ensureConversationRoom(state, runtime, conv, caller);
     } catch (err) {
+      // error-policy:J1 boundary translation — a failed import that created
+      // this conversation must not leave it listed without a backing room.
+      if (createdConversation && state.conversations.get(convId) === conv) {
+        state.conversations.delete(convId);
+      }
       error(
         res,
         `Failed to initialize conversation room: ${getErrorMessage(err)}`,
         500,
       );
       return true;
+    }
+    if (createdConversation) {
+      evictOldestConversation(state.conversations, 500);
     }
 
     if (!exactImport && importTasks.length === 0 && !todoSnapshot) {

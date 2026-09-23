@@ -1,3 +1,4 @@
+/** Exercises encrypted Telegram session persistence and agent/account AAD isolation using the real filesystem and vault crypto. */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -101,4 +102,23 @@ describe("Telegram Personal encrypted session storage", () => {
     expect(fs.existsSync(legacyPath)).toBe(false);
     expect(telegramAccountSessionExists()).toBe(false);
   });
+});
+
+it("isolates encrypted sessions by agent and account and rejects copied ciphertext", () => {
+  const first = { agentId: "agent-a", accountId: "me:personal" };
+  const second = { agentId: "agent-b", accountId: "me:personal" };
+  const anotherAccount = { agentId: "agent-a", accountId: "other:personal" };
+  saveTelegramAccountSessionString("first-owner-session", first);
+  saveTelegramAccountSessionString("second-owner-session", second);
+  expect(loadTelegramAccountSessionString(first)).toBe("first-owner-session");
+  expect(loadTelegramAccountSessionString(second)).toBe("second-owner-session");
+  expect(loadTelegramAccountSessionString(anotherAccount)).toBe("");
+  fs.copyFileSync(
+    resolveTelegramAccountSessionFile(first),
+    resolveTelegramAccountSessionFile(anotherAccount),
+  );
+  expect(() => loadTelegramAccountSessionString(anotherAccount)).toThrow();
+  clearTelegramAccountSession(first);
+  expect(telegramAccountSessionExists(first)).toBe(false);
+  expect(loadTelegramAccountSessionString(second)).toBe("second-owner-session");
 });

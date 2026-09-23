@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
+    "types": ["node"],
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "paths": {
       "@elizaos/core": ["../core/src/index.ts"],

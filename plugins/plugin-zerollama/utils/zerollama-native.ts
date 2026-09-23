@@ -9,7 +9,7 @@
  */
 
 import type { GenerateTextResult, TextStreamResult, TokenUsage, ToolCall } from "@elizaos/core";
-import { isElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { ElizaError, isElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { ModelMessage, ToolSet } from "ai";
 import { assertZerollamaStreamTerminated } from "./model-output";
 import { estimateUsage } from "./modelUsage";
@@ -79,6 +79,13 @@ function contentToString(content: unknown): string {
     const row = asRecord(part);
     if (typeof row.text === "string") parts.push(row.text);
     else if (typeof part === "string") parts.push(part);
+    else {
+      throw new ElizaError("Zerollama cannot encode this message content part", {
+        code: "OLLAMA_UNSUPPORTED_MESSAGE_CONTENT",
+        context: { type: row.type },
+        severity: "ephemeral",
+      });
+    }
   }
   return parts.join("");
 }
@@ -165,10 +172,29 @@ export function toZerollamaChatMessages(args: {
     }
 
     if (role === "tool") {
-      out.push({
-        role: "tool",
-        content: contentToString(row.content),
-      });
+      if (Array.isArray(row.content)) {
+        for (const part of row.content) {
+          const result = asRecord(part);
+          const output = asRecord(result.output);
+          if (
+            result.type !== "tool-result" ||
+            !["text", "json", "error-text", "error-json", "execution-denied"].includes(
+              String(output.type)
+            )
+          ) {
+            throw new ElizaError("Zerollama cannot encode this tool result", {
+              code: "OLLAMA_UNSUPPORTED_MESSAGE_CONTENT",
+              context: { type: result.type, outputType: output.type },
+              severity: "ephemeral",
+            });
+          }
+          // Native zerollama has no tool-result identity field. Keep the complete
+          // envelope in content so parallel/reordered results retain their binding.
+          out.push({ role: "tool", content: JSON.stringify(result) });
+        }
+      } else {
+        out.push({ role: "tool", content: contentToString(row.content) });
+      }
       continue;
     }
 
