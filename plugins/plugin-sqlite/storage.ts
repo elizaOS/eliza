@@ -30,6 +30,22 @@ import {
 
 type Owner = { active: boolean; child?: Promise<void> };
 
+/** Persist the published name and any ancestors created for a new backup directory. */
+function syncDirectoryChain(directory: string): void {
+  let current = directory;
+  for (;;) {
+    const fd = openSync(current, "r");
+    try {
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    const parent = dirname(current);
+    if (parent === current) return;
+    current = parent;
+  }
+}
+
 export class SQLiteStorage implements IStorage {
   private database: SqlDatabase | null = null;
   private tail: Promise<void> = Promise.resolve();
@@ -449,6 +465,14 @@ export class SQLiteStorage implements IStorage {
           closeSync(snapshotFd);
         }
         linkSync(snapshot, destination);
+        syncDirectoryChain(dirname(destination));
+      } catch (cause) {
+        // error-policy:J2 Unsupported publication or directory durability must not report a completed backup.
+        throw this.failure(
+          "BACKUP_PUBLICATION_FAILED",
+          "Backup publication could not be made durable; use a filesystem supporting hard links and directory fsync, and inspect the destination before retrying",
+          cause,
+        );
       } finally {
         try {
           rmSync(staging, { recursive: true, force: true });

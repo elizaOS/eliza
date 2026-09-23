@@ -1,5 +1,6 @@
 /** Exercises built storage in a separate pinned runtime, including complete value and transaction recovery. */
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { SQLiteStorage } from "../../dist/index.js";
 
 const [path, agentId, mode] = process.argv.slice(2);
@@ -75,8 +76,15 @@ try {
     assert.equal(await storage.get("probe", "sibling"), null);
     const competing = new SQLiteStorage(path, agentId);
     await assert.rejects(competing.init());
-    const backup = `${path}.${process.versions.bun ? "bun" : "node"}.backup`;
+    const backup = join(
+      `${path}.backups`,
+      "nested",
+      `${process.versions.bun ? "bun" : "node"}.sqlite`,
+    );
     await storage.backup(backup);
+    await assert.rejects(storage.backup(backup), {
+      code: "SQLITE_BACKUP_PATH_INVALID",
+    });
     const restored = new SQLiteStorage(backup, agentId);
     await restored.init();
     try {
