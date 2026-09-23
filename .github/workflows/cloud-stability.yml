@@ -76,13 +76,19 @@ jobs:
           sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
             /bin/bash packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup
           echo "ELIZA_STABILITY_LINUX_SANDBOX=1" >> "$GITHUB_ENV"
+      - name: Expose checkout outside the runner private home
+        run: |
+          sudo install -d -m 0755 /opt/eliza-stability
+          sudo mount --bind "$GITHUB_WORKSPACE" /opt/eliza-stability
       - name: Prove Linux containment against adversarial escapes
+        working-directory: /opt/eliza-stability
         run: bun run --cwd packages/cloud/e2e test:containment
       - name: Run exact-three keyless AgentRuntime scenario
+        working-directory: /opt/eliza-stability
         run: >-
           bun run --cwd packages/cloud/e2e stability:keyless --
           --run-id cloud-keyless-${{ github.run_id }}-${{ github.run_attempt }}
-          --output ${{ github.workspace }}/artifacts/cloud-stability/keyless
+          --output /opt/eliza-stability/artifacts/cloud-stability/keyless
       - name: Upload deterministic trajectories and ledgers
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -133,16 +139,22 @@ jobs:
           sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
             /bin/bash packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup
           echo "ELIZA_STABILITY_LINUX_SANDBOX=1" >> "$GITHUB_ENV"
+      - name: Expose checkout outside the runner private home
+        run: |
+          sudo install -d -m 0755 /opt/eliza-stability
+          sudo mount --bind "$GITHUB_WORKSPACE" /opt/eliza-stability
       - name: Prove Linux containment against adversarial escapes
+        working-directory: /opt/eliza-stability
         run: bun run --cwd packages/cloud/e2e test:containment
       - name: Run exact-three real-model scenario over mock services
+        working-directory: /opt/eliza-stability
         env:
           OPENAI_API_KEY: ${{ (github.event_name == 'schedule' || inputs.provider == 'openai') && secrets.OPENAI_API_KEY || '' }}
           ANTHROPIC_API_KEY: ${{ inputs.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || '' }}
           STABILITY_PROVIDER: ${{ github.event_name == 'schedule' && 'openai' || inputs.provider }}
           STABILITY_INPUT_MODEL: ${{ inputs.model || '' }}
           STABILITY_RUN_ID: cloud-real-${{ github.run_id }}-${{ github.run_attempt }}
-          STABILITY_OUTPUT: ${{ github.workspace }}/artifacts/cloud-stability/real
+          STABILITY_OUTPUT: /opt/eliza-stability/artifacts/cloud-stability/real
         run: |
           args=(
             bun run --cwd packages/cloud/e2e stability:real --
