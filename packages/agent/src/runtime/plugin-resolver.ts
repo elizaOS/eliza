@@ -1306,24 +1306,22 @@ async function removeEscapingStagedSymlinks(
   }
 }
 
-const stagedDirectoryCopyWaiters: (() => void)[] = [];
-let activeStagedDirectoryCopies = 0;
+const stagedCopyWaiters: (() => void)[] = [];
+let activeStagedCopies = 0;
 
-async function withStagedDirectoryCopySlot(
-  copy: () => Promise<void>,
-): Promise<void> {
+async function withStagedCopySlot(copy: () => Promise<void>): Promise<void> {
   await new Promise<void>((resolve) => {
-    if (activeStagedDirectoryCopies < 4) {
-      activeStagedDirectoryCopies++;
+    if (activeStagedCopies < 4) {
+      activeStagedCopies++;
       resolve();
-    } else stagedDirectoryCopyWaiters.push(resolve);
+    } else stagedCopyWaiters.push(resolve);
   });
   try {
     await copy();
   } finally {
-    const next = stagedDirectoryCopyWaiters.shift();
+    const next = stagedCopyWaiters.shift();
     if (next) next();
-    else activeStagedDirectoryCopies--;
+    else activeStagedCopies--;
   }
 }
 
@@ -1342,26 +1340,27 @@ export async function copyPluginTreeWithoutEscapingSymlinks(
 ): Promise<void> {
   const sourceRoot = await fs.realpath(sourcePath);
   try {
-    const directories = [{ source: sourceRoot, target: targetPath }];
+    const entries = [{ source: sourceRoot, target: targetPath }];
     const queued = new Set([sourceRoot]);
     const selections = new Map<string, boolean>();
     const restrictiveModes: { target: string; mode: number }[] = [];
-    const copyDirectory = async (directory: {
+    const copyEntry = async (entry: {
       source: string;
       target: string;
     }): Promise<void> => {
-      if (!isPathInsideRoot(await fs.realpath(directory.source), sourceRoot)) {
+      const descendants: { source: string; target: string }[] = [];
+      if (!isPathInsideRoot(await fs.realpath(entry.source), sourceRoot)) {
         throw new ElizaError(
-          "Plugin source directory changed outside its package during staging",
+          "Plugin source entry changed outside its package during staging",
           {
             code: "PLUGIN_STAGING_SOURCE_CHANGED",
-            context: { sourceRoot, source: directory.source },
+            context: { sourceRoot, source: entry.source },
           },
         );
       }
-      const existed = await pathEntryExists(directory.target);
+      let existed = false;
       let copiedDirectoryMode: number | undefined;
-      await fs.cp(directory.source, directory.target, {
+      await fs.cp(entry.source, entry.target, {
         recursive: true,
         force: true,
         dereference: false,
@@ -1379,32 +1378,35 @@ export async function copyPluginTreeWithoutEscapingSymlinks(
           }
           try {
             const stat = await fs.lstat(src);
-            if (stat.isSymbolicLink()) {
-              return (
-                (await confinedTreeSymlinkTarget(src, sourceRoot)) !== null
-              );
+            if (
+              stat.isSymbolicLink() &&
+              (await confinedTreeSymlinkTarget(src, sourceRoot)) === null
+            ) {
+              return false;
             }
-            if (stat.isDirectory()) {
-              if (src === directory.source) copiedDirectoryMode = stat.mode;
-              else {
-                if (!queued.has(src)) {
-                  queued.add(src);
-                  directories.push({
-                    source: src,
-                    target: path.join(
-                      targetPath,
-                      path.relative(sourceRoot, src),
-                    ),
-                  });
-                }
-                return false;
+            if (src !== entry.source) {
+              // Defer files as well as directories. A flat package must share
+              // the same bounded work budget as a tree of small directories.
+              if (!queued.has(src)) {
+                queued.add(src);
+                descendants.push({
+                  source: src,
+                  target: path.join(targetPath, path.relative(sourceRoot, src)),
+                });
               }
+              return false;
             }
-            return true;
+            if (stat.isDirectory()) copiedDirectoryMode = stat.mode;
           } catch {
             // error-policy:J3 broken or unresolvable symlink is skipped, not copied.
             return false;
           }
+          // Only new directories need temporary permissions. Destination
+          // failures must reject the copy rather than look like skipped input.
+          if (copiedDirectoryMode !== undefined) {
+            existed = await pathEntryExists(entry.target);
+          }
+          return true;
         },
       });
       // fs.cp applies a new directory's final mode before deferred children run.
@@ -1415,26 +1417,39 @@ export async function copyPluginTreeWithoutEscapingSymlinks(
         copiedDirectoryMode !== undefined &&
         (copiedDirectoryMode & 0o700) !== 0o700
       ) {
-        await fs.chmod(directory.target, copiedDirectoryMode | 0o700);
+        await fs.chmod(entry.target, copiedDirectoryMode | 0o700);
         restrictiveModes.push({
-          target: directory.target,
+          target: entry.target,
           mode: copiedDirectoryMode,
         });
       }
+      // A child may run only after its parent exists with writable traversal
+      // permissions. Replenish workers without waiting for unrelated entries.
+      for (const descendant of descendants) entries.push(descendant);
     };
-    while (directories.length > 0) {
-      // Bound filesystem pressure; await the entire batch before cleanup can
-      // remove a failed tree so no outstanding writer can recreate its files.
-      const batch = directories.splice(0, 4);
-      const results = await Promise.allSettled(
-        batch.map((directory) =>
-          withStagedDirectoryCopySlot(() => copyDirectory(directory)),
-        ),
-      );
-      for (const result of results) {
-        if (result.status === "rejected") throw result.reason;
+    const pending = new Set<Promise<void>>();
+    let nextEntry = 0;
+    let copyFailure: { error: unknown } | undefined;
+    while (nextEntry < entries.length || pending.size > 0) {
+      while (!copyFailure && nextEntry < entries.length && pending.size < 4) {
+        const entry = entries[nextEntry++];
+        let task: Promise<void>;
+        task = withStagedCopySlot(() => copyEntry(entry)).then(
+          () => {
+            pending.delete(task);
+          },
+          (error: unknown) => {
+            // error-policy:J5 rethrown below after every active writer settles.
+            copyFailure ??= { error };
+            pending.delete(task);
+          },
+        );
+        pending.add(task);
       }
+      if (pending.size === 0) break;
+      await Promise.race(pending);
     }
+    if (copyFailure) throw copyFailure.error;
     for (const directory of restrictiveModes.reverse()) {
       await fs.chmod(directory.target, directory.mode);
     }
