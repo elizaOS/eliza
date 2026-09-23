@@ -1,9 +1,10 @@
 /**
- * Package-barrel regression coverage for the Steward trading surface. The
- * published entrypoint must expose the plugin object, service class, helper,
- * and TypeScript trade envelopes that downstream agents compile against.
+ * Exercises Steward service startup and disposal through the wallet entrypoint.
+ * The service and plugin are real; unrelated wallet backends and runtime
+ * collaborators are mocked, so this does not submit live trades.
  */
-import { describe, expect, it, vi } from "vitest";
+import type { IAgentRuntime } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", async () => {
   return await import("./__tests__/core-vitest-mock.js");
@@ -76,50 +77,83 @@ import walletPluginDefault, {
   createTradeIdempotencyKey,
   STEWARD_TRADING_SERVICE_TYPE,
   StewardTradingService,
-  type TradeEnvelope,
-  type Venue,
   walletPlugin,
 } from "./index.js";
 
-function acceptsTradingEnvelope(
-  envelope: TradeEnvelope<{ venue: Venue }>,
-): string {
-  return envelope.ok ? envelope.data.venue : envelope.error;
+function runtimeWithService(service?: StewardTradingService): IAgentRuntime {
+  const settings: Record<string, string> = {
+    STEWARD_API_URL: "https://steward.local",
+    STEWARD_AGENT_ID: "agent-fixture",
+    STEWARD_AGENT_TOKEN: "token-fixture",
+  };
+  return {
+    getSetting: (key: string) => settings[key],
+    getService: (serviceType: string) => {
+      if (serviceType === StewardTradingService.serviceType) return service;
+      return undefined;
+    },
+    logger: {
+      debug: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      log: vi.fn(),
+      warn: vi.fn(),
+    },
+  } as unknown as IAgentRuntime;
 }
 
-describe("plugin-wallet package barrel Steward trading exports", () => {
-  it("exports the aggregate wallet plugin and Steward service runtime contracts", () => {
+describe("wallet entrypoint Steward trading lifecycle", () => {
+  beforeEach(() => {
+    vi.stubEnv("ELIZA_CLOUD_PROVISIONED", "0");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("registers StewardTradingService as a startable wallet service", async () => {
     expect(walletPluginDefault).toBe(walletPlugin);
-    expect(walletPlugin.services).toContain(StewardTradingService);
     expect(StewardTradingService.serviceType).toBe(
       STEWARD_TRADING_SERVICE_TYPE,
     );
+    const serviceClasses = walletPlugin.services ?? [];
+
+    expect(serviceClasses).toContain(StewardTradingService);
+    expect(
+      serviceClasses.filter(
+        (serviceClass) =>
+          serviceClass.serviceType === StewardTradingService.serviceType,
+      ),
+    ).toHaveLength(1);
+
+    const serviceClass = serviceClasses.find(
+      (candidate) => candidate === StewardTradingService,
+    ) as typeof StewardTradingService | undefined;
+    const service = await serviceClass?.start?.(runtimeWithService());
+
+    expect(service).toBeInstanceOf(StewardTradingService);
+    expect(service?.capability()).toMatchObject({
+      kind: "steward-self",
+      canTrade: true,
+      agentId: "agent-fixture",
+      apiUrl: "https://steward.local",
+    });
   });
 
-  it("exports idempotency and trade-envelope types through the entrypoint", () => {
-    const firstKey = createTradeIdempotencyKey();
-    const secondKey = createTradeIdempotencyKey();
+  it("tears down the registered Steward trading service during wallet plugin disposal", async () => {
+    const service = new StewardTradingService(runtimeWithService());
+    const stop = vi.spyOn(service, "stop").mockResolvedValue(undefined);
 
+    await walletPlugin.dispose?.(runtimeWithService(service));
+
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates distinct idempotency keys through the entrypoint", () => {
+    const firstKey = createTradeIdempotencyKey();
     expect(firstKey).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
-    expect(secondKey).not.toBe(firstKey);
-    expect(
-      acceptsTradingEnvelope({
-        ok: false,
-        outcome: "not_attempted",
-        error: "SESSION_REQUIRED",
-        detail: "No governed session is configured.",
-        retryable: false,
-        policy: { reason: "session-not-active" },
-      }),
-    ).toBe("SESSION_REQUIRED");
-    expect(
-      acceptsTradingEnvelope({
-        ok: true,
-        data: { venue: "hyperliquid" },
-        audit: { sessionId: "session-fixture" },
-      }),
-    ).toBe("hyperliquid");
+    expect(createTradeIdempotencyKey()).not.toBe(firstKey);
   });
 });
