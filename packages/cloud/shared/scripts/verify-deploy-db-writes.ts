@@ -10,7 +10,7 @@
  * jsonb / enum constraints (what typecheck alone can't prove).
  *
  * Tenant-DB DDL + image build are stubbed here (each is verified for real
- * elsewhere: verify-tenant-db-isolation.ts / verify-e2e-deploy.sh). This isolates
+ * elsewhere: verify:tenant-isolation / verify-e2e-deploy.sh). This isolates
  * the DB-write glue. Run via verify-deploy-db-writes.sh (migrates a throwaway
  * store first). Requires DATABASE_URL=pglite://<migrated dir>.
  */

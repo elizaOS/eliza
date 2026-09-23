@@ -29,7 +29,7 @@
     "check:tenant-scope": "bun scripts/check-tenant-scope.ts",
     "check:migration-prefix-order": "node scripts/check-migration-prefix-order.mjs",
     "check:tenant-scope:self-test": "bun test scripts/check-tenant-scope.test.ts",
-    "verify:tenant-isolation": "bun scripts/verify-tenant-db-isolation.ts",
+    "verify:tenant-isolation": "APPS_TENANT_DB_EPHEMERAL=1 bun test src/lib/services/tenant-db/tenant-db-provisioning.integration.test.ts",
     "reconcile:container-delete-jobs": "bun scripts/reconcile-container-delete-jobs.ts",
     "test": "node scripts/run-bun-tests.mjs",
     "test:vitest": "vitest run",
