@@ -1,0 +1,81 @@
+diff --git a/ios/Sources/LlamaCppPlugin/ElizaBgeEncoder.mm b/ios/Sources/LlamaCppPlugin/ElizaBgeEncoder.mm
+--- a/ios/Sources/LlamaCppPlugin/ElizaBgeEncoder.mm
++++ b/ios/Sources/LlamaCppPlugin/ElizaBgeEncoder.mm
+@@ -1,4 +1,4 @@
+-/** Preserves complete UTF-8 input and verifies artifact identity before invoking the linked, source-matched fused encoder. */
++/** Preserves complete UTF-8 input and verified model identity while keeping bundle metadata in writable app cache. */
+ #import "ElizaBgeEncoder.h"
+ #import <CommonCrypto/CommonDigest.h>
+ #import <LlamaCpp/eliza-inference-ffi.h>
+@@ -44,6 +44,37 @@
+     eliza_inference_free_string(nativeError);
+ }
+ 
++static NSString *WritableBundle(NSString *modelPath, NSError **error) {
++    NSFileManager *files = NSFileManager.defaultManager;
++    NSString *model = modelPath.stringByResolvingSymlinksInPath;
++    NSURL *cache = [files URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject;
++    if (!cache) { Fail(error, @"EMBEDDING_MODEL_UNAVAILABLE", @"Writable app cache is required for BGE bundle metadata"); return nil; }
++    NSData *identity = CompleteUtf8(model, error); if (!identity) return nil;
++    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
++    CC_SHA256(identity.bytes, (CC_LONG)identity.length, digest);
++    NSMutableString *key = [NSMutableString string];
++    for (unsigned char byte : digest) [key appendFormat:@"%02x", byte];
++    NSString *bundle = [cache.path stringByAppendingPathComponent:[@"eliza-bge/" stringByAppendingString:key]];
++    NSString *textDir = [bundle stringByAppendingPathComponent:@"text"];
++    @synchronized([ElizaBgeEncoder class]) {
++        NSError *fileError = nil;
++        if (![files createDirectoryAtPath:textDir withIntermediateDirectories:YES attributes:nil error:&fileError]) {
++            Fail(error, @"EMBEDDING_ARTIFACT_INVALID", fileError.localizedDescription); return nil;
++        }
++        NSString *target = [textDir stringByAppendingPathComponent:ModelName];
++        if (![files fileExistsAtPath:target] && ![files createSymbolicLinkAtPath:target withDestinationPath:model error:&fileError]) {
++            Fail(error, @"EMBEDDING_ARTIFACT_INVALID", fileError.localizedDescription); return nil;
++        }
++        NSArray<NSString *> *entries = [files contentsOfDirectoryAtPath:textDir error:&fileError];
++        BOOL directory = NO;
++        if (entries.count != 1 || ![entries.firstObject isEqualToString:ModelName] || ![files fileExistsAtPath:target isDirectory:&directory] || directory || ![target.stringByResolvingSymlinksInPath isEqualToString:model]) {
++            Fail(error, @"EMBEDDING_ARTIFACT_INVALID", @"The encoder cache must reference only the requested pinned BGE file"); return nil;
++        }
++        if (!VerifyArtifact(target, error)) return nil;
++    }
++    return bundle;
++}
++
+ @implementation ElizaBgeEncoder {
+     EliInferenceContext *_context;
+     NSInteger _contextLimit;
+@@ -62,23 +93,7 @@
+         size = MIN(size, limit);
+     }
+     if (!VerifyArtifact(modelPath, error)) return nil;
+-    NSFileManager *files = NSFileManager.defaultManager;
+-    NSString *bundle = [modelPath stringByAppendingString:@".embedding.bundle"];
+-    NSString *textDir = [bundle stringByAppendingPathComponent:@"text"];
+-    NSError *fileError = nil;
+-    if (![files createDirectoryAtPath:textDir withIntermediateDirectories:YES attributes:nil error:&fileError]) {
+-        Fail(error, @"EMBEDDING_ARTIFACT_INVALID", fileError.localizedDescription); return nil;
+-    }
+-    NSString *target = [textDir stringByAppendingPathComponent:ModelName];
+-    if (![files fileExistsAtPath:target] && ![files createSymbolicLinkAtPath:target withDestinationPath:modelPath error:&fileError]) {
+-        Fail(error, @"EMBEDDING_ARTIFACT_INVALID", fileError.localizedDescription); return nil;
+-    }
+-    NSArray<NSString *> *entries = [files contentsOfDirectoryAtPath:textDir error:&fileError];
+-    BOOL directory = NO;
+-    if (entries.count != 1 || ![entries.firstObject isEqualToString:ModelName] || ![files fileExistsAtPath:target isDirectory:&directory] || directory) {
+-        Fail(error, @"EMBEDDING_ARTIFACT_INVALID", @"The encoder bundle must contain only the pinned BGE file"); return nil;
+-    }
+-    if (!VerifyArtifact(target, error)) return nil;
++    NSString *bundle = WritableBundle(modelPath, error); if (!bundle) return nil;
+     ElizaBgeEncoder *encoder = [[self alloc] init];
+     encoder->_contextLimit = size;
+     char *nativeError = nullptr;
+@@ -108,7 +123,7 @@
+     @synchronized(self) {
+         NSArray<NSNumber *> *tokens = [self tokenizeText:text error:error]; if (!tokens) return nil;
+         if (tokens.count > (NSUInteger)_contextLimit) {
+-            Fail(error, @"EMBEDDING_INPUT_TOO_LARGE", [NSString stringWithFormat:@"Complete input has %lu tokens; limit is %ld. Split it into explicit lossless chunks.", (unsigned long)tokens.count, (long)_contextLimit]); return nil;
++            Fail(error, @"EMBEDDING_INPUT_TOO_LARGE", [NSString stringWithFormat:@"Complete input has %lu tokens; limit is %ld. Prepare a verified source suffix before dispatch.", (unsigned long)tokens.count, (long)_contextLimit]); return nil;
+         }
+         NSData *bytes = CompleteUtf8(text, error); if (!bytes) return nil;
+         std::array<float, 384> vector; int dimension = 0; char *nativeError = nullptr;

@@ -1505,6 +1505,7 @@ export class InferenceAdmissionGate {
   }
 
   async fetch(request: Request): Promise<Response> {
+    const handlerStartedAt = performance.now();
     if (request.method !== "POST") {
       return new Response("Method not allowed", { status: 405 });
     }
@@ -1606,13 +1607,21 @@ export class InferenceAdmissionGate {
         this.release(body as LeaseIdentityRequest),
       );
     }
-    if (path === "/rate-limit") {
-      return await this.serializeRateLimit(() =>
-        this.rateLimit(body as RateLimitRequest),
+    if (path === "/rate-limit" || path === "/rate-limit-warm") {
+      const response = await this.serializeRateLimit(() =>
+        path === "/rate-limit"
+          ? this.rateLimit(body as RateLimitRequest)
+          : this.warmRateLimit(),
       );
-    }
-    if (path === "/rate-limit-warm") {
-      return await this.serializeRateLimit(() => this.warmRateLimit());
+      // Internal binding telemetry only. This includes body parsing and our
+      // queue, but excludes time before handler entry and the platform output
+      // gate that commits storage before delivering the response. Do not label
+      // the difference from caller elapsed time as network time alone.
+      response.headers.set(
+        "x-eliza-gate-handler-ms",
+        String(Math.max(0, performance.now() - handlerStartedAt)),
+      );
+      return response;
     }
     if (path === "/rate-limit-v2-cutover") {
       return await this.serializeRateLimit(() =>

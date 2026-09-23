@@ -1,7 +1,8 @@
 {
   "name": "@elizaos/capacitor-llama",
   "version": "2.0.3-beta.7",
-  "description": "Eliza mobile llama.cpp adapter — wraps llama-cpp-capacitor and maps its contextId-based API onto Eliza's LocalInferenceLoader contract.",
+  "type": "module",
+  "description": "Eliza mobile llama.cpp adapter \u2014 wraps llama-cpp-capacitor and maps its contextId-based API onto Eliza's LocalInferenceLoader contract.",
   "keywords": [
     "llama",
     "llama.cpp",
@@ -10,7 +11,7 @@
     "capacitor",
     "eliza"
   ],
-  "main": "./dist/plugin.cjs.js",
+  "main": "./dist/plugin.cjs",
   "module": "./dist/esm/index.js",
   "types": "./dist/esm/index.d.ts",
   "exports": {
@@ -18,7 +19,7 @@
       "types": "./dist/esm/index.d.ts",
       "eliza-source": "./src/index.ts",
       "import": "./dist/esm/index.js",
-      "require": "./dist/plugin.cjs.js"
+      "require": "./dist/plugin.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -35,7 +36,7 @@
     "test": "vitest run --config vitest.config.ts",
     "prepublishOnly": "bun run build",
     "watch": "tsc6 --watch",
-    "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
+    "build:unlocked": "bun run clean && tsc6 && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs plugins/plugin-native-llama && bunx rollup -c rollup.config.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
@@ -43,7 +44,9 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
-    "llama-cpp-capacitor": "^0.1.5"
+    "llama-cpp-capacitor": "^0.1.5",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",

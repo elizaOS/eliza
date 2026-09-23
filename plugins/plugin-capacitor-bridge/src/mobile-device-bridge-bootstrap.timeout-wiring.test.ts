@@ -68,7 +68,8 @@ describe("mobile device bridge activation-time timeout wiring", () => {
 		const bridge = await import("./mobile-device-bridge-bootstrap");
 		const server = http.createServer((_req, res) => res.end("ok"));
 		let socket: WebSocket | null = null;
-		let pendingGenerate: Promise<string> | null = null;
+		let pendingRejection: Promise<void> | undefined;
+		let restoreTimeoutSpy: (() => void) | undefined;
 
 		try {
 			await bridge.attachMobileDeviceBridgeToServer(server);
@@ -103,11 +104,13 @@ describe("mobile device bridge activation-time timeout wiring", () => {
 			);
 
 			const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+			restoreTimeoutSpy = () => setTimeoutSpy.mockRestore();
 			// Never resolved by the fake device - this call exists only to reach
 			// the setTimeout(..., timeoutMs) call inside sendToPrimary().
-			pendingGenerate = bridge.mobileDeviceBridge.generate({
+			const pendingGenerate = bridge.mobileDeviceBridge.generate({
 				prompt: "wiring probe",
 			});
+			pendingRejection = expect(pendingGenerate).rejects.toThrow();
 
 			await waitFor(
 				() => bridge.mobileDeviceBridge.status().pendingRequests === 1,
@@ -123,12 +126,12 @@ describe("mobile device bridge activation-time timeout wiring", () => {
 			expect(setTimeoutSpy.mock.calls.some((call) => call[1] === 600_000)).toBe(
 				false,
 			);
-
-			setTimeoutSpy.mockRestore();
-			socket.close();
-			await expect(pendingGenerate).rejects.toThrow();
 		} finally {
-			if (socket?.readyState === WebSocket.OPEN) socket.close();
+			restoreTimeoutSpy?.();
+			// The timer assertion is complete; teardown must not wait for its deadline.
+			await bridge.mobileDeviceBridge.close();
+			await pendingRejection;
+			socket?.terminate();
 			if (server.listening) await new Promise((r) => server.close(r));
 		}
 	});

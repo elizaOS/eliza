@@ -1,11 +1,18 @@
 /** Exercises source-bound provider review with complete deterministic originals. */
-import { describe, expect, it } from "vitest";
+
 import type { ContextObject, ContextProviderEvent } from "@elizaos/core";
 import {
   projectDeferredProviders,
   providerReviewSources,
   withProviderReviewSchema,
 } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
+
+function required<T>(value: T | null | undefined): T {
+  if (value == null)
+    throw new Error("Missing required provider-review fixture value");
+  return value;
+}
 
 function fixture(): ContextObject {
   const sources = [
@@ -48,8 +55,8 @@ function fixture(): ContextObject {
   };
 }
 function select(context: ContextObject, keep = ["recalled1"]) {
-  context.metadata!.providerReview = {
-    sourceSetId: providerReviewSources(context)!.sourceSetId,
+  required(context.metadata).providerReview = {
+    sourceSetId: required(providerReviewSources(context)).sourceSetId,
     complete: true,
     keep,
   };
@@ -58,12 +65,12 @@ describe("reviewed provider sources", () => {
   it("keeps the model schema stable while source bindings change", () => {
     const first = fixture();
     const second = structuredClone(first);
-    second.metadata!.messageId = "next-request";
+    required(second.metadata).messageId = "next-request";
     const provider = second.events[0] as ContextProviderEvent;
-    provider.reviewableSources!.sources[0].text += "A new correction.";
+    required(provider.reviewableSources).sources[0].text += "A new correction.";
     provider.text += "A new correction.";
-    expect(providerReviewSources(first)!.sourceSetId).not.toBe(
-      providerReviewSources(second)!.sourceSetId,
+    expect(required(providerReviewSources(first)).sourceSetId).not.toBe(
+      required(providerReviewSources(second)).sourceSetId,
     );
     const schema = { type: "object" as const, properties: {} };
     expect(withProviderReviewSchema(schema, first)).toEqual(
@@ -76,7 +83,7 @@ describe("reviewed provider sources", () => {
     select(context);
     const before = structuredClone(context);
     const result = projectDeferredProviders(context);
-    const text = (result.context.events[0] as ContextProviderEvent).text!;
+    const text = (result.context.events[0] as ContextProviderEvent).text;
     expect(result.available).toEqual(["RECALL"]);
     expect(text).toContain("both  spaces and Ω");
     expect(text).not.toContain("Unrelated earlier answer");
@@ -97,23 +104,24 @@ describe("reviewed provider sources", () => {
   ])("keeps full evidence for %s review", (mode) => {
     const context = fixture();
     select(context);
-    const selection = context.metadata!.providerReview as {
+    const selection = required(context.metadata).providerReview as {
       complete: boolean;
       keep: string[];
       sourceSetId: string;
     };
-    const source = (context.events[0] as ContextProviderEvent)
-      .reviewableSources!.sources[0];
-    if (mode === "missing") delete context.metadata!.providerReview;
+    const source = required(
+      (context.events[0] as ContextProviderEvent).reviewableSources,
+    ).sources[0];
+    if (mode === "missing") delete required(context.metadata).providerReview;
     if (mode === "incomplete") selection.complete = false;
     if (mode === "unknown") selection.keep = ["h1"];
     if (mode === "stale") selection.sourceSetId = "other";
     if (mode === "author") source.metadata.entityId = "other-user";
     if (mode === "room") source.metadata.roomId = "other-room";
     if (mode === "body") source.text += "New correction.";
-    if (mode === "turn") context.metadata!.messageId = "next-request";
+    if (mode === "turn") required(context.metadata).messageId = "next-request";
     if (mode === "restored")
-      context.metadata!.loadedContextProviders = ["RECALL"];
+      required(context.metadata).loadedContextProviders = ["RECALL"];
     expect(projectDeferredProviders(context).context.events).toEqual(
       context.events,
     );
@@ -124,7 +132,7 @@ describe("reviewed provider sources", () => {
     event.discoveryText = "Available to retrieve";
     expect(providerReviewSources(context)).toBeUndefined();
     delete event.discoveryText;
-    event.reviewableSources!.sources[1].id = "recalled1";
+    required(event.reviewableSources).sources[1].id = "recalled1";
     expect(providerReviewSources(context)).toBeUndefined();
   });
   it("reviews freshly loaded indexed originals without reusing a prior review", () => {

@@ -444,6 +444,19 @@ describe("planner-declared pending work", () => {
 				stageOneReplyText: preview,
 			});
 			expect(result.finalMessage).toBe(messageToUser ?? preview);
+			expect(result.trajectory.context.events).toContainEqual(
+				expect.objectContaining({
+					id: expect.stringMatching(/^stage-one-reply-proposal:1:/),
+					type: "segment",
+					source: "message-service",
+					segment: expect.objectContaining({
+						label: "stage_one_reply_proposal",
+						content: expect.stringContaining(
+							`stage_one_reply_proposal:\n${preview}`,
+						),
+					}),
+				}),
+			);
 			expect(result.finalMessage).not.toContain(thought);
 			expect(result.evaluator?.thought).toBe(thought);
 			expect(result.evaluator?.messageToUser).toBe(messageToUser);

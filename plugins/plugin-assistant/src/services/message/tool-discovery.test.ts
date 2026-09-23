@@ -1,5 +1,6 @@
 /** Tests complete, permission-scoped schema loading without any live domain effects. */
 
+import { promoteSubactionsToActions } from "@elizaos/core";
 import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
 import { buildPlannerToolsFromActions } from "../../../../../packages/core/src/actions/to-tool.ts";
@@ -8,7 +9,6 @@ import type { Action } from "../../../../../packages/core/src/types/components.t
 import type { ContextObject } from "../../../../../packages/core/src/types/context-object.ts";
 import type { Memory } from "../../../../../packages/core/src/types/memory.ts";
 import type { IAgentRuntime } from "../../../../../packages/core/src/types/runtime.ts";
-import { promoteSubactionsToActions } from "@elizaos/core";
 import { documentAction } from "../../features/documents/actions";
 import { createAssistantPlugin } from "../../index.ts";
 import { collectV5PlannerCandidateActions } from "./action-surface";

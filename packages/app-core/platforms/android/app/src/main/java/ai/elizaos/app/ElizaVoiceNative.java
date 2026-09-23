@@ -1,3 +1,4 @@
+/** Exposes the fused inference JNI ABI to the Android application host. */
 package ai.elizaos.app;
 
 import android.util.Log;
@@ -183,6 +184,15 @@ final class ElizaVoiceNative {
 
     /** Pooled (MEAN) L2-normalized sentence embedding → float[n_embd]. */
     static native float[] nativeEmbed(long ctxHandle, String text, int pooling);
+
+    /** Explicit UTF-8 preserves supplementary characters and embedded NUL in encoder input. */
+    static native long nativeContextCreateUtf8(byte[] bundlePath);
+    static native int[] nativeTokenizeUtf8(long ctxHandle, byte[] text);
+    static native float[] nativeEmbedUtf8(long ctxHandle, byte[] text, int pooling);
+    /** Explicit added-token parsing for canonical embedding admission and inference. */
+    static native int[] nativeTokenizeWithOptionsUtf8(long ctxHandle, byte[] text, boolean parseSpecial);
+    static native float[] nativeEmbedWithOptionsUtf8(long ctxHandle, byte[] text, int pooling, boolean parseSpecial);
+
 
     /** End-of-turn score: next-token P(targetToken | tokens). */
     static native float nativeEotScore(long ctxHandle, int[] tokens, int targetToken);

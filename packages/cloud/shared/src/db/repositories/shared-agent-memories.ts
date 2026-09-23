@@ -13,7 +13,7 @@
  * Cost is therefore O(window) per query regardless of table size, and rows
  * older than the window are invisible to semantic recall by design.
  */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError, getEmbeddingVectorSpace } from "@elizaos/common";
 import { and, asc, desc, eq, inArray, isNotNull, lt, or, type SQL, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../client";
 import { type SharedAgentMemoryRow, sharedAgentMemories } from "../schemas/shared-agent-memories";
@@ -438,8 +438,8 @@ export class SharedAgentMemoriesReader {
   /**
    * Exact cosine-distance search over one trusted room's most recent embedded
    * rows within the tenant scope (bounded window; see module header). Only rows
-   * whose stored vector has the query's dimensionality participate, so
-   * mixed-model histories cannot fail the whole query.
+   * whose stored representation and dimensionality match the verified query
+   * participate. Legacy unverified rows require recomputation before recall.
    */
   async searchByEmbedding(
     scope: SharedAgentMemoryScope,
@@ -456,6 +456,12 @@ export class SharedAgentMemoriesReader {
     }
     assertLimit(limit);
     assertEmbedding(embedding);
+    const embeddingSpace = getEmbeddingVectorSpace(embedding);
+    if (!embeddingSpace) {
+      throw new ElizaError("Shared memory query requires a verified embedding representation", {
+        code: "EMBEDDING_SPACE_MISMATCH",
+      });
+    }
     const distance = sql<number>`(${sharedAgentMemories.embedding}::vector <=> ${vectorParam(
       embedding,
     )})`.as("distance");
@@ -481,6 +487,7 @@ export class SharedAgentMemoriesReader {
           ...tenantPins(scope),
           eq(sharedAgentMemories.room_id, roomId),
           isNotNull(sharedAgentMemories.embedding),
+          eq(sharedAgentMemories.embedding_model, embeddingSpace),
           sql`cardinality(${sharedAgentMemories.embedding}) = ${embedding.length}`,
         ),
       )

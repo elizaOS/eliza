@@ -3355,3 +3355,39 @@ describe("InferenceAdmissionGate", () => {
     }
   });
 });
+
+describe("rate limiter internal timing", () => {
+  test("preserves allowed, denied and duplicate decisions while measuring handler work", async () => {
+    const gate = createGate();
+    const request = {
+      endpointType: "completions",
+      windowMs: 60000,
+      maxRequests: 1,
+      operationId: "timing-operation",
+      operationDeadlineAt: Date.now() + 1000,
+    };
+    const first = await post(gate, "/rate-limit", request);
+    const firstBody = (await first.json()) as Record<string, unknown>;
+    const duplicate = await post(gate, "/rate-limit", request);
+    const denied = await post(gate, "/rate-limit", {
+      ...request,
+      operationId: "timing-second",
+    });
+    const warm = await post(gate, "/rate-limit-warm", {});
+    expect(first.status).toBe(200);
+    expect((await duplicate.json()) as Record<string, unknown>).toEqual(
+      firstBody,
+    );
+    expect(denied.status).toBe(429);
+    expect(await denied.json()).toMatchObject({ allowed: false, remaining: 0 });
+    expect((await warm.json()) as { warmed: boolean }).toEqual({
+      warmed: true,
+    });
+    for (const response of [first, duplicate, denied, warm]) {
+      const timing = response.headers.get("x-eliza-gate-handler-ms");
+      expect(timing).not.toBeNull();
+      expect(Number.isFinite(Number(timing))).toBe(true);
+      expect(Number(timing)).toBeGreaterThanOrEqual(0);
+    }
+  });
+});

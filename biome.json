@@ -71,6 +71,13 @@
   },
   "overrides": [
     {
+      "includes": [
+        "packages/shared/src/local-inference/bge/tokenizer.json",
+        "packages/shared/src/local-inference/bge/tokenizer_config.json"
+      ],
+      "formatter": { "enabled": false }
+    },
+    {
       "includes": ["**/*.ts"],
       "linter": {
         "rules": {

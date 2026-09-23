@@ -6,6 +6,7 @@
  * repository's own unit and integration suites.
  */
 import { afterEach, describe, expect, test } from "bun:test";
+import { BGE_SMALL_VECTOR_SPACE, identifyEmbeddingVector } from "@elizaos/common";
 import { stringToUuid } from "@elizaos/core";
 import type {
   InsertSharedAgentMemoryInput,
@@ -268,15 +269,17 @@ describe("SharedMemoryStore facts (P4)", () => {
       {
         embedTexts: async (texts) => {
           embedCalls += 1;
-          return texts.map(() => [0.1, 0.2]);
+          return texts.map(() =>
+            identifyEmbeddingVector(new Array(384).fill(0.1), BGE_SMALL_VECTOR_SPACE),
+          );
         },
         model: "bge-small-en-v1.5",
       },
     );
     await store.recordFacts(["A", "B"]);
     expect(embedCalls).toBe(1);
-    expect(embedded.inserts[0]?.embedding).toEqual([0.1, 0.2]);
-    expect(embedded.inserts[0]?.embeddingModel).toBe("bge-small-en-v1.5");
+    expect(embedded.inserts[0]?.embedding).toEqual(new Array(384).fill(0.1));
+    expect(embedded.inserts[0]?.embeddingModel).toBe(BGE_SMALL_VECTOR_SPACE);
 
     const degraded = scriptedWriter();
     const failingStore = new SharedMemoryStore(
@@ -293,6 +296,33 @@ describe("SharedMemoryStore facts (P4)", () => {
     await failingStore.recordFacts(["Still lands"]);
     expect(degraded.inserts).toHaveLength(1);
     expect(degraded.inserts[0]?.embedding).toBeUndefined();
+  });
+
+  test("unverified same-width vectors never acquire the configured model identity", async () => {
+    const { writer, inserts } = scriptedWriter();
+    const store = new SharedMemoryStore(
+      { organizationId: ORG, userId: USER, agentKey: AGENT_KEY, roomKey: ROOM_KEY },
+      writer,
+      undefined,
+      {
+        embedTexts: async (texts) => texts.map(() => new Array(384).fill(0.1)),
+        model: BGE_SMALL_VECTOR_SPACE,
+      },
+    );
+    await store.recordFacts(["Complete fact remains available"]);
+    await store.recordTurnPair({
+      userMessage: "Complete user text",
+      assistantReply: "Complete assistant text",
+    });
+    expect(inserts).toHaveLength(3);
+    expect(
+      inserts.every((row) => row.embedding === undefined && row.embeddingModel === undefined),
+    ).toBe(true);
+    expect(inserts.map((row) => row.content.text)).toEqual([
+      "Complete fact remains available",
+      "Complete user text",
+      "Complete assistant text",
+    ]);
   });
 
   test("recordFacts skips writer and embed calls entirely for nothing renderable", async () => {

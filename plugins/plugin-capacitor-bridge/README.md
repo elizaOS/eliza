@@ -93,7 +93,9 @@ Note: iOS connections are rejected with close code `4003`. iOS uses native IPC, 
 |---|---|---|
 | TEXT_SMALL | `eliza-1-4b` | `elizaos/eliza-1` — `bundles/4b/text/eliza-1-4b-128k.gguf` |
 | TEXT_LARGE | `eliza-1-4b` | `elizaos/eliza-1` — `bundles/4b/text/eliza-1-4b-128k.gguf` |
-| TEXT_EMBEDDING | `eliza-1-embedding` | `elizaos/eliza-1` — `bundles/4b/embedding/eliza-1-embedding.gguf` |
+| TEXT_EMBEDDING | `bge-small-en-v1.5` | Pinned `CompendiumLabs/bge-small-en-v1.5-gguf` artifact from shared model metadata |
 
 The 4B tier is the shipped mobile default for both chat slots; `eliza-1-2b` is
 the smallest/entry tier (the small-phone floor) but is not a recommended default.
+
+Canonical embeddings use the shared BGE-small artifact and a dedicated native context. Oversized encoder input retains an unchanged suffix within the token boundary; stored source remains complete. The relay and native host compare expected token IDs before inference and return the representation ID with actual token IDs. Legacy embedding assignments do not select chat weights; explicit incompatible model or dimension settings fail.

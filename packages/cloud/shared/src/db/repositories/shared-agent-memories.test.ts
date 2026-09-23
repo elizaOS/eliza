@@ -6,7 +6,9 @@
  * so a cross-tenant read or write can never land silently. Real-database
  * behavior is covered by shared-agent-memories.integration.test.ts.
  */
+
 import { afterAll, describe, expect, mock, test } from "bun:test";
+import { identifyEmbeddingVector } from "@elizaos/core";
 import { type SQL, sql } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import * as realClient from "../client";
@@ -154,7 +156,7 @@ describe("SharedAgentMemoriesReader.searchByEmbedding", () => {
       const result = await new SharedAgentMemoriesReader().searchByEmbedding(
         scope,
         ROOM_A,
-        [0.25, 0.5, 0.25],
+        identifyEmbeddingVector([0.25, 0.5, 0.25], "test-encoder:cls:l2:3:tail-v1"),
         7,
       );
       expect(result).toEqual(hits as never);

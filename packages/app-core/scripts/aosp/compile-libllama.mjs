@@ -185,7 +185,6 @@ import {
   fusedExtraCmakeFlags,
 } from "../build-helpers/omnivoice-merged.mjs";
 import { verifyFusedSymbols } from "../build-helpers/verify-fused-symbols.mjs";
-import { patchVulkanKernels } from "../kernel-patches/vulkan-kernels.mjs";
 import { resolveRepoRootFromImportMeta } from "../lib/repo-root.mjs";
 import {
   compareSemver,
@@ -194,6 +193,10 @@ import {
   resolveHomebrewFormulaIncludeDirs,
 } from "./compile-libllama-paths.mjs";
 import { main as compileShimMain } from "./compile-shim.mjs";
+import {
+  prepareAndroidVulkanSource,
+  readPinnedNativeRevision,
+} from "./vulkan-source-contract.mjs";
 
 export {
   compareSemver,
@@ -665,6 +668,7 @@ export function parseArgs(argv) {
     jobs: Math.max(1, Math.min(os.cpus().length, 8)),
     srcDir: null,
     cacheDirExplicit: false,
+    legacyVulkanGraft: false,
     dryRun: false,
     // Optional source dir of prebuilt LiteRT-LM `.litertlm` text artifacts to
     // stage into the on-device bundle assets (`models/text/`), parallel to the
@@ -697,6 +701,8 @@ export function parseArgs(argv) {
     } else if (arg === "--src-dir") {
       args.srcDir = path.resolve(readFlagValue(arg, i));
       i += 1;
+    } else if (arg === "--legacy-vulkan-graft") {
+      args.legacyVulkanGraft = true;
     } else if (arg === "--litertlm-dir") {
       args.litertlmDir = path.resolve(readFlagValue(arg, i));
       i += 1;
@@ -750,9 +756,10 @@ export function parseArgs(argv) {
           "  --dry-run         Print the cmake invocation + graft steps + expected\n" +
           "                    output layout WITHOUT running cmake/ndk. Honored for\n" +
           "                    every --target.\n" +
+          "  --legacy-vulkan-graft  Explicitly patch an older external Vulkan source tree; never the maintained submodule.\n" +
           "  --src-dir <PATH>  Use an existing llama.cpp checkout instead of the\n" +
           "                    in-repo submodule / a fresh clone. The directory's HEAD\n" +
-          "                    is used as-is; the pinned LLAMA_CPP_TAG/COMMIT is ignored.\n" +
+          "                    is used as-is; Vulkan requires the parent native gitlink unless legacy graft is explicitly selected.\n" +
           `  Default source:   the git submodule plugins/plugin-local-inference/native/llama.cpp\n` +
           `                    (elizaOS/llama.cpp @ ${LLAMA_CPP_TAG}) when initialized;\n` +
           `                    otherwise a standalone clone under --cache-dir.\n` +
@@ -2785,6 +2792,19 @@ export async function mainTargets(args) {
     srcDescription = `llama.cpp ${LLAMA_CPP_TAG} / ${LLAMA_CPP_COMMIT.slice(0, 12)}`;
   }
 
+  if (args.targets.some((target) => target.backend === "vulkan")) {
+    prepareAndroidVulkanSource({
+      source: srcDir,
+      maintainedSource: LLAMA_CPP_SUBMODULE_DIR,
+      expectedRevision:
+        args.legacyVulkanGraft || args.dryRun
+          ? undefined
+          : readPinnedNativeRevision(repoRoot),
+      legacy: args.legacyVulkanGraft,
+      dryRun: args.dryRun,
+    });
+  }
+
   // omnivoice.cpp clone lives at <cacheRoot>/omnivoice.cpp; we use the parent
   // of the llama.cpp cache dir so both clones live under one cache root, the
   // same shape the mtp build path uses (cacheRoot=path.dirname(args.cacheDir)).
@@ -2831,17 +2851,15 @@ export async function mainTargets(args) {
       });
     }
 
-    // Vulkan target: graft the eliza-1 qjl/polar Vulkan compute shaders +
-    // ggml-vulkan dispatch patches into the source, and assemble the
+    // Vulkan source was admitted before toolchain work. Assemble the
     // GGML_VULKAN CMake flags (NDK glslc + headers + aarch64 loader). The
     // libggml-vulkan.so the build emits is glob-staged alongside the rest of
     // the libggml family by buildLibllamaForAbi.
     let vulkanCmakeFlags = [];
     if (parsed.backend === "vulkan") {
       console.log(
-        `[compile-libllama] Patching eliza-1 Vulkan kernels into ${srcDir} for ${parsed.target}`,
+        `[compile-libllama] Using ${args.legacyVulkanGraft ? "explicit legacy" : "unchanged pinned"} Vulkan source from ${srcDir}`,
       );
-      patchVulkanKernels(srcDir, { target: parsed.target });
       vulkanCmakeFlags = resolveAndroidVulkanCmakeFlags({
         stagingDir: path.join(args.cacheDir, "vulkan-headers"),
       });
