@@ -128,6 +128,7 @@ try {
     throw new Error("Launch variables differ from authorization");
   // The application still performs independent hardware admission. This gate
   // authenticates configuration only; importing it is not proof of readiness.
+  process.argv = [process.execPath, config.entry];
   await import(pathToFileURL(config.entry).href);
 } catch {
   // error-policy:J1 Never expose launch values or dependency exceptions in startup output.

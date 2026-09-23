@@ -179,7 +179,7 @@ it("encrypts the complete environment and exact release for the authenticated re
     const marker = join(directory, "imported");
     await writeFile(
       entry,
-      `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(marker)}, "imported");`,
+      `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(marker)}, JSON.stringify(process.argv));`,
     );
     await writeFile(
       config,
@@ -202,7 +202,10 @@ it("encrypts the complete environment and exact release for the authenticated re
       });
     const accepted = invoke(environment);
     expect(accepted.status, accepted.stderr).toBe(0);
-    expect(await readFile(marker, "utf8")).toBe("imported");
+    expect(JSON.parse(await readFile(marker, "utf8"))).toEqual([
+      process.execPath,
+      entry,
+    ]);
     await rm(marker);
     for (const changed of [
       { ...environment, SYNTHETIC_SECRET: "substituted" },
