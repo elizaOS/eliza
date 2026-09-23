@@ -9,6 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveAdb } from "./lib/android-device.mjs";
 
 const fakeDirectory = fs.mkdtempSync(
   path.join(os.tmpdir(), "eliza-mobile-tools-"),
@@ -252,6 +253,50 @@ describe("mobile smoke filesystem and encoding helpers", () => {
 });
 
 describe("mobile smoke native command boundaries", () => {
+  it("uses the shared ADB resolver for a custom binary and keeps optional discovery", async () => {
+    const customAdbDirectory = path.join(
+      fakeDirectory,
+      "custom-platform-tools",
+    );
+    const customAdb = path.join(customAdbDirectory, "adb");
+    fs.mkdirSync(customAdbDirectory, { recursive: true });
+    fs.writeFileSync(customAdb, "");
+    const previousAdb = process.env.ADB;
+    process.env.ADB = customAdb;
+    try {
+      expect(resolveAdb()).toBe(customAdb);
+      const launched = await smoke.launchAndroidEmulatorApp({
+        verifyInstalled: () => {},
+      });
+      expect(launched).toMatchObject({
+        adb: customAdb,
+        serial: "emulator-unit",
+      });
+    } finally {
+      if (previousAdb === undefined) delete process.env.ADB;
+      else process.env.ADB = previousAdb;
+    }
+
+    const previousAndroidHome = process.env.ANDROID_HOME;
+    const previousAndroidSdkRoot = process.env.ANDROID_SDK_ROOT;
+    const previousPath = process.env.PATH;
+    process.env.ANDROID_HOME = path.join(fakeDirectory, "missing-sdk");
+    delete process.env.ANDROID_SDK_ROOT;
+    process.env.PATH = "";
+    try {
+      expect(resolveAdb({ required: false })).toBeNull();
+      expect(() => resolveAdb()).toThrow(/adb not found/);
+      expect(await smoke.launchAndroidEmulatorApp()).toBeNull();
+    } finally {
+      if (previousAndroidHome === undefined) delete process.env.ANDROID_HOME;
+      else process.env.ANDROID_HOME = previousAndroidHome;
+      if (previousAndroidSdkRoot === undefined)
+        delete process.env.ANDROID_SDK_ROOT;
+      else process.env.ANDROID_SDK_ROOT = previousAndroidSdkRoot;
+      process.env.PATH = previousPath;
+    }
+  });
+
   it("binds installed Android smoke evidence to the current renderer revision", () => {
     const context = { adb: "adb", serial: "device-1", installed: true };
     let requestedPackageId = null;

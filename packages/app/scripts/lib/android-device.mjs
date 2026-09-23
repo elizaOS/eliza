@@ -111,7 +111,7 @@ function resolveSdkBinary({ name, subdirs, envOverride, probeArgs }) {
   return null;
 }
 
-export function resolveAdb() {
+export function resolveAdb({ required = true } = {}) {
   const adb = resolveSdkBinary({
     name: "adb",
     subdirs: ["platform-tools"],
@@ -119,6 +119,7 @@ export function resolveAdb() {
     probeArgs: ["version"],
   });
   if (!adb) {
+    if (!required) return null;
     throw new Error(
       "adb not found. Install Android SDK platform-tools or set ANDROID_HOME / ANDROID_SDK_ROOT / ADB so adb is resolvable.",
     );

@@ -17,7 +17,10 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { ANDROID_FULL_TURN_FAILURE_RE } from "../../app-core/src/platform/chat-failure-strings.ts";
-import { readInstalledRendererStamp } from "./lib/android-device.mjs";
+import {
+  readInstalledRendererStamp,
+  resolveAdb,
+} from "./lib/android-device.mjs";
 import {
   assertMarkerSurvivedRelaunch,
   buildRelaunchMarker,
@@ -425,10 +428,6 @@ function run(command, args, options = {}) {
   }
 }
 
-function executablePath(...candidates) {
-  return candidates.find((candidate) => candidate && fs.existsSync(candidate));
-}
-
 function appId() {
   // White-label builds install under a different bundle id than the eliza
   // package config. Allow targeting the installed app explicitly so the smoke can
@@ -438,28 +437,8 @@ function appId() {
   return config.match(/appId:\s*["']([^"']+)["']/)?.[1] ?? "app.eliza";
 }
 
-function androidSdkRoot() {
-  if (process.env.ANDROID_HOME) return process.env.ANDROID_HOME;
-  if (process.env.ANDROID_SDK_ROOT) return process.env.ANDROID_SDK_ROOT;
-  const home = os.homedir();
-  if (process.platform === "darwin") {
-    return path.join(home, "Library/Android/sdk");
-  }
-  if (process.platform === "win32") {
-    return path.join(home, "AppData/Local/Android/Sdk");
-  }
-  return path.join(home, "Android/Sdk");
-}
-
-function androidTool(relativePath, fallbackName) {
-  return executablePath(
-    path.join(androidSdkRoot(), relativePath),
-    fallbackName,
-  );
-}
-
 function adbPath() {
-  return androidTool("platform-tools/adb", "adb");
+  return resolveAdb({ required: false });
 }
 
 function tryExec(command, args, options = {}) {
