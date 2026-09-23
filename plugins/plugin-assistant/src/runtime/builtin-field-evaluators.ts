@@ -243,7 +243,7 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 // ---------------------------------------------------------------------------
 
 const NAVIGATION_REPLY_RULE =
-  "Name navigation destinations. Current uiView/uiViewPath identify the open view, not its displayed records. navigationOnly takes precedence over acknowledgment rules: write the final destination-is-open confirmation held for successful delivery, while retaining the pending action in the plan. No progress promises or record-read/change claims. ";
+  "Current uiView/uiViewPath identify the open view, not its records. Requested navigationOnly uses singleViewOnly=true, nonempty intents, replyEffectStatus=pending and a non-simple routing context. Keep replyText nonempty: a short destination-is-open confirmation held until successful delivery, not a progress promise. This takes precedence over acknowledgment wording. Do not claim record reads or changes. ";
 
 const EXACT_REPLY_TEXT_RULE =
   " When quoting or previewing text requested verbatim or exactly, copy every character, including punctuation, repeated spaces and line breaks. Put explanations outside that text.";
