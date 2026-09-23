@@ -1,6 +1,5 @@
 /** Tests for the FILE `ls` handler over the real filesystem. */
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
@@ -13,18 +12,12 @@ import {
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SandboxService } from "../services/sandbox-service.js";
-import { SessionCwdService } from "../services/session-cwd-service.js";
-import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
+import { setupEnv, type TestEnv } from "./_test-helpers.js";
 import { lsHandler } from "./ls.js";
 
 let tmpRoot: string;
+let env: TestEnv;
 let blockedPath: string;
-
-interface RuntimeBundle {
-  runtime: IAgentRuntime;
-  message: Memory;
-}
 
 function makeListRouter(
   list: ElizaCapabilityRouter["fs"]["list"],
@@ -46,43 +39,11 @@ function makeListRouter(
   };
 }
 
-async function buildRuntime(
-  capabilityRouter?: ElizaCapabilityRouter,
-): Promise<RuntimeBundle> {
-  const settings: Record<string, unknown> = {
-    CODING_TOOLS_BLOCKED_PATHS: blockedPath,
-  };
-  const runtimeSeed = {
-    getSetting: (key: string) => settings[key],
-    getService: <T>(): T | null => null,
-  } as IAgentRuntime;
-
-  const sandbox = await SandboxService.start(runtimeSeed);
-  const session = await SessionCwdService.start(runtimeSeed);
-  session.setCwd("test-room", tmpRoot);
-
-  const runtime = {
-    getSetting: (key: string) => settings[key],
-    getService: <T>(serviceType: string): T | null => {
-      if (serviceType === CAPABILITY_ROUTER_SERVICE_TYPE && capabilityRouter) {
-        return capabilityRouter as T;
-      }
-      if (serviceType === SANDBOX_SERVICE) return sandbox as T;
-      if (serviceType === SESSION_CWD_SERVICE) return session as T;
-      return null;
-    },
-  } as IAgentRuntime;
-
-  const message = { roomId: "test-room" } as Memory;
-  return { runtime, message };
-}
-
 beforeEach(async () => {
-  tmpRoot = await fs.realpath(
-    await fs.mkdtemp(path.join(os.tmpdir(), "ct-ls-")),
-  );
-  blockedPath = path.join(tmpRoot, "_blocked");
-  await fs.mkdir(blockedPath, { recursive: true });
+  env = await setupEnv("ct-ls");
+  tmpRoot = env.tmpDir;
+  blockedPath = env.blockedPath;
+  env.sessionCwd.setCwd("test-room", tmpRoot);
   const fooDir = path.join(tmpRoot, "foo");
   const barDir = path.join(tmpRoot, "bar");
   await fs.mkdir(fooDir, { recursive: true });
@@ -93,14 +54,14 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await fs.rm(tmpRoot, { recursive: true, force: true });
+  await env.cleanup();
 });
 
 const state: State | undefined = undefined;
 
 describe("LS", () => {
   it("lists fixture entries with directories first then files (sorted)", async () => {
-    const { runtime, message } = await buildRuntime();
+    const { runtime, message } = env;
     const callback = vi.fn();
     const result = await lsHandler(
       runtime,
@@ -159,7 +120,14 @@ describe("LS", () => {
         totalAfterIgnore: 2,
       };
     });
-    const { runtime, message } = await buildRuntime(router);
+    const { message } = env;
+    const runtime = {
+      ...env.runtime,
+      getService: <T>(key: string): T | null =>
+        key === CAPABILITY_ROUTER_SERVICE_TYPE
+          ? (router as T)
+          : env.runtime.getService<T>(key),
+    } as IAgentRuntime;
     const callback = vi.fn();
     const result = await lsHandler(
       runtime,
@@ -199,7 +167,7 @@ describe("LS", () => {
   });
 
   it("respects the ignore glob list", async () => {
-    const { runtime, message } = await buildRuntime();
+    const { runtime, message } = env;
     const result = await lsHandler(runtime, message, state, {
       parameters: { ignore: ["*.log"] },
     });
@@ -216,7 +184,7 @@ describe("LS", () => {
   it.each(["pattern", "glob"] as const)(
     "rejects unsupported %s filters without returning an unfiltered listing",
     async (filter) => {
-      const { runtime, message } = await buildRuntime();
+      const { runtime, message } = env;
       const result = await lsHandler(runtime, message, state, {
         parameters: { [filter]: "*.ts" },
       });
@@ -233,7 +201,7 @@ describe("LS", () => {
   );
 
   it("rejects a path under the blocklist", async () => {
-    const { runtime, message } = await buildRuntime();
+    const { runtime, message } = env;
     const result = await lsHandler(runtime, message, state, {
       parameters: { path: blockedPath },
     });
@@ -242,7 +210,7 @@ describe("LS", () => {
   });
 
   it("fails when roomId is missing", async () => {
-    const { runtime } = await buildRuntime();
+    const { runtime } = env;
     const result = await lsHandler(runtime, {} as Memory, state, {
       parameters: {},
     });
