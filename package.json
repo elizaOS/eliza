@@ -170,7 +170,7 @@
     "typescript": "^6.0.3",
     "vite": "8.3.0",
     "vitest": "^4.1.10",
-    "verdaccio": "6.10.3",
+    "verdaccio": "6.10.4",
     "yaml": "2.9.0",
     "@elizaos/testing": "workspace:*"
   },
