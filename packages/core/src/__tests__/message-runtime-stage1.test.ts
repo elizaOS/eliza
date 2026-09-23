@@ -547,6 +547,58 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
 
+	it("reviews conflicting navigation once before dispatching fields", async () => {
+		const common = {
+			contexts: ["general"],
+			intents: ["open Notes", "read Packing list"],
+			candidateActionNames: ["VIEWS_SHOW", "NOTES_GET"],
+			replyText: "",
+			extra: { replyEffectStatus: "pending" },
+		};
+		const runtime = makeRuntime([
+			stage1Response({
+				...common,
+				extra: {
+					...common.extra,
+					visualContinuation: {
+						disposition: "none",
+						viewId: "",
+						singleViewOnly: false,
+						navigationOnly: false,
+					},
+				},
+			}),
+			stage1Response({
+				...common,
+				extra: {
+					...common.extra,
+					visualContinuation: {
+						disposition: "requested",
+						viewId: "notes",
+						singleViewOnly: true,
+						navigationOnly: false,
+					},
+				},
+			}),
+		]);
+		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
+		await runStage1({
+			runtime,
+			stage1DecisionOnly: true,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "Open Notes and read Packing list.",
+			}),
+		});
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(dispatch).toHaveBeenCalledTimes(1);
+		expect(
+			dispatch.mock.calls[0][0].rawParsed.visualContinuation,
+		).toMatchObject({ disposition: "requested" });
+		expect(JSON.stringify(useModelCalls(runtime)[1][1])).toContain(
+			"structured navigation declarations conflict",
+		);
+	});
 	it("supplies zero-token interruption state to the next direct reply", async () => {
 		const runtime = makeRuntime([
 			stage1Response({ contexts: ["simple"], replyText: "Hi." }),
