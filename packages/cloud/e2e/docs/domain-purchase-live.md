@@ -93,7 +93,10 @@ Separate zero-cost tests in the same gated describe:
   fake it. The seam is exercised deterministically in
   `tests/domain-purchase-harness.spec.ts` against the registrar dev stub: a
   `fail-<slug>` domain makes `registerDomain` throw AFTER the debit, and the
-  test asserts the 502 plus a full refund (net-zero balance).
+  first response remains 409 while the debit is held. Replaying before lease
+  expiry cannot debit again. After advancing that purchase's reconciliation
+  lease, the stub reports a confirmed failure and the real route returns 502
+  with a full refund. Replaying the terminal response cannot refund twice.
 - **Deterministic credit drain for the 402.** The API deliberately exposes no
   self-serve "spend/zero my balance" endpoint (`creditsService.deductCredits`
   is service-internal). Burning a funded org down via inference is slow and
