@@ -172,15 +172,24 @@ describe("promoted MEMORY tool contracts", () => {
     return action;
   }
 
+  it("rejects the captured targetless native delete before execution", () => {
+    const deletion = actionNamed("MEMORY_DELETE");
+    const result = validateToolArgs(deletion, { confirm: true });
+    expect(result.valid).toBe(false);
+  });
+
   it("rejects the observed missing-text update and accepts either target form", () => {
     const update = actionNamed("MEMORY_UPDATE");
     expect(
       validateToolArgs(update, { memoryId, confirm: true }).errors,
     ).toContain("Missing required argument 'text'");
-    for (const target of [{ memoryId }, { query: "Silver Heron" }]) {
+    for (const target of [
+      { kind: "memoryId", value: memoryId },
+      { kind: "query", value: "Silver Heron" },
+    ]) {
       expect(
         validateToolArgs(update, {
-          ...target,
+          target,
           text: "Silver Heron review day is Friday.",
           confirm: true,
         }).valid,
@@ -270,7 +279,7 @@ describe("promoted MEMORY tool contracts", () => {
       });
     const action = actionNamed("MEMORY_UPDATE");
     const parameters = {
-      memoryId,
+      target: { kind: "memoryId", value: memoryId },
       text: "Silver Heron review day is Friday.",
       confirm: true,
     };

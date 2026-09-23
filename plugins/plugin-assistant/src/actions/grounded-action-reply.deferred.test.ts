@@ -148,6 +148,7 @@ describe("planner-owned LifeOps replies", () => {
     expect(result).toMatchObject({
       success: true,
       transcriptVisibility: "internal",
+      modelReplyRequired: true,
       turnComplete: false,
       effectReceipts: [receipt],
     });
@@ -157,6 +158,7 @@ describe("planner-owned LifeOps replies", () => {
     expect(result.data?.replyGrounding).toBe(h.grounding());
     expect(result.promptData?.replyGrounding).toBe(h.grounding());
     const grounding = JSON.parse(String(h.grounding()));
+    expect(grounding.instructions).not.toContain("Return only the reply text.");
     expect(grounding.context).toEqual(h.context);
     expect(grounding.currentUserMessage).toBe(message.content.text);
     expect(grounding.instructions).toContain(
@@ -174,6 +176,7 @@ describe("planner-owned LifeOps replies", () => {
     expect(wire).toContain("same");
     expect(roundTrip.data.replyGrounding).toBe(h.grounding());
     expect(roundTrip.effectReceipts).toEqual([receipt]);
+    expect(roundTrip.modelReplyRequired).toBe(true);
   });
 
   it("keeps direct callers and other domains on the original complete-history renderer", async () => {
@@ -187,6 +190,9 @@ describe("planner-owned LifeOps replies", () => {
       expect(h.getMemories).toHaveBeenCalledTimes(1);
       expect(result.text).toBe("Model-authored reply.");
       expect(JSON.stringify(h.useModel.mock.calls)).toContain("correction");
+      expect(JSON.stringify(h.useModel.mock.calls)).toContain(
+        "Return only the reply text.",
+      );
     }
   });
 
