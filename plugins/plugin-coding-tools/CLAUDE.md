@@ -70,7 +70,6 @@ plugins/plugin-coding-tools/
       terminal-capabilities.ts    Platform capability detection
       secrets.ts                  detectSecrets — flags AWS/GitHub/OpenAI/etc. tokens to gate WRITE/EDIT
   auto-enable.ts                  Lightweight auto-enable module (env reads only; no plugin runtime imports)
-  AGENT_CONTRACT.md               Implementation brief for action-writing agents
   build.ts                        build script (Bun.build + tsc d.ts emit)
 ```
 
@@ -175,7 +174,7 @@ Runtime gating env vars (read by `auto-enable.ts` and `index.ts`):
 - **Never throw from a handler** — return `failureToActionResult({ reason, message })` instead.
 - The `@vscode/ripgrep` binary is resolved at `RipgrepService` start time; if that import fails it falls back to a system `rg` on `PATH`.
 - The `device_filesystem` bridge (`target=device` on FILE) is provided by a separate service (`device_filesystem` service type) registered by a platform plugin (e.g. mobile). The coding-tools plugin does not register it — it only consumes it when present.
-- Tests are co-located `*.test.ts` files beside their source in `src/actions/`, `src/services/`, and `src/lib/`. Integration tests live in `__tests__/plugin-integration.test.ts` at the package root. See `AGENT_CONTRACT.md` for the action implementation brief.
+- Tests are co-located `*.test.ts` files beside their source in `src/actions/`, `src/services/`, and `src/lib/`. Integration tests live in `__tests__/plugin-integration.test.ts` at the package root.
 - Import paths must use the `.js` extension on relative imports (ESM requirement).
 
 ## Verification
