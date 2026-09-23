@@ -44,9 +44,11 @@ export const advancedContactsProvider: Provider = {
         ...new Set(contacts.map((contact) => contact.entityId)),
       ];
       const entities = await runtime.getEntitiesByIds(entityIds);
-      const entityMap = new Map(entities.map((entity) => [entity.id, entity]));
+      const entityMap = new Map(
+        entities.map((entity) => [entity.id.toLowerCase(), entity]),
+      );
       const contactDetails = contacts.map((contact) => {
-        const entity = entityMap.get(contact.entityId);
+        const entity = entityMap.get(contact.entityId.toLowerCase());
         const displayName =
           typeof contact.customFields.displayName === "string"
             ? contact.customFields.displayName

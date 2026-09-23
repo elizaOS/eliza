@@ -189,4 +189,35 @@ describe("advancedContactsProvider", () => {
       roomId: "room-1",
     });
   });
+  it("matches canonical SQL entities to uppercase stored contact UUIDs", async () => {
+    const id = "aabbccdd-1111-4111-8111-112233445566" as UUID;
+    const storedId = id.toUpperCase() as UUID;
+    const entity = { id, names: ["Canonical Person"] };
+    const runtime = {
+      getService: () => ({
+        searchContacts: async () => [
+          {
+            entityId: storedId,
+            categories: ["friend"],
+            tags: [],
+            customFields: { displayName: "Fallback" },
+            preferences: {},
+            lastModified: 1,
+          },
+        ],
+      }),
+      getEntitiesByIds: vi.fn(async () => [entity]),
+      getEntityById: vi.fn(async () => entity),
+    } as unknown as IAgentRuntime;
+    expect(
+      await advancedContactsProvider.get(runtime, dummyMessage, dummyState),
+    ).toEqual({
+      text: "You have 1 contacts in your relationships:\n\nFriends (1):\n- Canonical Person",
+      values: { contactCount: 1, friend: 1 },
+      data: { friend: 1 },
+    });
+    expect(runtime.getEntitiesByIds).toHaveBeenCalledExactlyOnceWith([
+      storedId,
+    ]);
+  });
 });

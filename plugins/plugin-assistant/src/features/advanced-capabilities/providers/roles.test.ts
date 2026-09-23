@@ -134,4 +134,20 @@ describe("roleProvider entity batching", () => {
       "Entity query failed",
     );
   });
+  it("matches canonical SQL entities to uppercase stored role keys", async () => {
+    const id = "aabbccdd-1111-4111-8111-112233445566";
+    const storedId = id.toUpperCase();
+    const f = fixture({ [storedId]: "OWNER" });
+    const entity = { id, names: ["Canonical Person"] };
+    f.getEntitiesByIds.mockResolvedValue([entity]);
+    f.getEntityById.mockResolvedValue(entity);
+    const text =
+      "# Server Role Hierarchy\n\n## Owners\nCanonical Person (Canonical Person)\n\n";
+    expect(await roleProvider.get(f.runtime, message, state())).toEqual({
+      text,
+      data: { roles: text },
+      values: { roles: text },
+    });
+    expect(f.getEntitiesByIds).toHaveBeenCalledExactlyOnceWith([storedId]);
+  });
 });
