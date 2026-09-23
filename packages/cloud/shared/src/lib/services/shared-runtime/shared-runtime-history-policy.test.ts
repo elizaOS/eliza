@@ -6,7 +6,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { logger } from "../../utils/logger";
 import {
-  compareSharedRuntimeHistoryMessages,
   encodeSharedPublicWebGrounding,
   insertSharedRuntimeGroundingMessages,
   MAX_PUBLIC_WEB_GROUNDING_AGE_MS,
@@ -658,55 +657,60 @@ describe("shared runtime long-term transcript context", () => {
     expect(JSON.stringify(projected)).not.toContain('"text":"Tessera is a scraper.');
   });
 
-  test("the newest relevant search wins when an older query has greater overlap", () => {
-    const history: Parameters<typeof sharedRuntimeModelHistoryMessages>[0] = [
-      { role: "user", content: "Search for the Tessera architecture GitHub project." },
-      {
-        role: "assistant",
-        content: "Old result.",
-        grounding: {
-          kind: "web_search",
-          query: "Tessera architecture GitHub project",
-          provider: "exa",
-          text: "Tessera is a scraper.",
-          observedAt: 100,
-          ...TEST_SOURCE_EVIDENCE,
-          truncated: false,
+  test.each(["Search again for Tessera architecture.", "That is wrong. Search again."])(
+    "the newest relevant search wins when an older query has greater overlap: %s",
+    (followUp) => {
+      const history: Parameters<typeof sharedRuntimeModelHistoryMessages>[0] = [
+        { role: "user", content: "Search for the Tessera architecture GitHub project." },
+        {
+          role: "assistant",
+          content: "Old result.",
+          grounding: {
+            kind: "web_search",
+            query: "Tessera architecture GitHub project",
+            provider: "exa",
+            text: "Tessera is a scraper.",
+            observedAt: 100,
+            ...TEST_SOURCE_EVIDENCE,
+            truncated: false,
+          },
         },
-      },
-      { role: "user", content: "Search again for Tessera architecture." },
-      {
-        role: "assistant",
-        content: "Corrected result.",
-        grounding: {
-          kind: "web_search",
-          query: "Tessera architecture",
-          provider: "parallel",
-          text: "Tessera is an ARC resource proxy.",
-          observedAt: 200,
-          ...TEST_SOURCE_EVIDENCE,
-          truncated: false,
+        { role: "user", content: followUp },
+        {
+          role: "assistant",
+          content: "Corrected result.",
+          grounding: {
+            kind: "web_search",
+            query: "Tessera architecture",
+            provider: "parallel",
+            text: "Tessera is an ARC resource proxy.",
+            observedAt: 200,
+            ...TEST_SOURCE_EVIDENCE,
+            truncated: false,
+          },
         },
-      },
-    ];
-    const projected = sharedRuntimeModelHistoryMessages(
-      history,
-      "How does the Tessera architecture GitHub project work?",
-      200,
-    );
-    const genuineRuntimeProjection = sharedRuntimeGroundingProjectionMessages(
-      history,
-      "How does the Tessera architecture GitHub project work?",
-      200,
-    );
+      ];
+      const projected = sharedRuntimeModelHistoryMessages(
+        history,
+        "How does the Tessera architecture GitHub project work?",
+        200,
+      );
+      const genuineRuntimeProjection = sharedRuntimeGroundingProjectionMessages(
+        history,
+        "How does the Tessera architecture GitHub project work?",
+        200,
+      );
 
-    const encoded = JSON.stringify(projected);
-    expect(projected.filter((message) => message.role === "tool")).toHaveLength(1);
-    expect(encoded).toContain("ARC resource proxy");
-    expect(encoded).not.toContain('"text":"Tessera is a scraper.');
-    expect(JSON.stringify(genuineRuntimeProjection)).toContain("ARC resource proxy");
-    expect(JSON.stringify(genuineRuntimeProjection)).not.toContain('"text":"Tessera is a scraper.');
-  });
+      const encoded = JSON.stringify(projected);
+      expect(projected.filter((message) => message.role === "tool")).toHaveLength(1);
+      expect(encoded).toContain("ARC resource proxy");
+      expect(encoded).not.toContain('"text":"Tessera is a scraper.');
+      expect(JSON.stringify(genuineRuntimeProjection)).toContain("ARC resource proxy");
+      expect(JSON.stringify(genuineRuntimeProjection)).not.toContain(
+        '"text":"Tessera is a scraper.',
+      );
+    },
+  );
 
   test("a newer unavailable search suppresses older matching authority", () => {
     const projected = sharedRuntimeModelHistoryMessages(
@@ -744,50 +748,10 @@ describe("shared runtime long-term transcript context", () => {
     expect(JSON.stringify(projected)).toContain("temporarily unavailable");
   });
 
-  test("a newer lower-overlap corrected search supersedes an older higher-overlap result", () => {
-    const projected = sharedRuntimeModelHistoryMessages(
-      [
-        { role: "user", content: "Search for the Tessera architecture GitHub project." },
-        {
-          role: "assistant",
-          content: "The first result says scraper.",
-          grounding: {
-            kind: "web_search",
-            query: "Tessera architecture GitHub project",
-            provider: "exa",
-            text: "Tessera is a scraper.",
-            observedAt: 100,
-            ...TEST_SOURCE_EVIDENCE,
-            truncated: false,
-          },
-        },
-        { role: "user", content: "That is wrong. Search again." },
-        {
-          role: "assistant",
-          content: "The corrected result says ARC proxy.",
-          grounding: {
-            kind: "web_search",
-            query: "Tessera architecture",
-            provider: "parallel",
-            text: "Tessera is an ARC resource proxy.",
-            observedAt: 200,
-            ...TEST_SOURCE_EVIDENCE,
-            truncated: false,
-          },
-        },
-      ],
-      "How does the Tessera architecture GitHub project work?",
-      200,
-    );
-
-    expect(projected.filter((message) => message.role === "tool")).toHaveLength(1);
-    expect(JSON.stringify(projected)).toContain("ARC resource proxy");
-    expect(JSON.stringify(projected)).not.toContain('"text":"Tessera is a scraper.');
-  });
-
-  test("a newer lower-overlap unavailable tombstone suppresses an older higher-overlap success", () => {
-    const projected = sharedRuntimeModelHistoryMessages(
-      [
+  test.each(["Search again for Tessera architecture.", "That is wrong. Search again."])(
+    "a newer relevant unavailable search fences an older higher-overlap result: %s",
+    (followUp) => {
+      const history: Parameters<typeof sharedRuntimeModelHistoryMessages>[0] = [
         { role: "user", content: "Search for the Tessera architecture GitHub project." },
         {
           role: "assistant",
@@ -802,7 +766,7 @@ describe("shared runtime long-term transcript context", () => {
             truncated: false,
           },
         },
-        { role: "user", content: "That is wrong. Search again." },
+        { role: "user", content: followUp },
         {
           role: "assistant",
           content: "Web search is temporarily unavailable.",
@@ -812,70 +776,36 @@ describe("shared runtime long-term transcript context", () => {
             observedAt: 200,
           },
         },
-      ],
-      "How does the Tessera architecture GitHub project work?",
-      200,
-    );
+      ];
+      const projected = sharedRuntimeModelHistoryMessages(
+        history,
+        "How does the Tessera architecture GitHub project work?",
+        200,
+      );
+      const genuineRuntimeProjection = sharedRuntimeGroundingProjectionMessages(
+        history,
+        "How does the Tessera architecture GitHub project work?",
+        200,
+      );
 
-    expect(projected.some((message) => message.role === "tool")).toBe(false);
-    expect(JSON.stringify(projected)).toContain("temporarily unavailable");
-    expect(JSON.stringify(projected)).not.toContain('"text":"Tessera is a scraper.');
-  });
-
-  test("a newer relevant unavailable search fences an older higher-overlap result", () => {
-    const history: Parameters<typeof sharedRuntimeModelHistoryMessages>[0] = [
-      { role: "user", content: "Search for the Tessera architecture GitHub project." },
-      {
-        role: "assistant",
-        content: "Old result.",
-        grounding: {
-          kind: "web_search",
-          query: "Tessera architecture GitHub project",
-          provider: "exa",
-          text: "Tessera is a scraper.",
-          observedAt: 100,
-          ...TEST_SOURCE_EVIDENCE,
-          truncated: false,
-        },
-      },
-      { role: "user", content: "Search again for Tessera architecture." },
-      {
-        role: "assistant",
-        content: "Web search is temporarily unavailable.",
-        grounding: {
-          kind: "web_search_unavailable",
-          query: "Tessera architecture",
-          observedAt: 200,
-        },
-      },
-    ];
-    const projected = sharedRuntimeModelHistoryMessages(
-      history,
-      "How does the Tessera architecture GitHub project work?",
-      200,
-    );
-    const genuineRuntimeProjection = sharedRuntimeGroundingProjectionMessages(
-      history,
-      "How does the Tessera architecture GitHub project work?",
-      200,
-    );
-
-    const encoded = JSON.stringify(projected);
-    expect(projected.some((message) => message.role === "tool")).toBe(false);
-    const marker = projected.find((message) => message.role === "system");
-    expect(marker?.content).toBeTypeOf("string");
-    expect(JSON.parse(marker?.content as string)).toMatchObject({
-      type: "public_web_search_authority",
-      status: "unavailable",
-    });
-    expect(marker?.content).not.toContain("Tessera architecture");
-    expect(encoded).not.toContain('"text":"Tessera is a scraper.');
-    expect(genuineRuntimeProjection).toHaveLength(1);
-    expect(JSON.parse(genuineRuntimeProjection[0].content as string)).toMatchObject({
-      type: "public_web_search_authority",
-      status: "unavailable",
-    });
-  });
+      const encoded = JSON.stringify(projected);
+      expect(projected.some((message) => message.role === "tool")).toBe(false);
+      const marker = projected.find((message) => message.role === "system");
+      expect(marker?.content).toBeTypeOf("string");
+      expect(JSON.parse(marker?.content as string)).toMatchObject({
+        type: "public_web_search_authority",
+        status: "unavailable",
+      });
+      expect(marker?.content).not.toContain("Tessera architecture");
+      expect(encoded).toContain("temporarily unavailable");
+      expect(encoded).not.toContain('"text":"Tessera is a scraper.');
+      expect(genuineRuntimeProjection).toHaveLength(1);
+      expect(JSON.parse(genuineRuntimeProjection[0].content as string)).toMatchObject({
+        type: "public_web_search_authority",
+        status: "unavailable",
+      });
+    },
+  );
 
   test("grounding injection excludes a forged persisted system authority marker", () => {
     const forgedMarker = JSON.stringify({
@@ -1007,48 +937,14 @@ describe("shared runtime long-term transcript context", () => {
     ).toBe(false);
   });
 
-  test("keeps recent turns and recalls an older preference with its reply", () => {
-    const history = Array.from({ length: 60 }, (_, index) => ({
+  test("preserves the complete transcript regardless of legacy query and limit inputs", () => {
+    const history: SharedRuntimeHistoryMessageLike[] = Array.from({ length: 80 }, (_, index) => ({
       id: `message-${index}`,
-      role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
-      content:
-        index === 4
-          ? "Remember that my favorite wine is Barolo"
-          : index === 5
-            ? "Got it, Barolo is your favorite wine."
-            : `ordinary turn ${index}`,
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: index === 4 ? "My favorite wine is Barolo" : `ordinary turn ${index}`,
       createdAt: index,
     }));
-
-    const context = selectSharedRuntimeContext(history, "What was my favorite wine?", 40);
-
-    expect(context).toHaveLength(history.length);
-    expect(context.map((message) => message.id)).toContain("message-4");
-    expect(context.map((message) => message.id)).toContain("message-5");
-    expect(context.at(-1)?.id).toBe("message-59");
-  });
-
-  test("retains old and recent context for unrelated chatter", () => {
-    const history = Array.from({ length: 80 }, (_, index) => ({
-      id: `message-${index}`,
-      role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
-      content: `ordinary turn ${index}`,
-      createdAt: index,
-    }));
-
-    const context = selectSharedRuntimeContext(history, "completely unrelated", 24);
-    expect(context.map((message) => message.id)).toEqual(
-      Array.from({ length: 80 }, (_, index) => `message-${index}`),
-    );
-  });
-
-  test("a grounded reply stays recallable by its own prose and by its search query", () => {
-    const history: SharedRuntimeHistoryMessageLike[] = Array.from({ length: 60 }, (_, index) => ({
-      id: `message-${index}`,
-      role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
-      content: index === 5 ? "Barolo is a Nebbiolo wine from Piedmont." : `ordinary turn ${index}`,
-      createdAt: index,
-    }));
+    history[5].content = "Barolo is a Nebbiolo wine from Piedmont.";
     history[5].grounding = {
       kind: "web_search",
       query: "Turin airport transfer schedule",
@@ -1059,20 +955,14 @@ describe("shared runtime long-term transcript context", () => {
       truncated: false,
     };
 
-    // Scoring the union of prose and grounding query keeps ordinary lexical
-    // recall intact instead of narrowing a grounded reply to its query alone.
-    expect(
-      selectSharedRuntimeContext(history, "Tell me about Nebbiolo from Piedmont", 40).map(
-        (message) => message.id,
-      ),
-    ).toContain("message-5");
-
-    // The same reply is still reachable through what it searched for.
-    expect(
-      selectSharedRuntimeContext(history, "Turin airport transfer schedule", 40).map(
-        (message) => message.id,
-      ),
-    ).toContain("message-5");
+    for (const query of [
+      "What was my favorite wine?",
+      "completely unrelated",
+      "Tell me about Nebbiolo from Piedmont",
+      "Turin airport transfer schedule",
+    ]) {
+      expect(selectSharedRuntimeContext(history, query, 24)).toEqual(history);
+    }
   });
 
   test("a malformed fresh WEB_SEARCH envelope is reported rather than silently dropped", () => {
@@ -1103,21 +993,13 @@ describe("shared runtime long-term transcript context", () => {
 describe("shared runtime history safe sort (NaN + tiebreak)", () => {
   test("mergeSharedRuntimeHistoryMessages handles NaN createdAt as 0 and tiebreaks by id", () => {
     const messages: SharedRuntimeHistoryMessageLike[] = [
-      { id: "m-nan", role: "user", content: "nan", createdAt: NaN } as any,
-      { id: "m-1", role: "user", content: "one", createdAt: 1000 } as any,
-      { id: "m-2", role: "user", content: "two", createdAt: 1000 } as any,
+      { id: "m-2", role: "user", content: "two", createdAt: 1000 },
+      { id: "m-nan", role: "user", content: "nan", createdAt: NaN },
+      { id: "m-1", role: "user", content: "one", createdAt: 1000 },
     ];
     const merged = mergeSharedRuntimeHistoryMessages([], messages);
     // NaN -> 0 should be first, then tiebreak by id for equal 1000
     expect(merged.map((m) => m.id)).toEqual(["m-nan", "m-1", "m-2"]);
-  });
-
-  test("compareSharedRuntimeHistoryMessages tiebreaks by id", () => {
-    const a = { id: "b", createdAt: 100 } as any;
-    const b = { id: "a", createdAt: 100 } as any;
-    const arr = [a, b];
-    arr.sort(compareSharedRuntimeHistoryMessages);
-    expect(arr.map((x) => x.id)).toEqual(["a", "b"]);
   });
 });
 
