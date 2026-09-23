@@ -7421,12 +7421,26 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }
 
   async getParticipantsForRooms(roomIds: UUID[]): Promise<ParticipantsForRoomsResult> {
-    const result: ParticipantsForRoomsResult = [];
-    for (const roomId of roomIds) {
-      const entityIds = await this.getParticipantsForRoom(roomId);
-      result.push({ roomId, entityIds });
-    }
-    return result;
+    if (roomIds.length === 0) return [];
+    return this.withDatabase(async () => {
+      const rows = await this.db
+        .select({ roomId: participantTable.roomId, entityId: participantTable.entityId })
+        .from(participantTable)
+        .where(inArray(participantTable.roomId, roomIds));
+      const byRoom = new Map<string, UUID[]>();
+      for (const row of rows) {
+        if (row.roomId === null) continue;
+        const ids = byRoom.get(row.roomId) ?? [];
+        ids.push(row.entityId as UUID);
+        byRoom.set(row.roomId, ids);
+      }
+      // PostgreSQL UUID equality is case-insensitive; retain the caller's room
+      // identities, order, duplicates, and empty entries in the public result.
+      return roomIds.map((roomId) => ({
+        roomId,
+        entityIds: [...(byRoom.get(roomId.toLowerCase()) ?? [])],
+      }));
+    });
   }
 
   async areRoomParticipants(pairs: Array<{ roomId: UUID; entityId: UUID }>): Promise<boolean[]> {
