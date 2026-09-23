@@ -6,5 +6,5 @@
   "homepage": "https://github.com/odaiin/assetfare-mcp/tree/main/integrations/elizaos",
   "version": "0.1.0",
   "directory": "integrations/elizaos",
-  "tags": ["bridge", "cross-chain", "swap", "solana", "base", "arbitrum", "polygon", "optimism", "usdc", "quotes", "non-custodial"]
+  "tags": ["bridge", "cross-chain", "swap", "solana", "base", "arbitrum", "robinhood", "polygon", "optimism", "usdc", "quotes", "non-custodial"]
 }
