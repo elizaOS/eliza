@@ -3,6 +3,7 @@
 import { MessageProcessor } from "./message/processor.ts";
 import { MessageTurnLifetime } from "./message/turn-lifetime.ts";
 
+export { labelHistorySources } from "./message/history-wire.ts";
 export { shouldSkipResponseMemoryPersistence } from "./message/processor-policy.ts";
 
 import { MessageAttachments } from "./message/attachments.ts";

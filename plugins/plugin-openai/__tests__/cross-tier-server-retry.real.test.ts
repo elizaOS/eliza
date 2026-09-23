@@ -40,7 +40,7 @@ afterEach(async () => {
   }
 });
 
-async function fixture(alternative = false, router = false) {
+async function fixture(alternative = false, router = false, status = 503) {
   const models: string[] = [];
   server = createServer(async (request, response) => {
     let body = "";
@@ -49,7 +49,7 @@ async function fixture(alternative = false, router = false) {
     models.push(payload.model);
     response.setHeader("Content-Type", "application/json");
     if (payload.model !== "healthy-model") {
-      response.writeHead(503);
+      response.writeHead(status);
       response.end(
         JSON.stringify({ error: { message: "Fixture server unavailable", type: "server_error" } })
       );
@@ -110,6 +110,17 @@ async function fixture(alternative = false, router = false) {
 }
 
 describe("concrete model retry budget", () => {
+  it.each([408, 429])("shares exhausted HTTP %s budget across model tiers", async (status) => {
+    const { runtime, models } = await fixture(false, false, status);
+    await expect(
+      runtime.useModel(ModelType.RESPONSE_HANDLER, {
+        prompt: "Original complete request",
+        stream: false,
+      })
+    ).rejects.toThrow("Fixture server unavailable");
+    expect(models).toEqual(Array(4).fill("failed-model"));
+  });
+
   it("preserves the budget through router stream-owner parameter copies", async () => {
     const { runtime, models } = await fixture(false, true);
     const call = async () => {
@@ -127,41 +138,45 @@ describe("concrete model retry budget", () => {
     expect(models).toEqual(Array(6).fill("failed-model"));
   });
 
-  it.each(["generate", "live", "buffered"])(
-    "shares exhausted 503 budget across tiers: %s",
-    async (mode) => {
-      const { runtime, models } = await fixture();
-      vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", mode === "buffered" ? "1" : "0");
-      const call = async () => {
-        const result = await runtime.useModel(ModelType.RESPONSE_HANDLER, {
-          prompt: "Original complete request",
-          stream: mode !== "generate",
-        });
-        if (typeof result !== "string")
-          for await (const _ of result.textStream) {
-            /* consume the real failure */
-          }
-      };
-      await expect(call()).rejects.toThrow("Fixture server unavailable");
-      expect(models).toEqual(Array(mode === "generate" ? 4 : 6).fill("failed-model"));
+  it.each(
+    [503, 429].flatMap((status) =>
+      ["generate", "live", "buffered"].map((mode) => ({ status, mode }))
+    )
+  )("shares exhausted $status budget across tiers: $mode", async ({ status, mode }) => {
+    const { runtime, models } = await fixture(false, false, status);
+    vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", mode === "buffered" ? "1" : "0");
+    const call = async () => {
+      const result = await runtime.useModel(ModelType.RESPONSE_HANDLER, {
+        prompt: "Original complete request",
+        stream: mode !== "generate",
+      });
+      if (typeof result !== "string")
+        for await (const _ of result.textStream) {
+          /* consume the real failure */
+        }
+    };
+    await expect(call()).rejects.toThrow("Fixture server unavailable");
+    expect(models).toEqual(Array(mode === "generate" ? 4 : 6).fill("failed-model"));
+  });
+
+  it.each([503, 429])(
+    "retains a different model fallback and a new call budget after %s",
+    async (status) => {
+      const { runtime, models } = await fixture(true, false, status);
+      for (let i = 0; i < 2; i++) {
+        await expect(
+          runtime.useModel(ModelType.RESPONSE_HANDLER, {
+            prompt: "Original complete request",
+            stream: false,
+          })
+        ).resolves.toBe("Recovered");
+      }
+      expect(models).toEqual([
+        ...Array(4).fill("failed-model"),
+        "healthy-model",
+        ...Array(4).fill("failed-model"),
+        "healthy-model",
+      ]);
     }
   );
-
-  it("retains a different model fallback and a new call's retry budget", async () => {
-    const { runtime, models } = await fixture(true);
-    for (let i = 0; i < 2; i++) {
-      await expect(
-        runtime.useModel(ModelType.RESPONSE_HANDLER, {
-          prompt: "Original complete request",
-          stream: false,
-        })
-      ).resolves.toBe("Recovered");
-    }
-    expect(models).toEqual([
-      ...Array(4).fill("failed-model"),
-      "healthy-model",
-      ...Array(4).fill("failed-model"),
-      "healthy-model",
-    ]);
-  });
 });

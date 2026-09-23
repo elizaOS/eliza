@@ -25,9 +25,16 @@ import {
 } from "@elizaos/core";
 
 import { getNotesService } from "./service.js";
-import { parseNoteContent } from "./validation.js";
+import { parseNoteContent, parseNoteFieldPatch } from "./validation.js";
 
-const NOTES_OPS = ["create", "list", "get", "update", "delete"] as const;
+const NOTES_OPS = [
+  "create",
+  "list",
+  "get",
+  "update",
+  "patch",
+  "delete",
+] as const;
 type NotesOp = (typeof NOTES_OPS)[number];
 
 function readParams(options?: HandlerOptions): Record<string, unknown> {
@@ -98,7 +105,7 @@ function readOp(params: Record<string, unknown>): NotesOpParse | undefined {
 function failure(
   text: string,
   code: string,
-  missingParameter?: "content" | "replacementContent",
+  missingParameter?: "content" | "replacementContent" | "noteId",
 ): ActionResult {
   return {
     success: false,
@@ -202,7 +209,7 @@ export const notesAction: Action = {
   descriptionCompressed:
     "notes: create, list/search, update by exact textEdit or complete replacementContent, delete; opening the Notes view separately uses VIEWS_SHOW when available, otherwise VIEWS",
   routingHint:
-    "Notes store: create -> NOTES_CREATE(content); exact case-sensitive ID -> NOTES_GET(noteId), without content; search/list/count -> NOTES_LIST(content=topic), omitting content only for all notes, counts or recency comparisons without a topic. Use returned createdAt/updatedAt for recency, not search words like 'latest'. Delete -> NOTES_DELETE(content=identifying text); update -> NOTES_UPDATE(content=identifying text, textEdit for an exact field/oldText/newText substitution, otherwise replacementContent with the entire note and unchanged label/lines preserved). Never substitute a read for an edit/delete. SAVED_NOTES supplies note recall; when the needed content is absent, use NOTES_GET/LIST. Its title index is not body text. MEMORY, documents, files and DATABASE do not search this store; no raw SQL. Keep literal wording, punctuation and line breaks. Dates/times in a note remain content; only an explicit scheduling/reminder request also needs CALENDAR/TRIGGER. Opening Notes is a separate navigation operation, only when requested.",
+    "Notes store: create -> NOTES_CREATE(content); exact case-sensitive ID -> NOTES_GET(noteId), without content; search/list/count -> NOTES_LIST(content=topic), omitting content only for all notes, counts or recency comparisons without a topic. Use returned createdAt/updatedAt for recency, not search words like 'latest'. Delete -> NOTES_DELETE(content=identifying text); edit -> NOTES_PATCH(target={kind:id/text,value}, changes=[{field:title/body,value:exact replacement}], or changes=[] with textEdit for literal substitution); omitted fields remain unchanged. NOTES_UPDATE supports exact textEdit substitutions and legacy complete-note replacement. Never substitute a read for an edit/delete. SAVED_NOTES supplies note recall; when the needed content is absent, use NOTES_GET/LIST. Its title index is not body text. MEMORY, documents, files and DATABASE do not search this store; no raw SQL. Keep literal wording, punctuation and line breaks. Dates/times in a note remain content; only an explicit scheduling/reminder request also needs CALENDAR/TRIGGER. Opening Notes is a separate navigation operation, only when requested.",
   // Notes are stored per agent rather than per sender. Only the owner may see
   // or mutate that personal store, including through direct tool execution.
   roleGate: { minRole: "OWNER" },
@@ -235,6 +242,45 @@ export const notesAction: Action = {
     if (alternatives.conflicts.length > 0)
       return conflictingAlternatives(alternatives.conflicts);
     const service = getNotesService(runtime);
+    if (op === "patch") {
+      if (
+        Object.keys(params).some(
+          (key) =>
+            ![
+              "action",
+              "subaction",
+              "op",
+              "target",
+              "changes",
+              "textEdit",
+            ].includes(key),
+        )
+      ) {
+        return failure(
+          "Use target, changes, and optional textEdit for a patch.",
+          "NOTES_CONFLICTING_PATCH",
+        );
+      }
+      const { target, change } = parseNoteFieldPatch(
+        params.target,
+        params.changes,
+        params.textEdit,
+      );
+      const updated =
+        target.kind === "id"
+          ? await service.updateNoteWithCommit(target.value, change)
+          : await service.updateNoteByLookupWithCommit(
+              "query",
+              target.value,
+              change,
+            );
+      return committed({
+        op: "update",
+        noteId: updated.value.id,
+        note: updated.value,
+        consolidatedCount: updated.consolidatedIds.length,
+      });
+    }
 
     if (op === "list" || op === "get") {
       const noteId = readString(params.noteId);
@@ -276,7 +322,22 @@ export const notesAction: Action = {
     // may preserve an explicitly requested title and body as separate tool
     // arguments, so normalize that losslessly before deriving the label.
     const content = alternatives.value;
-    if (!content) {
+    const noteId = op === "update" ? readString(params.noteId) : undefined;
+    if (op === "update" && params.noteId !== undefined && !noteId) {
+      return failure(
+        "Supply a nonempty exact note ID.",
+        "NOTES_INVALID_ID",
+        "noteId",
+      );
+    }
+    if (noteId && content) {
+      return failure(
+        "Use noteId for an exact ID lookup or content for a text search, not both.",
+        "NOTES_CONFLICTING_LOOKUP",
+      );
+    }
+    const target = noteId ?? content;
+    if (!target) {
       return failure(
         "Tell me what the note should say.",
         "NOTES_MISSING_TEXT",
@@ -286,9 +347,9 @@ export const notesAction: Action = {
 
     if (op === "create") {
       const body = readString(params.body);
-      const separateBody = body !== undefined && !content.includes("\n");
+      const separateBody = body !== undefined && !target.includes("\n");
       const noteContent = parseNoteContent(
-        separateBody ? `${content}\n${body}` : content,
+        separateBody ? `${target}\n${body}` : target,
       );
       if (body && !separateBody && noteContent.body !== body) {
         // Two different complete bodies are ambiguous; reject before writing
@@ -311,7 +372,7 @@ export const notesAction: Action = {
     if (op === "delete") {
       const removed = await service.deleteNoteByLookupWithCommit(
         "query",
-        content,
+        target,
       );
       return committed({
         op,
@@ -344,21 +405,57 @@ export const notesAction: Action = {
         "replacementContent",
       );
     }
-    const updated = await service.updateNoteByLookupWithCommit(
-      "query",
-      content,
-      hasTextEdit
-        ? { textEdit: params.textEdit }
-        : parseNoteContent(replacement),
-    );
+    const patch = hasTextEdit
+      ? { textEdit: params.textEdit }
+      : parseNoteContent(replacement);
+    const updated = noteId
+      ? await service.updateNoteWithCommit(noteId, patch)
+      : await service.updateNoteByLookupWithCommit("query", target, patch);
     return committed({
       op,
       noteId: updated.value.id,
       note: updated.value,
-      consolidatedCount: updated.consolidatedCount,
+      consolidatedCount: updated.consolidatedIds.length,
     });
   },
   parameters: [
+    {
+      name: "target",
+      description:
+        "Identify the existing note by exact ID or identifying text.",
+      required: false,
+      subactions: ["patch"],
+      requiredForSubactions: ["patch"],
+      schema: {
+        type: "object",
+        properties: {
+          kind: { type: "string", enum: ["id", "text"] },
+          value: { type: "string", minLength: 1 },
+        },
+        required: ["kind", "value"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "changes",
+      description:
+        "Requested title/body replacements. Use [] with textEdit for exact substring substitution; otherwise supply at least one entry. Never combine nonempty changes with textEdit. Preserve exact wording.",
+      required: false,
+      subactions: ["patch"],
+      requiredForSubactions: ["patch"],
+      schema: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            field: { type: "string", enum: ["title", "body"] },
+            value: { type: "string" },
+          },
+          required: ["field", "value"],
+          additionalProperties: false,
+        },
+      },
+    },
     {
       name: "action",
       description: `Which notes operation to run: ${NOTES_OPS.join(", ")}.`,
@@ -368,12 +465,12 @@ export const notesAction: Action = {
     {
       name: "content",
       description:
-        "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; compare returned createdAt/updatedAt timestamps, never search for 'latest' or 'most recently updated'. For update/delete, identify the EXISTING note, not its replacement. For create, supply the exact title, newline, and body.",
+        "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; compare returned createdAt/updatedAt timestamps, never search for 'latest' or 'most recently updated'. For update, use either noteId or content identifying the EXISTING note, never both. For delete, identify the EXISTING note by text. For create, supply the exact title, newline, and body.",
       required: false,
       subactions: ["create", "list", "update", "delete"],
       requiredForSubactions: ["update"],
-      legacyRequiredAlternatives: ["text", "note", "title", "query"],
-      // Notes validates content-or-alternative before any write.
+      legacyRequiredAlternatives: ["noteId", "text", "note", "title", "query"],
+      // Notes validates content-or-ID and legacy alternatives before any write.
       // Strict providers may serialize an omitted optional string as "". The
       // empty string is never valid note content (minLength is 1), so normalize
       // that provider sentinel back to omission before schema validation. This
@@ -403,8 +500,8 @@ export const notesAction: Action = {
     {
       name: "noteId",
       description:
-        "Read one note by its exact, case-sensitive ID. Required for get; optional instead of content for list. A text search cannot establish whether an ID exists.",
-      subactions: ["list", "get"],
+        "Exact, case-sensitive note ID. Required for get; use instead of content for list or update. A text search cannot establish whether an ID exists.",
+      subactions: ["list", "get", "update"],
       required: false,
       requiredForSubactions: ["get"],
       modelOmissionSentinels: [""],
@@ -429,8 +526,8 @@ export const notesAction: Action = {
     {
       name: "textEdit",
       description:
-        "For an exact substitution, prefer this instead of reading and rewriting the full note. content identifies the existing note; field selects title or body; oldText and newText are the exact user-requested strings, with no grammar correction or added context. The service replaces one unique literal match atomically and preserves every other character and field. A missing or repeated match fails without changes; read the note and use a unique surrounding phrase if needed. Omit replacementContent.",
-      subactions: ["update"],
+        "For an exact substitution, prefer this instead of reading and rewriting the full note. noteId or content identifies the existing note; field selects title or body; oldText and newText are the exact user-requested strings, with no grammar correction or added context. The service replaces one unique literal match atomically and preserves every other character and field. A missing or repeated match fails without changes; read the note and use a unique surrounding phrase if needed. Omit replacementContent.",
+      subactions: ["update", "patch"],
       required: false,
       schema: {
         type: "object",

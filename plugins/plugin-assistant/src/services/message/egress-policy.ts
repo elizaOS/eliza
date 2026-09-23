@@ -29,6 +29,7 @@ import {
   projectCompleteToolValueForModel,
   renderContextObject,
   resolveAppliedUserFacingEffectReceipts,
+  getUserMessageText,
   resolveEgressAudienceAdmission,
   revalidateOwnerExclusiveDisclosure,
   segmentBlock,
@@ -53,6 +54,7 @@ import {
 } from "./side-effect-claims.ts";
 import {
   groundedCurrentTimeReply,
+  requestAsksCurrentTime,
   statedTimeIsUngrounded,
 } from "./time-observations.ts";
 
@@ -178,6 +180,23 @@ export function capturePlannerReplyRecovery(
   };
 }
 
+/**
+ * The reply is the result's exact verified sentence, or that sentence
+ * verbatim followed by the evaluator's grounded prose in the combination form
+ * the planner loop emits (`<verified>\n\n<prose>`, the verified block fenced
+ * when it is multiline). The canonical sentence is intact either way, so the
+ * result's receipts still ground the completion claim it makes; a reply that
+ * rewrites or embeds the sentence mid-prose is not bound.
+ */
+export function replyCarriesCanonicalText(
+  reply: string,
+  canonical: string,
+): boolean {
+  if (reply === canonical) return true;
+  if (reply.startsWith(`${canonical}\n\n`)) return true;
+  return reply.startsWith(`\`\`\`\n${canonical}\n\`\`\`\n\n`);
+}
+
 export function appliedEffectReceiptIdsForReply(
   reply: string,
   results: readonly ActionResult[],
@@ -212,7 +231,9 @@ export function appliedEffectReceiptIdsForReply(
     if (receipts) return receipts.map((receipt) => receipt.receiptId);
   }
   for (const result of results) {
-    if (result.userFacingText?.trim() !== normalizedReply) continue;
+    const canonical = result.userFacingText?.trim();
+    if (!canonical || !replyCarriesCanonicalText(normalizedReply, canonical))
+      continue;
     const receipts = resolveAppliedUserFacingEffectReceipts(
       result,
       allTurnReceipts,
@@ -386,7 +407,7 @@ export async function resolvePlannedReplyEgress(args: {
 }): Promise<{ text: string; effectReceiptIds: readonly string[] }> {
   const decision = evaluatePlannedReplyEgress({
     reply: args.reply,
-    request: args.message.content.text,
+    request: getUserMessageText(args.message),
     providers: args.providers,
     actionResults: args.actionResults,
     actions: args.runtime.actions,
@@ -404,7 +425,10 @@ export async function resolvePlannedReplyEgress(args: {
   }
   const reason =
     decision.verdict === "reject" ? decision.kind : "missing_reply";
-  if (reason === "stated_time") {
+  if (
+    reason === "stated_time" &&
+    requestAsksCurrentTime(getUserMessageText(args.message))
+  ) {
     // The provider's own rendering is the complete answer to "what time is
     // it"; no model is needed to restate it, and a second model pass could
     // invent a second date.
@@ -519,7 +543,7 @@ export async function resolvePlannedReplyEgress(args: {
   const rewrittenDecision = reply
     ? evaluatePlannedReplyEgress({
         reply,
-        request: args.message.content.text,
+        request: getUserMessageText(args.message),
         providers: args.providers,
         actionResults: actionResults(),
         actions: args.runtime.actions,

@@ -225,7 +225,6 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
     attendees: {
       type: "array",
       items: {
-        type: "object",
         anyOf: [
           { type: "string" },
           {

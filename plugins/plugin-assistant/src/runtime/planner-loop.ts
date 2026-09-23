@@ -651,6 +651,7 @@ async function runPlannerLoopIterations(
   // An omitted declaration cannot erase work the planner explicitly left
   // pending. A later explicit final declaration releases this authority.
   let lastPlannerExplicitCompleted: boolean | undefined;
+  let pendingUnverifiedTerminalReply = false;
   let consecutiveScopeProtocolRejections = 0;
   // The successful FINISH most recently rejected by the pending-scope rule. If
   // the planner repeats settled operations, do not replay them. Repetition
@@ -667,6 +668,7 @@ async function runPlannerLoopIterations(
   const correctPendingSuccessfulFinish = (
     evaluator: EvaluatorOutput,
     iteration: number,
+    source: "evaluator" | "terminal" = "evaluator",
   ): EvaluatorOutput | null => {
     if (
       lastPlannerExplicitCompleted !== false ||
@@ -687,6 +689,32 @@ async function runPlannerLoopIterations(
         hasRequiresConfirmationMarker(latestResult))
     ) {
       return { ...evaluator, success: false };
+    }
+    if (source === "terminal") {
+      assertTrajectoryLimit({
+        kind: "terminal_only_continuations",
+        max: config.maxTerminalOnlyContinuations,
+        observed: ++terminalOnlyContinuations,
+      });
+      pendingUnverifiedTerminalReply = true;
+      // A native REPLY shortcut did not evaluate results. Its pending
+      // narration must never become a reusable, verified FINISH.
+      appendPlannerModelFeedbackEvent(trajectory, {
+        id: `pending-terminal-reply:${iteration}`,
+        type: "instruction",
+        source: "planner-loop",
+        createdAt: Date.now(),
+        content:
+          `Your REPLY still declared more_work_pending: ${JSON.stringify(evaluator.messageToUser ?? "")}. ` +
+          "No result evaluation occurred, and this is not a verified final answer. " +
+          "Continue the remaining work, or provide a complete grounded final reply if no work remains or a blocker prevents it. Do not claim an operation ran without its recorded result.",
+      });
+      return {
+        ...evaluator,
+        success: false,
+        decision: "CONTINUE",
+        messageToUser: undefined,
+      };
     }
     appendPlannerModelFeedbackEvent(trajectory, {
       id: `pending-scope-finish:${iteration}`,
@@ -886,7 +914,7 @@ async function runPlannerLoopIterations(
       const contextBeforePlanner = trajectory.context;
       let synthesizingRequiredModelReply = pendingRequiredModelReply;
       const previousResult = trajectory.steps.at(-1)?.result;
-      const plannerTools =
+      let plannerTools: typeof params.tools =
         !codingDrainQueue &&
         pendingScopeRejectedFinish &&
         !pendingScopeRejectedFinish.output.messageToUser?.trim() &&
@@ -923,69 +951,74 @@ async function runPlannerLoopIterations(
               };
             })
           : params.tools;
-      // Resolve Stage 1's draft/tool-candidate contradiction before exposing
-      // an effect to planning. Reuse normal completion evaluation: FINISH
-      // can deliver the draft; CONTINUE must still plan the outstanding work.
-      const initialStageOneReply =
-        iteration === 1 &&
+      if (
+        !codingDrainQueue &&
+        (iteration === 1 || pendingUnverifiedTerminalReply) &&
         !postToolReplySeed &&
-        requireNonTerminalToolCall &&
-        canEvaluateUnexecutedReply &&
-        isPlainObject(stageOnePlan)
-          ? getNonEmptyString(stageOnePlan.reply)
-          : undefined;
+        !canEvaluateUnexecutedReply
+      ) {
+        // There is no existing answer for an empty REPLY to release.
+        // Require presentation, not success: clarifications and refusals
+        // remain possible and still pass ordinary completion evaluation.
+        plannerTools = plannerTools?.map((tool) => {
+          const schema = tool.parameters;
+          if (
+            tool.name !== "REPLY" ||
+            schema?.properties?.text?.type !== "string"
+          )
+            return tool;
+          return {
+            ...tool,
+            parameters: {
+              ...schema,
+              required: [...new Set([...(schema.required ?? []), "text"])],
+            },
+          };
+        });
+      }
       // Provider dispatch owns transport recovery; never restart its budget here.
       let plannerOutput: Awaited<ReturnType<typeof callPlanner>>;
       try {
-        plannerOutput = initialStageOneReply
-          ? {
-              toolCalls: [],
-              messageToUser: initialStageOneReply,
-              raw: {
-                source: "response-handler",
-                replyText: initialStageOneReply,
-              },
-            }
-          : await callPlanner({
-              runtime: params.runtime,
-              context: trajectory.context,
-              trajectory,
-              config,
-              modelType: params.modelType,
-              provider: params.provider,
-              // A successful final-scope action may ask for one natural closing
-              // sentence. That round is synthesis, not planning: remove the tool
-              // catalog entirely so callPlanner cannot default an omitted toolChoice
-              // to "required" and re-run the action. The branch below consumes this
-              // output exactly once, including when a non-compliant provider invents
-              // a tool call despite receiving no tools.
-              tools: synthesizingRequiredModelReply ? undefined : plannerTools,
-              // Removing effect tools must not undo Stage-1 source selection.
-              // This reply-only round can read original context through the
-              // intercepted RESTORE_CONTEXT protocol, never execute an action.
-              allowReplyContextProjection: synthesizingRequiredModelReply,
-              // Require a native call until the requested tool has run. Explicitly
-              // pending chat work also needs a native continuation or scope release:
-              // REPLY/IGNORE/STOP can close the turn without repeating an action.
-              // Bare prose has no native scope field and can trigger redundant
-              // evaluation/synthesis. Other settled turns retain the explicit auto
-              // choice; omitting it would default back to required in callPlanner.
-              toolChoice: synthesizingRequiredModelReply
-                ? undefined
-                : requireNonTerminalToolCall
-                  ? hasExecutedNonTerminalTool(trajectory) &&
-                    (codingMode || lastPlannerExplicitCompleted !== false)
-                    ? "auto"
-                    : "required"
-                  : params.toolChoice,
-              recorder: params.recorder,
-              trajectoryId: params.trajectoryId,
-              cacheConversationId: params.cacheConversationId,
-              parentStageId: params.parentStageId,
-              providerAttributionState: params.providerAttributionState,
-              iteration,
-              onUsage: observePlannerUsage,
-            });
+        plannerOutput = await callPlanner({
+          runtime: params.runtime,
+          context: trajectory.context,
+          trajectory,
+          config,
+          modelType: params.modelType,
+          provider: params.provider,
+          // A successful final-scope action may ask for one natural closing
+          // sentence. That round is synthesis, not planning: remove the tool
+          // catalog entirely so callPlanner cannot default an omitted toolChoice
+          // to "required" and re-run the action. The branch below consumes this
+          // output exactly once, including when a non-compliant provider invents
+          // a tool call despite receiving no tools.
+          tools: synthesizingRequiredModelReply ? undefined : plannerTools,
+          // Removing effect tools must not undo Stage-1 source selection.
+          // This reply-only round can read original context through the
+          // intercepted RESTORE_CONTEXT protocol, never execute an action.
+          allowReplyContextProjection: synthesizingRequiredModelReply,
+          // Require a native call until the requested tool has run. Explicitly
+          // pending chat work also needs a native continuation or scope release:
+          // REPLY/IGNORE/STOP can close the turn without repeating an action.
+          // Bare prose has no native scope field and can trigger redundant
+          // evaluation/synthesis. Other settled turns retain the explicit auto
+          // choice; omitting it would default back to required in callPlanner.
+          toolChoice: synthesizingRequiredModelReply
+            ? undefined
+            : requireNonTerminalToolCall
+              ? hasExecutedNonTerminalTool(trajectory) &&
+                (codingMode || lastPlannerExplicitCompleted !== false)
+                ? "auto"
+                : "required"
+              : params.toolChoice,
+          recorder: params.recorder,
+          trajectoryId: params.trajectoryId,
+          cacheConversationId: params.cacheConversationId,
+          parentStageId: params.parentStageId,
+          providerAttributionState: params.providerAttributionState,
+          iteration,
+          onUsage: observePlannerUsage,
+        });
       } catch (err) {
         // A context overflow is a terminal integrity boundary even after a
         // successful action. Relaying the action-owned fallback would hide that
@@ -1274,6 +1307,34 @@ async function runPlannerLoopIterations(
         }
         pendingScopeRejectedFinish = undefined;
       }
+      if (pendingUnverifiedTerminalReply) {
+        if (
+          plannerOutput.toolCalls.length > 0 &&
+          plannerOutput.toolCalls.every(
+            (call) => call.name.toUpperCase() === "REPLY",
+          ) &&
+          !terminalMessageFromToolCalls(
+            plannerOutput.toolCalls,
+            plannerOutput.messageToUser,
+          )?.trim()
+        ) {
+          assertTrajectoryLimit({
+            kind: "terminal_only_continuations",
+            max: config.maxTerminalOnlyContinuations,
+            observed: ++terminalOnlyContinuations,
+          });
+          appendPlannerModelFeedbackEvent(trajectory, {
+            id: `missing-terminal-reply:${iteration}`,
+            type: "instruction",
+            source: "planner-loop",
+            createdAt: Date.now(),
+            content:
+              "The previous reply was unverified progress; there is no evaluated answer for an empty REPLY to reuse. Continue the requested work or provide a complete grounded final reply, including any blocker. No operation ran in this empty batch.",
+          });
+          continue;
+        }
+        pendingUnverifiedTerminalReply = false;
+      }
       if (synthesizingRequiredModelReply) {
         pendingRequiredModelReply = false;
         const requiredModelReply = userSafeRescueReply(
@@ -1453,7 +1514,7 @@ async function runPlannerLoopIterations(
           !isUnsafeUserVisibleText(proposedTerminalText));
       if (
         !codingDrainQueue &&
-        requiresIntentEvaluation &&
+        (requiresIntentEvaluation || canEvaluateUnexecutedReply) &&
         (hasExecutedNonTerminalTool(trajectory) ||
           canEvaluateCurrentTerminal) &&
         plannerOutput.toolCalls.every(isTerminalToolCall) &&
@@ -1539,7 +1600,6 @@ async function runPlannerLoopIterations(
           trajectory,
           iteration,
           message: plannerOutput.messageToUser,
-          fromStageOne: initialStageOneReply !== undefined,
         });
         if (
           trajectory.steps.some((step) => step.toolCall) ||
@@ -1817,12 +1877,6 @@ async function runPlannerLoopIterations(
               plannerOutput.messageToUser,
             )
           : undefined;
-        trajectory.steps.push({
-          iteration,
-          thought: plannerOutput.thought,
-          terminalMessage: finalMessage,
-          terminalOnly: true,
-        });
         const latestNonTerminalStep =
           latestUnresolvedFailedNonTerminalToolStep(trajectory);
         const pendingInteraction = latestNonTerminalStep
@@ -1842,12 +1896,22 @@ async function runPlannerLoopIterations(
           !terminalFollowsFailedTool,
         );
         const pendingCompletionCorrection = hasReplyCall
-          ? correctPendingSuccessfulFinish(terminalEvaluator, iteration)
+          ? correctPendingSuccessfulFinish(
+              terminalEvaluator,
+              iteration,
+              "terminal",
+            )
           : null;
         terminalEvaluator = pendingCompletionCorrection ?? terminalEvaluator;
         if (pendingCompletionCorrection?.decision === "CONTINUE") {
           continue;
         }
+        trajectory.steps.push({
+          iteration,
+          thought: plannerOutput.thought,
+          terminalMessage: finalMessage,
+          terminalOnly: true,
+        });
         // Only record an evaluation stage when the trajectory already has
         // prior evaluator outputs. A terminal-only iteration on the very
         // first planner turn (e.g. REPLY) is purely terminal and should
@@ -3890,9 +3954,9 @@ async function callPlanner(
   }
 }
 
-/** Record a gated evaluator outcome without making another model call. */
+/** Preserve the proposed reply exactly so evaluation sees its real formatting. */
 function normalizeCompleteText(value: string): string {
-  return toWellFormedUnicode(value.replace(/\s+/g, " ").trim());
+  return toWellFormedUnicode(value);
 }
 
 async function recordGatedEvaluationStage(args: {
@@ -4251,18 +4315,13 @@ function appendTerminalPlannerOutputEvent(args: {
   trajectory: PlannerTrajectory;
   iteration: number;
   message?: string;
-  fromStageOne?: boolean;
 }): void {
   const createdAt = Date.now();
   const unsafe = isUnsafeUserVisibleText(args.message);
-  const label = args.fromStageOne
-    ? "stage_one_reply_proposal"
-    : "terminal_planner_output";
-  const eventId = `${args.fromStageOne ? "stage-one-reply-proposal" : "terminal-planner-output"}:${args.iteration}:${createdAt}`;
+  const label = "terminal_planner_output";
+  const eventId = `terminal-planner-output:${args.iteration}:${createdAt}`;
   const content = [
-    args.fromStageOne
-      ? "stage_one_reply_proposal:"
-      : "planner_terminal_output:",
+    "planner_terminal_output:",
     normalizeCompleteText(args.message ?? ""),
     "",
     unsafe
@@ -4272,7 +4331,7 @@ function appendTerminalPlannerOutputEvent(args: {
   appendPlannerModelFeedbackEvent(args.trajectory, {
     id: eventId,
     type: "segment",
-    source: args.fromStageOne ? "message-service" : "planner-loop",
+    source: "planner-loop",
     createdAt,
     metadata: {
       iteration: args.iteration,
@@ -5697,10 +5756,10 @@ function resolveMalformedCallsSupersededBy(
   step: PlannerStep,
   unresolvedByOperation: Map<string, PlannerStep>,
 ): void {
-  const call = step.toolCall;
+  const call = retryCallWithRegisteredDiscriminator(step);
   if (!call) return;
   for (const [key, failed] of [...unresolvedByOperation.entries()]) {
-    const failedCall = failed.toolCall;
+    const failedCall = retryCallWithRegisteredDiscriminator(failed);
     if (
       !failedCall ||
       failedCall.name.toUpperCase() !== call.name.toUpperCase()
@@ -5711,6 +5770,26 @@ function resolveMalformedCallsSupersededBy(
     if (!malformedCallSupersededBy(failedCall, failed.result, call)) continue;
     unresolvedByOperation.delete(key);
   }
+}
+
+/** Compare omitted versus explicit registered defaults without rewriting logs. */
+function retryCallWithRegisteredDiscriminator(
+  step: PlannerStep,
+): PlannerToolCall | undefined {
+  const call = step.toolCall;
+  const pin = step.result?.registeredSubaction;
+  if (
+    !call ||
+    !pin ||
+    pin.child !== call.name ||
+    Object.hasOwn(call.params ?? {}, pin.discriminator)
+  ) {
+    return call;
+  }
+  return {
+    ...call,
+    params: { ...call.params, [pin.discriminator]: pin.value },
+  };
 }
 
 const PLANNER_TOOL_DISCRIMINATOR_KEYS = [
@@ -6705,7 +6784,8 @@ export function isMemoryRecallSearchCall(toolCall: PlannerToolCall): boolean {
 }
 
 /**
- * Order-insensitive token key for a recall query so reformulations of the SAME
+ * Exact source text for literal queries; order-insensitive tokens for keyword
+ * recall so reformulations of the SAME
  * lookup ("alexis gym signup" vs "gym signup alexis" vs "alexis gym signup?")
  * map to one identity. Null when the call carries no usable query text — such
  * calls are only governed by the round budget, never the near-dup check.
@@ -6716,6 +6796,11 @@ export function normalizedRecallQueryKey(
   const params = (toolCall.params ?? {}) as Record<string, unknown>;
   const raw = params.query ?? params.q ?? params.text ?? params.search;
   if (typeof raw !== "string") return null;
+  // Literal matching is case- and order-sensitive; keyword normalization can
+  // merge different source searches and suppress a requested exact lookup.
+  if (params.queryMode === "literal")
+    return raw.length ? `literal:${JSON.stringify(raw)}` : null;
+
   const tokens = raw
     .toLowerCase()
     .split(/[^\p{L}\p{N}]+/u)

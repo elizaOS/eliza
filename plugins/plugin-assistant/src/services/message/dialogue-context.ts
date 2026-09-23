@@ -1,6 +1,12 @@
 /** Builds ordered dialogue and provider context events with speaker identity and platform reply references. */
 
-import type { ContextEvent, IAgentRuntime, Memory, State } from "@elizaos/core";
+import type {
+  ContextEvent,
+  IAgentRuntime,
+  Memory,
+  ProviderResult,
+  State,
+} from "@elizaos/core";
 import {
   ChannelType,
   extractUserText,
@@ -11,12 +17,14 @@ import {
   unwrapUserMessageText,
 } from "@elizaos/core";
 import { resolveExplicitContinuationRequestText } from "./direct-action-heuristics.ts";
+import { readSourceReplyReferences } from "./source-reply-references.ts";
 import { parseSubAgentTaskCompleteRelay } from "./task-completion-relay.ts";
 
 export function asProviderRecord(value: unknown):
   | {
       text?: unknown;
       discoveryText?: unknown;
+      reviewableSources?: ProviderResult["reviewableSources"];
       providerName?: unknown;
     }
   | undefined {
@@ -26,6 +34,7 @@ export function asProviderRecord(value: unknown):
   return value as {
     text?: unknown;
     discoveryText?: unknown;
+    reviewableSources?: ProviderResult["reviewableSources"];
     providerName?: unknown;
   };
 }
@@ -175,6 +184,10 @@ export function appendPriorDialogueEvents(
   for (const memory of dialogue) {
     const text = getUserMessageText(memory);
     if (!text) continue;
+    const sourceReplyReferences =
+      memory.entityId === runtime.agentId
+        ? readSourceReplyReferences(memory.content.sourceReplyReferences, text)
+        : undefined;
     const isOwnReply = memory.entityId === runtime.agentId;
     const speakerName = isOwnReply
       ? (runtime.character?.name ?? priorDialogueSpeakerName(memory))
@@ -190,6 +203,7 @@ export function appendPriorDialogueEvents(
         content: priorDialogueContent(text, speakerName),
         stable: false,
         metadata: {
+          ...(sourceReplyReferences ? { sourceReplyReferences } : {}),
           roomId: memory.roomId,
           entityId: memory.entityId,
           ...(speakerName ? { speakerName } : {}),
@@ -268,7 +282,7 @@ export function currentMessageContentForContext(
   // These client-chat carriers belong to replay protection and UI dispatch,
   // not the model's request. Never mutate the Memory used by persistence,
   // recovery or action execution, and retain every other content/metadata key.
-  const modelContent = { ...projected };
+  const modelContent: Memory["content"] = { ...projected };
   delete modelContent.chatIdempotency;
   const metadata = modelContent.metadata;
   if (
@@ -614,6 +628,7 @@ export function appendStateProviderEvents(
       ...(typeof provider.discoveryText === "string"
         ? { discoveryText: provider.discoveryText }
         : {}),
+      reviewableSources: provider.reviewableSources,
       cacheStable: cacheStableByName.get(resolvedName.toUpperCase()),
     });
   }

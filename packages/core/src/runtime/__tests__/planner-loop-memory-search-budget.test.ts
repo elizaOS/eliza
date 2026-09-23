@@ -133,6 +133,40 @@ describe("partitionMemorySearchBudget", () => {
 		expect(out.skippedNearDuplicate).toEqual([reformulated]);
 	});
 
+	it.each(["blue red", "Red blue", "red  blue", "red-blue", "red\tblue"])(
+		"does not collapse distinct literal substrings: %s",
+		(query) => {
+			const original = {
+				name: "MEMORY_SEARCH",
+				params: { query: "red blue", queryMode: "literal" },
+			};
+			const trajectory = {
+				...emptyTrajectory(),
+				steps: [
+					{
+						toolCall: original,
+						result: {
+							success: true,
+							data: { memories: [{ text: "red blue" }], totalMatches: 1 },
+						},
+					},
+				],
+			};
+			const next = {
+				name: "MEMORY_SEARCH",
+				params: { query, queryMode: "literal" },
+			};
+			const result = partitionMemorySearchBudget(
+				[next, original],
+				trajectory,
+				5,
+			);
+			expect(result.allowed).toEqual([next]);
+			expect(result.skippedNearDuplicate).toEqual([original]);
+			expect(result.skippedOverBudget).toEqual([]);
+		},
+	);
+
 	it("allows a rephrased query after a successful search returned no matches", () => {
 		const trajectory = {
 			...emptyTrajectory(),

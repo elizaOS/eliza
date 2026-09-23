@@ -77,6 +77,7 @@ import {
   normalizeSchemaForCerebras,
   sanitizeFunctionNameForCerebras,
 } from "../utils/schema-compat";
+import { factorResponseSchema } from "../utils/factor-response-schema";
 
 // ============================================================================
 // Types
@@ -181,6 +182,7 @@ interface ResponseSchemaTransform {
 
 interface PreparedStructuredOutput {
   output: NativeOutput;
+  factoredSchema?: JSONSchema7;
   transform?: ResponseSchemaTransform;
 }
 
@@ -559,14 +561,25 @@ function buildStructuredOutput(
       ? (responseSchema as { schema: unknown; name?: string; description?: string })
       : { schema: responseSchema };
   const preparedSchema = prepareResponseFormatSchema(schemaOptions.schema, modelType);
+  const cerebrasSchema = cerebrasMode
+    ? factorResponseSchema(preparedSchema.schema as JSONSchema7)
+    : undefined;
 
+  const wireSchema = sanitizeJsonSchema(
+    cerebrasSchema ?? preparedSchema.schema,
+    true,
+    "$",
+    undefined,
+    {
+      preserveStructure: cerebrasMode,
+    }
+  );
   return {
+    ...(cerebrasSchema !== undefined && cerebrasSchema !== preparedSchema.schema
+      ? { factoredSchema: wireSchema as JSONSchema7 }
+      : {}),
     output: Output.object({
-      schema: jsonSchema(
-        sanitizeJsonSchema(preparedSchema.schema, true, "$", undefined, {
-          preserveStructure: cerebrasMode,
-        })
-      ),
+      schema: jsonSchema(wireSchema),
       ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
       ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
     }) as NativeOutput,
@@ -1925,7 +1938,8 @@ function createLlmCallDetails(
   actionType: string,
   modelType?: ModelTypeName,
   providerOptions?: Record<string, unknown>,
-  generateParams?: NativeTextParams
+  generateParams?: NativeTextParams,
+  factoredSchema?: JSONSchema7
 ): RecordLlmCallDetails {
   const originalParams = params as GenerateTextParamsWithOpenAIOptions;
   const nativeParams = generateParams as
@@ -1958,9 +1972,12 @@ function createLlmCallDetails(
     toolChoice: nativeParams?.toolChoice ?? originalParams.toolChoice,
     output:
       nativeParams?.output !== undefined
-        ? buildTrajectoryOutputDescriptor(originalParams.responseSchema, nativeParams.output)
+        ? buildTrajectoryOutputDescriptor(
+            factoredSchema ?? originalParams.responseSchema,
+            nativeParams.output
+          )
         : undefined,
-    responseSchema: originalParams.responseSchema,
+    responseSchema: factoredSchema ?? originalParams.responseSchema,
     providerOptions:
       providerOptions ?? nativeParams?.providerOptions ?? originalParams.providerOptions,
     ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
@@ -2269,7 +2286,7 @@ function noteRateLimitCooldown(
   );
 }
 
-/** Exhausted server failures shared only within the runtime's current model call. */
+/** Exhausted server/rate-limit retries shared only within the current model call. */
 const exhaustedEndpointRetries = new WeakMap<object, WeakMap<object, Map<string, unknown>>>();
 
 function endpointRetryBudget(
@@ -2295,8 +2312,8 @@ function endpointRetryBudget(
       (error as { statusCode?: number; status?: number } | undefined)?.statusCode ??
       (error as { status?: number } | undefined)?.status;
     // Request/schema failures can change with tier-specific preparation. Only
-    // exhausted server failures suppress an identical endpoint/model retry.
-    if (typeof status === "number" && status >= 500 && status < 600) {
+    // exhausted server/rate-limit retries suppress identical endpoint/model retries.
+    if (status === 429 || (typeof status === "number" && status >= 500 && status < 600)) {
       models.set(model, error);
     }
   };
@@ -2584,6 +2601,25 @@ function observeStreamTiming(runtime: IAgentRuntime, observe: () => void): void 
   }
 }
 
+/** Read only finite provider durations; response bodies never enter diagnostics. */
+function providerTimingDurations(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== "object" || !("time_info" in raw)) return {};
+  const info = raw.time_info;
+  if (!info || typeof info !== "object" || Array.isArray(info)) return {};
+  const durations: Record<string, number> = {};
+  for (const [field, name] of [
+    ["queue_time", "queueMs"],
+    ["prompt_time", "promptMs"],
+    ["completion_time", "completionMs"],
+    ["total_time", "totalMs"],
+  ]) {
+    const seconds = (info as Record<string, unknown>)[field];
+    if (typeof seconds === "number" && seconds >= 0 && Number.isFinite(seconds * 1000))
+      durations[name] = seconds * 1000;
+  }
+  return durations;
+}
+
 function createStreamTiming(
   runtime: IAgentRuntime,
   modelType: ModelTypeName,
@@ -2624,27 +2660,8 @@ function createStreamTiming(
                 providerObserved = true;
                 record("openai.stream.first-provider-event");
               }
-              const raw = chunk.rawValue;
-              if (
-                providerTimingObserved ||
-                !raw ||
-                typeof raw !== "object" ||
-                !("time_info" in raw)
-              )
-                return;
-              const info = raw.time_info;
-              if (!info || typeof info !== "object" || Array.isArray(info)) return;
-              const durations: Record<string, number> = {};
-              for (const [field, name] of [
-                ["queue_time", "queueMs"],
-                ["prompt_time", "promptMs"],
-                ["completion_time", "completionMs"],
-                ["total_time", "totalMs"],
-              ]) {
-                const seconds = (info as Record<string, unknown>)[field];
-                if (typeof seconds === "number" && seconds >= 0 && Number.isFinite(seconds * 1000))
-                  durations[name] = seconds * 1000;
-              }
+              if (providerTimingObserved) return;
+              const durations = providerTimingDurations(chunk.rawValue);
               if (Object.keys(durations).length > 0) {
                 providerTimingObserved = true;
                 timer.recordSpan("openai.stream.provider-timing", 0, { ...meta, ...durations });
@@ -3070,7 +3087,8 @@ async function generateTextAtEndpoint(
         "ai.streamText",
         modelType,
         providerOptions,
-        generateParams
+        generateParams,
+        preparedOutput?.factoredSchema
       );
       details.response = "";
       details.provider = usageProvider;
@@ -3144,7 +3162,8 @@ async function generateTextAtEndpoint(
       "ai.streamText",
       modelType,
       providerOptions,
-      generateParams
+      generateParams,
+      preparedOutput?.factoredSchema
     );
     details.response = "";
     details.provider = usageProvider;
@@ -3490,7 +3509,8 @@ async function generateTextAtEndpoint(
     "ai.generateText",
     modelType,
     providerOptions,
-    generateParams
+    generateParams,
+    preparedOutput?.factoredSchema
   );
   details.provider = usageProvider;
   const result = await recordLlmCall(runtime, details, async () => {
@@ -3505,6 +3525,17 @@ async function generateTextAtEndpoint(
     }).catch((error: unknown) => {
       noteRateLimitCooldown(modelCooldowns, modelName, error);
       throw error;
+    });
+    observeStreamTiming(runtime, () => {
+      const timer = getInferenceTimer();
+      if (!timer) return;
+      const durations = providerTimingDurations(result.response.body);
+      if (Object.keys(durations).length === 0) return;
+      timer.recordSpan("openai.generate.provider-timing", 0, {
+        modelType: Object.values(ModelType).find((known) => known === modelType) ?? "other",
+        attempt: retryState.retryCount + 1,
+        ...durations,
+      });
     });
     const restoredText = restoreResponseText(result.text);
     const restoredToolCalls = restoreRecordArgToolCalls(

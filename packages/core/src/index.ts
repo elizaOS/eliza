@@ -321,6 +321,7 @@ export {
 	assertModelOutputComplete,
 	isModelOutputLimitFinishReason,
 	isModelProviderError,
+	isProviderSchemaRejection,
 	modelProviderErrorDetail,
 } from "./utils/model-errors";
 // Export Node-specific utilities
@@ -455,7 +456,11 @@ export type {
 	PlannerTrajectory,
 	RunEvaluatorParams,
 } from "./runtime/planner-types.ts";
-export { projectDeferredProviders } from "./runtime/provider-context.ts";
+export {
+	projectDeferredProviders,
+	providerReviewSources,
+	withProviderReviewSchema,
+} from "./runtime/provider-context.ts";
 export {
 	extractReplyTextFromTranscript,
 	looksLikeRawFieldTranscript,

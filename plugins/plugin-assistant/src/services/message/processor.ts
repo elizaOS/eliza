@@ -40,6 +40,7 @@ import {
   parseContextRoutingMetadata,
   preShouldRespondPipelineHookContext,
   setContextRoutingMetadata,
+  getUserMessageText,
   stripAugmentationForPersistence,
   TurnAbortedError,
   timeInferenceSpan,
@@ -675,7 +676,7 @@ export class MessageProcessor {
           const proposedText = event.text.trim();
           const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
             providers: state.data.providers,
-            request: message.content.text,
+            request: getUserMessageText(message),
             reply: proposedText,
             actionResults: [],
             actions: runtime.actions,
@@ -1006,6 +1007,7 @@ export class MessageProcessor {
             responseId,
             "running the native tool message runtime",
             failureCause,
+            error,
           );
           _usedV5Runtime = true;
           state = strategyResult.state;

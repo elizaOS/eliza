@@ -34,14 +34,39 @@ Planner-owned `MEMORY action=search` calls return each complete source once in
 status. The text field explains search scope and pagination. Standalone callers
 retain the complete text rendering as well as structured records. Ownership comes
 from the existing trusted execution context, never model-supplied arguments.
+For message results, `data.messageAuthorCounts.matching` counts all matching
+message records after the requested filters; `returned` counts only the current
+page. Counts distinguish requester, assistant and other speakers, exclude facts
+and other record types, and do not replace the original records. A zero under an
+author filter says nothing about excluded authors' stored messages.
 The normal model-boundary redactor handles source strings before serialization;
 stored records and structured runtime results remain intact.
+
+When smaller, planner search results factor metadata identical on every returned
+record into `sharedMemoryFields`. Each `memories` entry inherits those fields;
+merging them reconstructs the complete original record. IDs, exact source text,
+timestamps, ordering, counts and pagination remain intact. The wire legend names
+this encoding and distinguishes chronological from keyword-ranked results.
+Runtime data and standalone callers keep complete records; small results retain
+their original representation. This adds no model call or retrieval limit.
+
+Explicit malformed room/entity UUIDs reject before reading records; search never
+drops an invalid scope filter. A pagination rejection identifies the missing page
+size so a corrected matching search can resolve it without an extra failure-only
+reply. Unrelated queries do not resolve the original failure, and both attempts
+remain in the trajectory.
 
 The promoted `MEMORY_SEARCH` tool requires an explicit `author` choice:
 `requester` for the current user's messages, `assistant` for the agent's replies,
 or `any` for no author restriction. `any` preserves other type, entity and room
 filters, including searches for facts or another speaker. Legacy direct
 `MEMORY action=search` callers may still omit `author` for unfiltered searches.
+
+The promoted search also requires explicit `query` and `limit` choices. An empty
+keyword query intentionally searches all records within the other filters;
+`limit` (1–50) sizes a page, not the total result set. Follow `nextOffset` and
+`snapshot` for further pages. Legacy `MEMORY action=search` keeps these fields
+optional. Mutation parameters and permission checks are unchanged.
 
 For an exact quotation, `queryMode=literal` matches the supplied `query` as a
 case-sensitive substring of source text, including punctuation, whitespace and
@@ -453,3 +478,21 @@ before execution; use a self-contained build, or a frame/raw module graph with
 an explicit asset manifest. Remote capability URLs remain owned by their host.
 Hero images use the same view role and installation checks, with private caching;
 authorized mobile clients can load images without permission to load remote code.
+
+
+## Recalled conversation discovery
+
+The relevant-conversations provider may use an existing retention checkpoint
+from an owner-private source room to defer reviewed originals. It validates the
+complete source snapshot and scope, then intersects visibility with the records
+already admitted by recall access checks. Retained constraints and pending
+originals remain inline. Missing or stale checkpoints, mismatched record bytes,
+other worlds and group rooms retain complete admitted recall. Stored records and
+the full provider result are unchanged.
+
+The discovery notice offers complete originals through the existing read path.
+A native direct-text history read also restores these authorized provider bodies
+in its existing decision round, separately from the current-room search receipt.
+A fresh provider review may then select originals for planning and completion;
+invalid review keeps them all. No similarity cutoff, result-count limit or new
+classification call is introduced.

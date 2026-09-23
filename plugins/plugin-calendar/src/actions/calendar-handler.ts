@@ -2703,6 +2703,18 @@ function formatVerifiedEventMoment(
  *   the target hint, plus the same day/time checks when the message states
  *   them.
  */
+/**
+ * A place or note the receipt sentence cannot show. A value that only repeats
+ * the event title adds nothing the sentence lacks (live 2026-09-16: the
+ * planner sent description "Optometrist appointment" for an event of that
+ * title and the create lost its self-verified receipt).
+ */
+export function textFieldAddsDetail(value: string, title: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return false;
+  return normalizeLookupKey(trimmed) !== normalizeLookupKey(title.trim());
+}
+
 export function verifyAppliedCalendarMutation(args: {
   operation: "create" | "update" | "delete";
   /** The user's own words, never the planner's intent. */
@@ -3864,9 +3876,11 @@ export function buildCreateEventRequest(
         args.fallbackRequest?.timeZone,
       durationMinutes: resolvedDurationMinutes,
       windowPreset: resolvedWindowPreset,
-      attendees:
+      attendees: userAuthorizedCalendarAttendees(
         normalizeCalendarAttendees(args.details) ??
-        args.fallbackRequest?.attendees,
+          args.fallbackRequest?.attendees,
+        args.authorizingUserTexts ?? [],
+      ),
       recurrence,
     },
   };
@@ -4406,37 +4420,81 @@ export function attendeeEmailAccepted(email: string): boolean {
   return basicEmailValid(email);
 }
 
+/** RFC 2606 / RFC 6761 reserved names: documentation examples, never a mailbox. */
+const RESERVED_EXAMPLE_DOMAIN_PATTERN =
+  /(?:^|\.)(?:example\.(?:com|net|org)|example|invalid|test|localhost)$/i;
+
+/** Reject unverified guest identities before any calendar write. */
+function calendarAttendeeIdentityRequired(): CalendarServiceError {
+  return new CalendarServiceError(
+    400,
+    "No event was created. A proposed attendee's email address is not verified. Ask whether that guest is intended and for their exact email address, or confirm that no guest should be included; do not guess an address or silently omit an attendee.",
+    "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
+  );
+}
+
+/** Every proposed attendee needs explicit address evidence before creating an event. */
+export function userAuthorizedCalendarAttendees(
+  attendees: CreateLifeOpsCalendarEventAttendee[] | undefined,
+  userTexts: ReadonlyArray<string | null | undefined>,
+): CreateLifeOpsCalendarEventAttendee[] | undefined {
+  if (!attendees?.length) return undefined;
+  const spoken = userTexts
+    .filter((text): text is string => typeof text === "string")
+    .join("\n")
+    .toLowerCase();
+  const words = new Set(
+    spoken
+      .split(/[^\p{L}\p{N}@._+-]+/u)
+      .map((token) => token.replace(/^[._+-]+|[._+-]+$/g, ""))
+      .filter((token) => token.length > 0),
+  );
+  for (const attendee of attendees) {
+    const email = attendee.email.trim().toLowerCase();
+    const at = email.lastIndexOf("@");
+    if (
+      at <= 0 ||
+      !words.has(email) ||
+      RESERVED_EXAMPLE_DOMAIN_PATTERN.test(email.slice(at + 1))
+    ) {
+      throw calendarAttendeeIdentityRequired();
+    }
+  }
+  return attendees;
+}
+
 export function normalizeCalendarAttendees(
   details: Record<string, unknown> | undefined,
 ): CreateLifeOpsCalendarEventAttendee[] | undefined {
   const attendees = detailArray(details, "attendees");
   if (!attendees) {
+    if (details?.attendees != null) throw calendarAttendeeIdentityRequired();
     return undefined;
   }
-  const mapped: Array<CreateLifeOpsCalendarEventAttendee | null> =
-    attendees.map((attendee) => {
+  const normalized = attendees.map(
+    (attendee): CreateLifeOpsCalendarEventAttendee => {
       if (typeof attendee === "string") {
         const email = attendee.trim();
-        return attendeeEmailAccepted(email) ? { email } : null;
+        if (!attendeeEmailAccepted(email))
+          throw calendarAttendeeIdentityRequired();
+        return { email };
       }
       if (
         !attendee ||
         typeof attendee !== "object" ||
         Array.isArray(attendee)
       ) {
-        return null;
+        throw calendarAttendeeIdentityRequired();
       }
       const record = attendee as Record<string, unknown>;
-      const email =
-        typeof record.email === "string" &&
-        attendeeEmailAccepted(record.email.trim())
-          ? record.email.trim()
-          : null;
-      if (!email) {
-        return null;
+      if (
+        typeof record.email !== "string" ||
+        !attendeeEmailAccepted(record.email.trim())
+      ) {
+        throw calendarAttendeeIdentityRequired();
       }
       return {
-        email,
+        email: record.email.trim(),
         displayName:
           typeof record.displayName === "string" &&
           record.displayName.trim().length > 0
@@ -4445,10 +4503,7 @@ export function normalizeCalendarAttendees(
         optional:
           typeof record.optional === "boolean" ? record.optional : undefined,
       };
-    });
-  const normalized = mapped.filter(
-    (attendee): attendee is CreateLifeOpsCalendarEventAttendee =>
-      attendee !== null,
+    },
   );
   return normalized.length > 0 ? normalized : undefined;
 }
@@ -5485,8 +5540,8 @@ const calendarAction: CalendarHandlerAction = {
               Boolean(travelIntent) ||
               (requestToApprove.recurrence?.length ?? 0) > 0 ||
               (requestToApprove.attendees?.length ?? 0) > 0 ||
-              createdEvent.location.trim().length > 0 ||
-              createdEvent.description.trim().length > 0,
+              textFieldAddsDetail(createdEvent.location, createdEvent.title) ||
+              textFieldAddsDetail(createdEvent.description, createdEvent.title),
           });
           const fallback =
             verifiedReply ??

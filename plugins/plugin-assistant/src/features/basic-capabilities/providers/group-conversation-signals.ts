@@ -14,6 +14,7 @@
  * `isMultiPartyChannel` before computing anything.
  */
 
+import { getUserMessageText } from "@elizaos/core";
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import {
   ChannelType,
@@ -268,7 +269,12 @@ export function humanDirectlyAddressesAgent(
   if (mentionContext?.isMention === true || mentionContext?.isReply === true) {
     return true;
   }
-  const text = message.content?.text;
+  // The user's own words only: connectors may wrap content.text in an
+  // external-content envelope whose header names the channel and server
+  // ("[Discord #development | Eliza Research] @user …"), and an agent named
+  // Eliza would otherwise count every message in that server as addressed
+  // (live 2026-09-16: an unaddressed question to another member was answered).
+  const text = getUserMessageText(message);
   if (!text) return false;
   const names = [runtime.character?.name, runtime.character?.username];
   for (const name of names) {

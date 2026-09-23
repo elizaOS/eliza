@@ -228,13 +228,24 @@ it.each([
             user?.indexOf("Latest message:") ?? -1
           );
         }
+        expect(user).not.toContain("## Output Shape");
         if (!rejectSchema) {
           expect(wire?.response_format?.type).toBe("json_schema");
+          expect(schemaMatch).toBeNull();
           if (!nativeSchema) {
             expect(wire?.response_format?.json_schema?.schema).toEqual(mergedSchema);
           }
         } else {
           expect(wire?.response_format?.type).toBe("json_object");
+          expect(schemaMatch).toBeTruthy();
+          expect(schemaMatch?.[1]).toBe(JSON.stringify(mergedSchema));
+          const visibleSchema = JSON.parse(schemaMatch?.[1] ?? "null");
+          expect(visibleSchema.properties.store.properties.text.description).toBe(
+            schemaDescription
+          );
+          expect(user?.indexOf("## Output JSON Schema")).toBeLessThan(
+            user?.indexOf("Latest message:") ?? -1
+          );
         }
         expect(user?.indexOf(stable)).toBeLessThan(user?.indexOf("Latest message:") ?? -1);
         expect(wire?.prompt_cache_key).toBeUndefined();

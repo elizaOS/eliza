@@ -45,6 +45,7 @@ describe("WEB_FETCH action", () => {
   const originalWebFetchEnv = process.env.ELIZA_WEB_FETCH;
 
   afterEach(() => {
+    vi.useRealTimers();
     __setPinnedFetchImplForTests(null);
     __setDnsLookupImplForTests(null);
     if (originalWebFetchEnv === undefined) {
@@ -52,6 +53,26 @@ describe("WEB_FETCH action", () => {
     } else {
       process.env.ELIZA_WEB_FETCH = originalWebFetchEnv;
     }
+  });
+
+  it("records retrieval completion separately from the upstream Date header", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-17T17:19:38.000Z"));
+    __setPinnedFetchImplForTests(async () => {
+      vi.setSystemTime(new Date("2026-09-17T17:19:41.000Z"));
+      return new Response("42", {
+        headers: { date: "Wed, 16 Sep 2026 12:00:00 GMT" },
+      });
+    });
+    const { result, captured } = await runHandler({ url: TEST_URL });
+    expect(result.success).toBe(true);
+    expect(result.text).toBe("42");
+    expect(captured.text).toBeUndefined();
+    expect(result.data).toMatchObject({
+      retrieved_at: "2026-09-17T17:19:41.000Z",
+      retrieved_at_basis:
+        "HTTP retrieval completed; not the source publication or market update time",
+    });
   });
 
   it("is available by default (no key/service required)", async () => {

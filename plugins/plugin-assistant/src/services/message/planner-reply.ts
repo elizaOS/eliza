@@ -1,7 +1,7 @@
 /** Resolves the completed planner turn into a deliverable reply or an explicit silent terminal. Preserves tool receipts, prior delivery deduplication, and the addressed-turn delivery guarantee. */
 
 import type { Action, MessageHandlerResult, State } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { getUserMessageText, logger } from "@elizaos/core";
 import {
   FAILED_TOOL_FALLBACK_MESSAGE,
   HANDLED_STEP_FALLBACK_MESSAGE,
@@ -240,7 +240,7 @@ export async function finalizePlannerReply(
       ? ({ verdict: "allow" } as const)
       : evaluatePlannedReplyEgress({
           providers: finalPlannerState.data.providers,
-          request: args.message.content.text,
+          request: getUserMessageText(args.message),
           reply: effectiveReplyText,
           actionResults,
           actions: args.runtime.actions,

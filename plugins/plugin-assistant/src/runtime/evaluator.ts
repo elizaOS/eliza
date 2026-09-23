@@ -55,7 +55,10 @@ import {
   toWellFormedUnicode,
   withModelInputBudgetProviderOptions,
 } from "@elizaos/core";
-import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator.ts";
+import {
+  evaluatorSchema,
+  evaluatorTemplateForQueue,
+} from "../prompts/evaluator.ts";
 import { referenceRepeatedHistory } from "../services/message/history-wire.ts";
 import { computeCallCostUsd } from "./model-pricing";
 import {
@@ -292,6 +295,19 @@ function finalizeEvaluatorOutput(
   );
 }
 
+function evaluatorQueuedCallIds(
+  trajectory: PlannerTrajectory,
+  redactText: ToolDiagnosticTextRedactor,
+): string[] {
+  return [
+    ...new Set(
+      trajectory.plannedQueue
+        .map((call) => call.id ?? call.name)
+        .filter((id) => id.trim().length > 0 && redactText(id) === id),
+    ),
+  ];
+}
+
 export async function runEvaluator(
   params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
@@ -312,12 +328,35 @@ export async function runEvaluator(
   )
     .map((receipt) => receipt.receiptId)
     .filter((id) => redactDiagnosticText(id) === id);
+  const queuedCallIds = evaluatorQueuedCallIds(
+    params.trajectory,
+    redactDiagnosticText,
+  );
+  const clipboardAvailable = params.effects?.copyToClipboard !== false;
+  const { recommendedToolCallId, ...baseProperties } =
+    evaluatorSchema.properties ?? {};
+  if (!clipboardAvailable) delete baseProperties.copyToClipboard;
   // Match the canonical proof boundary without changing the recorded results
   // or forgiving invalid IDs returned by a provider that ignores its schema.
   const responseSchema = {
     ...evaluatorSchema,
     properties: {
-      ...evaluatorSchema.properties,
+      ...baseProperties,
+      // Candidate action names and past calls are not an executable queue.
+      // The planner's existing dispatch/fallback checks remain authoritative.
+      ...(queuedCallIds.length
+        ? {
+            recommendedToolCallId: {
+              ...recommendedToolCallId,
+              enum: queuedCallIds,
+            },
+          }
+        : {
+            decision: {
+              ...baseProperties.decision,
+              enum: ["FINISH", "CONTINUE"],
+            },
+          }),
       // Match terminal failure authority without rewriting the model output.
       ...(params.hasUnresolvedToolFailure
         ? { success: { ...evaluatorSchema.properties?.success, enum: [false] } }
@@ -337,6 +376,7 @@ export async function runEvaluator(
     context: params.context,
     trajectory: params.trajectory,
     redactText: redactDiagnosticText,
+    clipboardAvailable,
   };
   const renderedInput = renderEvaluatorModelInput(renderArgs);
   const modelInputBudget = buildModelInputBudget({
@@ -450,6 +490,7 @@ export async function runEvaluator(
       context: params.context,
       trajectory: params.trajectory,
       redactText: redactDiagnosticText,
+      clipboardAvailable,
     });
     const attemptBudget = buildModelInputBudget({
       messages: attemptInput.messages,
@@ -598,6 +639,13 @@ export async function runEvaluator(
     throw error;
   }
   let output = finalizeEvaluatorOutput(raw, params.context, params.trajectory);
+  if (!clipboardAvailable && output.copyToClipboard) {
+    output = {
+      ...output,
+      protocolFailure: true,
+      parseError: "Clipboard output is unavailable in this host",
+    };
+  }
   const snapshot = selectedCall?.preparedAttempt;
   const recordOutput = () =>
     recordEvaluationStage({
@@ -849,6 +897,7 @@ function renderEvaluatorModelInput(params: {
   trajectory: PlannerTrajectory;
   template?: string;
   redactText: ToolDiagnosticTextRedactor;
+  clipboardAvailable?: boolean;
 }): {
   messages: ChatMessage[];
   promptSegments: PromptSegment[];
@@ -881,7 +930,12 @@ function renderEvaluatorModelInput(params: {
       content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nOnly Stage-1-selected prior dialogue sources are shown. All original sources remain available in this turn. If any constraint, correction, referent or requested historical evidence is missing, request contextRequest=history with decision=CONTINUE, success=false, and no user reply or clipboard effect. The runtime restores complete original dialogue without expanding unrelated provider references for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
     });
   }
-  const template = params.template ?? evaluatorTemplate;
+  const template =
+    params.template ??
+    evaluatorTemplateForQueue(
+      evaluatorQueuedCallIds(params.trajectory, params.redactText).length > 0,
+      params.clipboardAvailable,
+    );
   const instructions = (
     template.split("context_object:")[0] ?? template
   ).trim();
@@ -944,6 +998,7 @@ const ACTION_SURFACE_DIAGNOSTIC_FIELDS = new Set([
   "actionSurfaceHash",
   "warnings",
   "queryTokens",
+  "queryTokenCount",
   "candidateActions",
   "parentActionHints",
   "codingActionProfile",
@@ -1083,8 +1138,8 @@ function evaluatorEnvelopeProtocolError(
     parseEvaluatorRoute(output.decision) !== parseEvaluatorRoute(output.route)
   )
     return 'fields "decision" and legacy "route" must agree';
-  if (typeof output.thought !== "string")
-    return 'required field "thought" must be a string';
+  if (Object.hasOwn(output, "thought") && typeof output.thought !== "string")
+    return 'optional field "thought" must be a string';
   if (
     Object.hasOwn(output, "contextRequest") &&
     (!["full", "history", "providers"].includes(

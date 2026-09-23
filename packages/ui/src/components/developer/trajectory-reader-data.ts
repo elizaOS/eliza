@@ -186,16 +186,15 @@ export function trajectoryCallStageLabel(call: TrajectoryLlmCall): string {
     .filter((value): value is string => typeof value === "string")
     .map((value) => value.toLowerCase());
   if (/^evaluator_stage:/m.test(system)) return "Completion check";
+  // Several stages share the configured RESPONSE_HANDLER model slot. Prefer
+  // the stage recorded in the request over that provider-routing metadata.
+  if (/^planner_stage:/m.test(system)) return "Action planner";
+  if (/^message_handler_stage:/m.test(system)) return "Response handler";
   if (metadata.includes("observation_extraction")) return "Memory extraction";
   if (metadata.some((value) => ["evaluation", "evaluator"].includes(value)))
     return "Evaluation";
-  if (
-    /^message_handler_stage:/m.test(system) ||
-    metadata.includes("response_handler")
-  )
-    return "Response handler";
-  if (/^planner_stage:/m.test(system) || metadata.includes("action_planner"))
-    return "Action planner";
+  if (metadata.includes("action_planner")) return "Action planner";
+  if (metadata.includes("response_handler")) return "Response handler";
   if (
     metadata.includes("text_small") &&
     [call.userPrompt, call.prompt].some(
