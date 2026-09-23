@@ -31,7 +31,11 @@ test("discovers unknown namespaces only for the owning agent", async () => {
     expect(await adapter.listMemoryTypes()).toEqual(["messages", "plugin_unlisted"]);
     expect(await other.listMemoryTypes()).toEqual(["foreign_only"]);
     await adapter.createMemories([{ memory: row(owner), tableName: "" }]);
-    await expect(adapter.listMemoryTypes()).rejects.toThrow("missing storage type");
+    await expect(adapter.listMemoryTypes()).rejects.toMatchObject({
+      code: "MEMORY_STORAGE_TYPE_INVALID",
+      message: "Cannot inventory memories with a missing storage type",
+      context: { agentId: owner },
+    });
   } finally {
     await other.close();
     await adapter.close();

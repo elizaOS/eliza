@@ -2453,7 +2453,13 @@ function distinctStatedLocalDates(
   now?: Date,
 ): LocalDateOnly[] {
   const dates: LocalDateOnly[] = [];
-  for (const segment of text.split(DATE_SEGMENT_SPLIT_PATTERN)) {
+  // A comma inside a month/day/year date is not a boundary between requests.
+  // Retain its year before splitting separate date clauses for intent narrowing.
+  const dateClauses = text.replace(
+    new RegExp(MONTH_NAME_PATTERN.source, "gi"),
+    (date) => date.replace(/,\s*(?=\d{4}\b)/, " "),
+  );
+  for (const segment of dateClauses.split(DATE_SEGMENT_SPLIT_PATTERN)) {
     if (segment.trim().length === 0) continue;
     const parsed = parseExplicitLocalDate(segment, timeZone, now);
     if (parsed && !dates.some((d) => compareLocalDates(d, parsed) === 0)) {

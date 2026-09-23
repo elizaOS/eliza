@@ -5,7 +5,7 @@
  * call, every action, provider, evaluator, route, event, model, service,
  * shortcut, send-handler, and database adapter the plugin contributes is
  * attributed to it — captured through async-context storage
- * (`AsyncLocalStorage` on Node, a stack fallback elsewhere) rather than by name.
+ * (`AsyncLocalStorage`) rather than by name.
  * The resulting {@link PluginOwnership} record is the reverse index that makes
  * teardown possible.
  *
@@ -24,6 +24,7 @@
  * module-level snapshot would silently collapse a stricter gate to USER — a
  * permission bypass, #12089).
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import { unregisterConnectorSourceMetadataOwner } from "./connectors";
 import { roleRank } from "./runtime/context-gates";
 import type { ContextRegistry } from "./runtime/context-registry";
@@ -105,11 +106,6 @@ type RuntimePluginServiceStartCapture = {
 	pluginName: string;
 };
 
-type AsyncContextStorage<T> = {
-	run<R>(store: T, callback: () => R): R;
-	getStore(): T | undefined;
-};
-
 type RuntimeWithPluginLifecycle = IAgentRuntime &
 	RuntimePrivateState & {
 		__elizaPluginLifecycleInstalled?: boolean;
@@ -147,59 +143,10 @@ type RuntimePrivateState = {
 	registerSendHandler?: (source: string, handler: RuntimeSendHandler) => void;
 };
 
-class StackAsyncContextStorage<T> implements AsyncContextStorage<T> {
-	private readonly stack: T[] = [];
-
-	run<R>(store: T, callback: () => R): R {
-		this.stack.push(store);
-		try {
-			return callback();
-		} finally {
-			this.stack.pop();
-		}
-	}
-
-	getStore(): T | undefined {
-		return this.stack.length > 0
-			? this.stack[this.stack.length - 1]
-			: undefined;
-	}
-}
-
-function createAsyncContextStorage<T>(): AsyncContextStorage<T> {
-	if (
-		typeof process !== "undefined" &&
-		typeof process.versions !== "undefined" &&
-		typeof process.versions.node !== "undefined" &&
-		typeof process.getBuiltinModule === "function"
-	) {
-		try {
-			const { AsyncLocalStorage } = process.getBuiltinModule(
-				"node:async_hooks",
-			) as typeof import("node:async_hooks");
-			const storage = new AsyncLocalStorage<T>();
-			return {
-				run<R>(store: T, callback: () => R): R {
-					return storage.run(store, callback);
-				},
-				getStore(): T | undefined {
-					return storage.getStore();
-				},
-			};
-		} catch {
-			// error-policy:J4 AsyncLocalStorage is optional in constrained
-			// runtimes; the scoped stack is the explicit degraded implementation.
-			// AsyncLocalStorage unavailable — fall back to stack storage.
-		}
-	}
-
-	return new StackAsyncContextStorage<T>();
-}
-
 const pluginRegistrationContext =
-	createAsyncContextStorage<RuntimePluginRegistrationCapture>();
+	new AsyncLocalStorage<RuntimePluginRegistrationCapture>();
 const pluginServiceStartContext =
-	createAsyncContextStorage<RuntimePluginServiceStartCapture>();
+	new AsyncLocalStorage<RuntimePluginServiceStartCapture>();
 const serviceClassOwners = new WeakMap<RuntimeServiceClass, string>();
 
 function getServiceClassLabel(serviceClass: RuntimeServiceClass): string {

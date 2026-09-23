@@ -13,7 +13,6 @@ import {
   buildSharedRecallContext,
   embedTextsViaSidecar,
   embedTextViaSidecar,
-  SHARED_RECALL_EDGE_COMPATIBILITY,
   SHARED_RECALL_EMBED_TIMEOUT_MS,
   SHARED_RECALL_EMBEDDING_DIMENSIONS,
   SHARED_RECALL_EMBEDDING_MODEL,
@@ -507,18 +506,5 @@ describe("buildSharedRecallContext — complete output", () => {
 
     expect(block).toContain("fact number 0");
     expect(block).toContain("fact number 1");
-  });
-});
-
-describe("SHARED_RECALL_EDGE_COMPATIBILITY", () => {
-  test("declares the edge target with tenant-postgres state and its effect set", () => {
-    expect(SHARED_RECALL_EDGE_COMPATIBILITY.target).toBe("edge");
-    expect(SHARED_RECALL_EDGE_COMPATIBILITY.state).toBe("tenant-postgres");
-    expect([...SHARED_RECALL_EDGE_COMPATIBILITY.effects]).toEqual([
-      "tenant-postgres-read",
-      "sidecar-embeddings",
-    ]);
-    expect([...SHARED_RECALL_EDGE_COMPATIBILITY.requiredBindings]).toEqual(["HYPERDRIVE"]);
-    expect([...SHARED_RECALL_EDGE_COMPATIBILITY.requiredSecrets]).toEqual([]);
   });
 });

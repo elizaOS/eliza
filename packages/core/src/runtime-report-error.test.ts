@@ -159,6 +159,70 @@ describe("AgentRuntime.reportError", () => {
 		warnSpy.mockRestore();
 	});
 
+	it("records async handler failures without recursively emitting them", async () => {
+		const runtime = makeRuntime();
+		let calls = 0;
+		runtime.registerEvent(EventType.ERROR_REPORTED, async () => {
+			calls++;
+			// Bound the negative control so a regression cannot hang the runner.
+			if (calls > 5) return;
+			await Promise.resolve();
+			runtime.reportError(
+				"Sink",
+				new ElizaError("sink failed", { code: "SINK" }),
+			);
+		});
+		runtime.reportError("Outer", new ElizaError("outer", { code: "OUTER" }));
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(calls).toBe(1);
+		expect(runtime.getRecentReportedErrors().map(({ code }) => code)).toEqual([
+			"OUTER",
+			"SINK",
+		]);
+		// An independent report after settlement must still reach subscribers.
+		runtime.reportError("Later", new ElizaError("later", { code: "LATER" }));
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(calls).toBe(2);
+	});
+
+	it("keeps independent reports observable while stopping cross-runtime cycles", async () => {
+		const runtime = makeRuntime();
+		const other = makeRuntime();
+		const release = Promise.withResolvers<void>();
+		const entered = Promise.withResolvers<void>();
+		const finished = Promise.withResolvers<void>();
+		let calls = 0;
+		let otherCalls = 0;
+		other.registerEvent(EventType.ERROR_REPORTED, async () => {
+			otherCalls++;
+			await Promise.resolve();
+			runtime.reportError("Same", new Error("cycle back to origin"));
+		});
+		runtime.registerEvent(EventType.ERROR_REPORTED, async () => {
+			calls++;
+			if (calls !== 1) return;
+			entered.resolve();
+			await release.promise;
+			other.reportError("Same", new Error("other runtime"));
+			finished.resolve();
+		});
+		runtime.reportError("Same", new Error("first"));
+		await entered.promise;
+		try {
+			runtime.reportError("Same", new Error("independent"));
+			expect(calls).toBe(2);
+		} finally {
+			release.resolve();
+		}
+		await finished.promise;
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(otherCalls).toBe(1);
+		expect(calls).toBe(2);
+		expect(runtime.getRecentReportedErrors().at(-1)?.message).toBe(
+			"cycle back to origin",
+		);
+	});
+
 	it("forwards to the AgentEventService error stream when registered", async () => {
 		const runtime = makeRuntime();
 		const emitted: Array<{ stream: string; data: Record<string, unknown> }> =

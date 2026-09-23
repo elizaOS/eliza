@@ -243,3 +243,19 @@ a new access grant or a way to recover text removed during provider redaction.
 Caller-scoped voice navigation may request the existing completed-action handoff receipt while retaining originating-client delivery. Return literal delivery confirmation and the validated handoff ID only from actual targeted WebSocket delivery; disconnected voice callers get no global or terminal fallback and cannot commit a new current-view state. This confirms server transport delivery, not a browser-mounted acknowledgement.
 
 The relevant-conversations provider requests semantic results without returned embedding vectors and excludes its current room before vector ranking. Current-room dialogue remains owned by RECENT_MESSAGES; the existing audience/provenance gate and final access filtering remain in force. This restores retrieval I/O optimizations without shortening model-facing memory text.
+
+## Native SQLite host persistence
+
+The built-in `eliza` plugin supports the explicit SQLite database selection for
+its canonical graph and pendant sessions. Native records live in the same
+agent-bound database as the runtime. Pendant session revisions, lease digests,
+ordered transcript segments and insight references commit atomically; stale
+writes preserve the revision-conflict response. Reads and writes reject another
+agent and unsupported record schema versions. Owners remain separate inside the
+agent database. Complete transcript text survives restart without truncation.
+
+PostgreSQL/PGlite keeps its normalized tables. SQLite does not import historical
+PostgreSQL data, qualify other domain plugins, provide encrypted storage or
+establish a confidential hardware boundary. Unported plugins remain rejected by
+the host's selected-database guard. This host port is not acceptance of the full
+confidential API, household permissions or regulatory control program.

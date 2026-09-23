@@ -192,6 +192,7 @@ filesystem artifacts remain the host's responsibility.
 
 Semantic memory search may omit returned vectors with `includeEmbedding: false` and narrow eligible rooms with `excludeRoomIds`. Similarity still uses stored vectors; exclusions intersect the existing access scope before ranking and pagination.
 
+
 `listMemoryTypes()` enumerates distinct storage types for the adapter's own agent.
 Trusted transfer exports use that inventory so custom namespaces and document
 fragments cannot disappear behind a fixed list of known types.

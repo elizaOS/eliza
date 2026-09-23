@@ -774,3 +774,20 @@ on restore, and document references are remapped to the restored parent IDs.
 An orphan fragment is rejected before graph writes. The encrypted envelope stays
 V1, but older importers reject the newer payload version instead of silently
 reclassifying its records. Current readers retain support for older payloads.
+
+
+## Native SQLite host persistence
+
+The built-in `eliza` plugin supports the explicit SQLite database selection for
+its canonical graph and pendant sessions. Native records live in the same
+agent-bound database as the runtime. Pendant session revisions, lease digests,
+ordered transcript segments and insight references commit atomically; stale
+writes preserve the revision-conflict response. Reads and writes reject another
+agent and unsupported record schema versions. Owners remain separate inside the
+agent database. Complete transcript text survives restart without truncation.
+
+PostgreSQL/PGlite keeps its normalized tables. SQLite does not import historical
+PostgreSQL data, qualify other domain plugins, provide encrypted storage or
+establish a confidential hardware boundary. Unported plugins remain rejected by
+the host's selected-database guard. This host port is not acceptance of the full
+confidential API, household permissions or regulatory control program.

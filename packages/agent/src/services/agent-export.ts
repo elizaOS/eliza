@@ -1009,6 +1009,19 @@ async function restoreAgentDataInScope(
   const worlds = payload.worlds.map(restoreGraphCreatedAt);
   const rooms = payload.rooms.map(restoreGraphCreatedAt);
   const entities = payload.entities.map(restoreGraphCreatedAt);
+  if (payload.version >= 2) {
+    for (const memory of payload.memories) {
+      const type = (memory as Memory & { type?: unknown }).type;
+      if (typeof type !== "string" || type.length === 0) {
+        throw new AgentExportError(
+          "Version 2 memories require their storage type",
+          {
+            code: "AGENT_IMPORT_MEMORY_TYPE_INVALID",
+          },
+        );
+      }
+    }
+  }
   const documentIds = new Set(
     payload.memories
       .filter(
@@ -1018,19 +1031,30 @@ async function restoreAgentDataInScope(
       )
       .map((memory) => memory.id),
   );
+  const fragmentParents = new Map<
+    Memory,
+    { metadata: NonNullable<Memory["metadata"]>; documentId: string }
+  >();
   for (const memory of payload.memories) {
     if (
-      memory.metadata?.type === "fragment" &&
-      (typeof memory.metadata.documentId !== "string" ||
-        !documentIds.has(memory.metadata.documentId))
+      resolveMemoryTableName(memory) !== "document_fragments" &&
+      memory.metadata?.type !== "fragment"
+    )
+      continue;
+    const metadata = memory.metadata;
+    if (
+      typeof metadata !== "object" ||
+      metadata === null ||
+      !("documentId" in metadata) ||
+      typeof metadata.documentId !== "string" ||
+      !documentIds.has(metadata.documentId)
     ) {
       throw new AgentExportError(
         "Imported document fragment is missing its parent document",
-        {
-          code: "AGENT_IMPORT_DOCUMENT_PARENT_MISSING",
-        },
+        { code: "AGENT_IMPORT_DOCUMENT_PARENT_MISSING" },
       );
     }
+    fragmentParents.set(memory, { metadata, documentId: metadata.documentId });
   }
   const orderedMemories = [...payload.memories].sort(
     (left, right) =>
@@ -1158,6 +1182,7 @@ async function restoreAgentDataInScope(
   let memoriesImported = 0;
   for (const mem of orderedMemories) {
     const tableName = resolveMemoryTableName(mem);
+    const fragment = fragmentParents.get(mem);
     const newMem: Memory = {
       ...mem,
       id: remap(mem.id ?? "") as UUID,
@@ -1165,12 +1190,12 @@ async function restoreAgentDataInScope(
       ...(mem.entityId ? { entityId: remap(mem.entityId) as UUID } : {}),
       ...(mem.roomId ? { roomId: remap(mem.roomId) as UUID } : {}),
       ...(mem.worldId ? { worldId: remap(mem.worldId) as UUID } : {}),
-      ...(mem.metadata?.type === "fragment"
+      ...(fragment !== undefined
         ? {
-            metadata: {
-              ...mem.metadata,
-              documentId: remap(mem.metadata.documentId) as UUID,
-            },
+            metadata: withFragmentDocumentId(
+              fragment.metadata,
+              remap(fragment.documentId) as UUID,
+            ),
           }
         : {}),
       // Embeddings are excluded — they will be regenerated
@@ -1256,6 +1281,13 @@ async function restoreAgentDataInScope(
       media: mediaRestored,
     },
   };
+}
+
+function withFragmentDocumentId<T extends NonNullable<Memory["metadata"]>>(
+  metadata: T,
+  documentId: UUID,
+): T & { documentId: UUID } {
+  return { ...metadata, documentId };
 }
 
 /**

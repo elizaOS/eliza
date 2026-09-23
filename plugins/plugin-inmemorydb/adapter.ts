@@ -1100,7 +1100,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     const types = rows.map((memory) => {
       const type = storedMemoryTableName(memory);
       if (typeof type !== "string" || type.length === 0) {
-        throw new Error("Cannot inventory memories with a missing storage type");
+        throw new ElizaError("Cannot inventory memories with a missing storage type", {
+          code: "MEMORY_STORAGE_TYPE_INVALID",
+          context: { agentId: this.agentId, memoryId: memory.id },
+        });
       }
       return type;
     });

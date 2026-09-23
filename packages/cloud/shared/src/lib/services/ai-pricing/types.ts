@@ -9,6 +9,7 @@ import type {
 export type PriceLookupSource = PricingBillingSource | "seed";
 
 export type PricingRefreshSource =
+  | "selfhosted"
   | "gateway"
   | "bitrouter"
   | "cerebras"

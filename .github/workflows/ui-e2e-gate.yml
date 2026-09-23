@@ -12,6 +12,13 @@ on:
         required: false
         type: string
         default: standalone
+  workflow_dispatch:
+    inputs:
+      publish_bun_install_cache:
+        description: Allow the designated UI job to publish the Bun install cache
+        required: false
+        type: boolean
+        default: true
 concurrency:
   group: ui-e2e-gate-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' }}

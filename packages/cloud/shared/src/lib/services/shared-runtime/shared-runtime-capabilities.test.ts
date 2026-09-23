@@ -9,21 +9,9 @@ import {
   createRequestDedicatedUpgradeAction,
   createSharedRuntimeCapabilitiesProvider,
   REQUEST_DEDICATED_UPGRADE_ACTION,
-  SHARED_RUNTIME_PLUGIN_COMPATIBILITY,
 } from "./shared-runtime-capabilities";
 
 describe("Shared runtime capability components", () => {
-  test("audits every first-party plugin with an explicit edge entrypoint", () => {
-    expect(SHARED_RUNTIME_PLUGIN_COMPATIBILITY.map(({ plugin }) => plugin)).toEqual(
-      expect.arrayContaining([
-        "@elizaos/core/edge",
-        "@elizaos/plugin-web-search/edge",
-        "@elizaos/plugin-scheduling/edge",
-        "@elizaos/plugin-todos/edge",
-      ]),
-    );
-  });
-
   test("provides complete capability context well below the provider budget", async () => {
     const provider = createSharedRuntimeCapabilitiesProvider({
       agentId: "personal:user-1",

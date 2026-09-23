@@ -78,24 +78,158 @@ describe("copyPluginTreeWithoutEscapingSymlinks", () => {
     expect(JSON.parse(output)).toEqual(expected);
   });
 
+  it("retains every flat asset and bundled dynamic dependency after removing the source", async () => {
+    const src = await makeDir("plugin-copy-flat-src-");
+    const target = path.join(await makeDir("plugin-copy-flat-dst-"), "tree");
+    const expected: string[] = [];
+    for (let index = 0; index < 128; index++) {
+      const payload = `${index}:complete payload:`.repeat(32);
+      expected.push(payload);
+      await fsp.writeFile(path.join(src, `asset-${index}.txt`), payload);
+    }
+    const bundled = path.join(src, "node_modules", "bundled");
+    await fsp.mkdir(bundled, { recursive: true });
+    await fsp.writeFile(
+      path.join(bundled, "package.json"),
+      JSON.stringify({ name: "bundled", main: "index.cjs" }),
+    );
+    await fsp.writeFile(
+      path.join(bundled, "index.cjs"),
+      "module.exports = { marker: 'bundled-complete' };\n",
+    );
+    await fsp.writeFile(
+      path.join(src, "consumer.cjs"),
+      `
+      const { readFileSync } = require('node:fs');
+      const { join } = require('node:path');
+      const dependency = ['bun', 'dled'].join('');
+      console.log(JSON.stringify({
+        payloads: Array.from({length: 128}, (_, index) => readFileSync(join(__dirname, 'asset-' + index + '.txt'), 'utf8')),
+        marker: require(dependency).marker
+      }));
+    `,
+    );
+    await copyPluginTreeWithoutEscapingSymlinks(src, target);
+    await fsp.rm(src, { recursive: true, force: true });
+    for (const runtime of [process.execPath, "bun"]) {
+      const output = execFileSync(
+        runtime,
+        [path.join(target, "consumer.cjs")],
+        { encoding: "utf8" },
+      );
+      expect(JSON.parse(output)).toEqual({
+        payloads: expected,
+        marker: "bundled-complete",
+      });
+    }
+  });
+
+  it("settles sibling copies before removing a failed destination", async () => {
+    const src = await makeDir("plugin-copy-failure-src-");
+    const target = path.join(await makeDir("plugin-copy-failure-dst-"), "tree");
+    for (let index = 0; index < 12; index++) {
+      await fsp.writeFile(
+        path.join(src, `file-${index}`),
+        Buffer.alloc(64 * 1024, index),
+      );
+    }
+    await fsp.mkdir(path.join(target, "file-1"), { recursive: true });
+    await expect(
+      copyPluginTreeWithoutEscapingSymlinks(src, target),
+    ).rejects.toThrow();
+    await expect(fsp.lstat(target)).rejects.toMatchObject({ code: "ENOENT" });
+    // A second real copy into the same path exposes writers left behind by
+    // failure cleanup rather than relying on a sleep to guess completion.
+    await copyPluginTreeWithoutEscapingSymlinks(src, target);
+    for (let index = 0; index < 12; index++) {
+      expect(await fsp.readFile(path.join(target, `file-${index}`))).toEqual(
+        Buffer.alloc(64 * 1024, index),
+      );
+    }
+  });
+
   it.skipIf(process.platform === "win32")(
     "restores restrictive directory modes after copying their children",
     async () => {
       const src = await makeDir("plugin-copy-mode-src-");
       const target = path.join(await makeDir("plugin-copy-mode-dst-"), "tree");
-      await fsp.mkdir(path.join(src, "nested"));
-      await fsp.writeFile(path.join(src, "nested", "value.txt"), "complete");
+      const names = Array.from({ length: 12 }, (_, index) => `nested-${index}`);
+      for (const name of names) {
+        await fsp.mkdir(path.join(src, name));
+        await fsp.writeFile(path.join(src, name, "value.txt"), name);
+        await fsp.chmod(path.join(src, name), 0o500);
+      }
       await fsp.chmod(src, 0o500);
       try {
         await copyPluginTreeWithoutEscapingSymlinks(src, target);
-        expect(
-          await fsp.readFile(path.join(target, "nested", "value.txt"), "utf8"),
-        ).toBe("complete");
+        for (const name of names) {
+          expect(
+            await fsp.readFile(path.join(target, name, "value.txt"), "utf8"),
+          ).toBe(name);
+          expect((await fsp.stat(path.join(target, name))).mode & 0o777).toBe(
+            0o500,
+          );
+        }
         expect((await fsp.stat(target)).mode & 0o777).toBe(0o500);
       } finally {
-        await fsp.chmod(src, 0o700);
-        if (fs.existsSync(target)) await fsp.chmod(target, 0o700);
+        for (const root of [src, target]) {
+          if (!fs.existsSync(root)) continue;
+          await fsp.chmod(root, 0o700);
+          for (const name of names) {
+            const directory = path.join(root, name);
+            if (fs.existsSync(directory)) await fsp.chmod(directory, 0o700);
+          }
+        }
       }
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "retains an existing directory mode while replacing complete leaf bytes",
+    async () => {
+      const src = await makeDir("plugin-copy-existing-mode-src-");
+      const target = await makeDir("plugin-copy-existing-mode-dst-");
+      await fsp.writeFile(path.join(src, "value.txt"), "complete replacement");
+      await fsp.chmod(path.join(src, "value.txt"), 0o640);
+      await fsp.writeFile(path.join(target, "value.txt"), "old");
+      await fsp.chmod(src, 0o500);
+      await fsp.chmod(target, 0o750);
+      try {
+        await copyPluginTreeWithoutEscapingSymlinks(src, target);
+        expect((await fsp.stat(target)).mode & 0o777).toBe(0o750);
+        expect(
+          (await fsp.stat(path.join(target, "value.txt"))).mode & 0o777,
+        ).toBe(0o640);
+        expect(await fsp.readFile(path.join(target, "value.txt"), "utf8")).toBe(
+          "complete replacement",
+        );
+      } finally {
+        await fsp.chmod(src, 0o700);
+        await fsp.chmod(target, 0o700);
+      }
+    },
+  );
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "rejects destination access lost before the directory existence probe",
+    async () => {
+      const src = await makeDir("plugin-copy-access-src-");
+      const parent = await makeDir("plugin-copy-access-dst-");
+      const target = path.join(parent, "tree");
+      await fsp.writeFile(path.join(src, "value.txt"), "complete");
+      try {
+        await expect(
+          copyPluginTreeWithoutEscapingSymlinks(src, target, {
+            filter: () => {
+              fs.chmodSync(parent, 0o000);
+              return true;
+            },
+          }),
+        ).rejects.toMatchObject({ code: "EACCES" });
+      } finally {
+        await fsp.chmod(parent, 0o700);
+      }
+      await expect(fsp.lstat(target)).rejects.toMatchObject({ code: "ENOENT" });
     },
   );
 

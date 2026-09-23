@@ -508,16 +508,33 @@ describe("#9963 agent export → import round-trip", () => {
     expect(target.rooms.size).toBe(0);
   });
 
-  it("rejects an orphan document fragment before writing the target graph", async () => {
+  it("remaps a physical fragment parent without changing its other metadata", async () => {
     const { adapter: source, character } = populateSource();
-    source.memories.set("document_fragments", [
+    const documentId = uuid(88);
+    source.memories.set("documents", [
       {
-        id: uuid(90),
+        id: documentId,
         agentId: SOURCE_AGENT,
         entityId: USER1,
         roomId: ROOM1,
-        content: { text: "Orphan fragment" },
-        metadata: { type: "fragment", documentId: uuid(91), position: 0 },
+        content: { text: "Complete document" },
+        metadata: { type: "document", timestamp: 1 },
+      },
+    ]);
+    const metadata = {
+      documentId,
+      position: 0,
+      custom: { retained: "complete metadata" },
+      ["__proto__"]: { retained: "own metadata field" },
+    };
+    source.memories.set("document_fragments", [
+      {
+        id: uuid(89),
+        agentId: SOURCE_AGENT,
+        entityId: USER1,
+        roomId: ROOM1,
+        content: { text: "Complete fragment" },
+        metadata,
       },
     ]);
     const archive = await exportAgent(
@@ -525,11 +542,48 @@ describe("#9963 agent export → import round-trip", () => {
       PASSWORD,
     );
     const target = new InMemoryExportAdapter();
-    await expect(
-      importAgent(makeRuntime(target, uuid(992), {}), archive, PASSWORD),
-    ).rejects.toMatchObject({ code: "AGENT_IMPORT_DOCUMENT_PARENT_MISSING" });
-    expect(target.agents.size).toBe(0);
+    await importAgent(makeRuntime(target, uuid(991), {}), archive, PASSWORD);
+    const document = target.memories.get("documents")?.[0];
+    const fragment = target.memories.get("document_fragments")?.[0];
+    expect(document?.id).not.toBe(documentId);
+    expect(fragment?.metadata).toEqual({
+      ...metadata,
+      documentId: document?.id,
+    });
+    expect(Object.hasOwn(fragment?.metadata ?? {}, "__proto__")).toBe(true);
+    expect(Object.getPrototypeOf(fragment?.metadata)).toBe(Object.prototype);
+    expect(fragment?.content).toEqual({ text: "Complete fragment" });
   });
+
+  it.each([true, false])(
+    "rejects an orphan document fragment before graph writes (semantic discriminator: %s)",
+    async (semanticType) => {
+      const { adapter: source, character } = populateSource();
+      source.memories.set("document_fragments", [
+        {
+          id: uuid(90),
+          agentId: SOURCE_AGENT,
+          entityId: USER1,
+          roomId: ROOM1,
+          content: { text: "Orphan fragment" },
+          metadata: {
+            ...(semanticType ? { type: "fragment" } : {}),
+            documentId: uuid(91),
+            position: 0,
+          },
+        },
+      ]);
+      const archive = await exportAgent(
+        makeRuntime(source, SOURCE_AGENT, character),
+        PASSWORD,
+      );
+      const target = new InMemoryExportAdapter();
+      await expect(
+        importAgent(makeRuntime(target, uuid(992), {}), archive, PASSWORD),
+      ).rejects.toMatchObject({ code: "AGENT_IMPORT_DOCUMENT_PARENT_MISSING" });
+      expect(target.agents.size).toBe(0);
+    },
+  );
 
   it("rejects a wrong password without writing anything", async () => {
     const { adapter: source, character } = populateSource();
