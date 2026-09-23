@@ -9,7 +9,10 @@ import { request as httpRequest } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
+
+import { stopServer } from "./stop-server.mjs";
 
 async function unusedPort() {
   return await new Promise((resolve, reject) => {
@@ -72,7 +75,7 @@ test("static server returns inert generic text for malformed URL encoding", asyn
   const child = spawn(
     process.execPath,
     [
-      new URL("./serve-static.mjs", import.meta.url).pathname,
+      fileURLToPath(new URL("./serve-static.mjs", import.meta.url)),
       root,
       String(port),
     ],
@@ -93,8 +96,7 @@ test("static server returns inert generic text for malformed URL encoding", asyn
     assert.equal(body, "Bad Request");
     assert.doesNotMatch(body, /URI|stack|%ZZ|<script>/i);
   } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => child.once("exit", resolve));
+    await stopServer(child, "static server");
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -109,7 +111,7 @@ test("static server rejects encoded traversal into a root-prefix sibling", async
   const child = spawn(
     process.execPath,
     [
-      new URL("./serve-static.mjs", import.meta.url).pathname,
+      fileURLToPath(new URL("./serve-static.mjs", import.meta.url)),
       root,
       String(port),
     ],
@@ -129,9 +131,53 @@ test("static server rejects encoded traversal into a root-prefix sibling", async
     assert.equal(response.body, "forbidden");
     assert.doesNotMatch(response.body, /token|secret/);
   } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => child.once("exit", resolve));
+    await stopServer(child, "static server");
     await rm(root, { recursive: true, force: true });
     await rm(sibling, { recursive: true, force: true });
   }
+});
+
+
+test("cleanup terminates promptly when the server child already exited", async () => {
+  // #32375: a child that dies before cleanup must not hang the test lane on
+  // `kill(); await once("exit")` — the exit event has already fired.
+  const root = await mkdtemp(join(tmpdir(), "eliza-static-early-exit-"));
+  const port = await unusedPort();
+  await writeFile(join(root, "index.html"), "<!doctype html><p>ready</p>");
+  const child = spawn(
+    process.execPath,
+    [
+      fileURLToPath(new URL("./serve-static.mjs", import.meta.url)),
+      root,
+      String(port),
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+
+  try {
+    await waitForServer(`http://127.0.0.1:${port}/`, child);
+    // Kill and WAIT for the exit event to fire before cleanup runs.
+    child.kill("SIGTERM");
+    await new Promise((resolve) => child.once("exit", resolve));
+    // Child is now fully exited; the old cleanup would hang here forever.
+    const start = Date.now();
+    await stopServer(child, "static server");
+    const elapsed = Date.now() - start;
+    assert.ok(elapsed < 1_000, `cleanup on an exited child took ${elapsed}ms`);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cleanup escalates to SIGKILL when the child ignores SIGTERM", async () => {
+  const child = spawn(process.execPath, ["-e", "process.on('SIGTERM',()=>{}); setInterval(()=>{}, 1000);"], {
+    stdio: ["ignore", "ignore", "ignore"],
+  });
+  // Give the child a moment to install its SIGTERM handler.
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const start = Date.now();
+  await stopServer(child, "stubborn server");
+  const elapsed = Date.now() - start;
+  assert.ok(child.exitCode !== null || child.signalCode !== null, "child must be gone");
+  assert.ok(elapsed < 10_000, `escalation took ${elapsed}ms`);
 });
