@@ -19,6 +19,7 @@ import {
 } from "../cloud/handoff/cloud-handoff-supervisor";
 import { isRetryableHandoffHttpStatus } from "../cloud/handoff/conversation-handoff";
 import { getBootConfig } from "../config/boot-config";
+import { isMobileLocalAgentUrl } from "../first-run/mobile-runtime-mode";
 import { isLoopbackStagingStewardDevelopment } from "../state/loopback-steward-development";
 import { isTrustedCloudApiBaseUrl } from "../state/runtime-url-trust";
 import {
@@ -663,6 +664,11 @@ export function hasDirectCloudAccountTransport(client: ElizaClient): boolean {
 export function getCloudAuthToken(client?: ElizaClient): string | null {
   const stewardToken = readStoredStewardToken()?.trim();
   if (stewardToken) return stewardToken;
+
+  // The native IPC/loopback bearer authenticates only the on-device agent.
+  // Treating it as a Cloud session skips interactive login and sends that
+  // unrelated credential to the Cloud control plane.
+  if (client && isMobileLocalAgentUrl(client.getBaseUrl())) return null;
 
   const clientToken = client?.getRestAuthToken()?.trim();
   return clientToken || null;
