@@ -1,7 +1,7 @@
 # Eliza consolidation review candidate
 
 Branch: `codex/consolidated-eliza-20260923`.
-Runtime source verified: `5fdda1e0bcb3`. Develop cutoff: `96ec0964bc1`.
+Runtime source verified: `f01aea47706`. Develop cutoff: `69641f10997`.
 Status: available for review, **not approved for release**.
 
 ## Included work
@@ -35,3 +35,11 @@ Start with `PLAN.md`, `CURRENT-STATUS.md`, `BRANCH-DISPOSITIONS.md`, `PROMPT-PAT
 
 Preserved rollback tag: `codex/consolidation-baseline-20260923` at `c454f7b7ef9`.
 The old preview source and state remain available; no protected branch was force-pushed and no original branch was deleted.
+
+## Latest user-reported navigation regression
+
+After the user observed slow navigation, whole-runtime traces showed inconsistent navigation declarations causing repair and empty reply text causing an extra final-response call. Existing instructions now keep the action pending while holding its nonempty destination confirmation until successful delivery; no guard or permission check was removed. The newest develop snapshot was merged, preserving its stronger transfer validation.
+
+Full repository verification passed on `f01aea47706`. With builds finished, real browser checks measured Notes navigation 2.149s and Calendar navigation 1.189s, one model call each. A bounded synthetic Cartesia “Open Notes” turn navigated a real bound QA browser tab in 1.324s agent runtime; audio began 1.423s after transcription. The canonical reply-completion event preceded audio. Cached input was 4096/6144/6144 tokens respectively. These are single observed runs, not a universal latency guarantee; failed earlier traces remain in local evidence.
+
+The preview has been restarted on the verified version. Physical voice timing retest and user release approval remain pending. Temporary QA browser tab was closed. No PR, protected merge, deployment or branch deletion was performed.
