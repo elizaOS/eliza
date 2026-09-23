@@ -20,27 +20,19 @@ function vectorOf(length: number): number[] {
 }
 
 function mockEmbeddingsResponse(vectors: number[][]): Response {
-  return {
-    ok: true,
-    status: 200,
-    statusText: "OK",
-    json: async () => ({
+  return Response.json(
+    {
       object: "list",
       data: vectors.map((embedding, index) => ({ object: "embedding", embedding, index })),
       model: "text-embedding-3-small",
       usage: { prompt_tokens: 3, total_tokens: 3 },
-    }),
-    text: async () => "",
-  } as unknown as Response;
+    },
+    { statusText: "OK" }
+  );
 }
 
 function mockHttpError(status: number, statusText: string, body: string): Response {
-  return {
-    ok: false,
-    status,
-    statusText,
-    text: async () => body,
-  } as unknown as Response;
+  return new Response(body, { status: status, statusText: statusText });
 }
 
 afterEach(() => {
