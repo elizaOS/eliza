@@ -385,7 +385,7 @@
     "node-edge-tts": "^1.2.9",
     "pg": "^8.23.0",
     "tailwind-merge": "3.7.0",
-    "zod": "^4.4.3",
+    "zod": "^4.6.5",
     "@elizaos/cloud-routing": "workspace:*"
   }
 }

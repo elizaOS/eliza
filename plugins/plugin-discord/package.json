@@ -96,7 +96,7 @@
 		"prism-media": "1.3.5",
 		"tslib": "^2.6.3",
 		"undici": "8.10.0",
-		"zod": "^4.4.3",
+		"zod": "^4.6.5",
 		"@elizaos/plugin-assistant": "workspace:*",
 		"@elizaos/shared": "workspace:*"
 	},

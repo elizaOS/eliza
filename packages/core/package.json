@@ -68,7 +68,7 @@
 		"@elizaos/prompts": "workspace:*"
 	},
 	"dependencies": {
-		"zod": "^4.4.3",
+		"zod": "^4.6.5",
 		"adze": "^2.2.5",
 		"@elizaos/common": "workspace:*"
 	},

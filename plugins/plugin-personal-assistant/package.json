@@ -103,7 +103,7 @@
     "lucide-react": "^1.0.0",
     "react-plaid-link": "^5.0.0",
     "sharp": "^0.35.3",
-    "zod": "^4.4.3",
+    "zod": "^4.6.5",
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/plugin-relationships": "workspace:*",
     "@elizaos/common": "workspace:*"

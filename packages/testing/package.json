@@ -14,7 +14,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "zod": "^4.4.3",
+    "zod": "^4.6.5",
     "@elizaos/shared": "workspace:*",
     "@elizaos/plugin-inmemorydb": "workspace:*"
   },
