@@ -3813,6 +3813,8 @@ export type ApiServerConfigurator = (
 export type ApiHostAdmission = (
   request: http.IncomingMessage,
   boundary: "request" | "upgrade" | "websocket-send" | "websocket-message",
+  /** Complete serialized application frame for either WebSocket boundary. */
+  message?: string,
 ) => boolean | Promise<boolean>;
 
 export type WebSocketAuthorizer = (
@@ -3878,7 +3880,8 @@ export async function startApiServer(opts?: {
   authorizeWebSocket?: WebSocketAuthorizer;
   /**
    * Required admission for HTTP, in-process requests, upgrades and each built-in
-   * WebSocket application send/message. Queued sends recheck before delivery.
+   * WebSocket application send/message. The complete serialized frame is passed
+   * for content/audience admission. Queued sends recheck before delivery.
    * Denial cannot fall back to local trust, static tokens or host sessions.
    * Supplying it disables the separately attached mobile device bridge. Trusted
    * configureServer callbacks must not attach independent request/upgrade handlers.
@@ -3909,10 +3912,13 @@ export async function startApiServer(opts?: {
   async function admitHostRequest(
     request: http.IncomingMessage,
     boundary: "request" | "upgrade" | "websocket-send" | "websocket-message",
+    message?: string,
   ): Promise<403 | 503 | null> {
     if (!hostAdmission) return null;
     try {
-      return (await hostAdmission(request, boundary)) === true ? null : 403;
+      return (await hostAdmission(request, boundary, message)) === true
+        ? null
+        : 403;
     } catch {
       // error-policy:J1 Admission failure denies access without exposing policy or credentials.
       logger.warn("[eliza-api] Required host admission unavailable");
@@ -4285,9 +4291,10 @@ export async function startApiServer(opts?: {
     ws: WebSocket,
     request: http.IncomingMessage,
     boundary: "websocket-send" | "websocket-message",
+    message: string,
   ): Promise<boolean> => {
     if (ws.readyState !== WebSocket.OPEN) return false;
-    const rejection = await admitHostRequest(request, boundary);
+    const rejection = await admitHostRequest(request, boundary, message);
     if (rejection !== null) {
       ws.close(rejection === 403 ? 1008 : 1011, "Host admission rejected");
       return false;
@@ -4309,7 +4316,7 @@ export async function startApiServer(opts?: {
     const previous = wsSendQueues.get(ws) ?? Promise.resolve();
     const pending = previous
       .then(async () => {
-        if (await admitWebSocket(ws, request, "websocket-send"))
+        if (await admitWebSocket(ws, request, "websocket-send", message))
           ws.send(message);
       })
       .catch(() => {
@@ -4939,12 +4946,13 @@ export async function startApiServer(opts?: {
 
     ws.on("message", async (data: unknown) => {
       try {
+        const rawMessage = String(data);
         if (
           hostAdmission &&
-          !(await admitWebSocket(ws, request, "websocket-message"))
+          !(await admitWebSocket(ws, request, "websocket-message", rawMessage))
         )
           return;
-        const msg = JSON.parse(String(data));
+        const msg = JSON.parse(rawMessage);
         if (!isAuthenticated) {
           const expected = getConfiguredApiToken();
           const providedToken =

@@ -704,12 +704,14 @@ describe("persistent host WebSocket admission", () => {
   it.each([false, "exception"])(
     "revokes outbound broadcasts on policy result %s",
     async (result) => {
-      let revoked = false;
       const baseUrl = await bootServer(
         undefined,
         undefined,
-        (_request, boundary) => {
-          if (boundary === "websocket-send" && revoked) {
+        (_request, boundary, message) => {
+          if (
+            boundary === "websocket-send" &&
+            message?.includes("withheld-private-phase")
+          ) {
             if (result === "exception")
               throw new Error("private policy diagnostic");
             return false;
@@ -724,7 +726,6 @@ describe("persistent host WebSocket admission", () => {
             messages.some((message) => JSON.parse(message).type === "status"),
           ).toBe(true),
         );
-        revoked = true;
         updateStartup("withheld-private-phase");
         expect(await closed).toEqual({
           code: result === false ? 1008 : 1011,
@@ -739,25 +740,62 @@ describe("persistent host WebSocket admission", () => {
     120_000,
   );
 
-  it("rejects inbound frames independently of outbound admission", async () => {
-    const boundaries: string[] = [];
+  it("authorizes complete inbound frames independently of outbound admission", async () => {
+    const received: string[] = [];
     const baseUrl = await bootServer(
       undefined,
       undefined,
-      (_request, boundary) => {
-        boundaries.push(boundary);
-        return boundary !== "websocket-message";
+      (_request, boundary, message) => {
+        if (boundary !== "websocket-message") return true;
+        if (message === undefined) return false;
+        received.push(message);
+        const payload = JSON.parse(message);
+        return payload.conversationId === "authorized-room";
       },
     );
     const { socket, messages, closed } = connect(baseUrl);
     try {
       await vi.waitFor(() => expect(messages.length).toBeGreaterThan(0));
-      socket.send(JSON.stringify({ type: "ping" }));
+      const complete = JSON.stringify({
+        type: "ping",
+        conversationId: "authorized-room",
+        // Stay within the established 64 KiB inbound WebSocket transport boundary.
+        context: "complete context ".repeat(3000),
+      });
+      socket.send(complete);
+      await vi.waitFor(() =>
+        expect(
+          messages.some((message) => JSON.parse(message).type === "pong"),
+        ).toBe(true),
+      );
+      expect(received).toEqual([complete]);
+      const rejected = JSON.stringify({
+        type: "ping",
+        conversationId: "other-room",
+      });
+      socket.send(rejected);
       expect((await closed).code).toBe(1008);
-      expect(boundaries).toContain("websocket-message");
+      expect(received).toEqual([complete, rejected]);
       expect(
-        messages.some((message) => JSON.parse(message).type === "pong"),
-      ).toBe(false);
+        messages.filter((message) => JSON.parse(message).type === "pong"),
+      ).toHaveLength(1);
+      const oversized = connect(baseUrl);
+      try {
+        await vi.waitFor(() =>
+          expect(oversized.messages.length).toBeGreaterThan(0),
+        );
+        oversized.socket.send(
+          JSON.stringify({
+            type: "ping",
+            conversationId: "authorized-room",
+            context: "complete context ".repeat(9000),
+          }),
+        );
+        expect((await oversized.closed).code).toBe(1009);
+        expect(received).toEqual([complete, rejected]);
+      } finally {
+        oversized.socket.terminate();
+      }
     } finally {
       socket.terminate();
     }
