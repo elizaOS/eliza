@@ -27,6 +27,7 @@ import {
   EventType,
   getStreamingContext,
   getTrajectoryContext,
+  getUserMessageText,
   INFERENCE_MARKS,
   incomingPipelineHookContext,
   isCanonicalModelCapabilityDisabled,

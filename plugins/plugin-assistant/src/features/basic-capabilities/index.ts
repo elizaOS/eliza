@@ -78,6 +78,7 @@ import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 import { composePromptFromState } from "@elizaos/prompts/rendering";
 import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { v4 } from "uuid";
+import { FileTrajectoryRetentionService } from "../../runtime/trajectory-retention.ts";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes.ts";
 import { EvaluatorService } from "../../services/evaluator.ts";
 import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
@@ -1434,6 +1435,7 @@ export const basicEvaluators: RegisteredEvaluator[] = [linkExtractionEvaluator];
  */
 export const basicServices: ServiceClass[] = [
   TaskService,
+  FileTrajectoryRetentionService,
   EmbeddingGenerationService,
   // Async PII scrub rails (#14808): drains a priority BatchQueue on the core
   // task scheduler, content-hash idempotent, non-blocking. LOCAL lane.

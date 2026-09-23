@@ -118,16 +118,6 @@ export {
   type TestRuntimeOptions,
   type TestRuntimeResult,
 } from "./pglite-runtime";
-// Real connector helpers (Discord, Telegram)
-export {
-  createDiscordTestClient,
-  createTelegramTestBot,
-  type DiscordTestClient,
-  sendDiscordChannelMessage,
-  sendDiscordDM,
-  type TelegramTestBot,
-  waitForDiscordMessage,
-} from "./real-connector";
 // Real runtime factory with LLM/connector support
 export {
   createRealTestRuntime,

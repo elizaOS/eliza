@@ -15,6 +15,7 @@ This plugin adds a `TelegramService` that polls Telegram for incoming messages a
 | `TelegramService` | `"telegram"` | Launches a Telegraf long-poll bot, processes `message` + `message_reaction` events, manages multi-account state, registers the agent as a `MessageConnector` |
 | `TelegramOwnerPairingServiceImpl` | `"OWNER_PAIRING_TELEGRAM"` | Registers `/eliza_pair <code>` bot command; provides `sendOwnerLoginDmLink` called by auth backend to DM login links |
 | `TelegramStandaloneService` | `"telegram-standalone"` | Opt-in standalone long-poll mode: a minimal Telegraf poller that routes inbound messages through the runtime message service. Self-gates — dormant unless LifeOps passive connectors are disabled AND `ELIZA_TELEGRAM_STANDALONE_BOT` is truthy |
+| `TelegramAccountService` | `"telegram-account"` | Identity-verified, account-scoped personal MTProto history and search; no send or read-marker effects |
 
 **Routes** (all `rawPath: true` — no plugin-name prefix):
 
@@ -47,7 +48,9 @@ src/
   owner-pairing-service.ts    TelegramOwnerPairingServiceImpl + handleElizaPairCommand
   setup-routes.ts             Bot-token setup HTTP routes (telegramSetupRoutes)
   account-setup-routes.ts     GramJS user-account auth HTTP routes (telegramAccountRoutes)
-  account-auth-service.ts     TelegramAccountAuthSession — GramJS MTProto auth state machine
+  account-auth-service.ts     TelegramAccountAuthSession — scoped encrypted GramJS auth state
+  account-client-service.ts   Personal client lifecycle and exact-account read admission
+  account-history.ts          Exhaustive provider history/replies paging
   accounts.ts                 Multi-account config resolution (resolveTelegramAccount, listEnabledTelegramAccounts)
   connector-account-provider.ts  ConnectorAccountManager bridge (CRUD, no OAuth)
   dm-policy.ts                TELEGRAM_DM_POLICY resolution + the private-chat gate shared by the full service and the standalone poller (fail-closed pairing default)
@@ -150,3 +153,5 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+Personal reads must retain complete provider pages or honor an explicit caller result limit. Do not substitute bot/cache records, auto-import unscoped legacy sessions, or broaden an unmapped room query to all dialogs. Read the personal-history contract in README.md before editing this path.

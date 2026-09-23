@@ -8334,11 +8334,9 @@ function combinedVerifiedToolTextAndProse(
   if (isUnsafeUserVisibleText(prose)) return undefined;
   // Prose that already embeds the verbatim output IS the combined message.
   if (prose.includes(verified)) return prose;
-  const normalize = (text: string) =>
-    text.toLowerCase().replace(/\s+/g, " ").trim();
-  // Prose that adds nothing over the verified output (a restatement or
-  // fragment of it) keeps the verbatim-echo behavior unchanged.
-  if (normalize(verified).includes(normalize(prose))) return undefined;
+  // Only an exact fragment can be omitted: case and internal whitespace
+  // can distinguish units, identifiers, or quoted source values.
+  if (verified.includes(prose)) return undefined;
   const fenced =
     verified.includes("\n") && !verified.includes("```")
       ? `\`\`\`\n${verified}\n\`\`\``

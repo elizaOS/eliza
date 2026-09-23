@@ -51,6 +51,7 @@ import {
   isServerReachable,
   sameOriginBrowserHeaders,
 } from "./_helpers/api";
+import { expectAuthGate } from "./_helpers/auth-gate";
 
 const serverReachable = await isServerReachable();
 const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
@@ -611,7 +612,7 @@ describeE2E("GET /api/v1/pricing/summary", () => {
 describeE2E("GET /api/quotas/usage tombstone", () => {
   test("auth gate: 401 without credentials", async () => {
     const res = await api.get("/api/quotas/usage");
-    expect(res.status).toBe(401);
+    await expectAuthGate(res, "GET /api/quotas/usage");
   });
 
   test("happy path: authenticated clients receive the stable retirement receipt", async () => {

@@ -1,12 +1,12 @@
 /**
- * Egress binds the verified receipt sentence plus the evaluator's grounded
- * prose (the planner loop's combination form) to the result's receipts, so
- * the completion claim is grounded instead of being rejected and rewritten
- * (live 2026-09-16: "Created “Optometrist appointment” …" plus "Added it. …"
- * came back as a paraphrase). Deterministic; no runtime.
+ * Verifies real egress receipt binding for combined tool and evaluator text.
+ * Deterministic fixtures require each span to retain its own exact proof;
+ * an action-owned prefix cannot authorize arbitrary appended claims.
  */
-import { describe, expect, it } from "vitest";
+
 import type { Action, ActionResult } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
+import type { EvaluatorOutput } from "../../runtime/evaluator";
 import {
   appliedEffectReceiptIdsForReply,
   evaluatePlannedReplyEgress,
@@ -42,24 +42,43 @@ const settled: ActionResult = {
   effectReceipts: [receipt],
   userFacingEffectReceiptIds: [receipt.receiptId],
 };
-const calendar = {
+const calendar: Action = {
   name: "CALENDAR",
+  description: "Calendar effects require committed receipts.",
   tags: ["domain:calendar", "effect:receipt-required"],
-} as unknown as Action;
+  validate: async () => true,
+  handler: async () => {
+    throw new Error("Egress validation must not execute domain effects");
+  },
+};
+
+function boundEvaluator(text: string): EvaluatorOutput {
+  return {
+    success: true,
+    decision: "FINISH",
+    thought: "The observed result grounds this response.",
+    messageToUser: text,
+    raw: { messageToUser: text },
+    effectReceiptIds: [receipt.receiptId],
+  };
+}
 
 describe("combined verified reply egress", () => {
   it("binds the verified sentence followed by grounded prose to the result's receipts", () => {
-    const reply = `${VERIFIED}\n\nIt overlaps with your dentist visit at 3:30.`;
+    const prose = "It overlaps with your dentist visit at 3:30.";
+    const evaluator = boundEvaluator(prose);
+    const reply = `${VERIFIED}\n\n${prose}`;
     expect(replyCarriesCanonicalText(reply, VERIFIED)).toBe(true);
-    expect(appliedEffectReceiptIdsForReply(reply, [settled])).toEqual([
-      receipt.receiptId,
-    ]);
+    expect(
+      appliedEffectReceiptIdsForReply(reply, [settled], evaluator),
+    ).toEqual([receipt.receiptId]);
     expect(
       evaluatePlannedReplyEgress({
         reply,
         request: "add an optometrist appointment friday at 3pm",
         actionResults: [settled],
         actions: [calendar],
+        evaluator,
       }),
     ).toEqual({ verdict: "allow" });
   });
@@ -87,4 +106,105 @@ describe("combined verified reply egress", () => {
       false,
     );
   });
+});
+
+it.each([
+  { name: "absent evaluator", evaluator: undefined },
+  {
+    name: "changed prose",
+    evaluator: boundEvaluator("A different statement."),
+  },
+  {
+    name: "missing receipts",
+    evaluator: { ...boundEvaluator("Added it."), effectReceiptIds: [] },
+  },
+  {
+    name: "unknown receipts",
+    evaluator: {
+      ...boundEvaluator("Added it."),
+      effectReceiptIds: ["unrelated"],
+    },
+  },
+  {
+    name: "changed original",
+    evaluator: {
+      ...boundEvaluator("Added it."),
+      raw: { messageToUser: "Different original" },
+    },
+  },
+])("rejects unbound combined prose: $name", ({ evaluator }) => {
+  const reply = `${VERIFIED}\n\nAdded it.`;
+  expect(appliedEffectReceiptIdsForReply(reply, [settled], evaluator)).toEqual(
+    [],
+  );
+  expect(
+    evaluatePlannedReplyEgress({
+      reply,
+      request: "add an appointment",
+      actionResults: [settled],
+      actions: [calendar],
+      evaluator,
+    }),
+  ).toEqual({ verdict: "reject", kind: "completed_side_effect" });
+});
+
+it("preserves independently bound prose after a fenced multiline result", () => {
+  const canonical = `${VERIFIED}\nCalendar: primary`;
+  const result = { ...settled, userFacingText: canonical };
+  const prose = "Added it.";
+  expect(
+    appliedEffectReceiptIdsForReply(
+      `\`\`\`\n${canonical}\n\`\`\`\n\n${prose}`,
+      [result],
+      boundEvaluator(prose),
+    ),
+  ).toEqual([receipt.receiptId]);
+});
+
+it.each([
+  "The dentist appointment was moved to 5pm.",
+  "Deleted all your reminders.",
+  "Your task list is empty.",
+  "Created another calendar event.",
+  "I have cancelled the dentist appointment.",
+])("does not ground additional suffix effects: %s", (prose) => {
+  const reply = `${VERIFIED}\n\n${prose}`;
+  expect(
+    evaluatePlannedReplyEgress({
+      reply,
+      request: "add an optometrist appointment friday at 3pm",
+      actionResults: [settled],
+      actions: [calendar],
+    }),
+  ).toEqual({ verdict: "reject", kind: "completed_side_effect" });
+  expect(appliedEffectReceiptIdsForReply(reply, [settled])).toEqual([]);
+});
+
+it("retains distinct receipt bindings for both spans", () => {
+  const moved = {
+    ...receipt,
+    receiptId: "calendar-event-mutation-receipt-v1:update",
+    operation: "calendar.event.update",
+    resource: { ...receipt.resource, id: "dentist-event" },
+  };
+  const prose = "The dentist appointment was moved to 5pm.";
+  const evaluator = {
+    ...boundEvaluator(prose),
+    effectReceiptIds: [moved.receiptId],
+  };
+  const results = [settled, { success: true, effectReceipts: [moved] }];
+  const reply = `${VERIFIED}\n\n${prose}`;
+  expect(appliedEffectReceiptIdsForReply(reply, results, evaluator)).toEqual([
+    receipt.receiptId,
+    moved.receiptId,
+  ]);
+  expect(
+    evaluatePlannedReplyEgress({
+      reply,
+      request: "add the optometrist and move the dentist appointment",
+      actionResults: results,
+      actions: [calendar],
+      evaluator,
+    }),
+  ).toEqual({ verdict: "allow" });
 });

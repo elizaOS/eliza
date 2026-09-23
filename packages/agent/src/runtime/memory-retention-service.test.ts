@@ -10,7 +10,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { resolveRetentionConfig } from "./memory-retention.ts";
 import {
   MEMORY_RETENTION_SERVICE,
@@ -267,6 +267,39 @@ describe("MemoryRetentionService.start / stop", () => {
     // @ts-expect-error private resolved config
     expect(svc.retentionConfig.retentionDays).toBe(30);
     await svc.stop();
+  });
+});
+
+describe("MemoryRetentionService.start — monthly cadence", () => {
+  const START_DELAY_MS = 30_000; // mirrors the service's boot-settle delay
+
+  it("does not degrade a monthly cadence into a continuous sweep loop", async () => {
+    vi.useFakeTimers();
+    const sweep = vi
+      .spyOn(MemoryRetentionService.prototype, "sweep")
+      .mockResolvedValue([]);
+    try {
+      const svc = await MemoryRetentionService.start(
+        makeRuntime({
+          adapter: new FakeAdapter(),
+          settings: {
+            ELIZA_MEMORY_RETENTION_DAYS: "7",
+            ELIZA_MEMORY_RETENTION_INTERVAL_MINUTES: "43200",
+          },
+        }),
+      );
+      // Past the boot-settle delay: exactly the first sweep has run.
+      await vi.advanceTimersByTimeAsync(START_DELAY_MS + 1);
+      expect(sweep).toHaveBeenCalledTimes(1);
+      // A full fake hour later a monthly cadence must not have fired again.
+      // Unbounded, setInterval overflowed to a 1 ms delay and this was ~3.6M.
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+      expect(sweep).toHaveBeenCalledTimes(1);
+      await svc.stop();
+    } finally {
+      sweep.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -3686,10 +3686,17 @@ export async function resolveLocalChannelRoom(
     if (direct) return direct;
   }
   const agentRooms = await runtime.getRoomsForParticipant(runtime.agentId);
-  const rooms = await Promise.all(
-    agentRooms.map((roomId) => runtime.getRoom(roomId)),
+  const rooms =
+    agentRooms.length > 0 ? await runtime.getRoomsByIds(agentRooms) : [];
+  const byId = new Map(rooms.map((room) => [room.id, room]));
+  // Participant order breaks equal-ranked ties; database batch order does not.
+  return (
+    rankLocalChannelRooms(
+      agentRooms.map((roomId) => byId.get(roomId)),
+      source,
+      channel,
+    )[0] ?? null
   );
-  return rankLocalChannelRooms(rooms, source, channel)[0] ?? null;
 }
 
 const VOICE_ROOM_TYPES = new Set<string>([

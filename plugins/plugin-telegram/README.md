@@ -165,3 +165,33 @@ bun run --cwd plugins/plugin-telegram build
 bun run --cwd plugins/plugin-telegram test
 bun run --cwd plugins/plugin-telegram lint
 ```
+
+## Personal-account history
+
+The `telegram-account` service connects the existing GramJS login to personal
+history reads. It verifies the configured phone and saved provider subject,
+then registers a separate `<accountId>:personal` read connector. Reads require
+that exact connected OWNER account and its verified owner binding; bot tokens
+and bot memory caches are never used as personal history.
+
+Login sessions and unfinished authentication are encrypted under an agent/account
+scope. Existing unscoped sessions are not automatically imported or assigned to
+another runtime. Reconnect through personal-account setup to create a scoped
+session, or explicitly configure a named account's personal session and API
+credentials. Each connection verifies its Telegram identity before use.
+
+An omitted history limit traverses all provider pages until exhaustion. An
+explicit positive limit requests that many results; cursor-based continuation
+is not currently accepted by the array-valued connector API. Provider errors,
+non-progress pages, account changes, and unmapped room scopes reject the read
+without a successful partial result. Peers and forum topics use Telegram's
+history/replies APIs. Search traverses the requested peer, or all account dialogs
+when no peer/room is requested, before applying an explicit match limit. Neither
+history nor search marks messages as read. Raw provider message metadata retains
+service events, deleted placeholders, entities and media references; media bytes
+are not downloaded by a history read.
+
+The focused deterministic tests use actual GramJS TL request/response objects
+with controlled RPC responses. They cover a final-page sentinel, exact-page
+exhaustion, scoped encrypted storage, restart, owner admission and lifecycle
+races. They do not claim a live Telegram account acceptance run.
