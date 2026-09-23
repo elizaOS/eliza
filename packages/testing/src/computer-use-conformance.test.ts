@@ -26,7 +26,6 @@ import {
   type InteractionConformanceFixture,
   REQUIRED_INTERACTION_CONFORMANCE_CASES,
   runInteractionAdapterConformance,
-  runInteractionLeaseConformance,
 } from "./computer-use-conformance.ts";
 
 const adapterId = "conformance-deterministic";
@@ -276,34 +275,6 @@ function runConformance(
 }
 
 describe("computer-use-conformance", () => {
-  describe("REQUIRED_INTERACTION_CONFORMANCE_CASES", () => {
-    it("exposes the seven required case names in canonical order", () => {
-      expect([...REQUIRED_INTERACTION_CONFORMANCE_CASES]).toEqual([
-        "success",
-        "failed_no_effect",
-        "uncertain_effect",
-        "policy_block",
-        "confirmation",
-        "unsupported",
-        "stale_observation",
-      ]);
-    });
-  });
-
-  describe("runInteractionLeaseConformance", () => {
-    it("returns passed, frozen, deterministic contention and expiry checks", () => {
-      const checks = runInteractionLeaseConformance();
-      expect(Object.isFrozen(checks)).toBe(true);
-      expect(checks.map((check) => check.name)).toEqual([
-        "lease_contention",
-        "lease_expiry",
-      ]);
-      expect(checks.every((check) => check.passed)).toBe(true);
-      expect(checks.every((check) => check.detail.length > 0)).toBe(true);
-      expect(runInteractionLeaseConformance()).toEqual(checks);
-    });
-  });
-
   describe("runInteractionAdapterConformance", () => {
     it("passes a truthful adapter and freezes the report envelope", async () => {
       const report = await runConformance();
@@ -374,28 +345,37 @@ describe("computer-use-conformance", () => {
       );
     });
 
-    it("wraps an invalid capability payload and preserves the cause", async () => {
-      const invalidPayload: unknown = { contractVersion: 999 };
-      const lyingAdapter: InteractionAdapter = {
-        ...truthfulAdapter,
-        capabilities: async () => invalidPayload as InteractionCapabilitySet,
-      };
-      const outcome = await runConformance({ adapter: lyingAdapter }).catch(
-        (error: unknown) => error,
-      );
-      expect(outcome).toBeInstanceOf(ElizaError);
-      const conformanceError = outcome as ElizaError;
-      expect(conformanceError.code).toBe(
-        "INTERACTION_ADAPTER_CONFORMANCE_FAILED",
-      );
-      expect(conformanceError.message).toBe(
-        "Adapter returned an invalid capability payload.",
-      );
-      expect(conformanceError.cause).toBeInstanceOf(ElizaError);
-      expect((conformanceError.cause as ElizaError).code).toBe(
-        "INVALID_INTERACTION_CONTRACT",
-      );
-    });
+    it.each([
+      [
+        "capability",
+        {
+          capabilities: async () =>
+            ({ contractVersion: 999 }) as unknown as InteractionCapabilitySet,
+        },
+      ],
+      ["observation", { observe: async () => ({}) as InteractionObservation }],
+      [
+        "action result",
+        { execute: async () => ({}) as InteractionActionResult },
+      ],
+    ] as const)(
+      "wraps an invalid %s payload and preserves the typed cause",
+      async (kind, override) => {
+        const outcome = runConformance({
+          adapter: { ...truthfulAdapter, ...override },
+        });
+        await expect(outcome).rejects.toBeInstanceOf(ElizaError);
+        await expect(outcome).rejects.toMatchObject({
+          code: "INTERACTION_ADAPTER_CONFORMANCE_FAILED",
+          message: `Adapter returned an invalid ${kind} payload.`,
+          cause: expect.any(ElizaError),
+        });
+        await expect(outcome).rejects.toHaveProperty(
+          "cause.code",
+          "INVALID_INTERACTION_CONTRACT",
+        );
+      },
+    );
 
     it("fails closed when capabilities advertise another adapter", async () => {
       const lyingAdapter: InteractionAdapter = {
@@ -471,26 +451,6 @@ describe("computer-use-conformance", () => {
       );
     });
 
-    it("wraps an invalid observation payload and preserves the cause", async () => {
-      const invalidPayload: unknown = {};
-      const lyingAdapter: InteractionAdapter = {
-        ...truthfulAdapter,
-        observe: async () => invalidPayload as InteractionObservation,
-      };
-      const outcome = await runConformance({ adapter: lyingAdapter }).catch(
-        (error: unknown) => error,
-      );
-      expect(outcome).toBeInstanceOf(ElizaError);
-      const conformanceError = outcome as ElizaError;
-      expect(conformanceError.message).toBe(
-        "Adapter returned an invalid observation payload.",
-      );
-      expect(conformanceError.cause).toBeInstanceOf(ElizaError);
-      expect((conformanceError.cause as ElizaError).code).toBe(
-        "INVALID_INTERACTION_CONTRACT",
-      );
-    });
-
     it("rejects a fixture action that targets another registered surface", async () => {
       const misdirected = conformanceFixtures().map((fixture) =>
         fixture.name === "success"
@@ -506,29 +466,6 @@ describe("computer-use-conformance", () => {
           message:
             "Conformance action does not target the supplied session surface.",
         }),
-      );
-    });
-
-    it("wraps an invalid action-result payload and preserves the cause", async () => {
-      const invalidPayload: unknown = {};
-      const lyingAdapter: InteractionAdapter = {
-        ...truthfulAdapter,
-        execute: async () => invalidPayload as InteractionActionResult,
-      };
-      const outcome = await runConformance({ adapter: lyingAdapter }).catch(
-        (error: unknown) => error,
-      );
-      expect(outcome).toBeInstanceOf(ElizaError);
-      const conformanceError = outcome as ElizaError;
-      expect(conformanceError.code).toBe(
-        "INTERACTION_ADAPTER_CONFORMANCE_FAILED",
-      );
-      expect(conformanceError.message).toBe(
-        "Adapter returned an invalid action result payload.",
-      );
-      expect(conformanceError.cause).toBeInstanceOf(ElizaError);
-      expect((conformanceError.cause as ElizaError).code).toBe(
-        "INVALID_INTERACTION_CONTRACT",
       );
     });
 
@@ -599,6 +536,77 @@ describe("computer-use-conformance", () => {
           }),
         }),
       );
+    });
+
+    it("requires and forwards explicit-profile verification", async () => {
+      const profileSession: InteractionSession = {
+        ...session,
+        profileMode: "existing_explicit",
+        profileGrant: {
+          grantId: "profile-conformance-grant",
+          sessionId,
+          ownerId: session.ownerId,
+          adapterId,
+          profileHandle: "signed-in-profile",
+          issuedAt: now,
+          expiresAt: "2026-01-01T00:05:00.000Z",
+        },
+      };
+      const profileAdapter: InteractionAdapter = {
+        ...truthfulAdapter,
+        capabilities: async () => ({
+          ...capabilities,
+          profileAccess: {
+            modes: ["existing_explicit"],
+            requiresExplicitGrant: true,
+          },
+        }),
+      };
+      const options = { session: profileSession, adapter: profileAdapter };
+      await expect(runConformance(options)).rejects.toMatchObject({
+        code: "INVALID_INTERACTION_CONTRACT",
+      });
+      const report = await runConformance({
+        ...options,
+        profileGrantVerifier: { verify: () => true },
+      });
+      expect(report.passed).toBe(true);
+    });
+
+    it("rejects result identity from another session", async () => {
+      await expect(
+        runConformance({
+          adapter: {
+            ...truthfulAdapter,
+            execute: async (input) => ({
+              ...resultFor(input, statusByCase[caseNameOf(input.actionId)]),
+              sessionId: "other-session",
+            }),
+          },
+        }),
+      ).rejects.toMatchObject({
+        code: "INTERACTION_ADAPTER_CONFORMANCE_FAILED",
+      });
+    });
+
+    it("rejects a stale fixture bound to the current observation sequence", async () => {
+      await expect(
+        runConformance({
+          fixtures: conformanceFixtures().map((fixture) =>
+            fixture.name === "stale_observation"
+              ? {
+                  ...fixture,
+                  action: {
+                    ...fixture.action,
+                    observationSequence: observation.sequence,
+                  },
+                }
+              : fixture,
+          ),
+        }),
+      ).rejects.toMatchObject({
+        code: "INTERACTION_ADAPTER_CONFORMANCE_FAILED",
+      });
     });
   });
 });

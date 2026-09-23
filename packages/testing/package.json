@@ -22,8 +22,6 @@
   },
   "devDependencies": {
     "vitest": "^4.1.10",
-    "react-test-renderer": "^19.0.0",
-    "@types/react-test-renderer": "^19.0.0",
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2"
   },

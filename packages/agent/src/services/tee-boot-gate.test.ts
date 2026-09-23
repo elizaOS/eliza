@@ -48,6 +48,58 @@ describe("TEE boot gate", () => {
     });
   });
 
+  const optionalPolicySources = [
+    { ELIZA_TEE_POLICY_JSON: JSON.stringify({ required: false }) },
+    { ELIZA_TEE_POLICY_PATH: "/optional-policy.json" },
+    {
+      ELIZA_TEE_RELEASE_MANIFEST_JSON: JSON.stringify({
+        tee: { enabled: false },
+      }),
+    },
+    { ELIZA_TEE_RELEASE_MANIFEST_PATH: "/disabled-release.json" },
+  ];
+
+  it.each(optionalPolicySources)(
+    "withholds secrets when deployment requires attestation despite optional source %j",
+    async (source) => {
+      const gate = await evaluateTeeBootGate({
+        env: { ...source, ELIZA_TEE_REQUIRED: "true" },
+        resolveOptions: {
+          readText: async (path) =>
+            JSON.stringify(
+              path === "/optional-policy.json"
+                ? { required: false }
+                : { tee: { enabled: false } },
+            ),
+        },
+      });
+      expect(gate.required).toBe(true);
+      expect(gate.secretsEnabled).toBe(false);
+      expect(() => assertTeeBootGateAllowsSecrets(gate, "signing")).toThrow(
+        /signing blocked/,
+      );
+    },
+  );
+
+  it.each(optionalPolicySources)(
+    "preserves optional source behavior without a deployment requirement %j",
+    async (source) => {
+      const gate = await evaluateTeeBootGate({
+        env: source,
+        resolveOptions: {
+          readText: async (path) =>
+            JSON.stringify(
+              path === "/optional-policy.json"
+                ? { required: false }
+                : { tee: { enabled: false } },
+            ),
+        },
+      });
+      expect(gate.required).toBe(false);
+      expect(gate.secretsEnabled).toBe(true);
+    },
+  );
+
   it("enables secrets when required evidence is trusted", async () => {
     const gate = await evaluateTeeBootGate({
       env: {
