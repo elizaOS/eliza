@@ -176,7 +176,7 @@ export const roleProvider: Provider = {
     const entityIds = Object.keys(roles) as UUID[];
     const entities = await runtime.getEntitiesByIds(entityIds);
     const entityMap = new Map(
-      entities.map((entity) => [entity.id.toLowerCase(), entity]),
+      entities.map((entity) => [entity.id?.toLowerCase(), entity]),
     );
     const seenUsernames = new Set<string>();
     // Process roles
