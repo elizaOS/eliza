@@ -63,7 +63,16 @@ jobs:
       - name: Establish Linux scenario containment boundary
         run: |
           sudo apt-get update
-          sudo apt-get install --yes acl bubblewrap iptables
+          sudo apt-get install --yes acl apparmor bubblewrap iptables
+          sudo tee /etc/apparmor.d/eliza-stability-bwrap >/dev/null <<'PROFILE'
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile eliza-stability-bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+          }
+          PROFILE
+          sudo apparmor_parser -r /etc/apparmor.d/eliza-stability-bwrap
+          test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = 1
           sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
             /bin/bash packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup
           echo "ELIZA_STABILITY_LINUX_SANDBOX=1" >> "$GITHUB_ENV"
@@ -111,7 +120,16 @@ jobs:
       - name: Establish Linux scenario containment boundary
         run: |
           sudo apt-get update
-          sudo apt-get install --yes acl bubblewrap iptables
+          sudo apt-get install --yes acl apparmor bubblewrap iptables
+          sudo tee /etc/apparmor.d/eliza-stability-bwrap >/dev/null <<'PROFILE'
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile eliza-stability-bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+          }
+          PROFILE
+          sudo apparmor_parser -r /etc/apparmor.d/eliza-stability-bwrap
+          test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = 1
           sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
             /bin/bash packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup
           echo "ELIZA_STABILITY_LINUX_SANDBOX=1" >> "$GITHUB_ENV"
