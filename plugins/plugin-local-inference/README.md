@@ -273,3 +273,11 @@ raises `KOKORO_PHRASE_TOO_LARGE` before any audio; unsupported older libraries
 raise `KOKORO_IPA_ABI_REQUIRED`. Rebuild the fused library to resolve that error.
 Audio allocation exhaustion is reported as `KOKORO_AUDIO_CAPACITY_EXCEEDED`;
 a clipped waveform is never returned as a complete phrase.
+
+Canonical desktop BGE contexts default to CPU, independently of the global text
+model GPU setting. `LOCAL_EMBEDDING_GPU_LAYERS=0` forces CPU; a nonnegative integer,
+`auto`, or `max` explicitly selects offload. The native library must expose
+`eliza_inference_create_with_options`; older libraries fail explicitly instead
+of ignoring the selection. BGE contexts run a semantic separation probe before
+becoming available. A backend returning collapsed vectors is rejected, even if
+its vectors have the correct width and norm. Backend changes require a restart.

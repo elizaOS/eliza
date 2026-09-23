@@ -106,6 +106,10 @@ export * from "./model-gateway";
 export * from "./name-tokens";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
+export {
+	resolveFallbackOwnerEntityId,
+	resolveOwnerEntityId,
+} from "./owner-entity";
 export * from "./plugin";
 // Export recent-errors provider (#12263)
 export * from "./providers/recent-errors";

@@ -530,19 +530,25 @@ describe("ensureLocalInferenceHandler", () => {
 			expect(probeHardware).toHaveBeenCalledTimes(3);
 			expect(embeddingState.create).toHaveBeenCalledTimes(1);
 			expect(embeddingState.embed.mock.calls[2]).toEqual(initialArgs);
+			vi.stubEnv("LOCAL_EMBEDDING_GPU_LAYERS", "1");
+			const callsBeforeGpuChange = embeddingState.embed.mock.calls.length;
+			await expect(
+				handler(runtime, { text: "changed backend" }),
+			).rejects.toMatchObject({
+				code: "EMBEDDING_CONFIGURATION_CHANGED",
+			});
+			expect(embeddingState.embed).toHaveBeenCalledTimes(callsBeforeGpuChange);
+			vi.stubEnv("LOCAL_EMBEDDING_GPU_LAYERS", "");
+			const callsBeforeChange = embeddingState.embed.mock.calls.length;
 			vi.stubEnv("ELIZA_EMBED_POOLING", "cls");
+			await expect(handler(runtime, { text: "warm" })).rejects.toMatchObject({
+				code: "EMBEDDING_CONFIGURATION_CHANGED",
+			});
+			expect(embeddingState.embed).toHaveBeenCalledTimes(callsBeforeChange);
+			vi.stubEnv("ELIZA_EMBED_POOLING", "MEAN");
 			await expect(handler(runtime, { text: "warm" })).resolves.toEqual([
 				0.25, -0.5, 0.75,
 			]);
-			const { ELIZA_POOLING_CLS } = await import(
-				"../services/voice/ffi-bindings"
-			);
-			expect(embeddingState.embed).toHaveBeenLastCalledWith({
-				ctx: 1,
-				text: "warm",
-				pooling: ELIZA_POOLING_CLS,
-				parseSpecial: false,
-			});
 			expect(probeHardware).toHaveBeenCalledTimes(3);
 			expect(embeddingState.create).toHaveBeenCalledTimes(1);
 		} finally {

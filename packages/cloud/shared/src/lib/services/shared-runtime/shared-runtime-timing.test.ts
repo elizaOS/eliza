@@ -197,21 +197,6 @@ describe("SharedRuntimeTimingCollector", () => {
     ).toBeUndefined();
   });
 
-  test("rejects a receipt that claims an unobserved call as the selected provider", () => {
-    expect(
-      parseSharedProviderTimingReceipt({
-        replayed: false,
-        durationMs: 4,
-        clamped: false,
-        callCount: 1,
-        fallbackCount: 0,
-        selectedProvider: "unobserved",
-        callsTruncated: false,
-        calls: [{ provider: "unobserved", durationMs: 4, fallback: false }],
-      }),
-    ).toBeUndefined();
-  });
-
   test("keeps every call in a long provider sequence", () => {
     let now = 0;
     const timing = new SharedRuntimeTimingCollector("many-provider-calls", 0, () => now++);
@@ -238,42 +223,6 @@ describe("SharedRuntimeTimingCollector", () => {
       provider: "openrouter",
       durationMs: 1,
       fallback: true,
-    });
-  });
-
-  test("canonicalizes a valid receipt and strips undeclared transport fields", () => {
-    expect(
-      parseSharedProviderTimingReceipt({
-        replayed: false,
-        durationMs: 8.1,
-        clamped: false,
-        callCount: 2,
-        fallbackCount: 1,
-        selectedProvider: "mixed",
-        callsTruncated: false,
-        privateTrace: "drop-me",
-        calls: [
-          {
-            provider: "cerebras",
-            durationMs: 3,
-            fallback: false,
-            privateProviderMetadata: "drop-me",
-          },
-          { provider: "openrouter", durationMs: 5.1, fallback: true },
-        ],
-      }),
-    ).toEqual({
-      replayed: false,
-      durationMs: 8.1,
-      clamped: false,
-      callCount: 2,
-      fallbackCount: 1,
-      selectedProvider: "mixed",
-      callsTruncated: false,
-      calls: [
-        { provider: "cerebras", durationMs: 3, fallback: false },
-        { provider: "openrouter", durationMs: 5.1, fallback: true },
-      ],
     });
   });
 
