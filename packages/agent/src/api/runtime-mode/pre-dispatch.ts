@@ -19,18 +19,22 @@ import {
   type RouteModeRuntimeLike,
 } from "./route-mode-guard.ts";
 
+import type { RuntimeModeSnapshot } from "./runtime-mode.ts";
+
 export async function handleRuntimeModePreDispatch(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   runtime?: RouteModeRuntimeLike | null,
+  snapshot?: RuntimeModeSnapshot,
 ): Promise<boolean> {
-  const gate = applyRouteModeGuard(req, res, runtime);
+  const gate = applyRouteModeGuard(req, res, runtime, snapshot);
   return gate.handled;
 }
 
 export async function handleRuntimeModeRemoteForward(
   req: http.IncomingMessage,
   res: http.ServerResponse,
+  snapshot?: RuntimeModeSnapshot,
 ): Promise<boolean> {
-  return forwardRemoteCloudMutation(req, res);
+  return forwardRemoteCloudMutation(req, res, snapshot);
 }

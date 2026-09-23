@@ -22,7 +22,7 @@
  * X-Forwarded-For, which the trusted-local classifier treats as untrusted.
  */
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -128,12 +128,16 @@ async function bootServer(
   authorizeWebSocket?: NonNullable<
     Parameters<typeof startApiServer>[0]
   >["authorizeWebSocket"],
+  hostAdmission?: NonNullable<
+    Parameters<typeof startApiServer>[0]
+  >["hostAdmission"],
 ): Promise<string> {
   api = await startApiServer({
     port: 0,
     skipDeferredStartupWork: true,
     configureServer,
     authorizeWebSocket,
+    hostAdmission,
   });
   process.env.ELIZA_PORT = String(api.port);
   process.env.ELIZA_API_PORT = String(api.port);
@@ -540,4 +544,128 @@ describe("unauthenticated /ws bounds (W5-015)", () => {
       expect(pendingWebSocketCount("127.0.0.1")).toBe(0);
     });
   }, 30_000);
+});
+
+describe("mandatory host admission", () => {
+  it("uses a captured host config without loading or reloading disk authority", async () => {
+    const configPath = process.env.ELIZA_CONFIG_PATH;
+    if (!configPath) throw new Error("Fixture config path is missing");
+    await writeFile(configPath, "{invalid persisted configuration");
+    const hostConfig = { ui: { assistant: { name: "Measured assistant" } } };
+    const options = {
+      port: 0,
+      skipDeferredStartupWork: true,
+      hostConfig,
+      hostAdmission: () => true,
+    };
+    api = await startApiServer(options);
+    hostConfig.ui.assistant.name = "Caller mutation";
+    options.hostConfig = {
+      ui: { assistant: { name: "Replacement authority" } },
+    };
+    const response = await fetch(`http://127.0.0.1:${api.port}/api/config`, {
+      headers: { Authorization: `Bearer ${API_TOKEN}` },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ui: { assistant: { name: "Measured assistant" } },
+    });
+    expect(() => api?.reloadConfigFromDisk()).toThrow(
+      expect.objectContaining({ code: "API_HOST_CONFIG_RELOAD_DENIED" }),
+    );
+  }, 120_000);
+
+  it("captures host authority before middleware and ignores replacement options", async () => {
+    let allowed = false;
+    let middlewareCalls = 0;
+    const options: NonNullable<Parameters<typeof startApiServer>[0]> = {
+      port: 0,
+      skipDeferredStartupWork: true,
+      hostAdmission: () => allowed,
+      requestMiddleware: async (_request, response) => {
+        middlewareCalls++;
+        response.end("admitted");
+      },
+    };
+    api = await startApiServer(options);
+    options.hostAdmission = () => true;
+    const url = `http://127.0.0.1:${api.port}/api/health`;
+    expect((await fetch(url)).status).toBe(403);
+    expect(middlewareCalls).toBe(0);
+    allowed = true;
+    const response = await fetch(url);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("admitted");
+    expect(middlewareCalls).toBe(1);
+  }, 120_000);
+
+  it("rechecks policy before local trust and bearer authentication", async () => {
+    let allowed = true;
+    const boundaries: string[] = [];
+    const baseUrl = await bootServer(
+      undefined,
+      undefined,
+      (_request, boundary) => {
+        boundaries.push(boundary);
+        return allowed;
+      },
+    );
+    expect((await fetch(`${baseUrl}/api/health`)).status).toBe(200);
+    allowed = false;
+    for (const pathname of [
+      "/api/health",
+      "/api/settings",
+      "/api/media/test",
+    ]) {
+      const response = await fetch(`${baseUrl}${pathname}`, {
+        headers: { Authorization: `Bearer ${API_TOKEN}` },
+      });
+      expect(response.status).toBe(403);
+      expect(await response.text()).toContain("Host admission denied");
+    }
+    allowed = true;
+    expect((await fetch(`${baseUrl}/api/health`)).status).toBe(200);
+    expect(boundaries).toEqual(Array(5).fill("request"));
+  }, 120_000);
+
+  it("rejects upgrades before static-token or host-session fallback and bridge delegation", async () => {
+    process.env.ELIZA_DEVICE_BRIDGE_ENABLED = "1";
+    process.env.ELIZA_DEVICE_PAIRING_TOKEN = "pairing";
+    let sessionChecks = 0;
+    const boundaries: string[] = [];
+    const baseUrl = await bootServer(
+      undefined,
+      () => {
+        sessionChecks++;
+        return true;
+      },
+      (_request, boundary) => {
+        boundaries.push(boundary);
+        return false;
+      },
+    );
+    const port = Number(new URL(baseUrl).port);
+    for (const pathname of [
+      `/ws?token=${API_TOKEN}`,
+      "/api/local-inference/device-bridge?token=pairing",
+    ]) {
+      expect(await wsUpgradeResponse(port, pathname)).toMatch(
+        /^HTTP\/1\.1 403 /,
+      );
+    }
+    expect(boundaries).toEqual(["upgrade", "upgrade"]);
+    expect(sessionChecks).toBe(0);
+  }, 120_000);
+
+  it("sanitizes policy exceptions at HTTP and upgrade boundaries", async () => {
+    const baseUrl = await bootServer(undefined, undefined, () => {
+      throw new Error("private policy material");
+    });
+    const response = await fetch(`${baseUrl}/api/health`);
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain("private policy material");
+    const raw = await wsUpgradeResponse(Number(new URL(baseUrl).port), "/ws");
+    expect(raw).toMatch(/^HTTP\/1\.1 503 Service Unavailable/);
+    expect(raw).not.toContain("private policy material");
+  }, 120_000);
 });

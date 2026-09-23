@@ -20,7 +20,10 @@
 import type http from "node:http";
 import { sendJsonError } from "@elizaos/shared/api/http-helpers";
 import { fetchWithTimeoutGuard } from "../server-helpers-fetch.ts";
-import { getRuntimeModeSnapshot } from "./runtime-mode.ts";
+import {
+  getRuntimeModeSnapshot,
+  type RuntimeModeSnapshot,
+} from "./runtime-mode.ts";
 
 /** Pathnames whose mutations belong to the target in remote mode. */
 const REMOTE_FORWARDED_MUTATION_PREFIXES = [
@@ -128,10 +131,10 @@ async function readRequestBody(req: http.IncomingMessage): Promise<Buffer> {
 export async function forwardRemoteCloudMutation(
   req: http.IncomingMessage,
   res: http.ServerResponse,
+  snapshot: RuntimeModeSnapshot = getRuntimeModeSnapshot(),
 ): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
   const method = (req.method ?? "GET").toUpperCase();
-  const snapshot = getRuntimeModeSnapshot();
 
   if (snapshot.mode !== "remote") return false;
   if (!shouldForwardToRemoteTarget(url.pathname, method)) return false;

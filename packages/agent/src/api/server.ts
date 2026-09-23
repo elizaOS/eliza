@@ -560,6 +560,10 @@ import {
   handleRuntimeModePreDispatch,
   handleRuntimeModeRemoteForward,
 } from "./runtime-mode/pre-dispatch.ts";
+import {
+  type RuntimeModeSnapshot,
+  resolveRuntimeMode,
+} from "./runtime-mode/runtime-mode.ts";
 import { handleRuntimeSwitchRoutes } from "./runtime-switch-routes.ts";
 import {
   cloneWithoutBlockedObjectKeys,
@@ -1401,6 +1405,7 @@ export interface RuntimeRestartOptions {
 }
 
 interface RequestContext {
+  hostRuntimeMode?: RuntimeModeSnapshot;
   onRestart:
     | ((options?: RuntimeRestartOptions) => Promise<AgentRuntime | null>)
     | null;
@@ -1918,7 +1923,12 @@ async function handleRequestForViewClient(
   // unconditional 204 below.
   if (
     method !== "OPTIONS" &&
-    (await handleRuntimeModePreDispatch(req, res, state.runtime))
+    (await handleRuntimeModePreDispatch(
+      req,
+      res,
+      state.runtime,
+      ctx?.hostRuntimeMode,
+    ))
   ) {
     return;
   }
@@ -1993,7 +2003,7 @@ async function handleRequestForViewClient(
   // the controlled target.
   if (
     method !== "OPTIONS" &&
-    (await handleRuntimeModeRemoteForward(req, res))
+    (await handleRuntimeModeRemoteForward(req, res, ctx?.hostRuntimeMode))
   ) {
     return;
   }
@@ -3799,6 +3809,12 @@ export type ApiServerConfigurator = (
   server: http.Server,
 ) => void | Promise<void>;
 
+/** Mandatory host policy precedes built-in authentication; true grants no identity. */
+export type ApiHostAdmission = (
+  request: http.IncomingMessage,
+  boundary: "request" | "upgrade",
+) => boolean | Promise<boolean>;
+
 export type WebSocketAuthorizer = (
   request: http.IncomingMessage,
   url: URL,
@@ -3812,6 +3828,12 @@ function strictPortBindingEnabled(): boolean {
 export async function startApiServer(opts?: {
   port?: number;
   runtime?: AgentRuntime;
+  /**
+   * Trusted host configuration copied at construction instead of reading disk.
+   * Disables reloadConfigFromDisk; hosts must separately restrict mutable
+   * configuration and management routes through hostAdmission.
+   */
+  hostConfig?: ElizaConfig;
   skipDeferredStartupWork?: boolean;
   /**
    * Skip binding a TCP listener. The HTTP `server` object, all routes, and the
@@ -3853,6 +3875,13 @@ export async function startApiServer(opts?: {
    * principal such as app-core's revocable machine session.
    */
   authorizeWebSocket?: WebSocketAuthorizer;
+  /**
+   * Required additional admission for HTTP, in-process requests and upgrades.
+   * Denial cannot fall back to local trust, static tokens or host sessions.
+   * Supplying it disables the separately attached mobile device bridge. Trusted
+   * configureServer callbacks must not attach independent request/upgrade handlers.
+   */
+  hostAdmission?: ApiHostAdmission;
 }): Promise<{
   port: number;
   close: () => Promise<void>;
@@ -3870,6 +3899,24 @@ export async function startApiServer(opts?: {
   ) => void;
 }> {
   const apiStartTime = Date.now();
+  const hostAdmission = opts?.hostAdmission;
+  const hostConfig =
+    opts?.hostConfig === undefined
+      ? undefined
+      : structuredClone(opts.hostConfig);
+  async function admitHostRequest(
+    request: http.IncomingMessage,
+    boundary: "request" | "upgrade",
+  ): Promise<403 | 503 | null> {
+    if (!hostAdmission) return null;
+    try {
+      return (await hostAdmission(request, boundary)) === true ? null : 403;
+    } catch {
+      // error-policy:J1 Admission failure denies access without exposing policy or credentials.
+      logger.warn("[eliza-api] Required host admission unavailable");
+      return 503;
+    }
+  }
   // Gated boot profiler (off unless ELIZA_BOOT_PROFILE=1) to time the API-bind
   // critical path. Stderr, since the structured logger level may suppress it.
   const apiLap = (label: string): void => {
@@ -3902,7 +3949,7 @@ export async function startApiServer(opts?: {
 
   let config: ElizaConfig;
   try {
-    config = loadElizaConfig();
+    config = hostConfig ?? loadElizaConfig();
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
       // error-policy:J2 only a genuinely absent config is first-run state;
@@ -4080,6 +4127,8 @@ export async function startApiServer(opts?: {
   );
   apiLap("pre-createServer (route imports + middleware setup done)");
   const requestContext: RequestContext = {
+    hostRuntimeMode:
+      hostConfig === undefined ? undefined : resolveRuntimeMode(hostConfig),
     onRestart,
     onRuntimeActivated,
     onRuntimeSwapped: () => {
@@ -4099,6 +4148,11 @@ export async function startApiServer(opts?: {
     getAppManager: ensureAppManager,
   };
   const reloadConfigFromDisk = (): void => {
+    if (hostConfig !== undefined) {
+      throw new ElizaError("API configuration is owned by the host", {
+        code: "API_HOST_CONFIG_RELOAD_DENIED",
+      });
+    }
     // Config routes clone this durable graph before writing. Operational
     // consumers apply their existing launcher-authority views at read time.
     replaceConfigInPlace(state.config, loadElizaConfig());
@@ -4121,6 +4175,11 @@ export async function startApiServer(opts?: {
   };
   const routeKernel = createRouteKernel({
     dispatch: async (req, res) => {
+      const rejection = await admitHostRequest(req, "request");
+      if (rejection !== null) {
+        error(res, "Host admission denied", rejection);
+        return;
+      }
       const dispatch = () => handleRequest(req, res, state, requestContext);
       if (opts?.requestMiddleware) {
         await opts.requestMiddleware(req, res, dispatch);
@@ -4155,7 +4214,7 @@ export async function startApiServer(opts?: {
   // listening. Use the bridge's explicit attachment result; listener counts
   // are process-global observations and can be changed by unrelated features.
   let deviceBridgeUpgradeHandlerAttached = false;
-  let deviceBridgeAttachAllowed = !opts?.skipListen;
+  let deviceBridgeAttachAllowed = !opts?.skipListen && !hostAdmission;
   server.once("close", () => {
     // The optional plugin import is deliberately deferred beyond bind. If the
     // server closes before it resolves, do not attach the process-global bridge
@@ -4514,6 +4573,11 @@ export async function startApiServer(opts?: {
       }
     });
     try {
+      const hostRejection = await admitHostRequest(request, "upgrade");
+      if (hostRejection !== null) {
+        rejectWebSocketUpgrade(socket, hostRejection, "Host admission denied");
+        return;
+      }
       const wsUrl = new URL(
         request.url ?? "/",
         `http://${request.headers.host ?? "localhost"}`,

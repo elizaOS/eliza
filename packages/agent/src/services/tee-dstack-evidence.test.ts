@@ -3,11 +3,22 @@
  * synthetic verifier executable. Tests prove admission and lifecycle contracts,
  * not hardware quote cryptography, which belongs to pinned dstack-verifier.
  */
-import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { createHash, generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
+import {
+  fetchWithConfidentialInference,
+  runWithConfidentialInference,
+  type UUID,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { prepareConfidentialHost } from "../runtime/confidential-host-bootstrap.ts";
+import {
+  CONFIDENTIAL_PROCESSOR_SIGNATURE_DOMAIN,
+  type ConfidentialHostConfiguration,
+} from "../security/confidential-host-policy.ts";
+import { createConfidentialLocalAdmission } from "../security/confidential-local-admission.ts";
 import { evaluateTeeBootGate } from "./tee-boot-gate.ts";
 import {
   createDstackEvidenceProvider,
@@ -396,5 +407,207 @@ describe("dstack evidence adapter protocol", () => {
   it("rejects a non-socket endpoint", async () => {
     config.socketPath = config.verifierConfigPath;
     await expect(collect()).rejects.toThrow(/appraisal failed/);
+  });
+});
+
+describe("confidential host local admission", () => {
+  it.each(["dstack-tdx", "dstack-nitro-enclave"] as const)(
+    "reappraises %s after startup and refuses later invalid evidence",
+    async (variant) => {
+      config.variant = variant;
+      const env = {
+        ...signedReleaseEnv(),
+        ELIZA_TEE_PRODUCTION_PROFILE: "dstack-cpu",
+        ELIZA_DSTACK_EVIDENCE_CONFIG_JSON: JSON.stringify(config),
+      };
+      const admit = await createConfidentialLocalAdmission(env);
+      expect(await admit()).toBe(true);
+      // Mutating the caller's object cannot disable the captured requirement.
+      env.ELIZA_TEE_PRODUCTION_PROFILE = "false";
+      override = { quote_verified: false };
+      await expect(admit()).rejects.toMatchObject({
+        code: "CONFIDENTIAL_LOCAL_ADMISSION_REJECTED",
+      });
+      override = {};
+      expect(await admit()).toBe(true);
+      await writeFile(config.verifierPath, "modified verifier");
+      await expect(admit()).rejects.toMatchObject({
+        code: "CONFIDENTIAL_LOCAL_ADMISSION_REJECTED",
+      });
+    },
+  );
+  it("requires the CPU production profile and a signed local release before startup", async () => {
+    for (const profile of [undefined, "false", "true", "dstack-cpu"]) {
+      await expect(
+        createConfidentialLocalAdmission({
+          ELIZA_TEE_PRODUCTION_PROFILE: profile,
+          ELIZA_DSTACK_EVIDENCE_CONFIG_JSON: JSON.stringify(config),
+        }),
+      ).rejects.toMatchObject({
+        code: "CONFIDENTIAL_LOCAL_ADMISSION_REJECTED",
+      });
+    }
+  });
+});
+
+async function hostFixture() {
+  const keys = generateKeyPairSync("ed25519");
+  const configuration: ConfidentialHostConfiguration = {
+    schema: "eliza-confidential-host-v1",
+    agentId: randomUUID(),
+    deploymentId: "synthetic-host",
+    stateDirectory: join(dir, "state"),
+    processorPolicyPath: join(dir, "processors.json"),
+    processorPolicyPublicKey: keys.publicKey
+      .export({ type: "spki", format: "pem" })
+      .toString(),
+    allowedRegions: ["us-test"],
+    verifier: {
+      verifierPath: config.verifierPath,
+      verifierSha256: config.verifierSha256,
+      verifierConfigPath: config.verifierConfigPath,
+      verifierConfigSha256: config.verifierConfigSha256,
+      appId: "66".repeat(20),
+      composeHash: "77".repeat(32),
+      osImageHash: "88".repeat(32),
+      variant: config.variant,
+    },
+    listen: { host: "127.0.0.1", port: 0 },
+    character: { name: "Synthetic", bio: [], system: "Synthetic fixture" },
+  };
+  const { appId, composeHash, osImageHash, variant } = configuration.verifier;
+  const endpoint = "https://inference.example.test/v1/chat/completions";
+  const payload = JSON.stringify({
+    schema: "eliza-confidential-processors-v1",
+    agentId: configuration.agentId,
+    deploymentId: configuration.deploymentId,
+    revision: "test-revision",
+    notBefore: Date.now() - 1000,
+    expiresAt: Date.now() + 60_000,
+    routes: [
+      {
+        id: "text",
+        endpoint,
+        model: "reviewed",
+        modelTypes: ["TEXT_LARGE"],
+        adapter: "openai-compatible",
+        transportIdentity: { appId, composeHash, osImageHash, variant },
+        processorApproval: {
+          provider: "test",
+          service: "test",
+          region: "us-test",
+          contractRef: "test",
+          approvalRef: "test",
+          expiresAt: Date.now() + 60_000,
+        },
+      },
+    ],
+  });
+  await writeFile(
+    configuration.processorPolicyPath,
+    JSON.stringify({
+      payload,
+      signature: sign(
+        null,
+        Buffer.from(CONFIDENTIAL_PROCESSOR_SIGNATURE_DOMAIN + payload),
+        keys.privateKey,
+      ).toString("base64"),
+    }),
+  );
+  const localEnvironment = {
+    ...signedReleaseEnv(),
+    ELIZA_TEE_PRODUCTION_PROFILE: "dstack-cpu",
+    ELIZA_DSTACK_EVIDENCE_CONFIG_JSON: JSON.stringify(config),
+  };
+  return { configuration, localEnvironment, endpoint };
+}
+
+describe("confidential host preparation", () => {
+  it("refuses failed local evidence before opening the SQLite state", async () => {
+    const f = await hostFixture();
+    override = { quote_verified: false };
+    await expect(
+      prepareConfidentialHost({ ...f, handlers: [] }),
+    ).rejects.toMatchObject({
+      code: "CONFIDENTIAL_LOCAL_ADMISSION_REJECTED",
+    });
+    await expect(
+      readFile(join(f.configuration.stateDirectory, "agent.sqlite")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+  it("prepares durable audit before handlers, rechecks local trust, and survives reopen", async () => {
+    const f = await hostFixture();
+    let ordinaryRequests = 0;
+    const ordinaryFetch = Object.assign(
+      async () => {
+        ordinaryRequests++;
+        throw new Error("Ordinary fetch must not run");
+      },
+      { preconnect: fetch.preconnect },
+    );
+    const handler = () =>
+      fetchWithConfidentialInference(
+        f.endpoint,
+        {
+          method: "POST",
+          headers: { authorization: "synthetic-secret" },
+          body: JSON.stringify({
+            model: "reviewed",
+            messages: [{ content: "synthetic-private-content" }],
+          }),
+        },
+        ordinaryFetch,
+      );
+    const host = await prepareConfidentialHost({ ...f, handlers: [handler] });
+    try {
+      expect(await host.adapter.isReady()).toBe(true);
+      expect(await host.hostAdmission()).toBe(true);
+      override = { quote_verified: false };
+      await expect(host.hostAdmission()).rejects.toMatchObject({
+        code: "CONFIDENTIAL_LOCAL_ADMISSION_REJECTED",
+      });
+      await expect(
+        runWithConfidentialInference(
+          host.authority,
+          {
+            agentId: f.configuration.agentId as UUID,
+            modelType: "TEXT_LARGE",
+            handler,
+          },
+          handler,
+        ),
+      ).rejects.toMatchObject({
+        code: "CONFIDENTIAL_INFERENCE_TRANSPORT_REJECTED",
+      });
+      expect(ordinaryRequests).toBe(0);
+      const logs = await host.adapter.getLogs({
+        type: "confidential_inference",
+      });
+      expect(logs.map((log) => log.body.metadata?.phase)).toEqual(["denied"]);
+      expect(JSON.stringify(logs)).not.toContain("synthetic-secret");
+      expect(JSON.stringify(logs)).not.toContain("synthetic-private-content");
+    } finally {
+      await host.close();
+    }
+    await expect(host.hostAdmission()).rejects.toMatchObject({
+      code: "CONFIDENTIAL_HOST_CLOSED",
+    });
+    override = {};
+    const reopened = await prepareConfidentialHost({
+      ...f,
+      handlers: [handler],
+    });
+    try {
+      const logs = await reopened.adapter.getLogs({
+        type: "confidential_inference",
+      });
+      expect(logs.map((log) => log.body.metadata?.phase)).toEqual(["denied"]);
+      await writeFile(f.configuration.processorPolicyPath, "revoked");
+      await expect(reopened.hostAdmission()).rejects.toMatchObject({
+        code: "CONFIDENTIAL_HOST_POLICY_REJECTED",
+      });
+    } finally {
+      await reopened.close();
+    }
   });
 });
