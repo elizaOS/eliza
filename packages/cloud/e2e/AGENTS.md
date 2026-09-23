@@ -59,7 +59,9 @@ attempt, runs a real `AgentRuntime`, and requires attempts 1, 2, and 3 to pass.
 The scenario sends a real owner message, executes `OWNER_REMINDERS`, fires the
 production scheduler through a retained notification sink, and proves
 authenticated Hetzner mock create/read/delete effects through an audit proxy.
-Strict deterministic fixtures are the only model in the PR lane.
+Strict deterministic fixtures are the only model in automatic Cloud validation.
+Develop Full delegates this lane through Cloud Tests; real-model execution
+requires explicit manual dispatch.
 
 `stability:real -- --provider openai|anthropic` runs the identical scenario,
 world, plugins, services, and mock endpoints while replacing only the model.
