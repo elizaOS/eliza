@@ -456,6 +456,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       error: "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
       requiresInput: true,
       awaitingUserInput: true,
+      retryable: false,
     });
     expect(result?.effectReceipts?.[0]).toMatchObject({
       outcome: "failed",

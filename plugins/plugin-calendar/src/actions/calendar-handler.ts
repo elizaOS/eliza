@@ -7020,9 +7020,6 @@ const calendarAction: CalendarHandlerAction = {
                 error.code === "CALENDAR_READ_DATE_CONFLICT"))
               ? { coachingFailure: true }
               : {}),
-            ...(error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED"
-              ? { requiresInput: true, missing: ["guest email address"] }
-              : {}),
             actionName: "CALENDAR",
             subaction,
             error: error.code ?? `CALENDAR_SERVICE_${error.status}`,
@@ -7030,6 +7027,7 @@ const calendarAction: CalendarHandlerAction = {
               ? {
                   requiresInput: true,
                   awaitingUserInput: true,
+                  retryable: false,
                   missing: ["guest email address"],
                 }
               : {}),
