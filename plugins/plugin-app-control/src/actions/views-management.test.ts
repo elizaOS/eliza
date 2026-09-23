@@ -2782,10 +2782,8 @@ describe("view management actions", () => {
 		);
 	});
 
-	it("dispatches generated capability action names through the registered view catalog", async () => {
-		const { runtime } = createRuntime();
-		const callback = vi.fn();
-		const action = createViewsAction({
+	function createCapabilityRoutingAction() {
+		return createViewsAction({
 			client: {
 				listViews: vi.fn(async () => [
 					view({
@@ -2926,126 +2924,152 @@ describe("view management actions", () => {
 			},
 			hasOwnerAccess: vi.fn(async () => true),
 		});
+	}
 
-		vi.mocked(globalThis.fetch).mockResolvedValue({
-			ok: true,
-			status: 200,
-			json: async () => ({
-				success: true,
-				result: { text: "Created.", success: true },
-			}),
-		} as Response);
-
-		const noteResult = await action.handler(
-			runtime as never,
-			message("create note") as never,
-			undefined,
-			{
+	it.each([
+		{
+			name: "generated note creation",
+			request: "create note",
+			options: {
 				action: "CREATE_NOTE",
 				title: "smoke note",
 				body: "created from routing",
 			},
-			callback,
-		);
-		const plannerCreateResult = await action.handler(
-			runtime as never,
-			message(
-				"create a note titled smoke note with body created from routing",
-			) as never,
-			undefined,
-			{
+			expected: {
+				viewId: "notes",
+				mode: "interact",
+				capability: "create-note",
+				params: { title: "smoke note", body: "created from routing" },
+			},
+		},
+		{
+			name: "planner note creation",
+			request: "create a note titled smoke note with body created from routing",
+			options: {
 				action: "create",
 				view: "smoke note",
 				intent: "Note titled smoke note with body created from routing.",
 			},
-			callback,
-		);
-		const showNotesResult = await action.handler(
-			runtime as never,
-			message("show me my notes") as never,
-			undefined,
-			{ action: "show", view: "notes" },
-			callback,
-		);
-		const listNotesAliasResult = await action.handler(
-			runtime as never,
-			message("show me my notes") as never,
-			undefined,
-			{ action: "interact", view: "notes", capability: "list-notes" },
-			callback,
-		);
-		const readNamedNoteResult = await action.handler(
-			runtime as never,
-			message('read the note titled "launch checklist"') as never,
-			undefined,
-			{ action: "interact", view: "notes", capability: "get-notes" },
-			callback,
-		);
-		const deleteNoteResult = await action.handler(
-			runtime as never,
-			message("delete note") as never,
-			undefined,
-			{ action: "DELETE_NOTE", id: "note-123" },
-			callback,
-		);
-		const deleteNoteByTextResult = await action.handler(
-			runtime as never,
-			message("delete the nubby note") as never,
-			undefined,
-			{ action: "delete" },
-			callback,
-		);
-		const createNoteFromMessageResult = await action.handler(
-			runtime as never,
-			message(
-				"can you make another one saying i need to wake up at 3am",
-			) as never,
-			undefined,
-			{ action: "create" },
-			callback,
-		);
-		const currentElementsResult = await action.handler(
-			runtime as never,
-			message("list elements in the current view") as never,
-			undefined,
-			{ action: "interact", capability: "list-elements" },
-			callback,
-		);
-		const calendarResult = await action.handler(
-			runtime as never,
-			message("add a calendar event") as never,
-			undefined,
-			{ action: "CALENDAR_CREATE_EVENT", title: "smoke event" },
-			callback,
-		);
-		const plannerCalendarResult = await action.handler(
-			runtime as never,
-			message("add a calendar event titled smoke event") as never,
-			undefined,
-			{
+			expected: {
+				viewId: "notes",
+				mode: "interact",
+				capability: "create-note",
+				params: { title: "smoke note", body: "created from routing." },
+			},
+		},
+		{
+			name: "show notes without reading them",
+			request: "show me my notes",
+			options: { action: "show", view: "notes" },
+			expected: { viewId: "notes", mode: "show" },
+		},
+		{
+			name: "reject undeclared note alias",
+			request: "show me my notes",
+			options: { action: "interact", view: "notes", capability: "list-notes" },
+			expected: { error: 'Cannot invoke capability "list-notes"' },
+		},
+		{
+			name: "read named note",
+			request: 'read the note titled "launch checklist"',
+			options: { action: "interact", view: "notes", capability: "get-notes" },
+			expected: {
+				viewId: "notes",
+				mode: "interact",
+				capability: "get-notes",
+				params: { title: "launch checklist" },
+			},
+		},
+		{
+			name: "generated note deletion",
+			request: "delete note",
+			options: { action: "DELETE_NOTE", id: "note-123" },
+			expected: {
+				viewId: "notes",
+				mode: "interact",
+				capability: "delete-note",
+				params: { id: "note-123", ownerText: "delete note" },
+			},
+		},
+		{
+			name: "delete by request text",
+			request: "delete the nubby note",
+			options: { action: "delete" },
+			expected: {
+				viewId: "notes",
+				mode: "interact",
+				capability: "delete-note",
+				params: { query: "nubby", ownerText: "delete the nubby note" },
+			},
+		},
+		{
+			name: "create from follow-up text",
+			request: "can you make another one saying i need to wake up at 3am",
+			options: { action: "create" },
+			expected: {
+				viewId: "notes",
+				mode: "interact",
+				capability: "create-note",
+				params: { body: "i need to wake up at 3am" },
+			},
+		},
+		{
+			name: "current-view elements",
+			request: "list elements in the current view",
+			options: { action: "interact", capability: "list-elements" },
+			expected: {
+				viewId: "notes",
+				mode: "interact",
+				capability: "list-elements",
+				params: undefined,
+			},
+		},
+		{
+			name: "generated calendar creation",
+			request: "add a calendar event",
+			options: { action: "CALENDAR_CREATE_EVENT", title: "smoke event" },
+			expected: {
+				viewId: "calendar",
+				mode: "interact",
+				capability: "create-calendar-event",
+				params: { title: "smoke event" },
+			},
+		},
+		{
+			name: "planner calendar creation",
+			request: "add a calendar event titled smoke event",
+			options: {
 				action: "create",
 				view: "calendar",
 				intent: "Create event titled smoke event on 2026-06-08 at 17:00",
 			},
-			callback,
-		);
-		const explicitCapabilityWordingCalendarResult = await action.handler(
-			runtime as never,
-			message("create calendar event through the VIEWS capability") as never,
-			undefined,
-			{
+			expected: {
+				viewId: "calendar",
+				mode: "interact",
+				capability: "create-calendar-event",
+				params: { title: "smoke event", date: "2026-06-08", time: "17:00" },
+			},
+		},
+		{
+			name: "explicit capability wording",
+			request: "create calendar event through the VIEWS capability",
+			options: {
 				action: "create",
 				view: "calendar",
 				intent:
 					"Create calendar event through the VIEWS capability titled routed event on 2026-06-09 at 12:00",
 			},
-			callback,
-		);
-		const camelCalendarResult = await action.handler(
-			runtime as never,
-			message("add a calendar event titled smoke event") as never,
-			undefined,
-			{
+			expected: {
+				viewId: "calendar",
+				mode: "interact",
+				capability: "create-calendar-event",
+				params: { title: "routed event", date: "2026-06-09", time: "12:00" },
+			},
+		},
+		{
+			name: "reject undeclared camel-case alias",
+			request: "add a calendar event titled smoke event",
+			options: {
 				action: "interact",
 				view: "calendar",
 				capability: "createEvent",
@@ -3055,27 +3079,24 @@ describe("view management actions", () => {
 					time: "18:00",
 				},
 			},
-			callback,
-		);
-		const listEventsResult = await action.handler(
-			runtime as never,
-			message("show today's calendar events") as never,
-			undefined,
-			{
+			expected: { error: 'Cannot invoke capability "createEvent"' },
+		},
+		{
+			name: "reject undeclared calendar alias",
+			request: "show today's calendar events",
+			options: {
 				action: "interact",
 				view: "calendar",
 				capability: "list-events",
 				params: { date: "2026-06-08" },
 			},
-			callback,
-		);
-		const updateNamedEventResult = await action.handler(
-			runtime as never,
-			message(
+			expected: { error: 'Cannot invoke capability "list-events"' },
+		},
+		{
+			name: "update from current request",
+			request:
 				'<contextual_documents>create calendar examples</contextual_documents><user_request>update the event titled "team sync" and rename it to investor sync</user_request>',
-			) as never,
-			undefined,
-			{
+			options: {
 				action: "interact",
 				view: "calendar",
 				capability: "create-calendar-event",
@@ -3085,329 +3106,107 @@ describe("view management actions", () => {
 					details: "updated agenda",
 				},
 			},
-			callback,
-		);
-		const selectedCalendarReadResult = await action.handler(
-			runtime as never,
-			message(
+			expected: {
+				viewId: "calendar",
+				mode: "interact",
+				capability: "update-calendar-event",
+				params: {
+					title: "investor sync",
+					time: "14:15",
+					details: "updated agenda",
+					oldTitle: "team sync",
+				},
+			},
+		},
+		{
+			name: "preserve explicitly selected read",
+			request:
 				"<contextual_documents>create calendar examples</contextual_documents><user_request>select 2026-08-09 in the calendar</user_request>",
-			) as never,
-			undefined,
-			{
+			options: {
 				action: "interact",
 				view: "calendar",
 				capability: "get-calendar-state",
 			},
-			callback,
-		);
-		const readNamedEventResult = await action.handler(
-			runtime as never,
-			message(
+			expected: {
+				viewId: "calendar",
+				mode: "interact",
+				capability: "get-calendar-state",
+				params: undefined,
+			},
+		},
+		{
+			name: "read named event from current request",
+			request:
 				'<contextual_documents>create calendar examples</contextual_documents><user_request>read only the calendar event titled "team sync"</user_request>',
-			) as never,
-			undefined,
-			{
+			options: {
 				action: "interact",
 				view: "calendar",
 				capability: "create-calendar-event",
 				params: { title: "team sync" },
 			},
-			callback,
-		);
-
-		expect(noteResult?.success).toBe(true);
-		expect(noteResult?.values).toMatchObject({
-			mode: "interact",
-			viewId: "notes",
-			capability: "create-note",
-		});
-		expect(plannerCreateResult?.success).toBe(true);
-		expect(plannerCreateResult?.values).toMatchObject({
-			mode: "interact",
-			viewId: "notes",
-			capability: "create-note",
-		});
-		expect(showNotesResult?.success).toBe(true);
-		expect(showNotesResult?.values).toMatchObject({
-			mode: "show",
-			viewId: "notes",
-		});
-		expect(listNotesAliasResult).toMatchObject({
-			success: false,
-			text: expect.stringContaining('Cannot invoke capability "list-notes"'),
-		});
-		expect(readNamedNoteResult?.success).toBe(true);
-		expect(deleteNoteResult?.success).toBe(true);
-		expect(deleteNoteResult?.values).toMatchObject({
-			mode: "interact",
-			viewId: "notes",
-			capability: "delete-note",
-		});
-		expect(deleteNoteByTextResult?.success).toBe(true);
-		expect(deleteNoteByTextResult?.values).toMatchObject({
-			mode: "interact",
-			viewId: "notes",
-			capability: "delete-note",
-		});
-		expect(createNoteFromMessageResult?.success).toBe(true);
-		expect(createNoteFromMessageResult?.values).toMatchObject({
-			mode: "interact",
-			viewId: "notes",
-			capability: "create-note",
-		});
-		expect(currentElementsResult?.success).toBe(true);
-		expect(currentElementsResult?.values).toMatchObject({
-			mode: "interact",
-			viewId: "notes",
-			capability: "list-elements",
-		});
-		expect(calendarResult?.success).toBe(true);
-		expect(calendarResult?.values).toMatchObject({
-			mode: "interact",
-			viewId: "calendar",
-			capability: "create-calendar-event",
-		});
-		expect(plannerCalendarResult?.success).toBe(true);
-		expect(plannerCalendarResult?.values).toMatchObject({
-			mode: "interact",
-			viewId: "calendar",
-			capability: "create-calendar-event",
-		});
-		expect(explicitCapabilityWordingCalendarResult?.success).toBe(true);
-		expect(explicitCapabilityWordingCalendarResult?.values).toMatchObject({
-			mode: "interact",
-			viewId: "calendar",
-			capability: "create-calendar-event",
-		});
-		expect(camelCalendarResult).toMatchObject({
-			success: false,
-			text: expect.stringContaining('Cannot invoke capability "createEvent"'),
-		});
-		expect(listEventsResult).toMatchObject({
-			success: false,
-			text: expect.stringContaining('Cannot invoke capability "list-events"'),
-		});
-		expect(updateNamedEventResult?.success).toBe(true);
-		expect(selectedCalendarReadResult?.success).toBe(true);
-		expect(selectedCalendarReadResult?.values?.capability).toBe(
-			"get-calendar-state",
-		);
-		expect(readNamedEventResult?.success).toBe(true);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					capability: "create-note",
-					params: {
-						title: "smoke note",
-						body: "created from routing",
-					},
-					timeoutMs: 5_000,
-					viewType: "gui",
+			expected: {
+				viewId: "calendar",
+				mode: "interact",
+				capability: "get-calendar-event",
+				params: { title: "team sync" },
+			},
+		},
+	] as const)(
+		"routes registered capability: $name",
+		async ({ request, options, expected }) => {
+			const { runtime } = createRuntime();
+			const action = createCapabilityRoutingAction();
+			vi.mocked(globalThis.fetch).mockResolvedValue({
+				ok: true,
+				status: 200,
+				json: async () => ({
+					success: true,
+					result: { text: "Created.", success: true },
 				}),
-			}),
-		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					capability: "get-notes",
-					params: { title: "launch checklist" },
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
-			}),
-		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					capability: "create-note",
-					params: {
-						title: "smoke note",
-						body: "created from routing.",
-					},
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
-			}),
-		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					capability: "delete-note",
-					params: { query: "nubby", ownerText: "delete the nubby note" },
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
-			}),
-		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					capability: "create-note",
-					params: { body: "i need to wake up at 3am" },
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
-			}),
-		);
-		expect(globalThis.fetch).not.toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					capability: "get-notes",
-					params: undefined,
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
-			}),
-		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					capability: "delete-note",
-					params: { id: "note-123", ownerText: "delete note" },
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
-			}),
-		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					capability: "list-elements",
-					params: undefined,
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
-			}),
-		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					capability: "create-calendar-event",
-					params: { title: "smoke event" },
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
-			}),
-		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					capability: "create-calendar-event",
-					params: {
-						title: "smoke event",
-						date: "2026-06-08",
-						time: "17:00",
-					},
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
-			}),
-		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					capability: "create-calendar-event",
-					params: {
-						title: "routed event",
-						date: "2026-06-09",
-						time: "12:00",
-					},
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
-			}),
-		);
-		expect(globalThis.fetch).not.toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					capability: "create-calendar-event",
-					params: {
-						title: "camel event",
-						date: "2026-06-08",
-						time: "18:00",
-					},
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
-			}),
-		);
-		expect(globalThis.fetch).not.toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					capability: "get-calendar-state",
-					params: { date: "2026-06-08" },
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
-			}),
-		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					capability: "update-calendar-event",
-					params: {
-						title: "investor sync",
-						time: "14:15",
-						details: "updated agenda",
-						oldTitle: "team sync",
-					},
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
-			}),
-		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					capability: "get-calendar-state",
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
-			}),
-		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					capability: "get-calendar-event",
-					params: { title: "team sync" },
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
-			}),
-		);
-	});
+			} as Response);
+			const result = await action.handler(
+				runtime as never,
+				message(request) as never,
+				undefined,
+				options,
+				vi.fn(),
+			);
+			if ("error" in expected) {
+				expect(result).toMatchObject({
+					success: false,
+					text: expect.stringContaining(expected.error),
+				});
+				expect(globalThis.fetch).not.toHaveBeenCalled();
+				return;
+			}
+			expect(result?.success).toBe(true);
+			expect(result?.values).toMatchObject({
+				mode: expected.mode,
+				viewId: expected.viewId,
+			});
+			expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+			if ("capability" in expected) {
+				expect(result?.values?.capability).toBe(expected.capability);
+				expect(globalThis.fetch).toHaveBeenCalledWith(
+					`http://127.0.0.1:3456/api/views/${expected.viewId}/interact?viewType=gui`,
+					expect.objectContaining({
+						method: "POST",
+						body: JSON.stringify({
+							capability: expected.capability,
+							params: expected.params,
+							timeoutMs: 5_000,
+							viewType: "gui",
+						}),
+					}),
+				);
+			} else {
+				expect(globalThis.fetch).toHaveBeenCalledWith(
+					"http://127.0.0.1:3456/api/views/notes/navigate",
+					expect.objectContaining({ method: "POST" }),
+				);
+			}
+		},
+	);
 
 	it("keeps an explicit agent-fill capability ahead of semantic view aliases", async () => {
 		const { runtime } = createRuntime();
