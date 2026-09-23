@@ -31,9 +31,6 @@ const OPENROUTER_PRICING_SOURCE_URL = "https://openrouter.ai/openai/gpt-oss-120b
 // Mirrors the gpt-oss-120b forced-pricing shape from PR #8307/#8319.
 const OPENAI_EMBEDDING_PRICING_SOURCE_URL = "https://openai.com/api/pricing";
 
-// Platform-set rate for infrastructure this repo operates itself (no upstream
-// invoice); mirrors the internal:// scheme of the Vast snapshot rows.
-
 const FORCED_BITROUTER_PRICING: ReadonlyArray<{
   model: string;
   provider: string;
