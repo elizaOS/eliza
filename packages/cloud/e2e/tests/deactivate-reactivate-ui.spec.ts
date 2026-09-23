@@ -85,6 +85,24 @@ test.describe("deactivate / reactivate via dashboard UI", () => {
       timeout: 30_000,
     });
 
+    for (const control of [
+      page.getByRole("heading", { name: "e2e-deactivate-ui-detail" }),
+      page.getByRole("button", { name: "Open Web UI", exact: true }),
+    ]) {
+      const bounds = await control.boundingBox();
+      const viewportWidth = await page.evaluate(() => window.innerWidth);
+      expect(
+        bounds,
+        "agent heading and handoff control are laid out",
+      ).not.toBeNull();
+      if (!bounds) throw new Error("Agent detail control has no layout bounds");
+      expect(bounds.x).toBeGreaterThanOrEqual(0);
+      expect(
+        bounds.x + bounds.width,
+        "agent details fit the viewport",
+      ).toBeLessThanOrEqual(viewportWidth);
+    }
+
     await page.screenshot({
       path: test.info().outputPath("agent-management-rest.png"),
       fullPage: true,

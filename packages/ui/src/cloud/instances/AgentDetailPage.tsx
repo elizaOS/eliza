@@ -117,8 +117,8 @@ export default function AgentDetailPage() {
       }));
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="w-full min-w-0 max-w-5xl mx-auto space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           to="/cloud/agents"
           className="group flex min-h-touch items-center gap-2 text-sm text-muted-strong hover:text-txt-strong transition-colors"
@@ -143,9 +143,9 @@ export default function AgentDetailPage() {
           <div className="flex items-center justify-center size-12 border border-accent/25 bg-accent-subtle shrink-0">
             <Cloud className="size-6 text-accent" />
           </div>
-          <div className="min-w-0 space-y-1.5">
+          <div className="min-w-0 flex-1 space-y-1.5">
             <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-2xl font-semibold text-txt-strong truncate font-mono">
+              <h1 className="max-w-full text-2xl font-semibold text-txt-strong [overflow-wrap:anywhere] font-mono">
                 {agentName}
               </h1>
               {!isShared ? <Badge variant="outline">{agentType}</Badge> : null}
