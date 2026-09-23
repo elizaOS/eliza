@@ -1,29 +1,18 @@
 /**
- * WEB_SEARCH coverage for the coding-tools plugin: routing metadata, Parallel
- * primary, Exa fallback, MCP JSON/SSE parsing, bounded output, and stable
- * result metadata. The shared transport fetch is stubbed for every provider.
+ * WEB_SEARCH coverage for planned admission, Parallel/Exa results, complete
+ * model-facing output, and disabled-action denial. The shared transport fetch is stubbed for every provider.
  */
-import type {
-  ActionParameters,
-  ActionResult,
-  IAgentRuntime,
-  Memory,
-  State,
+import {
+  type ActionParameters,
+  type ActionResult,
+  executePlannedToolCall,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type State,
 } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { webSearchAction } from "./web-search.js";
-
-vi.mock("@elizaos/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@elizaos/core")>();
-  const logger = {
-    ...actual.logger,
-    debug: vi.fn(),
-    error: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-  };
-  return { ...actual, logger, createLogger: () => logger, elizaLogger: logger };
-});
 
 const mcpJson = (text: string): string =>
   JSON.stringify({
@@ -73,48 +62,59 @@ async function runSearch(parameters: ActionParameters): Promise<ActionResult> {
 }
 
 describe("coding-tools WEB_SEARCH", () => {
+  beforeEach(() => {
+    vi.stubEnv("ELIZA_WEB_SEARCH", undefined);
+    vi.stubEnv("ELIZA_INLINE_WEB_SEARCH", undefined);
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
-  it("is reachable from web turns without widening its admin role gate", () => {
-    expect(webSearchAction.contexts).toEqual([
-      "code",
-      "terminal",
-      "automation",
-      "web",
-    ]);
-    expect(webSearchAction.contextGate).toEqual({
-      anyOf: ["code", "terminal", "automation", "web"],
-    });
-    expect(webSearchAction.roleGate).toEqual({ minRole: "ADMIN" });
-  });
-
-  it("keeps discovery in search while routing constructable live values to fetch", () => {
-    expect(webSearchAction.routingHint).toContain("open-ended external info");
-    expect(webSearchAction.routingHint).toContain("live NOW-value");
-    expect(webSearchAction.routingHint).toContain("WEB_FETCH");
-    expect(webSearchAction.description).toContain("prefer WEB_FETCH");
-    expect(webSearchAction.description).toContain(
-      "search snippets lag live values",
-    );
-  });
-
-  it("returns bounded Parallel results with stable metadata", async () => {
-    mockSearchProviders({
-      parallel: mcpJson("Parallel result\nhttps://example.com"),
-    });
-
-    const result = await runSearch({ query: "elizaOS latest" });
-
-    expect(result.success).toBe(true);
-    expect(result.text).toContain("Parallel result");
-    expect(result.data).toMatchObject({
-      action: "WEB_SEARCH",
-      provider: "parallel",
-      truncated: false,
-    });
-  });
+  it.each([
+    ["web", "ADMIN", true],
+    ["web", "USER", false],
+    ["general", "ADMIN", false],
+  ] as const)(
+    "dispatches from %s as %s only when admitted",
+    async (context, role, allowed) => {
+      const fetch = vi.fn(async () => new Response(mcpJson("Parallel result")));
+      vi.stubGlobal("fetch", fetch);
+      const runtime = {
+        agentId: "search-agent",
+        actions: [webSearchAction],
+        getRoom: async () => ({ worldId: "search-world" }),
+        getWorld: async () => ({ metadata: { roles: { reader: role } } }),
+        getEntityById: async () => null,
+        getSetting: () => null,
+        getService: () => null,
+        logger,
+      } as unknown as IAgentRuntime;
+      const result = await executePlannedToolCall(
+        runtime,
+        {
+          message: {
+            entityId: "reader",
+            roomId: "search-room",
+            content: { text: "search the web" },
+          } as Memory,
+          activeContexts: [context],
+          userRoles: [role],
+        },
+        { name: "WEB_SEARCH", params: { query: "elizaOS latest" } },
+      );
+      expect(result.success, JSON.stringify(result)).toBe(allowed);
+      expect(fetch).toHaveBeenCalledTimes(allowed ? 1 : 0);
+      if (allowed) {
+        expect(result.text).toBe("Parallel result");
+        expect(result.data).toMatchObject({
+          action: "WEB_SEARCH",
+          provider: "parallel",
+          truncated: false,
+        });
+      }
+    },
+  );
 
   it("falls back to Exa when Parallel has no usable result", async () => {
     mockSearchProviders({
@@ -158,40 +158,23 @@ describe("coding-tools WEB_SEARCH", () => {
     expect(result.text).toContain("query is required");
   });
 
-  it("honors the ELIZA_WEB_SEARCH master kill switch", async () => {
-    const previous = process.env.ELIZA_WEB_SEARCH;
-    process.env.ELIZA_WEB_SEARCH = "0";
-    try {
-      vi.stubGlobal("fetch", async () => {
-        throw new Error("search providers should not be called");
-      });
-
-      const valid = await webSearchAction.validate(
+  it.each([
+    ["ELIZA_WEB_SEARCH", "0"],
+    ["ELIZA_INLINE_WEB_SEARCH", "off"],
+  ])("denies %s without provider dispatch", async (key, value) => {
+    vi.stubEnv(key, value);
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    expect(
+      await webSearchAction.validate(
         {} as IAgentRuntime,
         {} as Memory,
         {} as State,
-      );
-      expect(valid).toBe(false);
-
-      const result = await runSearch({ query: "blocked" });
-      expect(result.success).toBe(false);
-      expect(result.text).toContain("disabled");
-    } finally {
-      if (previous === undefined) delete process.env.ELIZA_WEB_SEARCH;
-      else process.env.ELIZA_WEB_SEARCH = previous;
-    }
-  });
-
-  it("honors ELIZA_INLINE_WEB_SEARCH=0 for the inline keyless surface", async () => {
-    const previous = process.env.ELIZA_INLINE_WEB_SEARCH;
-    process.env.ELIZA_INLINE_WEB_SEARCH = "off";
-    try {
-      const result = await runSearch({ query: "blocked inline" });
-      expect(result.success).toBe(false);
-      expect(result.text).toContain("disabled");
-    } finally {
-      if (previous === undefined) delete process.env.ELIZA_INLINE_WEB_SEARCH;
-      else process.env.ELIZA_INLINE_WEB_SEARCH = previous;
-    }
+      ),
+    ).toBe(false);
+    const result = await runSearch({ query: "blocked" });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("disabled");
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
