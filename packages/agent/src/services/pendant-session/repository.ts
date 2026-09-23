@@ -1,10 +1,9 @@
 /**
- * Repository for pendant session snapshots over normalized runtime tables.
+ * Selects durable pendant session persistence for the runtime's database backend.
  *
- * The API boundary needs a whole-session snapshot for sync/export, but writes
- * land in session, segment, and insight-ref rows. This keeps lease ownership,
- * contiguous segment order, and revisions visible to the database while the
- * route layer enforces the domain state machine.
+ * PostgreSQL uses normalized session, segment and insight rows; SQLite uses
+ * the same agent database's record store. Revisions fence concurrent writes
+ * while the route layer owns capture leases and the domain state machine.
  */
 
 import { type DurableRecordStore, ElizaError } from "@elizaos/core";
