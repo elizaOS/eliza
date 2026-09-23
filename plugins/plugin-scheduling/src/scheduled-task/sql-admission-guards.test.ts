@@ -183,6 +183,7 @@ describe("SQL admission snapshot guards", () => {
       expect(
         await h.first.upsertIfStatus(stale, {
           expectedStatus: stale.state.status,
+          nextFireAtIso: null,
           ...observed(stale),
         }),
       ).toBe(false);
@@ -233,13 +234,17 @@ describe("SQL admission snapshot guards", () => {
             admission: { day: "2026-09-23", signalId: "next-day" },
           },
         },
-        { expectedStatus: "fired", ...observed(newer) },
+        { expectedStatus: "fired", nextFireAtIso: null, ...observed(newer) },
       ),
     ).toBe(true);
     expect(
       await h.first.upsertIfStatus(
         { ...claim.task, state: { ...claim.task.state, status: "completed" } },
-        { expectedStatus: "fired", ...observed(claim.task) },
+        {
+          expectedStatus: "fired",
+          nextFireAtIso: null,
+          ...observed(claim.task),
+        },
       ),
     ).toBe(false);
     expect((await read(h.first)).metadata?.admission).toEqual({
@@ -255,6 +260,7 @@ describe("SQL admission snapshot guards", () => {
     expect(
       await h.first.upsertIfStatus(stale, {
         expectedStatus: "scheduled",
+        nextFireAtIso: null,
         ...observed(stale),
       }),
     ).toBe(false);
