@@ -427,6 +427,149 @@ describe("attested inference TLS admission", () => {
       socket.destroy();
     }
   });
+  it("carries end-to-end TLS over a snapshotted Unix forwarder without changing logical origin", async () => {
+    let connections = 0;
+    const wire: Buffer[] = [];
+    const serverNames: string[] = [];
+    server.on("secureConnection", (socket) => {
+      if ("servername" in socket && typeof socket.servername === "string")
+        serverNames.push(socket.servername);
+    });
+    intermediary = createTcpServer((outer) => {
+      connections++;
+      const inner = connectTcp({ host: "127.0.0.1", port });
+      outer.on("data", (chunk) => wire.push(Buffer.from(chunk)));
+      outer.pipe(inner).pipe(outer);
+      outer.on("error", () => inner.destroy());
+      inner.on("error", () => outer.destroy());
+      outer.on("close", () => inner.destroy());
+    });
+    const path = join(dir, "forwarder.sock");
+    const relay = intermediary;
+    await new Promise<void>((resolve) => relay.listen(path, resolve));
+    const settings: AttestedInferenceClientConfig = {
+      origin: "https://localhost:65534",
+      unixSocketPath: path,
+      ca: cert,
+      policy,
+      verifier: config,
+      beforeDispatch: async (context) => audit(context),
+    };
+    const fetcher = createAttestedInferenceFetch(settings);
+    settings.unixSocketPath = join(dir, "substituted.sock");
+    const init = {
+      method: "POST",
+      headers: { authorization: "Bearer private-secret" },
+      body: "complete private prompt",
+      unixSocketPath: join(dir, "request-controlled.sock"),
+    };
+    expect(
+      await (
+        await fetcher("https://localhost:65534/v1/chat/completions", init)
+      ).text(),
+    ).toBe("complete response");
+    expect(connections).toBe(1);
+    expect(serverNames).toEqual(["localhost"]);
+    expect(quotes).toHaveLength(1);
+    expect(received).toEqual([
+      "Bearer private-secret",
+      "complete private prompt",
+    ]);
+    expect(Buffer.concat(wire).includes(Buffer.from("private-secret"))).toBe(
+      false,
+    );
+    expect(Buffer.concat(wire).includes(Buffer.from("private prompt"))).toBe(
+      false,
+    );
+  });
+  it("validates the approved DNS identity even when the Unix relay connects a trusted wrong peer", async () => {
+    let connections = 0;
+    intermediary = createTcpServer((outer) => {
+      connections++;
+      const inner = connectTcp({ host: "127.0.0.1", port });
+      outer.pipe(inner).pipe(outer);
+      outer.on("error", () => inner.destroy());
+      inner.on("error", () => outer.destroy());
+      outer.on("close", () => inner.destroy());
+    });
+    const path = join(dir, "wrong-peer.sock");
+    const relay = intermediary;
+    await new Promise<void>((resolve) => relay.listen(path, resolve));
+    const fetcher = createAttestedInferenceFetch({
+      origin: "https://wrong-peer.invalid",
+      unixSocketPath: path,
+      ca: cert,
+      policy,
+      verifier: config,
+      beforeDispatch: async () => {
+        throw new Error("audit must not run");
+      },
+    });
+    await expect(
+      fetcher("https://wrong-peer.invalid/v1/chat/completions", {
+        method: "POST",
+        body: "private prompt",
+      }),
+    ).rejects.toMatchObject({ context: { dispatchState: "not-sent" } });
+    expect(connections).toBe(1);
+    expect(quotes).toEqual([]);
+    expect(received).toEqual([]);
+  });
+  it("rejects a different request origin before dialing the approved Unix relay", async () => {
+    let connections = 0;
+    intermediary = createTcpServer((socket) => {
+      connections++;
+      socket.destroy();
+    });
+    const path = join(dir, "origin-guard.sock");
+    const relay = intermediary;
+    await new Promise<void>((resolve) => relay.listen(path, resolve));
+    const fetcher = createAttestedInferenceFetch({
+      origin: "https://localhost",
+      unixSocketPath: path,
+      ca: cert,
+      policy,
+      verifier: config,
+      beforeDispatch: async () => undefined,
+    });
+    await expect(
+      fetcher("https://different.invalid/v1/chat/completions", {
+        method: "POST",
+        body: "private prompt",
+      }),
+    ).rejects.toThrow();
+    expect(connections).toBe(0);
+    expect(quotes).toEqual([]);
+    expect(received).toEqual([]);
+  });
+  it("never falls back to reachable TCP when the configured Unix socket is unavailable", async () => {
+    const fetcher = createAttestedInferenceFetch({
+      origin: `https://localhost:${port}`,
+      unixSocketPath: join(dir, "unavailable.sock"),
+      ca: cert,
+      policy,
+      verifier: config,
+      beforeDispatch: async () => undefined,
+    });
+    await expect(invoke(fetcher)).rejects.toThrow();
+    expect(quotes).toEqual([]);
+    expect(received).toEqual([]);
+  });
+  it.each(["relative.sock", "/tmp/invalid\0socket"])(
+    "rejects invalid constructor dial target %s",
+    (path) => {
+      expect(() =>
+        createAttestedInferenceFetch({
+          origin: "https://localhost",
+          unixSocketPath: path,
+          ca: cert,
+          policy,
+          verifier: config,
+          beforeDispatch: async () => undefined,
+        }),
+      ).toThrow();
+    },
+  );
   it("rejects changed report data before application dispatch", async () => {
     corrupt = true;
     await expect(invoke()).rejects.toMatchObject({

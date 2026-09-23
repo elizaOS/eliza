@@ -589,3 +589,14 @@ hardware run with current collateral and approved measurements.
 A local timeout or disconnect closes the session and cancels any late response
 stream. It cannot undo a remote handler effect already accepted before abort;
 reconciliation or explicit application idempotency is required before redispatch.
+
+The client optionally accepts a constructor-owned absolute `unixSocketPath`
+for a measured byte-forwarding sidecar. This changes only the physical dial
+path: the approved HTTPS URL, TLS SNI, certificate chain/name checks, peer SPKI
+and same-session exporter remain unchanged. The path is snapshotted and must
+name a real Unix socket; requests cannot select a different path and failures
+never fall back to TCP. A network-disabled agent can use this path without
+performing destination DNS resolution. The sidecar must itself restrict its
+outbound destination in measured configuration. Local forwarding tests do not
+prove Linux namespace/DNS isolation or constrain verifier collateral egress;
+those require separate deployment controls and packet-level acceptance evidence.

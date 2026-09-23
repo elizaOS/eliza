@@ -5,6 +5,8 @@
  * This version has no connection pooling, redirects, retries or plaintext fallback.
  */
 import { createHash, randomBytes } from "node:crypto";
+import { lstat } from "node:fs/promises";
+import { connect as connectNet } from "node:net";
 import { isAbsolute } from "node:path";
 import { connect, createServer, type Server, type TLSSocket } from "node:tls";
 import { ElizaError, logger } from "@elizaos/core";
@@ -218,6 +220,8 @@ function frameLimit(payloadLimit: number): number {
 }
 export interface AttestedInferenceClientConfig {
   origin: string;
+  /** Fixed private byte-forwarder; logical TLS identity remains the approved origin. */
+  unixSocketPath?: string;
   ca?: string;
   policy: AttestedInferencePolicy;
   verifier: DstackVerifierConfig;
@@ -238,6 +242,14 @@ export function createAttestedInferenceFetch(
   config: AttestedInferenceClientConfig,
 ): (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> {
   const origin = new URL(config.origin);
+  const unixSocketPath =
+    config.unixSocketPath === undefined
+      ? undefined
+      : z
+          .string()
+          .refine(isAbsolute)
+          .refine((value) => !value.includes("\0"))
+          .parse(config.unixSocketPath);
   const verifier = dstackVerifierConfiguration.parse(config.verifier);
   const beforeDispatch = config.beforeDispatch;
   const ca = config.ca;
@@ -284,16 +296,42 @@ export function createAttestedInferenceFetch(
     if (Buffer.byteLength(JSON.stringify(payload)) > maximum)
       throw fail("Complete inference request exceeds transport limit");
     signal.throwIfAborted();
-    const socket = connect({
-      host: origin.hostname,
-      port: Number(origin.port || 443),
-      servername: origin.hostname,
-      ca,
-      rejectUnauthorized: true,
-      minVersion: "TLSv1.3",
-      maxVersion: "TLSv1.3",
-      ALPNProtocols: [ALPN],
-    });
+    if (unixSocketPath) {
+      try {
+        if (!(await lstat(unixSocketPath)).isSocket()) {
+          throw fail("Inference dial target must be a private Unix socket");
+        }
+      } catch (error) {
+        // error-policy:J2 An unavailable private dial target never enables TCP fallback.
+        throw fail("Private inference Unix socket is unavailable", error);
+      }
+    }
+    signal.throwIfAborted();
+    const rawSocket = unixSocketPath
+      ? connectNet({ path: unixSocketPath })
+      : undefined;
+    let socket: TLSSocket;
+    try {
+      socket = connect({
+        ...(rawSocket
+          ? { socket: rawSocket }
+          : { host: origin.hostname, port: Number(origin.port || 443) }),
+        servername: origin.hostname,
+        ca,
+        rejectUnauthorized: true,
+        minVersion: "TLSv1.3",
+        maxVersion: "TLSv1.3",
+        ALPNProtocols: [ALPN],
+      });
+    } catch (error) {
+      // error-policy:J2 Invalid TLS configuration tears down its private dial socket.
+      rawSocket?.destroy();
+      throw fail("Attested TLS connection initialization failed", error);
+    }
+    if (rawSocket) {
+      rawSocket.on("error", (error) => socket.destroy(error));
+      socket.once("close", () => rawSocket.destroy());
+    }
     const channel = new Channel(socket, signal, Math.max(maximum, MAX_PROOF));
     let dispatchState: DispatchState = "not-sent";
     try {
