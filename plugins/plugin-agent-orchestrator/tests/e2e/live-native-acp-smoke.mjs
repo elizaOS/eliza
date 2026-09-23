@@ -16,6 +16,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { runOwnedChild } from "../../scripts/live-pi-linked-account.mjs";
 
 const RUN_FLAG = "RUN_LIVE_NATIVE_ACP";
 const DIFF_GATE_EVIDENCE =
@@ -67,7 +69,6 @@ async function main() {
   if (DIFF_GATE_EVIDENCE) initializeEvidenceRepository(workdir);
   const codexHome =
     agent === "codex" ? createSmokeCodexHome(workdir) : undefined;
-  const agentPidsBefore = snapshotAgentPids(agent);
   const runtime = makeRuntime(agent);
   const service = new AcpService(runtime);
   const events = [];
@@ -180,8 +181,6 @@ async function main() {
         workdir,
       });
     }
-
-    console.log("\nNATIVE ACP SMOKE PASSED");
   } catch (err) {
     if (isSkippableFailure(err)) {
       throw new SkippedSmoke(summarizeFailure(err));
@@ -189,25 +188,25 @@ async function main() {
     throw err;
   } finally {
     console.log("native ACP service smoke: cleanup starting");
-    if (sessionId) {
+    try {
       await withTimeout(
         (async () => {
-          await service.closeSession(sessionId).catch(() => undefined);
-          await service.stop().catch(() => undefined);
+          try {
+            if (sessionId) await service.closeSession(sessionId);
+          } finally {
+            await service.stop();
+          }
         })(),
         CLEANUP_TIMEOUT_MS,
-      ).catch(() => undefined);
-      killNewAgentPids(agent, agentPidsBefore, "SIGTERM");
-      await wait(500);
-      killNewAgentPids(agent, agentPidsBefore, "SIGKILL");
-    } else {
-      console.warn(
-        "native ACP service smoke: skipping process cleanup before session id",
       );
+    } finally {
+      clearInterval(keepAlive);
+      try {
+        rmSync(workdir, { recursive: true, force: true });
+      } finally {
+        if (codexHome) rmSync(codexHome, { recursive: true, force: true });
+      }
     }
-    clearInterval(keepAlive);
-    rmSync(workdir, { recursive: true, force: true });
-    if (codexHome) rmSync(codexHome, { recursive: true, force: true });
     console.log("native ACP service smoke: cleanup complete");
   }
 }
@@ -430,50 +429,6 @@ function cap(text, max = 2000) {
   return text.length > max ? text.slice(text.length - max) : text;
 }
 
-function snapshotAgentPids(agent) {
-  const pattern = agentProcessPattern(agent);
-  if (!pattern || process.platform === "win32") return new Set();
-  try {
-    const output = execFileSync("ps", ["-axo", "pid=,command="], {
-      encoding: "utf8",
-    });
-    const pids = output
-      .split("\n")
-      .map((line) => line.trim())
-      .map((line) => {
-        const match = line.match(/^(\d+)\s+(.+)$/);
-        if (!match) return undefined;
-        const pid = Number(match[1]);
-        const command = match[2] ?? "";
-        return pattern.test(command) ? pid : undefined;
-      })
-      .filter((pid) => pid && pid !== process.pid);
-    return new Set(pids);
-  } catch {
-    return new Set();
-  }
-}
-
-function killNewAgentPids(agent, before, signal) {
-  const current = snapshotAgentPids(agent);
-  for (const pid of current) {
-    if (pid === process.pid || pid === process.ppid) continue;
-    if (before.has(pid)) continue;
-    try {
-      process.kill(pid, signal);
-    } catch {
-      // Best-effort teardown for a gated live smoke.
-    }
-  }
-}
-
-function agentProcessPattern(agent) {
-  if (agent === "codex") return /codex-acp/i;
-  if (agent === "claude") return /claude-agent-acp/i;
-  if (agent === "opencode") return /opencode.*\bacp\b/i;
-  return undefined;
-}
-
 function withTimeout(promise, timeoutMs) {
   let timer;
   const timeout = new Promise((_, reject) => {
@@ -487,21 +442,46 @@ function withTimeout(promise, timeoutMs) {
   });
 }
 
-function wait(timeoutMs) {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, timeoutMs);
-    timer.unref?.();
-  });
+async function run() {
+  // Windows retains native service teardown; detached POSIX groups supply
+  // additional descendant ownership on hosts where that primitive is available.
+  if (
+    process.platform === "win32" ||
+    process.argv.includes("--owned-child") ||
+    process.env[RUN_FLAG] !== "1"
+  ) {
+    await main();
+    return;
+  }
+  const deadline =
+    3 * Number(process.env.LIVE_NATIVE_ACP_TIMEOUT_MS ?? 120_000) +
+    CLEANUP_TIMEOUT_MS;
+  if (
+    !Number.isSafeInteger(deadline) ||
+    deadline < 1 ||
+    deadline > 2_147_483_647
+  )
+    throw new Error("native ACP deadline must fit a positive Node timer");
+  const result = await runOwnedChild(
+    process.execPath,
+    [fileURLToPath(import.meta.url), "--owned-child"],
+    { env: process.env, stdio: "inherit" },
+    deadline,
+  );
+  if (result.code === 77) throw new SkippedSmoke("native child unavailable");
+  if (result.code !== 0) throw new Error("native ACP child failed");
 }
 
-main()
+run()
   .then(() => {
+    if (!process.argv.includes("--owned-child"))
+      console.log("\nNATIVE ACP SMOKE PASSED");
     process.exit(0);
   })
   .catch((err) => {
     if (err instanceof SkippedSmoke) {
       console.log(`NATIVE ACP SMOKE SKIPPED: ${err.message}`);
-      process.exit(0);
+      process.exit(process.argv.includes("--owned-child") ? 77 : 0);
     }
     console.error(err?.stack ?? err);
     process.exit(1);
