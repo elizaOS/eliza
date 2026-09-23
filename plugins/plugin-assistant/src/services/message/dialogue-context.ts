@@ -341,7 +341,8 @@ export function currentMessageContentForContext(
       : content;
   if (
     content.source !== "client_chat" ||
-    content.channelType !== ChannelType.DM
+    (content.channelType !== ChannelType.DM &&
+      content.channelType !== ChannelType.VOICE_DM)
   ) {
     return projected;
   }

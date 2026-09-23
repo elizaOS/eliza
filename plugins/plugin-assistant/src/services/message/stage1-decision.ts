@@ -14,7 +14,6 @@ import {
   buildModelInputBudget,
   buildResponseGrammar,
   buildSpanSamplerPlan,
-  ChannelType,
   computePrefixHashes,
   createHandleResponseTool,
   ElizaError,
@@ -172,11 +171,8 @@ export async function generateStage1Decision(
   },
   registerStageTask: (task: Promise<void>) => void,
 ) {
-  const voiceDirectMessageChannel =
-    args.message.content?.channelType === ChannelType.VOICE_DM;
   const contextReadProgressEnabled = Boolean(
     directMessageChannel &&
-      !voiceDirectMessageChannel &&
       !args.codingMode &&
       !args.stage1DecisionOnly &&
       args.onPlanningAcknowledgment,
@@ -202,8 +198,7 @@ export async function generateStage1Decision(
   const canonicalResponseHandlerSchema =
     args.runtime.responseHandlerFieldRegistry.composeSchema();
   const loadedContext = new Set<string>();
-  const discoveryEnabled =
-    directMessageChannel && !voiceDirectMessageChannel && !args.codingMode;
+  const discoveryEnabled = directMessageChannel && !args.codingMode;
   const responseHandlerSchema = discoveryEnabled
     ? withDirectTextBuiltinSchemaDescriptions(
         canonicalResponseHandlerSchema,
@@ -277,7 +272,6 @@ export async function generateStage1Decision(
     availableContexts,
     {
       directMessage: directMessageChannel,
-      voiceDirectMessage: voiceDirectMessageChannel,
       responseHandlerFields: responseHandlerFieldPrompt.rendered,
       contextCatalog,
       history,
@@ -432,19 +426,14 @@ export async function generateStage1Decision(
       discoveryEnabled && discovery.available.size > 0
         ? createContextReadTool(referenceSchema, contextReadProgressEnabled)
         : undefined;
-    const parameters = voiceDirectMessageChannel
-      ? referenceSchema
-      : withRequiredCompletionSourceIdentity(
-          history
-            ? withReviewedHistorySelection(referenceSchema)
-            : referenceSchema,
-          discovery.context,
-          repairHistoryIdentity,
-        );
+    const parameters = withRequiredCompletionSourceIdentity(
+      history ? withReviewedHistorySelection(referenceSchema) : referenceSchema,
+      discovery.context,
+      repairHistoryIdentity,
+    );
     // Only the registered native text-history contract supports request binding.
     sourceSelectionBinding =
       (history || sourceReplySnapshot) &&
-      !voiceDirectMessageChannel &&
       !repairHistoryIdentity &&
       selectedResponseHandlerFields.includes(completionContextFieldEvaluator) &&
       selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
@@ -666,8 +655,7 @@ export async function generateStage1Decision(
   // repeated terminal decision still passes through ordinary routing.
   let terminalDecisionReviewed = false;
   const terminalReaskEnabled = readStage1TerminalReaskSetting(args.runtime);
-  // Voice keeps its complete path: its spoken answer need not sit in replyText.
-  if (!args.codingMode && !voiceDirectMessageChannel) {
+  if (!args.codingMode) {
     const parsedForRepair = extractMessageHandlerRawParsed(rawMessageHandler);
     const sourceReplyOwnsResponse =
       parsedForRepair?.shouldRespond === "RESPOND" &&
@@ -983,7 +971,6 @@ export async function generateStage1Decision(
         availableContexts,
         {
           directMessage: directMessageChannel,
-          voiceDirectMessage: voiceDirectMessageChannel,
           responseHandlerFields: responseHandlerFieldPrompt.rendered,
           contextCatalog,
           history,

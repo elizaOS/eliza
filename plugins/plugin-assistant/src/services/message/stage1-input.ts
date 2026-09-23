@@ -91,14 +91,6 @@ export function createContextCatalogReference(
     : undefined;
 }
 
-export const VOICE_ENGAGEMENT_RULES = [
-  "- shouldRespond=RESPOND for a completed caller question, request, substantive statement, or conversational continuation.",
-  "- This is a one-to-one conversation: respond naturally to acknowledgements, reactions, and brief follow-ups, including disagreement or requests to clarify your previous reply.",
-  "- shouldRespond=IGNORE only for non-speech/noise or ambient speech clearly not addressed to the agent.",
-  "- shouldRespond=STOP only when the caller explicitly asks the agent to disengage or end the conversation.",
-  "- Do not use IGNORE merely because the answer is brief, uncertain, or requires a tool.",
-].join("\n");
-
 export function formatRoleGateForPrompt(
   roleGate: ContextDefinition["roleGate"],
 ): string | undefined {
@@ -143,7 +135,6 @@ export function renderMessageHandlerInstructions(
   availableContexts: readonly ContextDefinition[],
   options?: {
     directMessage?: boolean;
-    voiceDirectMessage?: boolean;
     responseHandlerFields?: string;
     contextCatalog?: ContextCatalogReference;
   },
@@ -164,13 +155,8 @@ export function renderMessageHandlerInstructions(
     },
     template: baseline,
   }).trim();
-  const renderedWithVoiceRules = options?.voiceDirectMessage
-    ? [rendered, "", "voice engagement rules:", VOICE_ENGAGEMENT_RULES].join(
-        "\n",
-      )
-    : rendered;
   const renderedWithSharedRules = [
-    renderedWithVoiceRules,
+    rendered,
     "",
     "## Shared Response Quality Rules",
     `- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
@@ -193,7 +179,6 @@ export function renderMessageHandlerModelInput(
   availableContexts: readonly ContextDefinition[] = [],
   options?: {
     directMessage?: boolean;
-    voiceDirectMessage?: boolean;
     groupTriage?: boolean;
     responseHandlerFields?: string;
     contextCatalog?: ContextCatalogReference;
@@ -205,18 +190,13 @@ export function renderMessageHandlerModelInput(
   promptSegments: PromptSegment[];
 } {
   const rendered = renderContextObject(context);
-  const completionSources = options?.voiceDirectMessage
-    ? undefined
-    : completionContextSources(context);
+  const completionSources = completionContextSources(context);
   const completionSourceIds = new Map(
     completionSources?.sources.map(({ id, event }) => [event.id, id]),
   );
-  const directText =
-    options?.directMessage &&
-    !options.voiceDirectMessage &&
-    !options.groupTriage;
+  const directMessageInput = options?.directMessage && !options.groupTriage;
   const history =
-    directText &&
+    directMessageInput &&
     options.history?.sourceSetId === completionSources?.sourceSetId
       ? options.history
       : undefined;
@@ -264,7 +244,7 @@ export function renderMessageHandlerModelInput(
   // Availability validation can change this complete, freshly authorized catalog
   // on every request. Keep it after the history prefix so an action appearing or
   // disappearing does not invalidate cached history. Never cache authorization.
-  const actionCatalogSegments = directText
+  const actionCatalogSegments = directMessageInput
     ? remainingDynamicSegments.filter(
         (segment) =>
           segment.id === "available-actions" &&
@@ -281,7 +261,7 @@ export function renderMessageHandlerModelInput(
   // it with structural-looking text. Providers remain adjacent after that
   // boundary, preserving their reusable prefix before the current message.
   const orderedDynamicSegments = [
-    ...(directText
+    ...(directMessageInput
       ? shortenHistoryRoleLabels(priorDialogueSegments, completionSourceIds)
       : priorDialogueSegments),
     ...actionCatalogSegments,
@@ -306,7 +286,8 @@ export function renderMessageHandlerModelInput(
       : []),
     ...loadedHistorySegments(
       context,
-      history ?? (directText ? options?.historyReadEvidence : undefined),
+      history ??
+        (directMessageInput ? options?.historyReadEvidence : undefined),
       history?.loadedSourceIds.size
         ? new Set(
             priorDialogueSegments.flatMap((segment) =>

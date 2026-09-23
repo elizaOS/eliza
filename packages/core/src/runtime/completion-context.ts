@@ -82,7 +82,7 @@ export const COMPLETION_CONTEXT_SCHEMA: JSONSchema = {
 /** A labeled history always supplies its source-set identity. Keep the schema
  * static across such turns, but do not offer an empty-ID escape hatch that
  * silently forces both later stages back to full history. Empty-history and
- * voice callers retain the general schema. An explicit identity-repair call
+ * custom callers retain the general schema. An explicit identity-repair call
  * alone binds the schema to the required value; ordinary turns keep cacheable
  * schemas. This never substitutes a model ID or relaxes source validation. */
 export function withRequiredCompletionSourceIdentity(

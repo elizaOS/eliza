@@ -57,6 +57,71 @@ async function streamTerminalActionResults(actionResults: Record<string, unknown
 }
 
 describe("eliza sse bridge", () => {
+  test("speaks a transient status acknowledgement once before the separate final reply", async () => {
+    const events: string[] = [];
+    const result = await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "read my note",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-progress",
+        signal: new AbortController().signal,
+        onProgress: (text) => {
+          events.push(`progress:${text}`);
+        },
+        fetchImpl: (async () =>
+          sseResponse([
+            'data: {"type":"status","kind":"thinking","label":"Checking your note."}\n\n',
+            'data: {"type":"status","kind":"tool_running","label":"Checking your note."}\n\n',
+            'data: {"type":"status","kind":"thinking","label":"Checking your note."}\n\n',
+            'data: {"type":"token","text":"It is done!","provisional":true}\n\n',
+            'data: {"type":"token","fullText":"Your note says hello."}\n\n',
+            'data: {"type":"status","kind":"thinking","label":"Late progress must not speak."}\n\n',
+            'data: {"type":"done","text":"Your note says hello."}\n\n',
+          ])) as typeof fetch,
+      },
+      (text) => {
+        events.push(`final:${text}`);
+      },
+    );
+    expect(result.completed).toBe(true);
+    expect(events).toEqual(["progress:Checking your note.", "final:Your note says hello."]);
+  });
+
+  test("cancellation from a progress observer prevents buffered speech", async () => {
+    const abort = new AbortController();
+    const deltas: string[] = [];
+    const result = await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "read my note",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-progress-abort",
+        signal: abort.signal,
+        onProgress: () => {
+          abort.abort();
+        },
+        fetchImpl: (async () =>
+          sseResponse([
+            'data: {"type":"status","kind":"thinking","label":"Checking your note."}\n\n',
+            'data: {"type":"token","text":"Must not speak after Stop."}\n\n',
+            'data: {"type":"done","text":"Must not speak after Stop."}\n\n',
+          ])) as typeof fetch,
+      },
+      (text) => {
+        deltas.push(text);
+      },
+    );
+    expect(result.aborted).toBe(true);
+    expect(deltas).toEqual([]);
+  });
+
   test("decodes delta.content tokens and completes on [DONE]", async () => {
     const deltas: string[] = [];
     const fetchImpl = (async () =>

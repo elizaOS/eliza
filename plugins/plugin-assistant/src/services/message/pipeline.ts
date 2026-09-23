@@ -269,11 +269,7 @@ export async function runV5MessageRuntimeStage1(
     createV5MessageContextObject({
       ...args,
       includeActionDiscovery:
-        directMessageChannel &&
-        args.message.content?.channelType !== ChannelType.VOICE_DM &&
-        !args.codingMode
-          ? "index"
-          : true,
+        directMessageChannel && !args.codingMode ? "index" : true,
       userRoles: [senderRole],
       availableContexts,
       ambientTurn,
@@ -1231,9 +1227,7 @@ export async function runV5MessageRuntimeStage1(
         normalizeActionIdentifier(DISCOVER_TOOLS_NAME),
     );
     const discoverWithoutActionHints =
-      directMessageChannel &&
-      args.message.content?.channelType !== ChannelType.VOICE_DM &&
-      stageOneCandidates.length === 0;
+      directMessageChannel && stageOneCandidates.length === 0;
     const canUseProgressiveActions =
       args.codingMode !== true &&
       !deterministicPlanSelection &&
@@ -1524,7 +1518,6 @@ export async function runV5MessageRuntimeStage1(
         if (
           modelType === ModelType.ACTION_PLANNER &&
           directMessageChannel &&
-          args.message.content?.channelType !== ChannelType.VOICE_DM &&
           args.codingMode !== true
         ) {
           // The provider owns capability checks. Unsupported lanes retain the
