@@ -17,10 +17,7 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  DocumentService,
-  documentsPlugin,
-} from "../../../../plugins/plugin-assistant/src/features/documents/index.ts";
+import { DocumentService } from "../../../../plugins/plugin-assistant/src/features/documents/index.ts";
 import codingToolsPlugin from "../../../../plugins/plugin-coding-tools/src/index.ts";
 import { GoogleGmailAdapter } from "../../../../plugins/plugin-google-workspace/src/lifeops-message-adapter.ts";
 
@@ -297,12 +294,6 @@ async function setupSources(ctx: ScenarioContext): Promise<string | undefined> {
   sandbox.addRoot(ctx.primaryRoomId, fixtureRoot);
   session.setCwd(ctx.primaryRoomId, fixtureRoot);
 
-  if (
-    !runtime.plugins?.some((plugin) => plugin.name === documentsPlugin.name)
-  ) {
-    await runtime.registerPlugin(documentsPlugin);
-  }
-  await runtime.getServiceLoadPromise?.(DocumentService.serviceType);
   const documentService = runtime.getService<DocumentService>(
     DocumentService.serviceType,
   );
