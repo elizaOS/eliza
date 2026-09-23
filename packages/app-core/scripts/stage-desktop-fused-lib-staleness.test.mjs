@@ -199,6 +199,7 @@ test("--check: a host-native stamp is stale for a portable CPU request", () => {
         forkCommit: currentFork(),
         forkDirty: "",
         backend: "cpu",
+        cpuAcceleratorsDisabled: true,
         cpuNative: true,
         fusedLib: libName,
         fusedSha256: createHash("sha256").update(bytes).digest("hex"),
@@ -225,6 +226,7 @@ test("--check: a portable CPU stamp is fresh for a portable CPU request", () => 
         forkCommit: currentFork(),
         forkDirty: "",
         backend: "cpu",
+        cpuAcceleratorsDisabled: true,
         cpuNative: false,
         fusedLib: libName,
         fusedSha256: createHash("sha256").update(bytes).digest("hex"),
@@ -232,6 +234,10 @@ test("--check: a portable CPU stamp is fresh for a portable CPU request", () => 
       }),
     );
     assert.equal(checkExitCode(dir, ["--portable-cpu"]), 0);
+    const oldStamp = JSON.parse(fs.readFileSync(path.join(dir, STAMP), "utf8"));
+    delete oldStamp.cpuAcceleratorsDisabled;
+    fs.writeFileSync(path.join(dir, STAMP), JSON.stringify(oldStamp));
+    assert.equal(checkExitCode(dir, ["--portable-cpu"]), 2);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
