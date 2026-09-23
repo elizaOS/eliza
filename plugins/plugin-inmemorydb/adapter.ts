@@ -422,9 +422,9 @@ const memoryMutationTails = new WeakMap<IStorage, Promise<void>>();
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
   private storage: IStorage;
-  private vectorIndex: EphemeralHNSW;
-  private embeddingDimension = 384;
-  private ready = false;
+  protected vectorIndex: EphemeralHNSW;
+  protected embeddingDimension = 384;
+  protected ready = false;
   private readonly agentId: UUID;
   private taskMutationTail: Promise<void> = Promise.resolve();
 

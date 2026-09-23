@@ -12,6 +12,7 @@
  *
  * @module plugin-resolver
  */
+
 import crypto from "node:crypto";
 import { type Dirent, existsSync } from "node:fs";
 import fs from "node:fs/promises";
@@ -32,7 +33,6 @@ import {
   type PluginManifestCandidate,
   type PluginManifestVerdict,
 } from "@elizaos/shared/config/plugin-manifest";
-
 import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   isDevCloudConfigAuthorityView,
@@ -47,6 +47,12 @@ import {
   CORE_PLUGINS,
   OPTIONAL_CORE_PLUGINS,
 } from "./core-plugins.ts";
+import {
+  assertSelectedDatabaseCompatibility,
+  isSQLiteSelected,
+  SQLITE_PLUGIN,
+  selectDatabasePluginNames,
+} from "./database-selection.ts";
 import {
   CHANNEL_PLUGIN_MAP,
   collectPluginNames,
@@ -2615,8 +2621,12 @@ export async function resolvePlugins(
     loadReasons,
     Array.from(forceIncludePluginNames),
   );
-  const corePluginSet = new Set<string>(CORE_PLUGINS);
-  const blockingPluginSet = new Set<string>(BLOCKING_CORE_PLUGINS);
+  const corePluginSet = new Set<string>(
+    selectDatabasePluginNames(CORE_PLUGINS),
+  );
+  const blockingPluginSet = new Set<string>(
+    selectDatabasePluginNames(BLOCKING_CORE_PLUGINS),
+  );
   const routingOwnershipPluginNames = new Set<string>();
   const routingOnlyPluginNames = new Set<string>();
   for (const [pluginId, appDefault] of Object.entries(
@@ -2742,6 +2752,16 @@ export async function resolvePlugins(
     );
   }
 
+  if (isSQLiteSelected()) {
+    const selected = selectDatabasePluginNames(pluginsToLoad);
+    pluginsToLoad.clear();
+    for (const name of selected) pluginsToLoad.add(name);
+  } else if (pluginsToLoad.has(SQLITE_PLUGIN)) {
+    throw new ElizaError(
+      "Set ELIZA_DATABASE_PROVIDER=sqlite before enabling the SQLite database plugin",
+      { code: "SQLITE_SELECTION_REQUIRED" },
+    );
+  }
   if (phase !== "all") {
     const beforePhaseFilter = pluginsToLoad.size;
     // Model-provider plugins in the load set are blocking alongside
@@ -3011,6 +3031,7 @@ export async function resolvePlugins(
       const pluginInstance = findRuntimePluginExport(mod);
 
       if (pluginInstance) {
+        assertSelectedDatabaseCompatibility(pluginInstance);
         const routingOnly = routingOnlyPluginNames.has(pluginName);
         const pluginForRegistration = routingOnly
           ? projectRoutingOnlyPlugin(pluginInstance)
@@ -3056,6 +3077,12 @@ export async function resolvePlugins(
         return null;
       }
     } catch (err) {
+      // error-policy:J1 Explicit database incompatibility aborts activation before plugin effects.
+      if (
+        err instanceof ElizaError &&
+        err.code === "SQLITE_PLUGIN_INCOMPATIBLE"
+      )
+        throw err;
       if (routingOnlyPluginNames.has(pluginName)) {
         if (err instanceof ElizaError) throw err;
         throw new ElizaError(

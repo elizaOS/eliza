@@ -6,6 +6,7 @@
 import { type AgentRuntime, ElizaError, logger } from "@elizaos/core";
 import { formatError } from "@elizaos/shared";
 import { CORE_PLUGINS } from "./core-plugins.ts";
+import { selectDatabasePluginNames } from "./database-selection.ts";
 import type { ResolvedPlugin } from "./plugin-types.ts";
 import { applyHostActionOwnership } from "./runtime-action-ownership.ts";
 
@@ -28,7 +29,7 @@ export async function preregisterCorePluginsInDependencyWaves(args: {
       .filter((name): name is string => typeof name === "string"),
   ]);
   const pending = new Map<string, ResolvedPlugin>();
-  for (const name of CORE_PLUGINS) {
+  for (const name of selectDatabasePluginNames(CORE_PLUGINS)) {
     if (registered.has(name)) continue;
     const resolved = args.resolvedPlugins.find(
       (plugin) => plugin.name === name,
@@ -134,10 +135,12 @@ export async function initializeBlockingCoreRuntimeForBoot(args: {
   await preregisterCorePluginsInDependencyWaves({
     runtime: args.runtime,
     resolvedPlugins: args.resolvedPlugins,
-    alreadyPreRegistered: new Set<string>([
-      "@elizaos/plugin-sql",
-      "@elizaos/plugin-local-inference",
-    ]),
+    alreadyPreRegistered: new Set<string>(
+      selectDatabasePluginNames([
+        "@elizaos/plugin-sql",
+        "@elizaos/plugin-local-inference",
+      ]),
+    ),
     requiredPluginNames: args.requiredPluginNames,
     label: "blocking",
     ...(args.abortSignal ? { abortSignal: args.abortSignal } : {}),

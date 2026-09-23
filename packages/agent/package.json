@@ -360,7 +360,8 @@
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/prompts": "workspace:*",
     "@elizaos/retrieval": "workspace:*",
-    "@elizaos/plugin-relationships": "workspace:*"
+    "@elizaos/plugin-relationships": "workspace:*",
+    "@elizaos/plugin-sqlite": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/plugin-calendar": "workspace:*",
