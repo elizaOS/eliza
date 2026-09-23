@@ -1185,6 +1185,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		options?: { entityContext?: UUID },
 	): Promise<void>;
 
+	/** Complete distinct memory-type inventory for this adapter's agent; used by trusted exports. */
+	listMemoryTypes?(): Promise<string[]>;
+
 	/**
 	 * Get memories matching criteria
 	 *

@@ -1092,6 +1092,24 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     });
   }
 
+  async listMemoryTypes(): Promise<string[]> {
+    const rows = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (memory) => memory.agentId === this.agentId
+    );
+    const types = rows.map((memory) => {
+      const type = storedMemoryTableName(memory);
+      if (typeof type !== "string" || type.length === 0) {
+        throw new ElizaError("Cannot inventory memories with a missing storage type", {
+          code: "MEMORY_STORAGE_TYPE_INVALID",
+          context: { agentId: this.agentId, memoryId: memory.id },
+        });
+      }
+      return type;
+    });
+    return [...new Set(types)].sort();
+  }
+
   async getMemories(params: {
     entityId?: UUID;
     authorEntityIds?: UUID[];

@@ -130,6 +130,10 @@ class InMemoryExportAdapter {
         (worldId === undefined || c.worldId === worldId),
     );
   }
+  async listMemoryTypes() {
+    return [...this.memories.keys()];
+  }
+
   async getMemories({
     agentId,
     tableName,
@@ -417,6 +421,8 @@ describe("#9963 agent export → import round-trip", () => {
     expect(target.rooms.size).toBe(2);
     expect(target.entities.size).toBe(3);
     expect([...target.memories.values()].flat()).toHaveLength(3);
+    expect(target.memories.get("facts")).toHaveLength(1);
+    expect(target.memories.get("messages")).toHaveLength(2);
     expect(target.relationships).toHaveLength(1);
     expect(target.tasks).toHaveLength(1);
 
@@ -425,9 +431,7 @@ describe("#9963 agent export → import round-trip", () => {
       .flatMap((e) => (e.names as string[]) ?? [])
       .sort();
     expect(names).toEqual(["Alice", "Bob", "RoundTripBot"]);
-    // Export merges all memory tables into one array (per-memory table origin
-    // is not preserved; restore re-derives the table heuristically), so assert
-    // the full content set round-trips regardless of which table it lands in.
+    // Each memory keeps its table origin and complete content across the archive.
     const allMemoryTexts = [...target.memories.values()]
       .flat()
       .map((m) => (m.content as { text?: string }).text)
@@ -474,9 +478,15 @@ describe("#9963 agent export → import round-trip", () => {
     expect(restored).toHaveLength(rows.length);
     for (const row of restored) expect(row.createdAt).toEqual(timestamp);
     expect(
-      [...target.memories.values()].flat().map((memory) => memory.content),
+      [...target.memories.values()]
+        .flat()
+        .map((memory) => JSON.stringify(memory.content))
+        .sort(),
     ).toEqual(
-      [...source.memories.values()].flat().map((memory) => memory.content),
+      [...source.memories.values()]
+        .flat()
+        .map((memory) => JSON.stringify(memory.content))
+        .sort(),
     );
   });
 
@@ -497,6 +507,83 @@ describe("#9963 agent export → import round-trip", () => {
     expect(target.worlds).toHaveLength(0);
     expect(target.rooms.size).toBe(0);
   });
+
+  it("remaps a physical fragment parent without changing its other metadata", async () => {
+    const { adapter: source, character } = populateSource();
+    const documentId = uuid(88);
+    source.memories.set("documents", [
+      {
+        id: documentId,
+        agentId: SOURCE_AGENT,
+        entityId: USER1,
+        roomId: ROOM1,
+        content: { text: "Complete document" },
+        metadata: { type: "document", timestamp: 1 },
+      },
+    ]);
+    const metadata = {
+      documentId,
+      position: 0,
+      custom: { retained: "complete metadata" },
+      ["__proto__"]: { retained: "own metadata field" },
+    };
+    source.memories.set("document_fragments", [
+      {
+        id: uuid(89),
+        agentId: SOURCE_AGENT,
+        entityId: USER1,
+        roomId: ROOM1,
+        content: { text: "Complete fragment" },
+        metadata,
+      },
+    ]);
+    const archive = await exportAgent(
+      makeRuntime(source, SOURCE_AGENT, character),
+      PASSWORD,
+    );
+    const target = new InMemoryExportAdapter();
+    await importAgent(makeRuntime(target, uuid(991), {}), archive, PASSWORD);
+    const document = target.memories.get("documents")?.[0];
+    const fragment = target.memories.get("document_fragments")?.[0];
+    expect(document?.id).not.toBe(documentId);
+    expect(fragment?.metadata).toEqual({
+      ...metadata,
+      documentId: document?.id,
+    });
+    expect(Object.hasOwn(fragment?.metadata ?? {}, "__proto__")).toBe(true);
+    expect(Object.getPrototypeOf(fragment?.metadata)).toBe(Object.prototype);
+    expect(fragment?.content).toEqual({ text: "Complete fragment" });
+  });
+
+  it.each([true, false])(
+    "rejects an orphan document fragment before graph writes (semantic discriminator: %s)",
+    async (semanticType) => {
+      const { adapter: source, character } = populateSource();
+      source.memories.set("document_fragments", [
+        {
+          id: uuid(90),
+          agentId: SOURCE_AGENT,
+          entityId: USER1,
+          roomId: ROOM1,
+          content: { text: "Orphan fragment" },
+          metadata: {
+            ...(semanticType ? { type: "fragment" } : {}),
+            documentId: uuid(91),
+            position: 0,
+          },
+        },
+      ]);
+      const archive = await exportAgent(
+        makeRuntime(source, SOURCE_AGENT, character),
+        PASSWORD,
+      );
+      const target = new InMemoryExportAdapter();
+      await expect(
+        importAgent(makeRuntime(target, uuid(992), {}), archive, PASSWORD),
+      ).rejects.toMatchObject({ code: "AGENT_IMPORT_DOCUMENT_PARENT_MISSING" });
+      expect(target.agents.size).toBe(0);
+    },
+  );
 
   it("rejects a wrong password without writing anything", async () => {
     const { adapter: source, character } = populateSource();

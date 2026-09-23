@@ -189,3 +189,7 @@ trusted import/lifecycle work. Graph writes use the target agent; the importing
 adapter and its entity context remain unchanged. The callback must not close or
 retain that temporary adapter. SQL failures roll back the new agent and graph;
 filesystem artifacts remain the host's responsibility.
+
+`listMemoryTypes()` enumerates distinct storage types for the adapter's own agent.
+Trusted transfer exports use that inventory so custom namespaces and document
+fragments cannot disappear behind a fixed list of known types.
