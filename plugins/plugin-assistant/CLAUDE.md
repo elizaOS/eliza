@@ -111,3 +111,10 @@ Last-resort reply rescue uses the complete current context and canonical tool
 messages, including archived results, rather than disconnected success excerpts.
 Composed failure instructions remain scrubbed; original authorized diagnostic
 records stay separate evidence, and existing final-output checks still apply.
+
+
+Stage1's existing single routing repair also reviews contradictory structured
+navigation declarations (VIEWS_SHOW with no navigation, or navigation-only with
+multiple/unknown views). It never converts forbidden navigation into permission,
+infers an action from wording, or adds an unbounded retry. Normal plugin admission
+and navigation receipts remain authoritative after the review.
