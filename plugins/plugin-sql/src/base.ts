@@ -7261,12 +7261,53 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     roomIds: UUID[],
     includeComponents?: boolean
   ): Promise<EntitiesForRoomsResult> {
-    const result: EntitiesForRoomsResult = [];
-    for (const roomId of roomIds) {
-      const entities = await this.getEntitiesForRoom(roomId, includeComponents);
-      result.push({ roomId, entities });
-    }
-    return result;
+    if (roomIds.length === 0) return [];
+    return this.withDatabase(async () => {
+      // PostgreSQL resolves UUID aliases; ordinality preserves duplicate inputs
+      // and their original spelling without sharing mutable result groups.
+      const requested = sql`unnest(${sql.param(roomIds)}::uuid[]) WITH ORDINALITY AS requested(room_id, ordinal)`;
+      const query = this.db
+        .select({
+          ordinal: sql<number>`requested.ordinal`.mapWith(Number),
+          entity: entityTable,
+          ...(includeComponents && { components: componentTable }),
+        })
+        .from(requested)
+        .innerJoin(participantTable, sql`${participantTable.roomId} = requested.room_id`)
+        .leftJoin(
+          entityTable,
+          and(eq(participantTable.entityId, entityTable.id), eq(entityTable.agentId, this.agentId))
+        );
+      if (includeComponents) {
+        query.leftJoin(componentTable, eq(componentTable.entityId, entityTable.id));
+      }
+      const rows = await query;
+      const groups = roomIds.map(() => new Map<UUID, Entity>());
+      for (const row of rows) {
+        if (!row.entity) continue;
+        const group = groups[row.ordinal - 1];
+        const entityId = row.entity.id as UUID;
+        let entity = group.get(entityId);
+        if (!entity) {
+          entity = {
+            ...row.entity,
+            id: entityId,
+            agentId: row.entity.agentId as UUID,
+            metadata: (row.entity.metadata || {}) as Metadata,
+            components: includeComponents ? [] : undefined,
+          };
+          group.set(entityId, entity);
+        }
+        if (includeComponents && row.components) {
+          if (!entity.components) entity.components = [];
+          entity.components.push(row.components);
+        }
+      }
+      return roomIds.map((roomId, index) => ({
+        roomId,
+        entities: Array.from(groups[index].values()),
+      }));
+    });
   }
 
   // ── Log batch methods ─────────────────────────────────────────────────

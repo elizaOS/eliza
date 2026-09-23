@@ -112,14 +112,16 @@ function makeRuntime(options: FakeRuntimeOptions = {}): IAgentRuntime {
     async getRoomsForParticipants() {
       return options.roomsForParticipants ?? [];
     },
-    async getEntitiesForRoom(roomId: UUID) {
-      if (roomId === ROOM_1) {
-        return [entityStubs[ALICE], entityStubs[BOB]].filter(Boolean);
-      }
-      if (roomId === ROOM_2) {
-        return [entityStubs[CAROL]].filter(Boolean);
-      }
-      return [];
+    async getEntitiesForRooms(roomIds: UUID[]) {
+      return roomIds.map((roomId) => ({
+        roomId,
+        entities: (roomId === ROOM_1
+          ? [entityStubs[ALICE], entityStubs[BOB]]
+          : roomId === ROOM_2
+            ? [entityStubs[CAROL]]
+            : []
+        ).filter(Boolean),
+      }));
     },
     async getRelationships() {
       return options.relationships ?? [];
