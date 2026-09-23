@@ -1,0 +1,58 @@
+{
+  "name": "@elizaos/plugin-sqlite",
+  "version": "2.0.3-beta.7",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "description": "Durable per-agent SQLite storage with atomic transactions and restart recovery",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": "./index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "files": [
+    "registry-entry.json",
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-inmemorydb": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.8",
+    "@types/node": "^25.0.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3"
+  },
+  "scripts": {
+    "dev": "bun run build.ts --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.validation.json",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json *.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node 24.15.0 node:sqlite, one database per agent"
+    }
+  }
+}

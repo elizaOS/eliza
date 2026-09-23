@@ -112,6 +112,139 @@ function view(patch: Partial<ViewSummary> = {}): ViewSummary {
 	};
 }
 
+function createNotesDeleteAction() {
+	return createViewsAction({
+		client: {
+			listViews: vi.fn(async () => [
+				view({
+					id: "notes",
+					label: "Notes",
+					path: "/notes",
+					tags: ["notes", "sticky notes"],
+					capabilities: [
+						{
+							id: "delete-note",
+							description:
+								"Delete one note by stable id, exact first-line label, or unique contained text.",
+							params: {
+								id: {
+									type: "string",
+									description: "Stable note id.",
+									required: false,
+									minLength: 3,
+									maxLength: 128,
+								},
+								query: {
+									type: "string",
+									description: "Unique text contained anywhere in the note.",
+									minLength: 1,
+									maxLength: 20_000,
+								},
+								title: {
+									type: "string",
+									description:
+										"Exact first-line label of a note to identify it. Must match a known note label exactly.",
+									minLength: 1,
+									maxLength: 240,
+								},
+							},
+						},
+					],
+				}),
+			]),
+			getCurrentView: vi.fn(async () => ({
+				viewId: "notes",
+				viewLabel: "Notes",
+				viewType: "gui" as const,
+				viewPath: "/notes",
+			})),
+		},
+		hasOwnerAccess: vi.fn(async () => true),
+	});
+}
+
+function createNotesReadDeleteAction() {
+	return createViewsAction({
+		client: {
+			listViews: vi.fn(async () => [
+				view({
+					id: "notes",
+					label: "Notes",
+					path: "/notes",
+					tags: ["notes", "sticky notes"],
+					capabilities: [
+						{
+							id: "get-note",
+							description: "Read one note by title or query.",
+							params: {
+								title: {
+									type: "string",
+									description: "Exact note title.",
+								},
+							},
+						},
+						{
+							id: "delete-note",
+							description: "Delete one note by title or query.",
+							params: {
+								title: {
+									type: "string",
+									description: "Exact note title.",
+								},
+							},
+						},
+					],
+				}),
+			]),
+			getCurrentView: vi.fn(async () => ({
+				viewId: "notes",
+				viewLabel: "Notes",
+				viewType: "gui" as const,
+				viewPath: "/notes",
+			})),
+		},
+		hasOwnerAccess: vi.fn(async () => true),
+	});
+}
+
+function createNotesPlannerAuthorityAction() {
+	return createViewsAction({
+		client: {
+			listViews: vi.fn(async () => [
+				view({
+					id: "notes",
+					label: "Notes",
+					path: "/notes",
+					tags: ["notes"],
+					capabilities: [
+						{
+							id: "get-note",
+							description: "Read one note by title or query.",
+							params: {
+								title: { type: "string", description: "Exact note title." },
+							},
+						},
+						{
+							id: "delete-note",
+							description: "Delete one note by title or query.",
+							params: {
+								title: { type: "string", description: "Exact note title." },
+							},
+						},
+					],
+				}),
+			]),
+			getCurrentView: vi.fn(async () => ({
+				viewId: "notes",
+				viewLabel: "Notes",
+				viewType: "gui" as const,
+				viewPath: "/notes",
+			})),
+		},
+		hasOwnerAccess: vi.fn(async () => true),
+	});
+}
+
 function createRuntime({
 	tasks = [],
 	modelText = "name: remote-ledger\ndisplayName: Remote Ledger",
@@ -3505,54 +3638,7 @@ describe("view management actions", () => {
 		// Capability declares both title and query, matching the real Notes
 		// contract from plugin-notes/src/capabilities.ts. Free-form text must
 		// NOT collapse onto the destructive title selector (#18377).
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [
-					view({
-						id: "notes",
-						label: "Notes",
-						path: "/notes",
-						tags: ["notes", "sticky notes"],
-						capabilities: [
-							{
-								id: "delete-note",
-								description:
-									"Delete one note by stable id, exact first-line label, or unique contained text.",
-								params: {
-									id: {
-										type: "string",
-										description: "Stable note id.",
-										required: false,
-										minLength: 3,
-										maxLength: 128,
-									},
-									query: {
-										type: "string",
-										description: "Unique text contained anywhere in the note.",
-										minLength: 1,
-										maxLength: 20_000,
-									},
-									title: {
-										type: "string",
-										description:
-											"Exact first-line label of a note to identify it. Must match a known note label exactly.",
-										minLength: 1,
-										maxLength: 240,
-									},
-								},
-							},
-						],
-					}),
-				]),
-				getCurrentView: vi.fn(async () => ({
-					viewId: "notes",
-					viewLabel: "Notes",
-					viewType: "gui" as const,
-					viewPath: "/notes",
-				})),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
+		const action = createNotesDeleteAction();
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
@@ -3592,54 +3678,7 @@ describe("view management actions", () => {
 	it("uses title for an explicit titled delete target", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [
-					view({
-						id: "notes",
-						label: "Notes",
-						path: "/notes",
-						tags: ["notes", "sticky notes"],
-						capabilities: [
-							{
-								id: "delete-note",
-								description:
-									"Delete one note by stable id, exact first-line label, or unique contained text.",
-								params: {
-									id: {
-										type: "string",
-										description: "Stable note id.",
-										required: false,
-										minLength: 3,
-										maxLength: 128,
-									},
-									query: {
-										type: "string",
-										description: "Unique text contained anywhere in the note.",
-										minLength: 1,
-										maxLength: 20_000,
-									},
-									title: {
-										type: "string",
-										description:
-											"Exact first-line label of a note to identify it. Must match a known note label exactly.",
-										minLength: 1,
-										maxLength: 240,
-									},
-								},
-							},
-						],
-					}),
-				]),
-				getCurrentView: vi.fn(async () => ({
-					viewId: "notes",
-					viewLabel: "Notes",
-					viewType: "gui" as const,
-					viewPath: "/notes",
-				})),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
+		const action = createNotesDeleteAction();
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
@@ -3687,54 +3726,7 @@ describe("view management actions", () => {
 	it("derives title from smart-quoted named delete via NL derivation", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [
-					view({
-						id: "notes",
-						label: "Notes",
-						path: "/notes",
-						tags: ["notes", "sticky notes"],
-						capabilities: [
-							{
-								id: "delete-note",
-								description:
-									"Delete one note by stable id, exact first-line label, or unique contained text.",
-								params: {
-									id: {
-										type: "string",
-										description: "Stable note id.",
-										required: false,
-										minLength: 3,
-										maxLength: 128,
-									},
-									query: {
-										type: "string",
-										description: "Unique text contained anywhere in the note.",
-										minLength: 1,
-										maxLength: 20_000,
-									},
-									title: {
-										type: "string",
-										description:
-											"Exact first-line label of a note to identify it. Must match a known note label exactly.",
-										minLength: 1,
-										maxLength: 240,
-									},
-								},
-							},
-						],
-					}),
-				]),
-				getCurrentView: vi.fn(async () => ({
-					viewId: "notes",
-					viewLabel: "Notes",
-					viewType: "gui" as const,
-					viewPath: "/notes",
-				})),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
+		const action = createNotesDeleteAction();
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
@@ -3851,47 +3843,7 @@ describe("view management actions", () => {
 	it("does not rewrite an explicit delete-note from incidental read-family words (#18386)", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [
-					view({
-						id: "notes",
-						label: "Notes",
-						path: "/notes",
-						tags: ["notes", "sticky notes"],
-						capabilities: [
-							{
-								id: "get-note",
-								description: "Read one note by title or query.",
-								params: {
-									title: {
-										type: "string",
-										description: "Exact note title.",
-									},
-								},
-							},
-							{
-								id: "delete-note",
-								description: "Delete one note by title or query.",
-								params: {
-									title: {
-										type: "string",
-										description: "Exact note title.",
-									},
-								},
-							},
-						],
-					}),
-				]),
-				getCurrentView: vi.fn(async () => ({
-					viewId: "notes",
-					viewLabel: "Notes",
-					viewType: "gui" as const,
-					viewPath: "/notes",
-				})),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
+		const action = createNotesReadDeleteAction();
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
@@ -3937,47 +3889,7 @@ describe("view management actions", () => {
 		// upgrade destroys data. The original capability is preserved.
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [
-					view({
-						id: "notes",
-						label: "Notes",
-						path: "/notes",
-						tags: ["notes", "sticky notes"],
-						capabilities: [
-							{
-								id: "get-note",
-								description: "Read one note by title or query.",
-								params: {
-									title: {
-										type: "string",
-										description: "Exact note title.",
-									},
-								},
-							},
-							{
-								id: "delete-note",
-								description: "Delete one note by title or query.",
-								params: {
-									title: {
-										type: "string",
-										description: "Exact note title.",
-									},
-								},
-							},
-						],
-					}),
-				]),
-				getCurrentView: vi.fn(async () => ({
-					viewId: "notes",
-					viewLabel: "Notes",
-					viewType: "gui" as const,
-					viewPath: "/notes",
-				})),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
+		const action = createNotesReadDeleteAction();
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
@@ -4017,47 +3929,7 @@ describe("view management actions", () => {
 		// True negation is covered by adversarial tests below.
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [
-					view({
-						id: "notes",
-						label: "Notes",
-						path: "/notes",
-						tags: ["notes", "sticky notes"],
-						capabilities: [
-							{
-								id: "get-note",
-								description: "Read one note by title or query.",
-								params: {
-									title: {
-										type: "string",
-										description: "Exact note title.",
-									},
-								},
-							},
-							{
-								id: "delete-note",
-								description: "Delete one note by title or query.",
-								params: {
-									title: {
-										type: "string",
-										description: "Exact note title.",
-									},
-								},
-							},
-						],
-					}),
-				]),
-				getCurrentView: vi.fn(async () => ({
-					viewId: "notes",
-					viewLabel: "Notes",
-					viewType: "gui" as const,
-					viewPath: "/notes",
-				})),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
+		const action = createNotesReadDeleteAction();
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
@@ -4101,41 +3973,7 @@ describe("view management actions", () => {
 	it("rejects negated destructive request with zero fetch/mutation (#18386 P1)", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [
-					view({
-						id: "notes",
-						label: "Notes",
-						path: "/notes",
-						tags: ["notes"],
-						capabilities: [
-							{
-								id: "get-note",
-								description: "Read one note by title or query.",
-								params: {
-									title: { type: "string", description: "Exact note title." },
-								},
-							},
-							{
-								id: "delete-note",
-								description: "Delete one note by title or query.",
-								params: {
-									title: { type: "string", description: "Exact note title." },
-								},
-							},
-						],
-					}),
-				]),
-				getCurrentView: vi.fn(async () => ({
-					viewId: "notes",
-					viewLabel: "Notes",
-					viewType: "gui" as const,
-					viewPath: "/notes",
-				})),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
+		const action = createNotesPlannerAuthorityAction();
 
 		// "do not delete" — the negation must prevent destructive authority.
 		const result = await action.handler(
@@ -4159,41 +3997,7 @@ describe("view management actions", () => {
 		// narrowed gate must let the planner's explicit selection execute.
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [
-					view({
-						id: "notes",
-						label: "Notes",
-						path: "/notes",
-						tags: ["notes"],
-						capabilities: [
-							{
-								id: "get-note",
-								description: "Read one note by title or query.",
-								params: {
-									title: { type: "string", description: "Exact note title." },
-								},
-							},
-							{
-								id: "delete-note",
-								description: "Delete one note by title or query.",
-								params: {
-									title: { type: "string", description: "Exact note title." },
-								},
-							},
-						],
-					}),
-				]),
-				getCurrentView: vi.fn(async () => ({
-					viewId: "notes",
-					viewLabel: "Notes",
-					viewType: "gui" as const,
-					viewPath: "/notes",
-				})),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
+		const action = createNotesPlannerAuthorityAction();
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
@@ -4229,41 +4033,7 @@ describe("view management actions", () => {
 		// broke every non-English delete request.)
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [
-					view({
-						id: "notes",
-						label: "Notes",
-						path: "/notes",
-						tags: ["notes"],
-						capabilities: [
-							{
-								id: "get-note",
-								description: "Read one note by title or query.",
-								params: {
-									title: { type: "string", description: "Exact note title." },
-								},
-							},
-							{
-								id: "delete-note",
-								description: "Delete one note by title or query.",
-								params: {
-									title: { type: "string", description: "Exact note title." },
-								},
-							},
-						],
-					}),
-				]),
-				getCurrentView: vi.fn(async () => ({
-					viewId: "notes",
-					viewLabel: "Notes",
-					viewType: "gui" as const,
-					viewPath: "/notes",
-				})),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
+		const action = createNotesPlannerAuthorityAction();
 
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
@@ -4296,41 +4066,7 @@ describe("view management actions", () => {
 	it("never lexically escalates read→delete from read-family + incidental delete wording (#18386 P1)", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [
-					view({
-						id: "notes",
-						label: "Notes",
-						path: "/notes",
-						tags: ["notes"],
-						capabilities: [
-							{
-								id: "get-note",
-								description: "Read one note by title or query.",
-								params: {
-									title: { type: "string", description: "Exact note title." },
-								},
-							},
-							{
-								id: "delete-note",
-								description: "Delete one note by title or query.",
-								params: {
-									title: { type: "string", description: "Exact note title." },
-								},
-							},
-						],
-					}),
-				]),
-				getCurrentView: vi.fn(async () => ({
-					viewId: "notes",
-					viewLabel: "Notes",
-					viewType: "gui" as const,
-					viewPath: "/notes",
-				})),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
+		const action = createNotesPlannerAuthorityAction();
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
@@ -4372,41 +4108,7 @@ describe("view management actions", () => {
 	it("rejects destructive capability when multi-clause negation appears (#18386 P1)", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [
-					view({
-						id: "notes",
-						label: "Notes",
-						path: "/notes",
-						tags: ["notes"],
-						capabilities: [
-							{
-								id: "get-note",
-								description: "Read one note by title or query.",
-								params: {
-									title: { type: "string", description: "Exact note title." },
-								},
-							},
-							{
-								id: "delete-note",
-								description: "Delete one note by title or query.",
-								params: {
-									title: { type: "string", description: "Exact note title." },
-								},
-							},
-						],
-					}),
-				]),
-				getCurrentView: vi.fn(async () => ({
-					viewId: "notes",
-					viewLabel: "Notes",
-					viewType: "gui" as const,
-					viewPath: "/notes",
-				})),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
+		const action = createNotesPlannerAuthorityAction();
 
 		// Multi-clause: "Show the note; never delete it" — the "never"
 		// negation within 3 tokens of "delete" must trigger rejection.
