@@ -396,7 +396,9 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       },
     );
     expect(result?.success).toBe(false);
-    expect(JSON.stringify(result)).toContain("CALENDAR_ATTENDEE_IDENTITY_REQUIRED");
+    expect(JSON.stringify(result)).toContain(
+      "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
+    );
     expect(
       (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
     ).toEqual([]);
