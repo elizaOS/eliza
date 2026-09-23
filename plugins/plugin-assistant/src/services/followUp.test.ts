@@ -144,12 +144,12 @@ function makeHarness() {
     getServiceLoadPromise: async () => relationshipsService,
     getEntityById: async (id: UUID) => {
       singleEntityReads.push(id);
-      return entities.get(id) ?? null;
+      return entities.get(id.toLowerCase() as UUID) ?? null;
     },
     getEntitiesByIds: async (ids: UUID[]) => {
       batchEntityReads.push([...ids]);
       return ids.flatMap((id) => {
-        const entity = entities.get(id);
+        const entity = entities.get(id.toLowerCase() as UUID);
         return entity ? [entity] : [];
       });
     },
@@ -693,6 +693,36 @@ describe("snoozeFollowUp", () => {
 });
 
 describe("getFollowUpSuggestions", () => {
+  it("matches uppercase contact UUIDs to canonical insight and entity IDs", async () => {
+    const harness = makeHarness();
+    qualifyCandidate(harness, CONTACT_A, {
+      days: 45,
+      strength: 80,
+      categories: ["friend"],
+      names: ["Alice"],
+    });
+    const service = await startService(harness);
+    const canonical = await service.getFollowUpSuggestions();
+    expect(canonical).toHaveLength(1);
+    const storedId = CONTACT_A.toUpperCase() as UUID;
+    const contact = harness.contacts.get(CONTACT_A);
+    if (!contact) throw new Error("Fixture contact missing");
+    harness.contacts.delete(CONTACT_A);
+    harness.contacts.set(storedId, { ...contact, entityId: storedId });
+    harness.batchEntityReads.length = 0;
+    const analyze = vi.spyOn(
+      harness.relationshipsService,
+      "analyzeRelationship",
+    );
+    const aliased = await service.getFollowUpSuggestions();
+    expect(aliased).toEqual(
+      canonical.map((suggestion) => ({ ...suggestion, entityId: storedId })),
+    );
+    expect(harness.batchEntityReads).toEqual([[storedId]]);
+    expect(analyze).toHaveBeenCalledExactlyOnceWith(AGENT_ID, CONTACT_A);
+    expect(harness.singleEntityReads).toEqual([]);
+  });
+
   it("suggests only contacts needing attention beyond fourteen days", async () => {
     const harness = makeHarness();
     qualifyCandidate(harness, CONTACT_A, { days: 16, strength: 40 });
