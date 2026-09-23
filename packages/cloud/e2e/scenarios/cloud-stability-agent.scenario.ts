@@ -43,6 +43,7 @@ const syntheticRuntimePolicy = {
   basePluginNames: [
     "@elizaos/plugin-sql",
     "assistant",
+    "documents",
     "@elizaos/plugin-scheduling",
     "@elizaos/plugin-reminders",
     "@elizaos/plugin-goals",
@@ -60,6 +61,7 @@ const syntheticRuntimePolicy = {
     "PERSONALITY_STORE",
     "SensitiveRequestDispatchRegistry",
     "channel_topics",
+    "documents",
     "embedding-generation",
     "evaluator",
     "goals_checkin",

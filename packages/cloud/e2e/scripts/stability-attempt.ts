@@ -359,6 +359,34 @@ let cliStderr = "";
 let cliCode: number | null = null;
 let cliClosedAt = 0;
 let sandboxEnvironmentPath: string | undefined;
+let activeScenarioGroup: number | undefined;
+let handlingSignal = false;
+const signalHandlers = new Map<NodeJS.Signals, () => void>();
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  const handler = (): void => {
+    if (handlingSignal) return;
+    handlingSignal = true;
+    const reraise = (): void => {
+      for (const [registeredSignal, registeredHandler] of signalHandlers) {
+        process.removeListener(registeredSignal, registeredHandler);
+      }
+      process.kill(process.pid, signal);
+    };
+    if (activeScenarioGroup === undefined) {
+      reraise();
+      return;
+    }
+    void terminateGroup(activeScenarioGroup).then(reraise, (error: unknown) => {
+      // error-policy:J1 Preserve interruption semantics while reporting failed owned-group teardown.
+      process.stderr.write(
+        `[cloud-stability] scenario interruption cleanup failed: ${String(error)}\n`,
+      );
+      reraise();
+    });
+  };
+  signalHandlers.set(signal, handler);
+  process.once(signal, handler);
+}
 try {
   const args = [
     "--conditions=eliza-source",
@@ -434,6 +462,7 @@ try {
   });
   if (!child.pid) throw new Error("scenario CLI omitted its process-group id");
   const childProcessGroupId = child.pid;
+  activeScenarioGroup = childProcessGroupId;
   child.stdout?.on("data", (chunk: Buffer) => {
     cliStdout += chunk.toString("utf8");
     if (Buffer.byteLength(cliStdout) > 8 * 1024 * 1024) {
@@ -465,6 +494,9 @@ try {
   if (escalation) clearTimeout(escalation);
   await terminateGroup(childProcessGroupId);
 } finally {
+  for (const [signal, handler] of signalHandlers) {
+    process.removeListener(signal, handler);
+  }
   if (sandboxEnvironmentPath) {
     // error-policy:J6 The privileged launcher normally consumes this file; forced teardown removes a pre-exec remainder.
     await rm(sandboxEnvironmentPath, { force: true });

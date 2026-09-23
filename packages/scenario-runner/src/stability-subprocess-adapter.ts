@@ -541,7 +541,9 @@ export class ScenarioStabilitySubprocessAdapter
       processGroupId: null,
     };
     this.#boundaries.set(input.attemptId, boundary);
+    input.signal.throwIfAborted();
     const initialStateHash = await authorityInitialStateHash(session);
+    input.signal.throwIfAborted();
     const attestationKey =
       this.options.modelMode.kind === "real-llm"
         ? randomBytes(32).toString("hex")
@@ -629,8 +631,15 @@ export class ScenarioStabilitySubprocessAdapter
         stopForOutputFailure(error);
       }
     });
+    let abortEscalation: ReturnType<typeof setTimeout> | undefined;
     const abort = (): void => {
       signalProcessGroup(boundary.processGroupId, "SIGTERM");
+      // The trusted harness forwards interruption to its nested scenario
+      // group, including the Linux launcher's UID/firewall teardown trap.
+      abortEscalation = setTimeout(() => {
+        signalProcessGroup(boundary.processGroupId, "SIGKILL");
+      }, 15_000);
+      abortEscalation.unref();
     };
     input.signal.addEventListener("abort", abort, { once: true });
     let exitCode: number | null;
@@ -641,6 +650,7 @@ export class ScenarioStabilitySubprocessAdapter
       });
     } finally {
       input.signal.removeEventListener("abort", abort);
+      if (abortEscalation) clearTimeout(abortEscalation);
     }
     const stderrArtifact = await persistStderrArtifact(
       input.outputDir,
@@ -844,7 +854,8 @@ export class ScenarioStabilitySubprocessAdapter
           meteringFailures?.length === 0);
       const successEnvelopeBindingValid =
         execution.passed === false ||
-        (requestEnvelopes?.length === requestCount &&
+        (requestEnvelopes !== null &&
+          requestEnvelopes.length === requestCount &&
           requestEnvelopes.every(
             (value) =>
               (value as Record<string, unknown>).accepted === true &&

@@ -79,6 +79,11 @@ cleanup semantics: [docs/domain-purchase-live.md](docs/domain-purchase-live.md).
 
 ### Exact-three agent stability lane
 
+Controller interruption cancels the active attempt and its nested scenario process
+group before stopping the synthetic authority. It waits for owned teardown,
+preserves the terminating signal, and never starts the remaining attempts or
+publishes a completed exact-three aggregate for an interrupted run.
+
 `stability:keyless` boots the canonical mock Cloud stack once per isolated
 attempt, runs a real `AgentRuntime`, and requires attempts 1, 2, and 3 to pass.
 The scenario sends a real owner message, executes `OWNER_REMINDERS`, fires the

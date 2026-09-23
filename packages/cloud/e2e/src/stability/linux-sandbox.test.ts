@@ -412,7 +412,12 @@ console.log(JSON.stringify({
       const result = JSON.parse(stdout.trim()) as Record<string, unknown>;
       expect(result.uid).toBe(0);
       expect(result.hostUid).not.toBe(process.getuid?.());
-      expect({ ...result, uid: undefined, hostUid: undefined }).toEqual({
+      const normalizedResult: Record<string, unknown> = {
+        ...result,
+        uid: undefined,
+        hostUid: undefined,
+      };
+      expect(normalizedResult).toEqual({
         secretPresent: false,
         procReadable: false,
         fdSecretReadable: false,

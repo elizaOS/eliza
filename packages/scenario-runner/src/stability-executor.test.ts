@@ -59,6 +59,59 @@ describe("scenario stability executor", () => {
     return createScenarioStabilityPlan({ runId, outputRoot: root });
   }
 
+  it("waits for interrupted attempt teardown without starting another attempt", async () => {
+    const cancellation = new AbortController();
+    const teardownStarted = Promise.withResolvers<void>();
+    const releaseTeardown = Promise.withResolvers<void>();
+    const executed: number[] = [];
+    let settled = false;
+    const result = executeScenarioStability({
+      plan: plan("interrupted"),
+      targets: [
+        {
+          scenarioId: "interrupt",
+          model: { provider: "test-provider", model: "test-model" },
+        },
+      ],
+      budgets: {
+        timeoutMs: 1_000,
+        maxInputTokens: 100,
+        maxOutputTokens: 100,
+        maxToolCalls: 3,
+      },
+      signal: cancellation.signal,
+      adapter: {
+        async execute({ attemptNumber, signal }) {
+          executed.push(attemptNumber);
+          cancellation.abort();
+          signal.throwIfAborted();
+          return passingExecution();
+        },
+        async terminate() {
+          teardownStarted.resolve();
+          await releaseTeardown.promise;
+        },
+      },
+    });
+    const assertion = expect(result).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    // error-policy:J5 The rejection is asserted by the expectation above.
+    void result.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    await teardownStarted.promise;
+    expect(settled).toBe(false);
+    releaseTeardown.resolve();
+    await assertion;
+    expect(executed).toEqual([1]);
+  });
+
   it("runs all three attempts with unique identities and requires three of three", async () => {
     const executed: string[] = [];
     const terminated: string[] = [];

@@ -677,7 +677,7 @@ function parseRequestEnvelope(input: {
 }): Omit<
   StabilityModelRequestEnvelopeEvidence,
   "requestNumber" | "method" | "route" | "accepted" | "failureCode"
-> & { forwardBody: Buffer } {
+> & { forwardBody: Buffer<ArrayBuffer> } {
   let value: unknown;
   try {
     value = JSON.parse(input.bytes.toString("utf8"));

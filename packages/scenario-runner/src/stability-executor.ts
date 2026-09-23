@@ -564,6 +564,7 @@ export async function executeScenarioStability(input: {
   targets: readonly ScenarioStabilityExecutionTarget[];
   budgets: ScenarioStabilityExecutionBudgets;
   adapter: ScenarioStabilityExecutionAdapter;
+  signal?: AbortSignal;
 }): Promise<ScenarioStabilityExecutionReport> {
   const plan = validateScenarioStabilityPlan(input.plan);
   validateBudgets(input.budgets);
@@ -584,6 +585,7 @@ export async function executeScenarioStability(input: {
     const attempts: ScenarioStabilityExecutedAttempt[] = [];
     let baselineInitialStateHash: string | null = null;
     for (const attempt of plan.attempts) {
+      input.signal?.throwIfAborted();
       const attemptId = `${attempt.attemptId}-${targetSlug(target)}`;
       const outputDir = path.join(attempt.outputDir, targetSlug(target));
       const controller = new AbortController();
@@ -599,7 +601,9 @@ export async function executeScenarioStability(input: {
             attemptId,
             outputDir,
             budgets: input.budgets,
-            signal: controller.signal,
+            signal: input.signal
+              ? AbortSignal.any([controller.signal, input.signal])
+              : controller.signal,
           }),
           input.budgets.timeoutMs,
           controller,
@@ -662,6 +666,7 @@ export async function executeScenarioStability(input: {
           teardownController.abort();
         }
       }
+      input.signal?.throwIfAborted();
       const result = execution ?? failedExecution("attempt produced no result");
       attempts.push({
         ...result,

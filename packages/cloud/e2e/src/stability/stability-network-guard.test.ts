@@ -186,13 +186,16 @@ test.each([
       },
     });
     try {
+      const targetPort = target.port;
+      if (targetPort === undefined)
+        throw new Error("Target server did not bind a port");
       const ledger = path.join(directory, "ledger.jsonl");
       const guard = path.resolve(
         import.meta.dirname,
         "../../scripts/stability-network-guard.mjs",
       );
       const child = Bun.spawn(
-        [process.execPath, "--preload", guard, "-e", script(target.port)],
+        [process.execPath, "--preload", guard, "-e", script(targetPort)],
         {
           cwd: directory,
           env: {
@@ -207,7 +210,7 @@ test.each([
       expect(targetCalls).toBe(0);
       expect(JSON.parse((await readFile(ledger, "utf8")).trim())).toMatchObject(
         {
-          origin: expectedOrigin(target.port),
+          origin: expectedOrigin(targetPort),
           allowed: false,
         },
       );

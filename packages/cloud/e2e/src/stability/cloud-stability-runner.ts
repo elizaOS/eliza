@@ -201,6 +201,7 @@ export interface RunCloudStabilityLaneInput {
   manifest: CloudStabilityManifest;
   outputRoot: string;
   adapter: ScenarioStabilityExecutionAdapter;
+  signal?: AbortSignal;
 }
 
 /** Executes and persists the exact-three aggregate even when it blocks the lane. */
@@ -226,6 +227,7 @@ export async function runCloudStabilityLane(
       maxToolCalls: manifest.maxToolCalls,
     },
     adapter: input.adapter,
+    signal: input.signal,
   });
   await writeJsonAtomic(path.join(input.outputRoot, "stability.json"), report);
   const reportSha256 = canonicalCloudStabilitySha256(report);

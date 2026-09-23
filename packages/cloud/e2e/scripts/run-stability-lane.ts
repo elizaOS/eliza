@@ -170,7 +170,8 @@ async function stopAuthority(child: ReturnType<typeof spawn>): Promise<void> {
 }
 
 function installAuthoritySignalCleanup(
-  child: ReturnType<typeof spawn>,
+  cancellation: AbortController,
+  cleanupFinished: Promise<void>,
 ): () => void {
   let handling = false;
   const handlers = new Map<NodeJS.Signals, () => void>();
@@ -184,14 +185,10 @@ function installAuthoritySignalCleanup(
         }
         process.kill(process.pid, signal);
       };
-      void stopAuthority(child).then(reraise, (error: unknown) => {
-        // error-policy:J1 Signal cleanup reports the bounded teardown failure before preserving signal semantics.
-        const message = error instanceof Error ? error.message : String(error);
-        process.stderr.write(
-          `[cloud-stability] authority signal cleanup failed: ${message.slice(0, 1_000)}\n`,
-        );
-        reraise();
-      });
+      cancellation.abort();
+      // The attempt owns detached descendants and must reset its lease while
+      // the authority is still available. The main finally owns both teardowns.
+      void cleanupFinished.then(reraise);
     };
     handlers.set(signal, handler);
     process.once(signal, handler);
@@ -278,8 +275,11 @@ await mkdir(outputRoot, { recursive: true, mode: 0o700 });
 const namespace = `cloud-stability-${randomBytes(8).toString("hex")}`;
 const controlToken = randomBytes(32).toString("hex");
 const authority = await startAuthority(namespace, controlToken);
+const cancellation = new AbortController();
+const cleanup = Promise.withResolvers<void>();
 const removeAuthoritySignalCleanup = installAuthoritySignalCleanup(
-  authority.child,
+  cancellation,
+  cleanup.promise,
 );
 const authorityTestReadyPath =
   process.env.ELIZA_STABILITY_AUTHORITY_TEST_READY_PATH;
@@ -356,7 +356,12 @@ try {
       timeoutMs: 15_000,
     },
   });
-  report = await runCloudStabilityLane({ manifest, outputRoot, adapter });
+  report = await runCloudStabilityLane({
+    manifest,
+    outputRoot,
+    adapter,
+    signal: cancellation.signal,
+  });
 
   const health = await client.command({ type: "health" });
   const acquired = await client.command(
@@ -448,39 +453,44 @@ try {
     { expectedGeneration: queried.generation, leaseId: lease.leaseId },
   );
 } catch (error) {
+  // error-policy:J1 Preserve the run failure until owned authority teardown is complete.
   runError = error;
 } finally {
-  await stopAuthority(authority.child);
-  removeAuthoritySignalCleanup();
-  const authorityPid = authority.child.pid;
-  const pidAbsent = authorityPid ? !processExists(authorityPid) : false;
-  let portClosed = false;
   try {
-    await fetch(`${authority.url}/health`, {
-      signal: AbortSignal.timeout(1_000),
-    });
-  } catch {
-    // error-policy:J3 A refused loopback probe is the explicit closed-port state.
-    portClosed = true;
-  }
-  const authorityTeardownProof = {
-    namespace,
-    pid: authorityPid ?? null,
-    command:
-      "packages/cloud/test-mocks/test/fixtures/synthetic-control-authority.ts",
-    url: authority.url,
-    pidAbsent,
-    portClosed,
-  };
-  await writeFile(
-    path.join(outputRoot, "authority-teardown-proof.json"),
-    JSON.stringify(authorityTeardownProof, null, 2),
-    { encoding: "utf8", mode: 0o600 },
-  );
-  if (!pidAbsent || !portClosed) {
-    authorityTeardownError = new Error(
-      "synthetic authority survived controller teardown",
+    await stopAuthority(authority.child);
+    const authorityPid = authority.child.pid;
+    const pidAbsent = authorityPid ? !processExists(authorityPid) : false;
+    let portClosed = false;
+    try {
+      await fetch(`${authority.url}/health`, {
+        signal: AbortSignal.timeout(1_000),
+      });
+    } catch {
+      // error-policy:J3 A refused loopback probe is the explicit closed-port state.
+      portClosed = true;
+    }
+    const authorityTeardownProof = {
+      namespace,
+      pid: authorityPid ?? null,
+      command:
+        "packages/cloud/test-mocks/test/fixtures/synthetic-control-authority.ts",
+      url: authority.url,
+      pidAbsent,
+      portClosed,
+    };
+    await writeFile(
+      path.join(outputRoot, "authority-teardown-proof.json"),
+      JSON.stringify(authorityTeardownProof, null, 2),
+      { encoding: "utf8", mode: 0o600 },
     );
+    if (!pidAbsent || !portClosed) {
+      authorityTeardownError = new Error(
+        "synthetic authority survived controller teardown",
+      );
+    }
+  } finally {
+    removeAuthoritySignalCleanup();
+    cleanup.resolve();
   }
 }
 
