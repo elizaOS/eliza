@@ -23,6 +23,8 @@ describe("selectLiveProvider", () => {
       "OPENROUTER_API_KEY",
       "ELIZA_E2E_OPENROUTER_API_KEY",
       "ELIZA_PROVIDER",
+      "ELIZA_CHAT_VIA_CLI",
+      "LOCAL_LLAMA_CPP_API_KEY",
       "ELIZA_LIVE_PROVIDER_CONFIG_PATH",
       "ELIZA_LIVE_PROVIDER_STATE_DIR",
       "ELIZA_STATE_DIR",
@@ -39,7 +41,7 @@ describe("selectLiveProvider", () => {
     vi.unstubAllEnvs();
   });
 
-  it("does not activate evaluation-only Cerebras during dev-smoke boot", async () => {
+  it("does not activate paid model providers during dev-smoke boot", async () => {
     const workflow = parseDocument(
       await readFile(
         new URL("../../../../.github/workflows/dev-smoke.yml", import.meta.url),
@@ -48,6 +50,10 @@ describe("selectLiveProvider", () => {
     );
     const availableCredentials = {
       CEREBRAS_API_KEY: "csk_test_evaluation_only",
+      GROQ_API_KEY: "gsk_test_smoke",
+      OPENAI_API_KEY: "sk-test-smoke",
+      ANTHROPIC_API_KEY: "sk-ant-test-smoke",
+      GOOGLE_GENERATIVE_AI_API_KEY: "test-google-smoke",
       OPENROUTER_API_KEY: "sk-or-test-smoke",
     };
     for (const [key, value] of Object.entries(availableCredentials)) {
@@ -60,7 +66,7 @@ describe("selectLiveProvider", () => {
     const { resolveOpenAIBaseURL } = await import(
       "../../../../plugins/plugin-openai/utils/config.ts"
     );
-    expect(selectLiveProvider()?.name).toBe("openrouter");
+    expect(selectLiveProvider()).toBeNull();
     const bootEndpoint = resolveOpenAIBaseURL((key) => process.env[key]);
     expect(new URL(bootEndpoint).hostname).not.toBe("api.cerebras.ai");
   });
