@@ -107,8 +107,9 @@ function setCapabilityRouter(
 function makeGitRouter(
   commandRun: (params: GitCommandRunParams) => Promise<GitCommandRunResult>,
 ): ElizaCapabilityRouter {
+  const router = new UnavailableCapabilityRouter("desktop");
   return {
-    environment: "desktop",
+    ...router,
     availability: async () => ({
       environment: "desktop",
       available: true,
@@ -120,37 +121,7 @@ function makeGitRouter(
         plugin: false,
       },
     }),
-    fs: {
-      list: async () => {
-        throw new Error("fs unavailable");
-      },
-      readText: async () => {
-        throw new Error("fs unavailable");
-      },
-      writeText: async () => {
-        throw new Error("fs unavailable");
-      },
-    },
-    pty: {
-      runCommand: async () => {
-        throw new Error("pty unavailable");
-      },
-    },
-    git: {
-      status: async () => {
-        throw new Error("git status unavailable");
-      },
-      diff: async () => {
-        throw new Error("git diff unavailable");
-      },
-      commandRun,
-    },
-    model: {
-      status: async () => {
-        throw new Error("model unavailable");
-      },
-    },
-    plugin: new UnavailableCapabilityRouter("desktop").plugin,
+    git: { ...router.git, commandRun },
   };
 }
 

@@ -4,7 +4,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
-  CapabilityError,
   type ElizaCapabilityRouter,
   type FileListParams,
   type IAgentRuntime,
@@ -27,24 +26,12 @@ interface RuntimeBundle {
   message: Memory;
 }
 
-function unavailableCapability(
-  capability: "fs" | "pty" | "git" | "model",
-  method: string,
-): never {
-  throw new CapabilityError({
-    code: "CAPABILITY_UNAVAILABLE",
-    message: `${capability} unavailable`,
-    capability,
-    method,
-  });
-}
-
 function makeListRouter(
   list: ElizaCapabilityRouter["fs"]["list"],
 ): ElizaCapabilityRouter {
-  const unavailable = new UnavailableCapabilityRouter("desktop");
+  const router = new UnavailableCapabilityRouter("desktop");
   return {
-    environment: "desktop",
+    ...router,
     availability: async () => ({
       environment: "desktop",
       available: true,
@@ -55,23 +42,7 @@ function makeListRouter(
         model: false,
       },
     }),
-    fs: {
-      list,
-      readText: async () => unavailableCapability("fs", "fs.readText"),
-      writeText: async () => unavailableCapability("fs", "fs.writeText"),
-    },
-    pty: {
-      runCommand: async () => unavailableCapability("pty", "pty.command.run"),
-    },
-    git: {
-      status: async () => unavailableCapability("git", "git.status"),
-      diff: async () => unavailableCapability("git", "git.diff"),
-      commandRun: async () => unavailableCapability("git", "git.command.run"),
-    },
-    model: {
-      status: async () => unavailableCapability("model", "model.status"),
-    },
-    plugin: unavailable.plugin,
+    fs: { ...router.fs, list },
   };
 }
 

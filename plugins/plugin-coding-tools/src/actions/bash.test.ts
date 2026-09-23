@@ -328,24 +328,12 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-function unavailableCapability(
-  capability: "fs" | "pty" | "git" | "model",
-  method: string,
-): never {
-  throw new CapabilityError({
-    code: "CAPABILITY_UNAVAILABLE",
-    message: `${capability} unavailable`,
-    capability,
-    method,
-  });
-}
-
 function makeShellRouter(
   runCommand: ElizaCapabilityRouter["pty"]["runCommand"],
 ): ElizaCapabilityRouter {
-  const unavailable = new UnavailableCapabilityRouter("desktop");
+  const router = new UnavailableCapabilityRouter("desktop");
   return {
-    environment: "desktop",
+    ...router,
     availability: async () => ({
       environment: "desktop",
       available: true,
@@ -356,21 +344,7 @@ function makeShellRouter(
         model: false,
       },
     }),
-    fs: {
-      list: async () => unavailableCapability("fs", "fs.list"),
-      readText: async () => unavailableCapability("fs", "fs.readText"),
-      writeText: async () => unavailableCapability("fs", "fs.writeText"),
-    },
-    pty: { runCommand },
-    git: {
-      status: async () => unavailableCapability("git", "git.status"),
-      diff: async () => unavailableCapability("git", "git.diff"),
-      commandRun: async () => unavailableCapability("git", "git.command.run"),
-    },
-    model: {
-      status: async () => unavailableCapability("model", "model.status"),
-    },
-    plugin: unavailable.plugin,
+    pty: { ...router.pty, runCommand },
   };
 }
 

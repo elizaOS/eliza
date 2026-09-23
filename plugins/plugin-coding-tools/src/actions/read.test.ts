@@ -3,7 +3,6 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
-  CapabilityError,
   type ElizaCapabilityRouter,
   type IAgentRuntime,
   UnavailableCapabilityRouter,
@@ -260,8 +259,9 @@ describe("READ", () => {
     const file = path.join(env.tmpDir, "routed.txt");
     await fs.writeFile(file, "local file content", "utf8");
     const calls: string[] = [];
+    const unavailable = new UnavailableCapabilityRouter("desktop");
     const router: ElizaCapabilityRouter = {
-      environment: "desktop",
+      ...unavailable,
       availability: async () => ({
         environment: "desktop",
         available: true,
@@ -274,14 +274,7 @@ describe("READ", () => {
         },
       }),
       fs: {
-        list: async () => {
-          throw new CapabilityError({
-            code: "CAPABILITY_UNAVAILABLE",
-            message: "fs unavailable",
-            capability: "fs",
-            method: "fs.list",
-          });
-        },
+        ...unavailable.fs,
         readText: async (params) => {
           calls.push(params.path);
           return {
@@ -291,62 +284,7 @@ describe("READ", () => {
             truncated: false,
           };
         },
-        writeText: async () => {
-          throw new CapabilityError({
-            code: "CAPABILITY_UNAVAILABLE",
-            message: "fs unavailable",
-            capability: "fs",
-            method: "fs.writeText",
-          });
-        },
       },
-      pty: {
-        runCommand: async () => {
-          throw new CapabilityError({
-            code: "CAPABILITY_UNAVAILABLE",
-            message: "terminal unavailable",
-            capability: "pty",
-            method: "pty.command.run",
-          });
-        },
-      },
-      git: {
-        status: async () => {
-          throw new CapabilityError({
-            code: "CAPABILITY_UNAVAILABLE",
-            message: "git unavailable",
-            capability: "git",
-            method: "git.status",
-          });
-        },
-        diff: async () => {
-          throw new CapabilityError({
-            code: "CAPABILITY_UNAVAILABLE",
-            message: "git unavailable",
-            capability: "git",
-            method: "git.diff",
-          });
-        },
-        commandRun: async () => {
-          throw new CapabilityError({
-            code: "CAPABILITY_UNAVAILABLE",
-            message: "git unavailable",
-            capability: "git",
-            method: "git.command.run",
-          });
-        },
-      },
-      model: {
-        status: async () => {
-          throw new CapabilityError({
-            code: "CAPABILITY_UNAVAILABLE",
-            message: "model unavailable",
-            capability: "model",
-            method: "model.status",
-          });
-        },
-      },
-      plugin: new UnavailableCapabilityRouter("desktop").plugin,
     };
     const runtime = {
       ...env.runtime,
