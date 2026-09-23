@@ -34,6 +34,14 @@ export async function provisionConfidentialVm(
   releaseAuthorityPem: string,
   options: { authorization?: string; signal?: AbortSignal } = {},
 ): Promise<{ vmId: string; appId: string; state: "created-stopped" }> {
+  if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0") {
+    throw new ElizaError(
+      "Restore TLS certificate verification before provisioning",
+      {
+        code: "CONFIDENTIAL_TLS_VERIFICATION_REQUIRED",
+      },
+    );
+  }
   let request: z.output<typeof requestSchema>;
   try {
     request = requestSchema.parse(input);

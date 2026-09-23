@@ -73,6 +73,27 @@ function request(
 }
 
 describe("confidential VM provisioning", () => {
+  it("refuses a process-wide TLS verification bypass before dispatch", async () => {
+    let calls = 0;
+    const endpoint = await listen((_req, res) => {
+      calls++;
+      res.end("{}");
+    });
+    const previous = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    try {
+      await expect(
+        provisionConfidentialVm(request(endpoint), publicPem),
+      ).rejects.toMatchObject({
+        code: "CONFIDENTIAL_TLS_VERIFICATION_REQUIRED",
+      });
+      expect(calls).toBe(0);
+    } finally {
+      if (previous === undefined)
+        delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+      else process.env.NODE_TLS_REJECT_UNAUTHORIZED = previous;
+    }
+  });
   it("uses the real CLI to provision and emits a receipt without authorization bytes", async () => {
     let authorized = false;
     const secret = "Bearer synthetic-operator-token";
