@@ -101,32 +101,27 @@ const state: State | undefined = undefined;
 describe("LS", () => {
   it("lists fixture entries with directories first then files (sorted)", async () => {
     const { runtime, message } = await buildRuntime();
-    const result = await lsHandler(runtime, message, state, {
-      parameters: {},
-    });
+    const callback = vi.fn();
+    const result = await lsHandler(
+      runtime,
+      message,
+      state,
+      {
+        parameters: {},
+      },
+      callback,
+    );
+    expect(callback).not.toHaveBeenCalled();
 
     expect(result.success).toBe(true);
-    const data = result.data as Record<string, unknown> | undefined;
-    const entries = data?.entries as
-      | { name: string; type: string }[]
-      | undefined;
-    expect(Array.isArray(entries)).toBe(true);
-    expect(entries?.length).toBe(6);
-
-    const types = entries?.map((e) => e.type) ?? [];
-    const firstFileIndex = types.indexOf("file");
-    const lastDirIndex = types.lastIndexOf("dir");
-    expect(lastDirIndex).toBeLessThan(firstFileIndex);
-
-    const dirNames = (entries ?? [])
-      .filter((e) => e.type === "dir")
-      .map((e) => e.name);
-    expect(dirNames).toEqual(["_blocked", "bar", "foo"]);
-
-    const fileNames = (entries ?? [])
-      .filter((e) => e.type !== "dir")
-      .map((e) => e.name);
-    expect(fileNames).toEqual(["alpha.ts", "beta.md", "skip.log"]);
+    expect(result.data?.entries).toEqual([
+      { name: "_blocked", type: "dir" },
+      { name: "bar", type: "dir" },
+      { name: "foo", type: "dir" },
+      { name: "alpha.ts", type: "file", size: 6 },
+      { name: "beta.md", type: "file", size: 5 },
+      { name: "skip.log", type: "file", size: 6 },
+    ]);
 
     expect(
       result.text.startsWith(
@@ -165,9 +160,17 @@ describe("LS", () => {
       };
     });
     const { runtime, message } = await buildRuntime(router);
-    const result = await lsHandler(runtime, message, state, {
-      parameters: { ignore: ["*.log"] },
-    });
+    const callback = vi.fn();
+    const result = await lsHandler(
+      runtime,
+      message,
+      state,
+      {
+        parameters: { ignore: ["*.log"] },
+      },
+      callback,
+    );
+    expect(callback).not.toHaveBeenCalled();
 
     expect(result.success).toBe(true);
     expect(calls).toEqual([
@@ -245,72 +248,5 @@ describe("LS", () => {
     });
     expect(result.success).toBe(false);
     expect(result.text).toContain("missing_param");
-  });
-
-  it("includes file size for files in the entries data", async () => {
-    const { runtime, message } = await buildRuntime();
-    const result = await lsHandler(runtime, message, state, {
-      parameters: {},
-    });
-    expect(result.success).toBe(true);
-    const data = result.data as Record<string, unknown> | undefined;
-    const entries = data?.entries as
-      | { name: string; type: string; size?: number }[]
-      | undefined;
-    const alpha = entries?.find((e) => e.name === "alpha.ts");
-    expect(alpha?.type).toBe("file");
-    expect(typeof alpha?.size).toBe("number");
-  });
-});
-
-describe("lsHandler — read-only query stays silent", () => {
-  // The contract this PR establishes: raw listings/matches reach the model via
-  // the ActionResult and the user via the planner's final message. Posting each
-  // exploratory call's dump spammed chat (#16589) — the callback must never fire.
-  it("does not invoke the visible chat callback for local listings", async () => {
-    const { runtime, message } = await buildRuntime();
-    const callback = vi.fn();
-    const result = await lsHandler(
-      runtime,
-      message,
-      undefined,
-      { parameters: {} },
-      callback,
-    );
-    expect(result.success).toBe(true);
-    expect(result.text).toContain("alpha.ts");
-    expect(callback).not.toHaveBeenCalled();
-  });
-
-  it("does not invoke the visible chat callback for routed listings", async () => {
-    const router = makeListRouter(async (params) => ({
-      root: { id: "workspace", path: tmpRoot },
-      path: params.path ?? tmpRoot,
-      entries: [
-        {
-          path: path.join(tmpRoot, "routed.ts"),
-          name: "routed.ts",
-          kind: "file",
-          size: 12,
-          isText: true,
-        },
-      ],
-      truncated: false,
-      totalAfterIgnore: 1,
-    }));
-    const { runtime, message } = await buildRuntime(router);
-    const callback = vi.fn();
-
-    const result = await lsHandler(
-      runtime,
-      message,
-      undefined,
-      { parameters: {} },
-      callback,
-    );
-
-    expect(result.success).toBe(true);
-    expect(result.text).toContain("routed.ts");
-    expect(callback).not.toHaveBeenCalled();
   });
 });
