@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
+import { normalizeChatIdempotencyKey, REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 
 import {
   type ElizaServerTimingReceipt,
@@ -905,6 +905,7 @@ describe("eliza sse bridge", () => {
     expect(seenBody).toEqual({
       text: "hi",
       channelType: "VOICE_DM",
+      clientMessageId: expect.any(String),
       metadata: {
         clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
       },
@@ -916,6 +917,46 @@ describe("eliza sse bridge", () => {
     expect(seenHeaders?.get("X-Eliza-Conversation-Id")).toBe("conv-ABC");
     expect(seenHeaders?.get("X-Eliza-Organization-Id")).toBe("org-123");
     expect(seenHeaders?.get("X-Eliza-User-Id")).toBe("user-456");
+  });
+
+  test("keys ordinary voice retries while separating turns and preserving transient controls", async () => {
+    const keys: unknown[] = [];
+    const traces: string[] = [];
+    const base = {
+      endpoint: "http://x",
+      authorization: "Bearer fixture",
+      model: "m",
+      transcript: "Open Notes",
+      agentId: "agent-1",
+      conversationId: "conv-1",
+      signal: new AbortController().signal,
+    };
+    const trace = `session:${"x".repeat(150)}:turn:1:1725000000000`;
+    for (const request of [
+      { traceId: trace },
+      { traceId: trace },
+      { traceId: `${trace}:next` },
+      { traceId: trace, transientInput: true as const },
+    ]) {
+      await streamElizaConversation(
+        {
+          ...base,
+          ...request,
+          fetchImpl: (async (_url, init) => {
+            const body = JSON.parse(String(init?.body));
+            keys.push(body.clientMessageId);
+            traces.push(new Headers(init?.headers).get(VOICE_TRACE_HEADER) ?? "");
+            return sseResponse(["data: [DONE]\n\n"]);
+          }) as typeof fetch,
+        },
+        () => {},
+      );
+    }
+    expect(keys[0]).toBe(keys[1]);
+    expect(keys[2]).not.toBe(keys[0]);
+    for (const key of keys.slice(0, 3)) expect(normalizeChatIdempotencyKey(key)).toBe(key);
+    expect(keys[3]).toBeUndefined();
+    expect(traces).toEqual([trace, trace, `${trace}:next`, trace]);
   });
 
   test("carries the server-attested lifecycle history cutoff in the internal body", async () => {

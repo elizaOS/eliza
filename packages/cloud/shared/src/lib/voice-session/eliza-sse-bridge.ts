@@ -20,6 +20,7 @@
  * decoding path, no live model.
  */
 
+import { stringToUuid } from "@elizaos/core";
 import {
   normalizeCompletedActionHandoffId,
   REALTIME_VOICE_CLIENT_TRANSPORT,
@@ -212,6 +213,13 @@ export async function streamElizaConversation(
 ): Promise<ElizaSseBridgeResult> {
   const fetchImpl = request.fetchImpl ?? fetch;
   const fetchStartedAt = performance.now();
+  // VoiceSession keeps one trace ID across retries and mints another for each
+  // ordinary/overlap turn. The fixed-size key fits the host replay contract;
+  // the complete trace still travels in headers. Transient controls stay unkeyed
+  // unless their caller supplies the existing explicit lifecycle identity.
+  const clientMessageId =
+    request.clientMessageId ||
+    (request.transientInput ? undefined : `voice:${stringToUuid(request.traceId)}`);
   let response: Response;
   try {
     const endpoint = canonicalConversationStreamUrl(
@@ -242,7 +250,7 @@ export async function streamElizaConversation(
         text: request.transcript,
         channelType: VOICE_CHANNEL_TYPE,
         ...(request.messageRole ? { messageRole: request.messageRole } : {}),
-        ...(request.clientMessageId ? { clientMessageId: request.clientMessageId } : {}),
+        ...(clientMessageId ? { clientMessageId } : {}),
         ...(request.historyCutoffAt !== undefined
           ? { historyCutoffAt: request.historyCutoffAt }
           : {}),

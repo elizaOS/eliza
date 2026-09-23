@@ -934,6 +934,7 @@ describe("voice-session WS lifecycle", () => {
     expect(requests[0].body).toEqual({
       text: "hello agent",
       channelType: "VOICE_DM",
+      clientMessageId: expect.any(String),
       metadata: {
         clientTransport: "realtime_voice",
         uiViewPath: "/notes",

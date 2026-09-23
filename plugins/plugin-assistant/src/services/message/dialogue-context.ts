@@ -12,6 +12,7 @@ import {
 } from "@elizaos/core";
 import { readProviderOriginalMessages } from "../../runtime/provider-originals.ts";
 import { resolveExplicitContinuationRequestText } from "./direct-action-heuristics.ts";
+import { historicalNavigationReceipts } from "./navigation-history.ts";
 import {
   readSourceReplyReferences,
   sourceReplyTextHash,
@@ -207,6 +208,28 @@ export function appendPriorDialogueEvents(
       );
   }
   for (const memory of dialogue) {
+    const navigation =
+      requestsById.get(String(memory.id)) === memory
+        ? historicalNavigationReceipts(memory, currentMessage, runtime.agentId)
+        : [];
+    if (navigation.length > 0)
+      events.push({
+        id: `historical-navigation:${memory.id}`,
+        type: "segment",
+        source: "message-service",
+        createdAt: memory.createdAt,
+        segment: {
+          id: `historical-navigation:${memory.id}`,
+          label: "runtime:historical_navigation",
+          content: JSON.stringify({
+            requestSourceEventId: `history:${memory.id}`,
+            navigation,
+            evidenceScope:
+              "Historical navigation outcomes for this request. Delivered means targeted transport delivery then, not a mounted-view acknowledgement or current view. Current-turn UI metadata independently reports the current view; neither proves displayed record contents.",
+          }),
+          stable: false,
+        },
+      });
     if (isInterruptedReply(memory)) {
       const request = requestsById.get(String(memory.content.inReplyTo));
       if (

@@ -243,7 +243,7 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 // ---------------------------------------------------------------------------
 
 const NAVIGATION_REPLY_RULE =
-  "Name navigation destinations. With visualContinuation.navigationOnly=true, draft a concise confirmation held for the successful receipt; no progress/waiting language or record-read/change claims. ";
+  "Name navigation destinations. Current uiView/uiViewPath identify the open view, not its displayed records. navigationOnly takes precedence over acknowledgment rules: write the final destination-is-open confirmation held for successful delivery, while retaining the pending action in the plan. No progress promises or record-read/change claims. ";
 
 const EXACT_REPLY_TEXT_RULE =
   " When quoting or previewing text requested verbatim or exactly, copy every character, including punctuation, repeated spaces and line breaks. Put explanations outside that text.";
@@ -255,12 +255,12 @@ export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
     'RESPOND requires a user-facing reply: simple=complete answer; other tool/planner work=brief acknowledgment before its grounded result. IGNORE="". No internal reasoning or capability refusal on the planning path: let available tools attempt work. Only if none can, RESPOND with simple context and explain the limitation.' +
     EXACT_REPLY_TEXT_RULE,
   descriptionCompressed:
-    "User-facing reply. simple=whole answer; navigationOnly=destination confirmation held for successful navigation; other planning=brief ack, never a refusal; IGNORE=empty string.",
+    "User-facing reply. simple=whole answer; navigationOnly=completed-state destination confirmation spoken after successful navigation; other planning=brief ack, never a refusal; IGNORE=empty string.",
   priority: 20,
   schema: {
     type: "string",
     description:
-      "User-facing reply. Simple=whole answer. navigationOnly=concise destination confirmation held until navigation succeeds, without progress language or record-read/change claims. Other planning=brief ack. Never refuse on planning path. Plain text unless channel supports markdown." +
+      "User-facing reply. Simple=whole answer. navigationOnly=completed-state destination confirmation spoken only after navigation succeeds, without progress language or record-read/change claims. Other planning=brief ack. Never refuse on planning path. Plain text unless channel supports markdown." +
       EXACT_REPLY_TEXT_RULE,
   },
   parse(value) {
