@@ -1,7 +1,7 @@
 {
   "id": "sqlite",
   "name": "SQLite",
-  "description": "Durable per-agent SQLite database for Node 24",
+  "description": "Durable per-agent SQLite database for pinned Node and Bun runtimes",
   "npmName": "@elizaos/plugin-sqlite",
   "version": "2.0.3-beta.7",
   "source": "bundled",
