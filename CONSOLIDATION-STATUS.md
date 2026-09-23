@@ -43,3 +43,11 @@ After the user observed slow navigation, whole-runtime traces showed inconsisten
 Full repository verification passed on `f01aea47706`. With builds finished, real browser checks measured Notes navigation 2.149s and Calendar navigation 1.189s, one model call each. A bounded synthetic Cartesia “Open Notes” turn navigated a real bound QA browser tab in 1.324s agent runtime; audio began 1.423s after transcription. The canonical reply-completion event preceded audio. Cached input was 4096/6144/6144 tokens respectively. These are single observed runs, not a universal latency guarantee; failed earlier traces remain in local evidence.
 
 The preview has been restarted on the verified version. Physical voice timing retest and user release approval remain pending. Temporary QA browser tab was closed. No PR, protected merge, deployment or branch deletion was performed.
+
+## Review handoff
+
+The [branch disposition snapshot](docs/consolidation/branch-dispositions-20260923.md) accounts for the 159 collected branch names, including intentionally preserved or excluded alternatives. Full root verification completed 382 workspace tasks plus repository audits on `f01aea47706`.
+
+A further bounded real-Cartesia Calendar read verified the longer-turn acknowledgment: “Checking what's on your calendar tomorrow.” First audio arrived 1.557s after transcription, final answer at 3.792s. Whole agent runtime was 3.805s with three foreground model calls (handler, planner, evaluator), 47,677 input tokens and 8,192 cached. The acknowledgment added zero model calls. The read returned the correct event, no writes, no error or duplicate reply; the new reply-completion signal arrived before TTS completion. This is synthetic-audio transport evidence, not a physical microphone/speaker guarantee.
+
+Engineering consolidation and bounded QA evidence are ready for user review. Release approval is still required. Complex turns may exceed three seconds; intermittent historical host stalls are not claimed universally eliminated. Further code changes should follow a reproducible failure, not an unbounded benchmark loop.
