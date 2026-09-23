@@ -130,6 +130,12 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      - name: Apply required dependency compatibility patches
+        run: |
+          bun packages/scripts/patch-punycode-deprecation.mjs
+          bun packages/scripts/patch-llama-cpp-capacitor.mjs
+          bun packages/scripts/patch-electrobun-linux-cef-profile.mjs
+
       - name: Validate CI Bun version pin contract
         run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
 
