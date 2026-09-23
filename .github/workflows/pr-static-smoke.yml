@@ -123,6 +123,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
+          run-postinstall: "false"
           install-native-deps: "false"
           install-protoc: "false"
           setup-python: "false"

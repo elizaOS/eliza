@@ -19,7 +19,8 @@ against PostgreSQL 16. It does not run scenarios, live providers, devices,
 deployments, or destructive effects. New commits cancel stale work for the same
 pull request or merge group.
 
-The affected build runs before runtime consumers. The broad core bootstrap is
+The source lane links installed workspaces and generates package outputs through
+its explicit builds, without running repository postinstall. The affected build runs before runtime consumers. The broad core bootstrap is
 retained for shared inputs, deleted or unknown workspace ownership, and owners
 without a build command. Changes wholly owned by buildable workspaces use their
 affected dependency closure; the on-demand CodeQL partition alone does not need
