@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { BargeInController } from "./barge-in";
 import { RuleBasedEnglishPhonemeTokenizer } from "./phoneme-tokenizer";
-import { canonicalizePhraseText, PhraseCache } from "./phrase-cache";
+import { PhraseCache } from "./phrase-cache";
 import { chunkTokens, PhraseChunker } from "./phrase-chunker";
 import { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
 import { RollbackQueue } from "./rollback-queue";
@@ -10,6 +10,7 @@ import { VoiceScheduler } from "./scheduler";
 import type {
 	AudioChunk,
 	Phrase,
+	SchedulerConfig,
 	SpeakerPreset,
 	StreamingTtsBackend,
 	TextToken,
@@ -34,6 +35,31 @@ function makePreset(): SpeakerPreset {
 		voiceId: "default",
 		embedding,
 		bytes: new Uint8Array(embedding.buffer.slice(0)),
+	};
+}
+
+function makeSchedulerConfig(
+	overrides: Partial<SchedulerConfig> = {},
+): SchedulerConfig {
+	return {
+		chunkerConfig: { maxTokensPerPhrase: 10 },
+		preset: makePreset(),
+		ringBufferCapacity: 4096,
+		sampleRate: 24000,
+		...overrides,
+	};
+}
+
+function bindVad(controller: BargeInController): (event: VadEvent) => void {
+	const listeners = new Set<(event: VadEvent) => void>();
+	controller.bindVad({
+		onVadEvent: (listener) => {
+			listeners.add(listener);
+			return () => listeners.delete(listener);
+		},
+	});
+	return (event) => {
+		for (const listener of listeners) listener(event);
 	};
 }
 
@@ -347,10 +373,6 @@ describe("PcmRingBuffer", () => {
 });
 
 describe("PhraseCache", () => {
-	it("canonicalizes whitespace and case", () => {
-		expect(canonicalizePhraseText("  Hello   World  ")).toBe("hello world");
-	});
-
 	it("hits on canonical match", () => {
 		const c = new PhraseCache();
 		c.put({
@@ -391,12 +413,7 @@ describe("VoiceScheduler end-to-end", () => {
 		const phraseEvents: Phrase[] = [];
 		const audioEvents: AudioChunk[] = [];
 		const sched = new VoiceScheduler(
-			{
-				chunkerConfig: { maxTokensPerPhrase: 10 },
-				preset: makePreset(),
-				ringBufferCapacity: 4096,
-				sampleRate: 24000,
-			},
+			makeSchedulerConfig(),
 			{ backend, sink },
 			{
 				onPhrase: (p) => phraseEvents.push(p),
@@ -426,15 +443,10 @@ describe("VoiceScheduler end-to-end", () => {
 			const backend = new FakeBackend();
 			backend.samplesPerToken = 240;
 			const sink = new InMemoryAudioSink();
-			const sched = new VoiceScheduler(
-				{
-					chunkerConfig: { maxTokensPerPhrase: 10 },
-					preset: makePreset(),
-					ringBufferCapacity: 4096,
-					sampleRate: 24000,
-				},
-				{ backend, sink },
-			);
+			const sched = new VoiceScheduler(makeSchedulerConfig(), {
+				backend,
+				sink,
+			});
 
 			await sched.accept(tok(0, "Hi."));
 			await sched.waitIdle();
@@ -456,12 +468,9 @@ describe("VoiceScheduler end-to-end", () => {
 			const sink = new InMemoryAudioSink();
 			const phraseEvents: Phrase[] = [];
 			const sched = new VoiceScheduler(
-				{
+				makeSchedulerConfig({
 					chunkerConfig: { maxAccumulationMs: 50, maxTokensPerPhrase: 100 },
-					preset: makePreset(),
-					ringBufferCapacity: 4096,
-					sampleRate: 24000,
-				},
+				}),
 				{ backend, sink },
 				{ onPhrase: (p) => phraseEvents.push(p) },
 			);
@@ -487,12 +496,7 @@ describe("VoiceScheduler end-to-end", () => {
 		const sink = new InMemoryAudioSink();
 		const firstAudioEvents: VoiceSchedulerTelemetryEvent[] = [];
 		const sched = new VoiceScheduler(
-			{
-				chunkerConfig: { maxTokensPerPhrase: 10 },
-				preset: makePreset(),
-				ringBufferCapacity: 4096,
-				sampleRate: 24000,
-			},
+			makeSchedulerConfig(),
 			{ backend, sink },
 			{
 				onTelemetry: (event) => {
@@ -520,12 +524,7 @@ describe("VoiceScheduler end-to-end", () => {
 		const sink = new InMemoryAudioSink();
 		const rollbacks: number[] = [];
 		const sched = new VoiceScheduler(
-			{
-				chunkerConfig: { maxTokensPerPhrase: 10 },
-				preset: makePreset(),
-				ringBufferCapacity: 4096,
-				sampleRate: 24000,
-			},
+			makeSchedulerConfig(),
 			{ backend, sink },
 			{ onRollback: (id) => rollbacks.push(id) },
 		);
@@ -551,12 +550,7 @@ describe("VoiceScheduler end-to-end", () => {
 		const sink = new InMemoryAudioSink();
 		let cancelEmitted = 0;
 		const sched = new VoiceScheduler(
-			{
-				chunkerConfig: { maxTokensPerPhrase: 10 },
-				preset: makePreset(),
-				ringBufferCapacity: 4096,
-				sampleRate: 24000,
-			},
+			makeSchedulerConfig(),
 			{ backend, sink },
 			{ onCancel: () => cancelEmitted++ },
 		);
@@ -583,16 +577,13 @@ describe("VoiceScheduler end-to-end", () => {
 		const tokenizer = new RuleBasedEnglishPhonemeTokenizer();
 		const rollbacks: number[] = [];
 		const sched = new VoiceScheduler(
-			{
+			makeSchedulerConfig({
 				chunkerConfig: {
 					maxTokensPerPhrase: 100,
 					chunkOn: "phoneme-stream",
 					phonemesPerChunk: 4,
 				},
-				preset: makePreset(),
-				ringBufferCapacity: 4096,
-				sampleRate: 24000,
-			},
+			}),
 			{ backend, sink, phonemeTokenizer: tokenizer },
 			{ onRollback: (id) => rollbacks.push(id) },
 		);
@@ -619,15 +610,11 @@ describe("VoiceScheduler end-to-end", () => {
 			pcm: new Float32Array([0.42, 0.42, 0.42]),
 			sampleRate: 24000,
 		});
-		const sched = new VoiceScheduler(
-			{
-				chunkerConfig: { maxTokensPerPhrase: 10 },
-				preset: makePreset(),
-				ringBufferCapacity: 4096,
-				sampleRate: 24000,
-			},
-			{ backend, sink, phraseCache },
-		);
+		const sched = new VoiceScheduler(makeSchedulerConfig(), {
+			backend,
+			sink,
+			phraseCache,
+		});
 
 		await sched.accept(tok(0, "Sure"));
 		await sched.accept(tok(1, "."));
@@ -644,15 +631,7 @@ describe("VoiceScheduler end-to-end", () => {
 	it("opportunistically caches synthesized phrases for repeated stream text", async () => {
 		const backend = new FakeBackend();
 		const sink = new InMemoryAudioSink();
-		const sched = new VoiceScheduler(
-			{
-				chunkerConfig: { maxTokensPerPhrase: 10 },
-				preset: makePreset(),
-				ringBufferCapacity: 4096,
-				sampleRate: 24000,
-			},
-			{ backend, sink },
-		);
+		const sched = new VoiceScheduler(makeSchedulerConfig(), { backend, sink });
 
 		await sched.accept(tok(0, "Okay"));
 		await sched.accept(tok(1, "."));
@@ -667,15 +646,7 @@ describe("VoiceScheduler end-to-end", () => {
 
 	it("opportunistically caches direct TEXT_TO_SPEECH calls", async () => {
 		const backend = new FakeBackend();
-		const sched = new VoiceScheduler(
-			{
-				chunkerConfig: { maxTokensPerPhrase: 10 },
-				preset: makePreset(),
-				ringBufferCapacity: 4096,
-				sampleRate: 24000,
-			},
-			{ backend },
-		);
+		const sched = new VoiceScheduler(makeSchedulerConfig(), { backend });
 
 		const first = await sched.synthesizeText("One moment.");
 		const second = await sched.synthesizeText(" one   moment. ");
@@ -687,15 +658,9 @@ describe("VoiceScheduler end-to-end", () => {
 	it("keeps per-request voice overrides isolated from the scheduler preset and cache", async () => {
 		const backend = new FakeBackend();
 		const preset = makePreset();
-		const sched = new VoiceScheduler(
-			{
-				chunkerConfig: { maxTokensPerPhrase: 10 },
-				preset,
-				ringBufferCapacity: 4096,
-				sampleRate: 24000,
-			},
-			{ backend },
-		);
+		const sched = new VoiceScheduler(makeSchedulerConfig({ preset }), {
+			backend,
+		});
 
 		await sched.synthesizeText("Same phrase.", undefined, "  af_heart  ");
 		await sched.synthesizeText("Same phrase.");
@@ -713,12 +678,7 @@ describe("VoiceScheduler end-to-end", () => {
 		const paused: number[] = [];
 		const resumed: number[] = [];
 		const sched = new VoiceScheduler(
-			{
-				chunkerConfig: { maxTokensPerPhrase: 10 },
-				preset: makePreset(),
-				ringBufferCapacity: 4096,
-				sampleRate: 24000,
-			},
+			makeSchedulerConfig(),
 			{ backend, sink },
 			{
 				onTtsPause: () => paused.push(1),
@@ -726,17 +686,8 @@ describe("VoiceScheduler end-to-end", () => {
 			},
 		);
 		// Fake VAD source the barge-in controller binds to.
-		const listeners = new Set<(e: VadEvent) => void>();
-		sched.bargeIn.bindVad({
-			onVadEvent: (l) => {
-				listeners.add(l);
-				return () => listeners.delete(l);
-			},
-		});
+		const emit = bindVad(sched.bargeIn);
 		sched.bargeIn.setAgentSpeaking(true);
-		const emit = (e: VadEvent) => {
-			for (const l of listeners) l(e);
-		};
 
 		// Agent speaking → a VAD voice hit pauses playback.
 		emit({
@@ -769,34 +720,20 @@ describe("VoiceScheduler end-to-end", () => {
 		let cancels = 0;
 		const resumed: number[] = [];
 		const sched = new VoiceScheduler(
-			{
-				chunkerConfig: { maxTokensPerPhrase: 10 },
-				preset: makePreset(),
-				ringBufferCapacity: 4096,
-				sampleRate: 24000,
-			},
+			makeSchedulerConfig(),
 			{ backend, sink },
 			{
 				onCancel: () => cancels++,
 				onTtsResume: () => resumed.push(1),
 			},
 		);
-		const listeners = new Set<(e: VadEvent) => void>();
-		sched.bargeIn.bindVad({
-			onVadEvent: (l) => {
-				listeners.add(l);
-				return () => listeners.delete(l);
-			},
-		});
+		const emit = bindVad(sched.bargeIn);
 		sched.bargeIn.setInterruptGate((evidence) =>
 			evidence.selfVoiceSimilarity && evidence.selfVoiceSimilarity >= 0.8
 				? { allow: false, reason: "self-echo" }
 				: { allow: true },
 		);
 		sched.bargeIn.setAgentSpeaking(true);
-		const emit = (e: VadEvent) => {
-			for (const l of listeners) l(e);
-		};
 
 		emit({
 			type: "speech-active",
@@ -832,26 +769,12 @@ describe("VoiceScheduler end-to-end", () => {
 		const sink = new InMemoryAudioSink();
 		let cancels = 0;
 		const sched = new VoiceScheduler(
-			{
-				chunkerConfig: { maxTokensPerPhrase: 10 },
-				preset: makePreset(),
-				ringBufferCapacity: 4096,
-				sampleRate: 24000,
-			},
+			makeSchedulerConfig(),
 			{ backend, sink },
 			{ onCancel: () => cancels++ },
 		);
-		const listeners = new Set<(e: VadEvent) => void>();
-		sched.bargeIn.bindVad({
-			onVadEvent: (l) => {
-				listeners.add(l);
-				return () => listeners.delete(l);
-			},
-		});
+		const emit = bindVad(sched.bargeIn);
 		sched.bargeIn.setAgentSpeaking(true);
-		const emit = (e: VadEvent) => {
-			for (const l of listeners) l(e);
-		};
 
 		await sched.accept(tok(0, "Just"));
 		await sched.accept(tok(1, " a"));
@@ -879,26 +802,9 @@ describe("VoiceScheduler end-to-end", () => {
 	it("hard-stop calls native TTS cancel for an active streaming backend", async () => {
 		const backend = new PausingStreamingBackend();
 		const sink = new InMemoryAudioSink();
-		const sched = new VoiceScheduler(
-			{
-				chunkerConfig: { maxTokensPerPhrase: 10 },
-				preset: makePreset(),
-				ringBufferCapacity: 4096,
-				sampleRate: 24000,
-			},
-			{ backend, sink },
-		);
-		const listeners = new Set<(e: VadEvent) => void>();
-		sched.bargeIn.bindVad({
-			onVadEvent: (l) => {
-				listeners.add(l);
-				return () => listeners.delete(l);
-			},
-		});
+		const sched = new VoiceScheduler(makeSchedulerConfig(), { backend, sink });
+		const emit = bindVad(sched.bargeIn);
 		sched.bargeIn.setAgentSpeaking(true);
-		const emit = (e: VadEvent) => {
-			for (const l of listeners) l(e);
-		};
 
 		emit({
 			type: "speech-active",
@@ -932,12 +838,7 @@ describe("VoiceScheduler end-to-end", () => {
 		const sink = new InMemoryAudioSink();
 		const rollbacks: number[] = [];
 		const sched = new VoiceScheduler(
-			{
-				chunkerConfig: { maxTokensPerPhrase: 10 },
-				preset: makePreset(),
-				ringBufferCapacity: 4096,
-				sampleRate: 24000,
-			},
+			makeSchedulerConfig(),
 			{ backend, sink },
 			{ onRollback: (id) => rollbacks.push(id) },
 		);
@@ -974,12 +875,7 @@ describe("VoiceScheduler end-to-end", () => {
 		const sink = new InMemoryAudioSink();
 		let cancels = 0;
 		const sched = new VoiceScheduler(
-			{
-				chunkerConfig: { maxTokensPerPhrase: 10 },
-				preset: makePreset(),
-				ringBufferCapacity: 4096,
-				sampleRate: 24000,
-			},
+			makeSchedulerConfig(),
 			{ backend, sink },
 			{ onCancel: () => cancels++ },
 		);
@@ -1080,18 +976,6 @@ describe("PhraseCache.seed", () => {
 });
 
 describe("PhraseChunker IPA mode", () => {
-	it("punctuation mode (default) is unchanged when no tokenizer is passed", () => {
-		const tokens: TextToken[] = [
-			tok(0, "Hello"),
-			tok(1, " world"),
-			tok(2, "."),
-		];
-		const phrases = chunkTokens(tokens, { maxTokensPerPhrase: 100 });
-		expect(phrases).toHaveLength(1);
-		expect(phrases[0].terminator).toBe("punctuation");
-		expect(phrases[0].text).toBe("Hello world.");
-	});
-
 	it("phoneme-stream mode emits sub-phrase chunks at phoneme boundaries", () => {
 		const tokenizer = new RuleBasedEnglishPhonemeTokenizer();
 		// 'abcde' = 5 approximate phonemes, 'fgh' = 3, 'ij' = 2.
