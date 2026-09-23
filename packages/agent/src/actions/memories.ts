@@ -17,6 +17,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  applyGroundedActionReply,
   MemoryType as CoreMemoryType,
   ElizaError,
   getActionReplyOwner,
@@ -436,11 +437,9 @@ type MemoryMutationOperation =
   | "memory.delete";
 
 /**
- * Applied receipt for a durable memory mutation. With `transcriptVisibility:
- * "internal"` and `data.replyContext`, the planner loop's grounded receipt
- * gate can phrase the outcome from these facts (a ~350 ms render) instead of
- * spending a full evaluator call (live 2026-09-05 23:52: 912 ms) to say
- * "Got it". Failures and confirmation refusals stay plain results.
+ * Applied receipt for a durable memory mutation. Planner-owned results defer
+ * presentation through the shared reply contract; standalone callers retain
+ * their canonical outcome. Failures and confirmation refusals stay plain results.
  */
 function memoryMutationReceipt(args: {
   operation: MemoryMutationOperation;
@@ -2068,17 +2067,32 @@ export const memoryAction: Action = {
       );
     }
     try {
+      let result: ActionResult;
       switch (op) {
         case "create":
-          return await doCreate(runtime, message, params);
+          result = await doCreate(runtime, message, params);
+          break;
         case "search":
         case "count":
           return await doSearch(runtime, message, params);
         case "update":
-          return await doUpdate(runtime, message, params);
+          result = await doUpdate(runtime, message, params);
+          break;
         case "delete":
-          return await doDelete(runtime, message, params);
+          result = await doDelete(runtime, message, params);
+          break;
       }
+      if (
+        result.success &&
+        result.data?.replyContext &&
+        getActionReplyOwner(message.id) === "planner"
+      ) {
+        return applyGroundedActionReply(result, {
+          kind: "deferred",
+          grounding: JSON.stringify(result.data.replyContext),
+        });
+      }
+      return result;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.warn(`[memory:${op}] failed: ${msg}`);

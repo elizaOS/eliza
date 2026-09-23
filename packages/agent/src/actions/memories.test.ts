@@ -14,7 +14,8 @@ import {
   normalizeActionIdentifier,
   renderActionResultsForModel,
 } from "@elizaos/plugin-assistant";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { runEvaluator } from "../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
 import { actionResultToPlannerToolResult } from "../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import { toolMessageContent } from "../../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
 import { runWithActionRoutingContext } from "../../../core/src/runtime/action-routing-context";
@@ -3494,4 +3495,80 @@ describe("MEMORY_COUNT complete aggregates", () => {
     }
     expect(queries).toBe(0);
   });
+});
+
+describe("MEMORY mutation completion ownership", () => {
+  it.each(["create", "update", "delete"])(
+    "requires one grounded completion reply after planner-owned %s",
+    async (action) => {
+      const { runtime, rows } = makeRuntime();
+      const message = makeMessage();
+      const saved = await runCreate(runtime, message, {
+        text: "Use metric units.",
+      });
+      const result = await runWithActionRoutingContext(
+        {
+          actionName: `MEMORY_${action.toUpperCase()}`,
+          messageId: message.id,
+          modelClass: undefined,
+          replyOwner: "planner",
+        },
+        () =>
+          runAction(runtime, message, {
+            action,
+            text: "Use metric units for the garden.",
+            memoryId: String(saved.values?.memoryId),
+            confirm: true,
+          }),
+      );
+      const expectedReply =
+        action === "delete"
+          ? "I forgot that preference."
+          : "Saved your preference.";
+      const useModel = vi.fn(async (_type, _params) =>
+        JSON.stringify({
+          success: true,
+          decision: "FINISH",
+          messageToUser: expectedReply,
+          thought:
+            "The recorded durable receipt proves the requested memory change.",
+          effectReceiptIds: result.effectReceipts?.map(
+            (receipt) => receipt.receiptId,
+          ),
+        }),
+      );
+      const completion = await runEvaluator({
+        runtime: { useModel },
+        context: { id: "memory-completion", events: [] },
+        trajectory: {
+          context: { id: "memory-completion", events: [] },
+          archivedSteps: [],
+          codingMode: false,
+          steps: [
+            {
+              iteration: 1,
+              toolCall: { name: `MEMORY_${action.toUpperCase()}`, params: {} },
+              result: actionResultToPlannerToolResult(result),
+            },
+          ],
+          plannedQueue: [],
+          evaluatorOutputs: [],
+        },
+      });
+      expect(useModel.mock.calls[0][1].responseSchema.required).toContain(
+        "messageToUser",
+      );
+      expect(completion).toMatchObject({
+        decision: "FINISH",
+        messageToUser: expectedReply,
+      });
+      expect(useModel).toHaveBeenCalledTimes(1);
+      expect(result.effectReceipts?.[0].outcome).toBe("applied");
+      expect(rows).toHaveLength(
+        action === "create" ? 2 : action === "delete" ? 0 : 1,
+      );
+      expect(saved.userFacingText).toBeTruthy();
+      expect(saved.turnComplete).toBe(true);
+    },
+  );
 });
