@@ -30,6 +30,11 @@ import { deriveAgentVaultId } from "@elizaos/app-core/security/agent-vault-id";
 
 The full subpath list lives in the `exports` map of `package.json`.
 
+The shipped `scripts/generate-plugin-index.js` writes the legacy `plugins.json`
+manifest offline from `@elizaos/shared/catalog`. It fails if the catalog cannot
+be loaded or the output cannot be written; it does not contact the retired
+community registry or retain old third-party listings.
+
 ## Automation entrypoints
 
 Use the package commands below and the scaffold's `run-eliza-app-core-script.mjs`

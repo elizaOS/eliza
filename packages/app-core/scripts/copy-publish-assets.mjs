@@ -233,8 +233,6 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/patch-deps.mjs",
   "scripts/patch-workspace-plugins.mjs",
   "scripts/playwright-ui-smoke-api-stub.mjs",
-  "scripts/plugin-index-local-additions.json",
-  "scripts/plugin-metadata-overrides.json",
   "scripts/prepare-ios-cocoapods.sh",
   "scripts/process-vrms.mjs",
   "scripts/prune-cdn-local-assets.mjs",
