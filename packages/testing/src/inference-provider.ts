@@ -1,6 +1,6 @@
 /** Detects and validates real inference providers required by integration tests. */
 
-import { logger, resolveModelGateway } from "@elizaos/core";
+import { resolveModelGateway } from "@elizaos/core";
 import z from "zod";
 
 /** Default Ollama endpoint */
@@ -254,49 +254,4 @@ export async function detectInferenceProviders(): Promise<InferenceProviderDetec
     allProviders,
     summary,
   };
-}
-
-/**
- * Validate that an inference provider is available for testing.
- * Throws an error with helpful instructions if no provider is found.
- */
-export async function requireInferenceProvider(): Promise<InferenceProviderInfo> {
-  const detection = await detectInferenceProviders();
-
-  logger.info(
-    { src: "testing:inference-provider" },
-    `\n${"=".repeat(60)}\nINFERENCE PROVIDER DETECTION\n${"=".repeat(60)}\n${detection.summary}\n${"=".repeat(60)}\n`,
-  );
-
-  if (!detection.hasProvider || !detection.primaryProvider) {
-    throw new Error(
-      "No inference provider available for integration tests.\n\n" +
-        "Integration tests require a working inference provider.\n\n" +
-        "Options:\n" +
-        "  1. Start Ollama locally:\n" +
-        "     $ ollama serve\n" +
-        "     $ ollama create eliza-1-2b -f packages/training/cloud/ollama/Modelfile.eliza-1-2b-q4_k_m  # for TEXT_SMALL\n" +
-        "     $ ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m  # for TEXT_LARGE\n\n" +
-        "  2. Set a cloud API key:\n" +
-        "     $ export OPENAI_API_KEY=sk-...\n" +
-        "     $ export CEREBRAS_API_KEY=csk-...\n" +
-        "     $ export ANTHROPIC_API_KEY=sk-...\n" +
-        "     $ export GOOGLE_API_KEY=...\n",
-    );
-  }
-
-  logger.info(
-    { src: "testing", provider: detection.primaryProvider.name },
-    `Using ${detection.primaryProvider.name} for test inference`,
-  );
-
-  return detection.primaryProvider;
-}
-
-/**
- * Check if any inference provider is available without throwing
- */
-export async function hasInferenceProvider(): Promise<boolean> {
-  const detection = await detectInferenceProviders();
-  return detection.hasProvider;
 }
