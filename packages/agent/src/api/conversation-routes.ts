@@ -3834,7 +3834,7 @@ async function importConversation(
         typeof rec.sourceId === "string" &&
         rec.sourceId.trim() &&
         rec.sourceId.length <= 256
-          ? rec.sourceId.trim()
+          ? rec.sourceId
           : undefined;
       return { role, text, timestamp, sourceId } as const;
     })
@@ -3848,6 +3848,16 @@ async function importConversation(
         readonly sourceId: string | undefined;
       } => m !== null,
     );
+  if (
+    importMessages.some(({ sourceId }) => sourceId && !sourceId.isWellFormed())
+  ) {
+    error(
+      res,
+      "Imported message sourceIds must contain well-formed Unicode",
+      400,
+    );
+    return true;
+  }
   const sourceIds = importMessages.map((message) => message.sourceId);
   const exactImport = sourceIds.length > 0 && sourceIds.every(Boolean);
   if (sourceIds.some(Boolean) && !exactImport) {

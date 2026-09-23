@@ -3490,6 +3490,62 @@ describe("conversation-route chat idempotency wiring", () => {
 });
 
 describe("conversation handoff import — exact source identities", () => {
+  it.each(["\ud800", "\udfff", "valid-prefix\ud800suffix"])(
+    "rejects malformed source identity before import setup: %j",
+    async (sourceId) => {
+      const h = createHarness();
+      const runtime = h.state.runtime;
+      if (!runtime) throw new Error("Missing import runtime");
+      const before = structuredClone([...h.state.conversations]);
+      const response = await runRoute(
+        "POST",
+        "/api/conversations/new-import/import",
+        h.state,
+        {
+          messages: [
+            { role: "user", text: "Complete original message", sourceId },
+          ],
+        },
+      );
+      expect(response.record.writes.join("\n")).toContain("error 400:");
+      expect([...h.state.conversations]).toEqual(before);
+      expect(runtime.ensureConnection).not.toHaveBeenCalled();
+      expect(runtime.createTask).not.toHaveBeenCalled();
+      expect(runtime.queueEmbeddingGeneration).not.toHaveBeenCalled();
+      expect(h.importScheduledTask).not.toHaveBeenCalled();
+      expect(h.createMemory).not.toHaveBeenCalled();
+      expect(h.updateMemory).not.toHaveBeenCalled();
+      expect(h.storedMemories).toEqual([]);
+    },
+  );
+
+  it("preserves non-BMP source identities and distinct surrounding whitespace across retries", async () => {
+    const h = createHarness();
+    const messages = ["source-😀", " source-😀 "].map((sourceId) => ({
+      sourceId,
+      role: "user",
+      text: "Complete imported Unicode: café 😀",
+      timestamp: 10,
+    }));
+    const path = "/api/conversations/conv-1/import";
+    const first = await runRoute("POST", path, h.state, { messages });
+    expect(first.captured.payload).toMatchObject({
+      inserted: 2,
+      complete: true,
+    });
+    const ids = h.storedMemories.map((memory) => memory.id);
+    expect(new Set(ids).size).toBe(2);
+    expect(h.storedMemories.map((memory) => memory.metadata?.sourceId)).toEqual(
+      messages.map((message) => message.sourceId),
+    );
+    const retry = await runRoute("POST", path, h.state, { messages });
+    expect(retry.captured.payload).toMatchObject({
+      inserted: 0,
+      complete: true,
+    });
+    expect(h.storedMemories.map((memory) => memory.id)).toEqual(ids);
+  });
+
   it("preserves original message whitespace and rejects changed-source retries", async () => {
     const { state, storedMemories, handleMessage } = createHarness();
     const messages = [
