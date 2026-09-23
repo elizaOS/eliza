@@ -95,7 +95,8 @@ async function assertPinnedFile(path: string, digest: string): Promise<void> {
     throw failure("Verifier executable/configuration digest mismatch");
 }
 
-async function attest(
+/** Collect raw evidence only; callers must independently verify its claims. */
+export async function collectDstackAttestation(
   socketPath: string,
   reportData: string,
   signal: AbortSignal,
@@ -151,7 +152,7 @@ async function attest(
 }
 
 async function verify(
-  config: z.output<typeof dstackEvidenceConfiguration>,
+  config: z.output<typeof dstackVerifierConfiguration>,
   attestation: string,
   signal: AbortSignal,
 ): Promise<string> {
@@ -241,6 +242,104 @@ async function verify(
   }
 }
 
+/** Remote appraisal deliberately has no local guest socket dependency. */
+export const dstackVerifierConfiguration = dstackEvidenceConfiguration.omit({
+  socketPath: true,
+});
+export type DstackVerifierConfig = z.input<typeof dstackVerifierConfiguration>;
+/** Recheck signed authority immediately before a protected operation. */
+export function assertDstackReleaseCurrent(
+  config: z.output<typeof dstackVerifierConfiguration>,
+): void {
+  const validity = config.releaseValidity;
+  if (
+    validity &&
+    (Date.now() < Date.parse(validity.notBefore) ||
+      Date.now() >= Date.parse(validity.expiresAt))
+  ) {
+    throw failure("Signed release identity is outside its validity interval");
+  }
+}
+
+/** Verify received raw evidence, never a remote caller's normalized claims. */
+export async function verifyDstackAttestation(
+  input: DstackVerifierConfig,
+  attestation: string,
+  challenge: TeeReportDataChallenge,
+  abortSignal?: AbortSignal,
+): Promise<TeeEvidence> {
+  const config = dstackVerifierConfiguration.parse(input);
+  sha256.parse(challenge.reportDataHex);
+  hex.parse(challenge.nonce);
+  hex.parse(attestation);
+  if (Buffer.byteLength(attestation) > MAX_PROTOCOL_BYTES)
+    throw failure("Attestation exceeds protocol size limit");
+  const timeout = AbortSignal.timeout(config.timeoutMs);
+  const signal = abortSignal
+    ? AbortSignal.any([abortSignal, timeout])
+    : timeout;
+  signal.throwIfAborted();
+  assertDstackReleaseCurrent(config);
+  try {
+    const result = responseSchema.parse(
+      JSON.parse(await verify(config, attestation, signal)),
+    );
+    signal.throwIfAborted();
+    assertDstackReleaseCurrent(config);
+    const d = result.details;
+    if (
+      d.tee_variant !== config.variant ||
+      !equalHex(d.report_data, challenge.reportDataHex.padEnd(128, "0"))
+    ) {
+      throw failure("Verified variant or report-data challenge mismatch");
+    }
+    if (
+      d.os_image_is_dev === true ||
+      (d.tee_variant === "dstack-tdx" &&
+        (d.tcb_status !== "UpToDate" || !d.acpi_tables_verified))
+    ) {
+      throw failure(
+        "Verified platform does not meet production appraisal policy",
+      );
+    }
+    if (d.tee_variant === "dstack-nitro-enclave" && d.tcb_status !== null) {
+      throw failure("Unexpected Nitro Enclave TCB semantics");
+    }
+    const app = d.app_info;
+    if (
+      !equalHex(app.app_id, config.appId) ||
+      !equalHex(app.compose_hash, config.composeHash) ||
+      !equalHex(app.os_image_hash, config.osImageHash)
+    ) {
+      throw failure(
+        "Verified deployment identity does not match admission policy",
+      );
+    }
+    return {
+      kind: d.tee_variant === "dstack-tdx" ? "tdx" : "nitro",
+      provider: "dstack",
+      reportData: challenge.reportDataHex.toLowerCase(),
+      measurements: {
+        compose: app.compose_hash,
+        os: app.os_image_hash,
+        boot: app.mr_aggregated,
+      },
+      // These platforms' pinned verifier rejects debug reports. No GPU, NPU,
+      // I/O, secure-boot or lifecycle claims are inferred from generic validity.
+      claims: { debugDisabled: true },
+      freshness: {
+        nonce: challenge.nonce,
+        timestamp: new Date().toISOString(),
+        verifier: `dstack-verifier:sha256:${config.verifierSha256}`,
+      },
+      raw: { attestation, verification: result },
+    };
+  } catch (error) {
+    // error-policy:J2 Remote evidence failures never produce usable trust.
+    throw failure("Dstack raw evidence appraisal failed", error);
+  }
+}
+
 /** Uses the pinned dstack guest-v1 and verifier --verify JSON wire contracts. */
 export function createDstackEvidenceProvider(
   input: DstackEvidenceConfig,
@@ -251,16 +350,6 @@ export function createDstackEvidenceProvider(
   ): Promise<TeeEvidence>;
 } {
   const config = dstackEvidenceConfiguration.parse(input);
-  const assertReleaseCurrent = () => {
-    const validity = config.releaseValidity;
-    if (
-      validity &&
-      (Date.now() < Date.parse(validity.notBefore) ||
-        Date.now() >= Date.parse(validity.expiresAt))
-    ) {
-      throw failure("Signed release identity is outside its validity interval");
-    }
-  };
   const collect = async (
     challenge: TeeReportDataChallenge,
     abortSignal?: AbortSignal,
@@ -273,65 +362,18 @@ export function createDstackEvidenceProvider(
       : timeout;
     signal.throwIfAborted();
     try {
-      assertReleaseCurrent();
-      const attestation = await attest(
+      assertDstackReleaseCurrent(config);
+      const attestation = await collectDstackAttestation(
         config.socketPath,
         challenge.reportDataHex,
         signal,
       );
-      const result = responseSchema.parse(
-        JSON.parse(await verify(config, attestation, signal)),
+      return await verifyDstackAttestation(
+        config,
+        attestation,
+        challenge,
+        signal,
       );
-      signal.throwIfAborted();
-      assertReleaseCurrent();
-      const d = result.details;
-      if (
-        d.tee_variant !== config.variant ||
-        !equalHex(d.report_data, challenge.reportDataHex.padEnd(128, "0"))
-      ) {
-        throw failure("Verified variant or report-data challenge mismatch");
-      }
-      if (
-        d.os_image_is_dev === true ||
-        (d.tee_variant === "dstack-tdx" &&
-          (d.tcb_status !== "UpToDate" || !d.acpi_tables_verified))
-      ) {
-        throw failure(
-          "Verified platform does not meet production appraisal policy",
-        );
-      }
-      if (d.tee_variant === "dstack-nitro-enclave" && d.tcb_status !== null) {
-        throw failure("Unexpected Nitro Enclave TCB semantics");
-      }
-      const app = d.app_info;
-      if (
-        !equalHex(app.app_id, config.appId) ||
-        !equalHex(app.compose_hash, config.composeHash) ||
-        !equalHex(app.os_image_hash, config.osImageHash)
-      ) {
-        throw failure(
-          "Verified deployment identity does not match admission policy",
-        );
-      }
-      return {
-        kind: d.tee_variant === "dstack-tdx" ? "tdx" : "nitro",
-        provider: "dstack",
-        reportData: challenge.reportDataHex.toLowerCase(),
-        measurements: {
-          compose: app.compose_hash,
-          os: app.os_image_hash,
-          boot: app.mr_aggregated,
-        },
-        // These platforms' pinned verifier rejects debug reports. No GPU, NPU,
-        // I/O, secure-boot or lifecycle claims are inferred from generic validity.
-        claims: { debugDisabled: true },
-        freshness: {
-          nonce: challenge.nonce,
-          timestamp: new Date().toISOString(),
-          verifier: `dstack-verifier:sha256:${config.verifierSha256}`,
-        },
-        raw: { attestation, verification: result },
-      };
     } catch (error) {
       // error-policy:J2 Preserve the failing boundary without fabricating trust.
       throw failure("Dstack evidence collection/appraisal failed", error);
