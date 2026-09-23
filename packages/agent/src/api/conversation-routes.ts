@@ -884,6 +884,16 @@ export interface ConversationCaller {
   grantSource: RoleGrantSource;
 }
 
+/** Stable conversation identity for an authenticated external principal. */
+export function resolveConversationExternalEntityId(principalId: string): UUID {
+  if (!principalId) {
+    throw new ElizaError("Conversation principal identity is required", {
+      code: "CONVERSATION_PRINCIPAL_REQUIRED",
+    });
+  }
+  return stringToUuid(`conversation-external:${principalId}`);
+}
+
 /**
  * Exported for the machine-session conversation-attribution regression suite;
  * runtime callers are the conversation route handlers in this module.
@@ -925,7 +935,7 @@ export function resolveConversationCaller(
     // the session's boundary role here too: sessionRole is the literal "USER"
     // by construction and the grant is recorded with audit source "session".
     return {
-      entityId: stringToUuid(`conversation-external:${principal.principalId}`),
+      entityId: resolveConversationExternalEntityId(principal.principalId),
       role: principal.sessionRole,
       userName: "External API caller",
       grantSource: "session",
@@ -933,7 +943,7 @@ export function resolveConversationCaller(
   }
 
   return {
-    entityId: stringToUuid(`conversation-external:${principal.principalId}`),
+    entityId: resolveConversationExternalEntityId(principal.principalId),
     role: "GUEST",
     userName: "External API caller",
     grantSource: "connector_admin",
