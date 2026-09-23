@@ -187,4 +187,33 @@ describe("action union sibling constraints", () => {
 		);
 		expect(accepted).toEqual([]);
 	});
+	it.each([{ enum: [0] }, { default: 0 }])(
+		"rejects untyped union metadata that changes validation or normalization: %j",
+		(constraint) => {
+			expect(() =>
+				actionParameterSchemaToJsonSchema({
+					anyOf: [{ type: "number" }, { type: "string" }],
+					...constraint,
+				}),
+			).toThrow(
+				expect.objectContaining({
+					code: "ACTION_SCHEMA_UNTYPED_UNION_CONSTRAINT",
+				}),
+			);
+		},
+	);
+	it("does not drop enum overrides supplied by an action parameter", () => {
+		expect(() =>
+			actionParameterSchemaToJsonSchema(
+				{
+					anyOf: [{ type: "number" }, { type: "string" }],
+				},
+				{ path: "amount", enumValues: [0] },
+			),
+		).toThrow(
+			expect.objectContaining({
+				code: "ACTION_SCHEMA_UNTYPED_UNION_CONSTRAINT",
+			}),
+		);
+	});
 });
