@@ -1,36 +1,12 @@
 #!/usr/bin/env bun
 
-// build-mobile-bundle.mjs — produce the on-device agent payload.
-//
-// Output layout (consumed by the Phase A asset pipeline):
-//
-//   eliza/packages/agent/dist-mobile/
-//     agent-bundle.js              the actual bun-runnable payload
-//     pglite.wasm                  PGlite WebAssembly module
-//     initdb.wasm                  PGlite init database WebAssembly module
-//     pglite.data                  PGlite filesystem image
-//     vector.tar.gz                pgvector contrib (referenced via ../)
-//     fuzzystrmatch.tar.gz         fuzzystrmatch contrib (referenced via ../)
-//     plugins-manifest.json        list of plugins statically baked into the bundle
-//
-// What this build does NOT do:
-//   - Stage `node_modules`. All `MOBILE_CORE_PLUGINS` resolve through
-//     `STATIC_ELIZA_PLUGINS` in the agent runtime, so they are inlined by
-//     `Bun.build`.
-//   - Bundle a model. Inference goes through `ANTHROPIC_API_KEY` /
-//     `ELIZAOS_CLOUD_API_KEY` from the user's onboarding for first-light.
-//
-// PGlite extension paths:
-//   `@electric-sql/pglite` resolves four assets via `new URL(..., import.meta.url)`:
-//     - "./pglite.wasm"            => same dir as the bundle
-//     - "./initdb.wasm"            => same dir as the bundle
-//     - "./pglite.data"            => same dir as the bundle
-//     - "../vector.tar.gz"         => one dir above the bundle
-//     - "../fuzzystrmatch.tar.gz"  => one dir above the bundle
-//   After `Bun.build`, `import.meta.url` becomes the bundle's path, so we
-//   ship the four files alongside it and the asset pipeline mounts them so
-//   the relative paths land. Phase A is responsible for placing the .tar.gz
-//   files at parent-of-bundle on the device.
+/**
+ * Builds self-contained Android and iOS agent bundles with their PGlite assets.
+ * Mobile plugin policy determines the inlined plugin set; models are not bundled.
+ * PGlite wasm/data files sit beside the bundle, while the device asset pipeline
+ * places extension archives at the parent paths expected by PGlite.
+ * Android output must pass host-Bun module initialization before publication.
+ */
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
@@ -360,12 +336,7 @@ const nativeStubs = {
   // ELIZA_PLATFORM=android codepath that needs sync zlib — fall back to
   // the throw-on-call stub.
   "zlib-sync": path.join(stubsDir, "null-plugin.cjs"),
-  // `@elizaos/testing` re-exports `real-connector.ts`, which calls
-  // `await import("dotenv")` at module top level. Bun's bundler then
-  // refuses to merge any module that does `require("@elizaos/core")`
-  // because the resulting CJS-style namespace object would force the
-  // require'er to wait on the TLA. Mobile never runs the integration-test
-  // harness, so swap the entire testing surface for an empty stub.
+  // Private test fixtures are not part of the mobile runtime.
   "@elizaos/testing": path.join(stubsDir, "empty.cjs"),
   // `@snazzah/davey` is discord.js's DAVE-protocol voice codec — a
   // napi-rs native binding with NO Android prebuild. discord.js statically
@@ -522,33 +493,6 @@ const optionalPluginStubs = {
 };
 
 const stubAliases = { ...nativeStubs, ...optionalPluginStubs };
-
-// `@elizaos/core/src/index.ts` does `export * from "./testing"`, and
-// that subtree's `real-connector.ts:24` calls `await import("dotenv")` at
-// module top level. Bun's bundler then refuses every CJS-style
-// `require("@elizaos/core")` upstream (eliza-plugin.ts, embedding-manager-
-// support, etc.) because the resulting namespace would have to wait on
-// the TLA, which CJS can't express. Mobile never runs the integration
-// test harness — strip the entire testing subtree at bundle time so the
-// TLA chain never enters the graph.
-const coreTestingStripPlugin = {
-  name: "eliza-mobile-strip-core-testing",
-  setup(build) {
-    const emptyStub = path.join(stubsDir, "empty.cjs");
-    build.onResolve({ filter: /^\.\.?\/testing(\/.*)?$/ }, (args) => {
-      if (!args.importer) return undefined;
-      const norm = args.importer.replace(/\\/g, "/");
-      if (norm.includes("/packages/core/src/")) {
-        return { path: emptyStub, namespace: "file" };
-      }
-      return undefined;
-    });
-    build.onResolve({ filter: /testing\/real-connector/ }, () => ({
-      path: emptyStub,
-      namespace: "file",
-    }));
-  },
-};
 
 const stubResolverPlugin = {
   name: "eliza-mobile-stubs",
@@ -1509,7 +1453,6 @@ const buildResult = await Bun.build({
   },
   plugins: [
     iosFsSandboxPlugin,
-    coreTestingStripPlugin,
     zodCjsResolverPlugin,
     ethersCjsResolverPlugin,
     viemCjsResolverPlugin,
