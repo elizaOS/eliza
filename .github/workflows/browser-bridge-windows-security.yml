@@ -59,6 +59,7 @@ jobs:
         with:
           name: windows-vitest-install-evidence
           path: ${{ runner.temp }}/vitest-install-evidence
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
       - name: Diagnose broker test installation failure
