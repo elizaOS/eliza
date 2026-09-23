@@ -8,7 +8,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { PNG } from "pngjs";
+import sharp from "sharp";
 import { expect, test, waitForShellReady } from "./android-harness";
 
 type RegionState = {
@@ -44,24 +44,28 @@ function adb(args: string[], serial: string): Buffer {
 }
 
 /** Mean RGB of a device-pixel rect inside a screencap PNG (2px sampling). */
-function meanRgb(
-  png: PNG,
+async function meanRgb(
+  png: Buffer,
   rect: { x: number; y: number; width: number; height: number },
-): { r: number; g: number; b: number } {
+): Promise<{ r: number; g: number; b: number }> {
+  const { data, info } = await sharp(png)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
   let r = 0;
   let g = 0;
   let b = 0;
   let n = 0;
   const x0 = Math.max(0, Math.round(rect.x));
   const y0 = Math.max(0, Math.round(rect.y));
-  const x1 = Math.min(png.width, Math.round(rect.x + rect.width));
-  const y1 = Math.min(png.height, Math.round(rect.y + rect.height));
+  const x1 = Math.min(info.width, Math.round(rect.x + rect.width));
+  const y1 = Math.min(info.height, Math.round(rect.y + rect.height));
   for (let y = y0; y < y1; y += 2) {
     for (let x = x0; x < x1; x += 2) {
-      const i = (png.width * y + x) * 4;
-      r += png.data[i];
-      g += png.data[i + 1];
-      b += png.data[i + 2];
+      const i = (info.width * y + x) * 4;
+      r += data[i];
+      g += data[i + 1];
+      b += data[i + 2];
       n += 1;
     }
   }
@@ -175,9 +179,7 @@ test("GlassBridge native-view lifecycle, boundary validation, and rendered pixel
     document.body.style.background = "transparent";
   });
   await page.waitForTimeout(700);
-  const attachedShot = PNG.sync.read(
-    adb(["exec-out", "screencap", "-p"], serial),
-  );
+  const attachedShot = adb(["exec-out", "screencap", "-p"], serial);
   // The panel offsets by the WebView's container position; its own reported
   // x/y are container coordinates. For the screen-space sample, use the REAL
   // panel geometry the plugin read back rather than re-deriving it.
@@ -187,7 +189,7 @@ test("GlassBridge native-view lifecycle, boundary validation, and rendered pixel
     width: CSS_RECT.width * dpr,
     height: CSS_RECT.height * dpr,
   };
-  const attachedColor = meanRgb(attachedShot, attachedRect);
+  const attachedColor = await meanRgb(attachedShot, attachedRect);
   // The orange-tinted material must dominate red over blue; the bare window
   // background (black/neutral) cannot produce this.
   expect(attachedColor.r).toBeGreaterThan(attachedColor.b + 40);
@@ -214,8 +216,8 @@ test("GlassBridge native-view lifecycle, boundary validation, and rendered pixel
     -1,
   );
 
-  const movedShot = PNG.sync.read(adb(["exec-out", "screencap", "-p"], serial));
-  const movedColor = meanRgb(movedShot, afterMove.rect ?? attachedRect);
+  const movedShot = adb(["exec-out", "screencap", "-p"], serial);
+  const movedColor = await meanRgb(movedShot, afterMove.rect ?? attachedRect);
   expect(movedColor.r).toBeGreaterThan(movedColor.b + 40);
 
   // Adversarial rects: every one must REJECT at the boundary (never clamp),
@@ -271,10 +273,8 @@ test("GlassBridge native-view lifecycle, boundary validation, and rendered pixel
   expect(afterDetach.exists).toBe(false);
   expect(afterDetach.regionCount).toBe(0);
 
-  const detachedShot = PNG.sync.read(
-    adb(["exec-out", "screencap", "-p"], serial),
-  );
-  const detachedColor = meanRgb(detachedShot, attachedRect);
+  const detachedShot = adb(["exec-out", "screencap", "-p"], serial);
+  const detachedColor = await meanRgb(detachedShot, attachedRect);
   expect(detachedColor.r).toBeLessThan(attachedColor.r - 40);
 
   // Restore the web layer for subsequent specs.
@@ -291,7 +291,7 @@ test("GlassBridge native-view lifecycle, boundary validation, and rendered pixel
     ["detached", detachedShot],
   ] as const) {
     const file = path.join(ARTIFACT_DIR, `${name}.png`);
-    writeFileSync(file, PNG.sync.write(shot));
+    writeFileSync(file, shot);
     await testInfo.attach(name, { path: file, contentType: "image/png" });
   }
 });
