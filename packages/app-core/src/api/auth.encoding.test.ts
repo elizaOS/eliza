@@ -9,9 +9,17 @@ vi.mock("@elizaos/core", () => ({
 vi.mock("@elizaos/shared", () => ({
   resolveApiToken: () => null,
 }));
-vi.mock("../services/auth-store.js", () => ({
-  AuthStore: class AuthStore {},
-}));
+vi.mock("../services/auth-store.js", () => {
+  const mocked = {
+    AuthStore: class AuthStore {},
+  };
+  return {
+    ...mocked,
+    authStoreForRuntime: (
+      runtime: { adapter?: { db?: unknown } } | null | undefined,
+    ) => (runtime?.adapter?.db ? new mocked.AuthStore() : null),
+  };
+});
 vi.mock("./auth/embed-session-token.js", () => ({
   readEmbedSessionSecretSetting: () => null,
   resolveEmbedSessionSecret: () => null,

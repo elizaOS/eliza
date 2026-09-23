@@ -12,7 +12,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import { AuthStore, type DrizzleDatabase } from "../services/auth-store";
+import { authStoreForRuntime } from "../services/auth-store";
 import {
   appendAuditEvent,
   createBrowserSession,
@@ -28,15 +28,6 @@ import { sendJson, sendJsonError } from "./response";
 const DESKTOP_BOOTSTRAP_PATH = "/api/auth/desktop-bootstrap";
 const SOCKET_SECRET_BYTES = 32;
 const SOCKET_TIMEOUT_MS = 5_000;
-
-interface AdapterWithDb {
-  db?: unknown;
-}
-
-function getDrizzleDb(state: CompatRuntimeState): DrizzleDatabase | null {
-  const adapter = state.current?.adapter as AdapterWithDb | undefined;
-  return adapter?.db ? (adapter.db as DrizzleDatabase) : null;
-}
 
 function resolveAllowedSocketRoots(): string[] {
   return [path.join(resolveStateDir(), "sockets"), os.tmpdir()].map((root) =>
@@ -119,8 +110,8 @@ export async function handleDesktopAuthBootstrapRoute(
     return true;
   }
 
-  const db = getDrizzleDb(state);
-  if (!db) {
+  const store = authStoreForRuntime(state.current);
+  if (!store) {
     sendJsonError(res, 503, "db_unavailable");
     return true;
   }
@@ -134,7 +125,6 @@ export async function handleDesktopAuthBootstrapRoute(
     return true;
   }
 
-  const store = new AuthStore(db);
   let owner = (await store.listIdentitiesByKind("owner"))[0] ?? null;
   const now = Date.now();
   if (!owner) {

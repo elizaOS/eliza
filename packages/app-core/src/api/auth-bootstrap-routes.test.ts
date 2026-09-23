@@ -151,10 +151,21 @@ function streamingReq(
   return req;
 }
 
+function unexpectedDatabaseQuery(): never {
+  throw new Error("Input rejection must not query the database");
+}
+
 function dummyState(): CompatRuntimeState {
   return {
     current: {
-      adapter: { db: {} },
+      adapter: {
+        db: {
+          insert: unexpectedDatabaseQuery,
+          select: unexpectedDatabaseQuery,
+          update: unexpectedDatabaseQuery,
+          delete: unexpectedDatabaseQuery,
+        },
+      },
     } as CompatRuntimeState["current"],
     pendingAgentName: null,
     pendingRestartReasons: [],

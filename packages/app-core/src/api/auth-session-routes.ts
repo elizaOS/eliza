@@ -7,7 +7,10 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { logger } from "@elizaos/core";
-import { AuthStore, type DrizzleDatabase } from "../services/auth-store";
+import {
+  type AuthRepository,
+  authStoreForRuntime,
+} from "../services/auth-store";
 import {
   appendAuditEvent,
   assertPasswordStrong,
@@ -40,18 +43,6 @@ import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
-
-interface AdapterWithDb {
-  db?: unknown;
-}
-
-function getDrizzleDb(state: CompatRuntimeState): DrizzleDatabase | null {
-  const runtime = state.current;
-  if (!runtime) return null;
-  const adapter = runtime.adapter as AdapterWithDb | undefined;
-  if (!adapter?.db) return null;
-  return adapter.db as DrizzleDatabase;
-}
 
 const DISPLAY_NAME_RE = /^[A-Za-z0-9 _.\-@]{1,64}$/;
 
@@ -141,8 +132,8 @@ export async function handleAuthSessionRoutes(
   const url = new URL(req.url ?? "/", "http://localhost");
   if (!url.pathname.startsWith("/api/auth/")) return false;
 
-  const db = getDrizzleDb(state);
-  if (!db) {
+  const store = authStoreForRuntime(state.current);
+  if (!store) {
     // Routes here all need the DB — return service unavailable rather than
     // routing further. The bootstrap-token endpoint behaves the same way.
     if (url.pathname === "/api/auth/me" && isTrustedLocalRequest(req)) {
@@ -183,7 +174,6 @@ export async function handleAuthSessionRoutes(
     }
     return false;
   }
-  const store = new AuthStore(db);
   const ip = req.socket.remoteAddress ?? null;
   const userAgent = extractHeaderValue(req.headers["user-agent"]);
 
@@ -237,7 +227,7 @@ export async function handleAuthSessionRoutes(
 async function handleSetup(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  store: AuthStore,
+  store: AuthRepository,
   meta: { ip: string | null; userAgent: string | null },
 ): Promise<boolean> {
   if (!consumeAuthBucket(meta.ip)) {
@@ -329,7 +319,7 @@ async function handleSetup(
 async function handleLoginPassword(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  store: AuthStore,
+  store: AuthRepository,
   meta: { ip: string | null; userAgent: string | null },
 ): Promise<boolean> {
   if (!consumeAuthBucket(meta.ip)) {
@@ -440,7 +430,7 @@ async function handleLoginPassword(
 async function handleLogout(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  store: AuthStore,
+  store: AuthRepository,
   meta: { ip: string | null; userAgent: string | null },
 ): Promise<boolean> {
   const sessionId = parseSessionCookie(req) ?? getProvidedApiToken(req) ?? null;
@@ -469,7 +459,7 @@ async function handleLogout(
 async function handleMe(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  store: AuthStore,
+  store: AuthRepository,
 ): Promise<boolean> {
   if (isTrustedLocalRequest(req)) {
     const owner = (await store.listIdentitiesByKind("owner"))[0] ?? null;
@@ -565,7 +555,7 @@ async function handleMe(
 async function handleChangePassword(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  store: AuthStore,
+  store: AuthRepository,
   meta: { ip: string | null; userAgent: string | null },
 ): Promise<boolean> {
   if (!passwordChangeLimiter.consume(meta.ip)) {
@@ -657,7 +647,7 @@ async function handleChangePassword(
 async function handleListSessions(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  store: AuthStore,
+  store: AuthRepository,
 ): Promise<boolean> {
   if (isTrustedLocalRequest(req)) {
     const owner = (await store.listIdentitiesByKind("owner"))[0] ?? null;
@@ -716,7 +706,7 @@ async function handleListSessions(
 async function handleRevoke(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  store: AuthStore,
+  store: AuthRepository,
   targetSessionId: string,
   meta: { ip: string | null; userAgent: string | null },
 ): Promise<boolean> {

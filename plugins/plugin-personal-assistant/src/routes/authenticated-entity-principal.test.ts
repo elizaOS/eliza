@@ -17,7 +17,7 @@ vi.mock("@elizaos/app-core/api/auth", () => ({
 }));
 
 vi.mock("@elizaos/app-core/services/auth-store", () => ({
-  AuthStore: class AuthStore {},
+  authStoreForRuntime: () => null,
 }));
 
 vi.mock("@elizaos/plugin-relationships/knowledge-graph", () => ({

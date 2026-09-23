@@ -57,7 +57,7 @@ import { DIRECT_ACCOUNT_PROVIDER_ENV } from "@elizaos/credentials/auth/types";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/first-run-options";
 import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
-import { AuthStore } from "../services/auth-store";
+import { authStoreForRuntime } from "../services/auth-store";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
 import { readCookie, resolveSessionTokenRole } from "./auth";
 import { findActiveSession, SESSION_COOKIE_NAME } from "./auth/sessions";
@@ -1177,13 +1177,10 @@ export async function startApiServer(
         extractAuthToken(request)?.trim() ||
         null;
       if (sessionToken) {
-        const db = compatState.current?.adapter?.db;
-        if (db) {
+        if (compatState.current?.adapter) {
           try {
-            const store = new AuthStore(
-              db as ConstructorParameters<typeof AuthStore>[0],
-            );
-            if (await findActiveSession(store, sessionToken)) {
+            const store = authStoreForRuntime(compatState.current);
+            if (store && (await findActiveSession(store, sessionToken))) {
               return true;
             }
           } catch (error) {

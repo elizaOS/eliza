@@ -175,16 +175,25 @@ const authStoreMocks = vi.hoisted(() => ({
   ),
 }));
 
-vi.mock("../services/auth-store", () => ({
-  AuthStore: class MockAuthStore {
-    constructor(...args: unknown[]) {
-      authStoreMocks.ctor(...args);
-    }
-    listIdentitiesByKind = authStoreMocks.listIdentitiesByKind;
-    findIdentityByDisplayName = authStoreMocks.findIdentityByDisplayName;
-    createIdentity = authStoreMocks.createIdentity;
-  },
-}));
+vi.mock("../services/auth-store", () => {
+  const mocked = {
+    AuthStore: class MockAuthStore {
+      constructor(...args: unknown[]) {
+        authStoreMocks.ctor(...args);
+      }
+      listIdentitiesByKind = authStoreMocks.listIdentitiesByKind;
+      findIdentityByDisplayName = authStoreMocks.findIdentityByDisplayName;
+      createIdentity = authStoreMocks.createIdentity;
+    },
+  };
+  return {
+    ...mocked,
+    authStoreForRuntime: (
+      runtime: { adapter?: { db?: unknown } } | null | undefined,
+    ) =>
+      runtime?.adapter?.db ? new mocked.AuthStore(runtime.adapter.db) : null,
+  };
+});
 
 vi.mock("./server-first-run-helpers", () => ({
   isCloudProvisioned: () => process.env.ELIZA_CLOUD_PROVISIONED === "1",

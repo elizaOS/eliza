@@ -380,6 +380,7 @@
       "devDependencies": {
         "@elizaos/plugin-app-control": "workspace:*",
         "@elizaos/plugin-inmemorydb": "workspace:*",
+        "@elizaos/plugin-sqlite": "workspace:*",
         "@elizaos/prompts": "workspace:*",
         "@elizaos/testing": "workspace:*",
         "@playwright/test": "^1.62.1",
