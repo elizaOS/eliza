@@ -3,9 +3,9 @@
  * pinned subprocess appraisal. Quote responses are explicitly synthetic fixtures;
  * these tests prove transport ownership, not platform hardware cryptography.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash, generateKeyPairSync } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import {
   createServer as createHttpServer,
   type Server as HttpServer,
@@ -554,6 +554,52 @@ describe("attested inference TLS admission", () => {
     await expect(invoke(fetcher)).rejects.toThrow();
     expect(quotes).toEqual([]);
     expect(received).toEqual([]);
+  });
+  it("observes a refused real Unix connection as not-sent without TCP fallback", async () => {
+    const path = join(dir, "stale-forwarder.sock");
+    const child = spawn(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `import {createServer} from "node:net"; createServer(()=>{}).listen(${JSON.stringify(path)},()=>process.stdout.write("ready"));`,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    const closed = new Promise<void>((resolve) =>
+      child.once("close", () => resolve()),
+    );
+    try {
+      await new Promise<void>((resolve, reject) => {
+        child.once("error", reject);
+        child.once("exit", () =>
+          reject(new Error("Unix relay exited before readiness")),
+        );
+        child.stdout.once("data", () => resolve());
+      });
+      child.kill("SIGKILL");
+      await closed;
+      expect((await lstat(path)).isSocket()).toBe(true);
+      const fetcher = createAttestedInferenceFetch({
+        origin: `https://localhost:${port}`,
+        unixSocketPath: path,
+        ca: cert,
+        policy,
+        verifier: config,
+        beforeDispatch: async () => {
+          throw new Error("Audit must not run");
+        },
+      });
+      await expect(invoke(fetcher)).rejects.toMatchObject({
+        code: "TEE_INFERENCE_TRANSPORT_REJECTED",
+        context: { dispatchState: "not-sent" },
+      });
+      expect(quotes).toEqual([]);
+      expect(received).toEqual([]);
+    } finally {
+      child.kill("SIGKILL");
+      await closed;
+    }
   });
   it.each(["relative.sock", "/tmp/invalid\0socket"])(
     "rejects invalid constructor dial target %s",
