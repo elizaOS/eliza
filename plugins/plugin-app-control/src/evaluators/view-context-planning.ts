@@ -371,7 +371,8 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 			intent.viewId === "" &&
 			intent.navigationOnly === false &&
 			message.content.source === "client_chat" &&
-			message.content.channelType === "DM" &&
+			(message.content.channelType === "DM" ||
+				message.content.channelType === "VOICE_DM") &&
 			messageHandler.plan.candidateActions?.includes("VIEWS_SHOW") &&
 			runtime.actions.some((action) => action.name === "VIEWS_SHOW")
 		) {
@@ -520,7 +521,8 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 			intent.navigationOnly === true &&
 			intent.disposition === "requested" &&
 			message.content.source === "client_chat" &&
-			message.content.channelType === "DM" &&
+			(message.content.channelType === "DM" ||
+				message.content.channelType === "VOICE_DM") &&
 			!!message.id &&
 			messageHandler.plan.intents?.length === 1 &&
 			selectedActions.every((name) => name === "VIEWS_SHOW") &&

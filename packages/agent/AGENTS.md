@@ -239,3 +239,5 @@ recalled source IDs using the assistant's shared original-message renderer.
 Preserve original author, room, identity and text, including hash-memory source
 presentation and partial/withheld notices. The metadata is a quotation aid, not
 a new access grant or a way to recover text removed during provider redaction.
+
+Caller-scoped voice navigation may request the existing completed-action handoff receipt while retaining originating-client delivery. Return literal delivery confirmation and the validated handoff ID only from actual targeted WebSocket delivery; disconnected voice callers get no global or terminal fallback and cannot commit a new current-view state. This confirms server transport delivery, not a browser-mounted acknowledgement.

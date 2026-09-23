@@ -57,6 +57,32 @@ async function streamTerminalActionResults(actionResults: Record<string, unknown
 }
 
 describe("eliza sse bridge", () => {
+  test.each([
+    { delivered: true, handoffId: "voice-navigation-1", duplicate: false },
+    { delivered: false, handoffId: "voice-navigation-1", duplicate: true },
+    { delivered: "true", handoffId: "voice-navigation-1", duplicate: true },
+    { delivered: true, handoffId: undefined, duplicate: true },
+    { delivered: true, handoffId: "invalid id", duplicate: true },
+  ])(
+    "does not repeat only confirmed targeted navigation: %j",
+    async ({ delivered, handoffId, duplicate }) => {
+      const result = await streamTerminalActionResult({
+        actionName: "VIEWS",
+        success: true,
+        values: {
+          mode: "show",
+          viewId: "notes",
+          viewPath: "/notes",
+          completedActionDelivered: delivered,
+          completedActionHandoffId: handoffId,
+        },
+      });
+      expect(result.viewHandoff).toEqual(
+        duplicate ? { viewId: "notes", viewPath: "/notes" } : undefined,
+      );
+    },
+  );
+
   test("speaks a transient status acknowledgement once before the separate final reply", async () => {
     const events: string[] = [];
     const result = await streamElizaConversation(

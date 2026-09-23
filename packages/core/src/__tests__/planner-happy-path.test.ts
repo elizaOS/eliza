@@ -6,9 +6,19 @@
  * live model.
  */
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	createShowViewAction,
+	createViewsAction,
+} from "../../../../plugins/plugin-app-control/src/actions/views.ts";
+import {
+	viewContextPlanningEvaluator,
+	viewContinuationField,
+} from "../../../../plugins/plugin-app-control/src/evaluators/view-context-planning.ts";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import {
 	runV5MessageRuntimeStage1,
@@ -862,7 +872,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(getCalls(runtime)).toHaveLength(4);
 	});
 
-	it("preserves an unverified-mutation failure when callback delivery suppresses response content", async () => {
+	it("preserves an unverified-mutation failure while withholding action callback prose", async () => {
 		const failureMessage =
 			"I changed files but could not complete the required command verification. The coding task is incomplete.";
 		const writeAction = makeMockAction({
@@ -942,7 +952,8 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind !== "planned_reply") throw new Error("expected reply");
-		expect(result.result.responseContent).toBeNull();
+		expect(deliveredVisibleTexts.size).toBe(0);
+		expect(result.result.responseContent?.text).toBe(failureMessage);
 		expect(result.result.terminalFailure).toEqual({
 			kind: "coding_mutation_unverified",
 			transient: false,
@@ -950,7 +961,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		});
 	});
 
-	it("preserves a typed coding-tool failure when callback delivery suppresses response content", async () => {
+	it("preserves a typed coding-tool failure while withholding action callback prose", async () => {
 		const failureMessage =
 			"The build failed because the source did not compile.";
 		const buildAction = makeMockAction({
@@ -1014,7 +1025,8 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind !== "planned_reply") throw new Error("expected reply");
-		expect(result.result.responseContent).toBeNull();
+		expect(deliveredVisibleTexts.size).toBe(0);
+		expect(result.result.responseContent?.text).toBe(failureMessage);
 		expect(result.result.terminalFailure).toEqual({
 			kind: "handler_error",
 			code: "BUILD_FAILED",
@@ -1724,7 +1736,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		}
 	});
 
-	it("suppresses planner echo after a receipt-backed action callback is delivered", async () => {
+	it("holds receipt-backed callback prose for one final response", async () => {
 		const canonicalText = "I created the task and kept its ID handy: abc123.";
 		const observedAt = "2026-07-27T18:00:00.000Z";
 		const delivered: string[] = [];
@@ -1787,7 +1799,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					body: JSON.stringify({
 						success: true,
 						decision: "FINISH",
-						thought: "The action callback already told the user.",
+						thought: "The settled receipt grounds the final response.",
 						messageToUser: canonicalText,
 					}),
 				},
@@ -1811,12 +1823,16 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			deliveredVisibleTexts,
 		});
 
-		expect(delivered).toEqual([canonicalText]);
+		expect(delivered).toEqual([]);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent).toBeNull();
+			expect(result.result.responseContent?.text).toBe(canonicalText);
+			if (!result.result.responseContent)
+				throw new Error("Missing final reply");
+			await wrappedCallback(result.result.responseContent);
 		}
 		expect(callback).toHaveBeenCalledTimes(1);
+		expect(delivered).toEqual([canonicalText]);
 		expect(getCalls(runtime).map((c) => c.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
@@ -1918,14 +1934,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		]);
 	});
 
-	it("ships exactly one message when a settled action confirmation owns the turn", async () => {
-		// Live double-message repro (settings-style action): an unsettled
-		// confirmation left the evaluator replanning — its FINISH carried an empty
-		// messageToUser — so a second planner iteration composed a duplicate
-		// reply. A settled result (userFacingText + verified + turnComplete)
-		// makes the action's own callback the sole delivery: the settlement
-		// boundary marks the byte-matching callback agentVoiced (no voice-rewrite
-		// model call at all) and the turn gate skips the evaluator.
+	it("returns one final confirmation when a settled action owns the turn", async () => {
+		// A settled action preserves its canonical reply without publishing its
+		// provisional callback or spending a second model call to paraphrase it.
 		const confirmation = "Got it — I'll only reply when you @-mention me.";
 		const delivered: string[] = [];
 		const deliveredVisibleTexts = new Set<string>();
@@ -1985,15 +1996,17 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			deliveredVisibleTexts,
 		});
 
-		expect(delivered).toEqual([confirmation]);
-		expect(callback).toHaveBeenCalledTimes(1);
-		for (const text of delivered) {
-			expect(text).not.toMatch(/couldn't format the details cleanly/i);
-		}
+		expect(delivered).toEqual([]);
+		expect(callback).not.toHaveBeenCalled();
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent).toBeNull();
+			expect(result.result.responseContent?.text).toBe(confirmation);
+			if (!result.result.responseContent)
+				throw new Error("Missing final reply");
+			await wrappedCallback(result.result.responseContent);
 		}
+		expect(callback).toHaveBeenCalledTimes(1);
+		expect(delivered).toEqual([confirmation]);
 		// The settled action owns the turn: no rewrite call, no evaluator call,
 		// no second planner iteration composing a duplicate reply.
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
@@ -2002,15 +2015,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		]);
 	});
 
-	it("delivers the raw callback text when the voice rewrite fails on an unsettled callback", async () => {
-		// The other half of the live incident: a non-canonical action callback
-		// entered the character-voice rewrite, the TEXT_SMALL call returned no
-		// usable text, and the old fallback fabricated an internal formatting
-		// apology as the wire text — shipped one second before the evaluator's
-		// real reply. A failed rewrite must degrade to the raw callback text;
-		// the meta-apology must never reach a delivery.
-		const raw = "Reply gate set to on_mention for this user.";
-		const evaluatorReply = "word. reply gate set to on_mention.";
+	it("keeps unsettled read callbacks internal until the final model reply", async () => {
+		const raw = "Reply gate is on_mention for this user.";
+		const evaluatorReply = "Your reply gate is on_mention.";
 		const delivered: string[] = [];
 		const deliveredVisibleTexts = new Set<string>();
 		const action = makeMockAction({
@@ -2042,14 +2049,12 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						toolCalls: [{ id: "call-1", name: "SETTINGS_NOTE", arguments: {} }],
 					},
 				},
-				// The character-voice rewrite fails by returning no usable text.
-				{ expectModelType: ModelType.TEXT_SMALL, body: "" },
 				{
 					expectModelType: ModelType.RESPONSE_HANDLER,
 					body: JSON.stringify({
 						success: true,
 						decision: "FINISH",
-						thought: "Confirming the change in voice.",
+						thought: "Report the setting returned by the read.",
 						messageToUser: evaluatorReply,
 					}),
 				},
@@ -2061,22 +2066,20 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		});
 		const wrappedCallback = wrapSingleTurnVisibleCallback(
 			runtime,
-			makeMessage("note the gate change"),
+			makeMessage("read my reply gate"),
 			callback,
 			(text) => deliveredVisibleTexts.add(text.toLowerCase()),
 		);
 
 		const result = await runStage1({
 			runtime,
-			message: makeMessage("note the gate change"),
+			message: makeMessage("read my reply gate"),
 			callback: wrappedCallback,
 			deliveredVisibleTexts,
 		});
 
-		// The callback delivery is the RAW action text — before the fix this was
-		// the fabricated formatting apology.
-		expect(delivered).toEqual([raw]);
-		expect(callback).toHaveBeenCalledTimes(1);
+		expect(delivered).toEqual([]);
+		expect(callback).not.toHaveBeenCalled();
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(evaluatorReply);
@@ -2093,7 +2096,6 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
-			ModelType.TEXT_SMALL,
 			ModelType.RESPONSE_HANDLER,
 		]);
 	});
@@ -2563,6 +2565,147 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			}),
 		});
 	});
+
+	it.each(
+		[ChannelType.DM, ChannelType.VOICE_DM].flatMap((channelType) =>
+			["delivered", "false", "missing", "mismatch", "malformed"].map(
+				(receipt) => ({ channelType, receipt }),
+			),
+		),
+	)(
+		"uses the existing single-call path only after matching navigation delivery: $channelType/$receipt",
+		async ({ channelType, receipt }) => {
+			const posts: Array<Record<string, unknown>> = [];
+			const server = createServer(async (request, response) => {
+				response.setHeader("content-type", "application/json");
+				if (request.method === "GET") {
+					response.end(
+						JSON.stringify({
+							views: [
+								{
+									id: "chat",
+									label: "Messages",
+									path: "/chat",
+									pluginName: "builtin",
+									available: true,
+									viewType: "gui",
+								},
+							],
+						}),
+					);
+					return;
+				}
+				const chunks: Buffer[] = [];
+				for await (const chunk of request) chunks.push(Buffer.from(chunk));
+				const body = JSON.parse(Buffer.concat(chunks).toString()) as Record<
+					string,
+					unknown
+				>;
+				posts.push(body);
+				response.end(
+					receipt === "malformed"
+						? "{"
+						: JSON.stringify({
+								ok: true,
+								...(receipt === "missing"
+									? {}
+									: {
+											completedActionDelivered: receipt !== "false",
+											completedActionHandoffId:
+												receipt === "mismatch"
+													? "another-handoff"
+													: body.completedActionHandoffId,
+										}),
+							}),
+				);
+			});
+			await new Promise<void>((resolve) =>
+				server.listen(0, "127.0.0.1", resolve),
+			);
+			const previousPort = process.env.ELIZA_API_PORT;
+			process.env.ELIZA_API_PORT = String(
+				(server.address() as AddressInfo).port,
+			);
+			try {
+				const runtime = makeRuntime({
+					owner: true,
+					contextRegistry: new ContextRegistry([
+						{ id: "general", description: "General app operations" },
+					]),
+					actions: [createViewsAction(), createShowViewAction()],
+					responseHandlerEvaluators: [viewContextPlanningEvaluator],
+					responses: [
+						{
+							expectModelType: ModelType.RESPONSE_HANDLER,
+							body: stage1Response({
+								contexts: ["simple"],
+								intents: ["navigate to home"],
+								candidateActionNames: ["VIEWS_SHOW"],
+								replyText: "Back at home.",
+								extra: {
+									replyEffectStatus: "pending",
+									visualContinuation: {
+										disposition: "requested",
+										viewId: "Home",
+										singleViewOnly: true,
+										navigationOnly: true,
+										reason: "Return Home",
+									},
+								},
+							}),
+						},
+						...(receipt === "delivered" ? [] : uncertaintyReplyResponses()),
+					],
+				});
+				setParityAuthority(runtime, "test");
+				runtime.responseHandlerFieldRegistry.register(viewContinuationField);
+				const message = makeMessage("Go home.", "client_chat");
+				Object.assign(message.content, {
+					channelType,
+					metadata: {
+						viewClientId: "navigation-client",
+						...(channelType === ChannelType.VOICE_DM
+							? { clientTransport: "realtime_voice" }
+							: {}),
+					},
+				});
+				const result = await runWithStreamingContext(
+					{ messageId: message.id, abortSignal: new AbortController().signal },
+					() => runStage1({ runtime, message }),
+				);
+				expect(getCalls(runtime).map((call) => call.modelType)).toEqual(
+					receipt === "delivered"
+						? [ModelType.RESPONSE_HANDLER]
+						: [
+								ModelType.RESPONSE_HANDLER,
+								ModelType.TEXT_SMALL,
+								ModelType.TEXT_SMALL,
+							],
+				);
+				expect(posts).toHaveLength(1);
+				expect(posts[0]).toMatchObject({
+					clientId: "navigation-client",
+					delivery:
+						channelType === ChannelType.VOICE_DM
+							? "originating-client"
+							: "completed-action",
+				});
+				expect(result.kind).toBe("planned_reply");
+				if (result.kind === "planned_reply")
+					expect(result.result.responseContent?.text).toBe(
+						receipt === "delivered"
+							? "Back at home."
+							: "The action did not return a confirmed result.",
+					);
+			} finally {
+				if (previousPort === undefined) delete process.env.ELIZA_API_PORT;
+				else process.env.ELIZA_API_PORT = previousPort;
+				await new Promise<void>((resolve, reject) =>
+					server.close((error) => (error ? reject(error) : resolve())),
+				);
+			}
+		},
+	);
 
 	// tj-a835d4c6da235f: an accepted, internal VIEWS effect must produce an
 	// honest confirmation instead of falling through to the no-result apology.
@@ -3742,29 +3885,20 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(result.kind).toBe("planned_reply");
 	});
 
-	it("sanitizes drifted callback text at the wire while planner-echo suppression still matches the raw form (#15888)", async () => {
-		// The voice rewrite is itself model text and can drift into native tool
-		// syntax. The visible-callback wrap must deliver the SANITIZED text, but
-		// record the raw form too: the planner's finalMessage echoes the raw
-		// string, and suppression compares against this set — recording only the
-		// sanitized form would deliver a duplicate bubble on every drift turn.
+	it("sanitizes the returned final read reply at the single delivery boundary", async () => {
 		const rawPayload = '{"status":"ok","taskId":"abc123"}';
-		// NOTE: the rewrite must not CLAIM a completed side effect ("Task created:")
-		// — the planned-reply egress gate fails such claims closed without a
-		// verified receipt. This test pins wire sanitization + suppression, so it
-		// uses a non-claiming phrasing.
 		const driftedRewrite = "Here's the task id: abc123.<tool_call>notify_owner";
 		const delivered: string[] = [];
 		const deliveredVisibleTexts = new Set<string>();
 		const action = makeMockAction({
-			name: "CREATE_TASK",
+			name: "READ_TASK",
 			parameters: [],
 			handler: async (_runtime, _message, _state, _options, callback) => {
-				await callback?.({ text: rawPayload }, "CREATE_TASK");
+				await callback?.({ text: rawPayload }, "READ_TASK");
 				return {
 					success: true,
 					text: rawPayload,
-					data: { actionName: "CREATE_TASK" },
+					data: { actionName: "READ_TASK" },
 				};
 			},
 		});
@@ -3775,27 +3909,23 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.RESPONSE_HANDLER,
 					body: stage1Response({
 						contexts: ["general"],
-						candidateActionNames: ["CREATE_TASK"],
-						thought: "Creating the task needs a tool.",
+						candidateActionNames: ["READ_TASK"],
+						thought: "Reading the task needs a tool.",
 					}),
 				},
 				{
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
-						text: "Creating the task.",
-						toolCalls: [{ id: "call-1", name: "CREATE_TASK", arguments: {} }],
+						text: "Reading the task.",
+						toolCalls: [{ id: "call-1", name: "READ_TASK", arguments: {} }],
 					},
-				},
-				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: JSON.stringify({ response: driftedRewrite }),
 				},
 				{
 					expectModelType: ModelType.RESPONSE_HANDLER,
 					body: JSON.stringify({
 						success: true,
 						decision: "FINISH",
-						thought: "The action callback already told the user.",
+						thought: "Report the existing task identifier.",
 						messageToUser: driftedRewrite,
 					}),
 				},
@@ -3807,29 +3937,30 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		});
 		const wrappedCallback = wrapSingleTurnVisibleCallback(
 			runtime,
-			makeMessage("create that task"),
+			makeMessage("read that task"),
 			callback,
 			(text) => deliveredVisibleTexts.add(text.toLowerCase()),
 		);
 
 		const result = await runStage1({
 			runtime,
-			message: makeMessage("create that task"),
+			message: makeMessage("read that task"),
 			callback: wrappedCallback,
 			deliveredVisibleTexts,
 		});
 
-		// The connector saw ONLY the sanitized wire text.
-		expect(delivered).toEqual(["Here's the task id: abc123."]);
-		// Both forms were recorded: raw for suppression, sanitized as sent.
-		expect(deliveredVisibleTexts).toContain(driftedRewrite.toLowerCase());
-		expect(deliveredVisibleTexts).toContain("here's the task id: abc123.");
-		// The planner's raw-drift echo was suppressed against the raw record.
+		expect(delivered).toEqual([]);
+		expect(deliveredVisibleTexts.size).toBe(0);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent).toBeNull();
+			if (!result.result.responseContent)
+				throw new Error("Missing final reply");
+			await wrappedCallback(result.result.responseContent);
 		}
 		expect(callback).toHaveBeenCalledTimes(1);
+		expect(delivered).toEqual(["Here's the task id: abc123."]);
+		expect(deliveredVisibleTexts).toContain(driftedRewrite.toLowerCase());
+		expect(deliveredVisibleTexts).toContain("here's the task id: abc123.");
 	});
 
 	it("records terminal task failure separately from evaluator failures", async () => {

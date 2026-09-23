@@ -109,6 +109,52 @@ function turn<T>(run: () => T, disposition: "allow" | "deny" = "allow"): T {
 }
 
 describe("navigation execution policy", () => {
+	it.each(["delivered", "false", "missing", "malformed", "mismatch"] as const)(
+		"requires matching targeted voice delivery evidence: %s",
+		async (outcome) => {
+			reply = outcome;
+			const voiceMessage = {
+				...clientMessage,
+				content: {
+					...clientMessage.content,
+					source: "client_chat",
+					channelType: "VOICE_DM",
+					metadata: {
+						viewClientId: "client-a",
+						clientTransport: "realtime_voice",
+					},
+				},
+			} as Memory;
+			const action = createShowViewAction();
+			const result = await turn(() =>
+				action.handler(actionRuntime, voiceMessage, undefined, {
+					parameters: { view: "calendar", navigationStepId: "voice-step" },
+				}),
+			);
+			expect(posts).toHaveLength(1);
+			expect(posts[0]).toMatchObject({
+				delivery: "originating-client",
+				clientId: "client-a",
+			});
+			expect(posts[0].completedActionHandoffId).toMatch(/^[a-f0-9]{64}$/);
+			expect(result?.success).toBe(outcome === "delivered");
+			if (outcome === "delivered") {
+				expect(result?.data?.navigation).toMatchObject({
+					status: "delivered",
+					handoffId: posts[0].completedActionHandoffId,
+				});
+				expect(result?.values).toMatchObject({
+					completedActionDelivered: true,
+					completedActionHandoffId: posts[0].completedActionHandoffId,
+				});
+			} else {
+				expect(result?.values).not.toHaveProperty("completedActionDelivered");
+				expect(result?.data?.navigation).not.toMatchObject({
+					status: "delivered",
+				});
+			}
+		},
+	);
 	it("opens through the narrow action and preserves its delivery receipt", async () => {
 		const action = createShowViewAction();
 		const result = await turn(() =>
@@ -320,14 +366,30 @@ describe("navigation execution policy", () => {
 		expect(posts).toEqual([]);
 		expect(result.data).toMatchObject({ navigation: { status: "invalid" } });
 	});
-	it("does not dispatch after cancellation during the real catalog request", async () => {
-		cancelCatalog = true;
-		const result = await turn(() => show());
-		expect(posts).toEqual([]);
-		expect(result.data).toMatchObject({
-			navigation: { status: "cancelled", stepId: "step-1" },
-		});
-	});
+	it.each([false, true])(
+		"does not dispatch after catalog cancellation on realtimeVoice=%s",
+		async (voice) => {
+			cancelCatalog = true;
+			const result = await turn(() =>
+				show({
+					message: {
+						...clientMessage,
+						content: {
+							...clientMessage.content,
+							metadata: {
+								viewClientId: "client-a",
+								...(voice ? { clientTransport: "realtime_voice" } : {}),
+							},
+						},
+					} as Memory,
+				}),
+			);
+			expect(posts).toEqual([]);
+			expect(result.data).toMatchObject({
+				navigation: { status: "cancelled", stepId: "step-1" },
+			});
+		},
+	);
 	it("rechecks cancellation after role resolution", async () => {
 		view.roleGate = { minRole: "OWNER" };
 		const result = await turn(() =>

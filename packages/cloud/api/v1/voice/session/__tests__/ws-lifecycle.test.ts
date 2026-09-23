@@ -1897,45 +1897,61 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("speaking_end");
   });
 
-  test("terminal confirmation sends a provisional turnComplete acknowledgement to Cartesia once", async () => {
-    const client = new FakeClientSocket();
-    await connectSession({
-      client,
-      fetchImpl: makeLocalTokenFetch(
-        [{ fullText: "Opened Notes.", provisional: true }],
-        {
-          fullText: "Opened Notes.",
-          actionResults: [
-            {
-              actionName: "VIEWS",
-              success: true,
-              values: { mode: "show", viewId: "notes", viewPath: "/notes" },
-            },
-          ],
-        },
-      ),
-    });
+  test.each([false, true])(
+    "terminal voice confirmation speaks once and avoids confirmed navigation replay: delivered=%s",
+    async (delivered) => {
+      const client = new FakeClientSocket();
+      await connectSession({
+        client,
+        fetchImpl: makeLocalTokenFetch(
+          [{ fullText: "Opened Notes.", provisional: true }],
+          {
+            fullText: "Opened Notes.",
+            actionResults: [
+              {
+                actionName: "VIEWS",
+                success: true,
+                values: {
+                  mode: "show",
+                  viewId: "notes",
+                  viewPath: "/notes",
+                  ...(delivered
+                    ? {
+                        completedActionDelivered: true,
+                        completedActionHandoffId: "voice-navigation-1",
+                      }
+                    : {}),
+                },
+              },
+            ],
+          },
+        ),
+      });
 
-    const ink = FakeInkSocket.instances.at(-1)!;
-    ink.emitTurn("turn.start");
-    ink.emitTurn("turn.end", "open notes");
-    await flush();
-    await flush();
+      const ink = FakeInkSocket.instances.at(-1)!;
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "open notes");
+      await flush();
+      await flush();
 
-    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
-    const synthesisTexts = cartesia.sent
-      .map((frame) => JSON.parse(frame) as { transcript?: unknown })
-      .flatMap((frame) =>
-        typeof frame.transcript === "string" && frame.transcript.length > 0
-          ? [frame.transcript]
-          : [],
-      );
-    expect(synthesisTexts).toEqual(["Opened Notes."]);
-    expect(client.controlTypes()).not.toContain("error");
-    cartesia.emitDone();
-    await flush();
-    expect(client.controlTypes()).toContain("speaking_end");
-  });
+      const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+      const synthesisTexts = cartesia.sent
+        .map((frame) => JSON.parse(frame) as { transcript?: unknown })
+        .flatMap((frame) =>
+          typeof frame.transcript === "string" && frame.transcript.length > 0
+            ? [frame.transcript]
+            : [],
+        );
+      expect(synthesisTexts).toEqual(["Opened Notes."]);
+      expect(client.controlTypes()).not.toContain("error");
+      cartesia.emitDone();
+      await flush();
+      expect(client.controlTypes()).toContain("speaking_end");
+      expect(
+        client.controlFrames.filter((frame) => frame.t === "navigate_view"),
+      ).toHaveLength(delivered ? 0 : 1);
+    },
+  );
 
   test("canonical planning acknowledgement is audible before final text without becoming the reply", async () => {
     const controlled = makeControlledCanonicalChunkFetch();

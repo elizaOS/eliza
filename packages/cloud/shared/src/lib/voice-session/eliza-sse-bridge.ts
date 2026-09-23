@@ -20,7 +20,11 @@
  * decoding path, no live model.
  */
 
-import { REALTIME_VOICE_CLIENT_TRANSPORT, type VoiceUiContext } from "@elizaos/shared";
+import {
+  normalizeCompletedActionHandoffId,
+  REALTIME_VOICE_CLIENT_TRANSPORT,
+  type VoiceUiContext,
+} from "@elizaos/shared";
 import { ELIZA_TRACE_ID_HEADER } from "../observability/http-telemetry";
 import { logger } from "../utils/logger";
 
@@ -747,6 +751,13 @@ function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
     // has no authoritative ordering contract. Fail closed instead of choosing
     // whichever array position an adapter happened to serialize last.
     if (successfulNavigationResults > 1) return null;
+    // A confirmed targeted transport already owns this navigation. Keep the
+    // speech turn alive without sending a second terminal navigation frame.
+    if (
+      candidate.values.completedActionDelivered === true &&
+      normalizeCompletedActionHandoffId(candidate.values.completedActionHandoffId)
+    )
+      continue;
     const viewPath = readBoundedString(candidate.values.viewPath);
     const subview = readBoundedString(candidate.values.subview);
     if (isAppBrowserHandoff && (!viewPath || !isCanonicalBrowserLaunchPath(viewPath))) {
