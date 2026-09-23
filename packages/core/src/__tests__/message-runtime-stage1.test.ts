@@ -2975,40 +2975,43 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(wire).not.toContain("REVOKED_ACTION");
 	});
 
-	it("keeps denied contexts out of both catalog names and full description reads", async () => {
-		const hidden =
-			"Owner-only catalog description, never visible to this requester.";
-		const runtime = makeRuntime([
-			stage1Response({
-				contextRequests: ["CONTEXT_CATALOG"],
-				contexts: ["simple"],
-			}),
-			stage1Response({
-				contexts: ["simple"],
-				replyText: "Only authorized references are available.",
-			}),
-		]);
-		runtime.contexts = new ContextRegistry([
-			{
-				id: "public_context",
-				description: "Complete public routing instructions. ".repeat(40),
-			},
-			{
-				id: "owner_only_context",
-				description: hidden,
-				roleGate: { minRole: "OWNER" },
-			},
-		]);
-		await runStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.DM, source: "test" }),
-		});
-		const wire = JSON.stringify(useModelCalls(runtime));
-		expect(wire).not.toContain(hidden);
-		expect(wire).not.toContain("owner_only_context");
-		expect(wire).toContain("public_context");
-		expect(useModelCalls(runtime)).toHaveLength(2);
-	});
+	it.each([ChannelType.DM, ChannelType.GROUP])(
+		"keeps denied contexts out of catalog names and full reads on %s",
+		async (channelType) => {
+			const hidden =
+				"Owner-only catalog description, never visible to this requester.";
+			const runtime = makeRuntime([
+				stage1Response({
+					contextRequests: ["CONTEXT_CATALOG"],
+					contexts: ["simple"],
+				}),
+				stage1Response({
+					contexts: ["simple"],
+					replyText: "Only authorized references are available.",
+				}),
+			]);
+			runtime.contexts = new ContextRegistry([
+				{
+					id: "public_context",
+					description: "Complete public routing instructions. ".repeat(40),
+				},
+				{
+					id: "owner_only_context",
+					description: hidden,
+					roleGate: { minRole: "OWNER" },
+				},
+			]);
+			await runStage1({
+				runtime,
+				message: makeMessage({ channelType, source: "test" }),
+			});
+			const wire = JSON.stringify(useModelCalls(runtime));
+			expect(wire).not.toContain(hidden);
+			expect(wire).not.toContain("owner_only_context");
+			expect(wire).toContain("public_context");
+			expect(useModelCalls(runtime)).toHaveLength(2);
+		},
+	);
 
 	it("rejects a repeated context catalog read before a third model request", async () => {
 		const runtime = makeRuntime([
@@ -3036,7 +3039,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime)).toHaveLength(2);
 	});
 
-	it.each([ChannelType.GROUP])(
+	it.each([ChannelType.VOICE_GROUP])(
 		"keeps full catalog descriptions for %s",
 		async (channelType) => {
 			const description =
@@ -3068,58 +3071,72 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
-	it("keeps the system prefix identical when loading a stable provider reference", async () => {
-		const full =
-			"Complete character preferences: use plain language and address the user as Sam.";
-		const runtime = makeRuntime([
-			stage1Response({
-				contextRequests: ["userPersonalityPreferences"],
-				contexts: ["simple"],
-			}),
-			stage1Response({ contexts: ["simple"], replyText: "Here is the form." }),
-		]);
-		runtime.providers = [
-			{ name: "userPersonalityPreferences", cacheStable: true, get: vi.fn() },
-		];
-		const state = makeState();
-		state.data.providers = {
-			userPersonalityPreferences: {
-				text: full,
-				discoveryText: "context_discovery: userPersonalityPreferences",
-			},
-		};
-		runtime.composeState = vi.fn(async () => structuredClone(state));
-		await runStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.DM }),
-			state,
-		});
-		const calls = useModelCalls(runtime).map(
-			([, params]) =>
-				params as {
-					messages: Array<{ role: string; content: string }>;
-					providerOptions: {
-						eliza: { prefixHash: string };
-						cerebras: { prompt_cache_key: string };
-						openai: { parallelToolCalls: boolean };
-					};
+	it.each([ChannelType.DM, ChannelType.VOICE_DM, ChannelType.GROUP])(
+		"keeps the system prefix identical when loading a stable provider reference on %s",
+		async (channelType) => {
+			const full =
+				"Complete character preferences: use plain language and address the user as Sam.";
+			const runtime = makeRuntime([
+				stage1Response({
+					contextRequests: ["userPersonalityPreferences"],
+					contexts: ["simple"],
+				}),
+				stage1Response({
+					contexts: ["simple"],
+					replyText: "Here is the form.",
+				}),
+			]);
+			runtime.providers = [
+				{ name: "userPersonalityPreferences", cacheStable: true, get: vi.fn() },
+			];
+			const state = makeState();
+			state.data.providers = {
+				userPersonalityPreferences: {
+					text: full,
+					discoveryText: "context_discovery: userPersonalityPreferences",
 				},
-		);
-		expect(calls).toHaveLength(2);
-		expect(calls[0]?.providerOptions.cerebras.prompt_cache_key).toBeTruthy();
-		expect(calls[1]?.providerOptions.cerebras.prompt_cache_key).toBe(
-			calls[0]?.providerOptions.cerebras.prompt_cache_key,
-		);
-		expect(calls[0]?.messages[0]).toEqual(calls[1]?.messages[0]);
-		expect(calls[0]?.providerOptions.eliza.prefixHash).toEqual(
-			calls[1]?.providerOptions.eliza.prefixHash,
-		);
-		expect(JSON.stringify(calls[0]?.messages)).not.toContain(full);
-		expect(
-			calls[1]?.messages.find((message) => message.role === "user")?.content,
-		).toContain(full);
-	});
-	it.each([ChannelType.DM, ChannelType.VOICE_DM])(
+			};
+			runtime.composeState = vi.fn(async () => structuredClone(state));
+			await runStage1({
+				runtime,
+				message: makeMessage({ channelType }),
+				state,
+			});
+			const calls = useModelCalls(runtime).map(
+				([, params]) =>
+					params as {
+						messages: Array<{ role: string; content: string }>;
+						providerOptions: {
+							eliza: { prefixHash: string };
+							cerebras: { prompt_cache_key: string };
+							openai: { parallelToolCalls: boolean };
+						};
+					},
+			);
+			expect(calls).toHaveLength(2);
+			expect(calls[0]?.providerOptions.cerebras.prompt_cache_key).toBeTruthy();
+			expect(calls[1]?.providerOptions.cerebras.prompt_cache_key).toBe(
+				calls[0]?.providerOptions.cerebras.prompt_cache_key,
+			);
+			expect(calls[0]?.messages[0]).toEqual(calls[1]?.messages[0]);
+			expect(calls[0]?.providerOptions.eliza.prefixHash).toEqual(
+				calls[1]?.providerOptions.eliza.prefixHash,
+			);
+			expect(JSON.stringify(calls[0]?.messages)).not.toContain(full);
+			expect(
+				calls[1]?.messages.find((message) => message.role === "user")?.content,
+			).toContain(full);
+		},
+	);
+	it.each([
+		ChannelType.DM,
+		ChannelType.VOICE_DM,
+		ChannelType.GROUP,
+		ChannelType.THREAD,
+		ChannelType.WORLD,
+		ChannelType.FORUM,
+		ChannelType.FEED,
+	])(
 		"keeps provider references discoverable without an automatic extra call on %s",
 		async (channelType) => {
 			const runtime = makeRuntime([

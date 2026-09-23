@@ -163,6 +163,7 @@ export async function generateStage1Decision(
     context,
     availableContexts,
     directMessageChannel,
+    progressiveContextChannel,
     stage1PreprocessStartedAt,
     recorder,
     trajectoryId,
@@ -171,6 +172,7 @@ export async function generateStage1Decision(
     context: Awaited<ReturnType<typeof createV5MessageContextObject>>;
     availableContexts: ReturnType<typeof listAvailableContextsForRole>;
     directMessageChannel: boolean;
+    progressiveContextChannel: boolean;
     stage1PreprocessStartedAt: number;
     recorder: TrajectoryRecorder | undefined;
     trajectoryId: ReturnType<TrajectoryRecorder["startTrajectory"]> | undefined;
@@ -204,7 +206,7 @@ export async function generateStage1Decision(
   const canonicalResponseHandlerSchema =
     args.runtime.responseHandlerFieldRegistry.composeSchema();
   const loadedContext = new Set<string>();
-  const discoveryEnabled = directMessageChannel && !args.codingMode;
+  const discoveryEnabled = progressiveContextChannel;
   const responseHandlerSchema = discoveryEnabled
     ? withDirectTextBuiltinSchemaDescriptions(
         canonicalResponseHandlerSchema,
@@ -278,6 +280,7 @@ export async function generateStage1Decision(
     availableContexts,
     {
       directMessage: directMessageChannel,
+      progressiveContext: discoveryEnabled,
       responseHandlerFields: responseHandlerFieldPrompt.rendered,
       contextCatalog,
       history,
@@ -818,6 +821,7 @@ export async function generateStage1Decision(
           contentMetadata.isAutonomous === true)) ||
       (isObjectRecord(messageMetadata) && messageMetadata.fromBot === true);
     const terminalReview =
+      directMessageChannel &&
       !terminalDecisionReviewed &&
       !routingRepair &&
       !repairHistoryIdentity &&
@@ -1069,6 +1073,7 @@ export async function generateStage1Decision(
         availableContexts,
         {
           directMessage: directMessageChannel,
+          progressiveContext: discoveryEnabled,
           responseHandlerFields: responseHandlerFieldPrompt.rendered,
           contextCatalog,
           history,

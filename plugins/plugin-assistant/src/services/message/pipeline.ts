@@ -8,6 +8,7 @@ import {
   TurnAbortedError,
 } from "@elizaos/core";
 import type { EvaluatorService } from "../evaluator";
+import { isProgressiveContextChannel } from "./channel-protocol";
 import { withHistoryReadEvidence } from "./history-discovery.js";
 import {
   getSourceReplyRendering,
@@ -238,6 +239,9 @@ export async function runV5MessageRuntimeStage1(
     args.message.content?.channelType === ChannelType.VOICE_DM ||
     args.message.content?.channelType === ChannelType.API ||
     args.message.content?.channelType === ChannelType.SELF;
+  const progressiveContextChannel =
+    isProgressiveContextChannel(args.message.content?.channelType) &&
+    !args.codingMode;
   // Ambient turn = a positively-identified unaddressed text-group turn
   // (structural classifier only — channel type + addressing + source
   // metadata, never message text; anything uncertain fails open to
@@ -268,8 +272,7 @@ export async function runV5MessageRuntimeStage1(
   const context = await timeInferenceSpan("message:stage1:context", () =>
     createV5MessageContextObject({
       ...args,
-      includeActionDiscovery:
-        directMessageChannel && !args.codingMode ? "index" : true,
+      includeActionDiscovery: progressiveContextChannel ? "index" : true,
       userRoles: [senderRole],
       availableContexts,
       ambientTurn,
@@ -376,6 +379,7 @@ export async function runV5MessageRuntimeStage1(
         context,
         availableContexts,
         directMessageChannel,
+        progressiveContextChannel,
         stage1PreprocessStartedAt,
         recorder,
         trajectoryId,
@@ -1228,7 +1232,7 @@ export async function runV5MessageRuntimeStage1(
         normalizeActionIdentifier(DISCOVER_TOOLS_NAME),
     );
     const discoverWithoutActionHints =
-      directMessageChannel && stageOneCandidates.length === 0;
+      progressiveContextChannel && stageOneCandidates.length === 0;
     const canUseProgressiveActions =
       args.codingMode !== true &&
       !deterministicPlanSelection &&

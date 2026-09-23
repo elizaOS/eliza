@@ -120,3 +120,12 @@ infers an action from wording, or adds an unbounded retry. Normal plugin admissi
 and navigation receipts remain authoritative after the review.
 
 Direct voice messages share the canonical direct-message handler schema, context discovery, source selection, planner reasoning preference, response review and transient acknowledgement path with typed messages. Speech capture, speaker attribution, turn-taking and playback remain transport responsibilities. Acknowledgements never enter the authoritative reply buffer or durable assistant history; cancellation prevents later speech from the same turn. Equivalent model inputs use the same stable cache prefix and conversation/stage key, with cache hits reported only from provider usage.
+
+Text groups share authorized progressive context discovery and reviewed-history
+projection with direct conversations. Keep engagement, silence and spoken
+acknowledgment decisions channel-specific; voice groups and unknown channels
+retain their existing input contracts. Context loading must not trigger direct
+message silence-repair calls in groups. An otherwise valid completed history
+review that omits a classification retains that original and its dependencies
+for the next review; stale, explicitly incomplete, duplicate or unknown source
+reviews remain invalid.
