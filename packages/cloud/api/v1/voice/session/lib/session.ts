@@ -2005,6 +2005,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         onProgress: (text: string) => {
           if (this.currentVoiceTurnId !== traceId || abort.signal.aborted)
             return;
+          this.send({ t: "progress", text, traceId });
           // Progress cues are deliberately non-authoritative: they keep a slow
           // action audible without entering the reply buffer or being persisted
           // as an assistant answer. The next authoritative delta continues the
