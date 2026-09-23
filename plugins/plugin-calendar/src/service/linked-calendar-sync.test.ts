@@ -264,6 +264,47 @@ describe("LinkedCalendarRepository with PGlite", () => {
     });
     expect(await repository.listActionable("agent-1")).toHaveLength(1);
   });
+
+  it("rejects a stale create checkpoint when a delete shares its timestamp", async () => {
+    const now = new Date("2026-09-23T10:00:00.000Z");
+    const initial = await repository.create({
+      agentId: "agent-1",
+      localEventId: "local-1",
+      connectorAccountId: "google-1",
+      providerCalendarId: "primary",
+      localRevision: 1,
+      now,
+    });
+    const deletion = await repository.markLocalDirty({
+      agentId: "agent-1",
+      localEventId: "local-1",
+      localRevision: 2,
+      operation: "delete",
+      now,
+    });
+
+    expect(deletion).toMatchObject({
+      updatedAt: initial.updatedAt,
+      localRevision: 2,
+      state: "dirty",
+      pendingOperation: "delete",
+    });
+    await expect(
+      repository.save(
+        initial,
+        { state: "quarantined", pendingOperation: "create" },
+        now,
+      ),
+    ).rejects.toThrow("Concurrent checkpoint update rejected");
+    expect(
+      await repository.getByLocalEvent("agent-1", "local-1"),
+    ).toMatchObject({
+      updatedAt: initial.updatedAt,
+      localRevision: 2,
+      state: "dirty",
+      pendingOperation: "delete",
+    });
+  });
 });
 
 describe("LinkedCalendarReconciler", () => {
