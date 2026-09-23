@@ -14,7 +14,6 @@ import path from "node:path";
 import {
   AgentRuntime,
   createCharacter,
-  ElizaError,
   filterProvidersByContextGate,
   type IAgentRuntime,
   type Memory,
@@ -165,7 +164,24 @@ describe("SAVED_NOTES provider", () => {
     expect(before.text).toContain(JSON.stringify(`Same title\n${first.body}`));
     expect(before.text).toContain("Bring it tomorrow.");
     expect(before.text).not.toContain("Private unrelated body");
-    await service.updateNote(first.id, { body: "Current green body" });
+    const originalSnapshot = service.snapshot();
+    const namedRead = await namedNotesProvider.get(
+      runtime,
+      message,
+      EMPTY_STATE,
+    );
+    expect(namedRead.data?.notesRevision).toBe(originalSnapshot.revision);
+    expect(namedRead.data?.namedNotes).toEqual(
+      originalSnapshot.notes.filter((note) => note.title === "Same title"),
+    );
+    expect(namedRead.text).toContain(
+      `notesRevision: ${originalSnapshot.revision}.`,
+    );
+    await service.updateNote(
+      first.id,
+      { body: "Current green body" },
+      namedRead.data?.notesRevision,
+    );
     const after = await runtime.composeState(
       message,
       ["NAMED_NOTES"],
@@ -211,6 +227,14 @@ describe("SAVED_NOTES provider", () => {
       recallMessage(runtime, "open notes"),
       EMPTY_STATE,
     );
+    const originalSnapshot = service.snapshot();
+    expect(result.data).toMatchObject({
+      savedNotes: originalSnapshot.notes,
+      notesRevision: originalSnapshot.revision,
+    });
+    expect(result.text).toContain(
+      `notesRevision: ${originalSnapshot.revision}.`,
+    );
     expect(result.discoveryText).toContain('"Lookup label"');
     expect(result.discoveryText).toContain(
       JSON.stringify('Mira’s "旅行" \\ label 📝'),
@@ -240,6 +264,12 @@ describe("SAVED_NOTES provider", () => {
       recallMessage(runtime, "read my notes"),
       EMPTY_STATE,
     );
+    const currentSnapshot = service.snapshot();
+    expect(after.data).toMatchObject({
+      savedNotes: currentSnapshot.notes,
+      notesRevision: currentSnapshot.revision,
+    });
+    expect(after.text).toContain(`notesRevision: ${currentSnapshot.revision}.`);
     expect(after.discoveryText).not.toContain(identities[0].id);
     expect(after.discoveryText).toContain(identities[1].id);
     expect(after.discoveryText).toContain("Exact note count: 1");
@@ -293,7 +323,7 @@ describe("SAVED_NOTES provider", () => {
     expect(result.data?.savedNotes).toEqual([]);
   });
 
-  it("reports an unreadable store as unavailable instead of an empty note list", async () => {
+  it("reports a stopped store as unavailable instead of an empty note list", async () => {
     const service = await serviceWithNotes([
       "alex is my cofounder and we met at ethdenver",
     ]);
@@ -302,12 +332,7 @@ describe("SAVED_NOTES provider", () => {
     runtime.reportError = (_scope: string, error: unknown) => {
       reported.push(error);
     };
-    service.listNotes = () => {
-      throw new ElizaError("Notes state is not loaded.", {
-        code: "NOTES_STORE_UNAVAILABLE",
-        severity: "ephemeral",
-      });
-    };
+    await service.stop();
 
     const result = await notesProvider.get(
       runtime,
@@ -319,6 +344,10 @@ describe("SAVED_NOTES provider", () => {
     expect(result.values?.savedNotesAvailable).toBe(false);
     expect(result.data?.savedNotes).toBeNull();
     expect(reported).toHaveLength(1);
+    expect(reported[0]).toMatchObject({
+      code: "NOTES_STORE_UNAVAILABLE",
+      context: { phase: "stopped" },
+    });
   });
 
   it("reports an unregistered notes service as unavailable, not as zero notes", async () => {

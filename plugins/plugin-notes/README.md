@@ -68,3 +68,20 @@ title in a JSON row `[ID, title]`, with the row format declared once. It
 supports exact-ID existence and count checks without exposing note bodies.
 Full context pairs each exact ID with unchanged complete content in one JSON row;
 body retrieval still requires the full reference or an exact read.
+
+
+Individual field and full-note replacements require `expectedRevision` from the
+complete note snapshot used to prepare the edit. `NOTES_GET` / `NOTES_LIST` and
+full `SAVED_NOTES` / `NAMED_NOTES` content expose `notesRevision`; capability reads
+expose `state.revision`. Pass that value to `NOTES_UPDATE`, nonempty `NOTES_PATCH`
+changes, or `update-note`. Direct service updates take it as their final argument.
+A title-only index is not replacement content. Never fetch a fresh token alone to
+retry stale replacement bytes: read the note and reconcile the owner's edit.
+
+The service compares the whole-document revision inside its write barrier.
+Any intervening Notes mutation, including another note's change, causes
+`NOTES_EDIT_CONFLICT` without a write or applied receipt. Missing or invalid
+replacement tokens return `NOTES_EDIT_REVISION_REQUIRED`; this deliberately
+rejects older unguarded replacement calls. Literal `textEdit` retains its atomic
+unique-current-substring contract and can omit the token; supplied tokens still
+apply. Storage remains the existing per-agent JSON file and in-process barrier.
