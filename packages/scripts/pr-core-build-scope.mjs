@@ -39,7 +39,8 @@ export function planPrCoreBuild({ repoRoot = process.cwd(), base }) {
     .filter(Boolean);
   const broadInputs = changedPaths.filter((file) => {
     if (file === ".github/workflows/codeql.yml") return false;
-    if (file.endsWith("/package.json") && !trackedManifests.has(file))
+    // Script helpers and manifest edges may serve callers outside this owner.
+    if (/(?:^|\/)scripts\//.test(file) || file.endsWith("/package.json"))
       return true;
     const owner = owners.find(({ dir }) => file.startsWith(`${dir}/`));
     return (

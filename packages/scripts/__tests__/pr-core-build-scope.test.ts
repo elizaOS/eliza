@@ -182,3 +182,23 @@ test("unnamed workspaces cannot claim an executable Turbo build", () => {
   f.commit();
   expect(f.plan().required).toBe(true);
 });
+
+test("owned script helpers and manifest changes retain the shared bootstrap", () => {
+  const f = fixture();
+  f.write(
+    "packages/leaf/scripts/build-helper.mjs",
+    "export const shared = true;\n",
+  );
+  f.commit();
+  expect(f.plan().required).toBe(true);
+  const base = f.git("rev-parse", "HEAD");
+  f.write(
+    "packages/leaf/package.json",
+    JSON.stringify({
+      name: "leaf",
+      scripts: { build: "node scripts/build-helper.mjs" },
+    }),
+  );
+  f.commit();
+  expect(planPrCoreBuild({ repoRoot: f.root, base }).required).toBe(true);
+});
