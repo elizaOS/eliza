@@ -47,15 +47,18 @@ describe("POST /api/v1/admin/ai-pricing malformed JSON", () => {
     expect(refreshPricingCatalog).not.toHaveBeenCalled();
   });
 
-  test("canonical JSON still refreshes pricing", async () => {
-    const response = await app.request("/", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sources: ["gateway"] }),
-    });
-    expect(response.status).toBe(200);
-    expect(refreshPricingCatalog).toHaveBeenCalled();
-  });
+  test.each(["gateway", "selfhosted"])(
+    "canonical JSON refreshes %s pricing",
+    async (source) => {
+      const response = await app.request("/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sources: [source] }),
+      });
+      expect(response.status).toBe(200);
+      expect(refreshPricingCatalog).toHaveBeenLastCalledWith([source]);
+    },
+  );
 
   test("rejects malformed PUT JSON before creating an override", async () => {
     const response = await app.request("/", {
