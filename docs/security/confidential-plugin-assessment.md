@@ -33,7 +33,7 @@ For each enabled use, the accountable owner must approve an immutable package/bu
 
 Evidence must exercise the actual installed build: zero prohibited payload/credential bytes; complete legitimate model context; endpoint mutation and fallback denial; subprocess/network containment; SQLite reopen/rollback/concurrency; cross-agent/case denial; revoked active access; export/deletion propagation; restored consent/deletion/key authority; and independent durable audit reconciliation. Static inventory is an input to W0/W1, not acceptance of either work package or S01–S20.
 
-Open overlapping work at assessment time: [#32256](https://github.com/elizaOS/eliza/pull/32256) composes measured process/model admission, [#32281](https://github.com/elizaOS/eliza/pull/32281) adds SQLite authentication, and [#32283](https://github.com/elizaOS/eliza/issues/32283) owns measured API/scoped identity. These are not treated as merged or production-qualified. Recheck their current heads before implementation.
+Coordination update, September 23, 2026: [#32256](https://github.com/elizaOS/eliza/pull/32256) merged measured process/model admission after the inventory snapshot. [#32281](https://github.com/elizaOS/eliza/pull/32281) (SQLite authentication) and [#32283](https://github.com/elizaOS/eliza/issues/32283) (measured API/scoped identity) remain open. The merged foundation is not production qualification or approval of every plugin dispatch path. The catalog retains its pinned source revision; reassess changed packages against their actual deployed build. [#32322](https://github.com/elizaOS/eliza/issues/32322) tracks the canonical SQLite graph port, which is still under validation.
 
 ## Complete catalog
 
