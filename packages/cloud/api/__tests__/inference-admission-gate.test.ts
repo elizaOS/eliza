@@ -2298,6 +2298,77 @@ describe("InferenceAdmissionGate", () => {
     });
   });
 
+  test.each([false, true])(
+    "cold combined dispatch preserves earlier acknowledgement ambiguity: %s",
+    async (lostAcknowledgement) => {
+      const storage = new TestStorage();
+      const gate = createGate(storage);
+      if (lostAcknowledgement) await hydrateGate(gate, 10);
+      const paths: string[] = [];
+      let firstDispatch = true;
+      const bindings = {
+        INFERENCE_ADMISSION_GATES: {
+          getByName: (_name: string) => ({
+            fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+              const incoming = new Request(request, init);
+              const path = new URL(incoming.url).pathname;
+              paths.push(path);
+              if (path === "/lease-dispatched" && lostAcknowledgement) {
+                if (firstDispatch) {
+                  firstDispatch = false;
+                  await gate.fetch(incoming);
+                  throw new Error("injected lost committed acknowledgement");
+                }
+                return Response.json(
+                  { code: "inference_admission_gate_uninitialized" },
+                  { status: 503 },
+                );
+              }
+              return await gate.fetch(incoming);
+            },
+          }),
+        },
+      };
+      await runWithCloudBindingsAsync(bindings, async () => {
+        const lease = await acquireInferenceAdmissionLease({
+          organizationId: "org-a",
+          requestId: "cold-combined",
+          balanceUsd: 10,
+          balanceRevision: "1",
+          estimatedCostUsd: 1,
+          recovery: organizationRecovery("cold-combined"),
+          deferCommitUntilDispatch: true,
+        });
+        await expect(
+          markInferenceAdmissionLeaseDispatched(lease),
+        ).rejects.toMatchObject({
+          reason: lostAcknowledgement ? "ambiguous" : "uninitialized",
+        });
+        expect(lease.providerDispatched).toBe(false);
+        await settleInferenceAdmissionLease(lease, 0, 0);
+      });
+      expect(paths).toEqual(
+        lostAcknowledgement
+          ? [
+              "/lease-dispatched",
+              "/lease-dispatched",
+              "/lease-dispatched",
+              "/release",
+            ]
+          : ["/lease-dispatched"],
+      );
+      expect(storage.read(storedLeaseKey("cold-combined"))).toBeUndefined();
+      if (lostAcknowledgement) {
+        expect(storage.read("ledger")).toMatchObject({
+          availableUsd: 10,
+          activeLeaseCount: 0,
+        });
+      } else {
+        expect(storage.read("ledger")).toBeUndefined();
+      }
+    },
+  );
+
   test("prepared combined denials are typed and never invoke the provider", async () => {
     const storage = new TestStorage();
     const gate = createGate(storage);

@@ -17,6 +17,9 @@ import {
   test,
 } from "bun:test";
 
+import { InferenceAdmissionDispatchMarkError } from "@/lib/services/inference-admission-gate";
+import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
+
 const aiActual = require("ai") as Record<string, unknown>;
 const aiBillingActual = { ...(await import("@/lib/services/ai-billing")) };
 const creditsActual = { ...(await import("@/lib/services/credits")) };
@@ -456,6 +459,44 @@ describe("/v1/messages IAC fast path", () => {
     expect(settleAppAdmission).toHaveBeenCalledWith(0);
     expect(generateText).not.toHaveBeenCalled();
   });
+
+  test.each(["uninitialized", "ambiguous"] as const)(
+    "late app dispatch distinguishes %s admission without invoking the provider",
+    async (reason) => {
+      const app = {
+        id: "00000000-0000-4000-8000-0000000000dd",
+        organization_id: ORG,
+        created_by_user_id: USER,
+        monetization_enabled: true,
+        inference_markup_percentage: "100",
+      };
+      getAuthorizedMonetizedAppForUserCacheOnly.mockResolvedValueOnce({
+        kind: "ready",
+        app,
+      });
+      markAppProviderDispatched.mockRejectedValueOnce(
+        new InferenceBalanceCacheWarmingError(
+          new InferenceAdmissionDispatchMarkError("gate rejected dispatch", {
+            reason,
+          }),
+        ),
+      );
+      const response = await postMessagesInWorker({ "X-App-Id": app.id });
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({
+        type: "error",
+        error: {
+          type: "api_error",
+          message:
+            reason === "uninitialized"
+              ? "Billing authorization is warming. Retry shortly."
+              : "Inference admission is temporarily unavailable. Retry shortly.",
+        },
+      });
+      expect(settleAppAdmission).toHaveBeenCalledWith(0);
+      expect(generateText).not.toHaveBeenCalled();
+    },
+  );
 
   test("Worker requests fail closed while the API-key cache warms", async () => {
     resolveInferenceAuthContext.mockResolvedValueOnce({

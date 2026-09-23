@@ -87,6 +87,7 @@ import type {
   CreditReservation,
 } from "@/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
+import { isInferenceAdmissionGateWarmingError } from "@/lib/services/inference-admission-gate";
 import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
@@ -1185,7 +1186,9 @@ app.post("/", async (c) => {
         return attachPreforwardTelemetry(
           anthropicError(
             "api_error",
-            "Inference admission is temporarily unavailable. Retry shortly.",
+            isInferenceAdmissionGateWarmingError(error)
+              ? "Billing authorization is warming. Retry shortly."
+              : "Inference admission is temporarily unavailable. Retry shortly.",
             503,
           ),
         );

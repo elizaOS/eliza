@@ -122,10 +122,30 @@ export class InferenceAdmissionGateUnavailableError extends Error {
  * must use zero settlement rather than assuming the lease stayed untouched.
  */
 export class InferenceAdmissionDispatchMarkError extends InferenceAdmissionGateUnavailableError {
-  constructor(message: string, options?: { cause?: unknown }) {
+  readonly reason: "uninitialized" | "ambiguous";
+
+  constructor(
+    message: string,
+    options?: { cause?: unknown; reason?: "uninitialized" | "ambiguous" },
+  ) {
     super(message, options);
     this.name = "InferenceAdmissionDispatchMarkError";
+    this.reason = options?.reason ?? "ambiguous";
   }
+}
+
+/** Recognize a proven cold-gate rejection through billing error wrappers. */
+export function isInferenceAdmissionGateWarmingError(error: unknown): boolean {
+  const seen = new Set<Error>();
+  let current = error;
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    if (current instanceof InferenceAdmissionDispatchMarkError) {
+      return current.reason === "uninitialized";
+    }
+    current = current.cause;
+  }
+  return false;
 }
 
 /** Recognize a dispatch-mark failure through context-adding error wrappers. */
@@ -884,6 +904,17 @@ export async function markInferenceAdmissionLeaseDispatched(
     }
     if (prepared && response.status === 503) {
       const code = await readGateErrorCode(response);
+      if (code === "inference_admission_gate_uninitialized" && !mayHaveCommitted) {
+        // The authoritative cold response precedes any lease mutation. A prior
+        // lost acknowledgement would still require conservative cancellation.
+        prepared.state = "rejected";
+        if (prepared.executionCtx) {
+          scheduleGateHydration(lease.organizationId, lease.gate, prepared.executionCtx);
+        }
+        throw new InferenceAdmissionDispatchMarkError("Inference admission gate is warming", {
+          reason: "uninitialized",
+        });
+      }
       if (
         attempt === DISPATCH_GATE_MAX_ATTEMPTS &&
         code === "inference_admission_gate_uninitialized" &&
