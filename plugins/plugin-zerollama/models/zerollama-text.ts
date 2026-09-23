@@ -96,7 +96,7 @@ export async function handleZerollamaText(args: {
 
   const messages = toZerollamaChatMessages({
     messages: hasChatMessages ? normalizedMessages : null,
-    system: hasChatMessages ? null : system,
+    system,
     prompt: hasChatMessages ? null : renderedPrompt,
   });
 

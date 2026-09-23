@@ -5,7 +5,13 @@
 
 import type { ToolCall } from "@elizaos/core";
 import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import { jsonSchema, type ModelMessage, type ToolChoice, type ToolSet } from "ai";
+import {
+  jsonSchema,
+  type ModelMessage,
+  modelMessageSchema,
+  type ToolChoice,
+  type ToolSet,
+} from "ai";
 
 type JsonObject = Record<string, unknown>;
 
@@ -165,6 +171,19 @@ export function normalizeNativeMessages(messages: unknown): ModelMessage[] | und
   if (!Array.isArray(messages)) return undefined;
   return messages.map((message) => {
     const raw = asRecord(message);
+    // Planner history already uses AI SDK content parts. Validate without
+    // stringifying them so call identities and result envelopes survive.
+    if (Array.isArray(raw.content)) {
+      const parsed = modelMessageSchema.safeParse(message);
+      if (!parsed.success) {
+        throw new ElizaError("Ollama structured message is invalid", {
+          code: "OLLAMA_INVALID_MESSAGE_CONTENT",
+          cause: parsed.error,
+          severity: "ephemeral",
+        });
+      }
+      return parsed.data;
+    }
     const providerOptions = optionalRecord(raw.providerOptions);
     if (raw.role === "system") {
       return {
