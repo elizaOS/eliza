@@ -8,15 +8,17 @@ try {
     options: {
       input: { type: "string" },
       authority: { type: "string" },
+      key: { type: "string" },
       output: { type: "string" },
     },
     strict: true,
   });
-  if (!values.input || !values.authority || !values.output)
+  if (!values.input || !values.authority || !values.key || !values.output)
     throw new Error("Missing paths");
   const result = await encryptConfidentialEnvironment(
     JSON.parse(await readFile(values.input, "utf8")),
     await readFile(values.authority, "utf8"),
+    await readFile(values.key, "utf8"),
   );
   await writeFile(values.output, `${JSON.stringify(result)}\n`, {
     flag: "wx",

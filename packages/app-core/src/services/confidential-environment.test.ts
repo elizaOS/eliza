@@ -1,5 +1,5 @@
 /** Exercises actual KMS HTTP, signature recovery and recipient decryption with ephemeral test keys. */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   createDecipheriv,
   createHash,
@@ -46,7 +46,11 @@ async function fixture(change = "none") {
       secure_time: true,
       storage_discard: false,
       requirements: { platforms: ["dstack-tdx"] },
-      allowed_envs: ["SYNTHETIC_SECRET", "ELIZA_DSTACK_RELEASE_POLICY_JSON"],
+      allowed_envs: [
+        "SYNTHETIC_SECRET",
+        "ELIZA_DSTACK_RELEASE_POLICY_JSON",
+        "ELIZA_DSTACK_LAUNCH_AUTHORIZATION_JSON",
+      ],
     }),
     variant: "dstack-tdx",
     osImageHash: "a".repeat(64),
@@ -104,6 +108,7 @@ async function fixture(change = "none") {
     throw new Error("Missing listener");
   return {
     publicPem,
+    privatePem,
     recipient,
     requests,
     appId,
@@ -127,7 +132,11 @@ async function fixture(change = "none") {
 
 it("encrypts the complete environment and exact release for the authenticated recipient only", async () => {
   const f = await fixture();
-  const result = await encryptConfidentialEnvironment(f.input, f.publicPem);
+  const result = await encryptConfidentialEnvironment(
+    f.input,
+    f.publicPem,
+    f.privatePem,
+  );
   expect(result.appId).toBe(f.appId);
   expect(f.requests).toEqual([JSON.stringify({ app_id: f.appId })]);
   const bytes = Buffer.from(result.encryptedEnv, "hex");
@@ -153,16 +162,73 @@ it("encrypts the complete environment and exact release for the authenticated re
     decipher.update(bytes.subarray(44, -16)),
     decipher.final(),
   ]);
-  expect(JSON.parse(decrypted.toString())).toEqual({
-    env: [
-      ...f.input.environment,
-      {
-        key: "ELIZA_DSTACK_RELEASE_POLICY_JSON",
-        value: JSON.stringify(f.input.envelope),
-      },
-    ],
+  const decoded: { env: Array<{ key: string; value: string }> } = JSON.parse(
+    decrypted.toString(),
+  );
+  expect(decoded.env).toContainEqual(f.input.environment[0]);
+  expect(decoded.env).toContainEqual({
+    key: "ELIZA_DSTACK_RELEASE_POLICY_JSON",
+    value: JSON.stringify(f.input.envelope),
   });
-  const other = await encryptConfidentialEnvironment(f.input, f.publicPem);
+  const directory = await mkdtemp(
+    join(tmpdir(), "eliza-confidential-bootstrap-"),
+  );
+  try {
+    const config = join(directory, "config.json");
+    const entry = join(directory, "entry.mjs");
+    const marker = join(directory, "imported");
+    await writeFile(
+      entry,
+      `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(marker)}, "imported");`,
+    );
+    await writeFile(
+      config,
+      JSON.stringify({
+        entry,
+        publicKey: f.publicPem,
+        environmentNames: ["SYNTHETIC_SECRET"],
+      }),
+    );
+    const bootstrap = fileURLToPath(
+      new URL("../../deploy/confidential-bootstrap.mjs", import.meta.url),
+    );
+    const environment = Object.fromEntries(
+      decoded.env.map(({ key, value }) => [key, value]),
+    );
+    const invoke = (env: NodeJS.ProcessEnv) =>
+      spawnSync(process.execPath, [bootstrap, config], {
+        env,
+        encoding: "utf8",
+      });
+    const accepted = invoke(environment);
+    expect(accepted.status, accepted.stderr).toBe(0);
+    expect(await readFile(marker, "utf8")).toBe("imported");
+    await rm(marker);
+    for (const changed of [
+      { ...environment, SYNTHETIC_SECRET: "substituted" },
+      { ...environment, ELIZA_DSTACK_RELEASE_POLICY_JSON: "{}" },
+      { ...environment, ELIZA_DSTACK_LAUNCH_AUTHORIZATION_JSON: "{}" },
+      { ...environment, SYNTHETIC_SECRET: undefined },
+    ]) {
+      const rejected = invoke(changed);
+      expect(rejected.status).toBe(1);
+      expect(rejected.stderr).not.toContain("complete-雪-");
+      await expect(readFile(marker)).rejects.toThrow();
+    }
+    await writeFile(
+      config,
+      JSON.stringify({ entry, publicKey: f.publicPem, environmentNames: [] }),
+    );
+    expect(invoke(environment).status).toBe(1);
+    await expect(readFile(marker)).rejects.toThrow();
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+  const other = await encryptConfidentialEnvironment(
+    f.input,
+    f.publicPem,
+    f.privatePem,
+  );
   expect(other.encryptedEnv).not.toBe(result.encryptedEnv);
 });
 it.each([
@@ -176,7 +242,7 @@ it.each([
 ])("rejects %s KMS material without returning ciphertext", async (change) => {
   const f = await fixture(change);
   await expect(
-    encryptConfidentialEnvironment(f.input, f.publicPem),
+    encryptConfidentialEnvironment(f.input, f.publicPem, f.privatePem),
   ).rejects.toMatchObject({ code: "CONFIDENTIAL_ENVIRONMENT_REJECTED" });
   expect(f.requests).toHaveLength(1);
 });
@@ -203,8 +269,27 @@ it("rejects release substitution and duplicate or reserved launch names before H
     },
   ])
     await expect(
-      encryptConfidentialEnvironment(input, f.publicPem),
+      encryptConfidentialEnvironment(input, f.publicPem, f.privatePem),
     ).rejects.toThrow();
+  expect(f.requests).toHaveLength(0);
+});
+
+it("refuses an authorized compose with additional unsigned launch variables", async () => {
+  const f = await fixture();
+  const manifest = JSON.parse(f.input.release.compose);
+  manifest.allowed_envs.push("UNSIGNED_EXTRA");
+  const release = { ...f.input.release, compose: JSON.stringify(manifest) };
+  await expect(
+    encryptConfidentialEnvironment(
+      {
+        ...f.input,
+        release,
+        envelope: signConfidentialRelease(release, f.privatePem),
+      },
+      f.publicPem,
+      f.privatePem,
+    ),
+  ).rejects.toThrow();
   expect(f.requests).toHaveLength(0);
 });
 
@@ -214,9 +299,11 @@ it("runs the real encryption CLI and writes exclusive private ciphertext without
   try {
     const input = join(directory, "private.json");
     const authority = join(directory, "authority.pem");
+    const key = join(directory, "key.pem");
     const output = join(directory, "encrypted.json");
     await writeFile(input, JSON.stringify(f.input), { mode: 0o600 });
     await writeFile(authority, f.publicPem);
+    await writeFile(key, f.privatePem, { mode: 0o600 });
     const script = fileURLToPath(
       new URL(
         "../../scripts/encrypt-confidential-environment.ts",
@@ -233,6 +320,8 @@ it("runs the real encryption CLI and writes exclusive private ciphertext without
             input,
             "--authority",
             authority,
+            "--key",
+            key,
             "--output",
             output,
           ],

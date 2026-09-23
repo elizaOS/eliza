@@ -6,10 +6,13 @@
  */
 import {
   createCipheriv,
+  createHash,
+  createPrivateKey,
   createPublicKey,
   diffieHellman,
   generateKeyPairSync,
   randomBytes,
+  sign,
 } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { keccak256, SigningKey } from "ethers";
@@ -37,6 +40,7 @@ const schema = z
 export async function encryptConfidentialEnvironment(
   input: unknown,
   authorityPem: string,
+  launchSigningKeyPem: string,
   signal?: AbortSignal,
 ): Promise<{ appId: string; encryptedEnv: string }> {
   try {
@@ -66,6 +70,16 @@ export async function encryptConfidentialEnvironment(
       request.envelope,
       authorityPem,
     );
+    const signingKey = createPrivateKey(launchSigningKeyPem);
+    if (
+      signingKey.asymmetricKeyType !== "ed25519" ||
+      !createPublicKey(signingKey)
+        .export({ format: "der", type: "spki" })
+        .equals(
+          createPublicKey(authorityPem).export({ format: "der", type: "spki" }),
+        )
+    )
+      throw new Error("Launch signer differs from release authority");
     const release = z.object({ compose: z.string() }).parse(request.release);
     const measured = z
       .object({ allowed_envs: z.array(z.string()) })
@@ -73,10 +87,14 @@ export async function encryptConfidentialEnvironment(
     const requiredNames = [
       ...request.environment.map(({ key }) => key),
       "ELIZA_DSTACK_RELEASE_POLICY_JSON",
+      "ELIZA_DSTACK_LAUNCH_AUTHORIZATION_JSON",
     ];
-    if (requiredNames.some((key) => !measured.allowed_envs.includes(key)))
+    if (
+      JSON.stringify([...requiredNames].sort()) !==
+      JSON.stringify([...measured.allowed_envs].sort())
+    )
       throw new Error(
-        "Measured compose does not authorize every launch variable",
+        "Measured compose must authorize exactly the signed launch variable set",
       );
     if (
       request.environment.some(({ key }) =>
@@ -88,14 +106,32 @@ export async function encryptConfidentialEnvironment(
       throw new Error(
         "Admission and process-loader controls must remain measured",
       );
-    // The measured public authority remains in compose. Its signed envelope is
-    // delivered here, outside the compose bytes it authenticates.
-    if (
-      request.environment.some(
-        ({ key }) => key === "ELIZA_DSTACK_RELEASE_POLICY_JSON",
-      )
-    )
-      throw new Error("Release policy is supplied by the verified envelope");
+    const environment = [
+      ...request.environment,
+      {
+        key: "ELIZA_DSTACK_RELEASE_POLICY_JSON",
+        value: JSON.stringify(request.envelope),
+      },
+    ].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+    const launchPayload = Buffer.from(
+      JSON.stringify({
+        schemaVersion: 1,
+        releasePayloadHash: createHash("sha256")
+          .update(Buffer.from(request.envelope.payload, "base64"))
+          .digest("hex"),
+        environmentHash: createHash("sha256")
+          .update(JSON.stringify(environment))
+          .digest("hex"),
+      }),
+    );
+    const launchAuthorization = {
+      payload: launchPayload.toString("base64"),
+      signature: sign(
+        null,
+        Buffer.concat([Buffer.from("eliza-dstack-launch-v1\0"), launchPayload]),
+        signingKey,
+      ).toString("base64"),
+    };
     const response = await fetch(
       new URL("/prpc/GetAppEnvEncryptPubKey?json", endpoint),
       {
@@ -178,10 +214,10 @@ export async function encryptConfidentialEnvironment(
       const plaintext = Buffer.from(
         JSON.stringify({
           env: [
-            ...request.environment,
+            ...environment,
             {
-              key: "ELIZA_DSTACK_RELEASE_POLICY_JSON",
-              value: JSON.stringify(request.envelope),
+              key: "ELIZA_DSTACK_LAUNCH_AUTHORIZATION_JSON",
+              value: JSON.stringify(launchAuthorization),
             },
           ],
         }),
