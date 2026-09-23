@@ -4,8 +4,5 @@
   "extends": ["../../../../biome.json"],
   "files": {
     "includes": ["src/**/*.ts", "src/**/*.tsx", "!src/**/*.d.ts"]
-  },
-  "formatter": {
-    "indentStyle": "tab"
   }
 }
