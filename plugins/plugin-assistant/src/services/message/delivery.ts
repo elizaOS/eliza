@@ -1,14 +1,15 @@
+/** Wraps visible message callbacks with shared voice rendering, duplicate-delivery suppression, and egress policy. */
+
 import type { MessageReplyRecoveryContext } from "@elizaos/core";
+import { resolveCallbackActionName } from "./action-identifiers.js";
 import type { PlannedReplyClaimKind } from "./egress-policy.ts";
 import { getSourceReplyBinding } from "./source-reply.ts";
 import { readSourceReplyReferences } from "./source-reply-references.ts";
-/** Wraps visible message callbacks with shared voice rendering, duplicate-delivery suppression, and egress policy. */
-
-import { resolveCallbackActionName } from "./action-identifiers.js";
 
 export { resolveCallbackActionName } from "./action-identifiers.js";
 
 import type {
+  ActionResult,
   Content,
   GenerateTextResult,
   HandlerCallback,
@@ -77,8 +78,23 @@ export function hasIntermediateCallbackPayload(content: Content): boolean {
 
 export function filterIntermediateCallbackContent(
   content: Content,
+  settledResult?: ActionResult,
 ): Content | null {
-  // Controls require their explanatory question; ordinary narration waits for final publication.
+  // A settled terminal media action owns its exact caption and attachment as
+  // one delivery. Ordinary action narration still waits for final publication.
+  if (
+    settledResult?.success === true &&
+    settledResult.turnComplete === true &&
+    settledResult.verifiedUserFacing === true &&
+    content.agentVoiced === true &&
+    content.attachments?.some((attachment) => Boolean(attachment.url)) &&
+    typeof content.text === "string" &&
+    content.text.trim().length > 0 &&
+    content.text.trim() === settledResult.userFacingText?.trim()
+  ) {
+    return content;
+  }
+  // Controls require their explanatory question.
   if (content.interactions?.length) return content;
   if (typeof content.text === "string") {
     const { blocks } = parseInteractionBlocks(content.text);

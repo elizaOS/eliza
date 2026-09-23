@@ -86,7 +86,7 @@
     "@types/node": "^25.0.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "fast-check": "^4.10.0",
+    "fast-check": "^4.10.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tsup": "^8.5.1",

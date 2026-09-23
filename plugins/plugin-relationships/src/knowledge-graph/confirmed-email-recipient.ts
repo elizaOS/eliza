@@ -13,6 +13,7 @@ import {
   toText,
 } from "@elizaos/shared/db/raw-sql";
 import { z } from "zod";
+import { graphRecordRepository } from "./record-repository.ts";
 
 export interface ConfirmEmailRecipientInput {
   entityId: string | null;
@@ -30,6 +31,49 @@ export interface ConfirmedEmailRecipient {
 type AtomicDatabase = RuntimeDb & {
   transaction<T>(fn: (tx: RuntimeDb) => Promise<T>): Promise<T>;
 };
+
+function recipientId(
+  agentId: string,
+  address: string,
+  requestedId: string | null,
+  matches: string[],
+): string {
+  if (matches.length > 1)
+    throw new ElizaError(
+      "This address belongs to multiple contacts. Resolve those contacts before confirming a recipient.",
+      { code: "ENTITY_RECIPIENT_AMBIGUOUS" },
+    );
+  const matchedId = matches[0];
+  if (requestedId && matchedId && requestedId !== matchedId)
+    throw new ElizaError(
+      "This address is already associated with another contact. Review that contact instead.",
+      { code: "ENTITY_RECIPIENT_IDENTITY_CONFLICT" },
+    );
+  return (
+    requestedId ??
+    matchedId ??
+    `ent_email_${createHash("sha256")
+      .update(JSON.stringify([agentId, address]))
+      .digest("hex")}`
+  );
+}
+
+function assertReviewedRecipient(
+  requestedId: string | null,
+  name: string,
+  existing: { type: string; name: string } | null,
+): void {
+  if (requestedId && !existing)
+    throw new ElizaError(
+      "The selected contact is no longer available. Refresh the recipient list.",
+      { code: "ENTITY_RECIPIENT_NOT_FOUND" },
+    );
+  if (existing && (existing.type !== "person" || existing.name !== name))
+    throw new ElizaError(
+      "The contact no longer matches the reviewed name. Refresh and review it again.",
+      { code: "ENTITY_RECIPIENT_REVIEW_STALE" },
+    );
+}
 
 export async function confirmEmailRecipient(
   runtime: IAgentRuntime,
@@ -50,6 +94,66 @@ export async function confirmEmailRecipient(
       { code: "ENTITY_RECIPIENT_INVALID" },
     );
   }
+  const records = graphRecordRepository(runtime, agentId);
+  if (records)
+    return records.transaction(async () => {
+      const matchesAddress = (identity: { platform: string; handle: string }) =>
+        ["email", "gmail"].includes(identity.platform.toLowerCase()) &&
+        identity.handle.toLowerCase() === address;
+      const matches = (await records.listEntities()).filter((entity) =>
+        entity.identities.some(matchesAddress),
+      );
+      const entityId = recipientId(
+        agentId,
+        address,
+        input.entityId,
+        matches.map((row) => row.entityId),
+      );
+      const existing = await records.getEntity(entityId);
+      assertReviewedRecipient(
+        input.entityId,
+        name,
+        existing ? { type: existing.type, name: existing.preferredName } : null,
+      );
+      const now = new Date().toISOString();
+      const entity = existing ?? {
+        entityId,
+        type: "person",
+        preferredName: name,
+        tags: [],
+        visibility: "owner_only" as const,
+        state: {},
+        identities: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+      const identities = entity.identities.map((identity) =>
+        matchesAddress(identity) && !identity.verified
+          ? {
+              ...identity,
+              verified: true,
+              confidence: 1,
+              evidence: [
+                ...identity.evidence,
+                `owner-confirmation:${input.confirmedBy}`,
+              ],
+            }
+          : identity,
+      );
+      if (!identities.some(matchesAddress))
+        identities.push({
+          platform: "email",
+          handle: address,
+          connectorAccountId: "default",
+          verified: true,
+          confidence: 1,
+          addedAt: now,
+          addedVia: "user_chat",
+          evidence: [`owner-confirmation:${input.confirmedBy}`],
+        });
+      await records.putEntity({ ...entity, identities });
+      return { entityId, name, address };
+    });
   const db = runtime.adapter.db as AtomicDatabase | undefined;
   if (!db || typeof db.transaction !== "function") {
     throw new ElizaError(
@@ -68,45 +172,24 @@ export async function confirmEmailRecipient(
       tx,
       `SELECT DISTINCT entity_id FROM app_lifeops.life_entity_identities WHERE agent_id = ${sqlQuote(agentId)} AND lower(platform) IN ('email', 'gmail') AND lower(handle) = ${sqlQuote(address)}`,
     );
-    if (matches.length > 1) {
-      throw new ElizaError(
-        "This address belongs to multiple contacts. Resolve those contacts before confirming a recipient.",
-        { code: "ENTITY_RECIPIENT_AMBIGUOUS" },
-      );
-    }
-    const matchedId = matches[0] ? toText(matches[0].entity_id) : null;
-    if (input.entityId && matchedId && input.entityId !== matchedId) {
-      throw new ElizaError(
-        "This address is already associated with another contact. Review that contact instead.",
-        { code: "ENTITY_RECIPIENT_IDENTITY_CONFLICT" },
-      );
-    }
-    const entityId =
-      input.entityId ??
-      matchedId ??
-      `ent_email_${createHash("sha256")
-        .update(JSON.stringify([agentId, address]))
-        .digest("hex")}`;
+    const entityId = recipientId(
+      agentId,
+      address,
+      input.entityId,
+      matches.map((row) => toText(row.entity_id)),
+    );
     const rows = await executeSql(
       tx,
       `SELECT type, preferred_name FROM app_lifeops.life_entities WHERE agent_id = ${sqlQuote(agentId)} AND entity_id = ${sqlQuote(entityId)}`,
     );
     const existing = rows[0];
-    if (input.entityId && !existing) {
-      throw new ElizaError(
-        "The selected contact is no longer available. Refresh the recipient list.",
-        { code: "ENTITY_RECIPIENT_NOT_FOUND" },
-      );
-    }
-    if (
-      existing &&
-      (existing.type !== "person" || existing.preferred_name !== name)
-    ) {
-      throw new ElizaError(
-        "The contact no longer matches the reviewed name. Refresh and review it again.",
-        { code: "ENTITY_RECIPIENT_REVIEW_STALE" },
-      );
-    }
+    assertReviewedRecipient(
+      input.entityId,
+      name,
+      existing
+        ? { type: toText(existing.type), name: toText(existing.preferred_name) }
+        : null,
+    );
     const now = new Date().toISOString();
     if (!existing) {
       await executeSql(

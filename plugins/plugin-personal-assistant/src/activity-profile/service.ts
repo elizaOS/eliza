@@ -15,7 +15,7 @@ import {
 } from "../lifeops/screen-context.js";
 import { LifeOpsService } from "../lifeops/service.js";
 
-export { resolveOwnerEntityId } from "@elizaos/agent";
+export { resolveOwnerEntityId } from "@elizaos/core";
 
 import {
   analyzeMessages,

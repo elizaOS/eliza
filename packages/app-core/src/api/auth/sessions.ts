@@ -1,5 +1,5 @@
 /**
- * Session lifecycle on top of `AuthStore`.
+ * Session lifecycle on top of `AuthRepository`.
  *
  * This module owns:
  *   - browser session creation + sliding-TTL math
@@ -24,8 +24,8 @@ import {
 } from "@elizaos/shared/runtime-env";
 import type {
   AppendAuditEventInput,
+  AuthRepository,
   AuthSessionRow,
-  AuthStore,
 } from "../../services/auth-store";
 import { appendAuditEvent } from "./audit.js";
 import { tokenMatches } from "./tokens.js";
@@ -103,7 +103,7 @@ function generateCsrfSecret(): string {
  * `eliza_csrf` cookie.
  */
 export async function createBrowserSession(
-  store: AuthStore,
+  store: AuthRepository,
   options: CreateBrowserSessionOptions,
 ): Promise<SessionWithCsrf> {
   const now = options.now ?? Date.now();
@@ -132,7 +132,7 @@ export async function createBrowserSession(
  * responsible for shaping them.
  */
 export async function createMachineSession(
-  store: AuthStore,
+  store: AuthRepository,
   options: CreateMachineSessionOptions,
 ): Promise<SessionWithCsrf> {
   const now = options.now ?? Date.now();
@@ -206,7 +206,7 @@ export function denyOnAuthStoreError(scope: string): (error: unknown) => null {
  * we do NOT silently treat a DB error as "session valid".
  */
 export async function findActiveSession(
-  store: AuthStore,
+  store: AuthRepository,
   sessionId: string,
   now: number = Date.now(),
 ): Promise<AuthSessionRow | null> {
@@ -239,7 +239,7 @@ export async function findActiveSession(
 // ── Revocation ───────────────────────────────────────────────────────────────
 
 export interface RevokeSessionOptions {
-  store: AuthStore;
+  store: AuthRepository;
   reason: string;
   actorIdentityId: string | null;
   ip: string | null;
@@ -268,7 +268,7 @@ export async function revokeSession(
 }
 
 export interface RevokeAllSessionsOptions {
-  store: AuthStore;
+  store: AuthRepository;
   identityId: string;
   exceptSessionId?: string;
   reason: string;

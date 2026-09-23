@@ -1,6 +1,6 @@
 /**
  * Owns a single-agent SQLite file and serializes asynchronous adapter operations.
- * SQLite stores lossless V8 record blobs; transactions remain open across awaits
+ * SQLite stores versioned portable record blobs; transactions remain open across awaits
  * only while an AsyncLocalStorage owner holds the queue. Escaped callbacks fail.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -8,20 +8,46 @@ import {
   chmodSync,
   closeSync,
   existsSync,
+  fsyncSync,
+  linkSync,
   lstatSync,
   mkdirSync,
+  mkdtempSync,
   openSync,
+  rmSync,
 } from "node:fs";
-import { dirname, isAbsolute } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import { deserialize, serialize } from "node:v8";
-import { ElizaError, type UUID } from "@elizaos/core";
+import { basename, dirname, isAbsolute, join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
+import { deserialize as deserializeLegacy } from "node:v8";
+import { ElizaError, logger, type UUID } from "@elizaos/core";
 import type { IStorage } from "@elizaos/plugin-inmemorydb";
+import { decodeRecord, encodeRecord, RECORD_CODEC } from "./record-codec";
+import {
+  assertSupportedRuntime,
+  openSqlite,
+  type SqlDatabase,
+} from "./sqlite-driver";
 
 type Owner = { active: boolean; child?: Promise<void> };
 
+/** Persist the published name and any ancestors created for a new backup directory. */
+function syncDirectoryChain(directory: string): void {
+  let current = directory;
+  for (;;) {
+    const fd = openSync(current, "r");
+    try {
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    const parent = dirname(current);
+    if (parent === current) return;
+    current = parent;
+  }
+}
+
 export class SQLiteStorage implements IStorage {
-  private database: DatabaseSync | null = null;
+  private database: SqlDatabase | null = null;
   private tail: Promise<void> = Promise.resolve();
   private readonly owner = new AsyncLocalStorage<Owner>();
   private savepoint = 0;
@@ -30,12 +56,7 @@ export class SQLiteStorage implements IStorage {
     readonly path: string,
     readonly agentId: UUID,
   ) {
-    if (process.versions.bun || process.versions.node !== "24.15.0") {
-      throw this.failure(
-        "RUNTIME_UNSUPPORTED",
-        "Run SQLite storage with the pinned Node 24.15.0 runtime",
-      );
-    }
+    assertSupportedRuntime();
     if (!isAbsolute(path))
       throw this.failure(
         "PATH_INVALID",
@@ -59,7 +80,7 @@ export class SQLiteStorage implements IStorage {
       );
   }
 
-  private connection(): DatabaseSync {
+  private connection(): SqlDatabase {
     if (!this.database)
       throw this.failure(
         "NOT_READY",
@@ -114,14 +135,14 @@ export class SQLiteStorage implements IStorage {
         closeSync(openSync(this.path, "wx", 0o600));
       }
       chmodSync(this.path, 0o600);
-      const db = new DatabaseSync(this.path);
+      const db = await openSqlite(this.path);
       try {
         db.exec(
           "PRAGMA busy_timeout=0; PRAGMA locking_mode=EXCLUSIVE; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA temp_store=MEMORY; PRAGMA foreign_keys=ON; PRAGMA trusted_schema=OFF;",
         );
         db.exec("BEGIN EXCLUSIVE");
         const version = db.prepare("PRAGMA user_version").get()?.user_version;
-        if (version !== 0 && version !== 1)
+        if (version !== 0 && version !== 1 && version !== 2)
           throw this.failure(
             "SCHEMA_UNSUPPORTED",
             "SQLite database schema requires a compatible adapter version",
@@ -132,6 +153,12 @@ export class SQLiteStorage implements IStorage {
         const stored = db
           .prepare("SELECT value FROM metadata WHERE key='agent_id'")
           .get()?.value;
+        if (version !== 0 && stored === undefined) {
+          throw this.failure(
+            "AGENT_BINDING_MISSING",
+            "Existing database is missing its agent binding; restore verified metadata before opening",
+          );
+        }
         if (stored !== undefined && stored !== this.agentId)
           throw this.failure(
             "AGENT_MISMATCH",
@@ -140,7 +167,68 @@ export class SQLiteStorage implements IStorage {
         db.prepare(
           "INSERT OR IGNORE INTO metadata(key,value) VALUES('agent_id',?)",
         ).run(this.agentId);
-        db.exec("PRAGMA user_version=1; COMMIT");
+        const codec = db
+          .prepare("SELECT value FROM metadata WHERE key='record_codec'")
+          .get()?.value;
+        if (version === 2 && codec !== RECORD_CODEC) {
+          throw this.failure(
+            "RECORD_CODEC_UNSUPPORTED",
+            "Database record codec requires a compatible release",
+          );
+        }
+        if (
+          version === 0 &&
+          db.prepare("SELECT 1 AS present FROM records LIMIT 1").get()
+        ) {
+          throw this.failure(
+            "SCHEMA_UNSUPPORTED",
+            "Unversioned records require an explicit importer",
+          );
+        }
+        if (version === 1) {
+          if (process.versions.bun) {
+            throw this.failure(
+              "MIGRATION_REQUIRES_NODE",
+              "Back up and open this legacy database with pinned Node 24.15.0 to migrate before using Bun",
+            );
+          }
+          if (codec !== undefined)
+            throw this.failure(
+              "RECORD_CODEC_UNSUPPORTED",
+              "Legacy database has an unexpected codec declaration",
+            );
+          for (const row of db
+            .prepare(
+              "SELECT collection,id,data FROM records ORDER BY collection,id",
+            )
+            .all()) {
+            if (
+              typeof row.collection !== "string" ||
+              typeof row.id !== "string" ||
+              !(row.data instanceof Uint8Array)
+            ) {
+              throw this.failure(
+                "RECORD_INVALID",
+                "Legacy record has invalid storage fields",
+              );
+            }
+            const value: unknown = deserializeLegacy(row.data);
+            const encoded = encodeRecord(value);
+            if (!isDeepStrictEqual(value, decodeRecord(encoded))) {
+              throw this.failure(
+                "MIGRATION_VALUE_UNSUPPORTED",
+                "Legacy value cannot be migrated losslessly; retain the original database and use a compatible importer",
+              );
+            }
+            db.prepare(
+              "UPDATE records SET data=? WHERE collection=? AND id=?",
+            ).run(encoded, row.collection, row.id);
+          }
+        }
+        db.prepare(
+          "INSERT OR REPLACE INTO metadata(key,value) VALUES('record_codec',?)",
+        ).run(RECORD_CODEC);
+        db.exec("PRAGMA user_version=2; COMMIT");
         this.database = db;
       } catch (cause) {
         // error-policy:J2 Close the failed open and preserve its actionable cause.
@@ -241,7 +329,7 @@ export class SQLiteStorage implements IStorage {
           "RECORD_INVALID",
           "SQLite record is not a binary payload",
         );
-      return deserialize(row.data) as T;
+      return decodeRecord(row.data) as T;
     });
   }
 
@@ -256,7 +344,7 @@ export class SQLiteStorage implements IStorage {
               "RECORD_INVALID",
               "SQLite record is not a binary payload",
             );
-          return deserialize(row.data) as T;
+          return decodeRecord(row.data) as T;
         }),
     );
   }
@@ -274,7 +362,7 @@ export class SQLiteStorage implements IStorage {
         .prepare(
           "INSERT INTO records(collection,id,data) VALUES(?,?,?) ON CONFLICT(collection,id) DO UPDATE SET data=excluded.data",
         )
-        .run(collection, id, serialize(data));
+        .run(collection, id, encodeRecord(data));
     });
   }
 
@@ -307,7 +395,7 @@ export class SQLiteStorage implements IStorage {
             "RECORD_INVALID",
             "SQLite record has invalid storage fields",
           );
-        if (predicate(deserialize(row.data) as T))
+        if (predicate(decodeRecord(row.data) as T))
           await this.delete(collection, row.id);
       }
     });
@@ -360,10 +448,42 @@ export class SQLiteStorage implements IStorage {
       );
     await this.exclusive(async () => {
       mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
-      // VACUUM INTO includes committed WAL pages in a consistent standalone file.
-      closeSync(openSync(destination, "wx", 0o600));
-      this.connection().prepare("VACUUM INTO ?").run(destination);
-      chmodSync(destination, 0o600);
+      // Some SQLite builds require a nonexistent VACUUM destination. A private
+      // sibling directory protects the new file until exclusive publication.
+      const staging = mkdtempSync(
+        join(dirname(destination), `.${basename(destination)}-`),
+      );
+      try {
+        chmodSync(staging, 0o700);
+        const snapshot = join(staging, "snapshot.sqlite");
+        this.connection().prepare("VACUUM INTO ?").run(snapshot);
+        chmodSync(snapshot, 0o600);
+        const snapshotFd = openSync(snapshot, "r");
+        try {
+          fsyncSync(snapshotFd);
+        } finally {
+          closeSync(snapshotFd);
+        }
+        linkSync(snapshot, destination);
+        syncDirectoryChain(dirname(destination));
+      } catch (cause) {
+        // error-policy:J2 Unsupported publication or directory durability must not report a completed backup.
+        throw this.failure(
+          "BACKUP_PUBLICATION_FAILED",
+          "Backup publication could not be made durable; use a filesystem supporting hard links and directory fsync, and inspect the destination before retrying",
+          cause,
+        );
+      } finally {
+        try {
+          rmSync(staging, { recursive: true, force: true });
+        } catch (error) {
+          // error-policy:J6 A cleanup failure must not disguise the backup's publication outcome.
+          logger.warn(
+            { src: "SQLiteStorage", error: String(error) },
+            "[SQLiteStorage] Backup staging cleanup failed",
+          );
+        }
+      }
     });
   }
 }
@@ -371,7 +491,7 @@ export class SQLiteStorage implements IStorage {
 /** Durable map-shaped access for connector records inside the adapter transaction. */
 export class SQLiteCollection<T> {
   constructor(
-    private readonly connection: () => DatabaseSync,
+    private readonly connection: () => SqlDatabase,
     private readonly name: string,
   ) {}
   get(id: string): T | undefined {
@@ -383,14 +503,14 @@ export class SQLiteCollection<T> {
       throw new ElizaError("Invalid SQLite record payload", {
         code: "SQLITE_RECORD_INVALID",
       });
-    return deserialize(row.data) as T;
+    return decodeRecord(row.data) as T;
   }
   set(id: string, value: T): void {
     this.connection()
       .prepare(
         "INSERT INTO records(collection,id,data) VALUES(?,?,?) ON CONFLICT(collection,id) DO UPDATE SET data=excluded.data",
       )
-      .run(this.name, id, serialize(value));
+      .run(this.name, id, encodeRecord(value));
   }
   delete(id: string): boolean {
     return (
@@ -407,7 +527,7 @@ export class SQLiteCollection<T> {
         throw new ElizaError("Invalid SQLite record fields", {
           code: "SQLITE_RECORD_INVALID",
         });
-      yield [row.id, deserialize(row.data) as T];
+      yield [row.id, decodeRecord(row.data) as T];
     }
   }
   values(): T[] {

@@ -166,7 +166,7 @@ describe("handleAppsRoutes", () => {
   });
 
   it("rejects malformed favorite updates before writing the store", async () => {
-    const store = createFavoriteStore(["@elizaos/plugin-native-phone"]);
+    const store = createFavoriteStore(["@elizaos/plugin-phone"]);
 
     const result = await callRoute({
       method: "PUT",

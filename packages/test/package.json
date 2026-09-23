@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Repository-wide scenario definitions.",
   "scripts": {
-    "test": "bun --conditions eliza-source ../scenario-runner/src/cli.ts list scenarios --validate-scenarios",
+    "test": "bun test --conditions eliza-source scenarios && bun --conditions eliza-source ../scenario-runner/src/cli.ts list scenarios --validate-scenarios",
     "typecheck": "tsc --noEmit -p scenarios/tsconfig.json",
     "format": "bunx @biomejs/biome format --write package.json scenarios",
     "format:check": "bunx @biomejs/biome format package.json scenarios"

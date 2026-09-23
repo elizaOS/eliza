@@ -285,8 +285,9 @@ describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
 	// from an earlier run would make this test read the wrong header). The
 	// voice lanes with submodules:recursive still enforce the pin.
 	const submoduleAtPinnedCommit = (): boolean => {
-		const submoduleDir = path.dirname(
-			path.dirname(path.dirname(NATIVE_FFI_HEADER)),
+		const submoduleDir = path.resolve(
+			path.dirname(NATIVE_FFI_HEADER),
+			"../../..",
 		);
 		const pluginDir = path.resolve(submoduleDir, "..", "..");
 		const pinned = spawnSync(
@@ -476,6 +477,13 @@ describeGeneratedStubIntegration(
 			expect(report.contextWasNonNull).toBe(true);
 		});
 
+		it("refuses explicit GPU selection on a legacy native library", () => {
+			const report = runBunHarness({ scenario: "create-explicit-unsupported" });
+			expectHarnessOk(report);
+			expect(report.threwLifecycleError).toBe(true);
+			expect(report.errorMessage).toMatch(/create_with_options/);
+		});
+
 		it("create surfaces a NULL C pointer as a structured lifecycle error", () => {
 			const report = runBunHarness({ scenario: "create-empty-fails" });
 			expectHarnessOk(report);
@@ -558,6 +566,7 @@ interface HarnessOptions {
 	scenario:
 		| "create-destroy"
 		| "create-empty-fails"
+		| "create-explicit-unsupported"
 		| "tts-not-implemented"
 		| "mmap-acquire-not-implemented"
 		| "mmap-evict-not-implemented"
@@ -655,11 +664,12 @@ function asLifecycleErr(e) {
     return;
   }
 
-  if (SCENARIO === "create-empty-fails") {
+  if (SCENARIO === "create-empty-fails" || SCENARIO === "create-explicit-unsupported") {
     const ffi = loadElizaInferenceFfi(DYLIB);
     let thrown;
     try {
-      ffi.create("");
+      if (SCENARIO === "create-explicit-unsupported") ffi.create("/tmp/elizainference-test-bundle", { gpuLayers: 0 });
+      else ffi.create("");
     } catch (e) {
       thrown = e;
     }

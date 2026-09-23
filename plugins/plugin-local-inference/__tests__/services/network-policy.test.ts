@@ -1,12 +1,9 @@
 /**
- * Tests for the plugin-side network-policy bridge (R5-versioning §4).
- *
- * The shared module ships the classifier + decision rule; this module
- * wires the platform probes. Tests inject a stub probe to exercise each
- * branch of `evaluateRuntimePolicy` and the heuristic helpers.
+ * Exercises native network probes and model-download decisions with controlled
+ * bridge responses and environment state. No native device or download runs.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	capacitorAndroidProbe,
 	capacitorIosProbe,
@@ -19,60 +16,38 @@ import {
 	pickActiveProbe,
 } from "../../src/services/network-policy";
 
-describe("isHeadlessRuntime", () => {
-	function withEnv<T>(
-		patch: Record<string, string | undefined>,
-		fn: () => T,
-	): T {
-		const prev = new Map<string, string | undefined>();
-		for (const k of Object.keys(patch)) prev.set(k, process.env[k]);
-		try {
-			for (const [k, v] of Object.entries(patch)) {
-				if (v === undefined) delete process.env[k];
-				else process.env[k] = v;
-			}
-			return fn();
-		} finally {
-			for (const [k, v] of prev) {
-				if (v === undefined) delete process.env[k];
-				else process.env[k] = v;
-			}
-		}
+beforeEach(() => {
+	for (const name of ["ELIZA_NETWORK_POLICY", "ELIZA_HEADLESS", "CI"]) {
+		vi.stubEnv(name, undefined);
 	}
+	vi.stubEnv("DISPLAY", ":0");
+	for (const name of [
+		"Capacitor",
+		"ElizaNetworkPolicy",
+		"electrobunNative",
+		"electronAPI",
+	]) {
+		vi.stubGlobal(name, undefined);
+	}
+});
 
-	it("returns true when ELIZA_NETWORK_POLICY=headless", () => {
-		withEnv({ ELIZA_NETWORK_POLICY: "headless", CI: undefined }, () => {
-			expect(isHeadlessRuntime()).toBe(true);
-		});
+afterEach(() => {
+	vi.unstubAllEnvs();
+	vi.unstubAllGlobals();
+});
+
+describe("isHeadlessRuntime", () => {
+	it.each([
+		["ELIZA_NETWORK_POLICY", "headless"],
+		["CI", "1"],
+	])("detects headless mode from %s=%s", (name, value) => {
+		vi.stubEnv(name, value);
+		expect(isHeadlessRuntime()).toBe(true);
 	});
 
-	it("returns true under CI=true", () => {
-		withEnv(
-			{ ELIZA_NETWORK_POLICY: undefined, ELIZA_HEADLESS: undefined, CI: "1" },
-			() => {
-				expect(isHeadlessRuntime()).toBe(true);
-			},
-		);
-	});
-
-	it("returns false when CI=false explicitly", () => {
-		withEnv(
-			{
-				ELIZA_NETWORK_POLICY: undefined,
-				ELIZA_HEADLESS: undefined,
-				CI: "false",
-				DISPLAY: ":0",
-				WAYLAND_DISPLAY: undefined,
-			},
-			() => {
-				// Note: relies on process.stdout.isTTY in the test runner; vitest
-				// runs without a TTY but the DISPLAY override prevents the
-				// no-display heuristic from forcing headless on Linux.
-				const result = isHeadlessRuntime();
-				// vitest CI runs sometimes have isTTY=false; tolerate both.
-				expect(typeof result).toBe("boolean");
-			},
-		);
+	it("returns false when CI=false with a display available", () => {
+		vi.stubEnv("CI", "false");
+		expect(isHeadlessRuntime()).toBe(false);
 	});
 });
 
@@ -186,239 +161,93 @@ describe("platform probe factories", () => {
 		expect(state).toEqual({ connectionType: "unknown", metered: null });
 	});
 
-	it("Capacitor Android probe returns unknown when bridge missing", async () => {
-		// No Capacitor global on the test runtime; expect the shim-missing path.
-		const probe = capacitorAndroidProbe();
-		const state = await probe.probe();
-		// The bridge isn't installed in tests, so we expect unknown/none-class.
-		expect(["unknown", "none", "wifi", "cellular"]).toContain(
-			state.connectionType,
-		);
-		expect(typeof state.metered === "boolean" || state.metered === null).toBe(
-			true,
-		);
-	});
+	it.each([
+		["Android", capacitorAndroidProbe],
+		["iOS", capacitorIosProbe],
+		["desktop", electronDesktopProbe],
+	] as const)(
+		"%s probe reports unknown without its bridge",
+		async (_name, createProbe) => {
+			await expect(createProbe().probe()).resolves.toEqual({
+				connectionType: "unknown",
+				metered: null,
+			});
+		},
+	);
 
-	it("Capacitor iOS probe falls back to unknown without bridge", async () => {
-		const probe = capacitorIosProbe();
-		const state = await probe.probe();
-		expect(typeof state.metered === "boolean" || state.metered === null).toBe(
-			true,
-		);
-	});
+	it.each([true, "throws"] as const)(
+		"Android metering handles native response %s",
+		async (response) => {
+			vi.stubGlobal("ElizaNetworkPolicy", {
+				getMeteredHint: async () => {
+					if (response === "throws") throw new Error("simulated native error");
+					return { metered: response };
+				},
+			});
+			expect((await capacitorAndroidProbe().probe()).metered).toBe(
+				response === "throws" ? null : response,
+			);
+		},
+	);
 
-	it("Capacitor Android probe reads metered=true from the global shim when installed", async () => {
-		// Stub the `@elizaos/capacitor-network-policy` install — the real
-		// plugin populates `globalThis.ElizaNetworkPolicy` on import.
-		const g = globalThis as unknown as {
-			ElizaNetworkPolicy?: {
-				getMeteredHint?: () => Promise<{ metered: boolean }>;
-			};
-		};
-		const prev = g.ElizaNetworkPolicy;
-		g.ElizaNetworkPolicy = {
-			getMeteredHint: async () => ({ metered: true }),
-		};
-		try {
-			const probe = capacitorAndroidProbe();
-			const state = await probe.probe();
-			expect(state.metered).toBe(true);
-		} finally {
-			if (prev === undefined) delete g.ElizaNetworkPolicy;
-			else g.ElizaNetworkPolicy = prev;
-		}
-	});
-
-	it("Capacitor iOS probe reads isExpensive=true from the global shim when installed", async () => {
-		const g = globalThis as unknown as {
-			ElizaNetworkPolicy?: {
-				getPathHints?: () => Promise<{
-					isExpensive: boolean;
-					isConstrained: boolean;
-				}>;
-			};
-		};
-		const prev = g.ElizaNetworkPolicy;
-		g.ElizaNetworkPolicy = {
-			getPathHints: async () => ({ isExpensive: true, isConstrained: false }),
-		};
-		try {
-			const probe = capacitorIosProbe();
-			const state = await probe.probe();
-			expect(state.metered).toBe(true);
-		} finally {
-			if (prev === undefined) delete g.ElizaNetworkPolicy;
-			else g.ElizaNetworkPolicy = prev;
-		}
-	});
-
-	// Regression for #23026: Low Data Mode (`NWPath.isConstrained === true`)
-	// is a first-class metering signal per the plugin contract in
-	// `plugin-native-network-policy/src/definitions.ts`. An iOS user on
-	// unmetered Wi-Fi who enabled Low Data Mode reports
-	// `isExpensive=false, isConstrained=true`; the probe must classify that
-	// as metered so a multi-GB voice-model pull prompts instead of silently
-	// downloading against the user's explicit "limit non-essential traffic".
-	function withIosPathHints<T>(
+	function setIosPathHints(
 		hints: { isExpensive: boolean; isConstrained: boolean } | "throws",
-		fn: () => Promise<T>,
-	): Promise<T> {
-		const g = globalThis as unknown as {
-			ElizaNetworkPolicy?: {
-				getPathHints?: () => Promise<{
-					isExpensive: boolean;
-					isConstrained: boolean;
-				}>;
-			};
-		};
-		const prev = g.ElizaNetworkPolicy;
-		g.ElizaNetworkPolicy = {
+	): void {
+		vi.stubGlobal("ElizaNetworkPolicy", {
 			getPathHints: async () => {
 				if (hints === "throws") throw new Error("simulated native error");
 				return hints;
 			},
-		};
-		const restore = () => {
-			if (prev === undefined) delete g.ElizaNetworkPolicy;
-			else g.ElizaNetworkPolicy = prev;
-		};
-		return fn().finally(restore);
+		});
 	}
 
-	it("Capacitor iOS probe treats Low Data Mode (isConstrained=true) as metered", async () => {
-		await withIosPathHints(
-			{ isExpensive: false, isConstrained: true },
-			async () => {
-				const state = await capacitorIosProbe().probe();
-				expect(state.metered).toBe(true);
-			},
-		);
-	});
-
-	it("Capacitor iOS probe reports metered=false when neither flag is set", async () => {
-		await withIosPathHints(
-			{ isExpensive: false, isConstrained: false },
-			async () => {
-				const state = await capacitorIosProbe().probe();
-				expect(state.metered).toBe(false);
-			},
-		);
-	});
-
-	it("Capacitor iOS probe keeps metered=true when only isExpensive is set (regression guard)", async () => {
-		await withIosPathHints(
-			{ isExpensive: true, isConstrained: false },
-			async () => {
-				const state = await capacitorIosProbe().probe();
-				expect(state.metered).toBe(true);
-			},
-		);
-	});
-
-	it("Capacitor iOS probe reports metered=true when both flags are set", async () => {
-		await withIosPathHints(
-			{ isExpensive: true, isConstrained: true },
-			async () => {
-				const state = await capacitorIosProbe().probe();
-				expect(state.metered).toBe(true);
-			},
-		);
-	});
+	it.each([
+		{ isExpensive: false, isConstrained: true, metered: true },
+		{ isExpensive: false, isConstrained: false, metered: false },
+		{ isExpensive: true, isConstrained: false, metered: true },
+		{ isExpensive: true, isConstrained: true, metered: true },
+	])(
+		"iOS metering for $isExpensive / $isConstrained is $metered",
+		async ({ metered, ...hints }) => {
+			setIosPathHints(hints);
+			expect((await capacitorIosProbe().probe()).metered).toBe(metered);
+		},
+	);
 
 	it("Capacitor iOS probe falls back to metered=null when the path-hints shim throws", async () => {
-		await withIosPathHints("throws", async () => {
-			const state = await capacitorIosProbe().probe();
-			expect(state.metered).toBeNull();
-		});
+		setIosPathHints("throws");
+		expect((await capacitorIosProbe().probe()).metered).toBeNull();
 	});
 
-	it("Low Data Mode iOS state flips the download decision from auto to metered-ask", async () => {
-		// End-to-end proof through describeRuntimeNetwork: a Wi-Fi link with
-		// Low Data Mode engaged and a 3 GB estimated pull must no longer
-		// auto-download. Stub both the Capacitor connection-type bridge and
-		// the iOS path-hints shim so the injected iOS probe sees `wifi`.
-		const g = globalThis as unknown as {
-			Capacitor?: unknown;
-		};
-		const prevCap = g.Capacitor;
-		g.Capacitor = {
+	it("Low Data Mode requires confirmation for a 3GB Wi-Fi download", async () => {
+		vi.stubGlobal("Capacitor", {
 			Plugins: {
 				Network: {
-					getStatus: async () => ({
-						connected: true,
-						connectionType: "wifi" as const,
-					}),
+					getStatus: async () => ({ connected: true, connectionType: "wifi" }),
 				},
 			},
-		};
+		});
 		const threeGigabytes = 3 * 1024 * 1024 * 1024;
 		// Outside the default 22:00-08:00 quiet hours so the flip is caused by
 		// metering, not the clock.
 		const noon = new Date(2024, 0, 1, 12, 0, 0);
-		try {
-			await withIosPathHints(
-				{ isExpensive: false, isConstrained: true },
-				async () => {
-					const snapshot = await describeRuntimeNetwork({
-						probe: capacitorIosProbe(),
-						estimatedBytes: threeGigabytes,
-						now: noon,
-					});
-					expect(snapshot.state).toEqual({
-						connectionType: "wifi",
-						metered: true,
-					});
-					expect(snapshot.class).toBe("wifi-metered");
-					expect(snapshot.decision.allow).toBe(false);
-					expect(snapshot.decision.reason).toBe("metered-ask");
-					expect(snapshot.decision.estimatedBytes).toBe(threeGigabytes);
-				},
-			);
-		} finally {
-			if (prevCap === undefined) delete g.Capacitor;
-			else g.Capacitor = prevCap;
-		}
-	});
-
-	it("Capacitor Android probe falls back to metered=null when the native shim throws", async () => {
-		const g = globalThis as unknown as {
-			ElizaNetworkPolicy?: {
-				getMeteredHint?: () => Promise<{ metered: boolean }>;
-			};
-		};
-		const prev = g.ElizaNetworkPolicy;
-		g.ElizaNetworkPolicy = {
-			getMeteredHint: async () => {
-				throw new Error("simulated native error");
-			},
-		};
-		try {
-			const probe = capacitorAndroidProbe();
-			const state = await probe.probe();
-			expect(state.metered).toBeNull();
-		} finally {
-			if (prev === undefined) delete g.ElizaNetworkPolicy;
-			else g.ElizaNetworkPolicy = prev;
-		}
-	});
-
-	it("electronDesktopProbe returns unknown without bridge", async () => {
-		const probe = electronDesktopProbe();
-		const state = await probe.probe();
-		expect(state.connectionType).toBe("unknown");
-		expect(state.metered).toBeNull();
+		setIosPathHints({ isExpensive: false, isConstrained: true });
+		const snapshot = await describeRuntimeNetwork({
+			probe: capacitorIosProbe(),
+			estimatedBytes: threeGigabytes,
+			now: noon,
+		});
+		expect(snapshot.state).toEqual({ connectionType: "wifi", metered: true });
+		expect(snapshot.class).toBe("wifi-metered");
+		expect(snapshot.decision.allow).toBe(false);
+		expect(snapshot.decision.reason).toBe("metered-ask");
+		expect(snapshot.decision.estimatedBytes).toBe(threeGigabytes);
 	});
 });
 
 describe("pickActiveProbe", () => {
 	it("returns headless probe when ELIZA_NETWORK_POLICY=headless", () => {
-		const prev = process.env.ELIZA_NETWORK_POLICY;
-		process.env.ELIZA_NETWORK_POLICY = "headless";
-		try {
-			expect(pickActiveProbe().id).toBe("headless");
-		} finally {
-			if (prev === undefined) delete process.env.ELIZA_NETWORK_POLICY;
-			else process.env.ELIZA_NETWORK_POLICY = prev;
-		}
+		vi.stubEnv("ELIZA_NETWORK_POLICY", "headless");
+		expect(pickActiveProbe().id).toBe("headless");
 	});
 });

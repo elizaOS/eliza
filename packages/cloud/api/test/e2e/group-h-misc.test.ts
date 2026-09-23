@@ -712,7 +712,27 @@ for (const {
             : await api.post(path, validBody ?? {}, {
                 headers: internalHeaders(),
               });
-        expect(res.status).toBe(okStatus);
+        const failureContext =
+          res.status === okStatus
+            ? undefined
+            : JSON.stringify({
+                method,
+                path: validPath ?? path,
+                status: res.status,
+                headers: Object.fromEntries(
+                  [
+                    "content-type",
+                    "server-timing",
+                    "x-request-id",
+                    "cf-ray",
+                    "retry-after",
+                  ]
+                    .map((name) => [name, res.headers.get(name)])
+                    .filter(([, value]) => value !== null),
+                ),
+                body: await res.clone().text(),
+              });
+        expect(res.status, failureContext).toBe(okStatus);
       },
     );
 

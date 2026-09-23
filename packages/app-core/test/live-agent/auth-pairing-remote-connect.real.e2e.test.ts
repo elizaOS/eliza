@@ -1,70 +1,7 @@
 /**
- * REAL end-to-end coverage for the production auth path (#13692).
- *
- * The auth path real remote users hit — a client blocked by the pairing wall
- * completing `GET /api/auth/pair-code` (server-side / operator read) →
- * `POST /api/auth/pair` and receiving a REVOCABLE MACHINE SESSION — was
- * exercised by NO automated e2e on any surface. Every prior lane bypassed it:
- * the device host agent defaults `ELIZA_PAIRING_DISABLED=1`, the only UI
- * coverage mocks `/api/auth/status` from a fixture, and the route coverage was
- * five unit tests with hand-built `http.IncomingMessage` objects. A regression
- * anywhere in the pairing wall, the machine-session mint, session-cookie
- * persistence, or the token-authenticated remote connect would ship invisibly.
- *
- * This suite boots the REAL `AgentRuntime` + the REAL app-core HTTP API on a
- * real loopback port with pairing ENABLED (`ELIZA_API_TOKEN` configured) and
- * `ELIZA_REQUIRE_LOCAL_AUTH=1` — the flag on-device local agents set so that
- * loopback alone is NOT a trust signal. With that flag, `isTrustedLocalRequest`
- * returns false for the harness's own 127.0.0.1 socket, so the client is
- * treated exactly like a production-shaped, non-loopback device: it must clear
- * the pairing wall to obtain access. This is the "spoof-proof equivalent" of a
- * non-loopback client that #13692 "Done when" §1 explicitly permits.
- *
- * Coverage (the exact gaps named in #13692):
- *   §1 web/desktop production pairing: real server with pairing ENABLED, read
- *      the pair code server-side (via `ensureAuthPairingCodeForRemoteAccess`,
- *      the CLI/dev-server operator path — the log message at
- *      auth-pairing-routes.ts warn), `POST /api/auth/pair` it, and assert:
- *        - a session is MINTED (session id, NOT the static API token — proven by
- *          `GET /api/auth/me` returning `mode: "session"` for the session id but
- *          the static token authenticating a DIFFERENT branch),
- *        - the shell is unlocked (`/api/auth/status` → authenticated),
- *        - the session SURVIVES A RELOAD (a fresh request carrying only the
- *          `eliza_session` cookie — no bearer — still authenticates; this is the
- *          cookie-persistence guarantee a browser reload depends on).
- *   §3 remote-connect access-token path: against an agent that REJECTS tokenless
- *      requests, a tokenless `/api/auth/me` is 401 and the same request bearing
- *      the configured token authenticates — the driven analogue of the #11761
- *      first-run Remote "URL + access token" form.
- *   §4 deep-link-cannot-carry-a-credential constraint: covered as a co-located
- *      unit spec next to the parser it constrains
- *      (`packages/ui/src/first-run/__tests__/deep-link-entry.test.ts`) — the
- *      first-run remote deep-link parser accepts only `api|apiBase|url|host` and
- *      DROPS any `token`/`accessToken` param, so there is no unattended
- *      credential channel via the deep link. Also recorded in the test-auth
- *      contract doc (`packages/app/docs/TEST_AUTH.md`) so harness authors stop
- *      rediscovering it (the alternative #13692 §4 offers). Kept out of this
- *      server-boot file so the pure UI parser isn't dragged through the agent
- *      runtime module graph here.
- *
- * Negative canary (§Verification): the pairing assertions flip RED when the
- * pair-code validation is deliberately broken — a wrong code is rejected (403)
- * and mints NO session, so a green run is non-vacuous proof the real handshake,
- * not a fixture, is under test.
- *
- * Keyless: the deterministic model provider supplies every model handler, so no
- * provider/cloud key and no native llama are needed. Boots a real runtime +
- * HTTP server, so it lives in the nightly `test:app-real-e2e` lane (this file is
- * added to `vitest.app-real-e2e.config.ts` include), NOT the PR unit lane which
- * excludes `*.real.e2e.test.ts` wholesale.
- *
- * FOLLOW-UPS (device/hardware — out of scope for an agent, per #13692 §2 and the
- * lane rules): the Android emulator on-device lane (fresh app → pairing wall →
- * CDP-typed pair code → home with screenrecord + host-agent log artifacts) needs
- * a booted emulator + adb and is a device-surface task. This harness ships the
- * maximal locally-testable slice: the real server-side handshake + session +
- * cookie-persistence + token-gated remote connect + the deep-link constraint,
- * against local/sim surfaces with no production credentials.
+ * Exercises owner pairing, revocable machine-session cookie/WebSocket admission,
+ * and static-token rejection against a real runtime and loopback HTTP server.
+ * Local trust is disabled; model handlers are deterministic and config is isolated.
  */
 
 import crypto from "node:crypto";
@@ -199,7 +136,10 @@ describe("production auth path: pair-code → machine session; remote-connect to
     expect(code).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
 
     // Complete the pairing handshake as the remote client would.
-    const paired = await req(port, "POST", "/api/auth/pair", { code });
+    const paired = await req(port, "POST", "/api/auth/pair", {
+      code,
+      instanceId: pairing?.instanceId,
+    });
     expect(paired.status).toBe(200);
     const sessionId = String((paired.data as { token?: unknown }).token ?? "");
     expect(sessionId.length).toBeGreaterThan(0);
@@ -209,22 +149,18 @@ describe("production auth path: pair-code → machine session; remote-connect to
     expect(sessionId).not.toBe(PRODUCTION_API_TOKEN);
 
     // The session authenticates as a bearer and reports `mode: "session"` with
-    // a machine identity — the pairing-minted, revocable principal. The static
+    // an owner identity — the pairing-minted, revocable principal. The static
     // token would resolve OWNER through a different (token) branch, not a
     // session row, so this asserts the mint produced a real DB-backed session.
     const meViaSession = await req(port, "GET", "/api/auth/me", undefined, {
       Authorization: `Bearer ${sessionId}`,
     });
     expect(meViaSession.status).toBe(200);
-    expect(
-      (meViaSession.data as { access?: { mode?: string } }).access?.mode,
-    ).toBe("session");
-    expect(
-      (meViaSession.data as { identity?: { kind?: string } }).identity?.kind,
-    ).toBe("machine");
-    expect(
-      (meViaSession.data as { session?: { id?: string } }).session?.id,
-    ).toBe(sessionId);
+    expect(meViaSession.data).toMatchObject({
+      access: { mode: "session", role: "OWNER" },
+      identity: { kind: "owner" },
+      session: { id: sessionId, kind: "machine" },
+    });
 
     // Shell unlocked: the status probe now reports authenticated for the
     // session bearer (the client re-polls status after pairing).
@@ -278,6 +214,7 @@ describe("production auth path: pair-code → machine session; remote-connect to
 
     const rejected = await req(port, "POST", "/api/auth/pair", {
       code: wrongCode,
+      instanceId: pairing?.instanceId,
     });
     expect(rejected.status).toBe(403);
     // No session id handed back on rejection.

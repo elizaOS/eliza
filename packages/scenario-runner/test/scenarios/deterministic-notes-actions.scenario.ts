@@ -23,6 +23,16 @@ const updatedBody =
   "Confirm the native run and widget output.\nKeep  two spaces.";
 let notesFilePath: string;
 let createdNote: StickyNote | undefined;
+const replacementParameters: {
+  action: "patch";
+  target: { kind: "text"; value: string };
+  changes: Array<{ field: "body"; value: string }>;
+  expectedRevision?: number;
+} = {
+  action: "patch",
+  target: { kind: "text", value: title },
+  changes: [{ field: "body", value: updatedBody }],
+};
 
 type ScenarioRuntime = IAgentRuntime & {
   plugins?: Array<{ name?: unknown }>;
@@ -84,12 +94,18 @@ function expectNotesResult(
       return "the operation replaced the note identity or creation timestamp";
     }
     if (op === "list") {
-      return result.readOnlyOperation === true &&
-        result.count === 1 &&
-        result.lookupMode === "text" &&
-        isDeepStrictEqual(result.notes, notes)
-        ? undefined
-        : "topic lookup did not return the exact persisted note";
+      if (
+        result.readOnlyOperation !== true ||
+        result.count !== 1 ||
+        result.lookupMode !== "text" ||
+        !isDeepStrictEqual(result.notes, notes) ||
+        typeof result.notesRevision !== "number" ||
+        result.notesRevision !== stored.revision
+      ) {
+        return "topic lookup did not return the exact persisted note and revision";
+      }
+      replacementParameters.expectedRevision = result.notesRevision;
+      return undefined;
     }
     return result.noteId === note.id && isDeepStrictEqual(result.note, note)
       ? undefined
@@ -139,6 +155,7 @@ export default scenario({
         await service.clearNotes();
         notesFilePath = service.store.filePath;
         createdNote = undefined;
+        delete replacementParameters.expectedRevision;
         return undefined;
       },
     },
@@ -173,11 +190,7 @@ export default scenario({
       actionName: "NOTES",
       text: "update my workflow note",
       options: {
-        parameters: {
-          action: "patch",
-          target: { kind: "text", value: title },
-          changes: [{ field: "body", value: updatedBody }],
-        },
+        parameters: replacementParameters,
       },
       assertTurn: expectNotesResult("update", updatedBody),
     },

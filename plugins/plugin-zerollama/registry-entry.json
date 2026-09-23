@@ -1,0 +1,118 @@
+{
+  "id": "zerollama",
+  "name": "Ollama / zerollama",
+  "description": "Local and self-hosted Ollama-compatible inference for text, embeddings, tool calls, structured output, speech, and transcription.",
+  "npmName": "@elizaos/plugin-zerollama",
+  "version": "2.0.3-beta.7",
+  "source": "bundled",
+  "tags": [
+    "ai-provider",
+    "llm",
+    "ollama",
+    "zerollama",
+    "local-models",
+    "self-hosted",
+    "embedding",
+    "voice",
+    "tts",
+    "transcription"
+  ],
+  "shortIds": ["ollama", "zerollama"],
+  "config": {
+    "OLLAMA_BASE_URL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "http://127.0.0.1:11434",
+      "label": "Ollama Base URL",
+      "help": "Base URL of the Ollama-compatible server. A trailing /api is optional.",
+      "advanced": false,
+      "autoEnableProvider": true
+    },
+    "OLLAMA_API_ENDPOINT": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Ollama API Endpoint",
+      "help": "Higher-precedence endpoint alias; values with or without /api are accepted.",
+      "advanced": true,
+      "autoEnableProvider": true
+    },
+    "OLLAMA_API_URL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Ollama API URL",
+      "help": "Compatibility endpoint alias used when OLLAMA_API_ENDPOINT is unset.",
+      "advanced": true,
+      "autoEnableProvider": true
+    },
+    "OLLAMA_SMALL_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "eliza-1-2b",
+      "label": "Small Model",
+      "help": "Model tag for nano, small, and medium text calls unless separately overridden.",
+      "advanced": false
+    },
+    "OLLAMA_LARGE_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "eliza-1-4b",
+      "label": "Large Model",
+      "help": "Model tag for large and mega text calls unless separately overridden.",
+      "advanced": false
+    },
+    "OLLAMA_EMBEDDING_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "eliza-1-2b",
+      "label": "Embedding Model",
+      "help": "Ollama model tag used for TEXT_EMBEDDING.",
+      "advanced": false
+    },
+    "OLLAMA_TTS_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Speech Model",
+      "help": "Enables TEXT_TO_SPEECH through POST /v1/audio/speech when set.",
+      "advanced": true
+    },
+    "OLLAMA_TTS_VOICE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Speech Voice",
+      "help": "Optional voice identifier sent to the speech endpoint.",
+      "advanced": true
+    },
+    "OLLAMA_TRANSCRIPTION_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Transcription Model",
+      "help": "Enables TRANSCRIPTION through POST /v1/audio/transcriptions when set.",
+      "advanced": true
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Cpu",
+    "group": "ai-provider",
+    "groupOrder": 10,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-zerollama#readme",
+    "repository": "https://github.com/elizaOS/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "ai-provider"
+}

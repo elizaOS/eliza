@@ -132,6 +132,15 @@ export const smokeViewDeclarations = [
     { capabilities: ["agent-surface"] },
   ],
   [
+    "cockpit",
+    "Cockpit",
+    "plugin-task-coordinator",
+    "/cockpit",
+    "CockpitRoute",
+    "gui",
+    { capabilities: ["agent-surface"] },
+  ],
+  [
     "trajectory-logger",
     "Trajectory Logger",
     "plugin-trajectory-logger",

@@ -1,7 +1,6 @@
 /** Selects and invokes registered model providers with admission, failover, streaming, and trajectory recording. Handlers receive the original runtime; private lifecycle and prompt collaborators remain explicit host callbacks. */
 
 import { performance } from "node:perf_hooks";
-
 import { copyEmbeddingVectorSpace } from "../../embedding-vector-space";
 import { ElizaError } from "../../errors";
 import {
@@ -11,6 +10,11 @@ import {
 	recordInferenceSpan,
 	setInferenceModelProvider,
 } from "../../inference-timing";
+import {
+	type ConfidentialInferenceAuthority,
+	ConfidentialInferenceOperation,
+	runWithConfidentialInference,
+} from "../../security/confidential-inference.js";
 import {
 	collectPiiPromptText,
 	GuardedStreamScanner,
@@ -108,6 +112,7 @@ import {
 } from "./policy.js";
 
 export interface RuntimeModelDispatchHost {
+	confidentialInference(): ConfidentialInferenceAuthority | undefined;
 	models(): Map<string, ModelHandler[]>;
 	pinnedEmbeddingProvider(): string | undefined;
 	validateEmbeddingOutput(
@@ -968,6 +973,7 @@ export class RuntimeModelDispatch {
 		let providerAttemptStartedOutput = false;
 		const providersWithExhaustedRetryBudget = new Set<string>();
 		const providerAttempts: ModelProviderAttempt[] = [];
+		const confidentialOperation = new ConfidentialInferenceOperation();
 		const registrationAttempted = (
 			candidate: ResolvedModelRegistration,
 		): boolean =>
@@ -1627,9 +1633,19 @@ export class RuntimeModelDispatch {
 				providerAttempts.push(providerAttempt);
 				const { result: handlerResult, recordingState } =
 					await runWithModelCallRecordingScope(() =>
-						handler(
-							this.runtime,
-							modelParams as Record<string, JsonValue | object>,
+						runWithConfidentialInference(
+							this.host.confidentialInference(),
+							{
+								agentId: this.runtime.agentId,
+								modelType: String(resolvedModelKey),
+								handler,
+								operation: confidentialOperation,
+							},
+							() =>
+								handler(
+									this.runtime,
+									modelParams as Record<string, JsonValue | object>,
+								),
 						),
 					);
 				// Expose the mutable recording state to the catch block so it can

@@ -25,8 +25,8 @@ import {
 } from "@elizaos/shared/runtime-env";
 import type {
   AuthIdentityRow,
+  AuthRepository,
   AuthSessionRow,
-  AuthStore,
 } from "../../services/auth-store";
 import { findActiveSession, parseSessionCookie } from "./sessions.js";
 import { getProvidedApiToken } from "./tokens.js";
@@ -43,7 +43,7 @@ export interface ResolvedAuthContext {
 }
 
 export interface EnsureSessionOptions {
-  store: AuthStore;
+  store: AuthRepository;
   env?: RuntimeEnvRecord;
   now?: number;
   /**

@@ -2928,7 +2928,7 @@ describe("v5 planner loop skeleton", () => {
 		expect(result.finalMessage).toBe("Checked.");
 	});
 
-	it("falls back to tool text when evaluator message is tool meta-narration", async () => {
+	it("keeps the failed tool reply when the evaluator incorrectly reports success", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => ({
 				text: "",
@@ -2963,6 +2963,7 @@ describe("v5 planner loop skeleton", () => {
 			evaluate,
 		});
 
+		expect(evaluate).toHaveBeenCalledTimes(1);
 		expect(result.finalMessage).toBe(
 			"Draft goal: Leave the apartment more. Not saved yet — what would count as success?",
 		);
@@ -3078,124 +3079,6 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toBe(preview);
-	});
-
-	it("falls back to tool text when evaluator names an action execution", async () => {
-		const runtime = {
-			useModel: vi.fn(async () => ({
-				text: "",
-				toolCalls: [
-					{
-						id: "call-1",
-						name: "OWNER_GOALS",
-						arguments: { action: "create", title: "Save for Lisbon" },
-					},
-				],
-			})),
-		};
-		const executeToolCall = vi.fn(async () => ({
-			success: false,
-			text: "Here's the draft — nothing saved yet. Want me to save it?",
-			userFacingText:
-				"Here's the draft — nothing saved yet. Want me to save it?",
-		}));
-		const evaluate = vi.fn(async () => ({
-			success: true,
-			decision: "FINISH" as const,
-			thought: "Awaiting confirmation.",
-			messageToUser:
-				"OWNER_GOALS create action executed and returned a draft preview requiring owner confirmation. Route FINISH with the tool's user-visible confirmation prompt.",
-		}));
-
-		const result = await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			tools: [{ name: "OWNER_GOALS", description: "Manage owner goals." }],
-			executeToolCall,
-			evaluate,
-		});
-
-		expect(result.finalMessage).toBe(
-			"Here's the draft — nothing saved yet. Want me to save it?",
-		);
-	});
-
-	it("falls back to tool text when evaluator says the action was called", async () => {
-		const runtime = {
-			useModel: vi.fn(async () => ({
-				text: "",
-				toolCalls: [
-					{
-						id: "call-1",
-						name: "OWNER_GOALS",
-						arguments: { action: "create", title: "Learn Spanish" },
-					},
-				],
-			})),
-		};
-		const executeToolCall = vi.fn(async () => ({
-			success: false,
-			text: "What would count as success for that goal?",
-			userFacingText: "What would count as success for that goal?",
-		}));
-		const evaluate = vi.fn(async () => ({
-			success: true,
-			decision: "FINISH" as const,
-			thought: "Awaiting clarification.",
-			messageToUser:
-				"OWNER_GOALS create was called and returned a deferred draft asking the owner to confirm cadence/success evidence. The tool result's user-facing text is an appropriate clarifying question. Finish and surface that question.",
-		}));
-
-		const result = await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			tools: [{ name: "OWNER_GOALS", description: "Manage owner goals." }],
-			executeToolCall,
-			evaluate,
-		});
-
-		expect(result.finalMessage).toBe(
-			"What would count as success for that goal?",
-		);
-	});
-
-	it("falls back to tool text when evaluator narrates a planner draft", async () => {
-		const runtime = {
-			useModel: vi.fn(async () => ({
-				text: "",
-				toolCalls: [
-					{
-						id: "call-1",
-						name: "OWNER_GOALS",
-						arguments: { action: "create", title: "Save for Lisbon" },
-					},
-				],
-			})),
-		};
-		const executeToolCall = vi.fn(async () => ({
-			success: false,
-			text: "Here's the draft — not saved yet. Want me to save it?",
-			userFacingText: "Here's the draft — not saved yet. Want me to save it?",
-		}));
-		const evaluate = vi.fn(async () => ({
-			success: true,
-			decision: "FINISH" as const,
-			thought: "Awaiting confirmation.",
-			messageToUser:
-				"Planner drafted the Lisbon savings goal via OWNER_GOALS and returned a confirmation prompt to the owner. This is an expected owner-approval step; surface the draft summary and the confirmation question as the final message.",
-		}));
-
-		const result = await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			tools: [{ name: "OWNER_GOALS", description: "Manage owner goals." }],
-			executeToolCall,
-			evaluate,
-		});
-
-		expect(result.finalMessage).toBe(
-			"Here's the draft — not saved yet. Want me to save it?",
-		);
 	});
 
 	it("surfaces captured REPLY refusal text when required-tool cap is hit, instead of throwing", async () => {
@@ -3914,35 +3797,70 @@ describe("v5 planner loop skeleton", () => {
 		expect(partitioned.redundant).toEqual([editCall]);
 	});
 
-	it("does not capture native text fallback as a required-tool refusal", async () => {
-		const runtime = {
-			useModel: vi.fn(async () => ({
-				text: "I should answer after thinking through the tool choice.",
-				toolCalls: [],
-			})),
-		};
+	const FORM_REPLY =
+		'Happy to set that up — pick what works:\n[FORM]\n{"title":"Schedule it","submit_label":"Save","fields":[{"name":"date","label":"Date","type":"date"},{"name":"time","label":"Time","type":"time"}]}\n[/FORM]';
 
-		await expect(
-			runPlannerLoop({
-				runtime,
-				context: { id: "ctx" },
-				tools: [
+	it.each([
+		...[
+			"I should answer after thinking through the tool choice.",
+			"I need to call SEARCH_MESSAGES to find that.",
+			"Let me check the database for that information.",
+			"Let me pull up your recent messages.",
+			"I'm reviewing the conversation history to answer.",
+			"I'll look that up and get back to you.",
+			"Pulling up the info now, one sec.",
+			"Pick what works: [FORM] not-json [/FORM]",
+			`I need to call SEARCH_MESSAGES first. {"parameters": {"q":"x"}}\n${FORM_REPLY}`,
+		].map((text) => ({
+			name: `native text: ${text}`,
+			response: { text, toolCalls: [] },
+		})),
+		{
+			name: "explicit JSON intent narration",
+			response: JSON.stringify({
+				messageToUser: "Let me check the database for that information.",
+				toolCalls: [],
+			}),
+		},
+		{
+			name: "native REPLY intent narration",
+			response: {
+				text: "",
+				toolCalls: [
 					{
-						name: "LOOKUP",
-						description: "Lookup current status.",
+						id: "reply-1",
+						name: "REPLY",
+						arguments: {
+							text: "Let me check the database for that information.",
+						},
 					},
 				],
-				requireNonTerminalToolCall: true,
-				config: { maxRequiredToolMisses: 1 },
-				executeToolCall: vi.fn(),
-				evaluate: vi.fn(),
-			}),
-		).rejects.toMatchObject({
-			name: "TrajectoryLimitExceeded",
-			kind: "required_tool_misses",
-		});
-		expect(runtime.useModel).toHaveBeenCalledTimes(2);
-	});
+			},
+		},
+	])(
+		"rejects an unsafe terminal answer at required-tool exhaustion: $name",
+		async ({ response }) => {
+			const runtime = {
+				useModel: vi.fn(async () => structuredClone(response)),
+				logger: { warn: vi.fn() },
+			};
+			await expect(
+				runPlannerLoop({
+					runtime,
+					context: { id: "ctx" },
+					tools: [{ name: "LOOKUP", description: "Lookup current status." }],
+					requireNonTerminalToolCall: true,
+					config: { maxRequiredToolMisses: 1 },
+					executeToolCall: vi.fn(),
+					evaluate: vi.fn(),
+				}),
+			).rejects.toMatchObject({
+				name: "TrajectoryLimitExceeded",
+				kind: "required_tool_misses",
+			});
+			expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		},
+	);
 
 	it("captures a SAFE native-text refusal at required-tool exhaustion instead of a generic apology (#9874)", async () => {
 		// Companion to the guard above. When Stage 1 forced requiresTool but no
@@ -3978,133 +3896,6 @@ describe("v5 planner loop skeleton", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 	});
 
-	it("never surfaces a leaked tool-call as a native refusal at exhaustion (#9874)", async () => {
-		// Negative control: native text that is a reasoning/leak must be rejected
-		// by the user-safe gate, so the loop throws rather than leaking it.
-		const runtime = {
-			useModel: vi.fn(async () => ({
-				text: "I need to call SEARCH_MESSAGES to find that.",
-				toolCalls: [],
-			})),
-			logger: { warn: vi.fn() },
-		};
-
-		await expect(
-			runPlannerLoop({
-				runtime,
-				context: { id: "ctx" },
-				tools: [{ name: "LOOKUP", description: "Lookup current status." }],
-				requireNonTerminalToolCall: true,
-				config: { maxRequiredToolMisses: 1 },
-				executeToolCall: vi.fn(),
-				evaluate: vi.fn(),
-			}),
-		).rejects.toMatchObject({
-			name: "TrajectoryLimitExceeded",
-			kind: "required_tool_misses",
-		});
-		expect(runtime.useModel).toHaveBeenCalledTimes(2);
-	});
-
-	it.each([
-		"Let me check the database for that information.",
-		"Let me pull up your recent messages.",
-		"I'm reviewing the conversation history to answer.",
-		"I'll look that up and get back to you.",
-		"Pulling up the info now, one sec.",
-	])(
-		"never surfaces native intent-narration as a refusal: %s (#9874)",
-		async (text) => {
-			// Regression: a native pre-tool/intent-narration text carries no leak
-			// markup and no "thinking through" marker, so a denylist would let it
-			// through and the agent would falsely claim it is doing work it never
-			// did. The positive-allowlist gate (must read as an inability) rejects
-			// it → the loop throws → caller emits the generic apology, never the
-			// phantom action claim.
-			const runtime = {
-				useModel: vi.fn(async () => ({ text, toolCalls: [] })),
-				logger: { warn: vi.fn() },
-			};
-
-			await expect(
-				runPlannerLoop({
-					runtime,
-					context: { id: "ctx" },
-					tools: [{ name: "LOOKUP", description: "Lookup current status." }],
-					requireNonTerminalToolCall: true,
-					config: { maxRequiredToolMisses: 1 },
-					executeToolCall: vi.fn(),
-					evaluate: vi.fn(),
-				}),
-			).rejects.toMatchObject({
-				name: "TrajectoryLimitExceeded",
-				kind: "required_tool_misses",
-			});
-		},
-	);
-
-	it("does not surface explicit messageToUser intent-narration at required-tool exhaustion (#9874)", async () => {
-		const runtime = {
-			useModel: vi.fn(async () =>
-				JSON.stringify({
-					messageToUser: "Let me check the database for that information.",
-					toolCalls: [],
-				}),
-			),
-			logger: { warn: vi.fn() },
-		};
-
-		await expect(
-			runPlannerLoop({
-				runtime,
-				context: { id: "ctx" },
-				tools: [{ name: "LOOKUP", description: "Lookup current status." }],
-				requireNonTerminalToolCall: true,
-				config: { maxRequiredToolMisses: 1 },
-				executeToolCall: vi.fn(),
-				evaluate: vi.fn(),
-			}),
-		).rejects.toMatchObject({
-			name: "TrajectoryLimitExceeded",
-			kind: "required_tool_misses",
-		});
-		expect(runtime.useModel).toHaveBeenCalledTimes(2);
-	});
-
-	it("does not surface terminal REPLY intent-narration at required-tool exhaustion (#9874)", async () => {
-		const runtime = {
-			useModel: vi.fn(async () => ({
-				text: "",
-				toolCalls: [
-					{
-						id: "reply-1",
-						name: "REPLY",
-						arguments: {
-							text: "Let me check the database for that information.",
-						},
-					},
-				],
-			})),
-			logger: { warn: vi.fn() },
-		};
-
-		await expect(
-			runPlannerLoop({
-				runtime,
-				context: { id: "ctx" },
-				tools: [{ name: "LOOKUP", description: "Lookup current status." }],
-				requireNonTerminalToolCall: true,
-				config: { maxRequiredToolMisses: 1 },
-				executeToolCall: vi.fn(),
-				evaluate: vi.fn(),
-			}),
-		).rejects.toMatchObject({
-			name: "TrajectoryLimitExceeded",
-			kind: "required_tool_misses",
-		});
-		expect(runtime.useModel).toHaveBeenCalledTimes(2);
-	});
-
 	it("surfaces an explicit honest refusal at required-tool exhaustion (#9874)", async () => {
 		const runtime = {
 			useModel: vi.fn(async () =>
@@ -4132,13 +3923,6 @@ describe("v5 planner loop skeleton", () => {
 		);
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 	});
-
-	// #15230: on the CLI text lane the model answers a tool-required turn with a
-	// grammar-valid [FORM] widget reply instead of routing JSON. The gate must
-	// capture that as a legitimate terminal answer instead of burning the miss
-	// budget and letting the caller synthesize a failure apology.
-	const FORM_REPLY =
-		'Happy to set that up — pick what works:\n[FORM]\n{"title":"Schedule it","submit_label":"Save","fields":[{"name":"date","label":"Date","type":"date"},{"name":"time","label":"Time","type":"time"}]}\n[/FORM]';
 
 	it("finishes with the model's own [FORM] reply when it is re-emitted after the required-tool retry (#15230)", async () => {
 		const executeToolCall = vi.fn();
@@ -4219,60 +4003,6 @@ describe("v5 planner loop skeleton", () => {
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toContain("[FORM]");
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
-	});
-
-	it("does not capture a malformed widget block as a terminal answer (#15230)", async () => {
-		// The strict parser leaves a malformed block as plain text (no newline
-		// framing, invalid JSON) — zero parsed blocks means the text gets no
-		// widget escape hatch and prose acceptance cannot creep in.
-		const runtime = {
-			useModel: vi.fn(async () => ({
-				text: "Pick what works: [FORM] not-json [/FORM]",
-				toolCalls: [],
-			})),
-			logger: { warn: vi.fn() },
-		};
-
-		await expect(
-			runPlannerLoop({
-				runtime,
-				context: { id: "ctx" },
-				tools: [{ name: "LOOKUP", description: "Lookup current status." }],
-				requireNonTerminalToolCall: true,
-				config: { maxRequiredToolMisses: 1 },
-				executeToolCall: vi.fn(),
-				evaluate: vi.fn(),
-			}),
-		).rejects.toMatchObject({
-			name: "TrajectoryLimitExceeded",
-			kind: "required_tool_misses",
-		});
-		expect(runtime.useModel).toHaveBeenCalledTimes(2);
-	});
-
-	it("rejects a widget reply carrying leaked tool markup (#15230)", async () => {
-		const runtime = {
-			useModel: vi.fn(async () => ({
-				text: `I need to call SEARCH_MESSAGES first. {"parameters": {"q":"x"}}\n${FORM_REPLY}`,
-				toolCalls: [],
-			})),
-			logger: { warn: vi.fn() },
-		};
-
-		await expect(
-			runPlannerLoop({
-				runtime,
-				context: { id: "ctx" },
-				tools: [{ name: "LOOKUP", description: "Lookup current status." }],
-				requireNonTerminalToolCall: true,
-				config: { maxRequiredToolMisses: 1 },
-				executeToolCall: vi.fn(),
-				evaluate: vi.fn(),
-			}),
-		).rejects.toMatchObject({
-			name: "TrajectoryLimitExceeded",
-			kind: "required_tool_misses",
-		});
 	});
 
 	it("captures a widget reply that says 'let me know' or promises follow-through (#15230)", async () => {
@@ -6396,99 +6126,67 @@ describe("v5 planner loop — evaluator gate", () => {
 		});
 	});
 
-	it("WITHHOLDS an action-owned completion while another native tool remains queued", async () => {
-		const runtime = {
-			useModel: plannerNativeWith({
-				toolCalls: [
-					{ id: "settings-1", name: "SETTINGS", arguments: {} },
-					{ id: "lookup-1", name: "LOOKUP", arguments: {} },
-				],
-			}),
-		};
-		const executeToolCall = vi.fn(async (toolCall: { name: string }) =>
-			toolCall.name === "SETTINGS"
-				? {
-						success: true,
-						text: "Settings updated.",
-						userFacingText: "Settings updated.",
-						verifiedUserFacing: true,
-						turnComplete: true,
-					}
-				: { success: true, text: "Lookup complete." },
-		);
-		const evaluate = vi
-			.fn()
-			.mockResolvedValueOnce({
-				success: true,
-				decision: "NEXT_RECOMMENDED" as const,
-				thought: "The queued lookup still needs to run.",
-				recommendedToolCallId: "lookup-1",
-			})
-			.mockResolvedValueOnce({
-				success: true,
-				decision: "FINISH" as const,
-				thought: "All queued work is complete.",
-				messageToUser: "Settings updated and lookup complete.",
+	it.each([
+		{
+			name: "while another native tool remains queued",
+			order: ["SETTINGS", "LOOKUP"],
+			firstThought: "The queued lookup still needs to run.",
+			finalThought: "All queued work is complete.",
+			messageToUser: "Settings updated and lookup complete.",
+		},
+		{
+			name: "after another executed tool",
+			order: ["LOOKUP", "SETTINGS"],
+			firstThought: "Run the queued settings action.",
+			finalThought: "The evaluator combines both completed operations.",
+			messageToUser: "Lookup complete and settings updated.",
+		},
+	])(
+		"WITHHOLDS action-owned completion $name",
+		async ({ order, firstThought, finalThought, messageToUser }) => {
+			const toolCalls = order.map((name) => ({
+				id: `${name.toLowerCase()}-1`,
+				name,
+				arguments: {},
+			}));
+			const runtime = { useModel: plannerNativeWith({ toolCalls }) };
+			const executeToolCall = vi.fn(async (toolCall: { name: string }) =>
+				toolCall.name === "SETTINGS"
+					? {
+							success: true,
+							text: "Settings updated.",
+							userFacingText: "Settings updated.",
+							verifiedUserFacing: true,
+							turnComplete: true,
+						}
+					: { success: true, text: "Lookup complete." },
+			);
+			const evaluate = vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: true,
+					decision: "NEXT_RECOMMENDED" as const,
+					thought: firstThought,
+					recommendedToolCallId: toolCalls[1].id,
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					decision: "FINISH" as const,
+					thought: finalThought,
+					messageToUser,
+				});
+			const result = await runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				executeToolCall,
+				evaluate,
 			});
-
-		await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			executeToolCall,
-			evaluate,
-		});
-
-		expect(executeToolCall).toHaveBeenCalledTimes(2);
-		expect(evaluate).toHaveBeenCalledTimes(2);
-	});
-
-	it("WITHHOLDS when an action-owned completion follows another executed tool", async () => {
-		const runtime = {
-			useModel: plannerNativeWith({
-				toolCalls: [
-					{ id: "lookup-1", name: "LOOKUP", arguments: {} },
-					{ id: "settings-1", name: "SETTINGS", arguments: {} },
-				],
-			}),
-		};
-		const executeToolCall = vi.fn(async (toolCall: { name: string }) =>
-			toolCall.name === "SETTINGS"
-				? {
-						success: true,
-						text: "Settings updated.",
-						userFacingText: "Settings updated.",
-						verifiedUserFacing: true,
-						turnComplete: true,
-					}
-				: { success: true, text: "Lookup complete." },
-		);
-		const evaluate = vi
-			.fn()
-			.mockResolvedValueOnce({
-				success: true,
-				decision: "NEXT_RECOMMENDED" as const,
-				thought: "Run the queued settings action.",
-				recommendedToolCallId: "settings-1",
-			})
-			.mockResolvedValueOnce({
-				success: true,
-				decision: "FINISH" as const,
-				thought: "The evaluator combines both completed operations.",
-				messageToUser: "Lookup complete and settings updated.",
-			});
-
-		const result = await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			executeToolCall,
-			evaluate,
-		});
-
-		expect(executeToolCall).toHaveBeenCalledTimes(2);
-		expect(evaluate).toHaveBeenCalledTimes(2);
-		expect(result.finalMessage).toBe("Lookup complete and settings updated.");
-		expect(result.evaluator?.thought).toContain("combines both");
-	});
+			expect(executeToolCall).toHaveBeenCalledTimes(2);
+			expect(evaluate).toHaveBeenCalledTimes(2);
+			expect(result.finalMessage).toBe(messageToUser);
+			expect(result.evaluator?.thought).toBe(finalThought);
+		},
+	);
 
 	it("WITHHOLDS an action-owned completion without canonical user-facing text", async () => {
 		const runtime = {
@@ -6755,14 +6453,7 @@ describe("v5 planner loop — evaluator gate", () => {
 	});
 });
 
-// Single-source contract for the progress/ack opener vocabulary (see
-// PROGRESS_ONLY_REPLY_OPENERS_PATTERN in planner-loop.ts): the message
-// service's looksLikeProgressOnlyReply builds its regex from the SAME exported
-// pattern, and the exhaustion-path PROGRESS_ONLY_ANSWER_REJECT extends it —
-// so a new progress verb added to the shared pattern reaches both consumers,
-// and the deliberate planner-only extras stay visible as an explicit,
-// documented difference instead of silent drift.
-describe("progress-only reply vocabulary single-sourcing", () => {
+describe("progress and final-answer vocabulary", () => {
 	const sharedBase = new RegExp(
 		`^(?:${PROGRESS_ONLY_REPLY_OPENERS_PATTERN})\\b`,
 		"i",
@@ -6804,12 +6495,6 @@ describe("progress-only reply vocabulary single-sourcing", () => {
 			expect(sharedBase.test(sample.toLowerCase()), sample).toBe(false);
 			expect(PROGRESS_ONLY_ANSWER_REJECT.test(sample), sample).toBe(true);
 		}
-	});
-
-	it("the answer reject embeds the shared pattern verbatim (construction, not a copy)", () => {
-		expect(PROGRESS_ONLY_ANSWER_REJECT.source).toContain(
-			PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
-		);
 	});
 });
 

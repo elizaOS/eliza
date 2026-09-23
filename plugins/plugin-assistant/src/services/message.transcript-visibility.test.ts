@@ -1,5 +1,3 @@
-import { createAssistantPlugin } from "../index.ts";
-
 /**
  * Exercises transcript visibility through the real message-service boundary:
  * a real AgentRuntime, in-memory adapter, planner action, persistence, callback,
@@ -19,7 +17,11 @@ import type {
   UUID,
 } from "../../../../packages/core/src/types/index.ts";
 import { ModelType } from "../../../../packages/core/src/types/index.ts";
-import { ChannelType } from "../../../../packages/core/src/types/primitives.ts";
+import {
+  ChannelType,
+  ContentType,
+} from "../../../../packages/core/src/types/primitives.ts";
+import { createAssistantPlugin } from "../index.ts";
 import { DefaultMessageService } from "./message.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000071" as UUID;
@@ -405,4 +407,60 @@ describe("DefaultMessageService transcript visibility integration", () => {
     expect(harness.callbacks[0]?.text).toBe(visibleSummary);
     expect(harness.callbackActionNames).toEqual([undefined]);
   });
+
+  it.each([true, false])(
+    "keeps a media caption with its attachment only after terminal settlement (%s)",
+    async (terminal) => {
+      const caption = "Here is the view preview.";
+      const finalText = "The available views are ready.";
+      const harness = await createHarness(finalText);
+      const attachment = {
+        id: "preview-attachment",
+        url: "https://media.example.com/view-preview.png",
+        title: "View preview",
+        source: "test-preview",
+        contentType: ContentType.IMAGE,
+        description: "A generated view preview",
+      };
+      harness.actionHandler.mockImplementation(
+        async (_runtime, _message, _state, _options, actionCallback) => {
+          await actionCallback?.({
+            text: caption,
+            actions: ["VIEWS"],
+            attachments: [attachment],
+          });
+          return {
+            success: true,
+            text: "Preview rendered",
+            userFacingText: caption,
+            verifiedUserFacing: true,
+            turnComplete: terminal,
+            continueChain: !terminal,
+            data: { suppressPlannerReply: terminal },
+          };
+        },
+      );
+      await new DefaultMessageService().handleMessage(
+        harness.runtime,
+        makeMessage(harness.runtime, "Show a preview of the available views."),
+        harness.callback,
+      );
+      expect(harness.actionHandler).toHaveBeenCalledTimes(1);
+      const mediaDeliveries = harness.callbacks.filter(
+        (content) => content.attachments?.length,
+      );
+      expect(mediaDeliveries).toHaveLength(1);
+      expect(mediaDeliveries[0]?.attachments).toEqual([attachment]);
+      expect(mediaDeliveries[0]?.text).toBe(terminal ? caption : undefined);
+      expect(
+        harness.callbacks.map((content) => content.text).filter(Boolean),
+      ).toEqual([terminal ? caption : `${caption}\n\n${finalText}`]);
+      expect(
+        harness.sent.filter((content) => content.attachments?.length),
+      ).toEqual(mediaDeliveries);
+      expect(
+        harness.sent.map((content) => content.text).filter(Boolean),
+      ).toEqual([terminal ? caption : finalText]);
+    },
+  );
 });

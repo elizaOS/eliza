@@ -1,6 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "allowJs": true,
     "paths": {
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/credentials/auth": [

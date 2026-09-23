@@ -170,6 +170,8 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
   const address = server.address();
   if (!address || typeof address === "string")
     throw new Error("Missing loopback port");
+  // SQL startup must not refill cleared provider settings from a host .env file.
+  vi.stubEnv("ELIZA_BENCH_DISABLE_DOTENV", "1");
   vi.stubEnv("CEREBRAS_API_KEY", "loopback-test-only");
   vi.stubEnv("CEREBRAS_BASE_URL", `http://127.0.0.1:${address.port}/v1`);
   vi.stubEnv("CEREBRAS_SMALL_MODEL", "qwen-3.8-27b");

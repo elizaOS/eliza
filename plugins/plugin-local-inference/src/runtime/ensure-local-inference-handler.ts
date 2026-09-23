@@ -92,6 +92,11 @@ import {
 import type { VisionImageInput } from "../services/vision/types";
 import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
 import { extractRequestedKokoroVoiceId } from "../services/voice/requested-voice.js";
+import {
+	createVerifiedBgeContext,
+	type EmbeddingBackendPolicy,
+	resolveEmbeddingBackendPolicy,
+} from "./embedding-backend";
 import { DEFAULT_MODELS_DIR } from "./embedding-manager-support";
 import {
 	EMBEDDING_PRESETS,
@@ -657,7 +662,8 @@ interface DesktopEmbeddingConfig {
 	modelsDir: string;
 	model: string;
 	contextSize: number;
-	gpuLayers: number;
+	backendPolicy: EmbeddingBackendPolicy;
+	pooling: number;
 }
 
 /**
@@ -670,25 +676,22 @@ function resolveDesktopEmbeddingConfig(
 ): DesktopEmbeddingConfig {
 	const preset = hardware
 		? selectEmbeddingPresetFromHardware(hardware)
-		: EMBEDDING_PRESETS.performance;
+		: EMBEDDING_PRESETS.fallback;
 	const modelsDir = process.env.MODELS_DIR?.trim() || DEFAULT_MODELS_DIR;
 	const model = process.env.LOCAL_EMBEDDING_MODEL?.trim() || preset.model;
 	const ctxEnv = Number(process.env.LOCAL_EMBEDDING_CONTEXT_SIZE);
 	const contextSize =
 		Number.isFinite(ctxEnv) && ctxEnv > 0 ? ctxEnv : preset.contextSize;
-	const gpuLayersEnv = process.env.LOCAL_EMBEDDING_GPU_LAYERS?.trim();
-	const gpuLayersNum = Number(gpuLayersEnv);
-	// "999 = all layers on GPU" per llama.cpp; the desktop adapter clamps to
-	// the model's metadata layer count, so "auto"/"max" map to 999.
-	const gpuLayers =
-		gpuLayersEnv === "auto" || gpuLayersEnv === "max"
-			? 999
-			: Number.isFinite(gpuLayersNum)
-				? gpuLayersNum
-				: preset.gpuLayers === "auto"
-					? 999
-					: 0;
-	return { modelsDir, model, contextSize, gpuLayers };
+	const backendPolicy = resolveEmbeddingBackendPolicy(
+		process.env.LOCAL_EMBEDDING_GPU_LAYERS,
+		liveFusedEmbeddingHandle?.requestedPolicy.gpuLayers ??
+			(preset.gpuLayers === "auto" ? 999 : 0),
+	);
+	const pooling = resolveEmbeddingPooling(
+		model,
+		process.env.ELIZA_EMBED_POOLING,
+	);
+	return { modelsDir, model, contextSize, backendPolicy, pooling };
 }
 
 /**
@@ -704,6 +707,9 @@ type FusedEmbeddingHandle = {
 	model: string;
 	modelsDir: string;
 	nativeContextSetting: string | undefined;
+	requestedPolicy: EmbeddingBackendPolicy;
+	gpuLayers: number;
+	pooling: number;
 	ffi: import("../services/voice/ffi-bindings").ElizaInferenceFfi;
 	ctx: import("../services/voice/ffi-bindings").ElizaInferenceContextHandle;
 	embed: NonNullable<
@@ -812,7 +818,31 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 				ffi.close();
 				return null;
 			}
-			const ctx = ffi.create(bundleRoot);
+			let ctx: ReturnType<typeof ffi.create>;
+			let gpuLayers = cfg.backendPolicy.gpuLayers;
+			try {
+				if (embeddingSpace === BGE_SMALL_VECTOR_SPACE) {
+					const selected = createVerifiedBgeContext(
+						ffi,
+						bundleRoot,
+						cfg.backendPolicy,
+						cfg.pooling,
+						resolveBgeContextLimit(process.env.ELIZA_EMBED_N_CTX),
+					);
+					ctx = selected.ctx;
+					gpuLayers = selected.gpuLayers;
+					if (gpuLayers !== cfg.backendPolicy.gpuLayers)
+						logger.warn(
+							"[local-inference] Accelerator failed BGE vector verification; using verified CPU embeddings",
+						);
+				} else {
+					ctx = ffi.create(bundleRoot, { gpuLayers });
+				}
+			} catch (error) {
+				// error-policy:J2 rejected candidates are already destroyed; close the binding and propagate initialization failure.
+				ffi.close();
+				throw error;
+			}
 			const handle = {
 				embeddingSpace,
 				ffi,
@@ -821,6 +851,9 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 				model: cfg.model,
 				modelsDir: cfg.modelsDir,
 				nativeContextSetting: process.env.ELIZA_EMBED_N_CTX,
+				gpuLayers,
+				requestedPolicy: cfg.backendPolicy,
+				pooling: cfg.pooling,
 			};
 			liveFusedEmbeddingHandle = handle;
 			installFusedEmbeddingExitCleanup();
@@ -828,11 +861,10 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 				`[local-inference] Desktop embeddings via fused libelizainference (eliza_inference_embed) anchored at ${bundleRoot} — node-llama-cpp embedding path retired`,
 			);
 			return handle;
-		})().catch((e) => {
-			logger.warn(
-				`[local-inference] fused embed init threw: ${e instanceof Error ? e.message : String(e)}`,
-			);
-			return null;
+		})().catch((error) => {
+			// error-policy:J2 preserve typed configuration and backend failures for the caller; a later request may retry initialization.
+			fusedEmbedHandlePromise = null;
+			throw error;
 		});
 	}
 	const handle = await fusedEmbedHandlePromise;
@@ -846,12 +878,23 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 		}
 		return null;
 	}
-	const pooling = resolveEmbeddingPooling(
+	const requestedPooling = resolveEmbeddingPooling(
 		cfg.model,
 		process.env.ELIZA_EMBED_POOLING,
 	);
+	const requestedPolicy = resolveEmbeddingBackendPolicy(
+		process.env.LOCAL_EMBEDDING_GPU_LAYERS,
+		cfg.backendPolicy.gpuLayers,
+	);
+	const pooling = handle.pooling;
 	if (
 		handle.model !== cfg.model ||
+		handle.requestedPolicy.gpuLayers !== cfg.backendPolicy.gpuLayers ||
+		handle.requestedPolicy.automatic !== cfg.backendPolicy.automatic ||
+		handle.requestedPolicy.gpuLayers !== requestedPolicy.gpuLayers ||
+		handle.requestedPolicy.automatic !== requestedPolicy.automatic ||
+		handle.pooling !== cfg.pooling ||
+		handle.pooling !== requestedPooling ||
 		handle.modelsDir !== cfg.modelsDir ||
 		handle.nativeContextSetting !== process.env.ELIZA_EMBED_N_CTX
 	) {
@@ -923,7 +966,7 @@ function makeFusedEmbeddingHandler(): EmbeddingHandler {
 		let cfg = loadedConfig;
 		if (!cfg) {
 			// When the probe fails, resolveDesktopEmbeddingConfig(undefined) uses the
-			// `performance` preset (gpuLayers: auto — inert on a CPU-only fused lib).
+			// CPU preset until a later initialization has positive accelerator evidence.
 			// Log WHY so a broken probe on an accelerated box is visible, not silent
 			// (#10727) — the tier is then chosen without hardware evidence.
 			// Other runtime handlers share the same resident native handle.
@@ -933,7 +976,7 @@ function makeFusedEmbeddingHandler(): EmbeddingHandler {
 						probeHardware(),
 					).catch((error) => {
 						logger.warn(
-							`[ensureLocalInferenceHandler] hardware probe failed; embedding tier chosen without hardware evidence (performance preset, gpuLayers: auto): ${
+							`[ensureLocalInferenceHandler] hardware probe failed; embedding tier chosen without hardware evidence (CPU): ${
 								error instanceof Error ? error.message : String(error)
 							}`,
 						);

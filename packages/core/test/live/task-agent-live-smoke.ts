@@ -1,10 +1,9 @@
-/** Runs live core runtime smoke coverage against real provider or orchestration surfaces. */
+/** Verifies real coding-agent file writes and tracked session reuse through TASKS. */
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { createServer, type Server } from "node:http";
-import net from "node:net";
 import path from "node:path";
-import type { AgentRuntime, RuntimeSettings } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
+import { selectLiveProvider } from "@elizaos/testing/live-provider";
 import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 
 const {
@@ -16,51 +15,26 @@ const {
 } = await import("@elizaos/plugin-agent-orchestrator");
 
 type Framework = "claude" | "codex";
-type Mode = "sequential" | "web";
 type AcpServiceInstance = InstanceType<typeof AcpService>;
 
 const KEEP_ARTIFACTS = process.env.ELIZA_KEEP_LIVE_ARTIFACTS === "1";
 
 type RouterHandle = { isActive?: () => boolean };
 
-async function createRuntime(settings: RuntimeSettings = {}): Promise<{
+type SmokeContext = {
 	runtime: AgentRuntime;
 	router: RouterHandle;
-	cleanup: () => Promise<void>;
-}> {
-	const { runtime, cleanup } = await createTestRuntime({
-		characterName: "TaskAgentLiveSmoke",
-		settings,
-		plugins: [agentOrchestratorPlugin],
-	});
-	const router = (await runtime.getServiceLoadPromise(
-		"ACPX_SUB_AGENT_ROUTER",
-	)) as RouterHandle;
-	assert.equal(
-		typeof router?.isActive,
-		"function",
-		"production SubAgentRouter must be registered in the live harness",
-	);
-	assert.equal(
-		router.isActive?.(),
-		false,
-		"ACPX_SUB_AGENT_ROUTER_DISABLED must take effect before plugin startup",
-	);
-	return { runtime, router, cleanup };
-}
+	service: AcpServiceInstance;
+	workdir: string;
+	events: Array<{ event: string; data: unknown }>;
+};
 
-/**
- * The router's start() retries binding to the ACP service on a backoff for
- * roughly ten seconds, so an isActive() === false observed at startup can be
- * a race rather than proof the disable flag held. Call this only after work
- * that outlasts the bind-retry window (e.g. the first completed prompt) to
- * prove the router never bound.
- */
+/** Checks that task execution has not activated the disabled background router. */
 function assertRouterStayedDisabled(router: RouterHandle): void {
 	assert.equal(
 		router.isActive?.(),
 		false,
-		"router must still be inactive after the bind-retry window; the disable flag was dropped",
+		"router must remain inactive during the live task",
 	);
 }
 
@@ -92,19 +66,6 @@ async function wait(ms: number): Promise<void> {
 	await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchTextIfAvailable(url: string): Promise<string | null> {
-	try {
-		const response = await fetch(url);
-		if (!response.ok) {
-			return null;
-		}
-		return await response.text();
-	} catch {
-		// The local HTTP server is expected to refuse connections until the agent starts it.
-		return null;
-	}
-}
-
 async function waitFor(
 	check: () => Promise<boolean>,
 	timeoutMs: number,
@@ -124,46 +85,13 @@ function ensureLiveBaseDir(): string {
 	return baseDir;
 }
 
-function createWorkdir(agentType: Framework, label: string): string {
+function createWorkdir(agentType: Framework): string {
 	return fs.mkdtempSync(
-		path.join(ensureLiveBaseDir(), `agent-orchestrator-${agentType}-${label}-`),
+		path.join(
+			ensureLiveBaseDir(),
+			`agent-orchestrator-${agentType}-sequential-`,
+		),
 	);
-}
-
-async function getFreePort(): Promise<number> {
-	const server = net.createServer();
-	await new Promise<void>((resolve, reject) => {
-		server.once("error", reject);
-		server.listen(0, "127.0.0.1", () => resolve());
-	});
-	const address = server.address();
-	if (!address || typeof address === "string") {
-		server.close();
-		throw new Error("Failed to allocate an ephemeral port");
-	}
-	const port = address.port;
-	await new Promise<void>((resolve) => server.close(() => resolve()));
-	return port;
-}
-
-async function startReferenceServer(html: string): Promise<{
-	server: Server;
-	url: string;
-}> {
-	const port = await getFreePort();
-	const server = createServer((_, res) => {
-		res.statusCode = 200;
-		res.setHeader("content-type", "text/html; charset=utf-8");
-		res.end(html);
-	});
-	await new Promise<void>((resolve, reject) => {
-		server.once("error", reject);
-		server.listen(port, "127.0.0.1", () => resolve());
-	});
-	return {
-		server,
-		url: `http://127.0.0.1:${port}/reference.html`,
-	};
 }
 
 function sawTaskCompletion(
@@ -196,286 +124,153 @@ async function waitForTrackedSession(
 	);
 }
 
-async function runSequentialSmoke(agentType: Framework): Promise<void> {
-	const workdir = createWorkdir(agentType, "reuse");
-	const { runtime, router, cleanup } = await createRuntime({
-		SERVER_PORT: "31337",
-		// This smoke validates ACP child turns and durable reuse. Parent-broker
-		// relay behavior has separate coverage; disabling the router here keeps a
-		// synthetic no-parent fixture from manufacturing an endless child loop.
-		// "1" rather than "true": AgentRuntime.getSetting normalizes the string
-		// "true" to a boolean, and "1" survives as a string on every path.
-		ACPX_SUB_AGENT_ROUTER_DISABLED: "1",
-	});
-	// Use the single production service initialized by the plugin. Starting a
-	// second ACP instance lets TASKS spawn on one service while SubAgentRouter
-	// remains subscribed to the original, so cap-triggered stops target the
-	// wrong process and leave the prompt unresolved.
-	const service = (await runtime.getServiceLoadPromise(
-		AcpService.serviceType,
-	)) as AcpServiceInstance;
+async function runSequentialSmoke(
+	agentType: Framework,
+	{ runtime, router, service, workdir, events }: SmokeContext,
+): Promise<void> {
+	const [preflight] = await service.checkAvailableAgents([agentType]);
+	assert.equal(preflight?.installed, true);
+	let sessionId: string | undefined;
 
-	const events: Array<{ event: string; data: unknown }> = [];
-	const unsubscribe = service.onSessionEvent((_sessionId, event, data) => {
-		events.push({ event, data });
-	});
-
-	const firstFileName = `FIRST_${agentType.toUpperCase()}.txt`;
-	const secondFileName = `SECOND_${agentType.toUpperCase()}.txt`;
-	const firstFilePath = path.join(workdir, firstFileName);
-	const secondFilePath = path.join(workdir, secondFileName);
-	const firstSentinel = `LIVE_REUSE_${agentType.toUpperCase()}_FIRST_DONE`;
-	const secondSentinel = `LIVE_REUSE_${agentType.toUpperCase()}_SECOND_DONE`;
-
-	try {
-		const [preflight] = await service.checkAvailableAgents([agentType]);
-		assert.equal(preflight?.installed, true);
-
-		const spawnResult = await spawnAgentAction.handler(
-			runtime,
-			createMessage({
-				agentType,
-				workdir,
-				approvalPreset: "autonomous",
-				task:
-					`Create a file named ${firstFileName} in the current directory containing exactly "${agentType}-first". ` +
-					`Then print exactly "${firstSentinel}". Do not ask follow-up questions.`,
-			}) as never,
-			undefined,
-			{},
-			undefined,
-		);
-		assert.equal(spawnResult?.success, true);
-		assert.ok(sessionIdFromSpawnResult(spawnResult));
-
-		const sessionId = sessionIdFromSpawnResult(spawnResult) as string;
-		await waitForTrackedSession(service, sessionId, agentType);
-		const firstTaskEventStart = events.length;
-
+	for (const step of ["first", "second"]) {
+		const filename = `${step.toUpperCase()}_${agentType.toUpperCase()}.txt`;
+		const expectedText = `${agentType}-${step}`;
+		const sentinel = `LIVE_REUSE_${agentType.toUpperCase()}_${step.toUpperCase()}_DONE`;
+		const task =
+			`Create a file named ${filename} containing exactly "${expectedText}". ` +
+			`Then print exactly "${sentinel}". Stay available for more work afterward and do not ask follow-up questions.`;
+		const eventStart = events.length;
+		if (!sessionId) {
+			const result = await spawnAgentAction.handler(
+				runtime,
+				createMessage({
+					agentType,
+					workdir,
+					approvalPreset: "autonomous",
+					task,
+					acceptanceCriteria: [
+						`The file ${filename} contains exactly "${expectedText}".`,
+						`The completion reports "${sentinel}".`,
+					],
+				}) as never,
+				undefined,
+				{},
+				undefined,
+			);
+			assert.equal(result?.success, true);
+			sessionId = sessionIdFromSpawnResult(result);
+			assert.ok(sessionId);
+			await waitForTrackedSession(service, sessionId, agentType);
+		} else {
+			const result = await sendToAgentAction.handler(
+				runtime,
+				createMessage({ sessionId }) as never,
+				undefined,
+				{ parameters: { action: "send", input: task } },
+				undefined,
+			);
+			assert.equal(result?.success, true);
+		}
+		const trackedSessionId = sessionId;
+		const filePath = path.join(workdir, filename);
 		await waitFor(
 			async () => {
-				const sessionInfo = await service.getSession(sessionId);
-				if (!sessionInfo) {
-					throw new Error(
-						"session disappeared before completing the first task",
-					);
-				}
-				const recentLoginRequired = events.findLast(
+				const session = await service.getSession(trackedSessionId);
+				assert.ok(session, "session disappeared before completing the task");
+				const loginRequired = events.findLast(
 					(entry) => entry.event === "login_required",
 				);
-				if (recentLoginRequired) {
-					const details = recentLoginRequired.data as { instructions?: string };
+				if (loginRequired) {
+					const details = loginRequired.data as { instructions?: string };
 					throw new Error(
 						details.instructions || "framework authentication is required",
 					);
 				}
-				if (!fs.existsSync(firstFilePath)) return false;
-				const fileText = fs.readFileSync(firstFilePath, "utf8").trim();
-				if (fileText !== `${agentType}-first`) return false;
-				const output = cleanForChat(await service.getSessionOutput(sessionId));
+				if (["stopped", "errored", "cancelled"].includes(session.status)) {
+					throw new Error(
+						`session ended before completion with status ${session.status}`,
+					);
+				}
 				if (
-					(output.includes(firstSentinel) ||
-						sawTaskCompletion(events, firstTaskEventStart)) &&
-					sessionInfo.status === "ready"
+					!fs.existsSync(filePath) ||
+					fs.readFileSync(filePath, "utf8").trim() !== expectedText
 				)
-					return true;
-				if (
-					sessionInfo.status === "stopped" ||
-					sessionInfo.status === "error"
-				) {
-					throw new Error(
-						`session ended before verified completion with status ${sessionInfo.status}. Output: ${output.slice(-600)}`,
-					);
-				}
-				return false;
-			},
-			6 * 60 * 1000,
-			3000,
-		);
-		// The first prompt's wait far exceeds the router's ~10s bind-retry
-		// window, so an inactive router here proves the disable flag held.
-		assertRouterStayedDisabled(router);
-
-		const secondTaskEventStart = events.length;
-		const sendResult = await sendToAgentAction.handler(
-			runtime,
-			createMessage({ sessionId }) as never,
-			undefined,
-			{
-				parameters: {
-					action: "send",
-					input:
-						`Now create a second file named ${secondFileName} containing exactly "${agentType}-second". ` +
-						`Then print exactly "${secondSentinel}". Stay available for more work afterward and do not ask follow-up questions.`,
-				},
-			},
-			undefined,
-		);
-		assert.equal(sendResult?.success, true);
-
-		await waitFor(
-			async () => {
-				if (!fs.existsSync(secondFilePath)) return false;
-				const fileText = fs.readFileSync(secondFilePath, "utf8").trim();
-				if (fileText !== `${agentType}-second`) return false;
-				const output = cleanForChat(await service.getSessionOutput(sessionId));
-				const sessionInfo = await service.getSession(sessionId);
+					return false;
+				const output = cleanForChat(
+					await service.getSessionOutput(trackedSessionId),
+				);
 				return (
-					(output.includes(secondSentinel) ||
-						sawTaskCompletion(events, secondTaskEventStart)) &&
-					sessionInfo?.status === "ready"
+					session.status === "ready" &&
+					(output.includes(sentinel) || sawTaskCompletion(events, eventStart))
 				);
 			},
 			6 * 60 * 1000,
 			3000,
 		);
-	} finally {
-		unsubscribe();
-		await cleanup();
-		if (!KEEP_ARTIFACTS) {
-			fs.rmSync(workdir, { recursive: true, force: true });
-		}
-	}
-}
-
-async function runWebSmoke(agentType: Framework): Promise<void> {
-	const workdir = createWorkdir(agentType, "web");
-	const { runtime, router, cleanup } = await createRuntime({
-		SERVER_PORT: "31337",
-		ACPX_SUB_AGENT_ROUTER_DISABLED: "1",
-	});
-	const service = (await runtime.getServiceLoadPromise(
-		AcpService.serviceType,
-	)) as AcpServiceInstance;
-
-	const events: Array<{ event: string; data: unknown }> = [];
-	const unsubscribe = service.onSessionEvent((_sessionId, event, data) => {
-		events.push({ event, data });
-	});
-
-	const agentPort = await getFreePort();
-	const serveSentinel = `LIVE_WEB_${agentType.toUpperCase()}_READY`;
-	const reference = await startReferenceServer(`<!doctype html>
-<html>
-  <body>
-    <h1>Benchmark Ready</h1>
-    <p>Task agents stay reusable.</p>
-    <p>Codex and Claude Code should both handle research and serving tasks.</p>
-  </body>
-</html>`);
-
-	try {
-		const [preflight] = await service.checkAvailableAgents([agentType]);
-		assert.equal(preflight?.installed, true);
-
-		const spawnResult = await spawnAgentAction.handler(
-			runtime,
-			createMessage({
-				agentType,
-				workdir,
-				approvalPreset: "autonomous",
-				task:
-					`Open the reference page at ${reference.url} and read it using your web or browser tools. ` +
-					`Create an index.html in the current directory that includes the exact phrases "Benchmark Ready" and "Task agents stay reusable." ` +
-					`Then start a local HTTP server in the background from the current directory with ` +
-					`"python3 -m http.server ${agentPort} >/tmp/${serveSentinel}.log 2>&1 & echo $! > server.pid", ` +
-					`print exactly "${serveSentinel}", and keep the server available until I stop you. ` +
-					`Do not ask follow-up questions.`,
-			}) as never,
-			undefined,
-			{},
-			undefined,
-		);
-		assert.equal(spawnResult?.success, true);
-		assert.ok(sessionIdFromSpawnResult(spawnResult));
-
-		const sessionId = sessionIdFromSpawnResult(spawnResult) as string;
-		await waitForTrackedSession(service, sessionId, agentType);
-		const webTaskEventStart = events.length;
-
-		await waitFor(
-			async () => {
-				const sessionInfo = await service.getSession(sessionId);
-				if (!sessionInfo) {
-					throw new Error("session disappeared before completing the web task");
-				}
-				const recentLoginRequired = events.findLast(
-					(entry) => entry.event === "login_required",
-				);
-				if (recentLoginRequired) {
-					const details = recentLoginRequired.data as { instructions?: string };
-					throw new Error(
-						details.instructions || "framework authentication is required",
-					);
-				}
-				if (
-					sessionInfo.status === "stopped" ||
-					sessionInfo.status === "error"
-				) {
-					const output = await service.getSessionOutput(sessionId, 200);
-					throw new Error(
-						`web task ended early with status ${sessionInfo.status}. Output: ${output.slice(-600)}`,
-					);
-				}
-				const html = await fetchTextIfAvailable(
-					`http://127.0.0.1:${agentPort}/index.html`,
-				);
-				if (!html) return false;
-				return (
-					html.includes("Benchmark Ready") &&
-					html.includes("Task agents stay reusable.") &&
-					(cleanForChat(await service.getSessionOutput(sessionId)).includes(
-						serveSentinel,
-					) ||
-						sawTaskCompletion(events, webTaskEventStart))
-				);
-			},
-			6 * 60 * 1000,
-			3000,
-		);
-		// The web task's wait far exceeds the router's ~10s bind-retry window,
-		// so an inactive router here proves the disable flag held.
 		assertRouterStayedDisabled(router);
-	} finally {
-		unsubscribe();
-		await new Promise<void>((resolve) =>
-			reference.server.close(() => resolve()),
-		);
-		await cleanup();
-		if (!KEEP_ARTIFACTS) {
-			fs.rmSync(workdir, { recursive: true, force: true });
-		}
 	}
 }
 
 async function main(): Promise<void> {
 	const frameworkIndex = process.argv.indexOf("--framework");
-	const modeIndex = process.argv.indexOf("--mode");
 	const framework =
 		frameworkIndex !== -1
 			? (process.argv[frameworkIndex + 1] as Framework)
 			: null;
-	const mode = modeIndex !== -1 ? (process.argv[modeIndex + 1] as Mode) : null;
-
-	if (
-		(framework !== "claude" && framework !== "codex") ||
-		(mode !== "sequential" && mode !== "web")
-	) {
+	if (framework !== "claude" && framework !== "codex") {
 		throw new Error(
-			"Usage: task-agent-live-smoke.ts --framework <claude|codex> --mode <sequential|web>",
+			"Usage: task-agent-live-smoke.ts --framework <claude|codex>",
 		);
 	}
 
-	if (mode === "sequential") {
-		await runSequentialSmoke(framework);
-	} else {
-		await runWebSmoke(framework);
+	const provider = selectLiveProvider();
+	assert.ok(
+		provider,
+		"A live model provider is required for parent goal verification",
+	);
+	const providerModule = await import(provider.pluginPackage);
+	const providerPlugin = providerModule.default ?? providerModule.elizaPlugin;
+	assert.ok(providerPlugin, "The live provider must export a runtime plugin");
+
+	const workdir = createWorkdir(framework);
+	try {
+		const { runtime, cleanup } = await createTestRuntime({
+			characterName: "TaskAgentLiveSmoke",
+			// "1" survives runtime setting normalization; the router stays disabled.
+			settings: {
+				...provider.env,
+				SERVER_PORT: "31337",
+				ACPX_SUB_AGENT_ROUTER_DISABLED: "1",
+			},
+			plugins: [providerPlugin, agentOrchestratorPlugin],
+		});
+		try {
+			const router = (await runtime.getServiceLoadPromise(
+				"ACPX_SUB_AGENT_ROUTER",
+			)) as RouterHandle;
+			assert.equal(typeof router?.isActive, "function");
+			assertRouterStayedDisabled(router);
+			const service = (await runtime.getServiceLoadPromise(
+				AcpService.serviceType,
+			)) as AcpServiceInstance;
+			const events: SmokeContext["events"] = [];
+			const unsubscribe = service.onSessionEvent((_sessionId, event, data) => {
+				events.push({ event, data });
+			});
+			try {
+				const context = { runtime, router, service, workdir, events };
+				await runSequentialSmoke(framework, context);
+			} finally {
+				unsubscribe();
+			}
+		} finally {
+			await cleanup();
+		}
+	} finally {
+		if (!KEEP_ARTIFACTS) fs.rmSync(workdir, { recursive: true, force: true });
 	}
 
-	console.log(
-		"[task-agent-live-smoke] PASS",
-		JSON.stringify({ framework, mode }),
-	);
+	console.log("[task-agent-live-smoke] PASS", JSON.stringify({ framework }));
 }
 
 try {

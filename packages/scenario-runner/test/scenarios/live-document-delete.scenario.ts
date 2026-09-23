@@ -29,10 +29,7 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  DocumentService,
-  documentsPlugin,
-} from "../../../../plugins/plugin-assistant/src/features/documents/index.ts";
+import { DocumentService } from "../../../../plugins/plugin-assistant/src/features/documents/index.ts";
 
 const SCENARIO_ID = "live-document-delete";
 const DOCUMENT_TITLE = "Quarterly Onboarding Guide";
@@ -45,17 +42,6 @@ const DOCUMENT_CONTENT = [
 ].join("\n");
 
 type JsonRecord = Record<string, unknown>;
-
-/**
- * The real AgentRuntime handed to seeds/checks via ScenarioContext (typed
- * `unknown` in the schema package to keep it dependency-free), plus the
- * plugin-registration surface the seed uses. Never a hand-built partial.
- */
-type ScenarioRuntime = IAgentRuntime & {
-  plugins?: Array<{ name: string }>;
-  registerPlugin: (plugin: unknown) => Promise<void>;
-  getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
-};
 
 function isRecord(value: unknown): value is JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -89,7 +75,7 @@ function guestIdentity(
 }
 
 function getDocumentService(ctx: ScenarioContext): DocumentService | null {
-  const runtime = ctx.runtime as ScenarioRuntime;
+  const runtime = ctx.runtime as IAgentRuntime;
   const service = runtime.getService<DocumentService>(
     DocumentService.serviceType,
   );
@@ -243,24 +229,9 @@ export default scenario({
   seed: [
     {
       type: "custom",
-      name: "register the core documents plugin",
-      apply: async (ctx) => {
-        const runtime = ctx.runtime as ScenarioRuntime;
-        const registered = (runtime.plugins ?? []).some(
-          (plugin) => plugin.name === documentsPlugin.name,
-        );
-        if (!registered) await runtime.registerPlugin(documentsPlugin);
-        await runtime.getServiceLoadPromise?.(DocumentService.serviceType);
-        return runtime.getService(DocumentService.serviceType)
-          ? undefined
-          : "documents service did not start";
-      },
-    },
-    {
-      type: "custom",
       name: "seed one global document through the real service",
       apply: async (ctx) => {
-        const runtime = ctx.runtime as ScenarioRuntime;
+        const runtime = ctx.runtime as IAgentRuntime;
         const service = getDocumentService(ctx);
         if (!service) return "documents service was not available";
         if (!ctx.primaryRoomId || !ctx.primaryUserId) {
@@ -296,7 +267,7 @@ export default scenario({
       type: "custom",
       name: "whitelist the guest entity as a connector admin",
       apply: async (ctx) => {
-        const runtime = ctx.runtime as ScenarioRuntime;
+        const runtime = ctx.runtime as IAgentRuntime;
         const guest = guestIdentity(ctx);
         if (typeof guest === "string") return guest;
         setConnectorAdminWhitelist(runtime, { telegram: [GUEST_STABLE_ID] });
@@ -317,7 +288,7 @@ export default scenario({
       type: "custom",
       name: "clear the connector-admin whitelist",
       apply: (ctx) => {
-        setConnectorAdminWhitelist(ctx.runtime as ScenarioRuntime, undefined);
+        setConnectorAdminWhitelist(ctx.runtime as IAgentRuntime, undefined);
         return undefined;
       },
     },

@@ -1,7 +1,8 @@
-// Regression coverage for the CloudBootstrapMessageService deadline (#25109):
-// the configured timeout must settle handleMessage even when the RUN_TIMEOUT
-// lifecycle emission never settles or rejects. The service runs real; only the
-// runtime surface is stubbed; composeState stalls before any model call.
+/**
+ * Exercises real Cloud message deadlines and cancellation with an injected runtime.
+ * Composition stalls before any model call; lifecycle listeners may reject or remain
+ * pending without preventing the caller from observing a terminal result.
+ */
 import { describe, expect, it } from "bun:test";
 import type { Memory } from "@elizaos/common";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -120,12 +121,19 @@ describe("CloudBootstrapMessageService deadline enforcement", () => {
   it("honors caller cancellation while composeState is pending", async () => {
     const events: EmitLog = [];
     const runtime = stubRuntime(events, "pending");
+    const composeEntered = Promise.withResolvers<void>();
+    const composeState = runtime.composeState;
+    runtime.composeState = (...args) => {
+      composeEntered.resolve();
+      return composeState.apply(runtime, args);
+    };
     const controller = new AbortController();
     const run = new CloudBootstrapMessageService().handleMessage(runtime, message(), undefined, {
       abortSignal: controller.signal,
       timeoutDuration: 10_000,
     });
-    setTimeout(() => controller.abort(new Error("Caller stopped")), 5);
+    await composeEntered.promise;
+    controller.abort(new Error("Caller stopped"));
     await expect(run).rejects.toThrow("Caller stopped");
     await drainPostDeliveryTasks(runtime);
     expect(events.filter(({ event }) => event === EventType.RUN_ENDED)).toHaveLength(1);

@@ -517,6 +517,8 @@ export async function startCloudStack(
       ELIZA_UI_PORT: String(frontendPort),
       ELIZA_API_PORT: String(frontendApiPort),
       ELIZA_PORT: String(frontendApiPort),
+      // Keep browser handoffs and credential scope on this isolated stack.
+      VITE_ELIZA_CLOUD_BASE: frontendApiUrl,
       VITE_API_BASE_URL: frontendApiUrl,
       NEXT_PUBLIC_API_BASE_URL: frontendApiUrl,
     };
@@ -524,8 +526,8 @@ export async function startCloudStack(
       await withFakeStripeBootstrapRollback(fakeStripe, () =>
         spawnLogged(
           "frontend",
-          BUN,
-          ["run", "dev", "--", "--host", "127.0.0.1", "--cloud-target=offline"],
+          "node",
+          [join(REPO_ROOT, "packages/cloud/e2e/scripts/frontend.mjs")],
           {
             env: frontendEnv,
             cwd: frontendDir,

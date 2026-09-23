@@ -52,9 +52,9 @@ export const EMBEDDING_PRESETS: Record<EmbeddingTier, EmbeddingPreset> = {
 	},
 	standard: {
 		tier: "standard",
-		label: "Efficient (accelerated)",
+		label: "Efficient (compact text embedding)",
 		description:
-			"bge-small-en-v1.5 local embeddings with local accelerator offload",
+			"bge-small-en-v1.5 local embeddings on a verified accelerator or CPU",
 		model: BGE_SMALL_EMBEDDING.model,
 		modelRepo: BGE_SMALL_EMBEDDING.modelRepo,
 		dimensions: BGE_SMALL_EMBEDDING.dimensions,

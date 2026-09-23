@@ -184,6 +184,7 @@ function updateNoteFromChatReference(
   message: Memory,
   noteId: string,
   patch: unknown,
+  expectedRevision?: unknown,
 ): ReturnType<NotesService["updateNoteWithCommit"]> {
   const text = message.content.text ?? "";
   if (!text.includes(noteId)) {
@@ -194,10 +195,15 @@ function updateNoteFromChatReference(
       // Resolve again inside the write barrier, including any copies added
       // since the planner read the index. An inferred ID is not a selection
       // between distinct records carrying the user's named title.
-      return service.updateNoteByLookupWithCommit("title", named.title, patch);
+      return service.updateNoteByLookupWithCommit(
+        "title",
+        named.title,
+        patch,
+        expectedRevision,
+      );
     }
   }
-  return service.updateNoteWithCommit(noteId, patch);
+  return service.updateNoteWithCommit(noteId, patch, expectedRevision);
 }
 
 /** Known lookup/literal-edit guards reject before the store commits. */
@@ -235,6 +241,8 @@ async function updateNoteResult(
     if (
       error instanceof ElizaError &&
       [
+        "NOTES_EDIT_CONFLICT",
+        "NOTES_EDIT_REVISION_REQUIRED",
         "NOTES_EDIT_TEXT_NOT_FOUND",
         "NOTES_EDIT_TEXT_AMBIGUOUS",
         "NOTES_EDIT_NORMALIZATION_REQUIRED",
@@ -335,6 +343,7 @@ export const notesAction: Action = {
               "op",
               "target",
               "changes",
+              "expectedRevision",
               "textEdit",
             ].includes(key),
         )
@@ -357,11 +366,13 @@ export const notesAction: Action = {
                 message,
                 target.value,
                 change,
+                params.expectedRevision,
               )
             : service.updateNoteByLookupWithCommit(
                 "query",
                 target.value,
                 change,
+                params.expectedRevision,
               ),
         service,
       );
@@ -379,7 +390,8 @@ export const notesAction: Action = {
           "NOTES_CONFLICTING_LOOKUP",
         );
       }
-      const notes = service.listNotes();
+      const snapshot = service.snapshot();
+      const notes = snapshot.notes;
       const dateRange =
         params.dateRange === undefined
           ? undefined
@@ -423,6 +435,7 @@ export const notesAction: Action = {
         ...(topic ? { topic } : {}),
         ...(dateRange ? { dateRange } : {}),
         notes: matches,
+        notesRevision: snapshot.revision,
       });
     }
 
@@ -519,12 +532,31 @@ export const notesAction: Action = {
     return updateNoteResult(
       () =>
         noteId
-          ? updateNoteFromChatReference(service, message, noteId, patch)
-          : service.updateNoteByLookupWithCommit("query", target, patch),
+          ? updateNoteFromChatReference(
+              service,
+              message,
+              noteId,
+              patch,
+              params.expectedRevision,
+            )
+          : service.updateNoteByLookupWithCommit(
+              "query",
+              target,
+              patch,
+              params.expectedRevision,
+            ),
       service,
     );
   },
   parameters: [
+    {
+      name: "expectedRevision",
+      description:
+        "Required for replacementContent and nonempty PATCH changes: copy notesRevision from the same complete note read/provider content used to prepare the edit. Never guess or refresh only the token. A conflict requires re-reading and reconciling. Literal textEdit may omit it.",
+      subactions: ["update", "patch"],
+      required: false,
+      schema: { type: "integer", minimum: 0 },
+    },
     {
       name: "dateRange",
       description:

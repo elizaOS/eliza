@@ -407,3 +407,22 @@ export function parseNoteFieldPatch(
   }
   return { target: { kind: target.kind, value: target.value }, change };
 }
+
+/** Replacement tokens must come from the snapshot used to author the edit. */
+export function parseNoteEditRevision(
+  value: unknown,
+  required: boolean,
+): number | undefined {
+  if (value === undefined && !required) return undefined;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new ElizaError(
+      "Read the current note and supply its notesRevision as expectedRevision before replacing fields.",
+      {
+        code: "NOTES_EDIT_REVISION_REQUIRED",
+        context: { field: "expectedRevision" },
+        severity: "ephemeral",
+      },
+    );
+  }
+  return value;
+}

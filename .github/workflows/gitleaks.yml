@@ -5,6 +5,7 @@ name: gitleaks
 
 on:
   workflow_call:
+  workflow_dispatch:
 
 # Develop Full owns cancellation of superseded tips. This stable child group
 # prevents duplicate standalone invocations for the same ref.

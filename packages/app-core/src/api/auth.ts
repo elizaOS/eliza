@@ -10,7 +10,12 @@ import { type RoleGateRole, roleRank } from "@elizaos/common";
 import { resolveApiToken } from "@elizaos/shared/runtime-env";
 // AuthStore is statically imported elsewhere in the package; the dynamic
 // import below was INEFFECTIVE_DYNAMIC_IMPORT.
-import { type AuthIdentityRow, AuthStore } from "../services/auth-store.js";
+import {
+  type AuthIdentityRow,
+  type AuthRepository,
+  type AuthRuntimeSource,
+  authStoreForRuntime,
+} from "../services/auth-store.js";
 import {
   type EmbedSessionClaims,
   type EmbedSessionSecretRuntime,
@@ -45,9 +50,7 @@ export {
 } from "./auth/tokens.js";
 
 export interface CompatStateLike {
-  current:
-    | (EmbedSessionSecretRuntime & { adapter?: { db?: unknown } | null })
-    | null;
+  current: (EmbedSessionSecretRuntime & AuthRuntimeSource) | null;
 }
 
 /**
@@ -197,7 +200,7 @@ export async function ensureCompatApiAuthorizedAsync(
   req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
   res: http.ServerResponse,
   options: {
-    store: import("../services/auth-store").AuthStore;
+    store: import("../services/auth-store").AuthRepository;
     now?: number;
     readSetting?: (key: string) => unknown;
     /**
@@ -410,7 +413,7 @@ type AuthorizedRouteRoleOptions =
       readSetting?: never;
     }
   | {
-      store: AuthStore;
+      store: AuthRepository;
       state?: never;
       allowCookieAuth?: boolean;
       allowTrustedLocalBypass?: boolean;
@@ -435,7 +438,7 @@ export function roleForIdentityKind(
 }
 
 async function resolveSessionRole(
-  store: AuthStore,
+  store: AuthRepository,
   identityId: string,
 ): Promise<RoleGateRole> {
   const identity = await store
@@ -446,7 +449,7 @@ async function resolveSessionRole(
 
 export interface SessionTokenRoleOptions {
   /** Session store; wins over `state` when both are supplied. */
-  store?: AuthStore | null;
+  store?: AuthRepository | null;
   /** Runtime state used to derive a store when `store` is absent. */
   state?: CompatStateLike | null;
   now?: number;
@@ -469,12 +472,7 @@ export async function resolveSessionTokenRole(
   provided: string,
   options: SessionTokenRoleOptions,
 ): Promise<Extract<RouteRoleResolution, { ok: true }> | null> {
-  const db = options.state?.current?.adapter?.db;
-  const store =
-    options.store ??
-    (db
-      ? new AuthStore(db as ConstructorParameters<typeof AuthStore>[0])
-      : null);
+  const store = options.store ?? authStoreForRuntime(options.state?.current);
   if (!store) return null;
 
   const session = await findActiveSession(store, provided, options.now).catch(
@@ -504,13 +502,10 @@ export async function resolveAuthorizedRouteRole(
 
   const ip = req.socket.remoteAddress ?? null;
   const state = "state" in options ? options.state : undefined;
-  const db = state?.current?.adapter?.db;
   const store =
     "store" in options && options.store
       ? options.store
-      : db
-        ? new AuthStore(db as ConstructorParameters<typeof AuthStore>[0])
-        : null;
+      : authStoreForRuntime(state?.current);
 
   const method = (req.method ?? "GET").toUpperCase();
   const csrfRequired = !options.skipCsrf && CSRF_REQUIRED_METHODS.has(method);

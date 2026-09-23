@@ -189,3 +189,26 @@ fails the build. Update the lock deliberately when changing runtime versions.
 `ELIZA_BUN_X64_FILE` and `ELIZA_BUN_AARCH64_FILE` can supply downloaded ZIPs for
 local or offline builds, and must match those same pins. RISC-V retains its
 separate OS cross-build artifact and checksum contract.
+
+### Per-agent authentication storage
+
+Application authentication uses the existing identity, session, pairing, CSRF and
+replay contracts through `authStoreForRuntime`. A runtime exposing the durable
+record-store capability stores these records in its owning agent database; a SQL
+runtime retains the Drizzle-backed store. SQLite records survive reopen, and
+one-use claims and revocation updates are transactional. An incompatible database
+or mismatched agent identity is rejected. No second database is opened.
+
+This does not migrate an existing SQL database or grant conversation access.
+LifeOps still requires its verified Entity binding and domain permissions. SQLite
+storage also requires an encrypted deployment volume; its local audit records are
+not an independent tamper-resistant audit service. The explicit SQL maintenance
+CLI continues to operate on its configured SQL database.
+
+The fused embedding install verifier checks the pinned BGE-small artifact and
+CLS pooling. It checks tokenization against the native model.
+
+It also verifies vector dimensions, semantic separation and context reopening.
+A finite nonzero vector alone is insufficient.
+Explicit CPU builds disable accelerator backends and invalidate older CPU stamps
+that did not enforce that build contract.

@@ -90,10 +90,6 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
         slug: "plugin-lifeops-live-test-gui",
         applicability: "unregistered-remote-bundle",
       },
-      {
-        slug: "plugin-cockpit-gui",
-        applicability: "unregistered-remote-bundle",
-      },
     ]);
     for (const exemption of exemptions) {
       expect(exemption.reason.length).toBeGreaterThan(40);

@@ -241,6 +241,53 @@ jobs:
     }
   });
 
+  test("rejects a job that pins a self-hosted pool without opting in at all", () => {
+    // The selector checks above only see a job that already mentions
+    // HETZNER_FLEET_ONLINE or hetzner-robot. A brand-new workflow that pins a
+    // generic self-hosted pool mentions neither, so before this rule it was not
+    // a route, was not counted, and was never validated.
+    const root = buildRepo();
+    writeFileSync(
+      join(root, ".github", "workflows", "brand-new-deploy.yml"),
+      `name: Brand new deploy
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - run: echo deploy
+`,
+    );
+    try {
+      expect(() => validateHetznerFleetRouting(root)).toThrow(
+        /brand-new-deploy\.yml:4 \(jobs\.deploy\.runs-on\): \[self-hosted, Linux, X64\] pins a self-hosted pool without the HETZNER_FLEET_ONLINE opt-in/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("allows a physical device lane that has no hosted substitute", () => {
+    const root = buildRepo();
+    writeFileSync(
+      join(root, ".github", "workflows", "device-e2e.yml"),
+      `name: Device e2e
+jobs:
+  device:
+    runs-on: [self-hosted, Linux, ARM64, android-device]
+    steps:
+      - run: echo device
+`,
+    );
+    try {
+      expect(validateHetznerFleetRouting(root)).toEqual({
+        files: 1,
+        selectors: 1,
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("the checked-in workflow set is uniformly fail-safe", () => {
     const result = validateHetznerFleetRouting(REAL_REPO_ROOT);
     expect(result.files).toBeGreaterThan(10);

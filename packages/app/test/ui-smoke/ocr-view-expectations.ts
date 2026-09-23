@@ -156,7 +156,12 @@ export const VIEW_OCR_POLICIES = {
   }),
   "builtin-experience": expected({
     requireAll: ["Experience"],
-    requireAny: ["Captured", "Avg importance", "need review"],
+    requireAny: [
+      "Captured",
+      "Avg importance",
+      "need review",
+      "I haven’t learned anything yet",
+    ],
   }),
   "builtin-files": expected({
     requireAny: ["No files yet", "Documents", "Images", "Search files"],
@@ -348,11 +353,9 @@ export const VIEW_OCR_POLICIES = {
   "plugin-orchestrator-gui": expected({
     requireAll: ["Orchestrator"],
   }),
-  "plugin-cockpit-gui": exempt(
-    "unregistered-remote-bundle",
-    "The Cockpit GUI has no remote bundle in the hermetic browser audit, so the truthful unavailable state is the only observable surface.",
-    VIEW_UNAVAILABLE_FALLBACK,
-  ),
+  "plugin-cockpit-gui": expected({
+    requireAll: ["Coding Cockpit", "Task rooms", "New session"],
+  }),
   "plugin-trajectory-logger-gui": expected({
     requireAny: ["Back to apps", "HANDLE", "PLAN"],
   }),

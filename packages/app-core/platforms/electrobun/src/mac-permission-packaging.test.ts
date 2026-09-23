@@ -52,26 +52,26 @@ describe("macOS permission bundle preparation", () => {
   });
 
   it("runs local signing only for unsigned macOS dev packages", () => {
-    expect(
-      shouldSignDevMacApp(
-        {
-          ELECTROBUN_BUILD_ENV: "dev",
-          ELECTROBUN_OS: "macos",
-          ELECTROBUN_SKIP_CODESIGN: "1",
-        },
-        "darwin",
-      ),
-    ).toBe(true);
-    expect(
-      shouldSignDevMacApp(
-        {
-          ELECTROBUN_BUILD_ENV: "stable",
-          ELECTROBUN_OS: "macos",
-          ELECTROBUN_SKIP_CODESIGN: "1",
-        },
-        "darwin",
-      ),
-    ).toBe(false);
+    const dev = {
+      ELECTROBUN_BUILD_ENV: "dev",
+      ELECTROBUN_OS: "macos",
+      ELECTROBUN_SKIP_CODESIGN: "1",
+    };
+    for (const [env, platform, expected] of [
+      [dev, "darwin", true],
+      [dev, "linux", false],
+      [dev, "win32", false],
+      [{}, "darwin", false],
+      [{ ...dev, ELECTROBUN_BUILD_ENV: "stable" }, "darwin", false],
+      [{ ...dev, ELECTROBUN_BUILD_ENV: "prod" }, "darwin", false],
+      [{ ...dev, ELECTROBUN_OS: "ios" }, "darwin", false],
+      [{ ...dev, ELECTROBUN_SKIP_CODESIGN: "0" }, "darwin", false],
+    ] as const) {
+      expect(
+        shouldSignDevMacApp(env, platform),
+        JSON.stringify({ env, platform }),
+      ).toBe(expected);
+    }
     expect(electrobunConfig.scripts?.postPackage).toBe(
       "scripts/sign-dev-macos-app.ts",
     );

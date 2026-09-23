@@ -129,6 +129,12 @@ const PUBLIC = false;
  * bottom fails when this table drifts from the live registry.
  */
 const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
+  {
+    slug: "pricing",
+    path: "/pricing",
+    route: "pricing",
+    auth: PUBLIC,
+  },
   // home/
   {
     slug: "cloud",
@@ -817,6 +823,28 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         // splash cannot satisfy the readable-character gate and pass green.
         await openAppPath(page, auditCase.path);
 
+        if (auditCase.slug === "pricing") {
+          // Require the actual catalog consumer and its plan navigation, not
+          // readable loading or unavailable copy from a failed API request.
+          for (const plan of ["Plus", "Pro"]) {
+            await expect(
+              page.getByRole("heading", { name: plan, exact: true }),
+            ).toBeVisible();
+            await expect(
+              page.getByRole("link", { name: `Choose ${plan}`, exact: true }),
+            ).toHaveAttribute("href", "/cloud/billing");
+          }
+          for (const plan of ["Plus", "Pro"])
+            await expect(
+              page.getByRole("link", { name: `Choose ${plan}`, exact: true }),
+            ).toBeVisible();
+          await expect(
+            page.getByText(
+              "Subscription plans are temporarily unavailable. Please try again.",
+            ),
+          ).toHaveCount(0);
+        }
+
         const billingEvidenceTarget =
           auditCase.slug === "cloud-billing"
             ? page
@@ -1111,7 +1139,12 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
       ).toBeVisible();
       await expect(
         page.getByText(
-          "Current balance: $42.00 · Required before activation: $9.00 (3 days)",
+          "Current balance: $42.00 · Required before activation: $0.72 (3 days)",
+        ),
+      ).toBeVisible();
+      await expect(
+        page.getByText(
+          "Minimum charge per successful start: $0.02. Applies again after stopping and restarting.",
         ),
       ).toBeVisible();
       const activateButton = page.getByTestId("agent-upgrade-tier-confirm");
@@ -1196,6 +1229,7 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         action: "activate_dedicated",
         quoteId:
           "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        minimumActivationChargeUsd: 0.02,
       });
       const cutoverRequests = fixture.requests.filter(
         (receipt) => receipt.pathname === `${upgradePath}/cutover`,

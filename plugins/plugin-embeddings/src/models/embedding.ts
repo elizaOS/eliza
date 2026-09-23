@@ -1,13 +1,14 @@
 /**
  * TEXT_EMBEDDING and TEXT_EMBEDDING_BATCH handlers: POST to an OpenAI-compatible
- * `${EMBEDDING_BASE_URL}/embeddings` with raw fetch (no @ai-sdk), optionally
+ * `${EMBEDDING_BASE_URL}/embeddings` through the core confidential dispatch boundary
+ * with raw fetch in ordinary mode (no @ai-sdk), optionally
  * retry one configured fallback endpoint, validate the returned vector width
  * against the configured VECTOR_DIMS dimension, and emit a MODEL_USED event.
  * The complete input is sent to the configured endpoint. Registered by the plugin in
  * ../index.ts; see the package CLAUDE.md for the routing priority.
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
-import { logger, ModelType, VECTOR_DIMS } from "@elizaos/core";
+import { fetchWithConfidentialInference, logger, ModelType, VECTOR_DIMS } from "@elizaos/core";
 
 import type { EmbeddingResponse } from "../types";
 import {
@@ -178,19 +179,23 @@ async function requestEmbeddingsFromEndpoint(
   logger.debug(`[Embeddings] POST ${url} model=${endpoint.model} role=${endpoint.role}`);
 
   // @trajectory-allow Embeddings return numeric retrieval vectors, not generative LLM text.
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      ...getEndpointAuthHeader(runtime, endpoint.apiKey),
-      "Content-Type": "application/json",
+  const response = await fetchWithConfidentialInference(
+    url,
+    {
+      method: "POST",
+      headers: {
+        ...getEndpointAuthHeader(runtime, endpoint.apiKey),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: endpoint.model,
+        input,
+        ...(hasExplicitDimensions(runtime) ? { dimensions: embeddingDimension } : {}),
+      }),
+      signal,
     },
-    body: JSON.stringify({
-      model: endpoint.model,
-      input,
-      ...(hasExplicitDimensions(runtime) ? { dimensions: embeddingDimension } : {}),
-    }),
-    signal,
-  });
+    globalThis.fetch
+  );
 
   if (!response.ok) {
     // error-policy:J2 context-adding — the request already failed (non-2xx); a

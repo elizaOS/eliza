@@ -345,7 +345,7 @@
     "esbuild": "^0.28.0",
     "ethers": "^6.16.0",
     "git-workspace-service": "0.4.5",
-    "hono": "^4.13.1",
+    "hono": "^4.13.8",
     "isomorphic-git": "^1.42.2",
     "jpeg-js": "^0.4.4",
     "jsdom": "^29.0.0",
@@ -360,7 +360,8 @@
     "@elizaos/prompts": "workspace:*",
     "@elizaos/retrieval": "workspace:*",
     "@elizaos/plugin-relationships": "workspace:*",
-    "@elizaos/plugin-sqlite": "workspace:*"
+    "@elizaos/plugin-sqlite": "workspace:*",
+    "@elizaos/plugin-embeddings": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/plugin-calendar": "workspace:*",
@@ -399,7 +400,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "ai": "^6.0.134",
     "bun-types": "^1.3.12",
-    "fast-check": "^4.10.0",
+    "fast-check": "^4.10.2",
     "resolve.exports": "2.0.3",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",

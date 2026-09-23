@@ -28,6 +28,7 @@ import {
 	type ResolvedModelRegistration,
 	TEXT_GENERATION_MODEL_KEYS,
 } from "./runtime/model-dispatch/policy.js";
+import type { ConfidentialInferenceAuthority } from "./security/confidential-inference.js";
 
 export {
 	NoModelProviderConfiguredError,
@@ -39,6 +40,7 @@ import { ProviderStateComposer } from "./runtime/state-composition/composer.js";
 
 export { calculateProviderOverlaps } from "./runtime/state-composition/provider-execution.js";
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID as uuidv4 } from "node:crypto";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { registerConnectorSourceDefinitions } from "./connectors";
@@ -341,6 +343,10 @@ const NON_CREDENTIAL_SECRET_KEYS: ReadonlySet<string> = new Set([
 	"LANG",
 ]);
 
+// One process-lifetime context avoids per-runtime async-hook registrations.
+// Its immutable stores retain nested runtimes only for the originating async chain.
+const errorReportScopes = new AsyncLocalStorage<ReadonlySet<AgentRuntime>>();
+
 export class AgentRuntime implements IAgentRuntime {
 	private readonly dataMutations = new RuntimeDataMutations(this, {
 		invalidateTurnEntityDetails: (...args) =>
@@ -375,7 +381,11 @@ export class AgentRuntime implements IAgentRuntime {
 		resolveModelRegistrations: (...args) =>
 			this.resolveModelRegistrations(...args),
 	});
+	private readonly confidentialInference:
+		| ConfidentialInferenceAuthority
+		| undefined;
 	private readonly modelDispatch = new RuntimeModelDispatch(this, {
+		confidentialInference: () => this.confidentialInference,
 		models: () => this.models,
 		pinnedEmbeddingProvider: () => this.embeddings.getPinnedProvider(),
 		validateEmbeddingOutput: (...args) =>
@@ -552,6 +562,8 @@ export class AgentRuntime implements IAgentRuntime {
 	private strictStopPromise: Promise<void> | null = null;
 
 	constructor(opts: {
+		/** Measured host authority; never populated from character or client settings. */
+		confidentialInference?: ConfidentialInferenceAuthority;
 		conversationLength?: number;
 		agentId?: UUID;
 		/** Host-persisted installation identity. Omitted only by ephemeral/test runtimes. */
@@ -600,6 +612,7 @@ export class AgentRuntime implements IAgentRuntime {
 		 */
 		enableAutonomy?: boolean;
 	}) {
+		this.confidentialInference = opts.confidentialInference;
 		// Create default anonymous character if none provided
 		let character: Character;
 		if (opts.character) {
@@ -4082,6 +4095,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Self-safe: never throws. A failure inside this method (or inside an
 	 * `ERROR_REPORTED` handler it triggers) is caught and logged as a warning
 	 * without re-entering `reportError`, guarded by {@link inReportError}.
+	 * Reports from asynchronous subscribers remain recorded but never re-emit.
 	 */
 	reportError(
 		scope: string,
@@ -4140,27 +4154,38 @@ export class AgentRuntime implements IAgentRuntime {
 
 			this.forwardToAgentEventStream(entry, runId);
 
+			const reportingRuntimes = errorReportScopes.getStore();
+			if (reportingRuntimes?.has(this)) {
+				// error-policy:J7 subscriber diagnostics remain observable without
+				// invoking the failing subscriber again, including after awaits.
+				return;
+			}
+
 			// Fire-and-forget: emitEvent is async but reportError is a sync
 			// diagnostic one-liner. A rejected emit (bad handler) is swallowed to
 			// the logger here — it must not surface as an unhandled rejection and
 			// must not re-enter reportError.
-			void this.emitEvent(EventType.ERROR_REPORTED, {
-				runtime: this,
-				source: scope,
-				scope,
-				code: normalized.code,
-				message: normalized.message,
-				context: merged,
-				runId,
-				roomId,
-			}).catch((emitErr) => {
-				// error-policy:J7 diagnostics-must-not-kill-the-loop — a broken
-				// ERROR_REPORTED handler is logged, never re-reported.
-				this.logger.warn(
-					{ src: "agent", scope, err: emitErr },
-					`[${scope}] ERROR_REPORTED emit failed`,
-				);
-			});
+			void errorReportScopes
+				.run(new Set([...(reportingRuntimes ?? []), this]), () =>
+					this.emitEvent(EventType.ERROR_REPORTED, {
+						runtime: this,
+						source: scope,
+						scope,
+						code: normalized.code,
+						message: normalized.message,
+						context: merged,
+						runId,
+						roomId,
+					}),
+				)
+				.catch((emitErr) => {
+					// error-policy:J7 diagnostics-must-not-kill-the-loop — a broken
+					// ERROR_REPORTED handler is logged, never re-reported.
+					this.logger.warn(
+						{ src: "agent", scope, err: emitErr },
+						`[${scope}] ERROR_REPORTED emit failed`,
+					);
+				});
 		} catch (reportErr) {
 			// error-policy:J7 diagnostics-must-not-kill-the-loop — reportError is
 			// the diagnostic boundary; its own failure may only warn.
