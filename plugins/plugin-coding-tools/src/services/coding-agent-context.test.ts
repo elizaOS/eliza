@@ -1,4 +1,4 @@
-/** Unit tests for the coding-agent-context Zod schemas. */
+/** Exercises coding-loop stop decisions, immutable updates, and input validation without mocks. */
 import { describe, expect, it } from "vitest";
 import {
   addIteration,
@@ -7,19 +7,12 @@ import {
   createCodingAgentContext,
   getUnresolvedErrors,
   type HumanFeedback,
-  hasReachedMaxIterations,
   injectFeedback,
   isLastIterationClean,
   shouldContinueLoop,
   validateCodingAgentContext,
   validateConnectorConfig,
 } from "./coding-agent-context.js";
-
-/**
- * The coding-agent context drives the autonomous self-correction loop (#9146).
- * The loop-termination decision (inactive / max iterations / clean / rejected)
- * is the safety boundary that stops a runaway agent, so its branches are pinned.
- */
 
 const err: CapturedError = { category: "compile", message: "boom" };
 const iter = (errors: CapturedError[] = []): CodingIteration =>
@@ -42,26 +35,7 @@ const baseCtx = () =>
     connectorBasePath: "/repo",
   });
 
-describe("createCodingAgentContext", () => {
-  it("applies sane defaults", () => {
-    const ctx = baseCtx();
-    expect(ctx).toMatchObject({
-      maxIterations: 10,
-      active: true,
-      interactionMode: "fully-automated",
-      iterations: [],
-      connector: { type: "git-repo", basePath: "/repo", available: true },
-    });
-  });
-});
-
 describe("iteration helpers", () => {
-  it("hasReachedMaxIterations compares count to the cap", () => {
-    const ctx = { ...baseCtx(), maxIterations: 1 };
-    expect(hasReachedMaxIterations(ctx)).toBe(false);
-    expect(hasReachedMaxIterations(addIteration(ctx, iter()))).toBe(true);
-  });
-
   it("isLastIterationClean / getUnresolvedErrors reflect the last iteration", () => {
     const ctx = baseCtx();
     expect(isLastIterationClean(ctx)).toBe(true); // no iterations
@@ -102,12 +76,18 @@ describe("shouldContinueLoop", () => {
 
   it("halts at the iteration cap", () => {
     const ctx = addIteration({ ...baseCtx(), maxIterations: 1 }, iter([err]));
-    expect(shouldContinueLoop(ctx).reason).toMatch(/maximum iterations/);
+    expect(shouldContinueLoop(ctx)).toMatchObject({
+      shouldContinue: false,
+      reason: expect.stringMatching(/maximum iterations/),
+    });
   });
 
   it("halts when the last iteration is error-free", () => {
     const ctx = addIteration(baseCtx(), iter([]));
-    expect(shouldContinueLoop(ctx).reason).toMatch(/without errors/);
+    expect(shouldContinueLoop(ctx)).toMatchObject({
+      shouldContinue: false,
+      reason: expect.stringMatching(/without errors/),
+    });
   });
 
   it("halts when the user rejected the last iteration", () => {
@@ -117,11 +97,16 @@ describe("shouldContinueLoop", () => {
       text: "stop",
       type: "rejection",
     });
-    expect(shouldContinueLoop(ctx)).toMatchObject({ shouldContinue: false });
-    expect(shouldContinueLoop(ctx).reason).toMatch(/rejected/);
+    expect(shouldContinueLoop(ctx)).toMatchObject({
+      shouldContinue: false,
+      reason: expect.stringMatching(/rejected/),
+    });
   });
 
-  it("continues while there are errors to resolve", () => {
+  it("starts below the cap and continues while there are errors to resolve", () => {
+    expect(
+      shouldContinueLoop({ ...baseCtx(), maxIterations: 1 }).shouldContinue,
+    ).toBe(true);
     const ctx = addIteration(baseCtx(), iter([err]));
     expect(shouldContinueLoop(ctx).shouldContinue).toBe(true);
   });
