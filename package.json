@@ -381,7 +381,7 @@
     "dotenv": "^17.4.2",
     "elysia": "^1.4.21",
     "eventsource-parser": "^1.1.2",
-    "hono": "^4.13.1",
+    "hono": "^4.13.8",
     "node-edge-tts": "^1.2.9",
     "pg": "^8.23.0",
     "tailwind-merge": "3.4.0",
