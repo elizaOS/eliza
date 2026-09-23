@@ -760,92 +760,97 @@ describe("planner-loop death after a completed tool", () => {
     expect(harness.reportedScopes).toContain("MessageService.plannerLoop");
   });
 
-  it("does not rescue an older success after failed verification and a provider outage", async () => {
-    const harness = await createHarness({ actionResult: { success: true } });
-    const action = harness.runtime.actions.find(
-      (entry) => entry.name === "LOOKUP",
-    );
-    if (!action) throw new Error("Lookup action missing from harness");
+  it.each([ChannelType.DM, ChannelType.VOICE_DM])(
+    "does not replay work or rescue an older success after failed verification and provider throttling on %s",
+    async (channelType) => {
+      const harness = await createHarness({ actionResult: { success: true } });
+      const action = harness.runtime.actions.find(
+        (entry) => entry.name === "LOOKUP",
+      );
+      if (!action) throw new Error("Lookup action missing from harness");
 
-    const executed: string[] = [];
-    action.handler = async (_runtime, _message, _state, options) => {
-      const operation = options?.parameters?.action;
-      if (typeof operation !== "string") throw new Error("Missing operation");
-      executed.push(operation);
-      return operation === "create"
-        ? {
-            success: true,
-            userFacingText: USER_FACING,
-            verifiedUserFacing: true,
-          }
-        : {
-            success: false,
-            text: "Verification lookup did not find the completed record.",
-            userFacingText:
-              "Verification lookup did not find the completed record.",
-            verifiedUserFacing: true,
-            turnComplete: true,
-            data: { readOnlyOperation: true },
-          };
-    };
-    let responseCalls = 0;
-    harness.runtime.registerModel(
-      ModelType.RESPONSE_HANDLER,
-      async () => {
-        if (++responseCalls === 1) return stageOneToolTurn();
-        return JSON.stringify({
-          decision: "CONTINUE",
-          success: executed.length < 2,
-          thought: "Continue with the remaining requested read.",
-        });
-      },
-      "failed-verification-test",
-      200,
-    );
-    let plannerCalls = 0;
-    harness.runtime.registerModel(
-      ModelType.ACTION_PLANNER,
-      async () => {
-        ++plannerCalls;
-        if (executed.length >= 2)
-          throw Object.assign(
-            new Error(
-              "Too Many Requests: Tokens per minute limit exceeded - too many tokens processed.",
-            ),
-            { status: 429 },
-          );
-        return {
-          text: "",
-          completed: false,
-          toolCalls: [
-            {
-              id: `entry-${plannerCalls}`,
-              name: "LOOKUP",
-              arguments: {
-                action: executed.length === 0 ? "create" : "verify",
+      const executed: string[] = [];
+      action.handler = async (_runtime, _message, _state, options) => {
+        const operation = options?.parameters?.action;
+        if (typeof operation !== "string") throw new Error("Missing operation");
+        executed.push(operation);
+        return operation === "create"
+          ? {
+              success: true,
+              userFacingText: USER_FACING,
+              verifiedUserFacing: true,
+            }
+          : {
+              success: false,
+              text: "Verification lookup did not find the completed record.",
+              userFacingText:
+                "Verification lookup did not find the completed record.",
+              verifiedUserFacing: true,
+              turnComplete: true,
+              data: { readOnlyOperation: true },
+            };
+      };
+      let responseCalls = 0;
+      harness.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async () => {
+          if (++responseCalls === 1) return stageOneToolTurn();
+          return JSON.stringify({
+            decision: "CONTINUE",
+            success: executed.length < 2,
+            thought: "Continue with the remaining requested read.",
+          });
+        },
+        "failed-verification-test",
+        200,
+      );
+      let plannerCalls = 0;
+      harness.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async () => {
+          ++plannerCalls;
+          if (executed.length >= 2)
+            throw Object.assign(
+              new Error(
+                "Too Many Requests: Tokens per minute limit exceeded - too many tokens processed.",
+              ),
+              { status: 429 },
+            );
+          return {
+            text: "",
+            completed: false,
+            toolCalls: [
+              {
+                id: `entry-${plannerCalls}`,
+                name: "LOOKUP",
+                arguments: {
+                  action: executed.length === 0 ? "create" : "verify",
+                },
               },
-            },
-          ],
-        };
-      },
-      "failed-verification-test",
-      200,
-    );
-    const result = await new DefaultMessageService().handleMessage(
-      harness.runtime,
-      makeMessage(
+            ],
+          };
+        },
+        "failed-verification-test",
+        200,
+      );
+      const message = makeMessage(
         harness.runtime,
         "Create the entry, verify it, then read the final calendar.",
-      ),
-      harness.callback,
-    );
-    expect(executed).toEqual(["create", "verify"]);
-    expect(visibleTexts(harness.callbacks)).not.toContain(USER_FACING);
-    expect(result.responseContent?.text).not.toBe(USER_FACING);
-    expect(result.responseContent?.text).toBe(
-      "Verification lookup did not find the completed record.",
-    );
-  });
+      );
+      message.content.channelType = channelType;
+      const result = await new DefaultMessageService().handleMessage(
+        harness.runtime,
+        message,
+        harness.callback,
+      );
+      expect(executed).toEqual(["create", "verify"]);
+      expect(visibleTexts(harness.callbacks)).not.toContain(USER_FACING);
+      expect(result.responseContent?.text).not.toBe(USER_FACING);
+      expect(result.responseContent?.text).toBe(
+        "Verification lookup did not find the completed record.",
+      );
+    },
+  );
 
   it("keeps the canned failure line when no tool produced user-facing text", async () => {
     const harness = await createHarness({
