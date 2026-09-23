@@ -74,14 +74,17 @@ receipt-aware recovery path before this failure boundary.
 
 ## Runtime construction migration
 
-The unused `loadCharacters`, `createRuntimes`, and `mergeSettingsInto` helpers
-and their option types are removed from the v2 barrel. Hosts load and validate
-character input with `parseCharacter`, construct `AgentRuntime` with explicitly
+The v2 barrel no longer exports `loadCharacters`, `createRuntimes`, or
+`mergeSettingsInto`, or their option types. Hosts read JSON files themselves,
+validate the resulting objects with `parseCharacter`, and construct `AgentRuntime` with explicitly
 selected plugins and storage, and call `initialize()`. The standalone host owns
 its startup and provisioning sequence. Hosts that need persisted settings call
 `mergeDbSettings(character, adapter, agentId)` before runtime construction;
 `provisionAgent` remains available for explicit provisioning.
 `flattenRuntimeSettings` remains exported for adapter bootstrap settings.
+Hosts retaining name-derived identities can supply `stringToUuid(character.name)`
+as the explicit agent ID. Hosts own plugin resolution, shared adapter lifetimes,
+and any batching of startup reads across multiple agents.
 No replacement composition facade is provided.
 
 ## Key concepts
