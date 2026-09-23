@@ -13,14 +13,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type { ScheduledTaskInput, ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
 
-const listDueScheduledTaskRefs = mock(async () => []);
-const listRecoverableScheduledTaskRefs = mock(async () => []);
 const coordinateSharedPushDispatch = mock(async () => {});
-const createSharedScheduledTaskRunner = mock(() => ({
-  async fireWithResult() {
-    return { kind: "fired" as const };
-  },
-}));
 
 const BINDING_ID = "8b8f2c69-6a3e-4a0f-9be1-1f8f6a3e4a0f";
 const OWNER_USER_ID = "00000000-0000-4000-8000-000000000002";
@@ -77,34 +70,8 @@ const authorizeDelivery = mock(
 const commitDelivery = mock(async () => true);
 const recordDeliveryReceipts = mock(async () => ({ recorded: true, inserted: 1 }));
 
-// The real prefix builder keeps the asserted fire-time text and the plugin's
-// creation-time budget on the same source of truth.
-const { createSharedRemindersEdgePlugin, sharedGroupReminderMessageText } = await import(
-  "@elizaos/plugin-scheduling/edge"
-);
+const { createSharedRemindersEdgePlugin } = await import("@elizaos/plugin-scheduling/edge");
 
-mock.module("@elizaos/plugin-scheduling/edge", () => ({
-  listDueScheduledTaskRefs,
-  listRecoverableScheduledTaskRefs,
-  SHARED_REMINDER_MAX_TEXT_LENGTH: 2000,
-  sharedGroupReminderMessageText,
-  parseSharedReminderDelivery(value: unknown) {
-    if (!value || typeof value !== "object") return undefined;
-    const delivery = value as Record<string, unknown>;
-    if (delivery.platform === "telegram" && typeof delivery.connectorAccountId === "string")
-      return delivery;
-    if (delivery.platform === "blooio") return delivery;
-    if (delivery.platform === "discord") return delivery;
-    return undefined;
-  },
-  isSharedGroupReminderDelivery(delivery: Record<string, unknown>) {
-    return delivery.kind === "group";
-  },
-}));
-mock.module("./shared-scheduling", () => ({
-  createSharedScheduledTaskRunner,
-  executeSharedSchedulingSql: mock(async () => []),
-}));
 mock.module("./conversation-coordinator", () => ({
   coordinateSharedPushDispatch,
 }));
@@ -262,27 +229,6 @@ describe("Shared group reminder dispatch", () => {
     const tokens = authorizeDelivery.mock.calls.map(([input]) => input?.leaseToken);
     expect(tokens[0]).toBe(tokens[1]);
     expect(tokens[2]).not.toBe(tokens[0]);
-  });
-
-  test("carries a persisted Telegram forum topic through the gateway wire", async () => {
-    const requests: Request[] = [];
-    globalThis.fetch = acceptingFetch(requests);
-    const dispatcher = sharedReminderDispatcher(env, PERSONAL_AGENT_ID);
-
-    const result = await dispatcher.dispatch(
-      groupRecord({ delivery: { providerThreadId: "909" } }),
-    );
-
-    await expect(requests[0]?.json()).resolves.toEqual({
-      platform: "telegram",
-      project: "eliza-app",
-      chatId: "-100123456789",
-      connectorAccountId: "telegram:test-bot",
-      providerThreadId: "909",
-      text: "Reminder for this group from Nubs: pay the rent",
-      idempotencyKey: IDEMPOTENCY_KEY,
-    });
-    expect(result).toMatchObject({ ok: true, target: "-100123456789" });
   });
 
   test("preserves a Telegram forum topic from reminder creation through JSON persistence and fire", async () => {

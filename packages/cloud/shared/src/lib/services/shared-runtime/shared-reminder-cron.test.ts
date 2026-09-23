@@ -1,4 +1,4 @@
-/** Verifies Shared cron discovery, canonical claim delegation, and authenticated gateway dispatch. */
+/** Exercises real reminder metadata admission and gateway dispatch, with controlled discovery and runner outcomes; this harness does not prove storage claim atomicity. */
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
 
@@ -48,25 +48,11 @@ const createSharedScheduledTaskRunner = mock(
   }),
 );
 
-const { sharedGroupReminderMessageText } = await import("@elizaos/plugin-scheduling/edge");
-
+const scheduling = await import("@elizaos/plugin-scheduling/edge");
 mock.module("@elizaos/plugin-scheduling/edge", () => ({
+  ...scheduling,
   listDueScheduledTaskRefs,
   listRecoverableScheduledTaskRefs,
-  SHARED_REMINDER_MAX_TEXT_LENGTH: 2000,
-  sharedGroupReminderMessageText,
-  parseSharedReminderDelivery(value: unknown) {
-    if (!value || typeof value !== "object") return undefined;
-    const delivery = value as Record<string, unknown>;
-    if (delivery.platform === "telegram" && typeof delivery.connectorAccountId === "string")
-      return delivery;
-    if (delivery.platform === "blooio") return delivery;
-    if (delivery.platform === "discord") return delivery;
-    return undefined;
-  },
-  isSharedGroupReminderDelivery(delivery: Record<string, unknown>) {
-    return delivery.kind === "group";
-  },
 }));
 mock.module("./shared-scheduling", () => ({
   createSharedScheduledTaskRunner,
@@ -99,7 +85,7 @@ const env = {
 } as never;
 
 describe("Shared reminder cron", () => {
-  test("two concurrent sweeps delegate one delivery to the runner CAS", async () => {
+  test("aggregates accepted and raced runner outcomes across concurrent sweeps", async () => {
     const requests: Request[] = [];
     globalThis.fetch = mock(async (input, init) => {
       const request = new Request(input, init);
