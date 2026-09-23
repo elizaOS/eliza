@@ -2896,6 +2896,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @param {number} [params.end] - The end date to retrieve memories from.
    * @returns {Promise<Memory[]>} A Promise that resolves to an array of memories.
    */
+  async listMemoryTypes(): Promise<string[]> {
+    return this.withDatabase(async () => {
+      const rows = await this.db
+        .selectDistinct({ type: memoryTable.type })
+        .from(memoryTable)
+        .where(eq(memoryTable.agentId, this.agentId));
+      return rows.map((row) => row.type).sort();
+    });
+  }
+
   async getMemories(params: {
     entityId?: UUID;
     authorEntityIds?: UUID[];

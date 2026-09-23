@@ -69,21 +69,10 @@ const TAG_LEN = 16; // AES-GCM authentication tag
 const KEY_LEN = 32; // AES-256
 const MIN_PASSWORD_LENGTH = 12;
 const HEADER_SIZE = MAGIC_BYTES.length + 4 + SALT_LEN + IV_LEN + TAG_LEN; // 15 + 4 + 32 + 12 + 16 = 79
-const EXPORT_VERSION = 1;
+// Version 2 requires storage-type preservation and remapped document references.
+// The encrypted envelope remains V1; older readers reject this payload before writes.
+const EXPORT_VERSION = 2;
 const MAX_IMPORT_DECOMPRESSED_BYTES = 16 * 1024 * 1024; // 16 MiB safety cap
-
-// Memory table names we need to export. The adapter's getMemories requires
-// a tableName parameter. These are the known built-in table names used by
-// elizaOS. We query each individually and merge the results.
-const MEMORY_TABLES = [
-  "messages",
-  "facts",
-  "documents",
-  "fragments",
-  "descriptions",
-  "character_modifications",
-  "custom",
-] as const;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -731,6 +720,24 @@ function taskAgentId(t: Task): string | undefined {
   return (rec.agentId ?? rec.agent_id) as string | undefined;
 }
 
+async function memoryTypesForExport(db: IDatabaseAdapter): Promise<string[]> {
+  if (!db.listMemoryTypes) {
+    throw new AgentExportError(
+      "This adapter cannot enumerate all memory types for a complete export",
+      {
+        code: "AGENT_EXPORT_MEMORY_INVENTORY_UNSUPPORTED",
+      },
+    );
+  }
+  const types = await db.listMemoryTypes();
+  if (types.some((type) => typeof type !== "string" || type.length === 0)) {
+    throw new AgentExportError(
+      "The adapter returned an invalid memory-type inventory",
+    );
+  }
+  return [...new Set(types)].sort();
+}
+
 async function extractAgentData(
   runtime: AgentRuntime,
   options: AgentExportOptions,
@@ -835,37 +842,20 @@ async function extractAgentData(
   }
   logger.info(`[agent-export] Found ${allComponents.length} components`);
 
-  // 6. Memories — query all known table names
+  // The adapter owns the complete type inventory, including plugin namespaces.
   const allMemories: Memory[] = [];
   const memoryIdSet = new Set<string>();
-
-  for (const tableName of MEMORY_TABLES) {
+  for (const tableName of await memoryTypesForExport(db)) {
     const memories = await db.getMemories({
       agentId,
       tableName,
+      includeEmbedding: false,
     });
     for (const mem of memories) {
       if (mem.id && !memoryIdSet.has(mem.id)) {
         memoryIdSet.add(mem.id);
-        // Strip embeddings to reduce file size — they can be regenerated
-        allMemories.push({ ...mem, embedding: undefined });
-      }
-    }
-  }
-
-  // Also try querying memories by world
-  for (const world of agentWorlds) {
-    if (!world.id) continue;
-    for (const tableName of MEMORY_TABLES) {
-      const worldMemories = await db.getMemories({
-        worldId: world.id,
-        tableName,
-      });
-      for (const mem of worldMemories) {
-        if (mem.id && !memoryIdSet.has(mem.id)) {
-          memoryIdSet.add(mem.id);
-          allMemories.push({ ...mem, embedding: undefined });
-        }
+        const exported = { ...mem, embedding: undefined, type: tableName };
+        allMemories.push(exported);
       }
     }
   }
@@ -1019,6 +1009,33 @@ async function restoreAgentDataInScope(
   const worlds = payload.worlds.map(restoreGraphCreatedAt);
   const rooms = payload.rooms.map(restoreGraphCreatedAt);
   const entities = payload.entities.map(restoreGraphCreatedAt);
+  const documentIds = new Set(
+    payload.memories
+      .filter(
+        (memory) =>
+          resolveMemoryTableName(memory) === "documents" ||
+          memory.metadata?.type === "document",
+      )
+      .map((memory) => memory.id),
+  );
+  for (const memory of payload.memories) {
+    if (
+      memory.metadata?.type === "fragment" &&
+      (typeof memory.metadata.documentId !== "string" ||
+        !documentIds.has(memory.metadata.documentId))
+    ) {
+      throw new AgentExportError(
+        "Imported document fragment is missing its parent document",
+        {
+          code: "AGENT_IMPORT_DOCUMENT_PARENT_MISSING",
+        },
+      );
+    }
+  }
+  const orderedMemories = [...payload.memories].sort(
+    (left, right) =>
+      Number(documentIds.has(right.id)) - Number(documentIds.has(left.id)),
+  );
   const remap = createIdRemapper(
     new Map([[payload.sourceAgentId, newAgentId]]),
   );
@@ -1139,7 +1156,7 @@ async function restoreAgentDataInScope(
 
   // 7. Create memories
   let memoriesImported = 0;
-  for (const mem of payload.memories) {
+  for (const mem of orderedMemories) {
     const tableName = resolveMemoryTableName(mem);
     const newMem: Memory = {
       ...mem,
@@ -1148,6 +1165,14 @@ async function restoreAgentDataInScope(
       ...(mem.entityId ? { entityId: remap(mem.entityId) as UUID } : {}),
       ...(mem.roomId ? { roomId: remap(mem.roomId) as UUID } : {}),
       ...(mem.worldId ? { worldId: remap(mem.worldId) as UUID } : {}),
+      ...(mem.metadata?.type === "fragment"
+        ? {
+            metadata: {
+              ...mem.metadata,
+              documentId: remap(mem.metadata.documentId) as UUID,
+            },
+          }
+        : {}),
       // Embeddings are excluded — they will be regenerated
       embedding: undefined,
     };
@@ -1238,17 +1263,15 @@ async function restoreAgentDataInScope(
  * The elizaOS adapter requires a tableName for createMemory.
  */
 function resolveMemoryTableName(mem: Memory): string {
+  // New archives carry the actual storage type, independent of semantic metadata.
+  const memType = (mem as Memory & { type?: string }).type;
+  if (typeof memType === "string" && memType.length > 0) return memType;
   const metaType = mem.metadata?.type;
   if (metaType === "message") return "messages";
   if (metaType === "document") return "documents";
   if (metaType === "fragment") return "fragments";
   if (metaType === "description") return "descriptions";
   if (metaType === "custom") return "custom";
-
-  // Fallback: use the "type" field on the memory itself (elizaOS stores it
-  // as a top-level field in the DB row, which the proto Memory type inherits).
-  const memType = (mem as Memory & { type?: string }).type;
-  if (typeof memType === "string" && memType.length > 0) return memType;
 
   return "messages";
 }
@@ -1439,7 +1462,7 @@ export async function estimateExportSize(
   const agentId = runtime.agentId;
 
   let memoriesCount = 0;
-  for (const tableName of MEMORY_TABLES) {
+  for (const tableName of await memoryTypesForExport(db)) {
     const mems = await db.getMemories({
       agentId,
       tableName,

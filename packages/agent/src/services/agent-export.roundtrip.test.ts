@@ -130,6 +130,10 @@ class InMemoryExportAdapter {
         (worldId === undefined || c.worldId === worldId),
     );
   }
+  async listMemoryTypes() {
+    return [...this.memories.keys()];
+  }
+
   async getMemories({
     agentId,
     tableName,
@@ -417,6 +421,8 @@ describe("#9963 agent export → import round-trip", () => {
     expect(target.rooms.size).toBe(2);
     expect(target.entities.size).toBe(3);
     expect([...target.memories.values()].flat()).toHaveLength(3);
+    expect(target.memories.get("facts")).toHaveLength(1);
+    expect(target.memories.get("messages")).toHaveLength(2);
     expect(target.relationships).toHaveLength(1);
     expect(target.tasks).toHaveLength(1);
 
@@ -425,9 +431,7 @@ describe("#9963 agent export → import round-trip", () => {
       .flatMap((e) => (e.names as string[]) ?? [])
       .sort();
     expect(names).toEqual(["Alice", "Bob", "RoundTripBot"]);
-    // Export merges all memory tables into one array (per-memory table origin
-    // is not preserved; restore re-derives the table heuristically), so assert
-    // the full content set round-trips regardless of which table it lands in.
+    // Each memory keeps its table origin and complete content across the archive.
     const allMemoryTexts = [...target.memories.values()]
       .flat()
       .map((m) => (m.content as { text?: string }).text)
@@ -474,9 +478,15 @@ describe("#9963 agent export → import round-trip", () => {
     expect(restored).toHaveLength(rows.length);
     for (const row of restored) expect(row.createdAt).toEqual(timestamp);
     expect(
-      [...target.memories.values()].flat().map((memory) => memory.content),
+      [...target.memories.values()]
+        .flat()
+        .map((memory) => JSON.stringify(memory.content))
+        .sort(),
     ).toEqual(
-      [...source.memories.values()].flat().map((memory) => memory.content),
+      [...source.memories.values()]
+        .flat()
+        .map((memory) => JSON.stringify(memory.content))
+        .sort(),
     );
   });
 
@@ -496,6 +506,29 @@ describe("#9963 agent export → import round-trip", () => {
     expect(target.agents.size).toBe(0);
     expect(target.worlds).toHaveLength(0);
     expect(target.rooms.size).toBe(0);
+  });
+
+  it("rejects an orphan document fragment before writing the target graph", async () => {
+    const { adapter: source, character } = populateSource();
+    source.memories.set("document_fragments", [
+      {
+        id: uuid(90),
+        agentId: SOURCE_AGENT,
+        entityId: USER1,
+        roomId: ROOM1,
+        content: { text: "Orphan fragment" },
+        metadata: { type: "fragment", documentId: uuid(91), position: 0 },
+      },
+    ]);
+    const archive = await exportAgent(
+      makeRuntime(source, SOURCE_AGENT, character),
+      PASSWORD,
+    );
+    const target = new InMemoryExportAdapter();
+    await expect(
+      importAgent(makeRuntime(target, uuid(992), {}), archive, PASSWORD),
+    ).rejects.toMatchObject({ code: "AGENT_IMPORT_DOCUMENT_PARENT_MISSING" });
+    expect(target.agents.size).toBe(0);
   });
 
   it("rejects a wrong password without writing anything", async () => {
