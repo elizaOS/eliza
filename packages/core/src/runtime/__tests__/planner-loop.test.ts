@@ -2928,7 +2928,7 @@ describe("v5 planner loop skeleton", () => {
 		expect(result.finalMessage).toBe("Checked.");
 	});
 
-	it("falls back to tool text when evaluator message is tool meta-narration", async () => {
+	it("keeps the failed tool reply when the evaluator incorrectly reports success", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => ({
 				text: "",
@@ -2963,6 +2963,7 @@ describe("v5 planner loop skeleton", () => {
 			evaluate,
 		});
 
+		expect(evaluate).toHaveBeenCalledTimes(1);
 		expect(result.finalMessage).toBe(
 			"Draft goal: Leave the apartment more. Not saved yet — what would count as success?",
 		);
@@ -3078,124 +3079,6 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toBe(preview);
-	});
-
-	it("falls back to tool text when evaluator names an action execution", async () => {
-		const runtime = {
-			useModel: vi.fn(async () => ({
-				text: "",
-				toolCalls: [
-					{
-						id: "call-1",
-						name: "OWNER_GOALS",
-						arguments: { action: "create", title: "Save for Lisbon" },
-					},
-				],
-			})),
-		};
-		const executeToolCall = vi.fn(async () => ({
-			success: false,
-			text: "Here's the draft — nothing saved yet. Want me to save it?",
-			userFacingText:
-				"Here's the draft — nothing saved yet. Want me to save it?",
-		}));
-		const evaluate = vi.fn(async () => ({
-			success: true,
-			decision: "FINISH" as const,
-			thought: "Awaiting confirmation.",
-			messageToUser:
-				"OWNER_GOALS create action executed and returned a draft preview requiring owner confirmation. Route FINISH with the tool's user-visible confirmation prompt.",
-		}));
-
-		const result = await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			tools: [{ name: "OWNER_GOALS", description: "Manage owner goals." }],
-			executeToolCall,
-			evaluate,
-		});
-
-		expect(result.finalMessage).toBe(
-			"Here's the draft — nothing saved yet. Want me to save it?",
-		);
-	});
-
-	it("falls back to tool text when evaluator says the action was called", async () => {
-		const runtime = {
-			useModel: vi.fn(async () => ({
-				text: "",
-				toolCalls: [
-					{
-						id: "call-1",
-						name: "OWNER_GOALS",
-						arguments: { action: "create", title: "Learn Spanish" },
-					},
-				],
-			})),
-		};
-		const executeToolCall = vi.fn(async () => ({
-			success: false,
-			text: "What would count as success for that goal?",
-			userFacingText: "What would count as success for that goal?",
-		}));
-		const evaluate = vi.fn(async () => ({
-			success: true,
-			decision: "FINISH" as const,
-			thought: "Awaiting clarification.",
-			messageToUser:
-				"OWNER_GOALS create was called and returned a deferred draft asking the owner to confirm cadence/success evidence. The tool result's user-facing text is an appropriate clarifying question. Finish and surface that question.",
-		}));
-
-		const result = await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			tools: [{ name: "OWNER_GOALS", description: "Manage owner goals." }],
-			executeToolCall,
-			evaluate,
-		});
-
-		expect(result.finalMessage).toBe(
-			"What would count as success for that goal?",
-		);
-	});
-
-	it("falls back to tool text when evaluator narrates a planner draft", async () => {
-		const runtime = {
-			useModel: vi.fn(async () => ({
-				text: "",
-				toolCalls: [
-					{
-						id: "call-1",
-						name: "OWNER_GOALS",
-						arguments: { action: "create", title: "Save for Lisbon" },
-					},
-				],
-			})),
-		};
-		const executeToolCall = vi.fn(async () => ({
-			success: false,
-			text: "Here's the draft — not saved yet. Want me to save it?",
-			userFacingText: "Here's the draft — not saved yet. Want me to save it?",
-		}));
-		const evaluate = vi.fn(async () => ({
-			success: true,
-			decision: "FINISH" as const,
-			thought: "Awaiting confirmation.",
-			messageToUser:
-				"Planner drafted the Lisbon savings goal via OWNER_GOALS and returned a confirmation prompt to the owner. This is an expected owner-approval step; surface the draft summary and the confirmation question as the final message.",
-		}));
-
-		const result = await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			tools: [{ name: "OWNER_GOALS", description: "Manage owner goals." }],
-			executeToolCall,
-			evaluate,
-		});
-
-		expect(result.finalMessage).toBe(
-			"Here's the draft — not saved yet. Want me to save it?",
-		);
 	});
 
 	it("surfaces captured REPLY refusal text when required-tool cap is hit, instead of throwing", async () => {
@@ -6396,99 +6279,67 @@ describe("v5 planner loop — evaluator gate", () => {
 		});
 	});
 
-	it("WITHHOLDS an action-owned completion while another native tool remains queued", async () => {
-		const runtime = {
-			useModel: plannerNativeWith({
-				toolCalls: [
-					{ id: "settings-1", name: "SETTINGS", arguments: {} },
-					{ id: "lookup-1", name: "LOOKUP", arguments: {} },
-				],
-			}),
-		};
-		const executeToolCall = vi.fn(async (toolCall: { name: string }) =>
-			toolCall.name === "SETTINGS"
-				? {
-						success: true,
-						text: "Settings updated.",
-						userFacingText: "Settings updated.",
-						verifiedUserFacing: true,
-						turnComplete: true,
-					}
-				: { success: true, text: "Lookup complete." },
-		);
-		const evaluate = vi
-			.fn()
-			.mockResolvedValueOnce({
-				success: true,
-				decision: "NEXT_RECOMMENDED" as const,
-				thought: "The queued lookup still needs to run.",
-				recommendedToolCallId: "lookup-1",
-			})
-			.mockResolvedValueOnce({
-				success: true,
-				decision: "FINISH" as const,
-				thought: "All queued work is complete.",
-				messageToUser: "Settings updated and lookup complete.",
+	it.each([
+		{
+			name: "while another native tool remains queued",
+			order: ["SETTINGS", "LOOKUP"],
+			firstThought: "The queued lookup still needs to run.",
+			finalThought: "All queued work is complete.",
+			messageToUser: "Settings updated and lookup complete.",
+		},
+		{
+			name: "after another executed tool",
+			order: ["LOOKUP", "SETTINGS"],
+			firstThought: "Run the queued settings action.",
+			finalThought: "The evaluator combines both completed operations.",
+			messageToUser: "Lookup complete and settings updated.",
+		},
+	])(
+		"WITHHOLDS action-owned completion $name",
+		async ({ order, firstThought, finalThought, messageToUser }) => {
+			const toolCalls = order.map((name) => ({
+				id: `${name.toLowerCase()}-1`,
+				name,
+				arguments: {},
+			}));
+			const runtime = { useModel: plannerNativeWith({ toolCalls }) };
+			const executeToolCall = vi.fn(async (toolCall: { name: string }) =>
+				toolCall.name === "SETTINGS"
+					? {
+							success: true,
+							text: "Settings updated.",
+							userFacingText: "Settings updated.",
+							verifiedUserFacing: true,
+							turnComplete: true,
+						}
+					: { success: true, text: "Lookup complete." },
+			);
+			const evaluate = vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: true,
+					decision: "NEXT_RECOMMENDED" as const,
+					thought: firstThought,
+					recommendedToolCallId: toolCalls[1].id,
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					decision: "FINISH" as const,
+					thought: finalThought,
+					messageToUser,
+				});
+			const result = await runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				executeToolCall,
+				evaluate,
 			});
-
-		await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			executeToolCall,
-			evaluate,
-		});
-
-		expect(executeToolCall).toHaveBeenCalledTimes(2);
-		expect(evaluate).toHaveBeenCalledTimes(2);
-	});
-
-	it("WITHHOLDS when an action-owned completion follows another executed tool", async () => {
-		const runtime = {
-			useModel: plannerNativeWith({
-				toolCalls: [
-					{ id: "lookup-1", name: "LOOKUP", arguments: {} },
-					{ id: "settings-1", name: "SETTINGS", arguments: {} },
-				],
-			}),
-		};
-		const executeToolCall = vi.fn(async (toolCall: { name: string }) =>
-			toolCall.name === "SETTINGS"
-				? {
-						success: true,
-						text: "Settings updated.",
-						userFacingText: "Settings updated.",
-						verifiedUserFacing: true,
-						turnComplete: true,
-					}
-				: { success: true, text: "Lookup complete." },
-		);
-		const evaluate = vi
-			.fn()
-			.mockResolvedValueOnce({
-				success: true,
-				decision: "NEXT_RECOMMENDED" as const,
-				thought: "Run the queued settings action.",
-				recommendedToolCallId: "settings-1",
-			})
-			.mockResolvedValueOnce({
-				success: true,
-				decision: "FINISH" as const,
-				thought: "The evaluator combines both completed operations.",
-				messageToUser: "Lookup complete and settings updated.",
-			});
-
-		const result = await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			executeToolCall,
-			evaluate,
-		});
-
-		expect(executeToolCall).toHaveBeenCalledTimes(2);
-		expect(evaluate).toHaveBeenCalledTimes(2);
-		expect(result.finalMessage).toBe("Lookup complete and settings updated.");
-		expect(result.evaluator?.thought).toContain("combines both");
-	});
+			expect(executeToolCall).toHaveBeenCalledTimes(2);
+			expect(evaluate).toHaveBeenCalledTimes(2);
+			expect(result.finalMessage).toBe(messageToUser);
+			expect(result.evaluator?.thought).toBe(finalThought);
+		},
+	);
 
 	it("WITHHOLDS an action-owned completion without canonical user-facing text", async () => {
 		const runtime = {
