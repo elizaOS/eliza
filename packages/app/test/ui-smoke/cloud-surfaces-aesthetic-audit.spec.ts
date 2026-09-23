@@ -924,22 +924,23 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
               .getByText("Smoke API key", { exact: true })
               .filter({ visible: true }),
           ).toBeVisible();
-          const title = page.getByRole("heading", {
-            name: "API Keys",
+          await expect(page).toHaveTitle(/API Keys/);
+          // The canonical header renders actions without repeating the title.
+          // Its back control must stay separate from the key creation action.
+          const back = page.getByRole("button", {
+            name: "Back to Cloud overview",
             exact: true,
           });
-          const titleText = await title.evaluate((element) => {
-            const range = document.createRange();
-            range.selectNodeContents(element);
-            const rect = range.getBoundingClientRect();
-            return { right: rect.right };
-          });
+          await expect(back).toBeVisible();
+          const backBox = await back.boundingBox();
+          if (!backBox)
+            throw new Error("Cloud overview back control has no layout box");
           const action = await page
             .getByRole("button", { name: "Generate key", exact: true })
             .boundingBox();
           if (!action)
             throw new Error("Generate key has no visible layout box");
-          expect(titleText.right).toBeLessThanOrEqual(action.x);
+          expect(backBox.x + backBox.width).toBeLessThanOrEqual(action.x);
           if (vp.name === "mobile") {
             expect(action.width).toBeGreaterThanOrEqual(44);
             expect(action.height).toBeGreaterThanOrEqual(44);
@@ -1244,6 +1245,12 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         ),
       ).toBeVisible();
       const activateButton = page.getByTestId("agent-upgrade-tier-confirm");
+      await expect(
+        page.getByText(
+          "Minimum charge per successful start: $0.02. Applies again after stopping and restarting.",
+          { exact: true },
+        ),
+      ).toBeVisible();
       await captureTransitionState({
         page,
         outputDir,
@@ -1325,6 +1332,7 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         action: "activate_dedicated",
         quoteId:
           "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        minimumActivationChargeUsd: 0.02,
       });
       const cutoverRequests = fixture.requests.filter(
         (receipt) => receipt.pathname === `${upgradePath}/cutover`,

@@ -447,7 +447,17 @@ const STUB_RULES: StubRule[] = [
     match: path_("/api/views/cloud/elements"),
     body: { success: true },
   },
+  {
+    method: "POST",
+    match: path_("/api/views/__all__/navigate"),
+    body: { success: true },
+  },
   // my-agents characters/saved lists.
+  {
+    method: "POST",
+    match: path_("/api/my-agents/claim-affiliate-characters"),
+    body: { success: true, claimed: [] },
+  },
   {
     match: path_("/api/my-agents/characters"),
     body: { success: true, data: { characters: [] } },
@@ -1259,6 +1269,7 @@ export async function installCloudApiStubs(
           hourlyRateUsd: 0.125,
           dailyRateUsd: 3,
           minimumBalanceUsd: 9,
+          minimumActivationChargeUsd: 0.02,
           minimumRunwayDays: 3,
           balanceUsd: creditBalance,
           deficitUsd: quoteCanActivate ? 0 : 9 - creditBalance,
@@ -1280,6 +1291,7 @@ export async function installCloudApiStubs(
       const expectedBody = {
         action: "activate_dedicated",
         quoteId: DEDICATED_QUOTE_ID,
+        minimumActivationChargeUsd: 0.02,
       };
       if (!requestBodyMatches(request, expectedBody)) {
         await fulfill(route, 400, {
