@@ -44,6 +44,12 @@ import { resolveBundledSkillsDir } from "./bundled-skills.ts";
 // Dev/test-only crash/hang injection (#10203). No-op unless ELIZA_CRASH_INJECT
 // is armed, and it refuses to arm in production — see crash-injection.ts.
 import { maybeInjectFault } from "./crash-injection.ts";
+import {
+  isSQLiteSelected,
+  SQLITE_PLUGIN,
+  selectDatabasePluginNames,
+  selectedDatabasePlugin,
+} from "./database-selection.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
 import { startMemoryWatchdog } from "./memory-watchdog.ts";
 import {
@@ -433,6 +439,19 @@ async function getPluginSql(): Promise<typeof import("@elizaos/plugin-sql")> {
   return _pluginSqlPromise;
 }
 
+/** Keeps the Node-only backend out of mobile bundles until explicitly selected. */
+async function getPluginSqlite(): Promise<
+  typeof import("@elizaos/plugin-sqlite")
+> {
+  if (isMobilePlatform()) {
+    throw new ElizaError(
+      "SQLite storage requires the standalone Node 24.15.0 host",
+      { code: "SQLITE_RUNTIME_UNSUPPORTED" },
+    );
+  }
+  return import(/* @vite-ignore */ String(SQLITE_PLUGIN));
+}
+
 let _pluginLocalEmbeddingPromise: Promise<
   typeof import("@elizaos/plugin-local-inference") | null
 > | null = null;
@@ -509,6 +528,7 @@ const BLOCKING_STATIC_PLUGIN_LOADERS: Readonly<
 // shared map — lets the resolver recover without a `=== "@elizaos/plugin-sql"`
 // branch. Ownership of the fallback stays with this loader table (#12665).
 STATIC_ELIZA_PLUGIN_LOADERS["@elizaos/plugin-sql"] = () => getPluginSql();
+STATIC_ELIZA_PLUGIN_LOADERS[SQLITE_PLUGIN] = () => getPluginSqlite();
 
 function buildBlockingStaticRegistrations(): CoreStaticPluginRegistration[] {
   return BLOCKING_CORE_PLUGINS.map((packageName) => {
@@ -561,6 +581,12 @@ function buildDeferredStaticRegistrations(): CoreStaticPluginRegistration[] {
 const CORE_STATIC_PLUGIN_REGISTRATIONS: readonly CoreStaticPluginRegistration[] =
   [
     ...buildBlockingStaticRegistrations(),
+    {
+      packageName: SQLITE_PLUGIN,
+      phase: "blocking",
+      required: true,
+      load: () => getPluginSqlite(),
+    },
     ...buildDeferredStaticRegistrations(),
   ];
 
@@ -615,7 +641,12 @@ async function registerStaticPluginPhase(
   phase: CoreStaticPluginPhase,
 ): Promise<void> {
   const registrations = CORE_STATIC_PLUGIN_REGISTRATIONS.filter(
-    (registration) => registration.phase === phase,
+    (registration) =>
+      registration.phase === phase &&
+      (!["@elizaos/plugin-sql", SQLITE_PLUGIN].includes(
+        registration.packageName,
+      ) ||
+        registration.packageName === selectedDatabasePlugin()),
   );
   logger.info(`[boot] resolving ${phase} plugins (${registrations.length})`);
 
@@ -680,7 +711,7 @@ async function ensureStaticPluginsRegisteredByName(
   packageNames: readonly string[],
   abortSignal?: AbortSignal,
 ): Promise<void> {
-  const requested = new Set(packageNames);
+  const requested = new Set(selectDatabasePluginNames(packageNames));
   if (requested.size === 0) return;
 
   const registrations = CORE_STATIC_PLUGIN_REGISTRATIONS.filter(
@@ -2690,7 +2721,15 @@ function resolveDefaultPgliteDataDir(config: ElizaConfig): string {
  */
 function resolveEffectiveDbProvider(
   config: ElizaConfig,
-): "postgres" | "pglite" {
+): "postgres" | "pglite" | "sqlite" {
+  if (isSQLiteSelected()) {
+    if (config.database?.provider)
+      throw new ElizaError(
+        "Remove the PostgreSQL/PGlite database provider when selecting SQLite",
+        { code: "DATABASE_PROVIDER_CONFLICT" },
+      );
+    return "sqlite";
+  }
   if (config.database?.provider) {
     return config.database.provider === "postgres" ? "postgres" : "pglite";
   }
@@ -2707,6 +2746,18 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
   const databaseUrl = process.env.DATABASE_URL?.trim();
   const postgresUrl = process.env.POSTGRES_URL?.trim();
 
+  if (provider === "sqlite") {
+    const sqlitePath = process.env.SQLITE_DATABASE_PATH;
+    if (!sqlitePath || !path.isAbsolute(sqlitePath))
+      throw new ElizaError(
+        "SQLite requires an absolute SQLITE_DATABASE_PATH inside agent state storage",
+        { code: "SQLITE_PATH_REQUIRED" },
+      );
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    delete process.env.PGLITE_DATA_DIR;
+    return;
+  }
   if (provider === "postgres") {
     const pg = db?.postgres;
     let url = pg?.connectionString ?? postgresUrl ?? databaseUrl;
@@ -3024,7 +3075,7 @@ export function isFatalPgliteStartupError(err: unknown): boolean {
 
 function resolveActivePgliteDataDir(config: ElizaConfig): string | null {
   const provider = resolveEffectiveDbProvider(config);
-  if (provider === "postgres") return null;
+  if (provider !== "pglite") return null;
 
   const configured = process.env.PGLITE_DATA_DIR?.trim();
   const dataDir = configured || resolveDefaultPgliteDataDir(config);
@@ -3356,6 +3407,8 @@ export function installRuntimeMethodBindings(
     "POSTGRES_URL",
     "DATABASE_URL",
     "PGLITE_DATA_DIR",
+    "SQLITE_DATABASE_PATH",
+    "ELIZA_DATABASE_PROVIDER",
     // Google model defaults
     "GOOGLE_SMALL_MODEL",
     "GOOGLE_LARGE_MODEL",
@@ -4674,9 +4727,9 @@ export async function startEliza(
   //    calls always resolve.  runtime.initialize() registers remaining
   //    characterPlugins (connectors, providers, custom) in parallel — those
   //    are NOT core and don't have ordering dependencies.
-  const PREREGISTER_PLUGINS = new Set(CORE_PLUGINS);
+  const PREREGISTER_PLUGINS = new Set(selectDatabasePluginNames(CORE_PLUGINS));
   const sqlPlugin = resolvedPlugins.find(
-    (p) => p.name === "@elizaos/plugin-sql",
+    (p) => p.name === selectedDatabasePlugin(),
   );
   const otherPlugins = resolvedPlugins.filter(
     (p) => !PREREGISTER_PLUGINS.has(p.name),
@@ -4932,16 +4985,21 @@ export async function startEliza(
     // 7c. Eagerly initialize the database adapter so it's fully ready
     //     BEFORE other plugins run their init(). When legacy/corrupt PGLite
     //     state causes startup aborts, reset the local DB dir and retry once.
-    await registerSqlPluginWithRecovery(runtime, sqlPlugin, config);
+    if (isSQLiteSelected()) {
+      await runtime.registerPlugin(sqlPlugin.plugin);
+      await initializeDatabaseAdapter(runtime, config);
+    } else {
+      await registerSqlPluginWithRecovery(runtime, sqlPlugin, config);
+    }
     bootTimer.lap("register-sql");
   } else {
     const loadedNames = resolvedPlugins.map((p) => p.name).join(", ");
     logger.error(
-      `[eliza] @elizaos/plugin-sql was NOT found among resolved plugins. ` +
+      `[eliza] ${selectedDatabasePlugin()} was NOT found among resolved plugins. ` +
         `Loaded: [${loadedNames}]`,
     );
     throw new Error(
-      "@elizaos/plugin-sql is required but was not loaded. " +
+      `${selectedDatabasePlugin()} is required but was not loaded. ` +
         "Ensure the package is installed and built (check for import errors above).",
     );
   }
@@ -5609,7 +5667,9 @@ export async function startEliza(
       blockDeferredPluginImports,
       runtime,
       resolvedPlugins,
-      requiredPluginNames: REQUIRED_BLOCKING_CORE_PLUGINS,
+      requiredPluginNames: new Set(
+        selectDatabasePluginNames(REQUIRED_BLOCKING_CORE_PLUGINS),
+      ),
       waitForBlockingEnvironment: async () => {
         // In block-deferred mode the Discord/GitHub plugins register here (not
         // in runDeferredBoot), so join the boot lookups before this wave. The

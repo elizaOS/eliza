@@ -18,6 +18,8 @@ const ENV_KEYS = [
   "POSTGRES_URL",
   "DATABASE_URL",
   "PGLITE_DATA_DIR",
+  "ELIZA_DATABASE_PROVIDER",
+  "SQLITE_DATABASE_PATH",
   "ELIZA_MANAGED_DATABASE_URL",
   "ELIZA_AGENT_LOCAL_STATE",
 ] as const;
@@ -38,6 +40,33 @@ afterEach(() => {
 });
 
 describe("database runtime config", () => {
+  it("selects an absolute SQLite file without PostgreSQL or PGlite environment fallback", () => {
+    process.env.ELIZA_DATABASE_PROVIDER = "sqlite";
+    process.env.SQLITE_DATABASE_PATH = "/tmp/synthetic-agent/agent.sqlite";
+    process.env.POSTGRES_URL = "postgres://synthetic/db";
+    process.env.DATABASE_URL = "postgres://synthetic/db";
+    process.env.PGLITE_DATA_DIR = "/tmp/old-pglite";
+    applyDatabaseConfigToEnv({});
+    expect(process.env.SQLITE_DATABASE_PATH).toBe(
+      "/tmp/synthetic-agent/agent.sqlite",
+    );
+    expect(process.env.POSTGRES_URL).toBeUndefined();
+    expect(process.env.DATABASE_URL).toBeUndefined();
+    expect(process.env.PGLITE_DATA_DIR).toBeUndefined();
+  });
+
+  it("rejects an ambiguous database config or nonabsolute SQLite path before boot", () => {
+    process.env.ELIZA_DATABASE_PROVIDER = "sqlite";
+    process.env.SQLITE_DATABASE_PATH = "relative.sqlite";
+    expect(() => applyDatabaseConfigToEnv({})).toThrow(
+      expect.objectContaining({ code: "SQLITE_PATH_REQUIRED" }),
+    );
+    process.env.SQLITE_DATABASE_PATH = "/tmp/synthetic-agent/agent.sqlite";
+    expect(() =>
+      applyDatabaseConfigToEnv({ database: { provider: "pglite" } }),
+    ).toThrow(expect.objectContaining({ code: "DATABASE_PROVIDER_CONFLICT" }));
+  });
+
   it("preserves env-only POSTGRES_URL as the plugin-sql setting", () => {
     process.env.POSTGRES_URL = "postgresql://elizaos@127.0.0.1:5432/elizaos";
     process.env.PGLITE_DATA_DIR = "/tmp/should-not-use-pglite";
