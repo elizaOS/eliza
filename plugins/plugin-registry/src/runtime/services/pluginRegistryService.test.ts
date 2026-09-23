@@ -112,6 +112,28 @@ afterEach(() => {
 });
 
 describe("pluginRegistryService", () => {
+  it("keeps installed local plugins discoverable after registry retirement", async () => {
+    const pluginDir = path.join(temporaryCwd, "plugins", "plugin-local");
+    fs.mkdirSync(pluginDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pluginDir, "elizaos.plugin.json"),
+      JSON.stringify({
+        id: "@elizaos/local",
+        name: "Local",
+        version: "2.0.0",
+      }),
+    );
+    const fetchSpy = vi.fn(async () => new Response(null, { status: 410 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    expect((await loadRegistry()).get("@elizaos/local")?.name).toBe(
+      "@elizaos/local",
+    );
+    expect((await getRegistryEntry("@elizaos/local"))?.name).toBe(
+      "@elizaos/local",
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("normalizes registry and app entries while preserving insertion order", async () => {
     stubRegistry(
       {

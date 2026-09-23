@@ -10,7 +10,7 @@ the package mapped to that connector by the first-party registry.
 ## Supported connectors
 
 This table mirrors
-[`packages/registry/src/first-party/channel-plugin-map.json`](https://github.com/elizaOS/eliza/blob/develop/packages/registry/src/first-party/channel-plugin-map.json).
+[`packages/shared/src/catalog/channel-plugin-map.json`](https://github.com/elizaOS/eliza/blob/develop/packages/shared/src/catalog/channel-plugin-map.json).
 Required settings come from the generated first-party registry metadata.
 
 | Connector key | Plugin package | Required setting |
@@ -110,7 +110,7 @@ unsigned deliveries and deliveries for any other channel.
 The registry is the source of truth for credential names, required fields, help
 text, and validation constraints:
 
-- [`generated.json`](https://github.com/elizaOS/eliza/blob/develop/packages/registry/src/first-party/generated.json) contains the generated connector records.
+- [`generated.json`](https://github.com/elizaOS/eliza/blob/develop/packages/shared/src/catalog/generated.json) contains the generated connector records.
 - [`CONNECTOR_ENV_MAP`](https://github.com/elizaOS/eliza/blob/develop/packages/agent/src/config/env-vars.ts) shows how `connectors.<name>` fields become environment variables.
 - The plugin's `registry-entry.json` and README document platform setup, scopes, webhook configuration, and optional behavior.
 

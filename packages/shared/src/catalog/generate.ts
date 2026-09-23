@@ -12,8 +12,8 @@
  * alongside an on-device bundle), plus the derived curated-app / channel /
  * provider maps. `--check` re-runs the generator and fails on drift for CI.
  *
- *   bun run --cwd packages/registry generate:first-party           # rewrite generated.json
- *   bun run --cwd packages/registry generate:first-party --check   # CI drift gate
+ *   bun run --cwd packages/shared generate:first-party           # rewrite generated.json
+ *   bun run --cwd packages/shared generate:first-party --check   # CI drift gate
  */
 
 import { execFileSync } from "node:child_process";
@@ -284,7 +284,7 @@ function main(): void {
           : "";
       if (current !== expected) {
         console.error(
-          `[registry/generate] ${path} is stale. Run \`bun run --cwd packages/registry generate:first-party\` and commit the result.`,
+          `[registry/generate] ${path} is stale. Run \`bun run --cwd packages/shared generate:first-party\` and commit the result.`,
         );
         process.exit(1);
       }

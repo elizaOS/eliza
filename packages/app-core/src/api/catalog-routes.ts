@@ -11,11 +11,7 @@
 
 import type http from "node:http";
 import { resolveAppHeroImage } from "@elizaos/agent";
-import {
-  type AppEntry,
-  getApps,
-  loadRegistry,
-} from "@elizaos/registry/first-party";
+import { type AppEntry, getApps, loadRegistry } from "@elizaos/shared/catalog";
 import type { RegistryAppInfo } from "@elizaos/shared/contracts/apps";
 import { ensureRouteAuthorized } from "./auth.ts";
 import type { CompatRuntimeState } from "./compat-route-shared";

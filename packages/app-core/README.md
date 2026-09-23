@@ -10,7 +10,7 @@ Shared application core for elizaOS agent app shells (desktop, mobile, web). It 
 | `src/cli/`      | Commander CLI: `start`, `setup`, `doctor`, `db`, `config`, `dashboard`, `update`, `auth`, …  |
 | `src/api/`      | Dashboard HTTP API: server, auth/pairing routes, dev-stack discovery, secrets/wallet routes. |
 | `src/runtime/`  | Eliza composition layer, focused startup lifecycle modules, dev server, runtime-mode, and Electrobun desktop runtimes. |
-| `src/registry/` | Compatibility re-export of the canonical `@elizaos/registry/first-party` registry. |
+| `src/registry/` | Compatibility re-export of the canonical `@elizaos/shared/catalog` registry. |
 | `src/security/` | Agent vault id + platform secure stores + wallet key hydration.                              |
 | `src/services/` | Auth store, steward credentials/sidecar, vault mirror/bootstrap, account pool, and more.     |
 | `src/platform/` | Per-platform bootstrap (Capacitor for mobile, browser stubs, native plugin entrypoints).     |
@@ -23,7 +23,7 @@ Shared application core for elizaOS agent app shells (desktop, mobile, web). It 
 import { startApiServer, loadRegistry, getPlugins } from "@elizaos/app-core";
 
 // Targeted subpaths (see package.json exports for the full list)
-import { loadRegistry } from "@elizaos/registry/first-party";
+import { loadRegistry } from "@elizaos/shared/catalog";
 import { ensureRouteAuthorized } from "@elizaos/app-core/api/auth";
 import { deriveAgentVaultId } from "@elizaos/app-core/security/agent-vault-id";
 ```

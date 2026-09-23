@@ -10,7 +10,7 @@
  * lives in ./plugin-manifest.ts (each plugin declares conditions via
  * package.json's `elizaos.plugin.autoEnableModule`).
  */
-import channelPluginMap from "@elizaos/registry/first-party/channel-plugin-map.json" with {
+import channelPluginMap from "../catalog/channel-plugin-map.json" with {
   type: "json",
 };
 

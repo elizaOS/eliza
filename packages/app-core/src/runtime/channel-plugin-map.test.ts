@@ -6,7 +6,7 @@
  * artifact. Drives the real module; no mocks.
  */
 
-import generatedChannelPluginMap from "@elizaos/registry/first-party/channel-plugin-map.json" with {
+import generatedChannelPluginMap from "@elizaos/shared/catalog/channel-plugin-map.json" with {
   type: "json",
 };
 import { describe, expect, it } from "vitest";

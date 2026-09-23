@@ -6,7 +6,7 @@
  * Two absences are designed rather than exceptional, and both are load-bearing
  * for voice. A packaged bundle that does not stage `generated.json` makes
  * `loadRegistry()` return an empty set on purpose
- * (`packages/registry/src/first-party/index.ts` marks that `error-policy:J4`), so
+ * (`packages/shared/src/catalog/index.ts` marks that `error-policy:J4`), so
  * the registry alone cannot be the only source of the local-inference hook —
  * nothing else installs the local TEXT/EMBEDDING/TRANSCRIPTION/TTS handlers, and
  * without them voice reports not-ready with no failure at the boot site. And a
@@ -15,11 +15,7 @@
  */
 
 import { type AgentRuntime, logger } from "@elizaos/core";
-import {
-  getApps,
-  getPlugins,
-  loadRegistry,
-} from "@elizaos/registry/first-party";
+import { getApps, getPlugins, loadRegistry } from "@elizaos/shared/catalog";
 
 export interface BootHookDeclaration {
   id: string;

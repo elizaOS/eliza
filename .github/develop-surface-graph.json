@@ -35,7 +35,6 @@
         "packages/credentials",
         "packages/logger",
         "packages/prompts",
-        "packages/registry",
         "packages/shared",
         "packages/synthetic-world",
         "packages/skills",

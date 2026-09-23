@@ -337,7 +337,6 @@
     "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/plugin-whatsapp": "workspace:*",
     "@elizaos/plugin-workflow": "workspace:*",
-    "@elizaos/registry": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/skills": "workspace:*",
     "@noble/curves": "2.2.0",

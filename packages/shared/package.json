@@ -36,9 +36,11 @@
     "lint:check": "bunx @biomejs/biome check src",
     "format": "bunx @biomejs/biome format --write src",
     "format:check": "bunx @biomejs/biome format src",
-    "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/shared && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/shared && node ../scripts/copy-package-assets.mjs packages/shared src/brand/brand.css src/brand-classic/brand.css",
+    "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/shared && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/shared && node ../scripts/copy-package-assets.mjs packages/shared src/brand/brand.css src/brand-classic/brand.css src/catalog/generated.json src/catalog/curated-app-definitions.json src/catalog/channel-plugin-map.json src/catalog/provider-plugin-map.json src/catalog/short-id-plugin-map.json",
     "pack:dry-run": "cd dist && npm pack --dry-run",
-    "sync": "node scripts/sync-to-public.mjs"
+    "sync": "node scripts/sync-to-public.mjs",
+    "generate:first-party": "bun run src/catalog/generate.ts",
+    "generate:first-party:check": "bun run src/catalog/generate.ts --check"
   },
   "exports": {
     "./package.json": "./package.json",
@@ -742,6 +744,51 @@
       },
       "import": "./dist/contracts/screen-capture.js",
       "default": "./dist/contracts/screen-capture.js"
+    },
+    "./catalog": {
+      "types": "./dist/catalog/index.d.ts",
+      "eliza-source": {
+        "types": "./src/catalog/index.ts",
+        "import": "./src/catalog/index.ts",
+        "default": "./src/catalog/index.ts"
+      },
+      "import": "./dist/catalog/index.js",
+      "default": "./dist/catalog/index.js"
+    },
+    "./catalog/runtime-kernel": {
+      "types": "./dist/catalog/runtime-kernel.d.ts",
+      "eliza-source": {
+        "types": "./src/catalog/runtime-kernel.ts",
+        "import": "./src/catalog/runtime-kernel.ts",
+        "default": "./src/catalog/runtime-kernel.ts"
+      },
+      "import": "./dist/catalog/runtime-kernel.js",
+      "default": "./dist/catalog/runtime-kernel.js"
+    },
+    "./catalog/generated.json": {
+      "types": "./dist/catalog/generated.json",
+      "eliza-source": "./src/catalog/generated.json",
+      "default": "./dist/catalog/generated.json"
+    },
+    "./catalog/curated-app-definitions.json": {
+      "types": "./dist/catalog/curated-app-definitions.json",
+      "eliza-source": "./src/catalog/curated-app-definitions.json",
+      "default": "./dist/catalog/curated-app-definitions.json"
+    },
+    "./catalog/channel-plugin-map.json": {
+      "types": "./dist/catalog/channel-plugin-map.json",
+      "eliza-source": "./src/catalog/channel-plugin-map.json",
+      "default": "./dist/catalog/channel-plugin-map.json"
+    },
+    "./catalog/provider-plugin-map.json": {
+      "types": "./dist/catalog/provider-plugin-map.json",
+      "eliza-source": "./src/catalog/provider-plugin-map.json",
+      "default": "./dist/catalog/provider-plugin-map.json"
+    },
+    "./catalog/short-id-plugin-map.json": {
+      "types": "./dist/catalog/short-id-plugin-map.json",
+      "eliza-source": "./src/catalog/short-id-plugin-map.json",
+      "default": "./dist/catalog/short-id-plugin-map.json"
     }
   },
   "publishConfig": {
@@ -750,7 +797,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/registry": "workspace:*",
     "ajv": "^8.20.0",
     "chalk": "^6.0.0",
     "drizzle-orm": "0.45.2",

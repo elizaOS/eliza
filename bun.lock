@@ -153,7 +153,6 @@
         "@elizaos/plugin-workflow": "workspace:*",
         "@elizaos/plugin-zerollama": "workspace:*",
         "@elizaos/prompts": "workspace:*",
-        "@elizaos/registry": "workspace:*",
         "@elizaos/retrieval": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/skills": "workspace:*",
@@ -358,7 +357,6 @@
         "@elizaos/plugin-wechat": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
         "@elizaos/plugin-zerollama": "workspace:*",
-        "@elizaos/registry": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/skills": "workspace:*",
         "@elizaos/ui": "workspace:*",
@@ -1030,17 +1028,6 @@
         "@typescript/native": "npm:typescript@^7.0.2",
       },
     },
-    "packages/registry": {
-      "name": "@elizaos/registry",
-      "version": "2.0.0-beta.0",
-      "dependencies": {
-        "zod": "^4.4.3",
-      },
-      "devDependencies": {
-        "@types/node": "^24.0.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-      },
-    },
     "packages/retrieval": {
       "name": "@elizaos/retrieval",
       "version": "2.0.3-beta.7",
@@ -1103,7 +1090,6 @@
         "@elizaos/common": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/prompts": "workspace:*",
-        "@elizaos/registry": "workspace:*",
         "@huggingface/tokenizers": "0.1.3",
         "ajv": "^8.20.0",
         "chalk": "^6.0.0",
@@ -3103,7 +3089,6 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/credentials": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
-        "@elizaos/registry": "workspace:*",
         "@elizaos/shared": "workspace:*",
       },
       "devDependencies": {
@@ -4463,8 +4448,6 @@
     "@elizaos/plugin-zerollama": ["@elizaos/plugin-zerollama@workspace:plugins/plugin-zerollama"],
 
     "@elizaos/prompts": ["@elizaos/prompts@workspace:packages/prompts"],
-
-    "@elizaos/registry": ["@elizaos/registry@workspace:packages/registry"],
 
     "@elizaos/retrieval": ["@elizaos/retrieval@workspace:packages/retrieval"],
 

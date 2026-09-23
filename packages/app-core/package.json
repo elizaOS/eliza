@@ -286,7 +286,6 @@
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-wechat": "workspace:*",
     "@elizaos/plugin-workflow": "workspace:*",
-    "@elizaos/registry": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/skills": "workspace:*",
     "@elizaos/ui": "workspace:*",

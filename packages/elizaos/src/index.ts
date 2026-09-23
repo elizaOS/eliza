@@ -6,8 +6,6 @@
 export {
   create,
   info,
-  registerPluginsCommand,
-  submitPluginToRegistry,
   upgrade,
   version,
 } from "./commands/index.js";

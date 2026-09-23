@@ -110,7 +110,6 @@
     "@elizaos/plugin-zai",
     "@elizaos/plugin-zerollama",
     "@elizaos/prompts",
-    "@elizaos/registry",
     "@elizaos/retrieval",
     "@elizaos/scenario-runner",
     "@elizaos/shared",

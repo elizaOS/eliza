@@ -23,6 +23,12 @@ Bootable Linux and AOSP distributions are maintained separately in
   source as the factual authority. Documentation is a map, not evidence that a
   feature still exists.
 
+## Contribution scope
+
+The community plugin registry is retired. Do not accept third-party plugins,
+registry listings, listing updates, or submission tooling. First-party catalog
+data lives in `packages/shared/src/catalog/`.
+
 ## Naming
 
 Write **elizaOS**, never `ElizaOS`. The npm scope is `@elizaos/*`. Use
@@ -153,7 +159,6 @@ packages/
   testing/          private runtime and deterministic inference fixtures
   skills/           bundled runtime skills and loading utilities
   browser-bridge-extension/ Chrome MV3, Firefox, and Safari companion browser extension
-  registry/         first-party and community plugin registry data and validation
   scenario-runner/  real-runtime scenario execution and report generation
   test/             repository-wide scenarios and test corpus
   evidence/         evidence manifest, bundle, verification, and ingestion foundation

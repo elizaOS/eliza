@@ -100,17 +100,11 @@ The generated `test` script runs component tests and the plugin's end-to-end
 lane. Extend the real-runtime E2E suite for every behavior the plugin adds; use
 isolated unit tests only for deterministic computation.
 
-## Publish and discover
+## Contribution scope
 
-Publish the built package to npm with the `elizaos` keyword. The CLI can inspect
-the registry metadata it would submit:
-
-```bash
-elizaos plugins submit --dry-run
-```
-
-See [Publishing plugins](/plugins/publish) for package metadata and release
-guidance.
+elizaOS no longer accepts third-party plugins or registry items. Contributions
+focus on maintained first-party capabilities. See the
+[contribution policy](https://github.com/elizaOS/eliza/blob/develop/CONTRIBUTING.md).
 
 ## Related
 
