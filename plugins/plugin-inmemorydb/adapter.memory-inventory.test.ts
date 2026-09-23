@@ -30,6 +30,8 @@ test("discovers unknown namespaces only for the owning agent", async () => {
     await other.createMemories([{ memory: row(foreign), tableName: "foreign_only" }]);
     expect(await adapter.listMemoryTypes()).toEqual(["messages", "plugin_unlisted"]);
     expect(await other.listMemoryTypes()).toEqual(["foreign_only"]);
+    await adapter.createMemories([{ memory: row(owner), tableName: "" }]);
+    await expect(adapter.listMemoryTypes()).rejects.toThrow("missing storage type");
   } finally {
     await other.close();
     await adapter.close();

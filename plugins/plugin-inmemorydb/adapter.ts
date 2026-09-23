@@ -1097,7 +1097,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       COLLECTIONS.MEMORIES,
       (memory) => memory.agentId === this.agentId
     );
-    return [...new Set(rows.map(storedMemoryTableName))].sort();
+    const types = rows.map((memory) => {
+      const type = storedMemoryTableName(memory);
+      if (typeof type !== "string" || type.length === 0) {
+        throw new Error("Cannot inventory memories with a missing storage type");
+      }
+      return type;
+    });
+    return [...new Set(types)].sort();
   }
 
   async getMemories(params: {
