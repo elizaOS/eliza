@@ -3849,7 +3849,11 @@ async function importConversation(
       } => m !== null,
     );
   if (
-    importMessages.some(({ sourceId }) => sourceId && !sourceId.isWellFormed())
+    // Unicode mode treats a valid surrogate pair as one scalar, matching the
+    // import encoder without requiring newer TypeScript library declarations.
+    importMessages.some(
+      ({ sourceId }) => sourceId && /[\uD800-\uDFFF]/u.test(sourceId),
+    )
   ) {
     error(
       res,

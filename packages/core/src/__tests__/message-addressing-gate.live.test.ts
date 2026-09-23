@@ -115,7 +115,7 @@ liveDescribe("group addressing gate — live Cerebras message loop", () => {
 				"Live group turn has no recorded model evidence; enable ELIZA_TRAJECTORY_LOGGING",
 			);
 		const modelResponses =
-			trajectory?.stages.flatMap((stage) =>
+			trajectory.stages.flatMap((stage) =>
 				stage.model ? [stage.model.response] : [],
 			) ?? [];
 		return { delivered, message, modelResponses, result, trajectory };
@@ -140,7 +140,7 @@ liveDescribe("group addressing gate — live Cerebras message loop", () => {
 		const direct = await runGroupTurn(
 			"AddressingProofAgent, how are you today?",
 		);
-		expect(direct.trajectory?.status).toBe("finished");
+		expect(direct.trajectory.status).toBe("finished");
 		expect(direct.modelResponses.length).toBeGreaterThan(0);
 		expect(
 			direct.modelResponses.some((response) =>
@@ -149,7 +149,7 @@ liveDescribe("group addressing gate — live Cerebras message loop", () => {
 		).toBe(true);
 		expect(
 			direct.delivered.length > 0 ||
-				typeof direct.result.responseContent?.text === "string",
+				Boolean(direct.result.responseContent?.text?.trim()),
 		).toBe(true);
 	}, 240_000);
 });
