@@ -1,3 +1,5 @@
+> Historical September 21 snapshot. Current integration scope and gates are in [CONSOLIDATION-PRD-20260921.md](CONSOLIDATION-PRD-20260921.md) and PR #32044. The local current acceptance ledger is `/Users/nubs/Documents/ChatGPT/test/LAST-MILE-20260922.md`. The old 5288 runtime statements below are historical, not current serving status.
+
 # Eliza integration status — 2026-09-21
 
 ## Saved checkpoints
