@@ -45,12 +45,12 @@ import {
 import { type AgentRuntime, logger } from "@elizaos/core";
 import { VaultMissError } from "@elizaos/credentials/vault";
 import { resolveNativeRuntimeFeatureFromPluginName } from "@elizaos/plugin-assistant";
+import { asRecord, CONNECTOR_PLUGINS } from "@elizaos/shared";
 import {
   type ConfigField,
   loadRegistry,
   type RegistryEntry,
-} from "@elizaos/registry/first-party";
-import { asRecord, CONNECTOR_PLUGINS } from "@elizaos/shared";
+} from "@elizaos/shared/catalog";
 import {
   bridgePluginParamsToRuntime,
   clearPluginParamValues,

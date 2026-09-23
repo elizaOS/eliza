@@ -51,7 +51,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/registry": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/credentials": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*"

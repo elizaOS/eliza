@@ -14,7 +14,7 @@
  *  2. **No env-var → plugin "provider map" literal.** The specific dead,
  *     divergent copy this issue deleted (`buildCharacterPlugins`) was an object
  *     literal keyed by env-var names (`ANTHROPIC_API_KEY`, …) whose values were
- *     `@elizaos/plugin-*` names. That business rule lives in the `@elizaos/registry`
+ *     `@elizaos/plugin-*` names. That business rule lives in the `@elizaos/shared/catalog`
  *     generator now (`provider-plugin-map.json`); a fresh copy must not reappear
  *     in core. Detected structurally: an object literal with ≥2 UPPER_SNAKE_CASE
  *     keys whose values are plugin-name string literals.
@@ -185,7 +185,7 @@ describe("core plugin-coupling boundary (#9941)", () => {
 		);
 		expect(
 			offenders,
-			`The provider env→plugin map is owned by @elizaos/registry; it must not be copied into core:\n${offenders
+			`The provider env→plugin map is owned by @elizaos/shared/catalog; it must not be copied into core:\n${offenders
 				.map((v) => `  ${v.file}:${v.line} ${v.detail}`)
 				.join("\n")}`,
 		).toEqual([]);

@@ -36,7 +36,7 @@ import {
   type Vault,
   writeSensitiveValueIfAbsentVerified,
 } from "@elizaos/credentials/vault";
-import { loadRegistry } from "@elizaos/registry/first-party";
+import { loadRegistry } from "@elizaos/shared/catalog";
 import {
   CONNECTOR_SECRET_FIELDS,
   connectorVaultKey,

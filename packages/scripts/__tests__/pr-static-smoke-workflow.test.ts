@@ -155,7 +155,6 @@ describe("PR Static Smoke workflow", () => {
         "packages/cloud/shared",
         "packages/core",
         "packages/prompts",
-        "packages/registry",
         "packages/shared",
         "packages/ui",
         "plugins/plugin-cloud-apps",

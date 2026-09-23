@@ -3,7 +3,7 @@
  *
  * Reads the aggregated `generated.json`, validates, caches, and exposes typed
  * accessors. This is the single import path the rest of the codebase consumes
- * (`@elizaos/registry/first-party`, re-exported by `@elizaos/app-core/registry`
+ * (`@elizaos/shared/catalog`, re-exported by `@elizaos/app-core/registry`
  * for backwards compatibility).
  *
  * Registration is plugin-side: bundled JSON is the default, and any plugin can

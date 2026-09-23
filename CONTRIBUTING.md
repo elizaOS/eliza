@@ -5,6 +5,17 @@ Contribute through issues, project boards, discussions, and pull requests agains
 useful record is the one a reviewer can inspect later: scoped work, current
 board state, linked code, and evidence that the real behavior happened.
 
+## Contribution scope
+
+elizaOS focuses on its first-party runtime, applications, and maintained integrations.
+We no longer accept third-party plugins or registry items, including new listings,
+listing updates, and registry submission tooling. Related issues and pull requests
+will be closed as out of scope.
+
+Contributions to maintained first-party capabilities remain welcome. The community
+plugin registry is retired; do not submit plugin listings or requests to restore
+third-party registry support.
+
 ## Start Work
 
 Open an issue before non-trivial work. The issue owns the scope, acceptance

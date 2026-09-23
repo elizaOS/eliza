@@ -50,7 +50,6 @@ jobs:
               - 'packages/elizaos/**'
               - 'packages/evidence/**'
               - 'packages/native/**'
-              - 'packages/registry/**'
               - 'packages/scenario-runner/**'
               - 'packages/scripts/**'
               - 'packages/synthetic-world/**'

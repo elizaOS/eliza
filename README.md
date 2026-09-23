@@ -6,8 +6,7 @@
     <a href="https://eliza.app">Eliza</a> ·
     <a href="https://cloud.eliza.app">Eliza Cloud</a> ·
     <a href="https://os.eliza.app">elizaOS downloads</a> ·
-    <a href="https://docs.elizaos.ai/">Documentation</a> ·
-    <a href="packages/registry">App catalog</a>
+    <a href="https://docs.elizaos.ai/">Documentation</a>
   </p>
 </div>
 
@@ -156,6 +155,11 @@ configuration, and local constraints in its own `README.md` and paired
 `CLAUDE.md` / `AGENTS.md`. Read the nearest package guide before making changes.
 
 ## Contributing
+
+elizaOS focuses on its first-party runtime, applications, and maintained integrations.
+We no longer accept third-party plugins or registry items, including new listings,
+listing updates, and registry submission tooling. Related issues and pull requests
+will be closed as out of scope.
 
 Open an issue before a non-trivial change and submit work through a pull request
 against `develop`. [CONTRIBUTING.md](CONTRIBUTING.md) defines the coordination,

@@ -4684,6 +4684,38 @@
       }
     },
     {
+      "id": "sqlite",
+      "name": "SQLite",
+      "description": "Durable per-agent SQLite database for Node 24",
+      "npmName": "@elizaos/plugin-sqlite",
+      "version": "2.0.3-beta.7",
+      "source": "bundled",
+      "tags": ["database", "storage", "sqlite"],
+      "config": {
+        "SQLITE_DATABASE_PATH": {
+          "type": "string",
+          "required": true,
+          "help": "Absolute database path inside the agent state directory"
+        }
+      },
+      "render": {
+        "visible": false,
+        "pinTo": [],
+        "style": "card",
+        "group": "feature-other",
+        "groupOrder": 12,
+        "actions": ["enable", "configure"]
+      },
+      "resources": {
+        "repository": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-sqlite"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "shortIds": [],
+      "kind": "plugin",
+      "subtype": "database"
+    },
+    {
       "id": "telegram",
       "name": "Telegram",
       "description": "Telegram connector for bot chats, groups, channels, and topic-based conversations through BotFather tokens or an Eliza Cloud webhook gateway.",

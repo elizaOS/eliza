@@ -42,10 +42,10 @@ src/
     dev-server.ts           Dev orchestration entry + startup timing
     desktop/                Electrobun tray/window React runtimes (AppWindowRenderer, DesktopTrayRuntime, …)
     build-character-from-config.ts, channel-plugin-map.ts, autonomy-policy.ts, sandbox-policy.ts
-  registry/index.ts         Back-compat shim: re-exports `@elizaos/registry/first-party`.
+  registry/index.ts         Back-compat shim: re-exports `@elizaos/shared/catalog`.
                             The curated app/plugin/connector registry (schema,
                             loader, entries, registerCuratedApp, registerRegistryEntry)
-                            now lives in `packages/registry/src/first-party/`.
+                            now lives in `packages/shared/src/catalog/`.
   config/app-config.ts      AppConfig types + DEFAULT_APP_CONFIG (re-exported from @elizaos/shared)
   first-run/                first-run-config + runtime-target resolution
   security/                 agent-vault-id, platform-secure-store (+ -node), wallet key hydration
@@ -93,8 +93,8 @@ Run from repo root with `--cwd packages/app-core`:
 - **Add a CLI command:** create `src/cli/program/register.<name>.ts` exporting `register<Name>Command(program)`, then wire it into `src/cli/program/command-registry.ts`.
 - **Add an API route:** add a handler module under `src/api/` and dispatch it from `src/api/server.ts` (or the relevant `*-routes.ts`). Use `sendJson` from `api/response.ts`; authorize via `api/auth.ts`.
 - **Add a registry app/plugin/connector:** curated data lives under
-  `packages/registry/src/first-party/curated/{apps,plugins,connectors}/` and
-  conforms to `packages/registry/src/first-party/schema.ts`. Regenerate the
+  `packages/shared/src/catalog/curated/{apps,plugins,connectors}/` and
+  conforms to `packages/shared/src/catalog/schema.ts`. Regenerate the
   derived registry rather than editing `generated.json`. Runtime-owned entries
   may self-register through `registerRegistryEntry()`; curated app aliases use
   `registerCuratedApp`. `@elizaos/app-core/registry` remains a compatibility
@@ -105,7 +105,7 @@ Run from repo root with `--cwd packages/app-core`:
 
 - `src/platform/empty-node-module.ts` is a tsconfig-paths alias target for browser builds — it is intentionally NOT re-exported from `index.ts` (re-exporting would shadow the real Node `api/server` / `runtime/eliza` exports with noops). Browser bundlers alias it in; Node imports the originals.
 - `index.ts` re-exports `./services/steward-sidecar.ts` with an explicit `.ts` extension to disambiguate from the sibling `steward-sidecar/` directory after `tsc --rewriteRelativeImportExtensions`.
-- The registry's `var cacheSlot` TDZ-hardening + `resolveEntriesDir()` now live in `@elizaos/registry/first-party` (`packages/registry/src/first-party/index.ts`); `packages/app-core/src/registry/index.ts` is a one-line re-export shim.
+- The registry's `var cacheSlot` TDZ-hardening + `resolveEntriesDir()` now live in `@elizaos/shared/catalog` (`packages/shared/src/catalog/index.ts`); `packages/app-core/src/registry/index.ts` is a one-line re-export shim.
 - `entry.ts` builds to `dist/entry.js` and is imported by the generated app launcher (desktop/Electrobun bundling emits a tiny ESM file that `import`s `dist/entry.js`) — there is no `bin` field; do not add one assuming a downstream installer.
 - `plugin-local-inference` routes are imported lazily by the API compatibility boundary; startup hooks resolve through `runtime/startup/app-contributors.ts` to avoid static plugin coupling.
 - Peer deps `react`, `react-dom`, `three`; Capacitor mobile bridges are `optionalDependencies` (`@elizaos/capacitor-*`). Node `>=24`.

@@ -16,6 +16,5 @@ export {
 } from "./deploy.js";
 export { info } from "./info.js";
 export { migrateAgent } from "./migrate-agent.js";
-export { registerPluginsCommand, submitPluginToRegistry } from "./plugins.js";
 export { upgrade } from "./upgrade.js";
 export { version } from "./version.js";

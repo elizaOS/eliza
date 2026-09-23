@@ -9,7 +9,7 @@ Choose the smallest correct ownership target:
 - `packages/app-core/` for CLI, local API, onboarding, config, runtime startup, and app shell behavior
 - `packages/agent/` for Eliza app runtime glue, providers, default skill roots, and app-level plugin wiring
 - `packages/app/` for the dashboard UI and `packages/app-core/platforms/electrobun/` for the Electrobun shell
-- `packages/elizaos/` for the `elizaos` CLI's scaffolding, upgrade, deploy, and registry-submission commands (build/test/publish run through the target plugin's own manifest scripts)
+- `packages/elizaos/` for the `elizaos` CLI's scaffolding, upgrade, and deploy commands (build/test/publish run through the target plugin's own manifest scripts)
 - `packages/skills/skills/` for bundled default skills
 - `plugins/plugin-*` for runtime plugins
 - `packages/cloud/` for Eliza Cloud backend, SDK, billing, containers, apps, domains, and monetization

@@ -9,7 +9,7 @@
  */
 import * as http from "node:http";
 import { Socket } from "node:net";
-import type { AppEntry } from "@elizaos/registry/first-party";
+import type { AppEntry } from "@elizaos/shared/catalog";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompatRuntimeState } from "./compat-route-shared";
 
@@ -27,7 +27,7 @@ vi.mock("./auth.ts", () => ({
   ensureRouteAuthorized: mocks.ensureRouteAuthorized,
 }));
 
-vi.mock("@elizaos/registry/first-party", () => ({
+vi.mock("@elizaos/shared/catalog", () => ({
   getApps: mocks.getApps,
   loadRegistry: mocks.loadRegistry,
 }));
