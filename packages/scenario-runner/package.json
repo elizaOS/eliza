@@ -120,7 +120,7 @@
   "devDependencies": {
     "@elizaos/corpus-tools": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "vitest": "^4.1.10",
+    "vitest": "^5.0.1",
     "@elizaos/testing": "workspace:*",
     "tsup": "^8.5.1"
   },
