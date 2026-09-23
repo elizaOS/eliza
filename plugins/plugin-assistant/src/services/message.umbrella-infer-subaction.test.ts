@@ -27,8 +27,8 @@ import type {
   PlannerRuntime,
   PlannerToolCall,
 } from "../runtime/planner-loop.ts";
-import { runSubPlanner } from "../runtime/sub-planner.ts";
 import { toolMessageContent } from "../runtime/planner-rendering";
+import { runSubPlanner } from "../runtime/sub-planner.ts";
 import {
   buildV5ExecutorContext,
   executeV5PlannedToolCall,

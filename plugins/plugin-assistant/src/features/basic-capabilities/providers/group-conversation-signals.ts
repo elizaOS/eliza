@@ -14,11 +14,11 @@
  * `isMultiPartyChannel` before computing anything.
  */
 
-import { getUserMessageText } from "@elizaos/core";
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import {
   ChannelType,
   getRecentMessagesData,
+  getUserMessageText,
   isInternalBridgeMessage,
 } from "@elizaos/core";
 

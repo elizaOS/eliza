@@ -4336,13 +4336,18 @@ function appendTerminalPlannerOutputEvent(args: {
   trajectory: PlannerTrajectory;
   iteration: number;
   message?: string;
+  fromStageOne?: boolean;
 }): void {
   const createdAt = Date.now();
   const unsafe = isUnsafeUserVisibleText(args.message);
-  const label = "terminal_planner_output";
-  const eventId = `terminal-planner-output:${args.iteration}:${createdAt}`;
+  const label = args.fromStageOne
+    ? "stage_one_reply_proposal"
+    : "terminal_planner_output";
+  const eventId = `${args.fromStageOne ? "stage-one-reply-proposal" : "terminal-planner-output"}:${args.iteration}:${createdAt}`;
   const content = [
-    "planner_terminal_output:",
+    args.fromStageOne
+      ? "stage_one_reply_proposal:"
+      : "planner_terminal_output:",
     normalizeCompleteText(args.message ?? ""),
     "",
     unsafe
@@ -4352,7 +4357,7 @@ function appendTerminalPlannerOutputEvent(args: {
   appendPlannerModelFeedbackEvent(args.trajectory, {
     id: eventId,
     type: "segment",
-    source: "planner-loop",
+    source: args.fromStageOne ? "message-service" : "planner-loop",
     createdAt,
     metadata: {
       iteration: args.iteration,

@@ -10,12 +10,12 @@
 import { describe, expect, it } from "vitest";
 import { HANDLE_RESPONSE_TOOL_NAME } from "../../../../packages/core/src/actions/to-tool.ts";
 import type { GenerateTextResult } from "../../../../packages/core/src/types/index.ts";
+import { parseMessageHandlerModelOutput } from "./message/stage1-generation";
+import { extractMessageHandlerRawParsed } from "./message/stage1-output";
 import {
   getStage1RetryReason,
   shouldRetryStage1Generation,
 } from "./message.ts";
-import { parseMessageHandlerModelOutput } from "./message/stage1-generation";
-import { extractMessageHandlerRawParsed } from "./message/stage1-output";
 
 function rawWith(opts: {
   finishReason?: string;

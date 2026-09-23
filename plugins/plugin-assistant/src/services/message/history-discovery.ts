@@ -1,7 +1,6 @@
 /** Foreground reads of reviewed original dialogue before reply processing or
  * effects. Original context events remain intact; only Stage-1 rendering changes. */
 
-import { ElizaError } from "@elizaos/core";
 import type {
   ContextObject,
   ContextObjectPromptSegment,

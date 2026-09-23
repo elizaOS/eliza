@@ -1,6 +1,5 @@
 /** Builds user-visible failure responses while preserving complete dialogue context and explicit missing-provider failures. */
 
-import { isProviderSchemaRejection } from "@elizaos/core";
 import type {
   Content,
   IAgentRuntime,
@@ -17,6 +16,7 @@ import {
   isAuthError,
   isInsufficientCreditsError,
   isModelProviderRetryBudgetExhaustedError,
+  isProviderSchemaRejection,
   isRateLimitError,
   ModelType,
   type StructuredFailureCause,

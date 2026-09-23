@@ -134,6 +134,7 @@ export * from "./plugins/native-features.ts";
 export * from "./runtime/action-catalog.js";
 // Feature-owned public API.
 export * from "./runtime/builtin-field-evaluators.ts";
+export { visibleHistoryEventIds } from "./runtime/history-retention.ts";
 export {
   getMessageHandlerReply,
   type MessageHandlerRoute,
@@ -154,9 +155,14 @@ export * from "./runtime/trajectory-recorder";
 export * from "./services/approval/index.ts";
 export * from "./services/evaluator.ts";
 export * from "./services/evaluator-priorities.ts";
+export { getEvaluatorProgressState } from "./services/evaluator-progress.ts";
 export { canonicalEvaluatorMessages } from "./services/evaluator-transcript.ts";
 export * from "./services/global-pause/index.ts";
 export * from "./services/handoff/index.ts";
+export {
+  HISTORY_RETENTION_EVALUATOR,
+  historyRetentionContext,
+} from "./services/history-retention.ts";
 export { priorDialogueOriginalText } from "./services/message/dialogue-context.ts";
 export {
   CODING_DELEGATION_ACTION_TAGS,
@@ -174,10 +180,3 @@ export * from "./services/relationships-graph-builder.ts";
 export * from "./services/trajectories.ts";
 export { serializeTrajectoryExport } from "./services/trajectory-export.ts";
 export * from "./utils/prompt-batcher.ts";
-
-export { visibleHistoryEventIds } from "./runtime/history-retention.ts";
-export { getEvaluatorProgressState } from "./services/evaluator-progress.ts";
-export {
-  HISTORY_RETENTION_EVALUATOR,
-  historyRetentionContext,
-} from "./services/history-retention.ts";

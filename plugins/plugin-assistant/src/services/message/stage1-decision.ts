@@ -1,10 +1,9 @@
 /** Builds the complete Stage 1 request, performs bounded empty-output retries, and validates the response decision. Registers diagnostic persistence with the outer turn before handing control to routing and planning. */
 
-import { providerReviewSources, withProviderReviewSchema } from "@elizaos/core";
 import type {
-  JsonValue,
   GenerateTextResult,
   JSONSchema,
+  JsonValue,
   Memory,
   MessageHandlerResult,
   ResponseHandlerFieldContext,
@@ -28,11 +27,13 @@ import {
   hashString,
   isObjectRecord,
   ModelType,
+  providerReviewSources,
   recordInferenceSpan,
   sanitizeUserVisibleModelOutput,
   timeInferenceSpan,
   withGuidedDecodeProviderOptions,
   withModelInputBudgetProviderOptions,
+  withProviderReviewSchema,
   withRequiredCompletionSourceIdentity,
 } from "@elizaos/core";
 import { canPublishProgressBeforeResponseDecision } from "../../features/trust/should-respond-risk-gate.ts";
@@ -67,7 +68,6 @@ import {
 import { evaluatePlannedReplyEgress } from "./egress-policy.ts";
 import {
   canRepairHistoryIdentity,
-  repairableHistorySourceIds,
   canRepairIncompleteHistorySelection,
   HISTORY_REFERENCE_PREFIX,
   type HistoryDiscovery,
@@ -75,6 +75,7 @@ import {
   loadHistoryReferences,
   projectReviewedHistory,
   readHistoryContextRequests,
+  repairableHistorySourceIds,
   requestedHistory,
   withReviewedHistorySelection,
 } from "./history-discovery.js";
@@ -114,6 +115,7 @@ import {
 } from "./stage1-input.ts";
 import {
   extractMessageHandlerRawParsed,
+  hasHandleResponseToolCall,
   messageHandlerFromFieldResult,
   normalizeRawParsedForFieldRegistry,
   reportRejectedUserVisibleModelOutput,

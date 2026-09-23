@@ -14,11 +14,11 @@ import type {
   ToolDefinition,
 } from "@elizaos/core";
 import {
-  normalizeActionJsonSchema,
   actionGateRejection,
   DISCOVER_TOOLS_NAME,
   ElizaError,
   isObjectRecord,
+  normalizeActionJsonSchema,
 } from "@elizaos/core";
 import { buildActionCatalog } from "../../runtime/action-catalog";
 import { mergeAgentContexts } from "./action-surface.js";
