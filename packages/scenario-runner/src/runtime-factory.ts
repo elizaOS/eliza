@@ -19,6 +19,7 @@ import {
 } from "@elizaos/core";
 import {
   createAssistantPlugin,
+  documentsPlugin,
   trajectoriesPlugin,
 } from "@elizaos/plugin-assistant";
 import {
@@ -1003,6 +1004,7 @@ export async function createScenarioRuntime(
   // Without this plugin the runtime has no conversational reply action and
   // nearly every scenario fails with "expected 1 call(s) to REPLY, saw 0".
   await runtime.registerPlugin(createAssistantPlugin());
+  await runtime.registerPlugin(documentsPlugin);
 
   // Simulated scenarios omit embeddings because their assertions do not score
   // semantic retrieval. AgentRuntime treats an absent embedding provider as an
