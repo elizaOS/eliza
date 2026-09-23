@@ -1,14 +1,7 @@
 /**
- * Voice == text DELIVERY parity through the real `DefaultMessageService
- * .handleMessage` (sibling of voice-text-parity-pipeline.test.ts, which covers
- * pipeline-shape parity). The shipped contract: a tool-routed utterance
- * arriving as a VOICE_DM must produce the SAME user-visible deliveries as the
- * identical utterance arriving as a text DM — the Stage-1 pre-planner ack is
- * only delivered ahead of the final reply when the routed work is an
- * async-handoff action (`asyncHandoff: true`, sub-agent spawn class), never
- * for synchronous retrieval/tool turns. Egress-rejected early replies are
- * dropped, not substituted with a manufactured "On it.". The message pipeline
- * is real; only the model surface is stubbed (deterministic — no live model).
+ * Real message-service delivery preserves one final callback for direct voice
+ * and text. Model-authored progress uses the same separate transient callback;
+ * controlled inference fixtures verify ordering and reject ungrounded progress.
  */
 
 import { randomUUID as v4 } from "node:crypto";
@@ -79,6 +72,7 @@ function stage1ToolRouted(replyText: string, candidateActionNames: string[]) {
 					intents: [],
 					candidateActionNames,
 					replyText,
+					replyEffectStatus: "pending",
 					facts: [],
 					relationships: [],
 					addressedTo: [],
@@ -130,12 +124,14 @@ function makeAction(
 function makeUseModel(queues: {
 	responseHandler: unknown[];
 	actionPlanner: unknown[];
+	onCall?: (modelType: unknown) => void;
 }): IAgentRuntime["useModel"] {
 	const byType = new Map<string, unknown[]>([
 		[String(ModelType.RESPONSE_HANDLER), [...queues.responseHandler]],
 		[String(ModelType.ACTION_PLANNER), [...queues.actionPlanner]],
 	]);
 	return vi.fn(async (modelType: unknown) => {
+		queues.onCall?.(modelType);
 		const queue = byType.get(String(modelType));
 		if (!queue || queue.length === 0) {
 			throw new Error(`Unexpected useModel call for ${String(modelType)}`);
@@ -214,7 +210,9 @@ async function runTurn(opts: {
 	actions: Action[];
 	plannerActionName: string;
 	finalText: string;
-}): Promise<string[]> {
+}): Promise<{ messages: string[]; progress: string[]; order: string[] }> {
+	const progress: string[] = [];
+	const order: string[] = [];
 	const runtime = makePipelineRuntime(
 		makeUseModel({
 			responseHandler: [
@@ -222,6 +220,9 @@ async function runTurn(opts: {
 				finishDecision(opts.finalText),
 			],
 			actionPlanner: [plannerToolCall(opts.plannerActionName)],
+			onCall: (type) => {
+				order.push(`model:${String(type)}`);
+			},
 		}),
 		opts.actions,
 		opts.channelType,
@@ -233,12 +234,23 @@ async function runTurn(opts: {
 		makeMessage(opts.channelType, opts.utterance),
 		async (content) => {
 			deliveries.push(content);
+			order.push("final");
 			return [];
 		},
+		{
+			onPlanningAcknowledgment: (text) => {
+				progress.push(text);
+				order.push("progress");
+			},
+		},
 	);
-	return deliveries
-		.map((content) => (typeof content.text === "string" ? content.text : ""))
-		.filter((text) => text.length > 0);
+	return {
+		messages: deliveries
+			.map((content) => (typeof content.text === "string" ? content.text : ""))
+			.filter((text) => text.length > 0),
+		progress,
+		order,
+	};
 }
 
 describe("voice == text delivery parity through handleMessage", () => {
@@ -290,7 +302,7 @@ describe("voice == text delivery parity through handleMessage", () => {
 		},
 	);
 
-	it("a synchronous tool-routed turn delivers the same bubbles on VOICE_DM and DM (no pre-planner filler)", async () => {
+	it("synchronous direct voice and text share transient progress and one final", async () => {
 		const base = {
 			utterance: "what did we decide about the standup time?",
 			replyText: PROGRESS_ACK,
@@ -302,15 +314,18 @@ describe("voice == text delivery parity through handleMessage", () => {
 		const text = await runTurn({ ...base, channelType: ChannelType.DM });
 		const voice = await runTurn({ ...base, channelType: ChannelType.VOICE_DM });
 
-		// Equal user-visible delivery counts AND equal content: one bubble — the
-		// answer — on both transports. The Stage-1 ack is never spoken ahead of
-		// a synchronous retrieval result.
-		expect(text).toEqual([SYNC_FINAL]);
+		expect(text.messages).toEqual([SYNC_FINAL]);
 		expect(voice).toEqual(text);
-		expect(voice).not.toContain(PROGRESS_ACK);
+		for (const turn of [text, voice]) {
+			expect(turn.progress).toEqual([PROGRESS_ACK]);
+			expect(turn.order.indexOf("progress")).toBeLessThan(
+				turn.order.indexOf(`model:${ModelType.ACTION_PLANNER}`),
+			);
+			expect(turn.order.filter((event) => event === "final")).toHaveLength(1);
+		}
 	});
 
-	it("an asyncHandoff-flagged candidate still gets the early ack on voice", async () => {
+	it("async direct voice and text share transient progress and one final", async () => {
 		const base = {
 			utterance: "spawn a coding agent to fix the failing build",
 			replyText: PROGRESS_ACK,
@@ -322,12 +337,15 @@ describe("voice == text delivery parity through handleMessage", () => {
 		const text = await runTurn({ ...base, channelType: ChannelType.DM });
 		const voice = await runTurn({ ...base, channelType: ChannelType.VOICE_DM });
 
-		// The handoff's execution continues after the turn returns, so voice
-		// earns the pre-planner ack; the final reply follows on both transports.
-		expect(voice[0]).toBe(PROGRESS_ACK);
-		expect(voice).toContain(ASYNC_FINAL);
-		expect(voice).toHaveLength(2);
-		expect(text).toEqual([ASYNC_FINAL]);
+		expect(text.messages).toEqual([ASYNC_FINAL]);
+		expect(voice).toEqual(text);
+		for (const turn of [text, voice]) {
+			expect(turn.progress).toEqual([PROGRESS_ACK]);
+			expect(turn.order.indexOf("progress")).toBeLessThan(
+				turn.order.indexOf(`model:${ModelType.ACTION_PLANNER}`),
+			);
+			expect(turn.order.filter((event) => event === "final")).toHaveLength(1);
+		}
 	});
 
 	it("an egress-rejected early reply is dropped, never substituted with a manufactured ack", async () => {
@@ -347,10 +365,11 @@ describe("voice == text delivery parity through handleMessage", () => {
 		// Even with an async-handoff candidate (the gate would allow delivery),
 		// the rejected claim is dropped — not rewritten to "On it." — so both
 		// transports deliver only the grounded final reply.
-		expect(voice).toEqual([ASYNC_FINAL]);
-		expect(text).toEqual([ASYNC_FINAL]);
-		expect(voice).not.toContain(PROGRESS_ACK);
-		expect(voice.join(" ")).not.toContain("already scheduled");
+		expect(voice.messages).toEqual([ASYNC_FINAL]);
+		expect(text.messages).toEqual([ASYNC_FINAL]);
+		expect(voice.progress).toEqual([]);
+		expect(text.progress).toEqual([]);
+		expect(voice.messages.join(" ")).not.toContain("already scheduled");
 	});
 });
 
