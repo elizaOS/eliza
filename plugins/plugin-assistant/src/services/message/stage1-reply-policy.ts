@@ -323,8 +323,8 @@ export function inferDirectCurrentRequestCandidateInference(
 
 /**
  * Keep terminal non-applied replies out of metadata-inferred planning. Other
- * answered simple turns may suppress inferred view or owner matches with the
- * model's explicit no-effect classification and no declared intent; legacy
+ * answered simple turns may suppress inferred view, owner, or coding matches
+ * with the model's explicit no-effect classification and no declared intent; legacy
  * incomplete envelopes remain conservative. Model-selected actions and
  * pending/applied effects keep their normal planning and verification paths.
  */
@@ -340,7 +340,8 @@ export function shouldSuppressInferredCandidateEscalation(args: {
     args.stageOneReplyEffectStatus !== "non_applied" &&
     args.inference.kind !== "view-capability" &&
     !(
-      (args.inference.kind === "view-surface" ||
+      (args.inference.kind === "coding" ||
+        args.inference.kind === "view-surface" ||
         args.inference.kind === "owner-goals" ||
         args.inference.kind === "owner-scheduled-admin") &&
       args.stageOneReplyEffectStatus === "none" &&

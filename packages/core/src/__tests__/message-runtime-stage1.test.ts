@@ -7098,6 +7098,50 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("keeps a completed fictional-facts answer direct despite incidental coding words", async () => {
+		const reply =
+			"Noted. Mira = PINE-17, Jonah = COVE-42, both fictional. No notes touched.";
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: reply,
+				extra: { replyEffectStatus: "none" },
+			}),
+		]);
+		const taskHandler = vi.fn(async () => ({
+			success: true,
+			text: "delegated",
+		}));
+		runtime.actions = [
+			{
+				name: "TASKS",
+				tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+				description: "Delegate coding work.",
+				parameters: [],
+				examples: [],
+				validate: async () => true,
+				handler: taskHandler,
+			},
+		] as never;
+		const message = makeMessage();
+		message.content = {
+			...message.content,
+			text: "Fictional test facts: Mira's project code is PINE-17. Jonah's project code is COVE-42. These are fictional characters, not me. No note is requested.",
+			mentionContext: { isMention: true },
+		};
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		expect(taskHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		if (result.kind === "direct_reply")
+			expect(result.result.responseContent?.text).toBe(reply);
+	});
+
 	it("answers a trivial math turn directly despite a views capability-token overlap (tj-501e594bfb23a7)", async () => {
 		// Full Stage-1 pipeline fence for the VIEWS hijack: Stage 1 answers
 		// "whats 17 times 23?" with contexts=["simple"] / replyText="391" /
@@ -12497,7 +12541,7 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 		const stage1Content = (stage1Call?.messages ?? [])
 			.map((entry) => entry.content ?? "")
 			.join("\n");
-		expect(stage1Content).toContain("trigger_automation_policy:");
+		expect(stage1Content.match(/trigger_automation_policy:/g)).toHaveLength(1);
 		expect(stage1Content).toContain(
 			"whatever you reply is delivered to the user",
 		);
