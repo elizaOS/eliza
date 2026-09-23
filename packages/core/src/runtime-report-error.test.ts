@@ -185,7 +185,7 @@ describe("AgentRuntime.reportError", () => {
 		expect(calls).toBe(2);
 	});
 
-	it("keeps independent same-scope reports and other runtimes observable", async () => {
+	it("keeps independent reports observable while stopping cross-runtime cycles", async () => {
 		const runtime = makeRuntime();
 		const other = makeRuntime();
 		const release = Promise.withResolvers<void>();
@@ -195,6 +195,8 @@ describe("AgentRuntime.reportError", () => {
 		let otherCalls = 0;
 		other.registerEvent(EventType.ERROR_REPORTED, async () => {
 			otherCalls++;
+			await Promise.resolve();
+			runtime.reportError("Same", new Error("cycle back to origin"));
 		});
 		runtime.registerEvent(EventType.ERROR_REPORTED, async () => {
 			calls++;
@@ -213,7 +215,12 @@ describe("AgentRuntime.reportError", () => {
 			release.resolve();
 		}
 		await finished.promise;
+		await new Promise<void>((resolve) => setImmediate(resolve));
 		expect(otherCalls).toBe(1);
+		expect(calls).toBe(2);
+		expect(runtime.getRecentReportedErrors().at(-1)?.message).toBe(
+			"cycle back to origin",
+		);
 	});
 
 	it("forwards to the AgentEventService error stream when registered", async () => {

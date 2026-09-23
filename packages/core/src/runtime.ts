@@ -343,6 +343,10 @@ const NON_CREDENTIAL_SECRET_KEYS: ReadonlySet<string> = new Set([
 	"LANG",
 ]);
 
+// One process-lifetime context avoids per-runtime async-hook registrations.
+// Its immutable stores retain nested runtimes only for the originating async chain.
+const errorReportScopes = new AsyncLocalStorage<ReadonlySet<AgentRuntime>>();
+
 export class AgentRuntime implements IAgentRuntime {
 	private readonly dataMutations = new RuntimeDataMutations(this, {
 		invalidateTurnEntityDetails: (...args) =>
@@ -503,8 +507,6 @@ export class AgentRuntime implements IAgentRuntime {
 	private static readonly REPORTED_ERROR_RING_CAP = 200;
 	/** Re-entrancy latch so a failure inside reportError stays warn-only (J7). */
 	private inReportError = false;
-	/** Attributes diagnostic subscribers across awaits without blocking independent reports. */
-	private readonly errorReportScope = new AsyncLocalStorage<string>();
 	models = new Map<string, ModelHandler[]>();
 	private secretRedactionProfileSignature = "";
 	private secretRedactionProfileRevision = 0;
@@ -4152,7 +4154,8 @@ export class AgentRuntime implements IAgentRuntime {
 
 			this.forwardToAgentEventStream(entry, runId);
 
-			if (this.errorReportScope.getStore() !== undefined) {
+			const reportingRuntimes = errorReportScopes.getStore();
+			if (reportingRuntimes?.has(this)) {
 				// error-policy:J7 subscriber diagnostics remain observable without
 				// invoking the failing subscriber again, including after awaits.
 				return;
@@ -4162,8 +4165,8 @@ export class AgentRuntime implements IAgentRuntime {
 			// diagnostic one-liner. A rejected emit (bad handler) is swallowed to
 			// the logger here — it must not surface as an unhandled rejection and
 			// must not re-enter reportError.
-			void this.errorReportScope
-				.run(scope, () =>
+			void errorReportScopes
+				.run(new Set([...(reportingRuntimes ?? []), this]), () =>
 					this.emitEvent(EventType.ERROR_REPORTED, {
 						runtime: this,
 						source: scope,
