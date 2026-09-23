@@ -158,14 +158,12 @@ describe("SQL admission snapshot guards", () => {
     );
     expect(
       (
-        await h
-          .store()
-          .claimForFire({
-            taskId: persisted.taskId,
-            firedAtIso: fireAt,
-            ...observed(snapshots[0]),
-            claimedMetadata: {},
-          })
+        await h.store().claimForFire({
+          taskId: persisted.taskId,
+          firedAtIso: fireAt,
+          ...observed(snapshots[0]),
+          claimedMetadata: {},
+        })
       ).kind,
     ).toBe("raced");
   }, 15_000);
