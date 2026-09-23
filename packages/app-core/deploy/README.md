@@ -60,3 +60,21 @@ bash ../eliza/packages/app-core/deploy/deploy-to-nodes.sh --status
 | `CF_WORKER_NAME` | Suggested Cloudflare worker name | `eliza-cloud-proxy` |
 | `CF_ALLOWED_ORIGINS` | Allowed CORS origins for the proxy worker | _empty_ |
 | `CF_PROXY_PATH_PREFIXES` | Comma-separated path prefixes forwarded by the proxy worker | _empty_ |
+
+## Confidential release signing
+
+`bun run --cwd packages/app-core release:confidential:sign --input release.json --key authority.pem --output signed-release.json` signs a new dstack application release for the CPU admission profile. The input is JSON with `agentId` (UUID), `compose` (the exact AppCompose JSON bytes as a string), `osImageHash` (64 lowercase hex), `variant` (`dstack-tdx` or `dstack-nitro-enclave`), and UTC `notBefore`/`expiresAt` strings. The key is a local Ed25519 PEM private key. The output must not already exist and is created with mode 0600. Keep signing keys out of images, source control, deployment environment variables and logs.
+
+The measured AppCompose name must be `eliza-<agentId>` so distinct agents receive distinct initial application/key namespaces. The signer checks manifest version `"3"`, matching platform requirements, KMS key-provider pinning, secure time, retained instance identity, disabled public logs/sysinfo and disabled storage discard. It does not review container images, plugins, egress, provider contracts or the rest of the compose document. Only sign an independently reviewed deployment. It derives the new application ID using dstack's first-20-bytes compose-SHA256 convention; it does not infer an existing application ID for upgrades.
+
+Pin the matching `ELIZA_DSTACK_RELEASE_PUBKEY` in measured configuration before hashing compose. Deliver the output as `ELIZA_DSTACK_RELEASE_POLICY_JSON` through the authenticated encrypted launch channel, outside compose. Never place the envelope in the compose bytes it authenticates. The agent CPU profile verifies the domain-separated signature, expected application/compose/OS identity and validity interval; a running process still needs fresh evidence, revocation and KMS policy enforcement.
+
+This command signs release identity only. It does not create a VM, encrypt an environment, establish hardware trust, implement network isolation, migrate SQLite state or authorize confidential inference. TDX VMM provisioning and Nitro Enclave launching remain separate deployment paths. The broader deployment implementation is tracked in [#32097](https://github.com/elizaOS/eliza/issues/32097).
+
+### Provision a stopped TDX VM
+
+`bun run --cwd packages/app-core deploy:confidential:provision --input provision.json --authority authority-public.pem` invokes the dstack VMM `CreateVm` JSON API after checking the release signature and exact compose identity. `DSTACK_VMM_AUTHORIZATION` may carry the existing VMM authorization header; it is never printed. Use an HTTPS VMM origin or a loopback SSH tunnel. No remote HTTP, redirects, simulation or caller-supplied `no_tee` override is accepted.
+
+The request contains the signing input fields above plus `endpoint`, `envelope` (the signed output), `image` (the VMM's installed guest-image label), `vcpu`, `memory` (MiB), `diskSize` (GiB), `encryptedEnv` (already encrypted dstack environment bytes, hex), and `kmsUrls` (HTTPS destinations whose CA identity is pinned in compose). Environment encryption and KMS approval must happen through the trusted provisioning workflow; this command does not fetch an unverified encryption key. The signed OS hash remains the runtime admission identity even if a host substitutes an image behind a label.
+
+The returned JSON includes `vmId`, `appId` and `state: "created-stopped"`. It proves only a VMM receipt, not a running or attested VM. Reconcile inventory before retrying any failed/ambiguous call because CreateVm is not idempotent. This path does not start the VM, expose an ingress port, implement container egress policy, authorize inference or launch an AWS Nitro Enclave. Those remain separate integration and acceptance requirements in #32097.
