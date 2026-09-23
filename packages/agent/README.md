@@ -766,3 +766,11 @@ are intentionally omitted. BGE migration still requires a verified full storage
 snapshot. Historical exports with mismatched manifests are not silently accepted;
 retain the original encrypted artifact and validate any deliberate recovery copy
 separately before using it.
+
+Transfer payload version 2 discovers the adapter's complete agent-scoped memory
+type inventory through `listMemoryTypes`; no fixed list defines export coverage.
+Each record carries its actual storage type. Documents precede their fragments
+on restore, and document references are remapped to the restored parent IDs.
+An orphan fragment is rejected before graph writes. The encrypted envelope stays
+V1, but older importers reject the newer payload version instead of silently
+reclassifying its records. Current readers retain support for older payloads.

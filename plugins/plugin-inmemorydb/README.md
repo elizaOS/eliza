@@ -91,3 +91,7 @@ single-owner SQLite subclass retains its existing persistent cache keys and reje
 a different agent scope.
 
 Both semantic-search adapters support `includeEmbedding: false` to omit vectors from returned copies and `excludeRoomIds` to narrow the scoped candidate set before ranking. Neither option mutates stored memories or replaces authorization.
+
+`listMemoryTypes()` discovers the current agent's stored namespaces, including
+custom types, while excluding records belonging to another agent in shared
+storage. SQLite inherits this discovery within its single-owner file.

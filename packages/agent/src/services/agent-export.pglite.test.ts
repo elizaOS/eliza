@@ -112,6 +112,90 @@ test("restores timestamp-bearing SQL rows under the imported agent and retains m
       tableName: "messages",
     },
   ]);
+  const documentId = id();
+  const common = {
+    agentId: source.agentId,
+    roomId: room,
+    entityId: person,
+    createdAt,
+  };
+  await source.adapter.createMemories([
+    {
+      tableName: "documents",
+      memory: {
+        ...common,
+        id: documentId,
+        content: { text: "Full retained document" },
+        metadata: { type: "document", timestamp: createdAt },
+      },
+    },
+    {
+      tableName: "document_fragments",
+      memory: {
+        ...common,
+        id: id(),
+        content: { text: "Retained document fragment" },
+        metadata: { type: "fragment", documentId, position: 0 },
+      },
+    },
+    {
+      tableName: "memories",
+      memory: {
+        ...common,
+        id: id(),
+        content: { text: "Generic retained memory" },
+      },
+    },
+    {
+      tableName: "plugin_fixture_notes",
+      memory: {
+        ...common,
+        id: id(),
+        content: { text: "Plugin-owned memory" },
+        metadata: { type: "message" },
+      },
+    },
+  ]);
+  if (!source.adapter.withAgentScope || !source.adapter.listMemoryTypes)
+    throw new Error("SQL export capabilities unavailable");
+  const foreign = id();
+  await source.adapter.withAgentScope(foreign, async (scoped) => {
+    await scoped.createAgents([
+      {
+        id: foreign,
+        name: "Foreign fixture",
+        createdAt,
+        updatedAt: createdAt,
+      },
+    ]);
+    const foreignRoom = id(),
+      foreignEntity = id();
+    await scoped.createRooms([
+      {
+        id: foreignRoom,
+        agentId: foreign,
+        source: "test",
+        type: ChannelType.GROUP,
+      },
+    ]);
+    await scoped.createEntities([
+      { id: foreignEntity, agentId: foreign, names: ["Foreign"] },
+    ]);
+    await scoped.createMemories([
+      {
+        tableName: "foreign_only",
+        memory: {
+          id: id(),
+          agentId: foreign,
+          entityId: foreignEntity,
+          roomId: foreignRoom,
+          content: { text: "Must not be exported" },
+        },
+      },
+    ]);
+  });
+  const originalTypes = await source.adapter.listMemoryTypes();
+  expect(originalTypes).not.toContain("foreign_only");
   const password = "fixture-transfer-password";
   const archive = await exportAgent(source.runtime, password);
   const result = await importAgent(target.runtime, archive, password);
@@ -120,7 +204,7 @@ test("restores timestamp-bearing SQL rows under the imported agent and retains m
     worlds: 1,
     rooms: 1,
     entities: 1,
-    memories: 1,
+    memories: 5,
   });
   if (!target.adapter.withAgentScope) throw new Error("SQL scope unavailable");
   await target.adapter.withAgentScope(
@@ -142,6 +226,26 @@ test("restores timestamp-bearing SQL rows under the imported agent and retains m
       expect(memories[0].content).toEqual(content);
       expect(memories[0].createdAt).toBe(createdAt);
       expect(memories[0].roomId).toBe(rooms[0].id);
+      if (!scoped.listMemoryTypes)
+        throw new Error("SQL memory inventory unavailable");
+      expect(await scoped.listMemoryTypes()).toEqual(originalTypes);
+      const documents = await scoped.getMemories({ tableName: "documents" });
+      const fragments = await scoped.getMemories({
+        tableName: "document_fragments",
+      });
+      expect(documents).toHaveLength(1);
+      expect(fragments).toHaveLength(1);
+      expect(fragments[0].metadata).toMatchObject({
+        documentId: documents[0].id,
+        position: 0,
+      });
+      expect(
+        (await scoped.getMemories({ tableName: "plugin_fixture_notes" }))[0]
+          .metadata?.type,
+      ).toBe("message");
+      expect(await scoped.getMemories({ tableName: "foreign_only" })).toEqual(
+        [],
+      );
       const entities = await scoped.getEntitiesByIds([memories[0].entityId]);
       expect(entities[0].agentId).toBe(result.agentId);
     },
