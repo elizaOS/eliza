@@ -1,8 +1,7 @@
 /**
- * Regression for #17299: an explicit VIEWS `show/home` request issued while
- * Notes is the foreground view must execute Home navigation. It must never be
- * rewritten into the foreground view's `get-notes` capability, which printed
- * the user's note contents as a verified, turn-completing tool result.
+ * Exercises planner-owned Home navigation with a foreground Notes registry and
+ * scoped-action recovery through the real handler and planner loop. Model replies
+ * and transport are deterministic; navigation never proves a Notes mutation.
  */
 import {
 	AgentRuntime,
@@ -10,7 +9,7 @@ import {
 	type ViewScopedAction,
 } from "@elizaos/core";
 import { renderActionResultsForModel } from "@elizaos/plugin-assistant";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	actionResultToPlannerToolResult,
 	runPlannerLoop,
@@ -53,6 +52,8 @@ vi.mock("@elizaos/shared/runtime-env", async (importOriginal) => {
 		await importOriginal<typeof import("@elizaos/shared/runtime-env")>();
 	return { ...actual, resolveServerOnlyPort: coreMock.resolveServerOnlyPort };
 });
+
+afterEach(() => vi.unstubAllGlobals());
 
 function message(text: string, roomId = "room-1") {
 	return { entityId: "user-1", roomId, agentId: "agent-1", content: { text } };
@@ -350,81 +351,65 @@ describe("VIEWS scoped-action namespace preflight", () => {
 	});
 });
 
-function createRuntime() {
-	return {
-		runtime: {
-			agentId: "agent-1",
-			getSetting: vi.fn(() => undefined),
-			getTasks: vi.fn(async () => []),
-			createTask: vi.fn(async () => {}),
-			deleteTask: vi.fn(async () => {}),
-			useModel: vi.fn(async () => ""),
-		},
-	};
-}
-
 // Production-shape registry: the real plugin-notes Notes and plugin-calendar
 // Calendar catalog entries (labels, tags, capability ids/descriptions) plus
 // the builtin chat/home surface.
-const notesView = (): ViewSummary =>
-	({
-		id: "notes",
-		label: "Notes",
-		available: true,
-		pluginName: "test",
-		viewType: "gui",
-		path: "/notes",
-		description:
-			"Durable notes that the user and agent can create, read, update, and delete.",
-		tags: ["notes", "notepad", "sticky notes", "scratchpad", "view switching"],
-		capabilities: [
-			{
-				id: "get-notes",
-				description: "List every sticky note as structured data.",
-			},
-			{ id: "get-note", description: "Read one sticky note by id." },
-			{ id: "create-note", description: "Create a durable sticky note." },
-			{
-				id: "update-note",
-				description: "Update one or more fields on a sticky note.",
-			},
-			{
-				id: "delete-note",
-				description:
-					"Delete one sticky note by id, exact title, or unique query.",
-			},
-		],
-	}) as unknown as ViewSummary;
+const notesView = (): ViewSummary => ({
+	id: "notes",
+	label: "Notes",
+	available: true,
+	pluginName: "test",
+	viewType: "gui",
+	path: "/notes",
+	description:
+		"Durable notes that the user and agent can create, read, update, and delete.",
+	tags: ["notes", "notepad", "sticky notes", "scratchpad", "view switching"],
+	capabilities: [
+		{
+			id: "get-notes",
+			description: "List every sticky note as structured data.",
+		},
+		{ id: "get-note", description: "Read one sticky note by id." },
+		{ id: "create-note", description: "Create a durable sticky note." },
+		{
+			id: "update-note",
+			description: "Update one or more fields on a sticky note.",
+		},
+		{
+			id: "delete-note",
+			description:
+				"Delete one sticky note by id, exact title, or unique query.",
+		},
+	],
+});
 
-const calendarView = (): ViewSummary =>
-	({
-		id: "calendar",
-		label: "Calendar",
-		available: true,
-		pluginName: "test",
-		viewType: "gui",
-		path: "/calendar",
-		description:
-			"Unified Google, Microsoft, Apple, and ICS calendar with day/week/month tabs and inline conflict detection.",
-		tags: ["calendar", "schedule", "events"],
-		capabilities: [],
-	}) as unknown as ViewSummary;
+const calendarView = (): ViewSummary => ({
+	id: "calendar",
+	label: "Calendar",
+	available: true,
+	pluginName: "test",
+	viewType: "gui",
+	path: "/calendar",
+	description:
+		"Unified Google, Microsoft, Apple, and ICS calendar with day/week/month tabs and inline conflict detection.",
+	tags: ["calendar", "schedule", "events"],
+	capabilities: [],
+});
 
-const chatView = (): ViewSummary =>
-	({
-		id: "chat",
-		label: "Chat",
-		available: true,
-		pluginName: "test",
-		viewType: "gui",
-		path: "/",
-		// Deliberately no "home" token anywhere: in the live repro the registry
-		// could not resolve "home" by id/label/tag/description, which is what
-		// forced the foreground-view fallback.
-		description: "Main chat.",
-		tags: ["chat"],
-		capabilities: [],
-	}) as unknown as ViewSummary;
+const chatView = (): ViewSummary => ({
+	id: "chat",
+	label: "Chat",
+	available: true,
+	pluginName: "test",
+	viewType: "gui",
+	path: "/",
+	// Deliberately no "home" token anywhere: in the live repro the registry
+	// could not resolve "home" by id/label/tag/description, which is what
+	// forced the foreground-view fallback.
+	description: "Main chat.",
+	tags: ["chat"],
+	capabilities: [],
+});
 
 function makeAction(views: ViewSummary[]) {
 	const fetchMock = vi.fn(
@@ -482,24 +467,23 @@ async function runCase(
 	options: Record<string, unknown>,
 	views: ViewSummary[],
 ) {
-	const { runtime } = createRuntime();
+	const runtime = {
+		agentId: "agent-1",
+		getSetting: vi.fn(() => undefined),
+		getTasks: vi.fn(async () => []),
+		createTask: vi.fn(async () => {}),
+		deleteTask: vi.fn(async () => {}),
+		useModel: vi.fn(async () => ""),
+	};
 	const callback = vi.fn();
 	const { action, fetchMock } = makeAction(views);
-	const result = (await action.handler(
+	const result = await action.handler(
 		runtime as never,
 		message(text) as never,
 		undefined,
 		options,
 		callback,
-	)) as {
-		success?: boolean;
-		values?: Record<string, unknown>;
-		text?: string;
-		transcriptVisibility?: string;
-		userFacingText?: string;
-		verifiedUserFacing?: boolean;
-		turnComplete?: boolean;
-	};
+	);
 	return { result, fetchMock, callback };
 }
 
@@ -721,76 +705,31 @@ describe("VIEWS show/home with Notes foreground (#17299)", () => {
 		expect(callback).not.toHaveBeenCalled();
 	});
 
-	const cases: Array<{
-		name: string;
-		text: string;
-		options: Record<string, unknown>;
-		views: () => ViewSummary[];
-	}> = [
-		// Bidirectional-proof cases: these misrouted to notes:get-notes on
-		// develop before the fix (effectiveMode=interact,
-		// resolvedCapability=notes:get-notes).
-		{
-			name: "'show home' with explicit show/home target",
-			text: "show home",
-			options: { action: "show", view: "home" },
-			views: fullRegistry,
-		},
-		{
-			name: "'show home' with explicit target and no registered home view",
-			text: "show home",
-			options: { action: "show", view: "home" },
-			views: noHomeRegistry,
-		},
-		{
-			name: "composed retrieval prompt around 'go home'",
-			text: composedPrompt("go home"),
-			options: { action: "show", view: "home" },
-			views: fullRegistry,
-		},
-		// Guardrail cases: correct before and after; pinned so the routing seam
-		// cannot regress in the other direction.
-		{
-			name: "'go home' with explicit show/home target",
-			text: "go home",
-			options: { action: "show", view: "home" },
-			views: fullRegistry,
-		},
-		{
-			name: "typo 'go homw' normalized by the planner to show/home",
-			text: "go homw",
-			options: { action: "show", view: "home" },
-			views: fullRegistry,
-		},
-	];
-
-	for (const testCase of cases) {
-		it(`${testCase.name} never invokes a Notes capability`, async () => {
-			const { result, fetchMock } = await runCase(
-				testCase.text,
-				testCase.options,
-				testCase.views(),
-			);
-			const interactCalls = fetchMock.mock.calls.filter(([url]) =>
-				String(url).includes("/interact"),
-			);
-			expect(interactCalls).toEqual([]);
-			expect(result?.values?.mode).not.toBe("interact");
-			expect(String(result?.text ?? "")).not.toContain("Check Twitter");
-		});
-	}
-
-	it("navigates to the registered chat view for show/home", async () => {
-		const { result, fetchMock } = await runCase(
-			"show home",
+	it.each([
+		["show home", fullRegistry, true],
+		["show home", noHomeRegistry, false],
+		[composedPrompt("go home"), fullRegistry, true],
+		["go home", fullRegistry, true],
+		["go homw", fullRegistry, true],
+	] as const)("Home case %#: %s", async (text, views, available) => {
+		const { result, fetchMock, callback } = await runCase(
+			text,
 			{ action: "show", view: "home" },
-			fullRegistry(),
+			views(),
 		);
-		expect(result?.values).toMatchObject({ mode: "show", viewId: "chat" });
-		expect(fetchMock).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/chat/navigate",
-			expect.objectContaining({ method: "POST" }),
-		);
+		expect(result.success).toBe(available);
+		expect(result.values?.mode).not.toBe("interact");
+		expect(result.text).not.toContain("Check Twitter");
+		expect(callback).not.toHaveBeenCalled();
+		if (available) {
+			expect(result.values).toMatchObject({ mode: "show", viewId: "chat" });
+			expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
+				"http://127.0.0.1:3456/api/views/chat/navigate",
+				expect.objectContaining({ method: "POST" }),
+			);
+		} else {
+			expect(fetchMock).not.toHaveBeenCalled();
+		}
 	});
 
 	it("canonicalizes a planner-supplied home alias for bare go back", async () => {
