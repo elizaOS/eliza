@@ -244,8 +244,12 @@ function unsupportedMcpEvaluationFixture(input: string, op: string) {
   };
 }
 
+function unsupportedMcpReply(op: string): string {
+  return `I could not run ${op}: this MCP operation requires the cloud runtime.`;
+}
+
 function unsupportedMcpPostToolFixture(input: string, op: string) {
-  const text = `MCP op=${op} is only available in the cloud runtime.`;
+  const text = unsupportedMcpReply(op);
   return {
     name: `mcp-unsupported-${op}-post-tool-${input}`,
     match: matchesUnsupportedMcpEvaluation(input, op, "final-reply"),
@@ -476,9 +480,10 @@ function expectUnsupportedMcpCloudOp(
       );
       if (failure) return failure;
     }
-    return execution.responseText === text
+    const reply = unsupportedMcpReply(op);
+    return execution.responseText === reply
       ? undefined
-      : `expected ${actionName} response ${JSON.stringify(text)}, saw ${JSON.stringify(execution.responseText)}`;
+      : `expected ${actionName} response ${JSON.stringify(reply)}, saw ${JSON.stringify(execution.responseText)}`;
   };
 }
 

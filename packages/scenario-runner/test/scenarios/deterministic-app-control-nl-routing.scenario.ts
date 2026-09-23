@@ -1030,9 +1030,10 @@ export default scenario({
       kind: "message",
       name: "natural language loads apps from directory",
       text: loadAppsInput,
-      responseIncludesAny: [
-        "Registered 1 app",
-        "Loaded Console (@scenario/app-loaded-console)",
+      responseIncludesAll: [
+        /registered (?:1|one) app/i,
+        "@scenario/app-loaded-console",
+        /(?:not been|none were) launched/i,
       ],
       assertTurn: (execution) =>
         expectRoutedAction(execution, {
@@ -1074,7 +1075,7 @@ export default scenario({
       kind: "message",
       name: "natural language cancels pending app create flow",
       text: "Cancel the app create flow",
-      responseIncludesAny: ["Canceled. No app changes made."],
+      responseIncludesAll: [/cancell?ed/i, /no (?:app )?changes/i],
       assertTurn: (execution) =>
         expectRoutedAction(execution, {
           actionName: "APP",
