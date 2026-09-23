@@ -35,7 +35,7 @@ import {
   getProviderFromModel,
   normalizeModelName,
 } from "@/lib/pricing";
-import { validateBgeInput } from "@/lib/providers/cloudflare-embeddings";
+import { validateBgeInput } from "@/lib/providers/bge-embeddings";
 import {
   getAiProviderConfigurationError,
   getTextEmbeddingModel,
@@ -347,14 +347,27 @@ app.post("/", async (c) => {
       );
     }
 
-    let retainedCloudflareTokens: number | undefined;
-    if (billingSource === "cloudflare") {
+    let retainedBgeTokens: number | undefined;
+    if (billingSource === "cloudflare" || billingSource === "selfhosted") {
+      if (request.dimensions !== undefined && request.dimensions !== 384) {
+        return c.json(
+          {
+            error: {
+              message: "BGE-small-en-v1.5 requires exactly 384 dimensions",
+              type: "invalid_request_error",
+              param: "dimensions",
+              code: "invalid_value",
+            },
+          },
+          400,
+        );
+      }
       try {
-        retainedCloudflareTokens = 0;
+        retainedBgeTokens = 0;
         for (const text of Array.isArray(request.input)
           ? request.input
           : [request.input])
-          retainedCloudflareTokens += validateBgeInput(text);
+          retainedBgeTokens += validateBgeInput(text);
       } catch (error) {
         // error-policy:J1 Reject unrepresentable tails before reserving credits or dispatching.
         if (
@@ -382,8 +395,7 @@ app.post("/", async (c) => {
     const inputText = Array.isArray(request.input)
       ? request.input.join(" ")
       : request.input;
-    const estimatedInputTokens =
-      retainedCloudflareTokens ?? estimateTokens(inputText);
+    const estimatedInputTokens = retainedBgeTokens ?? estimateTokens(inputText);
 
     const requestId = crypto.randomUUID();
     providerRequestId = requestId;

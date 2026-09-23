@@ -12,6 +12,7 @@ import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as rateLimitActual from "@/lib/middleware/rate-limit";
 import { createCloudflareEmbeddingModel } from "@/lib/providers/cloudflare-embeddings";
 import * as languageModelActual from "@/lib/providers/language-model";
+import { createTeiEmbeddingModel } from "@/lib/providers/tei-embeddings";
 import * as aiBillingActual from "@/lib/services/ai-billing";
 import * as apiKeysActual from "@/lib/services/api-keys";
 import * as inferenceAuthActual from "@/lib/services/inference-auth-context";
@@ -55,14 +56,16 @@ mock.module("@/lib/services/inference-auth-context", () => ({
 
 // Provider config: pretend an embedding provider is configured and hand back a
 // dummy model object (the embed mock ignores it).
-let embeddingSource: "openai" | "cloudflare" = "openai";
+let embeddingSource: "openai" | "cloudflare" | "selfhosted" = "openai";
 mock.module("@/lib/providers/language-model", () => ({
   ...languageModelActual,
   hasTextEmbeddingProviderConfigured: () => true,
   getTextEmbeddingModel: () =>
     embeddingSource === "cloudflare"
       ? createCloudflareEmbeddingModel("a".repeat(32), "test-workers-ai-token")
-      : ({} as never),
+      : embeddingSource === "selfhosted"
+        ? createTeiEmbeddingModel("https://tei.example/v1", "fixture-key")
+        : ({} as never),
   resolveEmbeddingProviderSource: () => embeddingSource,
   getAiProviderConfigurationError: () => "AI services are not configured",
   resolvePassthroughEmbeddingsUpstream: () => null,
@@ -544,6 +547,80 @@ test("retains the reservation when a later BGE batch is rejected after accepted 
     expect(reconcile).toHaveBeenCalledTimes(1);
     expect(reconcile).toHaveBeenCalledWith(0.01);
     expect(billUsage).not.toHaveBeenCalled();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+for (const source of ["cloudflare", "selfhosted"] as const) {
+  test(`${source} rejects incompatible BGE dimensions before reserving credits`, async () => {
+    embeddingSource = source;
+    const response = await post({
+      model: "bge-small-en-v1.5",
+      input: "Complete source",
+      dimensions: 1536,
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { param: "dimensions", code: "invalid_value" },
+    });
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(embed).not.toHaveBeenCalled();
+  });
+  test(`${source} validates malformed BGE input before reserving credits`, async () => {
+    embeddingSource = source;
+    const response = await post({
+      model: "bge-small-en-v1.5",
+      input: "bad\ud800",
+    });
+    expect(response.status).toBe(400);
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(embed).not.toHaveBeenCalled();
+  });
+}
+
+test("self-hosted BGE route preserves representation metadata and exact retained-token accounting", async () => {
+  embeddingSource = "selfhosted";
+  const tail = `${"word ".repeat(508)}last instruction`;
+  let requestBody: unknown;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = new Proxy(originalFetch, {
+    async apply(_target, _receiver, [input, init]: Parameters<typeof fetch>) {
+      if (String(input).endsWith("/info"))
+        return Response.json({
+          model_id: "BAAI/bge-small-en-v1.5",
+          model_sha: null,
+          model_type: { embedding: { pooling: "cls" } },
+          max_input_length: 512,
+        });
+      requestBody = JSON.parse(String(init?.body));
+      return Response.json([[3, 4, ...Array(382).fill(0)]]);
+    },
+  });
+  embed.mockImplementation(realEmbed);
+  try {
+    const { ctx, scheduled } = makeExecutionCtx();
+    const response = await post(
+      {
+        model: "bge-small-en-v1.5",
+        input: `obsolete ${tail}`,
+        dimensions: 384,
+      },
+      ctx,
+    );
+    await Promise.all(scheduled);
+    expect(response.status).toBe(200);
+    const result = (await response.json()) as EmbeddingsResponse;
+    expect(result.embedding_space).toBe(BGE_SMALL_VECTOR_SPACE);
+    expect(result.usage).toEqual({ prompt_tokens: 512, total_tokens: 512 });
+    expect(result.data[0].embedding).toEqual([0.6, 0.8, ...Array(382).fill(0)]);
+    expect(requestBody).toEqual({
+      inputs: [tail],
+      normalize: true,
+      truncate: false,
+    });
+    expect(reserveCredits.mock.calls[0]?.[1]).toBe(512);
+    expect(reconcile).toHaveBeenCalledTimes(1);
   } finally {
     globalThis.fetch = originalFetch;
   }

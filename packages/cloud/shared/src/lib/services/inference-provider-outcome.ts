@@ -4,6 +4,7 @@
  * conservative because absence of output is not evidence of zero provider cost.
  */
 
+import { ElizaError } from "@elizaos/common";
 import { APICallError, RetryError } from "ai";
 
 const KNOWN_UNACCEPTED_STATUSES = new Set([
@@ -30,6 +31,13 @@ export function isKnownUnacceptedProviderError(error: unknown): boolean {
       terminal.code === "EMBEDDING_BATCH_PARTIALLY_ACCEPTED"
     ) {
       return false;
+    }
+    // TEI rejects a different model before sending any source to /embed.
+    if (
+      terminal instanceof ElizaError &&
+      terminal.code === "EMBEDDING_PROVIDER_IDENTITY_MISMATCH"
+    ) {
+      return true;
     }
     if (
       APICallError.isInstance(terminal) &&
