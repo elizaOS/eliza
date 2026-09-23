@@ -119,7 +119,7 @@ function makeCapturingAdapter() {
   const importingAgentId = "00000000-0000-4000-8000-000000000001";
   const scopes: Array<ReturnType<typeof createScopedAdapter>> = [];
   const adapter = {
-    ...createScopedAdapter(importingAgentId),
+    agentId: importingAgentId,
     async withAgentScope<T>(
       agentId: string,
       callback: (scoped: ReturnType<typeof createScopedAdapter>) => Promise<T>,
