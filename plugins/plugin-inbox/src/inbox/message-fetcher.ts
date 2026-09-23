@@ -362,7 +362,8 @@ export async function fetchChatMessages(
         .filter((worldId): worldId is UUID => Boolean(worldId)),
     ),
   ];
-  const worlds = await Promise.all(worldIds.map((id) => runtime.getWorld(id)));
+  const worlds =
+    worldIds.length > 0 ? await runtime.getWorldsByIds(worldIds) : [];
   const worldMap = new Map<string, World>();
   for (const world of worlds) {
     if (world) {
@@ -381,12 +382,10 @@ export async function fetchChatMessages(
   // Fetch participant counts per room exactly once. Used to classify DMs,
   // group DMs, and public channels without letting unknown rooms default to DM.
   const participantCountByRoom = new Map<string, number>();
-  await Promise.all(
-    sourceRooms.map(async (room) => {
-      const ids = await runtime.getParticipantsForRoom(room.id);
-      participantCountByRoom.set(room.id, ids.length);
-    }),
-  );
+  const participants = await runtime.getParticipantsForRooms(sourceRoomIds);
+  for (const { roomId, entityIds } of participants) {
+    participantCountByRoom.set(roomId, entityIds.length);
+  }
 
   const results: InboundMessage[] = [];
   for (const memory of filtered.slice(0, limit)) {

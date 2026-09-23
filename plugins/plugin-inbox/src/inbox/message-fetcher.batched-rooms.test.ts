@@ -49,7 +49,10 @@ describe("fetchChatMessages room resolution", () => {
         return [];
       },
       getParticipantsForRoom: async () => [AGENT],
+      getParticipantsForRooms: async (ids: UUID[]) =>
+        ids.map((roomId) => ({ roomId, entityIds: [AGENT] })),
       getWorld: async () => null,
+      getWorldsByIds: async () => [],
     } as unknown as IAgentRuntime;
 
     // SQL may return rows in any order, omit missing IDs and deduplicate.
