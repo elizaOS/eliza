@@ -616,12 +616,13 @@ export function useShellController(): ShellController {
       // The voice gateway submits through the canonical conversation stream,
       // outside this renderer's useChatSend instance. Reconcile at the
       // authoritative STT final so the committed user turn leaves the composer
-      // for its canonical bubble before model generation, then at terminal
-      // usage so the persisted assistant reply replaces the in-flight state.
+      // for its canonical bubble before model generation, then when the
+      // canonical reply completes rather than waiting for audio to finish.
       // Never synthesize local bubbles: the normal conversation loader remains
       // the sole reader and deduper for saved history. Reconcile again when
-      // playback actually starts so the saved assistant bubble appears with
-      // its first audible frame instead of waiting for the terminal usage event.
+      // playback starts for older gateways. That start can belong to an ACK;
+      // reply_complete is the authoritative final-history refresh. Usage stays
+      // a recovery refresh for gateways without that event.
       // Expiry/recovery may replace the socket before those terminal frames.
       // A newly authenticated ready boundary reloads saved history too; it must
       // never replay the prior utterance or its potentially committed actions.
@@ -629,6 +630,7 @@ export function useShellController(): ShellController {
         event.t !== "ready" &&
         event.t !== "stt_final" &&
         event.t !== "speaking_start" &&
+        event.t !== "reply_complete" &&
         event.t !== "usage"
       )
         return;

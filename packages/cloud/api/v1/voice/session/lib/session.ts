@@ -1465,6 +1465,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         this.pendingOverlapTurn !== pending
       )
         return;
+      if (result.completed) {
+        this.send({ t: "reply_complete", traceId: pending.traceId });
+      }
       const speakable = replyText.trim();
       if (!SPOKEN_TRANSCRIPT_RE.test(speakable)) {
         this.send({
@@ -2099,6 +2102,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // Interruption already handled the teardown of this turn's TTS.
         return;
       }
+
+      // Canonical conversation completion is independent of TTS playback.
+      // Let the renderer reconcile the saved reply even when an earlier
+      // acknowledgement already consumed the first speaking_start event.
+      if (result.completed) this.send({ t: "reply_complete", traceId });
 
       if (result.viewHandoff) {
         this.send({

@@ -190,6 +190,9 @@ export function applyServerEvent(
         (state.phase === "thinking" || state.phase === "speaking")
         ? { ...state, progressText: event.text }
         : state;
+    case "reply_complete":
+      // Transcript reconciliation is separate from audible playback state.
+      return state;
     case "llm_first_text":
       return {
         ...state,

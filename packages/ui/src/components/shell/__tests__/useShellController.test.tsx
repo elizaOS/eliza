@@ -2861,6 +2861,14 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
       });
 
       act(() => {
+        onServerEvent?.({ t: "reply_complete", traceId: "trace-voice-turn" });
+      });
+      expect(resyncEvents[2]?.detail).toEqual({
+        conversationId,
+        reason: "voice-turn-complete",
+      });
+
+      act(() => {
         onServerEvent?.({
           t: "usage",
           sttMs: 300,
@@ -2868,7 +2876,7 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
           traceId: "trace-voice-turn",
         });
       });
-      expect(resyncEvents[2]?.detail).toEqual({
+      expect(resyncEvents[3]?.detail).toEqual({
         conversationId,
         reason: "voice-turn-complete",
       });
@@ -2879,11 +2887,11 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
           traceId: "renewed-trace",
         });
       });
-      expect(resyncEvents[3]?.detail).toEqual({
+      expect(resyncEvents[4]?.detail).toEqual({
         conversationId,
         reason: "connection-recovered",
       });
-      expect(resyncEvents).toHaveLength(4);
+      expect(resyncEvents).toHaveLength(5);
     } finally {
       window.removeEventListener(RESYNC_EVENT, onResync);
     }

@@ -1981,6 +1981,7 @@ describe("voice-session WS lifecycle", () => {
     expect(client.audioFrames.length).toBeGreaterThan(0);
     expect(client.controlTypes()).not.toContain("llm_first_text");
     expect(client.controlTypes()).not.toContain("usage");
+    expect(client.controlTypes()).not.toContain("reply_complete");
     controlled.enqueueChunk("Your note says hello.");
     controlled.finish({ text: "Your note says hello." });
     await flush();
@@ -1988,6 +1989,10 @@ describe("voice-session WS lifecycle", () => {
       .map((frame) => JSON.parse(frame) as { transcript?: string })
       .flatMap((frame) => (frame.transcript ? [frame.transcript] : []));
     expect(phrases).toEqual(["Checking your note.", "Your note says hello."]);
+    expect(
+      client.controlTypes().filter((type) => type === "reply_complete"),
+    ).toHaveLength(1);
+    expect(client.controlTypes()).not.toContain("usage");
     expect(client.controlTypes()).toContain("llm_first_text");
     expect(client.controlTypes()).not.toContain("error");
     cartesia.emitDone();

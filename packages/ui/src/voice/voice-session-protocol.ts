@@ -184,6 +184,7 @@ export interface ServerUsageEvent {
 }
 
 export type ServerControlFrame =
+  | { t: "reply_complete"; traceId: string }
   | ServerReadyEvent
   | ServerSttPartialEvent
   | ServerSttEagerEotEvent
@@ -297,6 +298,7 @@ const SERVER_TYPES: ReadonlySet<string> = new Set<ServerControlType>([
   "stt_eager_eot",
   "stt_final",
   "llm_first_text",
+  "reply_complete",
   "progress",
   "speaking_start",
   "speaking_end",
