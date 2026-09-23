@@ -36,14 +36,12 @@ import { __codingMutationRequiresVerificationForTests } from "../../../plugin-as
 // the suite on Windows and trust the equivalent Linux/macOS runs.
 const describeIfPosix = process.platform === "win32" ? describe.skip : describe;
 
-import codingToolsPlugin from "../index.js";
 import { runShell } from "../lib/run-shell.js";
 import { persistShellOutputArtifact } from "../lib/shell-output-artifact.js";
 import {
   beginLocalWorkspaceDeltaObservation,
   runtimeWorkspaceExecutionDomainId,
 } from "../lib/workspace-delta.js";
-import { availableToolsProvider } from "../providers/available-tools.js";
 import {
   BackgroundShellReapTimeoutError,
   BackgroundShellService,
@@ -569,46 +567,6 @@ describeIfPosix("shellAction", () => {
     ).rejects.toThrow("disabled in cloud mode");
   });
 
-  it("exposes coding tools through the provider and plugin auto-enable policy", async () => {
-    const providerResult = await availableToolsProvider.get(
-      {} as IAgentRuntime,
-      makeMessage(),
-      {} as State,
-    );
-    expect(providerResult.text).toContain("start_background");
-    expect(providerResult.data?.codingTools).toEqual([
-      "FILE",
-      "READ",
-      "WRITE",
-      "EDIT",
-      "SHELL",
-      "WEB_FETCH",
-      "WEB_SEARCH",
-      "WORKTREE",
-    ]);
-
-    const shouldEnable = codingToolsPlugin.autoEnable?.shouldEnable;
-    expect(shouldEnable).toBeTypeOf("function");
-    expect(
-      shouldEnable?.(
-        { ELIZA_RUNTIME_MODE: "local-yolo" },
-        { features: { codingTools: true } },
-      ),
-    ).toBe(true);
-    expect(
-      shouldEnable?.(
-        { ELIZA_BUILD_VARIANT: "store" },
-        { features: { codingTools: true } },
-      ),
-    ).toBe(false);
-    expect(
-      shouldEnable?.(
-        { ELIZA_PLATFORM: "ios" },
-        { features: { "coding-agent": true } },
-      ),
-    ).toBe(false);
-  });
-
   it("prefers capability router for command execution when available", async () => {
     const calls: Array<{ command: string; cwd?: string; timeoutMs?: number }> =
       [];
@@ -829,27 +787,6 @@ describeIfPosix("shellAction", () => {
       outcome: "indeterminate",
       reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
     });
-  });
-
-  it("runs a simple foreground command (echo hello)", async () => {
-    const router = makeShellRouter(async () => ({
-      output: "alpha.txt\nsecret",
-      exitCode: 0,
-      timedOut: false,
-    }));
-    const { runtime } = await makeRuntime({ capabilityRouter: router });
-    const result = await shellAction.handler?.(
-      runtime,
-      makeMessage(),
-      undefined,
-      { command: "echo hello" },
-    );
-    expect(result.success).toBe(true);
-    expect(typeof result.text).toBe("string");
-    expect(result.text).toContain("hello");
-    expect(result.text).toContain("[exit 0]");
-    const data = result.data as Record<string, unknown> | undefined;
-    expect(data?.command).toBe("echo hello");
   });
 
   it("caps only the visible callback for long foreground output", async () => {

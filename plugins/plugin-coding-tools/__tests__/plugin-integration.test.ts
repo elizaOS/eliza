@@ -49,6 +49,18 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     expect(shouldEnable({}, { features: { codingTools: true } })).toBe(true);
     expect(
       shouldEnable(
+        { ELIZA_RUNTIME_MODE: "local-yolo" },
+        { features: { codingTools: true } },
+      ),
+    ).toBe(true);
+    expect(
+      shouldEnable(
+        { ELIZA_PLATFORM: "ios" },
+        { features: { "coding-agent": true } },
+      ),
+    ).toBe(false);
+    expect(
+      shouldEnable(
         { ELIZA_BUILD_VARIANT: "store" },
         { features: { codingTools: true } },
       ),
@@ -251,7 +263,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
       parameters: { command: "echo smoke-bash-ok", cwd: tmpDir },
     });
     expect(result.success).toBe(true);
-    expect(result.text).toContain("smoke-bash-ok");
+    expect(result.text).toContain("--- stdout ---\nsmoke-bash-ok");
     expect(result.text).toContain("[exit 0]");
   });
 
