@@ -387,10 +387,15 @@ export class FollowUpService extends Service {
       this.runtime.agentId,
     );
     const needsAttentionById = new Map(
-      insights.needsAttention.map((item) => [item.entity.id, item]),
+      insights.needsAttention.map((item) => [
+        item.entity.id?.toLowerCase(),
+        item,
+      ]),
     );
     const candidates = contacts.filter((contact) => {
-      const needsAttention = needsAttentionById.get(contact.entityId);
+      const needsAttention = needsAttentionById.get(
+        contact.entityId.toLowerCase(),
+      );
       return Boolean(needsAttention && needsAttention.daysSinceContact > 14);
     });
 
@@ -403,23 +408,24 @@ export class FollowUpService extends Service {
             candidates.map((contact) => contact.entityId),
           )
         : []
-      ).map((entity) => [entity.id, entity] as const),
+      ).map((entity) => [entity.id?.toLowerCase(), entity] as const),
     );
     const suggestionResults: Array<FollowUpSuggestion | null> =
       await mapWithConcurrency(
         candidates,
         MAX_CONCURRENT_RELATIONSHIP_ANALYSES,
         async (contact) => {
-          const entity = entityById.get(contact.entityId);
+          const canonicalEntityId = contact.entityId.toLowerCase() as UUID;
+          const entity = entityById.get(canonicalEntityId);
           if (!entity) return null;
 
-          const needsAttention = needsAttentionById.get(contact.entityId);
+          const needsAttention = needsAttentionById.get(canonicalEntityId);
           if (!needsAttention) return null;
 
           // Get relationship analytics
           const analytics = await this.relationshipsService.analyzeRelationship(
             this.runtime.agentId,
-            contact.entityId,
+            canonicalEntityId,
           );
 
           if (!analytics) {
