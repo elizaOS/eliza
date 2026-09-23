@@ -6,7 +6,7 @@
  * database.
  */
 
-import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
+import type { IAgentRuntime, Memory, Room, State, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { hasAdminAccess, resolveCanonicalOwnerIdForMessage } = vi.hoisted(
@@ -77,13 +77,18 @@ function chatMemory(params: {
 }
 
 function makeRuntime(overrides: Record<string, unknown> = {}): IAgentRuntime {
+  const { resolveRoom = async () => null, ...methods } = overrides;
+  const readRoom = resolveRoom as (id: UUID) => Promise<Room | null>;
   return {
     agentId: AGENT_ID,
     getRoomsForParticipant: vi.fn(async () => [] as UUID[]),
-    getRoom: vi.fn(async () => null),
+    getRoom: vi.fn(readRoom),
+    getRoomsByIds: vi.fn(async (ids: UUID[]) =>
+      (await Promise.all(ids.map(readRoom))).filter((room) => room !== null),
+    ),
     getMemoriesByRoomIds: vi.fn(async () => [] as Memory[]),
     reportError: vi.fn(),
-    ...overrides,
+    ...methods,
   } as unknown as IAgentRuntime;
 }
 
@@ -175,7 +180,7 @@ describe("adminPanelProvider.get", () => {
       ROOM_DISCORD,
       ROOM_CHAT_B,
     ]);
-    const getRoom = vi.fn(async (id: UUID) => {
+    const resolveRoom = vi.fn(async (id: UUID) => {
       if (id === ROOM_CHAT_A) return null;
       if (id === ROOM_DISCORD) {
         return { id: ROOM_DISCORD, source: "discord" };
@@ -193,13 +198,13 @@ describe("adminPanelProvider.get", () => {
     ]);
     const runtime = makeRuntime({
       getRoomsForParticipant,
-      getRoom,
+      resolveRoom,
       getMemoriesByRoomIds,
     });
 
     const result = await adminPanelProvider.get(runtime, turn(), EMPTY_STATE);
 
-    expect(getRoom).toHaveBeenCalledTimes(3);
+    expect(resolveRoom).toHaveBeenCalledTimes(3);
     expect(getMemoriesByRoomIds).not.toHaveBeenCalled();
     expect(result).toEqual(EMPTY_RESULT);
   });
@@ -210,7 +215,7 @@ describe("adminPanelProvider.get", () => {
       ROOM_CHAT_A,
       ROOM_CHAT_B,
     ]);
-    const getRoom = vi.fn(async (id: UUID) => {
+    const resolveRoom = vi.fn(async (id: UUID) => {
       if (id === ROOM_DISCORD) {
         return { id: ROOM_DISCORD, source: "discord" };
       }
@@ -225,7 +230,7 @@ describe("adminPanelProvider.get", () => {
     const getMemoriesByRoomIds = vi.fn(async () => [] as Memory[]);
     const runtime = makeRuntime({
       getRoomsForParticipant,
-      getRoom,
+      resolveRoom,
       getMemoriesByRoomIds,
     });
 
@@ -241,7 +246,7 @@ describe("adminPanelProvider.get", () => {
   it("renders a single owner message oldest-first with hasAdminChat true", async () => {
     const runtime = makeRuntime({
       getRoomsForParticipant: vi.fn(async () => [ROOM_CHAT_A]),
-      getRoom: vi.fn(async () => ({
+      resolveRoom: vi.fn(async () => ({
         id: ROOM_CHAT_A,
         source: MESSAGE_SOURCE_CLIENT_CHAT,
       })),
@@ -268,7 +273,7 @@ describe("adminPanelProvider.get", () => {
   it("sorts newest-first then displays oldest-first across rooms", async () => {
     const runtime = makeRuntime({
       getRoomsForParticipant: vi.fn(async () => [ROOM_CHAT_A, ROOM_CHAT_B]),
-      getRoom: vi.fn(async (id: UUID) => ({
+      resolveRoom: vi.fn(async (id: UUID) => ({
         id,
         source: MESSAGE_SOURCE_CLIENT_CHAT,
       })),
@@ -314,7 +319,7 @@ describe("adminPanelProvider.get", () => {
   it("treats missing and non-number createdAt as 0 and keeps equal timestamps in reverse input order", async () => {
     const runtime = makeRuntime({
       getRoomsForParticipant: vi.fn(async () => [ROOM_CHAT_A]),
-      getRoom: vi.fn(async () => ({
+      resolveRoom: vi.fn(async () => ({
         id: ROOM_CHAT_A,
         source: MESSAGE_SOURCE_CLIENT_CHAT,
       })),
@@ -366,7 +371,7 @@ describe("adminPanelProvider.get", () => {
   it("renders empty sender text when content.text is missing or not a string, and labels non-agent senders as Owner", async () => {
     const runtime = makeRuntime({
       getRoomsForParticipant: vi.fn(async () => [ROOM_CHAT_A]),
-      getRoom: vi.fn(async () => ({
+      resolveRoom: vi.fn(async () => ({
         id: ROOM_CHAT_A,
         source: MESSAGE_SOURCE_CLIENT_CHAT,
       })),
@@ -399,7 +404,7 @@ describe("adminPanelProvider.get", () => {
   it("still counts blank owner text as present chat context", async () => {
     const runtime = makeRuntime({
       getRoomsForParticipant: vi.fn(async () => [ROOM_CHAT_A]),
-      getRoom: vi.fn(async () => ({
+      resolveRoom: vi.fn(async () => ({
         id: ROOM_CHAT_A,
         source: MESSAGE_SOURCE_CLIENT_CHAT,
       })),
@@ -421,5 +426,78 @@ describe("adminPanelProvider.get", () => {
     expect(result.text).toBe(
       "# Recent Owner Conversation (Eliza App)\n[Owner] ",
     );
+  });
+});
+
+describe("admin panel room batching", () => {
+  it("uses one batch while preserving participant order and complete output", async () => {
+    const ids = [ROOM_CHAT_B, ROOM_DISCORD, OTHER_ID, ROOM_CHAT_A];
+    const rooms = [
+      { id: ROOM_CHAT_A, source: MESSAGE_SOURCE_CLIENT_CHAT },
+      { id: ROOM_DISCORD, source: "discord" },
+      { id: ROOM_CHAT_B, source: MESSAGE_SOURCE_CLIENT_CHAT },
+    ];
+    const runtime = makeRuntime({
+      getRoomsForParticipant: vi.fn(async () => ids),
+      resolveRoom: async (id: UUID) =>
+        rooms.find((room) => room.id === id) ?? null,
+      getRoomsByIds: vi.fn(async () => rooms),
+      getMemoriesByRoomIds: vi.fn(async () => [
+        chatMemory({
+          id: "first",
+          entityId: OWNER_ID,
+          roomId: ROOM_CHAT_B,
+          text: "first",
+          createdAt: 1,
+        }),
+        chatMemory({
+          id: "last",
+          entityId: AGENT_ID,
+          roomId: ROOM_CHAT_A,
+          text: "last",
+          createdAt: 2,
+        }),
+      ]),
+    });
+    const result = await adminPanelProvider.get(runtime, turn(), EMPTY_STATE);
+    expect(result).toEqual({
+      text: "# Recent Owner Conversation (Eliza App)\n[Owner] first\n[Agent] last",
+      values: { hasAdminChat: true },
+      data: { messageCount: 2 },
+    });
+    expect(runtime.getMemoriesByRoomIds).toHaveBeenCalledWith({
+      tableName: "messages",
+      roomIds: [ROOM_CHAT_B, ROOM_CHAT_A],
+    });
+    expect(runtime.getRoomsByIds).toHaveBeenCalledExactlyOnceWith(ids);
+    expect(runtime.getRoom).not.toHaveBeenCalled();
+  });
+
+  it("does not read rooms or memories for a denied caller", async () => {
+    hasAdminAccess.mockResolvedValue(false);
+    const runtime = makeRuntime();
+    expect(await adminPanelProvider.get(runtime, turn(), EMPTY_STATE)).toEqual(
+      EMPTY_RESULT,
+    );
+    expect(runtime.getRoomsByIds).not.toHaveBeenCalled();
+    expect(runtime.getRoom).not.toHaveBeenCalled();
+    expect(runtime.getMemoriesByRoomIds).not.toHaveBeenCalled();
+  });
+
+  it("propagates storage failure", async () => {
+    const failure = new Error("room storage failed");
+    const runtime = makeRuntime({
+      getRoomsForParticipant: vi.fn(async () => [ROOM_CHAT_A]),
+      resolveRoom: async () => {
+        throw failure;
+      },
+      getRoomsByIds: vi.fn(async () => {
+        throw failure;
+      }),
+    });
+    await expect(
+      adminPanelProvider.get(runtime, turn(), EMPTY_STATE),
+    ).rejects.toBe(failure);
+    expect(runtime.getMemoriesByRoomIds).not.toHaveBeenCalled();
   });
 });
