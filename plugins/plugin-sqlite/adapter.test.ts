@@ -123,6 +123,44 @@ describe("durable SQLite agent adapter", () => {
     ).toContain(record.id);
   });
 
+  it("rolls back domain records and runtime semantic state in one native transaction", async () => {
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const committed = memory("committed before domain change");
+    const rejected = memory("rejected domain change");
+    await adapter.createMemories([
+      { memory: committed, tableName: "messages" },
+    ]);
+    await expect(
+      adapter.recordStore.transaction(async () => {
+        await adapter.recordStore.set("plugin_synthetic", "pending", {
+          accepted: false,
+        });
+        await adapter.deleteMemories([committed.id]);
+        await adapter.createMemories([
+          { memory: rejected, tableName: "messages" },
+        ]);
+        throw new Error("synthetic domain failure");
+      }),
+    ).rejects.toMatchObject({
+      code: "SQLITE_TRANSACTION_FAILED",
+      cause: { message: "synthetic domain failure" },
+    });
+    expect(
+      await adapter.recordStore.get("plugin_synthetic", "pending"),
+    ).toBeNull();
+    expect(
+      (
+        await adapter.searchMemories({
+          tableName: "messages",
+          embedding: [1, 0, 0],
+          roomId,
+        })
+      ).map((entry) => entry.id),
+    ).toEqual([committed.id]);
+    expect(await adapter.getMemoriesByIds([rejected.id])).toEqual([]);
+  });
+
   it("rolls back multi-method changes and restores the transient vector index before another reader", async () => {
     const adapter = await open();
     await adapter.ensureEmbeddingDimension(3);

@@ -3175,6 +3175,7 @@
       "devDependencies": {
         "@biomejs/biome": "2.5.8",
         "@electric-sql/pglite": "^0.4.5",
+        "@elizaos/plugin-sqlite": "workspace:*",
         "@types/node": "^25.0.6",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",

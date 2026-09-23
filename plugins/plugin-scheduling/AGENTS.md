@@ -37,8 +37,8 @@ runtime surface that makes them work standalone:
   `"lifeops_scheduled_task_runner"`, in `scheduled-task/runner-service.ts`) +
   the runtime-injected deps port `registerScheduledTaskRunnerDeps` /
   `getScheduledTaskRunnerDeps`. A built-in **default deps provider**
-  (scheduling-owned SQL store when a runtime DB exists, in-memory fallback when
-  it does not, built-in registries, an `in_app`/NOTIFICATION dispatcher,
+  (the adapter's agent-bound durable record store when available, otherwise
+  scheduling-owned SQL storage or an explicit in-memory fallback, built-in registries, an `in_app`/NOTIFICATION dispatcher,
   warn-once ports, an `ELIZA_PLATFORM`-driven host-capability predicate) runs
   when no host injects production deps — so the runner works on a stock mobile
   boot.

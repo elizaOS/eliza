@@ -1167,6 +1167,8 @@ export class PermissionNarrowedRejection extends Error {
 }
 
 export interface Plugin {
+	/** Explicitly ported backends. SQLite ports initialize their native schema; hosts omit PostgreSQL schema metadata. */
+	databaseBackends?: readonly ("postgres" | "pglite" | "sqlite")[];
 	name: string;
 	description: string;
 

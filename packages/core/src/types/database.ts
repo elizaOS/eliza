@@ -739,6 +739,22 @@ export interface AgentRunSummaryResult {
 }
 
 /**
+ * Optional durable records in the adapter's own agent database. Domain plugins
+ * own their namespace and schema versions; transactions serialize all callers,
+ * remain atomic across awaits and reject overlapping nested scopes. Records
+ * are trusted plugin data, not an authorization boundary or raw SQL executor.
+ */
+export interface DurableRecordStore {
+	readonly version: 1;
+	readonly agentId: UUID;
+	transaction<T>(operation: () => Promise<T>): Promise<T>;
+	get<T>(namespace: string, key: string): Promise<T | null>;
+	getAll<T>(namespace: string): Promise<T[]>;
+	set<T>(namespace: string, key: string, value: T): Promise<void>;
+	delete(namespace: string, key: string): Promise<boolean>;
+}
+
+/**
  * Interface for database operations.
  *
  * **Design: Batch-First CRUD**
@@ -765,6 +781,8 @@ export interface AgentRunSummaryResult {
  * See DATABASE_BATCH_API.md for the full design rationale and migration guide.
  */
 export interface IDatabaseAdapter<DB extends object = object> {
+	/** Optional transactional domain records in this same agent database. */
+	readonly recordStore?: DurableRecordStore;
 	/** Database instance */
 	db: DB;
 

@@ -47,8 +47,8 @@ export function assertSelectedDatabaseCompatibility(
     ["sql", "plugin-sql", SQL_PLUGIN].includes(name),
   );
   if (
-    sqlDependency ||
-    (plugin.schema && Object.keys(plugin.schema).length > 0)
+    !plugin.databaseBackends?.includes("sqlite") &&
+    (sqlDependency || (plugin.schema && Object.keys(plugin.schema).length > 0))
   ) {
     throw new ElizaError(
       `Plugin ${plugin.name} requires PostgreSQL storage and cannot activate with SQLite until explicitly ported`,
@@ -58,4 +58,19 @@ export function assertSelectedDatabaseCompatibility(
       },
     );
   }
+}
+
+/** Maps the bootstrap dependency only after a plugin explicitly declares its SQLite port. */
+export function preparePluginForSelectedDatabase(plugin: Plugin): Plugin {
+  assertSelectedDatabaseCompatibility(plugin);
+  if (!isSQLiteSelected() || !plugin.databaseBackends?.includes("sqlite"))
+    return plugin;
+  return {
+    ...plugin,
+    // Explicit ports own their native schema initialization; never feed Drizzle metadata to SQLite.
+    schema: undefined,
+    dependencies: plugin.dependencies?.map((name) =>
+      ["sql", "plugin-sql", SQL_PLUGIN].includes(name) ? SQLITE_PLUGIN : name,
+    ),
+  };
 }

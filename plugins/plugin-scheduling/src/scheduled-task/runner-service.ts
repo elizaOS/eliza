@@ -76,6 +76,11 @@ import {
 } from "./gate-registry.js";
 import { migrateSchedulingTables } from "./migration.js";
 import {
+  createSchedulingRecordStores,
+  ensureSchedulingRecordSchema,
+  getSchedulingRecordStore,
+} from "./record-store.js";
+import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
   type ScheduledTaskDispatcher,
@@ -497,15 +502,23 @@ function defaultRunnerDeps(
   runtime: IAgentRuntime,
   agentId: string,
 ): ScheduledTaskRunnerDepsBundle {
+  const recordStorage = getSchedulingRecordStore(runtime);
+  const durable = recordStorage
+    ? createSchedulingRecordStores(recordStorage, agentId)
+    : null;
   const hasRuntimeDb = getRuntimeDb(runtime) !== null;
-  const store = hasRuntimeDb
-    ? createSchedulingSqlScheduledTaskStore({ runtime, agentId })
-    : createInMemoryScheduledTaskStore();
+  const store =
+    durable?.store ??
+    (hasRuntimeDb
+      ? createSchedulingSqlScheduledTaskStore({ runtime, agentId })
+      : createInMemoryScheduledTaskStore());
   return {
     store,
-    logStore: hasRuntimeDb
-      ? createSchedulingSqlScheduledTaskLogStore({ runtime, agentId })
-      : createInMemoryScheduledTaskLogStore(),
+    logStore:
+      durable?.logStore ??
+      (hasRuntimeDb
+        ? createSchedulingSqlScheduledTaskLogStore({ runtime, agentId })
+        : createInMemoryScheduledTaskLogStore()),
     dispatcher: createDefaultScheduledTaskDispatcher(runtime, store),
     ownerFacts: () => ({}) as OwnerFactsView,
     globalPause: ALWAYS_ALLOW_GLOBAL_PAUSE,
@@ -665,8 +678,10 @@ export class ScheduledTaskRunnerService extends Service {
   ): Promise<ScheduledTaskRunnerService> {
     // This service is the boot barrier used by routes and seed packs. Copy
     // legacy rows before either can insert an idempotency-key collision.
+    const recordStore = getSchedulingRecordStore(runtime);
+    if (recordStore) await ensureSchedulingRecordSchema(recordStore);
     const runtimeDb = getRuntimeDb(runtime);
-    if (runtimeDb) {
+    if (!recordStore && runtimeDb) {
       await migrateSchedulingTables(
         await createDrizzleCarveOutDatabase(runtimeDb),
       );
