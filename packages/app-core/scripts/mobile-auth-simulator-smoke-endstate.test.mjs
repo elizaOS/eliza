@@ -1,20 +1,9 @@
 /**
- * End-state contract self-tests for the mobile-auth simulator smoke (#13693).
- *
- * `test:sim:auth` fires a synthetic `<scheme>://auth/callback` deep link and then
- * reads back what the in-app handler wrote to Capacitor Preferences. The value of
- * the lane is entirely in the READBACK assertion: `assertAuthCallbackResult` is
- * the single shared contract both the iOS poll and the Android poll run against,
- * so a regression that made the smoke "pass on delivery alone" (the exact silent
- * pass the issue calls out) is caught here, not only in a simulator.
- *
- * These run under the Node built-in test runner (`node --test`) — no vitest, no
- * package deps — so they exercise the real exported decision logic even on a
- * disk-contended host with no install. The vitest twin
- * (`test/scripts/mobile-auth-simulator-smoke.test.ts`) covers the same surface in
- * the app-core lane; this file guarantees the pure contract is verifiable
- * standalone and, when a simulator is booted, round-trips the assertion through
- * the REAL `xcrun simctl defaults` store the app-side verifier writes into.
+ * Checks mobile auth callback results after Android XML serialization and an
+ * optional real iOS simulator preferences-store round trip using node:test.
+ * Callback rejection, session integrity, URL parsing and target selection are
+ * covered by test/scripts/mobile-auth-simulator-smoke.test.ts. The iOS check
+ * writes a fixture to native preferences; it does not exercise deep-link delivery.
  */
 
 import assert from "node:assert/strict";
@@ -24,7 +13,6 @@ import test from "node:test";
 import {
   assertAuthCallbackResult,
   buildAndroidPreferenceXml,
-  buildCallbackUrl,
   expectedAuthCallbackFromUrl,
   readAndroidPreferenceFromXml,
 } from "./mobile-auth-simulator-smoke.mjs";
@@ -51,116 +39,6 @@ const HANDLED_RESULT = {
   state: expected.state,
   code: expected.code,
 };
-
-test("expectedAuthCallbackFromUrl extracts the path/state/code the app must echo", () => {
-  assert.deepEqual(expected, {
-    path: "auth/callback",
-    state: "simulator-oauth-state",
-    code: "simulator-oauth-code",
-  });
-});
-
-test("buildCallbackUrl targets the app's own scheme", () => {
-  const url = buildCallbackUrl(
-    { urlScheme: "elizaos" },
-    { path: "auth/callback", query: "state=s&code=c", url: "" },
-  );
-  assert.equal(url, "elizaos://auth/callback?state=s&code=c");
-});
-
-test("accepts a handled callback that did NOT change the session", () => {
-  assert.equal(
-    assertAuthCallbackResult(HANDLED_RESULT, expected, "iOS"),
-    HANDLED_RESULT,
-  );
-});
-
-test("accepts an already-authenticated simulator when the session is untouched", () => {
-  const preAuthenticated = {
-    ...HANDLED_RESULT,
-    sessionEstablished: true,
-    activeServerBeforePresent: true,
-    activeServerAfterPresent: true,
-  };
-  assert.equal(
-    assertAuthCallbackResult(preAuthenticated, expected, "iOS"),
-    preAuthenticated,
-  );
-});
-
-test("RED: rejects a deliver-only echo (no classification, no readback)", () => {
-  const deliverOnly = {
-    ok: true,
-    phase: "handled",
-    path: expected.path,
-    state: expected.state,
-    code: expected.code,
-  };
-  assert.throws(
-    () => assertAuthCallbackResult(deliverOnly, expected, "iOS"),
-    /callback was not classified/,
-  );
-});
-
-test("RED: rejects a session readback with no classification", () => {
-  assert.throws(
-    () =>
-      assertAuthCallbackResult(
-        { ...HANDLED_RESULT, classification: undefined },
-        expected,
-        "iOS",
-      ),
-    /callback was not classified/,
-  );
-});
-
-test("RED: rejects a classified-but-not-explicitly-rejected callback", () => {
-  assert.throws(
-    () =>
-      assertAuthCallbackResult(
-        { ...HANDLED_RESULT, accepted: true },
-        expected,
-        "iOS",
-      ),
-    /not explicitly rejected/,
-  );
-});
-
-test("RED: rejects a callback that authenticated/swapped the session (security regression)", () => {
-  assert.throws(
-    () =>
-      assertAuthCallbackResult(
-        { ...HANDLED_RESULT, sessionEstablished: true, sessionChanged: true },
-        expected,
-        "iOS",
-      ),
-    /changed the active session/,
-  );
-});
-
-test("RED: rejects a payload with no callback-specific session comparison", () => {
-  assert.throws(
-    () =>
-      assertAuthCallbackResult(
-        { ...HANDLED_RESULT, sessionChanged: undefined },
-        expected,
-        "iOS",
-      ),
-    /no auth outcome surfaced/,
-  );
-});
-
-test("RED: still enforces the delivery echo (path/state/code)", () => {
-  assert.throws(
-    () =>
-      assertAuthCallbackResult(
-        { ...HANDLED_RESULT, state: "tampered" },
-        expected,
-        "iOS",
-      ),
-    /query mismatch/,
-  );
-});
 
 test("Android Preferences XML round-trips the auth-callback result key", () => {
   // The Android leg seeds/reads the same handshake through
