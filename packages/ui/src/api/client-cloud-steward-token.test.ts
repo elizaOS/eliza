@@ -65,6 +65,20 @@ describe("getCloudAuthToken (Cloud = Steward everywhere)", () => {
     client.setToken(null);
   });
 
+  it.each([
+    "eliza-local-agent://ipc",
+    "http://127.0.0.1:31337",
+    "http://localhost:31337",
+  ])("does not use the local agent bearer as Cloud auth for %s", (base) => {
+    const client = new ElizaClient(base);
+    client.setToken("local-agent-only");
+    expect(getCloudAuthToken(client)).toBeNull();
+    expect(client.getRestAuthToken()).toBe("local-agent-only");
+    localStorage.setItem(STEWARD_TOKEN_KEY, "real-cloud-session");
+    expect(getCloudAuthToken(client)).toBe("real-cloud-session");
+    client.setToken(null);
+  });
+
   it("dispatches steward-token-sync when the client REST token changes", () => {
     const listener = vi.fn();
     window.addEventListener("steward-token-sync", listener);

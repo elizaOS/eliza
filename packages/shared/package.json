@@ -42,6 +42,16 @@
   },
   "exports": {
     "./package.json": "./package.json",
+    "./activity-plaintext": {
+      "types": "./dist/activity-plaintext.d.ts",
+      "eliza-source": {
+        "types": "./src/activity-plaintext.ts",
+        "import": "./src/activity-plaintext.ts",
+        "default": "./src/activity-plaintext.ts"
+      },
+      "import": "./dist/activity-plaintext.js",
+      "default": "./dist/activity-plaintext.js"
+    },
     "./todo-cutover": {
       "types": "./dist/todo-cutover.d.ts",
       "eliza-source": {
@@ -722,6 +732,16 @@
       },
       "import": "./dist/local-inference/bge-input.js",
       "default": "./dist/local-inference/bge-input.js"
+    },
+    "./contracts/screen-capture": {
+      "types": "./dist/contracts/screen-capture.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/screen-capture.ts",
+        "import": "./src/contracts/screen-capture.ts",
+        "default": "./src/contracts/screen-capture.ts"
+      },
+      "import": "./dist/contracts/screen-capture.js",
+      "default": "./dist/contracts/screen-capture.js"
     }
   },
   "publishConfig": {

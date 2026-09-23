@@ -45,7 +45,7 @@
   },
   "dependencies": {
     "llama-cpp-capacitor": "^0.1.5",
-    "@elizaos/core": "workspace:*",
+    "@elizaos/common": "workspace:*",
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {

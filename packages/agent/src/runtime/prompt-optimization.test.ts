@@ -10,7 +10,7 @@ import {
   ModelType,
   runWithTrajectoryContext,
 } from "@elizaos/core";
-import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/types.ts";
 import {
   type CapturedModelUsage,
@@ -37,6 +37,7 @@ const VIEW = {
 afterEach(() => {
   vi.restoreAllMocks();
 });
+
 import {
   runWithViewClient,
   type ViewClientScope,

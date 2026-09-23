@@ -10,7 +10,7 @@ export default {
       globals: {
         "@capacitor/core": "capacitorExports",
         "llama-cpp-capacitor": "llamaCppCapacitor",
-        "@elizaos/core": "elizaCore",
+        "@elizaos/common": "elizaCommon",
         "@elizaos/shared/local-inference": "elizaLocalInference",
         "@elizaos/shared/local-inference/bge-input": "elizaBgeInput",
       },
@@ -27,7 +27,7 @@ export default {
   external: [
     "@capacitor/core",
     "llama-cpp-capacitor",
-    "@elizaos/core",
+    "@elizaos/common",
     "@elizaos/shared/local-inference",
     "@elizaos/shared/local-inference/bge-input",
   ],

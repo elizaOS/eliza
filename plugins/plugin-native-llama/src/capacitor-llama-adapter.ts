@@ -22,7 +22,7 @@ import {
   BGE_SMALL_VECTOR_SPACE,
   ElizaError,
   identifyEmbeddingVector,
-} from "@elizaos/core";
+} from "@elizaos/common";
 import { BGE_EMBEDDING_MODEL } from "@elizaos/shared/local-inference";
 import {
   assertBgeTokenAgreement,
