@@ -717,155 +717,135 @@ describe("authenticated view loopback requests", () => {
 		).not.toBe(true);
 	});
 
-	it("authenticates every Node-side loopback caller", async () => {
-		const token = "all-views-callers-token";
-		const server = await startAuthenticatedViewsServer(token);
-		process.env.ELIZA_PORT = String(server.port);
-		process.env.ELIZA_API_TOKEN = token;
-
-		const runtime = {
-			agentId: "agent-1",
-			getTasks: async () => [],
-			createTask: async () => "task-1",
-			deleteTask: async () => undefined,
-		} as never;
-		const message = (text: string) =>
-			({
-				entityId: "user-1",
-				roomId: "room-1",
-				agentId: "agent-1",
-				content: { text },
-			}) as never;
-		const viewsAction = createViewsAction({
-			hasOwnerAccess: async () => true,
-		});
-		const invokeViews = async (
-			text: string,
-			options: Record<string, unknown>,
-		) => {
-			const result = await viewsAction.handler(
-				runtime,
-				message(text),
+	const viewsAction = () =>
+		createViewsAction({ hasOwnerAccess: async () => true });
+	it.each([
+		[
+			"open view manager",
+			viewsAction,
+			{ action: "manager" },
+			"/api/views/__view-manager__/navigate",
+		],
+		[
+			"pin settings",
+			viewsAction,
+			{ action: "pin", view: "settings" },
+			"/api/views/settings/navigate",
+		],
+		[
+			"split settings and notes",
+			viewsAction,
+			{ action: "split", views: ["settings", "notes"] },
+			"/api/views/settings/navigate",
+		],
+		[
+			"interact with settings",
+			viewsAction,
+			{ action: "interact", view: "settings", capability: "get-state" },
+			"/api/views/settings/interact",
+		],
+		[
+			"broadcast refresh",
+			viewsAction,
+			{ action: "broadcast", eventType: "demo:refresh" },
+			"/api/views/events/broadcast",
+		],
+		[
+			"search views settings",
+			viewsAction,
+			{ action: "search", query: "settings" },
+			"/api/views/search",
+		],
+		[
+			"make the background green",
+			createBackgroundAction,
+			undefined,
+			"/api/views/events/broadcast",
+		],
+		[
+			"i want to upload my own background image",
+			createBackgroundAction,
+			undefined,
+			"/api/views/background/navigate",
+		],
+		[
+			"switch to local agent",
+			createAgentSwitchAction,
+			{ profile: "local" },
+			"/api/runtime/agent-switch",
+		],
+		[
+			"switch model to cloud",
+			createModelSwitchAction,
+			{ target: "cloud" },
+			"/api/runtime/model-switch",
+		],
+		[
+			"use dark mode",
+			createSettingsAction,
+			{ action: "set", section: "appearance", key: "theme", value: "dark" },
+			"/api/views/events/broadcast",
+		],
+		[
+			"turn off shell access",
+			createSettingsAction,
+			{ action: "set", section: "permissions", key: "shell", value: "off" },
+			"/api/permissions/shell",
+		],
+		[
+			"generate a background of a misty mountain sunrise",
+			createBackgroundAction,
+			undefined,
+			"/api/background/generate-image",
+		],
+	] as const)(
+		"authenticates the loopback request for %s",
+		async (text, createAction, options, pathname) => {
+			const token = "caller-token";
+			const server = await startAuthenticatedViewsServer(token);
+			process.env.ELIZA_PORT = String(server.port);
+			process.env.ELIZA_API_TOKEN = token;
+			const result = await createAction().handler(
+				{
+					agentId: "agent-1",
+					getTasks: async () => [],
+					createTask: async () => "task-1",
+					deleteTask: async () => undefined,
+				} as never,
+				{
+					entityId: "user-1",
+					roomId: "room-1",
+					agentId: "agent-1",
+					content: { text },
+				} as never,
 				undefined,
 				options,
 			);
 			expect(result.success).toBe(true);
-		};
+			expect(server.requests).toEqual(
+				expect.arrayContaining([expect.objectContaining({ pathname })]),
+			);
+			for (const request of server.requests) {
+				expect(request.authorization).toBe(`Bearer ${token}`);
+				expect(`${request.pathname}\n${request.body}`).not.toContain(token);
+			}
+		},
+	);
 
-		await invokeViews("open view manager", { action: "manager" });
-		await invokeViews("pin settings", { action: "pin", view: "settings" });
-		await invokeViews("split settings and notes", {
-			action: "split",
-			views: ["settings", "notes"],
-		});
-		await invokeViews("interact with settings", {
-			action: "interact",
-			view: "settings",
-			capability: "get-state",
-		});
-		await invokeViews("broadcast refresh", {
-			action: "broadcast",
-			eventType: "demo:refresh",
-		});
-		await invokeViews("search views settings", {
-			action: "search",
-			query: "settings",
-		});
-
-		const backgroundAction = createBackgroundAction();
-		const backgroundResult = await backgroundAction.handler(
-			runtime,
-			message("make the background green"),
-		);
-		expect(backgroundResult.success).toBe(true);
-		const backgroundNavigateResult = await backgroundAction.handler(
-			runtime,
-			message("i want to upload my own background image"),
-		);
-		expect(backgroundNavigateResult.success).toBe(true);
-
-		const agentSwitchAction = createAgentSwitchAction();
-		const agentSwitchResult = await agentSwitchAction.handler(
-			runtime,
-			message("switch to local agent"),
-			undefined,
-			{ profile: "local" },
-		);
-		expect(agentSwitchResult.success).toBe(true);
-
-		const modelSwitchAction = createModelSwitchAction();
-		const modelSwitchResult = await modelSwitchAction.handler(
-			runtime,
-			message("switch model to cloud"),
-			undefined,
-			{ target: "cloud" },
-		);
-		expect(modelSwitchResult.success).toBe(true);
-
-		const settingsAction = createSettingsAction();
-		const settingsResult = await settingsAction.handler(
-			runtime,
-			message("use dark mode"),
-			undefined,
-			{
-				action: "set",
-				section: "appearance",
-				key: "theme",
-				value: "dark",
-			},
-		);
-		expect(settingsResult.success).toBe(true);
-
-		// A settings route OUTSIDE /api/views/* must carry the same bearer: the
-		// whole local API boundary is token-protected, not just the views prefix.
-		const shellPermissionResult = await settingsAction.handler(
-			runtime,
-			message("turn off shell access"),
-			undefined,
-			{
-				action: "set",
-				section: "permissions",
-				key: "shell",
-				value: "off",
-			},
-		);
-		expect(shellPermissionResult.success).toBe(true);
-
-		// The background image generator crosses the same boundary.
-		const backgroundGenerateResult = await backgroundAction.handler(
-			runtime,
-			message("generate a background of a misty mountain sunrise"),
-		);
-		expect(backgroundGenerateResult.success).toBe(true);
-
-		// The app-control loopback client (installed apps, runs, launch, stop).
+	it("authenticates the installed-apps client", async () => {
+		const token = "apps-client-token";
+		const server = await startAuthenticatedViewsServer(token);
+		process.env.ELIZA_PORT = String(server.port);
+		process.env.ELIZA_API_TOKEN = token;
 		await expect(createAppControlClient().listInstalledApps()).resolves.toEqual(
 			[],
 		);
-
-		const paths = server.requests.map((request) => request.pathname);
-		expect(paths).toEqual(
-			expect.arrayContaining([
-				"/api/views/__view-manager__/navigate",
-				"/api/views/settings/navigate",
-				"/api/views/settings/interact",
-				"/api/views/events/broadcast",
-				"/api/views/search",
-				"/api/views/background/navigate",
-				"/api/runtime/agent-switch",
-				"/api/runtime/model-switch",
-				"/api/permissions/shell",
-				"/api/background/generate-image",
-				"/api/apps/installed",
-			]),
-		);
-		expect(
-			server.requests.every(
-				(request) => request.authorization === `Bearer ${token}`,
-			),
-		).toBe(true);
-		for (const request of server.requests) {
-			expect(`${request.pathname}\n${request.body}`).not.toContain(token);
-		}
+		expect(server.requests).toEqual([
+			expect.objectContaining({
+				pathname: "/api/apps/installed",
+				authorization: `Bearer ${token}`,
+				body: "",
+			}),
+		]);
 	});
 });
