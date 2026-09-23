@@ -1,12 +1,23 @@
 /** Exercises retention against real file records and registered task execution.
- * The task storage boundary is an in-memory fixture; filesystem cleanup is real.
+ * Task storage uses in-memory fixtures and the real adapter; filesystem cleanup is real.
  */
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { IAgentRuntime, Task, TaskWorker, UUID } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
 import {
+  AgentRuntime,
+  type IAgentRuntime,
+  type Task,
+  TaskService,
+  type TaskWorker,
+  type UUID,
+} from "@elizaos/core";
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { afterEach, describe, expect, it } from "vitest";
+import { basicServices } from "../features/basic-capabilities/index.ts";
+import { createJsonFileTrajectoryRecorder } from "./trajectory-recorder.ts";
+import {
+  FileTrajectoryRetentionService,
   installTrajectoryRetention,
   resolveTrajectoryRetentionDays,
   sweepAgentTrajectoryFiles,
@@ -16,10 +27,13 @@ const DAY = 86_400_000;
 const agentId = "00000000-0000-0000-0000-000000000001" as UUID;
 const directories: string[] = [];
 const originalRoot = process.env.ELIZA_TRAJECTORY_DIR;
+const originalState = process.env.ELIZA_STATE_DIR;
 const originalDays = process.env.ELIZA_TRAJECTORY_RETENTION_DAYS;
 afterEach(async () => {
   for (const dir of directories.splice(0))
     await fs.rm(dir, { recursive: true, force: true });
+  if (originalState === undefined) delete process.env.ELIZA_STATE_DIR;
+  else process.env.ELIZA_STATE_DIR = originalState;
   if (originalRoot === undefined) delete process.env.ELIZA_TRAJECTORY_DIR;
   else process.env.ELIZA_TRAJECTORY_DIR = originalRoot;
   if (originalDays === undefined)
@@ -151,5 +165,69 @@ describe("trajectory file retention", () => {
     const stopAgain = await installTrajectoryRetention(runtime);
     expect(tasks.size).toBe(1);
     await stopAgain();
+  });
+  it("cleans actual file recorder output through TaskService without SQL trajectory capture", async () => {
+    const root = await setup();
+    process.env.ELIZA_TRAJECTORY_DIR = root;
+    process.env.ELIZA_TRAJECTORY_RETENTION_DAYS = "14";
+    process.env.ELIZA_STATE_DIR = root;
+    const runtime = new AgentRuntime({
+      character: { name: "File retention", bio: "File-only recording" },
+      plugins: [
+        {
+          name: "file-recording",
+          services: basicServices.filter(
+            (service) =>
+              service.serviceType === TaskService.serviceType ||
+              service.serviceType ===
+                FileTrajectoryRetentionService.serviceType,
+          ),
+        },
+      ],
+      logLevel: "fatal",
+    });
+    Object.assign(runtime, { serverless: true });
+    try {
+      await initializeTestRuntime(runtime, { skipMigrations: true });
+      await runtime.getServiceLoadPromise(
+        FileTrajectoryRetentionService.serviceType,
+      );
+      await runtime.getServiceLoadPromise(TaskService.serviceType);
+      const service = runtime.getService<FileTrajectoryRetentionService>(
+        FileTrajectoryRetentionService.serviceType,
+      );
+      const taskService = runtime.getService<TaskService>(
+        TaskService.serviceType,
+      );
+      if (!service || !taskService)
+        throw new Error("File recorder task services did not start");
+      expect(runtime.getService("trajectory_logger")).toBeNull();
+      const recorder = createJsonFileTrajectoryRecorder({
+        rootDir: root,
+        enabled: true,
+      });
+      const id = recorder.startTrajectory({
+        agentId: runtime.agentId,
+        rootMessage: {
+          id: "retention-request",
+          text: "Complete recorded request",
+        },
+      });
+      await recorder.endTrajectory(id, "finished");
+      const artifact = path.join(root, runtime.agentId, `${id}.json`);
+      await fs.utimes(artifact, new Date(0), new Date(0));
+      const tasks = await runtime.getTasksByName("TRAJECTORY_FILE_RETENTION");
+      expect(tasks).toHaveLength(1);
+      if (!tasks[0].id) throw new Error("Scheduled retention task has no ID");
+      await taskService.executeTaskById(tasks[0].id);
+      await expect(fs.readFile(artifact)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      expect(
+        (await runtime.getTask(tasks[0].id))?.metadata?.updatedAt,
+      ).toBeGreaterThan(0);
+    } finally {
+      await runtime.stop();
+    }
   });
 });

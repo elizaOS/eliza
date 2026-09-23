@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   ElizaError,
   type IAgentRuntime,
+  Service,
   stringToUuid,
   type TaskWorker,
 } from "@elizaos/core";
@@ -45,7 +46,8 @@ export async function sweepAgentTrajectoryFiles(
     agentId === "." ||
     agentId === ".." ||
     !Number.isFinite(maxAgeMs) ||
-    maxAgeMs <= 0
+    maxAgeMs <= 0 ||
+    !Number.isFinite(now)
   ) {
     throw new ElizaError(
       "Trajectory retention requires an agent directory and positive age",
@@ -151,4 +153,24 @@ export async function installTrajectoryRetention(
       runtime.unregisterTaskWorker(WORKER);
     await active;
   };
+}
+
+/** Owns file cleanup independently of optional SQL trajectory capture. */
+export class FileTrajectoryRetentionService extends Service {
+  static serviceType = "trajectory_file_retention";
+  capabilityDescription =
+    "Expires completed file trajectories through the core task clock";
+  private stopRetention: (() => Promise<void>) | undefined;
+
+  static async start(
+    runtime: IAgentRuntime,
+  ): Promise<FileTrajectoryRetentionService> {
+    const service = new FileTrajectoryRetentionService(runtime);
+    service.stopRetention = await installTrajectoryRetention(runtime);
+    return service;
+  }
+
+  async stop(): Promise<void> {
+    await this.stopRetention?.();
+  }
 }
