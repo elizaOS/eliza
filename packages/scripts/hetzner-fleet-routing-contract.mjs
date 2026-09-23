@@ -55,63 +55,6 @@ function lineAt(source, offset) {
   return source.slice(0, offset).split("\n").length;
 }
 
-/**
- * Collect `jobs.<id>.runs-on` values that pin a literal self-hosted label list.
- * `collectFleetRoutes` only sees nodes that already mention the fleet variable
- * or the robot label, so a job hard-routed to a generic pool is invisible to
- * it — the routing contract can check the shape of an opt-in but not the
- * absence of one. These are the jobs that never opted in at all.
- */
-function collectUnguardedSelfHostedRoutes(
-  node,
-  source,
-  pathParts = [],
-  routes = [],
-) {
-  if (isMap(node)) {
-    for (const pair of node.items) {
-      const key = isScalar(pair.key) ? String(pair.key.value) : "<key>";
-      collectUnguardedSelfHostedRoutes(
-        pair.value,
-        source,
-        [...pathParts, key],
-        routes,
-      );
-    }
-    return routes;
-  }
-
-  if (isSeq(node)) {
-    const routePath = pathParts.join(".");
-    const labels = node.items
-      .filter((item) => isScalar(item) && typeof item.value === "string")
-      .map((item) => String(item.value));
-    if (
-      DIRECT_RUNNER_PATH.test(routePath) &&
-      labels.length === node.items.length &&
-      labels.some((label) => label.toLowerCase() === "self-hosted") &&
-      !labels.some((label) => PHYSICAL_DEVICE_LABELS.has(label.toLowerCase()))
-    ) {
-      routes.push({
-        line: lineAt(source, node.range?.[0] ?? 0),
-        path: routePath,
-        value: `[${labels.join(", ")}]`,
-      });
-      return routes;
-    }
-    node.items.forEach((item, index) => {
-      collectUnguardedSelfHostedRoutes(
-        item,
-        source,
-        [...pathParts, String(index)],
-        routes,
-      );
-    });
-  }
-
-  return routes;
-}
-
 function collectFleetRoutes(node, source, pathParts = [], routes = []) {
   if (isScalar(node)) {
     if (
@@ -137,6 +80,26 @@ function collectFleetRoutes(node, source, pathParts = [], routes = []) {
   }
 
   if (isSeq(node)) {
+    const routePath = pathParts.join(".");
+    const labels = node.items.map((item) =>
+      isScalar(item) && typeof item.value === "string" ? item.value : null,
+    );
+    if (
+      DIRECT_RUNNER_PATH.test(routePath) &&
+      labels.every((label) => label !== null) &&
+      labels.some((label) => label.toLowerCase() === "self-hosted")
+    ) {
+      if (
+        !labels.some((label) => PHYSICAL_DEVICE_LABELS.has(label.toLowerCase()))
+      ) {
+        routes.push({
+          line: lineAt(source, node.range?.[0] ?? 0),
+          path: routePath,
+          value: `[${labels.join(", ")}] pins a self-hosted pool without the HETZNER_FLEET_ONLINE opt-in`,
+        });
+      }
+      return routes;
+    }
     node.items.forEach((item, index) => {
       collectFleetRoutes(item, source, [...pathParts, String(index)], routes);
     });
@@ -165,15 +128,6 @@ export function validateHetznerFleetRouting(repoRoot) {
     if (document.errors.length > 0) {
       throw new Error(
         `${name}: invalid workflow YAML: ${document.errors.map((error) => error.message).join("; ")}`,
-      );
-    }
-
-    for (const unguarded of collectUnguardedSelfHostedRoutes(
-      document.contents,
-      source,
-    )) {
-      failures.push(
-        `${name}:${unguarded.line} (${unguarded.path}): ${unguarded.value} pins a self-hosted pool without the HETZNER_FLEET_ONLINE opt-in`,
       );
     }
 
