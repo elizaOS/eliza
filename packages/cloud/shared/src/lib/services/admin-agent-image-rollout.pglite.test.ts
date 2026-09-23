@@ -406,115 +406,74 @@ describe("admin agent image rollout on primary PGlite", () => {
 
   test("warm-claim state constraint and recovery indexes exist in generated schema", async () => {
     const seeded = await seedAgents(0);
-    await expect(
-      (async () => {
-        await dbWrite.insert(agentSandboxes).values({
-          id: "00000000-0000-4000-8000-000000000089",
-          organization_id: seeded.organizationId,
-          user_id: seeded.actorUserId,
-          status: "pending",
-          warm_claim_credential_state: "invalid" as never,
-        });
-      })(),
-    ).rejects.toThrow();
-    await expect(
-      (async () => {
-        await dbWrite.insert(agentSandboxes).values({
-          id: "00000000-0000-4000-8000-000000000088",
-          organization_id: seeded.organizationId,
-          user_id: seeded.actorUserId,
-          status: "pending",
-          replacement_cleanup_sandbox_id: "unpaired-cleanup-handle",
-        });
-      })(),
-    ).rejects.toThrow();
-    await expect(
-      (async () => {
-        await dbWrite.insert(agentSandboxes).values({
-          id: "00000000-0000-4000-8000-000000000087",
-          organization_id: seeded.organizationId,
-          user_id: seeded.actorUserId,
-          status: "pending",
-          replacement_cleanup_vpn_node_id: "unpaired-vpn-node",
-        });
-      })(),
-    ).rejects.toThrow();
-    await expect(
-      (async () => {
-        await dbWrite.insert(agentSandboxes).values({
-          id: "00000000-0000-4000-8000-000000000086",
-          organization_id: seeded.organizationId,
-          user_id: seeded.actorUserId,
-          status: "pending",
-          replacement_cleanup_allocation_counted: true,
-        });
-      })(),
-    ).rejects.toThrow();
-    await expect(
-      (async () => {
-        await dbWrite.insert(agentSandboxes).values({
-          id: "00000000-0000-4000-8000-000000000085",
-          organization_id: seeded.organizationId,
-          user_id: seeded.actorUserId,
-          status: "pending",
-          replacement_cleanup_sandbox_id: "candidate",
-          replacement_cleanup_node_id: "node-a",
-          replacement_cleanup_container_name: "candidate",
-          replacement_cleanup_vpn_node_name: "candidate-vpn",
-          replacement_cleanup_allocation_counted: false,
-          replacement_cleanup_created_at: new Date(),
-        });
-      })(),
-    ).rejects.toThrow();
-    await expect(
-      (async () => {
-        await dbWrite.insert(agentSandboxes).values({
-          id: "00000000-0000-4000-8000-000000000084",
-          organization_id: seeded.organizationId,
-          user_id: seeded.actorUserId,
-          status: "pending",
-          replacement_cleanup_sandbox_id: "candidate-without-attempt",
-          replacement_cleanup_node_id: "node-a",
-          replacement_cleanup_container_name: "candidate-without-attempt",
-          replacement_cleanup_container_id: "sha256:container",
-          replacement_cleanup_allocation_counted: true,
-          replacement_cleanup_created_at: new Date(),
-        });
-      })(),
-    ).rejects.toThrow();
-    await expect(
-      (async () => {
-        await dbWrite.insert(agentSandboxes).values({
-          id: "00000000-0000-4000-8000-000000000083",
-          organization_id: seeded.organizationId,
-          user_id: seeded.actorUserId,
-          status: "pending",
-          replacement_cleanup_sandbox_id: "old-primary",
-          replacement_cleanup_node_id: "node-a",
-          replacement_cleanup_container_name: "old-primary",
-          replacement_cleanup_preserved_vpn_node_id: "stale-candidate-identity",
-          replacement_cleanup_allocation_counted: true,
-          replacement_cleanup_created_at: new Date(),
-        });
-      })(),
-    ).rejects.toThrow();
-    await expect(
-      (async () => {
-        await dbWrite.insert(agentSandboxes).values({
-          id: "00000000-0000-4000-8000-000000000080",
-          organization_id: seeded.organizationId,
-          user_id: seeded.actorUserId,
-          status: "pending",
-          replacement_cleanup_sandbox_id: "candidate-vpn-id-without-registration",
-          replacement_cleanup_node_id: "node-a",
-          replacement_cleanup_container_name: "candidate-vpn-id-without-registration",
-          replacement_cleanup_attempt_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-          replacement_cleanup_vpn_node_id: "orphan-candidate-vpn-id",
-          replacement_cleanup_allocation_counted: true,
-          replacement_cleanup_created_at: new Date(),
-        });
-      })(),
-    ).rejects.toThrow();
+    const invalidRows = [
+      {
+        id: "00000000-0000-4000-8000-000000000089",
+        warm_claim_credential_state: "invalid" as never,
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000088",
+        replacement_cleanup_sandbox_id: "unpaired-cleanup-handle",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000087",
+        replacement_cleanup_vpn_node_id: "unpaired-vpn-node",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000086",
+        replacement_cleanup_allocation_counted: true,
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000085",
+        replacement_cleanup_sandbox_id: "candidate",
+        replacement_cleanup_node_id: "node-a",
+        replacement_cleanup_container_name: "candidate",
+        replacement_cleanup_vpn_node_name: "candidate-vpn",
+        replacement_cleanup_allocation_counted: false,
+        replacement_cleanup_created_at: new Date(),
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000084",
+        replacement_cleanup_sandbox_id: "candidate-without-attempt",
+        replacement_cleanup_node_id: "node-a",
+        replacement_cleanup_container_name: "candidate-without-attempt",
+        replacement_cleanup_container_id: "sha256:container",
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date(),
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000083",
+        replacement_cleanup_sandbox_id: "old-primary",
+        replacement_cleanup_node_id: "node-a",
+        replacement_cleanup_container_name: "old-primary",
+        replacement_cleanup_preserved_vpn_node_id: "stale-candidate-identity",
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date(),
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000080",
+        replacement_cleanup_sandbox_id: "candidate-vpn-id-without-registration",
+        replacement_cleanup_node_id: "node-a",
+        replacement_cleanup_container_name: "candidate-vpn-id-without-registration",
+        replacement_cleanup_attempt_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        replacement_cleanup_vpn_node_id: "orphan-candidate-vpn-id",
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date(),
+      },
+    ] satisfies Partial<typeof agentSandboxes.$inferInsert>[];
+    for (const row of invalidRows) {
+      await expect(
+        dbWrite
+          .insert(agentSandboxes)
+          .values({
+            organization_id: seeded.organizationId,
+            user_id: seeded.actorUserId,
+            status: "pending",
+            ...row,
+          })
+          .execute(),
+      ).rejects.toThrow();
+    }
     await dbWrite.insert(agentSandboxes).values([
       {
         id: "00000000-0000-4000-8000-000000000082",
