@@ -2778,11 +2778,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/agent/status") {
-    sendJson(req, res, 200, { firstRunComplete: true, status: "running" });
-    return;
-  }
-
   if (req.method === "GET" && url.pathname === "/api/status") {
     sendJson(req, res, 200, {
       state: "running",
@@ -2893,34 +2888,6 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && url.pathname === "/api/database/query") {
     const body = (await readJsonBody(req)) || {};
     sendJson(req, res, 200, executeDatabaseQueryResult(String(body.sql ?? "")));
-    return;
-  }
-
-  if (
-    (req.method === "GET" || req.method === "POST") &&
-    url.pathname === "/api/database/vectors/search"
-  ) {
-    const query =
-      req.method === "POST"
-        ? (await readJsonBody(req))?.query
-        : url.searchParams.get("query");
-    sendJson(req, res, 200, {
-      query: typeof query === "string" ? query : "",
-      table: "memories",
-      limit: 10,
-      count: 1,
-      results: [
-        {
-          id: "memory-smoke-1",
-          text: "Deterministic memory fixture for UI smoke.",
-          similarity: 0.98,
-          roomId: "room-smoke",
-          entityId: "entity-smoke",
-          createdAt: SMOKE_GENERATED_AT,
-          tableName: "memories",
-        },
-      ],
-    });
     return;
   }
 
@@ -4096,14 +4063,6 @@ const server = http.createServer(async (req, res) => {
       tasks: [],
       pendingConfirmations: 0,
     });
-    return;
-  }
-
-  if (
-    req.method === "GET" &&
-    url.pathname === "/api/coding-agents/coordinator/threads"
-  ) {
-    sendJson(req, res, 200, { threads: [], total: 0 });
     return;
   }
 
