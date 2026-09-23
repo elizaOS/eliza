@@ -1164,7 +1164,7 @@ describe("Shared Eliza Workerd runtime", () => {
             message: {
               role: "assistant",
               content:
-                call === 5
+                call === 4
                   ? "A new ElizaOS public release was announced today. [[SOURCE_URL:https://elizaos.ai/news]]"
                   : JSON.stringify({
                       success: true,
@@ -1226,11 +1226,11 @@ describe("Shared Eliza Workerd runtime", () => {
     });
     expect(JSON.stringify(searchResults)).not.toContain('"sources"');
     expect(JSON.stringify(searchResults)).not.toContain("search_id");
-    expect(modelRequests).toHaveLength(5);
+    expect(modelRequests).toHaveLength(4);
     expect(result.usage).toMatchObject({
-      promptTokens: 220,
-      completionTokens: 64,
-      totalTokens: 284,
+      promptTokens: 170,
+      completionTokens: 50,
+      totalTokens: 220,
     });
     expect(result.history.at(-1)?.grounding).toEqual({
       kind: "web_search",
