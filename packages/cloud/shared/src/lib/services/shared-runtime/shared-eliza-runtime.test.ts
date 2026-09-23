@@ -1142,7 +1142,7 @@ describe("Shared Eliza Workerd runtime", () => {
                     type: "function",
                     function: {
                       name: "WEB_SEARCH",
-                      arguments: JSON.stringify({ query: "latest ElizaOS news" }),
+                      arguments: JSON.stringify({ query: "latest public ElizaOS news" }),
                     },
                   },
                 ],
@@ -1163,16 +1163,13 @@ describe("Shared Eliza Workerd runtime", () => {
             index: 0,
             message: {
               role: "assistant",
-              content:
-                call === 4
-                  ? "A new ElizaOS public release was announced today. [[SOURCE_URL:https://elizaos.ai/news]]"
-                  : JSON.stringify({
-                      success: true,
-                      decision: "FINISH",
-                      thought: "Answer from the public result.",
-                      messageToUser:
-                        "A new ElizaOS public release was announced today. [[SOURCE_URL:https://elizaos.ai/news]]",
-                    }),
+              content: JSON.stringify({
+                success: true,
+                decision: "FINISH",
+                thought: "Answer from the public result.",
+                messageToUser:
+                  "A new ElizaOS public release was announced today. [[SOURCE_URL:https://elizaos.ai/news]]",
+              }),
             },
             finish_reason: "stop",
           },
@@ -1226,11 +1223,21 @@ describe("Shared Eliza Workerd runtime", () => {
     });
     expect(JSON.stringify(searchResults)).not.toContain('"sources"');
     expect(JSON.stringify(searchResults)).not.toContain("search_id");
-    expect(modelRequests).toHaveLength(4);
+    expect(modelRequests).toHaveLength(3);
+    const toolReceipts = modelRequests.flatMap((request) => {
+      if (!Array.isArray(request.messages)) throw new Error("Missing model messages");
+      return request.messages.flatMap((message) => {
+        if (message.role !== "tool") return [];
+        if (typeof message.content !== "string") throw new Error("Missing tool receipt");
+        return [JSON.parse(message.content)];
+      });
+    });
+    expect(toolReceipts[0]).toMatchObject({ success: true });
+    expect(toolReceipts).toHaveLength(1);
     expect(result.usage).toMatchObject({
-      promptTokens: 170,
-      completionTokens: 50,
-      totalTokens: 220,
+      promptTokens: 120,
+      completionTokens: 36,
+      totalTokens: 156,
     });
     expect(result.history.at(-1)?.grounding).toEqual({
       kind: "web_search",
