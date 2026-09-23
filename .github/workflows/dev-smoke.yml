@@ -18,14 +18,11 @@ env:
   BUN_VERSION: 1.3.14
   NODE_VERSION: 24.15.0
   NODE_NO_WARNINGS: "1"
-  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-  GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
-  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
   ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
   ELIZA_VAULT_PASSPHRASE: dev-smoke-headless-vault-only
 jobs:
   dev-smoke:
-    name: default staging + local onboarding
+    name: default staging startup
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     env:
@@ -62,13 +59,6 @@ jobs:
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
       - name: Run default staging dev smoke
         run: bun run --cwd packages/app test:dev-smoke
-      - name: Run explicit local onboarding smoke
-        env:
-          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ github.workspace }}/packages/app/test-results/dev-smoke-local/report.json
-        run: |
-          rm -f "$PLAYWRIGHT_JSON_OUTPUT_NAME"
-          bun run --cwd packages/app test:dev-smoke:local --reporter=list,json --trace=${{ github.event_name == 'workflow_dispatch' && 'on' || 'retain-on-failure' }}
-          node packages/scripts/check-required-playwright-results.mjs "$PLAYWRIGHT_JSON_OUTPUT_NAME" runtime-chooser-default.spec.ts bun-dev-onboarding-chat.spec.ts
       - name: Upload dev-smoke artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

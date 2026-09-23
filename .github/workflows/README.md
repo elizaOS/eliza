@@ -180,7 +180,9 @@ extended, and gesture fixtures with non-overlapping commands; engine variants
 remain separate tests.
 `ui-story-gate.yml` retains the full story catalog gate. `dev-smoke.yml`,
 `docker-ci-smoke.yml`, and `platform-smoke.yml` retain startup/HMR, container,
-and macOS/Windows contracts. `gitleaks.yml` scans branch commits once; PR
+and macOS/Windows contracts. Dev Smoke runs staging startup and HMR without
+direct model-provider credentials; billable local onboarding is excluded from
+automatic branch validation. `gitleaks.yml` scans branch commits once; PR
 admission retains its own diff scan.
 
 The retired `test.yml`, `quality.yml`, `scenario-pr.yml`, UI extended and chat
