@@ -396,6 +396,7 @@ export async function runEvaluator(
     trajectory: params.trajectory,
     redactText: redactDiagnosticText,
     clipboardAvailable,
+    requiresReplyField,
   };
   const renderedInput = renderEvaluatorModelInput(renderArgs);
   const modelInputBudget = buildModelInputBudget({
@@ -510,6 +511,7 @@ export async function runEvaluator(
       trajectory: params.trajectory,
       redactText: redactDiagnosticText,
       clipboardAvailable,
+      requiresReplyField,
     });
     const attemptBudget = buildModelInputBudget({
       messages: attemptInput.messages,
@@ -916,6 +918,7 @@ function renderEvaluatorModelInput(params: {
   trajectory: PlannerTrajectory;
   template?: string;
   clipboardAvailable?: boolean;
+  requiresReplyField?: boolean;
   redactText: ToolDiagnosticTextRedactor;
 }): {
   messages: ChatMessage[];
@@ -954,6 +957,7 @@ function renderEvaluatorModelInput(params: {
     evaluatorTemplateForQueue(
       evaluatorQueuedCallIds(params.trajectory, params.redactText).length > 0,
       params.clipboardAvailable,
+      params.requiresReplyField,
     );
   const instructions = (
     template.split("context_object:")[0] ?? template
