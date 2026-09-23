@@ -495,6 +495,81 @@ describe("importAgent decrypt, decompress, schema, and version gates", () => {
 });
 
 describe("importAgent restore", () => {
+  it.each([undefined, "", null, 42])(
+    "rejects invalid version-2 storage type %s before graph writes",
+    async (type) => {
+      const { adapter, createdAgents } = restoreAdapter();
+      const archive = payload({
+        version: 2,
+        memories: [
+          {
+            id: OTHER_ID,
+            ...(type === undefined ? {} : { type }),
+            content: { text: "Retained source" },
+            metadata: { type: "message" },
+          },
+        ],
+      });
+      archive.manifest = buildExportManifest(archive);
+      const buf = await packEncrypted(gzipJson(archive), PASSWORD);
+      await expect(
+        importAgent(runtimeWith(adapter), buf, PASSWORD),
+      ).rejects.toMatchObject({
+        code: "AGENT_IMPORT_MEMORY_TYPE_INVALID",
+      });
+      expect(createdAgents).toHaveLength(0);
+    },
+  );
+
+  it.each([null, 42, "invalid metadata"])(
+    "rejects malformed physical fragment metadata %s before graph writes",
+    async (metadata) => {
+      const { adapter, createdAgents } = restoreAdapter();
+      const archive = payload({
+        version: 2,
+        memories: [
+          {
+            id: OTHER_ID,
+            type: "document_fragments",
+            content: { text: "Fragment source" },
+            metadata,
+          },
+        ],
+      });
+      archive.manifest = buildExportManifest(archive);
+      const buf = await packEncrypted(gzipJson(archive), PASSWORD);
+      await expect(
+        importAgent(runtimeWith(adapter), buf, PASSWORD),
+      ).rejects.toMatchObject({
+        code: "AGENT_IMPORT_DOCUMENT_PARENT_MISSING",
+      });
+      expect(createdAgents).toHaveLength(0);
+    },
+  );
+
+  it("retains version-1 namespace fallback for memories without a physical type", async () => {
+    const restored: string[] = [];
+    const { adapter } = restoreAdapter({
+      createMemories: async (entries: Array<{ tableName: string }>) => {
+        restored.push(...entries.map((entry) => entry.tableName));
+      },
+    });
+    const archive = payload({
+      memories: [
+        {
+          id: OTHER_ID,
+          content: { text: "Legacy document" },
+          metadata: { type: "document", timestamp: 1 },
+        },
+      ],
+    });
+    const buf = await packEncrypted(gzipJson(archive), PASSWORD);
+    await expect(
+      importAgent(runtimeWith(adapter), buf, PASSWORD),
+    ).resolves.toMatchObject({ success: true, counts: { memories: 1 } });
+    expect(restored).toEqual(["documents"]);
+  });
+
   it("refuses unsupported agent scoping before creating any rows", async () => {
     const { adapter, createdAgents } = restoreAdapter();
     const runtime = runtimeWith(adapter);

@@ -139,6 +139,19 @@ test("restores timestamp-bearing SQL rows under the imported agent and retains m
       },
     },
     {
+      tableName: "document_fragments",
+      memory: {
+        ...common,
+        id: id(),
+        content: { text: "Physical fragment without a semantic discriminator" },
+        metadata: {
+          documentId,
+          position: 1,
+          custom: { retained: "complete metadata" },
+        },
+      },
+    },
+    {
       tableName: "memories",
       memory: {
         ...common,
@@ -204,7 +217,7 @@ test("restores timestamp-bearing SQL rows under the imported agent and retains m
     worlds: 1,
     rooms: 1,
     entities: 1,
-    memories: 5,
+    memories: 6,
   });
   if (!target.adapter.withAgentScope) throw new Error("SQL scope unavailable");
   await target.adapter.withAgentScope(
@@ -234,10 +247,21 @@ test("restores timestamp-bearing SQL rows under the imported agent and retains m
         tableName: "document_fragments",
       });
       expect(documents).toHaveLength(1);
-      expect(fragments).toHaveLength(1);
-      expect(fragments[0].metadata).toMatchObject({
+      expect(fragments).toHaveLength(2);
+      expect(
+        fragments.find((fragment) => fragment.metadata?.type === "fragment")
+          ?.metadata,
+      ).toMatchObject({
         documentId: documents[0].id,
         position: 0,
+      });
+      expect(
+        fragments.find((fragment) => fragment.metadata?.type !== "fragment")
+          ?.metadata,
+      ).toEqual({
+        documentId: documents[0].id,
+        position: 1,
+        custom: { retained: "complete metadata" },
       });
       expect(
         (await scoped.getMemories({ tableName: "plugin_fixture_notes" }))[0]
