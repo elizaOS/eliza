@@ -115,6 +115,9 @@ with `ELIZA_DEV_SERVER_REGISTRY`. See
 
 | Removed command | Use instead |
 | --- | --- |
+| `bun run release` | Canonical release workflow or verified `release:candidate` transaction with channel `latest` |
+| `bun run release:next` | Canonical release workflow or verified `release:candidate` transaction with channel `next` |
+| `bun run release:beta` | Canonical release workflow or verified `release:candidate` transaction with channel `beta` |
 | `bun run publish:dry-run` | `bun run release:candidate candidate` followed by `verify`, with explicit release identity and candidate arguments |
 | `bun run publish:packages` | Canonical release workflow, or `bun run release:candidate publish` with the verified candidate identity and integrity |
 | `bun run test:ci` | `bun run test` |
