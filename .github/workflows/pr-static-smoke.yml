@@ -166,7 +166,13 @@ jobs:
         id: core_scope
         env:
           MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/pr-core-build-scope.mjs "$MERGE_BASE" "$GITHUB_OUTPUT"
+        run: |
+          if [[ -f packages/scripts/pr-core-build-scope.mjs ]]; then
+            node packages/scripts/pr-core-build-scope.mjs "$MERGE_BASE" "$GITHUB_OUTPUT"
+          else
+            echo "Candidate predates scoped bootstrap; retaining the full core build."
+            echo "core_bootstrap_required=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build core contract
         if: steps.core_scope.outputs.core_bootstrap_required == 'true'
