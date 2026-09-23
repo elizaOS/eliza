@@ -181,7 +181,12 @@ vi.mock("../services/auth-store", () => {
     }
   }
 
-  return { AuthStore: MemoryAuthStore };
+  return {
+    AuthStore: MemoryAuthStore,
+    authStoreForRuntime: (
+      runtime: { adapter?: { db?: unknown } } | null | undefined,
+    ) => (runtime?.adapter?.db ? new MemoryAuthStore() : null),
+  };
 });
 
 const STATE_NO_DB: CompatRuntimeState = {

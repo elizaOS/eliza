@@ -2,7 +2,7 @@
  * Auth audit emitter.
  *
  * Every sensitive auth action ends up in two places:
- *   1. `auth_audit_events` table via `AuthStore.appendAuditEvent`.
+ *   1. `auth_audit_events` table via `AuthRepository.appendAuditEvent`.
  *   2. JSONL file at `<state>/auth/audit.log`, rotated at 10MB, so the
  *      operator can read history even if pglite is wiped.
  *
@@ -20,7 +20,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
 import type { RuntimeEnvRecord } from "@elizaos/shared/runtime-env";
-import type { AuthStore } from "../../services/auth-store";
+import type { AuthRepository } from "../../services/auth-store";
 import { resolveElizaStateDir } from "../../services/cloud-jwks-store";
 
 export const AUDIT_LOG_FILENAME = "audit.log";
@@ -38,7 +38,7 @@ export interface AuditEventInput {
 }
 
 export interface AuditEmitterOptions {
-  store: AuthStore;
+  store: AuthRepository;
   env?: RuntimeEnvRecord;
   now?: () => number;
 }
