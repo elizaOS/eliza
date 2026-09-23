@@ -83,7 +83,7 @@ const test = base.extend<
                 prompt.includes(NOTES_CAPABILITY_CONSTRAINT)
               );
             },
-            response: {
+            response: (call) => ({
               finishReason: "tool_calls",
               toolCalls: [
                 {
@@ -92,9 +92,22 @@ const test = base.extend<
                   arguments: {
                     shouldRespond: "RESPOND",
                     contexts: ["simple"],
-                    intents: ["decline unavailable notes action"],
+                    intents: [],
+                    contextRequests: [],
+                    completionContext: {
+                      mode: "all_prior_dialogue",
+                      sourceSetId:
+                        String(call.params.prompt).match(
+                          /completion_source_set: ([a-f0-9]{64})/,
+                        )?.[1] ?? "",
+                      complete: false,
+                      relevantSourceIds: [],
+                      constraintSourceIds: [],
+                      referentSourceIds: [],
+                      pendingIntentSourceIds: [],
+                    },
                     replyText: CAPABILITY_REPLY,
-                    replyEffectStatus: "none",
+                    replyEffectStatus: "non_applied",
                     candidateActionNames: [],
                     facts: [],
                     relationships: [],
@@ -104,7 +117,7 @@ const test = base.extend<
                   },
                 },
               ],
-            },
+            }),
           },
         ],
       });

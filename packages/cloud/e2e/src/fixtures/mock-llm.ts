@@ -116,6 +116,66 @@ function legacyFixtures(options: MockLlmOptions): DeterministicModelFixture[] {
       response: (call) => {
         if (!options.echoContext) return reply;
         const body = { messages: call.params.messages as OpenAiMessage[] };
+        if (call.toolNames.includes("HANDLE_RESPONSE")) {
+          const context = body.messages
+            .filter((message) => message.role !== "system")
+            .map((message) => contentToText(message.content))
+            .join("\n");
+          const currentMessages = [
+            ...context.matchAll(/^message:user:\n([^\n]+)$/gm),
+          ];
+          if (currentMessages.length !== 1) {
+            throw new Error(
+              "Context echo requires exactly one framed current user message",
+            );
+          }
+          const current: unknown = JSON.parse(currentMessages[0][1]);
+          if (!isRecord(current) || typeof current.text !== "string") {
+            throw new Error(
+              "Context echo requires the complete current message text",
+            );
+          }
+          const priorUsers = [
+            ...context.matchAll(
+              /^(?:prior_message:user:|\[h[1-9]\d* user(?:; same_text_as=h[1-9]\d*)?\])/gm,
+            ),
+          ].length;
+          return {
+            finishReason: "tool_calls",
+            toolCalls: [
+              {
+                id: "call_context_echo",
+                name: "HANDLE_RESPONSE",
+                arguments: {
+                  shouldRespond: "RESPOND",
+                  contexts: ["simple"],
+                  contextRequests: [],
+                  intents: [],
+                  completionContext: {
+                    mode: "all_prior_dialogue",
+                    sourceSetId:
+                      context.match(
+                        /^completion_source_set: ([a-f0-9]{64})/m,
+                      )?.[1] ?? "",
+                    complete: false,
+                    relevantSourceIds: [],
+                    constraintSourceIds: [],
+                    referentSourceIds: [],
+                    pendingIntentSourceIds: [],
+                  },
+                  replyText: `turn ${priorUsers + 1} (prior user turns: ${priorUsers}): ${current.text}`,
+                  replyEffectStatus: "none",
+                  candidateActionNames: [],
+                  facts: [],
+                  relationships: [],
+                  topics: [],
+                  addressedTo: [],
+                  emotion: "none",
+                },
+              },
+            ],
+          };
+        }
         const users = userMessages(body);
         return `turn ${users.length} (prior user turns: ${Math.max(0, users.length - 1)}): ${users.at(-1) ?? ""}`;
       },

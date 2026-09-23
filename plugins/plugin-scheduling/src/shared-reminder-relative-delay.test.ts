@@ -15,6 +15,10 @@ const NOW = "2026-08-16T04:48:56.509Z";
 describe("explicit Shared reminder relative delay", () => {
   it.each([
     ["Remind me in 1 minute: stretch.", 60_000],
+    ["Eliza remind us in 2 minutes: pizza time", 120_000],
+    ["Remind this group in 3 seconds: pizza time", 3_000],
+    ["In two minutes remind the group to stretch.", 120_000],
+    ["Remind us to stretch in two minutes.", 120_000],
     ["Please remind me in 2 minutes to stretch.", 120_000],
     ["Please remind me in two minutes to stretch.", 120_000],
     ["Set a reminder in 90 seconds to check the oven.", 90_000],
@@ -61,6 +65,7 @@ describe("explicit Shared reminder relative delay", () => {
 
   it.each([
     'Use the example "remind me in 2 minutes" in the documentation.',
+    'Use the example "remind us in 2 minutes" in the documentation.',
     'Don\'t say "remind me in 5 minutes" yet.',
     'It\'s just an example: "remind me in 5 minutes".',
     "For example: remind me in 2 minutes.",
@@ -77,6 +82,8 @@ describe("explicit Shared reminder relative delay", () => {
 
   it.each([
     "Do not remind me in 1 minute.",
+    "Eliza do not remind us in 2 minutes.",
+    "Remind this group in 2 minutes, actually do not remind us.",
     "Don't remind me in 1 minute.",
     "Never remind me in 1 minute.",
     "I do not want you to remind me in 1 minute.",
@@ -154,6 +161,7 @@ describe("explicit Shared reminder relative delay", () => {
 
   it.each([
     ["Remind me in 1 minute: stretch.", "2026-08-16T04:49:56.509Z"],
+    ["Eliza remind us in 2 minutes: pizza time", "2026-08-16T04:50:56.509Z"],
     [
       "Remind me to stretch in 1 minute and 30 seconds.",
       "2026-08-16T04:50:26.509Z",
