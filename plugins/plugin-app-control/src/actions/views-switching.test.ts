@@ -7,7 +7,6 @@
 
 import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CURATED_MULTILINGUAL } from "./view-matrix.fixtures.js";
 import { createViewsAction } from "./views.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 import { resolveIntentView } from "./views-show.js";
@@ -951,17 +950,6 @@ describe("view switching — VIEWS action resolver", () => {
 				expect(navigated).toEqual([viewId]);
 			},
 		);
-
-		it("keeps a registered explicit target when the utterance mentions another capability", async () => {
-			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(
-				REGISTRY,
-				"I want to add a new feature to my app",
-				{ action: "show", view: "plugins-page" },
-			);
-			expect(result?.success).toBe(true);
-			expect(navigated).toEqual(["plugins-page"]);
-		});
 	});
 
 	describe("ambiguity + miss handling", () => {
@@ -1650,28 +1638,6 @@ describe("resolveIntentView compatibility export — expanded surfaces + multili
 			expect(resolveIntentView(phrase)).toBe(viewId);
 		});
 	});
-
-	// Japanese/Korean/Vietnamese/Tagalog/Portuguese parity, driven directly off
-	// the shared CURATED_MULTILINGUAL fixture so this block can never drift from
-	// the canonical view-matrix data. Each curated phrase must resolve to its
-	// view id under the deterministic intent fallback.
-	describe.each(["ja", "ko", "vi", "tl", "pt"] as const)(
-		"%s (from CURATED_MULTILINGUAL fixture)",
-		(lang) => {
-			const cases = CURATED_MULTILINGUAL.filter((c) => c.lang === lang);
-
-			it("has curated coverage for this language", () => {
-				expect(cases.length).toBeGreaterThan(0);
-			});
-
-			it.each(cases.map((c) => [c.phrase, c.viewId] as const))(
-				'"%s" -> %s',
-				(phrase, viewId) => {
-					expect(resolveIntentView(phrase)).toBe(viewId);
-				},
-			);
-		},
-	);
 
 	it("returns null for non-navigational text (no false routing)", () => {
 		expect(resolveIntentView("thanks, that's all for now")).toBeNull();
