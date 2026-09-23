@@ -50,7 +50,7 @@ jobs:
         # credit balance, rate limit, transient outage). Skipping a weekly
         # maintenance run is preferable to a perma-red scheduled workflow.
         continue-on-error: true
-        uses: anthropics/claude-code-action@9cdae7f0d995e3ba7c33f226087fdf82a59cd520
+        uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
