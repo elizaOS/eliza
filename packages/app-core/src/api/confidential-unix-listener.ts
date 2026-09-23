@@ -83,6 +83,8 @@ export async function listenConfidentialUnix(input: {
           code: "CONFIDENTIAL_LISTENER_REVOCATION_FAILED",
           cause,
         });
+        // Admission state is uncertain: no connection may keep draining effects.
+        for (const socket of sockets) socket.destroy();
       }
       const timeout = setTimeout(() => {
         for (const socket of sockets) socket.destroy();

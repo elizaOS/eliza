@@ -101,16 +101,36 @@ describe.skipIf(process.platform !== "linux")(
     it("closes the listener even when admission teardown throws", async () => {
       const configuration = options();
       const server = createServer();
+      const requested = new Promise<void>((resolve) => {
+        server.once("request", () => resolve());
+      });
       const listener = await listenConfidentialUnix({
         ...configuration,
         server,
+        drainTimeoutMs: 60_000,
         revokeAdmission: () => {
           throw new Error("teardown failed");
         },
       });
+      const connection = connect(`\0${configuration.socketName}`);
+      const transportErrors: NodeJS.ErrnoException[] = [];
+      connection.on("error", (error: NodeJS.ErrnoException) => {
+        transportErrors.push(error);
+      });
+      const closed = new Promise<void>((resolve) => {
+        connection.once("close", () => resolve());
+      });
+      connection.write(
+        "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 100\r\n\r\nx",
+      );
+      await requested;
       await expect(listener.stop()).rejects.toMatchObject({
         code: "CONFIDENTIAL_LISTENER_REVOCATION_FAILED",
       });
+      await closed;
+      expect(
+        transportErrors.every((error) => error.code === "ECONNRESET"),
+      ).toBe(true);
       expect(server.listening).toBe(false);
       await expect(read(configuration.socketName)).rejects.toMatchObject({
         code: "ECONNREFUSED",
