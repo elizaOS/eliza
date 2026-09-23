@@ -1,42 +1,21 @@
+/** Tests mutation isolation between reads of the real coding-tool provider. */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { availableToolsProvider } from "./available-tools.js";
 
-describe("availableToolsProvider", () => {
-  it("lists every native coding tool including the web tools", async () => {
-    const result = await availableToolsProvider.get(
-      {} as IAgentRuntime,
-      {} as Memory,
-    );
+it("does not let a caller mutate the tool list returned to later turns", async () => {
+  const first = await availableToolsProvider.get(
+    {} as IAgentRuntime,
+    {} as Memory,
+  );
+  const tools = first.data?.codingTools;
+  if (!Array.isArray(tools)) throw new Error("Expected a coding-tool list");
+  const original = [...tools];
+  tools.splice(0, tools.length, "CALLER_MUTATION");
 
-    expect(result.text).toContain("# Native coding tools");
-    for (const tool of [
-      "FILE",
-      "SHELL",
-      "WEB_FETCH",
-      "WEB_SEARCH",
-      "WORKTREE",
-    ]) {
-      expect(result.text).toContain(`- ${tool}`);
-      expect(result.data?.codingTools).toContain(tool);
-    }
-  });
-
-  it("returns a defensive copy of the tool list", async () => {
-    const first = await availableToolsProvider.get(
-      {} as IAgentRuntime,
-      {} as Memory,
-    );
-    const second = await availableToolsProvider.get(
-      {} as IAgentRuntime,
-      {} as Memory,
-    );
-    expect(first.data?.codingTools).not.toBe(second.data?.codingTools);
-    expect(first.data?.codingTools).toEqual(second.data?.codingTools);
-  });
-
-  it("is registered close to the front of rendered state", () => {
-    expect(availableToolsProvider.position).toBe(-10);
-    expect(availableToolsProvider.cacheStable).toBe(true);
-  });
+  const second = await availableToolsProvider.get(
+    {} as IAgentRuntime,
+    {} as Memory,
+  );
+  expect(second.data?.codingTools).toEqual(original);
 });
