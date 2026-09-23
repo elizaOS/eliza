@@ -12,7 +12,10 @@
       ]
     },
     "build": {
-      "commands": []
+      "inputs": [{ "step": "install" }],
+      "commands": [
+        "bun build packages/core/src/index.ts --target=bun --packages=external --outdir=packages/core/dist"
+      ]
     }
   },
   "deploy": {
@@ -32,12 +35,13 @@
         ]
       },
       {
-        "step": "install",
+        "step": "build",
         "include": [
           "node_modules",
           "package.json",
           "packages/login",
-          "packages/core"
+          "packages/core",
+          "packages/common"
         ]
       }
     ]

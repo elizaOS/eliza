@@ -42,11 +42,12 @@
   "scripts": {
     "build": "bun scripts/clean-build.ts && tsc6 --noCheck -p tsconfig.build.json && bun scripts/copy-assets.ts && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/login",
     "typecheck": "tsc --noEmit",
-    "test": "bun run build && bun test --isolate src/sdk/__tests__ src/server/auth/src/__tests__ src/server/__tests__",
+    "test": "bun run build && bun test --isolate src/sdk/__tests__ src/server/auth/src/__tests__ src/server/__tests__ && bun run test:railpack",
     "lint": "biome check src",
     "lint:check": "biome check src",
     "start:embedded": "bun src/server/embedded.ts",
     "start": "bun src/server/start.ts",
+    "test:railpack": "bun test test/railpack-runtime.test.ts",
     "test:browser": "bun test test/browser-login.test.ts"
   },
   "dependencies": {
