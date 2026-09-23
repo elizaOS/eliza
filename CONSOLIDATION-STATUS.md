@@ -1,8 +1,26 @@
 # Eliza consolidation review candidate
 
 Branch: `codex/consolidated-eliza-20260923`.
-Runtime source verified: `f01aea47706`. Develop cutoff: `69641f10997`.
-Status: available for review, **not approved for release**.
+Current source checkpoint: `e8eec247928`. Included develop cutoff: `ff48eeb4193`.
+Status: **context cleanup acceptance in progress; not approved for release**.
+
+## Current context and recovery follow-up
+
+This update supersedes the earlier review-ready status below. Earlier metrics remain historical evidence, not claims about the newest changes.
+
+- Removed the initial global action-name/catalog preload using existing discovery, including noncoding voice-group/unknown channels and context-read refreshes. Known actions still route directly; unfamiliar operations retain authorized catalog/schema discovery.
+- Shared historical navigation guidance once while preserving all exact receipts and ownership checks. The saved dynamic-input replay fell from 34,361 to 17,421 characters; this is not a total-token measurement.
+- Actual rebuilt-preview handler input fell from the saved 17,114-token sample to 13,469 tokens. Whole-turn tests also exposed missing progress and empty-final-reply recovery, so input reduction alone is not acceptance.
+- Recovered the small acknowledgment restriction removal from `8daa2014f52` and stronger day/range Calendar routing from `484d1e9eec1`. Their behavior existed in the saved text/group candidates but was missing from the voice candidate that fed consolidation. The Calendar search guard itself was already retained.
+- The older reference-only catalog was explicitly changed to a name index by `78224097693`; restoring deferral is a design change with discovery tradeoffs, not merely recovery of a missing commit.
+- Aligned evaluator instructions with its existing required-reply contract and made source-reply schema guidance include planning acknowledgments. No added classifier/model call, hardcoded intent router, history cap or permission bypass.
+- Merged the 12 additional develop commits through `ff48eeb4193`, including owner-resolution and canonical BGE changes. A rollback tag preserves the pre-merge checkpoint: `codex/context-cleanup-pre-develop-20260923`.
+
+Verification: root `bun run verify` passed on `e8eec247928` (382 workspace tasks plus audits); 536 focused core/discovery/owner tests, 3 owner-routing tests, 108 reply/recovery tests and 38 prompt-package tests passed across the recorded checkpoints. The inference Vitest lane passed 2,935 tests with 29 explicit skips; its separate native lane passed 60 tests. These are overlapping scoped results, not one unique full-repository test count.
+
+The updated preview still needs its matching native library staged: the older binary lacks the new context-GPU-selection export, so embedding readiness must be restored before final QA. Then verify actual current request/response wire, acknowledgment/final delivery, and keep provider retries/cache counts separate from model logic. No new PR, protected-develop merge, deployment or original-ref deletion has occurred.
+
+The private local reports `CONTEXT-CLEANUP-PLAN.md`, `WHOLE-TURN-CONTEXT-AUDIT.md`, `CONTEXT-RECOVERY-AUDIT.md` and `SHAW-CONTEXT-AND-LATENCY.md` record the findings and unresolved gates. The 159-branch inventory accounts for refs and dispositions; it does not certify that every prior prompt edit survived or that every scenario is newly re-tested.
 
 ## Included work
 
