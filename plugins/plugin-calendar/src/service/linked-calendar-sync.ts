@@ -176,21 +176,31 @@ function parseRecord(row: Record<string, unknown>): LinkedCalendarEventRecord {
     localEventId: toText(row.local_event_id),
     connectorAccountId: toText(row.connector_account_id),
     providerCalendarId: toText(row.provider_calendar_id),
-    providerEventId: row.provider_event_id
-      ? toText(row.provider_event_id)
-      : null,
-    providerEtag: row.provider_etag ? toText(row.provider_etag) : null,
+    providerEventId:
+      row.provider_event_id === null || row.provider_event_id === undefined
+        ? null
+        : toText(row.provider_event_id),
+    providerEtag:
+      row.provider_etag === null || row.provider_etag === undefined
+        ? null
+        : toText(row.provider_etag),
     localRevision: toNumber(row.local_revision),
-    lastCommonSemanticHash: row.last_common_semantic_hash
-      ? toText(row.last_common_semantic_hash)
-      : null,
+    lastCommonSemanticHash:
+      row.last_common_semantic_hash === null ||
+      row.last_common_semantic_hash === undefined
+        ? null
+        : toText(row.last_common_semantic_hash),
     state: parseState(row.state),
     pendingOperation: parseOperation(row.pending_operation),
     idempotencyKey: toText(row.idempotency_key),
-    lastErrorCode: row.last_error_code ? toText(row.last_error_code) : null,
-    lastErrorMessage: row.last_error_message
-      ? toText(row.last_error_message)
-      : null,
+    lastErrorCode:
+      row.last_error_code === null || row.last_error_code === undefined
+        ? null
+        : toText(row.last_error_code),
+    lastErrorMessage:
+      row.last_error_message === null || row.last_error_message === undefined
+        ? null
+        : toText(row.last_error_message),
     createdAt: toText(row.created_at),
     updatedAt: toText(row.updated_at),
   };

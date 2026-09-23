@@ -265,6 +265,89 @@ describe("LinkedCalendarRepository with PGlite", () => {
     expect(await repository.listActionable("agent-1")).toHaveLength(1);
   });
 
+  it.each(["", null])(
+    "preserves nullable checkpoint text %j through reload and a subsequent save",
+    async (value) => {
+      const initial = await repository.create({
+        agentId: "agent-1",
+        localEventId: "local-1",
+        connectorAccountId: "google-1",
+        providerCalendarId: "primary",
+        localRevision: 1,
+      });
+      const patch = {
+        providerEventId: value,
+        providerEtag: value,
+        lastCommonSemanticHash: value,
+        lastErrorCode: value,
+        lastErrorMessage: value,
+      };
+      const saved = await repository.save(initial, patch);
+      const raw = await db.query(
+        "SELECT provider_event_id, provider_etag, last_common_semantic_hash, last_error_code, last_error_message FROM app_calendar.linked_calendar_events",
+      );
+      expect(raw.rows).toEqual([
+        {
+          provider_event_id: value,
+          provider_etag: value,
+          last_common_semantic_hash: value,
+          last_error_code: value,
+          last_error_message: value,
+        },
+      ]);
+      expect(saved).toMatchObject(patch);
+      const reloaded = await new LinkedCalendarRepository(runtime).getById(
+        initial.agentId,
+        initial.id,
+      );
+      expect(reloaded).toEqual(saved);
+      if (!reloaded) throw new Error("Saved checkpoint was not reloaded");
+      const paused = await repository.pause(reloaded);
+      expect(paused).toMatchObject({
+        ...patch,
+        state: "paused",
+        pendingOperation: null,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+      });
+      expect(await repository.getById(initial.agentId, initial.id)).toEqual(
+        paused,
+      );
+    },
+  );
+
+  it("can pause a quarantined provider failure with an empty error message", async () => {
+    const initial = await repository.create({
+      agentId: "agent-1",
+      localEventId: "local-1",
+      connectorAccountId: "google-1",
+      providerCalendarId: "primary",
+      localRevision: 1,
+    });
+    const testPorts = ports({ createError: new Error("") });
+    const reconciler = new LinkedCalendarReconciler(
+      repository,
+      testPorts.localPort,
+      testPorts.providerPort,
+    );
+    expect(await reconciler.reconcile(initial)).toBe("quarantined");
+    const raw = await db.query(
+      "SELECT state, last_error_message FROM app_calendar.linked_calendar_events",
+    );
+    expect(raw.rows).toEqual([
+      { state: "quarantined", last_error_message: "" },
+    ]);
+    const reloaded = await repository.getById(initial.agentId, initial.id);
+    expect(reloaded?.lastErrorMessage).toBe("");
+    if (!reloaded) throw new Error("Quarantined checkpoint was not reloaded");
+    const paused = await repository.pause(reloaded);
+    expect(paused.state).toBe("paused");
+    expect(testPorts.counts()).toEqual({ creates: 1, updates: 0 });
+    expect(await repository.getById(initial.agentId, initial.id)).toEqual(
+      paused,
+    );
+  });
+
   it("rejects a stale create checkpoint when a delete shares its timestamp", async () => {
     const now = new Date("2026-09-23T10:00:00.000Z");
     const initial = await repository.create({
