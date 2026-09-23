@@ -8,8 +8,10 @@ import type {
   ActionResult,
   IAgentRuntime,
   Memory,
+  Room,
   State,
   UUID,
+  World,
 } from "@elizaos/core";
 import {
   ChannelType,
@@ -2544,21 +2546,25 @@ describe("MEMORY op:search complete traversal", () => {
           ],
         });
       runtime.actions = [...promoteSubactionsToActions(memoryAction)];
-      runtime.getRoom = vi.fn(async () => ({
-        id: ROOM_ID,
-        worldId: SIBLING_ID,
-        agentId: AGENT_ID,
-        type: ChannelType.DM,
-        source: "test",
-      }));
-      runtime.getWorld = vi.fn(async () => ({
-        id: SIBLING_ID,
-        agentId: AGENT_ID,
-        metadata: {
-          ownership: { ownerId: USER_ID },
-          roles: { [USER_ID]: "OWNER" as const },
-        },
-      }));
+      runtime.getRoom = vi.fn(
+        async (): Promise<Room> => ({
+          id: ROOM_ID,
+          worldId: SIBLING_ID,
+          agentId: AGENT_ID,
+          type: ChannelType.DM,
+          source: "test",
+        }),
+      );
+      runtime.getWorld = vi.fn(
+        async (): Promise<World> => ({
+          id: SIBLING_ID,
+          agentId: AGENT_ID,
+          metadata: {
+            ownership: { ownerId: USER_ID },
+            roles: { [USER_ID]: "OWNER" as const },
+          },
+        }),
+      );
       runtime.reportError = vi.fn();
       const context = {
         id: "search-read-contract",
@@ -2695,21 +2701,25 @@ describe("MEMORY op:search complete traversal", () => {
         })
         .mockResolvedValue({ text: honestFailure, toolCalls: [] });
       runtime.actions = [...promoteSubactionsToActions(memoryAction)];
-      runtime.getRoom = vi.fn(async () => ({
-        id: ROOM_ID,
-        worldId: SIBLING_ID,
-        agentId: AGENT_ID,
-        type: ChannelType.DM,
-        source: "test",
-      }));
-      runtime.getWorld = vi.fn(async () => ({
-        id: SIBLING_ID,
-        agentId: AGENT_ID,
-        metadata: {
-          ownership: { ownerId: USER_ID },
-          roles: { [USER_ID]: "OWNER" as const },
-        },
-      }));
+      runtime.getRoom = vi.fn(
+        async (): Promise<Room> => ({
+          id: ROOM_ID,
+          worldId: SIBLING_ID,
+          agentId: AGENT_ID,
+          type: ChannelType.DM,
+          source: "test",
+        }),
+      );
+      runtime.getWorld = vi.fn(
+        async (): Promise<World> => ({
+          id: SIBLING_ID,
+          agentId: AGENT_ID,
+          metadata: {
+            ownership: { ownerId: USER_ID },
+            roles: { [USER_ID]: "OWNER" as const },
+          },
+        }),
+      );
       runtime.reportError = vi.fn();
       const context = {
         id: "scope-test",
