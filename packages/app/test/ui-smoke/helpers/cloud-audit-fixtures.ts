@@ -496,6 +496,24 @@ const STUB_RULES: StubRule[] = [
   },
   // billing/ — credits, settings, invoices, crypto (fail-soft), checkout.
   {
+    match: path_("/api/v1/subscriptions/plans"),
+    body: {
+      success: true,
+      data: {
+        catalogVersion: "v1",
+        plans: [
+          {
+            key: "plus_monthly",
+            name: "Plus",
+            amountCents: 3000,
+            currency: "usd",
+            allowance: { amountUsd: "25.000000" },
+          },
+        ],
+      },
+    },
+  },
+  {
     match: path_("/api/v1/billing/application-slots/audit-product"),
     body: {
       success: true,

@@ -165,6 +165,12 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
   },
   // billing/
   {
+    slug: "pricing",
+    path: "/pricing",
+    route: "pricing",
+    auth: false,
+  },
+  {
     slug: "cloud-app-subscription",
     path: "/cloud/billing/apps/6f9619ff-8b86-4d01-b42d-00c04fc964ff/workspace",
     route: "cloud/billing/apps/:appId/:productFamilyKey",
@@ -1040,7 +1046,9 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         const fullPage = auditCase.fullPageEvidence ?? false;
         if (fullPage) {
           const scrollRegion = page
-            .locator("[data-scroll-cert-scroller]")
+            .locator(
+              '[data-scroll-cert-scroller], [data-shell-scroll-region="true"]',
+            )
             .first();
           await expect(scrollRegion).toHaveCount(1);
           const scrollMetrics = await scrollRegion.evaluate((element) => ({
@@ -1061,7 +1069,11 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           }
           await page.setViewportSize({
             width: vp.width,
-            height: Math.ceil(scrollMetrics.scrollHeight),
+            height: Math.ceil(
+              vp.height +
+                scrollMetrics.scrollHeight -
+                scrollMetrics.clientHeight,
+            ),
           });
           await page.waitForTimeout(100);
         }
@@ -1458,7 +1470,7 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         .click();
       await expect(page).toHaveURL(/\/cloud\/account$/);
       await expect(
-        page.getByRole("heading", { name: "Account", exact: true }),
+        page.getByRole("heading", { name: "Profile information", exact: true }),
       ).toBeVisible();
       await expect(page.getByTestId("profile-email-input")).toHaveValue(
         "cloud-audit-smoke@agent.local",
