@@ -62,7 +62,6 @@ function ProductBilling({
       aria-label={`${product.appName} subscription`}
       className="space-y-4"
     >
-      <h1>{product.appName} subscription</h1>
       <p>
         This subscription covers this app. Developer infrastructure credits are
         billed separately.

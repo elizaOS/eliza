@@ -879,6 +879,29 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         // Reuse the shared bounded startup contract so a cold "Booting up..."
         // splash cannot satisfy the readable-character gate and pass green.
         await openAppPath(page, auditCase.path);
+        if (
+          auditCase.slug === "cloud-app-subscription" ||
+          auditCase.slug === "cloud-product-subscription"
+        ) {
+          await expect(
+            page.getByRole("heading", {
+              name: "Field Notes subscription",
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole("button", {
+              name: "Start seven-day trial",
+              exact: true,
+            }),
+          ).toBeEnabled();
+          await expect(
+            page.getByRole("button", {
+              name: "Review subscription",
+              exact: true,
+            }),
+          ).toBeEnabled();
+        }
 
         const billingEvidenceTarget =
           auditCase.slug === "cloud-billing"

@@ -45,7 +45,7 @@ export async function applyAppBillingTestMigrations(
         const scoped = statement.replaceAll('"public".', "");
         await execute(
           scoped.trim().startsWith('ALTER TABLE "billing_subscription_commands" ADD COLUMN')
-            ? scoped.replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS")
+            ? scoped.replace(/ADD COLUMN(?! IF NOT EXISTS)/, "ADD COLUMN IF NOT EXISTS")
             : scoped,
         );
       }
