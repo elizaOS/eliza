@@ -304,11 +304,11 @@ export type ToolsConfig = {
   byProvider?: Record<string, ToolPolicyConfig>;
   web?: {
     search?: {
-      /** Enable web search tool (default: true when API key is present). */
+      /** @deprecated Accepted for legacy configuration compatibility; does not control WEB_SEARCH availability. */
       enabled?: boolean;
-      /** Search provider ("brave" or "perplexity"). */
+      /** @deprecated Accepted for legacy configuration compatibility; WEB_SEARCH is keyless. */
       provider?: "brave" | "perplexity";
-      /** Brave Search API key (optional; defaults to BRAVE_API_KEY env var). */
+      /** @deprecated Accepted for legacy configuration compatibility; unused by WEB_SEARCH. */
       apiKey?: string;
       /** Default search results count (1-10). */
       maxResults?: number;
@@ -316,13 +316,10 @@ export type ToolsConfig = {
       timeoutSeconds?: number;
       /** Cache TTL in minutes for search results. */
       cacheTtlMinutes?: number;
-      /** Perplexity-specific configuration (used when provider="perplexity"). */
+      /** @deprecated Accepted for legacy configuration compatibility; unused by WEB_SEARCH. */
       perplexity?: {
-        /** API key for Perplexity or OpenRouter (defaults to PERPLEXITY_API_KEY or OPENROUTER_API_KEY env var). */
         apiKey?: string;
-        /** Base URL for API requests (defaults to OpenRouter: https://openrouter.ai/api/v1). */
         baseUrl?: string;
-        /** Model to use (defaults to "perplexity/sonar-pro"). */
         model?: string;
       };
     };
