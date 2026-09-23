@@ -21,6 +21,7 @@ import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import {
+  type AccessContext,
   type ActionResult,
   type AgentRuntime,
   attestAuthenticatedApiDeliveryAudience,
@@ -31,6 +32,7 @@ import {
   createMessageMemory,
   createUniqueUuid,
   ElizaError,
+  filterMemoryReadByAccessContext,
   getEntityRole,
   getInferenceTimer,
   hasAtLeastRole,
@@ -169,7 +171,10 @@ import {
   ELIZA_TRACE_ID_HEADER,
   resolveConversationTraceContext,
 } from "./conversation-trace.ts";
-import { resolveHttpAccessContext } from "./http-access-context.ts";
+import {
+  resolveHttpAccessContext,
+  resolveRequiredHttpAccessContext,
+} from "./http-access-context.ts";
 import { evictOldestConversation } from "./memory-bounds.ts";
 import { generateMessageCorpus, seedMessageCorpus } from "./message-corpus.ts";
 import {
@@ -2702,13 +2707,25 @@ async function loadConversationMessagesAround(
   runtime: AgentRuntime,
   roomId: UUID,
   aroundMessageId: UUID,
+  accessContext?: AccessContext,
 ): Promise<Memory[]> {
-  const [pivot] = await runtime.getMemoriesByIds([aroundMessageId], "messages");
+  const candidates = await runtime.getMemoriesByIds(
+    [aroundMessageId],
+    "messages",
+  );
+  const [pivot] = accessContext
+    ? filterMemoryReadByAccessContext(
+        candidates,
+        accessContext,
+        runtime.agentId,
+      )
+    : candidates;
   if (!pivot || pivot.roomId !== roomId) {
     logger.warn(
       `[conversations] around=${aroundMessageId} is not in room ${roomId}; serving the recent window instead`,
     );
     return runtime.getMemories({
+      ...(accessContext ? { accessContext } : {}),
       roomId,
       tableName: "messages",
       limit: CONVERSATION_MESSAGE_WINDOW,
@@ -2719,6 +2736,7 @@ async function loadConversationMessagesAround(
     // The pivot and everything before it, newest-first, capped. The pivot is
     // included because `end` is inclusive of its createdAt.
     runtime.getMemories({
+      ...(accessContext ? { accessContext } : {}),
       roomId,
       tableName: "messages",
       end: pivotCreatedAt,
@@ -2728,6 +2746,7 @@ async function loadConversationMessagesAround(
     }),
     // The pivot and everything after it, oldest-first, capped.
     runtime.getMemories({
+      ...(accessContext ? { accessContext } : {}),
       roomId,
       tableName: "messages",
       start: pivotCreatedAt,
@@ -2793,10 +2812,12 @@ async function loadConversationMessagesBefore(
   roomId: UUID,
   before: number,
   limit: number,
+  accessContext?: AccessContext,
 ): Promise<{ memories: Memory[]; hasMore: boolean }> {
   // `end` is inclusive, so subtract 1ms to make the cursor exclusive: the
   // client already holds the message at `before`, we want strictly older.
   const rows = await runtime.getMemories({
+    ...(accessContext ? { accessContext } : {}),
     roomId,
     tableName: "messages",
     end: before - 1,
@@ -3148,6 +3169,27 @@ export async function handleConversationRoutes(
     ({ method, path }) => method === ctx.method && path.test(ctx.pathname),
   );
   if (!endpoint) return false;
+  const requiredAccess = resolveRequiredHttpAccessContext(ctx.req);
+  if (requiredAccess) {
+    await waitForConversationRestore(ctx.state);
+    const encodedId = ctx.pathname.split("/")[3];
+    if (encodedId && endpoint.handle !== searchConversationMessages) {
+      const conversationId = decodePathComponent(
+        encodedId,
+        ctx.res,
+        "conversation id",
+      );
+      if (conversationId === null) return true;
+      const conversation = ctx.state.conversations.get(conversationId);
+      if (
+        !conversation ||
+        !requiredAccess.authorizedRoomIds.includes(conversation.roomId)
+      ) {
+        ctx.error(ctx.res, "Conversation not found", 404);
+        return true;
+      }
+    }
+  }
   return endpoint.handle({
     ...ctx,
     requestStartedAt,
@@ -3168,7 +3210,12 @@ async function listConversations(
   const { req, res, json, state } = ctx;
   await waitForConversationRestore(state);
   const waifuAccess = resolveWaifuChatAccess(req);
+  const requiredAccess = resolveRequiredHttpAccessContext(req);
+  const authorizedRooms = requiredAccess
+    ? new Set(requiredAccess.authorizedRoomIds)
+    : undefined;
   const convos = Array.from(state.conversations.values())
+    .filter((c) => !authorizedRooms || authorizedRooms.has(c.roomId))
     .filter((c) => !state.deletedConversationIds.has(c.id))
     .filter((c) => canWaifuAccessConversation(waifuAccess, c))
     .sort(compareConversationsByRecency);
@@ -3210,8 +3257,13 @@ async function searchConversationMessages(
   }
   const runtime = state.runtime;
   const waifuAccess = resolveWaifuChatAccess(req);
+  const requiredAccess = resolveRequiredHttpAccessContext(req);
+  const authorizedRooms = requiredAccess
+    ? new Set(requiredAccess.authorizedRoomIds)
+    : undefined;
   const conversationsByRoomId = new Map<UUID, ConversationMeta>();
   for (const conv of state.conversations.values()) {
+    if (authorizedRooms && !authorizedRooms.has(conv.roomId)) continue;
     if (state.deletedConversationIds.has(conv.id)) continue;
     if (!canWaifuAccessConversation(waifuAccess, conv)) continue;
     conversationsByRoomId.set(conv.roomId, conv);
@@ -3235,6 +3287,7 @@ async function searchConversationMessages(
     // the retired `ILIKE '%whole query%'` gate that ranked only a recency-
     // truncated slice of exact-substring rows.
     const hits = await runtime.searchMessages({
+      ...(requiredAccess ? { accessContext: requiredAccess } : {}),
       roomIds: accessibleRoomIds,
       query,
       tableName: "messages",
@@ -3501,6 +3554,7 @@ async function listConversationMessages(
     return true;
   }
   const runtime = state.runtime;
+  const requiredAccess = resolveRequiredHttpAccessContext(req);
   try {
     // `?around=<messageId>` centers the window on a specific (possibly
     // far-back) message so a keyword-search jump can scroll to a hit older
@@ -3525,6 +3579,7 @@ async function listConversationMessages(
         conv.roomId,
         beforeParam,
         olderLimit,
+        requiredAccess,
       );
       memories = page.memories;
       hasMore = page.hasMore;
@@ -3534,8 +3589,10 @@ async function listConversationMessages(
             runtime,
             conv.roomId,
             aroundParam,
+            requiredAccess,
           )
         : await runtime.getMemories({
+            ...(requiredAccess ? { accessContext: requiredAccess } : {}),
             roomId: conv.roomId,
             tableName: "messages",
             limit: CONVERSATION_MESSAGE_WINDOW,

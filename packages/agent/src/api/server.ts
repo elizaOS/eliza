@@ -1472,7 +1472,10 @@ export {
 export { isWaifuChatAuthorized } from "./waifu-chat-role-resolver.ts";
 
 import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
-import { resolveHttpAccessContext } from "./http-access-context.ts";
+import {
+  resolveHttpAccessContext,
+  resolveRequiredHttpAccessContext,
+} from "./http-access-context.ts";
 import { resolveInboxRequestAuthorization } from "./inbox-request-authorization.ts";
 import { isTrajectoryOwnerRequest } from "./trajectory-request-authorization.ts";
 
@@ -3746,6 +3749,8 @@ async function handleRequestForViewClient(
       // Session admission and disclosure share the verified host principal.
       // Only trusted local requests retain the plugin's local-owner fallback.
       accessContext: () => {
+        const requiredAccess = resolveRequiredHttpAccessContext(req);
+        if (requiredAccess) return requiredAccess;
         if (hostSessionAuthorization.ok && state.runtime) {
           return resolveHostSessionAccessContext(
             hostSessionAuthorization,
