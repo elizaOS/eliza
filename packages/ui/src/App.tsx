@@ -3993,8 +3993,11 @@ function AppContent() {
           dedicated workspaces; mounting another onboarding-pinned overlay in
           each of them occludes their controls and duplicates the headless chat
           conductors already owned by the primary/chat-overlay window.
+          Authenticated account pages also remain usable before agent setup;
+          returning to an agent view resumes its pending onboarding.
         */}
-        {!isAuxiliaryAppWindow ? (
+        {!isAuxiliaryAppWindow &&
+        (!authenticatedAccountPage || firstRunComplete === true) ? (
           <>
             <ChatOverlayMount
               releaseFirstRunToFull={firstRunChatRelease.releasePending}

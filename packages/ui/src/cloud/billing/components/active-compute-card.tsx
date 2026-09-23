@@ -736,7 +736,13 @@ export function ActiveComputeCardView({
     const paused = state.kind === "paused";
     const retrying = state.kind === "error" && state.retrying;
     return (
-      <Card variant="brand">
+      <Card
+        variant="brand"
+        role="region"
+        aria-label={t("cloud.billing.compute.title", {
+          defaultValue: "Active compute",
+        })}
+      >
         <CornerBrackets size="sm" />
         <div className="relative z-10 flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
           <div role="alert" className="flex min-w-0 items-start gap-3">
@@ -824,7 +830,14 @@ export function ActiveComputeCardView({
               });
 
   return (
-    <Card variant="brand" aria-busy={state.refreshing || undefined}>
+    <Card
+      variant="brand"
+      role="region"
+      aria-label={t("cloud.billing.compute.title", {
+        defaultValue: "Active compute",
+      })}
+      aria-busy={state.refreshing || undefined}
+    >
       <CornerBrackets size="sm" />
       <div className="relative z-10 space-y-5">
         <p
