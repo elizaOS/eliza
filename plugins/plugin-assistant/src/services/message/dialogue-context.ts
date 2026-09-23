@@ -1,6 +1,12 @@
 /** Builds ordered dialogue and provider context events with speaker identity and platform reply references. */
 
-import type { ContextEvent, IAgentRuntime, Memory, State } from "@elizaos/core";
+import type {
+  ContextEvent,
+  IAgentRuntime,
+  Memory,
+  ProviderResult,
+  State,
+} from "@elizaos/core";
 import {
   ChannelType,
   extractUserText,
@@ -22,6 +28,7 @@ export function asProviderRecord(value: unknown):
   | {
       text?: unknown;
       discoveryText?: unknown;
+      reviewableSources?: ProviderResult["reviewableSources"];
       providerName?: unknown;
       data?: unknown;
     }
@@ -32,6 +39,7 @@ export function asProviderRecord(value: unknown):
   return value as {
     text?: unknown;
     discoveryText?: unknown;
+    reviewableSources?: ProviderResult["reviewableSources"];
     providerName?: unknown;
     data?: unknown;
   };
@@ -699,6 +707,7 @@ export function appendStateProviderEvents(
       ...(typeof provider.discoveryText === "string"
         ? { discoveryText: provider.discoveryText }
         : {}),
+      reviewableSources: provider.reviewableSources,
       cacheStable: cacheStableByName.get(resolvedName.toUpperCase()),
     });
   }

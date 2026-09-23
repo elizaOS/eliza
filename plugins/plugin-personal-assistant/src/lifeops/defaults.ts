@@ -3,7 +3,13 @@
  * adaptive window policy that reminder scheduling and check-ins anchor to, plus
  * a re-export of the shared time-zone helpers.
  */
-import { normalizeTimeZone } from "@elizaos/shared";
+// The time-zone helpers are runtime-level primitives in `@elizaos/shared`,
+// re-exported here for `./defaults.js` callers.
+import {
+  isValidTimeZone,
+  normalizeTimeZone,
+  resolveDefaultTimeZone,
+} from "@elizaos/shared";
 import type { ActivityProfile } from "../activity-profile/types";
 import type {
   LifeOpsReminderStep,
@@ -11,13 +17,21 @@ import type {
   LifeOpsWindowPolicy,
 } from "../contracts/index.js";
 
-// The time-zone helpers are runtime-level primitives in `@elizaos/shared`,
-// re-exported here for `./defaults.js` callers.
 export {
   isValidTimeZone,
   normalizeTimeZone,
   resolveDefaultTimeZone,
 } from "@elizaos/shared";
+
+/** Resolve the configured IANA time zone before falling back to the host zone. */
+export function resolveConfiguredTimeZone(runtime: {
+  getSetting?: (key: string) => unknown;
+}): string {
+  const configured = runtime.getSetting?.("TIMEZONE");
+  const candidate = typeof configured === "string" ? configured.trim() : "";
+  if (candidate && isValidTimeZone(candidate)) return candidate;
+  return resolveDefaultTimeZone();
+}
 
 export const DEFAULT_TIME_WINDOWS: LifeOpsTimeWindowDefinition[] = [
   {

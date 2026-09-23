@@ -58,6 +58,7 @@ import {
 } from "./source-reply.ts";
 import {
   groundedCurrentTimeReply,
+  requestAsksCurrentTime,
   statedTimeIsUngrounded,
 } from "./time-observations.ts";
 
@@ -452,7 +453,10 @@ export async function resolvePlannedReplyEgress(args: {
   }
   const reason =
     decision.verdict === "reject" ? decision.kind : "missing_reply";
-  if (reason === "stated_time") {
+  if (
+    reason === "stated_time" &&
+    requestAsksCurrentTime(getUserMessageText(args.message))
+  ) {
     // The provider's own rendering is the complete answer to "what time is
     // it"; no model is needed to restate it, and a second model pass could
     // invent a second date.

@@ -549,6 +549,7 @@ describe("planner-loop death after a completed tool", () => {
 
   it("does not rescue a partial result when the default tool-call budget stops a batch", async () => {
     const savedItems: number[] = [];
+    let apologyCalls = 0;
     const harness = await createHarness({
       actionResult: {
         success: true,
@@ -556,6 +557,15 @@ describe("planner-loop death after a completed tool", () => {
         data: { userFacingText: "Item saved." },
       },
     });
+    harness.runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => {
+        apologyCalls++;
+        return "Nothing was completed.";
+      },
+      "limit-test",
+      200,
+    );
     harness.runtime.actions[0].handler = async (
       _runtime,
       _message,
@@ -631,6 +641,10 @@ describe("planner-loop death after a completed tool", () => {
       harness.callback,
     );
     expect(savedItems).toEqual(Array.from({ length: 16 }, (_, i) => i));
+    expect(apologyCalls).toBe(0);
+    expect(visibleTexts(harness.callbacks).join(" ")).not.toContain(
+      "Nothing was completed",
+    );
     expect(reportedErrors).toContainEqual(
       expect.objectContaining({
         name: "TrajectoryLimitExceeded",
@@ -713,9 +727,9 @@ describe("planner-loop death after a completed tool", () => {
         makeMessage(harness.runtime, completeRequest),
         harness.callback,
       );
-      // A safe Stage-1 draft reaches pre-execution evaluation first. Its
-      // overflow must stop the turn before planning or action dispatch.
-      expect(plannerCalls).toBe(settled ? 1 : 0);
+      // Planning precedes completion evaluation. Planner overflow prevents
+      // dispatch; evaluator overflow preserves the already-settled result.
+      expect(plannerCalls).toBe(1);
       expect(stageCalls).toBeGreaterThan(1);
       expect(actionCalls).toBe(settled ? 1 : 0);
       expect(harness.callbacks).toContainEqual(

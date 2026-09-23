@@ -6,6 +6,7 @@
  * runs against the room's entity list, without an LLM call.
  */
 
+import { getUserMessageText } from "@elizaos/core";
 import type { Entity, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import type { RelationshipsService } from "../services/relationships.ts";
 
@@ -215,8 +216,9 @@ export async function messageAddressedToOtherParticipant(
   // text never names (live 2026-08-22: "nubilio whats the setting …" tagged
   // as addressed to shaw) — must never convert a turn into silence.
   const participants = await runtime.getEntitiesForRoom(message.roomId);
-  const text =
-    typeof message.content?.text === "string" ? message.content.text : "";
+  // The user's own words, never a connector's external-content envelope whose
+  // header names the sender and server (see humanDirectlyAddressesAgent).
+  const text = getUserMessageText(message);
   const othersSet = new Set(others);
   const corroborated = participants.some((participant) => {
     if (!participant.id || !othersSet.has(participant.id)) return false;
@@ -331,8 +333,9 @@ export async function messageVocativelyAddressesOtherParticipant(args: {
   message: Memory;
 }): Promise<boolean> {
   const { runtime, message } = args;
-  const text =
-    typeof message.content?.text === "string" ? message.content.text : "";
+  // The user's own words, never a connector's external-content envelope whose
+  // header names the sender and server (see humanDirectlyAddressesAgent).
+  const text = getUserMessageText(message);
   if (!text.trim()) return false;
 
   const normalize = (value: string) =>

@@ -13,7 +13,10 @@ State is stored atomically per agent under
 capabilities share one validated mutation path, and mounted views converge
 through the normal runtime update event.
 
-The chat update action identifies the existing note with `content` and takes
+`NOTES_PATCH` edits individual fields with required `target: { kind: "id" | "text", value }` and `changes: [{ field: "title" | "body", value }]`. Supply at least one change, or use `changes: []` with `textEdit` for an exact substring substitution. Never combine both forms; omitted fields remain unchanged. It uses the same owner-only Notes service and rejects ambiguous targets, conflicting edits, and normalization-dependent text.
+
+The legacy `NOTES_UPDATE` chat action identifies the existing note with an exact `noteId` or
+`content` text, never both, and takes
 its complete new text in `replacementContent` (label, newline, then body).
 The promoted update tool requires `content` on the model wire. Runtime admission
 also accepts the explicitly declared legacy selectors `text`, `note`, `title`,
@@ -60,7 +63,8 @@ The `NOTES_GET_NOTE` retrieval hint resolves to `NOTES_GET`. This promoted
 operation requires noteId and has no text-search field. Both reads use the
 existing Notes service; `NOTES_LIST { noteId }` also retains exact-ID support.
 
-The fresh saved-note discovery index retains every current ID and title. It
+The fresh saved-note discovery index pairs every exact ID with its complete
+title in a JSON row `[ID, title]`, with the row format declared once. It
 supports exact-ID existence and count checks without exposing note bodies.
-Full context retains IDs in note order alongside unchanged complete content;
+Full context pairs each exact ID with unchanged complete content in one JSON row;
 body retrieval still requires the full reference or an exact read.

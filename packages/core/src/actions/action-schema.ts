@@ -8,9 +8,22 @@
  * `defaultValue`). Consumed by `to-tool.ts` (planner / tool definitions) and
  * `validate-tool-args.ts`.
  */
+import { ElizaError } from "../errors";
 import type { Action, ActionParameter, ActionParameterSchema } from "../types";
 import type { JSONSchema } from "../types/model";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
+
+/** Pure unions may carry descriptions and parent-required markers only. */
+export function untypedUnionConstraintKeys(schema: object): string[] {
+	return Object.entries(schema)
+		.filter(
+			([key, value]) =>
+				value !== undefined &&
+				!["type", "anyOf", "oneOf", "description"].includes(key) &&
+				!(key === "required" && typeof value === "boolean"),
+		)
+		.map(([key]) => key);
+}
 
 export type JsonSchemaPrimitiveType =
 	| "string"
@@ -169,37 +182,45 @@ export function actionParameterSchemaToJsonSchema(
 		options.description,
 	);
 
-	if (schema.anyOf?.length) {
-		return {
-			...(descriptionFromSchema ? { description: descriptionFromSchema } : {}),
-			anyOf: schema.anyOf.map((branch, index) =>
+	const unionSchema: JsonSchema = {};
+	for (const keyword of ["anyOf", "oneOf"] as const) {
+		if (schema[keyword]?.length) {
+			unionSchema[keyword] = schema[keyword].map((branch, index) =>
 				actionParameterSchemaToJsonSchema(branch, {
-					path: `${path}.anyOf[${index}]`,
+					path: `${path}.${keyword}[${index}]`,
 				}),
-			),
-		};
+			);
+		}
 	}
-
-	if (schema.oneOf?.length) {
-		return {
-			...(descriptionFromSchema ? { description: descriptionFromSchema } : {}),
-			oneOf: schema.oneOf.map((branch, index) =>
-				actionParameterSchemaToJsonSchema(branch, {
-					path: `${path}.oneOf[${index}]`,
-				}),
-			),
-		};
-	}
-
 	const schemaType = schema.type;
-	if (!schemaType) {
+	if (!schemaType && !unionSchema.anyOf && !unionSchema.oneOf) {
 		throw new Error(
 			`Action parameter schema at '${path}' must include a 'type' or use 'oneOf' / 'anyOf'`,
 		);
 	}
+	if (!schemaType) {
+		const unsupported = untypedUnionConstraintKeys(schema);
+		if (options.enumValues?.length) unsupported.push("enumValues");
+		if (unsupported.length)
+			throw new ElizaError(
+				`Union schema at '${path}' needs an explicit type for sibling constraints: ${unsupported.join(", ")}. Put constraints in each applicable typed branch or declare the common type.`,
+				{
+					code: "ACTION_SCHEMA_UNTYPED_UNION_CONSTRAINT",
+					context: { path, constraints: unsupported },
+				},
+			);
+		return {
+			...unionSchema,
+			...(descriptionFromSchema ? { description: descriptionFromSchema } : {}),
+		};
+	}
 	assertSupportedSchemaType(schemaType, path);
 
-	const jsonSchema: JsonSchema = { type: schemaType };
+	// A union is an additional constraint, not a replacement for its siblings.
+	const jsonSchema: JsonSchema = {
+		...unionSchema,
+		type: schemaType,
+	};
 	const description = descriptionFromSchema;
 	if (description) {
 		jsonSchema.description = description;

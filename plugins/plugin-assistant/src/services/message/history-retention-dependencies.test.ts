@@ -167,7 +167,10 @@ describe("persisted history source dependencies", () => {
     expect(projection).toBeDefined();
     if (!projection) throw new Error("Expected a validated history projection");
     expect([...projection.visibleEventIds].sort()).toEqual(
-      ["history:0", "history:14", "history:15"].sort(),
+      [
+        "history:0",
+        ...Array.from({ length: 10 }, (_, index) => `history:${index + 6}`),
+      ].sort(),
     );
     expect(projection.loadedSourceIds.size).toBe(0);
   });
