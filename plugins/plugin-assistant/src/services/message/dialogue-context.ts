@@ -225,7 +225,7 @@ export function appendPriorDialogueEvents(
             requestSourceEventId: `history:${memory.id}`,
             navigation,
             evidenceScope:
-              "Historical navigation outcomes for this request. Delivered means targeted transport delivery then, not a mounted-view acknowledgement or current view. Current-turn UI metadata independently reports the current view; neither proves displayed record contents.",
+              "Past navigation outcomes for requestSourceEventId only; never current work, a continuation request, or permission to act. Delivered records transport delivery then, not current view or record contents. Current-turn UI metadata independently reports the current view.",
           }),
           stable: false,
         },

@@ -95,6 +95,7 @@ import {
   getStage1RetryReason,
   getStage1RoutingRepair,
   getStage1UnusableDecisionRepair,
+  hasNavigationWithoutPendingIntent,
   isEmptyStage1Result,
   parseMessageHandlerModelOutput,
   readStage1EmptyRetryLimit,
@@ -1077,12 +1078,13 @@ export async function generateStage1Decision(
   }
   if (
     routingRepairAttempted &&
-    (rawFieldParsed?.replyEffectStatus === "non_applied" ||
+    (hasNavigationWithoutPendingIntent(rawFieldParsed) ||
+      rawFieldParsed?.replyEffectStatus === "non_applied" ||
       rawFieldParsed?.shouldRespond === "STOP" ||
       rawFieldParsed?.shouldRespond === "IGNORE") &&
     getStage1RoutingRepair(rawFieldParsed)
   ) {
-    // A repeated preview/pending-work conflict cannot authorize effects or a
+    // A repeated preview/pending-work or unclaimed-navigation conflict cannot authorize effects or a
     // terminal reply. Keep the recorded model attempts and reject before fields.
     throw new ElizaError(
       "Stage-1 decision still conflicts with pending work after repair; retry with a consistent routing decision",

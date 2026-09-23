@@ -238,6 +238,12 @@ export function renderMessageHandlerModelInput(
     ),
     completionSourceIds,
   );
+  // Past effects remain complete historical evidence, before the instruction
+  // that establishes the current request. They cannot become pending work by
+  // being regrouped into the current turn's tool/result tail.
+  const historicalNavigationSegments = remainingDynamicSegments.filter(
+    (segment) => segment.label === "runtime:historical_navigation",
+  );
   const dynamicProviderSegments = remainingDynamicSegments.filter(
     (segment) => segment.label?.startsWith("provider:") === true,
   );
@@ -255,7 +261,8 @@ export function renderMessageHandlerModelInput(
     (segment) =>
       segment.label?.startsWith("prior_message:") !== true &&
       segment.label?.startsWith("provider:") !== true &&
-      !actionCatalogSegments.includes(segment),
+      !actionCatalogSegments.includes(segment) &&
+      !historicalNavigationSegments.includes(segment),
   );
   // The boundary follows untrusted dialogue so stored messages cannot supersede
   // it with structural-looking text. Providers remain adjacent after that
@@ -264,6 +271,7 @@ export function renderMessageHandlerModelInput(
     ...(directMessageInput
       ? shortenHistoryRoleLabels(priorDialogueSegments, completionSourceIds)
       : priorDialogueSegments),
+    ...historicalNavigationSegments,
     ...actionCatalogSegments,
     ...currentTurnBoundary,
     ...(completionSources?.sources.length

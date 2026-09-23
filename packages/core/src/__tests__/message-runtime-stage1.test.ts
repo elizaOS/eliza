@@ -2388,6 +2388,71 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it.each([ChannelType.DM, ChannelType.VOICE_DM])(
+		"reviews navigation with no pending intent before effects (%s)",
+		async (channelType) => {
+			const conflict = stage1Response({
+				contexts: ["simple"],
+				intents: [],
+				candidateActionNames: ["VIEWS_SHOW"],
+				replyText: "Hey. What's up?",
+				facts: ["Unaccepted draft extraction"],
+				extra: {
+					replyEffectStatus: "applied",
+					visualContinuation: {
+						disposition: "requested",
+						viewId: "chat",
+						singleViewOnly: true,
+						navigationOnly: true,
+					},
+				},
+			});
+			const corrected = stage1Response({
+				contexts: ["simple"],
+				intents: [],
+				replyText: "Hey. What's up?",
+				extra: {
+					replyEffectStatus: "none",
+					visualContinuation: { disposition: "none" },
+				},
+			});
+			const runtime = makeRuntime([conflict, corrected]);
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			const result = await runStage1({
+				runtime,
+				message: makeMessage({ text: "Hey.", channelType }),
+			});
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply")
+				expect(result.result.responseContent?.text).toBe("Hey. What's up?");
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(dispatch.mock.calls[0]?.[0].rawParsed.facts).toEqual([]);
+			expect(useModelCalls(runtime).map(([model]) => model)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			const repeated = makeRuntime([conflict, conflict]);
+			const repeatedDispatch = vi.spyOn(
+				repeated.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			await expect(
+				runStage1({
+					runtime: repeated,
+					message: makeMessage({
+						text: "A new conversational turn.",
+						channelType,
+					}),
+				}),
+			).rejects.toMatchObject({ code: "STAGE1_ROUTING_CONFLICT" });
+			expect(repeatedDispatch).not.toHaveBeenCalled();
+			expect(useModelCalls(repeated)).toHaveLength(2);
+		},
+	);
+
 	it("cancels a routing repair before further generation or field dispatch", async () => {
 		const abort = new AbortController();
 		const runtime = makeRuntime([]);
