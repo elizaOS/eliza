@@ -83,10 +83,8 @@ export {
 // Inference provider detection and validation
 export {
   detectInferenceProviders,
-  hasInferenceProvider,
   type InferenceProviderDetectionResult,
   type InferenceProviderInfo,
-  requireInferenceProvider,
 } from "./inference-provider";
 // Live LLM provider selection
 export {
