@@ -6,6 +6,10 @@ import {
   renewalUnavailable,
   validatePaidRenewal,
 } from "../../lib/services/stripe-paid-renewal-validation";
+import {
+  assertCheckoutProviderAuthority,
+  checkoutContractEnvironment,
+} from "../../lib/services/subscription-checkout-contract";
 import type { DbTransaction } from "../client";
 import { writeTransaction } from "../helpers";
 import type { BillingSubscription } from "../schemas/billing-subscriptions";
@@ -21,6 +25,7 @@ import { subscriptionAllowanceRepository } from "./subscription-allowance";
 import { subscriptionAuthorityRepository } from "./subscription-authority";
 import { subscriptionBillingOperationsRepository as operations } from "./subscription-billing-operations";
 import { subscriptionEntitlementsRepository } from "./subscription-entitlements";
+import { findPurchasedSubscriptionContract } from "./subscription-purchased-binding";
 import type { ReconciliationIdentity } from "./subscription-reconciliation-lease";
 export const PAID_RENEWAL_DISPOSITION = "paid_renewal_finalized";
 export interface FinalizePaidRenewalInput extends PaidRenewalObjects {
@@ -171,11 +176,17 @@ export async function publishPaidRenewalInTransaction(
       ),
     )
     .for("update");
+  const contract = await findPurchasedSubscriptionContract(source, tx);
+  const environment = getCloudAwareEnv();
+  if (contract) {
+    if (!input.providerAccountId) renewalUnavailable("purchased_binding_account_missing");
+    assertCheckoutProviderAuthority(contract, input.providerAccountId, environment);
+  }
   const verified = validatePaidRenewal({
     ...input,
     source,
     organizationCustomerId: input.organizationCustomerId,
-    environment: getCloudAwareEnv(),
+    environment: contract ? checkoutContractEnvironment(contract, environment) : environment,
     databaseNow: now,
     replayPeriod: existing !== undefined,
   });

@@ -1,6 +1,7 @@
 /** Runs bounded missed-event recovery using read-only provider requests on the existing cron lane; every claimed outcome is retained with primary lease and retry ownership. */
 import { ElizaError } from "@elizaos/common";
 import { z } from "zod";
+import { findPurchasedSubscriptionContract } from "../../db/repositories/subscription-purchased-binding";
 import {
   claimSubscriptionReconciliation,
   failSubscriptionReconciliation,
@@ -17,6 +18,10 @@ import {
 } from "./stripe-period-end-cancellation";
 import { validateStripeTerminalObservation } from "./stripe-terminal-lifecycle";
 import { resolveSubscriptionProviderBinding } from "./subscription-catalog";
+import {
+  assertCheckoutProviderAuthority,
+  checkoutContractEnvironment,
+} from "./subscription-checkout-contract";
 
 export async function recoverMissedSubscriptionEvents() {
   const deadline = Date.now() + 20_000;
@@ -27,7 +32,18 @@ export async function recoverMissedSubscriptionEvents() {
     const claim = await claimSubscriptionReconciliation(candidate);
     if (!claim) continue;
     try {
-      const environment = getCloudAwareEnv();
+      const configuredEnvironment = getCloudAwareEnv();
+      const contract = await findPurchasedSubscriptionContract(claim.source);
+      const stripe = createStripeRecoveryClient(deadline);
+      if (contract)
+        assertCheckoutProviderAuthority(
+          contract,
+          (await stripe.accounts.retrieve(null)).id,
+          configuredEnvironment,
+        );
+      const environment = contract
+        ? checkoutContractEnvironment(contract, configuredEnvironment)
+        : configuredEnvironment;
       const binding = resolveSubscriptionProviderBinding(
         environment,
         claim.source.plan_key,
@@ -38,7 +54,6 @@ export async function recoverMissedSubscriptionEvents() {
           "Recovery source environment differs from canonical provider configuration",
           { code: "SUBSCRIPTION_RECONCILIATION_UNAVAILABLE" },
         );
-      const stripe = createStripeRecoveryClient(deadline);
       const customer = await stripe.customers.retrieve(claim.source.stripe_customer_id);
       validateCancellationCustomer({
         raw: customer,
