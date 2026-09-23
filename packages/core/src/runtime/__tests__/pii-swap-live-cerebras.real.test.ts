@@ -68,12 +68,11 @@ const REAL = {
 	address: "1600 Amphitheatre Parkway",
 };
 
-describe.each(["deterministic", "live"] as const)(
-	"PII swap — %s provider boundary (#10469)",
-	(mode) => {
-		it.skipIf(mode === "live" && !CEREBRAS_KEY)(
-			"provider receives only surrogates; execution boundary restores real values",
-			async () => {
+for (const mode of ["deterministic", "live"] as const) {
+	describe.skipIf(mode === "live" && !CEREBRAS_KEY)(
+		`PII swap — ${mode} provider boundary (#10469)`,
+		() => {
+			it("provider receives only surrogates; execution boundary restores real values", async () => {
 				// Turn session over a known contact roster + street-address regex.
 				const session = new PseudonymSession({
 					salt: "evidence-10469",
@@ -264,11 +263,10 @@ describe.each(["deterministic", "live"] as const)(
 					join(EVIDENCE_DIR, "live-cerebras-trajectory.md"),
 					renderEvidenceMarkdown(evidence),
 				);
-			},
-			60_000,
-		);
-	},
-);
+			}, 60_000);
+		},
+	);
+}
 
 function renderEvidenceMarkdown(e: {
 	provider: string;
