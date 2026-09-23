@@ -6,8 +6,8 @@
  * runs against the room's entity list, without an LLM call.
  */
 
-import { getUserMessageText } from "@elizaos/core";
 import type { Entity, IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import { getUserMessageText } from "@elizaos/core";
 import type { RelationshipsService } from "../services/relationships.ts";
 
 /**

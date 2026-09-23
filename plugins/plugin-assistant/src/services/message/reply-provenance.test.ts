@@ -1,11 +1,12 @@
 /** Verify canonical reply provenance against deterministic source envelopes. */
-import { describe, expect, it, vi } from "vitest";
-import { deriveCanonicalProvenance } from "@elizaos/core";
+
 import {
+  attestAuthenticatedApiDeliveryAudience,
   createMessageMemory,
+  deriveCanonicalProvenance,
   stampAppConversationProvenance,
 } from "@elizaos/core";
-import { attestAuthenticatedApiDeliveryAudience } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, State, UUID } from "../../types";
 import { createV5ReplyStrategyResult } from "./reply-policy";
 

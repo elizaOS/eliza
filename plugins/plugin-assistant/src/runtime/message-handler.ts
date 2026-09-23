@@ -4,7 +4,7 @@
  * `MessageHandlerResult`, then routes the turn — direct reply, ignore/stop, or
  * hand off to the planner — based on the selected contexts and tool hints.
  */
-import { replyClaimsInProgressWork } from "../services/message/side-effect-claims";
+
 import type {
   AgentContext,
   MessageHandlerAction,
@@ -20,6 +20,7 @@ import {
   splitTranscriptList,
   stripJsonStructuralJunkReply,
 } from "@elizaos/core";
+import { replyClaimsInProgressWork } from "../services/message/side-effect-claims";
 import {
   normalizeReplyEffectStatus,
   normalizeTopics,

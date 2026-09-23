@@ -181,8 +181,12 @@ export function shouldSkipResponseMemoryPersistence(memory: Memory): boolean {
 		content.doNotPersist === true ||
 		content.skipMemory === true ||
 		content.transient === true ||
-		metadata?.doNotPersist === true ||
-		metadata?.skipMemory === true ||
-		metadata?.transient === true
+		(metadata != null &&
+			"doNotPersist" in metadata &&
+			metadata.doNotPersist === true) ||
+		(metadata != null &&
+			"skipMemory" in metadata &&
+			metadata.skipMemory === true) ||
+		(metadata != null && "transient" in metadata && metadata.transient === true)
 	);
 }

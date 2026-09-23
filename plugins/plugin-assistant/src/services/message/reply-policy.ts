@@ -1,9 +1,4 @@
 /** Resolves user-visible replies from settled tool results, verified effects, and actual delivery receipts. */
-import {
-  bindSourceReplyContent,
-  getSourceReplyRendering,
-  type SourceReplyRendering,
-} from "./source-reply.ts";
 
 import type {
   Action,
@@ -20,8 +15,8 @@ import {
   bindEffectDelivery,
   getTrajectoryContext,
   getTrustedDeliveryAudience,
-  trustedDeliveryAudienceIsBoundToRuntime,
   stampAppConversationProvenance,
+  trustedDeliveryAudienceIsBoundToRuntime,
 } from "@elizaos/core";
 import {
   isTerminalPlannerToolName,
@@ -29,6 +24,11 @@ import {
 } from "../../runtime/planner-loop";
 import type { StrategyMode, StrategyResult } from "./contracts.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
+import {
+  bindSourceReplyContent,
+  getSourceReplyRendering,
+  type SourceReplyRendering,
+} from "./source-reply.ts";
 
 /**
  * Canonical form for delivered-text dedup: callers that thread

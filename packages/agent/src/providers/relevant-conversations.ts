@@ -38,10 +38,10 @@ import {
   getEvaluatorProgressState,
   HISTORY_RETENTION_EVALUATOR,
   historyRetentionContext,
-  visibleHistoryEventIds,
   type ProviderOriginalMessages,
   priorDialogueOriginalText,
   renderProviderOriginalMessages,
+  visibleHistoryEventIds,
 } from "@elizaos/plugin-assistant";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {

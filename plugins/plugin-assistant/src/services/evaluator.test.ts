@@ -6,6 +6,7 @@
  * AgentRuntime + InMemoryDatabaseAdapter with a stubbed useModel.
  */
 
+import { resolveEffectiveSystemPrompt } from "@elizaos/core";
 import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
@@ -30,7 +31,6 @@ import {
 import { createAssistantPlugin } from "../index.ts";
 import { renderActionResultsForModel } from "../runtime/planner-rendering";
 import { EvaluatorService, runPostTurnEvaluators } from "./evaluator.ts";
-import { resolveEffectiveSystemPrompt } from "@elizaos/core";
 import { getRoomTranscript } from "./evaluator-transcript";
 
 const LARGE_PROMPT_SECTION_CHARS = 130_000;

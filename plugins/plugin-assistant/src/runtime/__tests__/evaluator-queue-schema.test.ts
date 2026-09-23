@@ -1,13 +1,17 @@
 /** Verifies completion output schemas against real queue construction with a captured model boundary. */
+
+import type {
+  JSONSchema,
+  PlannerToolCall,
+  PlannerTrajectory,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   evaluatorSchema,
   evaluatorTemplate,
   evaluatorTemplateForQueue,
 } from "../../prompts/evaluator";
-import type { JSONSchema } from "@elizaos/core";
 import { runEvaluator } from "../evaluator";
-import type { PlannerToolCall, PlannerTrajectory } from "@elizaos/core";
 
 async function captureSchema(
   plannedQueue: PlannerToolCall[],
