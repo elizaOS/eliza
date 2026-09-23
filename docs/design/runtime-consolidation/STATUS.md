@@ -4,7 +4,68 @@ Tracking: [elizaOS/eliza#31532](https://github.com/elizaOS/eliza/issues/31532).
 The issue and original runtime-simplification plan remain the specification.
 This ledger records implementation and acceptance by tested revision. Final integration and delivery are tracked in the linked pull request; historical failures remain attributed to their original runs.
 
-## Measurement checkpoint
+## Merged implementation and delivery qualification
+
+The runtime composition retirement merged in [#32249](https://github.com/elizaOS/eliza/pull/32249)
+as `05bc15ccb562ed646f5ed105cd50edfe6e66a602`. The earlier checkpoints below remain historical. The merged revision includes the prior dialogue/native
+ownership, Node build, verifier lifecycle, batching and UUID correctness changes.
+
+This retirement deletes the duplicate `runtime-composition.ts` implementation:
+391 implementation lines and 348 net lines across the complete change. It is an
+intentional v2 public API break, not a claim that external callers never used the
+old helpers. The core README documents host-owned JSON loading, stable identity,
+explicit plugin/adapter construction and settings/provisioning replacements.
+The packed consumer exercises those replacements, reads stored entities and room
+membership back, and dispatches exactly one known model fixture outside the checkout.
+
+At the fixed merged revision, the same 20-owner AST measurement is 160,411 to
+157,703 decisions: 2,708 fewer (1.69%). Classified files decrease from 2,881 to
+2,827 and functions from 41,619 to 40,828; functions above 25 decisions increase
+from 463 to 468. The scope and algorithm match the previous measurement, checked
+by reconstructing its exact totals from the intervening source delta. This is a
+modest whole-workflow reduction, not evidence that moved code disappeared. The
+[recovery and boundary dispositions](RECOVERY.md) explain retained policy.
+
+The remaining app-manager, registry, finances, personal-assistant and native
+bridge imports are optional host integrations: installation and restart, local
+configuration and account directories, authenticated product routes, backup
+and scheduling authority, and native host startup. They do not enter packed
+core or get registered implicitly. Removing these behaviors would break host
+contracts; moving them behind another generic facade would not remove their
+policy. Host acceptance remains distinct from the six-package kernel closure.
+
+The source-policy test remains an architectural audit. Its lexical patterns do
+not establish context preservation or authorized execution; real dispatcher,
+stream, role/effect and storage tests supply behavioral evidence. The former
+model-registration smoke now invokes the real runtime, checks an exact answer,
+and proves that unused fixtures fail while cleanup still drains resources.
+
+| Contract | Current evidence |
+| --- | --- |
+| Core | 7,363 passed, two skips in the delivered `~/v3` checkout at `05bc15cc`. |
+| Assistant | 5,281 default tests plus 41 disjoint database-backed tests pass at `05bc15cc`; all 414 post-merge lane files are accounted for, with five explicit live-only skips. This is two complementary executions, not one invocation. |
+| Fixture engine | 99 tests pass at `05bc15cc`. |
+| Credentials | 628 tests pass at `df6a695`; package tree unchanged at the merged revision. |
+| OpenAI | 596 default and 29 actual-runtime tests pass at `df6a695`, with 19 and three live-only skips respectively; package tree unchanged. No external model-quality claim. |
+| SQL | 804 PGlite tests pass with 36 backend-specific skips. Real non-admin PostgreSQL passes 475 integration tests and 19 extra migration/concurrency tests with zero skips. Every PGlite skip maps to an executed PostgreSQL suite. The package tree is unchanged at the merge. |
+| Managed transport | Maps passes 188 tests, including the extracted transport and saved-place contracts; package tree unchanged. |
+| Flow atlas | All seven diagrams exactly match the previously rendered and inspected source; all 81 local links resolve at `05bc15cc`. |
+| Root gate | At `05bc15cc`, root verification passed 381/381 tasks with zero cache hits, including packed-kernel, no-emit and final repository audits. |
+| Hosted gate | All four rebased jobs and the aggregate check completed successfully. The rebased head `24edd302` and merged `05bc15cc` have identical complete Git trees. |
+| Delivery | `~/v3` is checked out at `05bc15cc` on `codex/31532-delivered-05bc`; its old branch is preserved. The latest owner workflow plan is retained as an unstaged tracked change because the new revision tracks that path. Frozen install, canonical core build (66/66 tasks), core tests (7,363 passed, two skips), packed consumer, generated-source audit and no-emit audit all passed. Runtime source remained unchanged. |
+
+The database harness initially omitted the repository's non-admin role setup.
+That invalid duplicate PostgreSQL attempt was cancelled; its logs and successful
+teardown remain in the evidence. The accepted run uses `init-test-db.sql` and the
+non-superuser test role. It does not relabel the earlier attempt as passing.
+
+Final completion still requires the applicable host/client acceptance owned by
+the integration task and remaining script and workflow delivery. Runtime
+delivery into `~/v3` is qualified at the fixed revision above. Script cleanup
+[#32130](https://github.com/elizaOS/eliza/pull/32130) remains draft with applicable
+native and smoke acceptance pending. Do not close #31532 from this checkpoint.
+
+## Earlier measurement checkpoint
 
 At `b3f79752c8a2d62652f849d6ff08a3e91ab02975`, against develop
 `7084d6847bde067d2b16d9d420451520e9a5a50c`, the tracked text diff contains
@@ -114,7 +175,7 @@ with ownership names updated after extraction.
 | Agent startEliza | 138 → 132 | Explicit composition removes some inferred modes. |
 | Retrieval stem | 372 → 372 | Snowball linguistic algorithm; do not rewrite solely to lower a complexity score. |
 
-A fresh, like-for-like 20-owner measurement compares `dc3ea3c800` with
+An earlier like-for-like 20-owner measurement compares `dc3ea3c800` with
 `f25668677c`. It adds `packages/retrieval` to **both** sides so moving the
 stemmer cannot count as deleting its decisions. The non-test JS/TS decision
 score is **160,411 → 156,288** (4,123 fewer, 2.57%); functions above 25 decisions
@@ -135,7 +196,7 @@ Do not certify all requested simplification from a green suite or smaller core
 alone. Complete final verification against the original plan; cosmetic wrapper
 extraction is not a reduction in workflow policy.
 
-## Acceptance evidence
+## Earlier acceptance evidence
 
 Evidence is attached to the delivery PR, outside the source tree. Results are
 bound to their tested revisions. Unchanged-source attribution is explicit;
@@ -232,31 +293,6 @@ Document-policy tests use the real core channel values. Permission fixtures
 configure an actual owner where authorization is required and retain explicit
 guest denials instead of silently bypassing the check.
 
-This closes three package boundaries, not the full plugin-to-host audit. The
-remaining app-manager, mobile bridge, finances, personal-assistant and registry
-edges require separate ownership dispositions; a green package suite alone does
-not certify those remaining edges.
-
-## Final integration remains open
-
-`f25668677c` is a local migration candidate, not the published or merged final
-revision. The ownership and package results above do not replace combined
-acceptance. Completion requires:
-
-- Integrate the qualified dialogue-state and native-policy ownership changes
-  (`d29134b15a` and `5379093d87`) and the canonical Node Vite build commands
-  (`6b5eae6e34` and `f674d3afbb`), then bind evidence to that combined revision.
-- Resolve the actual Workerd prompt-rendering failure in the external host
-  integration. Preserve the ordinary Node core surface and real prompt
-  semantics; an old edge implementation or a bypassed test is not acceptance.
-- Complete the combined normal install, root checks, package and packed
-  consumers, SQL/provider and applicable hosted platform lanes. Historical
-  package passes remain historical when the combined source changes.
-- Merge the reviewed final candidate into develop, verify hosted outcomes,
-  and deliver the verified revision into `~/v3` without discarding local work.
-
-The separately qualified verifier-lifecycle and batched-query fixes still
-need their final merged-base binding and delivery. They are not evidence
-that this migration PR has already landed. The remaining plugin-to-host
-import edges likewise require explicit disposition before claiming that
-all dependency directions in the original plan have been satisfied.
+These removals close three specific package boundaries. The reasons for retaining
+app-manager, mobile bridge, finances, personal-assistant and registry host
+dependencies are recorded above. Package-only passes do not establish their host behavior.
