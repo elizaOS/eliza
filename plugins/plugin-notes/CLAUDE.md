@@ -60,7 +60,7 @@ Literal chat updates may supply textEdit with a field, exact oldText and newText
 Validate this alternative at the existing boundary and match under the store
 write barrier. Require a unique current match and preserve every other character;
 reject ambiguous, absent, conflicting or normalization-dependent edits without a
-write. Full replacement and legacy caller contracts remain supported. This is
+write. Full replacement and legacy selector/content forms remain supported, but replacement writes now require a read-bound expectedRevision. This is
 structured tool input, never a natural-language shortcut or a second write path.
 
 Conversational NOTES_PATCH uses a typed target and field changes or one literal textEdit. Omitted fields stay unchanged. Ambiguous named titles require selection even if a planner substitutes an ID; resolve again under the service write barrier. Keep legacy NOTES_UPDATE content alternatives and their conflict validation.
@@ -68,3 +68,20 @@ Conversational NOTES_PATCH uses a typed target and field changes or one literal 
 NOTES_LIST may combine title/topic lookup with an explicit createdAt/updatedAt dateRange. Bounds are offset-bearing instants, start-inclusive/end-exclusive. Date filters never authorize a write or change source ownership.
 
 NAMED_NOTES supplies complete current records only for titles explicitly named in the request, including every same-title match. Stage 1 admits it through the assistant's explicit provider list with the existing OWNER gate. Unrelated messages receive no named-note text; source failures do not authorize claims from historical contents.
+
+
+Individual field and full-note replacements require `expectedRevision` from the
+complete note snapshot used to prepare the edit. `NOTES_GET` / `NOTES_LIST` and
+full `SAVED_NOTES` / `NAMED_NOTES` content expose `notesRevision`; capability reads
+expose `state.revision`. Pass that value to `NOTES_UPDATE`, nonempty `NOTES_PATCH`
+changes, or `update-note`. Direct service updates take it as their final argument.
+A title-only index is not replacement content. Never fetch a fresh token alone to
+retry stale replacement bytes: read the note and reconcile the owner's edit.
+
+The service compares the whole-document revision inside its write barrier.
+Any intervening Notes mutation, including another note's change, causes
+`NOTES_EDIT_CONFLICT` without a write or applied receipt. Missing or invalid
+replacement tokens return `NOTES_EDIT_REVISION_REQUIRED`; this deliberately
+rejects older unguarded replacement calls. Literal `textEdit` retains its atomic
+unique-current-substring contract and can omit the token; supplied tokens still
+apply. Storage remains the existing per-agent JSON file and in-process barrier.

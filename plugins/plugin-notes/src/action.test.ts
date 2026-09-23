@@ -214,16 +214,16 @@ describe("promoted Notes execution", () => {
           params: { [name]: content },
         }),
       ).toMatchObject({ success: true });
-      expect(
-        await execute(runtime, {
-          name: "NOTES_LIST",
-          params: { [name]: "Exact label" },
-        }),
-      ).toMatchObject({ success: true, data: { count: 1 } });
+      const originalRead = await execute(runtime, {
+        name: "NOTES_LIST",
+        params: { [name]: "Exact label" },
+      });
+      expect(originalRead).toMatchObject({ success: true, data: { count: 1 } });
       expect(
         await execute(runtime, {
           name: "NOTES_UPDATE",
           params: {
+            expectedRevision: originalRead.data?.notesRevision,
             [name]: "Exact label",
             replacementContent: "Exact label\nChanged body.",
           },
@@ -250,12 +250,14 @@ describe("promoted Notes execution", () => {
         name: "NOTES_CREATE",
         params: { content: "Record\nOriginal" },
       });
+      const originalSnapshot = getNotesService(runtime).snapshot();
       const replacement = "Record\nChanged  exactly";
       expect(
         await execute(runtime, {
           name: "NOTES_UPDATE",
           params: {
             content: "Record",
+            expectedRevision: originalSnapshot.revision,
             [name]: replacement,
             replacementContent: replacement,
           },
@@ -341,7 +343,11 @@ describe("promoted Notes execution", () => {
 
     const updated = await execute(runtime, {
       name: "NOTES_UPDATE",
-      params: { title: "Alias check", newText: "Alias check\nupdated body" },
+      params: {
+        title: "Alias check",
+        newText: "Alias check\nupdated body",
+        expectedRevision: listed.data?.notesRevision,
+      },
     });
     expect(updated).toMatchObject({
       success: true,
@@ -397,7 +403,12 @@ describe("promoted Notes execution", () => {
       body: "last instant",
       color: "yellow",
     });
-    await service.updateNote(beforeWeek.id, { body: "edited in the week" });
+    const beforeEdit = service.snapshot();
+    await service.updateNote(
+      beforeWeek.id,
+      { body: "edited in the week" },
+      beforeEdit.revision,
+    );
     instant = "2026-03-09T07:00:00.000Z";
     await service.createNote({
       title: "Fern after",
@@ -518,10 +529,12 @@ describe("promoted Notes execution", () => {
         title: original.id,
         body: "ID text is not identity.",
       });
+      const originalSnapshot = service.snapshot();
       const patch =
         kind === "literal"
           ? { textEdit: { field: "body", oldText: "violet", newText: "green" } }
           : {
+              expectedRevision: originalSnapshot.revision,
               replacementContent:
                 "Same title\nKeep  both spaces and Mira’s green backpack.",
             };
@@ -565,7 +578,8 @@ describe("promoted Notes execution", () => {
       title: "note_missing_qa",
       body: "Decoy for an absent ID.",
     });
-    const before = service.listNotes();
+    const originalSnapshot = service.snapshot();
+    const before = originalSnapshot.notes;
     for (const selector of [
       { noteId: "note_missing_qa" },
       { noteId: original.id.toUpperCase() },
@@ -575,7 +589,11 @@ describe("promoted Notes execution", () => {
     ]) {
       const result = await execute(runtime, {
         name: "NOTES_UPDATE",
-        params: { ...selector, replacementContent: "Exact target\nChanged." },
+        params: {
+          ...selector,
+          expectedRevision: originalSnapshot.revision,
+          replacementContent: "Exact target\nChanged.",
+        },
       });
       expect(result.success).toBe(false);
       expect(result.effectReceipts).toBeUndefined();
@@ -587,6 +605,7 @@ describe("promoted Notes execution", () => {
         name: "NOTES_UPDATE",
         params: {
           noteId: original.id,
+          expectedRevision: originalSnapshot.revision,
           replacementContent: "Exact target\nChanged.",
         },
       },
@@ -672,10 +691,16 @@ describe("promoted Notes execution", () => {
       name: "NOTES_CREATE",
       params: { content: "Packing list\nCharger" },
     });
+    const originalRead = await execute(runtime, {
+      name: "NOTES_LIST",
+      params: { content: "Packing list" },
+    });
+    expect(originalRead.data?.notes).toMatchObject([{ body: "Charger" }]);
     const result = await execute(runtime, {
       name: "NOTES_UPDATE",
       params: {
         content: "Packing list",
+        expectedRevision: originalRead.data?.notesRevision,
         replacementContent: "Packing list\nCharger and water",
       },
     });
@@ -700,10 +725,12 @@ describe("promoted Notes execution", () => {
       title: "Conversation context QA",
       body: "Bring the blue notebook and charger; no water.",
     });
+    const originalSnapshot = getNotesService(runtime).snapshot();
     const updated = await execute(runtime, {
       name: "NOTES_UPDATE",
       params: {
         content: "Conversation context QA",
+        expectedRevision: originalSnapshot.revision,
         replacementContent:
           "Conversation context QA\nBring only the blue notebook.",
       },
@@ -1102,8 +1129,10 @@ describe("NOTES operation parsing", () => {
       action: "create",
       content: "Recency check\noriginal body",
     });
+    const originalRead = await run(runtime, { action: "list" });
     const updated = await run(runtime, {
       action: "update",
+      expectedRevision: originalRead.data?.notesRevision,
       content: "Recency check",
       body: "Recency check\nupdated body",
     });
@@ -1171,8 +1200,10 @@ describe("NOTES operation parsing", () => {
       title: "Demo check 917: bring the green notebook.",
       body: "",
     });
+    const originalRead = await run(runtime, { action: "list" });
     const updated = await run(runtime, {
       action: "update",
+      expectedRevision: originalRead.data?.notesRevision,
       content: "Demo check 917",
       replacementContent: "Demo check 917: bring the blue notebook.",
     });
@@ -1245,8 +1276,10 @@ describe("NOTES operation parsing", () => {
       content: "Demo checklist",
       body: "charger",
     });
+    const originalRead = await run(runtime, { action: "list" });
     const updated = await run(runtime, {
       action: "update",
+      expectedRevision: originalRead.data?.notesRevision,
       content: "Demo checklist",
       body: "Demo checklist\ncharger and water",
     });
@@ -1283,6 +1316,7 @@ describe("NOTES operation parsing", () => {
 
     const updated = await run(runtime, {
       action: "update",
+      expectedRevision: listed.data?.notesRevision,
       content: "bins",
       body: "bins go out wednesday",
     });
@@ -1403,8 +1437,10 @@ describe("identical-duplicate notes", () => {
     const runtime = await harness();
     await seedLegacyCopies(runtime, "i need to buy milk", 4);
 
+    const originalRead = await run(runtime, { action: "list" });
     const result = await run(runtime, {
       action: "update",
+      expectedRevision: originalRead.data?.notesRevision,
       content: "milk",
       body: "i already bought milk",
     });
@@ -1537,6 +1573,7 @@ describe("literal Notes edits", () => {
       title: "Retry QA",
       body: '"Keep this."',
     });
+    const originalSnapshot = service.snapshot();
     const useModel = vi
       .fn()
       .mockResolvedValueOnce({
@@ -1560,6 +1597,7 @@ describe("literal Notes edits", () => {
             name: "NOTES_PATCH",
             arguments: {
               target: { kind: "id", value: note.id },
+              expectedRevision: originalSnapshot.revision,
               changes: [{ field: "body", value: "Keep this." }],
               eliza_turn_scope: "final",
             },
@@ -1601,6 +1639,7 @@ describe("literal Notes edits", () => {
       title: "Failure QA",
       body: "Keep this.",
     });
+    const originalSnapshot = service.snapshot();
     vi.spyOn(service, "updateNoteWithCommit").mockRejectedValueOnce(
       new Error("Store unavailable"),
     );
@@ -1608,6 +1647,7 @@ describe("literal Notes edits", () => {
       name: "NOTES_PATCH",
       params: {
         target: { kind: "id", value: note.id },
+        expectedRevision: originalSnapshot.revision,
         changes: [{ field: "body", value: "Changed" }],
       },
     });
@@ -1663,6 +1703,57 @@ describe("literal Notes edits", () => {
 });
 
 describe("structured Notes field patches", () => {
+  it.each([
+    ["NOTES_GET", "NOTES_UPDATE"],
+    ["NOTES_LIST", "NOTES_PATCH"],
+  ])(
+    "rejects a stale %s revision through %s without a receipt or durable write",
+    async (readName, writeName) => {
+      const runtime = await executorHarness();
+      const service = getNotesService(runtime);
+      const note = await service.createNote({
+        title: "Shared draft",
+        body: "Original body",
+      });
+      const read = await execute(runtime, {
+        name: readName,
+        params:
+          readName === "NOTES_GET"
+            ? { noteId: note.id }
+            : { content: note.title },
+      });
+      expect(read.success).toBe(true);
+      expect(read.data?.notes).toEqual([note]);
+      expect(read.data?.notesRevision).toBe(service.snapshot().revision);
+      await service.updateNote(
+        note.id,
+        { body: "Another writer's complete body" },
+        read.data?.notesRevision,
+      );
+      const committed = service.snapshot();
+      const bytes = await fs.readFile(service.store.filePath, "utf8");
+      const replacement =
+        writeName === "NOTES_UPDATE"
+          ? {
+              noteId: note.id,
+              replacementContent: "Shared draft\nStale replacement",
+            }
+          : {
+              target: { kind: "id", value: note.id },
+              changes: [{ field: "body", value: "Stale replacement" }],
+            };
+      const result = await execute(runtime, {
+        name: writeName,
+        params: { ...replacement, expectedRevision: read.data?.notesRevision },
+      });
+      expect(result.success).toBe(false);
+      expect(JSON.stringify(result)).toContain("NOTES_EDIT_CONFLICT");
+      expect(result.effectReceipts).toBeUndefined();
+      expect(service.snapshot()).toEqual(committed);
+      expect(await fs.readFile(service.store.filePath, "utf8")).toBe(bytes);
+    },
+  );
+
   it("replaces fields without rewriting omitted content", async () => {
     const runtime = await executorHarness();
     const service = getNotesService(runtime);
@@ -1671,10 +1762,16 @@ describe("structured Notes field patches", () => {
       body: "Old body",
       color: "rose",
     });
+    const originalRead = await execute(runtime, {
+      name: "NOTES_GET",
+      params: { noteId: original.id },
+    });
+    expect(originalRead.data?.notes).toEqual([original]);
     const result = await execute(runtime, {
       name: "NOTES_PATCH",
       params: {
         target: { kind: "id", value: original.id },
+        expectedRevision: originalRead.data?.notesRevision,
         changes: [
           { field: "body", value: "Mira’s notebook is violet.\nSecond line." },
         ],
@@ -1698,10 +1795,12 @@ describe("structured Notes field patches", () => {
       body: "Old",
       color: "yellow",
     });
+    const originalSnapshot = service.snapshot();
     const result = await execute(runtime, {
       name: "NOTES_PATCH",
       params: {
         target: { kind: "text", value: note.title },
+        expectedRevision: originalSnapshot.revision,
         changes: [
           { field: "title", value: "New title" },
           { field: "body", value: "Exact’s body" },
@@ -1754,12 +1853,14 @@ describe("structured Notes field patches", () => {
       body: "Two",
       color: "rose",
     });
-    const before = service.listNotes();
+    const originalSnapshot = service.snapshot();
+    const before = originalSnapshot.notes;
     expect(
       (
         await execute(runtime, {
           name: "NOTES_PATCH",
           params: {
+            expectedRevision: originalSnapshot.revision,
             target: { kind: "text", value: "Duplicate" },
             changes: [{ field: "body", value: "New" }],
           },
@@ -1773,6 +1874,7 @@ describe("structured Notes field patches", () => {
           {
             name: "NOTES_PATCH",
             params: {
+              expectedRevision: originalSnapshot.revision,
               target: { kind: "id", value: before[0].id },
               changes: [{ field: "body", value: "New" }],
             },
@@ -1796,6 +1898,7 @@ describe("structured Notes field patches", () => {
     const result = await execute(runtime, {
       name: "NOTES_PATCH",
       params: {
+        expectedRevision: before.revision,
         target: { kind: "text", value: "Same title" },
         changes: [{ field: "body", value: "Amber folder" }],
       },
@@ -1833,7 +1936,7 @@ describe("structured Notes field patches", () => {
           : { noteId: first.id, replacementContent: "QA duplicate\nAmber" };
       const result = await execute(
         runtime,
-        { name, params },
+        { name, params: { ...params, expectedRevision: before.revision } },
         ["OWNER"],
         'In QA duplicate, change the body to "Amber".',
       );
@@ -1857,6 +1960,7 @@ describe("structured Notes field patches", () => {
         title: "QA duplicate",
         body: "Tomorrow",
       });
+      const originalSnapshot = service.snapshot();
       const text =
         selection === "explicit ID"
           ? `Set QA duplicate with ID ${first.id} to Amber.`
@@ -1866,6 +1970,7 @@ describe("structured Notes field patches", () => {
         {
           name: "NOTES_PATCH",
           params: {
+            expectedRevision: originalSnapshot.revision,
             target: { kind: "id", value: first.id },
             changes: [{ field: "body", value: "Amber" }],
           },
