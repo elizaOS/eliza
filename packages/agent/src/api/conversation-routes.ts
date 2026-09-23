@@ -35,6 +35,7 @@ import {
   filterMemoryReadByAccessContext,
   getEntityRole,
   getInferenceTimer,
+  getVerifiedRelatedEntityIds,
   hasAtLeastRole,
   InferenceTurnTimer,
   logger,
@@ -1298,7 +1299,44 @@ function captureConversationConnection(
 
 async function establishConversationConnection(
   descriptor: ConversationConnectionDescriptor,
+  requiredAccess?: AccessContext & { authorizedRoomIds: readonly UUID[] },
 ): Promise<void> {
+  if (requiredAccess) {
+    // Existing scoped conversations are read-only topology checks. Repairing
+    // memberships or role grants here could undo an intervening revocation.
+    await descriptor.runtime.adapter.transaction(async (transaction) => {
+      const reject = () =>
+        new ElizaError(
+          "Conversation membership or topology is no longer authorized",
+          { code: "CONVERSATION_CONNECTION_SCOPE_REJECTED" },
+        );
+      if (
+        requiredAccess.requesterEntityId !== descriptor.callerEntityId ||
+        !requiredAccess.authorizedRoomIds.includes(descriptor.roomId)
+      )
+        throw reject();
+      const identities = await getVerifiedRelatedEntityIds(
+        descriptor.runtime,
+        descriptor.callerEntityId,
+      );
+      const callerRooms = await transaction.getRoomsForParticipants(identities);
+      const agentRooms = await transaction.getRoomsForParticipants([
+        descriptor.runtimeAgentId,
+      ]);
+      const [room] = await transaction.getRoomsByIds([descriptor.roomId]);
+      const [world] = await transaction.getWorldsByIds([descriptor.worldId]);
+      if (
+        !callerRooms.includes(descriptor.roomId) ||
+        !agentRooms.includes(descriptor.roomId) ||
+        !room ||
+        room.worldId !== descriptor.worldId ||
+        !world
+      )
+        throw reject();
+      descriptor.requestFence?.();
+    });
+    return;
+  }
   await descriptor.runtime.ensureConnection({
     entityId: descriptor.callerEntityId,
     roomId: descriptor.roomId,
@@ -1335,6 +1373,7 @@ export async function ensureConversationRoom(
   runtime: AgentRuntime,
   conv: ConversationMeta,
   caller: ConversationCaller,
+  requiredAccess?: AccessContext & { authorizedRoomIds: readonly UUID[] },
 ): Promise<ConversationConnectionDescriptor> {
   const descriptor = captureConversationConnection(
     state,
@@ -1342,9 +1381,14 @@ export async function ensureConversationRoom(
     conv,
     caller,
   );
-  await scheduleConversationConnectionEnsure(descriptor, () =>
-    establishConversationConnection(descriptor),
-  );
+  if (requiredAccess) {
+    // Do not coalesce a fresh scope check with a legacy mutating ensure.
+    await establishConversationConnection(descriptor, requiredAccess);
+  } else {
+    await scheduleConversationConnectionEnsure(descriptor, () =>
+      establishConversationConnection(descriptor),
+    );
+  }
   assertConversationConnectionRuntime(state.runtime, descriptor);
   return descriptor;
 }
@@ -4123,7 +4167,13 @@ async function importConversation(
       prepareConversationConnectionRoom(runtime, conv.roomId);
     }
     try {
-      await ensureConversationRoom(state, runtime, conv, caller);
+      await ensureConversationRoom(
+        state,
+        runtime,
+        conv,
+        caller,
+        createdConversation ? undefined : resolveRequiredHttpAccessContext(req),
+      );
     } catch (err) {
       // error-policy:J1 boundary translation — a failed import that created
       // this conversation must not leave it listed without a backing room.
@@ -5524,9 +5574,17 @@ async function streamConversationMessage(
         assertLocalVoiceTurnFence,
       );
       try {
-        await scheduleConversationConnectionEnsure(connectionDescriptor, () =>
-          establishConversationConnection(connectionDescriptor),
-        );
+        const requiredAccess = resolveRequiredHttpAccessContext(req);
+        if (requiredAccess) {
+          await establishConversationConnection(
+            connectionDescriptor,
+            requiredAccess,
+          );
+        } else {
+          await scheduleConversationConnectionEnsure(connectionDescriptor, () =>
+            establishConversationConnection(connectionDescriptor),
+          );
+        }
         assertConversationConnectionRuntime(
           state.runtime,
           connectionDescriptor,
@@ -6500,6 +6558,7 @@ async function sendConversationMessage(
           runtime,
           conv,
           caller,
+          resolveRequiredHttpAccessContext(req),
         );
       } catch (err) {
         releaseTurnReservation();
@@ -6873,6 +6932,7 @@ async function greetConversation(
         runtime,
         conv,
         resolveConversationCaller(req, state, trustedApiPrincipal, runtime),
+        resolveRequiredHttpAccessContext(req),
       );
     } catch (err) {
       error(
