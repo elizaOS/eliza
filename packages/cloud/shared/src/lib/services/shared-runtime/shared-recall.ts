@@ -16,14 +16,6 @@
 import { BGE_SMALL_VECTOR_SPACE, ElizaError, identifyEmbeddingVector } from "@elizaos/common";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
 
-export const SHARED_RECALL_EDGE_COMPATIBILITY = {
-  target: "edge",
-  state: "tenant-postgres",
-  effects: ["tenant-postgres-read", "sidecar-embeddings"],
-  requiredBindings: ["HYPERDRIVE"],
-  requiredSecrets: [],
-} as const;
-
 export const SHARED_RECALL_EMBEDDING_MODEL = "bge-small-en-v1.5";
 export const SHARED_RECALL_EMBEDDING_DIMENSIONS = 384;
 export const SHARED_RECALL_EMBED_TIMEOUT_MS = 5_000;
