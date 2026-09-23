@@ -43,6 +43,8 @@ export interface VoiceSessionMachineState {
   phase: VoiceSessionPhase;
   /** Ephemeral acknowledgement for this turn; not conversation history. */
   progressText?: string;
+  /** Suppress delayed progress from a locally cancelled turn. */
+  progressCancelledTraceId?: string | null;
   /** Session id from the server `ready` event, once known. */
   sessionId: string | null;
   /** Trace id of the CURRENT turn (from the latest server event carrying one). */
@@ -96,9 +98,18 @@ export function applyClientAction(
       // immediately and return to listening. The authoritative `interrupted`
       // event still arrives and reconciles (see applyServerEvent).
       if (state.phase === "speaking") {
-        return { ...state, phase: "listening", progressText: undefined };
+        return {
+          ...state,
+          phase: "listening",
+          progressText: undefined,
+          progressCancelledTraceId: state.traceId,
+        };
       }
-      return { ...state, progressText: undefined };
+      return {
+        ...state,
+        progressText: undefined,
+        progressCancelledTraceId: state.traceId,
+      };
   }
 }
 
@@ -175,6 +186,7 @@ export function applyServerEvent(
       };
     case "progress":
       return state.traceId === event.traceId &&
+        state.progressCancelledTraceId !== event.traceId &&
         (state.phase === "thinking" || state.phase === "speaking")
         ? { ...state, progressText: event.text }
         : state;

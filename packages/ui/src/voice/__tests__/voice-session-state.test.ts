@@ -256,8 +256,36 @@ it("validates transient progress before passing it to the renderer", () => {
       JSON.stringify({ t: "progress", traceId: "T", text: "Checking." }),
     ),
   ).toEqual({ t: "progress", traceId: "T", text: "Checking." });
-  for (const text of [null, "", " ", "x".repeat(4097)])
+  for (const text of [null, "", " ", 42])
     expect(
       parseServerControl(JSON.stringify({ t: "progress", traceId: "T", text })),
     ).toBeNull();
+});
+
+it("keeps long progress intact and ignores queued cues after local cancellation", () => {
+  const text = "Checking ".repeat(600);
+  expect(
+    parseServerControl(JSON.stringify({ t: "progress", traceId: "T", text }))
+      ?.t,
+  ).toBe("progress");
+  const thinking = applyServerEvent(fresh(), {
+    t: "stt_final",
+    text: "request",
+    traceId: "T",
+  });
+  const cancelled = applyClientAction(thinking, {
+    type: "client/local_barge_in",
+  });
+  expect(
+    applyServerEvent(cancelled, { t: "progress", text, traceId: "T" })
+      .progressText,
+  ).toBeUndefined();
+  const next = applyServerEvent(cancelled, {
+    t: "stt_final",
+    text: "new request",
+    traceId: "T2",
+  });
+  expect(
+    applyServerEvent(next, { t: "progress", text, traceId: "T2" }).progressText,
+  ).toBe(text);
 });

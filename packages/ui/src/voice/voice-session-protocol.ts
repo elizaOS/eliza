@@ -254,7 +254,6 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
     if (
       typeof text !== "string" ||
       !text.trim() ||
-      text.length > 4096 ||
       typeof traceId !== "string" ||
       !traceId.trim() ||
       traceId.length > 256
