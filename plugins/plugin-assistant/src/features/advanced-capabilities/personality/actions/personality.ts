@@ -267,9 +267,18 @@ function summarizeSlot(slot: PersonalitySlot): string {
   return `${traitPart}; ${gate}; ${directives}`;
 }
 
+const PERSONALITY_CONTEXTS = [
+  "settings",
+  "agent_internal",
+  "media",
+  "admin",
+  "general",
+  "memory",
+];
+
 export const personalityAction: Action = {
   name: "PERSONALITY",
-  contexts: ["settings", "agent_internal", "media", "admin", "general"],
+  contexts: PERSONALITY_CONTEXTS,
   roleGate: { minRole: "USER" },
   similes: [
     "SET_PERSONALITY",
@@ -357,7 +366,7 @@ export const personalityAction: Action = {
     const store = getPersonalityStore(runtime);
     if (!store) return false;
     return hasActionContext(message, state, {
-      contexts: ["settings", "agent_internal", "media", "admin", "general"],
+      contexts: PERSONALITY_CONTEXTS,
     });
   },
 
@@ -525,14 +534,26 @@ export const personalityAction: Action = {
         return runSaveProfile({ store, params, callback });
       case "list_profiles":
         return runListProfiles({ store, callback });
-      case "show_state":
-        return runShowState({
+      case "show_state": {
+        const plannerOwnsReply = getActionReplyOwner(message.id) === "planner";
+        const result = await runShowState({
           store,
           scope: scope as PersonalityScope,
-          callback,
+          callback: plannerOwnsReply ? undefined : callback,
           userId,
           agentId,
         });
+        return plannerOwnsReply
+          ? {
+              ...applyGroundedActionReply(result, {
+                kind: "deferred",
+                grounding:
+                  "Use data.slot as the current preferences for the selected scope. This was a read only; no preference was changed. Resolve the user's whole request before replying.",
+              }),
+              modelReplyRequired: true,
+            }
+          : result;
+      }
     }
   },
 
