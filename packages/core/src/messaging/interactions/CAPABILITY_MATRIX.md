@@ -15,3 +15,13 @@ This generated baseline is conservative. Each runtime registration materializes 
 | wechat | <account> | room:<target> | choice:conversational→signed-hosted<br>form:conversational→signed-hosted<br>followups:conversational<br>task:signed-hosted→conversational<br>secret:sensitive-request | 0 | none |
 | whatsapp | <account> | phone:<target> | choice:conversational→signed-hosted<br>form:conversational→signed-hosted<br>followups:conversational<br>task:signed-hosted→conversational<br>secret:sensitive-request | 0 | none |
 | x | <account> | user:<target> | choice:conversational→signed-hosted<br>form:conversational→signed-hosted<br>followups:conversational<br>task:signed-hosted→conversational<br>secret:sensitive-request | 0 | none |
+
+## Read-only registrations
+
+These registrations expose history and search only. They cannot deliver interaction blocks or collect replies through this connector.
+
+| Connector | Registration | Target | Outbound interaction delivery |
+| --- | --- | --- | --- |
+| telegram | plugin-telegram/src/account-client-service.ts | user:<target> | unsupported |
+| telegram | plugin-telegram/src/account-client-service.ts | channel:<target> | unsupported |
+| telegram | plugin-telegram/src/account-client-service.ts | thread:<target> | unsupported |
