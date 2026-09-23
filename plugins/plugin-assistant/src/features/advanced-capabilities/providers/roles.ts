@@ -174,21 +174,15 @@ export const roleProvider: Provider = {
     const admins: RoleUser[] = [];
     const members: RoleUser[] = [];
     const entityIds = Object.keys(roles) as UUID[];
-    const entities = await Promise.all(
-      entityIds.map((entityId) => runtime.getEntityById(entityId)),
+    const entities = await runtime.getEntitiesByIds(entityIds);
+    const entityMap = new Map(
+      entities.map((entity) => [entity.id?.toLowerCase(), entity]),
     );
-    const entityMap = new Map<UUID, (typeof entities)[number]>();
-    for (let i = 0; i < entityIds.length; i += 1) {
-      const entity = entities[i];
-      if (entity) {
-        entityMap.set(entityIds[i], entity);
-      }
-    }
     const seenUsernames = new Set<string>();
     // Process roles
     for (const entityId of entityIds) {
       const userRole = roles[entityId];
-      const user = entityMap.get(entityId);
+      const user = entityMap.get(entityId.toLowerCase());
       const roleUser = getRoleUser(user);
       if (!roleUser) {
         logger.warn(
