@@ -1214,9 +1214,10 @@ const workspaceSrcFallbackPlugin = {
         // (CLOUD_AUTH service start fails, every cloud turn → provider_issue).
         // Resolve from src so the class inlines into the single bundle.
         pkgName === "@elizaos/cloud-sdk" ||
-        // The built knowledge-graph barrel loses its schema/service bindings
-        // when Bun re-bundles it, so createElizaPlugin fails before health binds.
-        pkgName === "@elizaos/plugin-relationships";
+        // Re-bundling compiled plugin barrels drops bindings (observed for
+        // knowledgeGraphSchema and DefaultMicrosoftGraphCalendarPort). Build
+        // workspace plugins from their source graph once, just like the host.
+        pkgName.startsWith("@elizaos/plugin-");
       if (
         existsSync(distDir) &&
         !forceSourceResolution &&
