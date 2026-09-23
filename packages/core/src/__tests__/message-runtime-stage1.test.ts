@@ -2820,7 +2820,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(next.messages[1].content).not.toContain("OWNER_OPERATION");
 			expect(next.messages[1].content).not.toContain(description);
 			for (const action of actions.slice(1))
-				expect(next.messages[1].content).not.toContain(JSON.stringify(action.name));
+				expect(next.messages[1].content).not.toContain(
+					JSON.stringify(action.name),
+				);
 			const rankedActions = [...runtime.actions].reverse();
 			runtime.actions = rankedActions;
 			await runStage1({
@@ -3039,8 +3041,8 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime)).toHaveLength(2);
 	});
 
-	it.each([ChannelType.VOICE_GROUP])(
-		"keeps full catalog descriptions for %s",
+	it.each([ChannelType.VOICE_GROUP, undefined])(
+		"preserves context guidance without preloading tool definitions for %s",
 		async (channelType) => {
 			const description =
 				"Complete context routing reference for the full input path. ".repeat(
@@ -3050,7 +3052,11 @@ describe("runV5MessageRuntimeStage1", () => {
 				stage1Response({ contexts: ["simple"], replyText: "Hello." }),
 			]);
 			runtime.actions = [
-				{ name: "CUSTOM_ACTION", description, similes: ["CUSTOM_ALIAS"] },
+				{
+					name: "CUSTOM_ACTION",
+					description: "Complete tool-only reference text. ".repeat(250),
+					similes: ["CUSTOM_ALIAS"],
+				},
 			];
 			runtime.contexts = new ContextRegistry([
 				{ id: "custom_catalog", description },
@@ -3065,7 +3071,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			};
 			const wire = params.messages.map(({ content }) => content).join("\n");
 			expect(wire).toContain(description.trim());
-			expect(wire).toContain("CUSTOM_ALIAS");
+			expect(wire).not.toContain("CUSTOM_ALIAS");
+			expect(wire).not.toContain("Complete tool-only reference text.");
+			expect(wire).toContain("DISCOVER_TOOLS");
 			expect(wire).not.toContain("context_discovery: CONTEXT_CATALOG");
 			expect(useModelCalls(runtime)).toHaveLength(1);
 		},
@@ -10820,7 +10828,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(validateAllowed).toHaveBeenCalled();
 		expect(validateDenied).toHaveBeenCalled();
 		const discoveryPrompt = JSON.stringify(useModelCalls(runtime)[0]?.[1]);
-		expect(discoveryPrompt).toContain("CHECK_RUNTIME");
+		expect(discoveryPrompt).not.toContain("CHECK_RUNTIME");
 		expect(discoveryPrompt).not.toContain("SKIP_RUNTIME");
 		const firstPlannerParams = useModelCalls(runtime)[1]?.[1] as {
 			tools?: Array<{ name?: string }>;

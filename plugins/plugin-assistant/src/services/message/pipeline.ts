@@ -272,7 +272,9 @@ export async function runV5MessageRuntimeStage1(
   const context = await timeInferenceSpan("message:stage1:context", () =>
     createV5MessageContextObject({
       ...args,
-      includeActionDiscovery: progressiveContextChannel ? "reference" : true,
+      // Catalog loading is independent of history/engagement channel policy.
+      // Ordinary handlers route work; the planner owns full tool discovery.
+      includeActionDiscovery: args.codingMode ? true : "reference",
       userRoles: [senderRole],
       availableContexts,
       ambientTurn,

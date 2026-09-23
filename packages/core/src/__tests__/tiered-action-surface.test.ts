@@ -452,7 +452,7 @@ describe("v5 tiered action surface", () => {
 		},
 	);
 
-	it("discovers a custom owner action before routing and executes it through the planner", async () => {
+	it("discovers an unknown owner action in the planner without preloading it into the handler", async () => {
 		const handler = vi.fn(async () => ({ success: true, text: "Role bound." }));
 		const description = `${"Complete domain guidance. ".repeat(1500)} Bind the requested household role.`;
 		const action = makeAction({
@@ -468,18 +468,41 @@ describe("v5 tiered action surface", () => {
 				{
 					...stage1Response({
 						contexts: ["household"],
-						candidateActionNames: [action.name],
+						candidateActionNames: ["DISCOVER_TOOLS"],
 						replyEffectStatus: "pending",
 					}),
 					inspectInput(params) {
 						const input = JSON.stringify(params);
 						expect(input).toContain("available_actions");
+						expect(input).not.toContain(action.name);
+						expect(input).not.toContain(description);
+						expect(handler).not.toHaveBeenCalled();
+					},
+				},
+				plannerToolResponse("DISCOVER_TOOLS", {
+					names: [],
+					eliza_turn_scope: "more_work_pending",
+				}),
+				{
+					...plannerToolResponse("DISCOVER_TOOLS", {
+						names: [action.name],
+						eliza_turn_scope: "more_work_pending",
+					}),
+					inspectInput(params) {
+						const input = JSON.stringify(params);
 						expect(input).toContain(action.name);
 						expect(input).toContain(description);
 						expect(handler).not.toHaveBeenCalled();
 					},
 				},
-				plannerToolResponse(action.name),
+				{
+					...plannerToolResponse(action.name, { eliza_turn_scope: "final" }),
+					inspectInput(params) {
+						const tools = (params as { tools: Array<{ name: string }> }).tools;
+						expect(tools.map((tool) => tool.name)).toContain(action.name);
+						expect(handler).not.toHaveBeenCalled();
+					},
+				},
 				finishEvaluatorResponse("Role bound."),
 				{
 					...stage1Response({
@@ -505,7 +528,6 @@ describe("v5 tiered action surface", () => {
 			responseId: RESPONSE_ID,
 		});
 		expect(handler).toHaveBeenCalledTimes(1);
-		expect(plannerToolNames(runtime)).toContain(action.name);
 		await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage("Hello."),
@@ -550,19 +572,31 @@ describe("v5 tiered action surface", () => {
 				{
 					...stage1Response({
 						contexts: ["household"],
-						candidateActionNames: [parent.name],
+						candidateActionNames: ["DISCOVER_TOOLS"],
 						replyEffectStatus: "pending",
+					}),
+				},
+				plannerToolResponse("DISCOVER_TOOLS", {
+					names: [],
+					eliza_turn_scope: "more_work_pending",
+				}),
+				{
+					...plannerToolResponse("DISCOVER_TOOLS", {
+						names: [parent.name],
+						eliza_turn_scope: "more_work_pending",
 					}),
 					inspectInput(params) {
 						const input = JSON.stringify(params);
-						expect(input).toContain("available_actions");
 						expect(input).toContain("HOUSEHOLD_LEDGER");
 						expect(input).toContain(parent.description);
 						expect(input).toContain("HOUSEHOLD_LEDGER_CREATE");
 						expect(input).toContain("HOUSEHOLD_LEDGER_DELETE");
 					},
 				},
-				plannerToolResponse(parent.name, { action: "create" }),
+				plannerToolResponse(parent.name, {
+					action: "create",
+					eliza_turn_scope: "final",
+				}),
 				finishEvaluatorResponse("Ledger updated."),
 			],
 		});
@@ -597,6 +631,9 @@ describe("v5 tiered action surface", () => {
 						candidateActionNames: [action.name],
 						replyEffectStatus: "pending",
 					}),
+				},
+				{
+					...plannerToolResponse(action.name),
 					inspectInput(params) {
 						const input = JSON.stringify(params);
 						expect(input).toContain("HOUSEHOLD_ROLE");
@@ -605,7 +642,6 @@ describe("v5 tiered action surface", () => {
 						expect(input).toContain("OWNER");
 					},
 				},
-				plannerToolResponse(action.name),
 				finishEvaluatorResponse("Role bound."),
 			],
 		});
@@ -640,6 +676,9 @@ describe("v5 tiered action surface", () => {
 						candidateActionNames: ["BIND_HOUSEHOLD_ROLE_ALIAS"],
 						replyEffectStatus: "pending",
 					}),
+				},
+				{
+					...plannerToolResponse(action.name),
 					inspectInput(params) {
 						const input = JSON.stringify(params);
 						expect(input).toContain("HOUSEHOLD_ROLE");
@@ -647,7 +686,6 @@ describe("v5 tiered action surface", () => {
 						expect(input).toContain("BIND_HOUSEHOLD_ROLE_ALIAS");
 					},
 				},
-				plannerToolResponse(action.name),
 				finishEvaluatorResponse("Role bound."),
 			],
 		});
