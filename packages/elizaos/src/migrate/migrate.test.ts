@@ -79,7 +79,8 @@ function makeCapturingAdapter() {
     tasks: [] as unknown[],
     logs: [] as unknown[],
   };
-  const adapter = {
+  const createScopedAdapter = (agentId: string) => ({
+    agentId,
     createAgents: async (rows: Array<{ id: string }>) => {
       captured.agents.push(...(rows as (typeof captured.agents)[number][]));
       return rows.map((r) => r.id);
@@ -114,8 +115,43 @@ function makeCapturingAdapter() {
     createLogs: async (rows: unknown[]) => {
       captured.logs.push(...rows);
     },
+  });
+  const importingAgentId = "00000000-0000-4000-8000-000000000001";
+  const scopes: Array<ReturnType<typeof createScopedAdapter>> = [];
+  const adapter = {
+    ...createScopedAdapter(importingAgentId),
+    async withAgentScope<T>(
+      agentId: string,
+      callback: (scoped: ReturnType<typeof createScopedAdapter>) => Promise<T>,
+    ): Promise<T> {
+      const scoped = createScopedAdapter(agentId);
+      scopes.push(scoped);
+      return callback(scoped);
+    },
   };
-  return { adapter, captured };
+  return { adapter, captured, scopes, importingAgentId };
+}
+
+function expectImportedOwnership(
+  fixture: ReturnType<typeof makeCapturingAdapter>,
+  importedAgentId: string,
+) {
+  expect(fixture.adapter.agentId).toBe(fixture.importingAgentId);
+  expect(importedAgentId).not.toBe(fixture.importingAgentId);
+  expect(fixture.scopes).toHaveLength(1);
+  expect(fixture.scopes[0]).not.toBe(fixture.adapter);
+  expect(fixture.scopes[0]?.agentId).toBe(importedAgentId);
+  expect(fixture.captured.agents[0]?.id).toBe(importedAgentId);
+  for (const row of [
+    ...fixture.captured.worlds,
+    ...fixture.captured.rooms,
+    ...fixture.captured.entities,
+  ]) {
+    expect(row).toMatchObject({ agentId: importedAgentId });
+  }
+  for (const { memory } of fixture.captured.memories) {
+    expect(memory).toMatchObject({ agentId: importedAgentId });
+  }
 }
 
 type ImportRuntime = Parameters<typeof importAgent>[0];
@@ -291,10 +327,12 @@ describe("archive format", () => {
 describe("archive round-trips through the real importAgent", () => {
   it("decrypts, schema-validates, and restores the migrated agent + memories", async () => {
     const { archive, memoryCount } = buildArchive("test-password");
-    const { adapter, captured } = makeCapturingAdapter();
+    const fixture = makeCapturingAdapter();
+    const { adapter, captured } = fixture;
     const runtime = { adapter } as unknown as ImportRuntime;
 
     const result = await importAgent(runtime, archive, "test-password");
+    expectImportedOwnership(fixture, result.agentId);
 
     expect(result.success).toBe(true);
     expect(result.agentName).toBe("Tess");
@@ -317,11 +355,15 @@ describe("archive round-trips through the real importAgent", () => {
 
   it("rejects an archive opened with the wrong password (GCM auth failure)", async () => {
     const { archive } = buildArchive("correct-password");
-    const { adapter } = makeCapturingAdapter();
+    const { adapter, captured, scopes, importingAgentId } =
+      makeCapturingAdapter();
     const runtime = { adapter } as unknown as ImportRuntime;
     await expect(
       importAgent(runtime, archive, "wrong-password"),
     ).rejects.toThrow();
+    expect(scopes).toHaveLength(0);
+    expect(captured.agents).toHaveLength(0);
+    expect(adapter.agentId).toBe(importingAgentId);
   });
 });
 
@@ -371,9 +413,11 @@ describe("firewall keeps the personal memory corpus out of a portable archive", 
       memories: plan.memories,
     });
     const archive = buildElizaAgentArchive(payload, "fw-password-01");
-    const { adapter, captured } = makeCapturingAdapter();
+    const fixture = makeCapturingAdapter();
+    const { adapter, captured } = fixture;
     const runtime = { adapter } as unknown as ImportRuntime;
     const result = await importAgent(runtime, archive, "fw-password-01");
+    expectImportedOwnership(fixture, result.agentId);
     return { plan, result, captured };
   }
 
