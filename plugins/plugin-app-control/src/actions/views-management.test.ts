@@ -462,14 +462,20 @@ describe("view management actions", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("admits navigation on Notes turns through the planner's action gate", () => {
-		const action = createViewsAction();
+	it.each([
+		"notes",
+		"general",
+		"calendar",
+		"tasks",
+		"documents",
+		"web",
+	] as const)("checks planner admission for the %s context", (context) => {
 		expect(
-			canActionRun(action, { activeContexts: ["notes"], userRoles: ["USER"] }),
-		).toBe(true);
-		expect(
-			canActionRun(action, { activeContexts: ["web"], userRoles: ["USER"] }),
-		).toBe(false);
+			canActionRun(createViewsAction(), {
+				activeContexts: [context],
+				userRoles: ["USER"],
+			}),
+		).toBe(context !== "web");
 	});
 
 	it("authenticates direct manager and broadcast loopback requests", async () => {
@@ -982,16 +988,6 @@ describe("view management actions", () => {
 					viewType: "gui",
 				}),
 			}),
-		);
-	});
-
-	it("stays available when stage 1 routes a view request to a domain context", () => {
-		const action = createViewsAction();
-		expect(action.contexts).toEqual(
-			expect.arrayContaining(["general", "calendar", "tasks", "documents"]),
-		);
-		expect(action.contextGate?.anyOf).toEqual(
-			expect.arrayContaining(["calendar", "tasks"]),
 		);
 	});
 
@@ -2306,101 +2302,62 @@ describe("view management actions", () => {
 		expect(runtime.getTasks).toHaveBeenCalled();
 	});
 
-	it("preserves explicit future terminal viewType and always-on-top false in window navigation payloads", async () => {
-		const { runtime } = createRuntime();
-		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [view({ viewType: "tui" })]),
-				getCurrentView: vi.fn(async () => null),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
-
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
-
-		const result = await action.handler(
-			runtime as never,
-			message(
+	it.each([
+		{
+			viewType: "tui" as const,
+			request:
 				"open the remote ledger future terminal view in a separate window",
-			) as never,
-			undefined,
-			{
-				action: "window",
-				view: "remote-ledger",
-				viewType: "tui",
+			options: { alwaysOnTop: false },
+		},
+		{
+			viewType: "xr" as const,
+			request: "open the remote ledger spatial view in a separate window",
+			options: {},
+		},
+	])(
+		"preserves $viewType window navigation payloads",
+		async ({ viewType, request, options }) => {
+			const { runtime } = createRuntime();
+			const callback = vi.fn();
+			const action = createViewsAction({
+				client: {
+					listViews: vi.fn(async () => [view({ viewType })]),
+					getCurrentView: vi.fn(async () => null),
+				},
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+
+			vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
+
+			const result = await action.handler(
+				runtime as never,
+				message(request) as never,
+				undefined,
+				{ action: "window", view: "remote-ledger", viewType, ...options },
+				callback,
+			);
+
+			expect(result?.success).toBe(true);
+			expect(result?.values).toMatchObject({
+				mode: "window",
+				viewId: "remote-ledger",
+				viewType,
 				alwaysOnTop: false,
-			},
-			callback,
-		);
-
-		expect(result?.success).toBe(true);
-		expect(result?.values).toMatchObject({
-			mode: "window",
-			viewId: "remote-ledger",
-			viewType: "tui",
-			alwaysOnTop: false,
-		});
-		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/remote-ledger/navigate?viewType=tui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					action: "open-window",
-					viewType: "tui",
-					alwaysOnTop: false,
+			});
+			expect(globalThis.fetch).toHaveBeenCalledWith(
+				`http://127.0.0.1:3456/api/views/remote-ledger/navigate?viewType=${viewType}`,
+				expect.objectContaining({
+					method: "POST",
+					body: JSON.stringify({
+						action: "open-window",
+						viewType,
+						alwaysOnTop: false,
+					}),
 				}),
-			}),
-		);
-		expect(callback).not.toHaveBeenCalled();
-	});
-
-	it("preserves explicit future spatial viewType in window navigation payloads", async () => {
-		const { runtime } = createRuntime();
-		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [view({ viewType: "xr" })]),
-				getCurrentView: vi.fn(async () => null),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
-
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
-
-		const result = await action.handler(
-			runtime as never,
-			message(
-				"open the remote ledger spatial view in a separate window",
-			) as never,
-			undefined,
-			{
-				action: "window",
-				view: "remote-ledger",
-				viewType: "xr",
-			},
-			callback,
-		);
-
-		expect(result?.success).toBe(true);
-		expect(result?.values).toMatchObject({
-			mode: "window",
-			viewId: "remote-ledger",
-			viewType: "xr",
-		});
-		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/remote-ledger/navigate?viewType=xr",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					action: "open-window",
-					viewType: "xr",
-					alwaysOnTop: false,
-				}),
-			}),
-		);
-		expect(callback).not.toHaveBeenCalled();
-	});
+			);
+			expect(callback).not.toHaveBeenCalled();
+		},
+	);
 
 	it("routes create, edit, and delete through the unified VIEWS action dispatcher", async () => {
 		const repo = createRepoFixture();
