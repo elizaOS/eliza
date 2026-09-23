@@ -1,7 +1,6 @@
 /**
  * On-disk resolution for `@elizaos/*` workspace packages used by the core test
- * harness: locate an installed package root, pick its entry (source vs dist),
- * and import named exports from it.
+ * harness: locate an installed package root and select its source or dist entry.
  *
  * Distinguishes a repo-local monorepo/submodule checkout — where the package's
  * `src/` is preferred so tests run against live source — from an ordinary
@@ -13,7 +12,6 @@
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 const skipLocalUpstreams = process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1";
 
@@ -151,10 +149,6 @@ const MODULE_EXTENSIONS = [
 ];
 const require = createRequire(import.meta.url);
 
-type ModuleNamespace = Record<string, unknown> & {
-  default?: Record<string, unknown>;
-};
-
 function getRequireFor(baseDir?: string) {
   if (!baseDir) {
     return require;
@@ -251,87 +245,6 @@ export function getInstalledPackageEntry(
   return resolvedCandidate ?? resolveModuleEntry(candidates[0]);
 }
 
-function getNamedExport<T>(
-  moduleNamespace: ModuleNamespace,
-  exportName: string,
-): T | undefined {
-  if (exportName in moduleNamespace) {
-    return moduleNamespace[exportName] as T;
-  }
-
-  const defaultNamespace = moduleNamespace.default;
-  if (
-    defaultNamespace &&
-    typeof defaultNamespace === "object" &&
-    exportName in defaultNamespace
-  ) {
-    return defaultNamespace[exportName] as T;
-  }
-
-  return undefined;
-}
-
-async function tryImportNamedExport<T>(
-  specifier: string,
-  exportName: string,
-): Promise<{ value?: T; error?: string }> {
-  try {
-    const moduleNamespace = (await import(specifier)) as ModuleNamespace;
-    const value = getNamedExport<T>(moduleNamespace, exportName);
-    if (value !== undefined) {
-      return { value };
-    }
-
-    return {
-      error: `${specifier}: missing export ${exportName}`,
-    };
-  } catch (error) {
-    return {
-      error: `${specifier}: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
-}
-
-export async function getInstalledPackageNamedExport<T>(
-  packageName: string,
-  exportName: string,
-  repoRoot: string,
-  subpath?: "node",
-): Promise<T> {
-  const attempts: string[] = [];
-  const specifiers = subpath
-    ? [`${packageName}/${subpath}`, packageName]
-    : [packageName];
-
-  for (const specifier of specifiers) {
-    const result = await tryImportNamedExport<T>(specifier, exportName);
-    if (result.value !== undefined) {
-      return result.value;
-    }
-    if (result.error) {
-      attempts.push(result.error);
-    }
-  }
-
-  const entry = getInstalledPackageEntry(packageName, repoRoot, subpath);
-  if (entry) {
-    const result = await tryImportNamedExport<T>(
-      pathToFileURL(entry).href,
-      exportName,
-    );
-    if (result.value !== undefined) {
-      return result.value;
-    }
-    if (result.error) {
-      attempts.push(result.error);
-    }
-  }
-
-  throw new TypeError(
-    `${exportName} export not found in ${packageName}. Tried: ${attempts.join(" | ")}`,
-  );
-}
-
 export function getElizaCoreEntry(repoRoot: string): string | undefined {
   const packageRoot = getInstalledPackageRoot("@elizaos/core", repoRoot);
   if (!packageRoot) {
@@ -362,9 +275,7 @@ export function getElizaCoreEntry(repoRoot: string): string | undefined {
 }
 
 export function getAutonomousSourceRoot(repoRoot: string): string | undefined {
-  const packageRoot =
-    getInstalledPackageRoot("@elizaos/agent", repoRoot) ??
-    getInstalledPackageRoot("@elizaos/agent", repoRoot);
+  const packageRoot = getInstalledPackageRoot("@elizaos/agent", repoRoot);
 
   if (!packageRoot) {
     return undefined;
@@ -383,9 +294,7 @@ export function getAutonomousSourceRoot(repoRoot: string): string | undefined {
 }
 
 export function getAppCoreSourceRoot(repoRoot: string): string | undefined {
-  const packageRoot =
-    getInstalledPackageRoot("@elizaos/app-core", repoRoot) ??
-    getInstalledPackageRoot("@elizaos/app-core", repoRoot);
+  const packageRoot = getInstalledPackageRoot("@elizaos/app-core", repoRoot);
   if (!packageRoot) {
     return undefined;
   }
@@ -399,9 +308,7 @@ export function getAppCoreSourceRoot(repoRoot: string): string | undefined {
 }
 
 export function getSharedSourceRoot(repoRoot: string): string | undefined {
-  const packageRoot =
-    getInstalledPackageRoot("@elizaos/shared", repoRoot) ??
-    getInstalledPackageRoot("@elizaos/shared", repoRoot);
+  const packageRoot = getInstalledPackageRoot("@elizaos/shared", repoRoot);
   if (!packageRoot) {
     return undefined;
   }

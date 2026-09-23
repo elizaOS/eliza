@@ -517,7 +517,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				},
 			},
 		});
-		const runtime = makeRuntime([raw]);
+		const runtime = makeRuntime([raw], { ELIZA_STAGE1_TERMINAL_REASK: "true" });
 		const state = makeState();
 		state.data.providers = {
 			RECENT_MESSAGES: { data: { recentMessages: [original] } },
@@ -4123,6 +4123,134 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(handler).not.toHaveBeenCalled();
 			expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
 			expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+			]);
+		},
+	);
+
+	it.each([
+		[true, "STOP", "STOP", 2],
+		[true, "IGNORE", "IGNORE", 2],
+		[true, "STOP", "IGNORE", 2],
+		[true, "IGNORE", "STOP", 2],
+		[false, "STOP", "STOP", 1],
+		[false, "IGNORE", "IGNORE", 2],
+	] as const)(
+		"shares one terminal review: optIn=%s first=%s repeated=%s calls=%s",
+		async (optIn, first, repeated, expectedCalls) => {
+			const runtime = makeRuntime(
+				[
+					stage1Response({ shouldRespond: first, contexts: [] }),
+					stage1Response({ shouldRespond: repeated, contexts: [] }),
+				],
+				optIn ? { ELIZA_STAGE1_TERMINAL_REASK: "1" } : {},
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "ok that's all",
+					channelType: ChannelType.DM,
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result).toMatchObject({
+				kind: "terminal",
+				action: expectedCalls === 1 ? first : repeated,
+			});
+			expect(useModelCalls(runtime).map(([type]) => type)).toEqual(
+				Array.from({ length: expectedCalls }, () => ModelType.RESPONSE_HANDLER),
+			);
+		},
+	);
+
+	it.each([ChannelType.VOICE_DM, ChannelType.GROUP])(
+		"does not opt voice or unaddressed group traffic into terminal review: %s",
+		async (channelType) => {
+			const runtime = makeRuntime(
+				[stage1Response({ shouldRespond: "STOP", contexts: [] })],
+				{ ELIZA_STAGE1_TERMINAL_REASK: "1" },
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "ok that's all", channelType }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
+			expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+			]);
+		},
+	);
+
+	it("keeps an explicitly addressed group terminal review within one re-ask", async () => {
+		const runtime = makeRuntime(
+			[
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+				stage1Response({ shouldRespond: "IGNORE", contexts: [] }),
+			],
+			{ ELIZA_STAGE1_TERMINAL_REASK: "1" },
+		);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "ok that's all",
+				channelType: ChannelType.GROUP,
+				mentionContext: { isMention: true },
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result).toMatchObject({ kind: "terminal", action: "IGNORE" });
+		expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+	});
+
+	it("preserves coding-mode Stage-1 bypass with terminal review enabled", async () => {
+		const runtime = makeRuntime([], { ELIZA_STAGE1_TERMINAL_REASK: "1" });
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "ok that's all",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			codingMode: true,
+			stage1DecisionOnly: true,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result).toMatchObject({ kind: "decision", action: "RESPOND" });
+		expect(useModelCalls(runtime)).toHaveLength(0);
+	});
+
+	it.each(["STOP", "IGNORE"] as const)(
+		"delivers a corrected reply after one opt-in terminal review of %s",
+		async (first) => {
+			const runtime = makeRuntime(
+				[
+					stage1Response({ shouldRespond: first, contexts: [] }),
+					stage1Response({ contexts: ["simple"], replyText: "Santiago." }),
+				],
+				{ ELIZA_STAGE1_TERMINAL_REASK: "1" },
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "one line: what's the capital of chile?",
+					channelType: ChannelType.DM,
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe("Santiago.");
+			}
+			expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
+				ModelType.RESPONSE_HANDLER,
 				ModelType.RESPONSE_HANDLER,
 			]);
 		},
@@ -13436,50 +13564,128 @@ describe("direct-text silence review", () => {
 		expect(action).not.toHaveBeenCalled();
 		expect(dispatch).not.toHaveBeenCalled();
 	});
-	it("honors requested context reads before reviewing the resulting silence", async () => {
-		const full =
-			"Standing instruction: keep all records unchanged. The saved label is violet.";
-		const runtime = makeRuntime([
-			stage1Response({
-				shouldRespond: "IGNORE",
-				contexts: ["simple"],
-				contextRequests: ["userPersonalityPreferences"],
-			}),
-			stage1Response({ shouldRespond: "IGNORE", contexts: ["simple"] }),
-			stage1Response({
-				contexts: ["simple"],
-				replyText: "The label was violet.",
-				extra: { replyEffectStatus: "none" },
-			}),
-		]);
-		const state = makeState();
-		state.data.providers = {
-			userPersonalityPreferences: {
-				text: full,
-				discoveryText: "context_discovery: userPersonalityPreferences",
-			},
-		};
-		runtime.composeState = vi.fn(async () => structuredClone(state));
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				text: "What was the saved label?",
-				channelType: ChannelType.DM,
-			}),
-			state,
-			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
-		});
-		const calls = useModelCalls(runtime);
-		expect(calls).toHaveLength(3);
-		expect(JSON.stringify(calls[0][1])).not.toContain(full);
-		expect(JSON.stringify(calls[1][1])).toContain(full);
-		const before = calls[1][1] as { messages: unknown[] };
-		const after = calls[2][1] as { messages: unknown[] };
-		expect(after.messages).toEqual([...before.messages, expect.any(Object)]);
-		expect(result.kind).toBe("direct_reply");
-		if (result.kind === "direct_reply")
-			expect(result.result.responseContent?.text).toBe("The label was violet.");
-	});
+	it.each([false, true])(
+		"honors requested context reads before reviewing silence with terminal opt-in=%s",
+		async (optIn) => {
+			const full =
+				"Standing instruction: keep all records unchanged. The saved label is violet.";
+			const runtime = makeRuntime(
+				[
+					stage1Response({
+						shouldRespond: "IGNORE",
+						contexts: ["simple"],
+						contextRequests: ["userPersonalityPreferences"],
+					}),
+					stage1Response({ shouldRespond: "IGNORE", contexts: ["simple"] }),
+					stage1Response({
+						contexts: ["simple"],
+						replyText: "The label was violet.",
+						extra: { replyEffectStatus: "none" },
+					}),
+				],
+				optIn ? { ELIZA_STAGE1_TERMINAL_REASK: "1" } : {},
+			);
+			const state = makeState();
+			state.data.providers = {
+				userPersonalityPreferences: {
+					text: full,
+					discoveryText: "context_discovery: userPersonalityPreferences",
+				},
+			};
+			runtime.composeState = vi.fn(async () => structuredClone(state));
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "What was the saved label?",
+					channelType: ChannelType.DM,
+				}),
+				state,
+				responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+			});
+			const calls = useModelCalls(runtime);
+			expect(calls).toHaveLength(3);
+			expect(JSON.stringify(calls[0][1])).not.toContain(full);
+			expect(JSON.stringify(calls[1][1])).toContain(full);
+			const before = calls[1][1] as { messages: unknown[] };
+			const after = calls[2][1] as { messages: unknown[] };
+			expect(after.messages).toEqual([...before.messages, expect.any(Object)]);
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply")
+				expect(result.result.responseContent?.text).toBe(
+					"The label was violet.",
+				);
+		},
+	);
+	it.each([
+		[true, "STOP", 3],
+		[true, "RESPOND", 3],
+		[false, "STOP", 2],
+	] as const)(
+		"reviews STOP after requested context: optIn=%s result=%s calls=%s",
+		async (optIn, reviewedDecision, expectedCalls) => {
+			const full =
+				"Standing instruction: keep all records unchanged. The saved label is violet.";
+			const runtime = makeRuntime(
+				[
+					stage1Response({
+						shouldRespond: "STOP",
+						contexts: ["simple"],
+						contextRequests: ["userPersonalityPreferences"],
+					}),
+					stage1Response({ shouldRespond: "STOP", contexts: ["simple"] }),
+					stage1Response({
+						shouldRespond: reviewedDecision,
+						contexts: ["simple"],
+						replyText:
+							reviewedDecision === "RESPOND" ? "The label was violet." : "",
+						extra: { replyEffectStatus: "none" },
+					}),
+				],
+				optIn ? { ELIZA_STAGE1_TERMINAL_REASK: "1" } : {},
+			);
+			const state = makeState();
+			state.data.providers = {
+				userPersonalityPreferences: {
+					text: full,
+					discoveryText: "context_discovery: userPersonalityPreferences",
+				},
+			};
+			runtime.composeState = vi.fn(async () => structuredClone(state));
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "What was the saved label?",
+					channelType: ChannelType.DM,
+				}),
+				state,
+				responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+			});
+			const calls = useModelCalls(runtime);
+			expect(calls.map(([type]) => type)).toEqual(
+				Array.from({ length: expectedCalls }, () => ModelType.RESPONSE_HANDLER),
+			);
+			expect(JSON.stringify(calls[0][1])).not.toContain(full);
+			expect(JSON.stringify(calls[1][1])).toContain(full);
+			if (optIn) {
+				const before = calls[1][1] as { messages: unknown[] };
+				const after = calls[2][1] as { messages: unknown[] };
+				expect(after.messages).toEqual([
+					...before.messages,
+					expect.any(Object),
+				]);
+			}
+			if (reviewedDecision === "STOP") {
+				expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
+			} else {
+				expect(result.kind).toBe("direct_reply");
+				if (result.kind === "direct_reply")
+					expect(result.result.responseContent?.text).toBe(
+						"The label was violet.",
+					);
+			}
+		},
+	);
+
 	it("rechecks an ignored direct request with every original message intact", async () => {
 		const runtime = makeRuntime([
 			stage1Response({ shouldRespond: "IGNORE", contexts: ["simple"] }),
