@@ -8,7 +8,6 @@
 import {
   CORE_PLANNER_TERMINALS,
   type IAgentRuntime,
-  promoteSubactionsToActions,
   Service,
   ServiceType,
 } from "@elizaos/core";
@@ -36,15 +35,14 @@ const reminderArgs = {
   },
 };
 const plannerToolNames = [
-  ...promoteSubactionsToActions(ownerRemindersAction).map(
-    (action) => action.name,
-  ),
+  ownerRemindersAction.name,
+  "DISCOVER_TOOLS",
   ...CORE_PLANNER_TERMINALS.map((tool) => tool.name),
 ];
 const syntheticRuntimePolicy = {
   basePluginNames: [
     "@elizaos/plugin-sql",
-    "basic-capabilities",
+    "assistant",
     "@elizaos/plugin-scheduling",
     "@elizaos/plugin-reminders",
     "@elizaos/plugin-goals",
@@ -57,6 +55,9 @@ const syntheticRuntimePolicy = {
     anthropic: "anthropic",
   },
   allowedServiceTypes: [
+    "CHARACTER_MANAGEMENT",
+    "EXPERIENCE",
+    "PERSONALITY_STORE",
     "SensitiveRequestDispatchRegistry",
     "channel_topics",
     "embedding-generation",
@@ -73,6 +74,7 @@ const syntheticRuntimePolicy = {
     "principal",
     "reminders_migration",
     "task",
+    "trajectory_file_retention",
   ],
 } as const;
 
@@ -268,11 +270,41 @@ const definition = scenario({
     mode: "fixtures",
     fixtures: [
       {
+        name: "cloud-reminder-post-turn-memory",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: {
+            pattern:
+              "^# Task: Post-turn evaluation[\\s\\S]*\\n## Active Evaluator(?:s| Instructions)\\n",
+          },
+          toolNames: [],
+        },
+        response: {
+          json: {
+            factMemory: { ops: [] },
+            relationships: { relationships: [] },
+            identities: { identities: [] },
+            preferences: { ops: [] },
+            success: {
+              completed: false,
+              reason: "The reminder is an unsaved draft awaiting confirmation.",
+            },
+            skillProposal: {
+              extract: false,
+              reason: "No reusable skill was demonstrated.",
+            },
+            skillRefinement: { refinements: [] },
+            experiencePatterns: { experiences: [] },
+          },
+        },
+        cardinality: 1,
+      },
+      {
         name: "cloud-reminder-stage1",
         match: {
           modelType: "RESPONSE_HANDLER",
           input: { includes: request },
-          toolNames: ["HANDLE_RESPONSE"],
+          toolNames: ["HANDLE_RESPONSE", "READ_CONTEXT"],
         },
         response: {
           json: {
@@ -280,7 +312,7 @@ const definition = scenario({
             contexts: ["tasks"],
             intents: ["create reminder"],
             replyText: "I’ll schedule that reminder.",
-            replyEffectStatus: "non_applied",
+            replyEffectStatus: "pending",
             candidateActionNames: ["OWNER_REMINDERS"],
             facts: [],
             relationships: [],
@@ -311,18 +343,6 @@ const definition = scenario({
           thought: "Create the requested owner reminder.",
           messageToUser: "I scheduled the reminder.",
           completed: true,
-        },
-        cardinality: 1,
-      },
-      {
-        name: "cloud-reminder-preview-reply",
-        match: {
-          modelType: "TEXT_SMALL",
-          input: { includes: "Scenario: preview_definition" },
-          toolNames: [],
-        },
-        response: {
-          text: "I can save this reminder for January 2, 2099 at 9 AM UTC. Confirm and I’ll save it.",
         },
         cardinality: 1,
       },
@@ -395,14 +415,16 @@ const definition = scenario({
         name: "cloud-reminder-post-action-evaluator",
         match: {
           modelType: "RESPONSE_HANDLER",
-          input: { includes: request },
+          input: { exact: '{"plannerCompleted":true,"turnScope":"final"}' },
           toolNames: [],
         },
         response: {
           json: {
-            success: true,
+            success: false,
             decision: "FINISH",
             thought: "The reminder draft is waiting for owner confirmation.",
+            messageToUser:
+              "I can save this reminder for January 2, 2099 at 9 AM UTC. Confirm and I’ll save it.",
           },
         },
         cardinality: 1,
@@ -420,10 +442,10 @@ const definition = scenario({
   turns: [
     {
       kind: "message",
-      name: "plan and create the recurring reminder",
+      name: "plan and preview the one-time reminder",
       room: "owner",
       text: request,
-      responseIncludesAny: ["reminder", "scheduled"],
+      responseIncludesAll: ["reminder", /confirm/i],
     },
     {
       kind: "action",
@@ -464,6 +486,24 @@ const definition = scenario({
     },
   ],
   finalChecks: [
+    {
+      type: "custom",
+      name: "message planning previews the reminder before owner confirmation",
+      predicate: (ctx: ScenarioContext) => {
+        const preview = ctx.turns?.[0]?.actionsCalled.find(
+          (action) => action.actionName === "OWNER_REMINDERS",
+        );
+        const data = preview?.result?.data;
+        return data &&
+          typeof data === "object" &&
+          "requiresConfirmation" in data &&
+          data.requiresConfirmation === true &&
+          "saved" in data &&
+          data.saved === false
+          ? undefined
+          : "The owner message did not produce an unsaved reminder preview.";
+      },
+    },
     {
       type: "custom",
       name: "mock Cloud write, readback, and notification are durable",
