@@ -27,6 +27,7 @@ import {
   BUILTIN_TAB_PATHS,
   buildAuditViewCases,
 } from "./aesthetic-audit-view-cases";
+import { type AuditBundleProof, verifyAuditBundle } from "./audit-bundle-proof";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -350,11 +351,12 @@ interface ViewFinding {
   overlayPresent: boolean;
   overlayClearanceIssues: string[];
   viewType: "gui" | "tui";
-  /** Dynamic-bundle identity captured from the real stub response. Plugin
-   * routes without a remote registry entry leave these absent. */
+  /** Verified dynamic-bundle identity; in-process routes leave these absent. */
   bundleProvenance?: string;
   bundleComponent?: string;
   bundleViewId?: string;
+  bundleUrl?: string;
+  bundleContentHash?: string;
   /** Readable text length in the view root; ~0 means the view never painted. */
   readableChars: number;
   /** Closed OCR policy result used as the view's semantic content authority. */
@@ -1525,6 +1527,8 @@ function renderManualReviewStub(finding: ViewFinding): string {
     `- **path:** \`${finding.path}\``,
     `- **bundle provenance:** ${finding.bundleProvenance ?? "n/a (not a remote-bundle route)"}`,
     `- **bundle component:** ${finding.bundleComponent ?? "n/a"}`,
+    `- **bundle URL:** ${finding.bundleUrl ?? "n/a"}`,
+    `- **bundle content hash:** ${finding.bundleContentHash ?? "n/a"}`,
     `- **bundle view id:** ${finding.bundleViewId ?? "n/a"}`,
     `- **verdict:** ${finding.verdict}`,
     `- **console errors:** ${finding.consoleErrors.length}`,
@@ -1558,6 +1562,7 @@ interface RemoteBundleAuditProof {
   auditPath: string;
   bundlePath: string;
   componentExport: string;
+  declaration: import("./aesthetic-audit-rules").RemoteBundleDeclaration;
   response: Promise<import("@playwright/test").Response>;
 }
 
@@ -1756,7 +1761,14 @@ async function forceRemoteBundleAuditRoute(
     view.id,
     view.viewType,
   );
-  if (!registered) return null;
+  if (!registered) {
+    if (view.id === "cloud") {
+      throw new Error(
+        "CloudView production bundle is not registered in this audit runtime; /cloud is a separate dashboard audited by audit:cloud",
+      );
+    }
+    return null;
+  }
 
   const auditPath = `/__audit/plugin-view/${encodeURIComponent(registered.id)}`;
   const bundlePath = new URL(registered.bundleUrl, "http://audit.local")
@@ -1788,6 +1800,7 @@ async function forceRemoteBundleAuditRoute(
     auditPath,
     bundlePath,
     componentExport: registered.componentExport,
+    declaration: registered,
     response: page.waitForResponse(
       (response) => new URL(response.url()).pathname === bundlePath,
     ),
@@ -2234,18 +2247,19 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         const bundleResponse = remoteBundleProof
           ? await remoteBundleProof.response
           : null;
+        let bundleProof: AuditBundleProof | undefined;
         if (bundleResponse && remoteBundleProof) {
-          expect(
-            bundleResponse.status(),
-            `${view.slug} must load its production dynamic bundle`,
-          ).toBe(200);
-          expect(
-            bundleResponse.headers()["x-eliza-view-bundle-provenance"],
-          ).toBe("real-dist");
-          expect(bundleResponse.headers()["x-eliza-view-component"]).toBe(
-            remoteBundleProof.componentExport,
-          );
-          expect(bundleResponse.headers()["x-eliza-view-id"]).toBe(view.id);
+          bundleProof = verifyAuditBundle({
+            mode:
+              process.env.ELIZA_UI_SMOKE_REAL_LOCAL_STACK === "1"
+                ? "runtime"
+                : "fixture",
+            declaration: remoteBundleProof.declaration,
+            url: bundleResponse.url(),
+            status: bundleResponse.status(),
+            headers: bundleResponse.headers(),
+            bytes: await bundleResponse.body(),
+          });
         }
 
         if (view.fixtureState === "family-interview") {
@@ -2492,10 +2506,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           path: view.path,
           ocrControls,
           viewType: view.viewType,
-          bundleProvenance:
-            bundleResponse?.headers()["x-eliza-view-bundle-provenance"],
-          bundleComponent: bundleResponse?.headers()["x-eliza-view-component"],
-          bundleViewId: bundleResponse?.headers()["x-eliza-view-id"],
+          ...bundleProof,
           consoleErrors,
           renderStateIssues,
           blueColors,

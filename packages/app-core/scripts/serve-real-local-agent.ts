@@ -249,6 +249,14 @@ async function main(): Promise<void> {
     ],
   });
   await registerPluginViews(runtimeResult.runtime, taskCoordinatorPlugin);
+  if (process.env.ELIZA_UI_SMOKE_REQUIRE_REAL_BUNDLES === "1") {
+    // Audit the actual CloudView bundle separately from the /cloud dashboard.
+    // Only view registration is needed: no Cloud service or model initialization.
+    const { default: cloudPlugin } = await import(
+      "../../../plugins/plugin-elizacloud/src/index.ts"
+    );
+    await registerPluginViews(runtimeResult.runtime, cloudPlugin);
+  }
   if (process.env.ELIZA_UI_SMOKE_WORKFLOW_JOURNEY === "1") {
     registerTriggerTaskWorker(runtimeResult.runtime);
   }
