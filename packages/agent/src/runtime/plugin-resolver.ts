@@ -48,8 +48,8 @@ import {
   OPTIONAL_CORE_PLUGINS,
 } from "./core-plugins.ts";
 import {
-  assertSelectedDatabaseCompatibility,
   isSQLiteSelected,
+  preparePluginForSelectedDatabase,
   SQLITE_PLUGIN,
   selectDatabasePluginNames,
 } from "./database-selection.ts";
@@ -3031,11 +3031,12 @@ export async function resolvePlugins(
       const pluginInstance = findRuntimePluginExport(mod);
 
       if (pluginInstance) {
-        assertSelectedDatabaseCompatibility(pluginInstance);
+        const compatiblePlugin =
+          preparePluginForSelectedDatabase(pluginInstance);
         const routingOnly = routingOnlyPluginNames.has(pluginName);
         const pluginForRegistration = routingOnly
           ? projectRoutingOnlyPlugin(pluginInstance)
-          : pluginInstance;
+          : compatiblePlugin;
         // Generic pre-init hook: a plugin owning a load-time dependency (e.g.
         // plugin-browser's optional stagehand-server) prepares it here, before
         // its services start. Runs for every plugin that declares `preflight`,

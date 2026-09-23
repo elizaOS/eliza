@@ -103,6 +103,10 @@ export {
 } from "./migration.js";
 export { computeNextFireAt } from "./next-fire-at.js";
 export {
+  createSchedulingRecordStores,
+  getSchedulingRecordStore,
+} from "./record-store.js";
+export {
   ChannelKeyError,
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,

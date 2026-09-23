@@ -231,6 +231,7 @@ export const schedulingPlugin: Plugin = {
   description:
     "Scheduling spine: the always-loaded ScheduledTask runtime primitive — runner host, REST surface, durable store, and default-pack seed registry. Owner/channel deps are injected by a host plugin; built-in defaults run when no host is present.",
   dependencies: ["@elizaos/plugin-sql"],
+  databaseBackends: ["postgres", "pglite", "sqlite"],
   schema: schedulingDbSchema,
   services: [ScheduledTaskRunnerService],
   routes: buildSchedulingRoutes(),

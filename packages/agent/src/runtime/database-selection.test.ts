@@ -108,3 +108,23 @@ it("rejects an explicit SQLite plugin without the host database selection", asyn
     resolvePlugins(config([SQLITE_PLUGIN]), { quiet: true }),
   ).rejects.toMatchObject({ code: "SQLITE_SELECTION_REQUIRED" });
 });
+
+it("prepares explicitly ported plugins without passing PostgreSQL schema metadata to SQLite", async () => {
+  vi.stubEnv("ELIZA_DATABASE_PROVIDER", "sqlite");
+  const name = "@synthetic/plugin-ported-storage";
+  const original: Plugin = {
+    name,
+    description: "Native storage port admission",
+    actions: [],
+    databaseBackends: ["postgres", "sqlite"],
+    dependencies: [SQL_PLUGIN],
+    schema: { syntheticPostgresTable: {} },
+  };
+  register(name, original);
+  const resolved = await resolvePlugins(config([name]), { quiet: true });
+  const selected = resolved.find((entry) => entry.name === name);
+  expect(selected?.plugin.dependencies).toEqual([SQLITE_PLUGIN]);
+  expect(selected?.plugin.schema).toBeUndefined();
+  expect(original.dependencies).toEqual([SQL_PLUGIN]);
+  expect(original.schema).toBeDefined();
+});

@@ -16,6 +16,7 @@ import type {
   DeleteConnectorAccountCredentialRefsParams,
   DeleteConnectorAccountParams,
   DeleteOAuthFlowStateParams,
+  DurableRecordStore,
   GetConnectorAccountCredentialRefParams,
   GetConnectorAccountParams,
   GetOAuthFlowStateParams,
@@ -92,6 +93,7 @@ function redactConnectorAuditMetadata(
 }
 
 export class SQLiteDatabaseAdapter extends InMemoryDatabaseAdapter {
+  readonly recordStore: DurableRecordStore;
   private readonly sqlite: SQLiteStorage;
   private readonly connectorAccountsById;
   private readonly connectorAccountIdsByKey;
@@ -105,6 +107,27 @@ export class SQLiteDatabaseAdapter extends InMemoryDatabaseAdapter {
     const storage = new SQLiteStorage(path, agentId);
     super(storage, agentId);
     this.sqlite = storage;
+    const namespace = (value: string): string => {
+      if (!/^plugin_[a-z0-9_]+$/.test(value))
+        throw new ElizaError(
+          "Domain record namespaces must use the plugin_ prefix and lowercase identifiers",
+          { code: "SQLITE_RECORD_NAMESPACE_INVALID" },
+        );
+      return value;
+    };
+    this.recordStore = {
+      version: 1,
+      agentId,
+      transaction: <T>(operation: () => Promise<T>) =>
+        storage.transaction(operation, () => this.rebuildIndex()),
+      get: <T>(name: string, key: string) =>
+        storage.get<T>(namespace(name), key),
+      getAll: <T>(name: string) => storage.getAll<T>(namespace(name)),
+      set: <T>(name: string, key: string, value: T) =>
+        storage.set(namespace(name), key, value),
+      delete: (name: string, key: string) =>
+        storage.delete(namespace(name), key),
+    };
     this.connectorAccountsById =
       storage.collection<ConnectorAccountRecord>("connector_accounts");
     this.connectorAccountIdsByKey = storage.collection<string>(
