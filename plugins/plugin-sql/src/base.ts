@@ -6946,6 +6946,27 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return result;
   }
 
+  async withAgentScope<T>(
+    agentId: UUID,
+    callback: (scoped: IDatabaseAdapter<DrizzleDatabase>) => Promise<T>
+  ): Promise<T> {
+    return this.transaction(async (scoped) => {
+      if (!(scoped instanceof BaseDrizzleAdapter)) {
+        throw new ElizaError("Agent scope requires a SQL transaction adapter", {
+          code: "DB_AGENT_SCOPE_UNSUPPORTED",
+        });
+      }
+      if (scoped.agentId !== agentId) {
+        scoped.embeddingSpace = null;
+        scoped.requestedEmbeddingSpace = null;
+        scoped.embeddingSpaceActivation = null;
+      }
+      scoped.agentId = agentId;
+      scoped._connectorAccountStore = undefined;
+      return callback(scoped);
+    });
+  }
+
   // ── Component batch methods ───────────────────────────────────────────
 
   async getComponentsByNaturalKeys(

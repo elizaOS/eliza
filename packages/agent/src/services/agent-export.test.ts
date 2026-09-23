@@ -35,7 +35,13 @@ const OTHER_ID = "00000000-0000-4000-8000-000000000002";
 const MAGIC = Buffer.from("ELIZA_AGENT_V1\n", "utf-8");
 
 function runtimeWith(adapter: object, agentId = AGENT_ID): AgentRuntime {
-  return { adapter, agentId } as unknown as AgentRuntime;
+  const scopedAdapter = Object.assign(adapter, {
+    withAgentScope: async <T>(
+      _id: string,
+      callback: (db: object) => Promise<T>,
+    ) => callback(adapter),
+  });
+  return { adapter: scopedAdapter, agentId } as unknown as AgentRuntime;
 }
 
 function payload(overrides: Record<string, unknown> = {}): AgentExportPayload {
@@ -480,6 +486,17 @@ describe("importAgent decrypt, decompress, schema, and version gates", () => {
 });
 
 describe("importAgent restore", () => {
+  it("refuses unsupported agent scoping before creating any rows", async () => {
+    const { adapter, createdAgents } = restoreAdapter();
+    const runtime = runtimeWith(adapter);
+    delete runtime.adapter.withAgentScope;
+    const buf = await packEncrypted(gzipJson(payload()), PASSWORD);
+    await expect(importAgent(runtime, buf, PASSWORD)).rejects.toMatchObject({
+      code: "AGENT_IMPORT_SCOPE_UNSUPPORTED",
+    });
+    expect(createdAgents).toHaveLength(0);
+  });
+
   it("throws when createAgents returns no ids", async () => {
     const { adapter } = restoreAdapter({
       createAgents: async () => [],

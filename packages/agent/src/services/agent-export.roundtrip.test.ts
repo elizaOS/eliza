@@ -46,6 +46,13 @@ const uuid = (n: number) =>
  * + `restoreAgentData` exercise. Each instance is a fully isolated "machine".
  */
 class InMemoryExportAdapter {
+  async withAgentScope<T>(
+    _agentId: string,
+    callback: (scoped: InMemoryExportAdapter) => Promise<T>,
+  ): Promise<T> {
+    return callback(this);
+  }
+
   agents = new Map<string, Row>();
   worlds: Row[] = [];
   rooms = new Map<string, Row>();
@@ -437,6 +444,58 @@ describe("#9963 agent export → import round-trip", () => {
     expect(restoredAgent?.topics).toEqual(["backups", "integrity"]);
     // The new agent has a DIFFERENT id than the source (no clobber).
     expect(restoredAgent?.id).not.toBe(SOURCE_AGENT);
+  });
+
+  it("restores Date-bearing entity, room and world rows with valid wire manifests", async () => {
+    const { adapter: source, character } = populateSource();
+    const timestamp = new Date("2026-09-23T00:00:00.000Z");
+    const rows = [
+      ...source.entities.values(),
+      ...source.rooms.values(),
+      ...source.worlds,
+    ];
+    for (const row of rows) row.createdAt = timestamp;
+    const fileBuffer = await exportAgent(
+      makeRuntime(source, SOURCE_AGENT, character),
+      PASSWORD,
+    );
+    const target = new InMemoryExportAdapter();
+    const result = await importAgent(
+      makeRuntime(target, uuid(994), {}),
+      fileBuffer,
+      PASSWORD,
+    );
+    expect(result.success).toBe(true);
+    const restored = [
+      ...target.entities.values(),
+      ...target.rooms.values(),
+      ...target.worlds,
+    ];
+    expect(restored).toHaveLength(rows.length);
+    for (const row of restored) expect(row.createdAt).toEqual(timestamp);
+    expect(
+      [...target.memories.values()].flat().map((memory) => memory.content),
+    ).toEqual(
+      [...source.memories.values()].flat().map((memory) => memory.content),
+    );
+  });
+
+  it("rejects malformed graph timestamps before creating any target rows", async () => {
+    const { adapter: source, character } = populateSource();
+    const room = source.rooms.get(ROOM1);
+    if (!room) throw new Error("Missing source fixture room");
+    room.createdAt = "not a timestamp";
+    const fileBuffer = await exportAgent(
+      makeRuntime(source, SOURCE_AGENT, character),
+      PASSWORD,
+    );
+    const target = new InMemoryExportAdapter();
+    await expect(
+      importAgent(makeRuntime(target, uuid(993), {}), fileBuffer, PASSWORD),
+    ).rejects.toThrow(/createdAt must be a valid timestamp/);
+    expect(target.agents.size).toBe(0);
+    expect(target.worlds).toHaveLength(0);
+    expect(target.rooms.size).toBe(0);
   });
 
   it("rejects a wrong password without writing anything", async () => {
