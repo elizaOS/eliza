@@ -6,7 +6,7 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { runWithStreamingContext } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAppControlClient } from "../client/api.js";
 import { createAgentSwitchAction } from "./agent-switch.js";
 import { createBackgroundAction } from "./background.js";
@@ -20,13 +20,13 @@ import {
 	type ViewSummary,
 	type ViewsClient,
 } from "./views-client.js";
-import { createViewsRequestHeaders } from "./views-request-auth.js";
 import { runViewsShow } from "./views-show.js";
 
 interface CapturedRequest {
 	method: string;
 	pathname: string;
 	authorization: string | undefined;
+	contentType: string | undefined;
 	body: string;
 }
 
@@ -37,6 +37,7 @@ interface AuthenticatedViewsServer {
 
 const ENV_KEYS = [
 	"ELIZA_PORT",
+	"ELIZA_API_PORT",
 	"ELIZA_UI_PORT",
 	"ELIZA_API_TOKEN",
 	"ELIZA_API_AUTH_TOKEN",
@@ -106,7 +107,6 @@ const LOOPBACK_EFFECT_RECEIPT = {
 } as const;
 
 const servers: http.Server[] = [];
-let previousEnv: Record<(typeof ENV_KEYS)[number], string | undefined>;
 
 function sendJson(
 	res: http.ServerResponse,
@@ -139,6 +139,7 @@ async function startAuthenticatedViewsServer(
 				method: req.method ?? "GET",
 				pathname: url.pathname,
 				authorization: req.headers.authorization,
+				contentType: req.headers["content-type"],
 				body,
 			};
 			requests.push(request);
@@ -323,14 +324,12 @@ async function startAuthenticatedViewsServer(
 }
 
 beforeEach(() => {
-	previousEnv = Object.fromEntries(
-		ENV_KEYS.map((key) => [key, process.env[key]]),
-	) as Record<(typeof ENV_KEYS)[number], string | undefined>;
-	for (const key of ENV_KEYS) delete process.env[key];
-	process.env.ELIZA_REQUIRE_LOCAL_AUTH = "1";
+	for (const key of ENV_KEYS) vi.stubEnv(key, undefined);
+	vi.stubEnv("ELIZA_REQUIRE_LOCAL_AUTH", "1");
 });
 
 afterEach(async () => {
+	vi.unstubAllEnvs();
 	await Promise.all(
 		servers
 			.splice(0)
@@ -341,11 +340,6 @@ afterEach(async () => {
 					),
 			),
 	);
-	for (const key of ENV_KEYS) {
-		const value = previousEnv[key];
-		if (value === undefined) delete process.env[key];
-		else process.env[key] = value;
-	}
 });
 
 describe("authenticated view loopback requests", () => {
@@ -368,41 +362,17 @@ describe("authenticated view loopback requests", () => {
 		);
 	});
 
-	it("uses the canonical token, falls back to the legacy key, and omits empty auth", () => {
-		expect(
-			createViewsRequestHeaders({
-				ELIZA_API_TOKEN: " bearer   canonical-token ",
-				ELIZA_API_AUTH_TOKEN: "legacy-token",
-			}),
-		).toEqual({
-			"Content-Type": "application/json",
-			Authorization: "Bearer canonical-token",
-		});
-		expect(
-			createViewsRequestHeaders({
-				ELIZA_API_AUTH_TOKEN: " legacy-token ",
-			}),
-		).toEqual({
-			"Content-Type": "application/json",
-			Authorization: "Bearer legacy-token",
-		});
-		expect(createViewsRequestHeaders({})).toEqual({
-			"Content-Type": "application/json",
-		});
-	});
-
 	it("authenticates every ViewsClient route across a real HTTP boundary", async () => {
 		const token = "views-client-test-token";
 		const server = await startAuthenticatedViewsServer(token);
 		process.env.ELIZA_PORT = String(server.port);
 
-		const unauthenticated = await fetch(
-			`http://127.0.0.1:${server.port}/api/views`,
-		);
-		expect(unauthenticated.status).toBe(401);
-
-		process.env.ELIZA_API_TOKEN = token;
 		const client = createViewsClient();
+		await expect(client.listViews()).rejects.toThrow("HTTP 401");
+		expect(server.requests[0]?.authorization).toBeUndefined();
+
+		process.env.ELIZA_API_TOKEN = ` bearer   ${token} `;
+		process.env.ELIZA_API_AUTH_TOKEN = "wrong-legacy-token";
 		await expect(client.listViews()).resolves.toEqual([
 			SETTINGS_VIEW,
 			NOTES_VIEW,
@@ -435,6 +405,7 @@ describe("authenticated view loopback requests", () => {
 			JSON.stringify({ path: "/settings", viewType: "gui" }),
 		);
 		for (const request of authenticated) {
+			expect(request.contentType).toBe("application/json");
 			expect(`${request.pathname}\n${request.body}`).not.toContain(token);
 		}
 	});
@@ -500,7 +471,7 @@ describe("authenticated view loopback requests", () => {
 		const token = "views-show-legacy-token";
 		const server = await startAuthenticatedViewsServer(token);
 		process.env.ELIZA_PORT = String(server.port);
-		process.env.ELIZA_API_AUTH_TOKEN = token;
+		process.env.ELIZA_API_AUTH_TOKEN = ` ${token} `;
 
 		const client: ViewsClient = {
 			listViews: async () => [SETTINGS_VIEW],
