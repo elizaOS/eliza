@@ -13,6 +13,7 @@ import type {
 } from "@elizaos/core";
 import { getConnectorAccountManager } from "@elizaos/core";
 import { getConnectorAccountCatalogEntry } from "@elizaos/shared/connector-account-catalog";
+import { OAuth2Client as GoogleIdTokenVerifier } from "google-auth-library";
 import { Auth } from "googleapis";
 
 const { OAuth2Client } = Auth;
@@ -2058,7 +2059,8 @@ function createVerifiedJwt(payload: Record<string, unknown>): string {
     nonce: TEST_OIDC_NONCE,
     ...payload,
   };
-  vi.spyOn(OAuth2Client.prototype, "verifyIdToken").mockResolvedValue({
+  // ID-token verification uses the direct dependency; API clients use googleapis' copy.
+  vi.spyOn(GoogleIdTokenVerifier.prototype, "verifyIdToken").mockResolvedValue({
     getPayload: () => verifiedPayload,
   } as never);
   return [
