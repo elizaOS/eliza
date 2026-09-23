@@ -72,6 +72,15 @@ that planning stopped. The default reports incomplete work without asserting
 that no action completed. Settled or uncertain effects still take the caller's
 receipt-aware recovery path before this failure boundary.
 
+## Runtime construction migration
+
+The unused `loadCharacters`, `createRuntimes`, and `mergeSettingsInto` helpers
+and their option types are removed from the v2 barrel. Hosts load and validate
+character input with `parseCharacter`, construct `AgentRuntime` with explicitly
+selected plugins and storage, and call `initialize()`. The standalone host owns
+its startup and provisioning sequence. `flattenRuntimeSettings` remains exported
+for adapter bootstrap settings. No replacement composition facade is provided.
+
 ## Key concepts
 
 - **AgentRuntime:** Central orchestrator for the agent lifecycle, plugin loading, and the message loop.
