@@ -151,4 +151,40 @@ describe("action union sibling constraints", () => {
 		);
 		expect(errors).toEqual([]);
 	});
+	it("rejects untyped union bounds before exposing a permissive tool schema", () => {
+		expect(() =>
+			actionParameterSchemaToJsonSchema({
+				anyOf: [{ type: "number" }, { type: "string" }],
+				minimum: 0,
+			}),
+		).toThrow(
+			expect.objectContaining({
+				code: "ACTION_SCHEMA_UNTYPED_UNION_CONSTRAINT",
+			}),
+		);
+		const errors: string[] = [];
+		validateSchema(
+			{ anyOf: [{ type: "number" }, { type: "string" }], minimum: 0 },
+			-1,
+			"amount",
+			errors,
+		);
+		expect(errors.join(" ")).toContain("declare a common type");
+	});
+	it("retains constraints authored inside pure union branches", () => {
+		const schema = actionParameterSchemaToJsonSchema({
+			anyOf: [
+				{ type: "number", minimum: 0 },
+				{ type: "string", enum: ["automatic"] },
+			],
+		});
+		const errors: string[] = [];
+		validateSchema(schema, -1, "amount", errors);
+		expect(errors.length).toBeGreaterThan(0);
+		const accepted: string[] = [];
+		expect(validateSchema(schema, "automatic", "amount", accepted)).toBe(
+			"automatic",
+		);
+		expect(accepted).toEqual([]);
+	});
 });

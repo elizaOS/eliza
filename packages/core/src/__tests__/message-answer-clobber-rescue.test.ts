@@ -535,11 +535,10 @@ describe("answer-clobber rescue", () => {
 
 		const { finalText } = await runTurn({ runtime, callback });
 
-		// The action's own delivery is the single copy of the answer; neither the
-		// evaluator echo nor the preserved-answer fallback adds a second bubble.
-		const copies = delivered.filter((t) => t === SUBSTANTIVE_ANSWER).length;
-		expect(copies).toBe(1);
-		expect(finalText ?? "").not.toBe(SUBSTANTIVE_ANSWER);
+		// The action draft remains internal; the one returned final answer is
+		// the delivery boundary's payload, without an earlier duplicate bubble.
+		expect(delivered).toEqual([]);
+		expect(finalText).toBe(SUBSTANTIVE_ANSWER);
 	});
 
 	it("surfaces the preserved answer when the required-tool miss budget exhausts", async () => {

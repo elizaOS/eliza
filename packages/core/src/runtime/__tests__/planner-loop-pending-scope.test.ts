@@ -412,7 +412,7 @@ describe("planner-declared pending work", () => {
 		async (messageToUser) => {
 			// Recorded live: step-1789215630238-928oz1. The evaluator approved
 			// native REPLY without replacing it, but its thought reached the UI.
-			// A textless planner REPLY must preserve the existing draft for evaluation.
+			// The existing Stage-1 draft now reaches that evaluation without planning.
 			const preview =
 				"Here's the draft, not saved:\n\nTitle: History header QA 20260912\nBody: Bring a green folder and a charger.\n\nTell me when to save it; the app stays where it is.";
 			const thought =
@@ -428,7 +428,7 @@ describe("planner-declared pending work", () => {
 					replyEffectStatus: "none",
 					candidateActions: [],
 				},
-				plans: [{ text: "", toolCalls: [call("REPLY", "final")] }],
+				plans: [],
 				evaluations: [
 					JSON.stringify({
 						thought,
@@ -450,7 +450,6 @@ describe("planner-declared pending work", () => {
 			expect(result.evaluator?.decision).toBe("FINISH");
 			expect(h.executed).toEqual([]);
 			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
-				ModelType.ACTION_PLANNER,
 				ModelType.RESPONSE_HANDLER,
 			]);
 		},
@@ -477,7 +476,7 @@ describe("planner-declared pending work", () => {
 					replyEffectStatus,
 					candidateActions: ["NOTES_CREATE"],
 				},
-				plans: [{ text: "", toolCalls: [call("REPLY", "final")] }],
+				plans: [],
 				evaluations: [finish(preview)],
 			});
 			const result = await h.run({
@@ -489,44 +488,38 @@ describe("planner-declared pending work", () => {
 			expect(result.finalMessage).toBe(preview);
 			expect(h.executed).toEqual([]);
 			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
-				ModelType.ACTION_PLANNER,
 				ModelType.RESPONSE_HANDLER,
 			]);
 			expect(result.trajectory.evaluatorOutputs).toHaveLength(1);
 		},
 	);
 
-	it.each([{ intents: [] }, { intents: ["read current note"] }])(
-		"plans a current read before evaluation despite a none-status draft (%j)",
-		async ({ intents }) => {
-			const h = harness({
-				userMessage:
-					"Read the current note before answering; do not change it.",
-				intents,
-				stageOnePlan: {
-					reply: "Reading it now.",
-					replyEffectStatus: "none",
-					candidateActions: ["READ"],
-				},
-				plans: [{ text: "", toolCalls: [call("READ", "final")] }],
-				evaluations: [
-					finish("The current note says to bring the purple folder."),
-				],
-			});
-			const result = await h.run({
-				tools: [{ name: "READ" }, { name: "REPLY" }],
-				requireNonTerminalToolCall: true,
-			});
-			expect(h.executed).toEqual(["READ"]);
-			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
-				ModelType.ACTION_PLANNER,
-				ModelType.RESPONSE_HANDLER,
-			]);
-			expect(result.finalMessage).toBe(
-				"The current note says to bring the purple folder.",
-			);
-		},
-	);
+	it("still performs required work when an empty-intent draft fails completion", async () => {
+		const h = harness({
+			userMessage: "Read the current note before answering; do not change it.",
+			intents: [],
+			stageOnePlan: {
+				reply: "I can answer about the note.",
+				replyEffectStatus: "none",
+				candidateActions: ["READ"],
+			},
+			plans: [{ text: "", toolCalls: [call("READ", "final")] }],
+			evaluations: [
+				continueWork("The request requires a current read, which has not run."),
+				finish("The current note says to bring the purple folder."),
+			],
+		});
+		const result = await h.run({
+			tools: [{ name: "READ" }, { name: "REPLY" }],
+			requireNonTerminalToolCall: true,
+		});
+		expect(h.executed).toEqual(["READ"]);
+		expect(h.useModel.mock.calls[0][0]).toBe(ModelType.RESPONSE_HANDLER);
+		expect(result.trajectory.evaluatorOutputs[0].decision).toBe("CONTINUE");
+		expect(result.finalMessage).toBe(
+			"The current note says to bring the purple folder.",
+		);
+	});
 
 	it.each([true, false])(
 		"evaluates a planner confirmation pause even when Stage 1 incorrectly marked it pending (reply text: %s)",
@@ -578,10 +571,16 @@ describe("planner-declared pending work", () => {
 					candidateActions: ["READ"],
 				},
 				plans: [
-					{
-						text: "",
-						toolCalls: [call("REPLY", "final", "I can answer about the note.")],
-					},
+					...(replyEffectStatus === "pending"
+						? [
+								{
+									text: "",
+									toolCalls: [
+										call("REPLY", "final", "I can answer about the note."),
+									],
+								},
+							]
+						: []),
 					{ text: "", toolCalls: [call("READ", "final")] },
 				],
 				evaluations: [
@@ -596,7 +595,7 @@ describe("planner-declared pending work", () => {
 			expect(result.status).toBe("finished");
 			expect(h.executed).toEqual(["READ"]);
 			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
-				ModelType.ACTION_PLANNER,
+				...(replyEffectStatus === "pending" ? [ModelType.ACTION_PLANNER] : []),
 				ModelType.RESPONSE_HANDLER,
 				ModelType.ACTION_PLANNER,
 				ModelType.RESPONSE_HANDLER,

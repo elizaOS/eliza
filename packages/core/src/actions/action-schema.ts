@@ -8,9 +8,22 @@
  * `defaultValue`). Consumed by `to-tool.ts` (planner / tool definitions) and
  * `validate-tool-args.ts`.
  */
+import { ElizaError } from "../errors";
 import type { Action, ActionParameter, ActionParameterSchema } from "../types";
 import type { JSONSchema } from "../types/model";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
+
+/** Pure unions may carry descriptions and parent-required markers only. */
+export function untypedUnionConstraintKeys(schema: object): string[] {
+	return Object.entries(schema)
+		.filter(
+			([key, value]) =>
+				value !== undefined &&
+				!["type", "anyOf", "oneOf", "description"].includes(key) &&
+				!(key === "required" && typeof value === "boolean"),
+		)
+		.map(([key]) => key);
+}
 
 export type JsonSchemaPrimitiveType =
 	| "string"
@@ -186,6 +199,16 @@ export function actionParameterSchemaToJsonSchema(
 		);
 	}
 	if (!schemaType) {
+		const unsupported = untypedUnionConstraintKeys(schema);
+		if (options.enumValues?.length) unsupported.push("enumValues");
+		if (unsupported.length)
+			throw new ElizaError(
+				`Union schema at '${path}' needs an explicit type for sibling constraints: ${unsupported.join(", ")}. Put constraints in each applicable typed branch or declare the common type.`,
+				{
+					code: "ACTION_SCHEMA_UNTYPED_UNION_CONSTRAINT",
+					context: { path, constraints: unsupported },
+				},
+			);
 		return {
 			...unionSchema,
 			...(descriptionFromSchema ? { description: descriptionFromSchema } : {}),
