@@ -18,7 +18,11 @@ This update supersedes the earlier review-ready status below. Earlier metrics re
 
 Verification: root `bun run verify` passed on `e8eec247928` (382 workspace tasks plus audits); 536 focused core/discovery/owner tests, 3 owner-routing tests, 108 reply/recovery tests and 38 prompt-package tests passed across the recorded checkpoints. The inference Vitest lane passed 2,935 tests with 29 explicit skips; its separate native lane passed 60 tests. These are overlapping scoped results, not one unique full-repository test count.
 
-The updated preview still needs its matching native library staged: the older binary lacks the new context-GPU-selection export, so embedding readiness must be restored before final QA. Then verify actual current request/response wire, acknowledgment/final delivery, and keep provider retries/cache counts separate from model logic. No new PR, protected-develop merge, deployment or original-ref deletion has occurred.
+The matching native library is now staged for the isolated preview from llama fork `d4a7ef4244`. The required context-GPU-selection export and canonical 384-dimensional BGE semantic/reopen checks passed. The shared old library was preserved.
+
+Final current typed Calendar check: 4.696s, three foreground calls plus one background memory call. Handler input 13,553 tokens; foreground total 40,554, with 1,024 cached; background 9,691, with none cached. Actual wire confirms reference-only discovery and shared navigation guidance. The model generated an acknowledgment, and the evaluator produced the final reply without a fourth recovery call. This does not establish physical voice timing or universal cache/latency performance.
+
+**Acceptance remains HOLD:** the model again selected a next-event projection for a whole-day agenda question and claimed an exhaustive count. The one-event fixture happened to match the answer, which is insufficient scope proof. Verify/fix this specific read-coverage contract before release; do not bypass it or erase failed traces. The context/recovery goal remains active. No new PR, protected-develop merge, deployment or original-ref deletion has occurred.
 
 The private local reports `CONTEXT-CLEANUP-PLAN.md`, `WHOLE-TURN-CONTEXT-AUDIT.md`, `CONTEXT-RECOVERY-AUDIT.md` and `SHAW-CONTEXT-AND-LATENCY.md` record the findings and unresolved gates. The 159-branch inventory accounts for refs and dispositions; it does not certify that every prior prompt edit survived or that every scenario is newly re-tested.
 
