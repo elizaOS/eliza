@@ -156,7 +156,12 @@ export const VIEW_OCR_POLICIES = {
   }),
   "builtin-experience": expected({
     requireAll: ["Experience"],
-    requireAny: ["Captured", "Avg importance", "need review"],
+    requireAny: [
+      "Captured",
+      "Avg importance",
+      "need review",
+      "I haven’t learned anything yet",
+    ],
   }),
   "builtin-files": expected({
     requireAny: ["No files yet", "Documents", "Images", "Search files"],
