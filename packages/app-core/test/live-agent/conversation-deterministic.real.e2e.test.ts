@@ -1,23 +1,9 @@
-/**
- * Keyless real-runtime conversation coverage with a DETERMINISTIC model provider.
- *
- * Boots a REAL AgentRuntime + the REAL app-core HTTP stack via
- * {@link startLiveRuntimeServer}, registering
- * {@link createDeterministicModelPlugin} (priority 1000) so every model call
- * resolves deterministically with NO provider keys. The plugin supplies only
- * deterministic RESPONSE_HANDLER/ACTION_PLANNER text, so the full chat
- * pipeline runs end-to-end without a network call or fabricated embeddings.
- *
- * Routes + shapes grounded in packages/agent/src/api/conversation-routes.ts:
- *   - POST /api/conversations                 :1190 → { conversation: { id, ... } }
- *   - POST /api/conversations/:id/messages    :1916 → { text, agentName }
- *     (request body field is `text`: chat-routes.ts:1666 normalizeIncomingChatPrompt(body.text, …))
- *   - GET  /api/conversations/:id/messages    :1269 → { messages: [{ id, role, text, timestamp, … }] }
- *     sorted by createdAt ascending; role = "assistant" when entityId === agentId, else "user".
- * Deterministic provider: `createDeterministicModelPlugin` from core testing.
- */
+/** Verifies a real HTTP conversation persists ordered user and assistant messages using one strict deterministic reply fixture. */
 
-import { createDeterministicModelPlugin } from "@elizaos/testing";
+import {
+  createDeterministicModelPlugin,
+  strictTerminalReplyFixture,
+} from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createConversation,
@@ -36,29 +22,19 @@ interface ConversationMessage {
   timestamp: number;
 }
 
+const userText = "Hello from the deterministic live test.";
+const replyText = "Hello from the deterministic model provider.";
+const model = createDeterministicModelPlugin({
+  fixtures: [strictTerminalReplyFixture({ input: userText, text: replyText })],
+});
+
 describe("conversation deterministic real coverage", () => {
   let harness: RuntimeHarness | null = null;
 
   beforeAll(async () => {
     harness = await startLiveRuntimeServer({
       tempPrefix: "conversation-deterministic-",
-      plugins: [
-        createDeterministicModelPlugin({
-          fixtures: [
-            {
-              name: "conversation-reply",
-              match: { modelType: "RESPONSE_HANDLER" },
-              response: {
-                contexts: ["simple"],
-                intents: ["greeting"],
-                replyText: "Hello from the deterministic model provider.",
-                candidateActionNames: [],
-              },
-              times: 1,
-            },
-          ],
-        }),
-      ],
+      plugins: [model],
     });
   }, 120_000);
 
@@ -74,7 +50,6 @@ describe("conversation deterministic real coverage", () => {
   }
 
   it("creates a conversation, sends a message, and persists a deterministic assistant reply", async () => {
-    // 1. POST /api/conversations → conversation with an id.
     const created = await createConversation(port(), {
       title: "Deterministic chat",
     });
@@ -83,9 +58,6 @@ describe("conversation deterministic real coverage", () => {
     expect(typeof conversationId).toBe("string");
     expect(conversationId.length).toBeGreaterThan(0);
 
-    // 2. POST a user message — the real pipeline runs against the deterministic
-    //    proxy and returns a synchronous { text, agentName } reply.
-    const userText = "Hello from the deterministic live test.";
     const sent = await postConversationMessage(
       port(),
       conversationId,
@@ -94,12 +66,9 @@ describe("conversation deterministic real coverage", () => {
       { timeoutMs: 90_000 },
     );
     expect(sent.status).toBe(200);
-    expect(typeof sent.data.text).toBe("string");
-    expect((sent.data.text as string).length).toBeGreaterThan(0);
+    expect(sent.data.text).toBe(replyText);
     expect(typeof sent.data.agentName).toBe("string");
 
-    // 3. GET the persisted message history. The runtime persists the user turn
-    //    and (for a deterministic reply) the assistant turn.
     const history = await req(
       port(),
       "GET",
@@ -115,15 +84,11 @@ describe("conversation deterministic real coverage", () => {
     expect(userMessages.length).toBeGreaterThanOrEqual(1);
     expect(assistantMessages.length).toBeGreaterThanOrEqual(1);
 
-    // The user's exact text round-trips through persistence.
     expect(userMessages.some((m) => m.text === userText)).toBe(true);
-    // Every assistant turn carries deterministic, non-empty text.
     for (const assistant of assistantMessages) {
-      expect(assistant.text.length).toBeGreaterThan(0);
+      expect(assistant.text).toBe(replyText);
     }
 
-    // 4. Ordering: the first message is the user turn, the assistant reply
-    //    comes after it (history is sorted by createdAt ascending).
     expect(messages[0].role).toBe("user");
     const firstUserIndex = messages.findIndex((m) => m.role === "user");
     const firstAssistantIndex = messages.findIndex(
@@ -136,5 +101,6 @@ describe("conversation deterministic real coverage", () => {
         messages[i - 1].timestamp,
       );
     }
+    model.assertFixturesConsumed();
   }, 120_000);
 });
