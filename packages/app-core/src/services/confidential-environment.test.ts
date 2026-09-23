@@ -296,6 +296,39 @@ it("refuses an authorized compose with additional unsigned launch variables", as
   expect(f.requests).toHaveLength(0);
 });
 
+it.each([
+  "NODE_EXTRA_CA_CERTS",
+  "NODE_PATH",
+  "BUN_OPTIONS",
+  "SSL_CERT_FILE",
+  "OPENSSL_CONF",
+])(
+  "keeps %s out of mutable launch secrets even when the manifest lists it",
+  async (name) => {
+    const f = await fixture();
+    const manifest = JSON.parse(f.input.release.compose);
+    manifest.allowed_envs = [
+      name,
+      "ELIZA_DSTACK_RELEASE_POLICY_JSON",
+      "ELIZA_DSTACK_LAUNCH_AUTHORIZATION_JSON",
+    ];
+    const release = { ...f.input.release, compose: JSON.stringify(manifest) };
+    await expect(
+      encryptConfidentialEnvironment(
+        {
+          ...f.input,
+          release,
+          envelope: signConfidentialRelease(release, f.privatePem),
+          environment: [{ key: name, value: "/untrusted-loader" }],
+        },
+        f.publicPem,
+        f.privatePem,
+      ),
+    ).rejects.toThrow();
+    expect(f.requests).toHaveLength(0);
+  },
+);
+
 it("runs the real encryption CLI and writes exclusive private ciphertext without secret output", async () => {
   const f = await fixture();
   const directory = await mkdtemp(join(tmpdir(), "eliza-encrypt-env-"));

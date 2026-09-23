@@ -56,7 +56,7 @@ try {
       (name) =>
         typeof name !== "string" ||
         !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ||
-        /^(ELIZA_TEE_|ELIZA_DSTACK_|NODE_OPTIONS$|NODE_TLS_REJECT_UNAUTHORIZED$|LD_|DYLD_|PATH$)/.test(
+        /^(ELIZA_TEE_|ELIZA_DSTACK_|NODE_|BUN_|LD_|DYLD_|PATH$|SSL_CERT_FILE$|SSL_CERT_DIR$|OPENSSL_)/.test(
           name,
         ),
     ) ||

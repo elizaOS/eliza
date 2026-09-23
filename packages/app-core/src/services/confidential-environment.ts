@@ -98,7 +98,7 @@ export async function encryptConfidentialEnvironment(
       );
     if (
       request.environment.some(({ key }) =>
-        /^(ELIZA_TEE_|ELIZA_DSTACK_|NODE_OPTIONS$|NODE_TLS_REJECT_UNAUTHORIZED$|LD_|DYLD_|PATH$)/.test(
+        /^(ELIZA_TEE_|ELIZA_DSTACK_|NODE_|BUN_|LD_|DYLD_|PATH$|SSL_CERT_FILE$|SSL_CERT_DIR$|OPENSSL_)/.test(
           key,
         ),
       )
