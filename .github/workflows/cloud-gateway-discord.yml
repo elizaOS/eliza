@@ -9,6 +9,7 @@ name: Cloud Gateway Discord
 
 on:
   workflow_call:
+  workflow_dispatch:
 
 concurrency:
   group: cloud-gateway-discord-${{ github.ref }}

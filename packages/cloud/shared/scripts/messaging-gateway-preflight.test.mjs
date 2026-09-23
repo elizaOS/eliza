@@ -26,7 +26,7 @@ const CONFIGURATION_CONTEXT_IDENTIFIER =
 const GITHUB_EXPRESSION = /\$\{\{([\s\S]*?)\}\}/g;
 const EXPECTED_SOURCE_ONLY_WORKFLOW = {
   name: "Cloud Gateway Discord",
-  on: { workflow_call: null },
+  on: { workflow_call: null, workflow_dispatch: null },
   concurrency: {
     group: "cloud-gateway-discord-${{ github.ref }}",
     "cancel-in-progress": true,
