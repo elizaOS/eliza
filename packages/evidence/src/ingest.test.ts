@@ -348,6 +348,11 @@ describe("ingestAllSilos", () => {
         status: "ingested",
         artifactCount: 1,
       },
+      "cloud-stability": {
+        silo: "cloud-stability",
+        status: "absent",
+        artifactCount: 0,
+      },
       "group-chat-timing": {
         silo: "group-chat-timing",
         status: "ingested",

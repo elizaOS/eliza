@@ -546,6 +546,7 @@
         "@elizaos/ui": "workspace:*",
       },
       "devDependencies": {
+        "@elizaos/evidence": "workspace:*",
         "@elizaos/testing": "workspace:*",
         "@playwright/test": "^1.62.1",
         "@types/node": "^22.0.0",

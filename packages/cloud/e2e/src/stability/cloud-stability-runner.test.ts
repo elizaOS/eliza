@@ -4,6 +4,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createBundle, ingestNamedSilo, verifyBundle } from "@elizaos/evidence";
 import type { ScenarioStabilityExecutionAdapter } from "@elizaos/scenario-runner";
 import { authorityChildEnvironment } from "./cloud-stability-environment.ts";
 import {
@@ -77,10 +78,15 @@ describe("Cloud stability manifest", () => {
   });
 
   test("persists exact-three failure evidence and canonical hashes", async () => {
-    const outputRoot = await mkdtemp(
+    const repository = await mkdtemp(
       path.join(tmpdir(), "cloud-stability-test-"),
     );
-    directories.push(outputRoot);
+    directories.push(repository);
+    const outputRoot = path.join(
+      repository,
+      "artifacts/cloud-stability",
+      manifest.runId,
+    );
     const attempts: number[] = [];
     const adapter: ScenarioStabilityExecutionAdapter = {
       async execute(input) {
@@ -121,5 +127,34 @@ describe("Cloud stability manifest", () => {
     expect(
       await readFile(path.join(outputRoot, "stability.sha256"), "utf8"),
     ).toMatch(/^[a-f0-9]{64} {2}stability\.json\n$/);
+    const bundle = createBundle({
+      rootDir: path.join(repository, "evidence/runs"),
+      provenance: {
+        commit: "f".repeat(40),
+        branch: "test/cloud-stability",
+        runner: "local",
+        tier: "cpu",
+        envFingerprint: {},
+      },
+    });
+    const ingested = await ingestNamedSilo(
+      bundle,
+      repository,
+      "cloud-stability",
+    );
+    expect(ingested.status).toBe("ingested");
+    const finalized = await bundle.finalize();
+    const storedReport = finalized.manifest.artifacts.find((artifact) =>
+      artifact.path.endsWith(`/${manifest.runId}/stability.json`),
+    );
+    expect(storedReport?.source).toBe("cloud-stability");
+    if (!storedReport)
+      throw new Error("Generated stability report was not ingested");
+    expect(
+      JSON.parse(
+        await readFile(path.join(bundle.dir, storedReport.path), "utf8"),
+      ),
+    ).toEqual(report);
+    expect((await verifyBundle(bundle.dir)).ok).toBe(true);
   });
 });
