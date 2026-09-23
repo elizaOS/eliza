@@ -2543,14 +2543,14 @@ describe("MEMORY op:search complete traversal", () => {
           ],
         });
       runtime.actions = [...promoteSubactionsToActions(memoryAction)];
-      runtime.getRoom = vi.fn(async () => ({
+      runtime.getRoom = vi.fn<IAgentRuntime["getRoom"]>(async () => ({
         id: ROOM_ID,
         worldId: SIBLING_ID,
         agentId: AGENT_ID,
         type: "DM",
         source: "test",
       }));
-      runtime.getWorld = vi.fn(async () => ({
+      runtime.getWorld = vi.fn<IAgentRuntime["getWorld"]>(async () => ({
         id: SIBLING_ID,
         agentId: AGENT_ID,
         metadata: {
@@ -2694,14 +2694,14 @@ describe("MEMORY op:search complete traversal", () => {
         })
         .mockResolvedValue({ text: honestFailure, toolCalls: [] });
       runtime.actions = [...promoteSubactionsToActions(memoryAction)];
-      runtime.getRoom = vi.fn(async () => ({
+      runtime.getRoom = vi.fn<IAgentRuntime["getRoom"]>(async () => ({
         id: ROOM_ID,
         worldId: SIBLING_ID,
         agentId: AGENT_ID,
         type: "DM",
         source: "test",
       }));
-      runtime.getWorld = vi.fn(async () => ({
+      runtime.getWorld = vi.fn<IAgentRuntime["getWorld"]>(async () => ({
         id: SIBLING_ID,
         agentId: AGENT_ID,
         metadata: {
