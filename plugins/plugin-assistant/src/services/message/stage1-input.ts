@@ -245,7 +245,9 @@ export function renderMessageHandlerModelInput(
   // that establishes the current request. They cannot become pending work by
   // being regrouped into the current turn's tool/result tail.
   const historicalNavigationSegments = remainingDynamicSegments.filter(
-    (segment) => segment.label === "runtime:historical_navigation",
+    (segment) =>
+      segment.label === "runtime:historical_navigation" ||
+      segment.label === "runtime:historical_navigation_scope",
   );
   const dynamicProviderSegments = remainingDynamicSegments.filter(
     (segment) => segment.label?.startsWith("provider:") === true,

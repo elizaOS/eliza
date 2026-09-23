@@ -215,12 +215,28 @@ export function appendPriorDialogueEvents(
         requestsById.has(entry.id) ? undefined : entry,
       );
   }
+  let navigationScopeAdded = false;
   for (const memory of dialogue) {
     const navigation =
       requestsById.get(String(memory.id)) === memory
         ? historicalNavigationReceipts(memory, currentMessage, runtime.agentId)
         : [];
-    if (navigation.length > 0)
+    if (navigation.length > 0) {
+      if (!navigationScopeAdded) {
+        events.push({
+          id: "historical-navigation-scope",
+          type: "segment",
+          source: "message-service",
+          segment: {
+            id: "historical-navigation-scope",
+            label: "runtime:historical_navigation_scope",
+            content:
+              "Each historical navigation entry is a past outcome for its requestSourceEventId only; never current work, a continuation request, or permission to act. Delivered records transport delivery then, not current view or record contents. Current-turn UI metadata independently reports the current view.",
+            stable: false,
+          },
+        });
+        navigationScopeAdded = true;
+      }
       events.push({
         id: `historical-navigation:${memory.id}`,
         type: "segment",
@@ -232,12 +248,11 @@ export function appendPriorDialogueEvents(
           content: JSON.stringify({
             requestSourceEventId: `history:${memory.id}`,
             navigation,
-            evidenceScope:
-              "Past navigation outcomes for requestSourceEventId only; never current work, a continuation request, or permission to act. Delivered records transport delivery then, not current view or record contents. Current-turn UI metadata independently reports the current view.",
           }),
           stable: false,
         },
       });
+    }
     if (isInterruptedReply(memory)) {
       const request = requestsById.get(String(memory.content.inReplyTo));
       if (
