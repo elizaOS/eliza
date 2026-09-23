@@ -1,8 +1,10 @@
+/** Exposes dependency-free contracts and utilities to runtime and client consumers. */
 export * from "./connector-config.js";
 export * from "./connectors.js";
 export * from "./dashboard-markers.js";
 export * from "./deterministic.js";
 export * from "./effects.js";
+export * from "./embedding-vector-space.js";
 export * from "./env-alias.js";
 export * from "./env-utils.js";
 export * from "./errors.js";

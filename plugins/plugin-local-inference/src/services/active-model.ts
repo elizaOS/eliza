@@ -217,6 +217,8 @@ export function validateLocalInferenceLoadArgs(
 }
 
 export interface LocalInferenceLoader {
+	/** Dedicated encoders prepare independently so embedding assignments cannot replace chat. */
+	prepareEmbeddingModel?(modelPath?: string): Promise<void>;
 	loadModel(args: LocalInferenceLoadArgs): Promise<void>;
 	unloadModel(): Promise<void>;
 	currentModelPath(): string | null;

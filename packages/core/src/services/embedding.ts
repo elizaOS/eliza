@@ -8,6 +8,8 @@
  * failure. Without a model it waits without a drain task, then activates when
  * an embedding handler registers, including handlers installed after boot.
  */
+
+import { shouldSkipResponseMemoryPersistence } from "../memory";
 import type {
 	EmbeddingGenerationPayload,
 	MessagePayload,
@@ -20,7 +22,6 @@ import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 import { type BatchItemOutcome, BatchQueue } from "../utils/batch-queue";
 import { isExpectedLocalEmbeddingUnavailability } from "../utils/expected-local-embedding-unavailability";
-import { shouldSkipResponseMemoryPersistence } from "../memory";
 
 interface EmbeddingQueueItem {
 	memory: Memory;

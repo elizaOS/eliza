@@ -92,3 +92,7 @@ Explicit `cacheTypeK`/`cacheTypeV` fields on `LoadOptions` take precedence over 
 - The `buun-llama-cpp` fork exposes optional `setCacheType`, `setSpecType`,
   and `getNativeKernels` bridge methods for TurboQuant KV caches and MTP
   speculative decoding. Stock builds warn and skip unsupported calls.
+
+Canonical BGE-small embeddings use the shared tokenizer and dedicated fused native bridge. Android registers the app-owned `ElizaBge` transport; iOS uses the BGE methods in its patched native plugin. The encoder preserves an unchanged ending suffix when input exceeds its context, checks native token IDs, and returns the verified representation.
+
+ESM consumers resolve the declared framework dependencies normally. Hosts using the optional IIFE bundle must provide `elizaCore`, `elizaLocalInference`, and `elizaBgeInput` namespace globals for the corresponding static imports. Native loading also requires a module resolver, such as a browser import map, for the dynamically imported `llama-cpp-capacitor` package.

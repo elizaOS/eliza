@@ -43,7 +43,7 @@ src/
   mobile-device-bridge-bootstrap.ts  MobileDeviceBridge class + ensureMobileDeviceBridgeInferenceHandlers
                                       Model path resolution: env vars → registry → manifest.json → first .gguf
                                       Auto-download from elizaos/eliza-1 on HuggingFace (respects ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD)
-                                      Recommended models: eliza-1-4b (TEXT_SMALL + TEXT_LARGE), eliza-1-embedding (TEXT_EMBEDDING)
+                                      Recommended models: eliza-1-4b (TEXT_SMALL + TEXT_LARGE), BGE-small-en-v1.5 (TEXT_EMBEDDING)
   android/
     bridge.ts                       Android CLI entry: env setup, fs shim install, startEliza({ serverOnly: true }), device-bridge wiring
   ios/
@@ -108,7 +108,7 @@ bun run --cwd plugins/plugin-capacitor-bridge clean           # rm -rf dist .tur
 | `ELIZA_LOCAL_EMBEDDING_MODEL_PATH` | Absolute path to a GGUF for TEXT_EMBEDDING. |
 | `ELIZA_LOCAL_MODEL_PATH` | Fallback path used when neither slot-specific var is set. |
 | `ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD` | Set to `1` to disable auto-download from HuggingFace. |
-| `ELIZA_LOCAL_EMBEDDING_DIMENSIONS` | Override embedding vector size (default: model-id lookup or 1024). |
+| `ELIZA_LOCAL_EMBEDDING_DIMENSIONS` | Must be 384 for the canonical BGE-small representation. |
 | `TEXT_EMBEDDING_DIMENSIONS` | Fallback for embedding dimension override. |
 
 ### Timeouts
@@ -194,3 +194,5 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+Canonical embeddings use the shared BGE-small artifact and a dedicated native context. Oversized encoder input retains an unchanged suffix within the token boundary; stored source remains complete. The relay and native host compare expected token IDs before inference and return the representation ID with actual token IDs. Legacy embedding assignments do not select chat weights; explicit incompatible model or dimension settings fail.

@@ -18,6 +18,16 @@
  */
 
 import type { PluginListenerHandle } from "@capacitor/core";
+import {
+  BGE_SMALL_VECTOR_SPACE,
+  ElizaError,
+  identifyEmbeddingVector,
+} from "@elizaos/core";
+import { BGE_EMBEDDING_MODEL } from "@elizaos/shared/local-inference";
+import {
+  assertBgeTokenAgreement,
+  prepareBgeEmbeddingInput,
+} from "@elizaos/shared/local-inference/bge-input";
 import type {
   NativeCompletionParams,
   NativeCompletionResult,
@@ -429,9 +439,35 @@ function normalizeHardwareInfo(
 
 export class CapacitorLlamaAdapter implements LlamaAdapter {
   private plugin: LlamaCppPluginLike | null = null;
+  private lifecycleQueue: Promise<void> = Promise.resolve();
+
+  private serializeLifecycle<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.lifecycleQueue.then(operation);
+    this.lifecycleQueue = result.then(
+      () => undefined,
+      () => {
+        // error-policy:J5 The returned result carries the failure to its caller; only queue scheduling recovers.
+      },
+    );
+    return result;
+  }
   /** Cached loader promise so concurrent `load()` calls don't race to register duplicate listeners. */
   private pluginLoadPromise: Promise<LlamaCppPluginLike> | null = null;
   private loadedPath: string | null = null;
+  private bgeContext: {
+    tokenize(text: string): Promise<{ tokens: number[] }>;
+    embedding(
+      text: string,
+      params: { expectedTokenIds: number[]; embeddingSpace: string },
+    ): Promise<{
+      embedding: number[];
+      tokens: number;
+      tokenIds?: number[];
+      embeddingSpace: string;
+    }>;
+    release(): Promise<void>;
+  } | null = null;
+  private bgeContextLimit: number = BGE_EMBEDDING_MODEL.contextSize;
   /**
    * Native context id this adapter owns. Allocated lazily on first `load()`
    * from the process-wide `nextContextId` counter so distinct adapter
@@ -647,12 +683,47 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     return this.loadedPath;
   }
 
-  async load(options: LoadOptions): Promise<void> {
+  load(options: LoadOptions): Promise<void> {
+    return this.serializeLifecycle(() => this.loadContext(options));
+  }
+
+  private async loadContext(options: LoadOptions): Promise<void> {
     if (!isCapacitorNative()) {
       throw new Error(
         "capacitor-llama is only available on iOS and Android builds",
       );
     }
+    if (options.modelPath.split("/").pop() === BGE_EMBEDDING_MODEL.filename) {
+      if (
+        this.bgeContext &&
+        this.loadedPath === options.modelPath &&
+        this.bgeContextLimit ===
+          (options.contextSize ?? BGE_EMBEDDING_MODEL.contextSize)
+      )
+        return;
+      await this.unloadContext();
+      const native = await import("llama-cpp-capacitor");
+      if (typeof native.initBgeEmbedding !== "function") {
+        throw new ElizaError(
+          "Install the fused mobile BGE bridge before embedding",
+          { code: "EMBEDDING_BACKEND_UNAVAILABLE" },
+        );
+      }
+      const limit = options.contextSize ?? BGE_EMBEDDING_MODEL.contextSize;
+      if (!Number.isInteger(limit) || limit < 3 || limit > 512) {
+        throw new ElizaError("BGE context size must be between 3 and 512", {
+          code: "EMBEDDING_CONTEXT_INVALID",
+        });
+      }
+      this.bgeContext = await native.initBgeEmbedding({
+        model: options.modelPath,
+        n_ctx: limit,
+      });
+      this.bgeContextLimit = limit;
+      this.loadedPath = options.modelPath;
+      return;
+    }
+    if (this.bgeContext) await this.unloadContext();
     const plugin = await this.loadPlugin();
 
     // Release this adapter's own prior context (if any) before reusing the
@@ -798,7 +869,16 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     this.loadedPath = options.modelPath;
   }
 
-  async unload(): Promise<void> {
+  unload(): Promise<void> {
+    return this.serializeLifecycle(() => this.unloadContext());
+  }
+
+  private async unloadContext(): Promise<void> {
+    if (this.bgeContext) {
+      await this.bgeContext.release();
+      this.bgeContext = null;
+      this.loadedPath = null;
+    }
     if (!this.plugin || !this.loadedPath || this.contextId === null) return;
     try {
       await this.plugin.releaseContext({ contextId: this.contextId });
@@ -1179,6 +1259,70 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
   }
 
   async embed(options: EmbedOptions): Promise<EmbedResult> {
+    // Admission and inference must finish before a queued unload releases their context.
+    return this.serializeLifecycle(() => this.embedContext(options));
+  }
+
+  private async embedContext(options: EmbedOptions): Promise<EmbedResult> {
+    if (this.bgeContext) {
+      const prepared = prepareBgeEmbeddingInput(
+        options.input,
+        this.bgeContextLimit,
+      );
+      if (
+        options.expectedTokenIds !== undefined ||
+        options.embeddingSpace !== undefined
+      ) {
+        if (
+          options.embeddingSpace !== BGE_SMALL_VECTOR_SPACE ||
+          !Array.isArray(options.expectedTokenIds)
+        ) {
+          throw new ElizaError(
+            "The relay must supply canonical BGE admission",
+            { code: "EMBEDDING_TOKENIZER_MISMATCH" },
+          );
+        }
+        assertBgeTokenAgreement(prepared, options.expectedTokenIds);
+      }
+      const tokenized = await this.bgeContext.tokenize(prepared.text);
+      if (!tokenized || !Array.isArray(tokenized.tokens)) {
+        throw new ElizaError(
+          "Mobile BGE tokenizer returned invalid admission data",
+          { code: "EMBEDDING_BACKEND_UNAVAILABLE" },
+        );
+      }
+      const tokens = tokenized.tokens;
+      assertBgeTokenAgreement(prepared, tokens);
+      const result = await this.bgeContext.embedding(prepared.text, {
+        expectedTokenIds: prepared.tokenIds,
+        embeddingSpace: BGE_SMALL_VECTOR_SPACE,
+      });
+      if (
+        !result ||
+        result.embeddingSpace !== BGE_SMALL_VECTOR_SPACE ||
+        result.tokens !== tokens.length ||
+        !Array.isArray(result.tokenIds) ||
+        !Array.isArray(result.embedding) ||
+        result.embedding.length !== BGE_EMBEDDING_MODEL.dimensions ||
+        !result.embedding.every(Number.isFinite) ||
+        Math.abs(Math.hypot(...result.embedding) - 1) > 1e-4
+      ) {
+        throw new ElizaError(
+          "Mobile BGE returned invalid vector data or provenance",
+          { code: "EMBEDDING_VECTOR_INVALID" },
+        );
+      }
+      assertBgeTokenAgreement(prepared, result.tokenIds);
+      return {
+        embedding: identifyEmbeddingVector(
+          result.embedding,
+          BGE_SMALL_VECTOR_SPACE,
+        ),
+        tokens: result.tokens,
+        embeddingSpace: BGE_SMALL_VECTOR_SPACE,
+        tokenIds: result.tokenIds,
+      };
+    }
     if (!this.plugin || !this.loadedPath) {
       throw new Error("No model loaded. Call load() first.");
     }

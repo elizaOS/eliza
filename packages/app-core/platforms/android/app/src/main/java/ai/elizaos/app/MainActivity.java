@@ -1,3 +1,4 @@
+/** Boots the Android app shell and registers its app-owned native transport extensions. */
 package ai.elizaos.app;
 
 import android.Manifest;
@@ -98,6 +99,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(BatteryOptimizationPlugin.class);
         registerPlugin(VoiceCapturePlugin.class);
         registerPlugin(ElizaVoicePlugin.class);
+        registerPlugin(ElizaBgePlugin.class);
         registerPlugin(ResourceProbePlugin.class);
         registerPlugin(GlassBridgePlugin.class);
         registerPlugin(NativeTranscriptPlugin.class);

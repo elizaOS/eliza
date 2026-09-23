@@ -2,8 +2,10 @@
  * Unit tests for `CapacitorLlamaAdapter` against a mocked `llama-cpp-capacitor`
  * (no live model): context-id isolation between chat and embedding instances,
  * reload behavior, and platform-aware load-param wiring.
+ * Shared runtime dependencies load before timed cases; each case still resets modules.
  */
 
+import "./capacitor-llama-adapter";
 import { describe, expect, it, vi } from "vitest";
 
 interface InitContextCall {

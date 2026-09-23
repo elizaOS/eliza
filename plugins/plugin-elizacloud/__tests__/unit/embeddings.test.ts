@@ -1,7 +1,12 @@
 /**
  * Exercises Cloud embedding initialization, strict dimension validation, and response integrity through a mocked API boundary.
  */
-import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import {
+  BGE_SMALL_VECTOR_SPACE,
+  ElizaError,
+  getEmbeddingVectorSpace,
+  type IAgentRuntime,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Control the Cloud API client the embeddings handlers use. requestRaw is the
@@ -387,4 +392,121 @@ describe("handleBatchTextEmbedding dimension + count integrity (#8769)", () => {
     );
     expect(emitModelUsageEvent).not.toHaveBeenCalled();
   });
+});
+
+describe("embedding batch transport integrity", () => {
+  it("preserves complete input text and restores response order", async () => {
+    const texts = ["  first input\n", "\tsecond input  "];
+    requestRaw.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: [
+            { index: 1, embedding: vec(0.2) },
+            { index: 0, embedding: vec(0.1) },
+          ],
+        }),
+        { status: 200 }
+      )
+    );
+    expect(await handleBatchTextEmbedding(makeRuntime(), texts)).toEqual([vec(0.1), vec(0.2)]);
+    expect(requestRaw).toHaveBeenCalledWith(
+      "POST",
+      "/embeddings",
+      expect.objectContaining({ json: expect.objectContaining({ input: texts }) })
+    );
+  });
+
+  it("rejects duplicate indices before returning a batch with missing vectors", async () => {
+    requestRaw.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: [
+            { index: 0, embedding: vec(0.1) },
+            { index: 0, embedding: vec(0.2) },
+          ],
+        }),
+        { status: 200 }
+      )
+    );
+    await expect(
+      handleBatchTextEmbedding(makeRuntime(), ["first", "second"])
+    ).rejects.toMatchObject({ code: "ELIZA_CLOUD_EMBEDDING_RESPONSE_INVALID" });
+    expect(emitModelUsageEvent).not.toHaveBeenCalled();
+  });
+
+  it.each([0, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects unusable vector values (%s)",
+    async (value) => {
+      // Non-finite JSON values arrive as null, which must not become usable vector coordinates.
+      requestRaw.mockResolvedValueOnce(embeddingResponse([vec(value)]));
+      await expect(handleBatchTextEmbedding(makeRuntime(), ["source"])).rejects.toMatchObject({
+        code: "ELIZA_CLOUD_EMBEDDING_RESPONSE_INVALID",
+      });
+      expect(emitModelUsageEvent).not.toHaveBeenCalled();
+    }
+  );
+});
+
+describe("Cloud BGE representation handoff", () => {
+  function bgeRuntime(dimensions = "384"): IAgentRuntime {
+    return {
+      ...makeRuntime(384),
+      getSetting: (key: string) => {
+        if (key === "ELIZAOS_CLOUD_EMBEDDING_MODEL") return "bge-small-en-v1.5";
+        if (key === "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS") return dimensions;
+        return undefined;
+      },
+    };
+  }
+  const bgeVector = Array.from({ length: 384 }, (_, index) => (index === 0 ? 1 : 0));
+  function bgeResponse(space?: string): Response {
+    return new Response(
+      JSON.stringify({
+        data: [{ index: 0, embedding: bgeVector }],
+        ...(space ? { embedding_space: space } : {}),
+      }),
+      { status: 200 }
+    );
+  }
+
+  it("uses an actual provider response for initialization and preserves its representation for the runtime", async () => {
+    requestRaw.mockResolvedValueOnce(bgeResponse(BGE_SMALL_VECTOR_SPACE));
+    const result = await handleTextEmbedding(bgeRuntime(), null);
+    expect(result).toEqual(bgeVector);
+    expect(getEmbeddingVectorSpace(result)).toBe(BGE_SMALL_VECTOR_SPACE);
+    expect(requestRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([undefined, "BAAI/bge-small-en-v1.5:mean:l2:384"])(
+    "rejects a server that returns an incompatible representation (%s)",
+    async (space) => {
+      requestRaw.mockResolvedValueOnce(bgeResponse(space));
+      await expect(handleTextEmbedding(bgeRuntime(), "Complete query")).rejects.toMatchObject({
+        code: "ELIZA_CLOUD_EMBEDDING_SPACE_MISMATCH",
+      });
+    }
+  );
+
+  it("rejects an incompatible BGE dimension before dispatch", async () => {
+    await expect(handleTextEmbedding(bgeRuntime("1536"), null)).rejects.toMatchObject({
+      code: "ELIZA_CLOUD_EMBEDDING_DIMENSION_INVALID",
+    });
+    expect(requestRaw).not.toHaveBeenCalled();
+  });
+});
+
+it("verifies the default model through a real-shaped Cloud response before initializing storage", async () => {
+  const runtime = { getSetting: () => undefined } as unknown as IAgentRuntime;
+  const vector = Array.from({ length: 384 }, (_, index) => (index === 0 ? 1 : 0));
+  requestRaw.mockResolvedValueOnce(
+    Response.json({
+      embedding_space: BGE_SMALL_VECTOR_SPACE,
+      data: [{ index: 0, embedding: vector }],
+      usage: { prompt_tokens: 3, total_tokens: 3 },
+    })
+  );
+  const result = await handleTextEmbedding(runtime, null);
+  expect(getEmbeddingVectorSpace(result)).toBe(BGE_SMALL_VECTOR_SPACE);
+  expect(result).toEqual(vector);
+  expect(requestRaw).toHaveBeenCalledOnce();
 });

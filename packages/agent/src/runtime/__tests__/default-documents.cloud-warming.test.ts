@@ -1,11 +1,17 @@
 /**
  * Proves bundled-document seeding survives a cold Eliza Cloud embedding
  * gateway through the real AgentRuntime model registry, HTTP client, and
- * in-memory persistence adapter. The local server is deterministic but no
- * runtime, model, transport, or database boundary is mocked.
+ * in-memory persistence adapter. The deterministic HTTP server supplies a
+ * synthetic unit vector; this tests retry and persistence, not model quality.
  */
 import { createServer, type IncomingMessage, type Server } from "node:http";
-import { AgentRuntime, EventType, MemoryType, type UUID } from "@elizaos/core";
+import {
+  AgentRuntime,
+  BGE_SMALL_VECTOR_SPACE,
+  EventType,
+  MemoryType,
+  type UUID,
+} from "@elizaos/core";
 import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -17,7 +23,9 @@ import {
 } from "../default-documents.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-00000000c01d" as UUID;
-const EMBEDDING = Array.from({ length: 384 }, (_, index) => index / 384);
+const EMBEDDING = Array.from({ length: 384 }, (_, index) =>
+  index === 0 ? 1 : 0,
+);
 const DOCUMENT: DefaultDocumentDefinition = {
   key: "cold-cloud-seed",
   version: 1,
@@ -54,7 +62,8 @@ describe("bundled documents with a warming cloud embedding gateway", () => {
     }
   });
 
-  it("retries the one-shot seed, persists its real vector, and stays idempotent", async () => {
+  it("retries the one-shot seed, persists its returned vector, and stays idempotent", async () => {
+    let warming = false;
     const requests: Array<{
       authorization: string | undefined;
       body: Record<string, unknown>;
@@ -72,7 +81,7 @@ describe("bundled documents with a warming cloud embedding gateway", () => {
       });
 
       response.setHeader("content-type", "application/json");
-      if (requests.length <= 3) {
+      if (warming && requests.length <= 3) {
         response.statusCode = 503;
         response.end(
           JSON.stringify({ error: { code: "embedding_cache_warming" } }),
@@ -83,6 +92,7 @@ describe("bundled documents with a warming cloud embedding gateway", () => {
       response.statusCode = 200;
       response.end(
         JSON.stringify({
+          embedding_space: BGE_SMALL_VECTOR_SPACE,
           data: [{ embedding: EMBEDDING, index: 0 }],
           usage: { prompt_tokens: 11, total_tokens: 11 },
         }),
@@ -109,6 +119,11 @@ describe("bundled documents with a warming cloud embedding gateway", () => {
       },
     });
     registerCloudEmbeddingModels(runtime);
+    await runtime.ensureEmbeddingDimension();
+    expect(requests).toHaveLength(1);
+    // Boot pins the representation before the document gateway begins warming.
+    requests.length = 0;
+    warming = true;
     const emitEvent = vi.spyOn(runtime, "emitEvent");
 
     await seedBundledDocuments(runtime, [DOCUMENT]);
@@ -121,7 +136,7 @@ describe("bundled documents with a warming cloud embedding gateway", () => {
         body: {
           dimensions: 384,
           input: [DOCUMENT.fragments[0].text],
-          model: "text-embedding-3-small",
+          model: "bge-small-en-v1.5",
         },
       });
     }

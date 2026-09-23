@@ -712,6 +712,16 @@
       },
       "import": "./dist/contracts/service-routing.js",
       "default": "./dist/contracts/service-routing.js"
+    },
+    "./local-inference/bge-input": {
+      "types": "./dist/local-inference/bge-input.d.ts",
+      "eliza-source": {
+        "types": "./src/local-inference/bge-input.ts",
+        "import": "./src/local-inference/bge-input.ts",
+        "default": "./src/local-inference/bge-input.ts"
+      },
+      "import": "./dist/local-inference/bge-input.js",
+      "default": "./dist/local-inference/bge-input.js"
     }
   },
   "publishConfig": {
@@ -731,7 +741,8 @@
     "@elizaos/prompts": "workspace:*",
     "@elizaos/common": "workspace:*",
     "markdown-it": "^14.1.0",
-    "file-type": "^22.0.0"
+    "file-type": "^22.0.0",
+    "@huggingface/tokenizers": "0.1.3"
   },
   "devDependencies": {
     "bun-types": "^1.3.12",

@@ -203,6 +203,8 @@ export const ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS = [
 // reference manifest-stripped classes and break compilation.
 export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "BatteryOptimizationPlugin.java",
+  "BgeEmbeddingSession.java",
+  "ElizaBgePlugin.java",
   "BionicDecodeLoop.java",
   "DeviceRamTierPolicy.java",
   "ElizaQuickActionsWidgetProvider.java",
@@ -259,10 +261,15 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
 // source tree so direct/local targets retain their coverage, but remove them
 // alongside the production classes they exercise for cloud builds.
 export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
+  "BgeEmbeddingSessionTest.java",
+  "BionicEmbeddingInstrumentedTest.java",
+  "CapacitorBgeInstrumentedTest.java",
   "BionicDecodeLoopTest.java",
   "DeviceRamTierPolicyTest.java",
   "ElizaAgentAutostartPolicyTest.java",
+  "ElizaAgentWatchdogPolicyInstrumentedTest.java",
   "ElizaAssetExtractionPolicyTest.java",
+  "ElizaAssistantSurfaceInstrumentedTest.java",
   "ElizaWorkSchedulerPolicyTest.java",
   "InferenceMemoryPolicyTest.java",
   "NativeTranscriptReducerTest.java",

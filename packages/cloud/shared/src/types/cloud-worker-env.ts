@@ -8,6 +8,7 @@
 import type { BrowserWorker } from "@cloudflare/playwright";
 import type { Context } from "hono";
 import type { KvNamespaceLike } from "../lib/cache/adapters/kv-cache-adapter";
+import type { CloudflareEmbeddingBinding } from "../lib/providers/cloudflare-embeddings";
 import type { RuntimeR2Bucket } from "../lib/storage/r2-runtime-binding";
 
 export interface RuntimeRateLimitBinding {
@@ -142,7 +143,11 @@ export interface Bindings {
   MOBILE_API_KEY_INGRESS_LIMITER?: RuntimeRateLimitBinding;
 
   // ---- Cloudflare Registrar/DNS ----
+  /** Native Workers AI binding for the canonical BGE CLS embedding representation. */
+  AI?: CloudflareEmbeddingBinding;
   CLOUDFLARE_ACCOUNT_ID?: string;
+  /** Workers AI credential for the canonical BGE embedding model. */
+  CLOUDFLARE_EMBEDDING_API_TOKEN?: string;
   CLOUDFLARE_API_TOKEN?: string;
   ELIZA_CF_REGISTRAR_DEV_STUB?: string;
 

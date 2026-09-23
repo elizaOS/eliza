@@ -167,6 +167,14 @@ establish runtime readiness. Android and iOS packaging use their platform build
 lanes to produce the corresponding NDK or Apple artifacts.
 
 
+Android Vulkan builds consume the clean native revision recorded by the parent
+repository's gitlink. The fork must declare the supported raw-query TBQ contract
+in `ggml/src/ggml-vulkan/eliza-capabilities.json`; its shader and dispatch sources
+are compiled unchanged. Missing or incompatible declarations stop the build
+before toolchain execution. An older external source tree may explicitly select
+`--legacy-vulkan-graft` with `scripts/aosp/compile-libllama.mjs`; this mode cannot
+modify the maintained submodule and does not establish maintained-fork readiness.
+
 Android Bun runtime inputs for x64 and arm64 are pinned in
 [`scripts/lib/android-bun-artifacts.lock.json`](scripts/lib/android-bun-artifacts.lock.json).
 Both stable and canary channels resolve fixed GitHub release-asset IDs, archive

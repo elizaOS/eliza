@@ -58,7 +58,7 @@ bun run --cwd plugins/plugin-native-llama format:check    # read-only formatting
 bun run --cwd plugins/plugin-native-llama test            # run package tests
 bun run --cwd plugins/plugin-native-llama prepublishOnly  # publish-time build hook
 bun run --cwd plugins/plugin-native-llama watch           # watch TypeScript sources
-bun run --cwd plugins/plugin-native-llama build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
+bun run --cwd plugins/plugin-native-llama build:unlocked  # clean, emit Node-compatible ESM/declarations, then bundle
 ```
 
 ## Config / env vars
@@ -103,3 +103,5 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+The canonical BGE-small artifact uses the dedicated fused `initBgeEmbedding` API on iOS and Android. Shared suffix preparation and native token agreement precede inference. The device relay owns separate chat and embedding adapters; canonical vectors require 384 finite L2-normalized components and matching representation provenance. Generic chat context methods remain on the vendor transport.

@@ -192,6 +192,9 @@ export interface HardwareInfo {
 }
 
 export interface EmbedOptions {
+  /** Canonical relay admission, compared before native inference when provided. */
+  expectedTokenIds?: number[];
+  embeddingSpace?: string;
   /** Raw text to embed. The adapter forwards this verbatim to the native plugin. */
   input: string;
   /**
@@ -204,6 +207,9 @@ export interface EmbedOptions {
 
 export interface EmbedResult {
   embedding: number[];
+  /** Present only for a native artifact-verified, token-admitted canonical encoder. */
+  embeddingSpace?: string;
+  tokenIds?: number[];
   /**
    * Token count of the embedded input. The native plugin doesn't return
    * this directly so adapters may estimate via `tokenize` and report 0

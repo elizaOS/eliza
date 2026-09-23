@@ -2,6 +2,7 @@
 
 import { performance } from "node:perf_hooks";
 
+import { copyEmbeddingVectorSpace } from "../../embedding-vector-space";
 import { ElizaError } from "../../errors";
 import {
 	INFERENCE_MARKS,
@@ -109,6 +110,13 @@ import {
 export interface RuntimeModelDispatchHost {
 	models(): Map<string, ModelHandler[]>;
 	pinnedEmbeddingProvider(): string | undefined;
+	validateEmbeddingOutput(
+		modelType: string,
+		params: unknown,
+		source: unknown,
+		result: unknown,
+		provider: string,
+	): void;
 	currentRoomId(): UUID | undefined;
 	isSecretSwapEnabled(): boolean;
 	isPiiSwapEnabled(): boolean;
@@ -1631,6 +1639,23 @@ export class RuntimeModelDispatch {
 				throwIfAborted();
 				assertModelResultPresent(handlerResult, String(modelType));
 				const rawResponse = handlerResult;
+				let embeddingProviderOutput: unknown = rawResponse;
+				if (
+					modelType === ModelType.TEXT_EMBEDDING ||
+					modelType === ModelType.TEXT_EMBEDDING_BATCH
+				) {
+					const snapshot = (vector: unknown): unknown => {
+						if (!Array.isArray(vector)) return vector;
+						const copy = [...vector];
+						copyEmbeddingVectorSpace(vector, copy);
+						return copy;
+					};
+					embeddingProviderOutput =
+						modelType === ModelType.TEXT_EMBEDDING_BATCH &&
+						Array.isArray(rawResponse)
+							? rawResponse.map(snapshot)
+							: snapshot(rawResponse);
+				}
 
 				let safeRawResponse: unknown =
 					secretSwapSession?.substituteInValue(rawResponse) ?? rawResponse;
@@ -2062,6 +2087,18 @@ export class RuntimeModelDispatch {
 					Date.now() - postprocessingStartedAt,
 					{ ...attemptMeta, streaming: handlerDeliveredStream },
 				);
+				if (
+					modelType === ModelType.TEXT_EMBEDDING ||
+					modelType === ModelType.TEXT_EMBEDDING_BATCH
+				) {
+					this.host.validateEmbeddingOutput(
+						String(modelType),
+						params,
+						embeddingProviderOutput,
+						resultRef.current,
+						resolvedModel.provider,
+					);
+				}
 				return resultRef.current as R;
 			} catch (error) {
 				const streamCallbackResult =
