@@ -1,6 +1,6 @@
 /**
- * Classifies provider failures only when their wire status proves the request
- * was rejected before inference. Ambiguous transport and server failures stay
+ * Classifies provider failures when a wire rejection or a typed preflight
+ * failure proves inference was not accepted. Ambiguous inference failures stay
  * conservative because absence of output is not evidence of zero provider cost.
  */
 
@@ -16,7 +16,7 @@ export function isKnownUnacceptedProviderStatus(status: number): boolean {
   return KNOWN_UNACCEPTED_STATUSES.has(status);
 }
 
-/** True only for an explicit provider response that rejects the request. */
+/** True only when the failure proves inference was not accepted. */
 export function isKnownUnacceptedProviderError(error: unknown): boolean {
   const seen = new Set<unknown>();
   let current: unknown = error;
@@ -32,10 +32,11 @@ export function isKnownUnacceptedProviderError(error: unknown): boolean {
     ) {
       return false;
     }
-    // TEI rejects a different model before sending any source to /embed.
+    // TEI preflight failures occur before sending any source to /embed.
     if (
       terminal instanceof ElizaError &&
-      terminal.code === "EMBEDDING_PROVIDER_IDENTITY_MISMATCH"
+      (terminal.code === "EMBEDDING_PROVIDER_IDENTITY_MISMATCH" ||
+        terminal.code === "EMBEDDING_PROVIDER_PREFLIGHT_FAILED")
     ) {
       return true;
     }

@@ -625,3 +625,75 @@ test("self-hosted BGE route preserves representation metadata and exact retained
     globalThis.fetch = originalFetch;
   }
 });
+
+test.each([
+  "http-429",
+  "http-500",
+  "invalid-json",
+  "network",
+  "accepted-prefix",
+  "embed-500",
+])(
+  "TEI %s settles only inference that could have been accepted",
+  async (failure) => {
+    embeddingSource = "selfhosted";
+    let checks = 0;
+    let embeds = 0;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = new Proxy(originalFetch, {
+      async apply(_target, _receiver, [input, init]: Parameters<typeof fetch>) {
+        if (String(input).endsWith("/info")) {
+          checks++;
+          if (failure === "http-429")
+            return new Response("rate limited", { status: 429 });
+          if (failure === "network")
+            throw new TypeError("preflight connection failed");
+          if (failure === "invalid-json") return new Response("not JSON");
+          if (failure === "http-500" || checks > 1)
+            return new Response("unavailable", { status: 500 });
+          return Response.json({
+            model_id: "BAAI/bge-small-en-v1.5",
+            model_sha: null,
+            model_type: { embedding: { pooling: "cls" } },
+            max_input_length: 512,
+          });
+        }
+        embeds++;
+        if (failure === "embed-500")
+          return new Response("uncertain inference", { status: 500 });
+        const body = JSON.parse(String(init?.body)) as { inputs: string[] };
+        return Response.json(body.inputs.map(() => [1, ...Array(383).fill(0)]));
+      },
+    });
+    // Disable retry delays while retaining the real SDK, adapter and settler.
+    embedMany.mockImplementation(
+      (options: Parameters<typeof realEmbedMany>[0]) =>
+        realEmbedMany({ ...options, maxRetries: 0 }),
+    );
+    try {
+      const { ctx, scheduled } = makeExecutionCtx();
+      const response = await post(
+        {
+          model: "bge-small-en-v1.5",
+          input: Array(failure === "accepted-prefix" ? 101 : 1).fill("source"),
+        },
+        ctx,
+      );
+      await Promise.all(scheduled);
+      if (failure === "http-429") expect(response.status).toBe(429);
+      else expect(response.status).toBeGreaterThanOrEqual(500);
+      expect(embeds).toBe(
+        failure === "accepted-prefix" || failure === "embed-500" ? 1 : 0,
+      );
+      expect(reconcile).toHaveBeenCalledTimes(1);
+      expect(reconcile).toHaveBeenCalledWith(
+        failure === "accepted-prefix" || failure === "embed-500"
+          ? reservation.reservedAmount
+          : 0,
+      );
+      expect(usageCreate).not.toHaveBeenCalled();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  },
+);

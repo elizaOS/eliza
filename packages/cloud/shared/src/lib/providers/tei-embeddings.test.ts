@@ -122,3 +122,72 @@ test("a backend identity change between batches preserves accepted-prefix accoun
   expect(checks).toBe(2);
   expect(embeds).toBe(1);
 });
+
+test.each(["http-500", "invalid-json", "network"])(
+  "preflight %s fails without inference and permits a full refund",
+  async (failure) => {
+    let embeds = 0;
+    server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        if (new URL(request.url).pathname === "/info") {
+          return failure === "http-500"
+            ? new Response("unavailable", { status: 500 })
+            : new Response("not JSON");
+        }
+        embeds++;
+        return Response.json([]);
+      },
+    });
+    const url = String(server.url);
+    if (failure === "network") await server.stop(true);
+    let error: unknown;
+    try {
+      await embedMany({
+        model: createTeiEmbeddingModel(url, "fixture"),
+        values: ["source"],
+        maxRetries: 0,
+      });
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(Error);
+    expect(embeds).toBe(0);
+    expect(isKnownUnacceptedProviderError(error)).toBe(true);
+  },
+);
+
+test.each([false, true])(
+  "keeps uncertain inference and accepted-prefix failures conservative: %s",
+  async (acceptedPrefix) => {
+    let checks = 0;
+    let embeds = 0;
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        if (new URL(request.url).pathname === "/info") {
+          checks++;
+          return checks === 1 ? Response.json(info) : new Response("unavailable", { status: 500 });
+        }
+        embeds++;
+        if (!acceptedPrefix) return new Response("uncertain inference", { status: 500 });
+        const body = await request.json();
+        return Response.json(body.inputs.map(() => [1, ...Array(383).fill(0)]));
+      },
+    });
+    let error: unknown;
+    try {
+      await embedMany({
+        model: createTeiEmbeddingModel(String(server.url), "fixture"),
+        values: Array(acceptedPrefix ? 101 : 1).fill("source"),
+        maxRetries: 0,
+      });
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(Error);
+    expect(embeds).toBe(1);
+    expect(checks).toBe(acceptedPrefix ? 2 : 1);
+    expect(isKnownUnacceptedProviderError(error)).toBe(false);
+  },
+);
