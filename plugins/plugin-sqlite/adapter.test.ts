@@ -854,3 +854,28 @@ it("rejects a different lifecycle agent scope before invoking the callback", asy
     "owner",
   );
 });
+
+it("enumerates persisted memory types after reopening the owner file", async () => {
+  const adapter = await open();
+  await adapter.createAgents([{ id: agentId, name: "Inventory owner" }]);
+  await adapter.createEntities([{ id: entityId, agentId, names: ["Owner"] }]);
+  await adapter.createRooms([
+    { id: roomId, agentId, source: "test", type: ChannelType.DM },
+  ]);
+  await adapter.createMemories([
+    {
+      tableName: "plugin_unlisted",
+      memory: {
+        id: id(),
+        agentId,
+        entityId,
+        roomId,
+        content: { text: "Persistent inventory" },
+      },
+    },
+  ]);
+  expect(await adapter.listMemoryTypes()).toEqual(["plugin_unlisted"]);
+  await adapter.close();
+  const reopened = await open();
+  expect(await reopened.listMemoryTypes()).toEqual(["plugin_unlisted"]);
+});

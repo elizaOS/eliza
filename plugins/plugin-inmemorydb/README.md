@@ -89,3 +89,7 @@ same ephemeral records. Cache storage keys include the agent ID to keep lifecycl
 scopes independent. This does not add atomic rollback to the memory store. The
 single-owner SQLite subclass retains its existing persistent cache keys and rejects
 a different agent scope.
+
+`listMemoryTypes()` discovers the current agent's stored namespaces, including
+custom types, while excluding records belonging to another agent in shared
+storage. SQLite inherits this discovery within its single-owner file.

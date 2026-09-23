@@ -1204,6 +1204,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * not be used. This keeps multi-query scans stable when earlier rows mutate.
 	 * @param params.tableName Memory type/table (required)
 	 */
+	/** Complete distinct memory-type inventory for this adapter's agent; used by trusted exports. */
+	listMemoryTypes?(): Promise<string[]>;
+
 	getMemories(params: {
 		entityId?: UUID;
 		/** Restrict returned rows by author while `entityId` remains the RLS principal. */

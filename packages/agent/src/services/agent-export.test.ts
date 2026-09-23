@@ -272,8 +272,15 @@ describe("verifyExportManifest remaining branches", () => {
 });
 
 describe("estimateExportSize", () => {
+  it("refuses to estimate a complete export without a type inventory", async () => {
+    await expect(estimateExportSize(runtimeWith({}))).rejects.toMatchObject({
+      code: "AGENT_EXPORT_MEMORY_INVENTORY_UNSUPPORTED",
+    });
+  });
+
   it("returns the 2000-byte base overhead for an empty agent", async () => {
     const adapter = {
+      listMemoryTypes: async () => [],
       getMemories: async () => [],
       getAllWorlds: async () => [],
       getRoomsForParticipants: async () => [],
@@ -296,6 +303,7 @@ describe("estimateExportSize", () => {
 
   it("counts a single linked memory/room/entity/world/task", async () => {
     const adapter = {
+      listMemoryTypes: async () => ["messages", "facts"],
       getMemories: async ({ tableName }: { tableName: string }) =>
         tableName === "messages" ? [{ id: "m1" }] : [],
       getAllWorlds: async () => [{ id: "w1", agentId: AGENT_ID }],
@@ -316,6 +324,7 @@ describe("estimateExportSize", () => {
 
   it("sums memories across tables, filters foreign worlds/tasks, and skips entities without ids", async () => {
     const adapter = {
+      listMemoryTypes: async () => ["messages", "facts"],
       getMemories: async ({ tableName }: { tableName: string }) => {
         if (tableName === "messages") return [{ id: "m1" }, { id: "m2" }];
         if (tableName === "facts") return [{ id: "m3" }];
@@ -456,11 +465,11 @@ describe("importAgent decrypt, decompress, schema, and version gates", () => {
 
   it("rejects a schema-valid payload whose version is newer than this build", async () => {
     const buf = await packEncrypted(
-      gzipJson(payload({ version: 2 })),
+      gzipJson(payload({ version: 3 })),
       PASSWORD,
     );
     await expect(importAgent(runtimeWith({}), buf, PASSWORD)).rejects.toThrow(
-      /Unsupported export version 2/,
+      /Unsupported export version 3/,
     );
   });
 

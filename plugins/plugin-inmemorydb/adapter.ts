@@ -1092,6 +1092,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     });
   }
 
+  async listMemoryTypes(): Promise<string[]> {
+    const rows = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (memory) => memory.agentId === this.agentId
+    );
+    return [...new Set(rows.map(storedMemoryTableName))].sort();
+  }
+
   async getMemories(params: {
     entityId?: UUID;
     authorEntityIds?: UUID[];
