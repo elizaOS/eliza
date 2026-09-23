@@ -142,11 +142,11 @@ describe.skipIf(!databaseUrl)("trusted external billing imports", () => {
       await db.query(statement);
     });
     for (const tag of [
-      "0415_app_billing_application_slots",
-      "0416_app_billing_import_commands",
-      "0417_app_billing_import_guards",
-      "0418_app_billing_import_allowance",
-      "0419_app_billing_payment_expiry",
+      "0416_app_billing_application_slots",
+      "0417_app_billing_import_commands",
+      "0418_app_billing_import_guards",
+      "0419_app_billing_import_allowance",
+      "0420_app_billing_payment_expiry",
     ]) {
       for (const statement of (
         await readFile(new URL(`../../db/migrations/${tag}.sql`, import.meta.url), "utf8")

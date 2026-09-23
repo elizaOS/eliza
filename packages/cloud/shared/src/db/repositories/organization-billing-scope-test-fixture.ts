@@ -5,13 +5,13 @@ export async function installOrganizationBillingScopeTestColumns(
   execute: (statement: string) => Promise<unknown>,
 ): Promise<void> {
   const columns = await readFile(
-    new URL("../migrations/0399_subscription_app_scope_columns.sql", import.meta.url),
+    new URL("../migrations/0400_subscription_app_scope_columns.sql", import.meta.url),
     "utf8",
   );
   for (const statement of columns.split("--> statement-breakpoint"))
     if (statement.trim()) await execute(statement);
   const commands = await readFile(
-    new URL("../migrations/0404_app_billing_command_intents.sql", import.meta.url),
+    new URL("../migrations/0405_app_billing_command_intents.sql", import.meta.url),
     "utf8",
   );
   for (const statement of commands.split("--> statement-breakpoint")) {

@@ -156,7 +156,7 @@ beforeAll(async () => {
   await database.exec(
     await Bun.file(
       new URL(
-        "../../../../shared/src/db/migrations/0403_app_delegations.sql",
+        "../../../../shared/src/db/migrations/0404_app_delegations.sql",
         import.meta.url,
       ),
     ).text(),
@@ -164,7 +164,7 @@ beforeAll(async () => {
   await database.exec(
     await Bun.file(
       new URL(
-        "../../../../shared/src/db/migrations/0423_app_billing_return_destination.sql",
+        "../../../../shared/src/db/migrations/0424_app_billing_return_destination.sql",
         import.meta.url,
       ),
     ).text(),

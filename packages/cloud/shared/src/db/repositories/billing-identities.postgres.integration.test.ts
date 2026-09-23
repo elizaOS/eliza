@@ -53,9 +53,9 @@ describe.skipIf(!url)("billing identity migration and erasure", () => {
     ]);
     await db.query("INSERT INTO app_billing_quotes(actor_user_id) VALUES($1)", [actor]);
     for (const tag of [
-      "0424_billing_identity_anchors",
-      "0425_billing_identity_backfill",
-      "0426_billing_identity_references",
+      "0425_billing_identity_anchors",
+      "0426_billing_identity_backfill",
+      "0427_billing_identity_references",
     ]) {
       const migration = await readFile(
         new URL(`../migrations/${tag}.sql`, import.meta.url),

@@ -77,7 +77,7 @@ describe.skipIf(!databaseUrl)("trusted application billing slots", () => {
     });
     for (const statement of (
       await readFile(
-        new URL("../../db/migrations/0415_app_billing_application_slots.sql", import.meta.url),
+        new URL("../../db/migrations/0416_app_billing_application_slots.sql", import.meta.url),
         "utf8",
       )
     ).split("--> statement-breakpoint"))

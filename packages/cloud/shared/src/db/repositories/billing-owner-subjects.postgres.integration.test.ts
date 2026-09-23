@@ -67,11 +67,11 @@ describe.skipIf(!url)("billing owner retention", () => {
       ],
     );
     for (const tag of [
-      "0437_billing_owner_subjects",
-      "0438_billing_owner_subject_guards",
-      "0439_billing_owner_subject_creation",
-      "0440_billing_owner_source_anchors",
-      "0441_billing_owner_subject_backfill",
+      "0438_billing_owner_subjects",
+      "0439_billing_owner_subject_guards",
+      "0440_billing_owner_subject_creation",
+      "0441_billing_owner_source_anchors",
+      "0442_billing_owner_subject_backfill",
     ]) {
       const migration = await readFile(
         new URL(`../migrations/${tag}.sql`, import.meta.url),

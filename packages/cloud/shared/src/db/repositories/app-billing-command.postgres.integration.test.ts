@@ -134,18 +134,18 @@ describe.skipIf(!databaseUrl)("app billing command authority PostgreSQL", () => 
       "0373_subscription_authority",
       "0383_subscription_cancellation_result",
       "0384_subscription_cancellation_undo",
-      "0434_app_billing_applied_revision",
+      "0435_app_billing_applied_revision",
       "0374_subscription_funding_transaction_uniqueness",
       "0379_subscription_account_authority",
-      "0396_app_billing_catalog",
-      "0397_app_billing_scope_records",
-      "0398_app_billing_registration_constraints",
-      "0399_subscription_app_scope_columns",
-      "0400_subscription_app_scope_constraints",
-      "0401_subscription_app_scope_guards",
-      "0402_subscription_app_source_guards",
-      "0403_app_delegations",
-      "0423_app_billing_return_destination",
+      "0397_app_billing_catalog",
+      "0398_app_billing_scope_records",
+      "0399_app_billing_registration_constraints",
+      "0400_subscription_app_scope_columns",
+      "0401_subscription_app_scope_constraints",
+      "0402_subscription_app_scope_guards",
+      "0403_subscription_app_source_guards",
+      "0404_app_delegations",
+      "0424_app_billing_return_destination",
     ]);
     await db.query("INSERT INTO organizations(id) VALUES($1)", [ids.org]);
     await db.query("INSERT INTO users(id) VALUES($1)", [ids.user]);
@@ -187,15 +187,15 @@ describe.skipIf(!databaseUrl)("app billing command authority PostgreSQL", () => 
       [ids.priorCommand],
     );
     await migrate([
-      "0404_app_billing_command_intents",
-      "0405_app_billing_command_guards",
-      "0406_app_billing_update_quotes",
-      "0407_app_billing_merchant_identity",
-      "0413_app_billing_membership_authority",
-      "0420_app_billing_administrators",
-      "0424_billing_identity_anchors",
-      "0425_billing_identity_backfill",
-      "0426_billing_identity_references",
+      "0405_app_billing_command_intents",
+      "0406_app_billing_command_guards",
+      "0407_app_billing_update_quotes",
+      "0408_app_billing_merchant_identity",
+      "0414_app_billing_membership_authority",
+      "0421_app_billing_administrators",
+      "0425_billing_identity_anchors",
+      "0426_billing_identity_backfill",
+      "0427_billing_identity_references",
     ]);
   });
   afterAll(async () => {

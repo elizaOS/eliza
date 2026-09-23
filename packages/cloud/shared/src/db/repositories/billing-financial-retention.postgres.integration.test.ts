@@ -43,7 +43,7 @@ describe.skipIf(!url)("financial history retention during erasure", () => {
     ]);
     await db.query(
       await readFile(
-        new URL("../migrations/0442_billing_financial_history_retention.sql", import.meta.url),
+        new URL("../migrations/0443_billing_financial_history_retention.sql", import.meta.url),
         "utf8",
       ),
     );
