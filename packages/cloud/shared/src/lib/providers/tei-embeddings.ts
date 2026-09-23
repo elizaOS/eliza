@@ -2,6 +2,7 @@
 import { ElizaError } from "@elizaos/common";
 import { APICallError } from "ai";
 import { z } from "zod";
+import { isKnownUnacceptedProviderError } from "../services/inference-provider-outcome";
 import { createBgeEmbeddingModel } from "./bge-embeddings";
 
 const infoSchema = z.object({
@@ -17,26 +18,35 @@ export function createTeiEmbeddingModel(baseUrl: string, apiKey: string) {
   return createBgeEmbeddingModel(
     async (values, signal) => {
       const headers = { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" };
-      const infoResponse = await fetch(`${root}/info`, { headers, signal });
-      if (!infoResponse.ok) {
-        throw new APICallError({
-          message: `TEI identity check failed with HTTP ${infoResponse.status}`,
-          url: `${root}/info`,
-          requestBodyValues: {},
-          statusCode: infoResponse.status,
-          responseHeaders: Object.fromEntries(infoResponse.headers.entries()),
+      try {
+        const infoResponse = await fetch(`${root}/info`, { headers, signal });
+        if (!infoResponse.ok) {
+          throw new APICallError({
+            message: `TEI identity check failed with HTTP ${infoResponse.status}`,
+            url: `${root}/info`,
+            requestBodyValues: {},
+            statusCode: infoResponse.status,
+            responseHeaders: Object.fromEntries(infoResponse.headers.entries()),
+          });
+        }
+        const info = infoSchema.safeParse(await infoResponse.json());
+        // Some TEI builds omit model_sha. Deployment must pin the revision there;
+        // when advertised, it must agree rather than silently naming another space.
+        if (!info.success || (info.data.model_sha && info.data.model_sha !== revision)) {
+          throw new ElizaError(
+            "TEI must serve pinned BGE-small-en-v1.5 with CLS pooling and a 512-token context",
+            {
+              code: "EMBEDDING_PROVIDER_IDENTITY_MISMATCH",
+            },
+          );
+        }
+      } catch (error) {
+        // error-policy:J2 No embedding request was dispatched by this preflight.
+        if (isKnownUnacceptedProviderError(error)) throw error;
+        throw new ElizaError("TEI identity preflight failed before inference", {
+          code: "EMBEDDING_PROVIDER_PREFLIGHT_FAILED",
+          cause: error,
         });
-      }
-      const info = infoSchema.safeParse(await infoResponse.json());
-      // Some TEI builds omit model_sha. Deployment must pin the revision there;
-      // when advertised, it must agree rather than silently naming another space.
-      if (!info.success || (info.data.model_sha && info.data.model_sha !== revision)) {
-        throw new ElizaError(
-          "TEI must serve pinned BGE-small-en-v1.5 with CLS pooling and a 512-token context",
-          {
-            code: "EMBEDDING_PROVIDER_IDENTITY_MISMATCH",
-          },
-        );
       }
       const response = await fetch(`${root}/embed`, {
         method: "POST",
