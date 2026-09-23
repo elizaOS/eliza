@@ -135,7 +135,7 @@ describe("useCloudState Android hosted auth", () => {
   });
 
   it("cancels a dismissed Custom Tab and permits an immediate retry", async () => {
-    const { result } = renderHook(() => useCloudState(params()));
+    const { result } = renderHook(useCloudState, { initialProps: params() });
 
     let first: Promise<void> | undefined;
     act(() => {
@@ -172,9 +172,9 @@ describe("useCloudState Android hosted auth", () => {
 
   it("preserves account-switch intent across hook recreation", async () => {
     harness.switchAccountPending = true;
-    const first = renderHook(() => useCloudState(params()));
+    const first = renderHook(useCloudState, { initialProps: params() });
     first.unmount();
-    const recreated = renderHook(() => useCloudState(params()));
+    const recreated = renderHook(useCloudState, { initialProps: params() });
 
     let login: Promise<void> | undefined;
     act(() => {
@@ -194,7 +194,7 @@ describe("useCloudState Android hosted auth", () => {
   });
 
   it("does not cancel a callback that starts before the browser-close grace expires", async () => {
-    const { result } = renderHook(() => useCloudState(params()));
+    const { result } = renderHook(useCloudState, { initialProps: params() });
 
     let login: Promise<void> | undefined;
     act(() => {
@@ -237,7 +237,7 @@ describe("useCloudState Android hosted auth", () => {
 
   it("restores a committed token without depending on pending-login cleanup", async () => {
     harness.stewardToken = "durable-steward-token";
-    const { result } = renderHook(() => useCloudState(params()));
+    const { result } = renderHook(useCloudState, { initialProps: params() });
 
     await act(async () => {
       for (let index = 0; index < 10; index += 1) await Promise.resolve();
@@ -254,7 +254,7 @@ describe("useCloudState Android hosted auth", () => {
     harness.directCloudRequest.mockRejectedValueOnce(
       new Error("control plane unavailable"),
     );
-    const { result } = renderHook(() => useCloudState(params()));
+    const { result } = renderHook(useCloudState, { initialProps: params() });
 
     await act(async () => {
       for (let index = 0; index < 10; index += 1) await Promise.resolve();
@@ -273,7 +273,7 @@ describe("useCloudState Android hosted auth", () => {
     harness.begin.mockRejectedValueOnce(
       new Error("Eliza Cloud sign-in is not configured for this app yet."),
     );
-    const { result } = renderHook(() => useCloudState(params()));
+    const { result } = renderHook(useCloudState, { initialProps: params() });
 
     let rejected: unknown;
     await act(async () => {

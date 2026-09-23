@@ -642,11 +642,9 @@ async function prepareScenarioState(
     await ensureRealAppRegistryService(runtime);
     registerScenarioApiRoutes(runtime);
     registerGeneratedRouteModule();
-    await registerPluginViews(
-      appControlPlugin,
-      APP_CONTROL_PLUGIN_DIR,
-      ctx.runtime as never,
-    );
+    await registerPluginViews(runtime, appControlPlugin, {
+      pluginDir: APP_CONTROL_PLUGIN_DIR,
+    });
     return undefined;
   } catch (err) {
     restoreStateDirEnv();

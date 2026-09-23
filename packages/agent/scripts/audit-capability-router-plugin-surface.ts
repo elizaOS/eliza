@@ -44,6 +44,9 @@ const localOnly = new Set([
   "mode",
   "remote",
   "adapter",
+  // Database admission is evaluated by the host loading the plugin. Remote
+  // workers own their storage backend; this is not a mirrored RPC capability.
+  "databaseBackends",
   "tests",
   "dependencies",
   "testDependencies",
