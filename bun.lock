@@ -39,7 +39,7 @@
         "hono": "^4.13.1",
         "node-edge-tts": "^1.2.9",
         "pg": "^8.23.0",
-        "tailwind-merge": "3.4.0",
+        "tailwind-merge": "3.7.0",
         "zod": "^4.4.3",
       },
       "devDependencies": {
@@ -947,7 +947,7 @@
         "react": "19.2.7",
         "react-dom": "19.2.7",
         "react-router-dom": "^7.10.0",
-        "tailwind-merge": "^3.4.0",
+        "tailwind-merge": "^3.7.0",
         "three": "^0.184.0",
         "viem": "2.55.17",
       },
@@ -1239,7 +1239,7 @@
         "recharts": "^3.8.1",
         "refractor": "^5.0.0",
         "sonner": "^2.0.7",
-        "tailwind-merge": "^3.4.0",
+        "tailwind-merge": "^3.7.0",
         "tailwindcss": "^4.3.1",
         "thinking-orbs": "0.2.0",
         "three": "^0.184.0",
@@ -9728,7 +9728,7 @@
 
     "tagged-tag": ["tagged-tag@1.0.0", "", {}, "sha512-yEFYrVhod+hdNyx7g5Bnkkb0G6si8HJurOoOEgC8B/O0uXLHlaey/65KRv6cuWBNhBgHKAROVpc7QyYqE5gFng=="],
 
-    "tailwind-merge": ["tailwind-merge@3.4.0", "", {}, "sha512-uSaO4gnW+b3Y2aWoWfFpX62vn2sR3skfhbjsEnaBI81WD1wBLlHZe5sWf0AqjksNdYTbGBEd0UasQMT3SNV15g=="],
+    "tailwind-merge": ["tailwind-merge@3.7.0", "", {}, "sha512-XPPUyAc+cvspz3lHTcR/QgPfW2A0lv/xQNIjX3HGhLR+Nq2lHaLq5MtTesHn8GUr3W3DguT2KT5x3NVgRtYwmA=="],
 
     "tailwindcss": ["tailwindcss@4.3.3", "", {}, "sha512-gOhV3P7ufE62QDGg1zVaTgCR+EtPv92k2nIhVcVKcLmxT1sUBsQGhnZj175j+MqRt4zLF7ic+sCYjfhxMxj7YQ=="],
 
