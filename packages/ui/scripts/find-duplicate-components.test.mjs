@@ -5,9 +5,10 @@
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   ATOMS,
   buildInventory,
@@ -15,6 +16,42 @@ import {
   listMaintainedSourceFiles,
   renderMarkdown,
 } from "./find-duplicate-components.mjs";
+
+const reactElementModule =
+  'import { createElement } from "react";\nexport const Probe = () => createElement("div");\n';
+const jsxModule = "export const Probe = () => <div />;\n";
+
+async function isolatedInventory() {
+  const root = fs.realpathSync(
+    fs.mkdtempSync(path.join(tmpdir(), "ui-inventory-")),
+  );
+  const scripts = path.join(root, "packages/ui/scripts");
+  const source = path.join(root, "packages/ui/src");
+  fs.mkdirSync(scripts, { recursive: true });
+  fs.mkdirSync(source, { recursive: true });
+  fs.mkdirSync(path.join(root, "plugins"));
+  fs.symlinkSync(
+    fileURLToPath(new URL("../node_modules", import.meta.url)),
+    path.join(root, "node_modules"),
+    "junction",
+  );
+  for (const name of [
+    "find-duplicate-components.mjs",
+    "component-inventory-decisions.json",
+  ]) {
+    fs.copyFileSync(new URL(name, import.meta.url), path.join(scripts, name));
+  }
+  const scanner = await import(
+    pathToFileURL(path.join(scripts, "find-duplicate-components.mjs")).href
+  );
+  return { root, source, ...scanner };
+}
+
+function writeProbe(file, contents) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, contents);
+  return file;
+}
 
 test("a generated declaration removed during a concurrent build is skipped", () => {
   assert.equal(
@@ -154,6 +191,114 @@ test("Android build output does not duplicate maintained React source", () => {
     assert.equal(files.includes(bundledSource), false);
   } finally {
     fs.rmSync(output, { recursive: true, force: true });
+  }
+});
+
+test("JavaScript emitted beside its TypeScript source is outside maintained source", async () => {
+  // Reproduces the neighboring-build race inside an isolated fixture: an
+  // authored .tsx input, then the .js and .jsx a sibling package's compile
+  // would emit beside it. The fixture never depends on the real source tree
+  // being un-compiled, so the suite stays green when that emit has already
+  // happened, which is the very state this boundary is meant to tolerate.
+  const {
+    root,
+    source: probeRoot,
+    hasTypedSourceSibling,
+    isMaintainedSource,
+    listMaintainedSourceFiles,
+  } = await isolatedInventory();
+  try {
+    const authored = writeProbe(
+      path.join(probeRoot, "config-field.helpers.tsx"),
+      jsxModule,
+    );
+    const before = listMaintainedSourceFiles();
+    assert.ok(
+      before.includes(authored),
+      "the authored input must be maintained",
+    );
+
+    const emitted = writeProbe(
+      path.join(probeRoot, "config-field.helpers.js"),
+      reactElementModule,
+    );
+    const emittedJsx = writeProbe(
+      path.join(probeRoot, "config-field.helpers.jsx"),
+      jsxModule,
+    );
+    assert.equal(hasTypedSourceSibling(emitted), true);
+    assert.equal(hasTypedSourceSibling(emittedJsx), true);
+    assert.equal(isMaintainedSource(emitted), false);
+    assert.equal(isMaintainedSource(emittedJsx), false);
+    assert.equal(isMaintainedSource(authored), true);
+    assert.deepEqual(
+      listMaintainedSourceFiles(),
+      before,
+      "the maintained list must not depend on whether a neighbor has compiled",
+    );
+
+    fs.rmSync(emitted, { force: true });
+    fs.rmSync(emittedJsx, { force: true });
+    assert.deepEqual(listMaintainedSourceFiles(), before);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("authored JavaScript without a typed sibling stays maintained", async () => {
+  const {
+    root,
+    source: probeRoot,
+    hasTypedSourceSibling,
+    isMaintainedSource,
+    listMaintainedSourceFiles,
+  } = await isolatedInventory();
+  try {
+    const authoredJsx = writeProbe(
+      path.join(probeRoot, "authored.jsx"),
+      jsxModule,
+    );
+    const authoredJs = writeProbe(
+      path.join(probeRoot, "authored-element.js"),
+      reactElementModule,
+    );
+    const declaredJs = writeProbe(
+      path.join(probeRoot, "declared.js"),
+      reactElementModule,
+    );
+    writeProbe(
+      path.join(probeRoot, "declared.d.ts"),
+      "export declare const Probe: () => unknown;\n",
+    );
+    writeProbe(path.join(probeRoot, "emitted.ts"), "export const x = 1;\n");
+    const emittedJs = writeProbe(
+      path.join(probeRoot, "emitted.js"),
+      reactElementModule,
+    );
+    writeProbe(path.join(probeRoot, "emitted-view.tsx"), jsxModule);
+    const emittedJsx = writeProbe(
+      path.join(probeRoot, "emitted-view.jsx"),
+      jsxModule,
+    );
+
+    for (const file of [authoredJsx, authoredJs, declaredJs]) {
+      assert.equal(hasTypedSourceSibling(file), false, file);
+      assert.equal(isMaintainedSource(file), true, file);
+    }
+    for (const file of [emittedJs, emittedJsx]) {
+      assert.equal(hasTypedSourceSibling(file), true, file);
+      assert.equal(isMaintainedSource(file), false, file);
+    }
+
+    const files = listMaintainedSourceFiles();
+    for (const file of [authoredJsx, authoredJs, declaredJs]) {
+      assert.ok(files.includes(file), `${file} must stay maintained`);
+    }
+    for (const file of [emittedJs, emittedJsx]) {
+      assert.equal(files.includes(file), false, `${file} must be excluded`);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
