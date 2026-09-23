@@ -7,19 +7,19 @@ import { describe, expect, it } from "vitest";
 import { userAuthorizedCalendarAttendees } from "./calendar-handler";
 
 describe("userAuthorizedCalendarAttendees", () => {
-  it("drops a guest the user never mentioned (live 2026-09-16: an invented example.invalid address)", () => {
-    expect(
+  it("rejects unverified proposals without silently omitting an attendee", () => {
+    expect(() =>
       userAuthorizedCalendarAttendees(
         [{ email: "shawmakesmagic@example.invalid" }],
         ["add a barber appointment friday at 3pm to my calendar"],
       ),
-    ).toBeUndefined();
-    expect(
+    ).toThrow("email address is not verified");
+    expect(() =>
       userAuthorizedCalendarAttendees(
         [{ email: "dana@acme.com", displayName: "Dana" }],
         ["add a dentist appointment friday at 3pm"],
       ),
-    ).toBeUndefined();
+    ).toThrow("email address is not verified");
   });
 
   it("keeps explicit addresses and pauses unverified named guests", () => {

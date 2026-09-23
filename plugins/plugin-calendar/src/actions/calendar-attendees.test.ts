@@ -10,27 +10,19 @@ import {
 } from "./calendar-handler.ts";
 
 describe("normalizeCalendarAttendees (planner-arg sanitization)", () => {
-  it("drops a planner-invented bare-name attendee instead of failing the create (live regression)", () => {
-    const out = normalizeCalendarAttendees({
-      attendees: [{ email: "dana", displayName: "Dana", optional: false }],
-    });
-    expect(out).toBeUndefined();
-  });
-
-  it("keeps valid-email attendees and drops invalid ones from a mixed list", () => {
-    const out = normalizeCalendarAttendees({
-      attendees: [
-        { email: "dana", displayName: "Dana" },
-        { email: "sam@acme.co", displayName: "Sam" },
-        "marco",
-        "polo@acme.co",
-      ],
-    });
-    expect(out).toEqual([
-      { email: "sam@acme.co", displayName: "Sam" },
-      { email: "polo@acme.co" },
-    ]);
-  });
+  it.each([
+    [{ email: "dana", displayName: "Dana", optional: false }],
+    [{ email: "sam@acme.co", displayName: "Sam" }, "marco"],
+    [{ displayName: "Sam" }],
+    [null],
+  ])(
+    "rejects unresolved proposals without dropping guests from the list: %j",
+    (...attendees) => {
+      expect(() => normalizeCalendarAttendees({ attendees })).toThrow(
+        "email address is not verified",
+      );
+    },
+  );
 
   it("preserves explicitly supplied addresses without guessing whether a domain was invented", () => {
     const attendees = [

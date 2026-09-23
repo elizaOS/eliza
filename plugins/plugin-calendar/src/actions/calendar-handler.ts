@@ -4611,13 +4611,21 @@ export function attendeeEmailAccepted(email: string): boolean {
 const RESERVED_EXAMPLE_DOMAIN_PATTERN =
   /(?:^|\.)(?:example\.(?:com|net|org)|example|invalid|test|localhost)$/i;
 
-/** Planner-supplied names do not establish recipient addresses. Keep explicit
- * address evidence; a named guest without it needs resolution before writing. */
+/** Reject unresolved attendees before any calendar write. */
+function calendarAttendeeIdentityRequired(): CalendarServiceError {
+  return new CalendarServiceError(
+    400,
+    "No event was created. A proposed attendee's email address is not verified. Ask whether that guest is intended and for their exact email address, or confirm that no guest should be included; do not guess an address or silently omit an attendee.",
+    "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
+  );
+}
+
+/** Every proposed attendee needs explicit address evidence before creating an event. */
 export function userAuthorizedCalendarAttendees(
   attendees: CreateLifeOpsCalendarEventAttendee[] | undefined,
   userTexts: ReadonlyArray<string | null | undefined>,
 ): CreateLifeOpsCalendarEventAttendee[] | undefined {
-  if (!attendees) return undefined;
+  if (!attendees?.length) return undefined;
   const spoken = userTexts
     .filter((text): text is string => typeof text === "string")
     .join("\n")
@@ -4628,30 +4636,18 @@ export function userAuthorizedCalendarAttendees(
       .map((token) => token.replace(/^[._+-]+|[._+-]+$/g, ""))
       .filter((token) => token.length > 0),
   );
-  const kept = attendees.filter((attendee) => {
+  for (const attendee of attendees) {
     const email = attendee.email.trim().toLowerCase();
     const at = email.lastIndexOf("@");
-    if (at <= 0) return false;
-    const explicitAddress = words.has(email);
-    const reserved = RESERVED_EXAMPLE_DOMAIN_PATTERN.test(email.slice(at + 1));
-    if (explicitAddress && !reserved) return true;
-    const mailbox = email.slice(0, at);
-    const nameParts =
-      attendee.displayName?.trim().toLowerCase().split(/\s+/).filter(Boolean) ??
-      [];
-    const named =
-      (mailbox.length >= 3 && words.has(mailbox)) ||
-      (nameParts.length > 0 && nameParts.every((part) => words.has(part)));
-    if (explicitAddress || named) {
-      throw new CalendarServiceError(
-        400,
-        "No event was created. The requested guest's email address is not verified. Ask for their exact email address before creating the event; do not guess an address or omit the guest.",
-        "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
-      );
+    if (
+      at <= 0 ||
+      !words.has(email) ||
+      RESERVED_EXAMPLE_DOMAIN_PATTERN.test(email.slice(at + 1))
+    ) {
+      throw calendarAttendeeIdentityRequired();
     }
-    return false;
-  });
-  return kept.length > 0 ? kept : undefined;
+  }
+  return attendees;
 }
 
 export function normalizeCalendarAttendees(
@@ -4659,32 +4655,33 @@ export function normalizeCalendarAttendees(
 ): CreateLifeOpsCalendarEventAttendee[] | undefined {
   const attendees = detailArray(details, "attendees");
   if (!attendees) {
+    if (details?.attendees != null) throw calendarAttendeeIdentityRequired();
     return undefined;
   }
-  const mapped: Array<CreateLifeOpsCalendarEventAttendee | null> =
-    attendees.map((attendee) => {
+  const normalized = attendees.map(
+    (attendee): CreateLifeOpsCalendarEventAttendee => {
       if (typeof attendee === "string") {
         const email = attendee.trim();
-        return attendeeEmailAccepted(email) ? { email } : null;
+        if (!attendeeEmailAccepted(email))
+          throw calendarAttendeeIdentityRequired();
+        return { email };
       }
       if (
         !attendee ||
         typeof attendee !== "object" ||
         Array.isArray(attendee)
       ) {
-        return null;
+        throw calendarAttendeeIdentityRequired();
       }
       const record = attendee as Record<string, unknown>;
-      const email =
-        typeof record.email === "string" &&
-        attendeeEmailAccepted(record.email.trim())
-          ? record.email.trim()
-          : null;
-      if (!email) {
-        return null;
+      if (
+        typeof record.email !== "string" ||
+        !attendeeEmailAccepted(record.email.trim())
+      ) {
+        throw calendarAttendeeIdentityRequired();
       }
       return {
-        email,
+        email: record.email.trim(),
         displayName:
           typeof record.displayName === "string" &&
           record.displayName.trim().length > 0
@@ -4693,10 +4690,7 @@ export function normalizeCalendarAttendees(
         optional:
           typeof record.optional === "boolean" ? record.optional : undefined,
       };
-    });
-  const normalized = mapped.filter(
-    (attendee): attendee is CreateLifeOpsCalendarEventAttendee =>
-      attendee !== null,
+    },
   );
   return normalized.length > 0 ? normalized : undefined;
 }

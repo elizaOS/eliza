@@ -350,7 +350,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     });
   });
 
-  it("creates without a guest the user never named and keeps the receipt self-verified (live 2026-09-16)", async () => {
+  it("rejects an unverified proposed guest before creating an event", async () => {
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
       runJsonModel: vi.fn(async ({ actionType }) =>
@@ -395,21 +395,11 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
         },
       },
     );
-    expect(result?.success, JSON.stringify(result)).toBe(true);
-    const created = (
-      result?.data as
-        | { event?: { attendees: unknown[]; startAt: string; endAt: string } }
-        | undefined
-    )?.event;
-    expect(created?.attendees).toEqual([]);
-    expect(created).toMatchObject({
-      startAt: "2026-09-18T19:00:00.000Z",
-      endAt: "2026-09-18T20:00:00.000Z",
-    });
-    expect(result?.modelReplyRequired, JSON.stringify(result)).toBe(true);
-    expect((result?.data?.replyContext as { facts: string })?.facts).toBe(
-      "Created “Barber appointment” for Friday, Sep 18 at 3pm EDT.",
-    );
+    expect(result?.success).toBe(false);
+    expect(JSON.stringify(result)).toContain("CALENDAR_ATTENDEE_IDENTITY_REQUIRED");
+    expect(
+      (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
+    ).toEqual([]);
   });
 
   it("pauses a named guest with an unverified address before any calendar write", async () => {
