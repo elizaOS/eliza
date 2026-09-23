@@ -362,7 +362,7 @@ describe("embedding warmup model selection", () => {
     expect(process.env.LOCAL_EMBEDDING_MODEL_REPO).toBe("owner/reused");
     expect(process.env.LOCAL_EMBEDDING_DIMENSIONS).toBe("384");
     expect(process.env.LOCAL_EMBEDDING_CONTEXT_SIZE).toBe("512");
-    expect(process.env.LOCAL_EMBEDDING_GPU_LAYERS).toBe("auto");
+    expect(process.env.LOCAL_EMBEDDING_GPU_LAYERS).toBeUndefined();
     expect(process.env.LOCAL_EMBEDDING_USE_MMAP).toBe("false");
     expect(mocks.ensureModel.mock.calls[0]?.slice(0, 4)).toEqual([
       DEFAULT_MODELS_DIR,
@@ -370,6 +370,22 @@ describe("embedding warmup model selection", () => {
       "reused.gguf",
       false,
     ]);
+  });
+
+  it("preserves an explicit CPU choice when warmup reuses a GPU-capable model", async () => {
+    process.env.LOCAL_EMBEDDING_GPU_LAYERS = "0";
+    mocks.embeddingGgufFilePresent.mockReturnValue(false);
+    mocks.findExistingEmbeddingModelForWarmupReuse.mockReturnValue({
+      model: "reused.gguf",
+      modelRepo: "owner/reused",
+      dimensions: 384,
+      contextSize: 512,
+      gpuLayers: "auto",
+    });
+    expect(startDeferredLocalEmbeddingWarmup()).toBe(true);
+    await vi.waitFor(() => expect(mocks.ensureModel).toHaveBeenCalledOnce());
+    expect(process.env.LOCAL_EMBEDDING_GPU_LAYERS).toBe("0");
+    expect(process.env.LOCAL_EMBEDDING_USE_MMAP).toBe("true");
   });
 
   it("sets mmap true when the reused candidate is not auto GPU layers", async () => {
@@ -386,7 +402,7 @@ describe("embedding warmup model selection", () => {
       expect(mocks.ensureModel).toHaveBeenCalledOnce();
     });
     expect(process.env.LOCAL_EMBEDDING_USE_MMAP).toBe("true");
-    expect(process.env.LOCAL_EMBEDDING_GPU_LAYERS).toBe("0");
+    expect(process.env.LOCAL_EMBEDDING_GPU_LAYERS).toBeUndefined();
   });
 
   it("does not reuse when reuse is disabled or no candidate exists", async () => {

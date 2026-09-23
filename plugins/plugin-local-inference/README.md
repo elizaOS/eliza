@@ -274,8 +274,10 @@ raise `KOKORO_IPA_ABI_REQUIRED`. Rebuild the fused library to resolve that error
 Audio allocation exhaustion is reported as `KOKORO_AUDIO_CAPACITY_EXCEEDED`;
 a clipped waveform is never returned as a complete phrase.
 
-Canonical desktop BGE contexts default to CPU, independently of the global text
-model GPU setting. `LOCAL_EMBEDDING_GPU_LAYERS=0` forces CPU; a nonnegative integer,
+Canonical desktop BGE contexts use the detected accelerator independently of the
+global text model GPU setting, and admit it only after semantic verification.
+An absent override permits a rejected vector backend to fall back to a separately
+verified CPU context. Explicit settings never silently change backend. `LOCAL_EMBEDDING_GPU_LAYERS=0` forces CPU; a nonnegative integer,
 `auto`, or `max` explicitly selects offload. The native library must expose
 `eliza_inference_create_with_options`; older libraries fail explicitly instead
 of ignoring the selection. BGE contexts run a semantic separation probe before
