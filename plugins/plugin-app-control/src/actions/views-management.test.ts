@@ -245,6 +245,94 @@ function createNotesPlannerAuthorityAction() {
 	});
 }
 
+function createRegisteredLayoutAction() {
+	return createViewsAction({
+		client: {
+			listViews: vi.fn(async () => [
+				view({
+					id: "chat",
+					label: "Chat",
+					path: "/chat",
+				}),
+				view({
+					id: "settings",
+					label: "Settings",
+					path: "/settings",
+				}),
+				view({
+					id: "orchestrator",
+					label: "Orchestrator",
+					path: "/orchestrator",
+				}),
+				view({
+					id: "views-manager",
+					label: "Views",
+					path: "/views",
+					tags: ["views-manager"],
+				}),
+			]),
+			getCurrentView: vi.fn(async () => null),
+		},
+		hasOwnerAccess: vi.fn(async () => true),
+	});
+}
+
+function createNotesCalendarPlacementAction() {
+	return createViewsAction({
+		client: {
+			listViews: vi.fn(async () => [
+				view({ id: "notes", label: "Notes", path: "/notes" }),
+				view({
+					id: "calendar",
+					label: "Calendar",
+					path: "/calendar",
+					tags: ["calendar", "calender"],
+				}),
+			]),
+			getCurrentView: vi.fn(async () => ({
+				viewId: "notes",
+				viewLabel: "Notes",
+				viewPath: "/notes",
+				viewType: "gui",
+			})),
+		},
+		hasOwnerAccess: vi.fn(async () => true),
+	});
+}
+
+function createCurrentSplitAction() {
+	return createViewsAction({
+		client: {
+			listViews: vi.fn(async () => [
+				view({
+					id: "plugins-page",
+					label: "Plugins",
+					path: "/apps/plugins",
+				}),
+				view({ id: "calendar", label: "Calendar", path: "/calendar" }),
+			]),
+			getCurrentView: vi.fn(async () => ({
+				viewId: "plugins-page",
+				viewLabel: "Plugins",
+				viewPath: "/apps/plugins",
+				viewType: "gui",
+				action: "split-view",
+				views: ["plugins-page", "calendar"],
+				layout: "horizontal",
+			})),
+		},
+		hasOwnerAccess: vi.fn(async () => true),
+	});
+}
+
+function navigationResponse() {
+	return {
+		ok: true,
+		status: 200,
+		json: async () => ({ ok: true }),
+	} as Response;
+}
+
 function createRuntime({
 	tasks = [],
 	modelText = "name: remote-ledger\ndisplayName: Remote Ledger",
@@ -386,11 +474,7 @@ describe("view management actions", () => {
 
 	it("authenticates direct manager and broadcast loopback requests", async () => {
 		vi.stubEnv("ELIZA_API_TOKEN", "views-management-loopback-token");
-		vi.mocked(globalThis.fetch).mockResolvedValue({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValue(navigationResponse());
 		const { runtime } = createRuntime();
 		const action = createViewsAction({
 			hasOwnerAccess: vi.fn(async () => true),
@@ -1323,16 +1407,8 @@ describe("view management actions", () => {
 			hasOwnerAccess: vi.fn(async () => true),
 		});
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 		const result = await action.handler(
 			runtime as never,
@@ -1392,36 +1468,12 @@ describe("view management actions", () => {
 		});
 
 		vi.mocked(globalThis.fetch)
-			.mockResolvedValueOnce({
-				ok: true,
-				status: 200,
-				json: async () => ({ ok: true }),
-			} as Response)
-			.mockResolvedValueOnce({
-				ok: true,
-				status: 200,
-				json: async () => ({ ok: true }),
-			} as Response)
-			.mockResolvedValueOnce({
-				ok: true,
-				status: 200,
-				json: async () => ({ ok: true }),
-			} as Response)
-			.mockResolvedValueOnce({
-				ok: true,
-				status: 200,
-				json: async () => ({ ok: true }),
-			} as Response)
-			.mockResolvedValueOnce({
-				ok: true,
-				status: 200,
-				json: async () => ({ ok: true }),
-			} as Response)
-			.mockResolvedValueOnce({
-				ok: true,
-				status: 200,
-				json: async () => ({ ok: true }),
-			} as Response);
+			.mockResolvedValueOnce(navigationResponse())
+			.mockResolvedValueOnce(navigationResponse())
+			.mockResolvedValueOnce(navigationResponse())
+			.mockResolvedValueOnce(navigationResponse())
+			.mockResolvedValueOnce(navigationResponse())
+			.mockResolvedValueOnce(navigationResponse());
 
 		const windowResult = await action.handler(
 			runtime as never,
@@ -1608,16 +1660,8 @@ describe("view management actions", () => {
 
 		// Two layout calls (split, then tile) → queue two navigate responses.
 		vi.mocked(globalThis.fetch)
-			.mockResolvedValueOnce({
-				ok: true,
-				status: 200,
-				json: async () => ({ ok: true }),
-			} as Response)
-			.mockResolvedValueOnce({
-				ok: true,
-				status: 200,
-				json: async () => ({ ok: true }),
-			} as Response);
+			.mockResolvedValueOnce(navigationResponse())
+			.mockResolvedValueOnce(navigationResponse());
 
 		const splitResult = await action.handler(
 			runtime as never,
@@ -1746,11 +1790,7 @@ describe("view management actions", () => {
 				},
 				hasOwnerAccess: vi.fn(async () => true),
 			});
-			vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-				ok: true,
-				status: 200,
-				json: async () => ({ ok: true }),
-			} as Response);
+			vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 			const result = await action.handler(
 				runtime as never,
@@ -1798,11 +1838,7 @@ describe("view management actions", () => {
 				},
 				hasOwnerAccess: vi.fn(async () => true),
 			});
-			vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-				ok: true,
-				status: 200,
-				json: async () => ({ ok: true }),
-			} as Response);
+			vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 			const result = await action.handler(
 				runtime as never,
 				message(
@@ -1835,35 +1871,7 @@ describe("view management actions", () => {
 	it("routes existing registered view layout requests without simple-view targets", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [
-					view({
-						id: "chat",
-						label: "Chat",
-						path: "/chat",
-					}),
-					view({
-						id: "settings",
-						label: "Settings",
-						path: "/settings",
-					}),
-					view({
-						id: "orchestrator",
-						label: "Orchestrator",
-						path: "/orchestrator",
-					}),
-					view({
-						id: "views-manager",
-						label: "Views",
-						path: "/views",
-						tags: ["views-manager"],
-					}),
-				]),
-				getCurrentView: vi.fn(async () => null),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
+		const action = createRegisteredLayoutAction();
 
 		// This test exercises four layout handler calls (split, tile, planner-subset
 		// tile, split-mode subset tile); each issues one navigate POST, so queue four
@@ -1872,26 +1880,10 @@ describe("view management actions", () => {
 		// passed only because the helper hardcoded success:true regardless of the
 		// transport result, which is the bug this change fixes.)
 		vi.mocked(globalThis.fetch)
-			.mockResolvedValueOnce({
-				ok: true,
-				status: 200,
-				json: async () => ({ ok: true }),
-			} as Response)
-			.mockResolvedValueOnce({
-				ok: true,
-				status: 200,
-				json: async () => ({ ok: true }),
-			} as Response)
-			.mockResolvedValueOnce({
-				ok: true,
-				status: 200,
-				json: async () => ({ ok: true }),
-			} as Response)
-			.mockResolvedValueOnce({
-				ok: true,
-				status: 200,
-				json: async () => ({ ok: true }),
-			} as Response);
+			.mockResolvedValueOnce(navigationResponse())
+			.mockResolvedValueOnce(navigationResponse())
+			.mockResolvedValueOnce(navigationResponse())
+			.mockResolvedValueOnce(navigationResponse());
 
 		const splitResult = await action.handler(
 			runtime as never,
@@ -2015,41 +2007,9 @@ describe("view management actions", () => {
 	it("uses the composed user_request block for layout target extraction", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [
-					view({
-						id: "chat",
-						label: "Chat",
-						path: "/chat",
-					}),
-					view({
-						id: "settings",
-						label: "Settings",
-						path: "/settings",
-					}),
-					view({
-						id: "orchestrator",
-						label: "Orchestrator",
-						path: "/orchestrator",
-					}),
-					view({
-						id: "views-manager",
-						label: "Views",
-						path: "/views",
-						tags: ["views-manager"],
-					}),
-				]),
-				getCurrentView: vi.fn(async () => null),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
+		const action = createRegisteredLayoutAction();
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 		const result = await action.handler(
 			runtime as never,
@@ -2102,11 +2062,7 @@ describe("view management actions", () => {
 			hasOwnerAccess: vi.fn(async () => true),
 		});
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 		const result = await action.handler(
 			runtime as never,
@@ -2160,11 +2116,7 @@ describe("view management actions", () => {
 			hasOwnerAccess: vi.fn(async () => true),
 		});
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 		const result = await action.handler(
 			runtime as never,
@@ -2221,11 +2173,7 @@ describe("view management actions", () => {
 			hasOwnerAccess: vi.fn(async () => true),
 		});
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 		const result = await action.handler(
 			runtime as never,
@@ -2404,11 +2352,7 @@ describe("view management actions", () => {
 			hasOwnerAccess: vi.fn(async () => true),
 		});
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 		const result = await action.handler(
 			runtime as never,
@@ -2457,11 +2401,7 @@ describe("view management actions", () => {
 			hasOwnerAccess: vi.fn(async () => true),
 		});
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 		const result = await action.handler(
 			runtime as never,
@@ -2679,11 +2619,7 @@ describe("view management actions", () => {
 			hasOwnerAccess: vi.fn(async () => true),
 		});
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 		const result = await action.handler(
 			runtime as never,
@@ -2721,11 +2657,7 @@ describe("view management actions", () => {
 			hasOwnerAccess: vi.fn(async () => true),
 		});
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 		const result = await action.handler(
 			runtime as never,
@@ -2764,11 +2696,7 @@ describe("view management actions", () => {
 			hasOwnerAccess: vi.fn(async () => true),
 		});
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 		const result = await action.handler(
 			runtime as never,
@@ -4198,32 +4126,9 @@ describe("view management actions", () => {
 	it('splits a single mentioned view "next to" the current view', async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [
-					view({ id: "notes", label: "Notes", path: "/notes" }),
-					view({
-						id: "calendar",
-						label: "Calendar",
-						path: "/calendar",
-						tags: ["calendar", "calender"],
-					}),
-				]),
-				getCurrentView: vi.fn(async () => ({
-					viewId: "notes",
-					viewLabel: "Notes",
-					viewPath: "/notes",
-					viewType: "gui",
-				})),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
+		const action = createNotesCalendarPlacementAction();
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 		const result = await action.handler(
 			runtime as never,
@@ -4255,32 +4160,9 @@ describe("view management actions", () => {
 	it("splits a placed view against the current view for incremental layout requests", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [
-					view({ id: "notes", label: "Notes", path: "/notes" }),
-					view({
-						id: "calendar",
-						label: "Calendar",
-						path: "/calendar",
-						tags: ["calendar", "calender"],
-					}),
-				]),
-				getCurrentView: vi.fn(async () => ({
-					viewId: "notes",
-					viewLabel: "Notes",
-					viewPath: "/notes",
-					viewType: "gui",
-				})),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
+		const action = createNotesCalendarPlacementAction();
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 		const result = await action.handler(
 			runtime as never,
@@ -4341,11 +4223,7 @@ describe("view management actions", () => {
 			hasOwnerAccess: vi.fn(async () => true),
 		});
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 		const result = await action.handler(
 			runtime as never,
@@ -4385,34 +4263,9 @@ describe("view management actions", () => {
 	it("reuses current split views for layout-only split follow-ups", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [
-					view({
-						id: "plugins-page",
-						label: "Plugins",
-						path: "/apps/plugins",
-					}),
-					view({ id: "calendar", label: "Calendar", path: "/calendar" }),
-				]),
-				getCurrentView: vi.fn(async () => ({
-					viewId: "plugins-page",
-					viewLabel: "Plugins",
-					viewPath: "/apps/plugins",
-					viewType: "gui",
-					action: "split-view",
-					views: ["plugins-page", "calendar"],
-					layout: "horizontal",
-				})),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
+		const action = createCurrentSplitAction();
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 		const result = await action.handler(
 			runtime as never,
@@ -4448,34 +4301,9 @@ describe("view management actions", () => {
 	it("reuses current split views for text-only layout follow-ups", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
-		const action = createViewsAction({
-			client: {
-				listViews: vi.fn(async () => [
-					view({
-						id: "plugins-page",
-						label: "Plugins",
-						path: "/apps/plugins",
-					}),
-					view({ id: "calendar", label: "Calendar", path: "/calendar" }),
-				]),
-				getCurrentView: vi.fn(async () => ({
-					viewId: "plugins-page",
-					viewLabel: "Plugins",
-					viewPath: "/apps/plugins",
-					viewType: "gui",
-					action: "split-view",
-					views: ["plugins-page", "calendar"],
-					layout: "horizontal",
-				})),
-			},
-			hasOwnerAccess: vi.fn(async () => true),
-		});
+		const action = createCurrentSplitAction();
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 		const result = await action.handler(
 			runtime as never,
@@ -4535,11 +4363,7 @@ describe("view management actions", () => {
 			hasOwnerAccess: vi.fn(async () => true),
 		});
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 		const result = await action.handler(
 			runtime as never,
@@ -4592,11 +4416,7 @@ describe("view management actions", () => {
 			hasOwnerAccess: vi.fn(async () => true),
 		});
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(navigationResponse());
 
 		const result = await action.handler(
 			runtime as never,
