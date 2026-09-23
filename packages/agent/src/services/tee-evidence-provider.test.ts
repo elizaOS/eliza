@@ -53,6 +53,27 @@ describe("TEE evidence-provider seam", () => {
     clearTeeEvidenceProviderFactory();
   });
 
+  it.each(["", "not-json", "{}"])(
+    "rejects malformed explicit dstack configuration %j",
+    (value) => {
+      expect(() =>
+        resolveTeeEvidenceProvider({
+          env: { ELIZA_DSTACK_EVIDENCE_CONFIG_JSON: value },
+        }),
+      ).toThrow(/Invalid dstack evidence configuration/);
+    },
+  );
+  it("rejects conflicting explicit and registered evidence providers", () => {
+    registerTeeEvidenceProviderFactory(() => ({
+      id: "registered",
+      collectEvidence: async () => trustedEvidence,
+    }));
+    expect(() =>
+      resolveTeeEvidenceProvider({
+        env: { ELIZA_DSTACK_EVIDENCE_CONFIG_JSON: "{}" },
+      }),
+    ).toThrow(/either dstack evidence or a registered provider/);
+  });
   it("resolves undefined until a deployment registers a factory", () => {
     expect(hasTeeEvidenceProviderFactory()).toBe(false);
     expect(resolveTeeEvidenceProvider({ env: {} })).toBeUndefined();

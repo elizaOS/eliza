@@ -1,8 +1,8 @@
-// Real interaction coverage for the Settings sections + character editor.
-// all-pages-clicksafe only render-smokes settings; this drives the actual
-// controls (voice wake-word toggle, appearance theme, capability switch, app-
-// permission refresh, backup modal, character bio autosave) and asserts they
-// DO something. Keyless against the stub.
+/**
+ * Exercises Settings controls in the renderer fixture and isolated real API.
+ * Keyless cases prove dispatch or local state only; real-local Wallet cases
+ * require exact request outcomes and disk reload before accepting persistence.
+ */
 
 import { expect, type Page, test } from "@playwright/test";
 import {
@@ -101,7 +101,7 @@ test("app-permissions settings: Refresh re-queries the app permissions", async (
   await expect.poll(permReqs).toBeGreaterThan(before);
 });
 
-test("capabilities settings: the Wallet switch fires the real config write", async ({
+test("capabilities settings: the Wallet switch dispatches its config patch", async ({
   page,
 }) => {
   // Repointed from a local-only aria-checked flip (which proved nothing about
@@ -144,6 +144,121 @@ test("capabilities settings: the Wallet switch fires the real config write", asy
   await expect
     .poll(() => walletSwitch.getAttribute("aria-checked"))
     .not.toBe(before);
+});
+
+test.describe("Wallet capability persisted effects", () => {
+  test.skip(
+    process.env.ELIZA_UI_SMOKE_REAL_LOCAL_STACK !== "1",
+    "requires the isolated real-local API/config file; fixture responses cannot prove persistence",
+  );
+
+  async function reloadConfig(page: Page): Promise<unknown> {
+    const reload = await page.request.post("/api/config/reload");
+    expect(reload.status()).toBe(200);
+    expect(await reload.json()).toMatchObject({ reloaded: true });
+    const read = await page.request.get("/api/config");
+    expect(read.status()).toBe(200);
+    return read.json();
+  }
+
+  function uiConfiguration(config: unknown): unknown {
+    if (typeof config !== "object" || config === null || !("ui" in config)) {
+      throw new Error("The real config response is missing its UI settings");
+    }
+    return config.ui;
+  }
+
+  async function openWalletSettings(page: Page): Promise<void> {
+    await openAppPath(page, "/settings");
+    await openSettingsSection(page, /Capabilities/);
+    await expect(
+      page.locator('[data-agent-id="capability-wallet"]'),
+    ).toBeVisible();
+  }
+
+  test.beforeEach(async ({ page }) => {
+    // Remove only the static config GET fixture. Both browser reads and writes
+    // now reach the production handler backed by this stack's temporary file.
+    await page.unroute("**/api/config");
+    const seed = await page.request.put("/api/config", {
+      data: { ui: { capabilities: { wallet: false } } },
+    });
+    expect(seed.status()).toBe(200);
+    expect(await reloadConfig(page)).toMatchObject({
+      ui: { capabilities: { wallet: false } },
+    });
+  });
+
+  test("saves the clicked value and restores it from disk after navigation", async ({
+    page,
+  }) => {
+    await openWalletSettings(page);
+    const wallet = page.locator('[data-agent-id="capability-wallet"]');
+    await expect(wallet).toHaveAttribute("aria-checked", "false");
+    const saved = page.waitForResponse((response) => {
+      const request = response.request();
+      return (
+        new URL(response.url()).pathname === "/api/config" &&
+        request.method() === "PUT" &&
+        request.postData() ===
+          JSON.stringify({ ui: { capabilities: { wallet: true } } })
+      );
+    });
+    await wallet.click();
+    const response = await saved;
+    expect(response.status()).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ui: { capabilities: { wallet: true } },
+    });
+    expect(await reloadConfig(page)).toMatchObject({
+      ui: { capabilities: { wallet: true } },
+    });
+    await openWalletSettings(page);
+    await expect(wallet).toHaveAttribute("aria-checked", "true");
+  });
+
+  test("a real validation rejection cannot change the persisted value", async ({
+    page,
+  }) => {
+    const before = uiConfiguration(await reloadConfig(page));
+    await openWalletSettings(page);
+    const wallet = page.locator('[data-agent-id="capability-wallet"]');
+    await expect(wallet).toHaveAttribute("aria-checked", "false");
+    let forwarded = false;
+    // Corrupt only this browser write on the wire. Do not fulfill a fake error:
+    // the owning API must parse and reject it, and its disk state must survive.
+    await page.route("**/api/config", async (route) => {
+      if (route.request().method() !== "PUT") {
+        await route.continue();
+        return;
+      }
+      expect(route.request().postDataJSON()).toEqual({
+        ui: { capabilities: { wallet: true } },
+      });
+      forwarded = true;
+      await route.continue({ postData: "{" });
+    });
+    const rejected = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/config" &&
+        response.request().method() === "PUT",
+    );
+    await wallet.click();
+    expect((await rejected).status()).toBe(400);
+    expect(forwarded).toBe(true);
+    await expect(
+      page.getByText(
+        "Failed to sync wallet setting to the agent — it may revert on reload",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await page.unroute("**/api/config");
+    // The background version checker owns separate update metadata. Compare
+    // every UI setting, so unrelated checks cannot mask or invent a mutation.
+    expect(uiConfiguration(await reloadConfig(page))).toEqual(before);
+    await openWalletSettings(page);
+    await expect(wallet).toHaveAttribute("aria-checked", "false");
+  });
 });
 
 test("backup settings: Back Up opens its modal", async ({ page }) => {

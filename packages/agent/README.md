@@ -453,3 +453,93 @@ before execution; use a self-contained build, or a frame/raw module graph with
 an explicit asset manifest. Remote capability URLs remain owned by their host.
 Hero images use the same view role and installation checks, with private caching;
 authorized mobile clients can load images without permission to load remote code.
+
+## Pinned dstack evidence
+
+A single Eliza agent can collect dstack guest-v1 evidence over its CVM's Unix
+socket and invoke a locally pinned `dstack-verifier`. This integration targets
+[dstack upstream `d9de8915a648c889714b187c984059b05debef49`](https://github.com/Phala-Network/dstack/tree/d9de8915a648c889714b187c984059b05debef49):
+`POST /v1/Attest` and `dstack-verifier --config <file> --verify <input>`.
+The agent contains the transport and admission adapter; operators must install
+the real verifier built from the reviewed source revision in the measured image.
+A normalized evidence object is not a cryptographically verified quote.
+
+Set `ELIZA_DSTACK_EVIDENCE_CONFIG_JSON` to a JSON object with these fields:
+
+| Field | Required value |
+| --- | --- |
+| `socketPath` | Absolute path to this CVM's private guest-agent Unix socket |
+| `verifierPath`, `verifierConfigPath` | Absolute regular-file paths inside the measured image |
+| `verifierSha256`, `verifierConfigSha256` | Reviewed SHA-256 digests of those exact files, 64 hex characters |
+| `appId` | Deployment app ID, hex; omit in signed production mode |
+| `composeHash`, `osImageHash` | Approved compose and OS-image SHA-256 digests; omit in signed production mode |
+| `variant` | `dstack-tdx` or `dstack-nitro-enclave` |
+| `timeoutMs` | Optional overall deadline, default 60000, maximum 300000 |
+
+The executable and configuration must be immutable to the agent and host-side
+untrusted workloads. Hash checking is an admission check, not protection against
+privileged mutation inside the CVM. Pin verifier trust roots, collateral/image
+sources and its dependencies in the release; the process receives no inherited
+`DSTACK_VERIFIER_*` overrides. The adapter bounds guest replies and verifier
+stdout/stderr at 16 MiB, kills aborted verifier processes, and removes private
+temporary evidence files. Collection errors fail boot; there is no fallback.
+
+Production identity must be supplied separately from the measured compose to
+avoid embedding the compose's own hash in its bytes. Put the Ed25519 authority's
+SPKI PEM in measured `ELIZA_DSTACK_RELEASE_PUBKEY` and omit `appId`, `composeHash`
+and `osImageHash` from the measured local configuration. After producing the
+exact compose, sign a release payload containing only:
+
+```text
+schemaVersion: 1
+appId: hex deployment ID
+composeHash: 64 hex characters
+osImageHash: 64 hex characters
+variant: dstack-tdx or dstack-nitro-enclave
+notBefore: ISO-8601 UTC timestamp
+expiresAt: ISO-8601 UTC timestamp
+```
+
+Sign the bytes `UTF8("eliza-dstack-release-v1\0") || UTF8(payloadJSON)` using
+Ed25519, where `\0` denotes a single NUL byte. Supply
+`ELIZA_DSTACK_RELEASE_POLICY_JSON` as an object with `payload` (canonical base64
+of those exact JSON bytes) and `signature` (base64 signature), through separately
+authenticated encrypted launch configuration. JSON key ordering is preserved by
+signing the supplied bytes; reserializing the payload requires a new signature.
+The CPU profile requires the envelope and pinned authority, rejects identity
+conflicts, and checks the signed validity interval at resolution and before and
+after each evidence collection. Release expiry bounds replay; shorter validity
+and signed revocation policies are still needed for emergency withdrawal.
+Validity uses the CVM wall clock; deployments must establish clock discipline.
+Cached boot trust does not continuously reattest or revoke already released
+secrets. Fresh KMS authorization and revocation enforcement remain separate
+operational requirements. Do not
+replace the expected identity with unchecked guest `Info` fields.
+
+Use `ELIZA_TEE_PRODUCTION_PROFILE=dstack-cpu` for a CPU-only confidential-agent
+CVM. This named profile requires this concrete adapter, its approved kind/provider,
+compose and OS measurements, debug rejection and at most five-minute evidence
+freshness. Caller requirements and revocations remain in force. The adapter
+binds fresh request data to the verified hardware report, checks app ID and the
+image/compose allowlist, rejects advisories and development images, and requires
+Intel `UpToDate` plus verified ACPI measurements on TDX. Nitro Enclave has no
+Intel TCB status; its absent TCB remains absent. The upstream verifier owns quote
+signatures, certificate/collateral and event-log/image validation and debug
+rejection. Build/test results for that verifier must be retained separately from
+agent protocol-test results. Missing verifier, unavailable collateral, invalid
+report, unknown variant, digest mismatch or stale request never enable secrets.
+
+`ELIZA_TEE_PRODUCTION_PROFILE=true` retains the original profile requiring
+additional accelerator and platform claims. The CPU profile supplies none of
+those unsupported claims. It cannot authorize remote inference: deployments
+must independently require an approved confidential-inference endpoint and its
+attested key/channel policy before sending prompts or releasing inference keys.
+Local confidential-weight release retains its existing independent policy.
+
+Deploy one agent/container and its SQLite state per CVM trust domain. A shared
+physical server may host multiple CVMs; containers inside one CVM share the
+attestation boundary. Never expose or share the guest socket between tenants,
+mount a host Docker socket, or treat per-container SQLite as hardware isolation.
+Use an encrypted state volume, authenticated ingress, and measured pinned images.
+The adapter does not provision storage, authorize support access, establish
+HIPAA/SOC 2/GDPR compliance, or prove a live hardware deployment.

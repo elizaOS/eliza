@@ -131,10 +131,13 @@ export async function checkForUpdate(options?: {
   const updateAvailable = cmp !== null && cmp < 0;
 
   try {
+    // The registry request yields to config writers. Merge cache metadata into
+    // the current disk state so a completed check cannot revert their changes.
+    const currentConfig = loadElizaConfig();
     saveElizaConfig({
-      ...config,
+      ...currentConfig,
       update: {
-        ...config.update,
+        ...currentConfig.update,
         lastCheckAt: new Date().toISOString(),
         lastCheckVersion: latestVersion,
         lastCheckChannel: channel,
