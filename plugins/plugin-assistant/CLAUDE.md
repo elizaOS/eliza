@@ -100,3 +100,14 @@ reply-parts array rather than an equal legacy string alternative. Ordinary prose
 uses text parts; original source parts render as separate blocks without changing
 literal bytes. Legacy string responses remain accepted, and JSON-envelope parts
 still require an actual source identity (never an implicit native request alias).
+
+
+Personal interaction rules are available through the existing memory context,
+with PERSONALITY owning their state and exact directive edits; MEMORY owns
+factual records. Declaration and validation share the same context set. A
+planner-owned personality state read stays internal until the whole request has
+been resolved; standalone state inspection keeps its existing presentation.
+Last-resort reply rescue uses the complete current context and canonical tool
+messages, including archived results, rather than disconnected success excerpts.
+Composed failure instructions remain scrubbed; original authorized diagnostic
+records stay separate evidence, and existing final-output checks still apply.

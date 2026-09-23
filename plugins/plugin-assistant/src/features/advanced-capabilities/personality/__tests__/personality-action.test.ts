@@ -11,6 +11,7 @@ import {
   promoteSubactionsToActions,
   runWithActionRoutingContext,
   validateToolArgs,
+  withActiveRoutingContexts,
 } from "@elizaos/core";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { runEvaluator } from "../../../../runtime/evaluator.ts";
@@ -25,6 +26,27 @@ import {
 } from "./test-helpers.ts";
 
 describe("personalityAction — routing ownership", () => {
+  test("admits personal-rule operations in the memory context", async () => {
+    const fake = makeFakeRuntime();
+    await initStore(fake);
+    const message = makeMessage({
+      entityId: TEST_SENDER,
+      agentId: fake.runtime.agentId,
+      text: "Remove my saved interaction rule",
+    });
+    const state = withActiveRoutingContexts(
+      { text: "", values: {}, data: {} },
+      message,
+      ["memory"],
+    );
+    const valid = await personalityAction.validate(
+      fake.runtime,
+      message,
+      state,
+    );
+    expect(valid).toBe(true);
+  });
+
   test("does not claim the current-turn STOP_TALKING simile owned by IGNORE", () => {
     expect(personalityAction.similes).not.toContain("STOP_TALKING");
   });
@@ -594,6 +616,50 @@ describe("individual directive removal", () => {
 });
 
 describe("personal directive completion receipts", () => {
+  test("keeps a planner-owned preference read internal for the complete request", async () => {
+    const fake = makeFakeRuntime({ owner: TEST_SENDER });
+    await initStore(fake);
+    await fake.store.setSlot({
+      ...fake.store.getSlot(TEST_SENDER),
+      custom_directives: ["keep this rule", "QA rule"],
+    });
+    const message = makeMessage({
+      entityId: TEST_SENDER,
+      agentId: fake.runtime.agentId,
+      text: "Remove only the QA rule",
+    });
+    const { cb, calls } = captureCallback();
+    const result = await runWithActionRoutingContext(
+      {
+        actionName: "PERSONALITY",
+        messageId: message.id,
+        replyOwner: "planner",
+        modelClass: undefined,
+      },
+      () =>
+        personalityAction.handler(
+          fake.runtime,
+          message,
+          undefined,
+          { parameters: { action: "show_state", scope: "user" } },
+          cb,
+        ),
+    );
+    expect(result).toMatchObject({
+      success: true,
+      transcriptVisibility: "internal",
+      modelReplyRequired: true,
+      turnComplete: false,
+      data: { slot: { custom_directives: ["keep this rule", "QA rule"] } },
+    });
+    expect(result).not.toHaveProperty("userFacingText");
+    expect(calls).toHaveLength(0);
+    expect(fake.store.getSlot(TEST_SENDER).custom_directives).toEqual([
+      "keep this rule",
+      "QA rule",
+    ]);
+  });
+
   test.each(["add_directive", "remove_directive"])(
     "can finish %s from the durable result in one evaluation",
     async (op) => {
