@@ -134,6 +134,7 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/lib/homepage-release-validation.mjs",
   "scripts/lib/ios-app-store-runtime-policy.mjs",
   "scripts/lib/ios-cloud-artifact-audit.mjs",
+  "scripts/lib/ios-fused-slice-cache.mjs",
   "scripts/lib/ios-plist-url-scheme.mjs",
   "scripts/lib/kill-process-tree.mjs",
   "scripts/lib/kill-ui-listen-port.mjs",
