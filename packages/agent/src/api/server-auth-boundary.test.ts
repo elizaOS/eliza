@@ -669,3 +669,158 @@ describe("mandatory host admission", () => {
     expect(raw).not.toContain("private policy material");
   }, 120_000);
 });
+
+describe("persistent host WebSocket admission", () => {
+  function updateStartup(phase: string): void {
+    if (!api) throw new Error("API fixture has not started");
+    api.updateStartup({ phase });
+  }
+  function connect(baseUrl: string) {
+    const socket = new WebSocket(
+      `${baseUrl.replace("http:", "ws:")}/ws?token=${API_TOKEN}`,
+    );
+    const messages: string[] = [];
+    socket.on("message", (message) => messages.push(String(message)));
+    const closed = new Promise<{ code: number; reason: string }>((resolve) => {
+      socket.once("close", (code, reason) =>
+        resolve({ code, reason: reason.toString() }),
+      );
+    });
+    return { socket, messages, closed };
+  }
+  it.each([false, "exception"])(
+    "revokes outbound broadcasts on policy result %s",
+    async (result) => {
+      let revoked = false;
+      const baseUrl = await bootServer(
+        undefined,
+        undefined,
+        (_request, boundary) => {
+          if (boundary === "websocket-send" && revoked) {
+            if (result === "exception")
+              throw new Error("private policy diagnostic");
+            return false;
+          }
+          return true;
+        },
+      );
+      const { socket, messages, closed } = connect(baseUrl);
+      try {
+        await vi.waitFor(() =>
+          expect(
+            messages.some((message) => JSON.parse(message).type === "status"),
+          ).toBe(true),
+        );
+        revoked = true;
+        updateStartup("withheld-private-phase");
+        expect(await closed).toEqual({
+          code: result === false ? 1008 : 1011,
+          reason: "Host admission rejected",
+        });
+        expect(messages.join("\n")).not.toContain("withheld-private-phase");
+        expect(messages.join("\n")).not.toContain("private policy diagnostic");
+      } finally {
+        socket.terminate();
+      }
+    },
+    120_000,
+  );
+
+  it("rejects inbound frames independently of outbound admission", async () => {
+    const boundaries: string[] = [];
+    const baseUrl = await bootServer(
+      undefined,
+      undefined,
+      (_request, boundary) => {
+        boundaries.push(boundary);
+        return boundary !== "websocket-message";
+      },
+    );
+    const { socket, messages, closed } = connect(baseUrl);
+    try {
+      await vi.waitFor(() => expect(messages.length).toBeGreaterThan(0));
+      socket.send(JSON.stringify({ type: "ping" }));
+      expect((await closed).code).toBe(1008);
+      expect(boundaries).toContain("websocket-message");
+      expect(
+        messages.some((message) => JSON.parse(message).type === "pong"),
+      ).toBe(false);
+    } finally {
+      socket.terminate();
+    }
+  }, 120_000);
+
+  it("withholds the initial status while admission is pending and rejects a revoked result", async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered = false;
+    let allowed = true;
+    const baseUrl = await bootServer(
+      undefined,
+      undefined,
+      async (_request, boundary) => {
+        if (boundary === "websocket-send") {
+          entered = true;
+          await pending;
+          return allowed;
+        }
+        return true;
+      },
+    );
+    const { socket, messages, closed } = connect(baseUrl);
+    try {
+      await vi.waitFor(() => expect(entered).toBe(true));
+      expect(messages).toEqual([]);
+      updateStartup("queued-private-phase");
+      allowed = false;
+      release();
+      expect((await closed).code).toBe(1008);
+      expect(messages).toEqual([]);
+    } finally {
+      release();
+      socket.terminate();
+    }
+  }, 120_000);
+
+  it("preserves ordered broadcasts across asynchronous delivery admission", async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered = false;
+    const baseUrl = await bootServer(
+      undefined,
+      undefined,
+      async (_request, boundary) => {
+        if (boundary === "websocket-send") {
+          entered = true;
+          await pending;
+        }
+        return true;
+      },
+    );
+    const { socket, messages } = connect(baseUrl);
+    try {
+      await vi.waitFor(() => expect(entered).toBe(true));
+      updateStartup("first-approved-phase");
+      updateStartup("second-approved-phase");
+      release();
+      await vi.waitFor(() =>
+        expect(messages.join("\n")).toContain("second-approved-phase"),
+      );
+      const phases = messages
+        .map((message) => JSON.parse(message).startup?.phase)
+        .filter(
+          (phase) =>
+            phase === "first-approved-phase" ||
+            phase === "second-approved-phase",
+        );
+      expect(phases).toEqual(["first-approved-phase", "second-approved-phase"]);
+    } finally {
+      release();
+      socket.terminate();
+    }
+  }, 120_000);
+});

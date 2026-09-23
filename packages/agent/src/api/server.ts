@@ -104,7 +104,7 @@ import {
   resolveServerOnlyPort,
 } from "@elizaos/shared/runtime-env";
 import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
-import { type WebSocket, WebSocketServer } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
 import {
   AgentBackupClientDisconnectedError,
@@ -3812,7 +3812,7 @@ export type ApiServerConfigurator = (
 /** Mandatory host policy precedes built-in authentication; true grants no identity. */
 export type ApiHostAdmission = (
   request: http.IncomingMessage,
-  boundary: "request" | "upgrade",
+  boundary: "request" | "upgrade" | "websocket-send" | "websocket-message",
 ) => boolean | Promise<boolean>;
 
 export type WebSocketAuthorizer = (
@@ -3876,7 +3876,8 @@ export async function startApiServer(opts?: {
    */
   authorizeWebSocket?: WebSocketAuthorizer;
   /**
-   * Required additional admission for HTTP, in-process requests and upgrades.
+   * Required admission for HTTP, in-process requests, upgrades and each built-in
+   * WebSocket application send/message. Queued sends recheck before delivery.
    * Denial cannot fall back to local trust, static tokens or host sessions.
    * Supplying it disables the separately attached mobile device bridge. Trusted
    * configureServer callbacks must not attach independent request/upgrade handlers.
@@ -3906,7 +3907,7 @@ export async function startApiServer(opts?: {
       : structuredClone(opts.hostConfig);
   async function admitHostRequest(
     request: http.IncomingMessage,
-    boundary: "request" | "upgrade",
+    boundary: "request" | "upgrade" | "websocket-send" | "websocket-message",
   ): Promise<403 | 503 | null> {
     if (!hostAdmission) return null;
     try {
@@ -4273,11 +4274,52 @@ export async function startApiServer(opts?: {
   const wsClients = new Set<WebSocket>();
   const wsClientIds = new WeakMap<WebSocket, string>();
   const wsActiveConversations = new WeakMap<WebSocket, string>();
+  const wsRequests = new WeakMap<WebSocket, http.IncomingMessage>();
+  const wsSendQueues = new WeakMap<WebSocket, Promise<void>>();
+  const admitWebSocket = async (
+    ws: WebSocket,
+    request: http.IncomingMessage,
+    boundary: "websocket-send" | "websocket-message",
+  ): Promise<boolean> => {
+    if (ws.readyState !== WebSocket.OPEN) return false;
+    const rejection = await admitHostRequest(request, boundary);
+    if (rejection !== null) {
+      ws.close(rejection === 403 ? 1008 : 1011, "Host admission rejected");
+      return false;
+    }
+    return ws.readyState === WebSocket.OPEN;
+  };
+  const sendWebSocket = (ws: WebSocket, message: string): void => {
+    if (!hostAdmission) {
+      ws.send(message);
+      return;
+    }
+    const request = wsRequests.get(ws);
+    if (!request) {
+      ws.close(1008, "Host admission rejected");
+      return;
+    }
+    // Reappraise at delivery, preserving ordering across status, replay, targeted
+    // events and PTY output. Queued frames cannot inherit an earlier approval.
+    const previous = wsSendQueues.get(ws) ?? Promise.resolve();
+    const pending = previous
+      .then(async () => {
+        if (await admitWebSocket(ws, request, "websocket-send"))
+          ws.send(message);
+      })
+      .catch(() => {
+        // error-policy:J1 Close this transport without exposing frame or policy data.
+        logger.warn("[eliza-api] Required host WebSocket delivery failed");
+        ws.close(1011, "Host admission unavailable");
+      });
+    wsSendQueues.set(ws, pending);
+  };
   const eventHub = createApiEventHub({
     state,
     clients: wsClients,
     clientIds: wsClientIds,
     activeConversations: wsActiveConversations,
+    sendMessage: sendWebSocket,
     reportSendError: (err) => {
       logger.error(
         `[eliza-api] WebSocket send error: ${err instanceof Error ? err.message : err}`,
@@ -4714,6 +4756,7 @@ export async function startApiServer(opts?: {
 
   // Handle WebSocket connections
   wss.on("connection", (ws: WebSocket, request: http.IncomingMessage) => {
+    wsRequests.set(ws, request);
     let wsClientId: string | null = null;
     let wsUrl: URL;
     try {
@@ -4798,7 +4841,8 @@ export async function startApiServer(opts?: {
       ]);
 
       try {
-        ws.send(
+        sendWebSocket(
+          ws,
           JSON.stringify({
             type: "status",
             state: state.agentState,
@@ -4821,7 +4865,7 @@ export async function startApiServer(opts?: {
           DEFAULT_REPLAY_LIMIT,
         );
         for (const event of replay) {
-          ws.send(JSON.stringify(event));
+          sendWebSocket(ws, JSON.stringify(event));
         }
       } catch (err) {
         logger.error(
@@ -4890,6 +4934,11 @@ export async function startApiServer(opts?: {
 
     ws.on("message", async (data: unknown) => {
       try {
+        if (
+          hostAdmission &&
+          !(await admitWebSocket(ws, request, "websocket-message"))
+        )
+          return;
         const msg = JSON.parse(String(data));
         if (!isAuthenticated) {
           const expected = getConfiguredApiToken();
@@ -4932,7 +4981,7 @@ export async function startApiServer(opts?: {
             isAuthenticated = true;
             clearAuthGraceTimer();
             releasePendingSlot();
-            ws.send(JSON.stringify({ type: "auth-ok" }));
+            sendWebSocket(ws, JSON.stringify({ type: "auth-ok" }));
             activateAuthenticatedConnection();
           } else {
             logger.warn("[eliza-api] WebSocket message rejected before auth");
@@ -4944,7 +4993,7 @@ export async function startApiServer(opts?: {
           return;
         }
         if (msg.type === "ping") {
-          ws.send(JSON.stringify({ type: "pong" }));
+          sendWebSocket(ws, JSON.stringify({ type: "pong" }));
         } else if (msg.type === "active-conversation") {
           // Per-connection: only this client's active conversation changes.
           const conversationId =
@@ -4985,7 +5034,7 @@ export async function startApiServer(opts?: {
                 sessionId: targetId,
                 send: (frame) => {
                   if (ws.readyState === 1) {
-                    ws.send(JSON.stringify(frame));
+                    sendWebSocket(ws, JSON.stringify(frame));
                   }
                 },
               });
@@ -5025,7 +5074,8 @@ export async function startApiServer(opts?: {
               `[eliza-api] pty-input rejected: payload too large (${msg.data.length} chars) for session ${msg.sessionId}`,
             );
             if (ws.readyState === 1) {
-              ws.send(
+              sendWebSocket(
+                ws,
                 JSON.stringify({
                   type: "pty-error",
                   sessionId: msg.sessionId,

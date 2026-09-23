@@ -728,3 +728,21 @@ schema and starts the fixed runtime. SIGINT/SIGTERM request shutdown, including
 when received during startup; completed startup is drained before exit. Failed
 startup or shutdown exits unsuccessfully with a sanitized diagnostic. There is
 no HTTP listener or externally published readiness signal in this entry.
+
+
+For persistent WebSocket connections, `hostAdmission` also receives
+`websocket-send` before each built-in application frame and `websocket-message`
+before interpreting an incoming frame. This covers initial status, replay,
+broadcasts, targeted events and PTY output. Per-socket outgoing queues preserve
+ordering and recheck policy at delivery; an earlier approval cannot authorize a
+later queued frame. Denial closes the socket with code 1008, and unavailable
+policy closes it with 1011, without exposing policy diagnostics. Ordinary hosts
+without this callback retain their existing synchronous send path.
+
+The callback sees the original upgrade request and must consult current host
+policy. This does not automatically revalidate credentials accepted through
+in-band authentication, create a per-person principal or scope conversations.
+A measured host must compose those identity controls explicitly. Checks cannot
+recall already delivered bytes or undo effects accepted before revocation.
+Event-hub targeted-send counts represent accepted send attempts, including queued
+attempts, and are not application delivery receipts.
