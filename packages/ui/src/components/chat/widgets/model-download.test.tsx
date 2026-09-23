@@ -55,6 +55,7 @@ const {
 }));
 vi.mock("../../../api", () => ({
   client: {
+    onReconnect: vi.fn(() => () => {}),
     getBaseUrl: getBaseUrlMock,
     getRestAuthToken: getRestAuthTokenMock,
     getModelsConfig: getModelsConfigMock,
@@ -142,6 +143,21 @@ function hub(
 }
 
 describe("ModelDownloadWidget", () => {
+  it("removes a stale routing warning after the backend recovers without remounting", async () => {
+    getModelsConfigMock
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValue({ activeChat: { provider: "cerebras" } });
+    render(<ModelDownloadWidget />);
+    await screen.findByText("Model route unavailable");
+    await waitFor(
+      () => {
+        expect(screen.queryByText("Model route unavailable")).toBeNull();
+      },
+      { timeout: 2_500 },
+    );
+    expect(getHubMock).not.toHaveBeenCalled();
+  });
+
   beforeEach(() => {
     authMock.authenticated = true;
     Object.assign(runtimeModeMock, {
