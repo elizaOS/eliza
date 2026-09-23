@@ -6511,9 +6511,7 @@ export function ChatOverlay({
                                 visibleMessages.at(-1)?.role === "assistant" &&
                                 !lastContent.trim()
                               ) ? (
-                                <div role="status" aria-live="polite">
-                                  <TurnStatus status={turnStatus} />
-                                </div>
+                                <TurnStatus status={turnStatus} />
                               ) : null}
                             </MessageScrollerContent>
                           </MessageScrollerViewport>

@@ -3680,6 +3680,13 @@ describe("ChatOverlay", () => {
       expect(screen.getByTestId("turn-status-label").textContent).toBe(
         "Checking your note.",
       );
+      const progressRegion = screen
+        .getByTestId("turn-status-label")
+        .closest('[role="status"]');
+      expect(progressRegion).not.toBeNull();
+      expect(
+        progressRegion?.parentElement?.closest('[role="status"]'),
+      ).toBeNull();
       rerender(
         <ChatOverlay
           controller={makeController({
