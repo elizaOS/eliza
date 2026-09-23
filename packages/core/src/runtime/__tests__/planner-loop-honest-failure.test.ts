@@ -707,7 +707,28 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 
 		const result = await runPlannerLoop({
 			runtime: { useModel },
-			context: { id: "ctx" },
+			context: {
+				id: "ctx",
+				events: [
+					{
+						id: "request",
+						type: "message",
+						message: {
+							role: "user",
+							content: "Research standujar and inspect the pull requests.",
+						},
+					},
+					{
+						id: "standing-rule",
+						type: "segment",
+						segment: {
+							label: "provider:policy",
+							content: "Do not change account permissions.",
+							stable: false,
+						},
+					},
+				],
+			},
 			tools: [
 				{ name: "WEB_SEARCH", description: "Search the web." },
 				{ name: "SHELL", description: "Run a shell command." },
@@ -722,17 +743,24 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 		expect(result.finalMessage).not.toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 		// The rescue call carried the successful result as input material
 		// (native chat `messages`, the only shape PlannerRuntime.useModel
-		// accepts), fenced as untrusted tool output.
+		// accepts), carried as canonical untrusted tool messages.
 		const rescueParams = useModel.mock.calls[4]?.[1] as
 			| MockedMessages
 			| undefined;
 		const rescueText = (rescueParams?.messages ?? [])
 			.map((message) =>
-				typeof message.content === "string" ? message.content : "",
+				typeof message.content === "string"
+					? message.content
+					: JSON.stringify(message.content),
 			)
 			.join("\n");
-		expect(rescueText).toContain('<tool_result name="WEB_SEARCH">');
+		expect(JSON.stringify(rescueParams?.messages)).toContain("WEB_SEARCH");
 		expect(rescueText).toContain("85 pull requests");
+		expect(rescueText).toContain(
+			"Research standujar and inspect the pull requests.",
+		);
+		expect(rescueText).toContain("Do not change account permissions.");
+		expect(rescueText).toContain("command_failed: exit 3");
 	});
 
 	it("keeps the generic sentence when there are no successful results to rescue from", async () => {
@@ -899,7 +927,9 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			| undefined;
 		const rescueText = (rescueParams?.messages ?? [])
 			.map((message) =>
-				typeof message.content === "string" ? message.content : "",
+				typeof message.content === "string"
+					? message.content
+					: JSON.stringify(message.content),
 			)
 			.join("\n");
 		expect(rescueText).toContain("archived-fact-alpha");
@@ -1059,12 +1089,21 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			| undefined;
 		const rescueText = (rescueParams?.messages ?? [])
 			.map((message) =>
-				typeof message.content === "string" ? message.content : "",
+				typeof message.content === "string"
+					? message.content
+					: JSON.stringify(message.content),
 			)
 			.join("\n");
 		expect(rescueText).toContain("SHELL step did not complete");
 		expect(rescueText).toContain("<path>");
-		expect(rescueText).not.toContain("/home/milady");
+		const recoveryInstructions = rescueParams?.messages?.find(
+			(message) => message.role === "system",
+		)?.content;
+		expect(recoveryInstructions).not.toContain("/home/milady");
+		// The diagnosis stays scrubbed, while the complete already-authorized
+		// tool record remains evidence rather than being silently discarded.
+		expect(rescueText).toContain("/home/milady/workspace/repo");
+		expect(result.finalMessage).not.toContain("/home/milady");
 		expect(rescueText).toContain("untrusted");
 		// The failed step stays recorded in the trajectory — the turn is not
 		// relabeled a clean success.
@@ -1162,7 +1201,9 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			| undefined;
 		const rescueText = (rescueParams?.messages ?? [])
 			.map((message) =>
-				typeof message.content === "string" ? message.content : "",
+				typeof message.content === "string"
+					? message.content
+					: JSON.stringify(message.content),
 			)
 			.join("\n");
 		expect(rescueText).toContain("unique-fact-q07");

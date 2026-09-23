@@ -4,7 +4,7 @@
  * lossless directive retention, profile load/save, and the seeded default
  * profiles. Deterministic — no live model.
  */
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { defaultProfiles } from "../profiles/index.ts";
 import {
   GLOBAL_PERSONALITY_SCOPE,
@@ -288,5 +288,43 @@ describe("PersonalityStore", () => {
       fake.store.getSlot(USER_A as never, AGENT as never).verbosity,
     ).toBeNull();
     expect(fake.memories.get(PERSONALITY_SLOT_TABLE)).toEqual([]);
+  });
+});
+
+describe("directive removal persistence and ordering", () => {
+  test("a missing rule performs no persistence or removal audit", async () => {
+    const fake = makeFakeRuntime({ agentId: AGENT });
+    const writes = vi.spyOn(fake.runtime, "upsertMemory");
+    const before = structuredClone(fake.memories);
+    const audit = fake.store.getRecentAudit();
+    const result = await fake.store.removeDirective({
+      userId: USER_A,
+      agentId: AGENT,
+      actorId: USER_A,
+      directive: "absent rule",
+    });
+    expect(result.after).toEqual(result.before);
+    expect(writes).not.toHaveBeenCalled();
+    expect(fake.memories).toEqual(before);
+    expect(fake.store.getRecentAudit()).toEqual(audit);
+  });
+  test("serializes removal before a subsequent explicit re-add", async () => {
+    const store = bareStore();
+    const args = {
+      userId: USER_A,
+      agentId: AGENT,
+      actorId: USER_A,
+      directive: "one question at a time",
+    };
+    await store.addDirective(args);
+    const [removed] = await Promise.all([
+      store.removeDirective(args),
+      store.addDirective(args),
+    ]);
+    expect(removed.before.custom_directives).toEqual([args.directive]);
+    expect(removed.after.custom_directives).toEqual([]);
+    expect(store.getSlot(USER_A, AGENT).custom_directives).toEqual([
+      args.directive,
+    ]);
   });
 });

@@ -18,6 +18,8 @@ import type {
 } from "@elizaos/core";
 import {
   ChannelType,
+  encryptStringValue,
+  getSalt,
   isObjectRecord as isRecord,
   logger,
   ModelType,
@@ -268,8 +270,22 @@ async function processSettingUpdates(
     if (!world.metadata) {
       (world as { metadata?: unknown }).metadata = {};
     }
-    // Cast to allow storing our extended settings type
-    (world.metadata as Record<string, unknown>).settings = updatedSettings;
+    // Persist configured secrets using the existing authenticated encryption.
+    let salt: string | undefined;
+    (world.metadata as Record<string, unknown>).settings = Object.fromEntries(
+      Object.entries(updatedSettings).map(([key, setting]) => {
+        const protectedSetting = { ...setting };
+        if (
+          setting.secret === true &&
+          typeof setting.value === "string" &&
+          setting.value.length > 0
+        ) {
+          salt ??= getSalt();
+          protectedSetting.value = encryptStringValue(setting.value, salt);
+        }
+        return [key, protectedSetting];
+      }),
+    );
     await runtime.updateWorld(world);
   }
 

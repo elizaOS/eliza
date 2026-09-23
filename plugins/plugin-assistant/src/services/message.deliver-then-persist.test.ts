@@ -583,3 +583,81 @@ describe("simple-path deliver-then-persist ordering", () => {
     expect(h.order).toContain("persist:reply");
   });
 });
+
+describe("planning progress delivery boundaries", () => {
+  it.each(["clean", "private", "revoked", "envelope"] as const)(
+    "protects %s progress without consuming final delivery",
+    async (kind) => {
+      const h = await createHarness();
+      const turn = h.makeMessage();
+      h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
+      if (kind === "private" || kind === "revoked") {
+        h.runtime.registerProvider({
+          name: "userPersonalityPreferences",
+          override: true,
+          disclosureGate: { require: "owner_exclusive" },
+          alwaysInResponseState: true,
+          get: async () => ({ text: "PRIVATE_CONTEXT_TEST_VALUE" }),
+        });
+        await attestDeliveryAudienceFromCanonicalRoom(h.runtime, turn);
+      }
+      const progressText =
+        kind === "envelope"
+          ? "Checking <<<EXTERNAL_UNTRUSTED_CONTENT>>> now."
+          : kind === "clean"
+            ? "Checking that now."
+            : "Checking PRIVATE_CONTEXT_TEST_VALUE.";
+      h.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async () => {
+          if (kind === "revoked")
+            await h.runtime.addParticipant(asUUID(v4()), h.roomId);
+          const response = stage1DirectReply(progressText);
+          Object.assign(response.toolCalls[0].arguments, {
+            contexts: ["general"],
+            requiresTool: true,
+            replyEffectStatus: "pending",
+          });
+          return response;
+        },
+        "progress-boundary",
+        100,
+      );
+      h.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async () =>
+          JSON.stringify({
+            thought: "The request is resolved.",
+            toolCalls: [],
+            messageToUser: h.replyText,
+          }),
+        "progress-boundary",
+        100,
+      );
+      const progress: string[] = [];
+      const delivered: Content[] = [];
+      await h.service.handleMessage(
+        h.runtime,
+        turn,
+        async (content) => {
+          delivered.push(content);
+          return [];
+        },
+        {
+          onPlanningAcknowledgment: (text) => {
+            progress.push(text);
+          },
+        },
+      );
+      expect(progress).toEqual(kind === "clean" ? [progressText] : []);
+      expect(delivered).toHaveLength(1);
+      if (kind !== "revoked") {
+        expect(delivered[0].text).toBe(h.replyText);
+        expect(await h.storedReplies()).toHaveLength(1);
+      } else
+        expect(JSON.stringify(delivered)).not.toContain(
+          "PRIVATE_CONTEXT_TEST_VALUE",
+        );
+    },
+  );
+});

@@ -10,13 +10,21 @@ import type {
 import {
   collectCompletionContextSources,
   completionContextSources,
+  ElizaError,
   parseCompletionContextSelection,
 } from "@elizaos/core";
 import {
+  type HistoryRetentionCheckpoint,
   type HistoryRetentionScope,
+  includeLinkedSources,
   visibleHistoryEventIds,
 } from "../../runtime/history-retention.ts";
 import { readContextRequests } from "./context-discovery.ts";
+
+import {
+  readSourceReplyReferences,
+  sourceReplyEventHash,
+} from "./source-reply-references.ts";
 
 /** Match source-selection semantics to the supplied originals and available reads. */
 export function withReviewedHistorySelection(schema: JSONSchema): JSONSchema {
@@ -67,6 +75,8 @@ export interface HistoryDiscovery {
   scope: HistoryRetentionScope;
   visibleEventIds: ReadonlySet<string>;
   loadedSourceIds: ReadonlySet<string>;
+  /** Validated original-source relationships from the same reviewed prefix. */
+  dependencySourceGroups?: readonly string[][];
   /** Exact literal misses over this bound source set, never semantic absence. */
   emptySearchResults?: readonly { query: string; scannedSources: number }[];
   /** Complete literal hits, bound to the same originals as the loaded bodies. */
@@ -89,12 +99,41 @@ export function projectReviewedHistory(
     !bound.sources.some((source) => !visible.has(source.event.id))
   )
     return undefined;
-  return {
+  const sourceIdByEvent = new Map(
+    bound.sources.map((source) => [source.event.id, source.id]),
+  );
+  const projection = {
     sourceSetId: bound.sourceSetId,
     scope,
     visibleEventIds: visible,
-    loadedSourceIds: new Set(),
+    loadedSourceIds: new Set<string>(),
+    dependencySourceGroups: (
+      checkpoint as HistoryRetentionCheckpoint
+    ).dependencyEventGroups?.map((group) =>
+      group.map((eventId) => {
+        // visibleHistoryEventIds already validated every member against this prefix.
+        const sourceId = sourceIdByEvent.get(eventId);
+        if (!sourceId)
+          throw new ElizaError(
+            "Validated history dependency lost its original",
+            { code: "HISTORY_RETENTION_INVALID_DEPENDENCY" },
+          );
+        return sourceId;
+      }),
+    ),
   };
+  const visibleSources = new Set(
+    bound.sources
+      .filter((source) => visible.has(source.event.id))
+      .map((source) => source.id),
+  );
+  for (const source of referencedHistorySources(
+    bound,
+    projection,
+    visibleSources,
+  ))
+    projection.loadedSourceIds.add(source.id);
+  return projection;
 }
 
 export function historyReferences(
@@ -190,18 +229,19 @@ export function requestedHistory(
   // new draft paraphrases it. Resolve those exact source dependencies through
   // the same authorized read barrier instead of treating the recap as proof.
   const quotationTexts = [
-    ...(typeof reply === "string" ? [reply] : []),
-    ...bound.sources
-      .filter(
-        (source) =>
-          selected.includes(source.id) &&
-          source.event.segment.label === "prior_message:agent",
-      )
-      .map((source) => source.event.segment.content),
-  ].filter((text) => /["'“‘`«「]/.test(text));
+    ...(typeof reply === "string"
+      ? [{ text: reply, beforeSourceIndex: bound.sources.length }]
+      : []),
+    ...bound.sources.flatMap((source, index) =>
+      selected.includes(source.id) &&
+      source.event.segment.label === "prior_message:agent"
+        ? [{ text: source.event.segment.content, beforeSourceIndex: index }]
+        : [],
+    ),
+  ].filter(({ text }) => /["'“‘`«「]/.test(text));
   const quoted =
     quotationTexts.length > 0
-      ? bound.sources.filter(({ id, event }) => {
+      ? bound.sources.filter(({ id, event }, index) => {
           if (
             projection.visibleEventIds.has(event.id) ||
             projection.loadedSourceIds.has(id)
@@ -209,7 +249,11 @@ export function requestedHistory(
             return false;
           const { content, metadata } = event.segment;
           if (
-            quotationTexts.some((text) => quotesCompleteSource(text, content))
+            quotationTexts.some(
+              ({ text, beforeSourceIndex }) =>
+                index < beforeSourceIndex &&
+                quotesCompleteSource(text, content),
+            )
           )
             return true;
           const speaker = metadata?.speakerName;
@@ -220,12 +264,15 @@ export function requestedHistory(
           return (
             !!prefix &&
             content.startsWith(prefix) &&
-            quotationTexts.some((text) =>
-              quotesCompleteSource(text, content.slice(prefix.length)),
+            quotationTexts.some(
+              ({ text, beforeSourceIndex }) =>
+                index < beforeSourceIndex &&
+                quotesCompleteSource(text, content.slice(prefix.length)),
             )
           );
         })
       : [];
+  const linked = referencedHistorySources(bound, projection, new Set(selected));
   return [
     ...new Set([
       ...requested,
@@ -240,8 +287,79 @@ export function requestedHistory(
         })
         .map((id) => `${HISTORY_REFERENCE_PREFIX}${id}`),
       ...quoted.map(({ id }) => `${HISTORY_REFERENCE_PREFIX}${id}`),
+      ...linked.map(({ id }) => `${HISTORY_REFERENCE_PREFIX}${id}`),
     ]),
   ];
+}
+
+/** Stored quote links request only unchanged, earlier originals already in this
+ * authorized room. The existing dependency closure preserves linked corrections. */
+function referencedHistorySources(
+  bound: ReturnType<typeof completionContextSources>,
+  projection: HistoryDiscovery,
+  sourceIds: ReadonlySet<string>,
+) {
+  const byId = new Map(
+    bound.sources.map((source, index) => [source.id, { source, index }]),
+  );
+  const byEvent = new Map(
+    bound.sources.map((source, index) => [source.event.id, { source, index }]),
+  );
+  const duplicateEvents = new Set<string>();
+  const seenEvents = new Set<string>();
+  for (const { event } of bound.sources) {
+    if (seenEvents.has(event.id)) duplicateEvents.add(event.id);
+    seenEvents.add(event.id);
+  }
+  const body = (segment: ContextObjectPromptSegment) => {
+    const speaker = segment.metadata?.speakerName;
+    const prefix = typeof speaker === "string" ? `${speaker}: ` : "";
+    return prefix && segment.content.startsWith(prefix)
+      ? segment.content.slice(prefix.length)
+      : segment.content;
+  };
+  const pending = new Set(sourceIds);
+  includeLinkedSources(pending, projection.dependencySourceGroups ?? []);
+  // Set iteration also visits newly added dependencies, once each.
+  for (const id of pending) {
+    const entry = byId.get(id);
+    if (entry?.source.event.segment.label !== "prior_message:agent") continue;
+    const { source: reply, index } = entry;
+    if (reply.event.segment.metadata?.roomId !== projection.scope.roomId)
+      continue;
+    const text = body(reply.event.segment);
+    const stored = reply.event.segment.metadata?.sourceReplyReferences;
+    const references =
+      readSourceReplyReferences(stored, text) ??
+      readSourceReplyReferences(stored, reply.event.segment.content);
+    for (const reference of references?.sources ?? []) {
+      const target = byEvent.get(reference.eventId);
+      if (
+        !target ||
+        duplicateEvents.has(reference.eventId) ||
+        target.index >= index
+      )
+        continue;
+      const { source } = target;
+      if (
+        source.event.segment.metadata?.roomId !== projection.scope.roomId ||
+        sourceReplyEventHash(source.event) !== reference.sourceSha256 ||
+        !body(source.event.segment) ||
+        !text.includes(body(source.event.segment))
+      )
+        continue;
+      if (!pending.has(source.id)) {
+        pending.add(source.id);
+        includeLinkedSources(pending, projection.dependencySourceGroups ?? []);
+      }
+    }
+  }
+  return bound.sources.filter(
+    (source) =>
+      pending.has(source.id) &&
+      !projection.visibleEventIds.has(source.event.id) &&
+      !projection.loadedSourceIds.has(source.id),
+  );
 }
 
 /** A draft can copy an entire original from a visible assistant recap while
@@ -317,8 +435,7 @@ export function canRepairHistoryIdentity(
   if (!projection) return false;
   const selection = parseCompletionContextSelection(raw?.completionContext);
   if (
-    !selection ||
-    !selection.complete ||
+    !selection?.complete ||
     selection.mode !== "selected" ||
     !/^[0-9a-f]{64}$/.test(selection.sourceSetId)
   )
@@ -387,6 +504,18 @@ export function loadHistoryReferences(
       loadedSourceIds.add(name.slice(HISTORY_REFERENCE_PREFIX.length));
     }
   }
+  // A literal hit still reports only its actual matches. Supply the complete
+  // validated correction/cancellation chain as additional original evidence.
+  includeLinkedSources(
+    loadedSourceIds,
+    projection.dependencySourceGroups ?? [],
+  );
+  for (const source of referencedHistorySources(
+    bound,
+    projection,
+    loadedSourceIds,
+  ))
+    loadedSourceIds.add(source.id);
   const evidence = {
     ...projection,
     loadedSourceIds,
@@ -406,7 +535,7 @@ export function loadHistoryReferences(
 
 export const REVIEWED_HISTORY_SELECTION_INSTRUCTIONS = `history_source_selection:
 The supplied original history contains retained standing constraints and unfinished work, every new unreviewed source, and the complete current exchange. Other reviewed originals remain in this authorized conversation; the current-turn boundary gives the complete reference index. A prior retention review is model judgment, not proof every future dependency is supplied. No original is deleted, rewritten or summarized.
-For a recall dependency missing from supplied originals, read before answering or claiming it is unknown. Use a distinctive name or phrase from the question to locate the originals; do not wait for a separate search instruction. Read a needed missing original through contextRequests=["history:hN", ...] only when its ID is known; never guess numbered sources. To locate an original by remembered wording, use contextRequests=["history:search:literal phrase", ...]. Each query is a case-insensitive literal substring, not a semantic query or regular expression; all matching complete originals are supplied. Choose distinctive words likely in the original. Queries in one read form a union. A zero-match result proves only that the exact case-insensitive substring does not occur in the scanned conversation originals. You may report that literal result for an exact-wording question. It does not prove a fact or topic was never discussed: paraphrases, synonyms, corrections and unresolved interpretation require history:all before an absence claim. A further no-progress read restores full history. Use contextRequests=["history:all"] when literal lookup cannot resolve the dependency, interpretation is uncertain, or the request requires exhaustive conversation coverage. Leave replyText and action candidates empty while reading; no draft, extraction or effect from a read decision executes. A ban on app/storage tools does not forbid reading these same conversation originals. Never infer omitted content or permission. Already loaded IDs need not be requested again.
+For a recall dependency missing from supplied originals, read before answering or claiming it is unknown. Search the stable subject or title in the question to locate an original version; searching only its current value can omit earlier revisions. Do not wait for a separate search instruction. Read a needed missing original through contextRequests=["history:hN", ...] only when its ID is known; never guess numbered sources. To locate an original by remembered wording, use contextRequests=["history:search:literal phrase", ...]. Each query is a case-insensitive literal substring, not a semantic query or regular expression; all matching complete originals are supplied. Queries in one read form a union. Matches establish occurrences, not the first version or exhaustive history. Before claiming "originally", "always" or "only ever", locate the original subject sources or read history:all. A zero-match result proves only that the exact case-insensitive substring does not occur in the scanned conversation originals. You may report that literal result for an exact-wording question. It does not prove a fact or topic was never discussed: paraphrases, synonyms, corrections and unresolved interpretation require history:all before an absence claim. A further no-progress read restores full history. Use contextRequests=["history:all"] when literal lookup cannot resolve the dependency, interpretation is uncertain, or the request requires exhaustive conversation coverage. Leave replyText and action candidates empty while reading; no draft, extraction or effect from a read decision executes. A ban on app/storage tools does not forbid reading these same conversation originals. Never infer omitted content or permission. Already loaded IDs need not be requested again.
 After resolving dependencies, select applicable supplied originals in completionContext: factual background, standing constraints/corrections, referents and referenced unfinished work. Their complete union remains available without a cap. Use mode=relevant_prior_dialogue; complete=true means this request's dependencies are resolved from supplied originals, not that unseen originals were reviewed. Missing history is requested through contextRequests, not a separate selection mode. Copy completion_source_set exactly. An incomplete selection restores every original before delivery or effects. Current request, system/provider constraints and tool receipts remain complete. This decision cannot rewrite the retention checkpoint.`;
 
 export function historyReferenceNotice(

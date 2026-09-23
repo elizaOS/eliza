@@ -243,6 +243,53 @@ describe("relevantConversationsProvider on AgentRuntime + PGlite", () => {
       "The app chat says the launch code is soliza-local.",
     );
     expect(result.values?.relevantConversationAvailability).toBe("complete");
+    expect(result.data?.originalMessages).toMatchObject({
+      sources: [
+        {
+          id: "recalled1",
+          memoryId: stored.id,
+          agentId: runtime.agentId,
+          roomId: APP_ROOM,
+          entityId: OWNER,
+          originalText: unstamped.content.text,
+        },
+      ],
+    });
+    const { appendStateProviderEvents } = await import(
+      "../../../../plugins/plugin-assistant/src/services/message/dialogue-context.ts"
+    );
+    const { createSourceReplySnapshot, resolveSourceReply } = await import(
+      "../../../../plugins/plugin-assistant/src/services/message/source-reply.ts"
+    );
+    const events: import("@elizaos/core").ContextEvent[] = [];
+    appendStateProviderEvents(events, {
+      text: "",
+      values: {},
+      data: { providers: { "relevant-conversations": result } },
+    });
+    const context = {
+      id: "provider-proof",
+      metadata: { roomId: TELEGRAM_ROOM, messageId: "question" },
+      events,
+    };
+    const snapshot = createSourceReplySnapshot(
+      context,
+      {
+        scope: {
+          agentId: runtime.agentId,
+          roomId: TELEGRAM_ROOM,
+          entityId: OWNER,
+          roles: [],
+        },
+      },
+      [],
+    );
+    if (!snapshot) throw Error("Original source snapshot missing");
+    expect(
+      resolveSourceReply(context, snapshot, {
+        replyText: [{ kind: "source", value: "recalled1" }],
+      })?.replyText,
+    ).toBe(unstamped.content.text);
   });
 
   it("gates private canonical context in a live group-room delivery", async () => {

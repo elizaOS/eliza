@@ -317,6 +317,12 @@ export class NotesService extends Service {
     return queryMatches(notes, value).map(({ note }) => note);
   }
 
+  findNotesNamedInText(text: string): StickyNote[] {
+    return this.snapshot().notes.filter((note) =>
+      titleAppearsAsNamedPhrase(text, note.title),
+    );
+  }
+
   async createNoteWithCommit(inputValue: unknown): Promise<{
     value: StickyNote;
     snapshot: NotesSnapshot;

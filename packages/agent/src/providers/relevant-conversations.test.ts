@@ -372,6 +372,64 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
     ]);
   });
 
+  it.each([
+    {
+      text: "Rendered wrapper around actual words",
+      currentMessageText: "actual words",
+    },
+    { text: "actual words\n[language instruction: Reply in English]" },
+    {
+      text: "Answer the user request using the contextual documents\n<user_request>actual words</user_request>\nDocument context",
+    },
+  ])(
+    "preserves augmented evidence without presenting it as an exact original: %j",
+    async (content) => {
+      embedRecallQuery.mockResolvedValue([0.1, 0.2, 0.3]);
+      const { runtime } = makeRuntime();
+      const plain = {
+        id: "00000000-0000-0000-0000-000000000061",
+        agentId: runtime.agentId,
+        roomId: OTHER_ROOM,
+        entityId: "00000000-0000-0000-0000-0000000000e1",
+        content: { text: "Unmodified original" },
+        metadata: { type: "message", scope: "shared" },
+        createdAt: 1,
+      } as Memory;
+      const augmented = {
+        ...plain,
+        id: "00000000-0000-0000-0000-000000000062",
+        content,
+      } as Memory;
+      searchCanonicalConversationMemories.mockResolvedValueOnce({
+        items: [plain, augmented].map((memory, index) => ({
+          memory,
+          provenance: {},
+          dedupeKey: `record-${index}`,
+        })),
+        withheld: [],
+        availability: "complete",
+      });
+      const result = await relevantConversationsProvider.get(
+        runtime,
+        makeMessage("Recall the actual words"),
+        EMPTY_STATE,
+      );
+      expect(result.text).toContain(content.text);
+      expect(result.data?.originalMessages).toMatchObject({
+        sources: [
+          { id: "recalled1", originalText: "Unmodified original" },
+          { id: "record2", text: content.text },
+        ],
+      });
+      if (!result.data?.originalMessages)
+        throw new Error("Missing source metadata");
+      const sources = (
+        result.data.originalMessages as { sources: Record<string, unknown>[] }
+      ).sources;
+      expect(sources[1]).not.toHaveProperty("originalText");
+    },
+  );
+
   it("fails both recall branches together when access-context resolution fails", async () => {
     buildAccessContext.mockRejectedValueOnce(
       new Error("role store unavailable"),

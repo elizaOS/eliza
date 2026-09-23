@@ -35,6 +35,26 @@ const dentistSaturday = event(
 const gym = event("e3", "Gym session", "2026-09-11T14:00:00.000Z");
 
 describe("resolveCalendarMutationCandidates with a planner-authored date", () => {
+  it("separates dates in the title from the source-day constraint", () => {
+    const target = event("qa", "September 22 QA", "2026-09-23T16:00:00Z");
+    for (const action of ["update", "delete"] as const) {
+      for (const [day, expected] of [
+        [23, [target]],
+        [24, []],
+      ] as const) {
+        const query = `September 22 QA on September ${day}, 2026`;
+        expect(
+          resolveCalendarMutationCandidates({
+            action,
+            events: [target],
+            titleHint: query,
+            texts: [query],
+            timeZone: TZ,
+          }),
+        ).toEqual(expected);
+      }
+    }
+  });
   it("keeps the only title match when details.date alone contradicts it", () => {
     // Live 2026-09-06 21:15: "move my dentist appointment to friday at 4pm"
     // arrived with details.date 2026-09-04 while the appointment was on the 11th.

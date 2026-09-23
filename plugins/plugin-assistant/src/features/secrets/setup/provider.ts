@@ -13,20 +13,11 @@ import type {
   State,
 } from "@elizaos/core";
 import { ChannelType, logger } from "@elizaos/core";
+import {
+  formatSettingValue,
+  redactSettingsForProvider,
+} from "../setting-presentation.ts";
 import type { SetupSetting } from "./config.ts";
-
-/**
- * Format a setting value for display, respecting privacy flags.
- */
-function formatSettingValue(setting: SetupSetting, isSetup: boolean): string {
-  if (setting.value === null || setting.value === undefined) {
-    return "Not set";
-  }
-  if (setting.secret && !isSetup) {
-    return "****************";
-  }
-  return String(setting.value);
-}
 
 /**
  * Generate status message based on settings state.
@@ -50,7 +41,7 @@ function generateStatusMessage(
       return {
         key,
         name: setting.name,
-        value: formatSettingValue(setting, isSetup),
+        value: formatSettingValue(setting),
         description: setting.description,
         usageDescription: setting.usageDescription || setting.description,
         required: setting.required,
@@ -211,7 +202,7 @@ export const setupSettingsProvider: Provider = {
     );
 
     return {
-      data: { settings: worldSettings },
+      data: { settings: redactSettingsForProvider(worldSettings) },
       values: { settings: output },
       text: output,
     };

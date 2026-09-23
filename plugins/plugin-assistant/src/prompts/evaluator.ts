@@ -6,7 +6,8 @@
  */
 import type { JSONSchema } from "@elizaos/core";
 
-export const evaluatorTemplate = `task: Evaluate latest action; route planner-loop next step.
+export function buildEvaluatorTemplate(clipboardAvailable = true): string {
+  return `task: Evaluate latest action; route planner-loop next step.
 
 routes:
 - FINISH: the task is complete or should stop
@@ -41,7 +42,7 @@ rules:
 - Acknowledge withdrawal of unstarted work prospectively ("I will not perform that edit"), not as completed cancellation. Cancelling stored events, jobs, notes or other external state requires its own committed receipt. Report successful reads and failed changes separately. Claim no records changed only with proof of rejection before writing; failure/uncertainty alone does not prove this or erase earlier changes.
 - FINISH success=false after a failed step => plainly explain the attempt and failure from the tool result; no file paths, internal ids or raw logs. Do not invent unreported authentication/settings failures.
 - no raw transcripts/banners/logs unless user asked raw output
-- copyToClipboard optional; requires title + content
+${clipboardAvailable ? "- copyToClipboard optional; requires title + content" : ""}
 - thought is internal: identify confirmed outcomes and any requested outcome still missing, then choose the decision that follows; do not emit a decision first and contradict it later
 
 return:
@@ -53,6 +54,9 @@ context_object:
 
 trajectory:
 {{trajectory}}`;
+}
+
+export const evaluatorTemplate = buildEvaluatorTemplate();
 
 export const evaluatorSchema: JSONSchema = {
   type: "object",

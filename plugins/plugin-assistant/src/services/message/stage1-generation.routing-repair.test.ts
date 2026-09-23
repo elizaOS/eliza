@@ -22,6 +22,47 @@ function decision(overrides: Record<string, unknown>): Record<string, unknown> {
 }
 
 describe("getStage1RoutingRepair", () => {
+  it.each([
+    { disposition: "none", singleViewOnly: false, navigationOnly: false },
+    { disposition: "requested", singleViewOnly: false, navigationOnly: true },
+  ])(
+    "reviews contradictory navigation fields before effects: %j",
+    (visualContinuation) => {
+      expect(
+        getStage1RoutingRepair(
+          decision({
+            contexts: ["notes"],
+            replyEffectStatus: "pending",
+            replyText: "",
+            candidateActionNames: ["VIEWS_SHOW", "NOTES_GET"],
+            intents: ["open Notes", "read note"],
+            visualContinuation,
+          }),
+        ),
+      ).toContain("structured navigation declarations conflict");
+    },
+  );
+  it.each(["forbidden", "unresolved", "requested"])(
+    "does not override %s navigation with candidate hints",
+    (disposition) => {
+      expect(
+        getStage1RoutingRepair(
+          decision({
+            contexts: ["notes"],
+            replyEffectStatus: "pending",
+            replyText: "",
+            candidateActionNames: ["VIEWS_SHOW", "NOTES_GET"],
+            visualContinuation: {
+              disposition,
+              singleViewOnly: true,
+              navigationOnly: false,
+            },
+          }),
+        ),
+      ).toBeUndefined();
+    },
+  );
+
   it("repairs a completed simple answer that still declares pending intents", () => {
     expect(getStage1RoutingRepair(decision({}))).toContain(
       "response_contract_repair:",

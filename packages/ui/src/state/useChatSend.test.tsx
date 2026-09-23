@@ -645,6 +645,91 @@ describe("useChatSend stop handling", () => {
     );
   });
 
+  it.each(["resolved", "rejected"])(
+    "does not dispatch a stopped turn after pending conversation creation %s",
+    async (outcome) => {
+      const creation = deferred<{ conversation: Conversation }>();
+      mocks.client.createConversation.mockReturnValue(creation.promise);
+      mocks.client.sendConversationMessageStream.mockResolvedValue({
+        text: "Unexpected reply",
+        completed: true,
+      });
+      const deps = makeDeps();
+      const { result } = renderHook(() => useChatSend(deps));
+      let sendPromise: Promise<void> | undefined;
+      await act(async () => {
+        sendPromise = result.current.sendChatText("Create a note for tomorrow");
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+      act(() => result.current.handleChatStop());
+      await act(async () => {
+        if (outcome === "resolved") {
+          creation.resolve({
+            conversation: conversation("conv-new", "room-new"),
+          });
+        } else {
+          creation.reject(new Error("Creation failed after Stop"));
+        }
+        await sendPromise;
+      });
+      expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+      expect(listPendingChatTurns("conv-new")).toHaveLength(0);
+      expect(deps.setChatInput).toHaveBeenLastCalledWith(
+        "Create a note for tomorrow",
+      );
+      expect(deps.conversationMessagesRef.current).toEqual([]);
+      expect(deps.setActionNotice).not.toHaveBeenCalled();
+      mocks.client.createConversation.mockResolvedValue({
+        conversation: conversation("conv-next", "room-next"),
+      });
+      await act(async () => {
+        await result.current.sendChatText("hello again");
+      });
+      expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(
+        1,
+      );
+    },
+  );
+
+  it.each(["resolved", "rejected"])(
+    "keeps an action send stopped when pending conversation creation %s",
+    async (outcome) => {
+      const creation = deferred<{ conversation: Conversation }>();
+      mocks.client.createConversation.mockReturnValue(creation.promise);
+      mocks.client.sendConversationMessageStream.mockResolvedValue({
+        text: "Unexpected reply",
+        completed: true,
+      });
+      const deps = makeDeps();
+      const { result } = renderHook(() => useChatSend(deps));
+      let sendPromise: Promise<unknown> | undefined;
+      await act(async () => {
+        sendPromise = result.current.sendActionMessage(
+          "Continue the requested action",
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+      act(() => result.current.handleChatStop());
+      await act(async () => {
+        if (outcome === "resolved") {
+          creation.resolve({
+            conversation: conversation("conv-action", "room-action"),
+          });
+        } else {
+          creation.reject(new Error("Creation failed after Stop"));
+        }
+        await sendPromise;
+      });
+      expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+      expect(deps.setActionNotice).not.toHaveBeenCalled();
+      expect(deps.activeConversationIdRef.current).toBeNull();
+    },
+  );
+
   it("paints the accepted turn before cold conversation creation finishes", async () => {
     const creation = deferred<{ conversation: Conversation }>();
     mocks.client.createConversation.mockReturnValue(creation.promise);
@@ -721,6 +806,39 @@ describe("useChatSend stop handling", () => {
       mocks.client.sendConversationMessageStream.mock.calls[0]?.slice(0, 2),
     ).toEqual(["conv-restored", "hello"]);
   });
+
+  it.each(["composer", "text", "action"] as const)(
+    "does not send %s after Stop while history recovery is pending",
+    async (entry) => {
+      const hydration = deferred<boolean>();
+      const deps = makeActiveConversationDeps();
+      deps.settleConversationHydrationForSend = vi.fn(() => hydration.promise);
+      deps.chatInputRef.current = "Keep this request";
+      mocks.client.sendConversationMessageStream.mockResolvedValue({
+        text: "Unexpected reply",
+        completed: true,
+      });
+      const { result } = renderHook(() => useChatSend(deps));
+      let sendPromise: Promise<unknown> | undefined;
+      act(() => {
+        sendPromise =
+          entry === "composer"
+            ? result.current.handleChatSend()
+            : entry === "text"
+              ? result.current.sendChatText("Keep this request")
+              : result.current.sendActionMessage("Keep this request");
+      });
+      expect(deps.settleConversationHydrationForSend).toHaveBeenCalledTimes(1);
+      act(() => result.current.handleChatStop());
+      await act(async () => {
+        hydration.resolve(true);
+        await sendPromise;
+      });
+      expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+      expect(mocks.client.sendConversationMessage).not.toHaveBeenCalled();
+      expect(deps.chatInputRef.current).toBe("Keep this request");
+    },
+  );
 
   it("preserves the draft, attachments and reply when recovery is unavailable", async () => {
     const deps: UseChatSendDeps = makeDeps({ activeConversationId: "conv-1" });
@@ -1089,6 +1207,43 @@ describe("useChatSend 404 recovery", () => {
       remaining.some((m) => m.role === "assistant" && !m.text.trim()),
     ).toBe(false);
   });
+
+  it.each(["resolved", "rejected"])(
+    "does not replay or replace history when Stop wins 404 recovery (%s)",
+    async (outcome) => {
+      mocks.client.abortConversationTurn.mockResolvedValue({ aborted: true });
+      mocks.client.stopCodingAgent.mockResolvedValue(undefined);
+      const creation = deferred<{ conversation: Conversation }>();
+      mocks.client.createConversation.mockReturnValue(creation.promise);
+      mocks.client.sendConversationMessageStream
+        .mockRejectedValueOnce(http404())
+        .mockResolvedValue({ text: "Unexpected replay", completed: true });
+      const deps = makeActiveConversationDeps();
+      const { result } = renderHook(() => useChatSend(deps));
+      let sendPromise: Promise<void> | undefined;
+      await act(async () => {
+        sendPromise = result.current.sendChatText("Keep my request", {
+          conversationId: "conv-1",
+        });
+        for (let i = 0; i < 8; i++) await Promise.resolve();
+      });
+      expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+      act(() => result.current.handleChatStop());
+      await act(async () => {
+        if (outcome === "resolved")
+          creation.resolve({
+            conversation: conversation("replacement", "replacement-room"),
+          });
+        else creation.reject(http404());
+        await sendPromise;
+      });
+      expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(deps.activeConversationIdRef.current).toBe("conv-1");
+      expect(deps.setActionNotice).not.toHaveBeenCalled();
+    },
+  );
 
   it("recreates the conversation and replays as a token STREAM when only the conversation was deleted", async () => {
     // The normal recoverable case: the conversation row was deleted but the

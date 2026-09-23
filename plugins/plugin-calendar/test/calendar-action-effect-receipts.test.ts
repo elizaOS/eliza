@@ -22,6 +22,7 @@ import {
   createCalendarActionRunner,
 } from "../src/index.js";
 import { CalendarServiceError } from "../src/internal/errors.js";
+import { freshCalendarSources } from "./calendar-source-fixture.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000501";
 const ENTITY_ID = "00000000-0000-0000-0000-000000000502";
@@ -72,23 +73,7 @@ function feed(events: LifeOpsCalendarEvent[] = [EVENT]): LifeOpsCalendarFeed {
     events,
     source: "synced",
     state: "complete",
-    sources: [
-      {
-        key: {
-          provider: "google",
-          side: "owner",
-          grantId: "connector-account:calendar-owner",
-          connectorAccountId: "calendar-owner",
-          calendarId: "primary",
-        },
-        summary: "Primary",
-        accessRole: "owner",
-        visibility: "details",
-        status: "fresh",
-        syncedAt: FEED_SYNCED_AT,
-        error: null,
-      },
-    ],
+    sources: freshCalendarSources(events),
     timeMin: "2026-07-27T00:00:00.000Z",
     timeMax: "2026-08-03T00:00:00.000Z",
     syncedAt: FEED_SYNCED_AT,
@@ -115,13 +100,16 @@ function requireOrderedCalendarWindow(
   }
 }
 
-function message(text: string): Memory {
+function message(
+  text: string,
+  createdAt = Date.parse("2026-07-27T11:55:00.000Z"),
+): Memory {
   return {
     id: MESSAGE_ID,
     agentId: AGENT_ID,
     entityId: ENTITY_ID,
     roomId: ROOM_ID,
-    createdAt: Date.parse("2026-07-27T11:55:00.000Z"),
+    createdAt,
     content: { text, source: "test" },
   } as Memory;
 }
@@ -129,7 +117,18 @@ function message(text: string): Memory {
 function deps(overrides: Partial<CalendarActionDeps> = {}): CalendarActionDeps {
   return {
     runTextModel: vi.fn(async () => null),
-    runJsonModel: vi.fn(async () => null),
+    runJsonModel: vi.fn(async ({ actionType }) =>
+      actionType === "lifeops.calendar.extract_create_event"
+        ? {
+            rawResponse: "{}",
+            parsed: {
+              startAt: EVENT.startAt,
+              endAt: EVENT.endAt,
+              timeZone: "UTC",
+            },
+          }
+        : null,
+    ),
     recentConversationTexts: vi.fn(async () => []),
     // Deterministic presentation fixture, not evidence of a live model reply.
     renderGroundedReply: async ({ fallback }) => ({
@@ -239,32 +238,19 @@ function expectInternalHandoff(
   }
 }
 
-/**
- * A settled built-in mutation whose applied result provably matches the
- * user's own words stays internal but carries the verified reply the planner
- * loop delivers without an evaluator call (the MEMORY "Saved: …" shape).
- */
+/** Settled mutations hand verified facts to the normal response model. */
 function expectVerifiedHandoff(
   delivered: Content[],
   result: Awaited<ReturnType<typeof execute>>,
 ): void {
-  expect(delivered).toEqual([]);
-  expect(result).toMatchObject({
-    success: true,
-    transcriptVisibility: "internal",
-    turnComplete: true,
-    verifiedUserFacing: true,
-    userFacingEffectReceiptIds: [result.effectReceipts?.[0]?.receiptId],
-    data: {
-      replyContext: {
-        domain: "calendar",
-        facts: result.userFacingText,
-      },
-    },
-  });
+  expectInternalHandoff(delivered, result);
+  expect(result.modelReplyRequired).toBe(true);
   expect(result.effectReceipts).toHaveLength(1);
-  // The verified sentence is also the exact text the lifeops wrapper canonicalizes.
-  expect(result.text).toBe(result.userFacingText);
+  expect(result.effectReceipts?.[0]?.outcome).toBe("applied");
+  expect(result.data?.replyContext).toMatchObject({
+    domain: "calendar",
+    facts: expect.any(String),
+  });
   expect(result).not.toHaveProperty("replyFailure");
 }
 
@@ -390,7 +376,9 @@ describe("CALENDAR effect receipt settlement", () => {
         throw providerError;
       });
       const service = {
-        getCalendarFeed: vi.fn(async () => feed([ELIZA_EVENT])),
+        getCalendarFeed: vi.fn(async () =>
+          feed(subaction === "create_event" ? [] : [ELIZA_EVENT]),
+        ),
         getConditionalCalendarMutationTarget: vi.fn(async () => ELIZA_EVENT),
         prepareCalendarEventCreate: vi.fn(
           async (_url: URL, request: Record<string, unknown>) => ({
@@ -410,12 +398,23 @@ describe("CALENDAR effect receipt settlement", () => {
         })),
         deleteCalendarEvent: vi.fn(async () => undefined),
       };
-      const action = createCalendarActionRunner(deps({ renderGroundedReply }));
+      const actionDeps = deps({ renderGroundedReply });
+      if (subaction === "update_event") {
+        actionDeps.runJsonModel = vi.fn(async () => ({
+          rawResponse: "{}",
+          parsed: { title: "Updated title" },
+        }));
+      }
+      const action = createCalendarActionRunner(actionDeps);
       const delivered: Content[] = [];
       const result = await execute({
         action,
         service,
-        actor: message("Use the requested calendar operation."),
+        actor: message(
+          subaction === "update_event"
+            ? "Rename the event to Updated title."
+            : "Use the requested calendar operation.",
+        ),
         delivered,
         parameters: {
           subaction,
@@ -737,6 +736,7 @@ describe("CALENDAR effect receipt settlement", () => {
         service,
         actor: message(
           "Create a calendar event titled Full QA Event tomorrow at 4 PM for 30 minutes.",
+          Date.now(),
         ),
         parameters: {
           subaction: "create_event",
@@ -788,6 +788,10 @@ describe("CALENDAR effect receipt settlement", () => {
     };
     const action = createCalendarActionRunner(
       deps({
+        runJsonModel: vi.fn(async () => ({
+          rawResponse: "{}",
+          parsed: { title: "Eat two sandwiches" },
+        })),
         mutationGateway: {
           schedule: vi.fn(),
           modify,
@@ -856,7 +860,14 @@ describe("CALENDAR effect receipt settlement", () => {
       getConditionalCalendarMutationTarget,
       updateCalendarEvent,
     };
-    const action = createCalendarActionRunner(deps());
+    const action = createCalendarActionRunner(
+      deps({
+        runJsonModel: vi.fn(async () => ({
+          rawResponse: "{}",
+          parsed: { title: "Eat two sandwiches" },
+        })),
+      }),
+    );
     const delivered: Content[] = [];
 
     const result = await execute({
@@ -1019,17 +1030,16 @@ describe("CALENDAR effect receipt settlement", () => {
     });
     // The user's words name the deleted title, so the receipt is self-verified.
     expectVerifiedHandoff(delivered, result);
-    expect(result.userFacingText).toMatch(
+    expect((result.data?.replyContext as { facts: string })?.facts).toMatch(
       /^Deleted “Eat a sandwich” \(tomorrow, Tuesday, Jul 28(?:, 2026)? at 10pm UTC\) from your calendar\.$/,
     );
   });
 
   it("uses timezone-grounded calendar extraction instead of a contradictory outer-planner instant", async () => {
     // The fixture's extraction says "tomorrow" is Aug 5, which is only
-    // coherent when today is Aug 4 in the event's zone. The stated-day guard
-    // now enforces exactly that coherence at the create boundary, so an
-    // unpinned clock would (correctly) snap the fixture's date to the real
-    // tomorrow and the assertion would drift with the wall clock.
+    // coherent when the request was authored on Aug 4 in the event's zone.
+    // Keep the fixture's authored and processing clocks consistent here;
+    // delayed-message coverage separately proves request-time interpretation.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-08-04T19:00:00.000Z"));
     try {
@@ -1090,7 +1100,7 @@ describe("CALENDAR effect receipt settlement", () => {
       const result = await execute({
         action,
         service,
-        actor: message("Add demo tomorrow at 9am."),
+        actor: message("Add demo tomorrow at 9am.", Date.now()),
         parameters: {
           subaction: "create_event",
           title: "Demo",
@@ -1455,6 +1465,37 @@ describe("CALENDAR effect receipt settlement", () => {
     );
   });
 
+  it.each(["school fundraiser", "orchid exhibition"])(
+    "grounds an empty search once for %s",
+    async (query) => {
+      const runTextModel = vi.fn(
+        async () => '{"matchIds":[],"reason":"Different subject"}',
+      );
+      const action = createCalendarActionRunner(deps({ runTextModel }));
+      const result = await execute({
+        action,
+        service: { getCalendarFeed: vi.fn(async () => feed()) },
+        actor: message(`find ${query}`),
+        parameters: {
+          subaction: "search_events",
+          query,
+          details: {
+            timeMin: "2026-07-27T00:00:00Z",
+            timeMax: "2026-08-03T00:00:00Z",
+          },
+        },
+        delivered: [],
+      });
+
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      expect(runTextModel).toHaveBeenCalledTimes(1);
+      expect(result.data?.replyContext).toMatchObject({
+        scenario: "search_results",
+        facts: expect.stringContaining("No calendar events matched"),
+      });
+    },
+  );
+
   it("preserves a search query literally equal to its field name", async () => {
     const action = createCalendarActionRunner(deps());
 
@@ -1714,7 +1755,19 @@ describe("planner debris on a plain move", () => {
     );
     const updateCalendarEvent = vi.fn(async () => updatedEvent);
     const service = { getCalendarFeed, updateCalendarEvent };
-    const action = createCalendarActionRunner(deps());
+    const action = createCalendarActionRunner(
+      deps({
+        runJsonModel: vi.fn(async () => ({
+          rawResponse: "{}",
+          parsed: {
+            startAt: "2026-07-28T19:00:00",
+            endAt: "2026-07-28T19:30:00",
+            location: "primary",
+            description: "Eat a sandwich",
+          },
+        })),
+      }),
+    );
 
     const result = await execute({
       action,
@@ -1803,7 +1856,14 @@ describe("mutations the planner sent without any target", () => {
     );
     const updateCalendarEvent = vi.fn(async () => updatedEvent);
     const service = { getCalendarFeed, updateCalendarEvent };
-    const action = createCalendarActionRunner(deps());
+    const action = createCalendarActionRunner(
+      deps({
+        runJsonModel: vi.fn(async () => ({
+          rawResponse: JSON.stringify({ startAt: "2026-07-28T19:00:00" }),
+          parsed: { startAt: "2026-07-28T19:00:00" },
+        })),
+      }),
+    );
 
     const result = await execute({
       action,

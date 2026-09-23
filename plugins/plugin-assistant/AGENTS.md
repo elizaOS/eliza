@@ -45,3 +45,76 @@ worker. Batcher configuration is validated when assistant is composed.
 The assistant reasoning lifecycle installs structured prompt execution together
 with batching and removes both on unload. runtime/structured-prompt owns template
 rendering, response schemas, semantic recovery and streaming interpretation.
+
+Before each planned action, pass validated dialogue selection as complete source events in an action-local selectedActionConversation value. Reuse core source-set validation; never replace cached provider history or carry a stale previous selection into a fallback. Null retains the domain's full-history fallback, while an explicitly reviewed empty selection serializes as []. This projection adds no model call and changes no action admission or receipt authority.
+
+Direct-text planning and READ_CONTEXT may publish a single model-authored acknowledgement through the optional onPlanningAcknowledgment callback. Reuse existing inference, recheck egress and cancellation, and publish native-read progress only after the requested sources are freshly authorized. Progress never persists an assistant message, marks an answer delivered, refreshes dialogue, or substitutes for final reply recovery. Voice/ambient/decision-only reads retain their existing gates; canonical native tool arguments remain required.
+
+Personal add_directive/remove_directive operations target only the requester; omission of scope cannot turn them into global changes. Removal requires the complete exact stored directive, preserving unrelated rules, traits and other slots. Exact removal resolves and mutates under the slot lock; absent rules produce no write or removal audit. Unknown legacy directive provenance remains unknown. Planner-owned directive changes return durable receipts and deferred reply grounding instead of a premature action callback.
+
+History review checkpoints preserve original correction/dependency groups with the reviewed-prefix hash and scope binding. Foreground reads expand the complete connected originals through the same graph helper; literal match receipts still report only actual matches. Old checkpoints remain valid, malformed/stale groups fall back to full context, and current review completeness requirements remain unchanged.
+
+Transient acknowledgements obey the normal owner-exclusive and outbound-envelope boundaries. Native context-read progress requires existing response admission and cannot trigger an extra adjudication; pending or blocked risk review withholds it. Final-response admission and recovery remain authoritative.
+
+For an internal nonterminal text result that requires a model reply, the evaluator native schema requires messageToUser in the same call; CONTINUE/context reads use an empty string. Visible, terminal and coding results retain their existing optional reply contract. Hosts without clipboard handling declare copyToClipboard:false so the evaluator cannot advertise or silently discard that effect. Standalone result consumers and actual callbacks remain supported.
+
+Planner action callbacks retain genuine tool-owned interaction controls together with their explanatory text and media. Ordinary action prose waits for final publication even when a planner predicts its last batch. Verified action text remains exact at the final boundary without an unnecessary paraphrase call. Interactive controls are not restyled by the action-voice rewrite.
+
+Native text-history decisions may use current_request as the source-set identity. Bind only that explicit reference from canonical HANDLE_RESPONSE arguments to the immutable sources captured for that model request. Core source validation still rejects stale/cross-room/unknown/incomplete selections. Legacy JSON and real mismatched hashes are not repaired implicitly; custom field schemas and voice retain their established paths. Provider-owned raw model output is never mutated.
+
+The existing direct-text, noncoding planner model facade may prefer provider-validated tool reasoning. It preserves the planner thinking policy and cache options; the provider must explicitly support the preference. Handler/evaluator calls, voice, group/unknown channels and coding turns receive no preference. This adds no model call or prompt text.
+
+
+Direct-text native Stage 1 may compose replies from text and authorized complete
+same-room original-message parts. Bind source IDs and exact bytes to the current
+turn's supplied context; reject unresolved or duplicate source decisions before
+field effects. Keep raw model output in recordings. Render literals only after
+field/evaluator reply overrides have been honored. Runtime-only bindings protect
+literal bytes through cosmetic cleanup; serialized references are read hints,
+never sanitizer authority. Full audience and security-envelope checks still run.
+Only one complete source with whitespace-only framing is exempt from new-claim
+inference; mixed prose or multiple sources use the complete rendered claim checks.
+Persisted quote links may reload unchanged earlier originals through the existing
+authorized history path, with no recency floor, summary or extra foreground model.
+
+
+Authorized providers may expose complete original records through the shared
+original-message renderer. Carry source metadata into context only when it
+exactly reconstructs the supplied text (apart from its existing outer trim),
+and revalidate after discovery projection. Provider-only quotations bind to the
+current provider fingerprint independently of current-room history selection.
+Keep provider IDs out of history selectors and persisted same-room quote links;
+redaction, withheld sources, missing identity or duplicate IDs never authorize
+raw metadata reads. Full delivery-audience checks remain mandatory.
+
+
+An authenticated same-room interrupted assistant receipt remains terminal state
+when no text was delivered. Carry its status beside the uniquely linked original
+request, without rewriting either dialogue body or treating interruption as a
+rollback of committed effects/background tasks. A casual approval cannot reuse
+an interrupted preview; an explicit new continuation request remains available.
+
+
+When supplied original sources enable native source replies, advertise an ordered
+reply-parts array rather than an equal legacy string alternative. Ordinary prose
+uses text parts; original source parts render as separate blocks without changing
+literal bytes. Legacy string responses remain accepted, and JSON-envelope parts
+still require an actual source identity (never an implicit native request alias).
+
+
+Personal interaction rules are available through the existing memory context,
+with PERSONALITY owning their state and exact directive edits; MEMORY owns
+factual records. Declaration and validation share the same context set. A
+planner-owned personality state read stays internal until the whole request has
+been resolved; standalone state inspection keeps its existing presentation.
+Last-resort reply rescue uses the complete current context and canonical tool
+messages, including archived results, rather than disconnected success excerpts.
+Composed failure instructions remain scrubbed; original authorized diagnostic
+records stay separate evidence, and existing final-output checks still apply.
+
+
+Stage1's existing single routing repair also reviews contradictory structured
+navigation declarations (VIEWS_SHOW with no navigation, or navigation-only with
+multiple/unknown views). It never converts forbidden navigation into permission,
+infers an action from wording, or adds an unbounded retry. Normal plugin admission
+and navigation receipts remain authoritative after the review.

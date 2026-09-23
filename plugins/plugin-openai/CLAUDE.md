@@ -157,3 +157,5 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+A host may request eliza.preferToolReasoning for direct-text planning. Only the exact Cerebras qwen-3.8-27b native-tool lane honors that preference over thinking-off; an explicit configured none or per-call reasoning override remains authoritative. Other endpoints/models retain their existing suppression. Model compatibility belongs here, not in host prompt or action-name heuristics.

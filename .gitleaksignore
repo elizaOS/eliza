@@ -52,3 +52,7 @@ f5aaa84aa0b5cf3dcd018f4e35f9c7243c5cc80c:plugins/plugin-agent-orchestrator/src/_
 1047e6d00968eef607e94fe610983b33709f1fc2:packages/core/src/logger.test.ts:generic-api-key:787
 1047e6d00968eef607e94fe610983b33709f1fc2:plugins/plugin-assistant/src/features/secrets/actions/mask.test.ts:aws-access-token:28
 1047e6d00968eef607e94fe610983b33709f1fc2:plugins/plugin-assistant/src/features/secrets/setup/state-machine.test.ts:generic-api-key:77
+
+# Synthetic Calendar mutation idempotency label from a local database test,
+# not a credential. Exact historical finding; current label is shorter.
+71f7f19c571e92a6cff421f2f1b64468444b08a2:plugins/plugin-calendar/test/eliza-calendar.pglite.test.ts:generic-api-key:696

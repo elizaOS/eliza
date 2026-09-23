@@ -51,6 +51,9 @@ function clone(slot: PersonalitySlot): PersonalitySlot {
     ...slot,
     custom_directives: [...slot.custom_directives],
     trait_sources: { ...slot.trait_sources },
+    ...(slot.directive_sources
+      ? { directive_sources: { ...slot.directive_sources } }
+      : {}),
     ...(slot.extraction_evidence_ids
       ? { extraction_evidence_ids: [...slot.extraction_evidence_ids] }
       : {}),
@@ -88,6 +91,9 @@ function serializeSlotForMemory(
     updated_at: slot.updated_at,
     source: slot.source,
     trait_sources: { ...slot.trait_sources } as Record<string, string>,
+    ...(slot.directive_sources
+      ? { directive_sources: { ...slot.directive_sources } }
+      : {}),
     ...(slot.extraction_evidence_ids
       ? { extraction_evidence_ids: [...slot.extraction_evidence_ids] }
       : {}),
@@ -163,6 +169,16 @@ function isValidPersistedSlot(value: unknown): value is PersonalitySlot {
   )
     return false;
   if (!isOneOf(slot.source, PERSONALITY_SOURCES)) return false;
+  if (
+    slot.directive_sources !== undefined &&
+    (!slot.directive_sources ||
+      typeof slot.directive_sources !== "object" ||
+      Array.isArray(slot.directive_sources) ||
+      Object.values(slot.directive_sources).some(
+        (source) => !isOneOf(source, PERSONALITY_SOURCES),
+      ))
+  )
+    return false;
   const traitSources = slot.trait_sources;
   if (
     traitSources === null ||
@@ -340,6 +356,8 @@ export class PersonalityStore extends Service {
         )
           return { before, after: clone(before) };
         const after = args.build(before);
+        // Returning the unchanged snapshot is an explicit no-op under the lock.
+        if (after === before) return { before, after: clone(before) };
         if (args.extractionEvidenceId)
           after.extraction_evidence_ids = [
             ...(before.extraction_evidence_ids ?? []),
@@ -574,15 +592,55 @@ export class PersonalityStore extends Service {
       agentId: args.agentId,
       actorId: args.actorId,
       build: (before) => {
-        const next = [...before.custom_directives, args.directive];
+        const exists = before.custom_directives.includes(args.directive);
+        const next = exists
+          ? [...before.custom_directives]
+          : [...before.custom_directives, args.directive];
         return {
           ...before,
           custom_directives: next,
+          directive_sources: {
+            ...before.directive_sources,
+            ...(exists && args.source === "agent_inferred"
+              ? {}
+              : { [args.directive]: args.source ?? "user" }),
+          },
           updated_at: new Date().toISOString(),
           source: args.source ?? "user",
         };
       },
       action: () => `add_directive:${args.directive}`,
+    });
+  }
+
+  /** Remove exactly one rule through the same serialized durable write path. */
+  async removeDirective(args: {
+    userId: UUID;
+    agentId: UUID;
+    actorId: UUID;
+    directive: string;
+  }): Promise<{ before: PersonalitySlot; after: PersonalitySlot }> {
+    return this.mutateSlot({
+      scope: "user",
+      targetId: args.userId,
+      agentId: args.agentId,
+      actorId: args.actorId,
+      build: (before) => {
+        // Resolve the exact rule under the same slot lock as the write.
+        if (!before.custom_directives.includes(args.directive)) return before;
+        const sources = { ...before.directive_sources };
+        delete sources[args.directive];
+        return {
+          ...before,
+          custom_directives: before.custom_directives.filter(
+            (text) => text !== args.directive,
+          ),
+          directive_sources: sources,
+          updated_at: new Date().toISOString(),
+          source: "user",
+        };
+      },
+      action: () => `remove_directive:${args.directive}`,
     });
   }
 
@@ -601,6 +659,7 @@ export class PersonalityStore extends Service {
       build: (before) => ({
         ...before,
         custom_directives: [],
+        directive_sources: {},
         updated_at: new Date().toISOString(),
         source: args.scope === "global" ? "admin" : "user",
       }),

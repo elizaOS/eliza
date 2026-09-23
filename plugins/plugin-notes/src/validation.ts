@@ -104,10 +104,8 @@ function parseText(value: unknown, field: string): string {
  * Split the one user-authored note field into the storage schema's stable list
  * label and remainder. The first line is the label; overflow and later lines
  * stay in the body, so the transformation never asks a model to invent text or
- * discards user content. A one-line note written as "Label: details" keeps the
- * label as the title and the details as the body — planners flatten "titled X
- * saying Y" into exactly that shape — and the colon must be followed by
- * whitespace so URLs ("https://…") and clock times ("5:30") never split.
+ * discards user content. Punctuation does not define a field boundary; callers
+ * supplying a separate title and body join them with a newline before parsing.
  */
 export function parseNoteContent(
   value: unknown,
@@ -118,19 +116,11 @@ export function parseNoteContent(
     maxLength: MAX_NOTE_CONTENT_LENGTH,
   });
   const [firstLine = "", ...remainingLines] = content.split(/\r?\n/);
-  let labelLine = toWellFormedUnicode(firstLine.trim());
-  let inlineDetails = "";
-  if (remainingLines.length === 0) {
-    const labeled = /^([^:]+):\s+(.+)$/.exec(labelLine);
-    if (labeled) {
-      labelLine = labeled[1].trim();
-      inlineDetails = labeled[2].trim();
-    }
-  }
+  const labelLine = toWellFormedUnicode(firstLine.trim());
   const title = truncateWellFormed(labelLine, MAX_TITLE_LENGTH).trim();
   const overflow = labelLine.slice(title.length).trim();
-  const body = [overflow, inlineDetails, ...remainingLines]
-    .filter((part, index) => index >= 2 || part.length > 0)
+  const body = [overflow, ...remainingLines]
+    .filter((part, index) => index >= 1 || part.length > 0)
     .join("\n")
     .trim();
   return {
@@ -176,6 +166,55 @@ function parseTimestamp(value: unknown, field: string): string {
     );
   }
   return value;
+}
+
+/** Read bounds must identify instants; never interpret a clock in server time. */
+export function parseNoteDateRange(value: unknown): {
+  field: "createdAt" | "updatedAt";
+  startAt: string;
+  endAt: string;
+} {
+  const range = requireRecord(value, "dateRange");
+  assertOnlyKeys(range, ["field", "startAt", "endAt"], "dateRange");
+  if (range.field !== "createdAt" && range.field !== "updatedAt") {
+    throw validationError(
+      "dateRange.field must be createdAt or updatedAt.",
+      "dateRange.field",
+    );
+  }
+  const bound = (value: unknown, name: string): string => {
+    if (
+      typeof value !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(
+        value,
+      ) ||
+      !Number.isFinite(Date.parse(value))
+    ) {
+      throw validationError(
+        `${name} must be an ISO timestamp with Z or an explicit offset.`,
+        name,
+      );
+    }
+    // Date.parse normalizes impossible dates such as February 30. Compare
+    // the wall-clock components before applying the supplied offset.
+    const wallClock = `${value.slice(0, 19)}.000Z`;
+    if (new Date(wallClock).toISOString() !== wallClock) {
+      throw validationError(
+        `${name} must be a real calendar date and clock time.`,
+        name,
+      );
+    }
+    return value;
+  };
+  const startAt = bound(range.startAt, "dateRange.startAt");
+  const endAt = bound(range.endAt, "dateRange.endAt");
+  if (Date.parse(endAt) <= Date.parse(startAt)) {
+    throw validationError(
+      "dateRange.endAt must follow startAt.",
+      "dateRange.endAt",
+    );
+  }
+  return { field: range.field, startAt, endAt };
 }
 
 function parseRevision(value: unknown): number {
@@ -304,4 +343,67 @@ export function parseNotesDocument(value: unknown): NotesDocument {
     persistedAt: parseTimestamp(record.persistedAt, "persistedAt"),
     notes,
   };
+}
+
+/** Structured chat patches use the same validator and write barrier as the UI. */
+export function parseNoteFieldPatch(
+  targetInput: unknown,
+  changeInput: unknown,
+  textEditInput?: unknown,
+): {
+  target: { kind: "id" | "text"; value: string };
+  change: UpdateNoteInput;
+} {
+  const target = requireRecord(targetInput, "target");
+  assertOnlyKeys(target, ["kind", "value"], "target");
+  if (
+    (target.kind !== "id" && target.kind !== "text") ||
+    typeof target.value !== "string" ||
+    !target.value.trim()
+  ) {
+    throw validationError(
+      "target requires kind id/text and a nonempty value.",
+      "target",
+    );
+  }
+  if (textEditInput !== undefined) {
+    if (!Array.isArray(changeInput) || changeInput.length !== 0) {
+      throw validationError(
+        "Use empty changes with textEdit; never combine update forms.",
+        "changes",
+      );
+    }
+    return {
+      target: { kind: target.kind, value: target.value },
+      change: parseUpdateNoteInput({ textEdit: textEditInput }),
+    };
+  }
+  if (!Array.isArray(changeInput) || changeInput.length === 0) {
+    throw validationError("changes must be a nonempty array.", "changes");
+  }
+  const raw: Record<string, unknown> = {};
+  for (const input of changeInput) {
+    const entry = requireRecord(input, "change");
+    assertOnlyKeys(entry, ["field", "value"], "change");
+    if (
+      (entry.field !== "title" && entry.field !== "body") ||
+      hasOwn(raw, entry.field)
+    ) {
+      throw validationError(
+        "Each title/body field may be replaced only once.",
+        "changes",
+      );
+    }
+    raw[entry.field] = entry.value;
+  }
+  const change = parseUpdateNoteInput(raw);
+  for (const field of ["title", "body"] as const) {
+    if (hasOwn(raw, field) && raw[field] !== change[field]) {
+      throw validationError(
+        "Requested field would require normalization; nothing changed.",
+        `changes.${field}`,
+      );
+    }
+  }
+  return { target: { kind: target.kind, value: target.value }, change };
 }
