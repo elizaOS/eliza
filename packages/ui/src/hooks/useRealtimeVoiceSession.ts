@@ -152,6 +152,8 @@ export interface UseRealtimeVoiceSessionState {
   connecting: boolean;
   /** Unified status for the mounted composer or an embedded status bar. */
   status: VoiceContinuousStatus;
+  /** Current transient acknowledgement; never persisted as a message. */
+  progressText?: string;
   /** Live partial transcript (server `stt_partial`). "" when none. */
   transcriptPartial: string;
   /** Committed final transcript for the current turn (server `stt_final`). */
@@ -295,6 +297,7 @@ export function useRealtimeVoiceSession(
   } = options;
 
   const [status, setStatus] = useState<VoiceContinuousStatus>("idle");
+  const [progressText, setProgressText] = useState<string>();
   const [transcriptPartial, setTranscriptPartial] = useState("");
   const [transcriptFinal, setTranscriptFinal] = useState("");
   const [agentSpeaking, setAgentSpeaking] = useState(false);
@@ -429,6 +432,7 @@ export function useRealtimeVoiceSession(
       setPaused(false);
       setMicrophoneMuted(false);
       setStatus("idle");
+      setProgressText(undefined);
       setTranscriptPartial("");
     }
     return stoppedGeneration;
@@ -507,6 +511,7 @@ export function useRealtimeVoiceSession(
       setNeedsUnlock(false);
       setPaused(false);
       setStatus("idle");
+      setProgressText(undefined);
       setTranscriptPartial("");
     };
     const armReadyTimer = () => {
@@ -546,6 +551,7 @@ export function useRealtimeVoiceSession(
         if (!isCurrent()) return;
         if (state.phase === "ready") serverReadyForMic = true;
         setStatus(unifiedStatus);
+        setProgressText(state.progressText);
         setAgentSpeaking(state.phase === "speaking");
         // `active` derives ONLY from the client's phase: live means the socket
         // opened, the server sent `ready`, and the mic is capturing. Pre-live
@@ -800,6 +806,7 @@ export function useRealtimeVoiceSession(
       active,
       connecting,
       status,
+      progressText,
       transcriptPartial,
       transcriptFinal,
       agentSpeaking,
@@ -821,6 +828,7 @@ export function useRealtimeVoiceSession(
       active,
       connecting,
       status,
+      progressText,
       transcriptPartial,
       transcriptFinal,
       agentSpeaking,

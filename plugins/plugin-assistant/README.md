@@ -86,3 +86,5 @@ Cleanup retains running records, temporary writes, unrelated files and records
 belonging to another agent. It does not prune SQL trajectories or Markdown
 review artifacts. Filesystem failures remain visible through normal task error
 handling. Shutdown unregisters the worker and waits for accepted cleanup.
+
+Text, direct voice and text groups share action discovery. Text channels also share authorized provider/history reads; voice keeps complete dialogue and provider bodies. Transient voice progress uses the normal acknowledgment callback without persisting a second reply. Navigation receipts and retry identity follow the same host-owned contract across text and voice.

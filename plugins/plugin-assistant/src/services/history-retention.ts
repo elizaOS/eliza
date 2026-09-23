@@ -10,7 +10,6 @@ import type {
   Memory,
 } from "@elizaos/core";
 import {
-  ChannelType,
   COMPLETION_CONTEXT_SCHEMA,
   completionContextSources,
   createContextObject,
@@ -29,6 +28,7 @@ import {
 } from "../runtime/history-retention.ts";
 import { canonicalEvaluatorMessages } from "./evaluator-transcript.ts";
 import { resolveStage1SenderRole } from "./message/addressing.ts";
+import { isProgressiveContextChannel } from "./message/channel-protocol.ts";
 import { appendPriorDialogueEvents } from "./message/dialogue-context.ts";
 
 export const HISTORY_RETENTION_EVALUATOR = "historyRetention";
@@ -170,11 +170,7 @@ export const historyRetentionEvaluator: Evaluator<
     const channelType =
       message.content.channelType ??
       (await runtime.getRoom(message.roomId))?.type;
-    return (
-      channelType === ChannelType.DM ||
-      channelType === ChannelType.API ||
-      channelType === ChannelType.SELF
-    );
+    return isProgressiveContextChannel(channelType);
   },
   async prepare({ runtime, message, options }) {
     const evidence = options.extraction;

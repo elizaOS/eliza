@@ -596,11 +596,12 @@ describe("durable background memory", () => {
     [ChannelType.DM, true],
     [ChannelType.API, true],
     [ChannelType.SELF, true],
-    [ChannelType.GROUP, false],
+    [ChannelType.GROUP, true],
+    [ChannelType.THREAD, true],
     [ChannelType.VOICE_DM, false],
     [ChannelType.VOICE_GROUP, false],
   ] as const)(
-    "indexes supported direct-conversation sources: %s",
+    "indexes text sources while retaining full voice history: %s",
     async (channelType, enabled) => {
       const { runtime, service, message } = await setup();
       await runtime.registerPlugin(createAdvancedMemoryPlugin());

@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
+import { normalizeChatIdempotencyKey } from "@elizaos/shared/conversation-chat-marker";
 
 import {
   type ElizaServerTimingReceipt,
@@ -57,6 +58,97 @@ async function streamTerminalActionResults(actionResults: Record<string, unknown
 }
 
 describe("eliza sse bridge", () => {
+  test.each([
+    { delivered: true, handoffId: "voice-navigation-1", duplicate: false },
+    { delivered: false, handoffId: "voice-navigation-1", duplicate: true },
+    { delivered: "true", handoffId: "voice-navigation-1", duplicate: true },
+    { delivered: true, handoffId: undefined, duplicate: true },
+    { delivered: true, handoffId: "invalid id", duplicate: true },
+  ])(
+    "does not repeat only confirmed targeted navigation: %j",
+    async ({ delivered, handoffId, duplicate }) => {
+      const result = await streamTerminalActionResult({
+        actionName: "VIEWS",
+        success: true,
+        values: {
+          mode: "show",
+          viewId: "notes",
+          viewPath: "/notes",
+          completedActionDelivered: delivered,
+          completedActionHandoffId: handoffId,
+        },
+      });
+      expect(result.viewHandoff).toEqual(
+        duplicate ? { viewId: "notes", viewPath: "/notes" } : undefined,
+      );
+    },
+  );
+
+  test("speaks a transient status acknowledgement once before the separate final reply", async () => {
+    const events: string[] = [];
+    const result = await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "read my note",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-progress",
+        signal: new AbortController().signal,
+        onProgress: (text) => {
+          events.push(`progress:${text}`);
+        },
+        fetchImpl: (async () =>
+          sseResponse([
+            'data: {"type":"status","kind":"thinking","label":"Checking your note."}\n\n',
+            'data: {"type":"status","kind":"tool_running","label":"Checking your note."}\n\n',
+            'data: {"type":"status","kind":"thinking","label":"Checking your note."}\n\n',
+            'data: {"type":"token","text":"It is done!","provisional":true}\n\n',
+            'data: {"type":"token","fullText":"Your note says hello."}\n\n',
+            'data: {"type":"status","kind":"thinking","label":"Late progress must not speak."}\n\n',
+            'data: {"type":"done","text":"Your note says hello."}\n\n',
+          ])) as typeof fetch,
+      },
+      (text) => {
+        events.push(`final:${text}`);
+      },
+    );
+    expect(result.completed).toBe(true);
+    expect(events).toEqual(["progress:Checking your note.", "final:Your note says hello."]);
+  });
+
+  test("cancellation from a progress observer prevents buffered speech", async () => {
+    const abort = new AbortController();
+    const deltas: string[] = [];
+    const result = await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "read my note",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-progress-abort",
+        signal: abort.signal,
+        onProgress: () => {
+          abort.abort();
+        },
+        fetchImpl: (async () =>
+          sseResponse([
+            'data: {"type":"status","kind":"thinking","label":"Checking your note."}\n\n',
+            'data: {"type":"token","text":"Must not speak after Stop."}\n\n',
+            'data: {"type":"done","text":"Must not speak after Stop."}\n\n',
+          ])) as typeof fetch,
+      },
+      (text) => {
+        deltas.push(text);
+      },
+    );
+    expect(result.aborted).toBe(true);
+    expect(deltas).toEqual([]);
+  });
+
   test("decodes delta.content tokens and completes on [DONE]", async () => {
     const deltas: string[] = [];
     const fetchImpl = (async () =>
@@ -814,6 +906,7 @@ describe("eliza sse bridge", () => {
     expect(seenBody).toEqual({
       text: "hi",
       channelType: "VOICE_DM",
+      clientMessageId: expect.any(String),
       metadata: {
         clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
       },
@@ -825,6 +918,46 @@ describe("eliza sse bridge", () => {
     expect(seenHeaders?.get("X-Eliza-Conversation-Id")).toBe("conv-ABC");
     expect(seenHeaders?.get("X-Eliza-Organization-Id")).toBe("org-123");
     expect(seenHeaders?.get("X-Eliza-User-Id")).toBe("user-456");
+  });
+
+  test("keys ordinary voice retries while separating turns and preserving transient controls", async () => {
+    const keys: unknown[] = [];
+    const traces: string[] = [];
+    const base = {
+      endpoint: "http://x",
+      authorization: "Bearer fixture",
+      model: "m",
+      transcript: "Open Notes",
+      agentId: "agent-1",
+      conversationId: "conv-1",
+      signal: new AbortController().signal,
+    };
+    const trace = `session:${"x".repeat(150)}:turn:1:1725000000000`;
+    for (const request of [
+      { traceId: trace },
+      { traceId: trace },
+      { traceId: `${trace}:next` },
+      { traceId: trace, transientInput: true as const },
+    ]) {
+      await streamElizaConversation(
+        {
+          ...base,
+          ...request,
+          fetchImpl: (async (_url, init) => {
+            const body = JSON.parse(String(init?.body));
+            keys.push(body.clientMessageId);
+            traces.push(new Headers(init?.headers).get(VOICE_TRACE_HEADER) ?? "");
+            return sseResponse(["data: [DONE]\n\n"]);
+          }) as typeof fetch,
+        },
+        () => {},
+      );
+    }
+    expect(keys[0]).toBe(keys[1]);
+    expect(keys[2]).not.toBe(keys[0]);
+    for (const key of keys.slice(0, 3)) expect(normalizeChatIdempotencyKey(key)).toBe(key);
+    expect(keys[3]).toBeUndefined();
+    expect(traces).toEqual([trace, trace, `${trace}:next`, trace]);
   });
 
   test("carries the server-attested lifecycle history cutoff in the internal body", async () => {

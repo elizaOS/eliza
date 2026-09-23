@@ -151,6 +151,7 @@ const realtimeVoiceMock = vi.hoisted(() => {
       active: false,
       connecting: false,
       status: "idle" as VoiceContinuousStatus,
+      progressText: undefined as string | undefined,
       transcriptPartial: "",
       transcriptFinal: "",
       agentSpeaking: false,
@@ -2764,6 +2765,26 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
     expect(realtimeVoiceMock.startedConversationIds).toEqual([conversationId]);
     expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+  });
+
+  it("renders realtime acknowledgement through the existing transient turn status", () => {
+    realtimeVoiceMock.state.active = true;
+    realtimeVoiceMock.state.status = "thinking";
+    realtimeVoiceMock.state.progressText = "Checking your note.";
+    const { result, rerender } = renderHook(() => useShellController());
+    expect(result.current.turnStatus).toEqual({
+      kind: "thinking",
+      label: "Checking your note.",
+    });
+    realtimeVoiceMock.state.agentSpeaking = true;
+    rerender();
+    expect(result.current.turnStatus).toEqual({
+      kind: "speaking",
+      label: "Checking your note.",
+    });
+    realtimeVoiceMock.state.progressText = undefined;
+    rerender();
+    expect(result.current.turnStatus).toEqual({ kind: "speaking" });
   });
 
   it("clears the committed transcript while projecting realtime playback state", () => {

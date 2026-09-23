@@ -52,6 +52,7 @@ import {
   listAvailableContextsForRole,
   resolveStage1SenderRole,
 } from "./addressing.js";
+import { isProgressiveContextChannel } from "./channel-protocol.ts";
 import { createV5MessageContextObject } from "./context-assembly.js";
 import {
   createContextReadTool,
@@ -100,6 +101,7 @@ import {
   getStage1RetryReason,
   getStage1RoutingRepair,
   getStage1UnusableDecisionRepair,
+  hasNavigationWithoutPendingIntent,
   isEmptyStage1Result,
   parseMessageHandlerModelOutput,
   readStage1EmptyRetryLimit,
@@ -208,7 +210,8 @@ export async function generateStage1Decision(
     args.runtime.responseHandlerFieldRegistry.composeSchema();
   const loadedContext = new Set<string>();
   const discoveryEnabled =
-    directMessageChannel && !voiceDirectMessageChannel && !args.codingMode;
+    isProgressiveContextChannel(args.message.content?.channelType) &&
+    !args.codingMode;
   const responseHandlerSchema = discoveryEnabled
     ? withDirectTextBuiltinSchemaDescriptions(
         canonicalResponseHandlerSchema,
@@ -283,6 +286,7 @@ export async function generateStage1Decision(
     {
       directMessage: directMessageChannel,
       voiceDirectMessage: voiceDirectMessageChannel,
+      progressiveContext: discoveryEnabled,
       responseHandlerFields: responseHandlerFieldPrompt.rendered,
       contextCatalog,
       history,
@@ -837,7 +841,9 @@ export async function generateStage1Decision(
       !automatedSender &&
       !isSubAgentCompletionArtifact(args.message) &&
       getActionInferenceMessageText(args.message).trim().length > 0
-        ? (getStage1DirectIgnoreReview(parsedDecision) ??
+        ? ((directMessageChannel
+            ? getStage1DirectIgnoreReview(parsedDecision)
+            : undefined) ??
           (terminalReaskEnabled &&
           parsedDecision &&
           "shouldRespond" in parsedDecision &&
@@ -1084,6 +1090,7 @@ export async function generateStage1Decision(
         {
           directMessage: directMessageChannel,
           voiceDirectMessage: voiceDirectMessageChannel,
+          progressiveContext: discoveryEnabled,
           responseHandlerFields: responseHandlerFieldPrompt.rendered,
           contextCatalog,
           history,
@@ -1188,7 +1195,8 @@ export async function generateStage1Decision(
   }
   if (
     routingRepairAttempted &&
-    (rawFieldParsed?.replyEffectStatus === "non_applied" ||
+    (hasNavigationWithoutPendingIntent(rawFieldParsed) ||
+      rawFieldParsed?.replyEffectStatus === "non_applied" ||
       rawFieldParsed?.shouldRespond === "STOP" ||
       rawFieldParsed?.shouldRespond === "IGNORE") &&
     getStage1RoutingRepair(rawFieldParsed)

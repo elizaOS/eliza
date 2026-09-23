@@ -99,6 +99,7 @@ export type ServerControlFrame =
   | { t: "stt_eager_eot"; traceId: string }
   | { t: "stt_final"; text: string; traceId: string }
   | { t: "llm_first_text"; traceId: string }
+  | { t: "progress"; text: string; traceId: string }
   | { t: "speaking_start"; traceId: string }
   | { t: "speaking_end"; traceId: string }
   | { t: "assistant_playing"; active: boolean; traceId: string }

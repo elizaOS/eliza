@@ -195,6 +195,7 @@ export function renderMessageHandlerModelInput(
     directMessage?: boolean;
     voiceDirectMessage?: boolean;
     groupTriage?: boolean;
+    progressiveContext?: boolean;
     responseHandlerFields?: string;
     contextCatalog?: ContextCatalogReference;
     history?: HistoryDiscovery;
@@ -211,14 +212,14 @@ export function renderMessageHandlerModelInput(
   const completionSourceIds = new Map(
     completionSources?.sources.map(({ id, event }) => [event.id, id]),
   );
-  const directText =
-    options?.directMessage &&
-    !options.voiceDirectMessage &&
-    !options.groupTriage;
+  const progressiveContext =
+    !options?.voiceDirectMessage &&
+    (options?.progressiveContext ??
+      (options?.directMessage && !options?.groupTriage));
   const history =
-    directText &&
-    options.history?.sourceSetId === completionSources?.sourceSetId
-      ? options.history
+    progressiveContext &&
+    options?.history?.sourceSetId === completionSources?.sourceSetId
+      ? options?.history
       : undefined;
   const instructions = renderMessageHandlerInstructions(
     runtime,
@@ -258,13 +259,17 @@ export function renderMessageHandlerModelInput(
     ),
     completionSourceIds,
   );
+  // Past receipts precede the current request boundary and grant no authority.
+  const historicalNavigationSegments = remainingDynamicSegments.filter(
+    (segment) => segment.label === "runtime:historical_navigation",
+  );
   const dynamicProviderSegments = remainingDynamicSegments.filter(
     (segment) => segment.label?.startsWith("provider:") === true,
   );
   // Availability validation can change this complete, freshly authorized catalog
   // on every request. Keep it after the history prefix so an action appearing or
   // disappearing does not invalidate cached history. Never cache authorization.
-  const actionCatalogSegments = directText
+  const actionCatalogSegments = progressiveContext
     ? remainingDynamicSegments.filter(
         (segment) =>
           segment.id === "available-actions" &&
@@ -275,15 +280,17 @@ export function renderMessageHandlerModelInput(
     (segment) =>
       segment.label?.startsWith("prior_message:") !== true &&
       segment.label?.startsWith("provider:") !== true &&
-      !actionCatalogSegments.includes(segment),
+      !actionCatalogSegments.includes(segment) &&
+      !historicalNavigationSegments.includes(segment),
   );
   // The boundary follows untrusted dialogue so stored messages cannot supersede
   // it with structural-looking text. Providers remain adjacent after that
   // boundary, preserving their reusable prefix before the current message.
   const orderedDynamicSegments = [
-    ...(directText
+    ...(progressiveContext
       ? shortenHistoryRoleLabels(priorDialogueSegments, completionSourceIds)
       : priorDialogueSegments),
+    ...historicalNavigationSegments,
     ...actionCatalogSegments,
     ...currentTurnBoundary,
     ...(completionSources?.sources.length
@@ -306,7 +313,8 @@ export function renderMessageHandlerModelInput(
       : []),
     ...loadedHistorySegments(
       context,
-      history ?? (directText ? options?.historyReadEvidence : undefined),
+      history ??
+        (progressiveContext ? options?.historyReadEvidence : undefined),
       history?.loadedSourceIds.size
         ? new Set(
             priorDialogueSegments.flatMap((segment) =>

@@ -120,6 +120,7 @@ import {
   resolveStage1ReplyGateMode,
   resolveStage1SenderRole,
 } from "./addressing.js";
+import { isActionDiscoveryChannel } from "./channel-protocol.ts";
 import { createV5MessageContextObject } from "./context-assembly.js";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
 import { filterIntermediateCallbackContent } from "./delivery.js";
@@ -269,8 +270,7 @@ export async function runV5MessageRuntimeStage1(
     createV5MessageContextObject({
       ...args,
       includeActionDiscovery:
-        directMessageChannel &&
-        args.message.content?.channelType !== ChannelType.VOICE_DM &&
+        isActionDiscoveryChannel(args.message.content?.channelType) &&
         !args.codingMode
           ? "index"
           : true,
@@ -1232,8 +1232,7 @@ export async function runV5MessageRuntimeStage1(
         normalizeActionIdentifier(DISCOVER_TOOLS_NAME),
     );
     const discoverWithoutActionHints =
-      directMessageChannel &&
-      args.message.content?.channelType !== ChannelType.VOICE_DM &&
+      isActionDiscoveryChannel(args.message.content?.channelType) &&
       stageOneCandidates.length === 0;
     const canUseProgressiveActions =
       args.codingMode !== true &&

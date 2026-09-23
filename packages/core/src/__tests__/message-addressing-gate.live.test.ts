@@ -11,6 +11,8 @@ import {
 	type RealTestRuntimeResult,
 } from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createAssistantPlugin } from "../../../../plugins/plugin-assistant/src/index.ts";
+import { trajectoryLoggerPlugin } from "../../../../plugins/plugin-trajectory-logger/src/index.ts";
 import {
 	ChannelType,
 	createMessageMemory,
@@ -49,6 +51,7 @@ liveDescribe("group addressing gate — live Cerebras message loop", () => {
 	beforeAll(async () => {
 		harness = await createRealTestRuntime({
 			characterName: "AddressingProofAgent",
+			plugins: [createAssistantPlugin(), trajectoryLoggerPlugin],
 			withLLM: true,
 			preferredProvider: "openai",
 		});
@@ -63,7 +66,7 @@ liveDescribe("group addressing gate — live Cerebras message loop", () => {
 		await harness?.cleanup();
 	});
 
-	async function runGroupTurn(text: string) {
+	async function runGroupTurn(text: string, requireTrajectory = true) {
 		const roomId = stringToUuid(`addressing-gate-room:${text}`) as UUID;
 		const worldId = stringToUuid(`addressing-gate-world:${text}`) as UUID;
 		const senderId = stringToUuid(`addressing-gate-sender:${text}`) as UUID;
@@ -114,7 +117,15 @@ liveDescribe("group addressing gate — live Cerebras message loop", () => {
 		const trajectoryId = (message.metadata as { trajectoryId?: unknown } | null)
 			?.trajectoryId;
 		if (typeof trajectoryId !== "string" || !trajectoryId.trim()) {
-			throw new Error("live group turn did not create a trajectory");
+			if (requireTrajectory)
+				throw new Error("live group turn did not create a trajectory");
+			return {
+				delivered,
+				message,
+				modelResponses: [],
+				result,
+				trajectory: null,
+			};
 		}
 		const trajectoryService = harness.runtime.getService(
 			"trajectories",
@@ -142,15 +153,10 @@ liveDescribe("group addressing gate — live Cerebras message loop", () => {
 	it("suppresses an ambient Alice-addressed turn while preserving an agent-addressed control", async () => {
 		const overheard = await runGroupTurn(
 			"Alice, what is two plus two? Anyone who knows should jump in with the answer.",
+			false,
 		);
-		expect(overheard.trajectory.metrics?.finalStatus).toBe("completed");
-		expect(overheard.modelResponses.length).toBeGreaterThan(0);
-		expect(
-			overheard.modelResponses.some((response) =>
-				/"shouldRespond"\s*:\s*"IGNORE"/i.test(response),
-			),
-			JSON.stringify({ modelResponses: overheard.modelResponses }),
-		).toBe(true);
+		expect(overheard.trajectory).toBeNull();
+		expect(overheard.modelResponses).toEqual([]);
 		expect(overheard.delivered).toEqual([]);
 		expect(overheard.result.responseContent?.text?.trim() ?? "").toBe("");
 		const overheardMessageId = overheard.message.id;
@@ -164,7 +170,13 @@ liveDescribe("group addressing gate — live Cerebras message loop", () => {
 		const direct = await runGroupTurn(
 			"AddressingProofAgent, how are you today?",
 		);
-		expect(direct.trajectory.metrics?.finalStatus).toBe("completed");
+		expect(direct.trajectory?.metrics?.finalStatus).toBe("completed");
+		expect(direct.modelResponses.length).toBeGreaterThan(0);
+		expect(
+			direct.modelResponses.some((response) =>
+				/"shouldRespond"\s*:\s*"RESPOND"/i.test(response),
+			),
+		).toBe(true);
 		expect(
 			direct.delivered.length > 0 ||
 				typeof direct.result.responseContent?.text === "string",

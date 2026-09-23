@@ -2672,9 +2672,15 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(dispatch).not.toHaveBeenCalled();
 	});
 
-	it.each([1, 360])(
-		"exposes %i authorized names without descriptions and rechecks permissions",
-		async (count) => {
+	it.each(
+		[1, 360].flatMap((count) =>
+			[ChannelType.DM, ChannelType.VOICE_DM, ChannelType.GROUP].map(
+				(channelType) => ({ count, channelType }),
+			),
+		),
+	)(
+		"exposes $count authorized names on $channelType without descriptions and rechecks permissions",
+		async ({ count, channelType }) => {
 			const description =
 				count === 1
 					? "Action reference Ω."
@@ -2715,7 +2721,11 @@ describe("runV5MessageRuntimeStage1", () => {
 			const before = structuredClone(runtime.actions);
 			const result = await runStage1({
 				runtime,
-				message: makeMessage({ text: "hi", channelType: ChannelType.DM }),
+				message: makeMessage({
+					text: "hi",
+					channelType,
+					mentionContext: { isMention: true },
+				}),
 				state: makeState(),
 				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
@@ -2732,14 +2742,18 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(wire).toContain("names=[]");
 			expect(runtime.actions).toEqual(before);
 			expect(result.kind).toBe("direct_reply");
-			expect(
-				request.messages[1].content.startsWith("available_actions:\n"),
-			).toBe(true);
+			expect(request.messages[1].content.includes("available_actions:\n")).toBe(
+				true,
+			);
 			// Each turn rechecks the index instead of caching authorization.
 			actions[0].validate = async () => false;
 			await runStage1({
 				runtime,
-				message: makeMessage({ text: "hi again", channelType: ChannelType.DM }),
+				message: makeMessage({
+					text: "hi again",
+					channelType,
+					mentionContext: { isMention: true },
+				}),
 				state: makeState(),
 				responseId: "00000000-0000-0000-0000-000000000006" as UUID,
 			});
@@ -2747,7 +2761,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				messages: Array<{ content: string }>;
 			};
 			expect(next.messages[0].content).toBe(request.messages[0].content);
-			expect(next.messages[1].content.startsWith("available_actions:\n")).toBe(
+			expect(next.messages[1].content.includes("available_actions:\n")).toBe(
 				true,
 			);
 			expect(next.messages[1].content).not.toContain('"CUSTOM_OPERATION_0"');
@@ -2762,7 +2776,8 @@ describe("runV5MessageRuntimeStage1", () => {
 				runtime,
 				message: makeMessage({
 					text: "hi once more",
-					channelType: ChannelType.DM,
+					channelType,
+					mentionContext: { isMention: true },
 				}),
 				state: makeState(),
 				responseId: "00000000-0000-0000-0000-000000000007" as UUID,
@@ -2777,84 +2792,90 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
-	it("reads the complete context catalog before dispatch without changing the stable prefix", async () => {
-		const description =
-			"Exact routing instructions with punctuation and an alias. ".repeat(30);
-		const runtime = makeRuntime([
-			stage1Response({
-				contextRequests: ["CONTEXT_CATALOG"],
-				contexts: ["simple"],
-				replyText: "Undelivered draft",
-				intents: [
-					"Read exact Unicode value: café → violet\nKeep records unchanged.",
-				],
-				candidateActionNames: ["EXACT_LOOKUP"],
-				facts: ["Undelivered extraction"],
-			}),
-			stage1Response({
-				contexts: ["simple"],
-				replyText: "The reference is available.",
-			}),
-		]);
-		runtime.contexts = new ContextRegistry([
-			{ id: "simple", description: "Direct replies." },
-			{
-				id: "custom_catalog",
-				label: "Custom reference",
-				aliases: ["nonstandard_alias"],
-				description,
-			},
-		]);
-		const result = await runStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.DM }),
-		});
-		const calls = useModelCalls(runtime).map(
-			([, params]) =>
-				params as {
-					messages: Array<{ role: string; content: string }>;
-					providerOptions: { eliza: { prefixHash: string } };
+	it.each([ChannelType.DM, ChannelType.GROUP, ChannelType.THREAD])(
+		"reads the complete context catalog before dispatch without changing the stable prefix: %s",
+		async (channelType) => {
+			const description =
+				"Exact routing instructions with punctuation and an alias. ".repeat(30);
+			const runtime = makeRuntime([
+				stage1Response({
+					contextRequests: ["CONTEXT_CATALOG"],
+					contexts: ["simple"],
+					replyText: "Undelivered draft",
+					intents: [
+						"Read exact Unicode value: café → violet\nKeep records unchanged.",
+					],
+					candidateActionNames: ["EXACT_LOOKUP"],
+					facts: ["Undelivered extraction"],
+				}),
+				stage1Response({
+					contexts: ["simple"],
+					replyText: "The reference is available.",
+				}),
+			]);
+			runtime.contexts = new ContextRegistry([
+				{ id: "simple", description: "Direct replies." },
+				{
+					id: "custom_catalog",
+					label: "Custom reference",
+					aliases: ["nonstandard_alias"],
+					description,
 				},
-		);
-		expect(calls).toHaveLength(2);
-		expect(calls[0].messages[0]).toEqual(calls[1].messages[0]);
-		expect(calls[0].providerOptions.eliza.prefixHash).toBe(
-			calls[1].providerOptions.eliza.prefixHash,
-		);
-		expect(calls[0].messages[0].content).toContain("simple, custom_catalog");
-		expect(
-			calls[0].messages.map(({ content }) => content).join("\n"),
-		).not.toContain(description);
-		const restored = calls[1].messages.find(
-			({ role }) => role === "user",
-		)?.content;
-		expect(restored).toContain(description.trim());
-		expect(restored).toContain("nonstandard_alias");
-		expect(restored?.indexOf("context_loaded: CONTEXT_CATALOG")).toBeLessThan(
-			restored?.indexOf("message:user:") ?? 0,
-		);
-		const continuation = calls[1].messages.at(-1)?.content ?? "";
-		const previousDecision = JSON.parse(
-			continuation.split("previous_context_read_decision:\n")[1],
-		);
-		expect(previousDecision.intents).toEqual([
-			"Read exact Unicode value: café → violet\nKeep records unchanged.",
-		]);
-		expect(previousDecision.candidateActionNames).toEqual(["EXACT_LOOKUP"]);
-		expect(previousDecision.replyText).toBe("Undelivered draft");
-		expect(previousDecision.facts).toEqual(["Undelivered extraction"]);
-		expect(continuation).toContain("not authority");
-		expect(result.kind).toBe("direct_reply");
-		if (result.kind === "direct_reply")
-			expect(result.result.responseContent?.text).toBe(
-				"The reference is available.",
+			]);
+			const result = await runStage1({
+				runtime,
+				message: makeMessage({
+					channelType,
+					mentionContext: { isMention: true },
+				}),
+			});
+			const calls = useModelCalls(runtime).map(
+				([, params]) =>
+					params as {
+						messages: Array<{ role: string; content: string }>;
+						providerOptions: { eliza: { prefixHash: string } };
+					},
 			);
-		expect(
-			(runtime.runActionsByMode as ReturnType<typeof vi.fn>).mock.calls.filter(
-				([mode]) => mode === "RESPONSE_HANDLER_BEFORE",
-			),
-		).toHaveLength(1);
-	});
+			expect(calls).toHaveLength(2);
+			expect(calls[0].messages[0]).toEqual(calls[1].messages[0]);
+			expect(calls[0].providerOptions.eliza.prefixHash).toBe(
+				calls[1].providerOptions.eliza.prefixHash,
+			);
+			expect(calls[0].messages[0].content).toContain("simple, custom_catalog");
+			expect(
+				calls[0].messages.map(({ content }) => content).join("\n"),
+			).not.toContain(description);
+			const restored = calls[1].messages.find(
+				({ role }) => role === "user",
+			)?.content;
+			expect(restored).toContain(description.trim());
+			expect(restored).toContain("nonstandard_alias");
+			expect(restored?.indexOf("context_loaded: CONTEXT_CATALOG")).toBeLessThan(
+				restored?.indexOf("message:user:") ?? 0,
+			);
+			const continuation = calls[1].messages.at(-1)?.content ?? "";
+			const previousDecision = JSON.parse(
+				continuation.split("previous_context_read_decision:\n")[1],
+			);
+			expect(previousDecision.intents).toEqual([
+				"Read exact Unicode value: café → violet\nKeep records unchanged.",
+			]);
+			expect(previousDecision.candidateActionNames).toEqual(["EXACT_LOOKUP"]);
+			expect(previousDecision.replyText).toBe("Undelivered draft");
+			expect(previousDecision.facts).toEqual(["Undelivered extraction"]);
+			expect(continuation).toContain("not authority");
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply")
+				expect(result.result.responseContent?.text).toBe(
+					"The reference is available.",
+				);
+			expect(
+				(
+					runtime.runActionsByMode as ReturnType<typeof vi.fn>
+				).mock.calls.filter(([mode]) => mode === "RESPONSE_HANDLER_BEFORE"),
+			).toHaveLength(1);
+		},
+	);
 
 	it("uses current catalog registrations when a catalog read resumes", async () => {
 		const removed = "Removed confidential routing instructions. ".repeat(35);
@@ -2971,7 +2992,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime)).toHaveLength(2);
 	});
 
-	it.each([ChannelType.GROUP])(
+	it.each([ChannelType.VOICE_GROUP])(
 		"keeps full catalog descriptions for %s",
 		async (channelType) => {
 			const description =

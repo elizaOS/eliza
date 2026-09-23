@@ -162,74 +162,82 @@ const FIXTURE_CONTEXTS: readonly ContextDefinition[] = [
 ];
 
 describe("client-chat model context preserves executor transport state", () => {
-	it("keeps replay and tab targeting in the original message while sending complete semantic fields", async () => {
-		const message = makeMessage();
-		message.content = {
-			text: 'Open Notes; keep the exact value "chatIdempotency" in mind.',
-			source: "client_chat",
-			channelType: ChannelType.DM,
-			chatIdempotency: {
-				version: 1,
-				scope: "agent:room:speaker",
-				clientMessageId: "request-1",
-				fingerprint: "transport-fingerprint",
-			},
-			metadata: {
-				viewClientId: "target-client-tab",
-				uiView: "calendar",
-				uiViewPath: "/calendar",
-				uiTimeZone: "America/New_York",
-				customEvidence: { text: "complete plugin evidence", values: [1, 2, 3] },
-			},
-			replyToMessageText:
-				"Keep Calendar unchanged unless I explicitly navigate.",
-		};
-		const original = structuredClone(message);
-		const runtime = makeRuntimeWithContexts(
-			FIXTURE_CONTEXTS,
-			stage1Response({ contexts: ["simple"], replyText: "Hello." }),
-		);
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message,
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-		const params = useModelCalls(runtime)[0]?.[1] as {
-			messages: Array<{ role: string; content: string }>;
-		};
-		const wire = params.messages.find(
-			(entry) => entry.role === "user",
-		)?.content;
-		expect(wire).toBeDefined();
-		const projected = JSON.parse(wire?.split("message:user:\n").at(-1) ?? "");
-		expect(projected).toEqual({
-			text: original.content.text,
-			source: "client_chat",
-			channelType: ChannelType.DM,
-			metadata: {
-				uiView: "calendar",
-				uiViewPath: "/calendar",
-				uiTimeZone: "America/New_York",
-				customEvidence: { text: "complete plugin evidence", values: [1, 2, 3] },
-			},
-			replyToMessageText: original.content.replyToMessageText,
-		});
-		const executor = __buildV5ExecutorContextForTests({
-			message,
-			state: makeState(),
-			selectedContexts: ["general"],
-			senderRole: "OWNER",
-			previousResults: [],
-		});
-		expect(executor.message).toBe(message);
-		expect(executor.message.content).toEqual(original.content);
-		expect(message).toEqual(original);
-	});
+	it.each([ChannelType.DM, ChannelType.VOICE_DM])(
+		"keeps replay and tab targeting in the original message while sending complete semantic fields: %s",
+		async (channelType) => {
+			const message = makeMessage();
+			message.content = {
+				text: 'Open Notes; keep the exact value "chatIdempotency" in mind.',
+				source: "client_chat",
+				channelType,
+				chatIdempotency: {
+					version: 1,
+					scope: "agent:room:speaker",
+					clientMessageId: "request-1",
+					fingerprint: "transport-fingerprint",
+				},
+				metadata: {
+					viewClientId: "target-client-tab",
+					uiView: "calendar",
+					uiViewPath: "/calendar",
+					uiTimeZone: "America/New_York",
+					customEvidence: {
+						text: "complete plugin evidence",
+						values: [1, 2, 3],
+					},
+				},
+				replyToMessageText:
+					"Keep Calendar unchanged unless I explicitly navigate.",
+			};
+			const original = structuredClone(message);
+			const runtime = makeRuntimeWithContexts(
+				FIXTURE_CONTEXTS,
+				stage1Response({ contexts: ["simple"], replyText: "Hello." }),
+			);
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			const params = useModelCalls(runtime)[0]?.[1] as {
+				messages: Array<{ role: string; content: string }>;
+			};
+			const wire = params.messages.find(
+				(entry) => entry.role === "user",
+			)?.content;
+			expect(wire).toBeDefined();
+			const projected = JSON.parse(wire?.split("message:user:\n").at(-1) ?? "");
+			expect(projected).toEqual({
+				text: original.content.text,
+				source: "client_chat",
+				channelType,
+				metadata: {
+					uiView: "calendar",
+					uiViewPath: "/calendar",
+					uiTimeZone: "America/New_York",
+					customEvidence: {
+						text: "complete plugin evidence",
+						values: [1, 2, 3],
+					},
+				},
+				replyToMessageText: original.content.replyToMessageText,
+			});
+			const executor = __buildV5ExecutorContextForTests({
+				message,
+				state: makeState(),
+				selectedContexts: ["general"],
+				senderRole: "OWNER",
+				previousResults: [],
+			});
+			expect(executor.message).toBe(message);
+			expect(executor.message.content).toEqual(original.content);
+			expect(message).toEqual(original);
+		},
+	);
 
 	it.each([
 		{ source: "discord", channelType: ChannelType.DM },
-		{ source: "client_chat", channelType: ChannelType.VOICE_DM },
 		{ source: "client_chat", channelType: ChannelType.GROUP },
 		{ source: "client_chat", channelType: undefined },
 	])(

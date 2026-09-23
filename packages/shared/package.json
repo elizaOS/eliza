@@ -789,6 +789,16 @@
       "types": "./dist/catalog/short-id-plugin-map.json",
       "eliza-source": "./src/catalog/short-id-plugin-map.json",
       "default": "./dist/catalog/short-id-plugin-map.json"
+    },
+    "./conversation-chat-marker": {
+      "types": "./dist/conversation-chat-marker.d.ts",
+      "eliza-source": {
+        "types": "./src/conversation-chat-marker.ts",
+        "import": "./src/conversation-chat-marker.ts",
+        "default": "./src/conversation-chat-marker.ts"
+      },
+      "import": "./dist/conversation-chat-marker.js",
+      "default": "./dist/conversation-chat-marker.js"
     }
   },
   "publishConfig": {
