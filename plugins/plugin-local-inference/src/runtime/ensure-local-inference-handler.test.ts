@@ -1,9 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
-/**
- * Tests that `ensureLocalInferenceHandler` registers the TEXT_SMALL/TEXT_LARGE/
- * TEXT_EMBEDDING handlers and wires the router at boot. Routing mode,
- * assignments, and the registry are mocked; no model loads.
- */
+/** Exercises local boot registration and handler dispatch with controlled engine/registry boundaries, plus real AgentRuntime timed-ASR startup and teardown. */
 
 import { Module } from "node:module";
 import {
@@ -12,7 +7,8 @@ import {
 	type Service,
 	type ServiceClass,
 } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const modeState = vi.hoisted(() => ({ mode: "local" }));
 const assignmentsState = vi.hoisted(() => ({
@@ -211,32 +207,32 @@ function makeRuntime(): {
 	return { registrations, runtime };
 }
 
-function findRegisteredHandler(
+function findRegisteredHandler<Result = string>(
 	registrations: Registration[],
 	modelType: ModelType,
-): (runtime: AgentRuntime, params: Record<string, unknown>) => Promise<string> {
+): (runtime: AgentRuntime, params: Record<string, unknown>) => Promise<Result> {
 	const registration = registrations.find(
 		(entry) => entry.modelType === modelType,
 	);
-	expect(registration).toBeDefined();
-	return registration?.handler as (
+	if (!registration)
+		throw new Error(`Missing registered handler: ${modelType}`);
+	return registration.handler as (
 		runtime: AgentRuntime,
 		params: Record<string, unknown>,
-	) => Promise<string>;
+	) => Promise<Result>;
 }
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	vi.unstubAllEnvs();
 	modeState.mode = "local";
 	assignmentsState.assignments = {};
 	registryState.installed = [];
 	hardwareState.probe = { memory: { totalGb: 8 } };
-	delete process.env.ELIZA_LOCAL_LLAMA;
-	delete process.env.ELIZA_DEVICE_BRIDGE_ENABLED;
-	delete process.env.ELIZA_BIONIC_HOST_DELEGATED;
-	delete process.env.ELIZA_BIONIC_INFERENCE_SOCK;
-	delete process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
+	vi.stubEnv("ELIZA_LOCAL_LLAMA", undefined);
+	vi.stubEnv("ELIZA_DEVICE_BRIDGE_ENABLED", undefined);
+	vi.stubEnv("ELIZA_BIONIC_HOST_DELEGATED", undefined);
+	vi.stubEnv("ELIZA_BIONIC_INFERENCE_SOCK", undefined);
+	vi.stubEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS", undefined);
 	engineState.available.mockResolvedValue(true);
 	engineState.currentModelPath.mockReturnValue(null);
 	engineState.hasLoadedModel.mockReturnValue(false);
@@ -252,6 +248,8 @@ beforeEach(() => {
 		async (target) => target,
 	);
 });
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("ensureLocalInferenceHandler", () => {
 	it("registers only embeddings for an opted-in provisioned cloud runtime", async () => {
@@ -404,7 +402,7 @@ describe("ensureLocalInferenceHandler", () => {
 	});
 
 	it("honors ELIZA_DISABLE_LOCAL_EMBEDDINGS by leaving TEXT_EMBEDDING unregistered", async () => {
-		process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS = "1";
+		vi.stubEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS", "1");
 		const { registrations, runtime } = makeRuntime();
 
 		await ensureLocalInferenceHandler(runtime);
@@ -626,51 +624,39 @@ describe("ensureLocalInferenceHandler", () => {
 	});
 
 	it("uses a fine-grained maxTokensPerStep for user-visible streaming, coarse for internal calls", async () => {
-		const prior = process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP;
-		delete process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP;
-		try {
-			const { registrations, runtime } = makeRuntime();
-			engineState.hasLoadedModel.mockReturnValue(true);
+		vi.stubEnv("ELIZA_LOCAL_STREAM_TOKENS_PER_STEP", undefined);
+		const { registrations, runtime } = makeRuntime();
+		engineState.hasLoadedModel.mockReturnValue(true);
 
-			await ensureLocalInferenceHandler(runtime);
-			const handler = findRegisteredHandler(
-				registrations,
-				ModelType.TEXT_LARGE,
-			);
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(registrations, ModelType.TEXT_LARGE);
 
-			// Streaming reply (onStreamChunk wired) → tuned fine-grained step (8).
-			await handler(runtime, {
-				prompt: "hi",
-				stream: true,
-				onStreamChunk: () => {},
-			});
-			expect(engineState.generate).toHaveBeenLastCalledWith(
-				expect.objectContaining({ maxTokensPerStep: 8 }),
-			);
+		// Streaming reply (onStreamChunk wired) → tuned fine-grained step (8).
+		await handler(runtime, {
+			prompt: "hi",
+			stream: true,
+			onStreamChunk: () => {},
+		});
+		expect(engineState.generate).toHaveBeenLastCalledWith(
+			expect.objectContaining({ maxTokensPerStep: 8 }),
+		);
 
-			// Internal / non-streamed call → no override (runner keeps coarse 32).
-			await handler(runtime, { prompt: "hi" });
-			expect(engineState.generate).toHaveBeenLastCalledWith(
-				expect.objectContaining({ maxTokensPerStep: undefined }),
-			);
+		// Internal / non-streamed call → no override (runner keeps coarse 32).
+		await handler(runtime, { prompt: "hi" });
+		expect(engineState.generate).toHaveBeenLastCalledWith(
+			expect.objectContaining({ maxTokensPerStep: undefined }),
+		);
 
-			// The shared env knob overrides the tuned streaming default.
-			process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP = "4";
-			await handler(runtime, {
-				prompt: "hi",
-				stream: true,
-				onStreamChunk: () => {},
-			});
-			expect(engineState.generate).toHaveBeenLastCalledWith(
-				expect.objectContaining({ maxTokensPerStep: 4 }),
-			);
-		} finally {
-			if (prior === undefined) {
-				delete process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP;
-			} else {
-				process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP = prior;
-			}
-		}
+		// The shared env knob overrides the tuned streaming default.
+		vi.stubEnv("ELIZA_LOCAL_STREAM_TOKENS_PER_STEP", "4");
+		await handler(runtime, {
+			prompt: "hi",
+			stream: true,
+			onStreamChunk: () => {},
+		});
+		expect(engineState.generate).toHaveBeenLastCalledWith(
+			expect.objectContaining({ maxTokensPerStep: 4 }),
+		);
 	});
 
 	it("routes only explicitly user-visible generations to local voice", async () => {
@@ -798,19 +784,13 @@ describe("ensureLocalInferenceHandler", () => {
 		const onStreamChunk = vi.fn();
 
 		await ensureLocalInferenceHandler(runtime);
-		const registration = registrations.find(
-			(entry) => entry.modelType === ModelType.IMAGE_DESCRIPTION,
-		);
-		const handler = registration?.handler as
-			| ((
-					runtime: AgentRuntime,
-					params: Record<string, unknown>,
-			  ) => Promise<{ title: string; description: string }>)
-			| undefined;
-		expect(handler).toBeDefined();
+		const handler = findRegisteredHandler<{
+			title: string;
+			description: string;
+		}>(registrations, ModelType.IMAGE_DESCRIPTION);
 
 		await expect(
-			handler?.(runtime, {
+			handler(runtime, {
 				imageUrl: "data:image/png;base64,AAAA",
 				prompt: "describe this",
 				stream: true,
@@ -845,18 +825,12 @@ describe("ensureLocalInferenceHandler", () => {
 		const onStreamChunk = vi.fn();
 
 		await ensureLocalInferenceHandler(runtime);
-		const registration = registrations.find(
-			(entry) => entry.modelType === ModelType.IMAGE_DESCRIPTION,
-		);
-		const handler = registration?.handler as
-			| ((
-					runtime: AgentRuntime,
-					params: Record<string, unknown>,
-			  ) => Promise<{ title: string; description: string }>)
-			| undefined;
-		expect(handler).toBeDefined();
+		const handler = findRegisteredHandler<{
+			title: string;
+			description: string;
+		}>(registrations, ModelType.IMAGE_DESCRIPTION);
 
-		await handler?.(runtime, {
+		await handler(runtime, {
 			imageUrl: "https://example.test/image.png",
 			prompt: "describe this",
 			onStreamChunk,
@@ -876,19 +850,13 @@ describe("ensureLocalInferenceHandler", () => {
 		const { registrations, runtime } = makeRuntime();
 
 		await ensureLocalInferenceHandler(runtime);
-		const registration = registrations.find(
-			(entry) => entry.modelType === ModelType.TRANSCRIPTION,
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.TRANSCRIPTION,
 		);
-		const handler = registration?.handler as
-			| ((
-					runtime: AgentRuntime,
-					params: Record<string, unknown>,
-			  ) => Promise<string>)
-			| undefined;
-		expect(handler).toBeDefined();
 
 		await expect(
-			handler?.(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
+			handler(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
 		).resolves.toBe("transcribed");
 
 		expect(engineState.ensureActiveBundleAsrReady).toHaveBeenCalledTimes(1);
@@ -910,115 +878,55 @@ describe("ensureLocalInferenceHandler", () => {
 		const { registrations, runtime } = makeRuntime();
 
 		await ensureLocalInferenceHandler(runtime);
-		const registration = registrations.find(
-			(entry) => entry.modelType === ModelType.TRANSCRIPTION,
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.TRANSCRIPTION,
 		);
-		const handler = registration?.handler as
-			| ((
-					runtime: AgentRuntime,
-					params: Record<string, unknown>,
-			  ) => Promise<string>)
-			| undefined;
-		expect(handler).toBeDefined();
 
 		await expect(
-			handler?.(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
+			handler(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
 		).rejects.toThrow(VoiceStartupError);
 
 		expect(engineState.ensureActiveBundleAsrReady).toHaveBeenCalledTimes(1);
 		expect(engineState.transcribePcm).not.toHaveBeenCalled();
 	});
 
-	it("threads structured streaming callbacks through the RESPONSE_HANDLER registration", async () => {
-		const { registrations, runtime } = makeRuntime();
-		engineState.hasLoadedModel.mockReturnValue(true);
-
-		await ensureLocalInferenceHandler(runtime);
-		const handler = findRegisteredHandler(
-			registrations,
-			ModelType.RESPONSE_HANDLER,
-		);
-
-		const onStreamChunk = vi.fn();
-		await handler(runtime, {
-			messages: [{ role: "user", content: "hello" }],
-			streamStructured: true,
-			responseSkeleton: { spans: [] },
-			onStreamChunk,
-		});
-
-		expect(engineState.generate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				prompt: "user:\nhello",
-				streamStructured: true,
-				onTextChunk: expect.any(Function),
-			}),
-		);
-	});
-
-	it("delivers engine onTextChunk tokens to the caller's onStreamChunk per token (chat streaming)", async () => {
-		// End-to-end guard for the local chat streaming regression: the registered
-		// RESPONSE_HANDLER handler must connect the runtime's `onStreamChunk` to the
-		// engine's `onTextChunk` so each generated token is delivered incrementally,
-		// not collapsed into one final chunk. The mocked engine fires onTextChunk
-		// per token (mirroring NodeLlamaCppBackend/FfiStreamingBackend), and we
-		// assert the caller saw multiple distinct chunks in order.
-		const tokens = ["On ", "it ", "now."];
-		engineState.generate.mockImplementationOnce(
-			async (args: { onTextChunk?: (chunk: string) => unknown }) => {
-				for (const token of tokens) {
-					await args.onTextChunk?.(token);
-				}
-				return tokens.join("");
-			},
-		);
-
-		const { registrations, runtime } = makeRuntime();
-		engineState.hasLoadedModel.mockReturnValue(true);
-
-		await ensureLocalInferenceHandler(runtime);
-		const handler = findRegisteredHandler(
-			registrations,
-			ModelType.RESPONSE_HANDLER,
-		);
-
-		const received: string[] = [];
-		await handler(runtime, {
-			messages: [{ role: "user", content: "hello" }],
-			streamStructured: true,
-			responseSkeleton: { spans: [] },
-			onStreamChunk: (chunk: string) => {
-				received.push(chunk);
-			},
-		});
-
-		expect(received).toEqual(tokens);
-		expect(received.length).toBeGreaterThan(1);
-	});
-
-	it("wires onTextChunk for a plain (non-structured) stream request", async () => {
-		// The chat path can ask for token streaming via `stream: true` without a
-		// response skeleton. The handler must still bridge onStreamChunk →
-		// onTextChunk so cloud-parity token streaming works for the local model.
-		const { registrations, runtime } = makeRuntime();
-		engineState.hasLoadedModel.mockReturnValue(true);
-
-		await ensureLocalInferenceHandler(runtime);
-		const handler = findRegisteredHandler(
-			registrations,
-			ModelType.RESPONSE_HANDLER,
-		);
-
-		await handler(runtime, {
-			messages: [{ role: "user", content: "hello" }],
-			stream: true,
-			onStreamChunk: vi.fn(),
-		});
-
-		expect(engineState.generate).toHaveBeenCalledWith(
-			expect.objectContaining({ onTextChunk: expect.any(Function) }),
-		);
-	});
+	it.each(["structured", "plain"] as const)(
+		"delivers ordered tokens through the %s streaming handler",
+		async (mode) => {
+			const tokens = ["On ", "it ", "now."];
+			engineState.generate.mockImplementationOnce(
+				async (args: { onTextChunk?: (chunk: string) => unknown }) => {
+					for (const token of tokens) await args.onTextChunk?.(token);
+					return tokens.join("");
+				},
+			);
+			const { registrations, runtime } = makeRuntime();
+			engineState.hasLoadedModel.mockReturnValue(true);
+			await ensureLocalInferenceHandler(runtime);
+			const handler = findRegisteredHandler(
+				registrations,
+				ModelType.RESPONSE_HANDLER,
+			);
+			const received: string[] = [];
+			await handler(runtime, {
+				messages: [{ role: "user", content: "hello" }],
+				...(mode === "structured"
+					? { streamStructured: true, responseSkeleton: { spans: [] } }
+					: { stream: true }),
+				onStreamChunk: (chunk: string) => {
+					received.push(chunk);
+				},
+			});
+			expect(received).toEqual(tokens);
+			expect(engineState.generate).toHaveBeenCalledWith(
+				expect.objectContaining({
+					prompt: "user:\nhello",
+					streamStructured: mode === "structured" ? true : undefined,
+				}),
+			);
+		},
+	);
 
 	it("adds Eliza turn markers to caller stop sequences", async () => {
 		const { registrations, runtime } = makeRuntime();

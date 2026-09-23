@@ -29,6 +29,9 @@ export interface TelegramAccountConfig {
     appHash?: string;
     session?: string;
     enabled?: boolean;
+    subjectId?: string;
+    deviceModel?: string;
+    systemVersion?: string;
   };
 }
 
@@ -197,7 +200,60 @@ export function telegramPersonalExternalId(
 export function listPersonalTelegramAccounts(
   runtime: IAgentRuntime,
 ): ResolvedTelegramAccount[] {
-  return listTelegramAccountIds(runtime)
-    .map((accountId) => resolveTelegramAccount(runtime, accountId))
-    .filter((account) => account.enabled && isTelegramPersonalEnabled(account));
+  const accounts = listTelegramAccountIds(runtime).map((accountId) =>
+    resolveTelegramAccount(runtime, accountId),
+  );
+  const setup = runtime.getService("connector-setup");
+  if (setup && "getConfig" in setup && typeof setup.getConfig === "function") {
+    const config: unknown = setup.getConfig();
+    if (config && typeof config === "object" && "connectors" in config) {
+      const connectors = config.connectors;
+      if (
+        connectors &&
+        typeof connectors === "object" &&
+        "telegramAccount" in connectors
+      ) {
+        const personal = connectors.telegramAccount;
+        if (
+          personal &&
+          typeof personal === "object" &&
+          !Array.isArray(personal)
+        ) {
+          const base = resolveTelegramAccount(runtime, DEFAULT_ACCOUNT_ID);
+          const existing = accounts.findIndex(
+            (account) => account.accountId === DEFAULT_ACCOUNT_ID,
+          );
+          const resolved = {
+            ...base,
+            config: {
+              ...base.config,
+              personal: readSetupPersonalConfig(personal),
+            },
+          };
+          if (existing === -1) accounts.push(resolved);
+          else accounts[existing] = resolved;
+        }
+      }
+    }
+  }
+  return accounts.filter(
+    (account) => account.enabled && isTelegramPersonalEnabled(account),
+  );
+}
+
+/** Validates the host setup block once before merging it into personal accounts. */
+function readSetupPersonalConfig(
+  value: object,
+): TelegramAccountConfig["personal"] {
+  const field = (name: string) => readNonEmptyString(Reflect.get(value, name));
+  const appId = Reflect.get(value, "appId");
+  return {
+    phone: field("phone"),
+    appId: typeof appId === "number" ? String(appId) : field("appId"),
+    appHash: field("appHash"),
+    subjectId: field("subjectId"),
+    deviceModel: field("deviceModel"),
+    systemVersion: field("systemVersion"),
+    enabled: Reflect.get(value, "enabled") !== false,
+  };
 }

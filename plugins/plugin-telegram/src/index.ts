@@ -8,6 +8,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { getConnectorAccountManager, logger } from "@elizaos/core";
 import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import { TelegramAccountService } from "./account-client-service";
 import {
   stopTelegramAccountAuthSession,
   telegramAccountRoutes,
@@ -53,6 +54,7 @@ const telegramPlugin: Plugin = {
     TelegramService,
     TelegramOwnerPairingServiceImpl,
     TelegramStandaloneService,
+    TelegramAccountService,
   ],
   routes: [...telegramSetupRoutes, ...telegramAccountRoutes],
   tests: [new TelegramTestSuite()],
@@ -60,7 +62,7 @@ const telegramPlugin: Plugin = {
   // configured in eliza.json / eliza.json. The hardcoded CONNECTOR_PLUGINS
   // map in plugin-auto-enable.ts still serves as a fallback.
   autoEnable: {
-    connectorKeys: ["telegram"],
+    connectorKeys: ["telegram", "telegramAccount"],
   },
   init: async (
     _config: Record<string, string>,
@@ -90,12 +92,17 @@ const telegramPlugin: Plugin = {
     registerTelegramTriageAdapter();
   },
   async dispose(runtime: IAgentRuntime) {
+    await stopTelegramAccountAuthSession(runtime);
+    const personal = runtime.getService("telegram-account");
+    if (personal instanceof TelegramAccountService) await personal.stop();
     await TelegramService.stop(runtime);
     await TelegramStandaloneService.stop(runtime);
   },
 };
 
 export * from "./account-auth-service";
+export * from "./account-client-service";
+export * from "./account-history";
 export * from "./accounts";
 export * from "./connector-account-provider";
 export * from "./identity";

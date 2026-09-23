@@ -17,7 +17,6 @@ Run:
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import random
 import sys
@@ -33,6 +32,7 @@ from lib.eliza_record import (  # noqa: E402
     build,
     stable_id,
 )
+from lib.jsonl import write_jsonl  # noqa: E402
 from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 OUT_PATH = ROOT / "data" / "synthesized" / "action_examples" / "commerce.jsonl"
@@ -1045,15 +1045,6 @@ ACTION_BANKS: list[tuple[str, str, list[tuple[str, str]], list[tuple[str, str, s
      STOP_COMMAND_NULL),
 ]
 
-
-def write_jsonl(records: Iterable[dict], path: Path) -> int:
-    n = 0
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        for r in records:
-            f.write(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n")
-            n += 1
-    return n
 
 
 def main() -> int:
