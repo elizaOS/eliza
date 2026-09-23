@@ -36,8 +36,10 @@ Required environment variables:
 - `GENERIC_BILLING_SANDBOX_RUN=1` explicitly enables test object creation.
 - `GENERIC_BILLING_STRIPE_TEST_KEY` must be a dedicated `sk_test_` or `rk_test_` key.
 - `GENERIC_BILLING_STRIPE_TEST_ACCOUNT` is the independently verified sandbox
-  account ID. The candidate supplied by the operator is
-  `acct_1SRAVXJlQ3uuhrev`; verify its Cloud merchant mapping before execution.
+  account ID. Verify the selected test credential with `/v1/account` and
+  `/v1/balance`, then check its intended Cloud merchant mapping. Do not infer
+  sandbox access from a working live credential, a saved account ID, or a
+  dashboard URL that redirects to another account.
 - `GENERIC_BILLING_STRIPE_TEST_ACCOUNT_KIND` is `platform` or `connected` and must
   match the actual account/Connect event topology. A platform run does not prove
   a connected merchant works.
