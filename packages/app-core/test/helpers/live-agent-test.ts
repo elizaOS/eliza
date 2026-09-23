@@ -1,20 +1,10 @@
 /**
- * Reusable harness for live e2e tests that boot a real `AgentRuntime` against a
- * live LLM provider (default: OpenAI plugin wired to Cerebras) and drive the
- * full message pipeline through `messageService.handleMessage`.
- *
- * Skip-with-warning behavior:
- *   When a required env var is missing, `describeLive` registers a single
- *   skipped test whose name explains what to set, sets `SKIP_REASON` so
- *   `fail-on-silent-skip.setup.ts` does not trip, and emits a yellow warning
- *   to the console. The workflow does not fail when keys are absent.
- *
- * The InMemoryDatabaseAdapter + provider-plugin import patterns are lifted
- * from `packages/core/e2e/setup/global-setup.ts`. The Cerebras alias mirrors
- * the logic in `scripts/test-env.mjs`.
+ * Builds provider-backed AgentRuntime fixtures for live model and action tests.
+ * Callers own domain records and assistant composition; this helper supplies
+ * isolated storage, provider settings, credential gates and runtime teardown.
  */
 import { randomUUID } from "node:crypto";
-import { ChannelType, type Memory, type UUID } from "@elizaos/common";
+import type { UUID } from "@elizaos/common";
 import { AgentRuntime, type Character, type Plugin } from "@elizaos/core";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
@@ -43,15 +33,11 @@ export interface LiveAgentTestOptions {
   systemPrompt?: string;
   /** Plugins to load in addition to the provider plugin. Workspace path or bare specifier. */
   extraPlugins?: Array<string | { path: string; name?: string }>;
-  /** Effective sender role for authorization-sensitive live action tests. */
-  senderRole?: "OWNER" | "ADMIN" | "USER" | "GUEST";
 }
 
 export interface LiveAgentHarness {
   agentId: string;
   runtime: AgentRuntime;
-  /** Sends a chat message through messageService.handleMessage and returns the assistant reply text. */
-  runAgentTurn(text: string): Promise<string>;
   /** Stop the runtime and clean up. */
   close(): Promise<void>;
 }
@@ -137,7 +123,9 @@ async function importWorkspacePlugin(
   bareSpecifier: string,
 ): Promise<Record<string, unknown> | null> {
   try {
-    const mod = (await import(relativeFromHere)) as Record<string, unknown>;
+    const mod = (await import(
+      new URL(relativeFromHere, import.meta.url).href
+    )) as Record<string, unknown>;
     return mod;
   } catch {
     try {
@@ -500,64 +488,6 @@ export async function buildLiveHarness(
   applyProviderSettings(runtime, provider);
   await runtime.initialize();
 
-  const userEntityId = randomUUID() as UUID;
-  const worldId = randomUUID() as UUID;
-  await runtime.createWorld({
-    id: worldId,
-    name: "live-world",
-    agentId,
-    ...(opts.senderRole
-      ? {
-          metadata: {
-            ...(opts.senderRole === "OWNER"
-              ? { ownership: { ownerId: userEntityId } }
-              : {}),
-            roles: { [userEntityId]: opts.senderRole },
-            roleSources: { [userEntityId]: "manual" },
-          },
-        }
-      : {}),
-  });
-  const roomId = randomUUID() as UUID;
-  await runtime.ensureRoomExists({
-    id: roomId,
-    name: "live-chat",
-    source: "live-test",
-    type: ChannelType.API,
-    worldId,
-  });
-  await runtime.ensureParticipantInRoom(agentId, roomId);
-
-  await runtime.createEntity({
-    id: userEntityId,
-    names: ["LiveTester"],
-    agentId,
-  });
-  await runtime.ensureParticipantInRoom(userEntityId, roomId);
-
-  const runAgentTurn = async (text: string): Promise<string> => {
-    if (!runtime.messageService) {
-      throw new Error("[live-agent-test] runtime.messageService is null");
-    }
-    const message: Memory = {
-      id: randomUUID() as UUID,
-      entityId: userEntityId,
-      roomId,
-      content: { text, source: "live-test" },
-      createdAt: Date.now(),
-    };
-    let reply = "";
-    await runtime.messageService.handleMessage(
-      runtime,
-      message,
-      async (content: { text?: string }) => {
-        if (typeof content?.text === "string") reply += content.text;
-        return [];
-      },
-    );
-    return reply;
-  };
-
   const close = async (): Promise<void> => {
     try {
       await runtime.stop();
@@ -566,7 +496,7 @@ export async function buildLiveHarness(
     }
   };
 
-  return { agentId, runtime, runAgentTurn, close };
+  return { agentId, runtime, close };
 }
 
 /**
