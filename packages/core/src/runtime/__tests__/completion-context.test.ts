@@ -534,19 +534,21 @@ describe("source-bound completion relevance", () => {
 		},
 	);
 
-	it("advertises source selection while preserving voice rules and complete unprojected history", () => {
+	it("keeps voice rules and complete history without source selection", () => {
 		const input = renderMessageHandlerModelInput(
 			{ character: { name: "Eliza" } },
 			historyContext(),
 			[],
 			{ directMessage: true, voiceDirectMessage: true },
 		);
-		expect(JSON.stringify(input.messages)).toContain("completion_source_set:");
+		expect(JSON.stringify(input.messages)).not.toContain(
+			"completion_source_set:",
+		);
 		expect(
 			input.promptSegments.some((segment) =>
 				segment.content.includes(COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS),
 			),
-		).toBe(true);
+		).toBe(false);
 		expect(JSON.stringify(input.messages)).toContain("voice engagement rules:");
 		expect(JSON.stringify(input.messages)).toContain(
 			"Old completed unrelated weather request.",

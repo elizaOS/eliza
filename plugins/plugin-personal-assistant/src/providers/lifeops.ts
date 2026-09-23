@@ -281,28 +281,43 @@ function summarizeOwnerProfile(profile: LifeOpsOwnerProfile): string[] {
 
 function summarizeOwnerTimingFacts(facts: OwnerFacts): string[] {
   const timezone = facts.timezone?.value;
-  const morning = facts.morningWindow?.value;
-  const evening = facts.eveningWindow?.value;
   const quiet = facts.quietHours?.value;
   const parts: string[] = [];
+  const inferred: string[] = [];
   if (timezone) {
     parts.push(`timezone=${timezone}`);
   }
-  if (morning) {
-    parts.push(`morningWindow=${morning.startLocal}-${morning.endLocal}`);
-  }
-  if (evening) {
-    parts.push(`eveningWindow=${evening.startLocal}-${evening.endLocal}`);
+  for (const [key, description] of [
+    ["morningWindow", "post-wake activity"],
+    ["eveningWindow", "pre-sleep activity"],
+  ] as const) {
+    const entry = facts[key];
+    if (!entry) continue;
+    const range = `${entry.value.startLocal}-${entry.value.endLocal}`;
+    const source = entry.provenance?.source ?? "unknown";
+    if (["first_run", "profile_save", "policy_action"].includes(source)) {
+      parts.push(`${key}=${range}`);
+    } else {
+      inferred.push(`${description}=${range} (source=${source})`);
+    }
   }
   if (quiet) {
     parts.push(
       `protected quiet/sleep window=${quiet.startLocal}-${quiet.endLocal} ${quiet.timezone}`,
     );
   }
-  if (parts.length === 0) {
+  if (parts.length === 0 && inferred.length === 0) {
     return [];
   }
-  const lines = [`Owner timing facts: ${parts.join(" | ")}`];
+  const lines = parts.length
+    ? [`Owner timing facts: ${parts.join(" | ")}`]
+    : [];
+  if (inferred.length) {
+    lines.push(
+      `Inferred routine estimates: ${inferred.join(" | ")}`,
+      "These estimates are not explicit scheduling preferences, do not redefine clock-time morning/evening, and prove no calendar availability or conflicts.",
+    );
+  }
   if (quiet) {
     lines.push(
       "Calendar creates inside the protected quiet/sleep window are conflicts: do not book silently; ask for explicit owner override and propose alternatives outside the protected window.",

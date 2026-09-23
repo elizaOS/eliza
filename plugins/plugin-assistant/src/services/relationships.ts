@@ -1188,11 +1188,11 @@ export class RelationshipsService extends Service {
           await this.runtime.getEntitiesByIds(
             results.map((contact) => contact.entityId),
           )
-        ).map((entity) => [entity.id, entity] as const),
+        ).map((entity) => [entity.id?.toLowerCase(), entity] as const),
       );
       const filteredResults: ContactInfo[] = [];
       for (let i = 0; i < results.length; i++) {
-        const entity = entityById.get(results[i].entityId);
+        const entity = entityById.get(results[i].entityId.toLowerCase());
         const entityNames = entity?.names ?? [];
         const displayName = getContactDisplayName(results[i])?.toLowerCase();
         if (

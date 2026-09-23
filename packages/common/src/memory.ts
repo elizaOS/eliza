@@ -516,6 +516,10 @@ export interface FactMetadata {
 }
 
 interface MemoryMetadataBase {
+  /** Explicit response controls also prevent background embedding admission. */
+  doNotPersist?: boolean;
+  skipMemory?: boolean;
+  transient?: boolean;
   type?: MemoryTypeAlias;
   source?: string;
   scope?: MemoryScope;

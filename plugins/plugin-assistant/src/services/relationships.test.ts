@@ -149,12 +149,12 @@ function buildRuntime(store: Store) {
       return [...byEntity.values()];
     },
     async getEntityById(id: string) {
-      return store.entities.get(id) ?? null;
+      return store.entities.get(id.toLowerCase()) ?? null;
     },
     async getEntitiesByIds(ids: string[]) {
       store.batchReads.push([...ids]);
       return ids.flatMap((id) => {
-        const entity = store.entities.get(id);
+        const entity = store.entities.get(id.toLowerCase());
         return entity ? [entity] : [];
       });
     },
@@ -667,6 +667,29 @@ describe("RelationshipsService.searchContacts", () => {
       [ENTITY_A, ENTITY_B, ENTITY_C].sort(),
     );
   });
+});
+
+it("matches canonical SQL-style entity IDs without changing stored contact UUIDs", async () => {
+  const store = buildStore();
+  store.entities.set(ENTITY_A, {
+    id: ENTITY_A,
+    names: ["Canonical Person"],
+    agentId: AGENT_ID,
+    components: [],
+  });
+  const service = makeService(store);
+  const storedId = ENTITY_A.toUpperCase() as UUID;
+  await service.addContact(
+    storedId,
+    ["friend"],
+    {},
+    { displayName: "Fallback" },
+  );
+  store.batchReads.length = 0;
+  const contacts = await service.searchContacts({ searchTerm: "Canonical" });
+  expect(contacts.map((contact) => contact.entityId)).toEqual([storedId]);
+  expect(contacts[0].customFields.displayName).toBe("Fallback");
+  expect(store.batchReads).toEqual([[storedId]]);
 });
 
 describe("RelationshipsService insight admission", () => {

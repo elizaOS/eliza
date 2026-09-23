@@ -235,11 +235,20 @@ describe("model-owned app-control choices", () => {
 			);
 			runtime.registerModel(
 				ModelType.TEXT_SMALL,
-				async () =>
-					JSON.stringify({
-						response: "Canceled. No app changes made.",
-						effectReceiptIds: [],
-					}),
+				async (_runtime, params) =>
+					JSON.stringify(
+						params.prompt.startsWith("Review recovered reply grounding.")
+							? {
+									grounded: true,
+									completedChangeClaim: false,
+									reason:
+										"The APP result canceled pending creation without app changes.",
+								}
+							: {
+									response: "Canceled. No app changes made.",
+									effectReceiptIds: [],
+								},
+					),
 				"deterministic-choice-test",
 			);
 			const service = new DefaultMessageService();

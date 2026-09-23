@@ -1,7 +1,8 @@
 /** Exercises delivered-reply embedding with a real runtime and in-memory persistence. */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { expect, test, vi } from "vitest";
 import { createCharacter } from "../character";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { AgentRuntime } from "../runtime";
 import { EventType } from "../types/events";
 import { ModelType } from "../types/model";
@@ -78,6 +79,9 @@ test("rejects missing, transient, foreign, and changed reply sources", async () 
 		await runtime.createMemory(memory, "messages");
 		for (const invalid of [
 			{ ...memory, content: { ...memory.content, transient: true } },
+			{ ...memory, metadata: { doNotPersist: true } },
+			{ ...memory, metadata: { skipMemory: true } },
+			{ ...memory, metadata: { transient: true } },
 			{ ...memory, content: { text: "not what was saved" } },
 			{ ...memory, roomId: "a76d2f6c-603c-4e2f-b04c-c358f08e483e" as const },
 			{ ...memory, entityId: "a76d2f6c-603c-4e2f-b04c-c358f08e483e" as const },

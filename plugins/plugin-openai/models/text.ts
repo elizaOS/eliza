@@ -67,6 +67,7 @@ import {
   isCerebrasMode,
 } from "../utils/config";
 import { emitModelUsageEvent, type ModelRetryTelemetry } from "../utils/events";
+import { factorResponseSchema } from "../utils/factor-response-schema";
 import {
   cloneSchemaForBoundedTransport,
   JSON_SCHEMA_ARRAY_KEYWORDS,
@@ -77,7 +78,6 @@ import {
   normalizeSchemaForCerebras,
   sanitizeFunctionNameForCerebras,
 } from "../utils/schema-compat";
-import { factorResponseSchema } from "../utils/factor-response-schema";
 
 // ============================================================================
 // Types
