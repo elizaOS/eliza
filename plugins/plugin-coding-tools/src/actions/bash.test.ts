@@ -3761,84 +3761,42 @@ describe("shell timeout operator setting", () => {
   );
 
   it.each([
-    [undefined, 120_000],
-    [null, 120_000],
-    ["200", 200],
-    [100, 100],
-    [600_000, 600_000],
+    ["omitted setting", undefined, undefined, undefined, 120_000],
+    ["null setting", null, undefined, undefined, 120_000],
+    ["string setting", "200", undefined, undefined, 200],
+    ["minimum setting", 100, undefined, undefined, 100],
+    ["maximum setting", 600_000, undefined, undefined, 600_000],
+    ["per-call precedence", "600000", undefined, 250, 250],
+    ["environment fallback", null, "200", undefined, 200],
+    ["runtime precedence", "300", "200", undefined, 300],
   ] as const)(
-    "passes the omitted or valid setting %j to foreground execution as %j ms",
-    async (shellTimeoutMs, expectedTimeoutMs) => {
-      const calls: Array<{ timeoutMs?: number }> = [];
-      const router = makeShellRouter(async (params) => {
-        calls.push(params);
-        return { output: "ok\n", exitCode: 0, timedOut: false };
-      });
-      const { runtime } = await makeRuntime({
-        shellTimeoutMs,
-        capabilityRouter: router,
-      });
+    "dispatches the expected timeout for %s",
+    async (_label, shellTimeoutMs, environmentTimeout, timeout, expectedTimeoutMs) => {
+      await withShellTimeoutEnv(environmentTimeout, async () => {
+        const calls: Array<{ timeoutMs?: number }> = [];
+        const router = makeShellRouter(async (params) => {
+          calls.push(params);
+          return { output: "ok\n", exitCode: 0, timedOut: false };
+        });
+        const { runtime } = await makeRuntime({
+          shellTimeoutMs,
+          capabilityRouter: router,
+        });
 
-      const result = await shellAction.handler?.(
-        runtime,
-        makeMessage(),
-        undefined,
-        { command: "echo ok" },
-      );
+        const result = await shellAction.handler?.(
+          runtime,
+          makeMessage(),
+          undefined,
+          { command: "echo ok", ...(timeout === undefined ? {} : { timeout }) },
+        );
 
-      expect(result?.success).toBe(true);
-      expect(calls).toHaveLength(1);
-      expect(calls[0]?.timeoutMs).toBe(expectedTimeoutMs);
+        expect(result?.success).toBe(true);
+        expect(calls).toEqual([
+          expect.objectContaining({ timeoutMs: expectedTimeoutMs }),
+        ]);
+      });
     },
   );
-
-  it("prefers the per-call timeout over the operator default", async () => {
-    const calls: Array<{ timeoutMs?: number }> = [];
-    const router = makeShellRouter(async (params) => {
-      calls.push(params);
-      return { output: "ok\n", exitCode: 0, timedOut: false };
-    });
-    const { runtime } = await makeRuntime({
-      shellTimeoutMs: "600000",
-      capabilityRouter: router,
-    });
-
-    const result = await shellAction.handler?.(
-      runtime,
-      makeMessage(),
-      undefined,
-      { command: "echo ok", timeout: 250 },
-    );
-
-    expect(result?.success).toBe(true);
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.timeoutMs).toBe(250);
-  });
-
-  it("uses the environment timeout when the runtime setting is omitted", async () => {
-    await withShellTimeoutEnv("200", async () => {
-      const calls: Array<{ timeoutMs?: number }> = [];
-      const router = makeShellRouter(async (params) => {
-        calls.push(params);
-        return { output: "ok\n", exitCode: 0, timedOut: false };
-      });
-      const { runtime } = await makeRuntime({
-        shellTimeoutMs: null,
-        capabilityRouter: router,
-      });
-
-      const result = await shellAction.handler?.(
-        runtime,
-        makeMessage(),
-        undefined,
-        { command: "echo ok" },
-      );
-
-      expect(result?.success).toBe(true);
-      expect(calls).toHaveLength(1);
-      expect(calls[0]?.timeoutMs).toBe(200);
-    });
-  });
 
   it("rejects a malformed environment timeout before dispatch", async () => {
     await withShellTimeoutEnv("45.5", async () => {
@@ -3862,31 +3820,6 @@ describe("shell timeout operator setting", () => {
       expect(result?.success).toBe(false);
       expect(result?.text).toContain("CODING_TOOLS_SHELL_TIMEOUT_MS");
       expect(calls).toHaveLength(0);
-    });
-  });
-
-  it("prefers the explicit runtime setting over the environment", async () => {
-    await withShellTimeoutEnv("200", async () => {
-      const calls: Array<{ timeoutMs?: number }> = [];
-      const router = makeShellRouter(async (params) => {
-        calls.push(params);
-        return { output: "ok\n", exitCode: 0, timedOut: false };
-      });
-      const { runtime } = await makeRuntime({
-        shellTimeoutMs: "300",
-        capabilityRouter: router,
-      });
-
-      const result = await shellAction.handler?.(
-        runtime,
-        makeMessage(),
-        undefined,
-        { command: "echo ok" },
-      );
-
-      expect(result?.success).toBe(true);
-      expect(calls).toHaveLength(1);
-      expect(calls[0]?.timeoutMs).toBe(300);
     });
   });
 
