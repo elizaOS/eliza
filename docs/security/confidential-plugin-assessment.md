@@ -2,7 +2,99 @@
 
 Assessment date: September 23, 2026. Parent: [#32315](https://github.com/elizaOS/eliza/issues/32315), control program: [#22869](https://github.com/elizaOS/eliza/issues/22869).
 
-## Decision
+## Deployment scope and implementation priority
+
+The product supports a local Android/Linux agent and an optional cloud agent.
+The inventory below evaluates the specific confidential-cloud topology named in
+#32315; it is not a universal prerequisite list for running elizaOS. Its pinned
+classifications remain historical evidence, not current release approvals.
+
+Use one runtime, canonical identity/roles, authorization contracts, scheduler and
+agent-owned durable database across both deployments. Start with one active,
+authoritative instance per agent. Device-to-cloud migration must preserve data,
+keys, permissions, revocations and scheduled-work ownership before activating the
+destination. Concurrent active replicas and bidirectional synchronization are
+separate capabilities, not prerequisites for this product scope.
+
+| Layer | Required common capability | Deployment-specific implementation |
+| --- | --- | --- |
+| Identity and pairing | Authenticated people, owner-authorized device enrollment, revocable sessions and existing roles | Device credential protection and transport establishment |
+| Data authority | Scoped grants enforced before retrieval enters model context and before actions disclose or mutate data | Same authority contract on device and cloud; no implicit full access from pairing |
+| Persistence and recovery | Durable transactions, encrypted state, controlled keys, export/deletion, backup and restore that cannot resurrect revoked authority | Device keystore and storage protection versus cloud key/storage services |
+| Plugin effects | Explicit capability admission for storage, credentials, networking and execution, enforced at actual dispatch | OS isolation and deployment-approved endpoints |
+| Audit and operation | Durable security events, update integrity, incident evidence and recovery procedures | Local recording and profile-specific independent archive; device supervision versus cloud operations |
+| Inference | Complete authorized context, streaming output and policy-checked model/audio/embedding dispatch | On-device models or explicitly admitted remote endpoints in either deployment |
+
+The current native SQLite adapter is explicitly Node 24.15.0-only. It does not
+establish Android/Bun support: pinned Bun 1.3.14 cannot import `node:sqlite`, and
+its `node:v8` serialized records failed Node deserialization in a generated-data
+probe. [#32386](https://github.com/elizaOS/eliza/issues/32386) tracks compatible
+storage drivers and lossless state portability, including existing-database
+migration. These macOS runtime probes are not Android hardware evidence. Keep the
+current Node deployment contract until the additional runtime is qualified.
+
+Local hosting removes the need for our per-agent hosted compute and database.
+It does not remove remote-inference, relay, optional backup or support costs.
+A local runtime using a remote model still discloses the dispatched data to that
+processor. Device availability needs measured restart, power-loss, update,
+background-execution and recovery behavior; an always-on intention is not proof.
+
+Reuse the canonical role vocabulary and identity/relationship stores. Role
+presets for medical, financial or government products can compose scoped grants
+for subjects, resources and actions without introducing separate identity or
+permission engines. Administrative authority must not implicitly grant every
+person's private data. Shared model-context caches and histories must obey the
+same access boundary as fresh retrieval.
+
+### Conversational performance contract
+
+Security decisions on the conversational path should be deterministic and local.
+Use indexed permission reads and versioned caches with tested invalidation;
+perform hardware/build admission at enrollment, startup and renewal where the
+profile requires it. Verify current session and grant authority at each protected
+boundary, including long-running actions after revocation. Offline behavior must
+state which authority remains valid and for how long; disconnected devices cannot
+promise immediate knowledge of a remote revocation.
+
+Do not add an LLM authorization step or mandatory cloud policy round trip to each
+utterance. Record required audit events durably before acknowledging protected
+effects; remote export may run asynchronously only when the selected profile
+allows it, with explicit backlog/failure handling. Benchmark added authorization
+time, time to first token, time to first audio and sustained streaming on actual
+target devices and cloud configurations. Zero latency overhead is not established
+by this assessment. Do not trade away complete model context to meet latency goals.
+
+### Delivery order and deferred capabilities
+
+Prioritize pairing, scoped data access, portable durable storage, controlled
+external dispatch, encryption/key handling, audit, rights, recovery and signed
+updates. Qualify a bounded supported plugin configuration on an actual device and
+cloud target; disabled plugins need not all be ported before that configuration
+can ship.
+
+Provider/caregiver workflows, custody agreements, household negotiations, shared
+training and simultaneous active replicas are deferred product capabilities.
+Their existing implementation work is preserved, but they are not prerequisites
+for the reusable security foundation. TDX/Nitro qualification, independent cloud
+key release and multi-CVM recovery remain requirements of the confidential-cloud
+profile wherever selected, rather than mandatory implementation details of every
+local agent. These deferrals do not count as acceptance of the original epic's
+corresponding criteria or establish a regulated deployment's release readiness.
+
+Interpret plugin assessment along three independent dimensions:
+
+1. Runtime compatibility: platform, storage backend and available capabilities.
+2. Security behavior: data accessed, recipients, credentials and effect isolation.
+3. Deployment approval: applicable purpose, contracts, operational controls and
+   actual evidence for the enabled feature.
+
+An endpoint-dependent Android capability may be appropriate on its owning device.
+A PostgreSQL dependency is a SQLite portability blocker, not by itself a legal
+compliance finding. Remote providers/connectors share dispatch controls but still
+need approval for their actual destination and feature. Shell, browser, MCP and
+untrusted code require isolation that prevents bypass of common controls.
+
+## Confidential-cloud inventory decision
 
 The default application plugin set cannot currently be used unchanged for the selected one-agent, one-SQLite-database Linux confidential VM service. This assessment inventories **109 first-party workspace packages** under `plugins/`, including native libraries that are not runtime `Plugin` objects. It replaces the historical 108-package count for this revision only.
 
@@ -34,7 +126,7 @@ For each enabled use, the accountable owner must approve an immutable package/bu
 
 Evidence must exercise the actual installed build: zero prohibited payload/credential bytes; complete legitimate model context; endpoint mutation and fallback denial; subprocess/network containment; SQLite reopen/rollback/concurrency; cross-agent/case denial; revoked active access; export/deletion propagation; restored consent/deletion/key authority; and independent durable audit reconciliation. Static inventory is an input to W0/W1, not acceptance of either work package or S01–S20.
 
-Coordination update, September 23, 2026: [#32256](https://github.com/elizaOS/eliza/pull/32256) merged measured process/model admission after the inventory snapshot. [#32281](https://github.com/elizaOS/eliza/pull/32281) (SQLite authentication) and [#32283](https://github.com/elizaOS/eliza/issues/32283) (measured API/scoped identity) remain open. The merged foundation is not production qualification or approval of every plugin dispatch path. The catalog retains its pinned source revision; reassess changed packages against their actual deployed build. [#32322](https://github.com/elizaOS/eliza/issues/32322) tracks the canonical SQLite graph port, which is still under validation.
+Coordination update, September 23, 2026: [#32256](https://github.com/elizaOS/eliza/pull/32256) merged measured process/model admission after the inventory snapshot. [#32281](https://github.com/elizaOS/eliza/pull/32281) (SQLite authentication) has also merged; [#32283](https://github.com/elizaOS/eliza/issues/32283) (measured API/scoped identity) remains open. The merged foundation is not production qualification or approval of every plugin dispatch path. The catalog retains its pinned source revision; reassess changed packages against their actual deployed build. [#32342](https://github.com/elizaOS/eliza/pull/32342) merged the canonical SQLite graph port tracked by [#32322](https://github.com/elizaOS/eliza/issues/32322). This improves engineering compatibility after the snapshot; the historical catalog below is not rewritten as deployment approval.
 
 ## Complete catalog
 
@@ -154,7 +246,7 @@ The links identify pinned package manifests; the JSON includes available entry p
 
 ## Remaining program gates
 
-This assessment completes neither the epic nor compliance. Preserve all W0–W13, A1–A6 and S01–S20 acceptance criteria. Prioritize canonical SQLite graph/household/domain compatibility alongside the existing measured-runtime and authentication work; then prove scoped effects, media, audit, rights and recovery in the integrated deployment. Evaluate no-training, tenant training and shared training independently, with promotion disabled until each program's release gates pass.
+This assessment completes neither the epic nor compliance. Preserve all W0–W13, A1–A6 and S01–S20 acceptance criteria. For the local/cloud foundation, prioritize canonical SQLite storage, pairing and scoped identity; then prove scoped effects, media, audit, rights and recovery in each supported deployment. Specialized household/domain acceptance remains deferred as described above. Evaluate no-training, tenant training and shared training independently, with promotion disabled until each program's release gates pass.
 
 The following require accountable external owners and real evidence: exact TDX and Nitro targets; approved inference endpoint and GPU topology; independent release/key authority; encrypted multi-CVM and second-site recovery; legal scope, purposes and applicable contracts; workforce IdP/MDM and staffed escalation; independent audit archive; retention/holds and RTO/RPO decisions; privacy/security assessment; and the SOC 2 examination and observation period. Unavailable evidence remains an open release gate.
 
