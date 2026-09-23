@@ -6977,6 +6977,9 @@ const calendarAction: CalendarHandlerAction = {
         // swallowed "mode must be one of ..." surfaced only as
         // CALENDAR_SERVICE_400).
         runtime.reportError("calendar:action", error, {
+          // The action owns this clarification; keep diagnostics without
+          // escalating repeated missing guest details into a second reply.
+          diagnosticOnly: error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
           subaction: subaction ?? "none",
           status: error.status,
           code: error.code ?? `CALENDAR_SERVICE_${error.status}`,

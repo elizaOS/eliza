@@ -405,6 +405,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
   });
 
   it("pauses a named guest with an unverified address before any calendar write", async () => {
+    const reported = vi.spyOn(runtime, "reportError");
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
       runJsonModel: vi.fn(async ({ actionType }) =>
@@ -452,6 +453,11 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       },
     );
     expect(result?.success).toBe(false);
+    expect(reported).toHaveBeenCalledWith(
+      "calendar:action",
+      expect.any(Error),
+      expect.objectContaining({ diagnosticOnly: true }),
+    );
     expect(result?.data).toMatchObject({
       error: "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
       requiresInput: true,
