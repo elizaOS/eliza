@@ -1286,8 +1286,9 @@ describe("SSE + delta-v2 token writer", () => {
 
     writes.length = 0;
     writeSseJson(res, { ok: true }, "message_start");
-    expect(writes[0]).toBe("event: message_start\n");
-    expect(writes[1]).toBe(`data: ${JSON.stringify({ ok: true })}\n`);
+    expect(writes.join("")).toBe(
+      `event: message_start\ndata: ${JSON.stringify({ ok: true })}\n\n`,
+    );
   });
 
   it("legacy writer re-sends fullText; delta-v2 snapshots only after 2048 bytes", () => {

@@ -84,6 +84,7 @@ import {
   parseChatTerminalFailure,
   readAliasedEnv,
 } from "@elizaos/shared";
+import { queueRequiredHttpFrame } from "@elizaos/shared/api/required-http-delivery";
 import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
 import type { ElizaConfig } from "../config/config.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
@@ -1760,7 +1761,8 @@ export function writeSse(
   payload: Record<string, unknown>,
 ): void {
   if (res.writableEnded || res.destroyed) return;
-  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  const frame = `data: ${JSON.stringify(payload)}\n\n`;
+  if (!queueRequiredHttpFrame(res, frame)) res.write(frame);
 }
 
 export function writeChatTokenSse(
@@ -1912,11 +1914,14 @@ export function writeSseData(
   if (res.writableEnded || res.destroyed) return;
   const safeEvent =
     typeof event === "string" && /^[A-Za-z0-9_.-]+$/.test(event) ? event : null;
-  if (safeEvent) res.write(`event: ${safeEvent}\n`);
-  for (const line of data.split(/\r\n|\r|\n/)) {
-    res.write(`data: ${line}\n`);
-  }
-  res.write("\n");
+  const frame =
+    (safeEvent ? `event: ${safeEvent}\n` : "") +
+    data
+      .split(/\r\n|\r|\n/)
+      .map((line) => `data: ${line}\n`)
+      .join("") +
+    "\n";
+  if (!queueRequiredHttpFrame(res, frame)) res.write(frame);
 }
 
 export function writeSseJson(

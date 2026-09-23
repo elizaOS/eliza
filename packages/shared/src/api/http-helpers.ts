@@ -20,6 +20,7 @@ export type {
 import type http from "node:http";
 import { ElizaError } from "@elizaos/common";
 import { logger } from "@elizaos/shared/logger";
+import { queueRequiredHttpJson } from "./required-http-delivery";
 
 const CACHED_REQUEST_BODY = Symbol.for("eliza.http.cachedRequestBody");
 const CACHED_JSON_BODY = Symbol.for("eliza.http.cachedJsonBody");
@@ -170,6 +171,16 @@ export async function writeJsonResponse(
   body: unknown,
   status = 200,
 ): Promise<void> {
+  const protectedDelivery = queueRequiredHttpJson(res, body, status);
+  if (protectedDelivery) {
+    const outcome = await protectedDelivery;
+    if (outcome.kind === "complete") return;
+    if (outcome.kind === "failed") throw outcome.error;
+    throw new ElizaError("Protected HTTP response was not delivered", {
+      code: "HTTP_RESPONSE_DELIVERY_REJECTED",
+      context: { outcome: outcome.kind },
+    });
+  }
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify(body));

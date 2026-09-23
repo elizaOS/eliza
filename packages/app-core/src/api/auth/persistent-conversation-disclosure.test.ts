@@ -7,6 +7,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { initSse, writeSse } from "@elizaos/agent/api/chat-routes";
 import { resolveConversationExternalEntityId } from "@elizaos/agent/api/conversation-routes";
 import {
   AgentRuntime,
@@ -15,6 +16,11 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
+import {
+  bindRequiredHttpDelivery,
+  endRequiredHttpDelivery,
+  type HttpDeliveryOutcome,
+} from "@elizaos/shared/api/required-http-delivery";
 import { expect, it } from "vitest";
 import { authStoreForRuntime } from "../../services/auth-store";
 import { createPersistentConversationAuthority } from "./persistent-conversation-authority";
@@ -50,7 +56,7 @@ it.each(["session", "membership", "host", "none"] as const)(
     const continueDelivery = Promise.withResolvers<void>();
     const handlerFinished = Promise.withResolvers<void>();
     const failures: Error[] = [];
-    const deliveries: boolean[] = [];
+    const outcomes: HttpDeliveryOutcome[] = [];
     const server = createServer((request, response) => {
       void (async () => {
         if (!(await authority.admit(request))) {
@@ -58,20 +64,20 @@ it.each(["session", "membership", "host", "none"] as const)(
           return;
         }
         const disclosure = authority.captureDisclosure(request);
-        deliveries.push(
-          await disclosure.deliver(() => {
-            response.writeHead(200, { "Content-Type": "text/plain" });
-            response.write("first permitted\n");
-          }),
-        );
-        await continueDelivery.promise;
-        deliveries.push(
-          await disclosure.deliver(() => {
-            response.write("second permitted only while authorized\n");
-          }),
-        );
-        // The terminal control marker contains no protected response data.
-        response.end(deliveries[1] ? "complete\n" : "revoked\n");
+        let first = true;
+        const delivery = bindRequiredHttpDelivery(response, {
+          maxPendingBytes: 4096,
+          deliver: async (dispatch) => {
+            if (!first) await continueDelivery.promise;
+            first = false;
+            return disclosure.deliver(dispatch);
+          },
+        });
+        initSse(response);
+        writeSse(response, { text: "first permitted" });
+        writeSse(response, { text: "second permitted only while authorized" });
+        endRequiredHttpDelivery(response);
+        outcomes.push(await delivery.completed);
       })()
         .catch((error: Error) => {
           // error-policy:J1 Surface handler failure through both the socket and test result.
@@ -111,20 +117,44 @@ it.each(["session", "membership", "host", "none"] as const)(
         headers: { Authorization: `Bearer ${session.id}` },
       });
       expect(response.status).toBe(200);
+      if (!response.body) throw new Error("Response body missing");
+      const reader = response.body.getReader();
+      const firstChunk = await reader.read();
+      expect(firstChunk.done).toBe(false);
+      const decoder = new TextDecoder();
+      let body = decoder.decode(firstChunk.value, { stream: true });
+      expect(body).toBe('data: {"text":"first permitted"}\n\n');
       if (revocation === "session")
         await store.revokeSession(session.id, Date.now());
       if (revocation === "membership")
         await adapter.deleteParticipants([{ entityId, roomId }]);
       if (revocation === "host") authority.revoke();
       continueDelivery.resolve();
-      const body = await response.text();
+      let interrupted = false;
+      try {
+        for (;;) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          body += decoder.decode(chunk.value, { stream: true });
+        }
+        body += decoder.decode();
+      } catch (error) {
+        // error-policy:J1 Revocation is an interrupted HTTP stream, never a successful prefix.
+        expect(error).toBeInstanceOf(Error);
+        interrupted = true;
+      } finally {
+        reader.releaseLock();
+      }
       await handlerFinished.promise;
       expect(failures).toEqual([]);
-      expect(deliveries).toEqual([true, revocation === "none"]);
+      expect(outcomes).toEqual([
+        { kind: revocation === "none" ? "complete" : "denied" },
+      ]);
+      expect(interrupted).toBe(revocation !== "none");
       expect(body).toBe(
         revocation === "none"
-          ? "first permitted\nsecond permitted only while authorized\ncomplete\n"
-          : "first permitted\nrevoked\n",
+          ? 'data: {"text":"first permitted"}\n\ndata: {"text":"second permitted only while authorized"}\n\n'
+          : 'data: {"text":"first permitted"}\n\n',
       );
     } finally {
       continueDelivery.resolve();

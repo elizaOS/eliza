@@ -21,6 +21,7 @@ import {
   validateUuid,
 } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
+import { bindRequiredHttpDelivery } from "@elizaos/shared/api/required-http-delivery";
 import { expect, it, vi } from "vitest";
 import { z } from "zod";
 import { authStoreForRuntime } from "../../services/auth-store";
@@ -56,6 +57,7 @@ it("uses persistent sessions and current memberships without loopback or static-
   });
   let api: Awaited<ReturnType<typeof startApiServer>> | undefined;
   let server: Server | undefined;
+  let streamPath: string | undefined;
   try {
     await adapter.createAgents([{ id: agentId, name: "Authority HTTP" }]);
     for (const id of ["first-device", "second-device"])
@@ -90,13 +92,26 @@ it("uses persistent sessions and current memberships without loopback or static-
       configureServer: (value) => {
         server = value;
       },
+      requestMiddleware: async (req, res, next) => {
+        const delivery = bindRequiredHttpDelivery(res, {
+          ...authority.captureDisclosure(req),
+          maxPendingBytes: 1024 * 1024,
+        });
+        await next();
+        expect(await delivery.completed).toEqual({ kind: "complete" });
+      },
       hostAdmission: (req, boundary) => {
-        // This test exposes only collection creation/listing; broader method and
-        // stream policies remain the measured host's separate acceptance gate.
+        // Only the fixture's conversation can exercise stream finalization.
+        // There is deliberately no model; successful generation needs separate proof.
         if (
           boundary !== "request" ||
-          req.url !== "/api/conversations" ||
-          !["GET", "POST"].includes(req.method ?? "")
+          !(
+            (req.url === "/api/conversations" &&
+              ["GET", "POST"].includes(req.method ?? "")) ||
+            (streamPath !== undefined &&
+              req.url === streamPath &&
+              req.method === "POST")
+          )
         )
           return false;
         return authority.admit(req);
@@ -123,6 +138,15 @@ it("uses persistent sessions and current memberships without loopback or static-
     expect((await fetch(url, { headers: headers(staticToken) })).status).toBe(
       403,
     );
+    const invalidBody = await fetch(url, {
+      method: "POST",
+      headers: headers(first.id),
+      body: "{",
+    });
+    expect(invalidBody.status).toBe(400);
+    expect(await invalidBody.json()).toMatchObject({
+      error: "Invalid JSON in request body",
+    });
     expect(
       (
         await fetch(url, {
@@ -144,6 +168,31 @@ it("uses persistent sessions and current memberships without loopback or static-
         conversation: z.object({ id: z.string(), roomId: z.string() }),
       })
       .parse(await created.json());
+    streamPath = `/api/conversations/${data.conversation.id}/messages/stream`;
+    const streamed = await fetch(
+      `http://127.0.0.1:${address.port}${streamPath}`,
+      {
+        method: "POST",
+        headers: headers(first.id),
+        body: JSON.stringify({
+          text: "Exercise the unavailable model boundary",
+        }),
+      },
+    );
+    expect(streamed.status).toBe(200);
+    expect(streamed.headers.get("content-type")).toContain("text/event-stream");
+    expect(await streamed.text()).toContain('"type":"error"');
+    const forbiddenStream = await fetch(
+      `http://127.0.0.1:${address.port}${streamPath}`,
+      {
+        method: "POST",
+        headers: headers(second.id),
+        body: JSON.stringify({
+          text: "This device has no grant to that conversation",
+        }),
+      },
+    );
+    expect(forbiddenStream.status).toBe(404);
     expect(
       await (await fetch(url, { headers: headers(first.id) })).json(),
     ).toMatchObject({ conversations: [{ id: data.conversation.id }] });

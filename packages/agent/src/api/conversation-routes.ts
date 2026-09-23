@@ -90,6 +90,7 @@ import {
   parseChatTerminalFailure,
   parsePositiveInteger,
 } from "@elizaos/shared";
+import { endRequiredHttpDelivery } from "@elizaos/shared/api/required-http-delivery";
 import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
 import {
   parseSharedTodoCutoverSnapshot,
@@ -792,7 +793,7 @@ function createConversationStreamDisconnectTracker({
     checkConnectionClosed();
   };
   const onClientGone = () => {
-    abort(new Error("Client disconnected"));
+    if (!res.writableFinished) abort(new Error("Client disconnected"));
   };
 
   // Bun's node:http shim emits req.close when the POST body finishes, before
@@ -5127,12 +5128,36 @@ async function streamConversationMessage(
     conversationId: conv.id,
     roomId: conv.roomId,
   });
-  const finishStreamResponse = () => {
-    disconnectTracker.markCompleted();
-    disconnectTracker.dispose();
-    if (!res.writableEnded) {
-      res.end();
-    }
+  let streamCompletion: Promise<void> | undefined;
+  const finishStreamResponse = (): Promise<void> => {
+    if (streamCompletion) return streamCompletion;
+    streamCompletion = (async () => {
+      try {
+        const delivery = endRequiredHttpDelivery(res);
+        if (delivery) {
+          const outcome = await delivery;
+          if (outcome.kind !== "complete") {
+            const failure =
+              outcome.kind === "failed"
+                ? outcome.error
+                : new ElizaError(
+                    "Protected conversation output was not delivered",
+                    {
+                      code: "CONVERSATION_DELIVERY_REJECTED",
+                      context: { outcome: outcome.kind },
+                    },
+                  );
+            disconnectTracker.abort(failure);
+            throw failure;
+          }
+        }
+        disconnectTracker.markCompleted();
+        if (!delivery && !res.writableEnded) res.end();
+      } finally {
+        disconnectTracker.dispose();
+      }
+    })();
+    return streamCompletion;
   };
 
   const chatPayload = await readChatRequestPayload(req, res, {
@@ -5141,7 +5166,7 @@ async function streamConversationMessage(
     error,
   });
   if (!chatPayload) {
-    finishStreamResponse();
+    await finishStreamResponse();
     return true;
   }
   if (!isLocalVoiceRuntimeFenceCurrent(state, localVoiceRuntimeFence, conv)) {
@@ -5199,11 +5224,11 @@ async function streamConversationMessage(
       chatReservation,
     );
   try {
-    const failStream = (message: string): true => {
+    const failStream = async (message: string): Promise<true> => {
       releaseTurnReservation();
       writeSse(res, { type: "error", message });
       clearInterval(heartbeatInterval);
-      finishStreamResponse();
+      await finishStreamResponse();
       return true;
     };
 
@@ -5323,7 +5348,7 @@ async function streamConversationMessage(
     }
     if (idempotencyAdmission.kind === "aborted") {
       clearInterval(heartbeatInterval);
-      finishStreamResponse();
+      await finishStreamResponse();
       return true;
     }
     if (
@@ -5332,7 +5357,7 @@ async function streamConversationMessage(
     ) {
       writeConversationDoneSse(res, idempotencyAdmission.outcome);
       clearInterval(heartbeatInterval);
-      finishStreamResponse();
+      await finishStreamResponse();
       return true;
     }
     if (idempotencyAdmission.kind === "conflict") {
@@ -5342,7 +5367,7 @@ async function streamConversationMessage(
         code: idempotencyAdmission.error.code,
       });
       clearInterval(heartbeatInterval);
-      finishStreamResponse();
+      await finishStreamResponse();
       return true;
     }
     chatReservation =
@@ -5368,7 +5393,7 @@ async function streamConversationMessage(
       releaseTurnReservation();
       if (disconnectTracker.isAborted()) {
         clearInterval(heartbeatInterval);
-        finishStreamResponse();
+        await finishStreamResponse();
         return true;
       }
       return failStream(
@@ -5420,7 +5445,7 @@ async function streamConversationMessage(
           code: durableRecovery.error.code,
         });
         clearInterval(heartbeatInterval);
-        finishStreamResponse();
+        await finishStreamResponse();
         return true;
       }
       if (durableRecovery.kind === "settled") {
@@ -5443,7 +5468,7 @@ async function streamConversationMessage(
         }
         writeConversationDoneSse(res, durableRecovery.outcome);
         clearInterval(heartbeatInterval);
-        finishStreamResponse();
+        await finishStreamResponse();
         return true;
       }
       let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
@@ -5756,7 +5781,7 @@ async function streamConversationMessage(
             // generateChatResponse still drains room-state work, and the outer
             // route retains its lease/server activity until that barrier settles.
             clearInterval(heartbeatInterval);
-            finishStreamResponse();
+            await finishStreamResponse();
             generationDelivered = true;
           })();
           return generationCompletion;
@@ -6223,7 +6248,7 @@ async function streamConversationMessage(
         }
         clearInterval(heartbeatInterval);
         try {
-          finishStreamResponse();
+          await finishStreamResponse();
         } finally {
           endActiveChatTurn();
         }
@@ -6262,7 +6287,7 @@ async function streamConversationMessage(
     // the only place a failed turn can release them. Both calls are
     // idempotent: the ordinary exits already cleaned up and are unchanged.
     clearInterval(heartbeatInterval);
-    finishStreamResponse();
+    await finishStreamResponse();
   }
 }
 
