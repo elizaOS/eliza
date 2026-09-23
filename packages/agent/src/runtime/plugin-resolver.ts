@@ -1306,12 +1306,13 @@ async function removeEscapingStagedSymlinks(
   }
 }
 
+const STAGED_COPY_CONCURRENCY = 16;
 const stagedCopyWaiters: (() => void)[] = [];
 let activeStagedCopies = 0;
 
 async function withStagedCopySlot(copy: () => Promise<void>): Promise<void> {
   await new Promise<void>((resolve) => {
-    if (activeStagedCopies < 4) {
+    if (activeStagedCopies < STAGED_COPY_CONCURRENCY) {
       activeStagedCopies++;
       resolve();
     } else stagedCopyWaiters.push(resolve);
@@ -1431,7 +1432,11 @@ export async function copyPluginTreeWithoutEscapingSymlinks(
     let nextEntry = 0;
     let copyFailure: { error: unknown } | undefined;
     while (nextEntry < entries.length || pending.size > 0) {
-      while (!copyFailure && nextEntry < entries.length && pending.size < 4) {
+      while (
+        !copyFailure &&
+        nextEntry < entries.length &&
+        pending.size < STAGED_COPY_CONCURRENCY
+      ) {
         const entry = entries[nextEntry++];
         let task: Promise<void>;
         task = withStagedCopySlot(() => copyEntry(entry)).then(
