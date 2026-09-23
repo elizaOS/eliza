@@ -14,19 +14,20 @@ This is the compact handoff contract for the demo product. It keeps the scope ti
 
 ## Current evidence — September 22
 
-- Integrated code checkpoint: `codex/final-integration-20260921` / `d1c3d1107e1`, incorporating develop through `049d204238a`. Review in [PR #32044](https://github.com/elizaOS/eliza/pull/32044).
-- Preserved demo: `codex/final-text-integration-20260920` / `3238445f60d`, with existing rollback tags retained. Port 5288 is stopped; it is not the current test app.
-- Current test app: `http://127.0.0.1:5298/chat`, API31422, using an isolated copy of QA data. Serving identity must be checked after each rebuild/restart.
-- Source/reference parity is implemented for authorized same-room and provider originals, including literal delivery and persisted same-room backward links. Provider redaction, discovery, source identity and final audience checks remain authoritative.
-- The separately reviewed settings draft is incorporated at `816a935ab35`; the original peer worktree remains untouched. Owning tests pass.
-- Current offline checks: 5,163 assistant tests; 446 focused core Stage1/sanitizer/envelope tests; three real database-backed recall tests; owning provider tests, types and builds. Counts overlap and are not additive.
-- Earlier live evidence verified Notes create/edit/read, original-versus-corrected recall, Calendar missing-time no-write, explicit create, conflict/free alternatives and same-ID move. Latest bounded run on `03ca44931ea`: Notes navigation0.99s, note recall0.90s, Calendar create3.75s, Home4.56s. The Home outlier used a safe planner fallback for conflicting model flags.
+- Candidate: `codex/final-integration-20260921`, code checkpoint `e7771eb6196`, incorporating reviewed develop `b6a2e43c645`. [PR #32044](https://github.com/elizaOS/eliza/pull/32044) is mergeable at that checkpoint.
+- Saved demo remains `3238445f60d` in its separate checkout with rollback tags. Port5288 is stopped. Current dev app: `http://127.0.0.1:5298/chat`, API31422, isolated copied QA data.
+- Same-room and provider-original source parity is implemented; exact source quote and persisted link passed live. Augmented/redacted records cannot become protected originals.
+- Stop retains terminal context even without delivered text. Live post-Stop greeting passed with zero tool calls. Transient acknowledgement appeared at1.81s and the single final Calendar response at4.07s; no progress text persisted as an answer.
+- Notes create/edit/read, original-versus-current recall, Calendar missing-time clarification, explicit create, conflict alternatives and same-ID move have stored-state evidence. Calendar's mounted Month control passed.
+- Personal-rule absence is checked in the actual requester preference store; live no-op preserved all stored preferences/facts. Exact positive removal with unrelated-rule preservation passes owning tests.
+- Reviewed settings donor port is incorporated; the original peer worktree remains untouched.
+- Verified code76e74 passed root verification, frozen install and commit-range secret scan. Assistant5165 and handler/recovery428 passed there; later navigation repair has412 handler tests and100 navigation tests. Final exact-head gate is pending.
 
-## Remaining acceptance
+## Open acceptance and limitations
 
-Final remote refresh found develop `b6a2e43c645` (13 newer commits), including overlapping Stage1 review-budget changes. The pushed checkpoint is preserved; that integration conflict and exact-head gates must be resolved before handoff. Root verification last passed at `62ea2575407` before the live-discovered Stop, quote-format and preference-routing repairs.
+The sole local ledger is `/Users/nubs/Documents/ChatGPT/test/LAST-MILE-20260922.md`.
+Remaining work: final exact-head verification/CI, rebuilt guidance smoke and final handoff. The latest guidance corrects a mismatch with an existing planner path; no latency improvement is claimed without measurement.
 
+Recent simple paths took0.90–1.52s, exact recall2.51s, Calendar3.75–4.07s, personal-rule absence5.08s and compound navigation/read6.41s. This does not meet a universal three-second target. Preserve authorization, conflict checks and effect grounding; acknowledgements improve feedback, not completion time.
 
-The current local acceptance ledger is `/Users/nubs/Documents/ChatGPT/test/LAST-MILE-20260922.md`. It owns the remaining exact-head repository verification and bounded UI observations: mounted Calendar controls, transient acknowledgement/single final, Stop/idle/no replay, greeting, Calendar navigation, scoped preference removal and source quotation. Earlier unaffected scenario receipts should be reused; avoid broad paid retest loops.
-
-Physical Cartesia microphone/audio/animation, recording, protected-branch merge and deployment remain separate acceptance decisions. Correct text behavior and a pushed checkpoint do not establish those outcomes. The three-second latency target is not a universal SLA; acknowledgements improve feedback without reducing measured completion time.
+Physical Cartesia microphone/audio/animation, recording, protected merge and deployment remain separate acceptance decisions. No claim of a complete launch product follows from these text checks.
