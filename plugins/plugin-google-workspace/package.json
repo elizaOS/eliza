@@ -56,13 +56,13 @@
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.14",
     "@elizaos/plugin-sql": "workspace:*",
     "@types/node": "^25.6.0",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "postal-mime": "2.7.5",
+    "postal-mime": "3.0.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10",
+    "vitest": "^5.0.1",
     "@elizaos/testing": "workspace:*"
   },
   "eliza": {
