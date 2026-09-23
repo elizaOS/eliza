@@ -1,5 +1,6 @@
-/** Runs bounded, read-only missed-event recovery on the existing cron lane; every claimed outcome is retained with primary lease and retry ownership. */
+/** Runs bounded missed-event recovery using read-only provider requests on the existing cron lane; every claimed outcome is retained with primary lease and retry ownership. */
 import { ElizaError } from "@elizaos/common";
+import { z } from "zod";
 import {
   claimSubscriptionReconciliation,
   failSubscriptionReconciliation,
@@ -9,6 +10,7 @@ import {
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { createStripeRecoveryClient } from "../stripe";
 import { logger } from "../utils/logger";
+import { retrievePaidRenewalObjects } from "./stripe-paid-renewal-objects";
 import {
   validateCancellationCustomer,
   validatePeriodEndCancellationObservation,
@@ -52,6 +54,33 @@ export async function recoverMissedSubscriptionEvents() {
               value: validateStripeTerminalObservation(raw, claim.source, environment),
             })
           : await (async () => {
+              const period = z
+                .object({ current_period_end: z.number().int().nonnegative().safe() })
+                .safeParse(raw);
+              if (
+                raw.status === "active" &&
+                period.success &&
+                period.data.current_period_end * 1000 !== claim.source.current_period_end?.getTime()
+              ) {
+                if (
+                  typeof raw.latest_invoice !== "string" ||
+                  !/^in_[A-Za-z0-9]+$/.test(raw.latest_invoice)
+                )
+                  throw new ElizaError(
+                    "Paid renewal recovery requires the current invoice identity",
+                    { code: "SUBSCRIPTION_RECONCILIATION_UNAVAILABLE" },
+                  );
+                const objects = await retrievePaidRenewalObjects(
+                  claim.source,
+                  raw.latest_invoice,
+                  stripe,
+                );
+                return finalizeSubscriptionReconciliation(claim, {
+                  kind: "paid_renewal",
+                  invoiceId: raw.latest_invoice,
+                  objects,
+                });
+              }
               const value = validatePeriodEndCancellationObservation({
                 raw,
                 source: claim.source,

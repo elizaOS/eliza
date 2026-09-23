@@ -8,6 +8,12 @@ import {
   renewalUnavailable,
   validatePaidRenewal,
 } from "../../lib/services/stripe-paid-renewal-validation";
+import {
+  assertCheckoutProviderAuthority,
+  assertCheckoutProviderMode,
+  checkoutContractEnvironment,
+  readCheckoutContract,
+} from "../../lib/services/subscription-checkout-contract";
 import { writeTransaction } from "../helpers";
 import {
   type BillingSubscription,
@@ -47,7 +53,7 @@ export const subscriptionCheckoutSessionSchema = z.object({
 });
 
 export async function finalizeSubscriptionCheckout(
-  input: PaidRenewalObjects & { session: unknown },
+  input: PaidRenewalObjects & { session: unknown; providerAccountId: string },
 ) {
   const session = subscriptionCheckoutSessionSchema.parse(input.session);
   if (session.status !== "complete" || session.payment_status !== "paid")
@@ -99,6 +105,22 @@ export async function finalizeSubscriptionCheckout(
       command.subscription_id !== null
     )
       renewalUnavailable("checkout_command_mismatch");
+    const contract =
+      command.status === "APPLIED" && command.checkout_contract === null
+        ? null
+        : readCheckoutContract(command);
+    if (contract) {
+      assertCheckoutProviderAuthority(contract, input.providerAccountId, getCloudAwareEnv());
+      if (
+        contract.params.customer !== session.customer ||
+        contract.expectedLivemode !== session.livemode
+      )
+        renewalUnavailable("checkout_original_authority_mismatch");
+    } else {
+      // Historical settled commands have no saved Stripe account id. Only replay
+      // their durable publication, using objects retrieved by the current account.
+      assertCheckoutProviderMode(session.livemode, getCloudAwareEnv());
+    }
     if (command.status === "APPLIED") {
       const [published] = await tx
         .select()
@@ -119,9 +141,36 @@ export async function finalizeSubscriptionCheckout(
             eq(subscriptionAllowancePeriods.stripe_invoice_id, invoice.id),
           ),
         );
+      const subscription = z
+        .object({
+          object: z.literal("subscription"),
+          id: z.string(),
+          customer: z.string(),
+          livemode: z.boolean(),
+        })
+        .parse(input.subscription);
+      const customer = z
+        .object({
+          object: z.literal("customer"),
+          id: z.string(),
+          livemode: z.boolean(),
+          deleted: z.literal(false).optional(),
+        })
+        .parse(input.customer);
       if (
         !published ||
         !period ||
+        command.result_subscription_id !== published.id ||
+        period.provider !== published.provider ||
+        period.provider_environment !== published.provider_environment ||
+        invoice.customer !== session.customer ||
+        invoice.subscription !== session.subscription ||
+        invoice.livemode !== session.livemode ||
+        subscription.id !== session.subscription ||
+        subscription.customer !== session.customer ||
+        subscription.livemode !== session.livemode ||
+        customer.id !== session.customer ||
+        customer.livemode !== session.livemode ||
         published.stripe_subscription_id !== session.subscription ||
         published.stripe_customer_id !== session.customer ||
         published.provider_environment !== (session.livemode ? "live" : "test") ||
@@ -130,7 +179,12 @@ export async function finalizeSubscriptionCheckout(
         renewalUnavailable("checkout_replay_identity_mismatch");
       return { subscriptionId: command.result_subscription_id, replayed: true };
     }
-    if (command.status !== "OUTCOME_UNKNOWN" || !authority || authority.state === "unavailable")
+    if (
+      !contract ||
+      command.status !== "OUTCOME_UNKNOWN" ||
+      !authority ||
+      authority.state === "unavailable"
+    )
       renewalUnavailable("checkout_authority_changed");
     const now = await readPostLockDatabaseNow(tx);
     const line = invoice.lines.data[0];
@@ -151,7 +205,7 @@ export async function finalizeSubscriptionCheckout(
       stripe_subscription_id: invoice.subscription,
       stripe_subscription_item_id: line.subscription_item,
       plan_key: command.target_plan_key,
-      catalog_version: "v1",
+      catalog_version: contract.catalogVersion,
       status: "active",
       current_period_start: new Date(line.period.start * 1000),
       current_period_end: new Date(line.period.end * 1000),
@@ -172,7 +226,7 @@ export async function finalizeSubscriptionCheckout(
       ...input,
       source,
       organizationCustomerId: org.stripe_customer_id,
-      environment: getCloudAwareEnv(),
+      environment: checkoutContractEnvironment(contract, getCloudAwareEnv()),
       databaseNow: now,
       initialPayment: true,
     });

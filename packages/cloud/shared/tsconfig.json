@@ -53,6 +53,7 @@
     "node_modules",
     "dist",
     "**/*.test.ts",
-    "src/lib/services/eliza-sandbox/test-support/**"
+    "src/lib/services/eliza-sandbox/test-support/**",
+    "src/db/repositories/test-support/**"
   ]
 }

@@ -2661,6 +2661,13 @@
       "when": 1796083200023,
       "tag": "0396_agent_funded_rate_segments",
       "breakpoints": true
+    },
+    {
+      "idx": 380,
+      "version": "7",
+      "when": 1796083200024,
+      "tag": "0397_subscription_checkout_contract",
+      "breakpoints": true
     }
   ]
 }
