@@ -49,7 +49,10 @@ export const followUpsProvider: Provider = {
       );
       const entities = await runtime.getEntitiesByIds(contactIds);
       const entityNames = new Map(
-        entities.map((entity) => [entity.id, entity.names[0] || "Unknown"]),
+        entities.map((entity) => [
+          entity.id?.toLowerCase(),
+          entity.names[0] || "Unknown",
+        ]),
       );
       const overdue: typeof upcomingFollowUps = [];
       const upcoming: typeof upcomingFollowUps = [];
@@ -72,7 +75,8 @@ export const followUpsProvider: Provider = {
       if (overdue.length > 0) {
         textSummary += `\nOverdue (${overdue.length}):\n`;
         for (const f of overdue) {
-          const name = entityNames.get(f.contact.entityId) || "Unknown";
+          const name =
+            entityNames.get(f.contact.entityId.toLowerCase()) || "Unknown";
           const scheduledAt = f.task.id
             ? (scheduledAtMs.get(f.task.id) ?? 0)
             : 0;
@@ -92,7 +96,8 @@ export const followUpsProvider: Provider = {
       if (upcoming.length > 0) {
         textSummary += `\nUpcoming (${upcoming.length}):\n`;
         for (const f of upcoming) {
-          const name = entityNames.get(f.contact.entityId) || "Unknown";
+          const name =
+            entityNames.get(f.contact.entityId.toLowerCase()) || "Unknown";
           const scheduledAt = f.task.id
             ? (scheduledAtMs.get(f.task.id) ?? 0)
             : 0;
