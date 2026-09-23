@@ -1,5 +1,6 @@
 /**
- * Views client tests for loopback API normalization and request construction.
+ * Exercises view registry normalization and interaction parsing with real JSON
+ * responses, deterministic fetch, and a fixed loopback port.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -167,11 +168,7 @@ describe("views client", () => {
 
 	it("fails closed on malformed interaction response JSON", async () => {
 		await expect(
-			parseViewInteractionResponse({
-				json: vi.fn(async () => {
-					throw new SyntaxError("bad json");
-				}),
-			}),
+			parseViewInteractionResponse(new Response("{invalid json")),
 		).resolves.toEqual({
 			ok: false,
 			error: "View interaction response was not valid JSON",
@@ -186,24 +183,17 @@ describe("views client", () => {
 		"keeps wrapper and nested interaction success authoritative",
 		async (body, success) => {
 			await expect(
-				parseViewInteractionResponse({ json: vi.fn(async () => body) }),
+				parseViewInteractionResponse(jsonResponse(body)),
 			).resolves.toMatchObject({ ok: true, success });
 		},
 	);
 
-	it("rejects missing and non-boolean interaction success fields", async () => {
+	it.each([
+		{ result: { success: true } },
+		{ success: true, result: { success: "yes" } },
+	])("rejects malformed interaction success fields: %j", async (body) => {
 		await expect(
-			parseViewInteractionResponse({
-				json: vi.fn(async () => ({ result: { success: true } })),
-			}),
-		).resolves.toMatchObject({ ok: false });
-		await expect(
-			parseViewInteractionResponse({
-				json: vi.fn(async () => ({
-					success: true,
-					result: { success: "yes" },
-				})),
-			}),
+			parseViewInteractionResponse(jsonResponse(body)),
 		).resolves.toMatchObject({ ok: false });
 	});
 
@@ -345,51 +335,41 @@ describe("views client", () => {
 		]);
 	});
 
-	it("parses current-view state", async () => {
-		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-			expect(String(input)).toBe("http://127.0.0.1:3456/api/views/current");
-			return jsonResponse({
-				currentView: {
-					viewId: "trajectory-logger",
-					viewPath: "/trajectory-logger",
-					viewLabel: "Trajectories",
-					viewType: "gui",
-					action: "open",
-					updatedAt: "2026-05-31T08:00:00.000Z",
-				},
-			});
-		});
-		vi.stubGlobal("fetch", fetchMock);
-
-		await expect(createViewsClient().getCurrentView()).resolves.toMatchObject({
+	it.each([
+		{
 			viewId: "trajectory-logger",
 			viewPath: "/trajectory-logger",
 			viewLabel: "Trajectories",
 			viewType: "gui",
 			action: "open",
-			justSwitched: false,
 			updatedAt: "2026-05-31T08:00:00.000Z",
-		});
-	});
-
-	it("parses the open subview/section from current-view state (#9945)", async () => {
-		const fetchMock = vi.fn(async () =>
-			jsonResponse({
-				currentView: {
-					viewId: "settings",
-					viewPath: "/settings",
-					viewLabel: "Settings",
-					viewType: "gui",
-					subview: "voice",
-					updatedAt: "2026-05-31T08:00:00.000Z",
-				},
-			}),
-		);
-		vi.stubGlobal("fetch", fetchMock);
-
-		await expect(createViewsClient().getCurrentView()).resolves.toMatchObject({
+		},
+		{
 			viewId: "settings",
+			viewPath: "/settings",
+			viewLabel: "Settings",
+			viewType: "gui",
 			subview: "voice",
-		});
-	});
+			updatedAt: "2026-05-31T08:00:00.000Z",
+		},
+	])(
+		"parses current view $viewId including its section",
+		async (currentView) => {
+			const fetchMock = vi.fn(async (_input: RequestInfo | URL) =>
+				jsonResponse({ currentView }),
+			);
+			vi.stubGlobal("fetch", fetchMock);
+
+			await expect(createViewsClient().getCurrentView()).resolves.toMatchObject(
+				{
+					...currentView,
+					justSwitched: false,
+				},
+			);
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+			expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+				"http://127.0.0.1:3456/api/views/current",
+			);
+		},
+	);
 });
