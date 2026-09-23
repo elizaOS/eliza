@@ -21,13 +21,6 @@ const RUN_WEB_LIVE = process.env.ORCHESTRATOR_LIVE_WEB === "1";
 type Framework = "claude" | "codex";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..", "..", "..");
-const runNodeTsxScript = path.join(
-  repoRoot,
-  "packages",
-  "app-core",
-  "scripts",
-  "run-node-tsx.mjs",
-);
 const liveSmokeScript = path.join(
   repoRoot,
   "packages",
@@ -45,7 +38,9 @@ async function runLiveSmokeScript(
   mode: "sequential" | "web",
 ): Promise<void> {
   const args = [
-    runNodeTsxScript,
+    "--conditions=eliza-source",
+    "--import",
+    "tsx",
     liveSmokeScript,
     "--framework",
     framework,
@@ -54,7 +49,13 @@ async function runLiveSmokeScript(
   ];
   const options = {
     cwd: repoRoot,
-    env: { ...process.env, ORCHESTRATOR_LIVE: "1", PWD: repoRoot },
+    env: {
+      ...process.env,
+      ORCHESTRATOR_LIVE: "1",
+      // Session reuse requires the durable path; unit setup disables it.
+      ELIZA_ORCHESTRATOR_SMITHERS: "1",
+      PWD: repoRoot,
+    },
     stdio: "inherit" as const,
   };
   // Leave time for owned teardown before Vitest's twelve-minute deadline.
