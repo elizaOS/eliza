@@ -41,6 +41,9 @@ describe("scenario model fixture manifests", () => {
         response: {
           text: "done",
           finishReason: "tool-calls",
+          thought: "Call the exact fixture tool.",
+          messageToUser: "Done.",
+          completed: true,
           toolCalls: [{ name: "ONE", arguments: { value: 1 } }],
         },
         cardinality: 1,
@@ -50,6 +53,9 @@ describe("scenario model fixture manifests", () => {
     expect(JSON.parse(resolution.response)).toMatchObject({
       text: "done",
       finishReason: "tool-calls",
+      thought: "Call the exact fixture tool.",
+      messageToUser: "Done.",
+      completed: true,
       toolCalls: [{ name: "ONE", arguments: { value: 1 } }],
     });
     expect(() => registry.assertConsumed()).not.toThrow();
