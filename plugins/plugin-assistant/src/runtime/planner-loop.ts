@@ -1620,6 +1620,7 @@ async function runPlannerLoopIterations(
           trajectory,
           iteration,
           message: plannerOutput.messageToUser,
+          fromStageOne: initialStageOneReply !== undefined,
         });
         if (
           trajectory.steps.some((step) => step.toolCall) ||
