@@ -15,6 +15,24 @@ import {
   isHiddenSourceArtifactDirectory,
 } from "./find-duplicate-components.mjs";
 
+// Rules only inspect these ASTs. Retain one parse so adjacent rules can share
+// identical input without retaining every syntax tree in a repository audit.
+let lastSourceFile;
+
+function parseSource(file, source) {
+  if (lastSourceFile?.fileName === file && lastSourceFile.text === source) {
+    return lastSourceFile;
+  }
+  lastSourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  return lastSourceFile;
+}
+
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../../..");
 const canonicalRoot = "packages/ui/src/components/ui";
@@ -925,13 +943,7 @@ function propertyNameText(property) {
 }
 
 function loadCardTokenStyleKeys() {
-  const sourceFile = ts.createSourceFile(
-    cardPath,
-    fs.readFileSync(cardPath, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX,
-  );
+  const sourceFile = parseSource(cardPath, fs.readFileSync(cardPath, "utf8"));
   let keys = null;
   function visit(node) {
     if (
@@ -1215,13 +1227,7 @@ function staticRecipeString(expression) {
 }
 
 export function auditCanonicalTokenRoles({ file, source }) {
-  const sourceFile = ts.createSourceFile(
-    file,
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX,
-  );
+  const sourceFile = parseSource(file, source);
   const rel = relative(file);
   const findings = [];
   const seenContracts = new Set();
@@ -1670,13 +1676,7 @@ export function extractCanonicalAxisDefinitions({
   file,
   source,
 }) {
-  const sourceFile = ts.createSourceFile(
-    file,
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX,
-  );
+  const sourceFile = parseSource(file, source);
   let config = null;
   function findConfig(node) {
     if (
@@ -1781,13 +1781,7 @@ export function scanCanonicalAxisUsages({
   if (/(^|\/)stories(\/|$)|\.stories\.[jt]sx?$/.test(relative(file))) {
     return [];
   }
-  const sourceFile = ts.createSourceFile(
-    file,
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX,
-  );
+  const sourceFile = parseSource(file, source);
   const reachableOwners = reachableOwnerNames(sourceFile);
   const imports = importsByLocalName(sourceFile);
   const declarations = indexStaticDeclarations(sourceFile);
@@ -2727,13 +2721,7 @@ export function scanSourceText({
   registeredAdapters,
   source,
 }) {
-  const sourceFile = ts.createSourceFile(
-    file,
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX,
-  );
+  const sourceFile = parseSource(file, source);
   const imports = importsByLocalName(sourceFile);
   const declarations = indexStaticDeclarations(sourceFile);
   const reactFactories = reactFactoryReferences(sourceFile, imports);
@@ -3363,13 +3351,7 @@ export function applyExceptions(findings, exceptions) {
 }
 
 function publicCardSourceContract(file, source) {
-  const sourceFile = ts.createSourceFile(
-    file,
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX,
-  );
+  const sourceFile = parseSource(file, source);
   const names = new Set();
   let cardPropsDerivesCardVariants = false;
   for (const statement of sourceFile.statements) {
@@ -3420,13 +3402,7 @@ function publicCardSourceContract(file, source) {
 }
 
 function reexportedModuleSpecifiers(file, source) {
-  const sourceFile = ts.createSourceFile(
-    file,
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX,
-  );
+  const sourceFile = parseSource(file, source);
   return new Set(
     sourceFile.statements
       .filter(
