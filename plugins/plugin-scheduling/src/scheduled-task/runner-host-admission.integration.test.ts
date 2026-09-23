@@ -27,6 +27,7 @@ import { migrateSchedulingTables } from "./migration.js";
 import {
   createScheduledTaskRunner,
   type ScheduledTaskDispatcher,
+  type ScheduledTaskMutationPolicy,
   type ScheduledTaskStore,
 } from "./runner.js";
 import {
@@ -103,6 +104,7 @@ async function setup() {
   const build = (
     dispatch?: ScheduledTaskDispatcher["dispatch"],
     completion?: () => Promise<boolean>,
+    mutation?: ScheduledTaskMutationPolicy,
   ) => {
     const durable = store();
     const gates = createTaskGateRegistry();
@@ -145,7 +147,7 @@ async function setup() {
       globalPause: { current: async () => ({ active: false }) },
       activity: { hasSignalSince: () => false },
       subjectStore: { wasUpdatedSince: () => false },
-      prepareMutation: ({ proposed }) => proposed,
+      prepareMutation: mutation ?? (({ proposed }) => proposed),
       automaticAdmission: ({ task }) =>
         activityAt(task) === null
           ? { kind: "denied", reason: "no_owner_activity" }
@@ -308,6 +310,97 @@ describe("host admission across SQL-backed runners", () => {
     expect(h.dispatchCount()).toBe(4);
   }, 15_000);
 
+  it("applies host control policy to validated edits before durable persistence", async () => {
+    const h = await setup();
+    const calls: Parameters<ScheduledTaskMutationPolicy>[0][] = [];
+    const instance = h.build(undefined, undefined, (input) => {
+      calls.push(structuredClone(input));
+      return {
+        ...input.proposed,
+        metadata: {
+          ...input.proposed.metadata,
+          enabled: false,
+          activityAt: null,
+        },
+      };
+    });
+    const before = await read(instance.store);
+    const result = await instance.runner.apply(taskId, "edit", {
+      priority: "high",
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      previous: before,
+      proposed: { priority: "high", metadata: before.metadata },
+      verb: "edit",
+      nowIso,
+    });
+    expect(result).toMatchObject({
+      priority: "high",
+      metadata: { enabled: false },
+    });
+    expect(await read(h.store())).toEqual(result);
+    expect(
+      (await instance.logStore.list({ agentId, taskId })).filter(
+        (entry) => entry.transition === "edited",
+      ),
+    ).toHaveLength(1);
+  }, 15_000);
+
+  it.each(["state", "control"] as const)(
+    "rejects a host-prepared edit when concurrent %s changes after its snapshot",
+    async (change) => {
+      const h = await setup();
+      const entered = latch();
+      const release = latch();
+      const instance = h.build(undefined, undefined, async ({ proposed }) => {
+        entered.release();
+        await release.promise;
+        return proposed;
+      });
+      const editing = instance.runner.apply(taskId, "edit", {
+        priority: "high",
+      });
+      await Promise.race([
+        entered.promise,
+        editing.then(() => {
+          throw new Error(
+            "Edit persisted without reaching the host mutation policy",
+          );
+        }),
+      ]);
+      const other = h.store();
+      let winner: ScheduledTask;
+      try {
+        const current = await read(other);
+        const next: ScheduledTask =
+          change === "state"
+            ? { ...current, state: { ...current.state, status: "dismissed" } }
+            : { ...current, metadata: { ...current.metadata, enabled: false } };
+        expect(
+          await other.upsertIfStatus(next, {
+            ...expectation(current),
+            nextFireAtIso: null,
+          }),
+        ).toBe(true);
+        winner = await read(other);
+      } finally {
+        release.release();
+      }
+      await expect(editing).rejects.toMatchObject({
+        code: "SCHEDULED_TASK_MUTATION_RACED",
+      });
+      expect(await read(h.store())).toEqual(winner);
+      expect(
+        (await instance.logStore.list({ agentId, taskId })).filter(
+          (entry) => entry.transition === "edited",
+        ),
+      ).toHaveLength(0);
+      expect(h.dispatchCount()).toBe(0);
+    },
+    15_000,
+  );
+
   it("does not let delayed completion overwrite a concurrent owner disable", async () => {
     const h = await setup();
     const entered = latch();
@@ -317,7 +410,7 @@ describe("host admission across SQL-backed runners", () => {
       await release.promise;
       return true;
     });
-    const owner = h.build();
+    const owner = h.build(undefined, async () => true);
     await owner.runner.apply(taskId, "edit", {
       completionCheck: { kind: "test_delayed_completion" },
     });

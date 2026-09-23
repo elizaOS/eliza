@@ -1825,6 +1825,8 @@ export function createScheduledTaskRunner(
         }
       }
     }
+    const mutation = mutationSnapshots.get(task);
+    if (mutation) mutationSnapshots.set(edited, mutation);
     await persist(edited);
     await logger.log(task.taskId, "edited", {
       detail: { keys: Object.keys(payload) },
