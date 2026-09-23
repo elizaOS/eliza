@@ -1,5 +1,6 @@
 /** Validates synthetic-control wire messages without accepting lossy or executable values. */
 
+import { isSyntheticEnvironmentNamespace } from "../contracts/synthetic-environment-lease.js";
 import type {
   JsonValue,
   SyntheticControlCommand,
@@ -10,6 +11,15 @@ import type {
 
 const MAX_JSON_DEPTH = 64;
 const MAX_JSON_NODES = 100_000;
+
+function namespace(value: unknown, label: string): string {
+  if (!isSyntheticEnvironmentNamespace(value)) {
+    throw new Error(
+      `${label} must be a canonical synthetic environment namespace`,
+    );
+  }
+  return value;
+}
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -191,7 +201,7 @@ function manifest(
   assertJsonValue(domains, "manifest.domains");
   return {
     version: 1,
-    namespace: text(item.namespace, "manifest.namespace"),
+    namespace: namespace(item.namespace, "manifest.namespace"),
     manifestId: text(item.manifestId, "manifest.manifestId"),
     domains,
   };
@@ -211,7 +221,7 @@ function receipt(
   assertJsonValue(item.receipt, "receipt.receipt");
   return {
     version: 1,
-    namespace: text(item.namespace, "receipt.namespace"),
+    namespace: namespace(item.namespace, "receipt.namespace"),
     manifestId: text(item.manifestId, "receipt.manifestId"),
     generation: integer(item.generation, "receipt.generation"),
     receipt: item.receipt,
@@ -333,7 +343,7 @@ export function parseSyntheticControlRequest(
   if (item.version !== 1) throw new Error("request.version must be 1");
   return {
     version: 1,
-    namespace: text(item.namespace, "request.namespace"),
+    namespace: namespace(item.namespace, "request.namespace"),
     commandId: text(item.commandId, "request.commandId"),
     command: command(item.command),
     ...(item.expectedGeneration === undefined
@@ -355,7 +365,7 @@ export function parseSyntheticControlResponse(
 ): SyntheticControlResponse {
   const item = record(value, "response");
   if (item.version !== 1) throw new Error("response.version must be 1");
-  const namespace = text(item.namespace, "response.namespace");
+  const responseNamespace = namespace(item.namespace, "response.namespace");
   const commandId = text(item.commandId, "response.commandId");
   if (item.ok === true) {
     const generation = integer(item.generation, "response.generation");
@@ -368,7 +378,7 @@ export function parseSyntheticControlResponse(
     assertJsonValue(item.data, "response.data");
     return {
       version: 1,
-      namespace,
+      namespace: responseNamespace,
       commandId,
       ok: true,
       generation,
@@ -410,7 +420,7 @@ export function parseSyntheticControlResponse(
     assertJsonValue(failure.details, "response.error.details");
   return {
     version: 1,
-    namespace,
+    namespace: responseNamespace,
     commandId,
     ok: false,
     generation,

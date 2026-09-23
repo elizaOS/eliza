@@ -131,6 +131,99 @@ afterEach(async () => {
 });
 
 describe("synthetic control subprocess protocol", () => {
+  test("rejects noncanonical namespaces before transport and at the subprocess boundary", async () => {
+    const running = await startAuthority("namespace-contract");
+    const before = await running.client.command({ type: "health" });
+    for (const namespace of [
+      " namespace-contract",
+      "namespace-contract ",
+      "namespace\ncontract",
+    ]) {
+      expect(
+        () =>
+          new SyntheticControlClient({
+            baseUrl: running.url,
+            namespace,
+            token: TOKEN,
+          }),
+      ).toThrow("namespace");
+      expect(() =>
+        createSyntheticControlHandler({
+          namespace,
+          token: TOKEN,
+          authority: {
+            generation: () => {
+              throw new Error("invalid configuration reached authority");
+            },
+            execute: async () => {
+              throw new Error("invalid configuration reached authority");
+            },
+          },
+        }),
+      ).toThrow("namespace");
+      const response = await fetch(running.client.endpoint, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${TOKEN}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          version: 1,
+          namespace,
+          commandId: crypto.randomUUID(),
+          command: { type: "health" },
+        }),
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        ok: false,
+        error: { code: "INVALID_REQUEST" },
+      });
+      for (const command of [
+        {
+          type: "seed",
+          manifest: {
+            version: 1,
+            namespace,
+            manifestId: "namespace-test",
+            domains: {},
+          },
+        },
+        {
+          type: "reset",
+          receipt: {
+            version: 1,
+            namespace,
+            manifestId: "namespace-test",
+            generation: before.generation,
+            receipt: {},
+          },
+        },
+      ]) {
+        const nested = await fetch(running.client.endpoint, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${TOKEN}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            version: 1,
+            namespace: running.client.namespace,
+            commandId: crypto.randomUUID(),
+            command,
+          }),
+        });
+        expect(nested.status).toBe(400);
+        expect(await nested.json()).toMatchObject({
+          ok: false,
+          error: { code: "INVALID_REQUEST" },
+        });
+      }
+    }
+    const after = await running.client.command({ type: "health" });
+    expect(after).toEqual(before);
+  });
+
   test("composes a keyless exact-three process-group lane over the real control subprocess", async () => {
     const namespace = `stability-composition-${crypto.randomUUID()}`;
     const running = await startAuthority(namespace);
