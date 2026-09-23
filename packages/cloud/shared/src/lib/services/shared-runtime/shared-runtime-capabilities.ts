@@ -31,52 +31,6 @@ import {
 export const SHARED_RUNTIME_CAPABILITIES_PROVIDER = "SHARED_RUNTIME_CAPABILITIES";
 export const REQUEST_DEDICATED_UPGRADE_ACTION = "REQUEST_DEDICATED_UPGRADE";
 
-export const SHARED_RUNTIME_EDGE_COMPATIBILITY = {
-  target: "edge",
-  state: "conversation-durable-object",
-  effects: ["upgrade-review-link"],
-  requiredBindings: ["SHARED_RUNTIME_CONVERSATIONS"],
-  requiredSecrets: [],
-} as const;
-
-/**
- * Audited plugin boundary for Workerd. Every first-party plugin that publishes
- * an explicit `./edge` entrypoint is registered; Node-only plugins stay behind
- * the Dedicated handoff instead of being bundled speculatively.
- */
-export const SHARED_RUNTIME_PLUGIN_COMPATIBILITY = [
-  {
-    plugin: "@elizaos/core/edge",
-    status: "enabled",
-    provides: ["AgentRuntime", "basic actions", "character and dynamic providers"],
-  },
-  {
-    plugin: "@elizaos/plugin-web-search/edge",
-    status: "enabled",
-    provides: ["public web search"],
-  },
-  {
-    plugin: "@elizaos/plugin-scheduling/edge",
-    status: "enabled-when-bound",
-    provides: ["private reminders"],
-  },
-  {
-    plugin: "@elizaos/plugin-todos/edge",
-    status: "enabled-when-bound",
-    provides: ["persistent todos"],
-  },
-  {
-    plugin: "shared-cloud-media",
-    status: "enabled-when-bound",
-    provides: ["image generation"],
-  },
-  {
-    plugin: "node-or-container-only plugins",
-    status: "dedicated-required",
-    provides: ["coding", "shell", "filesystem", "browser", "private account connectors"],
-  },
-] as const;
-
 export interface SharedRuntimeCapabilityOptions {
   agentId: string;
   webSearch: boolean;
