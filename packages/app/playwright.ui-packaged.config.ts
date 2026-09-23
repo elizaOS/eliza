@@ -6,6 +6,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./test/ui-smoke",
+  testMatch: "**/*.spec.ts",
   timeout: 120_000,
   expect: {
     timeout: 10_000,

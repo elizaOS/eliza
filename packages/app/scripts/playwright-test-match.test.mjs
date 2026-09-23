@@ -1,5 +1,5 @@
 /**
- * Verifies that the production UI smoke configuration never hands colocated
+ * Verifies that the UI browser configurations never hand colocated
  * unit-test contracts to Playwright's suite collector.
  */
 
@@ -13,14 +13,17 @@ const playwrightCli = path.resolve(
   "../../node_modules/playwright/cli.js",
 );
 
-test("Playwright ignores colocated Vitest contracts", () => {
+test.each([
+  "playwright.ui-smoke.config.ts",
+  "playwright.ui-packaged.config.ts",
+])("%s ignores colocated Vitest contracts", (config) => {
   const result = spawnSync(
     process.platform === "win32" ? "node.exe" : "node",
     [
       playwrightCli,
       "test",
       "--config",
-      "playwright.ui-smoke.config.ts",
+      config,
       "--list",
       "test/ui-smoke/voice-live-trajectory.test.ts",
       "test/ui-smoke/provider-config.spec.ts",

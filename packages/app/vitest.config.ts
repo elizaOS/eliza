@@ -18,8 +18,6 @@ const unitExcludes = [
   "**/*.e2e.test.{ts,tsx}",
   "**/*.e2e.spec.{ts,tsx}",
   "**/*.spec.{ts,tsx}",
-  "test/ui-smoke/**",
-  "test/electrobun-packaged/**",
   // Script-level tests use Bun or Node test APIs and run through the package's
   // dedicated `bun test` phase, outside Vitest's jsdom transform.
   "scripts/**/*.test.{ts,tsx,mjs}",
