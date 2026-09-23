@@ -6,6 +6,7 @@
 import type { IncomingMessage } from "node:http";
 import {
   bindRequiredHttpAccessContext,
+  resolveRequiredHttpAccessContext,
   revokeRequiredHttpAccessContext,
 } from "@elizaos/agent/api/http-access-context";
 import type {
@@ -98,9 +99,84 @@ export function createPersistentConversationAuthority(input: {
     };
   }
 
+  /**
+   * Pins the authority used to compute a response. A narrowed grant invalidates
+   * that response even if the session can still read some other room. Delivery
+   * must synchronously hand bytes to the transport; await backpressure only
+   * after this transaction releases. Already accepted bytes cannot be recalled.
+   */
+  function captureDisclosure(request: IncomingMessage) {
+    const actor = admitted.get(request);
+    const scope = resolveRequiredHttpAccessContext(request);
+    const records = runtime.adapter.recordStore;
+    if (
+      !active ||
+      !actor ||
+      !scope ||
+      !records ||
+      records.agentId !== runtime.agentId ||
+      records.version !== 1
+    ) {
+      throw new ElizaError(
+        "Disclosure requires admitted agent-owned transactional authority",
+        {
+          code: "CONVERSATION_DISCLOSURE_AUTHORITY_REQUIRED",
+        },
+      );
+    }
+    let closed = false;
+    return Object.freeze({
+      async deliver(dispatch: () => undefined): Promise<boolean> {
+        if (closed || !active) return deny(request);
+        try {
+          return await records.transaction(async () => {
+            if (
+              !active ||
+              admitted.get(request) !== actor ||
+              (await sessions.revalidate(request)) !== actor
+            ) {
+              closed = true;
+              return deny(request);
+            }
+            const current = await scopeFor(actor);
+            const currentRooms = new Set(current.authorizedRoomIds);
+            if (
+              !active ||
+              current.requesterEntityId !== scope.requesterEntityId ||
+              current.role !== scope.role ||
+              current.isOwner !== scope.isOwner ||
+              scope.authorizedRoomIds.some(
+                (roomId) => !currentRooms.has(roomId),
+              ) ||
+              (await sessions.revalidate(request)) !== actor ||
+              !active ||
+              admitted.get(request) !== actor
+            ) {
+              closed = true;
+              return deny(request);
+            }
+            // The same durable transaction owns auth and membership reads, so
+            // a competing revocation cannot commit before synchronous dispatch.
+            dispatch();
+            return true;
+          });
+        } catch (cause) {
+          // error-policy:J2 A failed dispatch is never retried or given fallback authority.
+          closed = true;
+          deny(request);
+          throw new ElizaError("Protected conversation delivery failed", {
+            code: "CONVERSATION_DISCLOSURE_FAILED",
+            cause,
+          });
+        }
+      },
+    });
+  }
+
   return Object.freeze({
     admit,
     resolveHttpRequestAuthorization,
+    captureDisclosure,
     revoke: () => {
       active = false;
     },
