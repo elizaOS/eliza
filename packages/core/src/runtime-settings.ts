@@ -4,10 +4,10 @@ import type { Character } from "./types/agent.ts";
  * Flatten character.settings, character.secrets, and env into a single Record<string, string>.
  * Used when calling adapter factories (Plugin.adapter(agentId, settings)).
  *
- * **WHY basic-capabilities-only:** Adapter factories run *before* the database is connected. They
+ * **Adapter bootstrap settings:** Adapter factories run *before* the database is connected. They
  * cannot read runtime settings from the DB. Only settings available from character config
  * and process.env (e.g. POSTGRES_URL, PGLITE_DATA_DIR, MONGODB_URI) are valid here. Runtime
- * settings (API keys, model prefs, etc.) are merged later from the DB via mergeSettingsInto.
+ * settings loaded from the DB are supplied separately by the host.
  *
  * **Merge order:** env first, then character.settings (excluding nested secrets object),
  * then character.settings.secrets, then character.secrets. Later sources override earlier

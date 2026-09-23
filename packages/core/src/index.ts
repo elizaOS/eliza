@@ -194,8 +194,7 @@ export {
 	rerollBudgetCeilingFromSetting,
 	SchemaValidationFailedError,
 } from "./runtime/validated-model-call";
-// Runtime composition (loadCharacters, createRuntimes, flattenRuntimeSettings, mergeSettingsInto) - node only
-export * from "./runtime-composition";
+export { flattenRuntimeSettings } from "./runtime-settings.ts";
 // Export character schemas
 export * from "./schemas/character";
 // Export security utilities
