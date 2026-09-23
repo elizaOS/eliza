@@ -5,6 +5,17 @@
  */
 import { z } from "zod";
 
+const PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
+
+/** Accepts package names safe for catalog lookup at the HTTP boundary. */
+export function isValidRegistryPackageName(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= 214 &&
+    PACKAGE_NAME_RE.test(value)
+  );
+}
+
 const nullableString = z.string().nullable().optional();
 const versionTargetSchema = z
   .object({ branch: nullableString, version: nullableString })
