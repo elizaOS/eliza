@@ -401,6 +401,19 @@ export default scenario({
           url: "https://scenario.test/form",
         });
 
+        // URL reads load the current document in the web workspace. Route both
+        // OAuth pages so the polling deadline never depends on external DNS.
+        for (const url of [WAIT_FOR_URL_START_URL, WAIT_FOR_URL_CALLBACK_URL]) {
+          await executeBrowserWorkspaceCommand({
+            id: tabId,
+            subaction: "network",
+            networkAction: "route",
+            url,
+            responseStatus: 200,
+            responseBody: "<!doctype html><title>Scenario OAuth</title>",
+          });
+        }
+
         installWaitForUrlCallbackNavigation(runtime.actions);
         registerStrictActionRouteFixtures(runtime, strictBrowserRoutes);
         return undefined;
