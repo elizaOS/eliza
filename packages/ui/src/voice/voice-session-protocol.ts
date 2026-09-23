@@ -108,6 +108,13 @@ export interface ServerLlmFirstTextEvent {
   traceId: string;
 }
 
+/** Transient speech acknowledgement, never a saved assistant reply. */
+export interface ServerProgressEvent {
+  t: "progress";
+  text: string;
+  traceId: string;
+}
+
 export interface ServerSpeakingStartEvent {
   t: "speaking_start";
   traceId: string;
@@ -182,6 +189,7 @@ export type ServerControlFrame =
   | ServerSttEagerEotEvent
   | ServerSttFinalEvent
   | ServerLlmFirstTextEvent
+  | ServerProgressEvent
   | ServerSpeakingStartEvent
   | ServerSpeakingEndEvent
   | ServerAssistantPlayingEvent
@@ -241,6 +249,19 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
   const t = (parsed as { t?: unknown }).t;
   if (typeof t !== "string") return null;
   if (!isKnownServerType(t)) return null;
+  if (t === "progress") {
+    const { text, traceId } = parsed as { text?: unknown; traceId?: unknown };
+    if (
+      typeof text !== "string" ||
+      !text.trim() ||
+      text.length > 4096 ||
+      typeof traceId !== "string" ||
+      !traceId.trim() ||
+      traceId.length > 256
+    )
+      return null;
+    return { t, text, traceId };
+  }
   if (t === "navigate_view") {
     const viewId = readBoundedString((parsed as { viewId?: unknown }).viewId);
     const traceId = readBoundedString(
@@ -277,6 +298,7 @@ const SERVER_TYPES: ReadonlySet<string> = new Set<ServerControlType>([
   "stt_eager_eot",
   "stt_final",
   "llm_first_text",
+  "progress",
   "speaking_start",
   "speaking_end",
   "assistant_playing",

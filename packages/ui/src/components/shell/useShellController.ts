@@ -234,6 +234,7 @@ export interface ShellController {
     /** True when realtime mic frames are replaced with silence. */
     microphoneMuted: boolean;
     status: VoiceContinuousStatus;
+    progressText?: string;
     error: string | null;
     /** Mute/unmute the realtime microphone without ending the conversation. */
     toggleMicrophoneMute: () => void;
@@ -1939,6 +1940,12 @@ export function useShellController(): ShellController {
   // → streaming (first token seen). The server's `waking` status (cloud 202) is
   // surfaced even before chatSending settles, so it shows while the agent boots.
   const turnStatus = React.useMemo<ChatTurnStatus | null>(() => {
+    if (realtimeVoiceOwnsMedia && realtimeVoice.progressText) {
+      return {
+        kind: realtimeVoice.agentSpeaking ? "speaking" : "thinking",
+        label: realtimeVoice.progressText,
+      };
+    }
     if (voiceOutput.speaking || realtimeVoice.agentSpeaking) {
       return { kind: "speaking" };
     }
@@ -1959,6 +1966,7 @@ export function useShellController(): ShellController {
     voiceOutput.speaking,
     realtimeVoice.agentSpeaking,
     realtimeVoice.status,
+    realtimeVoice.progressText,
     realtimeVoiceOwnsMedia,
     serverTurnStatus,
     chatSending,
@@ -2835,6 +2843,7 @@ export function useShellController(): ShellController {
       paused: realtimeVoice.paused,
       microphoneMuted: realtimeVoice.microphoneMuted,
       status: realtimeVoice.status,
+      progressText: realtimeVoice.progressText,
       error: realtimeVoiceErrorMessage,
       toggleMicrophoneMute: realtimeVoice.toggleMicrophoneMute,
     },

@@ -1,6 +1,9 @@
 /** Verifies voice-session-state machine (§7.4) through the package's configured test harness. */
 import { describe, expect, it } from "vitest";
-import type { ServerControlFrame } from "../voice-session-protocol";
+import {
+  parseServerControl,
+  type ServerControlFrame,
+} from "../voice-session-protocol";
 import {
   applyClientAction,
   applyServerEvent,
@@ -205,4 +208,56 @@ describe("voice-session-state machine (§7.4)", () => {
     expect(toContinuousStatus("interrupted")).toBe("interrupting");
     expect(toContinuousStatus("complete")).toBe("listening");
   });
+});
+
+describe("transient voice progress", () => {
+  it("keeps progress turn-scoped and clears it at final, cancellation, reconnect and completion", () => {
+    const thinking = applyServerEvent(fresh(), {
+      t: "stt_final",
+      traceId: "current",
+      text: "Read my note",
+    });
+    const progress = applyServerEvent(thinking, {
+      t: "progress",
+      traceId: "current",
+      text: "Checking your note.",
+    });
+    expect(progress.progressText).toBe("Checking your note.");
+    expect(progress.finalTranscript).toBe("Read my note");
+    expect(
+      applyServerEvent(progress, {
+        t: "progress",
+        traceId: "old",
+        text: "stale",
+      }),
+    ).toBe(progress);
+    for (const event of [
+      { t: "llm_first_text", traceId: "current" },
+      { t: "interrupted", traceId: "current", reason: "explicit" },
+      { t: "usage", traceId: "current" },
+      { t: "error", code: "upstream", retryable: true, traceId: "current" },
+      { t: "stt_partial", traceId: "next", text: "Next" },
+      { t: "ready", sessionId: "new", traceId: "new" },
+    ] satisfies ServerControlFrame[])
+      expect(applyServerEvent(progress, event).progressText).toBeUndefined();
+    expect(
+      applyClientAction(progress, { type: "client/reset" }).progressText,
+    ).toBeUndefined();
+    expect(
+      applyClientAction(progress, { type: "client/local_barge_in" })
+        .progressText,
+    ).toBeUndefined();
+  });
+});
+
+it("validates transient progress before passing it to the renderer", () => {
+  expect(
+    parseServerControl(
+      JSON.stringify({ t: "progress", traceId: "T", text: "Checking." }),
+    ),
+  ).toEqual({ t: "progress", traceId: "T", text: "Checking." });
+  for (const text of [null, "", " ", "x".repeat(4097)])
+    expect(
+      parseServerControl(JSON.stringify({ t: "progress", traceId: "T", text })),
+    ).toBeNull();
 });

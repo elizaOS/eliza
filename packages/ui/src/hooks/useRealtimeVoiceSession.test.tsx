@@ -290,12 +290,23 @@ describe("useRealtimeVoiceSession", () => {
     expect(result.current.transcriptFinal).toBe("hello");
     expect(result.current.transcriptPartial).toBe("");
 
+    await act(async () => {
+      sock.emitControl({
+        t: "progress",
+        text: "Checking your note.",
+        traceId: "T1",
+      });
+      await flushAsync();
+    });
+    expect(result.current.progressText).toBe("Checking your note.");
+    expect(result.current.transcriptFinal).toBe("hello");
     // Thinking → speaking.
     await act(async () => {
       sock.emitControl({ t: "llm_first_text", traceId: "T1" });
       await flushAsync();
     });
     expect(result.current.status).toBe("thinking");
+    expect(result.current.progressText).toBeUndefined();
 
     await act(async () => {
       sock.emitControl({ t: "speaking_start", traceId: "T1" });

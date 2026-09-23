@@ -1967,6 +1967,17 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
     expect(cartesia.sentText()).toBe("Checking your note.");
+    const progress = client.controlFrames.filter(
+      (frame) => frame.t === "progress",
+    );
+    expect(progress).toHaveLength(1);
+    expect(progress[0]).toMatchObject({
+      text: "Checking your note.",
+      traceId: expect.any(String),
+    });
+    expect(client.controlTypes().indexOf("progress")).toBeLessThan(
+      client.controlTypes().indexOf("speaking_start"),
+    );
     expect(client.audioFrames.length).toBeGreaterThan(0);
     expect(client.controlTypes()).not.toContain("llm_first_text");
     expect(client.controlTypes()).not.toContain("usage");
