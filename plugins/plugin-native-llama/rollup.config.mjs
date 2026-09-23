@@ -10,7 +10,8 @@ export default {
       globals: {
         "@capacitor/core": "capacitorExports",
         "llama-cpp-capacitor": "llamaCppCapacitor",
-        "@elizaos/common": "elizaCommon",
+        // Core re-exports common contracts; preserve the existing IIFE host namespace.
+        "@elizaos/common": "elizaCore",
         "@elizaos/shared/local-inference": "elizaLocalInference",
         "@elizaos/shared/local-inference/bge-input": "elizaBgeInput",
       },
