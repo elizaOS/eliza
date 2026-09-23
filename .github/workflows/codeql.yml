@@ -154,6 +154,7 @@ jobs:
               - 'plugins/plugin-slack/**'
               - 'plugins/plugin-spotify/**'
               - 'plugins/plugin-sql/**'
+              - 'plugins/plugin-sqlite/**'
               - 'plugins/plugin-task-coordinator/**'
               - 'plugins/plugin-taskmarket/**'
               - 'plugins/plugin-telegram/**'
