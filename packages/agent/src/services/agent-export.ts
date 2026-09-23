@@ -1031,26 +1031,30 @@ async function restoreAgentDataInScope(
       )
       .map((memory) => memory.id),
   );
-  const fragmentParents = new Map<Memory, string>();
+  const fragmentParents = new Map<
+    Memory,
+    { metadata: NonNullable<Memory["metadata"]>; documentId: string }
+  >();
   for (const memory of payload.memories) {
     if (
       resolveMemoryTableName(memory) !== "document_fragments" &&
       memory.metadata?.type !== "fragment"
     )
       continue;
-    const documentId =
-      typeof memory.metadata === "object" &&
-      memory.metadata !== null &&
-      "documentId" in memory.metadata
-        ? memory.metadata.documentId
-        : undefined;
-    if (typeof documentId !== "string" || !documentIds.has(documentId)) {
+    const metadata = memory.metadata;
+    if (
+      typeof metadata !== "object" ||
+      metadata === null ||
+      !("documentId" in metadata) ||
+      typeof metadata.documentId !== "string" ||
+      !documentIds.has(metadata.documentId)
+    ) {
       throw new AgentExportError(
         "Imported document fragment is missing its parent document",
         { code: "AGENT_IMPORT_DOCUMENT_PARENT_MISSING" },
       );
     }
-    fragmentParents.set(memory, documentId);
+    fragmentParents.set(memory, { metadata, documentId: metadata.documentId });
   }
   const orderedMemories = [...payload.memories].sort(
     (left, right) =>
@@ -1178,7 +1182,7 @@ async function restoreAgentDataInScope(
   let memoriesImported = 0;
   for (const mem of orderedMemories) {
     const tableName = resolveMemoryTableName(mem);
-    const documentId = fragmentParents.get(mem);
+    const fragment = fragmentParents.get(mem);
     const newMem: Memory = {
       ...mem,
       id: remap(mem.id ?? "") as UUID,
@@ -1186,12 +1190,12 @@ async function restoreAgentDataInScope(
       ...(mem.entityId ? { entityId: remap(mem.entityId) as UUID } : {}),
       ...(mem.roomId ? { roomId: remap(mem.roomId) as UUID } : {}),
       ...(mem.worldId ? { worldId: remap(mem.worldId) as UUID } : {}),
-      ...(documentId !== undefined
+      ...(fragment !== undefined
         ? {
-            metadata: {
-              ...mem.metadata,
-              documentId: remap(documentId) as UUID,
-            },
+            metadata: withFragmentDocumentId(
+              fragment.metadata,
+              remap(fragment.documentId) as UUID,
+            ),
           }
         : {}),
       // Embeddings are excluded — they will be regenerated
@@ -1277,6 +1281,13 @@ async function restoreAgentDataInScope(
       media: mediaRestored,
     },
   };
+}
+
+function withFragmentDocumentId<T extends NonNullable<Memory["metadata"]>>(
+  metadata: T,
+  documentId: UUID,
+): T & { documentId: UUID } {
+  return { ...metadata, documentId };
 }
 
 /**

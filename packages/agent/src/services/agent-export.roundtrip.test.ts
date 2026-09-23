@@ -525,6 +525,7 @@ describe("#9963 agent export → import round-trip", () => {
       documentId,
       position: 0,
       custom: { retained: "complete metadata" },
+      ["__proto__"]: { retained: "own metadata field" },
     };
     source.memories.set("document_fragments", [
       {
@@ -549,6 +550,8 @@ describe("#9963 agent export → import round-trip", () => {
       ...metadata,
       documentId: document?.id,
     });
+    expect(Object.hasOwn(fragment?.metadata ?? {}, "__proto__")).toBe(true);
+    expect(Object.getPrototypeOf(fragment?.metadata)).toBe(Object.prototype);
     expect(fragment?.content).toEqual({ text: "Complete fragment" });
   });
 
