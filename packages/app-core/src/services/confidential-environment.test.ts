@@ -68,9 +68,10 @@ async function fixture(change = "none") {
   if (!x) throw new Error("Missing recipient key");
   const publicKey = Buffer.from(x, "base64url").toString("hex");
   const signer = new SigningKey(`0x${"12".repeat(32)}`);
+  // Stay outside the 60s KMS skew window throughout the release's 60s lifetime.
   const timestamp =
     Math.floor(Date.now() / 1000) +
-    (change === "old" ? -301 : change === "future" ? 61 : 0);
+    (change === "old" ? -301 : change === "future" ? 121 : 0);
   const time = Buffer.alloc(8);
   time.writeBigUInt64BE(BigInt(timestamp));
   const digest = keccak256(
