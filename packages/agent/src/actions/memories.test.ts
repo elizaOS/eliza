@@ -21,17 +21,18 @@ import {
   renderActionResultsForModel,
 } from "@elizaos/plugin-assistant";
 import { describe, expect, it, vi } from "vitest";
-import { actionResultToPlannerToolResult } from "../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
-import { toolMessageContent } from "../../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
-import { runWithActionRoutingContext } from "../../../core/src/runtime/action-routing-context";
+import { runEvaluator } from "../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
 import {
+  actionResultToPlannerToolResult,
   type PlannerToolCall,
   runPlannerLoop,
 } from "../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import { toolMessageContent } from "../../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
 import {
   buildV5ExecutorContext,
   executeV5PlannedToolCall,
 } from "../../../../plugins/plugin-assistant/src/services/message/planned-tool";
+import { runWithActionRoutingContext } from "../../../core/src/runtime/action-routing-context";
 import {
   MAX_MEMORY_ACTION_RESULT_CHARS,
   MAX_MEMORY_PAGE_ITEMS,
@@ -3583,6 +3584,7 @@ describe("MEMORY inferSubaction (umbrella call without action)", () => {
     expect(promotedNames).toEqual([
       "MEMORY_CREATE",
       "MEMORY_SEARCH",
+      "MEMORY_COUNT",
       "MEMORY_UPDATE",
       "MEMORY_DELETE",
     ]);
@@ -3698,4 +3700,328 @@ it("does not insert a new row when an update has no existing target", async () =
   );
   expect(result.success).toBe(false);
   expect(rows).toEqual([]);
+});
+
+describe("MEMORY exact supplied text", () => {
+  it.each(["create", "update"])(
+    "round-trips exact %s text through storage and search",
+    async (action) => {
+      const { runtime, rows } = makeRuntime();
+      const message = makeMessage();
+      const saved = await runCreate(runtime, message, {
+        text: "Original preference.",
+      });
+      const text = "  My garden: “metric only.”\r\n\tKeep e\u0301 and 🪴.  ";
+      const result = await runAction(runtime, message, {
+        action,
+        text,
+        memoryId: String(saved.values?.memoryId),
+        confirm: true,
+      });
+      expect(result.success).toBe(true);
+      expect(rows.at(-1)?.memory.content.text).toBe(text);
+      const found = await runAction(runtime, message, {
+        action: "search",
+        type: "facts",
+        query: text,
+        queryMode: "literal",
+      });
+      expect(found.data?.memories).toEqual(
+        expect.arrayContaining([expect.objectContaining({ text })]),
+      );
+    },
+  );
+
+  it("rejects blank replacement text without changing the record", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    const saved = await runCreate(runtime, message, {
+      text: "Keep this preference.",
+    });
+    const before = structuredClone(rows);
+    const result = await runAction(runtime, message, {
+      action: "update",
+      text: " \t\n ",
+      memoryId: String(saved.values?.memoryId),
+      confirm: true,
+    });
+    expect(result.success).toBe(false);
+    expect(result.data?.error).toBe("MEMORY_MISSING_TEXT");
+    expect(rows).toEqual(before);
+  });
+});
+
+describe("registered memory mutation target contract", () => {
+  it.each(["update", "delete"])(
+    "executes %s by either explicit target and preserves unrelated facts",
+    async (operation) => {
+      const { createElizaPlugin } = await import("../runtime/eliza-plugin");
+      const action = createElizaPlugin().actions?.find(
+        (entry) => entry.name === `MEMORY_${operation.toUpperCase()}`,
+      );
+      if (!action) throw new Error("Missing mutation action");
+      for (const kind of ["memoryId", "query"]) {
+        const { runtime, rows } = makeRuntime();
+        const message = makeMessage();
+        const original = "For my QA garden, I use metric units.";
+        const saved = await runCreate(runtime, message, { text: original });
+        await runCreate(runtime, message, { text: "Keep my tea preference." });
+        const unrelated = structuredClone(rows[1]);
+        const validated = validateToolArgs(action, {
+          target: {
+            kind,
+            value: kind === "memoryId" ? saved.values?.memoryId : original,
+          },
+          ...(operation === "update"
+            ? { text: "For my QA garden, use centimeters." }
+            : {}),
+          confirm: true,
+        });
+        expect(validated.valid).toBe(true);
+        const result = await action.handler(runtime, message, undefined, {
+          parameters: validated.args,
+        } as never);
+        expect(result).toMatchObject({ success: true });
+        expect(
+          rows.find((row) => row.memory.id === unrelated.memory.id),
+        ).toEqual(unrelated);
+        expect(
+          rows.find((row) => row.memory.id === saved.values?.memoryId)?.memory
+            .content.text,
+        ).toBe(
+          operation === "delete"
+            ? undefined
+            : "For my QA garden, use centimeters.",
+        );
+      }
+    },
+  );
+
+  it.each([
+    { target: { kind: "query", value: " " } },
+    { target: { kind: "recent", value: "last" } },
+    { target: { kind: "memoryId", value: "not-an-id" } },
+    { target: { kind: "query", value: "tea" }, query: "garden" },
+  ])(
+    "rejects invalid or conflicting targets without changing records: %j",
+    async (parameters) => {
+      const { runtime, rows } = makeRuntime();
+      const message = makeMessage();
+      await runCreate(runtime, message, { text: "Keep my tea preference." });
+      const before = structuredClone(rows);
+      const result = await memoryAction.handler(runtime, message, undefined, {
+        parameters: { action: "delete", confirm: true, ...parameters },
+      } as never);
+      expect(result).toMatchObject({ success: false });
+      expect(rows).toEqual(before);
+    },
+  );
+});
+
+describe("MEMORY_COUNT complete aggregates", () => {
+  it("partitions a complete inventory across categories and honors message authorship", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (const tableName of [
+      "messages",
+      "messages",
+      "memories",
+      "facts",
+      "documents",
+    ]) {
+      rows.push({
+        tableName,
+        memory: { ...makeMessage(), content: { text: "Stored source" } },
+      });
+    }
+    rows[0].memory.entityId = AGENT_ID;
+    const result = await runAction(runtime, makeMessage(), {
+      action: "count",
+      author: "any",
+    });
+    expect(result.data).toMatchObject({
+      totalMatches: 5,
+      categories: [
+        expect.objectContaining({ type: "messages", count: 2 }),
+        expect.objectContaining({ type: "memories", count: 1 }),
+        expect.objectContaining({ type: "facts", count: 1 }),
+        expect.objectContaining({ type: "documents", count: 1 }),
+      ],
+    });
+    expect(
+      (
+        await runAction(runtime, makeMessage(), {
+          action: "count",
+          author: "requester",
+        })
+      ).data,
+    ).toMatchObject({ totalMatches: 1 });
+    expect(rows).toHaveLength(5);
+  });
+
+  it("counts beyond the response page limit and reads changes fresh without returning bodies", async () => {
+    const { runtime, rows } = makeRuntime({
+      settings: { TIMEZONE: "America/New_York" },
+    });
+    for (let i = 0; i < MAX_MEMORY_PAGE_ITEMS + 3; i++) {
+      seedFact(rows, { text: `Fact ${i}`, entityId: USER_ID });
+    }
+    const message = makeMessage();
+    const first = await runAction(runtime, message, { action: "count" });
+    expect(first.success).toBe(true);
+    expect(first.data).toMatchObject({
+      totalMatches: MAX_MEMORY_PAGE_ITEMS + 3,
+    });
+    expect(first.data).not.toHaveProperty("memories");
+    const id = seedFact(rows, { text: "Newest fact", entityId: USER_ID });
+    const newestRow = rows.at(-1);
+    if (!newestRow) throw new Error("Missing seeded fact");
+    newestRow.memory.createdAt = Date.parse("2026-12-17T18:16:59Z");
+    const second = await runAction(runtime, message, { action: "count" });
+    expect(second.data).toMatchObject({
+      totalMatches: MAX_MEMORY_PAGE_ITEMS + 4,
+      categories: expect.arrayContaining([
+        {
+          type: "facts",
+          searched: true,
+          count: MAX_MEMORY_PAGE_ITEMS + 4,
+          newest: {
+            id,
+            createdAtIso: "2026-12-17T18:16:59.000Z",
+            createdAtLocal: expect.stringContaining("1:16:59 PM EST"),
+          },
+        },
+      ]),
+    });
+  });
+
+  it("preserves literal, entity and table scope and distinguishes unsearched tables", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "Exact phrase", entityId: USER_ID });
+    seedFact(rows, { text: "Exact phrase", entityId: OTHER_USER_ID });
+    seedFact(rows, { text: "Other fact", entityId: USER_ID });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "count",
+      type: "facts",
+      entityId: USER_ID,
+      query: "Exact phrase",
+      queryMode: "literal",
+    });
+    expect(result.data).toMatchObject({
+      totalMatches: 1,
+      categories: expect.arrayContaining([
+        { type: "messages", searched: false, count: 0, newest: null },
+      ]),
+    });
+  });
+
+  it("rejects invalid filters and pagination rather than silently broadening the count", async () => {
+    const { runtime } = makeRuntime();
+    let queries = 0;
+    const getMemories = runtime.getMemories;
+    runtime.getMemories = async (params) => {
+      queries += 1;
+      return getMemories(params);
+    };
+    const invalidParams: TestParams[] = [
+      { type: "bogus" },
+      { entityId: "bogus" },
+      { roomId: "bogus" },
+      { limit: 20 },
+      { offset: 0 },
+    ];
+    for (const params of invalidParams) {
+      expect(
+        (
+          await runAction(runtime, makeMessage(), {
+            action: "count",
+            ...params,
+          })
+        ).success,
+      ).toBe(false);
+    }
+    expect(queries).toBe(0);
+  });
+});
+
+describe("MEMORY completion ownership", () => {
+  it.each(["create", "update", "delete", "count"])(
+    "requires one grounded completion reply after planner-owned %s",
+    async (action) => {
+      const { runtime, rows } = makeRuntime();
+      const message = makeMessage();
+      const saved = await runCreate(runtime, message, {
+        text: "Use metric units.",
+      });
+      const result = await runWithActionRoutingContext(
+        {
+          actionName: `MEMORY_${action.toUpperCase()}`,
+          messageId: message.id,
+          modelClass: undefined,
+          replyOwner: "planner",
+        },
+        () =>
+          runAction(runtime, message, {
+            action,
+            text: "Use metric units for the garden.",
+            memoryId: String(saved.values?.memoryId),
+            confirm: true,
+          }),
+      );
+      const expectedReply =
+        action === "count"
+          ? "You have one stored record."
+          : action === "delete"
+            ? "I forgot that preference."
+            : "Saved your preference.";
+      const useModel = vi.fn(async (_type, _params) =>
+        JSON.stringify({
+          success: true,
+          decision: "FINISH",
+          messageToUser: expectedReply,
+          thought:
+            "The recorded durable receipt proves the requested memory change.",
+          effectReceiptIds: result.effectReceipts?.map(
+            (receipt) => receipt.receiptId,
+          ),
+        }),
+      );
+      const completion = await runEvaluator({
+        runtime: { useModel },
+        context: { id: "memory-completion", events: [] },
+        trajectory: {
+          context: { id: "memory-completion", events: [] },
+          archivedSteps: [],
+          codingMode: false,
+          steps: [
+            {
+              iteration: 1,
+              toolCall: { name: `MEMORY_${action.toUpperCase()}`, params: {} },
+              result: actionResultToPlannerToolResult(result),
+            },
+          ],
+          plannedQueue: [],
+          evaluatorOutputs: [],
+        },
+      });
+      expect(useModel.mock.calls[0][1].responseSchema.required).toContain(
+        "messageToUser",
+      );
+      expect(completion).toMatchObject({
+        decision: "FINISH",
+        messageToUser: expectedReply,
+      });
+      expect(useModel).toHaveBeenCalledTimes(1);
+      if (action === "count") {
+        expect(result.data?.readOnlyOperation).toBe(true);
+        expect(result.effectReceipts).toBeUndefined();
+      } else {
+        expect(result.effectReceipts?.[0].outcome).toBe("applied");
+      }
+      expect(rows).toHaveLength(
+        action === "create" ? 2 : action === "delete" ? 0 : 1,
+      );
+      expect(saved.userFacingText).toBeTruthy();
+      expect(saved.turnComplete).toBe(true);
+    },
+  );
 });

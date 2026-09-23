@@ -234,3 +234,28 @@ describe("blackout preference mutation — real PGlite", () => {
     },
   );
 });
+
+describe("meeting timezone defaults — real PGlite", () => {
+  it("uses configured timezone until an explicit meeting timezone is saved", async () => {
+    const fixture = await createLifeOpsTestRuntime();
+    const spy = vi.spyOn(fixture.runtime, "getSetting");
+    const original = spy.getMockImplementation();
+    spy.mockImplementation((key) =>
+      key === "TIMEZONE" ? "America/New_York" : original?.(key),
+    );
+    try {
+      expect(
+        (await readLifeOpsMeetingPreferences(fixture.runtime)).timeZone,
+      ).toBe("America/New_York");
+      await updateLifeOpsMeetingPreferences(fixture.runtime, {
+        timeZone: "Asia/Tokyo",
+      });
+      expect(
+        (await readLifeOpsMeetingPreferences(fixture.runtime)).timeZone,
+      ).toBe("Asia/Tokyo");
+    } finally {
+      spy.mockRestore();
+      await fixture.cleanup();
+    }
+  }, 180_000);
+});

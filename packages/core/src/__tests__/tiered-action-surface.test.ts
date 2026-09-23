@@ -334,7 +334,7 @@ describe("v5 tiered action surface", () => {
 		{
 			channel: ChannelType.VOICE_DM,
 			candidates: ["CUSTOM_READ"],
-			deferred: true,
+			deferred: false,
 		},
 		{
 			channel: ChannelType.GROUP,
@@ -782,9 +782,11 @@ describe("v5 tiered action surface", () => {
 		},
 		{ name: "malformed effect status", fields: { replyEffectStatus: {} } },
 	])("preserves Calendar planning for $name", async ({ fields }) => {
+		const reviewDraft = "candidateActionNames" in fields || "intents" in fields;
 		const handler = vi.fn(async () => {
 			expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 				ModelType.RESPONSE_HANDLER,
+				...(reviewDraft ? [ModelType.RESPONSE_HANDLER] : []),
 				ModelType.ACTION_PLANNER,
 			]);
 			return { success: true };
@@ -798,6 +800,18 @@ describe("v5 tiered action surface", () => {
 					replyText: "The requested time is Friday at 1 PM.",
 					...fields,
 				}),
+				...(reviewDraft
+					? [
+							{
+								body: JSON.stringify({
+									thought:
+										"The draft does not perform the requested Calendar work.",
+									success: false,
+									decision: "CONTINUE",
+								}),
+							},
+						]
+					: []),
 				plannerToolResponse("CALENDAR"),
 				finishEvaluatorResponse("The Calendar tool returned."),
 			],
@@ -813,6 +827,7 @@ describe("v5 tiered action surface", () => {
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
+			...(reviewDraft ? [ModelType.RESPONSE_HANDLER] : []),
 			ModelType.ACTION_PLANNER,
 			ModelType.RESPONSE_HANDLER,
 		]);
@@ -824,6 +839,7 @@ describe("v5 tiered action surface", () => {
 	])("preserves nested legacy $name", async ({ fields }) => {
 		const handler = vi.fn(async () => {
 			expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+				ModelType.RESPONSE_HANDLER,
 				ModelType.RESPONSE_HANDLER,
 				ModelType.ACTION_PLANNER,
 			]);
@@ -845,6 +861,13 @@ describe("v5 tiered action surface", () => {
 						},
 					}),
 				},
+				{
+					body: JSON.stringify({
+						thought: "The draft does not perform the requested Calendar work.",
+						success: false,
+						decision: "CONTINUE",
+					}),
+				},
 				plannerToolResponse("CALENDAR"),
 				finishEvaluatorResponse("The Calendar tool returned."),
 			],
@@ -859,6 +882,7 @@ describe("v5 tiered action surface", () => {
 
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
 			ModelType.RESPONSE_HANDLER,

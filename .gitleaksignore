@@ -56,3 +56,6 @@ f5aaa84aa0b5cf3dcd018f4e35f9c7243c5cc80c:plugins/plugin-agent-orchestrator/src/_
 # Synthetic Calendar mutation idempotency label from a local database test,
 # not a credential. Exact historical finding; current label is shorter.
 71f7f19c571e92a6cff421f2f1b64468444b08a2:plugins/plugin-calendar/test/eliza-calendar.pglite.test.ts:generic-api-key:696
+
+# Synthetic idempotencyKey in a historical local PGlite Calendar test; no credential.
+26840b9b8e8ab90ae50e4f63be7c9749bc3458c2:plugins/plugin-calendar/test/eliza-calendar.pglite.test.ts:generic-api-key:432

@@ -103,20 +103,30 @@ describe("explicit catalog-only requests", () => {
 	])(
 		"finishes after successful requested discovery (domain tools exposed=%s)",
 		async ({ domainTools, candidates, draft }) => {
+			let discovered = false;
 			const useModel = vi.fn<PlannerRuntime["useModel"]>(async (type) =>
 				type === ModelType.ACTION_PLANNER
 					? call("DISCOVER_TOOLS")
-					: JSON.stringify({
-							decision: "FINISH",
-							success: true,
-							thought: "Requested catalog read succeeded.",
-							messageToUser: "The family exposes READ.",
-						}),
+					: draft && !discovered
+						? JSON.stringify({
+								thought: "The requested catalog read has not run.",
+								success: false,
+								decision: "CONTINUE",
+							})
+						: JSON.stringify({
+								decision: "FINISH",
+								success: true,
+								thought: "Requested catalog read succeeded.",
+								messageToUser: "The family exposes READ.",
+							}),
 			);
-			const execute = vi.fn(async () => ({
-				success: true,
-				data: { loadedTools: ["READ"] },
-			}));
+			const execute = vi.fn(async () => {
+				discovered = true;
+				return {
+					success: true,
+					data: { loadedTools: ["READ"] },
+				};
+			});
 			const result = await runPlannerLoop({
 				runtime: { useModel },
 				context: {
@@ -141,9 +151,10 @@ describe("explicit catalog-only requests", () => {
 				requireNonTerminalToolCall: true,
 				executeToolCall: execute,
 			});
-			expect(useModel).toHaveBeenCalledTimes(2);
+			expect(useModel).toHaveBeenCalledTimes(draft ? 3 : 2);
 			expect(execute).toHaveBeenCalledTimes(1);
 			expect(useModel.mock.calls.map(([type]) => type)).toEqual([
+				...(draft ? [ModelType.RESPONSE_HANDLER] : []),
 				ModelType.ACTION_PLANNER,
 				ModelType.RESPONSE_HANDLER,
 			]);

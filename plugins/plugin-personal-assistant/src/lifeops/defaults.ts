@@ -3,8 +3,6 @@
  * adaptive window policy that reminder scheduling and check-ins anchor to, plus
  * a re-export of the shared time-zone helpers.
  */
-// The time-zone helpers are runtime-level primitives in `@elizaos/shared`,
-// re-exported here for `./defaults.js` callers.
 import {
   isValidTimeZone,
   normalizeTimeZone,

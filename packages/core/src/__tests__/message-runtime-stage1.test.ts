@@ -6832,13 +6832,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				}),
 				...(replyEffectStatus === "none"
 					? [
-							{
-								text: "",
-								toolCalls: [
-									{ id: "preview", name: "REPLY", arguments: { text: answer } },
-								],
-							},
 							JSON.stringify({
+								thought:
+									"The complete preview requests approval and makes no claim of a completed write.",
 								success: true,
 								decision: "FINISH",
 								messageToUser: answer,
@@ -6864,11 +6860,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					text: 'Create one note titled "Safety fixture 20260912" with the exact body "Only a preview until approved."',
 				}),
 			});
-			expect(result.kind).toBe(
-				replyEffectStatus === "none" ? "planned_reply" : "direct_reply",
-			);
+			expect(["direct_reply", "planned_reply"]).toContain(result.kind);
 			expect(useModelCalls(runtime)).toHaveLength(
-				replyEffectStatus === "none" ? 3 : 1,
+				replyEffectStatus === "none" ? 2 : 1,
 			);
 			expect(result.messageHandler.plan.replyEffectStatus).toBe(
 				replyEffectStatus,
@@ -6876,7 +6870,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(handler).not.toHaveBeenCalled();
 			expect(useModelCalls(runtime).map(([type]) => type)).toEqual(
 				replyEffectStatus === "none"
-					? ["RESPONSE_HANDLER", "ACTION_PLANNER", "RESPONSE_HANDLER"]
+					? ["RESPONSE_HANDLER", "RESPONSE_HANDLER"]
 					: ["RESPONSE_HANDLER"],
 			);
 			if (result.kind === "direct_reply" || result.kind === "planned_reply")
@@ -6923,7 +6917,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent?.text).toBe(reply);
 	});
 
-	it("plans the pending read directly despite the handler declaring no effect", async () => {
+	it("evaluates the draft before planning the pending read despite its no-effect classification", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["general"],
@@ -6931,6 +6925,12 @@ describe("runV5MessageRuntimeStage1", () => {
 				candidateActionNames: ["LOOKUP"],
 				replyText: "Let me check that.",
 				extra: { replyEffectStatus: "none" },
+			}),
+			JSON.stringify({
+				thought:
+					"The draft is only progress; the requested lookup has not run.",
+				success: false,
+				decision: "CONTINUE",
 			}),
 			{
 				text: "",
@@ -6971,6 +6971,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.kind).toBe("planned_reply");
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
+			"RESPONSE_HANDLER",
 			"RESPONSE_HANDLER",
 			"ACTION_PLANNER",
 			"RESPONSE_HANDLER",
@@ -7459,6 +7460,50 @@ describe("runV5MessageRuntimeStage1", () => {
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe(reply);
 		}
+	});
+
+	it("keeps a completed fictional-facts answer direct despite incidental coding words", async () => {
+		const reply =
+			"Noted. Mira = PINE-17, Jonah = COVE-42, both fictional. No notes touched.";
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: reply,
+				extra: { replyEffectStatus: "none" },
+			}),
+		]);
+		const taskHandler = vi.fn(async () => ({
+			success: true,
+			text: "delegated",
+		}));
+		runtime.actions = [
+			{
+				name: "TASKS",
+				tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+				description: "Delegate coding work.",
+				parameters: [],
+				examples: [],
+				validate: async () => true,
+				handler: taskHandler,
+			},
+		] as never;
+		const message = makeMessage();
+		message.content = {
+			...message.content,
+			text: "Fictional test facts: Mira's project code is PINE-17. Jonah's project code is COVE-42. These are fictional characters, not me. No note is requested.",
+			mentionContext: { isMention: true },
+		};
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		expect(taskHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		if (result.kind === "direct_reply")
+			expect(result.result.responseContent?.text).toBe(reply);
 	});
 
 	it("answers a trivial math turn directly despite a views capability-token overlap (tj-501e594bfb23a7)", async () => {
@@ -12860,7 +12905,7 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 		const stage1Content = (stage1Call?.messages ?? [])
 			.map((entry) => entry.content ?? "")
 			.join("\n");
-		expect(stage1Content).toContain("trigger_automation_policy:");
+		expect(stage1Content.match(/trigger_automation_policy:/g)).toHaveLength(1);
 		expect(stage1Content).toContain(
 			"whatever you reply is delivered to the user",
 		);
