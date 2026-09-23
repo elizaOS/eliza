@@ -301,7 +301,14 @@ function backendCmakeFlags(backend) {
     case "hip":
       return ["-DGGML_HIP=ON"];
     case "cpu":
-      return [];
+      return [
+        "-DGGML_METAL=OFF",
+        "-DGGML_CUDA=OFF",
+        "-DGGML_VULKAN=OFF",
+        "-DGGML_HIP=OFF",
+        "-DGGML_SYCL=OFF",
+        "-DGGML_OPENCL=OFF",
+      ];
     default:
       die(`unknown backend ${backend}`);
   }
@@ -343,6 +350,8 @@ function stagedStalenessReasons() {
   });
   if (!stagedSha) reasons.push(`staged ${FUSED_LIB_NAME} is missing`);
   if (!stamp) reasons.push("no build stamp (built by an older/raw cmake path)");
+  if (stamp?.backend === "cpu" && stamp.cpuAcceleratorsDisabled !== true)
+    reasons.push("CPU build predates explicit accelerator disablement");
   if (stamp && stamp.forkCommit !== currentFork)
     reasons.push(
       `fork commit changed (${String(stamp.forkCommit).slice(0, 10)} → ${currentFork.slice(0, 10)})`,
@@ -421,7 +430,9 @@ const forkChanged =
   priorBuildStamp &&
   (priorBuildStamp.forkCommit !== currentFork ||
     (priorBuildStamp.forkDirty || "") !== currentDirty);
-if ((force || forkChanged) && existsSync(buildDir)) {
+const cpuPolicyChanged =
+  backend === "cpu" && priorBuildStamp?.cpuAcceleratorsDisabled !== true;
+if ((force || forkChanged || cpuPolicyChanged) && existsSync(buildDir)) {
   if (forkChanged && !force) {
     log(
       `fork changed since last build (${String(priorBuildStamp.forkCommit).slice(0, 10)} → ${currentFork.slice(0, 10)}) — clean rebuild to avoid stale objects`,
@@ -575,6 +586,7 @@ const buildStamp = JSON.stringify(
     arch: process.arch,
     libraries: nativeLibraryInventory(outDir),
     cpuNative: !portableCpu,
+    cpuAcceleratorsDisabled: backend === "cpu",
     fusedLib: fusedName,
     fusedSha256: sha256File(path.join(outDir, fusedName)),
     builtAt: new Date().toISOString(),

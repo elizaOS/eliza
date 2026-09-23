@@ -386,7 +386,10 @@ export interface ElizaInferenceFfi {
 	/** ABI version reported by the loaded library. */
 	readonly libraryAbiVersion: string;
 	/** Create a fresh context anchored at `bundleDir`. */
-	create(bundleDir: string): ElizaInferenceContextHandle;
+	create(
+		bundleDir: string,
+		options?: { gpuLayers: number },
+	): ElizaInferenceContextHandle;
 	/** Destroy a previously-created context. Idempotent on already-freed handles. */
 	destroy(ctx: ElizaInferenceContextHandle): void;
 	/** Map / re-page weights for a region. */
@@ -930,6 +933,11 @@ export function loadElizaInferenceFfi(dylibPath: string): ElizaInferenceFfi {
 interface BunFfiSymbols {
 	eliza_inference_abi_version: () => unknown;
 	eliza_inference_create: (bundleDir: unknown, outErr: unknown) => unknown;
+	eliza_inference_create_with_options?: (
+		bundleDir: unknown,
+		gpuLayers: number,
+		outErr: unknown,
+	) => unknown;
 	eliza_inference_destroy: (ctx: bigint) => void;
 	eliza_inference_mmap_acquire: (
 		ctx: bigint,
@@ -2034,7 +2042,20 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				]
 			: [legacy];
 	});
-	for (const attempt of embeddingAttempts) {
+	const contextAttempts = embeddingAttempts.flatMap((attempt) => [
+		{
+			...attempt,
+			defs: {
+				...attempt.defs,
+				eliza_inference_create_with_options: {
+					args: [T.ptr, T.i32, T.ptr],
+					returns: T.ptr,
+				},
+			},
+		},
+		attempt,
+	]);
+	for (const attempt of contextAttempts) {
 		try {
 			lib = ffi.dlopen(dylibPath, attempt.defs);
 			embeddingOptionsSymbolsAvailable = attempt.embeddingOptions;
@@ -2198,13 +2219,35 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		libraryPath: dylibPath,
 		libraryAbiVersion: reported,
 
-		create(bundleDir: string): ElizaInferenceContextHandle {
+		create(
+			bundleDir: string,
+			options?: { gpuLayers: number },
+		): ElizaInferenceContextHandle {
+			const createWithOptions =
+				loadedLib.symbols.eliza_inference_create_with_options;
+			if (
+				options &&
+				(!Number.isInteger(options.gpuLayers) ||
+					options.gpuLayers < 0 ||
+					options.gpuLayers > 2147483647)
+			) {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"Context GPU layers must be a nonnegative int32",
+				);
+			}
+			if (options && typeof createWithOptions !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"Explicit context GPU selection requires eliza_inference_create_with_options; rebuild the native library",
+				);
+			}
 			const err = makeOutErr();
 			const bundleArg = cstr(bundleDir);
-			const handle = loadedLib.symbols.eliza_inference_create(
-				bundleArg.ptr,
-				err.ptr,
-			);
+			const handle =
+				options && createWithOptions
+					? createWithOptions(bundleArg.ptr, options.gpuLayers, err.ptr)
+					: loadedLib.symbols.eliza_inference_create(bundleArg.ptr, err.ptr);
 			if (isNullPointer(handle)) {
 				const message =
 					takeError(err.buf) ??

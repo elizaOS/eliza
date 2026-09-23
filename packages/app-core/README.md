@@ -204,3 +204,11 @@ LifeOps still requires its verified Entity binding and domain permissions. SQLit
 storage also requires an encrypted deployment volume; its local audit records are
 not an independent tamper-resistant audit service. The explicit SQL maintenance
 CLI continues to operate on its configured SQL database.
+
+The fused embedding install verifier checks the pinned BGE-small artifact and
+CLS pooling. It checks tokenization against the native model.
+
+It also verifies vector dimensions, semantic separation and context reopening.
+A finite nonzero vector alone is insufficient.
+Explicit CPU builds disable accelerator backends and invalidate older CPU stamps
+that did not enforce that build contract.
