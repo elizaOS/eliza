@@ -32,7 +32,7 @@ describe("embedding preset hardware selection", () => {
 		["vulkan", "linux"],
 		["metal", "darwin"],
 	] as const)(
-		"keeps canonical BGE on CPU when a %s backend is detected",
+		"uses a verified accelerated candidate when a %s backend is detected",
 		(backend, platform) => {
 			const hardware = probe({
 				platform,
@@ -40,7 +40,9 @@ describe("embedding preset hardware selection", () => {
 			});
 
 			expect(selectEmbeddingTierFromHardware(hardware)).toBe("standard");
-			expect(selectEmbeddingPresetFromHardware(hardware).gpuLayers).toBe(0);
+			expect(selectEmbeddingPresetFromHardware(hardware).gpuLayers).toBe(
+				"auto",
+			);
 		},
 	);
 
@@ -67,6 +69,6 @@ describe("embedding preset hardware selection", () => {
 		});
 
 		expect(selectEmbeddingTierFromHardware(hardware)).toBe("performance");
-		expect(selectEmbeddingPresetFromHardware(hardware).gpuLayers).toBe(0);
+		expect(selectEmbeddingPresetFromHardware(hardware).gpuLayers).toBe("auto");
 	});
 });
