@@ -752,6 +752,7 @@ async function generateViaCli(
     const { system, body } = flattenPrompt(generateParams);
     const framedBody = appendTextDirective(`${frameTextSystemPrompt(system)}\n\n${body}`);
     const key = codexSessionKey(runtime, model, false);
+    const outputSchema = params.responseSchema;
     return withAccountRotation<string | GenerateTextResult>(
       (env) =>
         params.tools?.length
@@ -761,7 +762,7 @@ async function generateViaCli(
             )
           : getCodexSdkSession(runtime, model, false, timeoutConfiguration, env).generate(
               framedBody,
-              undefined,
+              outputSchema,
               params.signal
             ),
       {

@@ -649,6 +649,64 @@ describe("Shared turn AgentRuntime boundary", () => {
     },
   );
 
+  test.each([
+    ["Eliza remind us in 2 minutes: pizza time", "create"],
+    ["Eliza remind us in 3 seconds: pizza time", "create"],
+    ["@Eliza, remind this group tomorrow to call mom", "create"],
+    ["Please remind the group in 2 minutes: pizza time", "create"],
+    ["Eliza do not remind us in 2 minutes", undefined],
+    ["Eliza said remind us in 2 minutes", undefined],
+    ['"Eliza remind us in 2 minutes"', undefined],
+    ['Eliza, "remind us in 2 minutes"', undefined],
+    ['"remind us in 2 minutes"', undefined],
+    ["OtherBot remind us in 2 minutes", undefined],
+    ["Eliza remind us in 2 minutes, actually cancel that", undefined],
+  ])(
+    "grounds group reminder intent for '%s' without changing the model message",
+    async (message, expected) => {
+      const input = reminderTurnInput(message);
+      input.execution = {
+        agentKey: "personal:user-1",
+        authenticatedPersonalSharedUser: true,
+        channel: { type: ChannelType.GROUP, source: "blooio" },
+        reminders: {
+          runner: {} as never,
+          delivery: {
+            platform: "blooio",
+            kind: "group",
+            project: "eliza-app",
+            connectorAccountId: "blooio:test",
+            chatId: "group-1",
+            ownerLabel: "the group owner",
+            authority: {
+              bindingId: "binding-1",
+              ownerUserId: "user-1",
+              personalAgentId: "personal:user-1",
+              version: 1,
+            },
+          },
+        },
+      };
+      runtimeActionResults = [
+        { success: false, data: { actionName: "REMINDERS", operation: "create" } },
+      ];
+      await runSharedAgentTurn(input);
+      expect(runtimeInputs.at(-1)?.reminderOperationIntent).toBe(expected);
+      expect(runtimeInputs.at(-1)?.message).toBe(message);
+      await runSharedAgentTurnStream(input);
+      expect(streamInputs.at(-1)?.reminderOperationIntent).toBe(expected);
+      expect(streamInputs.at(-1)?.message).toBe(message);
+    },
+  );
+
+  test("does not interpret group reminder recipients as a direct-message command", async () => {
+    runtimeActionResults = [
+      { success: false, data: { actionName: "REMINDERS", operation: "create" } },
+    ];
+    await runSharedAgentTurn(reminderTurnInput("Eliza remind us in 2 minutes"));
+    expect(runtimeInputs.at(-1)?.reminderOperationIntent).toBeUndefined();
+  });
+
   test("rejects a mismatched reminder result for an explicit update before any terminal reply", async () => {
     const input = reminderTurnInput("Update the reminder Stretch to 4pm");
     runtimeActionResults = [

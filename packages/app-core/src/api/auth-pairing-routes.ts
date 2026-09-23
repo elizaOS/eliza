@@ -18,7 +18,7 @@ import { loadElizaConfig } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import { normalizeHostPairingCode } from "@elizaos/shared/host-use-cases";
 import { readAliasedEnv } from "@elizaos/shared/utils/env";
-import { AuthStore } from "../services/auth-store";
+import { authStoreForRuntime } from "../services/auth-store";
 import {
   createMachineSession,
   denyOnAuthStoreError,
@@ -34,7 +34,6 @@ import {
 } from "./auth.ts";
 import {
   type CompatRuntimeState,
-  getCompatDrizzleDb,
   hasCompatPersistedFirstRunState,
   isTrustedLocalRequest,
   readCompatJsonBody,
@@ -197,7 +196,7 @@ export function ensureAuthPairingCodeForRemoteAccess(): {
 
 async function requestHasActiveSession(
   req: http.IncomingMessage,
-  store: import("../services/auth-store").AuthStore,
+  store: import("../services/auth-store").AuthRepository,
 ): Promise<boolean> {
   const cookieSessionId = parseSessionCookie(req);
   if (cookieSessionId) {
@@ -258,7 +257,7 @@ type PairingAccess = "owner" | "guest";
  * minted by the pairing flow.
  */
 async function ensurePairedDeviceIdentityId(
-  store: import("../services/auth-store").AuthStore,
+  store: import("../services/auth-store").AuthRepository,
   access: PairingAccess,
 ): Promise<string> {
   if (access === "guest") {
@@ -334,13 +333,10 @@ export async function handleAuthPairingCompatRoutes(
   // is configured and whether pairing is currently open.
   if (method === "GET" && url.pathname === "/api/auth/status") {
     const localAccess = isTrustedLocalRequest(req);
-    const db = getCompatDrizzleDb(state);
+    const store = authStoreForRuntime(state.current);
     let passwordConfigured = false;
     let sessionAuthenticated = false;
-    if (db) {
-      const store = new AuthStore(
-        db as ConstructorParameters<typeof AuthStore>[0],
-      );
+    if (store) {
       const owner = (await store.listIdentitiesByKind("owner"))[0];
       passwordConfigured = Boolean(owner?.passwordHash);
       sessionAuthenticated = await requestHasActiveSession(req, store);
@@ -556,8 +552,8 @@ export async function handleAuthPairingCompatRoutes(
     // full-authority bearer. If the DB isn't ready yet, fail closed with a
     // retryable 503 and leave the pairing code intact — its TTL gives the
     // client headroom to retry once the runtime is up.
-    const db = getCompatDrizzleDb(state);
-    if (!db) {
+    const store = authStoreForRuntime(state.current);
+    if (!store) {
       sendPairingError(
         res,
         503,
@@ -577,9 +573,6 @@ export async function handleAuthPairingCompatRoutes(
     }
 
     try {
-      const store = new AuthStore(
-        db as ConstructorParameters<typeof AuthStore>[0],
-      );
       const identityId = await ensurePairedDeviceIdentityId(
         store,
         pairingAccess,

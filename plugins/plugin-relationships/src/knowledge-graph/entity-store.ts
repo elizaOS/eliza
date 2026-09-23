@@ -2,10 +2,9 @@
  * EntityStore — persistence + business-logic surface for the runtime
  * knowledge-graph node primitive.
  *
- * Backed by `app_lifeops.life_entities` + `life_entity_identities` +
- * `life_entity_attributes`. The store is per-agent (multi-tenant by
- * agentId); the special `entityId === "self"` row is bootstrapped on first
- * use.
+ * Uses app_lifeops tables on PostgreSQL or the agent adapter's durable records
+ * on SQLite. Identity decisions and merges share the same domain implementation.
+ * SQLite operations are atomic and refuse selection of another agent's graph.
  */
 
 import crypto from "node:crypto";
@@ -32,6 +31,10 @@ import {
   type ConfirmedEmailRecipient,
   confirmEmailRecipient,
 } from "./confirmed-email-recipient.ts";
+import {
+  type GraphRecordRepository,
+  graphRecordRepository,
+} from "./record-repository.ts";
 import {
   executeRawSql,
   parseJsonArray,
@@ -124,10 +127,17 @@ function attributeRowToAttribute(row: Record<string, unknown>): {
 }
 
 export class EntityStore {
+  private readonly records: GraphRecordRepository | null;
+
+  private operation<T>(work: () => Promise<T>): Promise<T> {
+    return this.records ? this.records.transaction(work) : work();
+  }
   constructor(
     private readonly runtime: IAgentRuntime,
     private readonly agentId: string,
-  ) {}
+  ) {
+    this.records = graphRecordRepository(runtime, agentId);
+  }
 
   confirmEmailRecipient(
     input: ConfirmEmailRecipientInput,
@@ -140,7 +150,11 @@ export class EntityStore {
    * Called on first store init for an agent.
    */
   async ensureSelf(): Promise<Entity> {
-    const existing = await this.get(SELF_ENTITY_ID);
+    return this.operation(() => this.ensureSelfOperation());
+  }
+
+  private async ensureSelfOperation(): Promise<Entity> {
+    const existing = await this.getOperation(SELF_ENTITY_ID);
     if (existing) return existing;
     return this.upsertInternal({
       entityId: SELF_ENTITY_ID,
@@ -158,7 +172,7 @@ export class EntityStore {
       entityId?: string;
     },
   ): Promise<Entity> {
-    return this.upsertInternal(input);
+    return this.operation(() => this.upsertInternal(input));
   }
 
   private async upsertInternal(
@@ -168,8 +182,17 @@ export class EntityStore {
   ): Promise<Entity> {
     const now = isoNow();
     const entityId = input.entityId ?? `ent_${crypto.randomUUID()}`;
-    const existing = await this.get(entityId);
+    const existing = await this.getOperation(entityId);
     const createdAt = existing?.createdAt ?? now;
+
+    if (this.records) {
+      return this.records.putEntity({
+        ...input,
+        entityId,
+        createdAt,
+        updatedAt: now,
+      });
+    }
 
     await executeRawSql(
       this.runtime,
@@ -228,7 +251,7 @@ export class EntityStore {
       await this.persistAttribute(entityId, key, attr);
     }
 
-    const fetched = await this.get(entityId);
+    const fetched = await this.getOperation(entityId);
     if (!fetched) {
       throw new Error(
         `[EntityStore] failed to read back upserted entity ${entityId}`,
@@ -302,6 +325,11 @@ export class EntityStore {
   }
 
   async get(entityId: string): Promise<Entity | null> {
+    return this.operation(() => this.getOperation(entityId));
+  }
+
+  private async getOperation(entityId: string): Promise<Entity | null> {
+    if (this.records) return this.records.getEntity(entityId);
     const rows = await executeRawSql(
       this.runtime,
       `SELECT * FROM app_lifeops.life_entities
@@ -321,6 +349,11 @@ export class EntityStore {
   }
 
   async list(filter?: EntityFilter): Promise<Entity[]> {
+    return this.operation(() => this.listOperation(filter));
+  }
+
+  private async listOperation(filter?: EntityFilter): Promise<Entity[]> {
+    if (this.records) return this.records.listEntities(filter);
     const clauses = [`e.agent_id = ${sqlQuote(this.agentId)}`];
     if (filter?.type) {
       clauses.push(`e.type = ${sqlQuote(filter.type)}`);
@@ -453,10 +486,22 @@ export class EntityStore {
     confidence: number;
     suggestedType?: string;
   }): Promise<{ entity: Entity; mergedFrom?: string[]; conflict?: boolean }> {
+    return this.operation(() => this.observeIdentityOperation(obs));
+  }
+
+  private async observeIdentityOperation(obs: {
+    platform: string;
+    handle: string;
+    connectorAccountId?: string;
+    displayName?: string;
+    evidence: string[];
+    confidence: number;
+    suggestedType?: string;
+  }): Promise<{ entity: Entity; mergedFrom?: string[]; conflict?: boolean }> {
     const connectorAccountId = normalizeEntityConnectorAccountId(
       obs.connectorAccountId,
     );
-    const all = await this.list();
+    const all = await this.listOperation();
     const candidates = findIdentityMatches(all, {
       platform: obs.platform,
       handle: obs.handle,
@@ -538,6 +583,18 @@ export class EntityStore {
     };
     type?: string;
   }): Promise<EntityResolveCandidate[]> {
+    return this.operation(() => this.resolveOperation(query));
+  }
+
+  private async resolveOperation(query: {
+    name?: string;
+    identity?: {
+      platform: string;
+      handle: string;
+      connectorAccountId?: string;
+    };
+    type?: string;
+  }): Promise<EntityResolveCandidate[]> {
     const filters: EntityFilter = {};
     if (query.type) filters.type = query.type;
     if (query.name) filters.nameContains = query.name;
@@ -548,7 +605,7 @@ export class EntityStore {
       );
     }
 
-    let entities = await this.list(filters);
+    let entities = await this.listOperation(filters);
 
     if (query.identity) {
       const platformKey = query.identity.platform.toLowerCase();
@@ -626,10 +683,42 @@ export class EntityStore {
       occurredAt: string;
     },
   ): Promise<void> {
+    return this.operation(() =>
+      this.recordInteractionOperation(entityId, interaction),
+    );
+  }
+
+  private async recordInteractionOperation(
+    entityId: string,
+    interaction: {
+      platform: string;
+      direction: "inbound" | "outbound";
+      summary: string;
+      occurredAt: string;
+    },
+  ): Promise<void> {
     const directionColumn =
       interaction.direction === "inbound"
         ? "state_last_inbound_at"
         : "state_last_outbound_at";
+
+    if (this.records) {
+      const existing = await this.getOperation(entityId);
+      if (!existing) return;
+      await this.records.putEntity({
+        ...existing,
+        state: {
+          ...existing.state,
+          ...(interaction.direction === "inbound"
+            ? { lastInboundAt: interaction.occurredAt }
+            : { lastOutboundAt: interaction.occurredAt }),
+          lastObservedAt: interaction.occurredAt,
+          lastInteractionPlatform: interaction.platform,
+        },
+        updatedAt: isoNow(),
+      });
+      return;
+    }
 
     await executeRawSql(
       this.runtime,
@@ -654,21 +743,28 @@ export class EntityStore {
    * merged target.
    */
   async merge(targetId: string, sourceIds: string[]): Promise<Entity> {
+    return this.operation(() => this.mergeOperation(targetId, sourceIds));
+  }
+
+  private async mergeOperation(
+    targetId: string,
+    sourceIds: string[],
+  ): Promise<Entity> {
     if (sourceIds.length === 0) {
-      const existing = await this.get(targetId);
+      const existing = await this.getOperation(targetId);
       if (!existing) {
         throw new Error(`[EntityStore.merge] target ${targetId} not found`);
       }
       return existing;
     }
-    const target = await this.get(targetId);
+    const target = await this.getOperation(targetId);
     if (!target) {
       throw new Error(`[EntityStore.merge] target ${targetId} not found`);
     }
     const sources: Entity[] = [];
     for (const id of sourceIds) {
       if (id === targetId) continue;
-      const source = await this.get(id);
+      const source = await this.getOperation(id);
       if (source) sources.push(source);
     }
     const now = isoNow();
@@ -683,6 +779,15 @@ export class EntityStore {
     // the merge contract; do it before source deletion so audit events
     // can still resolve.
     for (const source of sources) {
+      if (this.records) {
+        await this.records.retargetRelationships(
+          source.entityId,
+          targetId,
+          now,
+        );
+        await this.records.deleteEntity(source.entityId);
+        continue;
+      }
       const rewriteSql = (column: string) =>
         `UPDATE app_lifeops.life_relationships_v2
             SET ${column} = ${sqlQuote(targetId)},
@@ -719,9 +824,14 @@ export class EntityStore {
    * `merge` to consolidate or simply leave entities in place.
    */
   async deleteForTest(entityId: string): Promise<void> {
+    return this.operation(() => this.deleteForTestOperation(entityId));
+  }
+
+  private async deleteForTestOperation(entityId: string): Promise<void> {
     if (entityId === SELF_ENTITY_ID) {
       throw new Error("[EntityStore] cannot delete self entity");
     }
+    if (this.records) return this.records.deleteEntity(entityId);
     await executeRawSql(
       this.runtime,
       `DELETE FROM app_lifeops.life_entity_identities
