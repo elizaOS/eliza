@@ -2338,6 +2338,13 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           readPaint,
           overlayRequired,
         );
+        if (view.id === "orchestrator") {
+          await expect(
+            viewRoot.getByText("Orchestrator task stream disconnected", {
+              exact: true,
+            }),
+          ).toHaveCount(0);
+        }
         if (view.id === "cloud" && view.fixtureState !== "cloud-signed-out") {
           await expect(
             viewRoot.getByTestId("cloud-ready"),
