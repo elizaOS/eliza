@@ -3830,7 +3830,8 @@ export async function startApiServer(opts?: {
   runtime?: AgentRuntime;
   /**
    * Trusted host configuration copied at construction instead of reading disk.
-   * Disables reloadConfigFromDisk; hosts must separately restrict mutable
+   * Disables reloadConfigFromDisk and ambient wallet provisioning/cache startup;
+   * hosts must separately restrict mutable
    * configuration and management routes through hostAdmission.
    */
   hostConfig?: ElizaConfig;
@@ -3996,7 +3997,11 @@ export async function startApiServer(opts?: {
     walletAutoProvisionRaw === "true" ||
     walletAutoProvisionRaw === "on" ||
     walletAutoProvisionRaw === "yes";
-  if (walletAutoProvisionEnabled && ensureWalletKeysInEnvAndConfig(config)) {
+  if (
+    hostConfig === undefined &&
+    walletAutoProvisionEnabled &&
+    ensureWalletKeysInEnvAndConfig(config)
+  ) {
     try {
       saveElizaConfig(config);
     } catch (err) {
@@ -4008,7 +4013,7 @@ export async function startApiServer(opts?: {
 
   const blockOnStewardWalletCache =
     process.env.ELIZA_STEWARD_WALLET_CACHE_BLOCKING?.trim() === "1";
-  if (blockOnStewardWalletCache) {
+  if (hostConfig === undefined && blockOnStewardWalletCache) {
     // Cloud/provisioned environments can opt into strict startup semantics
     // when wallet addresses must be available before the first request.
     const { initStewardWalletCache } = await getCoreWalletApi();

@@ -22,7 +22,7 @@
  * X-Forwarded-For, which the trusted-local classifier treats as untrusted.
  */
 
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -70,6 +70,10 @@ const touchedEnv = [
   "ELIZA_PORT",
   "ELIZA_REQUIRE_LOCAL_AUTH",
   "ELIZA_STATE_DIR",
+  "ELIZA_WALLET_AUTO_PROVISION",
+  "ELIZA_STEWARD_WALLET_CACHE_BLOCKING",
+  "EVM_PRIVATE_KEY",
+  "SOLANA_PRIVATE_KEY",
 ] as const;
 
 const originalEnv = new Map<string, string | undefined>();
@@ -547,10 +551,14 @@ describe("unauthenticated /ws bounds (W5-015)", () => {
 });
 
 describe("mandatory host admission", () => {
-  it("uses a captured host config without loading or reloading disk authority", async () => {
+  it("keeps host configuration immutable despite ambient wallet startup flags", async () => {
     const configPath = process.env.ELIZA_CONFIG_PATH;
     if (!configPath) throw new Error("Fixture config path is missing");
     await writeFile(configPath, "{invalid persisted configuration");
+    process.env.ELIZA_WALLET_AUTO_PROVISION = "1";
+    process.env.ELIZA_STEWARD_WALLET_CACHE_BLOCKING = "1";
+    delete process.env.EVM_PRIVATE_KEY;
+    delete process.env.SOLANA_PRIVATE_KEY;
     const hostConfig = { ui: { assistant: { name: "Measured assistant" } } };
     const options = {
       port: 0,
@@ -559,6 +567,11 @@ describe("mandatory host admission", () => {
       hostAdmission: () => true,
     };
     api = await startApiServer(options);
+    expect(process.env.EVM_PRIVATE_KEY).toBeUndefined();
+    expect(process.env.SOLANA_PRIVATE_KEY).toBeUndefined();
+    expect(await readFile(configPath, "utf8")).toBe(
+      "{invalid persisted configuration",
+    );
     hostConfig.ui.assistant.name = "Caller mutation";
     options.hostConfig = {
       ui: { assistant: { name: "Replacement authority" } },
