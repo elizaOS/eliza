@@ -5,22 +5,47 @@
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   ATOMS,
   buildInventory,
-  hasTypedSourceSibling,
   isMaintainedSource,
   listMaintainedSourceFiles,
   renderMarkdown,
 } from "./find-duplicate-components.mjs";
 
-const uiSourceRoot = fileURLToPath(new URL("../src/", import.meta.url));
 const reactElementModule =
   'import { createElement } from "react";\nexport const Probe = () => createElement("div");\n';
 const jsxModule = "export const Probe = () => <div />;\n";
+
+async function isolatedInventory() {
+  const root = fs.realpathSync(
+    fs.mkdtempSync(path.join(tmpdir(), "ui-inventory-")),
+  );
+  const scripts = path.join(root, "packages/ui/scripts");
+  const source = path.join(root, "packages/ui/src");
+  fs.mkdirSync(scripts, { recursive: true });
+  fs.mkdirSync(source, { recursive: true });
+  fs.mkdirSync(path.join(root, "plugins"));
+  fs.symlinkSync(
+    fileURLToPath(new URL("../node_modules", import.meta.url)),
+    path.join(root, "node_modules"),
+    "junction",
+  );
+  for (const name of [
+    "find-duplicate-components.mjs",
+    "component-inventory-decisions.json",
+  ]) {
+    fs.copyFileSync(new URL(name, import.meta.url), path.join(scripts, name));
+  }
+  const scanner = await import(
+    pathToFileURL(path.join(scripts, "find-duplicate-components.mjs")).href
+  );
+  return { root, source, ...scanner };
+}
 
 function writeProbe(file, contents) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -169,13 +194,19 @@ test("Android build output does not duplicate maintained React source", () => {
   }
 });
 
-test("JavaScript emitted beside its TypeScript source is outside maintained source", () => {
+test("JavaScript emitted beside its TypeScript source is outside maintained source", async () => {
   // Reproduces the neighboring-build race inside an isolated fixture: an
   // authored .tsx input, then the .js and .jsx a sibling package's compile
   // would emit beside it. The fixture never depends on the real source tree
   // being un-compiled, so the suite stays green when that emit has already
   // happened, which is the very state this boundary is meant to tolerate.
-  const probeRoot = fs.mkdtempSync(path.join(uiSourceRoot, "inventory-probe-"));
+  const {
+    root,
+    source: probeRoot,
+    hasTypedSourceSibling,
+    isMaintainedSource,
+    listMaintainedSourceFiles,
+  } = await isolatedInventory();
   try {
     const authored = writeProbe(
       path.join(probeRoot, "config-field.helpers.tsx"),
@@ -210,12 +241,18 @@ test("JavaScript emitted beside its TypeScript source is outside maintained sour
     fs.rmSync(emittedJsx, { force: true });
     assert.deepEqual(listMaintainedSourceFiles(), before);
   } finally {
-    fs.rmSync(probeRoot, { recursive: true, force: true });
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("authored JavaScript without a typed sibling stays maintained", () => {
-  const probeRoot = fs.mkdtempSync(path.join(uiSourceRoot, "inventory-probe-"));
+test("authored JavaScript without a typed sibling stays maintained", async () => {
+  const {
+    root,
+    source: probeRoot,
+    hasTypedSourceSibling,
+    isMaintainedSource,
+    listMaintainedSourceFiles,
+  } = await isolatedInventory();
   try {
     const authoredJsx = writeProbe(
       path.join(probeRoot, "authored.jsx"),
@@ -261,7 +298,7 @@ test("authored JavaScript without a typed sibling stays maintained", () => {
       assert.equal(files.includes(file), false, `${file} must be excluded`);
     }
   } finally {
-    fs.rmSync(probeRoot, { recursive: true, force: true });
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
