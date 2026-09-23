@@ -12,6 +12,7 @@
 
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import { EntityStore } from "./entity-store.ts";
+import { graphRecordRepository } from "./record-repository.ts";
 import { RelationshipStore } from "./relationship-store.ts";
 
 export const KNOWLEDGE_GRAPH_SERVICE = "eliza_knowledge_graph";
@@ -20,9 +21,11 @@ export class KnowledgeGraphService extends Service {
   static override serviceType = KNOWLEDGE_GRAPH_SERVICE;
 
   override capabilityDescription =
-    "Runtime knowledge graph: entity nodes, typed relationship edges, and identity-merge over app_lifeops tables";
+    "Canonical agent knowledge graph: entities, typed relationships and identity merges over the selected database backend";
 
   static async start(runtime: IAgentRuntime): Promise<KnowledgeGraphService> {
+    const records = graphRecordRepository(runtime, runtime.agentId);
+    if (records) await records.transaction(async () => undefined);
     return new KnowledgeGraphService(runtime);
   }
 
@@ -30,8 +33,8 @@ export class KnowledgeGraphService extends Service {
 
   /**
    * Per-agent entity store. `agentId` partitions the graph; it defaults to
-   * the runtime's agent id and may be overridden for admin/multi-tenant
-   * access (e.g. an admin entity inspecting another agent's graph).
+   * the runtime's agent id. PostgreSQL supports explicit multi-tenant selection;
+   * a single-agent durable record backend rejects another agent's id.
    */
   getEntityStore(agentId: string = this.runtime.agentId): EntityStore {
     return new EntityStore(this.runtime, agentId);

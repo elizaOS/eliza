@@ -87,7 +87,8 @@
     "vite": "^8.3.0",
     "vitest": "^4.1.10",
     "@electric-sql/pglite": "^0.4.0",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/plugin-sqlite": "workspace:*"
   },
   "scripts": {
     "build": "bun run build:js && bun run build:views && bun run build:types",
