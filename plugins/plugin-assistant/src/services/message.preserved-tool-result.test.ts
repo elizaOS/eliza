@@ -662,9 +662,13 @@ describe("planner-loop death after a completed tool", () => {
     );
   });
 
-  it.each([false, true])(
-    "preserves the provider context boundary with a settled tool: %s",
-    async (settled) => {
+  it.each([
+    { boundary: "stage-one proposal review", settled: false, proposed: true },
+    { boundary: "planner", settled: false, proposed: false },
+    { boundary: "post-tool evaluation", settled: true, proposed: false },
+  ])(
+    "preserves the complete provider context at $boundary",
+    async ({ settled, proposed }) => {
       let actionCalls = 0;
       const harness = await createHarness({
         actionResult: {
@@ -679,7 +683,7 @@ describe("planner-loop death after a completed tool", () => {
       const stageOne = stageOneToolTurn("non_applied");
       const preliminary =
         "Setting it up: 25 pushups, 3 a day, no fixed times, counted whenever you get them in.";
-      stageOne.toolCalls[0].arguments.replyText = settled ? "" : preliminary;
+      stageOne.toolCalls[0].arguments.replyText = proposed ? preliminary : "";
       const overflow = new ElizaError(
         "Complete planner request exceeds provider capacity",
         {
@@ -727,9 +731,10 @@ describe("planner-loop death after a completed tool", () => {
         makeMessage(harness.runtime, completeRequest),
         harness.callback,
       );
-      // Planning precedes completion evaluation. Planner overflow prevents
-      // dispatch; evaluator overflow preserves the already-settled result.
-      expect(plannerCalls).toBe(1);
+      // A Stage-1 reply proposal is reviewed before planning. Without a
+      // proposal, planner overflow prevents dispatch; post-tool overflow
+      // preserves the settled receipt without delivering an unchecked reply.
+      expect(plannerCalls).toBe(proposed ? 0 : 1);
       expect(stageCalls).toBeGreaterThan(1);
       expect(actionCalls).toBe(settled ? 1 : 0);
       expect(harness.callbacks).toContainEqual(
