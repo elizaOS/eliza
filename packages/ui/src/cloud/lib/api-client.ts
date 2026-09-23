@@ -476,9 +476,10 @@ export async function apiFetch(
       headers.set("Authorization", `Bearer ${token}`);
     }
   }
-  // Browser cookie sessions require the readable CSRF cookie to be mirrored
-  // into the mutation header. Native/Electrobun calls are bearer-only and must
-  // not forward a synthetic WebView origin's cookie to Eliza Cloud.
+  // Cloud cookie mutations require an allowed browser origin and a non-simple
+  // request marker, including bodyless lifecycle actions. Preserve a readable
+  // companion token when present; Cloud's marker policy does not require one.
+  // Native and loopback agent transports retain their own authentication rules.
   const method = (rest.method ?? "GET").toUpperCase();
   if (
     !isNativeCloudRuntime() &&
@@ -487,7 +488,7 @@ export async function apiFetch(
     !headers.has(CSRF_HEADER_NAME)
   ) {
     const csrfToken = readCsrfTokenFromCookie();
-    if (csrfToken) headers.set(CSRF_HEADER_NAME, csrfToken);
+    headers.set(CSRF_HEADER_NAME, csrfToken ?? "cloud-request");
   }
 
   const url = resolveApiUrl(path);
