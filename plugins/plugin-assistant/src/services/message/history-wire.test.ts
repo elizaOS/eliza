@@ -236,7 +236,6 @@ describe("lossless history references", () => {
       undefined,
       { directMessage: false },
       { directMessage: true, groupTriage: true },
-      { directMessage: true, voiceDirectMessage: true },
     ]) {
       const other = renderMessageHandlerModelInput(
         runtime,

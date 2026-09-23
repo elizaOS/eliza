@@ -236,7 +236,9 @@ describe("direct-text builtin schema descriptions", () => {
       const [schema] = requestSchemas(args.runtime);
       expect(schema).toBeDefined();
       const expected =
-        channelType === ChannelType.DM ? expectedCompact(canonical) : canonical;
+        channelType === ChannelType.GROUP
+          ? canonical
+          : expectedCompact(canonical);
       for (const name of [...removed, ...Object.keys(shortened)])
         expect(properties(schema)[name]).toEqual(properties(expected)[name]);
       expect(canonical).toEqual(before);

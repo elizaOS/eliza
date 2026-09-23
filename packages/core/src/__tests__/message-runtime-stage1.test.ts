@@ -2712,7 +2712,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime)).toHaveLength(2);
 	});
 
-	it.each([ChannelType.VOICE_DM, ChannelType.GROUP])(
+	it.each([ChannelType.GROUP])(
 		"keeps full catalog descriptions for %s",
 		async (channelType) => {
 			const description =
@@ -2794,7 +2794,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			calls[1]?.messages.find((message) => message.role === "user")?.content,
 		).toContain(full);
 	});
-	it("does not add a discovery pass to voice replies", async () => {
+	it("keeps direct voice provider references discoverable without an automatic extra call", async () => {
 		const runtime = makeRuntime([
 			stage1Response({ contexts: ["simple"], replyText: "Hello." }),
 		]);
@@ -2813,7 +2813,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			state,
 		});
 		expect(useModelCalls(runtime)).toHaveLength(1);
-		expect(JSON.stringify(useModelCalls(runtime)[0]?.[1])).toContain(full);
+		expect(JSON.stringify(useModelCalls(runtime)[0]?.[1])).not.toContain(full);
+		expect(JSON.stringify(useModelCalls(runtime)[0]?.[1])).toContain(
+			"context_discovery: userPersonalityPreferences",
+		);
 	});
 
 	it("stops a requested context read before another model call when cancelled during recomposition", async () => {
@@ -4216,8 +4219,8 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
-	it.each([ChannelType.VOICE_DM, ChannelType.GROUP])(
-		"does not opt voice or unaddressed group traffic into terminal review: %s",
+	it.each([ChannelType.GROUP])(
+		"does not opt unaddressed group traffic into terminal review: %s",
 		async (channelType) => {
 			const runtime = makeRuntime(
 				[stage1Response({ shouldRespond: "STOP", contexts: [] })],
@@ -4413,62 +4416,69 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 	});
 
-	it("keeps every registered field in the live-voice Stage-1 call", async () => {
-		const runtime = makeRuntime([
-			stage1Response({
-				shouldRespond: "IGNORE",
-				contexts: ["simple"],
-				replyText: "",
-			}),
-		]);
-
-		const result = await runStage1({
-			runtime,
-			message: makeMessage({
-				channelType: ChannelType.VOICE_DM,
-				text: "uh huh",
-			}),
-		});
-
-		expect(result.kind).toBe("terminal");
-		if (result.kind === "terminal") {
-			expect(result.action).toBe("IGNORE");
-		}
-		const firstCall = useModelCalls(runtime)[0];
-		expect(firstCall).toBeDefined();
-		if (!firstCall) {
-			throw new Error("Expected the voice Stage-1 model call to be captured");
-		}
-		const params = firstCall[1] as {
-			tools?: Array<{ parameters?: { required?: string[] } }>;
-			responseSkeleton?: { spans?: Array<{ key?: string }> };
-			messages?: Array<{ content?: unknown }>;
+	it("uses identical direct text and voice schemas, source handling and stable cache prefixes", async () => {
+		type CapturedStage1 = {
+			tools: Array<{ name: string; parameters: object }>;
+			messages: Array<{ role: string; content: string }>;
+			providerOptions: {
+				eliza: { prefixHash: string; promptCacheKey: string; thinking: string };
+				cerebras: object;
+			};
 		};
-		const required = params.tools?.[0]?.parameters?.required ?? [];
-		expect(required).toContain("shouldRespond");
-		expect(required).toContain("contexts");
-		expect(required).toContain("facts");
+		const calls: CapturedStage1[] = [];
+		for (const channelType of [ChannelType.DM, ChannelType.VOICE_DM]) {
+			const runtime = makeRuntime([
+				stage1Response({ contexts: ["simple"], replyText: "Hello." }),
+			]);
+			runtime.providers.push({
+				name: "uiWidgetCapabilities",
+				get: async () => ({ text: "Widget reference." }),
+			});
+			const state = makeState();
+			state.data.providers = {
+				userPersonalityPreferences: {
+					text: "Complete standing preference body.",
+					discoveryText: "context_discovery: userPersonalityPreferences",
+				},
+			};
+			const result = await runStage1({
+				runtime,
+				state,
+				message: makeMessage({ channelType, text: "Hello." }),
+			});
+			expect(result.kind).toBe("direct_reply");
+			expect(useModelCalls(runtime)).toHaveLength(1);
+			calls.push(useModelCalls(runtime)[0][1] as CapturedStage1);
+		}
+		const [text, voice] = calls;
+		expect(voice.tools).toEqual(text.tools);
+		expect(voice.messages[0]).toEqual(text.messages[0]);
 		expect(
-			params.responseSkeleton?.spans?.some(
-				(span) => span.key === "shouldRespond",
+			voice.messages[1].content.replaceAll(
+				'"channelType":"VOICE_DM"',
+				'"channelType":"DM"',
 			),
-		).toBe(true);
-		const systemContent = String(params.messages?.[0]?.content ?? "");
-		expect(systemContent).toContain("voice engagement rules:");
-		expect(systemContent).toContain("Plan this direct message");
-		expect(systemContent).not.toContain("response_precedence:");
-		expect(systemContent).toContain(
-			"shouldRespond=IGNORE only for non-speech/noise",
+		).toBe(text.messages[1].content);
+		expect(voice.providerOptions.eliza.prefixHash).toBe(
+			text.providerOptions.eliza.prefixHash,
 		);
-		expect(systemContent).toContain("### facts");
+		expect(voice.providerOptions.eliza.promptCacheKey).toBe(
+			text.providerOptions.eliza.promptCacheKey,
+		);
+		expect(voice.providerOptions.cerebras).toEqual(
+			text.providerOptions.cerebras,
+		);
+		expect(voice.providerOptions.eliza.thinking).toBe(
+			text.providerOptions.eliza.thinking,
+		);
 	});
 
 	it("preserves complete eligible voice dialogue in the actual Stage-1 request", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
-				shouldRespond: "IGNORE",
+				shouldRespond: "RESPOND",
 				contexts: ["simple"],
-				replyText: "",
+				replyText: "Hello.",
 			}),
 		]);
 		const recentMessages = Array.from(
@@ -4685,7 +4695,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			[ChannelType.DM, false, true],
 			[ChannelType.API, false, true],
 			[ChannelType.SELF, false, true],
-			[ChannelType.VOICE_DM, false, false],
+			[ChannelType.VOICE_DM, false, true],
 			[ChannelType.GROUP, false, false],
 			[undefined, false, false],
 			[ChannelType.DM, true, false],
@@ -13795,7 +13805,7 @@ describe("direct-text silence review", () => {
 			text: "uh huh",
 			channel: ChannelType.VOICE_DM,
 			bot: false,
-			calls: 1,
+			calls: 2,
 		},
 		{
 			decision: "IGNORE" as const,

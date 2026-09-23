@@ -585,11 +585,19 @@ describe("simple-path deliver-then-persist ordering", () => {
 });
 
 describe("planning progress delivery boundaries", () => {
-  it.each(["clean", "private", "revoked", "envelope"] as const)(
-    "protects %s progress without consuming final delivery",
-    async (kind) => {
+  it.each(
+    [ChannelType.DM, ChannelType.VOICE_DM].flatMap((channelType) =>
+      (["clean", "private", "revoked", "envelope"] as const).map((kind) => ({
+        channelType,
+        kind,
+      })),
+    ),
+  )(
+    "protects $kind progress on $channelType without consuming final delivery",
+    async ({ kind, channelType }) => {
       const h = await createHarness();
       const turn = h.makeMessage();
+      turn.content.channelType = channelType;
       h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
       if (kind === "private" || kind === "revoked") {
         h.runtime.registerProvider({

@@ -1,4 +1,3 @@
-import { createAssistantPlugin } from "../index.ts";
 /** Durable handoff and room ownership through real runtime/task/cache adapters. */
 
 import { PGlite } from "@electric-sql/pglite";
@@ -27,11 +26,12 @@ import {
   successEvaluator,
 } from "../features/advanced-capabilities/evaluators/reflection-items";
 import { createAdvancedMemoryPlugin } from "../features/advanced-memory/index";
+import { createAssistantPlugin } from "../index.ts";
 import {
   validateHistoryRetention,
   visibleHistoryEventIds,
 } from "../runtime/history-retention.ts";
-import { EvaluatorService } from "./evaluator.ts";
+import { EvaluatorService, runPostTurnEvaluators } from "./evaluator.ts";
 import {
   getEvaluatorProgressState,
   prepareEvaluatorProgress,
@@ -596,10 +596,10 @@ describe("durable background memory", () => {
     [ChannelType.API, true],
     [ChannelType.SELF, true],
     [ChannelType.GROUP, false],
-    [ChannelType.VOICE_DM, false],
+    [ChannelType.VOICE_DM, true],
     [ChannelType.VOICE_GROUP, false],
   ] as const)(
-    "indexes only supported direct-text sources: %s",
+    "indexes supported direct text and voice sources: %s",
     async (channelType, enabled) => {
       const { runtime, service, message } = await setup();
       await runtime.registerPlugin(createAdvancedMemoryPlugin());
@@ -611,7 +611,15 @@ describe("durable background memory", () => {
       runtime.useModel = vi.fn(async (_type, params) =>
         retentionAnswer(retentionPrompt(params), ["h1"]),
       ) as AgentRuntime["useModel"];
-      await service.enqueue(source, state, { phase: "post_turn" });
+      if (
+        channelType === ChannelType.DM ||
+        channelType === ChannelType.VOICE_DM
+      ) {
+        vi.spyOn(runtime, "getServiceLoadPromise").mockResolvedValue(service);
+        await runPostTurnEvaluators(runtime, source, state);
+      } else {
+        await service.enqueue(source, state, { phase: "post_turn" });
+      }
       await execute(runtime, await job(runtime));
       expect(runtime.useModel).toHaveBeenCalledTimes(enabled ? 1 : 0);
       if (enabled) {
