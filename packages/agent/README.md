@@ -551,7 +551,10 @@ measured server using the versioned TLS ALPN `eliza-attested-inference/1`.
 This is a dedicated framed protocol, not an ordinary HTTP endpoint. It buffers
 complete request/response bodies; configurable payload limits reject the whole
 payload and never truncate model content. Streaming delivery, connection pooling
-and automatic retries are not supported in this version.
+and automatic retries are not supported in this version. It does not provide
+incremental SSE or real-time voice latency. Provider SDK retries and runtime
+failover must also be disabled after ambiguous confidential dispatch; transport
+errors expose a conservative `dispatchState` in their typed context.
 
 The client validates the normal TLS certificate chain and DNS name, then sends
 only a fresh nonce and approved route policy. Both peers compute a SHA-256
@@ -582,3 +585,7 @@ Tests use actual TLS connections, certificates, exporters, Unix sockets and
 subprocesses, with explicitly synthetic platform quote responses. Captured
 platform cryptography tests and these transport tests do not replace a live
 hardware run with current collateral and approved measurements.
+
+A local timeout or disconnect closes the session and cancels any late response
+stream. It cannot undo a remote handler effect already accepted before abort;
+reconciliation or explicit application idempotency is required before redispatch.

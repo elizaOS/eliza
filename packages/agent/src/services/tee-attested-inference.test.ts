@@ -24,7 +24,9 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   type AttestedInferenceClientConfig,
+  type AttestedInferenceServerConfig,
   createAttestedInferenceFetch,
+  createAttestedInferenceServer,
 } from "./tee-attested-inference.ts";
 import type { DstackVerifierConfig } from "./tee-dstack-evidence.ts";
 import { createDstackAttestedInferenceServer } from "./tee-dstack-tls-identity.ts";
@@ -320,13 +322,116 @@ describe("attested inference TLS admission", () => {
   });
   it("rejects redirects without a second dispatch", async () => {
     responseStatus = 302;
-    await expect(invoke()).rejects.toThrow();
+    await expect(invoke()).rejects.toMatchObject({
+      context: { dispatchState: "possibly-sent" },
+    });
     expect(quotes).toHaveLength(1);
     expect(received).toHaveLength(2);
   });
+  it("keeps the measured handler, quote socket and limit despite caller mutation", async () => {
+    const settings: AttestedInferenceServerConfig = {
+      key,
+      cert,
+      guestSocketPath: join(dir, "guest.sock"),
+      policy,
+      maxPayloadBytes: 1024,
+      handle: async (request) => new Response(await request.text()),
+    };
+    intermediary = createAttestedInferenceServer(settings);
+    const otherPort = await listen(intermediary);
+    settings.handle = async () => {
+      throw new Error("replacement handler must not run");
+    };
+    settings.guestSocketPath = join(dir, "replaced.sock");
+    settings.maxPayloadBytes = 1;
+    expect(
+      await (await invoke(transport({ port: otherPort }), otherPort)).text(),
+    ).toBe("complete private prompt");
+  });
+  it("observes and cancels a late handler response after the client disconnects", async () => {
+    let entered!: () => void;
+    let finish!: (value: Response) => void;
+    let cancelled!: () => void;
+    const handling = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const cancellation = new Promise<void>((resolve) => {
+      cancelled = resolve;
+    });
+    intermediary = createAttestedInferenceServer({
+      key,
+      cert,
+      guestSocketPath: join(dir, "guest.sock"),
+      policy,
+      handle: async () => {
+        entered();
+        return new Promise<Response>((resolve) => {
+          finish = resolve;
+        });
+      },
+    });
+    const otherPort = await listen(intermediary);
+    const controller = new AbortController();
+    const outcome = invoke(
+      transport({ port: otherPort }),
+      otherPort,
+      controller.signal,
+    );
+    const rejected = expect(outcome).rejects.toMatchObject({
+      context: { dispatchState: "possibly-sent" },
+    });
+    await handling;
+    controller.abort();
+    await rejected;
+    finish(
+      new Response(
+        new ReadableStream({
+          cancel() {
+            cancelled();
+          },
+        }),
+      ),
+    );
+    await cancellation;
+  });
+  it("never exposes a public arbitrary report-data quote endpoint", async () => {
+    const socket = connect({
+      host: "localhost",
+      port,
+      servername: "localhost",
+      ca: cert,
+      rejectUnauthorized: true,
+      minVersion: "TLSv1.3",
+      ALPNProtocols: ["eliza-attested-inference/1"],
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        socket.once("error", reject);
+        socket.once("close", () => resolve());
+        socket.once("secureConnect", () => {
+          const body = Buffer.from(
+            JSON.stringify({
+              nonce: "ab".repeat(32),
+              policy,
+              report_data: "cd".repeat(32),
+            }),
+          );
+          const length = Buffer.alloc(4);
+          length.writeUInt32BE(body.length);
+          socket.write(Buffer.concat([length, body]));
+        });
+      });
+      expect(quotes).toEqual([]);
+      expect(received).toEqual([]);
+    } finally {
+      socket.destroy();
+    }
+  });
   it("rejects changed report data before application dispatch", async () => {
     corrupt = true;
-    await expect(invoke()).rejects.toThrow();
+    await expect(invoke()).rejects.toMatchObject({
+      context: { dispatchState: "not-sent" },
+    });
     expect(received).toEqual([]);
   });
   it("rejects proof replay from a previous real TLS session", async () => {

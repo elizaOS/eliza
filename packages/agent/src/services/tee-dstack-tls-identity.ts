@@ -25,7 +25,8 @@ export async function createDstackAttestedInferenceServer(
     dnsName: string;
   },
 ): Promise<Server> {
-  const socketPath = config.guestSocketPath;
+  const measured = { ...config, policy: { ...config.policy } };
+  const socketPath = measured.guestSocketPath;
   if (!isAbsolute(socketPath) || !(await lstat(socketPath)).isSocket())
     throw new ElizaError("TLS identity requires a confined guest Unix socket", {
       code: "TEE_TLS_IDENTITY_REJECTED",
@@ -35,8 +36,8 @@ export async function createDstackAttestedInferenceServer(
     .regex(
       /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/,
     )
-    .parse(config.dnsName);
-  const signal = AbortSignal.timeout(config.timeoutMs ?? 60000);
+    .parse(measured.dnsName);
+  const signal = AbortSignal.timeout(measured.timeoutMs ?? 60000);
   const identity = await new Promise<{
     key: string;
     certificate_chain: string[];
@@ -122,7 +123,7 @@ export async function createDstackAttestedInferenceServer(
       { code: "TEE_TLS_IDENTITY_REJECTED" },
     );
   return createAttestedInferenceServer({
-    ...config,
+    ...measured,
     key: identity.key,
     cert: identity.certificate_chain.join("\n"),
   });

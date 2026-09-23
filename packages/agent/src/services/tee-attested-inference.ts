@@ -5,6 +5,7 @@
  * This version has no connection pooling, redirects, retries or plaintext fallback.
  */
 import { createHash, randomBytes } from "node:crypto";
+import { isAbsolute } from "node:path";
 import { connect, createServer, type Server, type TLSSocket } from "node:tls";
 import { ElizaError, logger } from "@elizaos/core";
 import { z } from "zod";
@@ -50,9 +51,15 @@ const responseSchema = z
   })
   .strict();
 
-function fail(message: string, cause?: unknown): ElizaError {
+type DispatchState = "not-sent" | "possibly-sent";
+function fail(
+  message: string,
+  cause?: unknown,
+  dispatchState: DispatchState = "not-sent",
+): ElizaError {
   return new ElizaError(message, {
     code: "TEE_INFERENCE_TRANSPORT_REJECTED",
+    context: { dispatchState },
     ...(cause === undefined ? {} : { cause }),
   });
 }
@@ -288,6 +295,7 @@ export function createAttestedInferenceFetch(
       ALPNProtocols: [ALPN],
     });
     const channel = new Channel(socket, signal, Math.max(maximum, MAX_PROOF));
+    let dispatchState: DispatchState = "not-sent";
     try {
       await new Promise<void>((resolve, reject) => {
         socket.once("secureConnect", resolve);
@@ -322,6 +330,7 @@ export function createAttestedInferenceFetch(
       );
       signal.throwIfAborted();
       assertDstackReleaseCurrent(verifier);
+      dispatchState = "possibly-sent";
       await channel.write(payload, maximum);
       const reply = responseSchema.parse(await channel.read(maximum));
       if (reply.status >= 300 && reply.status < 400)
@@ -338,6 +347,7 @@ export function createAttestedInferenceFetch(
       throw fail(
         "Attested inference request failed; no automatic retry",
         error,
+        dispatchState,
       );
     } finally {
       socket.destroy();
@@ -361,7 +371,15 @@ export function createAttestedInferenceServer(
   config: AttestedInferenceServerConfig,
 ): Server {
   const policy = Object.freeze(policySchema.parse(config.policy));
-  const maximum = frameLimit(config.maxPayloadBytes ?? DEFAULT_PAYLOAD_LIMIT);
+  const guestSocketPath = z
+    .string()
+    .refine(isAbsolute)
+    .parse(config.guestSocketPath);
+  const handle = config.handle;
+  if (typeof handle !== "function")
+    throw fail("Measured inference handler is required");
+  const payloadLimit = config.maxPayloadBytes ?? DEFAULT_PAYLOAD_LIMIT;
+  const maximum = frameLimit(payloadLimit);
   const timeoutMs = z
     .number()
     .int()
@@ -377,7 +395,12 @@ export function createAttestedInferenceServer(
       ALPNProtocols: [ALPN],
     },
     (socket) => {
-      const signal = AbortSignal.timeout(timeoutMs);
+      const disconnected = new AbortController();
+      socket.once("close", () => disconnected.abort());
+      const signal = AbortSignal.any([
+        disconnected.signal,
+        AbortSignal.timeout(timeoutMs),
+      ]);
       const channel = new Channel(socket, signal, Math.max(maximum, MAX_PROOF));
       const serve = async () => {
         if (socket.alpnProtocol !== ALPN)
@@ -390,14 +413,14 @@ export function createAttestedInferenceServer(
           throw fail("Inference route policy mismatch");
         const reportData = transcript(socket, challenge.nonce, policy, false);
         const attestation = await collectDstackAttestation(
-          config.guestSocketPath,
+          guestSocketPath,
           reportData,
           signal,
         );
         await channel.write({ attestation }, MAX_PROOF);
         const payload = requestSchema.parse(await channel.read(maximum));
         const body = Buffer.from(payload.body, "base64");
-        if (body.length > (config.maxPayloadBytes ?? DEFAULT_PAYLOAD_LIMIT))
+        if (body.length > payloadLimit)
           throw fail("Complete inference request exceeds transport limit");
         const url = new URL(payload.path, "https://attested-service.invalid");
         if (url.origin !== "https://attested-service.invalid")
@@ -408,10 +431,26 @@ export function createAttestedInferenceServer(
           ...(body.length ? { body } : {}),
           signal,
         });
-        const response = await config.handle(request);
+        const pendingResponse = handle(request).then((response) => {
+          if (signal.aborted) {
+            // error-policy:J6 Observe and cancel late response streams after local abort.
+            void response.body
+              ?.cancel()
+              .catch(() =>
+                logger.warn(
+                  "[AttestedInference] Late response cancellation failed",
+                ),
+              );
+            throw fail(
+              "Inference handler completed after session cancellation",
+            );
+          }
+          return response;
+        });
+        const response = await withSignal(pendingResponse, signal);
         const responseBody = await completeBody(
           response.body,
-          config.maxPayloadBytes ?? DEFAULT_PAYLOAD_LIMIT,
+          payloadLimit,
           signal,
         );
         await channel.write(
