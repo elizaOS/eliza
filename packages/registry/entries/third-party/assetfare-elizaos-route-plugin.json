@@ -1,0 +1,10 @@
+{
+  "package": "assetfare-elizaos-route-plugin",
+  "repository": "github:odaiin/assetfare-mcp",
+  "kind": "plugin",
+  "description": "Read-only AssetFare bridge and cross-chain swap quotes across six chains and 76 routes, including Solana to Base USDC and Polygon/Optimism native-USDC source-only routes. AssetFare service fee 1bp; Circle/provider/network fees additional. Quotes and capabilities only — never signs or submits.",
+  "homepage": "https://github.com/odaiin/assetfare-mcp/tree/main/integrations/elizaos",
+  "version": "0.1.0",
+  "directory": "integrations/elizaos",
+  "tags": ["bridge", "cross-chain", "swap", "solana", "base", "arbitrum", "polygon", "optimism", "usdc", "quotes", "non-custodial"]
+}

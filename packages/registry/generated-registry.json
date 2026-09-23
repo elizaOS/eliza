@@ -1231,6 +1231,57 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "assetfare-elizaos-route-plugin": {
+      "git": {
+        "repo": "odaiin/assetfare-mcp",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "assetfare-elizaos-route-plugin",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Read-only AssetFare bridge and cross-chain swap quotes across six chains and 76 routes, including Solana to Base USDC and Polygon/Optimism native-USDC source-only routes. AssetFare service fee 1bp; Circle/provider/network fees additional. Quotes and capabilities only — never signs or submits.",
+      "homepage": "https://github.com/odaiin/assetfare-mcp/tree/main/integrations/elizaos",
+      "topics": [
+        "bridge",
+        "cross-chain",
+        "swap",
+        "solana",
+        "base",
+        "arbitrum",
+        "polygon",
+        "optimism",
+        "usdc",
+        "quotes",
+        "non-custodial"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "integrations/elizaos"
+    },
     "blackwall-eliza-guardrail": {
       "git": {
         "repo": "bluetieroperations-create/blackwall-eliza-guardrail",
