@@ -2283,6 +2283,7 @@ export type ContinuationDialogueEntry = {
   createdAt?: number;
   content?: {
     text?: unknown;
+    interrupted?: boolean;
     type?: unknown;
     source?: unknown;
     actions?: unknown;
@@ -2507,7 +2508,10 @@ export function resolveExplicitContinuationRequestText(
     .filter((entry) => {
       if (!entry || typeof entry !== "object") return false;
       if (currentMessageId && entry.id === currentMessageId) return false;
-      return continuationEntryText(entry).length > 0;
+      return (
+        continuationEntryText(entry).length > 0 ||
+        (entry.entityId === agentId && entry.content?.interrupted === true)
+      );
     })
     .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
 
@@ -2519,6 +2523,7 @@ export function resolveExplicitContinuationRequestText(
     if (
       !lastAssistant ||
       lastAssistant.entityId !== agentId ||
+      lastAssistant.content?.interrupted === true ||
       isContinuationDialogueArtifact(lastAssistant)
     ) {
       return null;

@@ -1,22 +1,24 @@
 /** Stored quote links are read candidates, never permission or speaker proof.
  * Follow them only inside the freshly authorized, unchanged dialogue sources. */
-import { hashStableJson } from "@elizaos/core";
-import type { ContextSegmentEvent } from "@elizaos/core";
-import type { Content } from "@elizaos/core";
+import { type Content, type ContextEvent, hashStableJson } from "@elizaos/core";
 
 export type SourceReplyReferences = NonNullable<
   Content["sourceReplyReferences"]
 >;
 
 export function sourceReplyTextHash(text: string): string {
-  return hashStableJson(text.trim());
+  return hashStableJson(text);
 }
 
-export function sourceReplyEventHash(event: ContextSegmentEvent): string {
+export function sourceReplyEventHash(
+  event: Extract<ContextEvent, { type: "segment" }>,
+): string {
   return hashStableJson({
     id: event.id,
+    createdAt: event.createdAt,
     label: event.segment.label,
     content: event.segment.content,
+    originalTextSha256: event.segment.metadata?.originalTextSha256,
     roomId: event.segment.metadata?.roomId,
     entityId: event.segment.metadata?.entityId,
   });

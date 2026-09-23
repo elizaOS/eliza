@@ -82,7 +82,7 @@ export interface EvaluatorRuntime {
 }
 
 export interface EvaluatorEffects {
-	/** False disables clipboard output for hosts without a clipboard sink. Omission preserves standalone output consumers. */
+	/** False explicitly disables this effect; omission preserves standalone output. */
 	copyToClipboard?:
 		| false
 		| ((

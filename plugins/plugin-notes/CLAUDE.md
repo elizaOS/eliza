@@ -63,4 +63,8 @@ reject ambiguous, absent, conflicting or normalization-dependent edits without a
 write. Full replacement and legacy caller contracts remain supported. This is
 structured tool input, never a natural-language shortcut or a second write path.
 
-NOTES_PATCH exposes required structured target/changes fields for partial edits. It uses the existing NotesService validation and commit path; omitted fields remain unchanged. NOTES_UPDATE remains compatible with legacy flat arguments.
+Conversational NOTES_PATCH uses a typed target and field changes or one literal textEdit. Omitted fields stay unchanged. Ambiguous named titles require selection even if a planner substitutes an ID; resolve again under the service write barrier. Keep legacy NOTES_UPDATE content alternatives and their conflict validation.
+
+NOTES_LIST may combine title/topic lookup with an explicit createdAt/updatedAt dateRange. Bounds are offset-bearing instants, start-inclusive/end-exclusive. Date filters never authorize a write or change source ownership.
+
+NAMED_NOTES supplies complete current records only for titles explicitly named in the request, including every same-title match. Stage 1 admits it through the assistant's explicit provider list with the existing OWNER gate. Unrelated messages receive no named-note text; source failures do not authorize claims from historical contents.

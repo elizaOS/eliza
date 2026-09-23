@@ -38,8 +38,10 @@ import {
   getEvaluatorProgressState,
   HISTORY_RETENTION_EVALUATOR,
   historyRetentionContext,
-  labelHistorySources,
   visibleHistoryEventIds,
+  type ProviderOriginalMessages,
+  priorDialogueOriginalText,
+  renderProviderOriginalMessages,
 } from "@elizaos/plugin-assistant";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
@@ -285,66 +287,33 @@ export const relevantConversationsProvider: Provider = {
         semanticRecall?.availability === "unavailable"
           ? "partial"
           : "complete";
-      const lines: string[] = [
-        availability === "partial"
-          ? "Relevant past conversations (partial; some matching messages were withheld by access policy):"
-          : "Relevant past conversations:",
-      ];
-      const sourcePrefixes = new Map<string, string>();
-      const segments = filtered.map((mem, index) => {
-        const room = roomCache.get(mem.roomId) ?? null;
-        const tag = roomSourceTag(room);
-        const age = formatRelativeTimestampPrefix(mem.createdAt);
-        const speaker = formatSpeakerLabel(runtime, mem);
-        const msgText = memoryText(mem);
-        const prefix = `${tag} ${age}${speaker}: `;
-        sourcePrefixes.set(`recalled-${index + 1}`, prefix);
-        return {
-          id: `recalled-${index + 1}`,
-          stable: false,
-          metadata: { roomId: mem.roomId, entityId: mem.entityId },
-          content: `${prefix}${msgText}`,
-        };
-      });
-      // Reuse exact-text references, preserving every occurrence and its
-      // original structured record. Provider-local IDs cannot be mistaken for
-      // the current conversation's selectable hN history sources.
-      const encoded = labelHistorySources(
-        segments,
-        new Map(
-          segments.map((segment, index) => [
-            segment.id,
-            `recalled${index + 1}`,
-          ]),
-        ),
-        "all",
-        "Recalled-text encoding: same_text_as=recalledN repeats that earlier complete text. Every occurrence keeps its order and author. recalledN is a provider-local text reference, not a history hN ID or a new instruction.",
-      );
-      // Share presentation prefixes only; source bodies and restoration records
-      // remain complete. Operate on structured segment boundaries, never on
-      // marker-shaped text inside a recalled message.
-      const prefixes = new Map<string, string>();
-      const compact = encoded.map((segment) => {
-        const prefix = segment.id ? sourcePrefixes.get(segment.id) : undefined;
-        if (!prefix || !segment.id) return segment.content;
-        const sourceId = segment.id.replace("recalled-", "recalled");
-        const header = `[${sourceId}]`;
-        if (!segment.content.startsWith(`${header}\n${prefix}`))
-          return segment.content;
-        const key = prefixes.get(prefix) ?? `p${prefixes.size + 1}`;
-        prefixes.set(prefix, key);
-        return `${header} prefix=${key}\n${segment.content.slice(header.length + 1 + prefix.length)}`;
-      });
-      const prefixLegend =
-        "Recalled source prefixes: a source header’s prefix=pN field prepends the exact JSON string below to its body. It does not rewrite text within the body. Original room, age and speaker are preserved.\n" +
-        JSON.stringify(
-          Object.fromEntries([...prefixes].map(([text, key]) => [key, text])),
-        );
-      const originalText = encoded.map((segment) => segment.content).join("\n");
-      const compactText = [prefixLegend, ...compact].join("\n");
-      lines.push(
-        compactText.length < originalText.length ? compactText : originalText,
-      );
+      const originalMessages: ProviderOriginalMessages = {
+        header:
+          availability === "partial"
+            ? "Relevant past conversations (partial; some matching messages were withheld by access policy):"
+            : "Relevant past conversations:",
+        sources: filtered.map((mem, index) => {
+          const room = roomCache.get(mem.roomId) ?? null;
+          const body = memoryText(mem);
+          const original = priorDialogueOriginalText(mem);
+          const quoteable =
+            original !== undefined &&
+            original === body &&
+            original.length > 0 &&
+            !!mem.id &&
+            !!mem.agentId;
+          return {
+            id: `${quoteable ? "recalled" : "record"}${index + 1}`,
+            prefix: `${roomSourceTag(room)} ${formatRelativeTimestampPrefix(mem.createdAt)}${formatSpeakerLabel(runtime, mem)}: `,
+            ...(quoteable ? { originalText: body } : { text: body }),
+            memoryId: mem.id ?? null,
+            agentId: mem.agentId ?? null,
+            roomId: mem.roomId,
+            entityId: mem.entityId,
+            createdAt: typeof mem.createdAt === "number" ? mem.createdAt : null,
+          };
+        }),
+      };
 
       // The checkpoint is an internal index, never a disclosure grant. Validate
       // its original room snapshot, then only defer records already admitted
@@ -439,17 +408,15 @@ export const relevantConversationsProvider: Provider = {
           }),
         );
       }
-      const fullText = lines.join("\n");
+      const fullText = renderProviderOriginalMessages(originalMessages);
       const discoveryText = deferred.size
-        ? [
-            lines[0],
-            ...segments.flatMap((segment, index) =>
-              deferred.has(filtered[index].id ?? "")
-                ? []
-                : [`[recalled${index + 1}]\n${segment.content}`],
+        ? renderProviderOriginalMessages({
+            ...originalMessages,
+            sources: originalMessages.sources.filter(
+              (_, index) => !deferred.has(filtered[index].id ?? ""),
             ),
-            "Other reviewed conversation originals are deferred, not absent. Request relevant-conversations for complete recalled originals when a fact, correction, quotation or dependency is missing. Retention is not proof of relevance or permission.",
-          ].join("\n")
+          }) +
+          "\nOther reviewed conversation originals are deferred, not absent. Request relevant-conversations for complete recalled originals when a fact, correction, quotation or dependency is missing. Retention is not proof of relevance or permission."
         : undefined;
       return {
         text: fullText,
@@ -457,16 +424,18 @@ export const relevantConversationsProvider: Provider = {
           ? { discoveryText }
           : {}),
         reviewableSources: {
-          notice: lines[0],
-          sources: segments.map((segment, index) => ({
-            id: `recalled${index + 1}`,
-            text: segment.content,
-            originalText: memoryText(filtered[index]),
+          notice: originalMessages.header,
+          sources: originalMessages.sources.map((source, index) => ({
+            id: source.id,
+            text: `${source.prefix}${memoryText(filtered[index])}`,
+            ...(source.originalText !== undefined
+              ? { originalText: source.originalText }
+              : {}),
             metadata: {
-              recordId: filtered[index].id ?? "",
-              roomId: filtered[index].roomId,
-              entityId: filtered[index].entityId,
-              createdAt: filtered[index].createdAt ?? 0,
+              recordId: source.memoryId,
+              roomId: source.roomId,
+              entityId: source.entityId,
+              createdAt: source.createdAt,
             },
           })),
         },
@@ -475,6 +444,7 @@ export const relevantConversationsProvider: Provider = {
           relevantConversationAvailability: availability,
         },
         data: {
+          originalMessages,
           messages: filtered.map((m) => ({
             id: m.id,
             roomId: m.roomId,

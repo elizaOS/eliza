@@ -1,5 +1,7 @@
 import type { MessageReplyRecoveryContext } from "@elizaos/core";
 import type { PlannedReplyClaimKind } from "./egress-policy.ts";
+import { getSourceReplyBinding } from "./source-reply.ts";
+import { readSourceReplyReferences } from "./source-reply-references.ts";
 /** Wraps visible message callbacks with shared voice rendering, duplicate-delivery suppression, and egress policy. */
 
 import { resolveCallbackActionName } from "./action-identifiers.js";
@@ -24,9 +26,11 @@ import {
   isObjectRecord as isRecord,
   ModelType,
   parseBooleanFromText,
+  parseInteractionBlocks,
   reportOutboundEnvelopeBlock,
   runWithSuppressedModelStream,
   sanitizeOutboundText,
+  sanitizeOutboundTextWithLiterals,
   stripReasoningBlocks,
 } from "@elizaos/core";
 import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
@@ -71,9 +75,15 @@ export function hasIntermediateCallbackPayload(content: Content): boolean {
   });
 }
 
-export function withoutIntermediateVisibleText(
+export function filterIntermediateCallbackContent(
   content: Content,
 ): Content | null {
+  // Controls require their explanatory question; ordinary narration waits for final publication.
+  if (content.interactions?.length) return content;
+  if (typeof content.text === "string") {
+    const { blocks } = parseInteractionBlocks(content.text);
+    if (blocks.length > 0) return { ...content, interactions: blocks };
+  }
   const filtered = { ...content };
   delete filtered.text;
   return hasIntermediateCallbackPayload(filtered) ? filtered : null;
@@ -242,9 +252,19 @@ export function wrapSingleTurnVisibleCallback(
     // envelope guard then fail-closed blocks any security-envelope echo the
     // model produced, replacing it with the honest leak notice.
     if (typeof response?.text === "string" && response.text.length > 0) {
+      const sourceReply = getSourceReplyBinding(response, {
+        agentId: runtime.agentId,
+        roomId: message.roomId,
+        messageId: message.id ?? "",
+      });
       const guarded = guardOutboundEnvelopeText(
         fullRuntime,
-        sanitizeOutboundText(response.text),
+        sourceReply
+          ? sanitizeOutboundTextWithLiterals(
+              response.text,
+              sourceReply.literalSpans,
+            ).text
+          : sanitizeOutboundText(response.text),
         "visible-callback",
       );
       if (guarded !== response.text) {
@@ -305,6 +325,15 @@ export function wrapSingleTurnVisibleCallback(
             .filter((token) => token.length > 0),
         ),
       );
+    }
+    if (response.sourceReplyReferences) {
+      response = {
+        ...response,
+        sourceReplyReferences: readSourceReplyReferences(
+          response.sourceReplyReferences,
+          response.text ?? "",
+        ),
+      };
     }
     const delivered = await callback(response, actionName);
     if (rawUnsanitizedText) {
@@ -395,6 +424,7 @@ export function shouldRewriteActionCallback(
   // The settlement boundary marks only a byte-exact canonical action reply.
   // Re-voicing it would violate verifiedUserFacing's do-not-paraphrase contract.
   if (response.agentVoiced === true) return false;
+  if (response.interactions?.length) return false;
   if (getEffectDeliveryBinding(response)) {
     return false;
   }

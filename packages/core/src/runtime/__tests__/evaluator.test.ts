@@ -22,36 +22,85 @@ import {
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 describe("v5 evaluator skeleton", () => {
-	it("accepts a completion without duplicated evidence prose and preserves legacy thoughts", () => {
-		const envelope = {
-			success: true,
-			decision: "FINISH",
-			messageToUser: "Read exactly: Mira’s notebook.",
-		};
-		expect(parseEvaluatorOutput(JSON.stringify(envelope))).toMatchObject({
-			...envelope,
-			thought: "",
-		});
-		expect(
-			parseEvaluatorOutput(
-				JSON.stringify({ ...envelope, thought: "Legacy evidence check." }),
-			),
-		).toMatchObject({ thought: "Legacy evidence check." });
-		expect(
-			parseEvaluatorOutput(JSON.stringify({ ...envelope, thought: 42 }))
-				.protocolFailure,
-		).toBe(true);
-		for (const key of ["success", "decision"]) {
-			const invalid = { ...envelope } as Record<string, unknown>;
-			delete invalid[key];
+	it.each([
+		["internal required", false, false, "internal", true, undefined, true],
+		["internal optional", false, false, "internal", false, undefined, false],
+		["visible result", false, false, "visible", true, "Already shown", false],
+		["terminal reply", false, true, "internal", true, undefined, false],
+		["coding", true, false, "internal", true, undefined, false],
+	] as const)(
+		"requires reply field only for unpublished model-owned outcomes: %s",
+		async (_label, codingMode, terminalOnly, transcriptVisibility, modelReplyRequired, userFacingText, required) => {
+			const useModel = vi.fn(async () =>
+				JSON.stringify({
+					thought: "More work is needed.",
+					success: false,
+					decision: "CONTINUE",
+					messageToUser: "",
+					replyEffectStatus: "none",
+				}),
+			);
+			const result = await runEvaluator({
+				runtime: { useModel },
+				context: { id: "reply-contract", events: [] },
+				trajectory: {
+					context: { id: "reply-contract" },
+					codingMode,
+					steps: [
+						{
+							iteration: 1,
+							terminalOnly,
+							result: {
+								success: true,
+								transcriptVisibility,
+								modelReplyRequired,
+								userFacingText,
+							},
+						},
+					],
+					archivedSteps: [],
+					plannedQueue: [],
+					evaluatorOutputs: [],
+				},
+			});
 			expect(
-				parseEvaluatorOutput(JSON.stringify(invalid)).protocolFailure,
+				useModel.mock.calls[0][1].responseSchema.required.includes(
+					"messageToUser",
+				),
+			).toBe(required);
+			expect(result.messageToUser).toBeUndefined();
+			expect(result.decision).toBe("CONTINUE");
+			expect(evaluatorSchema.required).not.toContain("messageToUser");
+		},
+	);
+
+	it("allows an empty required reply field while requesting context", () => {
+		const result = parseEvaluatorOutput(
+			JSON.stringify({
+				thought: "Read the original before replying.",
+				success: false,
+				decision: "CONTINUE",
+				contextRequest: "history",
+				messageToUser: "",
+			}),
+		);
+		expect(result.raw?.contextRequest).toBe("history");
+		expect(result.protocolFailure).not.toBe(true);
+		expect(result.messageToUser).toBeUndefined();
+		for (const messageToUser of ["Working on it", " ", null]) {
+			expect(
+				parseEvaluatorOutput(
+					JSON.stringify({
+						thought: "Read first.",
+						success: false,
+						decision: "CONTINUE",
+						contextRequest: "history",
+						messageToUser,
+					}),
+				).protocolFailure,
 			).toBe(true);
 		}
-		expect(evaluatorSchema.properties).not.toHaveProperty("thought");
-		expect(evaluatorSchema.required).toEqual(["success", "decision"]);
 	});
-
 	it.each(["disabled", "callback", "standalone"] as const)(
 		"matches clipboard schema and prompt to the host: %s",
 		async (host) => {

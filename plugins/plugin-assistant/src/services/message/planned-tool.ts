@@ -21,6 +21,7 @@ import {
   actionGateFailure,
   buildPlannerToolsFromTieredActions,
   CORE_PLANNER_TERMINALS,
+  completionContextSources,
   composeToolDiagnosticRedactor,
   type ExecutePlannedToolCallContext,
   type ExecutePlannedToolCallOptions,
@@ -35,6 +36,7 @@ import {
   projectToolDiagnosticArgs,
   promotedSubactionParent,
   resolveUserFacingEffectReceipts,
+  selectCompletionContext,
   shouldSuppressActionResultClipboard,
   toWellFormedUnicode,
 } from "@elizaos/core";
@@ -245,7 +247,7 @@ export async function executeV5PlannedToolCall(
   const action = executionActions.find(
     (candidate) => candidate.name === toolCall.name,
   );
-  const executorCtx =
+  const routedExecutorCtx =
     action && args.activateActionContexts !== false
       ? {
           ...args.executorCtx,
@@ -255,6 +257,27 @@ export async function executeV5PlannedToolCall(
           ),
         }
       : args.executorCtx;
+  // Reuse the validated source selection for domain extraction without changing
+  // cached provider state. A fallback explicitly clears any earlier selection.
+  const selectedConversation = selectCompletionContext(args.plannerContext);
+  const executorCtx = {
+    ...routedExecutorCtx,
+    state: routedExecutorCtx.state
+      ? {
+          ...routedExecutorCtx.state,
+          values: {
+            ...routedExecutorCtx.state.values,
+            selectedActionConversation: selectedConversation.applied
+              ? JSON.stringify(
+                  completionContextSources(
+                    selectedConversation.context,
+                  ).sources.map(({ event }) => event),
+                )
+              : null,
+          },
+        }
+      : undefined,
+  };
   if (
     action &&
     actionHasSubActions(action) &&

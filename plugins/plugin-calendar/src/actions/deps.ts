@@ -5,6 +5,7 @@
  * through this typed dependency object instead of importing LifeOps internals.
  */
 import type {
+  GenerateTextParams,
   GroundedActionReply,
   IAgentRuntime,
   Memory,
@@ -31,6 +32,8 @@ export interface CalendarModelCallArgs {
   failureMessage: string;
   source: string;
   purpose?: string;
+  temperature?: number;
+  responseSchema?: GenerateTextParams["responseSchema"];
 }
 
 export interface CalendarJsonModelResult<

@@ -299,6 +299,8 @@ export function routeMessageHandlerOutput(
      * stage-1 output alone cannot justify. Optional for compatibility —
      * absent, the request-shape promotions simply do not run. */
     messageText?: string;
+    /** Authenticated source replies supply only newly authored prose here. */
+    replyTextForInference?: string;
   },
 ): MessageHandlerRoute {
   const processMessage = output.processMessage;
@@ -359,11 +361,13 @@ export function routeMessageHandlerOutput(
         String(name).trim().toUpperCase(),
       ),
     );
+  const assertedReply =
+    options?.replyTextForInference ?? getMessageHandlerReply(output);
   const isExplicitReminderAsk =
     EXPLICIT_REMINDER_REQUEST_RE.test(messageTextForRouting) &&
     (hasReminderPlanningVote ||
       (allowTextOnlyFallback &&
-        CAPABILITY_DENIAL_REPLY_RE.test(getMessageHandlerReply(output))));
+        CAPABILITY_DENIAL_REPLY_RE.test(assertedReply)));
   const isExplicitTaskStatusAsk =
     allowTextOnlyFallback &&
     EXPLICIT_TASK_STATUS_REQUEST_RE.test(messageTextForRouting);
@@ -455,7 +459,7 @@ export function routeMessageHandlerOutput(
     // ships from ground truth instead of from memory.
     if (
       (isExplicitMediaAsk || isExplicitReminderAsk) &&
-      CAPABILITY_DENIAL_REPLY_RE.test(reply)
+      CAPABILITY_DENIAL_REPLY_RE.test(assertedReply)
     ) {
       seedMediaCandidate();
       return {
@@ -470,7 +474,10 @@ export function routeMessageHandlerOutput(
     // denials in room history without ever reading the store. Promote so
     // the planner consults TASKS — a real absence then ships from the
     // store's answer instead of from memory.
-    if (isExplicitTaskStatusAsk && TASK_STATE_CLAIM_REPLY_RE.test(reply)) {
+    if (
+      isExplicitTaskStatusAsk &&
+      TASK_STATE_CLAIM_REPLY_RE.test(assertedReply)
+    ) {
       seedMediaCandidate();
       return {
         type: "planning_needed",
@@ -478,9 +485,8 @@ export function routeMessageHandlerOutput(
         contexts: ["tasks"],
       };
     }
-    // Use the same whole-reply guard as Stage-1 evaluation. A progress
-    // opener alone cannot reopen a substantive answer or clarification.
-    if (replyClaimsInProgressWork(reply)) {
+    // Judge the whole model-authored reply; protected source quotations are data.
+    if (replyClaimsInProgressWork(assertedReply)) {
       return {
         type: "planning_needed",
         output,

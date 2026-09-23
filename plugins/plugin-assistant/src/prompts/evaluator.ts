@@ -45,10 +45,11 @@ ${hasQueuedCalls ? "- NEXT_RECOMMENDED when the next queued tool remains grounde
 - FINISH success=false after a failed step => plainly explain the attempt and failure from the tool result; no file paths, internal ids or raw logs. Do not invent unreported authentication/settings failures.
 - no raw transcripts/banners/logs unless user asked raw output
 ${clipboardAvailable ? "- copyToClipboard optional; requires title + content\n" : ""}
+- thought is internal: identify confirmed outcomes and requested outcomes still missing before choosing the decision.
 
 return:
 One JSON object only. No markdown/prose/XML/legacy/extra objects.
-Fields in order: success boolean; decision "FINISH"|${hasQueuedCalls ? '"NEXT_RECOMMENDED"|' : ""}"CONTINUE". Use decision, not route. Any requested outcome still pending with an available tool means ${hasQueuedCalls ? "CONTINUE or NEXT_RECOMMENDED" : "CONTINUE"}, not FINISH.
+Fields in order: thought string; success boolean; decision "FINISH"|${hasQueuedCalls ? '"NEXT_RECOMMENDED"|' : ""}"CONTINUE". Use decision, not route. Any requested outcome still pending with an available tool means ${hasQueuedCalls ? "CONTINUE or NEXT_RECOMMENDED" : "CONTINUE"}, not FINISH.
 
 context_object:
 {{contextObject}}
@@ -63,6 +64,11 @@ export const evaluatorSchema: JSONSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
+    thought: {
+      type: "string",
+      description:
+        "Brief evidence check: what is confirmed and what requested outcome, if any, remains. Write this before deciding.",
+    },
     success: {
       type: "boolean",
       description:
@@ -106,5 +112,5 @@ export const evaluatorSchema: JSONSchema = {
     },
     recommendedToolCallId: { type: "string" },
   },
-  required: ["success", "decision"],
+  required: ["thought", "success", "decision"],
 };

@@ -51,7 +51,8 @@ export function providerReviewSources(context: ContextObject) {
 				!source.metadata ||
 				!(
 					provider.text.includes(`[${source.id}]`) ||
-					provider.text.includes(`[${source.id}; same_text_as=`)
+					provider.text.includes(`[${source.id}; same_text_as=`) ||
+					provider.text.includes(`${source.id}: ${source.text}`)
 				)
 			)
 				return undefined;

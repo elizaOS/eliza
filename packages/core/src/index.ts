@@ -205,7 +205,11 @@ export * from "./security/basic-email";
 // onward (deterministic follow-up sends must never embed the security banner
 // in a child task — live 2026-08-21).
 export { extractWrappedExternalContent } from "./security/external-content";
-export { sanitizeOutboundText } from "./security/outbound-sanitize.ts";
+export {
+	type OutboundLiteralSpan,
+	sanitizeOutboundText,
+	sanitizeOutboundTextWithLiterals,
+} from "./security/outbound-sanitize.ts";
 export {
 	isSensitiveKeyName,
 	redactLogArgs,

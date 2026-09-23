@@ -204,3 +204,5 @@ normal draft classifier. Expired confirmations invalidate the draft and return
 awaitingUserInput so the planner can explain the required restatement directly.
 
 Calendar feed and event-search promoted tools use operation-specific details schemas authored in the calendar leaf module. Preserve all consumed range, timezone, calendar/connector selection, refresh and search-query aliases, plus original optionality and owner gates. Parent, trip and mutation schemas retain their full contracts; never narrow them by applying a read-only schema globally.
+
+Calendar promoted write schemas keep create fields separate from existing-event target selectors. Forward the complete model request contract, including responseSchema and temperature, through the host. Availability intervals accept a start plus duration or end; mismatched bounds fail before reads. Slot proposals can resolve an existing event to retain its duration, use explicit local civil bounds in the requested timezone, and return choices without mutation. Read receipts bind the returned snapshot, including changed observations within the same message.

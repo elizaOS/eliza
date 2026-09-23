@@ -5,11 +5,17 @@
  * the audit-memory trail. Admin-only paths run on an owner-seeded runtime so
  * hasRoleAccess grants access.
  */
-import { beforeEach, describe, expect, test } from "vitest";
-import type {
-  ActionResult,
-  HandlerOptions,
-} from "../../../../../../../packages/core/src/types/index.ts";
+
+import type { ActionResult, HandlerOptions } from "@elizaos/core";
+import {
+  promoteSubactionsToActions,
+  runWithActionRoutingContext,
+  validateToolArgs,
+  withActiveRoutingContexts,
+} from "@elizaos/core";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { runEvaluator } from "../../../../runtime/evaluator.ts";
+import { actionResultToPlannerToolResult } from "../../../../runtime/planner-loop.ts";
 import { personalityAction } from "../actions/personality.ts";
 import { GLOBAL_PERSONALITY_SCOPE, PERSONALITY_AUDIT_TABLE } from "../types.ts";
 import {
@@ -20,6 +26,27 @@ import {
 } from "./test-helpers.ts";
 
 describe("personalityAction — routing ownership", () => {
+  test("admits personal-rule operations in the memory context", async () => {
+    const fake = makeFakeRuntime();
+    await initStore(fake);
+    const message = makeMessage({
+      entityId: TEST_SENDER,
+      agentId: fake.runtime.agentId,
+      text: "Remove my saved interaction rule",
+    });
+    const state = withActiveRoutingContexts(
+      { text: "", values: {}, data: {} },
+      message,
+      ["memory"],
+    );
+    const valid = await personalityAction.validate(
+      fake.runtime,
+      message,
+      state,
+    );
+    expect(valid).toBe(true);
+  });
+
   test("does not claim the current-turn STOP_TALKING simile owned by IGNORE", () => {
     expect(personalityAction.similes).not.toContain("STOP_TALKING");
   });
@@ -201,6 +228,35 @@ describe("personalityAction — subactions write structured state", () => {
       "00000000-0000-4000-8000-0000000000ff" as never,
     );
     expect(slot.custom_directives).toContain("no emojis");
+  });
+
+  test("adding a personal directive without scope preserves existing preferences", async () => {
+    await run(fake, "be concise", "set_trait", {
+      scope: "user",
+      trait: "verbosity",
+      value: "terse",
+    });
+    await run(fake, "no emojis", "add_directive", {
+      scope: "user",
+      directive: "no emojis",
+    });
+    const globalBefore = fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE);
+    const { result } = await run(
+      fake,
+      "use my name naturally",
+      "add_directive",
+      {
+        directive: "Use my name when natural, not in every reply.",
+      },
+    );
+    expect(result.success).toBe(true);
+    const slot = fake.store.getSlot(TEST_SENDER);
+    expect(slot.custom_directives).toEqual([
+      "no emojis",
+      "Use my name when natural, not in every reply.",
+    ]);
+    expect(slot.verbosity).toBe("terse");
+    expect(fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE)).toEqual(globalBefore);
   });
 
   test("clear_directives wipes the user list", async () => {
@@ -503,3 +559,192 @@ describe("personalityAction — audit trail", () => {
     expect(meta.personalityScope).toBe("user");
   });
 });
+
+describe("individual directive removal", () => {
+  test("removes an exact legacy personal directive without clearing unrelated rules", async () => {
+    const fake = makeFakeRuntime({ owner: TEST_SENDER });
+    await initStore(fake);
+    const directive = "When writing a note, include ORCHID OK.";
+    const otherUser = "00000000-0000-4000-8000-0000000000aa" as never;
+    await fake.store.setSlot({
+      ...fake.store.getSlot(TEST_SENDER),
+      custom_directives: [directive, "keep this rule"],
+    });
+    await fake.store.setSlot({
+      ...fake.store.getSlot(otherUser),
+      custom_directives: [directive],
+    });
+    await fake.store.setSlot({
+      ...fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE),
+      custom_directives: ["Global rule"],
+    });
+    const otherBefore = structuredClone(fake.store.getSlot(otherUser));
+    const globalBefore = structuredClone(
+      fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE),
+    );
+    const { result } = await run(
+      fake,
+      "Remove only the saved ORCHID OK note-writing directive from my personal preferences. Keep all my other preferences.",
+      "remove_directive",
+      { directive },
+    );
+    expect(fake.store.getSlot(otherUser)).toEqual(otherBefore);
+    expect(fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE)).toEqual(globalBefore);
+    expect(result.success).toBe(true);
+    expect(fake.store.getSlot(TEST_SENDER).custom_directives).toEqual([
+      "keep this rule",
+    ]);
+  });
+  test("does not remove a paraphrase or a global directive", async () => {
+    const fake = makeFakeRuntime({ owner: TEST_SENDER });
+    await initStore(fake);
+    await fake.store.setSlot({
+      ...fake.store.getSlot(TEST_SENDER),
+      custom_directives: ["exact rule"],
+    });
+    for (const args of [
+      { scope: "user", directive: "similar rule" },
+      { scope: "global", directive: "exact rule" },
+    ]) {
+      const { result } = await run(fake, "cancel it", "remove_directive", args);
+      expect(result.success).toBe(false);
+    }
+    expect(fake.store.getSlot(TEST_SENDER).custom_directives).toEqual([
+      "exact rule",
+    ]);
+  });
+});
+
+describe("personal directive completion receipts", () => {
+  test("keeps a planner-owned preference read internal for the complete request", async () => {
+    const fake = makeFakeRuntime({ owner: TEST_SENDER });
+    await initStore(fake);
+    await fake.store.setSlot({
+      ...fake.store.getSlot(TEST_SENDER),
+      custom_directives: ["keep this rule", "QA rule"],
+    });
+    const message = makeMessage({
+      entityId: TEST_SENDER,
+      agentId: fake.runtime.agentId,
+      text: "Remove only the QA rule",
+    });
+    const { cb, calls } = captureCallback();
+    const result = await runWithActionRoutingContext(
+      {
+        actionName: "PERSONALITY",
+        messageId: message.id,
+        replyOwner: "planner",
+        modelClass: undefined,
+      },
+      () =>
+        personalityAction.handler(
+          fake.runtime,
+          message,
+          undefined,
+          { parameters: { action: "show_state", scope: "user" } },
+          cb,
+        ),
+    );
+    expect(result).toMatchObject({
+      success: true,
+      transcriptVisibility: "internal",
+      modelReplyRequired: true,
+      turnComplete: false,
+      data: { slot: { custom_directives: ["keep this rule", "QA rule"] } },
+    });
+    expect(result).not.toHaveProperty("userFacingText");
+    expect(calls).toHaveLength(0);
+    expect(fake.store.getSlot(TEST_SENDER).custom_directives).toEqual([
+      "keep this rule",
+      "QA rule",
+    ]);
+  });
+
+  test.each(["add_directive", "remove_directive"])(
+    "can finish %s from the durable result in one evaluation",
+    async (op) => {
+      const fake = makeFakeRuntime({ owner: TEST_SENDER });
+      await initStore(fake);
+      await fake.store.setSlot({
+        ...fake.store.getSlot(TEST_SENDER),
+        custom_directives:
+          op === "remove_directive"
+            ? ["QA rule", "keep this rule"]
+            : ["keep this rule"],
+      });
+      const message = makeMessage({
+        entityId: TEST_SENDER,
+        agentId: fake.runtime.agentId,
+        text: "Change only the QA rule for me.",
+      });
+      const { cb, calls } = captureCallback();
+      const result = await runWithActionRoutingContext(
+        {
+          actionName: "PERSONALITY",
+          messageId: message.id,
+          replyOwner: "planner",
+          modelClass: undefined,
+        },
+        async () =>
+          (await personalityAction.handler(
+            fake.runtime,
+            message,
+            undefined,
+            { parameters: { action: op, directive: "QA rule" } },
+            cb,
+          )) as ActionResult,
+      );
+      const useModel = vi.fn(async () =>
+        JSON.stringify({
+          success: true,
+          decision: "FINISH",
+          thought: "The recorded personal directive change is complete.",
+          messageToUser:
+            op === "add_directive"
+              ? "Added that reply rule."
+              : "Removed that reply rule.",
+          effectReceiptIds:
+            result.effectReceipts?.map((receipt) => receipt.receiptId) ?? [],
+        }),
+      );
+      const completion = await runEvaluator({
+        runtime: { useModel },
+        context: { id: "personality-proof", events: [] },
+        trajectory: {
+          context: { id: "personality-proof", events: [] },
+          codingMode: false,
+          steps: [
+            {
+              iteration: 1,
+              toolCall: { name: "PERSONALITY", params: { action: op } },
+              result: actionResultToPlannerToolResult(result),
+            },
+          ],
+          archivedSteps: [],
+          plannedQueue: [],
+          evaluatorOutputs: [],
+        },
+      });
+      expect(completion.decision, JSON.stringify(completion)).toBe("FINISH");
+      expect(useModel).toHaveBeenCalledTimes(1);
+      expect(calls).toHaveLength(0);
+      expect(fake.store.getSlot(TEST_SENDER).custom_directives).toEqual(
+        op === "add_directive"
+          ? ["keep this rule", "QA rule"]
+          : ["keep this rule"],
+      );
+    },
+  );
+});
+
+test.each(["ADD_DIRECTIVE", "REMOVE_DIRECTIVE"])(
+  "requires directive text on promoted PERSONALITY_%s",
+  (suffix) => {
+    const child = promoteSubactionsToActions(personalityAction).find(
+      (action) => action.name === `PERSONALITY_${suffix}`,
+    );
+    if (!child) throw new Error("Missing directive operation");
+    expect(validateToolArgs(child, {}).valid).toBe(false);
+    expect(validateToolArgs(child, { directive: "QA rule" }).valid).toBe(true);
+  },
+);

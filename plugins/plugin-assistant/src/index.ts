@@ -145,6 +145,10 @@ export {
 export * from "./runtime/model-pricing";
 export { FAILED_TOOL_FALLBACK_MESSAGE } from "./runtime/planner-loop.ts";
 export { renderActionResultsForModel } from "./runtime/planner-rendering.ts";
+export {
+  type ProviderOriginalMessages,
+  renderProviderOriginalMessages,
+} from "./runtime/provider-originals.ts";
 export * from "./runtime/sub-planner.ts";
 export * from "./runtime/trajectory-recorder";
 export * from "./services/approval/index.ts";
@@ -153,6 +157,7 @@ export * from "./services/evaluator-priorities.ts";
 export { canonicalEvaluatorMessages } from "./services/evaluator-transcript.ts";
 export * from "./services/global-pause/index.ts";
 export * from "./services/handoff/index.ts";
+export { priorDialogueOriginalText } from "./services/message/dialogue-context.ts";
 export {
   CODING_DELEGATION_ACTION_TAGS,
   findCodingDelegationActionName,

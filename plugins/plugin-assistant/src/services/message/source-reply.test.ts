@@ -1,22 +1,35 @@
-/** Exercise source reply reconstruction and invalid-source rejection with deterministic contexts. */
+/** Validates native original-message rendering, binding and routing boundaries. */
+import {
+  type ContextObject,
+  completionContextSources,
+  type Memory,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { completionContextSources } from "@elizaos/core";
-import type { ContextObject } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
+import { renderProviderOriginalMessages } from "../../runtime/provider-originals.ts";
 import type { HistoryDiscovery } from "./history-discovery";
-import { createSourceReplySnapshot, resolveSourceReply } from "./source-reply";
+import { replyClaimsCompletedSideEffect } from "./side-effect-claims.ts";
+import {
+  bindSourceReplyContent,
+  createSourceReplySnapshot,
+  getSourceReplyBinding,
+  resolveSourceReply,
+  type SourceReplyRendering,
+  sourceReplyAssertionText,
+} from "./source-reply";
+import { sourceReplyTextHash } from "./source-reply-references.ts";
 import {
   getStage1RoutingRepair,
   getStage1UnusableDecisionRepair,
 } from "./stage1-generation";
 
 function fixture() {
+  const sourceText = "  Mira’s bag is orange.\nKeep  two spaces.\n";
   const memory = {
     id: "source",
     roomId: "room",
     entityId: "user",
     agentId: "agent",
-    content: { text: "  Mira’s bag is orange.\nKeep  two spaces.\n" },
+    content: { text: sourceText },
   } as Memory;
   const context: ContextObject = {
     id: "turn",
@@ -32,7 +45,12 @@ function fixture() {
           label: "prior_message:user",
           content: `Nubs: ${memory.content.text?.trim()}`,
           stable: false,
-          metadata: { roomId: "room", entityId: "user", speakerName: "Nubs" },
+          metadata: {
+            roomId: "room",
+            entityId: "user",
+            speakerName: "Nubs",
+            originalTextSha256: sourceReplyTextHash(sourceText),
+          },
         },
       },
     ],
@@ -75,11 +93,154 @@ function fixture() {
   return { memory, context, projection, snapshot, raw };
 }
 describe("source-backed native replies", () => {
+  it("separates typed source blocks without weakening mixed-claim checks", () => {
+    const f = fixture();
+    f.memory.content.text = "the note.";
+    const event = f.context.events[0];
+    if (event.type !== "segment" || !("segment" in event))
+      throw Error("source expected");
+    event.segment.content = "Nubs: the note.";
+    event.segment.metadata = {
+      ...event.segment.metadata,
+      originalTextSha256: sourceReplyTextHash("the note."),
+    };
+    f.projection.sourceSetId = completionContextSources(f.context).sourceSetId;
+    const snapshot = createSourceReplySnapshot(f.context, f.projection, [
+      f.memory,
+    ]);
+    if (!snapshot) throw Error("snapshot expected");
+    let rendering: SourceReplyRendering | undefined;
+    const result = resolveSourceReply(
+      f.context,
+      snapshot,
+      {
+        ...f.raw,
+        completionContext: {
+          ...f.raw.completionContext,
+          sourceSetId: f.projection.sourceSetId,
+        },
+        replyText: [
+          { kind: "text", value: "Created " },
+          { kind: "source", value: "h1" },
+        ],
+      },
+      (value) => {
+        rendering = value;
+      },
+    );
+    expect(result?.replyText).toBe("Created \n\nthe note.");
+    if (!rendering) throw Error("rendering expected");
+    expect(
+      replyClaimsCompletedSideEffect(sourceReplyAssertionText(rendering)),
+    ).toBe(true);
+  });
+
+  it("combines history and provider originals without storing a cross-room history link", () => {
+    const f = fixture();
+    const originalMessages = {
+      header: "Relevant past conversations:",
+      sources: [
+        {
+          id: "recalled1",
+          prefix: "[chat] Other author: ",
+          originalText: "Provider original",
+          memoryId: "other",
+          agentId: "agent",
+          roomId: "other-room",
+          entityId: "other-author",
+          createdAt: 1,
+        },
+      ],
+    };
+    f.context.events.push({
+      id: "provider:recall",
+      type: "provider",
+      name: "recall",
+      text: renderProviderOriginalMessages(originalMessages),
+      data: { originalMessages },
+    });
+    f.projection.sourceSetId = completionContextSources(f.context).sourceSetId;
+    const snapshot = createSourceReplySnapshot(f.context, f.projection, [
+      f.memory,
+    ]);
+    if (!snapshot) throw Error("snapshot missing");
+    let rendering: SourceReplyRendering | undefined;
+    const result = resolveSourceReply(
+      f.context,
+      snapshot,
+      {
+        ...f.raw,
+        completionContext: {
+          ...f.raw.completionContext,
+          sourceSetId: f.projection.sourceSetId,
+        },
+        replyText: [
+          { kind: "source", value: "h1" },
+          { kind: "text", value: "\n\n" },
+          { kind: "source", value: "recalled1" },
+        ],
+      },
+      (value) => {
+        rendering = value;
+      },
+    );
+    expect(result?.replyText).toBe(
+      `${f.memory.content.text}\n\nProvider original`,
+    );
+    expect(
+      rendering?.references?.sources.map((source) => source.eventId),
+    ).toEqual(["history:source"]);
+  });
+
+  it("exempts only one complete literal from newly authored claim checks", () => {
+    const f = fixture();
+    const render = (replyText: { kind: string; value: string }[]) => {
+      let rendering: SourceReplyRendering | undefined;
+      resolveSourceReply(
+        f.context,
+        f.snapshot,
+        { ...f.raw, replyText },
+        (value) => {
+          rendering = value;
+        },
+      );
+      if (!rendering) throw Error("missing rendering");
+      return rendering;
+    };
+    const single = render([{ kind: "source", value: "h1" }]);
+    expect(sourceReplyAssertionText(single)).toBe("");
+    const mixed = render([
+      { kind: "text", value: "Created " },
+      { kind: "source", value: "h1" },
+    ]);
+    expect(sourceReplyAssertionText(mixed)).toBe(mixed.text);
+    const combined = render([
+      { kind: "source", value: "h1" },
+      { kind: "source", value: "h1" },
+    ]);
+    expect(sourceReplyAssertionText(combined)).toBe(combined.text);
+    const content = bindSourceReplyContent(
+      { text: single.text },
+      single,
+      single.scope,
+    );
+    expect(getSourceReplyBinding(content, single.scope)).toBe(single);
+    expect(
+      getSourceReplyBinding(JSON.parse(JSON.stringify(content)), single.scope),
+    ).toBeUndefined();
+    expect(
+      getSourceReplyBinding(content, { ...single.scope, messageId: "another" }),
+    ).toBeUndefined();
+    expect(
+      getSourceReplyBinding({ ...content, text: "changed" }, single.scope),
+    ).toBeUndefined();
+  });
+
   it("preserves original bytes, raw model output and current routing guards", () => {
     const { memory, context, snapshot, raw } = fixture();
     const before = JSON.stringify({ context, raw });
     const r = resolveSourceReply(context, snapshot, raw);
-    expect(r?.replyText).toBe(`You said:\n\n\n${memory.content.text}\n\n`);
+    expect(r?.replyText).toBe(`You said:\n${memory.content.text}`);
     expect(JSON.stringify({ context, raw })).toBe(before);
     expect(getStage1UnusableDecisionRepair(r ?? null)).toBeUndefined();
     expect(
@@ -90,105 +251,6 @@ describe("source-backed native replies", () => {
       "later mutation",
     );
   });
-  it("renders a reviewed provider original without retyping or granting history identity", () => {
-    const f = fixture();
-    const originalText = "  Mira’s backpack is violet.\nKeep  spacing.\n";
-    f.context.events.push({
-      type: "provider",
-      id: "recall",
-      name: "relevant-conversations",
-      text: `[recalled1]\nOther room user: ${originalText}`,
-      reviewableSources: {
-        notice: "Authorized recall",
-        sources: [
-          {
-            id: "recalled1",
-            text: `Other room user: ${originalText}`,
-            originalText,
-            metadata: {
-              roomId: "other",
-              entityId: "user",
-              recordId: "original",
-            },
-          },
-        ],
-      },
-    });
-    const snapshot = createSourceReplySnapshot(f.context, f.projection, [
-      f.memory,
-    ]);
-    if (!snapshot) throw Error("missing snapshot");
-    const raw = {
-      ...f.raw,
-      providerReview: { complete: true, keep: ["recalled1"] },
-      replyText: [
-        { kind: "text", value: "Your correction:" },
-        { kind: "source", value: "recalled1" },
-      ],
-    };
-    expect(resolveSourceReply(f.context, snapshot, raw)?.replyText).toBe(
-      `Your correction:\n\n${originalText}\n\n`,
-    );
-    expect(snapshot.references.has("recalled1")).toBe(false);
-    for (const review of [
-      undefined,
-      { complete: false, keep: ["recalled1"] },
-      { complete: true, keep: [] },
-      { complete: true, keep: ["recalled1"], sourceSetId: "injected" },
-    ]) {
-      expect(() =>
-        resolveSourceReply(f.context, snapshot, {
-          ...raw,
-          providerReview: review,
-        }),
-      ).toThrow("Invalid source-backed reply");
-    }
-    const provider = f.context.events.at(-1);
-    if (provider?.type !== "provider" || !provider.reviewableSources)
-      throw Error();
-    provider.reviewableSources.sources[0].metadata.entityId =
-      "different-author";
-    expect(resolveSourceReply(f.context, snapshot, raw)).toBeUndefined();
-  });
-  it.each(["discovery", "unmatched", "missing", "history-alias"])(
-    "does not quote %s provider bodies",
-    (mode) => {
-      const f = fixture();
-      f.context.events.push({
-        type: "provider",
-        id: "recall",
-        name: "relevant-conversations",
-        text:
-          mode === "history-alias"
-            ? "[h99]\nUser: original"
-            : "[recalled1]\nUser: original",
-        ...(mode === "discovery" ? { discoveryText: "Deferred" } : {}),
-        reviewableSources: {
-          notice: "Authorized recall",
-          sources: [
-            {
-              id: mode === "history-alias" ? "h99" : "recalled1",
-              text: "User: original",
-              ...(mode !== "missing"
-                ? {
-                    originalText:
-                      mode === "unmatched" ? "unrelated" : "original",
-                  }
-                : {}),
-              metadata: { roomId: "other", entityId: "user" },
-            },
-          ],
-        },
-      });
-      const snapshot = createSourceReplySnapshot(f.context, f.projection, [
-        f.memory,
-      ]);
-      expect(
-        snapshot?.originals.has(mode === "history-alias" ? "h99" : "recalled1"),
-      ).toBe(false);
-    },
-  );
-
   it.each(["turn", "source", "speaker", "room"])(
     "rejects stale %s binding",
     (mode) => {
@@ -225,6 +287,24 @@ describe("source-backed native replies", () => {
       expect(() => resolveSourceReply(f.context, s, f.raw)).toThrow();
     },
   );
+  it("supports complete supplied history without a retention projection", () => {
+    const f = fixture();
+    const snapshot = createSourceReplySnapshot(
+      f.context,
+      { scope: f.projection.scope },
+      [f.memory],
+    );
+    if (!snapshot) throw Error("snapshot");
+    expect(resolveSourceReply(f.context, snapshot, f.raw)?.replyText).toContain(
+      f.memory.content.text,
+    );
+    expect(
+      resolveSourceReply(f.context, snapshot, {
+        ...f.raw,
+        replyText: "Ordinary h1 text",
+      })?.replyText,
+    ).toBe("Ordinary h1 text");
+  });
   it("keeps unavailable selections in history recovery", () => {
     const f = fixture();
     expect(
@@ -237,7 +317,6 @@ describe("source-backed native replies", () => {
   });
   it.each([
     null,
-    "old string",
     [{ kind: "source", value: "h99" }],
     [{ kind: "text", value: 1 }],
     [{ kind: "source", value: "h1", extra: true }],
@@ -267,12 +346,16 @@ describe("source-backed native replies", () => {
     const e = f.context.events[0];
     if (e.type !== "segment") throw Error();
     e.segment.content = f.memory.content.text;
+    e.segment.metadata = {
+      ...e.segment.metadata,
+      originalTextSha256: sourceReplyTextHash(f.memory.content.text),
+    };
     f.projection.sourceSetId = completionContextSources(f.context).sourceSetId;
     f.raw.completionContext.sourceSetId = f.projection.sourceSetId;
     const s = createSourceReplySnapshot(f.context, f.projection, [f.memory]);
     if (!s) throw Error();
     expect(resolveSourceReply(f.context, s, f.raw)?.replyText).toBe(
-      "You said:\n\n\nNubs: This prefix is part of my message.\n\n",
+      "You said:\nNubs: This prefix is part of my message.",
     );
   });
 });

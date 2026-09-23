@@ -30,6 +30,31 @@ import {
 export function getStage1RoutingRepair(
   parsed: Record<string, unknown> | null,
 ): string | undefined {
+  const visualDecision = parsed?.visualContinuation;
+  if (
+    parsed?.shouldRespond === "RESPOND" &&
+    visualDecision &&
+    typeof visualDecision === "object" &&
+    !Array.isArray(visualDecision)
+  ) {
+    const visual = visualDecision as Record<string, unknown>;
+    const navigationHint =
+      Array.isArray(parsed.candidateActionNames) &&
+      parsed.candidateActionNames.includes("VIEWS_SHOW");
+    if (
+      (visual.disposition === "none" && navigationHint) ||
+      (visual.disposition === "requested" &&
+        visual.navigationOnly === true &&
+        visual.singleViewOnly === false)
+    ) {
+      return [
+        "response_contract_repair:",
+        "Your structured navigation declarations conflict: VIEWS_SHOW names navigation while disposition=none denies it, or navigationOnly=true conflicts with singleViewOnly=false. Nothing has executed. Reconsider the complete current request and standing restrictions, then return consistent fields. Keep forbidden navigation forbidden; preserve every requested read/write and destination. Candidate hints are not permission.",
+        "previous_model_response:",
+        JSON.stringify(parsed),
+      ].join("\n");
+    }
+  }
   if (
     (parsed?.shouldRespond === "STOP" || parsed?.shouldRespond === "IGNORE") &&
     (parsed.replyEffectStatus === "pending" ||

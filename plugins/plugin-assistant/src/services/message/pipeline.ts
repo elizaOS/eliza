@@ -9,6 +9,12 @@ import {
 } from "@elizaos/core";
 import type { EvaluatorService } from "../evaluator";
 import { withHistoryReadEvidence } from "./history-discovery.js";
+import {
+  getSourceReplyRendering,
+  sourceReplyAssertionText,
+  sourceReplyScopeMatches,
+  transformSourceReplyProse,
+} from "./source-reply.ts";
 import { generateStage1Decision } from "./stage1-decision.ts";
 
 export { directCodingResponseHandlerResult } from "./stage1-decision.ts";
@@ -48,6 +54,7 @@ import {
   isProviderContextOverflowFailure,
   isTrajectoryRecordingEnabled,
   looksLikeRawFieldTranscript,
+  ModelType,
   promotedSubactionParent,
   type RecordedStage,
   readEnv,
@@ -115,7 +122,7 @@ import {
 } from "./addressing.js";
 import { createV5MessageContextObject } from "./context-assembly.js";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
-import { withoutIntermediateVisibleText } from "./delivery.js";
+import { filterIntermediateCallbackContent } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import {
   captureMessageReplyRecovery,
@@ -358,13 +365,14 @@ export async function runV5MessageRuntimeStage1(
       fieldRunResult,
       inferenceMessageText,
       parsedResponseHandlerReply,
-      sourceReplyReferences,
       messageHandlerEndedAt,
       providerDiscoveryEnabled,
       providerReview,
       loadedContextProviders,
       historyReadEvidence,
+      sourceReplyRendering,
       contextCatalogRead,
+      contextReadAcknowledgmentSent,
     } = await generateStage1Decision(
       args,
       {
@@ -730,8 +738,29 @@ export async function runV5MessageRuntimeStage1(
         "[message] Turn addressed to another participant — engagement gate ignores it",
       );
     }
+    const routingSourceReply = getSourceReplyRendering(sourceReplyRendering);
+    const sourceReplyForRouting =
+      routingSourceReply &&
+      routingSourceReply.prose.trim() ===
+        (messageHandler.plan.reply ?? "").trim() &&
+      !fieldRunResult?.preempt &&
+      !responseHandlerEvaluation.appliedPatches.some((patch) =>
+        patch.changed.some((change) => change.startsWith("reply:")),
+      ) &&
+      sourceReplyScopeMatches(routingSourceReply, {
+        agentId: args.runtime.agentId,
+        roomId: args.message.roomId,
+        messageId: args.message.id ?? "",
+      })
+        ? routingSourceReply
+        : undefined;
+    if (sourceReplyForRouting)
+      messageHandler.plan.reply = sourceReplyForRouting.text;
     const route = routeMessageHandlerOutput(messageHandler, {
       addressedToOtherParticipant,
+      replyTextForInference: sourceReplyForRouting
+        ? sourceReplyAssertionText(sourceReplyForRouting)
+        : undefined,
       candidateActionsClearedByEvaluators:
         responseHandlerEvaluation.candidateActionsClearedByEvaluators,
       messageText: getUserMessageText(args.message) ?? "",
@@ -774,6 +803,23 @@ export async function runV5MessageRuntimeStage1(
       // instead of a blank/garbled bubble, but keep a valid-but-terse answer
       // (e.g. "144" to a math question).
       let reply = route.reply;
+      let protectedReply = sourceReplyForRouting;
+      if (
+        protectedReply &&
+        sourceReplyScopeMatches(protectedReply, {
+          agentId: args.runtime.agentId,
+          roomId: args.message.roomId,
+          messageId: args.message.id ?? "",
+        }) &&
+        reply === protectedReply.text.trim()
+      ) {
+        protectedReply = transformSourceReplyProse(
+          protectedReply,
+          restorePiiInUserReplyText,
+        );
+        reply = protectedReply.text;
+      } else protectedReply = undefined;
+
       // Voice-gate provenance (#14873): `route.reply` is the Stage-1
       // RESPONSE_HANDLER model's own composed reply — already genuine agent
       // voice — so it must skip the last-mile re-voice pass. Only the
@@ -791,7 +837,7 @@ export async function runV5MessageRuntimeStage1(
       // diagnosing a transcript the user pasted) — are exempt: the detector
       // fires only when the skeleton IS the reply, so a legitimate diagnosis
       // is never rewritten down to its quoted replyText tail.
-      if (looksLikeRawFieldTranscript(reply)) {
+      if (looksLikeRawFieldTranscript(protectedReply?.prose ?? reply)) {
         const recovered = extractReplyTextFromTranscript(reply);
         args.runtime.logger?.warn?.(
           {
@@ -805,8 +851,10 @@ export async function runV5MessageRuntimeStage1(
         // recover a reply, blank it so the unusable-reply guard below owns
         // the failure path (already logged above).
         reply = recovered !== null ? recovered : "";
+        protectedReply = undefined;
       }
       if (
+        !protectedReply &&
         isUnusableStage1Reply(reply) &&
         !isTerseReplyWorthKeeping({
           reply,
@@ -819,11 +867,14 @@ export async function runV5MessageRuntimeStage1(
       const directReplyEgressDecision = evaluatePlannedReplyEgress({
         providers: args.state.data.providers,
         request: getUserMessageText(args.message),
-        reply,
+        reply: protectedReply
+          ? sourceReplyAssertionText(protectedReply)
+          : reply,
         actionResults: [],
         actions: args.runtime.actions,
       });
       if (directReplyEgressDecision.verdict === "reject") {
+        protectedReply = undefined;
         reply = (
           await resolvePlannedReplyEgress({
             providers: args.state.data.providers,
@@ -844,7 +895,7 @@ export async function runV5MessageRuntimeStage1(
           text: reply,
           thought: messageHandler.thought,
           agentVoiced: replyIsModelVoice,
-          sourceReplyReferences,
+          sourceReplyRendering: protectedReply,
         }),
       };
     }
@@ -879,7 +930,12 @@ export async function runV5MessageRuntimeStage1(
       messageHandler,
     )
       ? ""
-      : routedResponseHandlerReply || parsedResponseHandlerReply;
+      : routedResponseHandlerReply ||
+        parsedResponseHandlerReply ||
+        (args.onPlanningAcknowledgment &&
+        prePatchStageOneReplyEffectStatus === "pending"
+          ? (fieldRunResult?.parsed.replyText ?? "")
+          : "");
     // `replyEffectStatus: applied` is the model's prediction, not an effect
     // receipt. Keep it buffered until the planner either produces a verified
     // action result or returns the terminal failure; otherwise the client sees a
@@ -888,8 +944,15 @@ export async function runV5MessageRuntimeStage1(
       earlyReplyText = "";
     }
     const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
-    if (earlyReplyText.length > 0 && onResponseHandlerEarlyReply) {
+    if (
+      earlyReplyText.length > 0 &&
+      (onResponseHandlerEarlyReply || args.onPlanningAcknowledgment)
+    ) {
+      const visibleProgress = sanitizeUserVisibleModelOutput(earlyReplyText);
+      earlyReplyText =
+        visibleProgress.kind === "text" ? visibleProgress.text : "";
       const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
+        pendingWork: prePatchStageOneReplyEffectStatus === "pending",
         providers: args.state.data.providers,
         request: getUserMessageText(args.message),
         reply: earlyReplyText,
@@ -903,6 +966,19 @@ export async function runV5MessageRuntimeStage1(
         // (or the final-path ack fallback) owns this turn's delivery.
         earlyReplyText = "";
       }
+    }
+    // Progress does not satisfy final delivery, persist an answer, or refresh history.
+    getStreamingContext()?.abortSignal?.throwIfAborted();
+    if (
+      args.onPlanningAcknowledgment &&
+      !contextReadAcknowledgmentSent &&
+      !addressedToOtherParticipant &&
+      messageHandler.processMessage === "RESPOND" &&
+      prePatchStageOneReplyEffectStatus === "pending" &&
+      !messageHandler.plan.deterministicToolCall &&
+      earlyReplyText.trim().length > 0
+    ) {
+      args.onPlanningAcknowledgment(restorePiiInUserReplyText(earlyReplyText));
     }
     // The addressing gate above already terminal-routes addressed-to-other
     // turns to ignored, so a gated turn cannot normally reach this planning
@@ -1194,7 +1270,7 @@ export async function runV5MessageRuntimeStage1(
       progressiveActions.push(
         createPlannerToolDiscoveryAction(
           discoveryCatalogActions,
-          (discoveredActions, requestedNames) => {
+          (discoveredActions) => {
             // A loaded family's declared contexts join the turn's routing
             // state so its validate() (hasActionContext) sees them at
             // dispatch, exactly as the executor gate already merges them.
@@ -1445,12 +1521,33 @@ export async function runV5MessageRuntimeStage1(
         typeof runtimeWithOptionalServices.getService === "function"
           ? runtimeWithOptionalServices.getService(service)
           : null,
-      useModel: (modelType, modelParams, provider) =>
-        args.runtime.useModel(
+      useModel: (modelType, modelParams, provider) => {
+        if (
+          modelType === ModelType.ACTION_PLANNER &&
+          directMessageChannel &&
+          args.message.content?.channelType !== ChannelType.VOICE_DM &&
+          args.codingMode !== true
+        ) {
+          // The provider owns capability checks. Unsupported lanes retain the
+          // planner's existing thinking policy; no model names belong here.
+          const eliza = modelParams.providerOptions?.eliza;
+          modelParams = {
+            ...modelParams,
+            providerOptions: {
+              ...modelParams.providerOptions,
+              eliza: {
+                ...(isRecord(eliza) ? eliza : {}),
+                preferToolReasoning: true,
+              },
+            },
+          };
+        }
+        return args.runtime.useModel(
           modelType,
           modelParams as GenerateTextParams,
           provider,
-        ),
+        );
+      },
       logger: args.runtime.logger as PlannerRuntime["logger"],
     };
     const plannerTools = collectPlannerTools(
@@ -1607,7 +1704,7 @@ export async function runV5MessageRuntimeStage1(
       : undefined;
     const intermediateCallback: HandlerCallback | undefined = recordingCallback
       ? async (content, ...rest) => {
-          const nonTextContent = withoutIntermediateVisibleText(content);
+          const nonTextContent = filterIntermediateCallbackContent(content);
           return nonTextContent
             ? recordingCallback(nonTextContent, ...rest)
             : [];
@@ -2007,15 +2104,10 @@ export async function runV5MessageRuntimeStage1(
                         ctx.trajectory,
                         exposedPlannerActions,
                       ),
-                      // A pending batch has not earned transcript prose, but its
-                      // media and interactive payloads still belong to the user.
-                      ...(recordingCallback
-                        ? {
-                            callback:
-                              ctx.plannerCompleted === false
-                                ? intermediateCallback
-                                : recordingCallback,
-                          }
+                      // A predicted final batch can still need evaluation or retry.
+                      // Preserve controls/media while final prose stays planner-owned.
+                      ...(intermediateCallback
+                        ? { callback: intermediateCallback }
                         : {}),
                     }),
                     plannerRuntime,

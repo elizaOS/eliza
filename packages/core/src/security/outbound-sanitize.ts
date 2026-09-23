@@ -167,20 +167,80 @@ function degradePseudoLinks(text: string): string {
  * documentation examples of the syntax survive. Idempotent — sanitizing
  * already-sanitized text is a no-op.
  */
-export function sanitizeOutboundText(text: string): string {
+export interface OutboundLiteralSpan {
+	start: number;
+	end: number;
+}
+
+/** Literal ranges are supplied by trusted structured renderers, never inferred
+ * from serialized message metadata. Cosmetic cleanup cannot rewrite their bytes. */
+export function sanitizeOutboundTextWithLiterals(
+	text: string,
+	literalSpans: readonly OutboundLiteralSpan[],
+): { text: string; literalSpans: OutboundLiteralSpan[] } {
+	let previousEnd = 0;
+	for (const span of literalSpans) {
+		if (
+			!Number.isInteger(span.start) ||
+			!Number.isInteger(span.end) ||
+			span.start < previousEnd ||
+			span.end <= span.start ||
+			span.end > text.length
+		)
+			throw new TypeError("Invalid outbound literal range");
+		previousEnd = span.end;
+	}
+	// A model must not assemble its own control tag across a quoted-data boundary.
+	const controls = new RegExp(
+		`</?(?:${MACHINE_SYNTAX_TAG_ALTERNATION}|final)\\b[^>]*(?:>|$)`,
+		"gi",
+	);
+	for (const match of text.matchAll(controls)) {
+		const start = match.index;
+		const end = start + match[0].length;
+		if (
+			literalSpans.some(
+				(span) =>
+					span.start < end &&
+					span.end > start &&
+					!(span.start <= start && span.end >= end),
+			)
+		)
+			throw new TypeError("Outbound literal splits control syntax");
+	}
 	if (!text || (!QUICK_TAG_RE.test(text) && !PSEUDO_LINK_START_RE.test(text))) {
-		return text;
+		return { text, literalSpans: literalSpans.map((span) => ({ ...span })) };
 	}
 	PSEUDO_LINK_START_RE.lastIndex = 0;
 
+	const namespaces = new Set(
+		[...text.matchAll(new RegExp(`${CODE_SENTINEL_PREFIX}(\\d+):`, "g"))].map(
+			(match) => match[1],
+		),
+	);
+	let namespace = 0;
+	while (namespaces.has(String(namespace))) namespace++;
+	const sentinelPrefix = `${CODE_SENTINEL_PREFIX}${namespace}:`;
+	const literalIndices = new Map<number, number>();
+	const restoredLiterals: OutboundLiteralSpan[] = [];
 	const codeSpans: string[] = [];
 	const saveSpan = (match: string): string => {
 		const index = codeSpans.length;
 		codeSpans.push(match);
-		return `${CODE_SENTINEL_PREFIX}${index}${CODE_SENTINEL_PREFIX}`;
+		return `${sentinelPrefix}${index}${sentinelPrefix}`;
 	};
 	// Fences first (they may contain backticks), then inline spans (delta 4).
-	let processed = text.replace(CODE_BLOCK_RE, saveSpan);
+	let processed = "";
+	let cursor = 0;
+	literalSpans.forEach((span, index) => {
+		literalIndices.set(codeSpans.length, index);
+		processed +=
+			text.slice(cursor, span.start) +
+			saveSpan(text.slice(span.start, span.end));
+		cursor = span.end;
+	});
+	processed += text.slice(cursor);
+	processed = processed.replace(CODE_BLOCK_RE, saveSpan);
 	processed = processed.replace(INLINE_CODE_RE, saveSpan);
 
 	processed = processed.replace(SELF_CLOSING_ARTIFACTS_RE, "");
@@ -205,12 +265,38 @@ export function sanitizeOutboundText(text: string): string {
 	// Forward restoration then no-ops on the buried sentinel and re-injects it
 	// raw. Nesting only ever runs later-contains-earlier, because fences are
 	// extracted from the original text and cannot hold an inline sentinel.
+	processed = processed.trim();
 	for (let index = codeSpans.length - 1; index >= 0; index--) {
-		processed = processed.replace(
-			`${CODE_SENTINEL_PREFIX}${index}${CODE_SENTINEL_PREFIX}`,
-			() => codeSpans[index],
-		);
+		const token = `${sentinelPrefix}${index}${sentinelPrefix}`;
+		const at = processed.indexOf(token);
+		const literalIndex = literalIndices.get(index);
+		if (
+			literalIndex !== undefined &&
+			(at < 0 || processed.indexOf(token, at + token.length) >= 0)
+		)
+			throw new TypeError("Outbound cleanup removed or duplicated a literal");
+		if (at < 0) continue;
+		const delta = codeSpans[index].length - token.length;
+		for (const span of restoredLiterals) {
+			if (span && span.start >= at) {
+				span.start += delta;
+				span.end += delta;
+			}
+		}
+		if (literalIndex !== undefined)
+			restoredLiterals[literalIndex] = {
+				start: at,
+				end: at + codeSpans[index].length,
+			};
+		processed =
+			processed.slice(0, at) +
+			codeSpans[index] +
+			processed.slice(at + token.length);
 	}
+	return { text: processed, literalSpans: restoredLiterals };
+}
 
-	return processed.trim();
+/** Existing string-only callers retain the same cosmetic policy. */
+export function sanitizeOutboundText(text: string): string {
+	return sanitizeOutboundTextWithLiterals(text, []).text;
 }

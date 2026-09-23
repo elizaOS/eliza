@@ -1,16 +1,24 @@
 /** Native reply parts resolve only against the authorized snapshot sent in this
  * model attempt. Raw provider output and stored dialogue remain unchanged. */
-import { ElizaError } from "@elizaos/core";
 import {
+  type Content,
+  type ContextObject,
   completionContextSources,
+  ElizaError,
+  getUserMessageText,
+  isObjectRecord,
+  type JSONSchema,
+  type Memory,
+  type OutboundLiteralSpan,
   parseCompletionContextSelection,
+  sanitizeOutboundTextWithLiterals,
+  stripJsonStructuralJunkReply,
 } from "@elizaos/core";
-import { providerReviewSources } from "@elizaos/core";
-import type { ContextObject } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { JSONSchema } from "@elizaos/core";
-import { getUserMessageText } from "@elizaos/core";
-import { priorDialogueContent } from "./dialogue-context";
+import { providerOriginals } from "../../runtime/provider-originals.ts";
+import {
+  priorDialogueContent,
+  priorDialogueOriginalText,
+} from "./dialogue-context";
 import type { HistoryDiscovery } from "./history-discovery";
 import {
   type SourceReplyReferences,
@@ -19,7 +27,7 @@ import {
 } from "./source-reply-references";
 
 export const SOURCE_REPLY_INSTRUCTIONS =
-  'Reply parts: replyText is an ordered array. Use {kind:"source",value:"hN"} (or "recalledN" from provider context) for every verbatim original-message quotation; the renderer inserts that supplied original unchanged. Use {kind:"text",value:"..."} for your own explanations or summaries, not retyped original quotations. Source parts may refer only to supplied originals; keep recalledN quotes in providerReview.keep and preserve speaker attribution. Use [] when no reply is needed.';
+  'Reply parts: replyText is an ordered array. Use one text part for ordinary prose. Use {kind:"source",value:"hN"} (or "recalledN" from supplied provider context) for every verbatim original-message quotation; the renderer inserts that supplied original unchanged. Use {kind:"text",value:"..."} for your own explanations or summaries, not retyped original quotations. Source parts may refer only to supplied originals; preserve speaker attribution. Provider recalledN IDs do not belong in history completionContext selections. Use [] when no reply is needed.';
 
 export const SOURCE_REPLY_SCHEMA: JSONSchema = {
   type: "array",
@@ -38,21 +46,234 @@ export const SOURCE_REPLY_SCHEMA: JSONSchema = {
 export type SourceReplySnapshot = {
   sourceSetId: string;
   providerSourceSetId?: string;
+  providerIds: ReadonlySet<string>;
+  scope: { agentId: string; roomId: string; messageId: string };
   suppliedIds: ReadonlySet<string>;
   originals: ReadonlyMap<string, string>;
   references: ReadonlyMap<string, SourceReplyReferences["sources"][number]>;
 };
+
+type SourceReplyPart =
+  | { kind: "text"; text: string }
+  | {
+      kind: "source";
+      text: string;
+      reference?: SourceReplyReferences["sources"][number];
+    };
+export interface SourceReplyRendering {
+  readonly parts: readonly SourceReplyPart[];
+  readonly text: string;
+  readonly prose: string;
+  readonly literalSpans: readonly OutboundLiteralSpan[];
+  readonly references?: {
+    readonly replySha256: string;
+    readonly sources: readonly SourceReplyReferences["sources"][number][];
+  };
+  readonly scope: SourceReplySnapshot["scope"];
+}
+const AUTHENTIC_RENDERINGS = new WeakSet<object>();
+const SOURCE_REPLY_BINDING = Symbol("source-reply-rendering");
+
+function cleanProse(text: string): string {
+  const start = text.length - text.trimStart().length;
+  const end = text.trimEnd().length;
+  if (end <= start) return text;
+  const clean = stripJsonStructuralJunkReply(text.slice(start, end));
+  return clean ? text.slice(0, start) + clean + text.slice(end) : "";
+}
+
+function createRendering(
+  parts: readonly SourceReplyPart[],
+  scope: SourceReplySnapshot["scope"],
+): SourceReplyRendering {
+  const displayedParts: SourceReplyPart[] = [];
+  for (const part of parts) {
+    if (part.kind === "text" && part.text === "") continue;
+    const previous = displayedParts.at(-1);
+    if (
+      previous &&
+      (previous.kind === "source" || part.kind === "source") &&
+      !/[\r\n]$/.test(previous.text) &&
+      !/^[\r\n]/.test(part.text)
+    ) {
+      displayedParts.push({ kind: "text", text: "\n\n" });
+    }
+    displayedParts.push(part);
+  }
+  let offset = 0;
+  const spans: OutboundLiteralSpan[] = [];
+  const originals = displayedParts.filter((part) => part.kind === "source");
+  const text = displayedParts
+    .map((part) => {
+      if (part.kind === "source")
+        spans.push({ start: offset, end: offset + part.text.length });
+      offset += part.text.length;
+      return part.text;
+    })
+    .join("");
+  const sanitized = sanitizeOutboundTextWithLiterals(text, spans);
+  const cleaned: SourceReplyPart[] = [];
+  let cursor = 0;
+  sanitized.literalSpans.forEach((span, index) => {
+    const prose = cleanProse(sanitized.text.slice(cursor, span.start));
+    if (prose) cleaned.push({ kind: "text", text: prose });
+    const original = originals[index];
+    if (
+      !original ||
+      sanitized.text.slice(span.start, span.end) !== original.text
+    )
+      throw new ElizaError("Source reply literal changed during cleanup", {
+        code: "SOURCE_REPLY_LITERAL_CHANGED",
+      });
+    cleaned.push({
+      ...original,
+      ...(original.reference
+        ? { reference: Object.freeze({ ...original.reference }) }
+        : {}),
+    });
+    cursor = span.end;
+  });
+  const tail = cleanProse(sanitized.text.slice(cursor));
+  if (tail) cleaned.push({ kind: "text", text: tail });
+  offset = 0;
+  const literalSpans: OutboundLiteralSpan[] = [];
+  const sources = new Map<string, SourceReplyReferences["sources"][number]>();
+  const rendered = cleaned
+    .map((part) => {
+      if (part.kind === "source") {
+        literalSpans.push(
+          Object.freeze({ start: offset, end: offset + part.text.length }),
+        );
+        if (part.reference) sources.set(part.reference.eventId, part.reference);
+      }
+      offset += part.text.length;
+      return part.text;
+    })
+    .join("");
+  const rendering = Object.freeze({
+    parts: Object.freeze(cleaned.map((part) => Object.freeze(part))),
+    text: rendered,
+    prose: cleaned
+      .filter((part) => part.kind === "text")
+      .map((part) => part.text)
+      .join(""),
+    literalSpans: Object.freeze(literalSpans),
+    scope: Object.freeze({ ...scope }),
+    ...(sources.size
+      ? {
+          references: Object.freeze({
+            replySha256: sourceReplyTextHash(rendered),
+            sources: Object.freeze([...sources.values()]),
+          }),
+        }
+      : {}),
+  });
+  AUTHENTIC_RENDERINGS.add(rendering);
+  return rendering;
+}
+
+/** Only a single complete quotation makes no newly composed assertion. */
+export function sourceReplyAssertionText(
+  rendering: SourceReplyRendering,
+): string {
+  const sources = rendering.parts.filter((part) => part.kind === "source");
+  return sources.length === 1 && rendering.prose.trim() === ""
+    ? ""
+    : rendering.text;
+}
+
+export function getSourceReplyRendering(
+  value: unknown,
+): SourceReplyRendering | undefined {
+  return value && typeof value === "object" && AUTHENTIC_RENDERINGS.has(value)
+    ? (value as SourceReplyRendering)
+    : undefined;
+}
+
+export function transformSourceReplyProse(
+  rendering: SourceReplyRendering,
+  transform: (text: string) => string,
+): SourceReplyRendering {
+  if (!getSourceReplyRendering(rendering))
+    throw new ElizaError("Unbound source reply", {
+      code: "SOURCE_REPLY_UNBOUND",
+    });
+  return createRendering(
+    rendering.parts.map((part) =>
+      part.kind === "text" ? { ...part, text: transform(part.text) } : part,
+    ),
+    rendering.scope,
+  );
+}
+
+export function sourceReplyScopeMatches(
+  rendering: SourceReplyRendering,
+  scope: SourceReplySnapshot["scope"],
+): boolean {
+  return (
+    !!getSourceReplyRendering(rendering) &&
+    rendering.scope.agentId === scope.agentId &&
+    rendering.scope.roomId === scope.roomId &&
+    rendering.scope.messageId === scope.messageId
+  );
+}
+
+export function bindSourceReplyContent(
+  content: Content,
+  rendering: SourceReplyRendering,
+  scope: SourceReplySnapshot["scope"],
+): Content {
+  if (!sourceReplyScopeMatches(rendering, scope))
+    throw new ElizaError("Source reply belongs to a different turn", {
+      code: "SOURCE_REPLY_SCOPE_MISMATCH",
+    });
+  if (content.text !== rendering.text) return content;
+  return {
+    ...content,
+    [SOURCE_REPLY_BINDING]: rendering,
+    ...(rendering.references
+      ? {
+          sourceReplyReferences: {
+            replySha256: rendering.references.replySha256,
+            sources: rendering.references.sources.map((source) => ({
+              ...source,
+            })),
+          },
+        }
+      : {}),
+  };
+}
+
+export function getSourceReplyBinding(
+  content: Content,
+  scope: SourceReplySnapshot["scope"],
+): SourceReplyRendering | undefined {
+  const rendering = getSourceReplyRendering(
+    (content as Content & { [SOURCE_REPLY_BINDING]?: SourceReplyRendering })[
+      SOURCE_REPLY_BINDING
+    ],
+  );
+  return rendering &&
+    content.text === rendering.text &&
+    sourceReplyScopeMatches(rendering, scope)
+    ? rendering
+    : undefined;
+}
 
 /** Copy bodies from the same authorized provider result used for composition.
  * Exact presentation reconstruction prevents a record ID or speaker mismatch
  * from supplying unrelated text. Augmented envelopes are not quote sources. */
 export function createSourceReplySnapshot(
   context: ContextObject,
-  projection: HistoryDiscovery,
+  projection: HistoryDiscovery | Pick<HistoryDiscovery, "scope">,
   memories: readonly Memory[],
 ): SourceReplySnapshot | undefined {
   const bound = completionContextSources(context);
-  if (bound.sourceSetId !== projection.sourceSetId) return undefined;
+  const messageId = context.metadata?.messageId;
+  if (typeof messageId !== "string" || !messageId) return undefined;
+  const visibility = "sourceSetId" in projection ? projection : undefined;
+  if (visibility && bound.sourceSetId !== visibility.sourceSetId)
+    return undefined;
   const byId = new Map<string, Memory>();
   const duplicates = new Set<string>();
   for (const memory of memories) {
@@ -69,8 +290,9 @@ export function createSourceReplySnapshot(
   >();
   for (const { id, event } of bound.sources) {
     if (
-      !projection.visibleEventIds.has(event.id) &&
-      !projection.loadedSourceIds.has(id)
+      visibility &&
+      !visibility.visibleEventIds.has(event.id) &&
+      !visibility.loadedSourceIds.has(id)
     )
       continue;
     suppliedIds.add(id);
@@ -80,15 +302,23 @@ export function createSourceReplySnapshot(
       !memory ||
       duplicates.has(event.id) ||
       memory.agentId !== projection.scope.agentId ||
+      memory.roomId !== projection.scope.roomId ||
       memory.roomId !== meta?.roomId ||
-      memory.entityId !== meta?.entityId
+      memory.entityId !== meta?.entityId ||
+      event.segment.label !==
+        (memory.entityId === projection.scope.agentId
+          ? "prior_message:agent"
+          : "prior_message:user")
     )
       continue;
-    const raw =
-      typeof memory.content?.currentMessageText === "string"
-        ? memory.content.currentMessageText
-        : memory.content?.text;
-    if (typeof raw !== "string" || getUserMessageText(memory) !== raw.trim())
+    const raw = priorDialogueOriginalText(memory);
+    if (
+      raw === undefined ||
+      (meta?.originalTextSha256 !== undefined &&
+        meta.originalTextSha256 !== sourceReplyTextHash(raw)) ||
+      (raw !== getUserMessageText(memory) &&
+        meta?.originalTextSha256 !== sourceReplyTextHash(raw))
+    )
       continue;
     const speaker =
       typeof meta?.speakerName === "string" ? meta.speakerName : undefined;
@@ -100,30 +330,19 @@ export function createSourceReplySnapshot(
       sourceSha256: sourceReplyEventHash(event),
     });
   }
-  const historyOriginalCount = originals.size;
-  const providers = providerReviewSources(context);
-  for (const provider of providers?.providers ?? []) {
-    for (const source of provider.reviewableSources?.sources ?? []) {
-      // Only an explicitly supplied original body is a quotation source.
-      // Presentation prefixes, summaries and discovery notices are not originals.
-      if (
-        typeof source.originalText !== "string" ||
-        !source.originalText ||
-        !source.text.endsWith(source.originalText) ||
-        /^h[1-9]\d*$/.test(source.id) ||
-        suppliedIds.has(source.id)
-      )
-        continue;
-      suppliedIds.add(source.id);
-      originals.set(source.id, source.originalText);
-    }
-  }
+
+  const providers = providerOriginals(context);
+  for (const [id, text] of providers?.originals ?? []) originals.set(id, text);
   return {
+    providerSourceSetId: providers?.sourceSetId,
+    providerIds: new Set(providers?.originals.keys()),
     sourceSetId: bound.sourceSetId,
-    providerSourceSetId:
-      originals.size > historyOriginalCount
-        ? providers?.sourceSetId
-        : undefined,
+    scope: {
+      agentId: projection.scope.agentId,
+      roomId: projection.scope.roomId,
+      messageId,
+    },
+
     suppliedIds,
     originals,
     references,
@@ -136,65 +355,15 @@ export function resolveSourceReply(
   context: ContextObject,
   snapshot: SourceReplySnapshot,
   raw: Record<string, unknown>,
-  onReferences?: (references: SourceReplyReferences) => void,
+  onRendering?: (rendering: SourceReplyRendering) => void,
 ): Record<string, unknown> | undefined {
-  const selection = parseCompletionContextSelection(raw.completionContext);
-  if (
-    !selection?.complete ||
-    selection.mode !== "selected" ||
-    selection.sourceSetId !== snapshot.sourceSetId ||
-    completionContextSources(context).sourceSetId !== snapshot.sourceSetId
-  )
-    return undefined;
-  const providers = snapshot.providerSourceSetId
-    ? providerReviewSources(context)
-    : undefined;
-  if (
-    snapshot.providerSourceSetId &&
-    providers?.sourceSetId !== snapshot.providerSourceSetId
-  )
-    return undefined;
-  const selected = new Set([
-    ...selection.relevantSourceIds,
-    ...selection.constraintSourceIds,
-    ...selection.referentSourceIds,
-    ...selection.pendingIntentSourceIds,
-  ]);
-  const review = raw.providerReview;
-  if (
-    snapshot.providerSourceSetId &&
-    review &&
-    typeof review === "object" &&
-    !Array.isArray(review)
-  ) {
-    const fields = review as Record<string, unknown>;
-    if (
-      Object.keys(fields).every(
-        (key) => key === "complete" || key === "keep",
-      ) &&
-      fields.complete === true &&
-      Array.isArray(fields.keep) &&
-      fields.keep.every(
-        (id) =>
-          typeof id === "string" &&
-          providers?.ids.has(id) &&
-          !/^h[1-9]\d*$/.test(id),
-      )
-    )
-      for (const id of fields.keep) {
-        if (snapshot.originals.has(id as string)) selected.add(id as string);
-      }
-  }
-  if ([...selected].some((id) => !snapshot.suppliedIds.has(id)))
-    return undefined;
+  if (typeof raw.replyText === "string") return raw;
   const invalid = () =>
     new ElizaError(
       "Invalid source-backed reply; no response fields were processed",
       { code: "STAGE1_INVALID_SOURCE_REPLY", severity: "ephemeral" },
     );
   if (!Array.isArray(raw.replyText)) throw invalid();
-  const parts: string[] = [];
-  const sources = new Map<string, SourceReplyReferences["sources"][number]>();
   for (const part of raw.replyText) {
     if (
       !part ||
@@ -203,25 +372,81 @@ export function resolveSourceReply(
       Object.keys(part).length !== 2 ||
       typeof part.value !== "string" ||
       !Object.hasOwn(part, "kind") ||
-      !Object.hasOwn(part, "value")
+      !Object.hasOwn(part, "value") ||
+      (part.kind !== "text" && part.kind !== "source")
     )
       throw invalid();
-    if (part.kind === "text") parts.push(part.value);
+  }
+  // Text-only and empty replies do not dereference history. Keep STOP/IGNORE
+  // and ordinary prose on the same contract as their existing string form.
+  if (raw.replyText.every((part) => part.kind === "text")) {
+    return {
+      ...raw,
+      replyText: raw.replyText.map((part) => part.value).join(""),
+    };
+  }
+  if (
+    snapshot.providerSourceSetId &&
+    providerOriginals(context)?.sourceSetId !== snapshot.providerSourceSetId
+  )
+    return undefined;
+  const historyParts = raw.replyText.filter(
+    (part) => part.kind === "source" && !snapshot.providerIds.has(part.value),
+  );
+  const selected = new Set<string>();
+  const selection = parseCompletionContextSelection(raw.completionContext);
+  const rawSelection = raw.completionContext;
+  if (
+    isObjectRecord(rawSelection) &&
+    [
+      "relevantSourceIds",
+      "constraintSourceIds",
+      "referentSourceIds",
+      "pendingIntentSourceIds",
+    ].some((field) => {
+      const ids = rawSelection[field];
+      return (
+        Array.isArray(ids) &&
+        ids.some((id) => typeof id === "string" && snapshot.providerIds.has(id))
+      );
+    })
+  )
+    return undefined;
+  if (historyParts.length > 0) {
+    if (
+      !selection?.complete ||
+      (selection.mode !== "selected" && selection.mode !== "full") ||
+      selection.sourceSetId !== snapshot.sourceSetId ||
+      completionContextSources(context).sourceSetId !== snapshot.sourceSetId
+    )
+      return undefined;
+    const ids =
+      selection.mode === "full"
+        ? completionContextSources(context).sources.map((source) => source.id)
+        : [
+            ...selection.relevantSourceIds,
+            ...selection.constraintSourceIds,
+            ...selection.referentSourceIds,
+            ...selection.pendingIntentSourceIds,
+          ];
+    if (ids.some((id) => !snapshot.suppliedIds.has(id))) return undefined;
+    for (const id of ids) selected.add(id);
+  }
+  const parts: SourceReplyPart[] = [];
+  for (const part of raw.replyText) {
+    if (part.kind === "text") parts.push({ kind: "text", text: part.value });
     else if (
-      part.kind === "source" &&
-      selected.has(part.value) &&
+      (selected.has(part.value) || snapshot.providerIds.has(part.value)) &&
       snapshot.originals.has(part.value)
     ) {
-      parts.push(`\n\n${snapshot.originals.get(part.value) ?? ""}\n\n`);
-      const reference = snapshot.references.get(part.value);
-      if (reference) sources.set(reference.eventId, reference);
+      parts.push({
+        kind: "source",
+        text: snapshot.originals.get(part.value) ?? "",
+        reference: snapshot.references.get(part.value),
+      });
     } else throw invalid();
   }
-  const replyText = parts.join("");
-  if (sources.size)
-    onReferences?.({
-      replySha256: sourceReplyTextHash(replyText),
-      sources: [...sources.values()],
-    });
-  return { ...raw, replyText };
+  const rendering = createRendering(parts, snapshot.scope);
+  onRendering?.(rendering);
+  return { ...raw, replyText: rendering.text };
 }

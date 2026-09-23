@@ -626,6 +626,7 @@ export function useChatSend(deps: UseChatSendDeps) {
   } = deps;
 
   const chatSendQueueRef = useRef<QueuedChatSend[]>([]);
+  const sendCancellationGenerationRef = useRef(0);
   const activeChatTurnRef = useRef<ActiveChatTurn | null>(null);
   // ElizaClient owns a mutable base outside React state. Snapshot it each render
   // so selecting another agent retriggers the prewarm effect.
@@ -1177,6 +1178,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     unmountingRef.current = false;
     return () => {
       unmountingRef.current = true;
+      sendCancellationGenerationRef.current += 1;
       const activeTurn = activeChatTurnRef.current;
       if (activeTurn?.abortServerTurn) {
         activeTurn.controller.signal.removeEventListener(
@@ -1257,6 +1259,7 @@ export function useChatSend(deps: UseChatSendDeps) {
 
   const interruptActiveChatPipelineWithDraft =
     useCallback((): RestoredQueuedDraft => {
+      sendCancellationGenerationRef.current += 1;
       const activeTurn = activeChatTurnRef.current;
       const restoredQueuedDraft = resolveQueuedChatSends(
         activeConversationIdRef.current ?? activeTurn?.conversationId ?? null,
@@ -1792,6 +1795,52 @@ export function useChatSend(deps: UseChatSendDeps) {
         controller,
       };
       const handoffView = createTurnViewHandoff(viewHandoffOwner);
+      // Stop must also invalidate setup work before the streaming controller
+      // exists (command resolution and first-conversation creation).
+      const cancellationGeneration = sendCancellationGenerationRef.current;
+      const restoreUnsentSetup = (): void => {
+        if (unmountingRef.current) return;
+        const ids = [
+          turn.optimisticTurn.userMsgId,
+          turn.optimisticTurn.assistantMsgId,
+        ];
+        setConversationMessagesForConversation(
+          optimisticOwnerConversationId,
+          (previous) => previous.filter((message) => !ids.includes(message.id)),
+        );
+        for (const messageId of ids) {
+          applyConversationMessageOverlayModification(
+            optimisticOwnerConversationId,
+            messageId,
+            { messageId, mode: "drop" },
+          );
+        }
+        if (
+          optimisticOwnerGeneration !== null &&
+          activeConversationIdRef.current === optimisticOwnerConversationId &&
+          isConversationMessagesOwnershipCurrent(
+            optimisticOwnerConversationId,
+            optimisticOwnerGeneration,
+          )
+        ) {
+          const draft = [turn.rawInput, chatInputRef.current]
+            .filter(Boolean)
+            .join("\n");
+          chatInputRef.current = draft;
+          setChatInput(draft);
+          if (imagesToSend?.length) {
+            const images = [...imagesToSend, ...chatPendingImagesRef.current];
+            chatPendingImagesRef.current = images;
+            setChatPendingImages(images);
+          }
+        }
+      };
+      const discardCancelledSetup = (): boolean => {
+        if (cancellationGeneration === sendCancellationGenerationRef.current)
+          return false;
+        restoreUnsentSetup();
+        return true;
+      };
 
       let text = hasAttachedImages
         ? rawText || "Please review the attached image."
@@ -1805,6 +1854,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             optimisticOwnerGeneration,
           );
         } catch (err) {
+          if (discardCancelledSetup()) return;
           appendLocalCommandTurn(
             rawText,
             `Command failed: ${err instanceof Error ? err.message : "unknown error"}`,
@@ -1813,6 +1863,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           );
           return;
         }
+        if (discardCancelledSetup()) return;
         if (commandResult.handled) {
           return;
         }
@@ -1915,6 +1966,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         try {
           const { conversation: rawConversation } =
             await createConversationForFirstSend(client, uiLanguage);
+          if (discardCancelledSetup()) return;
           if (!isConversationRecord(rawConversation)) {
             throw new Error(
               "Conversation creation returned an invalid payload.",
@@ -1949,44 +2001,12 @@ export function useChatSend(deps: UseChatSendDeps) {
           convId = conversation.id;
           convRoomId = conversation.roomId;
         } catch {
+          if (discardCancelledSetup()) return;
           // error-policy:J4 surfaced user-facing failure state.
           // First-message conversation creation failed (cold open on weak
           // signal). Remove the local accepted-turn rows and restore the draft:
           // no conversation exists to own or retry this turn yet.
-          setConversationMessagesForConversation(
-            optimisticOwnerConversationId,
-            (prev) =>
-              prev.filter(
-                (message) =>
-                  message.id !== userMsgId && message.id !== assistantMsgId,
-              ),
-          );
-          applyConversationMessageOverlayModification(
-            optimisticOwnerConversationId,
-            userMsgId,
-            { messageId: userMsgId, mode: "drop" },
-          );
-          applyConversationMessageOverlayModification(
-            optimisticOwnerConversationId,
-            assistantMsgId,
-            { messageId: assistantMsgId, mode: "drop" },
-          );
-          if (
-            optimisticOwnerGeneration !== null &&
-            activeConversationIdRef.current === optimisticOwnerConversationId &&
-            isConversationMessagesOwnershipCurrent(
-              optimisticOwnerConversationId,
-              optimisticOwnerGeneration,
-            )
-          ) {
-            chatInputRef.current = rawText;
-            setChatInput(rawText);
-            if (imagesToSend?.length) {
-              const restoredImages = [...imagesToSend];
-              chatPendingImagesRef.current = restoredImages;
-              setChatPendingImages(restoredImages);
-            }
-          }
+          restoreUnsentSetup();
           setActionNotice(
             `Couldn't start the conversation — check your connection and try again. ${imagesToSend?.length ? "Your message and attachments were restored." : "Your message was restored."}`,
             "error",
@@ -2330,6 +2350,10 @@ export function useChatSend(deps: UseChatSendDeps) {
           try {
             const { conversation: rawConversation } =
               await client.createConversation();
+            if (controller.signal.aborted) {
+              dropEmptyAssistantPlaceholder(convId, assistantMsgId);
+              return;
+            }
             if (!isConversationRecord(rawConversation)) {
               throw new Error(
                 "Conversation creation returned an invalid payload.",
@@ -2337,6 +2361,10 @@ export function useChatSend(deps: UseChatSendDeps) {
             }
             conversation = rawConversation;
           } catch (createErr) {
+            if (controller.signal.aborted) {
+              dropEmptyAssistantPlaceholder(convId, assistantMsgId);
+              return;
+            }
             const createStatus = (createErr as { status?: number }).status;
             // Conversation recreation also failed against a cloud agent base —
             // the agent is gone/unreachable. Surface the failure and KEEP the
@@ -2765,6 +2793,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         return;
       }
 
+      const admissionGeneration = sendCancellationGenerationRef.current;
       // Direct Cloud paints the shell while its history restore continues in
       // the background. Let that restore choose the active conversation before
       // this turn snapshots the target or paints optimistically; otherwise the
@@ -2774,6 +2803,8 @@ export function useChatSend(deps: UseChatSendDeps) {
         (await settleConversationHydrationForSend?.()) === false
       )
         return;
+
+      if (admissionGeneration !== sendCancellationGenerationRef.current) return;
 
       // Claim + clear the active reply target here — the single chokepoint every
       // real user turn (composer send + overlay/voice send()) funnels through —
@@ -2890,7 +2921,9 @@ export function useChatSend(deps: UseChatSendDeps) {
       // Keep the draft, attachments and reply target intact until restore has
       // established the destination. Concurrent clicks then claim the draft
       // only once, after this shared barrier settles.
+      const admissionGeneration = sendCancellationGenerationRef.current;
       if ((await settleConversationHydrationForSend?.()) === false) return;
+      if (admissionGeneration !== sendCancellationGenerationRef.current) return;
       const claimedInput = chatInputRef.current;
       const imagesToSend = chatPendingImagesRef.current.length
         ? [...chatPendingImagesRef.current]
@@ -2948,7 +2981,9 @@ export function useChatSend(deps: UseChatSendDeps) {
       // Actions can be fired from shell surfaces while startup hydration is
       // still choosing the initial conversation. An unavailable restore leaves
       // the action unsent instead of allocating a competing conversation.
+      const admissionGeneration = sendCancellationGenerationRef.current;
       if ((await settleConversationHydrationForSend?.()) === false) return;
+      if (admissionGeneration !== sendCancellationGenerationRef.current) return;
       if (chatSendBusyRef.current) return;
       chatSendBusyRef.current = true;
       const sendNonce = ++chatSendNonceRef.current;
@@ -2979,6 +3014,8 @@ export function useChatSend(deps: UseChatSendDeps) {
                 uiLanguage,
                 actionTitle || t("common.newChat"),
               );
+            if (admissionGeneration !== sendCancellationGenerationRef.current)
+              return;
             if (!isConversationRecord(rawConversation)) {
               throw new Error(
                 "Conversation creation returned an invalid payload.",
@@ -3006,6 +3043,8 @@ export function useChatSend(deps: UseChatSendDeps) {
             convId = conversation.id;
             convRoomId = conversation.roomId;
           } catch {
+            if (admissionGeneration !== sendCancellationGenerationRef.current)
+              return;
             // error-policy:J4 surfaced user-facing failure state. An
             // action/inbox send that can't start a conversation must not
             // vanish silently (mirrors the cold-open path in

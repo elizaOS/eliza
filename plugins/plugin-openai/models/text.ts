@@ -470,17 +470,25 @@ function resolveProviderOptions(
   const rawProviderOptions = withOpenAIOptions.providerOptions;
   const promptCacheOptions = resolvePromptCacheOptions(params, runtime);
   const reasoningEffort = resolveReasoningEffort(runtime, modelName);
-  // Thinking-off suppression outranks the env pin and provider default so
-  // forced-tool planner calls do not enter an incompatible reasoning mode.
+  // Thinking-off normally outranks the env pin and provider default. A host
+  // preference may opt into the verified native-tool lane below; unsupported
+  // forced-tool calls retain their existing suppression.
   // Keep this endpoint/model allowlist exact: OpenAI-direct and many compatible
   // endpoints reject `"none"`. An explicit caller value still wins below.
-  const elizaThinking = (rawProviderOptions?.eliza as { thinking?: unknown } | undefined)?.thinking;
+  const eliza = rawProviderOptions?.eliza as
+    | { thinking?: unknown; preferToolReasoning?: unknown }
+    | undefined;
+  const elizaThinking = eliza?.thinking;
+  const configuredEffort = runtime.getSetting("OPENAI_REASONING_EFFORT");
+  const preferToolReasoning =
+    eliza?.preferToolReasoning === true &&
+    !(typeof configuredEffort === "string" && configuredEffort.trim().toLowerCase() === "none");
   const thinkingOffEffort =
     elizaThinking === "off" ? resolveThinkingOffReasoningEffort(runtime, modelName) : undefined;
-  // Original-source reconciliation can explicitly request reasoning without
-  // changing ordinary Qwen calls. Keep the wire capability endpoint-specific.
+  // Reconciliation or direct-text planning may prefer reasoning on the verified
+  // native-tool lane. Other endpoints/models retain their existing suppression.
   const thinkingOnEffort =
-    elizaThinking === "on" &&
+    (elizaThinking === "on" || preferToolReasoning) &&
     isCerebrasMode(runtime) &&
     modelName &&
     normalizeCerebrasModelId(modelName) === "qwen-3.8-27b"
@@ -488,7 +496,11 @@ function resolveProviderOptions(
         ? reasoningEffort
         : "low"
       : undefined;
-  const effectiveReasoningEffort = thinkingOffEffort ?? thinkingOnEffort ?? reasoningEffort;
+  const effectiveReasoningEffort =
+    (preferToolReasoning ? thinkingOnEffort : undefined) ??
+    thinkingOffEffort ??
+    thinkingOnEffort ??
+    reasoningEffort;
 
   if (
     !rawProviderOptions &&

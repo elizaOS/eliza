@@ -16,8 +16,12 @@ import {
   toWellFormedUnicode,
   unwrapUserMessageText,
 } from "@elizaos/core";
+import { readProviderOriginalMessages } from "../../runtime/provider-originals.ts";
 import { resolveExplicitContinuationRequestText } from "./direct-action-heuristics.ts";
-import { readSourceReplyReferences } from "./source-reply-references.ts";
+import {
+  readSourceReplyReferences,
+  sourceReplyTextHash,
+} from "./source-reply-references.ts";
 import { parseSubAgentTaskCompleteRelay } from "./task-completion-relay.ts";
 
 export function asProviderRecord(value: unknown):
@@ -26,6 +30,7 @@ export function asProviderRecord(value: unknown):
       discoveryText?: unknown;
       reviewableSources?: ProviderResult["reviewableSources"];
       providerName?: unknown;
+      data?: unknown;
     }
   | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -36,6 +41,7 @@ export function asProviderRecord(value: unknown):
     discoveryText?: unknown;
     reviewableSources?: ProviderResult["reviewableSources"];
     providerName?: unknown;
+    data?: unknown;
   };
 }
 
@@ -115,6 +121,17 @@ export function verifiedCrossRoomContent(memory: Memory): string {
   return [text, attachmentText].filter(Boolean).join(" ");
 }
 
+/** The unaugmented original behind a rendered dialogue segment. */
+export function priorDialogueOriginalText(memory: Memory): string | undefined {
+  const raw =
+    typeof memory.content?.currentMessageText === "string"
+      ? memory.content.currentMessageText
+      : memory.content?.text;
+  return typeof raw === "string" && getUserMessageText(memory) === raw.trim()
+    ? raw
+    : undefined;
+}
+
 /** Preserve ordered user and assistant dialogue while excluding non-dialogue artifacts. */
 export function appendPriorDialogueEvents(
   events: ContextEvent[],
@@ -142,6 +159,14 @@ export function appendPriorDialogueEvents(
   if (!Array.isArray(recentMessages)) {
     return;
   }
+  const isInterruptedReply = (memory: Memory): boolean =>
+    typeof memory.id === "string" &&
+    memory.id.length > 0 &&
+    memory.entityId === runtime.agentId &&
+    memory.agentId === runtime.agentId &&
+    memory.roomId === currentMessage.roomId &&
+    memory.content?.interrupted === true &&
+    typeof memory.content.inReplyTo === "string";
   const dialogue = recentMessages
     .filter((memory): memory is Memory => {
       if (!memory || typeof memory !== "object") return false;
@@ -169,8 +194,8 @@ export function appendPriorDialogueEvents(
       if (isSubAgentCompletionArtifact(m)) return false;
       const text =
         typeof m.content?.text === "string" ? m.content.text.trim() : "";
-      if (looksLikePriorDialogueArtifact(text)) return false;
-      return text.length > 0;
+      if (looksLikePriorDialogueArtifact(text)) return isInterruptedReply(m);
+      return text.length > 0 || isInterruptedReply(m);
     })
     .sort((a, b) => {
       const aTime = Number.isFinite(a.createdAt as unknown as number)
@@ -181,17 +206,63 @@ export function appendPriorDialogueEvents(
         : 0;
       return aTime - bTime;
     });
+  const requestsById = new Map<string, Memory | undefined>();
+  for (const entry of dialogue) {
+    if (entry.id)
+      requestsById.set(
+        entry.id,
+        requestsById.has(entry.id) ? undefined : entry,
+      );
+  }
   for (const memory of dialogue) {
+    if (isInterruptedReply(memory)) {
+      const request = requestsById.get(String(memory.content.inReplyTo));
+      if (
+        request &&
+        request.roomId === currentMessage.roomId &&
+        request.agentId === runtime.agentId &&
+        request.entityId !== runtime.agentId
+      )
+        events.push({
+          id: `interrupted-turn:${memory.id}`,
+          type: "segment",
+          source: "message-service",
+          createdAt: memory.createdAt,
+          segment: {
+            id: `interrupted-turn:${memory.id}`,
+            label: "runtime:interrupted_turn",
+            content: JSON.stringify({
+              requestSourceEventId: `history:${request.id}`,
+              requestText: getUserMessageText(request),
+              responseGeneration: "interrupted",
+              pendingWork:
+                "Do not infer continuing work from this interrupted request. Only separately recorded tasks or a new request can establish continuation.",
+              committedEffects:
+                "Interruption does not undo already committed effects.",
+            }),
+            stable: false,
+          },
+        });
+    }
     const text = getUserMessageText(memory);
-    if (!text) continue;
-    const sourceReplyReferences =
-      memory.entityId === runtime.agentId
-        ? readSourceReplyReferences(memory.content.sourceReplyReferences, text)
-        : undefined;
+    if (!text || looksLikePriorDialogueArtifact(text)) continue;
     const isOwnReply = memory.entityId === runtime.agentId;
     const speakerName = isOwnReply
       ? (runtime.character?.name ?? priorDialogueSpeakerName(memory))
       : priorDialogueSpeakerName(memory);
+    const originalText = priorDialogueOriginalText(memory);
+    const storedReferences =
+      isOwnReply && originalText !== undefined
+        ? readSourceReplyReferences(
+            memory.content.sourceReplyReferences,
+            originalText,
+          )
+        : undefined;
+    // Context presentation trims the boundary; validate the stored exact text
+    // first, then bind the read hint to this displayed representation.
+    const sourceReplyReferences = storedReferences
+      ? { ...storedReferences, replySha256: sourceReplyTextHash(text) }
+      : undefined;
     events.push({
       id: `history:${memory.id}`,
       type: "segment",
@@ -203,10 +274,13 @@ export function appendPriorDialogueEvents(
         content: priorDialogueContent(text, speakerName),
         stable: false,
         metadata: {
-          ...(sourceReplyReferences ? { sourceReplyReferences } : {}),
           roomId: memory.roomId,
           entityId: memory.entityId,
           ...(speakerName ? { speakerName } : {}),
+          ...(sourceReplyReferences ? { sourceReplyReferences } : {}),
+          ...(originalText !== undefined && originalText !== text
+            ? { originalTextSha256: sourceReplyTextHash(originalText) }
+            : {}),
         },
       },
     });
@@ -615,6 +689,10 @@ export function appendStateProviderEvents(
     if (!text) {
       continue;
     }
+    const originals = readProviderOriginalMessages(
+      text,
+      asPlainRecord(provider.data)?.originalMessages,
+    );
     const resolvedName =
       typeof provider.providerName === "string"
         ? provider.providerName
@@ -625,6 +703,7 @@ export function appendStateProviderEvents(
       source: "composeState",
       name: resolvedName,
       text,
+      ...(originals ? { data: { originalMessages: originals } } : {}),
       ...(typeof provider.discoveryText === "string"
         ? { discoveryText: provider.discoveryText }
         : {}),

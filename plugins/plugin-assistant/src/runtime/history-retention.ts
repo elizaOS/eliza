@@ -158,7 +158,7 @@ export function linkedSourceNeighbors(
 }
 
 /** Preserve complete connected originals without inferring links from prose. */
-function includeLinkedSources(
+export function includeLinkedSources(
   retained: Set<string>,
   groups: readonly string[][],
 ): void {

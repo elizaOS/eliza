@@ -8,6 +8,7 @@
 
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { describe, expect, it, vi } from "vitest";
+import { sourceReplyTextHash } from "../../../../../plugins/plugin-assistant/src/services/message/source-reply-references.ts";
 import { wrapSingleTurnVisibleCallback } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 import { wrapExternalContent } from "../../security/external-content";
 import { ENVELOPE_LEAK_NOTICE } from "../../security/outbound-envelope-guard";
@@ -44,7 +45,21 @@ describe("visible-callback envelope block", () => {
 		});
 
 		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
-		await wrapped?.({ text: leaked }, "REPLY");
+		await wrapped?.(
+			{
+				text: leaked,
+				sourceReplyReferences: {
+					replySha256: sourceReplyTextHash(leaked),
+					sources: [
+						{ eventId: "history:original", sourceSha256: "a".repeat(64) },
+					],
+				},
+			},
+			"REPLY",
+		);
+		expect(
+			vi.mocked(callback).mock.calls[0]?.[0].sourceReplyReferences,
+		).toBeUndefined();
 
 		expect(callback).toHaveBeenCalledWith(
 			expect.objectContaining({ text: ENVELOPE_LEAK_NOTICE }),

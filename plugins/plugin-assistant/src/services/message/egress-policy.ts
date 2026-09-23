@@ -30,7 +30,6 @@ import {
   projectCompleteToolValueForModel,
   renderContextObject,
   resolveAppliedUserFacingEffectReceipts,
-  getUserMessageText,
   resolveEgressAudienceAdmission,
   revalidateOwnerExclusiveDisclosure,
   segmentBlock,
@@ -53,6 +52,10 @@ import {
   replyClaimsCompletedSideEffect,
   replyClaimsEmptyTrackedWorkState,
 } from "./side-effect-claims.ts";
+import {
+  getSourceReplyBinding,
+  sourceReplyAssertionText,
+} from "./source-reply.ts";
 import {
   groundedCurrentTimeReply,
   requestAsksCurrentTime,
@@ -347,6 +350,8 @@ export type PlannedReplyEgressDecision =
  */
 export function evaluatePlannedReplyEgress(args: {
   reply: string;
+  /** Early progress for a turn whose work has not settled. */
+  pendingWork?: boolean;
   request?: string;
   providers?: StateData["providers"];
   actionResults: readonly ActionResult[];
@@ -372,7 +377,9 @@ export function evaluatePlannedReplyEgress(args: {
   ) {
     return { verdict: "reject", kind: "stated_time" };
   }
-  if (replyClaimsCompletedSideEffect(reply)) {
+  if (
+    replyClaimsCompletedSideEffect(reply, { pendingWork: args.pendingWork })
+  ) {
     if (
       plannedReplyHasClaimGroundingReceipt({
         kind: "completed_side_effect",
@@ -644,6 +651,14 @@ export async function enforceEffectGroundedVisibleContent(
   actionName?: string,
   prepareRecovery?: () => Promise<MessageReplyRecoveryContext | undefined>,
 ): Promise<Content> {
+  const sourceReply = getSourceReplyBinding(response, {
+    agentId: runtime.agentId,
+    roomId: message.roomId,
+    messageId: message.id ?? "",
+  });
+  const assertedText = sourceReply
+    ? sourceReplyAssertionText(sourceReply)
+    : response.text;
   const hasEffectDeliveryBinding =
     getEffectDeliveryBinding(response) !== undefined;
   if (!hasEffectDeliveryBinding && response.effectReceiptIds !== undefined) {
@@ -653,8 +668,8 @@ export async function enforceEffectGroundedVisibleContent(
     hasEffectDeliveryBinding && !effectDeliveryBindingIsValid(response);
   if (
     effectDeliveryBindingInvalid ||
-    (typeof response.text === "string" &&
-      replyClaimsCompletedSideEffect(response.text) &&
+    (typeof assertedText === "string" &&
+      replyClaimsCompletedSideEffect(assertedText) &&
       !effectDeliveryBindingProvesApplication(response))
   ) {
     runtime.logger.warn(

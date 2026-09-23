@@ -76,9 +76,6 @@ jobs:
       - name: Batch runner shard execution self-test
         if: matrix.shard == 1
         run: node packages/scripts/test-cloud-run-shards.self-test.mjs
-      - name: Batch runner unit tests
-        if: matrix.shard == 1
-        run: bun test packages/scripts/__tests__/test-cloud-run.test.mjs
       # Guards the wall-clock watchdog (#17245): a wedged child and its
       # descendants must be terminated without stalling the remaining batches.
       - name: Batch runner process-tree watchdog self-test

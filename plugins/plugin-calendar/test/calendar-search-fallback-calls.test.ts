@@ -47,16 +47,18 @@ const EVENT: LifeOpsCalendarEvent = {
 
 function stubService() {
   return {
-    getCalendarFeed: vi.fn(async () => ({
-      calendarId: "all",
-      events: [EVENT],
-      source: "cache" as const,
-      state: "complete" as const,
-      sources: [{ status: "fresh" as const }],
-      timeMin: "2026-09-01T00:00:00.000Z",
-      timeMax: "2026-09-30T00:00:00.000Z",
-      syncedAt: null,
-    })),
+    getCalendarFeed: vi.fn(
+      async (_url: URL, _request: Record<string, unknown>) => ({
+        calendarId: "all",
+        events: [EVENT],
+        source: "cache" as const,
+        state: "complete" as const,
+        sources: [{ status: "fresh" as const }],
+        timeMin: "2026-09-01T00:00:00.000Z",
+        timeMax: "2026-09-30T00:00:00.000Z",
+        syncedAt: null,
+      }),
+    ),
   };
 }
 
@@ -104,13 +106,16 @@ function spiedDeps() {
   return { deps, runTextModel, runJsonModel, recentConversationTexts };
 }
 
-async function runSearch(parameters: Record<string, unknown>) {
+async function runSearch(
+  parameters: Record<string, unknown>,
+  text = "whats on my calendar tuesday?",
+) {
   const service = stubService();
   const spies = spiedDeps();
   const action = createCalendarActionRunner(spies.deps);
   const result = await action.handler(
     fakeRuntime(service),
-    message("whats on my calendar tuesday?"),
+    message(text),
     undefined,
     { parameters },
     vi.fn(async () => []),
@@ -120,6 +125,37 @@ async function runSearch(parameters: Record<string, unknown>) {
 }
 
 describe("CALENDAR search_events call shape", () => {
+  it.each([false, true])(
+    "keeps typed source filters separate from a destination date (explicit source day %s)",
+    async (explicitDay) => {
+      const { service } = await runSearch(
+        {
+          subaction: "search_events",
+          query: "Gym session",
+          details: {
+            timeZone: "UTC",
+            ...(explicitDay ? { date: "2026-09-08" } : {}),
+          },
+        },
+        'Find "Gym session" and offer Saturday September 19, 2026 morning options to move it.',
+      );
+      const request = service.getCalendarFeed.mock.calls[0]?.[1] as {
+        timeMin: string;
+        timeMax: string;
+      };
+      if (explicitDay) {
+        expect(request).toMatchObject({
+          timeMin: "2026-09-08T00:00:00.000Z",
+          timeMax: "2026-09-09T00:00:00.000Z",
+        });
+      } else {
+        expect(Date.parse(request.timeMax) - Date.parse(request.timeMin)).toBe(
+          30 * 24 * 60 * 60 * 1000,
+        );
+      }
+    },
+  );
+
   it.each([
     { query: "gym" },
     { queries: ["gym"] },
@@ -137,6 +173,91 @@ describe("CALENDAR search_events call shape", () => {
     },
   );
 
+  it.each([
+    ["2026-09-20", "2026-09-20T04:00:00.000Z", "2026-09-21T04:00:00.000Z"],
+    ["2026-03-08", "2026-03-08T05:00:00.000Z", "2026-03-09T04:00:00.000Z"],
+    ["2026-11-01", "2026-11-01T04:00:00.000Z", "2026-11-02T05:00:00.000Z"],
+  ])(
+    "reads the complete local day %s without model timezone arithmetic",
+    async (date, timeMin, timeMax) => {
+      const { result, service, runJsonModel, runTextModel } = await runSearch({
+        subaction: "feed",
+        details: { date, timeZone: "America/New_York" },
+      });
+      expect(result.success).toBe(true);
+      expect(service.getCalendarFeed).toHaveBeenCalledExactlyOnceWith(
+        expect.any(URL),
+        expect.objectContaining({
+          timeMin,
+          timeMax,
+          timeZone: "America/New_York",
+        }),
+      );
+      expect(runJsonModel).not.toHaveBeenCalled();
+      expect(runTextModel).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    [
+      "2026-09-18",
+      "2026-09-20",
+      "2026-09-18T04:00:00.000Z",
+      "2026-09-21T04:00:00.000Z",
+    ],
+    [
+      "2026-03-07",
+      "2026-03-09",
+      "2026-03-07T05:00:00.000Z",
+      "2026-03-10T04:00:00.000Z",
+    ],
+    [
+      "2026-10-31",
+      "2026-11-02",
+      "2026-10-31T04:00:00.000Z",
+      "2026-11-03T05:00:00.000Z",
+    ],
+  ])(
+    "reads all whole dates from %s through %s across DST",
+    async (date, endDate, timeMin, timeMax) => {
+      const { result, service, runJsonModel, runTextModel } = await runSearch({
+        subaction: "feed",
+        details: { date, endDate, timeZone: "America/New_York" },
+      });
+      expect(result.success).toBe(true);
+      expect(service.getCalendarFeed).toHaveBeenCalledExactlyOnceWith(
+        expect.any(URL),
+        expect.objectContaining({ timeMin, timeMax }),
+      );
+      expect(runJsonModel).not.toHaveBeenCalled();
+      expect(runTextModel).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { endDate: "2026-09-20" },
+    { date: "2026-09-20", endDate: "2026-09-18" },
+    { date: "2026-02-28", endDate: "2026-02-30" },
+    { date: "2026-02-30" },
+    { date: "tomorrow" },
+    {
+      date: "2026-09-20",
+      timeMin: "2026-09-19T00:00:00",
+      timeMax: "2026-09-20T00:00:00",
+    },
+  ])(
+    "rejects invalid or conflicting date bounds before reading: %j",
+    async (details) => {
+      const { result, service } = await runSearch({
+        subaction: "feed",
+        details: { ...details, timeZone: "America/New_York" },
+      });
+      expect(result.success).toBe(false);
+      expect(result.data?.coachingFailure).toBe(true);
+      expect(service.getCalendarFeed).not.toHaveBeenCalled();
+    },
+  );
+
   it("reads an unfiltered date range through feed without query extraction", async () => {
     const {
       result,
@@ -150,9 +271,16 @@ describe("CALENDAR search_events call shape", () => {
         timeMin: "2026-09-16T00:00:00",
         timeMax: "2026-09-17T00:00:00",
         timeZone: "UTC",
+        label: "on September 17",
       },
     });
     expect(result.success).toBe(true);
+    expect(result.data?.replyContext).toMatchObject({
+      context: {
+        label:
+          "from Wednesday, September 16, 2026 at 12:00 AM UTC to Thursday, September 17, 2026 at 12:00 AM UTC (end exclusive; UTC)",
+      },
+    });
     expect(service.getCalendarFeed).toHaveBeenCalledTimes(1);
     expect(runJsonModel).not.toHaveBeenCalled();
     expect(runTextModel).not.toHaveBeenCalled();
@@ -191,131 +319,146 @@ describe("CALENDAR search_events call shape", () => {
 });
 
 describe("Calendar repair completion", () => {
-  it("reuses the verified answer after repairing a rejected search and releasing pending scope", async () => {
-    const service = stubService();
-    const spies = spiedDeps();
-    const action = createCalendarActionRunner(spies.deps);
-    const runtime = fakeRuntime(service);
-    const actor = message(
-      "How many calendar events are in the requested window? Do not change records.",
-    );
-    const details = {
-      timeMin: "2026-09-01T00:00:00Z",
-      timeMax: "2026-09-30T00:00:00Z",
-      timeZone: "UTC",
-    };
-    const plans = [
-      {
-        name: "CALENDAR",
-        arguments: {
-          subaction: "search_events",
-          query: "event",
-          details,
-          eliza_turn_scope: "more_work_pending",
-        },
-      },
-      {
-        name: "CALENDAR",
-        arguments: {
-          subaction: "feed",
-          details,
-          eliza_turn_scope: "more_work_pending",
-        },
-      },
-      { name: "REPLY", arguments: { eliza_turn_scope: "final" } },
-    ];
-    const reply = "You have one calendar event in that window.";
-    let planningCalls = 0;
-    let evaluations = 0;
-    const result = await runPlannerLoop({
-      runtime: {
-        useModel: async (type) => {
-          if (type === "ACTION_PLANNER") {
-            const plan = plans[planningCalls++];
-            if (!plan)
-              throw new Error(
-                "Unexpected planner or failure-synthesis call after verified completion",
-              );
-            return {
-              text: "",
-              toolCalls: [{ id: `plan-${planningCalls}`, ...plan }],
-            };
-          }
-          if (type === "RESPONSE_HANDLER" && ++evaluations <= 2)
-            return JSON.stringify({
-              thought:
-                evaluations === 1
-                  ? "The query was rejected before reading; use the unfiltered feed."
-                  : "The complete feed contains one event; no requested operation remains.",
-              success: evaluations === 2,
-              decision: evaluations === 2 ? "FINISH" : "CONTINUE",
-              ...(evaluations === 2 ? { messageToUser: reply } : {}),
-            });
-          throw new Error("Unexpected extra completion evaluation");
-        },
-      },
-      context: {
-        id: "calendar-query-repair",
-        events: [
-          {
-            id: "request",
-            type: "message",
-            source: "user",
-            createdAt: 1,
-            content: actor.content.text ?? "",
-          },
-        ],
-      },
-      tools: [
+  it.each([
+    "CALENDAR_SEARCH_QUERY_REQUIRED",
+    "CALENDAR_READ_DATE_CONFLICT",
+    "CALENDAR_READ_DATE_INVALID",
+  ])(
+    "reuses the verified answer after repairing %s and releasing pending scope",
+    async (errorCode) => {
+      const service = stubService();
+      const spies = spiedDeps();
+      const action = createCalendarActionRunner(spies.deps);
+      const runtime = fakeRuntime(service);
+      const actor = message(
+        "How many calendar events are in the requested window? Do not change records.",
+      );
+      const details = {
+        timeMin: "2026-09-01T00:00:00Z",
+        timeMax: "2026-09-30T00:00:00Z",
+        timeZone: "UTC",
+      };
+      const plans = [
         {
           name: "CALENDAR",
-          description: "Read calendar events",
-          parameters: { type: "object", properties: {} },
+          arguments: {
+            subaction:
+              errorCode === "CALENDAR_SEARCH_QUERY_REQUIRED"
+                ? "search_events"
+                : "feed",
+            query: "event",
+            details:
+              errorCode === "CALENDAR_READ_DATE_CONFLICT"
+                ? { ...details, date: "2026-09-01" }
+                : errorCode === "CALENDAR_READ_DATE_INVALID"
+                  ? { date: "2026-02-30" }
+                  : details,
+            eliza_turn_scope: "more_work_pending",
+          },
         },
-      ],
-      config: { maxIterations: 5, maxToolCalls: 3 },
-      executeToolCall: async (call) =>
-        actionResultToPlannerToolResult(
-          await executePlannedToolCall(
-            runtime,
+        {
+          name: "CALENDAR",
+          arguments: {
+            subaction: "feed",
+            details,
+            eliza_turn_scope: "more_work_pending",
+          },
+        },
+        { name: "REPLY", arguments: { eliza_turn_scope: "final" } },
+      ];
+      const reply = "You have one calendar event in that window.";
+      let planningCalls = 0;
+      let evaluations = 0;
+      const result = await runPlannerLoop({
+        runtime: {
+          useModel: async (type) => {
+            if (type === "ACTION_PLANNER") {
+              const plan = plans[planningCalls++];
+              if (!plan)
+                throw new Error(
+                  "Unexpected planner or failure-synthesis call after verified completion",
+                );
+              return {
+                text: "",
+                toolCalls: [{ id: `plan-${planningCalls}`, ...plan }],
+              };
+            }
+            if (type === "RESPONSE_HANDLER" && ++evaluations <= 2)
+              return JSON.stringify({
+                thought:
+                  evaluations === 1
+                    ? "The arguments were rejected before reading; use the correct feed window."
+                    : "The complete feed contains one event; no requested operation remains.",
+                success: evaluations === 2,
+                decision: evaluations === 2 ? "FINISH" : "CONTINUE",
+                ...(evaluations === 2 ? { messageToUser: reply } : {}),
+              });
+            throw new Error("Unexpected extra completion evaluation");
+          },
+        },
+        context: {
+          id: "calendar-query-repair",
+          events: [
             {
-              message: actor,
-              userRoles: ["OWNER"],
-              activeContexts: ["calendar"],
-              callback: async () => [],
+              id: "request",
+              type: "message",
+              source: "user",
+              createdAt: 1,
+              content: actor.content.text ?? "",
             },
-            { name: action.name, params: call.params ?? {} },
-            { actions: [action] },
+          ],
+        },
+        tools: [
+          {
+            name: "CALENDAR",
+            description: "Read calendar events",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+        config: { maxIterations: 5, maxToolCalls: 3 },
+        executeToolCall: async (call) =>
+          actionResultToPlannerToolResult(
+            await executePlannedToolCall(
+              runtime,
+              {
+                message: actor,
+                userRoles: ["OWNER"],
+                activeContexts: ["calendar"],
+                callback: async () => [],
+              },
+              { name: action.name, params: call.params ?? {} },
+              { actions: [action] },
+            ),
           ),
-        ),
-    });
-    expect(result.finalMessage).toBe(reply);
-    expect(planningCalls).toBe(3);
-    expect(evaluations).toBe(2);
-    expect(service.getCalendarFeed).toHaveBeenCalledTimes(1);
-    expect(spies.runJsonModel).not.toHaveBeenCalled();
-    expect(spies.runTextModel).not.toHaveBeenCalled();
-    expect(
-      result.trajectory.steps
-        .filter((step) => step.result)
-        .map((step) => step.result?.success),
-    ).toEqual([false, true]);
-    expect(
-      result.trajectory.steps.find((step) => step.result?.success === false)
-        ?.result,
-    ).toMatchObject({
-      turnComplete: false,
-      effectReceipts: [
-        expect.objectContaining({
-          outcome: "failed",
-          failure: expect.objectContaining({
-            code: "CALENDAR_SEARCH_QUERY_REQUIRED",
-            acceptance: "rejected",
+      });
+      expect(result.finalMessage).toBe(reply);
+      expect(planningCalls).toBe(3);
+      expect(evaluations).toBe(2);
+      expect(service.getCalendarFeed).toHaveBeenCalledTimes(1);
+      expect(spies.runJsonModel).not.toHaveBeenCalled();
+      expect(spies.runTextModel).not.toHaveBeenCalled();
+      expect(
+        result.trajectory.steps
+          .filter((step) => step.result)
+          .map((step) => step.result?.success),
+      ).toEqual([false, true]);
+      expect(
+        result.trajectory.steps.find((step) => step.result?.success === false)
+          ?.result,
+      ).toMatchObject({
+        turnComplete: false,
+        effectReceipts: [
+          expect.objectContaining({
+            outcome: "failed",
+            failure: expect.objectContaining({
+              code: errorCode,
+              acceptance: "rejected",
+            }),
           }),
-        }),
-      ],
-    });
-  });
+        ],
+      });
+    },
+  );
 
   it.each([403, 500])(
     "keeps a real Calendar service failure authoritative: %s",

@@ -15,6 +15,7 @@
 import {
   type Action,
   type ActionResult,
+  ElizaError,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -24,8 +25,12 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 
-import { getNotesService } from "./service.js";
-import { parseNoteContent, parseNoteFieldPatch } from "./validation.js";
+import { getNotesService, type NotesService } from "./service.js";
+import {
+  parseNoteContent,
+  parseNoteDateRange,
+  parseNoteFieldPatch,
+} from "./validation.js";
 
 const NOTES_OPS = [
   "create",
@@ -173,6 +178,78 @@ function committed(data: Record<string, unknown>): ActionResult {
   };
 }
 
+/** Preserve a title reference when the planner substitutes an index ID. */
+function updateNoteFromChatReference(
+  service: NotesService,
+  message: Memory,
+  noteId: string,
+  patch: unknown,
+): ReturnType<NotesService["updateNoteWithCommit"]> {
+  const text = message.content.text ?? "";
+  if (!text.includes(noteId)) {
+    const named = service
+      .findNotesNamedInText(text)
+      .find((note) => note.id === noteId);
+    if (named) {
+      // Resolve again inside the write barrier, including any copies added
+      // since the planner read the index. An inferred ID is not a selection
+      // between distinct records carrying the user's named title.
+      return service.updateNoteByLookupWithCommit("title", named.title, patch);
+    }
+  }
+  return service.updateNoteWithCommit(noteId, patch);
+}
+
+/** Known lookup/literal-edit guards reject before the store commits. */
+async function updateNoteResult(
+  update: () => ReturnType<NotesService["updateNoteWithCommit"]>,
+  service: NotesService,
+): Promise<ActionResult> {
+  try {
+    const updated = await update();
+    return committed({
+      op: "update",
+      noteId: updated.value.id,
+      note: updated.value,
+      consolidatedCount: updated.consolidatedIds.length,
+    });
+  } catch (error) {
+    // A valid edit with more than one target needs a user's selection, not
+    // another planner attempt choosing an arbitrary ID from the note index.
+    if (error instanceof ElizaError && error.code === "NOTES_AMBIGUOUS_NOTE") {
+      const target = error.context?.target;
+      const rejected = failure(error.message, error.code);
+      return {
+        ...rejected,
+        data: {
+          ...rejected.data,
+          awaitingUserInput: true,
+          requiresInput: true,
+          ...(typeof target === "string"
+            ? { candidates: service.findNotesByQuery(target) }
+            : {}),
+        },
+      };
+    }
+    // error-policy:J3 literal-edit guards reject untrusted arguments before writing.
+    if (
+      error instanceof ElizaError &&
+      [
+        "NOTES_EDIT_TEXT_NOT_FOUND",
+        "NOTES_EDIT_TEXT_AMBIGUOUS",
+        "NOTES_EDIT_NORMALIZATION_REQUIRED",
+      ].includes(error.code)
+    ) {
+      const rejected = failure(error.message, error.code);
+      return {
+        ...rejected,
+        data: { ...rejected.data, coachingFailure: true },
+      };
+    }
+    throw error;
+  }
+}
+
 export const notesAction: Action = {
   name: "NOTES",
   tags: [
@@ -205,18 +282,18 @@ export const notesAction: Action = {
     "UPDATE_NOTE",
   ],
   description:
-    "Durable notes the user can write and read back. action=create writes a note from one content field; action=get reads one exact noteId; action=list reads/searches note text; action=update applies a literal textEdit or replaces the complete note; action=delete removes one found by its text. The first line is the note's label and later lines are its body. Prefer textEdit for an exact substitution: the service preserves every other character without needing the model to read and rewrite the note. NOTES changes data, not the visible view: an explicit request to also open Notes needs its own navigation action (prefer VIEWS_SHOW when available).",
+    "Durable notes the user can write and read back. action=create writes a note from one content field; action=get reads one exact noteId; action=list reads/searches note text; action=patch edits selected title/body fields or exact text, preserving other content; action=update supports legacy complete-note replacement; action=delete removes one found by its text. The first line is the note's label and later lines are its body. Prefer textEdit for an exact substitution: the service preserves every other character without needing the model to read and rewrite the note. NOTES changes data, not the visible view: an explicit request to also open Notes needs its own navigation action (prefer VIEWS_SHOW when available).",
   descriptionCompressed:
-    "notes: create, list/search, update by exact textEdit or complete replacementContent, delete; opening the Notes view separately uses VIEWS_SHOW when available, otherwise VIEWS",
+    "notes: create, list/search, patch title/body or exact text, legacy whole-note update, delete; opening the Notes view separately uses VIEWS_SHOW when available, otherwise VIEWS",
   routingHint:
-    "Notes store: create -> NOTES_CREATE(content); exact case-sensitive ID -> NOTES_GET(noteId), without content; search/list/count -> NOTES_LIST(content=topic), omitting content only for all notes, counts or recency comparisons without a topic. Use returned createdAt/updatedAt for recency, not search words like 'latest'. Delete -> NOTES_DELETE(content=identifying text); edit -> NOTES_PATCH(target={kind:id/text,value}, changes=[{field:title/body,value:exact replacement}], or changes=[] with textEdit for literal substitution); omitted fields remain unchanged. NOTES_UPDATE supports exact textEdit substitutions and legacy complete-note replacement. Never substitute a read for an edit/delete. SAVED_NOTES supplies note recall; when the needed content is absent, use NOTES_GET/LIST. Its title index is not body text. MEMORY, documents, files and DATABASE do not search this store; no raw SQL. Keep literal wording, punctuation and line breaks. Dates/times in a note remain content; only an explicit scheduling/reminder request also needs CALENDAR/TRIGGER. Opening Notes is a separate navigation operation, only when requested.",
+    "Notes store: create -> NOTES_CREATE(content); exact case-sensitive ID -> NOTES_GET(noteId), without content; search/list/count -> NOTES_LIST(content=topic); date/period queries -> NOTES_LIST(dateRange={field:createdAt/updatedAt,startAt,endAt}, content=optional topic). Omit dateRange only when no date window is requested, and omit content when no topic is requested. Resolve relative windows from the current date and user timezone; last week is the previous Monday-to-Monday calendar week. Read timestamps from the action result, not provider restoration. Delete -> NOTES_DELETE(content=identifying text); edit -> NOTES_PATCH(target={kind:id/text,value}, changes=[{field:title/body,value:exact replacement}], or changes=[] with textEdit for literal substitution); omitted fields remain unchanged. NOTES_UPDATE supports exact textEdit substitutions and legacy complete-note replacement. Never substitute a read for an edit/delete. SAVED_NOTES supplies note recall; when the needed content is absent, use NOTES_GET/LIST. Its title index is not body text. MEMORY, documents, files and DATABASE do not search this store; no raw SQL. Keep literal wording, punctuation and line breaks. Dates/times in a note remain content; only an explicit scheduling/reminder request also needs CALENDAR/TRIGGER. Opening Notes is a separate navigation operation, only when requested.",
   // Notes are stored per agent rather than per sender. Only the owner may see
   // or mutate that personal store, including through direct tool execution.
   roleGate: { minRole: "OWNER" },
   validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
     _state?: State,
     options?: HandlerOptions,
     _callback?: HandlerCallback,
@@ -242,6 +319,12 @@ export const notesAction: Action = {
     if (alternatives.conflicts.length > 0)
       return conflictingAlternatives(alternatives.conflicts);
     const service = getNotesService(runtime);
+    if (params.dateRange !== undefined && op !== "list") {
+      return failure(
+        "dateRange is only supported for list reads.",
+        "NOTES_INVALID_DATE_FILTER",
+      );
+    }
     if (op === "patch") {
       if (
         Object.keys(params).some(
@@ -266,20 +349,22 @@ export const notesAction: Action = {
         params.changes,
         params.textEdit,
       );
-      const updated =
-        target.kind === "id"
-          ? await service.updateNoteWithCommit(target.value, change)
-          : await service.updateNoteByLookupWithCommit(
-              "query",
-              target.value,
-              change,
-            );
-      return committed({
-        op: "update",
-        noteId: updated.value.id,
-        note: updated.value,
-        consolidatedCount: updated.consolidatedIds.length,
-      });
+      return updateNoteResult(
+        () =>
+          target.kind === "id"
+            ? updateNoteFromChatReference(
+                service,
+                message,
+                target.value,
+                change,
+              )
+            : service.updateNoteByLookupWithCommit(
+                "query",
+                target.value,
+                change,
+              ),
+        service,
+      );
     }
 
     if (op === "list" || op === "get") {
@@ -295,8 +380,12 @@ export const notesAction: Action = {
         );
       }
       const notes = service.listNotes();
+      const dateRange =
+        params.dateRange === undefined
+          ? undefined
+          : parseNoteDateRange(params.dateRange);
       const normalizedTopic = topic?.toLocaleLowerCase();
-      const matches = noteId
+      const candidates = noteId
         ? notes.filter((note) => note.id === noteId)
         : normalizedTopic
           ? notes.filter((note) =>
@@ -305,15 +394,34 @@ export const notesAction: Action = {
                 .includes(normalizedTopic),
             )
           : notes;
+      const matches = dateRange
+        ? candidates.filter((note) => {
+            const instant = Date.parse(note[dateRange.field]);
+            return (
+              instant >= Date.parse(dateRange.startAt) &&
+              instant < Date.parse(dateRange.endAt)
+            );
+          })
+        : candidates;
       return committed({
         op,
         readOnlyOperation: true,
         count: matches.length,
         total: notes.length,
-        filterApplied: noteId !== undefined || topic !== undefined,
-        lookupMode: noteId ? "exact_id" : topic ? "text" : "all",
+        filterApplied:
+          noteId !== undefined ||
+          topic !== undefined ||
+          dateRange !== undefined,
+        lookupMode: noteId
+          ? "exact_id"
+          : topic
+            ? "text"
+            : dateRange
+              ? "date"
+              : "all",
         ...(noteId ? { requestedNoteId: noteId } : {}),
         ...(topic ? { topic } : {}),
+        ...(dateRange ? { dateRange } : {}),
         notes: matches,
       });
     }
@@ -408,17 +516,38 @@ export const notesAction: Action = {
     const patch = hasTextEdit
       ? { textEdit: params.textEdit }
       : parseNoteContent(replacement);
-    const updated = noteId
-      ? await service.updateNoteWithCommit(noteId, patch)
-      : await service.updateNoteByLookupWithCommit("query", target, patch);
-    return committed({
-      op,
-      noteId: updated.value.id,
-      note: updated.value,
-      consolidatedCount: updated.consolidatedIds.length,
-    });
+    return updateNoteResult(
+      () =>
+        noteId
+          ? updateNoteFromChatReference(service, message, noteId, patch)
+          : service.updateNoteByLookupWithCommit("query", target, patch),
+      service,
+    );
   },
   parameters: [
+    {
+      name: "dateRange",
+      description:
+        "Optional timestamp filter, combined with content/noteId. For notes written in a period use createdAt; for edits use updatedAt. Start is inclusive, end exclusive. Use ISO timestamps with the user's timezone offsets, including any DST change. Unless the user specifies otherwise, 'last week' means the previous Monday-to-Monday calendar week, not the trailing seven days. State the actual date window in the answer.",
+      required: false,
+      subactions: ["list"],
+      schema: {
+        type: "object",
+        properties: {
+          field: { type: "string", enum: ["createdAt", "updatedAt"] },
+          startAt: {
+            type: "string",
+            description: "Inclusive ISO timestamp with explicit offset.",
+          },
+          endAt: {
+            type: "string",
+            description: "Exclusive ISO timestamp with explicit offset.",
+          },
+        },
+        required: ["field", "startAt", "endAt"],
+        additionalProperties: false,
+      },
+    },
     {
       name: "target",
       description:
@@ -465,12 +594,12 @@ export const notesAction: Action = {
     {
       name: "content",
       description:
-        "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; compare returned createdAt/updatedAt timestamps, never search for 'latest' or 'most recently updated'. For update, use either noteId or content identifying the EXISTING note, never both. For delete, identify the EXISTING note by text. For create, supply the exact title, newline, and body.",
+        "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; compare returned createdAt/updatedAt timestamps, never search for 'latest' or 'most recently updated'. For update, use either noteId or content identifying the EXISTING note, never both. For delete, identify the EXISTING note by text. For create, first resolve what the user wants stored versus instructions to the app. Do not assume every word after body is note content. An unquoted trailing app instruction can be ambiguous: ask before creating if it could belong to either. Quotation delimiters are not content unless explicitly requested; embedded or explicitly literal quote characters are content. Then preserve the resolved note text exactly, including punctuation, spaces and line breaks. A single-line note stays one line; do not invent a title/body split. If the user supplies a separate title and body, join those exact values with one newline.",
       required: false,
       subactions: ["create", "list", "update", "delete"],
-      requiredForSubactions: ["update"],
-      legacyRequiredAlternatives: ["noteId", "text", "note", "title", "query"],
-      // Notes validates content-or-ID and legacy alternatives before any write.
+      requiredForSubactions: ["create", "update", "delete"],
+      legacyRequiredAlternatives: ["text", "note", "title", "query", "noteId"],
+      // Notes validates content-or-alternative before any write.
       // Strict providers may serialize an omitted optional string as "". The
       // empty string is never valid note content (minLength is 1), so normalize
       // that provider sentinel back to omission before schema validation. This
@@ -510,7 +639,7 @@ export const notesAction: Action = {
     {
       name: "body",
       description:
-        "For create: optional body when content contains only the title. For update: supported alternative to replacementContent. Prefer the complete note in content: title on the first line and body on subsequent lines, omitting body. Alternatively, pass only the exact title in content and the requested body here. Copy an explicit user title byte-for-byte, including spaces, capitalization, punctuation, and alphanumeric codes, even when the body is recalled from earlier conversation or generated. Do not reformat the title or substitute the spelling or spacing of a similar prior note. Preserve an explicitly supplied body exactly. Put a newline between title and body; do not join them with a dash into one title. Prefer replacementContent for updates.",
+        "For create: optional body only when the user supplies a separate title and body. Preserve both exactly and join them with one newline. For a complete supplied note, put its unchanged text in content and omit body; punctuation does not define a field boundary. For update, body remains a supported alternative to replacementContent for the complete updated note.",
       subactions: ["create", "update"],
       required: false,
       schema: { type: "string" },

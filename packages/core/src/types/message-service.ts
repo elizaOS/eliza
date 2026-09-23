@@ -48,6 +48,8 @@ export interface MessageProcessingOptions {
 	codingActionProfile?: CodingActionProfile;
 	shouldRespondModel?: ShouldRespondModelType;
 	onStreamChunk?: StreamChunkCallback;
+	/** Transient progress from existing inference; never a persisted or final reply. */
+	onPlanningAcknowledgment?: (text: string) => void;
 	/**
 	 * When true, run a follow-up reasoning pass after actions complete so the
 	 * agent can decide whether to share results, run another action, or stop.

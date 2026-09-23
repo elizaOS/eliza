@@ -65,9 +65,9 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
       // (#14623). The bare label "Memory" alone gave the compact-tier
       // catalog no signal for the destructive verbs.
       description:
-        "Read, write, recall, edit, and delete the agent's stored memories, long-term facts, and learned experiences — including forgetting a specific memory or experience.",
+        "Read, write, recall, edit, and delete the agent's stored memories, long-term facts, and learned experiences — including forgetting a specific memory or experience. Personal interaction preferences and standing rules use PERSONALITY show_state/remove_directive; factual records use MEMORY.",
       descriptionCompressed:
-        "Agent memories, facts & learned experiences: recall, edit, delete/forget",
+        "Agent memories, facts & learned experiences: recall, edit, delete/forget. Personal interaction rules: PERSONALITY.",
       sensitivity: "personal",
       cacheScope: "agent",
       roleGate: { minRole: "USER" },

@@ -31,6 +31,36 @@ describe("native context reads", () => {
       createContextReadTool(withAvailableContextRequests(schema(), new Set())),
     ).toBeUndefined();
   });
+  it("accepts dedicated lookup progress only when the host offers that wire field", () => {
+    const original = withAvailableContextRequests(schema(), new Set(["FACTS"]));
+    expect(
+      createContextReadTool(original)?.parameters.properties?.acknowledgment,
+    ).toBeUndefined();
+    expect(
+      createContextReadTool(original, true)?.parameters.required,
+    ).toContain("acknowledgment");
+    expect(
+      extractContextRead(
+        {
+          text: "Unaccepted final draft",
+          toolCalls: [
+            {
+              id: "read-progress",
+              name: "READ_CONTEXT",
+              arguments: {
+                contextRequests: ["FACTS"],
+                acknowledgment: "Checking that now.",
+              },
+            },
+          ],
+        } as GenerateTextResult,
+        true,
+      ),
+    ).toEqual({
+      contextRequests: ["FACTS"],
+      acknowledgment: "Checking that now.",
+    });
+  });
   it("extracts a read without treating accompanying prose as a reply", () => {
     const raw = {
       text: "This must not be delivered",
@@ -54,6 +84,7 @@ describe("native context reads", () => {
     {},
     { contextRequests: [] },
     { contextRequests: [42] },
+    { contextRequests: ["FACTS"], acknowledgment: 42 },
     { contextRequests: ["FACTS"], replyText: "Unaccepted draft" },
   ])(
     "rejects malformed read arguments without producing a ready decision: %j",

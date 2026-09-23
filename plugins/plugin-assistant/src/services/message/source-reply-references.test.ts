@@ -1,15 +1,17 @@
-/** Verify source reply reference identity and dependency validation with deterministic contexts. */
+/** Verifies persisted quote links load only unchanged authorized earlier originals. */
+import {
+  type ContextEvent,
+  completionContextSources,
+  createContextObject,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { completionContextSources } from "@elizaos/core";
-import { createContextObject } from "@elizaos/core";
 import {
   applyHistoryRetentionReview,
   prepareHistoryRetention,
-} from "../../runtime/history-retention";
-import type { ContextEvent } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
+} from "../../runtime/history-retention.ts";
 import { appendPriorDialogueEvents } from "./dialogue-context";
 import {
   type HistoryDiscovery,
@@ -18,7 +20,11 @@ import {
   requestedHistory,
 } from "./history-discovery";
 import { createV5ReplyStrategyResult } from "./reply-policy";
-import { createSourceReplySnapshot, resolveSourceReply } from "./source-reply";
+import {
+  createSourceReplySnapshot,
+  resolveSourceReply,
+  type SourceReplyRendering,
+} from "./source-reply";
 import {
   readSourceReplyReferences,
   type SourceReplyReferences,
@@ -71,7 +77,7 @@ function fixture() {
     );
     return createContextObject({
       id: "turn",
-      metadata: { roomId: "room" },
+      metadata: { roomId: "room", messageId: message.id },
       events,
     });
   }
@@ -84,6 +90,7 @@ function fixture() {
   };
   const snapshot = createSourceReplySnapshot(context, projection, [original]);
   if (!snapshot) throw Error("snapshot");
+  let rendering: SourceReplyRendering | undefined;
   let references: SourceReplyReferences | undefined;
   const resolved = resolveSourceReply(
     context,
@@ -104,10 +111,16 @@ function fixture() {
       },
     },
     (value) => {
-      references = value;
+      rendering = value;
+      references = value.references
+        ? {
+            replySha256: value.references.replySha256,
+            sources: [...value.references.sources],
+          }
+        : undefined;
     },
   );
-  if (typeof resolved?.replyText !== "string" || !references)
+  if (typeof resolved?.replyText !== "string" || !references || !rendering)
     throw Error("reply");
   const result = createV5ReplyStrategyResult({
     runtime,
@@ -116,14 +129,22 @@ function fixture() {
     responseId: "reply" as Memory["id"] & string,
     text: resolved.replyText,
     thought: "",
-    sourceReplyReferences: references,
+    sourceReplyRendering: rendering,
   });
   // Roundtrip through the canonical serialized memory shape, not a private map.
   const reply = JSON.parse(
     JSON.stringify(result.responseMessages[0]),
   ) as Memory;
   reply.createdAt = 2;
-  return { original, reply, message, runtime, references, contextFor };
+  return {
+    original,
+    reply,
+    message,
+    runtime,
+    references,
+    rendering,
+    contextFor,
+  };
 }
 
 describe("stored source-backed reply references", () => {
@@ -154,10 +175,10 @@ describe("stored source-backed reply references", () => {
     const checkpoint = applyHistoryRetentionReview(prepared, {
       sourceSetId: prepared.sourceSetId,
       complete: true,
-      retainSourceIds: [],
-      deferSourceIds: completionContextSources(context).sources.map(
-        (s) => s.id,
-      ),
+      retainSourceIds: ["h14"],
+      deferSourceIds: completionContextSources(context)
+        .sources.filter((s) => s.id !== "h14")
+        .map((s) => s.id),
       uncertainSourceIds: [],
       dependencyGroups: [],
     });
@@ -177,7 +198,7 @@ describe("stored source-backed reply references", () => {
       loadedSourceIds: new Set(),
     };
     const read = loadHistoryReferences(context, projection, [
-      "history:search-assistant:Your original",
+      "history:search:Your original",
     ]);
     expect([...must(read.projection).loadedSourceIds]).toEqual(["h2", "h1"]);
     expect(must(must(read.evidence).searchResults)[0].matchedSourceIds).toEqual(
@@ -296,7 +317,7 @@ describe("stored source-backed reply references", () => {
       responseId: must(f.reply.id),
       text: "A rewritten answer.",
       thought: "",
-      sourceReplyReferences: f.references,
+      sourceReplyRendering: f.rendering,
     });
     expect(result.responseContent.sourceReplyReferences).toBeUndefined();
     expect(

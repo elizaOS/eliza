@@ -5190,15 +5190,10 @@ export class CalendarService extends Service {
       "owner",
       ELIZA_CALENDAR_GRANT_ID,
     );
-    // The built-in source is authoritative local state, not a polled remote.
-    // Its observation token therefore advances only when stored events change;
-    // stamping every read with wall-clock time would make receipts non-replayable.
-    const syncedAt =
-      events
-        .map((event) => event.updatedAt)
-        .filter((value) => Number.isFinite(Date.parse(value)))
-        .sort()
-        .at(-1) ?? null;
+    // A successful local query is a fresh observation even when it returns no
+    // events. Event updatedAt is not the observation time of an empty window.
+    // Read receipts bind this snapshot; mutation replay uses its own ledger.
+    const syncedAt = new Date().toISOString();
     return {
       calendarId: args.calendar.calendarId,
       events,
@@ -7425,6 +7420,22 @@ export class CalendarService extends Service {
       recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
     },
   ): Promise<LifeOpsCalendarEvent> {
+    // Composite local identities are not external provider IDs. Reject a
+    // dropped/wrong agent prefix (including UI element IDs) instead of sending
+    // it to Google or silently rebinding it to a different local event.
+    const localIdentity =
+      request.eventId.startsWith("eliza:owner:grant:") ||
+      request.eventId.includes(":eliza:owner:grant:");
+    if (
+      localIdentity &&
+      !isElizaCalendarEventId(request.eventId, this.agentId())
+    ) {
+      fail(
+        400,
+        "The internal calendar event ID is not bound to this agent. Use the exact event ID from a Calendar result, or resolve the event by its title/source constraints. No calendar read or change occurred.",
+        "CALENDAR_TARGET_SELECTOR_INVALID",
+      );
+    }
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
     if (

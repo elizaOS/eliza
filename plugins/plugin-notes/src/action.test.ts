@@ -45,11 +45,12 @@ afterEach(async () => {
   }
 });
 
-async function harness(): Promise<IAgentRuntime> {
+async function harness(now?: () => Date): Promise<IAgentRuntime> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "notes-action-"));
   tmpDirs.push(dir);
   const service = new NotesService(undefined, {
     store: new NotesStore({ filePath: path.join(dir, "notes.json") }),
+    ...(now ? { now } : {}),
   });
   await service.initialize();
   return {
@@ -78,8 +79,8 @@ async function run(
   return result;
 }
 
-async function executorHarness(): Promise<IAgentRuntime> {
-  const runtime = await harness();
+async function executorHarness(now?: () => Date): Promise<IAgentRuntime> {
+  const runtime = await harness(now);
   Object.assign(runtime, {
     actions: notesPlugin.actions,
     agentId: "agent-id" as UUID,
@@ -107,6 +108,7 @@ function execute(
   userRoles: Parameters<typeof executePlannedToolCall>[1]["userRoles"] = [
     "OWNER",
   ],
+  sourceText = "Create the requested note.",
 ) {
   return executePlannedToolCall(
     runtime,
@@ -115,7 +117,7 @@ function execute(
         id: "message-id" as UUID,
         entityId: "owner-id" as UUID,
         roomId: "room-id" as UUID,
-        content: { text: "Create the requested note." },
+        content: { text: sourceText },
       } as Memory,
       activeContexts: ["notes"],
       userRoles,
@@ -369,6 +371,136 @@ describe("promoted Notes execution", () => {
     });
   });
 
+  it("filters creation/update dates at exact boundaries across a DST week without changing notes", async () => {
+    let instant = "2026-03-02T07:59:59.999Z";
+    const runtime = await executorHarness(() => new Date(instant));
+    const service = getNotesService(runtime);
+    const beforeWeek = await service.createNote({
+      title: "Fern before",
+      body: "keep",
+      color: "yellow",
+    });
+    instant = "2026-03-02T08:00:00.000Z";
+    const first = await service.createNote({
+      title: "Fern first",
+      body: "exact  body",
+      color: "yellow",
+    });
+    await service.createNote({
+      title: "Other topic",
+      body: "untouched",
+      color: "yellow",
+    });
+    instant = "2026-03-09T06:59:59.999Z";
+    const last = await service.createNote({
+      title: "Fern last",
+      body: "last instant",
+      color: "yellow",
+    });
+    await service.updateNote(beforeWeek.id, { body: "edited in the week" });
+    instant = "2026-03-09T07:00:00.000Z";
+    await service.createNote({
+      title: "Fern after",
+      body: "excluded end",
+      color: "yellow",
+    });
+    const before = await fs.readFile(service.store.filePath, "utf8");
+    const dateRange = {
+      field: "createdAt",
+      startAt: "2026-03-02T00:00:00-08:00",
+      endAt: "2026-03-09T00:00:00-07:00",
+    };
+    const created = await execute(runtime, {
+      name: "NOTES_LIST",
+      params: { content: "Fern", dateRange },
+    });
+    expect(created).toMatchObject({
+      success: true,
+      data: {
+        count: 2,
+        total: 5,
+        filterApplied: true,
+        dateRange,
+      },
+    });
+    expect(
+      ((created.data?.notes ?? []) as Array<{ id: string }>)
+        .map((note) => note.id)
+        .sort(),
+    ).toEqual([first.id, last.id].sort());
+    expect(created.data?.notes).toEqual(expect.arrayContaining([first, last]));
+    const edited = await execute(runtime, {
+      name: "NOTES_LIST",
+      params: {
+        content: "Fern",
+        dateRange: { ...dateRange, field: "updatedAt" },
+      },
+    });
+    expect(edited).toMatchObject({ success: true, data: { count: 3 } });
+    const absent = await execute(runtime, {
+      name: "NOTES_LIST",
+      params: {
+        dateRange: {
+          field: "createdAt",
+          startAt: "2026-02-01T00:00:00Z",
+          endAt: "2026-03-01T00:00:00Z",
+        },
+      },
+    });
+    expect(absent).toMatchObject({
+      success: true,
+      data: { count: 0, total: 5, filterApplied: true, notes: [] },
+    });
+    expect(await fs.readFile(service.store.filePath, "utf8")).toBe(before);
+  });
+
+  it.each([
+    {},
+    {
+      field: "title",
+      startAt: "2026-03-01T00:00:00Z",
+      endAt: "2026-04-01T00:00:00Z",
+    },
+    {
+      field: "createdAt",
+      startAt: "2026-03-01T00:00:00",
+      endAt: "2026-04-01T00:00:00Z",
+    },
+    {
+      field: "createdAt",
+      startAt: "2026-02-30T00:00:00Z",
+      endAt: "2026-04-01T00:00:00Z",
+    },
+    {
+      field: "createdAt",
+      startAt: "2026-04-01T00:00:00Z",
+      endAt: "2026-03-01T00:00:00Z",
+    },
+    {
+      field: "createdAt",
+      startAt: "2026-03-01T00:00:00Z",
+      endAt: "2026-03-01T00:00:00Z",
+    },
+  ])(
+    "rejects an invalid date filter instead of silently listing all notes: %j",
+    async (dateRange) => {
+      const runtime = await executorHarness();
+      const service = getNotesService(runtime);
+      await service.createNote({
+        title: "Keep me",
+        body: "unchanged",
+        color: "yellow",
+      });
+      const before = await fs.readFile(service.store.filePath, "utf8");
+      const result = await execute(runtime, {
+        name: "NOTES_LIST",
+        params: { dateRange },
+      });
+      expect(result.success).toBe(false);
+      expect(result.data).not.toHaveProperty("notes");
+      expect(await fs.readFile(service.store.filePath, "utf8")).toBe(before);
+    },
+  );
   it.each(["literal", "replacement"])(
     "updates an exact ID with %s input despite duplicate titles and ID text decoys",
     async (kind) => {
@@ -1028,19 +1160,27 @@ describe("NOTES operation parsing", () => {
     });
   });
 
-  it('stores "titled X saying Y" planner content as label plus body, not one merged title', async () => {
+  it("preserves literal colon content through create and full replacement", async () => {
     const runtime = await harness();
-    // Live planner output for "create a note titled Demo Checklist saying
-    // mic, charger, water" arrives as one colon-joined content field.
     const created = await run(runtime, {
       action: "create",
-      content: "Demo Checklist: mic, charger, water",
+      content: "Demo check 917: bring the green notebook.",
     });
     expect(created.success).toBe(true);
     expect(created.data?.note).toMatchObject({
-      title: "Demo Checklist",
-      body: "mic, charger, water",
+      title: "Demo check 917: bring the green notebook.",
+      body: "",
     });
+    const updated = await run(runtime, {
+      action: "update",
+      content: "Demo check 917",
+      replacementContent: "Demo check 917: bring the blue notebook.",
+    });
+    expect(updated.success).toBe(true);
+    const listed = await run(runtime, { action: "list" });
+    expect(listed.data?.notes).toMatchObject([
+      { title: "Demo check 917: bring the blue notebook.", body: "" },
+    ]);
   });
 
   it.each(["Stable Local Notes QA", "QA: afternoon"])(
@@ -1384,9 +1524,98 @@ describe("literal Notes edits", () => {
       });
       expect(result.success).toBe(false);
       expect(JSON.stringify(result)).toContain(code);
+      expect(result.data?.coachingFailure).toBe(true);
+      expect(result.effectReceipts).toBeUndefined();
       expect(service.snapshot()).toEqual(before);
     },
   );
+
+  it("finishes a corrected literal edit without reopening reply planning", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const note = await service.createNote({
+      title: "Retry QA",
+      body: '"Keep this."',
+    });
+    const useModel = vi
+      .fn()
+      .mockResolvedValueOnce({
+        toolCalls: [
+          {
+            id: "notes-edit-first",
+            name: "NOTES_PATCH",
+            arguments: {
+              target: { kind: "id", value: note.id },
+              changes: [],
+              textEdit: { field: "body", oldText: "absent", newText: "" },
+              eliza_turn_scope: "final",
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        toolCalls: [
+          {
+            id: "notes-edit-corrected",
+            name: "NOTES_PATCH",
+            arguments: {
+              target: { kind: "id", value: note.id },
+              changes: [{ field: "body", value: "Keep this." }],
+              eliza_turn_scope: "final",
+            },
+          },
+        ],
+      });
+    const result = await runPlannerLoop({
+      runtime: { useModel },
+      context: { id: "literal-edit-retry", events: [] },
+      executeToolCall: (call) => execute(runtime, call),
+      evaluate: ({ trajectory }) => {
+        const last = trajectory.steps.at(-1)?.result;
+        return last?.success
+          ? {
+              success: true,
+              decision: "FINISH",
+              thought: "Verified corrected edit.",
+              messageToUser: "The quotation marks are removed.",
+              effectReceiptIds: last.effectReceipts?.map(
+                (receipt) => receipt.receiptId,
+              ),
+            }
+          : {
+              success: false,
+              decision: "CONTINUE",
+              thought: "Correct the rejected edit.",
+            };
+      },
+    });
+    expect(useModel).toHaveBeenCalledTimes(2);
+    expect(result.finalMessage).toBe("The quotation marks are removed.");
+    expect(service.getNote(note.id).body).toBe("Keep this.");
+  });
+
+  it("does not label an unexpected update failure as prewrite coaching", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const note = await service.createNote({
+      title: "Failure QA",
+      body: "Keep this.",
+    });
+    vi.spyOn(service, "updateNoteWithCommit").mockRejectedValueOnce(
+      new Error("Store unavailable"),
+    );
+    const result = await execute(runtime, {
+      name: "NOTES_PATCH",
+      params: {
+        target: { kind: "id", value: note.id },
+        changes: [{ field: "body", value: "Changed" }],
+      },
+    });
+    expect(result.success).toBe(false);
+    expect(result.data?.coachingFailure).not.toBe(true);
+    expect(result.effectReceipts).toBeUndefined();
+    expect(service.getNote(note.id).body).toBe("Keep this.");
+  });
 
   it("checks the old text inside the write barrier when two edits race", async () => {
     const runtime = await harness();
@@ -1554,6 +1783,101 @@ describe("structured Notes field patches", () => {
     ).toBe(false);
     expect(service.listNotes()).toEqual(before);
   });
+
+  it("returns an unanswered selection with both candidates and no edit receipt", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    await service.createNote({ title: "Same title", body: "Silver folder" });
+    await service.createNote({
+      title: "Same title",
+      body: "Bring it tomorrow",
+    });
+    const before = service.snapshot();
+    const result = await execute(runtime, {
+      name: "NOTES_PATCH",
+      params: {
+        target: { kind: "text", value: "Same title" },
+        changes: [{ field: "body", value: "Amber folder" }],
+      },
+    });
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      awaitingUserInput: true,
+      requiresInput: true,
+      candidates: expect.arrayContaining([
+        expect.objectContaining({ body: "Silver folder" }),
+        expect.objectContaining({ body: "Bring it tomorrow" }),
+      ]),
+    });
+    expect(result.effectReceipts).toBeUndefined();
+    expect(service.snapshot()).toEqual(before);
+  });
+
+  it.each(["NOTES_PATCH", "NOTES_UPDATE"])(
+    "%s cannot bypass a named duplicate title with a planner-selected ID",
+    async (name) => {
+      const runtime = await executorHarness();
+      const service = getNotesService(runtime);
+      const first = await service.createNote({
+        title: "QA duplicate",
+        body: "Silver",
+      });
+      await service.createNote({ title: "QA duplicate", body: "Tomorrow" });
+      const before = service.snapshot();
+      const params =
+        name === "NOTES_PATCH"
+          ? {
+              target: { kind: "id", value: first.id },
+              changes: [{ field: "body", value: "Amber" }],
+            }
+          : { noteId: first.id, replacementContent: "QA duplicate\nAmber" };
+      const result = await execute(
+        runtime,
+        { name, params },
+        ["OWNER"],
+        'In QA duplicate, change the body to "Amber".',
+      );
+      expect(result.success).toBe(false);
+      expect(result.data?.awaitingUserInput).toBe(true);
+      expect(result.effectReceipts).toBeUndefined();
+      expect(service.snapshot()).toEqual(before);
+    },
+  );
+
+  it.each(["explicit ID", "body follow-up"])(
+    "retains an identified duplicate selection through %s",
+    async (selection) => {
+      const runtime = await executorHarness();
+      const service = getNotesService(runtime);
+      const first = await service.createNote({
+        title: "QA duplicate",
+        body: "Silver",
+      });
+      const other = await service.createNote({
+        title: "QA duplicate",
+        body: "Tomorrow",
+      });
+      const text =
+        selection === "explicit ID"
+          ? `Set QA duplicate with ID ${first.id} to Amber.`
+          : "The one that says Silver. Set its body to Amber.";
+      const result = await execute(
+        runtime,
+        {
+          name: "NOTES_PATCH",
+          params: {
+            target: { kind: "id", value: first.id },
+            changes: [{ field: "body", value: "Amber" }],
+          },
+        },
+        ["OWNER"],
+        text,
+      );
+      expect(result.success).toBe(true);
+      expect(service.getNote(first.id).body).toBe("Amber");
+      expect(service.getNote(other.id)).toEqual(other);
+    },
+  );
 });
 
 describe("field patch literal alternative", () => {

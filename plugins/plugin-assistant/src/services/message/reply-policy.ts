@@ -1,4 +1,9 @@
 /** Resolves user-visible replies from settled tool results, verified effects, and actual delivery receipts. */
+import {
+  bindSourceReplyContent,
+  getSourceReplyRendering,
+  type SourceReplyRendering,
+} from "./source-reply.ts";
 
 import type {
   Action,
@@ -24,10 +29,6 @@ import {
 } from "../../runtime/planner-loop";
 import type { StrategyMode, StrategyResult } from "./contracts.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
-import {
-  readSourceReplyReferences,
-  type SourceReplyReferences,
-} from "./source-reply-references";
 
 /**
  * Canonical form for delivered-text dedup: callers that thread
@@ -368,12 +369,12 @@ export function createV5ReplyStrategyResult(args: {
   responseId: UUID;
   text: string;
   thought: string;
-  sourceReplyReferences?: SourceReplyReferences;
   mode?: StrategyMode;
   attachments?: Media[];
   transcriptVisibility?: "internal";
   /** Applied receipt IDs grounding this exact text at the final send boundary. */
   effectReceiptIds?: readonly string[];
+  sourceReplyRendering?: SourceReplyRendering;
   /**
    * Provenance for the humanness voice gate (#14873): `true` when `text` is
    * already final user-facing copy — either the model's own composed reply or
@@ -391,10 +392,14 @@ export function createV5ReplyStrategyResult(args: {
    */
   terminalFailure?: RuntimeFailure;
 }): StrategyResult {
+  const sourceReply = getSourceReplyRendering(args.sourceReplyRendering);
   let responseContent: Content = {
     thought: args.thought,
     actions: ["REPLY"],
-    text: restorePiiInUserReplyText(args.text),
+    text:
+      sourceReply?.text === args.text
+        ? args.text
+        : restorePiiInUserReplyText(args.text),
     simple: args.mode !== "actions",
     responseId: args.responseId,
     ...(args.agentVoiced === true ? { agentVoiced: true } : {}),
@@ -421,12 +426,12 @@ export function createV5ReplyStrategyResult(args: {
       ? { effectReceiptIds: [...args.effectReceiptIds] }
       : {}),
   };
-  const sourceReferences = readSourceReplyReferences(
-    args.sourceReplyReferences,
-    responseContent.text ?? "",
-  );
-  if (sourceReferences)
-    responseContent.sourceReplyReferences = sourceReferences;
+  if (sourceReply)
+    responseContent = bindSourceReplyContent(responseContent, sourceReply, {
+      agentId: args.runtime.agentId,
+      roomId: args.message.roomId,
+      messageId: args.message.id ?? "",
+    });
   if (args.effectReceiptIds?.length && responseContent.text) {
     responseContent = bindEffectDelivery(
       responseContent,

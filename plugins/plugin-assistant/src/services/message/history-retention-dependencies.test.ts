@@ -1,11 +1,12 @@
 /** Tests persisted correction/cancellation groups through validated foreground history reads. */
+
+import type { ContextObject } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   applyHistoryRetentionReview,
   prepareHistoryRetention,
   validateHistoryRetention,
 } from "../../runtime/history-retention.ts";
-import type { ContextObject } from "@elizaos/core";
 import {
   loadHistoryReferences,
   projectReviewedHistory,
@@ -76,7 +77,7 @@ describe("persisted history source dependencies", () => {
     "history:h1",
     "history:h2",
     "history:h3",
-    "history:search-user:city question",
+    "history:search:city question",
   ])(
     "restores the complete amendment chain for %s after all its sources were deferred",
     (reference) => {
@@ -160,17 +161,18 @@ describe("persisted history source dependencies", () => {
     const { context, scope, deferred } = fixture();
     const checkpoint = {
       ...deferred,
-      dependencyEventGroups: [["history:0", "history:6"]],
+      dependencyEventGroups: [["history:0", "history:14"]],
     };
     const projection = projectReviewedHistory(context, scope, checkpoint);
     expect(projection).toBeDefined();
-    expect([...projection!.visibleEventIds].sort()).toEqual(
+    if (!projection) throw new Error("Expected a validated history projection");
+    expect([...projection.visibleEventIds].sort()).toEqual(
       [
         "history:0",
-        ...Array.from({ length: 10 }, (_, i) => `history:${i + 6}`),
+        ...Array.from({ length: 10 }, (_, index) => `history:${index + 6}`),
       ].sort(),
     );
-    expect(projection!.loadedSourceIds.size).toBe(0);
+    expect(projection.loadedSourceIds.size).toBe(0);
   });
   it("deduplicates the same dependency declared in reverse order on replay", () => {
     const { context, scope, indexed } = fixture();
