@@ -1,4 +1,4 @@
-/** Exercises the unchanged PostgreSQL graph path using real PGlite migrations and the canonical stores. */
+/** Exercises the PostgreSQL graph path using real PGlite migrations and the canonical stores. */
 import { randomUUID } from "node:crypto";
 import { AgentRuntime, type UUID } from "@elizaos/core";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
@@ -18,6 +18,8 @@ let graph: KnowledgeGraphService;
 
 beforeAll(async () => {
   await adapter.initialize();
+  if (!adapter.runPluginMigrations)
+    throw new Error("The PostgreSQL graph harness requires plugin migrations");
   await adapter.runPluginMigrations([
     { name: "canonical-graph-test", schema: knowledgeGraphSchema },
   ]);
