@@ -578,6 +578,7 @@ export class LinkedCalendarRepository {
     now = new Date(),
   ): Promise<LinkedCalendarEventRecord> {
     const next = { ...record, ...patch, updatedAt: now.toISOString() };
+    // Millisecond timestamps can collide; compare the checkpoint snapshot too.
     const rows = await executeRawSql(
       this.runtime,
       `UPDATE app_calendar.linked_calendar_events SET
@@ -593,7 +594,21 @@ export class LinkedCalendarRepository {
         last_error_code = ${sqlText(next.lastErrorCode)},
         last_error_message = ${sqlText(next.lastErrorMessage)},
         updated_at = ${sqlQuote(next.updatedAt)}
-       WHERE id = ${sqlQuote(record.id)} AND updated_at = ${sqlQuote(record.updatedAt)}
+       WHERE id = ${sqlQuote(record.id)}
+         AND updated_at = ${sqlQuote(record.updatedAt)}
+         AND agent_id = ${sqlQuote(record.agentId)}
+         AND local_event_id = ${sqlQuote(record.localEventId)}
+         AND connector_account_id = ${sqlQuote(record.connectorAccountId)}
+         AND provider_calendar_id = ${sqlQuote(record.providerCalendarId)}
+         AND provider_event_id IS NOT DISTINCT FROM ${sqlText(record.providerEventId)}
+         AND provider_etag IS NOT DISTINCT FROM ${sqlText(record.providerEtag)}
+         AND local_revision = ${record.localRevision}
+         AND last_common_semantic_hash IS NOT DISTINCT FROM ${sqlText(record.lastCommonSemanticHash)}
+         AND state = ${sqlQuote(record.state)}
+         AND pending_operation IS NOT DISTINCT FROM ${sqlText(record.pendingOperation)}
+         AND idempotency_key = ${sqlQuote(record.idempotencyKey)}
+         AND last_error_code IS NOT DISTINCT FROM ${sqlText(record.lastErrorCode)}
+         AND last_error_message IS NOT DISTINCT FROM ${sqlText(record.lastErrorMessage)}
        RETURNING *`,
     );
     if (!rows[0])
