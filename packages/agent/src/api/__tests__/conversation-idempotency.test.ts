@@ -3535,8 +3535,10 @@ describe("conversation handoff import — exact source identities", () => {
     });
     const ids = h.storedMemories.map((memory) => memory.id);
     expect(new Set(ids).size).toBe(2);
-    expect(h.storedMemories.map((memory) => memory.metadata?.sourceId)).toEqual(
-      messages.map((message) => message.sourceId),
+    expect(h.storedMemories.map((memory) => memory.metadata)).toEqual(
+      messages.map((message) =>
+        expect.objectContaining({ sourceId: message.sourceId }),
+      ),
     );
     const retry = await runRoute("POST", path, h.state, { messages });
     expect(retry.captured.payload).toMatchObject({
