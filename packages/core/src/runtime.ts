@@ -40,6 +40,7 @@ import { ProviderStateComposer } from "./runtime/state-composition/composer.js";
 
 export { calculateProviderOverlaps } from "./runtime/state-composition/provider-execution.js";
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID as uuidv4 } from "node:crypto";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { registerConnectorSourceDefinitions } from "./connectors";
@@ -502,6 +503,8 @@ export class AgentRuntime implements IAgentRuntime {
 	private static readonly REPORTED_ERROR_RING_CAP = 200;
 	/** Re-entrancy latch so a failure inside reportError stays warn-only (J7). */
 	private inReportError = false;
+	/** Attributes diagnostic subscribers across awaits without blocking independent reports. */
+	private readonly errorReportScope = new AsyncLocalStorage<string>();
 	models = new Map<string, ModelHandler[]>();
 	private secretRedactionProfileSignature = "";
 	private secretRedactionProfileRevision = 0;
@@ -4090,6 +4093,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Self-safe: never throws. A failure inside this method (or inside an
 	 * `ERROR_REPORTED` handler it triggers) is caught and logged as a warning
 	 * without re-entering `reportError`, guarded by {@link inReportError}.
+	 * Reports from asynchronous subscribers remain recorded but never re-emit.
 	 */
 	reportError(
 		scope: string,
@@ -4148,27 +4152,37 @@ export class AgentRuntime implements IAgentRuntime {
 
 			this.forwardToAgentEventStream(entry, runId);
 
+			if (this.errorReportScope.getStore() !== undefined) {
+				// error-policy:J7 subscriber diagnostics remain observable without
+				// invoking the failing subscriber again, including after awaits.
+				return;
+			}
+
 			// Fire-and-forget: emitEvent is async but reportError is a sync
 			// diagnostic one-liner. A rejected emit (bad handler) is swallowed to
 			// the logger here — it must not surface as an unhandled rejection and
 			// must not re-enter reportError.
-			void this.emitEvent(EventType.ERROR_REPORTED, {
-				runtime: this,
-				source: scope,
-				scope,
-				code: normalized.code,
-				message: normalized.message,
-				context: merged,
-				runId,
-				roomId,
-			}).catch((emitErr) => {
-				// error-policy:J7 diagnostics-must-not-kill-the-loop — a broken
-				// ERROR_REPORTED handler is logged, never re-reported.
-				this.logger.warn(
-					{ src: "agent", scope, err: emitErr },
-					`[${scope}] ERROR_REPORTED emit failed`,
-				);
-			});
+			void this.errorReportScope
+				.run(scope, () =>
+					this.emitEvent(EventType.ERROR_REPORTED, {
+						runtime: this,
+						source: scope,
+						scope,
+						code: normalized.code,
+						message: normalized.message,
+						context: merged,
+						runId,
+						roomId,
+					}),
+				)
+				.catch((emitErr) => {
+					// error-policy:J7 diagnostics-must-not-kill-the-loop — a broken
+					// ERROR_REPORTED handler is logged, never re-reported.
+					this.logger.warn(
+						{ src: "agent", scope, err: emitErr },
+						`[${scope}] ERROR_REPORTED emit failed`,
+					);
+				});
 		} catch (reportErr) {
 			// error-policy:J7 diagnostics-must-not-kill-the-loop — reportError is
 			// the diagnostic boundary; its own failure may only warn.
