@@ -166,7 +166,7 @@ describe("Android mobile build target table", () => {
       webTarget: "android-system",
       buildMobileAgentBundle: true,
       cleartextPolicy: { allowCleartext: true, label: "AOSP" },
-      agentRuntime: { bunChannel: "canary", objective: true },
+      agentRuntime: { bunChannel: "stable", objective: true },
     });
   });
 
