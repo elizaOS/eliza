@@ -126,7 +126,13 @@ function evaluatorReceipt(
 async function scenario(label: string, withApprovals = false) {
   const stateDir = await mkdtemp(join(tmpdir(), "note-calendar-runtime-"));
   const previousState = process.env.ELIZA_STATE_DIR;
+  const previousSchedulingTick = process.env.ELIZA_DISABLE_SCHEDULING_TICK;
   process.env.ELIZA_STATE_DIR = stateDir;
+  // This foreground acceptance drives owner approval explicitly. The separate
+  // scheduler suites own timed notification dispatch; wall-clock ticks must not
+  // race these declared model fixtures. Real task storage and manual memory
+  // evaluation remain active.
+  process.env.ELIZA_DISABLE_SCHEDULING_TICK = "1";
   let stop: (() => Promise<void>) | undefined;
   cleanup = async () => {
     try {
@@ -134,6 +140,9 @@ async function scenario(label: string, withApprovals = false) {
     } finally {
       if (previousState === undefined) delete process.env.ELIZA_STATE_DIR;
       else process.env.ELIZA_STATE_DIR = previousState;
+      if (previousSchedulingTick === undefined)
+        delete process.env.ELIZA_DISABLE_SCHEDULING_TICK;
+      else process.env.ELIZA_DISABLE_SCHEDULING_TICK = previousSchedulingTick;
       await rm(stateDir, { recursive: true, force: true });
     }
   };
