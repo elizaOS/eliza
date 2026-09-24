@@ -5,7 +5,7 @@
  */
 import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { execFileSync } from "./lib/spawn-sync-captured.mjs";
+import { execFileSync } from "./lib/spawn-sync-captured.ts";
 import { listPackages } from "./lib/workspaces.ts";
 
 export function planPrCoreBuild({ repoRoot = process.cwd(), base }) {

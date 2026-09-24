@@ -18,7 +18,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveSetupStateDir } from "./lib/setup-state-dir.mjs";
+import { resolveSetupStateDir } from "./lib/setup-state-dir.ts";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultRepoRoot = path.resolve(scriptDir, "..", "..", "..");

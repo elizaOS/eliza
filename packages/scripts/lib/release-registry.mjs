@@ -17,7 +17,7 @@ import {
   validateNpmPublisher,
   validateRegistryUrl,
 } from "./release-contract.mjs";
-import { spawnSync } from "./spawn-sync-captured.mjs";
+import { spawnSync } from "./spawn-sync-captured.ts";
 
 export class RegistryInspectionError extends Error {
   constructor(message, { kind, status, cause } = {}) {

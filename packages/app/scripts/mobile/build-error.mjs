@@ -1,5 +1,5 @@
 /** Constructs actionable failures at the mobile build boundary. */
-import { ElizaError } from "../lib/eliza-error.mjs";
+import { ElizaError } from "../lib/eliza-error.ts";
 
 export function mobileBuildError(
   message,

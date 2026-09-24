@@ -19,7 +19,7 @@ import {
   validateGitHubRepository,
   validateSourceRef,
 } from "./release-contract.mjs";
-import { spawnSync } from "./spawn-sync-captured.mjs";
+import { spawnSync } from "./spawn-sync-captured.ts";
 
 const RESERVED_TAGS = new Set([
   "v2.0.3-beta.8",

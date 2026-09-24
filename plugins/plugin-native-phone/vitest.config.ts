@@ -20,6 +20,7 @@ const reactDomRoot = dirname(
 );
 
 export default defineConfig({
+  esbuild: { jsx: "automatic" },
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: [

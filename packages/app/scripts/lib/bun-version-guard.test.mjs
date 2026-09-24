@@ -1,7 +1,7 @@
 /** Verifies that dev startup warns only for Bun versions below repository support. */
 import { describe, expect, it } from "vitest";
 
-import { getBunVersionAdvisory } from "./bun-version-guard.mjs";
+import { getBunVersionAdvisory } from "./bun-version-guard.ts";
 
 describe("getBunVersionAdvisory", () => {
   it.each(["1.3.0", "1.3.14", "1.4.0-canary.1", "2.0.0"])(

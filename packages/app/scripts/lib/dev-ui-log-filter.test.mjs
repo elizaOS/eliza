@@ -1,7 +1,7 @@
 /** Verifies API listen deduplication without hiding unrelated startup output. */
 import { describe, expect, it } from "vitest";
 
-import { isRedundantApiListenLine } from "./dev-ui-log-filter.mjs";
+import { isRedundantApiListenLine } from "./dev-ui-log-filter.ts";
 
 describe("isRedundantApiListenLine", () => {
   it("matches console and structured copies of the upstream listen event", () => {

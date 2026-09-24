@@ -49,7 +49,7 @@
         "$TURBO_ROOT$/packages/scripts/lib/workspaces.ts",
         "$TURBO_ROOT$/packages/scripts/lib/repository-file-integrity.ts",
         "$TURBO_ROOT$/packages/scripts/lib/repo-root.ts",
-        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.mjs",
+        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.ts",
         "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.mjs",
         "$TURBO_ROOT$/packages/scripts/with-package-build-lock.mjs"
       ]
@@ -68,7 +68,7 @@
         "$TURBO_ROOT$/packages/scripts/rm-path-recursive.mjs",
         "$TURBO_ROOT$/packages/scripts/lib/script-metadata.ts",
         "$TURBO_ROOT$/packages/scripts/lib/repo-root.ts",
-        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.mjs",
+        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.ts",
         "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
       ],
       "dependsOn": ["^build"],
@@ -107,7 +107,7 @@
         "$TURBO_ROOT$/packages/scripts/lib/script-metadata.ts",
         "$TURBO_ROOT$/packages/scripts/lib/workspaces.ts",
         "$TURBO_ROOT$/packages/scripts/lib/repository-file-integrity.ts",
-        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.mjs"
+        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.ts"
       ]
     },
     "@elizaos/electrobun#build": {
@@ -326,7 +326,7 @@
         "$TURBO_ROOT$/packages/scripts/rm-path-recursive.mjs",
         "$TURBO_ROOT$/packages/scripts/lib/script-metadata.ts",
         "$TURBO_ROOT$/packages/scripts/lib/repo-root.ts",
-        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.mjs",
+        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.ts",
         "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
       ],
       "dependsOn": [
@@ -346,6 +346,9 @@
     },
     "@elizaos/lifeops-bench#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/app#build:dist", "^build"]
+    },
+    "@elizaos/personality-bench#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
     },
     "@elizaos/testing#typecheck": {
       "dependsOn": [

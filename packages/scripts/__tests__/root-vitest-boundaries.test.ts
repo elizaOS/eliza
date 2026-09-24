@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test } from "vitest";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

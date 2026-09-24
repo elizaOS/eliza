@@ -6,7 +6,7 @@ import path from "node:path";
 import { crc32, inflateRawSync } from "node:zlib";
 import AdmZip from "adm-zip";
 import { resolveAndroidArtifactKind } from "../../lib/android-cloud-artifact-audit.mjs";
-import { ElizaError } from "../../lib/eliza-error.mjs";
+import { ElizaError } from "../../lib/eliza-error.ts";
 import { mobileBuildError } from "../build-error.mjs";
 
 export const MAX_ANDROID_ARTIFACT_BYTES = 512 * 1024 * 1024;

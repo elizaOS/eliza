@@ -1,6 +1,6 @@
 /** Exercises renderer build action behavior with deterministic app test fixtures. */
 import { describe, expect, it } from "vitest";
-import { resolveRendererBuildAction } from "./renderer-build-action.mjs";
+import { resolveRendererBuildAction } from "./renderer-build-action.ts";
 
 describe("resolveRendererBuildAction", () => {
   it("builds when forced, even if the dist is fresh", () => {

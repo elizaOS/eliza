@@ -6,7 +6,6 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
       "eliza-source": {
@@ -17,27 +16,7 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./plugin": {
-      "types": "./dist/plugin.d.ts",
-      "eliza-source": {
-        "types": "./src/plugin.ts",
-        "import": "./src/plugin.ts",
-        "default": "./src/plugin.ts"
-      },
-      "import": "./dist/plugin.js",
-      "default": "./dist/plugin.js"
-    },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "eliza-source": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
-      },
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
-    }
+    "./package.json": "./package.json"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -78,9 +57,12 @@
     "access": "public"
   },
   "elizaos": {
-    "appRegister": "register"
+    "appRegister": {
+      "export": "registerNotesApp"
+    }
   },
   "files": [
     "dist"
-  ]
+  ],
+  "sideEffects": false
 }

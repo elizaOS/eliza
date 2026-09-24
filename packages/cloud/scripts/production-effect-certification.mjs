@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { execFileSync } from "../../scripts/lib/spawn-sync-captured.mjs";
+import { execFileSync } from "../../scripts/lib/spawn-sync-captured.ts";
 import {
   artifactNameForTree,
   CERTIFICATION_FILENAME,

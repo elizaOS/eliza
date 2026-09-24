@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 // Bun's test runner can return empty stdio pipes from node:child_process
 // spawnSync; the captured adapter routes output through files instead.
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const { runContract, classifyTypeRange, isConcretePin } = await import(
   new URL("../ci-bun-version-contract.mjs", import.meta.url).href

@@ -8,7 +8,7 @@ import {
   buildTestRuntimeEnv,
   isCodexBundledNode,
   resolveExternalNode,
-} from "./lib/test-runtime.mjs";
+} from "./lib/test-runtime.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..");

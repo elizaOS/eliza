@@ -5,7 +5,7 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 import {
   DEFAULT_API_PORT,
   parseArgs,

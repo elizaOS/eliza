@@ -13,14 +13,14 @@ import { parseDocument } from "yaml";
 import {
   atomicWriteJsonSync,
   resolveReportArtifactPath,
-} from "./lib/report-artifact-path.mjs";
+} from "./lib/report-artifact-path.ts";
 import {
   assertContainedRegularFile,
   assertUniqueRepositoryIdentities,
   normalizeGitRepositoryPath,
 } from "./lib/repository-file-integrity.ts";
 import { buildScriptTestInventory } from "./lib/script-test-inventory.mjs";
-import { execFileSync } from "./lib/spawn-sync-captured.mjs";
+import { execFileSync } from "./lib/spawn-sync-captured.ts";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SCRIPT_DIR, "..", "..");

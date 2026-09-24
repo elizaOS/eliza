@@ -15,7 +15,7 @@ import {
   MTP_FORK_SRC_CANDIDATES,
   mtpForceRebuildRequested,
   mtpSliceReuse,
-} from "../../lib/mobile-build-decisions.mjs";
+} from "../../lib/mobile-build-decisions.ts";
 import {
   resolvePackageAbsolutePath,
   rmRecursive,

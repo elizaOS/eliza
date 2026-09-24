@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const SCRIPT_URL = new URL(
   "../ensure-plugin-test-conventions.mjs",

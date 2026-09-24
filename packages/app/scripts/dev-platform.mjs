@@ -90,10 +90,10 @@ import {
   stopMacApplication,
 } from "./lib/macos-launch-services-lifecycle.mjs";
 import { resolveMacNativeEffectsDevPlan } from "./lib/macos-native-effects-dev.mjs";
-import { extendNodePathEnv } from "./lib/node-path-env.mjs";
+import { extendNodePathEnv } from "./lib/node-path-env.ts";
 import { formatOrchestratorDesktopDevBanner } from "./lib/orchestrator-desktop-dev-banner.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
-import { resolveRendererBuildAction } from "./lib/renderer-build-action.mjs";
+import { resolveRendererBuildAction } from "./lib/renderer-build-action.ts";
 import {
   drainSpawnedChildren,
   resolveShutdownDrainWindowMs,

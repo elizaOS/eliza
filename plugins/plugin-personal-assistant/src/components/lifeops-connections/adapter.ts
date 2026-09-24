@@ -1,6 +1,6 @@
 /** Production adapter for LifeOps connection management over canonical local APIs. */
 
-import type { CalendarClientMethods } from "@elizaos/plugin-calendar/api/client-calendar";
+import type { CalendarClientMethods } from "@elizaos/plugin-calendar";
 import type {
   LifeOpsCalendarProvider,
   LifeOpsCalendarSummary,

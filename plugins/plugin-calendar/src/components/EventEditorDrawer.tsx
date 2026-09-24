@@ -47,8 +47,8 @@ import {
   useRef,
   useState,
 } from "react";
-import "../api/client-calendar.js";
 import type { CalendarClientMethods } from "../api/client-calendar.js";
+import { installCalendarClient } from "../api/client-calendar.js";
 import { basicEmailValid } from "../internal/email.js";
 
 const calendarClient = client as typeof client & CalendarClientMethods;
@@ -535,6 +535,7 @@ export function EventEditorDrawer({
   onDeleted,
   onChat,
 }: EventEditorDrawerProps) {
+  installCalendarClient();
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const t = useAppSelector((s) => s.t);
   const [form, setForm] = useState<FormState>(() =>

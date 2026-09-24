@@ -7,20 +7,16 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   APPLE_CALENDAR_GRANT_ID,
   APPLE_CALENDAR_PROVIDER,
+  buildRecurrenceSplitPlan,
   CalendarServiceError,
-} from "@elizaos/plugin-calendar";
-import {
   normalizeCalendarAttendees,
   normalizeCalendarDateOnly,
   normalizeCalendarTimeZone,
-} from "@elizaos/plugin-calendar/internal/calendar-normalize";
-import {
-  buildRecurrenceSplitPlan,
   normalizeRecurrence,
   recurrenceLinesFrom,
   recurrenceOriginalStartAtFrom,
   recurringEventIdFrom,
-} from "@elizaos/plugin-calendar/internal/recurrence";
+} from "@elizaos/plugin-calendar";
 import type {
   CreateLifeOpsCalendarEventRequest,
   GetLifeOpsCalendarFeedRequest,

@@ -25,7 +25,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DocumentUploadFile } from "./documents-upload.helpers";
+import type { DocumentUploadFile } from "./documents-upload.helpers.js";
 
 const appMock = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 const bindingMock = vi.hoisted(() => ({
@@ -60,8 +60,8 @@ vi.mock("@elizaos/ui/utils/desktop-dialogs", () => ({
   confirmDesktopAction: vi.fn(async () => true),
 }));
 
-import { UploadZone } from "./documents-upload";
-import { KnowledgeDocumentsView } from "./KnowledgeDocumentsView";
+import { UploadZone } from "./documents-upload.js";
+import { KnowledgeDocumentsView } from "./KnowledgeDocumentsView.js";
 
 function t(key: string, options?: { defaultValue?: string }) {
   return options?.defaultValue ?? key;

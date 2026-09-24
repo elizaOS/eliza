@@ -6,7 +6,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execFileSync } from "../../../scripts/lib/spawn-sync-captured.mjs";
+import { execFileSync } from "../../../scripts/lib/spawn-sync-captured.ts";
 import {
   decideDeployFreshness,
   fetchServedCommit,

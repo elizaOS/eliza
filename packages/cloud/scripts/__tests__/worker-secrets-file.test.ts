@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "../../../scripts/lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../../../scripts/lib/spawn-sync-captured.ts";
 import {
   buildWorkerSecrets,
   createWorkerSecretsFile,

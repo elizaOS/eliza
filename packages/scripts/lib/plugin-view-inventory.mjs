@@ -10,7 +10,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { execFileSync } from "./spawn-sync-captured.mjs";
+import { execFileSync } from "./spawn-sync-captured.ts";
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript");

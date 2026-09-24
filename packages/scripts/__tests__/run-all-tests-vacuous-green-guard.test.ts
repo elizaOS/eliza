@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const runner = fileURLToPath(new URL("../run-all-tests.mjs", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));

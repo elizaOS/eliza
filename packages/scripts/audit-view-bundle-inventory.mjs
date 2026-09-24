@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import {
   atomicWriteJsonSync,
   resolveReportArtifactPath,
-} from "./lib/report-artifact-path.mjs";
+} from "./lib/report-artifact-path.ts";
 import {
   discoverViewBundleInventory,
   serializeViewBundleInventory,

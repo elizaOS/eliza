@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifyElectrobunLinuxNativeArtifacts,
   findElectrobunBrowserWindowEntrypoints,
-} from "../lib/electrobun-browser-window-entrypoints.mjs";
+} from "../lib/electrobun-browser-window-entrypoints.ts";
 
 describe("Electrobun BrowserWindow entrypoint discovery", () => {
   it("accepts the clean-install layout with only the shared dist source", () => {

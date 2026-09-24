@@ -23,7 +23,7 @@ fs.mkdirSync(path.join(fixtureScripts, "lib"), { recursive: true });
 for (const relative of [
   "stage-desktop-fused-lib.mjs",
   "lib/fused-artifact-integrity.mjs",
-  "lib/setup-state-dir.mjs",
+  "lib/setup-state-dir.ts",
 ]) {
   fs.copyFileSync(
     path.join(scriptDir, relative),

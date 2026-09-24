@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { createConnection, createServer } from "node:net";
 import { test } from "node:test";
-import { assertDevPortsAvailable } from "./dev-port-ownership.mjs";
+import { assertDevPortsAvailable } from "./dev-port-ownership.ts";
 
 test("occupied port remains alive after startup is rejected", async () => {
   const server = createServer((socket) => socket.end("existing owner"));

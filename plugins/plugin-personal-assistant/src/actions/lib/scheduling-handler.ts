@@ -39,7 +39,7 @@ import {
 import {
   buildWideLookupRange,
   resolveCalendarMutationCandidates,
-} from "@elizaos/plugin-calendar/actions/calendar-handler";
+} from "@elizaos/plugin-calendar";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,

@@ -19,7 +19,7 @@ import {
   resolveApiPortFromEnv,
   resolveUiPortFromEnv,
 } from "../dev-health-check.mjs";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const SCRIPT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

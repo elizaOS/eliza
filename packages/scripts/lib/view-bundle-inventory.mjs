@@ -16,7 +16,7 @@ import {
   assertUniqueRepositoryIdentities,
   normalizeGitRepositoryPath,
 } from "./repository-file-integrity.ts";
-import { execFileSync } from "./spawn-sync-captured.mjs";
+import { execFileSync } from "./spawn-sync-captured.ts";
 import { listPackages } from "./workspaces.ts";
 
 const VIEW_CONFIG_BASENAME =

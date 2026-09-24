@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyDesktopCloudTarget,
   resolveDesktopCloudTarget,
-} from "./desktop-cloud-target.mjs";
+} from "./desktop-cloud-target.ts";
 
 describe("desktop Cloud build target", () => {
   it("preserves the normal renderer default when no target is supplied", () => {
@@ -54,9 +54,11 @@ describe("desktop Cloud build target", () => {
   });
 
   it("rejects unknown targets instead of silently falling back", () => {
-    expect(() =>
-      resolveDesktopCloudTarget(["--cloud-target", "preview"], {}),
-    ).toThrow('Unknown desktop Cloud target "preview"');
+    for (const value of ["preview", "constructor", "__proto__", "toString"]) {
+      expect(() =>
+        resolveDesktopCloudTarget(["--cloud-target", value], {}),
+      ).toThrow(`Unknown desktop Cloud target "${value}"`);
+    }
   });
 
   it("rejects a flag without a value", () => {

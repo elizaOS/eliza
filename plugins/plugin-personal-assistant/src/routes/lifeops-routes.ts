@@ -29,13 +29,11 @@ import {
 import {
   CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
   type CalendarOwnerMutationGateway,
+  type CalendarRouteService,
   CalendarService,
   CalendarServiceError,
-} from "@elizaos/plugin-calendar";
-import {
-  type CalendarRouteService,
   handleCalendarRoutes,
-} from "@elizaos/plugin-calendar/routes/calendar-routes";
+} from "@elizaos/plugin-calendar";
 import {
   LIFEOPS_SCHEDULE_STATE_SCOPES,
   type SyncLifeOpsScheduleObservationsRequest,

@@ -18,7 +18,7 @@ import { conditionalSkipBearingFiles } from "./audit-focused-skipped-tests.mjs";
 import {
   atomicWriteJsonSync,
   resolveReportArtifactPath,
-} from "./lib/report-artifact-path.mjs";
+} from "./lib/report-artifact-path.ts";
 import { buildScriptTestInventory } from "./lib/script-test-inventory.mjs";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../..");

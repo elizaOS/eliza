@@ -54,7 +54,7 @@ import {
   nativeLibraryInventory,
   nativeSourceFingerprint,
 } from "./lib/fused-artifact-integrity.mjs";
-import { resolveSetupStateDir } from "./lib/setup-state-dir.mjs";
+import { resolveSetupStateDir } from "./lib/setup-state-dir.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..", "..", "..");

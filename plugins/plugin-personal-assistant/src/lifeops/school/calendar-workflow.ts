@@ -20,8 +20,8 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { DocumentService } from "@elizaos/plugin-assistant";
-import { ELIZA_CALENDAR_GRANT_ID } from "@elizaos/plugin-calendar/internal/eliza-calendar";
-import type { CalendarOwnerMutationGateway } from "@elizaos/plugin-calendar/routes/mutation-gateway";
+import type { CalendarOwnerMutationGateway } from "@elizaos/plugin-calendar";
+import { ELIZA_CALENDAR_GRANT_ID } from "@elizaos/plugin-calendar";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { fetchRemoteMedia, readResponseWithLimit } from "@elizaos/shared/media";
 import {

@@ -7,7 +7,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "../lib/spawn-sync-captured.mjs";
+import { execFileSync } from "../lib/spawn-sync-captured.ts";
 import { listPackages } from "../lib/workspaces.ts";
 import {
   assertPublishableWorkspaceGraph,

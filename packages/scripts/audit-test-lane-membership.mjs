@@ -33,7 +33,7 @@ import {
   EXTRA_SCRIPT_NAMES,
   resolveTestLaneDeclarations,
 } from "./lib/script-metadata.ts";
-import { execFileSync } from "./lib/spawn-sync-captured.mjs";
+import { execFileSync } from "./lib/spawn-sync-captured.ts";
 import { listPackages } from "./lib/workspaces.ts";
 import { computeTestRoots } from "./test-cloud-run.mjs";
 

@@ -11,8 +11,8 @@ import {
   type CalendarOwnerMutationGateway,
   CalendarService,
   CalendarServiceError,
+  resolveCalendarEventRange,
 } from "@elizaos/plugin-calendar";
-import { resolveCalendarEventRange } from "@elizaos/plugin-calendar/internal/calendar-normalize";
 import type {
   CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsCalendarEventResponse,

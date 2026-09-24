@@ -24,31 +24,23 @@ export {
   todosTable,
 } from "./db/schema.js";
 export {
+  createTodosEdgePlugin,
+  TODOS_EDGE_COMPATIBILITY,
+  type TodosEdgePluginOptions,
+} from "./edge.js";
+export {
   todosPlugin,
   todosPlugin as default,
   todosRuntimePlugin,
 } from "./plugin.js";
 export { currentTodosProvider } from "./providers/current-todos.js";
+export { getTodosService, TodosService } from "./service.js";
 export {
-  type CreateTodoInput,
+  convergeTodoScopesInTransaction,
   createTodosSqlStore,
   deserializeTodoMutationRecord,
-  getTodosService,
   importTodoMutationRecordsInTransaction,
   serializeTodoMutationRecord,
-  type TodoCutoverState,
-  type TodoFilter,
-  type TodoMutation,
-  type TodoMutationExecution,
-  type TodoMutationImportInput,
-  type TodoMutationImportResult,
-  type TodoMutationInput,
-  type TodoMutationRecord,
-  type TodoMutationRecordWire,
-  type TodoMutationResult,
-  TodosService,
-  type UpdateTodoInput,
-} from "./service.js";
-export { convergeTodoScopesInTransaction } from "./sql-store.js";
-export type { TodoScopeConvergenceInput } from "./store.js";
+} from "./sql-store.js";
+export * from "./store.js";
 export * from "./types.js";

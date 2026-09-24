@@ -21,7 +21,7 @@ import {
   assertUniqueRepositoryIdentities,
   normalizeGitRepositoryPath,
 } from "./repository-file-integrity.ts";
-import { execFileSync } from "./spawn-sync-captured.mjs";
+import { execFileSync } from "./spawn-sync-captured.ts";
 
 export const SCRIPT_TEST_RUNNER =
   "node packages/scripts/run-script-tests.mjs --report reports/script-tests/inventory.json --junit reports/script-tests/junit.xml";

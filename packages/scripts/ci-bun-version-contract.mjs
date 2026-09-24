@@ -79,7 +79,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isMap, isScalar, isSeq, parseDocument } from "yaml";
-import { spawnSync } from "./lib/spawn-sync-captured.mjs";
+import { spawnSync } from "./lib/spawn-sync-captured.ts";
 
 const DEFAULT_REPO_ROOT = resolve(
   dirname(fileURLToPath(import.meta.url)),

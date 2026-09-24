@@ -21,7 +21,7 @@ import {
   resolveTestLaneDirs,
   resolveTestSerialPackages,
 } from "../lib/script-metadata.ts";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..", "..");

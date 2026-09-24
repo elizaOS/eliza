@@ -15,7 +15,7 @@ import {
   verifyReleaseCandidate,
 } from "../lib/release-candidate.mjs";
 import { stableStringify } from "../lib/release-contract.mjs";
-import { execFileSync } from "../lib/spawn-sync-captured.mjs";
+import { execFileSync } from "../lib/spawn-sync-captured.ts";
 import { main as candidateMain } from "../release-candidate.mjs";
 
 const roots: string[] = [];

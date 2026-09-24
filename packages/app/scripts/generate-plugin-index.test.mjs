@@ -31,8 +31,8 @@ function runGenerator(blockOutput) {
     );
     writeFileSync(path.join(root, "package.json"), '{"type":"module"}');
     copyFileSync(
-      path.join(here, "generate-plugin-index.js"),
-      path.join(root, "scripts/generate-plugin-index.js"),
+      path.join(here, "generate-plugin-index.ts"),
+      path.join(root, "scripts/generate-plugin-index.ts"),
     );
     writeFileSync(
       path.join(root, "no-network.mjs"),
@@ -44,7 +44,7 @@ function runGenerator(blockOutput) {
       [
         "--import",
         path.join(root, "no-network.mjs"),
-        path.join(root, "scripts/generate-plugin-index.js"),
+        path.join(root, "scripts/generate-plugin-index.ts"),
       ],
       { encoding: "utf8", timeout: 30000 },
     );

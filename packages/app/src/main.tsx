@@ -323,10 +323,10 @@ function importPersonalAssistant() {
 }
 
 function importAppPhone() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-native-phone",
-    () => import("@elizaos/plugin-native-phone"),
-  );
+  return cachedDynamicImport("@elizaos/plugin-native-phone", async () => {
+    const { PhoneCompanionApp } = await import("@elizaos/plugin-native-phone");
+    return { PhoneCompanionApp };
+  });
 }
 
 function importAppTaskCoordinator() {
@@ -940,7 +940,6 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
       key: "@elizaos/plugin-agent-orchestrator/ui/register",
       load: importAppTaskCoordinatorRegister,
     },
-    { key: "@elizaos/plugin-native-phone", load: importAppPhone },
   ];
 
 function initializeAppModules(): Promise<void> {

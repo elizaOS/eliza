@@ -12,8 +12,8 @@ import {
 } from "@elizaos/agent";
 import type { AgentRuntime, Memory, Plugin, UUID } from "@elizaos/core";
 import { ChannelType, createMessageMemory, logger } from "@elizaos/core";
-import { InboxTriageRepository } from "../../src/inbox/repository.js";
-import type { DeferredInboxDraft } from "../../src/inbox/types.js";
+import type { DeferredInboxDraft } from "@elizaos/plugin-inbox";
+import { InboxRepository as InboxTriageRepository } from "@elizaos/plugin-inbox";
 import { createApprovalQueue } from "../../src/lifeops/approval-queue.js";
 import {
   createLifeOpsConnectorGrant,

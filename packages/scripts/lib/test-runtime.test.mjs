@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { buildTestRuntimeEnv, resolveExternalNode } from "./test-runtime.mjs";
+import { buildTestRuntimeEnv, resolveExternalNode } from "./test-runtime.ts";
 
 test("discovers an executable using the manifest pin without an nvmrc", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "eliza-test-runtime-"));

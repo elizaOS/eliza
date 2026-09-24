@@ -991,7 +991,7 @@
         "type": "server-launch",
         "capabilities": ["documents"],
         "routePlugin": {
-          "specifier": "@elizaos/plugin-knowledge/plugin",
+          "specifier": "@elizaos/plugin-knowledge",
           "exportName": "knowledgePlugin"
         }
       }

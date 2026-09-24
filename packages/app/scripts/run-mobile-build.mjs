@@ -167,7 +167,7 @@ export {
   mtpBuilderRepoRoot,
   mtpForceRebuildRequested,
   mtpSliceReuse,
-} from "./lib/mobile-build-decisions.mjs";
+} from "./lib/mobile-build-decisions.ts";
 export {
   ANDROID_APP_ACTION_CAPABILITIES,
   ANDROID_APP_ACTION_FORBIDDEN_MARKERS,

@@ -30,10 +30,16 @@ export function rejectRuntimeInRendererPlugin(): Plugin {
         const runtime = [...output.imports, ...output.dynamicImports].find(
           isCoreRuntime,
         );
-        if (runtime)
+        if (runtime) {
+          const importers = Object.entries(output.modules)
+            .filter(([id]) =>
+              this.getModuleInfo(id)?.importedIds.some(isCoreRuntime),
+            )
+            .map(([id]) => id);
           this.error(
-            `Node runtime import ${runtime} survived in renderer chunk ${output.fileName}.`,
+            `Node runtime import ${runtime} survived in renderer chunk ${output.fileName}.\nRetained modules importing core:\n${importers.join("\n")}`,
           );
+        }
       }
     },
   };

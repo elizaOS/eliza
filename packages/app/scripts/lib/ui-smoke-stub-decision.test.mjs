@@ -1,6 +1,6 @@
 /** Exercises ui smoke stub decision behavior with deterministic app test fixtures. */
 import { describe, expect, it } from "vitest";
-import { shouldForceStubStack } from "./ui-smoke-stub-decision.mjs";
+import { shouldForceStubStack } from "./ui-smoke-stub-decision.ts";
 
 describe("shouldForceStubStack", () => {
   it("forces the stub when ELIZA_UI_SMOKE_FORCE_STUB=1, unconditionally", () => {

@@ -23,7 +23,7 @@ vi.mock("@elizaos/ui/hooks/useActiveAgentAuthority", () => ({
   useActiveAgentAuthority: () => "test-agent",
 }));
 
-import { DocumentAccessPanel } from "./document-access-panel";
+import { DocumentAccessPanel } from "./document-access-panel.js";
 
 beforeEach(() => {
   vi.resetAllMocks();

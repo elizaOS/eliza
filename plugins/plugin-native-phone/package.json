@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-native-phone",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "description": "Phone app for Eliza — Android dialer/call-log overlay (@elizaos/plugin-native-phone/bridge) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
+  "description": "Phone app for Eliza \u2014 Android dialer/call-log overlay (@elizaos/plugin-native-phone/bridge) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
@@ -113,5 +113,18 @@
     "android": {
       "src": "android"
     }
-  }
+  },
+  "sideEffects": [
+    "./src/register.ts",
+    "./src/register-phone-page.ts",
+    "./src/register-companion-page.ts",
+    "./src/bridge.ts",
+    "./src/companion/services/eliza-intent.ts",
+    "./dist/register.js",
+    "./dist/register-phone-page.js",
+    "./dist/register-companion-page.js",
+    "./dist/bridge.js",
+    "./dist/companion/services/eliza-intent.js",
+    "**/*.css"
+  ]
 }

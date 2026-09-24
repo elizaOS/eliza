@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { spawnSync } from "./lib/spawn-sync-captured.mjs";
+import { spawnSync } from "./lib/spawn-sync-captured.ts";
 
 // The four spawned suites do real subprocess work with a 20s exec budget; the
 // runner's 5s default test timeout undercut that on a loaded CI host (10.9s

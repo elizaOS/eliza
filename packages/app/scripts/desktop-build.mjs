@@ -15,7 +15,7 @@ import { artifactStaleness } from "./lib/artifact-staleness.ts";
 import {
   applyDesktopCloudTarget,
   resolveDesktopCloudTarget,
-} from "./lib/desktop-cloud-target.mjs";
+} from "./lib/desktop-cloud-target.ts";
 import {
   buildWindowsRepairSteps,
   classifyElectrobunViewFailure,
@@ -24,7 +24,7 @@ import {
   isSupportedBunVersion,
 } from "./lib/desktop-preflight.mjs";
 import { hardenElectrobunRpcSockets } from "./lib/electrobun-loopback-hardening.mjs";
-import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
+import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.ts";
 import {
   nativeActivityTrackerSourceBinary,
   nativeActivityTrackerStagedBinary,

@@ -2,7 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { injectAndroidRuntimeBytePreservation } from "../../lib/android-runtime-packaging.mjs";
+import { injectAndroidRuntimeBytePreservation } from "../../lib/android-runtime-packaging.ts";
 import {
   CAPACITOR_PLUGIN_NAMES,
   resolveNativePluginDir,

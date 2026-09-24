@@ -193,7 +193,6 @@
         "../../../plugins/plugin-telegram/src/index.ts"
       ],
       "@elizaos/plugin-todos": ["../../../plugins/plugin-todos/src/index.ts"],
-      "@elizaos/plugin-todos/*": ["../../../plugins/plugin-todos/src/*"],
       "@elizaos/plugin-vision": ["../../../plugins/plugin-vision/src/index.ts"],
       "@elizaos/plugin-native-filesystem": [
         "../../../plugins/plugin-native-filesystem/src/index.ts"
@@ -211,18 +210,6 @@
         "../../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/generateMedia.ts"
       ],
       "@elizaos/core/edge": ["../../core/src/index.edge.ts"],
-      "@elizaos/plugin-todos/plugin": [
-        "../../../plugins/plugin-todos/src/plugin.ts"
-      ],
-      "@elizaos/plugin-todos/edge": [
-        "../../../plugins/plugin-todos/src/edge.ts"
-      ],
-      "@elizaos/plugin-todos/service": [
-        "../../../plugins/plugin-todos/src/service.ts"
-      ],
-      "@elizaos/plugin-todos/db/schema": [
-        "../../../plugins/plugin-todos/src/db/schema.ts"
-      ],
       "@elizaos/plugin-form": ["../../../plugins/plugin-form/src/index.ts"],
       "@elizaos/plugin-wallet/diagnostic": [
         "../../../plugins/plugin-wallet/src/diagnostic.ts"
@@ -251,9 +238,7 @@
       "@elizaos/plugin-elizacloud/*": [
         "../../../plugins/plugin-elizacloud/src/*"
       ],
-      "@elizaos/plugin-notes/plugin": [
-        "../../../plugins/plugin-notes/src/plugin.ts"
-      ],
+      "@elizaos/plugin-notes": ["../../../plugins/plugin-notes/src/index.ts"],
       "@elizaos/plugin-meetings": [
         "../../../plugins/plugin-meetings/src/index.ts"
       ],

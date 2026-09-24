@@ -5,7 +5,7 @@ import test from "node:test";
 import {
   ANDROID_RUNTIME_PACKAGING_DIRECTIVE,
   injectAndroidRuntimeBytePreservation,
-} from "./android-runtime-packaging.mjs";
+} from "./android-runtime-packaging.ts";
 
 for (const [name, content] of Object.entries({
   minimal: "android {\n}\n",

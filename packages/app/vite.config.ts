@@ -916,21 +916,7 @@ function createWorkspacePackageExportAliases(packageDirs: string[]) {
   return aliases;
 }
 
-function resolveAppPluginBrowserEntry(pkgDir: string): string | null {
-  const preferred = [
-    "src/ui.ts",
-    "src/ui/index.ts",
-    "src/register.ts",
-    "src/index.ts",
-  ];
-  for (const relativePath of preferred) {
-    const candidate = path.join(pkgDir, relativePath);
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-function createAppPluginBrowserAliases() {
+function createAppPluginSourceAliases() {
   const pluginsRoot = path.resolve(elizaRoot, "plugins");
   const aliases = [];
   if (!fs.existsSync(pluginsRoot)) return aliases;
@@ -947,37 +933,16 @@ function createAppPluginBrowserAliases() {
     if (!isAppPluginPackage("plugins", entry.name, pkg)) continue;
     const pkgName = pkg.name;
     if (typeof pkgName !== "string") continue;
-
-    const browserEntry = resolveAppPluginBrowserEntry(pkgDir);
-    if (browserEntry) {
-      aliases.push({
-        find: new RegExp(`^${escapeRegExp(pkgName)}$`),
-        replacement: browserEntry,
-      });
-    }
-
-    for (const uiEntry of ["src/ui.ts", "src/ui/index.ts"]) {
-      const candidate = path.join(pkgDir, uiEntry);
-      if (!fs.existsSync(candidate)) continue;
-      // Match both `<pkg>/ui` and the explicit `<pkg>/ui/index` form, which the
-      // package.json `./*` export maps to src/ui/index.ts. Dev builds must stay
-      // on source because dist/ui/index.js is not guaranteed to exist.
-      aliases.push({
-        find: new RegExp(`^${escapeRegExp(pkgName)}/ui(?:/index)?$`),
-        replacement: candidate,
-      });
-      break;
-    }
-
-    const registerEntry = path.join(pkgDir, "src/register.ts");
-    if (fs.existsSync(registerEntry)) {
-      aliases.push({
-        find: new RegExp(`^${escapeRegExp(pkgName)}/register$`),
-        replacement: registerEntry,
-      });
-    }
+    const rootEntry = ["src/index.ts", "src/index.tsx", "index.ts"]
+      .map((relative) => path.join(pkgDir, relative))
+      .find((candidate) => fs.existsSync(candidate));
+    if (!rootEntry)
+      throw new Error(`App plugin ${pkgName} has no package root source entry`);
+    aliases.push({
+      find: new RegExp(`^${escapeRegExp(pkgName)}$`),
+      replacement: rootEntry,
+    });
   }
-
   return aliases;
 }
 
@@ -2807,16 +2772,6 @@ export const INVALID_TRACER_PROVIDER = {};
           "@elizaos/plugin-blocker/native",
           "plugins/plugin-blocker/src/native.ts",
         ],
-        // plugin-calendar subpaths consumed by plugin-personal-assistant in the renderer
-        // bundle. Resolve from source so the app build does not require
-        // plugin-calendar to be built first (its dist is absent during the
-        // renderer build in CI). client-calendar is a side-effect import that
-        // augments ElizaClient.prototype with the calendar feed methods.
-        [
-          "@elizaos/plugin-calendar/api/client-calendar",
-          "plugins/plugin-calendar/src/api/client-calendar.ts",
-        ],
-        ["@elizaos/plugin-calendar/ui", "plugins/plugin-calendar/src/ui.ts"],
       ].map(([pkgName, relativeEntry]) => ({
         find: new RegExp(`^${escapeRegExp(pkgName)}$`),
         replacement: path.resolve(elizaRoot, relativeEntry),
@@ -2952,7 +2907,7 @@ export const INVALID_TRACER_PROVIDER = {};
       // Browser-safe aliases for local app plugin package roots. Keep these
       // before workspace aliases; Vite/Rollup uses the first matching alias, and
       // the renderer must prefer UI facades over package root exports.
-      ...createAppPluginBrowserAliases(),
+      ...createAppPluginSourceAliases(),
       // Dynamic aliases for local app plugin package roots that do not have a
       // dedicated browser facade.
       ...createWorkspacePackageAliases([path.resolve(elizaRoot, "plugins")]),

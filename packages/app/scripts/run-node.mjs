@@ -12,7 +12,7 @@ import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" 
   type: "json",
 };
 import { registerRestartAndShouldAbort } from "./lib/restart-guard.mjs";
-import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.mjs";
+import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.ts";
 import {
   chooseElizaRuntime,
   resolveRuntimeExecPath,

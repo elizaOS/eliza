@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import {
   execFileSync,
   spawnSync,
-} from "../../../scripts/lib/spawn-sync-captured.mjs";
+} from "../../../scripts/lib/spawn-sync-captured.ts";
 import {
   decideCanonicalDeploySource,
   hasEligibleSuccessorReleaseRun,

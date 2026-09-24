@@ -1,36 +1,24 @@
-/** Verifies the signed app-shell registration for the plugin-owned Knowledge view. */
+/** Exercises explicit Knowledge registration against the real shell registry and page loader. */
 
-import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
-import { describe, expect, it } from "vitest";
-import "./register.ts";
+import {
+  appShellPageMatchesPath,
+  getAppShellPageRegistrySnapshot,
+  listAppShellPages,
+} from "@elizaos/ui";
+import { expect, it } from "vitest";
 
-describe("Knowledge app registration", () => {
-  it("registers the document route with a lazy local renderer", () => {
-    const pages = listAppShellPages().filter(
-      (page) => page.pluginId === "@elizaos/plugin-knowledge",
-    );
-
-    expect(
-      pages.map(({ id, label, path, pathPatterns, viewKind }) => ({
-        id,
-        label,
-        path,
-        pathPatterns,
-        viewKind,
-      })),
-    ).toEqual([
-      {
-        id: "documents",
-        label: "Knowledge",
-        path: "/documents",
-        pathPatterns: ["/character/documents"],
-        viewKind: "system",
-      },
-    ]);
-    expect(pages[0]?.loader).toBeTypeOf("function");
-    expect(pages[0]?.surface).toEqual({
-      header: "fullscreen",
-      capabilities: ["agent-surface"],
-    });
-  });
+it("registers Knowledge only when requested and preserves both document routes", async () => {
+  const initial = getAppShellPageRegistrySnapshot();
+  const { registerKnowledgeApp, KnowledgeView } = await import("./index.js");
+  expect(getAppShellPageRegistrySnapshot()).toBe(initial);
+  registerKnowledgeApp();
+  const page = listAppShellPages().find((entry) => entry.id === "documents");
+  if (!page?.loader) throw new Error("Knowledge has no signed page loader");
+  expect(appShellPageMatchesPath(page, "/documents")).toBe(true);
+  expect(appShellPageMatchesPath(page, "/character/documents")).toBe(true);
+  expect(appShellPageMatchesPath(page, "/character/other")).toBe(false);
+  expect((await page.loader()).default).toBe(KnowledgeView);
+  const registered = getAppShellPageRegistrySnapshot();
+  registerKnowledgeApp();
+  expect(getAppShellPageRegistrySnapshot()).toBe(registered);
 });

@@ -39,7 +39,7 @@ import { fileURLToPath } from "node:url";
 import {
   classifyElectrobunLinuxNativeArtifacts,
   findElectrobunBrowserWindowEntrypoints,
-} from "./lib/electrobun-browser-window-entrypoints.mjs";
+} from "./lib/electrobun-browser-window-entrypoints.ts";
 
 const requirePatch = process.argv.includes("--require");
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));

@@ -1,7 +1,7 @@
 /**
  * Authored literal imports let the host bundler include optional plugins without
  * executing them at module initialization. Registration keys derive from this map.
- * Keep runtime-only subpaths for plugins whose root also exports UI components.
+ * Deferred loading keeps optional plugin initialization under host control.
  */
 
 export const OPTIONAL_PLUGIN_IMPORTERS: Record<string, () => Promise<unknown>> =
@@ -22,21 +22,21 @@ export const OPTIONAL_PLUGIN_IMPORTERS: Record<string, () => Promise<unknown>> =
       import("@elizaos/plugin-native-filesystem"),
     "@elizaos/plugin-inbox": () =>
       // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
-      // @ts-ignore: runtime subpath export is intentional; not every package tsconfig resolves its declaration condition.
-      import("@elizaos/plugin-inbox/plugin"),
-    "@elizaos/plugin-notes": () => import("@elizaos/plugin-notes/plugin"),
+      // @ts-ignore: not every sibling package resolves optional plugin declarations before they are built.
+      import("@elizaos/plugin-inbox"),
+    "@elizaos/plugin-notes": () => import("@elizaos/plugin-notes"),
     "@elizaos/plugin-todos": () =>
       // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
       // @ts-ignore: todos is peer-linked to avoid the todos -> agent runtime dependency cycle; the deferred import runs after agent module initialization.
-      import("@elizaos/plugin-todos/plugin"),
+      import("@elizaos/plugin-todos"),
     "@elizaos/plugin-knowledge": () =>
       // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
       // @ts-ignore: documents is peer-linked to avoid the documents -> agent runtime dependency cycle; the deferred import runs after agent module initialization.
-      import("@elizaos/plugin-knowledge/plugin"),
+      import("@elizaos/plugin-knowledge"),
     "@elizaos/plugin-calendar": () =>
       // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
       // @ts-ignore: calendar is peer-linked to avoid the calendar -> agent runtime dependency cycle; the deferred import runs after agent module initialization.
-      import("@elizaos/plugin-calendar/plugin"),
+      import("@elizaos/plugin-calendar"),
     "@elizaos/plugin-anthropic": () => import("@elizaos/plugin-anthropic"),
     "@elizaos/plugin-openai": () => import("@elizaos/plugin-openai"),
   };

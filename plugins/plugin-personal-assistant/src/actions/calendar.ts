@@ -36,6 +36,11 @@ import {
 } from "@elizaos/core";
 import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
 import {
+  CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
   type CalendarActionDeps,
   type CalendarMutationApprovalResult,
   type CalendarMutationGatewayDep,
@@ -46,13 +51,6 @@ import {
   isElizaCalendarGrant,
   isMicrosoftCalendarGrantId,
 } from "@elizaos/plugin-calendar";
-import {
-  CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
-} from "@elizaos/plugin-calendar/calendar-action-schema";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,

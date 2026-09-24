@@ -10,7 +10,7 @@ import {
   serializeTodoMutationRecord,
   type Todo,
   type TodoStore,
-} from "@elizaos/plugin-todos/edge";
+} from "@elizaos/plugin-todos";
 import type { SharedTodoMutationCutoverRecord } from "@elizaos/shared";
 import { dbWrite } from "../../../db/client";
 import {

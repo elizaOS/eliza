@@ -17,7 +17,7 @@ import {
   computeRealLiveAccounting,
   GUARDED_REAL_LIVE_SUITES,
 } from "../../lib/real-live-suites.mjs";
-import { spawnSync } from "../../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../../lib/spawn-sync-captured.ts";
 import {
   CONNECTIONS,
   connectionStatus,

@@ -62,7 +62,7 @@ import {
   sha256File,
 } from "./lib/ios-fused-slice-cache.mjs";
 
-import { MTP_FORK_SRC_CANDIDATES } from "./lib/mobile-build-decisions.mjs";
+import { MTP_FORK_SRC_CANDIDATES } from "./lib/mobile-build-decisions.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // packages/app/scripts → repo root

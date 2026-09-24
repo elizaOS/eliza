@@ -12,7 +12,6 @@
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/core/edge": ["../../packages/core/src/index.edge.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],

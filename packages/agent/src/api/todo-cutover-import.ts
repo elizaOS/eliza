@@ -11,13 +11,13 @@ import {
   type UUID,
   validateUuid,
 } from "@elizaos/core";
-import type { TodoInsert, TodoRow } from "@elizaos/plugin-todos/db/schema";
+import type { TodoInsert, TodoRow } from "@elizaos/plugin-todos";
 import {
   deserializeTodoMutationRecord,
   importTodoMutationRecordsInTransaction,
   type TodoMutationRecord,
   type TodoMutationResult,
-} from "@elizaos/plugin-todos/service";
+} from "@elizaos/plugin-todos";
 import {
   createSharedTodoCutoverSnapshot,
   type SharedTodoCutoverRecord,
@@ -293,7 +293,7 @@ export async function importSharedTodoCutover(input: {
       { code: "TODO_CUTOVER_DATABASE_UNAVAILABLE" },
     );
   }
-  const { todosTable } = await import("@elizaos/plugin-todos/db/schema");
+  const { todosTable } = await import("@elizaos/plugin-todos");
   const targetScope = {
     agentId: input.runtime.agentId,
     entityId: input.entityId,

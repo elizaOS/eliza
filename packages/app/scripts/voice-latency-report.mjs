@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * Print the end-to-end voice-loop latency table from a running Eliza API.
  *
@@ -15,11 +16,11 @@
  *   1  — API not reachable / endpoint errored / invalid --limit.
  */
 
+import { parseCanonicalInt } from "./lib/cli-numbers.ts";
 import {
   fetchAndRenderVoiceLatency,
   renderVoiceLatencyReport,
 } from "./lib/voice-latency-report.mjs";
-import { parsePositiveLimit } from "./lib/voice-latency-report-limit.mjs";
 
 function parsePositivePort(value) {
   const n = Number(value);
@@ -46,7 +47,7 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (a === "--limit") {
     i += 1;
     try {
-      limit = parsePositiveLimit(argv[i]);
+      limit = parseCanonicalInt(argv[i], "--limit", { max: 2_147_483_647 });
     } catch (err) {
       // error-policy:J1 CLI boundary translates invalid operator input to a
       // diagnostic and non-zero process exit before any network request.

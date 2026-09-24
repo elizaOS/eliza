@@ -27,7 +27,7 @@ import {
   publishReleaseCandidate,
   verifyPromotedReleaseCandidate,
 } from "./lib/release-registry.mjs";
-import { validatePublicReleaseInputs } from "./lib/release-workflow.mjs";
+import { validatePublicReleaseInputs } from "./lib/release-workflow.ts";
 
 const DEFAULT_REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

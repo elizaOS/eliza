@@ -33,7 +33,7 @@ import {
   validateReleasePlan,
   validateReleaseState,
 } from "./release-contract.mjs";
-import { execFileSync, spawnSync } from "./spawn-sync-captured.mjs";
+import { execFileSync, spawnSync } from "./spawn-sync-captured.ts";
 
 export const RELEASE_PLAN_FILENAME = "release-plan.json";
 export const RELEASE_STATE_FILENAME = "release-state.json";

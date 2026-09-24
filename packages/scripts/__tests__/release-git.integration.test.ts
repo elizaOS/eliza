@@ -21,7 +21,7 @@ import {
   pushReleaseTag,
   verifyReleaseSource,
 } from "../lib/release-git.mjs";
-import { execFileSync } from "../lib/spawn-sync-captured.mjs";
+import { execFileSync } from "../lib/spawn-sync-captured.ts";
 
 const roots: string[] = [];
 

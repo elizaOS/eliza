@@ -13,7 +13,7 @@ import {
   atomicWriteFileSync,
   atomicWriteJsonSync,
   resolveReportArtifactPath,
-} from "./lib/report-artifact-path.mjs";
+} from "./lib/report-artifact-path.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
 const DEFAULT_JSON_OUTPUT = "reports/plugin-view-inventory.json";

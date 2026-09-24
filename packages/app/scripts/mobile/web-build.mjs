@@ -13,7 +13,7 @@ import {
   mobileRendererRequiresFreshBuild,
   mobileRendererUnstampedFeatureProblem,
   resolveMobileRendererFeatureEnv,
-} from "../lib/mobile-renderer-feature-env.mjs";
+} from "../lib/mobile-renderer-feature-env.ts";
 import {
   formatMobileWebDistProblems,
   mobileWebDistReuseStatus,

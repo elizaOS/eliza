@@ -10,7 +10,7 @@ import {
   parsePositiveSafeInteger,
   resolveServiceStartupTimeoutMs,
 } from "../dev-all.mjs";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const SCRIPT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

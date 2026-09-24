@@ -25,7 +25,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolveLatestElectrobunLinuxBuild } from "./lib/electrobun-linux-build-dir.mjs";
-import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
+import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.ts";
 import { normalizeAbsoluteStagedSymlinks } from "./lib/linux-artifact-symlinks.mjs";
 import {
   assertLinuxDistributionClaim,

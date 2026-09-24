@@ -46,7 +46,7 @@ import {
   formatSafeLiveStackStartupFailure,
   type LiveStackDiagnosticComponent,
 } from "./lib/live-stack-safe-diagnostics.ts";
-import { shouldForceStubStack } from "./lib/ui-smoke-stub-decision.mjs";
+import { shouldForceStubStack } from "./lib/ui-smoke-stub-decision.ts";
 import {
   rendererDistMatchesPlaywrightTestAuth,
   resolvePlaywrightTestAuth,

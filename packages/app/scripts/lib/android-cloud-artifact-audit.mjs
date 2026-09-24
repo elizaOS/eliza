@@ -13,7 +13,7 @@ import { performance } from "node:perf_hooks";
 import process from "node:process";
 import { SaxesParser } from "saxes";
 
-import { ElizaError } from "./eliza-error.mjs";
+import { ElizaError } from "./eliza-error.ts";
 
 export const ANDROID_BUNDLETOOL_JAR_ENV = "ELIZA_ANDROID_BUNDLETOOL_JAR";
 export const ANDROID_BUNDLETOOL_VERSION = "1.18.3";

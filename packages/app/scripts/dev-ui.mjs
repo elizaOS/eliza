@@ -26,7 +26,7 @@ import { resolveDesktopApiPort, resolveDesktopUiPort } from "@elizaos/shared";
 import { startAgentSourceWatcher } from "./lib/agent-source-watcher.mjs";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
-import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
+import { getBunVersionAdvisory } from "./lib/bun-version-guard.ts";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
 import {
   probeApiHealth,
@@ -36,23 +36,23 @@ import {
   applyDevCloudTarget,
   configureDevCloudEnvironment,
 } from "./lib/dev-cloud-target.mjs";
-import { assertDevPortsAvailable } from "./lib/dev-port-ownership.mjs";
+import { assertDevPortsAvailable } from "./lib/dev-port-ownership.ts";
 import {
   createApiHealthWatchdog,
   createParentExitGuard,
 } from "./lib/dev-process-lifecycle.mjs";
 import { createDevTrajectoryRecoveryCoordinator } from "./lib/dev-trajectory-recovery.mjs";
-import { isRedundantApiListenLine } from "./lib/dev-ui-log-filter.mjs";
-import { buildVisionDepsFailureMessage } from "./lib/dev-ui-vision.mjs";
+import { isRedundantApiListenLine } from "./lib/dev-ui-log-filter.ts";
+import { buildVisionDepsFailureMessage } from "./lib/dev-ui-vision.ts";
 import { resolveSupervisedViteCommand } from "./lib/dev-ui-vite.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { resolveMacNativeEffectsDevPlan } from "./lib/macos-native-effects-dev.mjs";
-import { extendNodePathEnv } from "./lib/node-path-env.mjs";
+import { extendNodePathEnv } from "./lib/node-path-env.ts";
 import {
   drainSpawnedChildren,
   resolveShutdownDrainWindowMs,
 } from "./lib/shutdown-drain.mjs";
-import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.mjs";
+import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.ts";
 import {
   chooseElizaRuntime,
   resolveNodeExecPath,

@@ -90,7 +90,7 @@ import {
   createCapturedTestOutput,
   formatCapturedTestOutput,
   retainedCapturedTestOutput,
-} from "./lib/captured-test-output.mjs";
+} from "./lib/captured-test-output.ts";
 import { MAX_JUNIT_BYTES, parseJunitSummary } from "./lib/junit-summary.ts";
 import {
   computeRealLiveAccounting,

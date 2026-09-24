@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { hardenLinuxArtifactPermissions } from "./linux-artifact-permissions.mjs";
+import { hardenLinuxArtifactPermissions } from "./linux-artifact-permissions.ts";
 
 test("removes group/other writes while preserving executable files", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "linux-artifact-mode-"));

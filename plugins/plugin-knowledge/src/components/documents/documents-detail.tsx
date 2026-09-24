@@ -40,10 +40,10 @@ import {
   Share2,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
-import { DocumentAccessPanel } from "./document-access-panel";
-import { DocumentPinsPanel } from "./document-pins-panel";
-import { getDocumentSourceLabel } from "./documents-detail.helpers";
-import { knowledgeReaderKind } from "./knowledge-media-format";
+import { DocumentAccessPanel } from "./document-access-panel.js";
+import { DocumentPinsPanel } from "./document-pins-panel.js";
+import { getDocumentSourceLabel } from "./documents-detail.helpers.js";
+import { knowledgeReaderKind } from "./knowledge-media-format.js";
 
 function formatDocumentTimestamp(value?: number): string | null {
   if (!value) return null;

@@ -22,7 +22,7 @@ import { pathToFileURL } from "node:url";
 import {
   execFileSync,
   spawnSync,
-} from "../../scripts/lib/spawn-sync-captured.mjs";
+} from "../../scripts/lib/spawn-sync-captured.ts";
 import { fetchServedCommit } from "./deploy-freshness-guard.mjs";
 
 const COMMIT_SHA_PATTERN = /^[a-f0-9]{40}$/;

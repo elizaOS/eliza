@@ -38,7 +38,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "./spawn-sync-captured.mjs";
+import { execFileSync } from "./spawn-sync-captured.ts";
 
 /** Same content pattern that defines the guarded set in issue #9310. */
 export const GUARD_CONTENT_PATTERN =

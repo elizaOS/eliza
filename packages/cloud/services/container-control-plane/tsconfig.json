@@ -15,9 +15,6 @@
       "@elizaos/core/edge": ["../../../../packages/core/src/index.edge.ts"],
       "@elizaos/core": ["../../../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../../../packages/core/src/*"],
-      "@elizaos/plugin-todos/edge": [
-        "../../../../plugins/plugin-todos/src/edge.ts"
-      ],
       "@elizaos/plugin-sql": ["../../../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/*": ["../../../../plugins/plugin-sql/src/*"],
       "@elizaos/plugin-web-search/edge": [
@@ -29,7 +26,8 @@
       "@elizaos/cloud-sdk/*": ["../../sdk/src/*"],
       "@elizaos/plugin-scheduling": [
         "../../../../plugins/plugin-scheduling/src/index.ts"
-      ]
+      ],
+      "@elizaos/plugin-todos": ["../../../../plugins/plugin-todos/src/index.ts"]
     }
   },
   "include": ["src/**/*", "../../shared/src/types/**/*.d.ts"],

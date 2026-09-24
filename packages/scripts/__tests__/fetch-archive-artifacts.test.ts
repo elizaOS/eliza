@@ -22,7 +22,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT = path.resolve(SCRIPTS_DIR, "..", "fetch-archive-artifacts.mjs");

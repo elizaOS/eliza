@@ -22,7 +22,7 @@
  */
 import fs from "node:fs";
 import { pathToFileURL } from "node:url";
-import { execFileSync } from "../../scripts/lib/spawn-sync-captured.mjs";
+import { execFileSync } from "../../scripts/lib/spawn-sync-captured.ts";
 
 import {
   decideDeployFreshness,

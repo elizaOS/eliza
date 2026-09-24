@@ -1,5 +1,5 @@
 /**
- * Exercises the inbox compatibility entrypoint with an explicit owner identity.
+ * Exercises the canonical Inbox action through the package root with an explicit owner identity.
  * The real action handles allowed fan-out, denied callers and missing operations;
  * the inbox plugin owns domain transformations and controlled connector failures.
  */
@@ -10,14 +10,13 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { beforeEach, describe, expect, it } from "vitest";
-
 import {
   __resetInboxFetchersForTests,
-  type InboxItem,
+  type InboxActionItem as InboxItem,
   inboxAction,
   setInboxFetchers,
-} from "../src/actions/inbox.js";
+} from "@elizaos/plugin-inbox";
+import { beforeEach, describe, expect, it } from "vitest";
 
 // The action gates on the canonical owner via core's fail-closed
 // `hasRoleAccess(runtime, message, "OWNER")` (#14931), which resolves the owner

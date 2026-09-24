@@ -4,7 +4,7 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildTestRuntimeEnv } from "./lib/test-runtime.mjs";
+import { buildTestRuntimeEnv } from "./lib/test-runtime.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..");
