@@ -202,18 +202,26 @@ function decodeStage1JsonMessageEnvelope(value: string): string | null {
   return extractExternalContent(record.text) ?? record.text.trim();
 }
 
-function latestMessageUserContentIndex(value: string): number {
+function latestMessageUserContent(value: string): {
+  index: number;
+  dialogue: boolean;
+} {
   let blockIndex = -1;
+  let dialogue = false;
   for (const match of value.matchAll(MESSAGE_USER_BLOCK_MARKER)) {
     blockIndex = (match.index ?? 0) + match[0].length;
+    dialogue = match[1] === "# Current message\n";
   }
-  if (blockIndex !== -1) return blockIndex;
+  if (blockIndex !== -1) return { index: blockIndex, dialogue };
   const legacyIndex = value.lastIndexOf(MESSAGE_USER_MARKER);
-  return legacyIndex === -1 ? -1 : legacyIndex + MESSAGE_USER_MARKER.length;
+  return {
+    index: legacyIndex === -1 ? -1 : legacyIndex + MESSAGE_USER_MARKER.length,
+    dialogue: false,
+  };
 }
 
 function extractScenarioInput(value: string): string | null {
-  const markerIndex = latestMessageUserContentIndex(value);
+  const { index: markerIndex, dialogue } = latestMessageUserContent(value);
   const afterMarker = markerIndex === -1 ? value : value.slice(markerIndex);
   const candidate =
     afterMarker.split(MESSAGE_USER_SUFFIX_BOUNDARY, 1)[0]?.trim() ?? "";
@@ -222,6 +230,12 @@ function extractScenarioInput(value: string): string | null {
     (candidate[0] === "{" || candidate[0] === "[" || candidate[0] === '"')
   ) {
     return decodeStage1JsonMessageEnvelope(candidate);
+  }
+  // Only the canonical current-message block admits the renderer's default
+  // speaker prefix. Unframed text and arbitrary colon prefixes stay exact.
+  if (dialogue && candidate.startsWith("user: ")) {
+    const text = candidate.slice("user: ".length);
+    return extractExternalContent(text) ?? text;
   }
   const externalContent = extractExternalContent(candidate);
   if (externalContent !== null) return externalContent;
