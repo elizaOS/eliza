@@ -18,8 +18,8 @@
  * a wave of changes locally.
  *
  * Usage:
- *   node scripts/lint-default-packs.mjs                  # CI-fail mode (default)
- *   node scripts/lint-default-packs.mjs --allow-warnings # warnings-only
+ *   node ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.mjs                  # CI-fail mode (default)
+ *   node ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.mjs --allow-warnings # warnings-only
  *
  * The script reads each `src/default-packs/*.ts` file as text and runs the
  * same regex corpus the runtime `lintPromptText` uses. Reading the source
@@ -37,7 +37,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const packsDir = path.resolve(here, "..", "src", "default-packs");
+const packsDir = path.resolve(
+  here,
+  "../../../../plugins/plugin-personal-assistant",
+  "src",
+  "default-packs",
+);
 
 const PII_NAMES = ["Jill", "Marco", "Sarah", "Suran", "Sam"];
 const PII_REGEX = new RegExp(`\\b(${PII_NAMES.join("|")})\\b`, "g");

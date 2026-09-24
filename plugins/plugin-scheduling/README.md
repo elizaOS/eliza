@@ -5,7 +5,7 @@ machine **and** the always-loaded runtime primitive that HOSTS it.
 
 Core TaskService drives the clock; this plugin owns ScheduledTask storage contracts,
 state transitions, registries, and execution. Edge hosts inject the SQL executor through
-the edge entry. Connector delivery uses typed DispatchResult and must not record failed
+the package root. Connector delivery uses typed DispatchResult and must not record failed
 delivery as success.
 
 ## Development

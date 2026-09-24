@@ -3,7 +3,7 @@
 # the test fixtures replace its schemas. Without it, --postgres uses local Docker.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PACKAGE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PACKAGE_DIR="$(cd "$SCRIPT_DIR/../../../../plugins/plugin-sql" && pwd)"
 started=false
 cleanup() {
   if "$started"; then docker compose -f "$PACKAGE_DIR/docker-compose.test.yml" down -v; fi

@@ -27,8 +27,7 @@ const fixtureDir = path.resolve(here, "fixtures", "translate-action-examples");
 const elizaRoot = path.resolve(here, "..", "..", "..");
 const scriptPath = path.resolve(
   here,
-  "..",
-  "scripts",
+  "../../../packages/scripts/plugins/plugin-personal-assistant",
   "translate-action-examples.mjs",
 );
 

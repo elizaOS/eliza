@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const packageDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "..",
+  "../../../../plugins/plugin-elizacloud",
 );
 const probe = `
   const module = await import("@elizaos/plugin-elizacloud");

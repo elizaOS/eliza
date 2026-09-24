@@ -8,7 +8,7 @@ import {
   getEvalModelClient,
   getTrainingModelClient,
   judgeWithCerebras,
-} from "../test/helpers/lifeops-eval-model.ts";
+} from "../../../../plugins/plugin-personal-assistant/test/helpers/lifeops-eval-model.ts";
 
 async function main(): Promise<void> {
   console.log("[verify-cerebras] starting smoke test");

@@ -9,7 +9,7 @@
  * silently degrading to one account.
  *
  * Usage:
- *   bun scripts/check-account-readiness.ts [--rotation] [--base http://host:port]
+ *   bun ../../packages/scripts/plugins/plugin-agent-orchestrator/check-account-readiness.ts [--rotation] [--base http://host:port]
  * Env:
  *   ELIZA_API_BASE   base URL of the runtime HTTP server (default http://127.0.0.1:7777)
  */

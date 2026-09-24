@@ -6,10 +6,13 @@
  */
 
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+const packageRoot = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../../plugins/plugin-native-inference",
+);
 const manifestPath = join(
   packageRoot,
   "android-bridge/src/main/AndroidManifest.xml",

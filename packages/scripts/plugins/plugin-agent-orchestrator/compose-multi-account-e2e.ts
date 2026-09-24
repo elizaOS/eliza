@@ -13,7 +13,7 @@
  * real accounts to run the same flow for true live-key validation.
  *
  * Run:  bun --conditions=eliza-source \
- *         plugins/plugin-agent-orchestrator/scripts/compose-multi-account-e2e.ts
+ *         packages/scripts/plugins/plugin-agent-orchestrator/compose-multi-account-e2e.ts
  */
 import {
   chmodSync,
@@ -32,12 +32,12 @@ import {
   createRuntimeAccountStoragePolicy,
   saveAccount,
 } from "@elizaos/auth/auth/account-storage";
+import { AcpService } from "../../../../plugins/plugin-agent-orchestrator/src/services/acp-service.ts";
 // Import the pool from app SRC, not the package barrel: app has no
 // `eliza-source` export condition, so the barrel resolves to (possibly stale)
 // dist — which may predate the coding-agent selector bridge. The src path
 // guarantees we install the bridge under test.
-import { getDefaultAccountPool } from "../../../packages/app/src/services/account-pool.ts";
-import { AcpService } from "../src/services/acp-service.ts";
+import { getDefaultAccountPool } from "../../../app/src/services/account-pool.ts";
 
 const FAR_FUTURE = Date.now() + 10 * 365 * 24 * 60 * 60 * 1000;
 const home = mkdtempSync(path.join(tmpdir(), "ma-compose-e2e-"));

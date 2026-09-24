@@ -25,8 +25,6 @@ export default defineConfig({
     ],
   },
   test: {
-    exclude: [
-      ...configDefaults.exclude,
-    ],
+    exclude: [...configDefaults.exclude],
   },
 });

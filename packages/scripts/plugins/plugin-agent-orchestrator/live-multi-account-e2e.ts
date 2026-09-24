@@ -24,14 +24,14 @@
  *
  * Run:
  *   ORCHESTRATOR_LIVE_MULTI_ACCOUNT=1 bun \
- *     plugins/plugin-agent-orchestrator/scripts/live-multi-account-e2e.ts
+ *     packages/scripts/plugins/plugin-agent-orchestrator/live-multi-account-e2e.ts
  */
 
 import { mkdtempSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 // Pure readiness assessor — no app graph, safe to import before the gate.
-import { assessCodingAccountReadiness } from "../src/services/coding-account-selection.js";
+import { assessCodingAccountReadiness } from "../../../../plugins/plugin-agent-orchestrator/src/services/coding-account-selection.js";
 
 // The runtime deps (account storage + coding-account bridge) pull in the full
 // app/core graph. They are dynamically imported AFTER the gate so the
@@ -42,7 +42,7 @@ type SaveAccount =
 type AccountStoragePolicy =
   import("@elizaos/auth/auth/account-storage").AccountStoragePolicy;
 type GetBridge =
-  typeof import("../../../packages/app/src/services/coding-account-bridge.ts").getCodingAgentSelectorBridge;
+  typeof import("../../../app/src/services/coding-account-bridge.ts").getCodingAgentSelectorBridge;
 let saveAccount: SaveAccount;
 let storagePolicy: AccountStoragePolicy;
 let getCodingAgentSelectorBridge: GetBridge;
@@ -195,7 +195,7 @@ async function main(): Promise<void> {
   saveAccount = accountStorage.saveAccount;
   storagePolicy = accountStorage.createIsolatedAccountStoragePolicy(home);
   ({ getCodingAgentSelectorBridge } = await import(
-    "../../../packages/app/src/services/coding-account-bridge.ts"
+    "../../../app/src/services/coding-account-bridge.ts"
   ));
 
   const claudeIds = seedClaude(claudeTokens);

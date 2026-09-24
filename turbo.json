@@ -59,6 +59,16 @@
         "$TURBO_ROOT$/plugins/plugin-build-externals.ts",
         "$TURBO_ROOT$/plugins/tsup.plugin-packages.shared.ts",
         "$TURBO_ROOT$/packages/scripts/view-bundle-vite.config.ts",
+        "$TURBO_ROOT$/packages/scripts/prepare-package-dist.mjs",
+        "$TURBO_ROOT$/packages/scripts/copy-package-assets.mjs",
+        "$TURBO_ROOT$/packages/scripts/ensure-tsc-nested-output-dir.mjs",
+        "$TURBO_ROOT$/packages/scripts/flatten-tsc-package-output.mjs",
+        "$TURBO_ROOT$/packages/scripts/rm-path-recursive.mjs",
+        "$TURBO_ROOT$/packages/scripts/lib/script-metadata.ts",
+        "$TURBO_ROOT$/packages/scripts/lib/workspaces.ts",
+        "$TURBO_ROOT$/packages/scripts/lib/repository-file-integrity.mjs",
+        "$TURBO_ROOT$/packages/scripts/lib/repo-root.ts",
+        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.mjs",
         "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
       ]
     },

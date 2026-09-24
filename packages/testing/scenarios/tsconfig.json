@@ -193,9 +193,6 @@
       "@elizaos/plugin-scheduling": [
         "../../../plugins/plugin-scheduling/src/index.ts"
       ],
-      "@elizaos/plugin-scheduling/*": [
-        "../../../plugins/plugin-scheduling/src/*"
-      ],
       "@elizaos/plugin-todos": ["../../../plugins/plugin-todos/src/index.ts"],
       "@elizaos/plugin-todos/plugin": [
         "../../../plugins/plugin-todos/src/plugin.ts"

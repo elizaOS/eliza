@@ -896,7 +896,15 @@ export default defineConfig({
       ...baseConfig.test?.coverage,
       include: [
         `${packageRootFromRepo}/src/**/*.{ts,tsx}`,
-        `${packageRootFromRepo}/scripts/run-cerebras-journey-eval.mjs`,
+        path
+          .relative(
+            repoRoot,
+            path.join(
+              elizaRoot,
+              "packages/scripts/plugins/plugin-personal-assistant/run-cerebras-journey-eval.mjs",
+            ),
+          )
+          .replaceAll(path.sep, "/"),
       ],
       exclude: [
         `${packageRootFromRepo}/src/**/*.test.{ts,tsx}`,

@@ -12,14 +12,14 @@ import type {
   ResponseHandlerResult,
   State,
 } from "@elizaos/core";
-import { workThreadAction } from "../src/actions/work-thread.ts";
+import { workThreadAction } from "../../../../plugins/plugin-personal-assistant/src/actions/work-thread.ts";
 import {
   type ThreadOp,
   threadOpsFieldEvaluator,
-} from "../src/lifeops/work-threads/field-evaluator-thread-ops.ts";
-import { createWorkThreadStore } from "../src/lifeops/work-threads/store.ts";
-import { workThreadsProvider } from "../src/providers/work-threads.ts";
-import { createMockedTestRuntime } from "../test/support/helpers/mock-runtime.ts";
+} from "../../../../plugins/plugin-personal-assistant/src/lifeops/work-threads/field-evaluator-thread-ops.ts";
+import { createWorkThreadStore } from "../../../../plugins/plugin-personal-assistant/src/lifeops/work-threads/store.ts";
+import { workThreadsProvider } from "../../../../plugins/plugin-personal-assistant/src/providers/work-threads.ts";
+import { createMockedTestRuntime } from "../../../../plugins/plugin-personal-assistant/test/support/helpers/mock-runtime.ts";
 
 type Sample = {
   name: string;

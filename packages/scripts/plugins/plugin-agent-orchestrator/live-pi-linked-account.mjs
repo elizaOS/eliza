@@ -25,7 +25,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const script = fileURLToPath(import.meta.url);
-const repo = path.resolve(path.dirname(script), "../../..");
+const repo = path.resolve(path.dirname(script), "../../../..");
 const model = "openai/gpt-4.1-mini";
 const marker = "ELIZA_PI_LINKED_ACCOUNT_OK";
 const prompt = `This is a response-only integration check. Do not call any tools, read files, execute commands, change state, or contact any service. Reply with exactly ${marker} and no other text.`;
@@ -73,7 +73,7 @@ const sourcePaths = [
   "packages/auth/src/auth/account-storage.ts",
   "plugins/plugin-agent-orchestrator/src/services/pi-provider-config.ts",
   "plugins/plugin-agent-orchestrator/src/services/acp-native-transport.ts",
-  "plugins/plugin-agent-orchestrator/scripts/live-pi-linked-account.mjs",
+  "packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.mjs",
 ];
 
 async function child() {
@@ -102,16 +102,18 @@ async function child() {
     await import("@elizaos/auth/auth/account-storage");
   phase = "import-account-pool";
   const { getDefaultAccountPool } = await import(
-    "../../../packages/app/src/services/account-pool.ts"
+    "../../../app/src/services/account-pool.ts"
   );
   phase = "import-core";
   const { getCodingAgentSelectorBridge } = await import("@elizaos/core");
   phase = "import-provider-route";
   const { preparePiProviderRoute, enforcePiProviderCredentialIsolation } =
-    await import("../src/services/pi-provider-config.ts");
+    await import(
+      "../../../../plugins/plugin-agent-orchestrator/src/services/pi-provider-config.ts"
+    );
   phase = "import-native-client";
   const { NativeAcpClient } = await import(
-    "../src/services/acp-native-transport.ts"
+    "../../../../plugins/plugin-agent-orchestrator/src/services/acp-native-transport.ts"
   );
   phase = "encrypted-account-storage";
   const policy = createRuntimeAccountStoragePolicy(root);

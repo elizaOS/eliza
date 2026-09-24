@@ -19,7 +19,10 @@ const vitestConfig = "eliza/packages/scripts/vitest/live-e2e.config.ts";
 
 export function resolveJourneyEvalPaths(moduleUrl = import.meta.url) {
   const here = path.dirname(fileURLToPath(moduleUrl));
-  const packageRoot = path.resolve(here, "..");
+  const packageRoot = path.resolve(
+    here,
+    "../../../../plugins/plugin-personal-assistant",
+  );
   const repoRoot = path.resolve(packageRoot, "..", "..");
   return {
     envCandidates: [

@@ -10,7 +10,7 @@
  * exporter never rotates a refresh chain owned by another process.
  *
  * Usage:
- *   bun scripts/export-ci-account-secrets.ts [--index N] [--out FILE] [--gh]
+ *   bun ../../packages/scripts/plugins/plugin-agent-orchestrator/export-ci-account-secrets.ts [--index N] [--out FILE] [--gh]
  *
  *   --index N   suffix for the emitted var names (default 1) — run once per
  *               connected account, bumping N, to seed 2× each for rotation.

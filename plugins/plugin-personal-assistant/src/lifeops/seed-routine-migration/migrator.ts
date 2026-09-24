@@ -23,7 +23,7 @@
  *     the public surface. Failures throw — no swallowed errors, no
  *     fallback values that mask broken data.
  *
- * Driver script: `plugins/plugin-personal-assistant/scripts/migrate-seed-routines.mjs`.
+ * Driver script: `packages/scripts/plugins/plugin-personal-assistant/migrate-seed-routines.mjs`.
  */
 
 import type { LifeOpsTaskDefinition } from "../../contracts/index.js";
