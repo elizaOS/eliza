@@ -60,6 +60,50 @@ describe("private shell-output artifacts", () => {
     return path.join(stateDir, "coding-tools", "shell-output", handle);
   }
 
+  it("rechecks bytes, MAC key, owner, and expiry after repeated reads", async () => {
+    const artifact = await publish("fresh authority on every page");
+    const read = (requesterConversationId = OWNER_CONVERSATION) =>
+      readShellOutputArtifactPage({
+        handle: artifact.handle,
+        stream: "stdout",
+        requesterAgentId: OWNER_AGENT,
+        requesterConversationId,
+      });
+    expect(await read()).toMatchObject({ ok: true });
+    expect(await read()).toMatchObject({ ok: true });
+    const manifestPath = path.join(
+      artifactDirectory(artifact.handle),
+      "manifest.json",
+    );
+    const bytes = await fs.readFile(manifestPath);
+    const modified = JSON.parse(bytes.toString("utf8"));
+    modified.owner.conversationId = "00000000-0000-4000-8000-000000000003";
+    await fs.writeFile(manifestPath, JSON.stringify(modified));
+    expect(await read()).toMatchObject({ ok: false, reason: "corrupt" });
+    await fs.writeFile(manifestPath, bytes);
+    expect(await read()).toMatchObject({ ok: true });
+
+    const keyPath = path.join(
+      stateDir,
+      "coding-tools",
+      "shell-output",
+      ".artifact-key",
+    );
+    const key = await fs.readFile(keyPath);
+    await fs.writeFile(
+      keyPath,
+      key.map((byte) => byte ^ 1),
+    );
+    expect(await read()).toMatchObject({ ok: false, reason: "corrupt" });
+    await fs.writeFile(keyPath, key);
+    expect(await read("00000000-0000-4000-8000-000000000003")).toMatchObject({
+      ok: false,
+      reason: "unavailable",
+    });
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse(artifact.expiresAt) + 1);
+    expect(await read()).toMatchObject({ ok: false, reason: "expired" });
+  });
+
   it("pages a 10 MiB Unicode stream with bounded source reads and exact reassembly", async () => {
     const unit = "🙂alpha界\n";
     const repetitions = Math.ceil((10 * 1024 * 1024) / Buffer.byteLength(unit));
