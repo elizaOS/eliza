@@ -803,7 +803,7 @@
     "json5": "^2.2.3",
     "react": "^19.0.0",
     "yaml": "^2.8.2",
-    "zod": "^4.4.3",
+    "zod": "^4.6.5",
     "@elizaos/prompts": "workspace:*",
     "@elizaos/common": "workspace:*",
     "markdown-it": "^14.1.0",

@@ -24,7 +24,7 @@
     "@elizaos/plugin-workflow": "workspace:*",
     "elysia": "^1.1.0",
     "ioredis": "^5.10.1",
-    "zod": "^4.4.3",
+    "zod": "^4.6.5",
     "@elizaos/common": "workspace:*"
   },
   "devDependencies": {

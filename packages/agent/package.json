@@ -353,7 +353,7 @@
     "pg": "^8.23.0",
     "pngjs": "^7.0.0",
     "ws": "^8.21.3",
-    "zod": "^4.4.3",
+    "zod": "^4.6.5",
     "@elizaos/credentials": "workspace:*",
     "@elizaos/cloud-routing": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",

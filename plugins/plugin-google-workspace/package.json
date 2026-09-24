@@ -51,7 +51,7 @@
     "@elizaos/core": "workspace:*",
     "google-auth-library": "^11.1.0",
     "googleapis": "^169.0.0",
-    "zod": "^4.4.3",
+    "zod": "^4.6.5",
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/shared": "workspace:*"
   },

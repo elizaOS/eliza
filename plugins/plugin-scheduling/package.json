@@ -64,7 +64,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "drizzle-orm": "0.45.2",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "peerDependencies": {
     "@elizaos/plugin-sql": "workspace:*",
