@@ -8,9 +8,11 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.os.Build
 import android.provider.Telephony
 import android.telephony.SmsManager
+import androidx.core.content.ContextCompat
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -18,8 +20,8 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 // Declares the `sms` alias so the Capacitor base Plugin auto-provides
 // checkPermissions()/requestPermissions() — SMS read/send is requested on first
@@ -46,12 +48,12 @@ class MessagesPlugin : Plugin() {
             return
         }
         val address = call.getString("address")?.trim()
-        val body = call.getString("body")?.trim()
+        val body = call.getString("body")
         if (address.isNullOrEmpty()) {
             call.reject("address is required")
             return
         }
-        if (body.isNullOrEmpty()) {
+        if (body.isNullOrBlank()) {
             call.reject("body is required")
             return
         }
@@ -66,21 +68,31 @@ class MessagesPlugin : Plugin() {
         val requestId = requestCounter.getAndIncrement()
         val action = "${context.packageName}.ELIZA_SMS_SENT.$requestId"
         val remaining = AtomicInteger(parts.size)
-        val failed = AtomicBoolean(false)
+        val firstFailure = AtomicInteger(Activity.RESULT_OK)
+        val sentUri = AtomicReference<String?>()
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(receiverContext: Context, intent: Intent) {
                 if (resultCode != Activity.RESULT_OK) {
-                    failed.set(true)
+                    firstFailure.compareAndSet(Activity.RESULT_OK, resultCode)
                 }
+                intent.getStringExtra("uri")?.let { sentUri.set(it) }
                 if (remaining.decrementAndGet() == 0) {
                     receiverContext.unregisterReceiver(this)
-                    if (failed.get()) {
-                        call.reject("SMS send failed with result code $resultCode")
+                    if (firstFailure.get() != Activity.RESULT_OK) {
+                        call.reject("SMS send failed with result code ${firstFailure.get()}")
                     } else {
                         try {
-                            call.resolve(persistSentSms(address, body))
+                            // Android persists messages sent by non-default SMS apps.
+                            // A second insert can return content://sms/0 without writing
+                            // anything. Return the system's actual sent-row receipt.
+                            val receipt = if (Telephony.Sms.getDefaultSmsPackage(context) == context.packageName) {
+                                persistSentSms(address, body)
+                            } else {
+                                sentSmsReceipt(sentUri.get())
+                            }
+                            call.resolve(receipt)
                         } catch (error: RuntimeException) {
-                            call.reject("SMS sent but Android SMS provider did not persist the sent row", error)
+                            call.reject("SMS was sent, but its persisted message receipt is unavailable", "SMS_SENT_RECEIPT_UNAVAILABLE", error)
                         }
                     }
                 }
@@ -88,14 +100,13 @@ class MessagesPlugin : Plugin() {
         }
 
         val filter = IntentFilter(action)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            context.registerReceiver(receiver, filter)
-        }
+        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
 
         val pendingIntents = ArrayList<PendingIntent>()
-        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        // Telephony fills in the persisted URI. The callback stays package-scoped
+        // and its receiver is not exported, including on pre-Android-13 devices.
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
         for (index in parts.indices) {
             val sentIntent = Intent(action).setPackage(context.packageName)
             pendingIntents.add(
@@ -153,6 +164,18 @@ class MessagesPlugin : Plugin() {
         call.resolve(result)
     }
 
+    private fun sentSmsReceipt(rawUri: String?): JSObject {
+        val uri = rawUri?.let { Uri.parse(it) }
+        val id = uri?.lastPathSegment
+        check(uri?.scheme == "content" && uri.authority == "sms" && (id?.toLongOrNull() ?: 0) > 0) {
+            "SMS was sent but Android did not supply a persisted message receipt"
+        }
+        return JSObject().apply {
+            put("messageUri", uri.toString())
+            put("messageId", id)
+        }
+    }
+
     private fun persistSentSms(address: String, body: String): JSObject {
         val sentAt = System.currentTimeMillis()
         val values = ContentValues()
@@ -167,9 +190,6 @@ class MessagesPlugin : Plugin() {
         val inserted = context.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, values)
             ?: throw IllegalStateException("SMS provider returned no sent row URI")
 
-        val result = JSObject()
-        result.put("messageUri", inserted.toString())
-        result.put("messageId", inserted.lastPathSegment ?: "")
-        return result
+        return sentSmsReceipt(inserted.toString())
     }
 }

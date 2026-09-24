@@ -372,6 +372,13 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     roots: [{ label: "plugins", dir: "test-results/android-native-plugins" }],
   },
   {
+    silo: "android-native-sms",
+    source: "android-native-sms",
+    producedBy: "packages/app/scripts/android-native-sms.mjs",
+    lane: "native",
+    roots: [{ label: "sms", dir: "test-results/android-native-sms" }],
+  },
+  {
     silo: "e2e-recordings",
     source: "e2e-recordings",
     producedBy: "packages/scripts/e2e-recordings/run-all.mjs",

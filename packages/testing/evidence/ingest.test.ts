@@ -47,6 +47,7 @@ function write(repoRoot: string, relPath: string, content: string): void {
 function buildFixtureRepo(): string {
   const repo = tmpDir();
   write(repo, "test-results/android-native-agent/runs/run/report.json", "{}");
+  write(repo, "test-results/android-native-sms/run/report.json", "{}");
   write(
     repo,
     "test-results/android-native-plugins/run/emulator/report.json",
@@ -356,6 +357,7 @@ describe("ingestAllSilos", () => {
     ).toEqual([
       ["android-native-agent", "ingested", 1],
       ["android-native-plugins", "ingested", 1],
+      ["android-native-sms", "ingested", 1],
       ["e2e-recordings", "ingested", 3],
       ["aesthetic-audit", "ingested", 5],
       ["aesthetic-audit-cloud", "absent", 0],

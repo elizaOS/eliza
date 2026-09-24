@@ -49,6 +49,42 @@ class NativeBridgeInstrumentedTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val descriptor = JSONObject(context.assets.open("native-plugin.json").bufferedReader().use { it.readText() })
         val script = context.assets.open("contracts.js").bufferedReader().use { it.readText() }
+        val arguments = InstrumentationRegistry.getArguments()
+        arguments.getString("smsCleanupBody")?.let { body ->
+            check(Build.HARDWARE in setOf("ranchu", "goldfish"))
+            check(body.startsWith("Eliza native SMS round trip "))
+            check(descriptor.getString("directory") == "plugin-native-messages")
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            fun shell(command: String) = instrumentation.uiAutomation.executeShellCommand(command).use {
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes()
+            }
+            // Grant write access only after the sender/receiver assertions, and
+            // delete only this run's synthetic body. Normal sending never gets it.
+            shell("appops set ${context.packageName} android:write_sms allow")
+            try {
+                context.contentResolver.delete(android.provider.Telephony.Sms.CONTENT_URI, "body = ? OR body = ?", arrayOf(body, body.trim()))
+                context.contentResolver.query(android.provider.Telephony.Sms.CONTENT_URI, arrayOf("_id"), "body = ? OR body = ?", arrayOf(body, body.trim()), null).use {
+                    assertNotNull(it)
+                    assertEquals("SMS fixture must be removed", 0, it!!.count)
+                }
+            } finally {
+                shell("appops set ${context.packageName} android:write_sms default")
+            }
+            return
+        }
+        arguments.getString("smsRole")?.let { role ->
+            check(Build.HARDWARE in setOf("ranchu", "goldfish"))
+            check(descriptor.getString("directory") == "plugin-native-messages")
+            check(role in setOf("sender", "receiver"))
+            for (key in listOf("smsPeerPort", "smsSenderPort")) {
+                val port = requireNotNull(arguments.getString(key)).toInt()
+                check(port in 5554..5682 && port % 2 == 0)
+                descriptor.put(key, port.toString())
+            }
+            descriptor.put("smsRole", role)
+            descriptor.put("smsLoopback", arguments.getString("smsLoopback") == "true")
+            descriptor.put("smsBody", requireNotNull(arguments.getString("smsBody")))
+        }
         if (InstrumentationRegistry.getArguments().getString("networkTransitions") == "1") {
             check(descriptor.getString("directory") == "plugin-native-network-policy")
             NetworkTransitionFixture(context).use { fixture ->
@@ -90,6 +126,14 @@ class NativeBridgeInstrumentedTest {
                     val result = JSONObject(JSONTokener(raw).nextValue() as String)
                     assertFalse("Native contract failed: $result", result.has("error"))
                     assertTrue("Contract must assert native behavior", result.getInt("assertions") > 0)
+                    if (descriptor.has("smsRole")) {
+                        val evidence = evaluate(scenario, "JSON.stringify(window.nativeSmsEvidence)")
+                        result.put("sms", JSONObject(JSONTokener(evidence).nextValue() as String))
+                        InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
+                            putString("nativeArtifactName", "sms-${descriptor.getString("smsRole")}.json")
+                            putString("nativeArtifactBase64", Base64.encodeToString(result.toString().toByteArray(), Base64.NO_WRAP))
+                        })
+                    }
                     if (descriptor.has("networkStage")) {
                         val evidence = evaluate(scenario, "JSON.stringify(window.nativeNetworkEvidence)")
                         result.put("network", JSONObject(JSONTokener(evidence).nextValue() as String))
