@@ -7,6 +7,7 @@ import type {
   ToolDefinition,
 } from "@elizaos/core";
 import {
+  createPreparedModelRequestGuard,
   ElizaError,
   HANDLE_RESPONSE_TOOL_NAME,
   isTruthyEnvValue,
@@ -692,9 +693,16 @@ async function generateViaCli(
     const { system, body } = flattenPrompt(generateParams);
     const envelopeBody = buildEnvelopeBody(system, body);
     const key = claudeSessionKey(model, STAGE1_ENVELOPE_SYSTEM_PROMPT, "envelope", fields);
+    const preparedRequest = createPreparedModelRequestGuard({
+      provider: "claude-agent-sdk",
+      model,
+      projectRequest: () => ({ system: STAGE1_ENVELOPE_SYSTEM_PROMPT, body: envelopeBody, fields }),
+      outputReserveTokens: params.maxTokens,
+    });
     return withAccountRotation(
-      (env) =>
-        getSdkSession(
+      (env) => {
+        preparedRequest.assertBeforeAttempt();
+        return getSdkSession(
           runtime,
           model,
           STAGE1_ENVELOPE_SYSTEM_PROMPT,
@@ -702,7 +710,8 @@ async function generateViaCli(
           timeoutConfiguration,
           env,
           fields
-        ).send(envelopeBody),
+        ).send(envelopeBody);
+      },
       {
         backend,
         getValue: (k) => getSetting(runtime, k),
@@ -726,16 +735,24 @@ async function generateViaCli(
     const framedSystem = frameTextSystemPrompt(system);
     const framedBody = appendTextDirective(body);
     const key = claudeSessionKey(model, framedSystem, "text");
+    const preparedRequest = createPreparedModelRequestGuard({
+      provider: "claude-agent-sdk",
+      model,
+      projectRequest: () => ({ system: framedSystem, body: framedBody }),
+      outputReserveTokens: params.maxTokens,
+    });
     // Pool-first auth: the FIRST warm session already auths as a healthy pooled
     // Claude account when one exists (ambient ~/.claude is the fallback). On a
     // subscription limit, rotate to the next healthy pooled account (evicting
     // the warm session so it re-auths as the new account), then retry; fall
     // through to provider failover only when the pool is exhausted.
     return withAccountRotation(
-      (env) =>
-        getSdkSession(runtime, model, framedSystem, "text", timeoutConfiguration, env).send(
+      (env) => {
+        preparedRequest.assertBeforeAttempt();
+        return getSdkSession(runtime, model, framedSystem, "text", timeoutConfiguration, env).send(
           framedBody
-        ),
+        );
+      },
       {
         backend,
         getValue: (k) => getSetting(runtime, k),
@@ -753,9 +770,25 @@ async function generateViaCli(
     const framedBody = appendTextDirective(`${frameTextSystemPrompt(system)}\n\n${body}`);
     const key = codexSessionKey(runtime, model, false);
     const outputSchema = params.responseSchema;
+    const preparedRequest = createPreparedModelRequestGuard({
+      provider: "codex-sdk",
+      model,
+      projectRequest: () => ({
+        body: framedBody,
+        responseSchema: outputSchema,
+        toolChoice: params.toolChoice,
+        tools: params.tools?.map(({ name, description, parameters }) => ({
+          name,
+          description,
+          parameters,
+        })),
+      }),
+      outputReserveTokens: params.maxTokens,
+    });
     return withAccountRotation<string | GenerateTextResult>(
-      (env) =>
-        params.tools?.length
+      (env) => {
+        preparedRequest.assertBeforeAttempt();
+        return params.tools?.length
           ? generateCodexToolResponse(
               getCodexSdkSession(runtime, model, false, timeoutConfiguration, env),
               params
@@ -764,7 +797,8 @@ async function generateViaCli(
               framedBody,
               outputSchema,
               params.signal
-            ),
+            );
+      },
       {
         backend,
         getValue: (k) => getSetting(runtime, k),
@@ -814,16 +848,24 @@ async function planViaCli(
     const model = resolveSdkModel(runtime, ModelType.ACTION_PLANNER);
     const routerBody = buildRouterBody(params);
     const key = claudeSessionKey(model, ROUTER_SYSTEM_PROMPT, "route");
+    const preparedRequest = createPreparedModelRequestGuard({
+      provider: "claude-agent-sdk",
+      model,
+      projectRequest: () => ({ system: ROUTER_SYSTEM_PROMPT, body: routerBody }),
+      outputReserveTokens: params.maxTokens,
+    });
     return withAccountRotation(
-      (env) =>
-        getSdkSession(
+      (env) => {
+        preparedRequest.assertBeforeAttempt();
+        return getSdkSession(
           runtime,
           model,
           ROUTER_SYSTEM_PROMPT,
           "route",
           timeoutConfiguration,
           env
-        ).send(routerBody),
+        ).send(routerBody);
+      },
       {
         backend,
         getValue: (k) => getSetting(runtime, k),
@@ -843,12 +885,20 @@ async function planViaCli(
     const clean = buildCleanRoutingParams(params);
     const routeBody = `${clean.system ?? ""}\n\n${clean.prompt ?? ""}`;
     const key = codexSessionKey(runtime, model, true);
+    const preparedRequest = createPreparedModelRequestGuard({
+      provider: "codex-sdk",
+      model,
+      projectRequest: () => ({ body: routeBody, structuredRoute: true }),
+      outputReserveTokens: params.maxTokens,
+    });
     return withAccountRotation(
-      (env) =>
-        getCodexSdkSession(runtime, model, true, timeoutConfiguration, env).route(
+      (env) => {
+        preparedRequest.assertBeforeAttempt();
+        return getCodexSdkSession(runtime, model, true, timeoutConfiguration, env).route(
           routeBody,
           params.signal
-        ),
+        );
+      },
       {
         backend,
         getValue: (k) => getSetting(runtime, k),

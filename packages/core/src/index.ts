@@ -378,6 +378,7 @@ export {
 	DISCOVER_TOOLS_NAME,
 	SHOULD_RESPOND_SCHEMA_DESCRIPTION,
 } from "./actions/to-tool.ts";
+export * from "./database/document-source-segments";
 export * from "./embedding-vector-space";
 export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
 export { actionGateFailure, canActionRun } from "./runtime/action-gate.ts";
@@ -438,6 +439,8 @@ export {
 	mergeChainingLoopConfig,
 	TrajectoryLimitExceeded,
 } from "./runtime/limits.ts";
+export * from "./runtime/message-content-segments";
+export * from "./runtime/message-content-storage";
 export { RUNTIME_DEBUG_LOG_ENABLED } from "./runtime/model-diagnostics.ts";
 export { resolveProviderModelString } from "./runtime/model-dispatch/model-name.ts";
 export {
@@ -463,6 +466,7 @@ export type {
 	PlannerTrajectory,
 	RunEvaluatorParams,
 } from "./runtime/planner-types.ts";
+export * from "./runtime/prepared-model-request";
 export {
 	projectDeferredProviders,
 	providerReviewSources,

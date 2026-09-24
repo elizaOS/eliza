@@ -1,12 +1,3 @@
-/**
- * Unit coverage for the trajectories cost/pricing table: asserts the static
- * per-provider rate card, the longest-family-key
- * substring fallback for versioned model ids, the local-provider zero-cost rule,
- * cache read/write accounting, and the MODEL_PRICES_JSON
- * env overrides. Fully deterministic — no live model; env is stubbed via
- * vi.stubEnv.
- */
-
 import {
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
@@ -19,6 +10,15 @@ import {
   MODEL_PRICES_USD_PER_M_TOKENS,
   PRICE_TABLE_ID,
 } from "./model-pricing";
+
+/**
+ * Unit coverage for the trajectories cost/pricing table: asserts the static
+ * per-provider rate card, the longest-family-key
+ * substring fallback for versioned model ids, the local-provider zero-cost rule,
+ * cache read/write accounting, and the MODEL_PRICES_JSON
+ * env overrides. Fully deterministic — no live model; env is stubbed via
+ * vi.stubEnv.
+ */
 
 describe("PRICE_TABLE_ID", () => {
   it("is a non-empty versioned identifier", () => {

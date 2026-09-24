@@ -33,7 +33,18 @@ export interface MigratedMemory {
   roomId: UUID;
   createdAt: number;
   content: { text: string };
-  metadata: { type: "custom"; source: string; tier: string };
+  metadata: {
+    type: "custom";
+    source: string;
+    tier: string;
+    segment?: {
+      groupId: string;
+      ordinal: number;
+      count: number;
+      characterStart: number;
+      characterEnd: number;
+    };
+  };
   unique: boolean;
 }
 

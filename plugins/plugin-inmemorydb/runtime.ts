@@ -1,18 +1,3 @@
-/**
- * In-memory `IDatabaseAdapter` implementation — the storage fallback the
- * caller explicitly supplies to the runtime; also the backing store for unit/integration tests, benchmarks, and
- * ephemeral/serverless runs.
- *
- * Implements the full batch-first `IDatabaseAdapter` surface (memories,
- * entities/components, rooms/participants, relationships, tasks, cache,
- * pairing, connector accounts + OAuth flow state) over plain Maps and arrays;
- * the single-item CRUD conveniences live on `AgentRuntime` and delegate here.
- * Semantics are kept honest against plugin-sql — newest-first ordering (id as
- * tiebreaker), case-insensitive `textContains` (ILIKE), and metadata
- * containment all mirror the SQL adapters. Persistence is process-local and
- * lost on restart.
- */
-
 import type {
   AccessContext,
   Agent,
@@ -84,7 +69,6 @@ import {
   cloneConnectorJsonObject,
   compareMemoryIds,
   compareTasksForQuery,
-  createHash,
   DatabaseAdapter,
   DEFAULT_UUID,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
@@ -110,6 +94,42 @@ import {
 } from "@elizaos/core";
 import { rankMessageSearch, rerankMemories, withinCreatedAtWindow } from "@elizaos/retrieval";
 
+/**
+ * In-memory `IDatabaseAdapter` implementation — the storage fallback the
+ * caller explicitly supplies to the runtime; also the backing store for unit/integration tests, benchmarks, and
+ * ephemeral/serverless runs.
+ *
+ * Implements the full batch-first `IDatabaseAdapter` surface (memories,
+ * entities/components, rooms/participants, relationships, tasks, cache,
+ * pairing, connector accounts + OAuth flow state) over plain Maps and arrays;
+ * the single-item CRUD conveniences live on `AgentRuntime` and delegate here.
+ * Semantics are kept honest against plugin-sql — newest-first ordering (id as
+ * tiebreaker), case-insensitive `textContains` (ILIKE), and metadata
+ * containment all mirror the SQL adapters. Persistence is process-local and
+ * lost on restart.
+ */
+
+import type {
+  AtomicMemoryPublicationParams,
+  AtomicMemoryPublicationResult,
+  MessageContentPublicationParams,
+  MessageContentPublicationResult,
+  MessageContentRangeReadParams,
+  MessageContentRangeReadResult,
+} from "@elizaos/core";
+import {
+  authorizeMessageContentRead,
+  canonicalAttachmentText,
+  DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS,
+  hashAttachmentIdForLocator,
+  MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES,
+  MESSAGE_CONTENT_READ_MAX_SEGMENTS,
+  readDocumentSourceProjection,
+  readMessageContentProjection,
+  requireDocumentSourceReadMetadata,
+  resolveMessageContentSourceDescriptor,
+} from "@elizaos/core";
+
 function asUuid(id: string): UUID {
   return id as UUID;
 }
@@ -126,6 +146,66 @@ function randomUuid(): UUID {
 
 function roomTableKey(tableName: string, roomId: UUID): string {
   return `${tableName}:${String(roomId)}`;
+}
+
+function documentSourceIndexKey(args: {
+  agentId: UUID;
+  documentId: UUID | string;
+  documentRevision: number;
+  revisionAttemptId?: string;
+}): string {
+  return JSON.stringify([
+    String(args.agentId),
+    String(args.documentId),
+    args.documentRevision,
+    args.revisionAttemptId ?? null,
+  ]);
+}
+
+function sourceSegmentIndexKey(memory: Memory): string | null {
+  const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
+  if (
+    typeof memory.agentId === "string" &&
+    metadata.type === "message-content-segment" &&
+    metadata.segmentVersion === 1 &&
+    typeof metadata.messageId === "string" &&
+    (metadata.sourceKind === "message-text" || metadata.sourceKind === "attachment-text") &&
+    typeof metadata.sourceRevision === "string"
+  ) {
+    return JSON.stringify([
+      "message-content",
+      memory.agentId,
+      metadata.messageId,
+      metadata.sourceKind,
+      metadata.attachmentIdHash ?? null,
+      metadata.sourceRevision,
+    ]);
+  }
+  if (
+    typeof memory.agentId !== "string" ||
+    metadata.type !== MemoryType.FRAGMENT ||
+    metadata.fragmentRole !== "source-segment" ||
+    metadata.sourceSegmentVersion !== 1 ||
+    typeof metadata.documentId !== "string" ||
+    !Number.isSafeInteger(metadata.documentRevision) ||
+    (metadata.revisionAttemptId !== undefined && typeof metadata.revisionAttemptId !== "string")
+  ) {
+    return null;
+  }
+  return documentSourceIndexKey({
+    agentId: memory.agentId as UUID,
+    documentId: metadata.documentId,
+    documentRevision: metadata.documentRevision as number,
+    revisionAttemptId: metadata.revisionAttemptId as string | undefined,
+  });
+}
+
+function sourceSegmentPosition(memory: Memory): number {
+  const metadata = memory.metadata as Record<string, unknown> | undefined;
+  const position = metadata?.position ?? metadata?.ordinal;
+  return typeof position === "number" && Number.isSafeInteger(position)
+    ? position
+    : Number.MAX_SAFE_INTEGER;
 }
 
 function memoryMatchesMetadata(memory: Memory, filter: Record<string, unknown>): boolean {
@@ -285,8 +365,9 @@ function dataContainsFilter(value: unknown, filter: Record<string, unknown> | un
  * Persistence is process-local. Data is lost on restart.
  */
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, never>> {
+  readonly messageContentSegmentCapability = 1 as const;
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
-  readonly documentRangeReadCapability = 1 as const;
+  readonly documentRangeReadCapability = 2 as const;
   db: Record<string, never> = {};
   private readonly adapterAgentId: UUID;
 
@@ -310,6 +391,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
 
   private memoriesById = new Map<string, Memory>();
   private memoriesByRoom = new Map<string, Memory[]>();
+  private sourceSegmentsByGeneration = new Map<string, Memory[]>();
   private cache = new Map<string, string>();
   /** Width last passed to {@link ensureEmbeddingDimension}; used to reclaim stale vectors. */
   private embeddingDimension: number | undefined;
@@ -328,6 +410,32 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
   private connectorCredentialRefs = new Map<string, ConnectorAccountCredentialRefRecord>();
   private connectorAuditEvents: ConnectorAccountAuditEventRecord[] = [];
   private oauthFlowsByStateHash = new Map<string, OAuthFlowRecord>();
+
+  private removeSourceSegmentIndex(memory: Memory): void {
+    const key = sourceSegmentIndexKey(memory);
+    if (!key) return;
+    const existing = this.sourceSegmentsByGeneration.get(key);
+    if (!existing) return;
+    const next = existing.filter((segment) => segment.id !== memory.id);
+    if (next.length === 0) this.sourceSegmentsByGeneration.delete(key);
+    else this.sourceSegmentsByGeneration.set(key, next);
+  }
+
+  private indexSourceSegment(memory: Memory): void {
+    const key = sourceSegmentIndexKey(memory);
+    if (!key) return;
+    const existing = this.sourceSegmentsByGeneration.get(key) ?? [];
+    const position = sourceSegmentPosition(memory);
+    let low = 0;
+    let high = existing.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (sourceSegmentPosition(existing[middle]) <= position) low = middle + 1;
+      else high = middle;
+    }
+    existing.splice(low, 0, memory);
+    this.sourceSegmentsByGeneration.set(key, existing);
+  }
 
   private cloneComponent(component: Component): Component {
     return {
@@ -878,11 +986,202 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
     // Components are already stored as whole records; patch operations are not modeled here.
   }
 
+  async publishMessageContentSegments(
+    params: MessageContentPublicationParams
+  ): Promise<MessageContentPublicationResult> {
+    const parentId = params.mode === "create" ? params.parent.id : params.messageId;
+    const publicationAgentId = params.mode === "create" ? params.parent.agentId : params.agentId;
+    if (!publicationAgentId) {
+      throw new ElizaError("Message content publication requires an agent ID", {
+        code: "MESSAGE_CONTENT_PUBLICATION_INVALID",
+      });
+    }
+    const removed = params.mode === "replace" ? new Set(params.removeSegmentIds) : new Set();
+    if (params.mode === "create" && this.memoriesById.has(String(parentId))) {
+      return { status: "conflict" };
+    }
+    const existing = this.memoriesById.get(String(parentId));
+    if (params.mode === "replace") {
+      if (!existing || existing.agentId !== params.agentId) {
+        return { status: "not_found" };
+      }
+      if (JSON.stringify(existing.content) !== JSON.stringify(params.expectedContent)) {
+        return { status: "conflict" };
+      }
+      for (const segmentId of params.removeSegmentIds) {
+        const segment = this.memoriesById.get(String(segmentId));
+        const metadata = segment?.metadata as Record<string, unknown> | undefined;
+        if (
+          !segment ||
+          segment.agentId !== params.agentId ||
+          metadata?.type !== "message-content-segment" ||
+          metadata.messageId !== params.messageId
+        ) {
+          throw new ElizaError(
+            "Message content replacement cannot remove an unrelated or missing segment",
+            {
+              code: "MESSAGE_CONTENT_DELETE_INCOMPLETE",
+              context: { messageId: params.messageId, segmentId },
+            }
+          );
+        }
+      }
+    }
+    for (const segment of params.segments) {
+      if (!segment.id || segment.agentId !== publicationAgentId) {
+        throw new ElizaError("Message content segment identity is invalid", {
+          code: "MESSAGE_CONTENT_PUBLICATION_INVALID",
+          context: { messageId: parentId },
+        });
+      }
+      if (this.memoriesById.has(String(segment.id)) && !removed.has(segment.id)) {
+        throw new ElizaError("Message content segment id already exists", {
+          code: "MESSAGE_CONTENT_SEGMENT_ID_CONFLICT",
+          context: { messageId: parentId, segmentId: segment.id },
+        });
+      }
+    }
+    if (params.mode === "replace" && params.removeSegmentIds.length > 0) {
+      await this.deleteMemories(params.removeSegmentIds);
+    }
+    if (params.segments.length > 0) {
+      await this.createMemories(
+        params.segments.map((memory) => ({
+          memory,
+          tableName: "message_content_segments",
+        }))
+      );
+    }
+    if (params.mode === "create") {
+      await this.createMemories([{ memory: params.parent, tableName: "messages" }]);
+      return {
+        status: "created",
+        parent: this.memoriesById.get(String(parentId)) as Memory,
+        removedSegmentIds: [],
+      };
+    }
+    const replacement: Memory = {
+      ...(existing as Memory),
+      content: params.replacementContent,
+    };
+    await this.updateMemories([{ id: params.messageId, content: replacement.content }]);
+    return {
+      status: "updated",
+      parent: replacement,
+      removedSegmentIds: [...params.removeSegmentIds],
+    };
+  }
+
+  async readMessageContentRange(
+    params: MessageContentRangeReadParams
+  ): Promise<MessageContentRangeReadResult> {
+    if (
+      !Number.isSafeInteger(params.offset) ||
+      params.offset < 0 ||
+      !Number.isSafeInteger(params.limit) ||
+      params.limit < 1 ||
+      params.limit > MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES
+    ) {
+      throw new ElizaError("Message content range is invalid", {
+        code: "MESSAGE_CONTENT_INVALID_RANGE",
+      });
+    }
+    const parent = this.memoriesById.get(String(params.messageId));
+    if (!parent || parent.agentId !== params.agentId || parent.roomId !== params.authorizedRoomId) {
+      return { status: "not_found" };
+    }
+    const participantCurrent = Boolean(
+      this.participantsByRoom
+        .get(String(parent.roomId))
+        ?.has(String(params.accessContext.requesterEntityId))
+    );
+    if (
+      !authorizeMessageContentRead({
+        parent,
+        authorizedRoomId: params.authorizedRoomId,
+        requester: params.accessContext,
+        agentId: params.agentId,
+        participantCurrent,
+        selector: params.source,
+      })
+    ) {
+      return { status: "forbidden" };
+    }
+    const descriptor = resolveMessageContentSourceDescriptor(parent.content, params.source);
+    if (!descriptor) {
+      let inline = "";
+      if (params.source.kind === "message-text") {
+        inline = parent.content.text ?? "";
+      } else {
+        const attachment = (parent.content.attachments ?? []).find(
+          (item) => hashAttachmentIdForLocator(item.id) === params.source.attachmentIdHash
+        );
+        inline = attachment ? canonicalAttachmentText(attachment) : "";
+      }
+      if (new TextEncoder().encode(inline).length > MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES) {
+        throw new ElizaError("Legacy content requires explicit segmented reindexing", {
+          code:
+            params.source.kind === "message-text"
+              ? "MESSAGE_REINDEX_REQUIRED"
+              : "ATTACHMENT_REINDEX_REQUIRED",
+          context: { messageId: params.messageId },
+        });
+      }
+      return { status: "inline", parent, text: inline };
+    }
+    if (params.offset > 0 && !params.expectedRevision) {
+      throw new ElizaError("Message content continuation requires a revision", {
+        code: "MESSAGE_CONTENT_EXPECTED_REVISION_REQUIRED",
+      });
+    }
+    if (params.expectedRevision && params.expectedRevision !== descriptor.revision) {
+      throw new ElizaError("Message content changed before continuation", {
+        code: "MESSAGE_CONTENT_STALE_REVISION",
+        context: { messageId: params.messageId },
+      });
+    }
+    const key = JSON.stringify([
+      "message-content",
+      params.agentId,
+      params.messageId,
+      params.source.kind,
+      params.source.attachmentIdHash ?? null,
+      descriptor.revision,
+    ]);
+    const active = this.sourceSegmentsByGeneration.get(key) ?? [];
+    let low = 0;
+    let high = active.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      const end = Number((active[middle].metadata as Record<string, unknown>).byteEnd ?? -1);
+      if (end <= params.offset) low = middle + 1;
+      else high = middle;
+    }
+    const requestedEnd = Math.min(params.offset + params.limit, descriptor.byteLength);
+    const selected: Memory[] = [];
+    for (let index = low; index < active.length; index++) {
+      const segment = active[index];
+      const start = Number((segment.metadata as Record<string, unknown>).byteStart ?? -1);
+      if (start >= requestedEnd) break;
+      selected.push(segment);
+      if (selected.length >= MESSAGE_CONTENT_READ_MAX_SEGMENTS) break;
+    }
+    return {
+      status: "ok",
+      parent,
+      page: readMessageContentProjection({
+        descriptor,
+        segments: selected,
+        messageId: params.messageId,
+        offset: params.offset,
+        limit: params.limit,
+        sourceQueryCount: 0,
+      }),
+    };
+  }
+
   async queryDocuments(params: DocumentListQueryParams): Promise<DocumentListQueryResult> {
-    const documents = Array.from(this.memoriesByRoom.entries())
-      .filter(([key]) => key.startsWith("documents:"))
-      .flatMap(([, memories]) => memories);
-    return queryDocumentsInMemory(documents, params);
+    return queryDocumentsInMemory(Array.from(this.memoriesById.values()), params);
   }
 
   async getDocument(params: DocumentGetQueryParams): Promise<Memory | null> {
@@ -900,45 +1199,72 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
   async readDocumentRange(
     params: DocumentRangeReadParams
   ): Promise<DocumentRangeReadResult | null> {
+    if (
+      !(["line", "fragment", "byte"] as const).includes(params.unit) ||
+      !Number.isSafeInteger(params.offset) ||
+      params.offset < 0 ||
+      !Number.isSafeInteger(params.limit) ||
+      params.limit < 1 ||
+      params.offset > Number.MAX_SAFE_INTEGER - params.limit
+    ) {
+      throw new ElizaError("Document range requires a bounded safe-integer range", {
+        code: "DOCUMENT_READ_INVALID_RANGE",
+      });
+    }
     const memory = await this.getDocument(params);
     if (!memory) return null;
-    const source = memory.content.text ?? "";
-    const lines = source.match(/[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$/gu) ?? [];
-    const units =
-      params.unit === "line"
-        ? lines
-        : lines
-            .reduce<string[]>((fragments, line) => {
-              const last = fragments.length - 1;
-              if (last < 0) fragments.push(line);
-              else fragments[last] += line;
-              if (line.replace(/[\r\n]/gu, "").trim().length === 0) {
-                fragments.push("");
-              }
-              return fragments;
-            }, [])
-            .filter((fragment) => fragment.length > 0);
-    const selected =
-      params.limit === undefined
-        ? units.slice(params.offset)
-        : units.slice(params.offset, params.offset + params.limit);
-    const text = selected.join("");
     const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
-    return {
-      text,
-      start: params.offset,
-      end:
-        params.limit === undefined
-          ? units.length
-          : Math.min(params.offset + params.limit, units.length),
-      total: units.length,
-      documentRevision:
-        typeof metadata.documentRevision === "number" ? metadata.documentRevision : 0,
-      ...(typeof metadata.revisionAttemptId === "string"
-        ? { revisionAttemptId: metadata.revisionAttemptId }
-        : {}),
-      sourceFingerprint: `md5:${createHash("md5").update(source).digest("hex")}`,
-    };
+    const parent = requireDocumentSourceReadMetadata(metadata, params.documentId);
+    const coordinatePrefix =
+      params.unit === "byte"
+        ? "sourceByte"
+        : params.unit === "line"
+          ? "sourceLine"
+          : "sourceFragment";
+    const active =
+      this.sourceSegmentsByGeneration.get(
+        documentSourceIndexKey({
+          agentId: params.agentId,
+          documentId: params.documentId,
+          documentRevision: parent.documentRevision,
+          revisionAttemptId: parent.revisionAttemptId,
+        })
+      ) ?? [];
+    let low = 0;
+    let high = active.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      const end = Number(
+        (active[middle].metadata as Record<string, unknown>)[`${coordinatePrefix}End`] ?? -1
+      );
+      if (end <= params.offset) low = middle + 1;
+      else high = middle;
+    }
+    const total =
+      params.unit === "byte"
+        ? parent.sourceByteLength
+        : params.unit === "line"
+          ? parent.sourceLineCount
+          : parent.sourceFragmentCount;
+    const requestedEnd = Math.min(params.offset + params.limit, total);
+    const selected: Memory[] = [];
+    for (let index = low; index < active.length; index++) {
+      const segment = active[index];
+      const start = Number(
+        (segment.metadata as Record<string, unknown>)[`${coordinatePrefix}Start`] ?? -1
+      );
+      if (start >= requestedEnd) break;
+      selected.push(segment);
+      if (selected.length === DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS) break;
+    }
+    return readDocumentSourceProjection({
+      segments: selected,
+      params,
+      parent,
+      documentId: params.documentId,
+      examinedSourceSegments: selected.length,
+      sourceQueryCount: 2,
+    });
   }
 
   async queryDocumentFragments(params: DocumentFragmentQueryParams): Promise<Memory[]> {
@@ -949,13 +1275,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
     return fragments.map((fragment) => {
       const documentId = (fragment.metadata as { documentId?: unknown } | undefined)?.documentId;
       const parent = typeof documentId === "string" ? this.memoriesById.get(documentId) : undefined;
-      const source = parent?.content.text;
-      return typeof source === "string"
+      const sourceFingerprint = (parent?.metadata as Record<string, unknown> | undefined)
+        ?.sourceFingerprint;
+      return typeof sourceFingerprint === "string"
         ? {
             ...fragment,
             metadata: {
               ...(fragment.metadata ?? {}),
-              sourceFingerprint: `md5:${createHash("md5").update(source).digest("hex")}`,
+              sourceFingerprint,
             } as Memory["metadata"],
           }
         : fragment;
@@ -1055,7 +1382,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
         });
       }
     }
-    for (const id of oldFragmentIds) this.memoriesById.delete(id);
+    for (const id of oldFragmentIds) {
+      const fragment = this.memoriesById.get(id);
+      if (fragment) this.removeSourceSegmentIndex(fragment);
+      this.memoriesById.delete(id);
+    }
     for (const [key, list] of this.memoriesByRoom) {
       this.memoriesByRoom.set(
         key,
@@ -1078,6 +1409,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
     }
     for (const fragment of params.fragments) {
       this.memoriesById.set(String(fragment.id), fragment);
+      this.indexSourceSegment(fragment);
       const key = roomTableKey("document_fragments", fragment.roomId);
       this.memoriesByRoom.set(key, [...(this.memoriesByRoom.get(key) ?? []), fragment]);
     }
@@ -1141,6 +1473,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
         : Array.from(this.memoriesByRoom.entries())
             .filter(([key]) => key.startsWith(`${tableName}:`))
             .flatMap(([, memories]) => memories);
+    if (tableName === "document_fragments") {
+      all = all.filter(
+        (memory) =>
+          (memory.metadata as Record<string, unknown> | undefined)?.fragmentRole !==
+          "source-segment"
+      );
+    }
 
     if (params.worldId) {
       all = all.filter((memory) => memory.worldId === params.worldId);
@@ -1471,7 +1810,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
         accessContext: params.accessContext,
       })
     ).filter((memory) => !params.entityId || memory.entityId === params.entityId);
-    const limit = params.count ?? params.limit ?? Infinity;
+    const limit = params.count ?? params.limit;
     // Same truthiness contract as plugin-sql: an absent or zero threshold
     // applies no similarity floor.
     const threshold = params.match_threshold;
@@ -1495,6 +1834,58 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
   }
 
   // Batch memory methods
+  async compareAndSwapMemoryPublication(
+    params: AtomicMemoryPublicationParams
+  ): Promise<AtomicMemoryPublicationResult> {
+    const headId = params.head.memory.id;
+    if (!headId) throw new TypeError("atomic memory publication head requires an id");
+    const existingHead = this.memoriesById.get(String(headId));
+    const existingRevision = (existingHead?.metadata as Record<string, unknown> | undefined)
+      ?.revision;
+    if (
+      (params.expectedRevision === null && existingHead) ||
+      (params.expectedRevision !== null && existingRevision !== params.expectedRevision)
+    )
+      return { status: "conflict" };
+
+    for (const dependency of params.dependencies) {
+      const dependencyId = dependency.memory.id;
+      if (!dependencyId) throw new TypeError("atomic memory dependency requires an id");
+      const existing = this.memoriesById.get(String(dependencyId));
+      if (
+        existing &&
+        JSON.stringify(existing.content) !== JSON.stringify(dependency.memory.content)
+      ) {
+        throw new ElizaError("Immutable memory dependency id has different content", {
+          code: "CONTENT_CONTINUITY_IMMUTABLE_COLLISION",
+          context: { memoryId: dependencyId },
+        });
+      }
+    }
+    const insertDirect = (memory: Memory, tableName: string): Memory => {
+      const stored = { ...memory, id: memory.id as UUID, unique: true };
+      this.memoriesById.set(String(stored.id), stored);
+      const key = roomTableKey(tableName, stored.roomId);
+      this.memoriesByRoom.set(key, [...(this.memoriesByRoom.get(key) ?? []), stored]);
+      return stored;
+    };
+    for (const dependency of params.dependencies) {
+      if (!this.memoriesById.has(String(dependency.memory.id))) {
+        insertDirect(dependency.memory, dependency.tableName);
+      }
+    }
+    let storedHead: Memory;
+    if (existingHead) {
+      storedHead = { ...existingHead, ...params.head.memory, id: headId };
+      this.memoriesById.set(String(headId), storedHead);
+      for (const list of this.memoriesByRoom.values()) {
+        const index = list.findIndex((memory) => memory.id === headId);
+        if (index >= 0) list[index] = storedHead;
+      }
+    } else storedHead = insertDirect(params.head.memory, params.head.tableName);
+    return { status: "published", head: storedHead };
+  }
+
   async createMemories(
     memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>
   ): Promise<UUID[]> {
@@ -1507,6 +1898,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
         unique: unique ?? memory.unique ?? true,
       };
       this.memoriesById.set(id, stored);
+      this.indexSourceSegment(stored);
       const roomId = memory.roomId;
       const key = roomTableKey(tableName, roomId);
       const list = this.memoriesByRoom.get(key) ?? [];
@@ -1554,7 +1946,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
         continue;
       }
       const merged: Memory = { ...existing, ...memory };
+      this.removeSourceSegmentIndex(existing);
       this.memoriesById.set(String(memory.id), merged);
+      this.indexSourceSegment(merged);
       // Update reference in memoriesByRoom to keep consistency
       const oldRoomId = existing.roomId;
       const newRoomId = merged.roomId;
@@ -1598,6 +1992,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
   async deleteMemories(memoryIds: UUID[]): Promise<void> {
     const idSet = new Set(memoryIds.map(String));
     for (const id of memoryIds) {
+      const memory = this.memoriesById.get(String(id));
+      if (memory) this.removeSourceSegmentIndex(memory);
       this.memoriesById.delete(String(id));
     }
     // Clean up memoriesByRoom references
@@ -1616,6 +2012,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
       const key = roomTableKey(tableName, roomId);
       const memories = this.memoriesByRoom.get(key) ?? [];
       for (const mem of memories) {
+        this.removeSourceSegmentIndex(mem);
         this.memoriesById.delete(String(mem.id));
       }
       this.memoriesByRoom.delete(key);
@@ -2449,7 +2846,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
   ): Promise<ConnectorAccountRecord[]> {
     const agentId = params.agentId ?? DEFAULT_UUID;
     const offset = params.offset ?? 0;
-    const accounts = Array.from(this.connectorAccountsById.values())
+    const limit = params.limit;
+    return Array.from(this.connectorAccountsById.values())
       .filter((account) => account.agentId === agentId)
       .filter((account) => account.deletedAt == null)
       .filter((account) => !params.provider || account.provider === params.provider)
@@ -2461,16 +2859,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
           typeof a.updatedAt === "number" && Number.isFinite(a.updatedAt) ? a.updatedAt : 0;
         return bTime - aTime || a.id.localeCompare(b.id);
       })
-      .slice(offset);
-    const selected = params.limit === undefined ? accounts : accounts.slice(0, params.limit);
-    return selected.map((account) => ({
-      ...account,
-      scopes: [...account.scopes],
-      purpose: [...account.purpose],
-      capabilities: [...account.capabilities],
-      profile: cloneConnectorJsonObject(account.profile),
-      metadata: cloneConnectorJsonObject(account.metadata),
-    }));
+      .slice(offset, limit === undefined ? undefined : offset + limit)
+      .map((account) => ({
+        ...account,
+        scopes: [...account.scopes],
+        purpose: [...account.purpose],
+        capabilities: [...account.capabilities],
+        profile: cloneConnectorJsonObject(account.profile),
+        metadata: cloneConnectorJsonObject(account.metadata),
+      }));
   }
 
   async getConnectorAccount(

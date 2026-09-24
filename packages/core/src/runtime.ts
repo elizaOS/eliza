@@ -119,7 +119,7 @@ import {
 	invalidateTurnMemoPrefix,
 	setTrajectoryPurpose,
 } from "./trajectory-context";
-import type { SendHandlerFunction } from "./types";
+import type { Content, SendHandlerFunction } from "./types";
 import {
 	type AccessContext,
 	type Action,
@@ -5525,6 +5525,14 @@ export class AgentRuntime implements IAgentRuntime {
 	async getMemoryById(id: UUID): Promise<Memory | null> {
 		const memories = await this.adapter.getMemoriesByIds([id]);
 		return memories.length > 0 ? memories[0] : null;
+	}
+
+	createMessageMemory(memory: Memory, unique?: boolean): Promise<UUID> {
+		return this.dataMutations.createMessageMemory(memory, unique);
+	}
+
+	replaceMessageMemoryContent(id: UUID, content: Content): Promise<void> {
+		return this.dataMutations.replaceMessageMemoryContent(id, content);
 	}
 
 	// WHY createMemory is special: it performs secret redaction before

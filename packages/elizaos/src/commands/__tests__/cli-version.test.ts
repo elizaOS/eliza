@@ -1,3 +1,5 @@
+/** Verifies the CLI version command formats package metadata through its real command export. */
+
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("picocolors", () => ({

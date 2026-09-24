@@ -11,6 +11,9 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "paths": {
+      "@elizaos/testing": ["../testing/src/progressive-content-target.ts"]
+    },
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,

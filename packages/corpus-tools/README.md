@@ -8,6 +8,74 @@ Raw and intermediate owner data belongs under `packages/corpus-tools/data/`,
 which is ignored by the repo-wide `**/data/` rule. Only synthetic fixtures
 under `fixtures/` are committed.
 
+## Progressive-content evidence production
+
+`bun run content-context:produce -- --external-dir=<private-external-artifacts>
+--run-root=reports/content-context/<run-id>` generates one deterministic scale
+corpus and invokes only the fixed checked-in deterministic producer at
+`packages/scripts/produce-content-context-deterministic.mjs`. Caller-selected
+command plans and caller-supplied deterministic reports are not accepted. The
+external directory is reserved for the six-hour soak, real PostgreSQL,
+credentialed trajectories, E2E report, and E2E bytes. Every imported artifact
+must be a private, single-link regular file; missing, fixture-shaped,
+cross-commit, or cross-corpus evidence fails during canonical validation. If
+the checked-in deterministic producer is unavailable, orchestration fails
+closed instead of accepting fabricated rows.
+
+`e2e.json` declares exactly one backend log, browser trace, network log, and
+database-state artifact beneath `e2e-artifacts/`, including byte length and
+SHA-256. The publisher reads, verifies, and copies those exact bytes into the
+atomic run directory; a path-only claim cannot satisfy E2E evidence. Successful
+publication still goes exclusively through `run-content-context.mjs` and the
+normal evidence ingestor.
+
+The external soak artifact is produced separately and intentionally takes at
+least six hours:
+
+```bash
+bun run content-context:soak -- \
+  --corpus-root=/private/corpus \
+  --out=/private/external/soak.json \
+  --commit=<full-git-sha>
+```
+
+The runner verifies the complete corpus and loads the same fixed repository
+factories as deterministic evidence. It selects the largest supported object
+for each family, realizes it through the native store, and samples process RSS,
+heap, external/array-buffer memory, file descriptors, temporary artifacts,
+database rows, and WAL bytes from the bound targets. Caller-selected factory
+modules are rejected.
+
+The mappings are fixed: file, document, memory, and email use typed binary and
+invalid-UTF-8 rejection; attachment and tool output retain native bytes. A
+shortened clock, partial family set, failed cleanup, resource drift, or missed
+positive leak control stops without publishing `soak.json`. Fast tests exercise
+only the explicitly ineligible contract seam and cannot create production
+evidence.
+
+The credentialed live producer at
+`packages/scripts/produce-content-context-live-trajectories.mjs` requires
+`OPENAI_API_KEY`, distinct `--model` and `--judge-model` values, and explicit
+per-million-token prices for both models:
+
+| Token category | Controller flag | Judge flag |
+| --- | --- | --- |
+| Ordinary input | `--input-usd-per-million` | `--judge-input-usd-per-million` |
+| Cached input | `--cached-input-usd-per-million` | `--judge-cached-input-usd-per-million` |
+| Cache writes | `--cache-write-input-usd-per-million` | `--judge-cache-write-input-usd-per-million` |
+| Output | `--output-usd-per-million` | `--judge-output-usd-per-million` |
+
+All prices must be positive and match the selected models' standard service
+tier. The producer explicitly requests that tier and rejects responses served
+through an unpriced tier. It validates complete provider usage and charges each
+model separately, including cache reads and writes; missing usage cannot become
+a zero-cost result. Complete controller and judge request/response bodies,
+provider usage, and the configured prices remain in the evidence for inspection;
+authorization headers are never part of that record. Use current [OpenAI pricing](https://developers.openai.com/api/docs/pricing)
+and [cache accounting](https://developers.openai.com/api/docs/guides/prompt-caching)
+when configuring the run. The matrix requires all five repetitions across all
+six families; configuration and partial runs do not establish live acceptance.
+
 ## X archive collector
 
 `collectXArchive` (`src/collectors/x-archive.ts`) parses the official X data

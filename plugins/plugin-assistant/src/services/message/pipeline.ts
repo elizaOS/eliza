@@ -1,31 +1,6 @@
-/** Coordinates Stage 1 decisions, planner execution, visible reply resolution, and ordered trajectory finalization for a message turn. */
-
-import type { ActionResult } from "@elizaos/core";
-import {
-  getStreamingContext,
-  isObjectRecord as isRecord,
-  sanitizeUserVisibleModelOutput,
-  TurnAbortedError,
-} from "@elizaos/core";
-import type { EvaluatorService } from "../evaluator";
-import { withHistoryReadEvidence } from "./history-discovery.js";
-import {
-  getSourceReplyRendering,
-  sourceReplyAssertionText,
-  sourceReplyScopeMatches,
-  transformSourceReplyProse,
-} from "./source-reply.ts";
-import { generateStage1Decision } from "./stage1-decision.ts";
-
-export { directCodingResponseHandlerResult } from "./stage1-decision.ts";
-
-import { finalizePlannerReply } from "./planner-reply.ts";
-import type { V5MessageRuntimeInput } from "./turn-input.ts";
-
-export type { V5MessageRuntimeInput } from "./turn-input.ts";
-
 import type {
   Action,
+  ActionResult,
   ContextEvent,
   GenerateTextParams,
   HandlerCallback,
@@ -49,9 +24,11 @@ import {
   finalizeTrajectoryRecording,
   getContextRoutingFromState,
   getLocalizedExamplesProvider,
+  getStreamingContext,
   getTrajectoryContext,
   getUserMessageText,
   isProviderContextOverflowFailure,
+  isObjectRecord as isRecord,
   isTrajectoryRecordingEnabled,
   looksLikeRawFieldTranscript,
   ModelType,
@@ -59,7 +36,9 @@ import {
   type RecordedStage,
   readEnv,
   runResponseHandlerEvaluators,
+  sanitizeUserVisibleModelOutput,
   type TrajectoryRecorder,
+  TurnAbortedError,
   timeInferenceSpan,
   withSemanticStageFanOut,
 } from "@elizaos/core";
@@ -96,6 +75,7 @@ import {
   runPlannerLoop,
 } from "../../runtime/planner-loop";
 import { createJsonFileTrajectoryRecorder } from "../../runtime/trajectory-recorder";
+import type { EvaluatorService } from "../evaluator";
 import {
   buildRuntimeActionLookup,
   resolveRuntimeAction,
@@ -130,6 +110,7 @@ import {
   evaluatePlannedReplyEgress,
   resolvePlannedReplyEgress,
 } from "./egress-policy.js";
+import { withHistoryReadEvidence } from "./history-discovery.js";
 import {
   buildV5ExecutorContext,
   collectBudgetedStageOneCandidateActions,
@@ -137,6 +118,7 @@ import {
   collectPreviousActionResults,
   executeV5PlannedToolCall,
 } from "./planned-tool.ts";
+import { finalizePlannerReply } from "./planner-reply.ts";
 import {
   ambientTurnProviderExclusions,
   selectV5PlannerStateProviderNames,
@@ -160,6 +142,13 @@ import {
   withContextRoutingValues,
 } from "./response-state.ts";
 import {
+  getSourceReplyRendering,
+  sourceReplyAssertionText,
+  sourceReplyScopeMatches,
+  transformSourceReplyProse,
+} from "./source-reply.ts";
+import { generateStage1Decision } from "./stage1-decision.ts";
+import {
   BUILTIN_RESPONSE_HANDLER_EVALUATORS,
   filterSelectedContextsForRole,
 } from "./stage1-evaluators.ts";
@@ -174,7 +163,15 @@ import {
   createPlannerToolDiscoveryAction,
 } from "./tool-discovery.ts";
 import { recordFactsAndRelationshipsStage } from "./trajectory-stages.ts";
+import type { V5MessageRuntimeInput } from "./turn-input.ts";
 import { detachPostDeliverySideEffect } from "./turn-session.ts";
+/** Coordinates Stage 1 decisions, planner execution, visible reply resolution, and ordered trajectory finalization for a message turn. */
+
+import { persistMessageContentContinuity } from "../message-content-continuity.ts";
+
+export { directCodingResponseHandlerResult } from "./stage1-decision.ts";
+
+export type { V5MessageRuntimeInput } from "./turn-input.ts";
 
 /**
  * Whether the routed action owns the response-handler's pre-planner reply.
@@ -2437,6 +2434,15 @@ export async function runV5MessageRuntimeStage1(
         ),
       { mode: "CONTEXT_AFTER" },
     );
+    // Effects have already completed, so continuity failure is reported by the
+    // helper without throwing or replaying the turn. Await the immutable-head
+    // publication before delivery so a process exit cannot strand references.
+    await persistMessageContentContinuity({
+      runtime: args.runtime,
+      message: args.message,
+      trajectory: plannerResult.trajectory,
+    });
+
     return await finalizePlannerReply(args, {
       recoveredReply,
       replyRecovered,

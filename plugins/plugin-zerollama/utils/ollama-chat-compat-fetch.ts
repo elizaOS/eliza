@@ -11,6 +11,8 @@
  * top-level `tool_choice` is dropped (tools still work without it).
  */
 
+import { createPreparedModelRequestGuard, type PreparedModelRequestGuard } from "@elizaos/core";
+
 type JsonObject = Record<string, unknown>;
 
 function asObject(value: unknown): JsonObject | null {
@@ -87,7 +89,12 @@ export function rewriteOllamaChatBody(body: JsonObject): JsonObject {
 }
 
 /** Wrap `fetch` so POST `/api/chat` JSON bodies use native Ollama field names. */
-export function wrapOllamaNativeChatFetch(baseFetch: typeof fetch = fetch): typeof fetch {
+export function wrapOllamaNativeChatFetch(
+  baseFetch: typeof fetch = fetch,
+  admission?: { model: string; outputReserveTokens?: number }
+): typeof fetch {
+  let admittedBody: string | undefined;
+  let guard: PreparedModelRequestGuard | undefined;
   return (async (input, init) => {
     const url = requestUrl(input);
     const method = (init?.method ?? "GET").toUpperCase();
@@ -123,18 +130,29 @@ export function wrapOllamaNativeChatFetch(baseFetch: typeof fetch = fetch): type
     }
 
     const rewritten = rewriteOllamaChatBody(obj);
-    if (rewritten === obj) {
-      return baseFetch(input, init);
+    const serializedBody = rewritten === obj ? raw : JSON.stringify(rewritten);
+    if (admission) {
+      admittedBody = serializedBody;
+      guard ??= createPreparedModelRequestGuard({
+        provider: "ollama",
+        model: admission.model,
+        serializeRequest: () => admittedBody as string,
+        outputReserveTokens: admission.outputReserveTokens,
+      });
+      guard.assertBeforeAttempt();
     }
 
     return baseFetch(input, {
       ...init,
-      body: JSON.stringify(rewritten),
+      body: serializedBody,
     });
   }) as typeof fetch;
 }
 
 /** Prefer `runtime.fetch` when present, always wrapped for `/api/chat` compat. */
-export function resolveOllamaFetch(runtime: { fetch?: typeof fetch | null }): typeof fetch {
-  return wrapOllamaNativeChatFetch(runtime.fetch ?? fetch);
+export function resolveOllamaFetch(
+  runtime: { fetch?: typeof fetch | null },
+  admission?: { model: string; outputReserveTokens?: number }
+): typeof fetch {
+  return wrapOllamaNativeChatFetch(runtime.fetch ?? fetch, admission);
 }

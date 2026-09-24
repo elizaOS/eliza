@@ -229,5 +229,36 @@
     "file": "scripts/training-harvest/build-manifest.mjs",
     "tokens": ["@elizaos/plugin-cli-inference"],
     "reason": "the harvest manifest names the CLI-inference provider plugin that supplies its authenticated live-model execution seam"
+  },
+  {
+    "file": "packages/scripts/lib/progressive-content-production-targets.mjs",
+    "tokens": ["plugins/plugin-coding-tools", "plugins/plugin-sql"],
+    "reason": "systemic coupling: the canonical progressive-content benchmark and evidence lanes bind fixed production target implementations and forbid caller-selected plugin modules"
+  },
+  {
+    "file": "packages/scripts/produce-content-context-deterministic.mjs",
+    "tokens": ["plugins/plugin-coding-tools"],
+    "reason": "systemic coupling: the canonical deterministic evidence producer binds the fixed coding-tools production target so evidence cannot be substituted by caller-selected modules"
+  },
+  {
+    "file": "packages/scripts/produce-content-context-postgres.mjs",
+    "tokens": ["plugins/plugin-coding-tools", "plugins/plugin-sql"],
+    "reason": "systemic coupling: the canonical PostgreSQL evidence producer binds fixed coding-tools and SQL implementations for its audited production boundary"
+  },
+  {
+    "file": "packages/scripts/ci-path-gate.mjs",
+    "tokens": [
+      "plugins/plugin-app-control",
+      "plugins/plugin-capacitor-bridge",
+      "plugins/plugin-commands",
+      "plugins/plugin-computeruse",
+      "plugins/plugin-github",
+      "plugins/plugin-local-inference",
+      "plugins/plugin-native-filesystem",
+      "plugins/plugin-sql",
+      "plugins/plugin-vision",
+      "plugins/plugin-wallet"
+    ],
+    "reason": "systemic coupling: the CI path-gate lane configs enumerate the plugin surfaces whose diffs trigger specific lanes; lane membership is workflow routing policy decided centrally, not discoverable per-package metadata"
   }
 ]

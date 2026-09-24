@@ -29,6 +29,7 @@ import type {
 import {
   assertModelOutputComplete,
   buildCanonicalSystemPrompt,
+  createPreparedModelRequestGuard,
   ElizaError,
   logger,
   ModelType,
@@ -565,6 +566,13 @@ async function generateContentWithTrajectory(
     maxTokensOmitted,
   );
   const response = await recordLlmCall(runtime, details, async () => {
+    const preparedRequest = createPreparedModelRequestGuard({
+      provider: "google-genai",
+      model: modelName,
+      projectRequest: () => request,
+      outputReserveTokens: maxTokens,
+    });
+    preparedRequest.assertBeforeAttempt();
     const result = (await genAI.models.generateContent(
       request,
     )) as GoogleGenerateContentResponse;
