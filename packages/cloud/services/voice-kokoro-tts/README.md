@@ -9,7 +9,7 @@ Pinned Kokoro-FastAPI exposes `/v1/audio/speech`; `eliza_kokoro_compat.py`
 adapts the existing cloud-api `/api/tts` body to that typed upstream request.
 Keep this adapter until every deployed cloud-api caller uses the new contract.
 
-## Contract (do not break — the live test asserts it)
+## Service contract
 
 | Method | Path | Request | Response |
 |---|---|---|---|
@@ -17,10 +17,9 @@ Keep this adapter until every deployed cloud-api caller uses the new contract.
 | `GET` | `/health` | — | `200` |
 
 The eleven allowlisted `voice` presets (default `af_heart`) are the Kokoro voice
-ids `packages/cloud/api/v1/voice/tts/route.ts` sends. The exact round-trip is
-asserted by `packages/cloud/api/__tests__/voice-kokoro-whisper-live.test.ts`,
-run from the manual **Live Smoke → voice** suite
-(`.github/workflows/live-smoke.yml`).
+ids `packages/cloud/api/v1/voice/tts/route.ts` sends. Application E2E tests use
+the perfect-result provider for deterministic speech bytes; they do not certify
+a deployed Kokoro service or its acoustic quality.
 
 ## Deploy (owner action)
 

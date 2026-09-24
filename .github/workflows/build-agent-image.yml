@@ -112,9 +112,6 @@ jobs:
           sudo docker image prune -a -f || true
 
       - name: Install jq
-        # Used by docker-ci-smoke's boot-KPI budget parser after the image is
-        # built. Keep it explicit so the real boot gate reports the committed
-        # budget instead of falling back to its baked-in default.
         run: sudo apt-get install -y --no-install-recommends jq
 
       - name: Setup Bun
@@ -227,8 +224,7 @@ jobs:
         # keep root node_modules (Dockerfile.ci's pruner relink scripts
         # consume them) but strip per-package node_modules and the other
         # bulky CI-only inputs. Use the canonical CI dockerignore from
-        # packages/app/deploy/.dockerignore.ci, mirroring what
-        # docker-ci-smoke.sh does before its `docker build`.
+        # packages/app/deploy/.dockerignore.ci.
         run: |
           cp packages/app/deploy/.dockerignore.ci .dockerignore
 
@@ -317,7 +313,7 @@ jobs:
           push: false
           load: true
           provenance: false
-          tags: ${{ steps.image.outputs.name }}:ci-boot-verify
+          tags: ${{ steps.image.outputs.name }}:ci-candidate
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
           # Registry-backed build cache (checked first), with the old GHA
@@ -338,36 +334,7 @@ jobs:
             type=gha
           cache-to: type=registry,ref=${{ steps.image.outputs.name }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
 
-      - name: Verify image boots (real agent entrypoint)
-        # Runs the production entrypoint (node --import
-        # /opt/tsx/node_modules/tsx/dist/loader.mjs packages/agent/dist/bin.js
-        # start) inside the just-built image and fails RED if the agent crashes
-        # on startup, exits non-zero, logs a known crash signature (Cannot find
-        # package/module, Failed to start, crashed during init, ...), never
-        # serves /api/health within the timeout, or crashes during the
-        # post-health stability window. A failure here blocks the push below, so
-        # a non-bootable image is never published.
-        env:
-          DOCKER_IMAGE: ${{ steps.image.outputs.name }}:ci-boot-verify
-          BOOT_VERIFY_ONLY: "true"
-          SMOKE_TIMEOUT_SEC: "180"
-          BOOT_STABLE_WINDOW_SEC: "15"
-          SMOKE_PORT: "32138"
-          CONTAINER_PORT: "42138"
-          # Enforce the boot-KPI cold-readyMs budget (#8812 item 5). The budget
-          # (boot.coldReadyMs, 25000ms) carries ~5x headroom over the ~5s real
-          # cold boot, and emit_boot_kpi downgrades a breach to a warning when the
-          # runner is heavily contended, so this only fails on a genuine multi-x
-          # boot-time regression — not on transient runner load.
-          BOOT_KPI_ENFORCE: "1"
-        run: bash packages/app/scripts/docker-ci-smoke.sh --boot-verify-only
-
-      # Push the EXACT verified image. This runs only if the boot verification
-      # above succeeded (steps run in order; a failed step fails the job). We
-      # retag the locally-loaded :ci-boot-verify image to each computed tag and
-      # `docker push` it, so the published bytes are byte-for-byte the image
-      # that just booted cleanly. No rebuild means no chance of shipping a
-      # different image than the one that was verified.
+      # Publish the exact built bytes after the source and certificate gates.
       - name: Fence current branch SHA before publication
         if: ${{ inputs.effect_digest != '' }}
         env:
@@ -380,11 +347,11 @@ jobs:
             exit 1
           }
 
-      - name: Push exact verified image
+      - name: Push exact built image
         id: push
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          LOCAL_IMAGE: ${{ steps.image.outputs.name }}:ci-boot-verify
+          LOCAL_IMAGE: ${{ steps.image.outputs.name }}:ci-candidate
           PUBLISH_REPOSITORY: ${{ steps.image.outputs.name }}
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |

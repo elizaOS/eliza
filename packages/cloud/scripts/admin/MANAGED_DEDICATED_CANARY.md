@@ -2,9 +2,10 @@
 
 `managed-dedicated-canary.ts` is the canonical live proof for the managed
 Cloud dedicated-agent path. It is an explicit operator-run diagnostic and is
-not part of routine pull-request or scheduled CI. Dispatch `Live Smoke` with
-the `dedicated` suite (`all` also includes it); the consolidated
-`.github/workflows/live-smoke.yml` is its only workflow owner.
+not part of routine pull-request or scheduled CI. The former Live Smoke
+workflow is retired. This document describes its historical operator contract;
+there is no active workflow owner or workflow concurrency guarantee. Any direct
+operator execution must arrange exclusive access and preserve the cleanup gates.
 
 The lane deliberately does not call Hetzner. It presents the existing
 repository Cloud bearer to the staging Worker; the deployed managed
@@ -18,7 +19,7 @@ disposable identity row to leak or clean separately.
 
 - Target is hard-pinned to `https://api-staging.eliza.app`; production is
   refused even when a valid credential is supplied.
-- Fixed workflow concurrency plus a prefix scan allows at most one canary. A
+- Exclusive operator execution plus a prefix scan allows at most one canary. A
   leftover canary makes the next run red before another create can spend.
   Provision/readiness and cleanup use shared absolute deadlines; the workflow
   caps control-plane calls at 30 seconds and has a 45-minute hard cap that

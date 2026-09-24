@@ -7,7 +7,7 @@ wraps the upstream [Speaches](https://github.com/speaches-ai/speaches) image
 fetched from Hugging Face while the image is built, so there are no secrets and
 a healthy deployment already contains the model required by the route.
 
-## Contract (do not break — the live test asserts it)
+## Service contract
 
 | Method | Path | Request | Response |
 |---|---|---|---|
@@ -18,8 +18,8 @@ The `model` id is `resolveWhisperSttModel(WHISPER_STT_MODEL)`, defaulting to the
 multilingual `Systran/faster-whisper-small`
 (`packages/cloud/api/v1/voice/stt/whisper-model.ts`). The Dockerfile's
 `WHISPER_MODEL` build argument installs that same model — keep the two in sync.
-The exact request shape is asserted by
-`packages/cloud/api/__tests__/voice-kokoro-whisper-live.test.ts`.
+Application tests use the perfect-result provider at the inference boundary.
+They do not certify a deployed Whisper service.
 
 ## Deploy (owner action)
 
@@ -44,12 +44,8 @@ railway up . --path-as-root --service whisper-stt \
   --build-arg WHISPER_IMAGE=ghcr.io/speaches-ai/speaches:0.8.2-cuda
 ```
 
-## Manual live contract lane
+## Automated tests
 
-`voice-kokoro-whisper-live.test.ts` was referenced by zero workflows, so a dead
-service surfaced only as a user report. It now runs in the **voice** suite of
-`.github/workflows/live-smoke.yml` (`workflow_dispatch` only), env-gated on
-`ELIZA_VOICE_LIVE_RAILWAY=1`. The step reads the two service URLs
-from repo variables `ELIZA_VOICE_KOKORO_TTS_URL` / `ELIZA_VOICE_WHISPER_STT_URL`
-(falling back to the test defaults), so drift or death of either service is a red
-run instead of a silent outage.
+The shared `.github/workflows/e2e.yml` suite uses deterministic transcription
+and speech results. Service availability and acoustic quality require separate
+operator verification; the retired live-smoke workflow provides no such evidence.

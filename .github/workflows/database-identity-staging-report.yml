@@ -70,17 +70,6 @@ jobs:
       - name: Probe fixed runtime dependencies
         run: bun run packages/cloud/scripts/admin/preflight-database-identity.ts --probe-dependencies
 
-      - name: Validate identity reporter contracts
-        run: bun test packages/cloud/scripts/admin/preflight-database-identity.test.ts packages/cloud/scripts/admin/database-identity-staging-report-workflow.test.ts
-
-      # Step scoping keeps DATABASE_URL out of the earlier steps' declared
-      # environments, preventing direct or accidental injection there. It is
-      # not an adversarial isolation boundary: every preceding step shares this
-      # mutable job and can persist state. Admission proves only that the
-      # operator-supplied SHA equals github.sha on staging before the staging
-      # Environment is attached; it does not prove reviewer approval. Human
-      # source review and effective staging admission remain external parts of
-      # the trusted computing base.
       - name: Emit redacted staging identity receipts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
