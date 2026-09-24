@@ -1,4 +1,5 @@
-*.patch -text whitespace=-blank-at-eol
+*.patch -text whitespace=-blank-at-eol,-space-before-tab
+# Unified-diff context prefixes precede literal source tabs; those are patch data.
 # Patch bytes are hashed (patches/CHECKSUMS.sha256) and applied verbatim by bun,
 # so they must stay byte-identical across platforms — never let a Windows
 # checkout (autocrlf) rewrite them to CRLF.

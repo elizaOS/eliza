@@ -24,7 +24,11 @@ import {
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { runWithDbCacheAsync } from "@/db/client";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { AuthenticationError, ForbiddenError } from "@/lib/api/errors";
+import {
+  ApiError,
+  AuthenticationError,
+  ForbiddenError,
+} from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import {
   getPresentedMobileApiKeySecret,
@@ -47,12 +51,17 @@ import {
   personalDedicatedAgentApiBase,
 } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { logger } from "@/lib/utils/logger";
-import { type AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@/types/cloud-worker-env";
 
 type Bindings = AppEnv["Bindings"];
 const DEFAULT_AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.eliza.app";
 /** Non-`running` statuses we auto-resume on (mirrors the pairing endpoint). */
-const RESUMABLE_STATUSES = new Set(["pending", "stopped", "disconnected"]);
+const RESUMABLE_STATUSES = new Set([
+  "pending",
+  "stopped",
+  "disconnected",
+  "sleeping",
+]);
 const RETRY_AFTER_SECONDS = 5;
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 const GLOBAL_RATE_LIMIT = 600;
@@ -662,7 +671,7 @@ async function resumeAndRespond(
   let jobId: string | undefined;
   let alreadyInProgress = false;
   if (
-    sandbox.status === "stopped" &&
+    (sandbox.status === "stopped" || sandbox.status === "sleeping") &&
     (await agentSandboxesRepository.wasStoppedByUser(agentId, orgId))
   ) {
     return Response.json(
@@ -671,7 +680,7 @@ async function resumeAndRespond(
         code: "agent_stopped",
         error:
           "This agent is shut down. Start it from Cloud settings when you are ready.",
-        data: { status: "stopped" },
+        data: { status: sandbox.status },
       },
       { status: 409 },
     );
@@ -720,12 +729,26 @@ async function resumeAndRespond(
     }
     try {
       const { job, created } =
-        await provisioningJobService.enqueueAgentProvisionOnce({
-          agentId,
-          organizationId: orgId,
-          userId,
-          agentName: sandbox.agent_name ?? agentId,
-          expectedLifecycleRevision: sandbox.lifecycle_revision,
+        sandbox.status === "sleeping"
+          ? await provisioningJobService.enqueueAgentWakeOnce({
+              agentId,
+              organizationId: orgId,
+              userId,
+              expectedLifecycleRevision: sandbox.lifecycle_revision,
+            })
+          : await provisioningJobService.enqueueAgentProvisionOnce({
+              agentId,
+              organizationId: orgId,
+              userId,
+              agentName: sandbox.agent_name ?? agentId,
+              expectedLifecycleRevision: sandbox.lifecycle_revision,
+            });
+      if (!job.id)
+        throw new ApiError({
+          code: "service_unavailable",
+          status: 503,
+          message: "Resume admission returned no durable job id",
+          details: { agentId },
         });
       jobId = job.id;
       alreadyInProgress = !created;
