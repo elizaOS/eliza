@@ -18,17 +18,6 @@
     "isolatedModules": true,
     "noEmit": true,
     "types": ["node"],
-    "typeRoots": [
-      "../app/node_modules/@types",
-      "../../node_modules/@types",
-      "../../node_modules/.bun/node_modules/@types",
-      "../../../node_modules/@types",
-      "../../../node_modules/.bun/node_modules/@types",
-      "../../node_modules",
-      "../../node_modules/.bun/node_modules",
-      "../../../node_modules",
-      "../../../node_modules/.bun/node_modules"
-    ],
     "paths": {
       "@elizaos/plugin-browser": ["./src/index.ts"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
