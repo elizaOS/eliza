@@ -9,7 +9,7 @@
  */
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
-import { type CarveOutDatabase } from "@elizaos/plugin-sql/database-utils/carve-out-migration";
+import type { CarveOutDatabase } from "@elizaos/plugin-sql/database-utils/carve-out-migration";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { DispatchResult } from "../dispatch-types.js";
@@ -72,6 +72,7 @@ interface RaceHarness {
   runner: ScheduledTaskRunnerHandle;
   store: ReturnType<typeof createInMemoryScheduledTaskStore>;
   logStore: ReturnType<typeof createInMemoryScheduledTaskLogStore>;
+  prepareDelivery(message: string, key: string): Promise<void>;
   releaseDispatch(): void;
   settleDispatch(result: DispatchResult): void;
   failDispatch(error: Error): void;
@@ -79,6 +80,7 @@ interface RaceHarness {
 
 function makeRaceHarness(
   executionBoundary?: ScheduledTaskRunnerDeps["executionBoundary"],
+  withExactSnapshot = false,
 ): RaceHarness {
   const ownerFacts: OwnerFactsView = {
     timezone: "UTC",
@@ -96,10 +98,19 @@ function makeRaceHarness(
 
   let gate: { resolve(result: DispatchResult | Error): void } | null = null;
 
+  let prepareDelivery:
+    | ((message: string, key: string) => Promise<void>)
+    | undefined;
   let counter = 0;
   const runner = createScheduledTaskRunner({
     agentId: "test-agent",
     ...(executionBoundary ? { executionBoundary } : {}),
+    ...(withExactSnapshot
+      ? {
+          prepareAutomaticFire: async ({ task }: { task: ScheduledTask }) =>
+            task.metadata ?? {},
+        }
+      : {}),
     store,
     logStore,
     gates,
@@ -114,13 +125,15 @@ function makeRaceHarness(
     activity: { hasSignalSince: () => false } as ActivitySignalBusView,
     subjectStore: { wasUpdatedSince: () => false } as SubjectStoreView,
     dispatcher: {
-      dispatch: async () =>
-        new Promise<DispatchResult>((resolve, reject) => {
+      dispatch: async (record) => {
+        prepareDelivery = record.persistPreparedDelivery;
+        return new Promise<DispatchResult>((resolve, reject) => {
           gate = {
             resolve: (result) =>
               result instanceof Error ? reject(result) : resolve(result),
           };
-        }),
+        });
+      },
     },
     newTaskId: () => {
       counter += 1;
@@ -136,6 +149,11 @@ function makeRaceHarness(
     settleDispatch: (result) => gate?.resolve(result),
     failDispatch: (error) => gate?.resolve(error),
     releaseDispatch: () => gate?.resolve({ ok: true, channelKey: "in_app" }),
+    prepareDelivery: (message, key) => {
+      if (!prepareDelivery)
+        throw new Error("Runner omitted preparation callback");
+      return prepareDelivery(message, key);
+    },
   };
 }
 
@@ -304,12 +322,60 @@ describe("post-dispatch persist vs concurrent user verbs (in-memory)", () => {
     );
   });
 
+  it("rejects preparation after completion without replacing the newer task", async () => {
+    const h = makeRaceHarness(undefined, true);
+    const task = await h.runner.schedule(baseInput);
+    const firing = h.runner.fireWithResult(task.taskId);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await h.runner.apply(task.taskId, "complete");
+    const failure = await h
+      .prepareDelivery("Must not send", "stale-key")
+      .catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      code: "SCHEDULED_TASK_DISPATCH_PREPARATION_RACED",
+    });
+    if (!(failure instanceof Error))
+      throw new Error("Expected preparation rejection");
+    h.failDispatch(failure);
+    expect((await firing).kind).toBe("raced");
+    const current = await h.store.get(task.taskId);
+    expect(current?.state.status).toBe("completed");
+    expect(current?.metadata?.dispatchPreparedMessage).toBeUndefined();
+  });
+
+  it("rejects preparation after a concurrent metadata edit on the same fired state", async () => {
+    const h = makeRaceHarness(undefined, true);
+    const task = await h.runner.schedule(baseInput);
+    const firing = h.runner.fireWithResult(task.taskId);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const newer = await h.store.get(task.taskId);
+    if (!newer) throw new Error("Missing claimed task");
+    newer.metadata = { ...newer.metadata, concurrentOwnerEdit: "retained" };
+    await h.store.upsert(newer);
+    const failure = await h
+      .prepareDelivery("Must not send", "stale-key")
+      .catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      code: "SCHEDULED_TASK_DISPATCH_PREPARATION_RACED",
+    });
+    if (!(failure instanceof Error))
+      throw new Error("Expected preparation rejection");
+    h.failDispatch(failure);
+    expect((await firing).kind).toBe("raced");
+    expect((await h.store.get(task.taskId))?.metadata).toEqual(newer.metadata);
+  });
+
   it("still persists dispatch metadata on the uncontended happy path", async () => {
-    const h = makeRaceHarness();
+    const h = makeRaceHarness(undefined, true);
     const task = await h.runner.schedule(baseInput);
 
     const firePromise = h.runner.fireWithResult(task.taskId);
     await new Promise((r) => setTimeout(r, 0));
+    await h.prepareDelivery("Exact prepared payload", "stable-key");
+    expect((await h.store.get(task.taskId))?.metadata).toMatchObject({
+      dispatchPreparedMessage: "Exact prepared payload",
+      dispatchIdempotencyKey: "stable-key",
+    });
     h.settleDispatch({ ok: true, channelKey: "in_app", messageId: "m1" });
     const fireResult = await firePromise;
 
