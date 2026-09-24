@@ -402,9 +402,13 @@
       "@elizaos/capacitor-calendar/macos-bridge-policy": [
         "../../../plugins/plugin-native-calendar/src/macos-bridge-policy.ts"
       ],
-      "@elizaos/cloud-routing": ["../routing/src/index.ts"]
+      "@elizaos/cloud-routing": ["../routing/src/index.ts"],
+      "@elizaos/plugin-personal-assistant/*": [
+        "../../../plugins/plugin-personal-assistant/src/*"
+      ]
     },
-    "lib": ["ES2024", "DOM", "DOM.Iterable"]
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx"
   },
   "include": ["src", "tests", "../scripts/e2e", "playwright.config.ts"]
 }
