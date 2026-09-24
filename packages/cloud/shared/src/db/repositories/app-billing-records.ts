@@ -30,6 +30,7 @@ import {
 } from "./app-subscription-authority";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
+/* global-scope: Resolve the app owner for lock ordering; readAppBillingMembership verifies the actor and app-specific account membership before any records can be returned. */
 async function recordScope(tx: DbTransaction, input: AppBillingReadIdentity) {
   const [app] = await tx
     .select({ organizationId: apps.organization_id })
