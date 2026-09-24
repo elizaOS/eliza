@@ -1,0 +1,16 @@
+apply plugin: 'com.android.application'
+android {
+    namespace 'ai.eliza.testing.blocktarget'
+    compileSdk rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId 'ai.eliza.testing.blocktarget'
+        minSdk rootProject.ext.minSdkVersion
+        targetSdk rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName '1'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+}

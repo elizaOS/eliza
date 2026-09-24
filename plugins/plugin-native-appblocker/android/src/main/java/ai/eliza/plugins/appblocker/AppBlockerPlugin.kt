@@ -1,10 +1,8 @@
 package ai.eliza.plugins.appblocker
 
-import android.app.AppOpsManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.os.Process
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSArray
@@ -152,6 +150,7 @@ class AppBlockerPlugin : Plugin() {
     fun getStatus(call: PluginCall) {
         val saved = AppBlockerStateStore.load(context)
         val permission = buildPermissionResult()
+        val active = saved != null && permission.getString("status") == "granted"
         val reason = if (saved != null && (!hasUsageAccess() || !canDrawOverlays())) {
             missingPermissionReason()
         } else {
@@ -160,9 +159,9 @@ class AppBlockerPlugin : Plugin() {
 
         call.resolve(
             JSObject().apply {
-                put("status", if (saved != null) "active" else "inactive")
+                put("status", if (active) "active" else "inactive")
                 put("available", true)
-                put("active", saved != null)
+                put("active", active)
                 put("platform", "android")
                 put("engine", "usage-stats-overlay")
                 put("capabilities", appBlockerCapabilities())
@@ -239,24 +238,7 @@ class AppBlockerPlugin : Plugin() {
         }
     }
 
-    private fun hasUsageAccess(): Boolean {
-        val appOps = context.getSystemService("appops") as? AppOpsManager ?: return false
-        val mode = if (Build.VERSION.SDK_INT >= 29) {
-            appOps.unsafeCheckOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS,
-                Process.myUid(),
-                context.packageName,
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            appOps.checkOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS,
-                Process.myUid(),
-                context.packageName,
-            )
-        }
-        return mode == AppOpsManager.MODE_ALLOWED
-    }
+    private fun hasUsageAccess(): Boolean = AppBlockerPermissions.hasUsageAccess(context)
 
     private fun canDrawOverlays(): Boolean {
         return Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(context)
