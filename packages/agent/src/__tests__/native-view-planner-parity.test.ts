@@ -1,6 +1,6 @@
 /**
  * Proves native Contacts, Messages, and Phone reads cross the real registered
- * VIEWS boundary for text and voice while every native mutation is rejected
+ * HTTP view boundary while every native mutation is rejected
  * before mounted-view dispatch. Production capability unions key the actual
  * handlers, so the package typechecks also enforce complete classification.
  */
@@ -9,12 +9,8 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  ChannelType,
-  type Memory,
-  type RoleGateRole,
-  resolveSurfaceManifest,
-} from "@elizaos/core";
+import type { IAgentRuntime, RoleGateRole } from "@elizaos/core";
+import { resolveSurfaceManifest } from "@elizaos/shared/browser-contracts";
 import {
   afterAll,
   beforeAll,
@@ -72,7 +68,6 @@ vi.mock("@elizaos/plugin-native-phone/bridge", () => ({
   },
 }));
 
-import { createViewsAction } from "@elizaos/plugin-app-control/actions/views";
 import { interact as interactContacts } from "../../../../plugins/plugin-native-contacts/src/components/ContactsAppView.interact.ts";
 import { appContactsPlugin } from "../../../../plugins/plugin-native-contacts/src/plugin.ts";
 import { interact as interactMessages } from "../../../../plugins/plugin-native-messages/src/components/messages-interact.ts";
@@ -81,8 +76,13 @@ import { interact as interactPhone } from "../../../../plugins/plugin-native-pho
 import { appPhonePlugin } from "../../../../plugins/plugin-native-phone/src/plugin.ts";
 import { brokerViewInteract } from "../../../ui/src/components/views/view-capability-broker";
 import {
+  closeViewInteractionHost,
+  viewInteractionHost,
+} from "../api/view-interaction-host.ts";
+import {
   registerPluginViews,
   unregisterPluginViews,
+  type ViewInstallation,
 } from "../api/views-registry.ts";
 import {
   handleViewsRoutes,
@@ -109,8 +109,13 @@ interface DispatchedInteraction {
 }
 
 const dispatched: DispatchedInteraction[] = [];
+const runtime = {
+  agentId: "native-view-agent",
+  actions: [],
+} as unknown as IAgentRuntime;
+const hostKey = {};
+const installations: ViewInstallation[] = [];
 let server: http.Server;
-let priorPort: string | undefined;
 let serverCallerRole: RoleGateRole = "OWNER";
 
 function writeJson(
@@ -128,6 +133,8 @@ function startViewsServer(): Promise<http.Server> {
     void (async () => {
       const url = new URL(request.url ?? "/", "http://127.0.0.1");
       const handled = await handleViewsRoutes({
+        runtime,
+        hostKey,
         req: request,
         res: response,
         method: request.method ?? "GET",
@@ -142,6 +149,8 @@ function startViewsServer(): Promise<http.Server> {
             type?: string;
             requestId?: string;
             viewId?: string;
+            viewType: string;
+            installationId: string;
             capability?: string;
             params?: Record<string, unknown>;
           };
@@ -153,6 +162,18 @@ function startViewsServer(): Promise<http.Server> {
           ) {
             return 0;
           }
+          const claimId = viewInteractionHost(runtime, hostKey).claim(
+            VIEW_CLIENT_ID,
+            {
+              requestId: frame.requestId,
+              viewId: frame.viewId,
+              viewType: frame.viewType,
+              installationId: frame.installationId,
+            },
+            [serverCallerRole],
+          );
+          if (!claimId)
+            throw new Error("Renderer could not claim native view interaction");
           const viewId = frame.viewId as keyof typeof VIEW_INTERACTORS;
           const declaration = PLUGINS.flatMap(
             (plugin) => plugin.views ?? [],
@@ -172,14 +193,18 @@ function startViewsServer(): Promise<http.Server> {
                 params: frame.params,
                 result,
               });
-              resolveViewInteractResult({
+              resolveViewInteractResult(runtime, hostKey, VIEW_CLIENT_ID, {
+                ...frame,
+                claimId,
                 requestId: frame.requestId as string,
                 success: true,
                 result,
               });
             },
             (error: unknown) => {
-              resolveViewInteractResult({
+              resolveViewInteractResult(runtime, hostKey, VIEW_CLIENT_ID, {
+                ...frame,
+                claimId,
                 requestId: frame.requestId as string,
                 success: false,
                 error: error instanceof Error ? error.message : String(error),
@@ -208,46 +233,44 @@ function startViewsServer(): Promise<http.Server> {
   });
 }
 
-function message(channelType: ChannelType, text: string): Memory {
-  return {
-    entityId: "native-view-agent",
-    roomId: "native-view-room",
-    agentId: "native-view-agent",
-    content: {
-      text,
-      channelType,
-      metadata: { viewClientId: VIEW_CLIENT_ID },
-    },
-  } as Memory;
-}
-
 async function invoke(
-  channelType: ChannelType,
   view: string,
   capability: string,
   params?: Record<string, unknown>,
 ) {
-  const action = createViewsAction({ hasOwnerAccess: async () => true });
-  const result = await action.handler(
-    { agentId: "native-view-agent", actions: [] } as never,
-    message(channelType, `Use ${capability} on ${view}`),
-    undefined,
-    { action: "interact", view, capability, params },
+  const port = (server.address() as AddressInfo).port;
+  const response = await fetch(
+    `http://127.0.0.1:${port}/api/views/${view}/interact`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "X-ElizaOS-Client-Id": VIEW_CLIENT_ID,
+      },
+      body: JSON.stringify({ capability, params }),
+    },
   );
-  if (!result) throw new Error("VIEWS returned no action result");
-  return result;
+  const body = (await response.json()) as {
+    success?: boolean;
+    error?: string;
+    result?: unknown;
+  };
+  return { ...body, status: response.status };
 }
 
 beforeAll(async () => {
-  priorPort = process.env.ELIZA_PORT;
   for (const plugin of PLUGINS) {
-    await registerPluginViews(
-      plugin,
-      path.join(repoRoot, "plugins", plugin.name.replace("@elizaos/", "")),
+    installations.push(
+      await registerPluginViews(runtime, plugin, {
+        pluginDir: path.join(
+          repoRoot,
+          "plugins",
+          plugin.name.replace("@elizaos/", ""),
+        ),
+      }),
     );
   }
   server = await startViewsServer();
-  process.env.ELIZA_PORT = String((server.address() as AddressInfo).port);
 });
 
 beforeEach(() => {
@@ -310,105 +333,102 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
-  for (const plugin of PLUGINS) unregisterPluginViews(plugin.name);
+  closeViewInteractionHost(hostKey);
+  for (const installation of installations)
+    unregisterPluginViews(runtime, installation);
   await new Promise<void>((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
   });
-  if (priorPort === undefined) delete process.env.ELIZA_PORT;
-  else process.env.ELIZA_PORT = priorPort;
 });
 
-describe.each([ChannelType.DM, ChannelType.VOICE_DM])(
-  "native reads through VIEWS on %s",
-  (channelType) => {
-    it("validates parameters and returns all three mounted native results", async () => {
-      const contacts = await invoke(channelType, "contacts", "list-contacts", {
-        query: "Ada",
-      });
-      const messages = await invoke(channelType, "messages", "list-threads");
-      const phone = await invoke(channelType, "phone", "phone-state", {
-        number: "+1 (555) 0300",
-      });
-
-      expect([contacts.success, messages.success, phone.success]).toEqual([
-        true,
-        true,
-        true,
-      ]);
-      expect(dispatched).toEqual([
-        {
-          viewId: "contacts",
-          capability: "list-contacts",
-          params: { query: "Ada" },
-          result: {
-            query: "Ada",
-            count: 1,
-            contacts: [
-              {
-                id: "contact-1",
-                lookupKey: "ada",
-                displayName: "Ada Lovelace",
-                phoneNumbers: ["+15550100"],
-                emailAddresses: ["ada@example.com"],
-                starred: true,
-              },
-            ],
-          },
-        },
-        {
-          viewId: "messages",
-          capability: "list-threads",
-          params: undefined,
-          result: {
-            threads: [
-              {
-                id: "thread-1",
-                address: "+15550200",
-                messageCount: 1,
-                unreadCount: 1,
-                lastMessage: "hello",
-                lastMessageAt: 1_700_000_000_000,
-              },
-            ],
-            ownsSmsRole: true,
-            smsRoleHolder: "ai.eliza",
-          },
-        },
-        {
-          viewId: "phone",
-          capability: "phone-state",
-          params: { number: "+1 (555) 0300" },
-          result: {
-            status: { ready: true },
-            calls: [
-              {
-                id: "call-1",
-                number: "+15550300",
-                cachedName: "Grace Hopper",
-                label: "Grace Hopper",
-                date: 1_700_000_100_000,
-                durationSeconds: 42,
-                type: "incoming",
-                isNew: false,
-                agentSummary: null,
-                agentTranscript: null,
-              },
-            ],
-          },
-        },
-      ]);
-      expect(nativeBridge.listContacts).toHaveBeenCalledWith({
-        query: "Ada",
-        limit: 2_147_483_647,
-      });
-      expect(nativeBridge.listMessages).toHaveBeenCalledWith({ limit: 500 });
-      expect(nativeBridge.listRecentCalls).toHaveBeenCalledWith({
-        limit: 2_147_483_647,
-        number: "+15550300",
-      });
+describe("native reads through the HTTP view boundary", () => {
+  it("validates parameters and returns all three mounted native results", async () => {
+    const contacts = await invoke("contacts", "list-contacts", {
+      query: "Ada",
     });
-  },
-);
+    const messages = await invoke("messages", "list-threads");
+    const phone = await invoke("phone", "phone-state", {
+      number: "+1 (555) 0300",
+    });
+
+    expect([contacts.success, messages.success, phone.success]).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect(dispatched).toEqual([
+      {
+        viewId: "contacts",
+        capability: "list-contacts",
+        params: { query: "Ada" },
+        result: {
+          query: "Ada",
+          count: 1,
+          contacts: [
+            {
+              id: "contact-1",
+              lookupKey: "ada",
+              displayName: "Ada Lovelace",
+              phoneNumbers: ["+15550100"],
+              emailAddresses: ["ada@example.com"],
+              starred: true,
+            },
+          ],
+        },
+      },
+      {
+        viewId: "messages",
+        capability: "list-threads",
+        params: undefined,
+        result: {
+          threads: [
+            {
+              id: "thread-1",
+              address: "+15550200",
+              messageCount: 1,
+              unreadCount: 1,
+              lastMessage: "hello",
+              lastMessageAt: 1_700_000_000_000,
+            },
+          ],
+          ownsSmsRole: true,
+          smsRoleHolder: "ai.eliza",
+        },
+      },
+      {
+        viewId: "phone",
+        capability: "phone-state",
+        params: { number: "+1 (555) 0300" },
+        result: {
+          status: { ready: true },
+          calls: [
+            {
+              id: "call-1",
+              number: "+15550300",
+              cachedName: "Grace Hopper",
+              label: "Grace Hopper",
+              date: 1_700_000_100_000,
+              durationSeconds: 42,
+              type: "incoming",
+              isNew: false,
+              agentSummary: null,
+              agentTranscript: null,
+            },
+          ],
+        },
+      },
+    ]);
+    expect(nativeBridge.listContacts).toHaveBeenCalledWith({
+      query: "Ada",
+      limit: 2_147_483_647,
+    });
+    expect(nativeBridge.listMessages).toHaveBeenCalledWith({ limit: 500 });
+    expect(nativeBridge.listRecentCalls).toHaveBeenCalledWith({
+      limit: 2_147_483_647,
+      number: "+15550300",
+    });
+  });
+});
 
 it("keeps every classified native mutation outside planner dispatch", async () => {
   const mutations = [
@@ -422,11 +442,10 @@ it("keeps every classified native mutation outside planner dispatch", async () =
   ] as const;
 
   for (const [view, capability] of mutations) {
-    const result = await invoke(ChannelType.DM, view, capability);
+    const result = await invoke(view, capability);
     expect(result).toMatchObject({
-      success: false,
-      text: `Capability "${capability}" on view "${view}" requires direct human interaction.`,
-      transcriptVisibility: "internal",
+      status: 403,
+      error: `Capability "${capability}" on view "${view}" requires direct human interaction`,
     });
   }
 
@@ -464,10 +483,10 @@ it("rejects every generic DOM/state bypass before mounted dispatch", async () =>
   ] as const;
 
   for (const [view, capability, params] of bypasses) {
-    const result = await invoke(ChannelType.DM, view, capability, params);
-    expect(result.success).toBe(false);
-    expect(result.text).toMatch(
-      /requires direct human interaction|failed \(HTTP 403\)/,
+    const result = await invoke(view, capability, params);
+    expect(result.status).toBe(403);
+    expect(result.error).toMatch(
+      /requires direct human interaction|not granted/,
     );
   }
 
@@ -481,13 +500,13 @@ it("returns typed failures when native role or phone status cannot be read", asy
   nativeBridge.getSystemStatus.mockRejectedValueOnce(
     new Error("ROLE_SERVICE_UNAVAILABLE"),
   );
-  const messages = await invoke(ChannelType.DM, "messages", "list-threads");
+  const messages = await invoke("messages", "list-threads");
   expect(messages.success).toBe(false);
 
   nativeBridge.getPhoneStatus.mockRejectedValueOnce(
     new Error("TELECOM_SERVICE_UNAVAILABLE"),
   );
-  const phone = await invoke(ChannelType.VOICE_DM, "phone", "phone-state");
+  const phone = await invoke("phone", "phone-state");
   expect(phone.success).toBe(false);
   expect(dispatched).toEqual([]);
 });
@@ -526,7 +545,7 @@ it("rejects a native contacts page that cannot prove completeness", async () => 
     contacts: Object.assign([], { length: 2_147_483_647 }),
   });
 
-  const result = await invoke(ChannelType.DM, "contacts", "list-contacts");
+  const result = await invoke("contacts", "list-contacts");
   expect(result.success).toBe(false);
   await expect(interactContacts("list-contacts")).rejects.toMatchObject({
     code: "NATIVE_CONTACTS_READ_INCOMPLETE",
