@@ -581,6 +581,7 @@ import {
 } from "./wallet-capability.ts";
 import {
   applyWalletRpcConfigUpdate,
+  getInventoryProviderOptions,
   getStoredWalletRpcSelections,
   resolveWalletNetworkMode,
   resolveWalletRpcReadiness,
@@ -608,7 +609,6 @@ export {
 } from "./server-helpers.ts";
 
 import {
-  getInventoryProviderOptions,
   getModelOptions,
   getOrFetchAllProviders,
   getOrFetchProvider,
@@ -3819,12 +3819,10 @@ export async function startApiServer(opts?: {
     });
   };
 
-  addLog(
-    "info",
-    `Discovered ${plugins.length} plugins, loading skills in background`,
+  addLog("info", `Discovered ${plugins.length} plugins`, "system", [
     "system",
-    ["system", "plugins"],
-  );
+    "plugins",
+  ]);
 
   let providerCacheWarmupPromise: Promise<void> | null = null;
 

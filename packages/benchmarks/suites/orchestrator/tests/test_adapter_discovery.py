@@ -18,12 +18,10 @@ import pytest
 from benchmarks.orchestrator import adapters as orchestrator_adapters
 from benchmarks.bench_cli_types import ModelSpec
 from benchmarks.orchestrator.adapters import (
-    SMITHERS_BENCHMARKS,
     _score_from_app_eval,
     _score_from_eliza_1,
     _score_from_experience,
     _score_from_personality_bench,
-    _score_from_woobench,
     discover_adapters,
 )
 from benchmarks.orchestrator.runner import (
@@ -61,7 +59,6 @@ from benchmarks.registry import (
     _score_from_contextbench_json,
     _score_from_gauntlet_json,
     _score_from_gsm8k_json,
-    _score_from_hyperliquid_bench_json,
     _score_from_mind2web_json,
     _score_from_mmau_json,
     _score_from_mint_json,
@@ -69,8 +66,6 @@ from benchmarks.registry import (
     _score_from_multitask_bench_json,
     _score_from_osworld_json,
     _score_from_realm_json,
-    _score_from_rlmbench_json,
-    _score_from_scambench_json,
     _score_from_swebench_json,
     _score_from_taubench_json,
     _score_from_terminalbench_json,
@@ -265,9 +260,7 @@ def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> No
 
     assert adapters["app-eval"].directory == "app-eval"
     assert adapters["openclaw_bench"].directory == "openclaw-benchmark"
-    assert adapters["hyperliquid_bench"].directory == "HyperliquidBench"
     assert adapters["eliza_replay"].directory == "../harnesses/eliza"
-    assert adapters["rlm_bench"].directory == "rlm-bench"
     assert adapters["osworld"].directory == "OSWorld"
     assert adapters["mmau"].directory == "mmau-audio"
     assert adapters["voicebench_quality"].directory == "voicebench-quality"
@@ -304,11 +297,6 @@ def test_gauntlet_requires_clone_capable_surfpool_for_real_harness_rows(
         orchestrator_adapters,
         "_has_gauntlet_real_surfpool_backend",
         lambda: False,
-    )
-    monkeypatch.setattr(
-        orchestrator_adapters,
-        "_has_hyperliquid_live_backend",
-        lambda: True,
     )
     adapter = discover_adapters(_workspace_root()).adapters["gauntlet"]
     assert adapter.agent_compatibility == ()
@@ -427,79 +415,8 @@ def test_gauntlet_rejects_mock_or_offline_execution_artifacts() -> None:
     assert _score_from_gauntlet_json(payload).score == 0.75
 
 
-def test_hyperliquid_rejects_demo_mode_execution_artifacts() -> None:
-    payload = {
-        "final_score": 3.5,
-        "total_score": 3.5,
-        "base": 3.0,
-        "bonus": 0.5,
-        "penalty": 0.0,
-        "total_scenarios": 1,
-        "passed_scenarios": 1,
-        "mode": "eliza",
-        "model": "gpt-oss-120b",
-        "network": "testnet",
-        "demo_mode": True,
-        "scenarios": [
-            {
-                "success": True,
-                "unique_signatures": ["perp.order.GTC:false:none"],
-            }
-        ],
-    }
-    with pytest.raises(ValueError, match="demo-mode result"):
-        _score_from_hyperliquid_bench_json(payload)
-
-    payload["demo_mode"] = False
-    assert _score_from_hyperliquid_bench_json(payload).score == 3.5
-
-    payload["scenarios"] = [{"success": True, "unique_signatures": []}]
-    with pytest.raises(ValueError, match="no confirmed live action signatures"):
-        _score_from_hyperliquid_bench_json(payload)
-
-    payload["scenarios"] = [
-        {
-            "success": False,
-            "unique_signatures": ["perp.order.GTC:false:none"],
-        }
-    ]
-    with pytest.raises(ValueError, match="failed scenarios"):
-        _score_from_hyperliquid_bench_json(payload)
 
 
-def test_hyperliquid_cli_detects_cerebras_provider(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from benchmarks.HyperliquidBench.__main__ import (
-        _apply_model_environment,
-        _default_model_for_provider,
-        _detect_model_provider,
-    )
-
-    for key in (
-        "BENCHMARK_MODEL_PROVIDER",
-        "CEREBRAS_API_KEY",
-        "GROQ_API_KEY",
-        "OPENROUTER_API_KEY",
-        "OPENAI_API_KEY",
-    ):
-        monkeypatch.delenv(key, raising=False)
-
-    assert _detect_model_provider() == ""
-
-    monkeypatch.setenv("CEREBRAS_API_KEY", "present")
-    assert _detect_model_provider() == "cerebras"
-
-    monkeypatch.setenv("BENCHMARK_MODEL_PROVIDER", "openrouter")
-    assert _detect_model_provider() == "openrouter"
-    assert _default_model_for_provider("cerebras") == "gemma-4-31b"
-    assert _default_model_for_provider("openrouter") == "openai/gpt-oss-120b"
-
-    _apply_model_environment("cerebras", "gpt-oss-120b")
-    assert os.environ["BENCHMARK_MODEL_PROVIDER"] == "cerebras"
-    assert os.environ["BENCHMARK_MODEL_NAME"] == "gpt-oss-120b"
-    assert os.environ["CEREBRAS_LARGE_MODEL"] == "gpt-oss-120b"
-    assert os.environ["CEREBRAS_SMALL_MODEL"] == "gpt-oss-120b"
 
 
 def test_voiceagentbench_requires_real_audio_dataset_for_harness_rows(
@@ -734,6 +651,11 @@ def test_synthetic_calibration_payloads_exercise_all_score_extractors(
                 output_dir=output_dir,
                 harness=harness,
             )
+            if benchmark_id == "action-calling" and not importlib.import_module("benchmarks.action-calling.cli").DEFAULT_TEST.is_file():
+                assert baseline.status == "incompatible"
+                assert baseline.result_path is None
+                assert "corpus" in baseline.note
+                continue
             assert baseline.status == "succeeded"
             assert baseline.result_path is not None
             summary = adapter.score_extractor(baseline.result_path)
@@ -1077,9 +999,6 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: True
-    )
-    monkeypatch.setattr(
         orchestrator_adapters, "_has_terminal_bench_docker_backend", lambda: True
     )
     monkeypatch.setattr(
@@ -1144,47 +1063,8 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
     assert all(cell.reason for cell in incompatible)
 
 
-def test_hyperliquid_matrix_rows_require_live_credentials(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: False
-    )
-
-    report = build_cross_matrix_report(
-        _workspace_root(),
-        provider="cerebras",
-        model="gpt-oss-120b",
-    )
-    cells = [cell for cell in report.cells if cell.benchmark_id == "hyperliquid_bench"]
-
-    assert len(cells) == 3
-    assert all(cell.compatible is False for cell in cells)
-    assert all(
-        cell.reason == orchestrator_adapters.HYPERLIQUID_LIVE_UNAVAILABLE_REASON
-        for cell in cells
-    )
 
 
-def test_hyperliquid_live_matrix_rows_require_trading_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: True
-    )
-
-    report = build_cross_matrix_report(
-        _workspace_root(),
-        provider="cerebras",
-        model="gpt-oss-120b",
-    )
-    cells = [cell for cell in report.cells if cell.benchmark_id == "hyperliquid_bench"]
-
-    assert len(cells) == 3
-    assert all(cell.compatible is True for cell in cells)
-    assert all("HL_PRIVATE_KEY" in cell.required_env for cell in cells)
-    assert all("CEREBRAS_API_KEY" in cell.required_env for cell in cells)
-    assert all("--no-demo" in (cell.command or []) for cell in cells)
 
 
 def test_cross_matrix_validation_redacts_secret_config_values() -> None:
@@ -1227,11 +1107,6 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
     )
     monkeypatch.setattr(
         orchestrator_adapters,
-        "_has_hyperliquid_live_backend",
-        lambda: True,
-    )
-    monkeypatch.setattr(
-        orchestrator_adapters,
         "_vision_language_compatible_harnesses",
         lambda: ("eliza",),
     )
@@ -1260,12 +1135,10 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
     for benchmark_id in (
         "swe_bench_orchestrated",
         "configbench",
-        "hyperliquid_bench",
         "interrupt_bench",
         "eliza_1",
         "framework",
         "orchestrator_lifecycle",
-        "scambench",
         "vending_bench",
         "webshop",
     ):
@@ -1284,9 +1157,6 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
             if benchmark_id == "vending_bench":
                 assert "--provider" in cell.command
                 assert cell.command[cell.command.index("--provider") + 1] == "eliza"
-            if benchmark_id == "hyperliquid_bench":
-                assert "--mode" in cell.command
-                assert cell.command[cell.command.index("--mode") + 1] == "eliza"
             if benchmark_id == "interrupt_bench":
                 assert "--mode=harness" in cell.command
             if benchmark_id == "eliza_1":
@@ -1303,9 +1173,6 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
             if benchmark_id == "orchestrator_lifecycle":
                 assert "--mode" in cell.command
                 assert cell.command[cell.command.index("--mode") + 1] == "bridge"
-            if benchmark_id == "scambench":
-                assert "--provider" in cell.command
-                assert cell.command[cell.command.index("--provider") + 1] == "cerebras"
 
     for benchmark_id in (
         "hermes_tblite",
@@ -1573,16 +1440,6 @@ def test_live_gated_domain_benchmarks_have_no_key_smoke_routes(
     assert vending_command[vending_command.index("--provider") + 1] == "heuristic"
     assert vending_command[vending_command.index("--runs") + 1] == "1"
     assert "--expand-scenarios" in vending_command
-
-    hyperliquid_command = registry["hyperliquid_bench"].build_command(
-        tmp_path / "hyperliquid",
-        mock_model,
-        {"max_steps": 1, "expand_scenarios": True},
-    )
-    assert (
-        hyperliquid_command[hyperliquid_command.index("--mode") + 1] == "deterministic"
-    )
-    assert "--expand-scenarios" in hyperliquid_command
 
     lifecycle_adapter = discover_adapters(_workspace_root()).adapters[
         "orchestrator_lifecycle"
@@ -1855,7 +1712,7 @@ def test_osworld_requires_reachable_docker_backend(
         lambda: True,
     )
     adapter = discover_adapters(_workspace_root()).adapters["osworld"]
-    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes", "smithers")
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
     assert _is_harness_compatible(adapter, "eliza") is True
     assert _is_harness_compatible(adapter, "hermes") is True
     assert _is_harness_compatible(adapter, "openclaw") is True
@@ -1926,80 +1783,14 @@ def test_standard_public_benchmarks_publish_real_harness_rows() -> None:
             "eliza",
             "openclaw",
             "hermes",
-            "smithers",
         )
         assert _is_harness_compatible(adapter, "eliza") is True
         assert _is_harness_compatible(adapter, "hermes") is True
         assert _is_harness_compatible(adapter, "openclaw") is True
-        assert _is_harness_compatible(adapter, "smithers") is True
 
 
-def test_smithers_benchmark_compatibility_has_real_routes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        orchestrator_adapters,
-        "_has_swe_bench_docker_backend",
-        lambda: True,
-    )
-    monkeypatch.setattr(
-        orchestrator_adapters,
-        "_has_terminal_bench_docker_backend",
-        lambda: True,
-    )
-    monkeypatch.setattr(
-        orchestrator_adapters,
-        "_has_osworld_docker_backend",
-        lambda: True,
-    )
-
-    workspace_root = _workspace_root()
-    benchmarks_root = workspace_root / "suites"
-    monkeypatch.setattr(
-        orchestrator_adapters,
-        "_git_visible_dir_names",
-        lambda _root: {p.name for p in benchmarks_root.iterdir() if p.is_dir()},
-    )
-    registry_ids = {item.id for item in get_benchmark_registry(workspace_root)}
-
-    missing_from_registry = sorted(SMITHERS_BENCHMARKS - registry_ids)
-    assert missing_from_registry == []
-
-    report = build_cross_matrix_report(
-        workspace_root,
-        harnesses=("smithers",),
-        provider="cerebras",
-        model="gpt-oss-120b",
-    )
-    cells = {cell.benchmark_id: cell for cell in report.cells}
-    for benchmark_id in sorted(SMITHERS_BENCHMARKS):
-        cell = cells[benchmark_id]
-        assert cell.compatible is True, benchmark_id
-        assert cell.command, benchmark_id
-        assert cell.propagated_env["BENCHMARK_HARNESS"] == "smithers"
-        assert cell.propagated_env["ELIZA_BENCH_HARNESS"] == "smithers"
-        assert "harnesses/smithers" in cell.propagated_env["PYTHONPATH"]
 
 
-def test_smithers_adapter_modules_import_for_declared_factories() -> None:
-    adapter_root = _workspace_root() / "harnesses" / "smithers"
-    sys.path.insert(0, str(adapter_root))
-    try:
-        for module_name in (
-            "agentbench",
-            "bfcl",
-            "clawbench",
-            "context_bench",
-            "swe_bench",
-            "tau_bench",
-            "terminal_bench",
-            "woobench",
-        ):
-            module = importlib.import_module(f"smithers_adapter.{module_name}")
-            assert module is not None
-    finally:
-        with contextlib.suppress(ValueError):
-            sys.path.remove(str(adapter_root))
 
 
 def test_framework_publishes_real_harness_rows() -> None:
@@ -2019,11 +1810,10 @@ def test_agentbench_routes_cross_harness_adapter_clients(
         "agentbench"
     ]
 
-    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes", "smithers")
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
     assert _is_harness_compatible(adapter, "eliza") is True
     assert _is_harness_compatible(adapter, "hermes") is True
     assert _is_harness_compatible(adapter, "openclaw") is True
-    assert _is_harness_compatible(adapter, "smithers") is True
 
     command = entry.build_command(
         tmp_path,
@@ -2126,20 +1916,7 @@ def test_mind2web_and_visualwebbench_scores_reject_zero_task_results() -> None:
     )
 
 
-def test_rlm_gsm8k_mt_and_scambench_scores_reject_empty_workloads() -> None:
-    with pytest.raises(ValueError, match="zero-task score"):
-        _score_from_rlmbench_json(
-            {"metrics": {"overall_accuracy": 1.0, "total_tasks": 0}, "results": []}
-        )
-    assert (
-        _score_from_rlmbench_json(
-            {
-                "metrics": {"overall_accuracy": 0.5, "total_tasks": 2},
-                "results": [{"id": "t"}],
-            }
-        ).score
-        == 0.5
-    )
+def test_gsm8k_and_mt_scores_reject_empty_workloads() -> None:
 
     with pytest.raises(ValueError, match="gsm8k:n must be positive"):
         _score_from_gsm8k_json({"metrics": {"score": 1.0, "n": 0}})
@@ -2149,16 +1926,6 @@ def test_rlm_gsm8k_mt_and_scambench_scores_reject_empty_workloads() -> None:
         _score_from_mt_bench_json({"metrics": {"score": 1.0, "n": 0}})
     assert _score_from_mt_bench_json({"metrics": {"score": 0.5, "n": 2}}).score == 0.5
 
-    with pytest.raises(ValueError, match="zero-example score"):
-        _score_from_scambench_json(
-            {"metrics": {"score": 1.0, "n_scam": 0, "n_legit": 0}}
-        )
-    assert (
-        _score_from_scambench_json(
-            {"metrics": {"score": 0.5, "n_scam": 1, "n_legit": 1}}
-        ).score
-        == 0.5
-    )
 
 
 def test_task_sample_and_check_scores_reject_empty_workloads() -> None:
@@ -2231,11 +1998,10 @@ def test_task_sample_and_check_scores_reject_empty_workloads() -> None:
 def test_mint_routes_all_three_harnesses() -> None:
     adapter = discover_adapters(_workspace_root()).adapters["mint"]
 
-    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes", "smithers")
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
     assert _is_harness_compatible(adapter, "eliza") is True
     assert _is_harness_compatible(adapter, "hermes") is True
     assert _is_harness_compatible(adapter, "openclaw") is True
-    assert _is_harness_compatible(adapter, "smithers") is True
 
 
 def test_realm_routes_cross_harness_delegate_client(tmp_path: Path) -> None:
@@ -2244,11 +2010,10 @@ def test_realm_routes_cross_harness_delegate_client(tmp_path: Path) -> None:
         "realm"
     ]
 
-    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes", "smithers")
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
     assert _is_harness_compatible(adapter, "eliza") is True
     assert _is_harness_compatible(adapter, "hermes") is True
     assert _is_harness_compatible(adapter, "openclaw") is True
-    assert _is_harness_compatible(adapter, "smithers") is True
 
     command = entry.build_command(
         tmp_path,
@@ -2598,9 +2363,6 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: True
-    )
     adapters = discover_adapters(_workspace_root()).adapters
     expected_flags = {
         "configbench": ("--limit", "1"),
@@ -2608,7 +2370,6 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(
         "mint": ("--max-tasks", "1"),
         "realm": ("--max-tasks", "1"),
         "bfcl": ("--max-per-category", "1"),
-        "hyperliquid_bench": ("--max-steps", "1"),
         "experience": ("--queries", "2"),
     }
     for benchmark_id, (flag, value) in expected_flags.items():
@@ -2665,93 +2426,6 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(
     assert mint_command[mint_command.index("--max-turns") + 1] == "3"
     assert mint_command[mint_command.index("--timeout") + 1] == "60"
     assert "--no-ablation" in mint_command
-
-    woobench = adapters["woobench"]
-    effective_woo = _effective_request(
-        woobench,
-        RunRequest(
-            benchmarks=("woobench",),
-            agent="openclaw",
-            provider="cerebras",
-            model="gpt-oss-120b",
-            extra_config={"expand_scenarios": True},
-        ),
-    )
-    woo_ctx = ExecutionContext(
-        workspace_root=_workspace_root(),
-        benchmarks_root=_workspace_root() / "suites",
-        output_root=tmp_path / "woobench",
-        run_root=tmp_path,
-        request=effective_woo,
-        run_group_id="test",
-        env={},
-        repo_meta={},
-    )
-    woo_command = woobench.command_builder(woo_ctx, woobench)
-    woo_env = woobench.env_builder(woo_ctx, woobench) if woobench.env_builder else {}
-    assert woo_command[woo_command.index("--agent") + 1] == "openclaw"
-    assert "harnesses/openclaw" in woo_env["PYTHONPATH"]
-    assert "harnesses/hermes" in woo_env["PYTHONPATH"]
-    assert "harnesses/eliza" in woo_env["PYTHONPATH"]
-
-    benchmark_id = "hyperliquid_bench"
-    adapter = adapters[benchmark_id]
-    effective_hyperliquid = _effective_request(
-        adapter,
-        RunRequest(
-            benchmarks=(benchmark_id,),
-            agent="eliza",
-            provider="cerebras",
-            model="gpt-oss-120b",
-            extra_config={},
-        ),
-    )
-    ctx = ExecutionContext(
-        workspace_root=_workspace_root(),
-        benchmarks_root=_workspace_root() / "suites",
-        output_root=tmp_path / benchmark_id,
-        run_root=tmp_path,
-        request=effective_hyperliquid,
-        run_group_id="test",
-        env={},
-        repo_meta={},
-    )
-    command = adapter.command_builder(ctx, adapter)
-    env = adapter.env_builder(ctx, adapter) if adapter.env_builder else {}
-    assert "--no-demo" in command
-    assert "--expand-scenarios" in command
-    assert command[command.index("--max-steps") + 1] == "1"
-    assert command[command.index("--max-iterations") + 1] == "2"
-    assert env["ELIZA_BENCH_HTTP_TIMEOUT"] == "90.0"
-    assert env["HL_BENCH_COMMAND_TIMEOUT_S"] == "60.0"
-    assert env["ELIZA_BENCH_FORCE_TOOL_CALL"] == "0"
-    assert env["BENCHMARK_MODEL_PROVIDER"] == "cerebras"
-    assert env["BENCHMARK_MODEL_NAME"] == "gpt-oss-120b"
-
-    solana = adapters["solana"]
-    effective_solana = _effective_request(
-        solana,
-        RunRequest(
-            benchmarks=("solana",),
-            agent="eliza",
-            provider="cerebras",
-            model="gpt-oss-120b",
-            extra_config={"max_tasks": 0, "expand_scenarios": True},
-        ),
-    )
-    ctx = ExecutionContext(
-        workspace_root=_workspace_root(),
-        benchmarks_root=_workspace_root() / "suites",
-        output_root=tmp_path / "solana",
-        run_root=tmp_path,
-        request=effective_solana,
-        run_group_id="test",
-        env={},
-        repo_meta={},
-    )
-    env = solana.env_builder(ctx, solana) if solana.env_builder else {}
-    assert env["MAX_MESSAGES"] == "2"
-    assert env["EXPAND_SCENARIOS"] == "true"
 
 
 def test_bfcl_registry_always_writes_scoreable_json(tmp_path: Path) -> None:
@@ -3434,130 +3108,12 @@ def test_configbench_adapter_full_profile_rejects_inherited_smoke_limit(
     assert "--limit" not in command
 
 
-def test_scambench_orchestrator_default_is_tiny_bridge_smoke(tmp_path: Path) -> None:
-    adapters = discover_adapters(_workspace_root()).adapters
-    adapter = adapters["scambench"]
-    ctx = ExecutionContext(
-        workspace_root=_workspace_root(),
-        benchmarks_root=_workspace_root() / "suites",
-        output_root=tmp_path / "out",
-        run_root=tmp_path,
-        request=RunRequest(
-            benchmarks=("scambench",),
-            agent="eliza",
-            provider="cerebras",
-            model="gpt-oss-120b",
-            extra_config=dict(adapter.default_extra_config),
-        ),
-        run_group_id="test",
-        env={},
-        repo_meta={},
-    )
-
-    command = adapter.command_builder(ctx, adapter)
-
-    assert command[command.index("--max-examples") + 1] == "2"
-    assert command[command.index("--max-new-tokens") + 1] == "128"
-    assert command[command.index("--out") + 1] == str(tmp_path / "out")
 
 
-def test_woobench_orchestrator_default_is_bounded_multi_scenario_persona(
-    tmp_path: Path,
-) -> None:
-    adapters = discover_adapters(_workspace_root()).adapters
-    adapter = adapters["woobench"]
-    ctx = ExecutionContext(
-        workspace_root=_workspace_root(),
-        benchmarks_root=_workspace_root() / "suites",
-        output_root=tmp_path / "out",
-        run_root=tmp_path,
-        request=RunRequest(
-            benchmarks=("woobench",),
-            agent="eliza",
-            provider="cerebras",
-            model="gpt-oss-120b",
-            extra_config=dict(adapter.default_extra_config),
-        ),
-        run_group_id="test",
-        env={},
-        repo_meta={},
-    )
-
-    command = adapter.command_builder(ctx, adapter)
-
-    assert "--scenario" not in command
-    assert command[command.index("--scenarios") + 1] == (
-        "friend_supporter_tarot_01,repeat_customer_tarot_01"
-    )
-    assert command[command.index("--evaluator") + 1] == "heuristic"
-    assert command[command.index("--concurrency") + 1] == "1"
-    assert command[command.index("--random-seed") + 1] == "1"
 
 
-def test_woobench_orchestrator_explicit_scenario_overrides_default_list(
-    tmp_path: Path,
-) -> None:
-    adapters = discover_adapters(_workspace_root()).adapters
-    adapter = adapters["woobench"]
-    extra = dict(adapter.default_extra_config)
-    extra.update({"scenario": "friend_supporter_tarot_01", "evaluator": "llm"})
-    ctx = ExecutionContext(
-        workspace_root=_workspace_root(),
-        benchmarks_root=_workspace_root() / "suites",
-        output_root=tmp_path / "out",
-        run_root=tmp_path,
-        request=RunRequest(
-            benchmarks=("woobench",),
-            agent="eliza",
-            provider="cerebras",
-            model="gpt-oss-120b",
-            extra_config=extra,
-        ),
-        run_group_id="test",
-        env={},
-        repo_meta={},
-    )
-
-    command = adapter.command_builder(ctx, adapter)
-
-    assert "--scenarios" not in command
-    assert command[command.index("--scenario") + 1] == "friend_supporter_tarot_01"
-    assert command[command.index("--evaluator") + 1] == "llm"
 
 
-def test_woobench_score_extractor_marks_interrupted_for_quarantine(
-    tmp_path: Path,
-) -> None:
-    result_path = tmp_path / "woobench_smoke.json"
-    result_path.write_text(
-        json.dumps(
-            {
-                "overall_score": 12.5,
-                "revenue_efficiency": 0.0,
-                "resilience_score": 0.0,
-                "failed_scenarios": 1,
-                "total_revenue": 9.0,
-                "interrupted": True,
-                "scenarios": [
-                    {
-                        "scenario_id": "skeptic_tarot_01",
-                        "payment_converted": True,
-                        "agent_responsive": True,
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    score = _score_from_woobench(result_path)
-
-    assert score.score == 0.125
-    assert score.metrics["interrupted"] is True
-    assert score.metrics["total_instances"] == 1
-    assert score.metrics["total_revenue"] == 9.0
-    assert score.metrics["avg_revenue_per_scenario"] == 9.0
-    assert score.metrics["payment_converted_count"] == 1
 
 
 def test_vending_score_rejects_zero_successful_runs() -> None:
@@ -3762,13 +3318,13 @@ def test_action_calling_eliza_generation_uses_captured_runtime_calls() -> None:
     assert content_calls == []
 
 
-def test_action_calling_score_accepts_complete_native_metrics() -> None:
+def test_action_calling_rejects_smoke_ledger_claiming_full_corpus() -> None:
     entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
         "action-calling"
     ]
     action_cli = importlib.import_module("benchmarks.action-calling.cli")
     cases = action_cli._expand_cases(
-        action_cli._load_cases(action_cli.DEFAULT_TEST, None)
+        action_cli._load_cases(action_cli.SMOKE_TEST, None)
     )
     case_outcomes = [
         {
@@ -3787,54 +3343,51 @@ def test_action_calling_score_accepts_complete_native_metrics() -> None:
         for index, case in enumerate(cases)
     ]
 
-    score = entry.extract_score(
-        {
-            "provider": "eliza",
-            "tool_choice": "auto",
-            "generation_source": "captured_action",
-            "n": ACTION_CALLING_FULL_SCENARIO_COUNT,
-            "dataset_provenance": {
-                "sha256": ACTION_CALLING_DATASET_SHA256,
-                "row_count": ACTION_CALLING_DATASET_ROW_COUNT,
-                "contract_version": ACTION_CALLING_CONTRACT_VERSION,
-                "recovered_opaque_tasks_contract_count": (
-                    ACTION_CALLING_FULL_BASE_CASE_COUNT
-                ),
-                "recovered_schema_sources": ACTION_CALLING_SCHEMA_SOURCE_COUNTS,
-                "base_case_manifest_sha256": (ACTION_CALLING_BASE_CASE_MANIFEST_SHA256),
-                "evaluated_case_manifest_sha256": (
-                    ACTION_CALLING_EVALUATED_CASE_MANIFEST_SHA256
-                ),
-                "evaluated_case_id_manifest_sha256": (
-                    ACTION_CALLING_EVALUATED_CASE_ID_MANIFEST_SHA256
-                ),
-                "loaded_base_case_count": ACTION_CALLING_FULL_BASE_CASE_COUNT,
-                "evaluated_case_count": ACTION_CALLING_FULL_SCENARIO_COUNT,
-                "scenario_expansion": True,
-            },
-            "generation_sources": ["captured_action"],
-            "counts": {
-                "native_tool_calls_ok": ACTION_CALLING_FULL_SCENARIO_COUNT,
-                "tool_name_match": ACTION_CALLING_FULL_SCENARIO_COUNT,
-                "args_parse_ok": ACTION_CALLING_FULL_SCENARIO_COUNT,
-                "required_keys_ok": ACTION_CALLING_FULL_SCENARIO_COUNT,
-                "arguments_match": ACTION_CALLING_FULL_SCENARIO_COUNT,
-            },
-            "metrics": {
-                "score": 1.0,
-                "native_tool_calls_ok": 1.0,
-                "tool_name_match": 1.0,
-                "args_parse_ok": 1.0,
-                "required_keys_ok": 1.0,
-                "arguments_match": 1.0,
-            },
-            "case_outcomes": case_outcomes,
-        }
-    )
-
-    assert score.score == 1.0
-    assert score.metrics["native_tool_calls_ok"] == 1.0
-    assert score.metrics["generation_source"] == "captured_action"
+    with pytest.raises(ValueError, match="all 693 cases"):
+        entry.extract_score(
+            {
+                "provider": "eliza",
+                "tool_choice": "auto",
+                "generation_source": "captured_action",
+                "n": ACTION_CALLING_FULL_SCENARIO_COUNT,
+                "dataset_provenance": {
+                    "sha256": ACTION_CALLING_DATASET_SHA256,
+                    "row_count": ACTION_CALLING_DATASET_ROW_COUNT,
+                    "contract_version": ACTION_CALLING_CONTRACT_VERSION,
+                    "recovered_opaque_tasks_contract_count": (
+                        ACTION_CALLING_FULL_BASE_CASE_COUNT
+                    ),
+                    "recovered_schema_sources": ACTION_CALLING_SCHEMA_SOURCE_COUNTS,
+                    "base_case_manifest_sha256": (ACTION_CALLING_BASE_CASE_MANIFEST_SHA256),
+                    "evaluated_case_manifest_sha256": (
+                        ACTION_CALLING_EVALUATED_CASE_MANIFEST_SHA256
+                    ),
+                    "evaluated_case_id_manifest_sha256": (
+                        ACTION_CALLING_EVALUATED_CASE_ID_MANIFEST_SHA256
+                    ),
+                    "loaded_base_case_count": ACTION_CALLING_FULL_BASE_CASE_COUNT,
+                    "evaluated_case_count": ACTION_CALLING_FULL_SCENARIO_COUNT,
+                    "scenario_expansion": True,
+                },
+                "generation_sources": ["captured_action"],
+                "counts": {
+                    "native_tool_calls_ok": ACTION_CALLING_FULL_SCENARIO_COUNT,
+                    "tool_name_match": ACTION_CALLING_FULL_SCENARIO_COUNT,
+                    "args_parse_ok": ACTION_CALLING_FULL_SCENARIO_COUNT,
+                    "required_keys_ok": ACTION_CALLING_FULL_SCENARIO_COUNT,
+                    "arguments_match": ACTION_CALLING_FULL_SCENARIO_COUNT,
+                },
+                "metrics": {
+                    "score": 1.0,
+                    "native_tool_calls_ok": 1.0,
+                    "tool_name_match": 1.0,
+                    "args_parse_ok": 1.0,
+                    "required_keys_ok": 1.0,
+                    "arguments_match": 1.0,
+                },
+                "case_outcomes": case_outcomes,
+            }
+        )
 
 
 def test_public_score_extractors_reject_zero_sample_artifacts() -> None:
@@ -4109,7 +3662,6 @@ def test_registry_forwards_edge_expansion_to_scenario_benchmarks(
         "mmau": {"mock": True, "limit": 1},
         "visualwebbench": {"mock": True, "max_tasks": 1},
         "webshop": {"mock": True, "max_tasks": 1},
-        "woobench": {"mock": True, "scenario": "skeptic_tarot_01"},
     }
 
     for benchmark_id, extra in cases.items():
@@ -4486,56 +4038,10 @@ def test_vision_language_bundle_accepts_text_and_mmproj_without_mtp(
     assert orchestrator_adapters._has_vision_language_bundle("eliza-1-9b") is True
 
 
-def test_rlm_registry_forwards_model_to_root_and_subcall(tmp_path: Path) -> None:
-    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
-        "rlm_bench"
-    ]
-
-    command = entry.build_command(
-        tmp_path,
-        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
-        {"mode": "eliza", "no_oolong": True},
-    )
-
-    assert command[command.index("--root-model") + 1] == "gpt-oss-120b"
-    assert command[command.index("--subcall-model") + 1] == "gpt-oss-120b"
 
 
-def test_rlm_score_rejects_all_runtime_errors() -> None:
-    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
-        "rlm_bench"
-    ]
-
-    with pytest.raises(ValueError, match="all tasks failed with runtime errors"):
-        entry.extract_score(
-            {
-                "metrics": {
-                    "overall_accuracy": 0.0,
-                    "total_tasks": 2,
-                    "passed_tasks": 0,
-                },
-                "results": [
-                    {"task_id": "a", "error": "provider failed"},
-                    {"task_id": "b", "error": "provider failed"},
-                ],
-            }
-        )
 
 
-def test_woobench_registry_forwards_scenario_list(tmp_path: Path) -> None:
-    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
-        "woobench"
-    ]
-
-    command = entry.build_command(
-        tmp_path,
-        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
-        {"scenarios": ["friend_supporter_tarot_01", "repeat_customer_tarot_01"]},
-    )
-
-    assert command[command.index("--scenarios") + 1] == (
-        "friend_supporter_tarot_01,repeat_customer_tarot_01"
-    )
 
 
 def test_abliteration_registry_command_defaults_to_no_tool_choice(
@@ -4641,94 +4147,8 @@ def test_action_calling_orchestrator_default_is_bounded_smoke(tmp_path: Path) ->
     assert command[command.index("--max-new-tokens") + 1] == "512"
 
 
-def test_scambench_registry_command_and_score_contract(tmp_path: Path) -> None:
-    registry = {entry.id: entry for entry in get_benchmark_registry(_workspace_root())}
-    entry = registry["scambench"]
-    dataset = tmp_path / "scambench.jsonl"
-    dataset.write_text("{}", encoding="utf-8")
-
-    command = entry.build_command(
-        tmp_path,
-        ModelSpec(provider="vllm", model="local-scam-model"),
-        {
-            "dataset": str(dataset),
-            "max_examples": 2,
-            "expected_examples": 2,
-            "split": "test",
-            "max_new_tokens": 32,
-            "temperature": 0.25,
-            "vllm_base_url": "http://127.0.0.1:9999/v1",
-        },
-    )
-
-    assert command[:3] == [command[0], "-m", "benchmarks.scambench.cli"]
-    assert command[command.index("--provider") + 1] == "vllm"
-    assert command[command.index("--model") + 1] == "local-scam-model"
-    assert command[command.index("--out") + 1] == str(tmp_path)
-    assert command[command.index("--dataset") + 1] == str(dataset)
-    assert command[command.index("--base-url") + 1] == "http://127.0.0.1:9999/v1"
-    assert command[command.index("--max-examples") + 1] == "2"
-    assert command[command.index("--expected-examples") + 1] == "2"
-    assert command[command.index("--split") + 1] == "test"
-    assert command[command.index("--max-new-tokens") + 1] == "32"
-    assert command[command.index("--temperature") + 1] == "0.25"
-
-    result_path = tmp_path / "scambench-results.json"
-    result_path.write_text(
-        '{"metrics":{"score":0.75,"scam_refuse_rate":1.0,"legit_help_rate":0.5,"n_scam":1,"n_legit":2}}',
-        encoding="utf-8",
-    )
-    assert entry.locate_result(tmp_path) == result_path
-
-    score = entry.extract_score(
-        {
-            "metrics": {
-                "score": 0.75,
-                "scam_refuse_rate": 1.0,
-                "legit_help_rate": 0.5,
-                "n_scam": 1,
-                "n_legit": 2,
-            }
-        }
-    )
-    assert score.score == 0.75
-    assert score.unit == "ratio"
-    assert score.higher_is_better is True
-    assert score.metrics["n_scam"] == 1
 
 
-def test_scambench_adapter_command_uses_vllm_base_url(tmp_path: Path) -> None:
-    adapters = discover_adapters(_workspace_root()).adapters
-    adapter = adapters["scambench"]
-    dataset = tmp_path / "scambench.jsonl"
-    dataset.write_text("{}", encoding="utf-8")
-    ctx = ExecutionContext(
-        workspace_root=_workspace_root(),
-        benchmarks_root=_workspace_root() / "suites",
-        output_root=tmp_path / "out",
-        run_root=tmp_path,
-        request=RunRequest(
-            benchmarks=("scambench",),
-            agent="mock",
-            provider="vllm",
-            model="local-scam-model",
-            extra_config={
-                "dataset": str(dataset),
-                "max_examples": 2,
-                "vllm_base_url": "http://127.0.0.1:9999/v1",
-            },
-        ),
-        run_group_id="test",
-        env={},
-        repo_meta={},
-    )
-
-    command = adapter.command_builder(ctx, adapter)
-
-    assert command[:3] == [command[0], "-m", "benchmarks.scambench.cli"]
-    assert command[command.index("--out") + 1] == str(tmp_path / "out")
-    assert command[command.index("--dataset") + 1] == str(dataset)
-    assert command[command.index("--base-url") + 1] == "http://127.0.0.1:9999/v1"
 
 
 def test_app_eval_score_normalizes_ten_point_summary(tmp_path: Path) -> None:

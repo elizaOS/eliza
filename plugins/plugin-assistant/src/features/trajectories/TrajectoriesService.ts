@@ -14,10 +14,10 @@ import {
   logger,
   sanitizeTrajectoryJsonValue,
   sanitizeTrajectoryJsonValueInBudget,
+  serializeTrajectoryExport,
 } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import { serializeTrajectoryExport } from "../../services/trajectory-export.ts";
 
 /** Public alias for {@link CanonicalTrajectoryExportOptions} (canonical type lives in services). */
 export type TrajectoryExportOptions = CanonicalTrajectoryExportOptions;

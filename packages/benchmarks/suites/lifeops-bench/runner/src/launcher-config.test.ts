@@ -5,7 +5,6 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -14,17 +13,10 @@ const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const repoRoot = path.resolve(packageRoot, "../..");
+const repoRoot = path.resolve(packageRoot, "../../../../..");
 
 describe("benchmark server launcher", () => {
   it("uses the executable root tsconfig and resolves agent runtime exports", () => {
-    const packageJson = JSON.parse(
-      readFileSync(path.join(packageRoot, "package.json"), "utf8"),
-    ) as { scripts?: Record<string, string> };
-    expect(packageJson.scripts?.["benchmark:server"]).toBe(
-      "TSX_TSCONFIG_PATH=../../tsconfig.json node --conditions=eliza-source --import tsx src/server.ts",
-    );
-
     const probe = spawnSync(
       "node",
       [

@@ -11,9 +11,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "start": "bun --conditions=eliza-source run src/index.ts",
     "dev": "bun --conditions=eliza-source --watch run src/index.ts",
-    "typecheck": "tsc --noEmit",
-    "test": "bun --conditions=eliza-source test",
-    "test:unit": "bun --conditions=eliza-source test __tests__/unit/"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@elizaos/cloud-services-common": "workspace:*",

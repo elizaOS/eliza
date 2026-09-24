@@ -43,3 +43,41 @@ Use `test:runner`, `typecheck:runner`, `test:synthetic-world`, and
 `typecheck:synthetic-world` for focused checks. The root package test and
 typecheck commands include both. Runner CLI commands retain their names, such
 as `bun run --cwd packages/testing test:pr:e2e`.
+
+## Perfect-result end-to-end provider
+
+`createPerfectResultPlugin` (also exported as `createDeterministicModelPlugin`)
+uses scenario-authored responses at the inference boundary. It runs through normal
+runtime model dispatch; it does not replace the runtime, SQL, actions, or delivery.
+No API keys or network inference service are required.
+
+Text fixtures may return text, a JSON response payload, or a native
+`GenerateTextResult` with tool calls and usage. Native chat requests preserve the
+structured result; prompt-only requests return text. Both callback streaming and
+`stream: true` async iterators are supported. Usage is supplied by the fixture,
+never fabricated as evidence of a real model call.
+
+Declare non-text capabilities in a fixture's `match.modelType`. For predicate
+matchers or fixtures registered after boot, also declare `modelTypes` in the
+plugin/runtime options. Return the same values as the production provider:
+`ArrayBuffer` for OpenAI speech, a string for transcription, numeric vectors for
+embeddings, and image results for image models. `call.input` contains the original
+request, including audio bytes. Speech fixtures should contain valid recorded or
+generated audio bytes; the runtime voice test uses a silent PCM WAV to verify byte
+delivery, not speech quality. Embedding fixtures must include the runtime's null
+input dimension probe. Every unexpected, ambiguous, exhausted, or unconsumed
+required fixture fails the scenario.
+
+Run the runtime message, audio-dispatch and native-tool persistence flows:
+
+```sh
+bun test --conditions eliza-source packages/testing/e2e/perfect-result-runtime.e2e.test.ts
+```
+
+These scenarios exercise assistant routing, actual PGlite history writes,
+transcription/speech model dispatch, and the production NOTES_CREATE action with
+owner authorization and durable note-file readback, with and without a client
+streaming callback. The native planner uses the provider iterator in both cases.
+Audio transport and delivery are test-owned; these are not production voice
+endpoint or Notes browser/WebSocket tests. It proves runtime behavior with known provider results;
+model intelligence, recognition accuracy and audio quality are outside its scope.

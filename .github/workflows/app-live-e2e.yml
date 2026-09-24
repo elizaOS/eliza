@@ -414,7 +414,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: app-live-e2e-cloud-production-progress
-          path: packages/app/test-results/**/privacy-safe-trajectory-history-network-diagnostics.json
+          path: test-results/app/**/privacy-safe-trajectory-history-network-diagnostics.json
           if-no-files-found: warn
           retention-days: 7
 
@@ -642,9 +642,9 @@ jobs:
           name: app-live-e2e-cloud-staging
           path: |
             artifacts/app-live-e2e/cloud-staging-receipt.json
-            packages/app/test-results/**/privacy-safe-trajectory-history-network-diagnostics.json
-            packages/app/test-results/**/privacy-safe-post-reload-history-network-diagnostics.json
-            packages/app/test-results/**/privacy-safe-fresh-context-history-network-diagnostics.json
+            test-results/app/**/privacy-safe-trajectory-history-network-diagnostics.json
+            test-results/app/**/privacy-safe-post-reload-history-network-diagnostics.json
+            test-results/app/**/privacy-safe-fresh-context-history-network-diagnostics.json
           if-no-files-found: error
           retention-days: 7
 
@@ -776,7 +776,7 @@ jobs:
           name: app-live-e2e-desktop
           path: |
             packages/app/playwright-report/
-            packages/app/test-results/
+            test-results/app/
           if-no-files-found: ignore
           retention-days: 7
 

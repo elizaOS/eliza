@@ -133,10 +133,7 @@ function main() {
 
   rmNodeModulesCaches();
 
-  rmPath(
-    "packages/app/test-results",
-    path.join(root, "packages", "app", "test-results"),
-  );
+  rmPath("test-results/app", path.join(root, "test-results", "app"));
   rmPath(
     "packages/app/playwright-report",
     path.join(root, "packages", "app", "playwright-report"),

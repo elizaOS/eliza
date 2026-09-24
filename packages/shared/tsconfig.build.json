@@ -12,7 +12,8 @@
     "rootDir": "./src",
     "paths": {
       "@elizaos/core": ["../core/dist/index.d.ts"],
-      "@types/*": ["./src/*"]
+      "@types/*": ["./src/*"],
+      "@elizaos/shared/browser-contracts": ["./src/browser-contracts.ts"]
     }
   },
   "include": ["src"],

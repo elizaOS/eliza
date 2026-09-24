@@ -210,9 +210,8 @@ function getBootConfigStore(): BootConfigStore {
   const globalObject = getGlobalSlot();
 
   // An established store always wins. The window-key mirror is only a pre-boot
-  // seed and must never replace a store that already exists — see the matching
-  // note in `@elizaos/core`'s boot-env.ts. All three copies (core, shared, ui)
-  // share the same global slot, so they must agree on write-once semantics.
+  // seed and must never replace a store that already exists. Shared and UI
+  // hosts initialize the same slot; core only reads the installed store.
   const existing = globalObject[BOOT_CONFIG_STORE_KEY];
   if (
     existing &&

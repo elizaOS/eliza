@@ -1012,10 +1012,16 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       if (!documentMutationSnapshotMatches(existing, params.expected)) {
         return { status: "conflict" };
       }
-      if (!isDocumentVisibleToRequester(existing, params))
-        return { status: "not_found" };
-      if (!canRequesterMutateDocument(existing, params))
-        return { status: "forbidden" };
+      // Ingestion must settle pending/failed records that read APIs hide.
+      // Mutation authority and the exact snapshot still gate every write;
+      // unauthorized callers retain the existing read-visibility response.
+      if (!canRequesterMutateDocument(existing, params)) {
+        return {
+          status: isDocumentVisibleToRequester(existing, params)
+            ? "forbidden"
+            : "not_found",
+        };
+      }
       const replacement: StoredMemory = {
         ...stored,
         ...params.replacement,
@@ -1205,10 +1211,16 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       if (!documentMutationSnapshotMatches(existing, params.expected)) {
         return { status: "conflict" };
       }
-      if (!isDocumentVisibleToRequester(existing, params))
-        return { status: "not_found" };
-      if (!canRequesterMutateDocument(existing, params))
-        return { status: "forbidden" };
+      // Ingestion must settle pending/failed records that read APIs hide.
+      // Mutation authority and the exact snapshot still gate every write;
+      // unauthorized callers retain the existing read-visibility response.
+      if (!canRequesterMutateDocument(existing, params)) {
+        return {
+          status: isDocumentVisibleToRequester(existing, params)
+            ? "forbidden"
+            : "not_found",
+        };
+      }
       const fragments = await this.storage.getWhere<StoredMemory>(
         COLLECTIONS.MEMORIES,
         (memory) => {

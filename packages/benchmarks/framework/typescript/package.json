@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/benchmark-framework",
+  "private": true,
   "version": "1.0.0",
   "type": "module",
   "scripts": {
@@ -17,7 +18,9 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*"
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/testing": "workspace:*"
   },
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",

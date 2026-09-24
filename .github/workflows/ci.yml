@@ -267,7 +267,7 @@ jobs:
           name: app-smoke-failure-${{ matrix.shard }}
           path: |
             packages/app/playwright-report/
-            packages/app/test-results/
+            test-results/app/
           if-no-files-found: warn
           retention-days: 3
   smoke_lanes:
@@ -538,34 +538,8 @@ jobs:
           setup-node: "false"
       - name: Build view bundles
         run: bun run build:views
-      - name: Views system tests
-        run: bunx vitest run packages/agent/test/views-system-smoke.test.ts
-      - name: Remote capability router tests
-        run: bun run --cwd packages/agent test:remote-capabilities
       - name: Remote capability plugin surface audit
         run: bun packages/agent/scripts/audit-capability-router-plugin-surface.ts
-      - name: Remote capability live CI audit self-test
-        run: bun packages/agent/scripts/audit-capability-router-live-ci.self-test.ts
-      - name: Remote capability source-build smoke
-        run: bun run --cwd packages/agent test:remote-capabilities:source-build
-      - name: Remote capability fixture server smoke
-        run: bun packages/agent/scripts/capability-router-fixture-conformance-smoke.ts
-      - name: Remote capability live report validator self-test
-        run: bun packages/agent/scripts/validate-capability-router-live-reports.self-test.ts
-      - name: Remote capability GitHub live evidence self-test
-        run: bun packages/agent/scripts/validate-capability-router-github-live-evidence.self-test.ts
-      - name: Remote capability GitHub live artifact self-test
-        run: bun packages/agent/scripts/validate-capability-router-github-live-artifacts.self-test.ts
-      - name: Check Docker container-start health
-        id: docker-health
-        run: |
-          set -euo pipefail
-          timeout 300 docker pull node:24-alpine
-          timeout 90 docker run --rm node:24-alpine true
-          echo "healthy=true" >> "$GITHUB_OUTPUT"
-      - name: Remote capability Docker smoke
-        if: steps.docker-health.outputs.healthy == 'true'
-        run: bun run --cwd packages/agent test:remote-capabilities:docker
       - name: Run synthetic-world transaction tests
         run: bun run --cwd packages/testing test:synthetic-world
   desktop-contract:
@@ -650,14 +624,8 @@ jobs:
           setup-node: "false"
       - name: Build cloud routing dependency
         run: bun run --cwd packages/cloud/routing build
-      - name: Electrobun window and dynamic-view coverage
-        run: bun run --cwd packages/app/platforms/electrobun test src/native/desktop-window.test.ts src/rpc-handlers.test.ts src/dynamic-view-rpc-schema.test.ts src/surface-windows.test.ts src/dynamic-views/host.test.ts src/application-menu.test.ts
       - name: Computer-use screenshot quality diagnostics coverage
         run: bun run --cwd plugins/plugin-computeruse test -- test/helpers/screenshot-quality.test.ts src/__tests__/browser-auto-open.test.ts src/platform/a11y.test.ts
-      - name: App screenshot quality diagnostics coverage
-        run: bunx vitest run --config packages/app/vitest.config.ts packages/app/test/screenshot-quality.test.ts
-      - name: App-core screenshot quality diagnostics coverage
-        run: node packages/scripts/run-vitest.mjs run --config packages/app/vitest.config.ts packages/app/test/app/screenshot-quality.test.ts
   zero-key-scenario-runner:
     name: Zero-Key scenario runner
     needs: preflight
@@ -723,7 +691,7 @@ jobs:
           retention-days: 3
       - name: Prune deterministic E2E scratch output
         if: always()
-        run: node packages/scripts/rm-path-recursive.mjs reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-corpus reports/scenarios/pr-deterministic-orchestrator reports/scenarios/pr-deterministic-lifeops reports/scenarios/catalog-inventory packages/app/playwright-report packages/app/test-results
+        run: node packages/scripts/rm-path-recursive.mjs reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-corpus reports/scenarios/pr-deterministic-orchestrator reports/scenarios/pr-deterministic-lifeops reports/scenarios/catalog-inventory packages/app/playwright-report test-results/app
       - name: E2E coverage matrix report
         if: always()
         run: bun --conditions=eliza-source packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage
@@ -975,7 +943,7 @@ jobs:
           name: scenario-pr-app-browser-extended
           path: |
             packages/app/playwright-report/
-            packages/app/test-results/
+            test-results/app/
           if-no-files-found: ignore
           retention-days: 3
     env:

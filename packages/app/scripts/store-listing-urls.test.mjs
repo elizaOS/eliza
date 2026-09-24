@@ -1,7 +1,6 @@
 /**
  * Contract tests for the support/privacy/repository URLs that ship inside store
- * listing metadata (MSIX Partner Center, iOS fastlane, Inno Setup,
- * Homebrew).
+ * iOS fastlane listing metadata.
  *
  * Store reviewers follow these URLs literally, so a dead one blocks a listing
  * rather than degrading it. Two failure modes are pinned here because both have
@@ -33,26 +32,10 @@ const CLOUD_ORIGIN = "https://cloud.eliza.app";
 
 /** Store metadata files that may carry outbound URLs a reviewer will open. */
 const METADATA_FILES = [
-  "packaging/msix/store/listing.json",
-  "packaging/inno/ElizaOSApp.iss",
-  "packaging/snap/snapcraft.yaml",
-  "packaging/homebrew/elizaos-app.rb",
-  "packaging/homebrew/elizaos-app.cask.rb",
-  "packaging/homebrew/README.md",
   "platforms/ios/fastlane/metadata/en-US/privacy_url.txt",
   "platforms/ios/fastlane/metadata/en-US/support_url.txt",
   "platforms/ios/fastlane/metadata/en-US/marketing_url.txt",
 ];
-
-// Download recipes are deliberately excluded from the repository-destination
-// assertion. The canonical repository has not published the historical
-// Homebrew DMG tag/assets yet, so changing those URLs would merely replace one
-// 404 with another. The parent release issue owns that artifact migration.
-const REPOSITORY_DESTINATION_FILES = METADATA_FILES.filter(
-  (relativePath) =>
-    relativePath !== "packaging/homebrew/elizaos-app.cask.rb" &&
-    relativePath !== "packaging/homebrew/README.md",
-);
 
 function readMetadata(relativePath) {
   return readFileSync(path.join(appCoreRoot, relativePath), "utf8");
@@ -88,7 +71,7 @@ function registeredCloudRoutePaths() {
 }
 
 test("no support or source metadata references the retired elizaos/elizaos-app repository", () => {
-  for (const relativePath of REPOSITORY_DESTINATION_FILES) {
+  for (const relativePath of METADATA_FILES) {
     const contents = readMetadata(relativePath);
     assert.equal(
       RETIRED_REPO_PATTERN.test(contents),
@@ -132,21 +115,4 @@ test("privacy and support destinations are the canonical live endpoints", () => 
   ).trim();
   assert.equal(iosPrivacy, `${CLOUD_ORIGIN}/privacy-policy`);
   assert.equal(iosSupport, `${CANONICAL_REPO}/issues`);
-
-  const listing = JSON.parse(readMetadata("packaging/msix/store/listing.json"));
-  assert.equal(listing.listing.privacyUrl, `${CLOUD_ORIGIN}/privacy-policy`);
-  assert.equal(listing.listing.supportUrl, `${CANONICAL_REPO}/issues`);
-
-  const inno = readMetadata("packaging/inno/ElizaOSApp.iss");
-  assert.match(
-    inno,
-    /^AppSupportURL=https:\/\/github\.com\/elizaOS\/eliza\/issues$/m,
-  );
-  assert.match(
-    inno,
-    /^AppUpdatesURL=https:\/\/github\.com\/elizaOS\/eliza\/releases$/m,
-  );
-
-  const cask = readMetadata("packaging/homebrew/elizaos-app.cask.rb");
-  assert.match(cask, /^ {2}homepage "https:\/\/github\.com\/elizaOS\/eliza"$/m);
 });

@@ -39,7 +39,7 @@ export function normalizeActionIdentifier(actionName: string): string {
   return unwrapPlannerIdentifier(actionName).toUpperCase().replace(/_/g, "");
 }
 
-function looksLikeActionExplanationRequest(text: string): boolean {
+export function looksLikeActionExplanationRequest(text: string): boolean {
   const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
   const asksForExplanation =
     /\b(?:explain|describe|teach|walk\s+me\s+through|what\s+does|what\s+is|how\s+(?:does|do|to)|why)\b/iu.test(

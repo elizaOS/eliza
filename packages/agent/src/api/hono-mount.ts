@@ -13,7 +13,7 @@ import type { Route } from "@elizaos/shared/api/http-plugin";
 import type { Hono } from "hono";
 
 import { buildHonoAppForRuntime } from "./hono-adapter.ts";
-import { matchPluginRoutePath } from "./runtime-plugin-routes.ts";
+import { matchPluginRoutePath } from "./plugin-route-path.ts";
 
 interface RuntimeHonoCache {
   runtime: WeakRef<IAgentRuntime>;

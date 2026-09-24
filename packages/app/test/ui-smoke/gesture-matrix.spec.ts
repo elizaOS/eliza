@@ -33,6 +33,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -47,12 +48,7 @@ import {
 import { navigateHomeLauncher } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
-const REPO_ROOT = process.cwd().endsWith(path.join("packages", "app"))
-  ? path.resolve(process.cwd(), "..", "..")
-  : process.cwd();
-const OUT_DIR = path.join(
-  REPO_ROOT,
-  "test-results",
+const OUT_DIR = testOutputPath(
   "ui-smoke-artifacts",
   "ui-interaction-epic",
   "l3-gestures",

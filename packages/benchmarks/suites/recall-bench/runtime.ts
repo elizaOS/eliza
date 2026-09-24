@@ -9,7 +9,7 @@
  *
  * Construction mirrors plugin-sql's own `createIsolatedTestDatabase` (the
  * canonical integration-test bootstrap): PGlite manager → adapter → runtime
- * (`enableDocuments`) → register adapter + embedding → run plugin migrations →
+ * → register adapter + embedding → run plugin migrations →
  * create the agent → `initialize()` (starts `DocumentService`).
  *
  * A mutable `embedMode` lets the fail-open slice flip the query embedder to

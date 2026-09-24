@@ -19,12 +19,8 @@
  * module has no interact export.
  */
 
-import {
-  ElizaError,
-  type ResolvedSurfaceManifest,
-  resolveSurfaceManifest,
-  type SurfaceManifest,
-} from "@elizaos/core";
+import type { ResolvedSurfaceManifest, SurfaceManifest } from "@elizaos/core";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 import { resolveAppBranding } from "@elizaos/shared/config/app-config";
 import {
   HOST_EXTERNAL_RUNTIME_PARAM,
@@ -32,6 +28,7 @@ import {
   type HostExternalBundleFactory,
   type HostModuleImporter,
 } from "@elizaos/shared/views/host-external-contract";
+import { resolveSurfaceManifest } from "@elizaos/shared/views/surface-manifest";
 import {
   type ComponentType,
   memo,
@@ -375,14 +372,6 @@ function isReactComponentExport(
   );
 }
 
-function importHostExternal(
-  specifier: string,
-): Promise<Record<string, unknown>> {
-  return import(/* @vite-ignore */ specifier) as Promise<
-    Record<string, unknown>
-  >;
-}
-
 // View bundles execute inside the host realm, so core exports must cross an
 // explicit browser-safe boundary instead of retaining the runtime namespace in
 // the initial app bundle. Additions belong here only when a real view consumes
@@ -531,7 +520,7 @@ async function importUiBridgeCompat(
 
 // Framework + host modules the shell always provides to every view bundle:
 // react, three, `@elizaos/core`, `@elizaos/ui/*`, the `@elizaos/app` view
-// compat surface, `@elizaos/shared`, and the native capacitor bridges. This map is
+// compat surface and browser-safe shared subpaths. This map is
 // FRAMEWORK-ONLY — it must never list a plugin-specific specifier. A plugin (or
 // a build-variant entrypoint) contributes its own specifiers through
 // `registerHostExternalImporter` so adding a host-external plugin never edits
@@ -544,17 +533,10 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, ScopedHostExternalImporter> = {
   "@elizaos/app/browser": importAppCoreViewCompat,
   "@elizaos/app/ui-compat": importAppCoreViewCompat,
   "@elizaos/core": importCoreViewCompat,
-  "@elizaos/plugin-native-contacts/bridge": () =>
-    importHostExternal("@elizaos/plugin-native-contacts/bridge"),
-  "@elizaos/plugin-native-messages/bridge": () =>
-    importHostExternal("@elizaos/plugin-native-messages/bridge"),
-  "@elizaos/capacitor-mobile-signals": () =>
-    importHostExternal("@elizaos/capacitor-mobile-signals"),
-  "@elizaos/plugin-native-phone/bridge": () =>
-    importHostExternal("@elizaos/plugin-native-phone/bridge"),
-  "@elizaos/capacitor-system": () =>
-    importHostExternal("@elizaos/capacitor-system"),
-  "@elizaos/shared": () => import("@elizaos/shared"),
+  "@elizaos/shared/browser-contracts": () =>
+    import("@elizaos/shared/browser-contracts"),
+  "@elizaos/shared/lifeops-normalize/time-zone": () =>
+    import("@elizaos/shared/lifeops-normalize/time-zone"),
   "@elizaos/ui": importUiRootCompat,
   "@elizaos/ui/agent-surface": async () => AgentSurfaceHost,
   "@elizaos/ui/app-navigate-view": importUiAppNavigateViewCompat,

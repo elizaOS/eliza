@@ -43,8 +43,8 @@ sign-in, while the choice turn remains the fastest pre-auth input. The contract,
   surface is `visibility:hidden`, so no clock, widget, notification, or app tile
   leaks through while the wallpaper remains visible.
 - **Composer is conductor-only.** Typed text is consumed locally by the
-  first-run conductor and never reaches `/api/chat`. Attach, mic, push-to-talk,
-  and slash commands remain unavailable; while external sign-in is active the
+  first-run conductor and never reaches `/api/chat`. Attach, mic, and push-to-talk
+  remain unavailable; while external sign-in is active the
   textarea becomes read-only so the recovery turn stays authoritative.
 - **Undismissable.** Every collapse path is a no-op while `firstRunOpen`:
   `collapse()` (the single funnel for Escape on document/thread/composer,

@@ -568,52 +568,6 @@
       ]
     },
     {
-      "id": "provider.whatsapp.confirmed-send",
-      "title": "Provider-qualified WhatsApp confirmed-send canary",
-      "description": "Performs one harmless message send on an operator-owned WhatsApp canary chat. This definition cannot qualify itself: an external controller must bind the real account and independently prove the whatsapp effect.",
-      "domain": "provider-canary",
-      "lane": "live-only",
-      "executionProfile": "provider-qualified",
-      "evidenceScope": "provider-certification",
-      "isolation": "per-scenario",
-      "requires": {
-        "plugins": [
-          "@elizaos/plugin-personal-assistant",
-          "@elizaos/plugin-whatsapp"
-        ]
-      },
-      "tags": ["provider-canary", "whatsapp", "external-observer"],
-      "turns": [
-        {
-          "kind": "message",
-          "name": "perform operator-owned whatsapp canary",
-          "text": "Perform exactly one message send on the operator-owned WhatsApp canary chat using this harmless payload: 'WhatsApp provider canary delivery'. This is the explicit confirmation to do it now.",
-          "responseJudge": {
-            "minimumScore": 0.9,
-            "rubric": "The response must report one whatsapp message send attempt on the named canary target without claiming provider completion unless the provider actually accepted it."
-          }
-        }
-      ],
-      "finalChecks": [
-        {
-          "type": "providerEffectObserved",
-          "name": "whatsapp-canary-message-send",
-          "observerId": "whatsapp-provider-observer",
-          "provider": "whatsapp",
-          "connectorProvider": "whatsapp",
-          "accountId": "operator-whatsapp-canary-account",
-          "operation": "message-send",
-          "minCount": 1
-        },
-        {
-          "type": "judgeRubric",
-          "name": "whatsapp-canary-semantic-result",
-          "minimumScore": 0.9,
-          "rubric": "The agent must honor the exact one-effect scope and distinguish an attempted message send from provider-confirmed completion."
-        }
-      ]
-    },
-    {
       "id": "provider.x-dm.confirmed-send",
       "title": "Provider-qualified X DM confirmed-send canary",
       "description": "Performs one harmless direct-message send on an operator-owned X canary conversation. This definition cannot qualify itself: an external controller must bind the real account and independently prove the x effect.",

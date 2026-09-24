@@ -4,12 +4,13 @@
  * static guard and only on a match dynamically `import()`s the real route
  * module, keeping the ~38 route modules (and the plugins they pull in) out of
  * the static boot graph so each loads on first hit rather than every boot. Also
- * carries the plugin-route path matcher (`matchPluginRoutePath`) and the
- * public-route predicate that decides which runtime plugin routes skip auth.
+ * uses the shared plugin-route matcher for lazy-load and public-route gates.
  */
+
 import type { AgentRuntime } from "@elizaos/core";
 import type { Route } from "@elizaos/shared/api/http-plugin";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
+import { matchPluginRoutePath } from "./plugin-route-path.ts";
 
 type RouteContext = {
   method: string;
@@ -62,43 +63,6 @@ function matchesHonoRuntimeRoute({
     if (!route.routeHandler) return false;
     return matchPluginRoutePath(route.path, pathname) !== null;
   });
-}
-
-function matchPluginRoutePath(
-  pattern: string,
-  pathname: string,
-): Record<string, string> | null {
-  const norm = (p: string) => p.split("/").filter((s) => s.length > 0);
-  const pSegs = norm(pattern);
-  const pathSegs = norm(pathname);
-  const params: Record<string, string> = {};
-  for (let i = 0; i < pSegs.length; i++) {
-    const p = pSegs[i];
-    const c = pathSegs[i];
-    if (!p) return null;
-    if (p.startsWith(":") && p.endsWith("*")) {
-      const key = p.slice(1, -1);
-      const tail = pathSegs.slice(i).join("/");
-      if (!tail) return null;
-      try {
-        params[key] = decodeURIComponent(tail);
-      } catch {
-        params[key] = tail;
-      }
-      return params;
-    }
-    if (c === undefined) return null;
-    if (p.startsWith(":")) {
-      try {
-        params[p.slice(1)] = decodeURIComponent(c);
-      } catch {
-        params[p.slice(1)] = c;
-      }
-    } else if (p !== c) {
-      return null;
-    }
-  }
-  return pSegs.length === pathSegs.length ? params : null;
 }
 
 export function isPublicRuntimePluginRoute(options: {

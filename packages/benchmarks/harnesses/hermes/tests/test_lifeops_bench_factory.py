@@ -21,12 +21,6 @@ import pytest
 from hermes_adapter.bfcl import build_bfcl_agent_fn
 from hermes_adapter.clawbench import build_clawbench_agent_fn
 from hermes_adapter.client import HermesClient, MessageResponse
-from hermes_adapter.woobench import (
-    _WOOBENCH_SYSTEM_HINT,
-    _with_inferred_payment_action,
-    build_hermes_woobench_agent_fn,
-    _turn_from_response as woobench_turn_from_response,
-)
 
 
 @pytest.fixture
@@ -111,90 +105,14 @@ def test_bfcl_agent_fn_raises_on_bridge_failure(fake_client: HermesClient) -> No
             _run(agent_fn("hi", []))
 
 
-def test_woobench_system_hint_allows_reflective_tarot() -> None:
-    assert "do not refuse ordinary tarot" in _WOOBENCH_SYSTEM_HINT
-    assert "safe fictional/reflective" in _WOOBENCH_SYSTEM_HINT
-    assert "Create at most one charge" in _WOOBENCH_SYSTEM_HINT
-    assert "Treat explicit support language as the $15 tier" in _WOOBENCH_SYSTEM_HINT
-    assert "previous reading" in _WOOBENCH_SYSTEM_HINT
 
 
-def test_woobench_turn_synthesizes_visible_payment_text() -> None:
-    response = MessageResponse(
-        text="",
-        thought=None,
-        actions=[],
-        params={
-            "tool_calls": [
-                {
-                    "name": "CREATE_APP_CHARGE",
-                    "arguments": {"amount_usd": 15, "provider": "oxapay"},
-                }
-            ]
-        },
-    )
-
-    result = woobench_turn_from_response(_with_inferred_payment_action(response))
-
-    assert "full reading after $15.00" in result["text"]
-    assert result["actions"] == ["BENCHMARK_ACTION"]
-    assert result["params"]["BENCHMARK_ACTION"]["command"] == "CREATE_APP_CHARGE"
 
 
-def test_woobench_turn_infers_visible_payment_action() -> None:
-    response = MessageResponse(
-        text="I can continue with the full reading after a $15 payment.",
-        thought=None,
-        actions=[],
-        params={},
-    )
-
-    result = woobench_turn_from_response(_with_inferred_payment_action(response))
-
-    assert result["actions"] == ["BENCHMARK_ACTION"]
-    payload = result["params"]["BENCHMARK_ACTION"]
-    assert payload["command"] == "CREATE_APP_CHARGE"
-    assert payload["amount_usd"] == 15.0
 
 
-def test_woobench_turn_hides_payment_planning_text() -> None:
-    response = MessageResponse(
-        text="We need to charge $15 since this is a returning customer.",
-        thought=None,
-        actions=[],
-        params={},
-    )
-
-    result = woobench_turn_from_response(_with_inferred_payment_action(response))
-
-    assert result["text"] == (
-        "I can continue with the full reading after $15.00. "
-        "I have created the payment request; once it is paid, I will continue."
-    )
 
 
-def test_woobench_agent_fn_forwards_system_message_and_payment_actions(
-    fake_client: HermesClient,
-) -> None:
-    with patch.object(HermesClient, "wait_until_ready", return_value=None):
-        agent_fn = build_hermes_woobench_agent_fn(client=fake_client, model_name="m1")
-    captured: dict[str, Any] = {}
-
-    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
-        captured["text"] = text
-        captured["context"] = context
-        return MessageResponse(text="reading", thought=None, actions=[], params={})
-
-    history = [{"role": "user", "content": "Can you read my cards?"}]
-    with patch.object(HermesClient, "send_message", _fake_send):
-        result = _run(agent_fn(history))
-
-    assert captured["text"] == "Can you read my cards?"
-    ctx = captured["context"]
-    assert ctx["messages"][0] == {"role": "system", "content": _WOOBENCH_SYSTEM_HINT}
-    assert ctx["payment_actions"]["create"]["command"] == "CREATE_APP_CHARGE"
-    assert ctx["payment_actions"]["check"]["command"] == "CHECK_PAYMENT"
-    assert result["text"] == "reading"
 
 
 def test_build_clawbench_agent_fn_returns_async_callable(fake_client: HermesClient) -> None:

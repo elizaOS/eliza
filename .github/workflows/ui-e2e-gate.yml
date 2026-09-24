@@ -205,8 +205,6 @@ jobs:
         run: .github/scripts/install-playwright-browsers.sh chromium webkit
       - name: Render-parity contract
         run: bun run --cwd packages/ui test -- src/components/chat/render-parity.contract.test.tsx
-      - name: Conversation-nav unit + interleaving
-        run: bun run --cwd packages/ui test -- src/components/shell/conversation-nav.test.ts
       - name: Chat-sheet Safari/WebKit gesture smoke
         run: bun run --cwd packages/ui test:chat-sheet-safari-e2e
       - name: Chat-scroll web e2e

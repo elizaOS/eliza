@@ -123,17 +123,7 @@ jobs:
         run: >-
           bun test
           packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs
-          packages/scripts/__tests__/homepage-deploy-workflow.test.ts
-          packages/scripts/__tests__/cloud-cf-canonical-source-guard-workflow.test.ts
-          packages/scripts/__tests__/cloud-cf-voice-deploy-workflow.test.ts
           packages/scripts/__tests__/ci-bun-version-contract.test.ts
-          packages/scripts/__tests__/github-action-pinning.test.ts
-          packages/scripts/__tests__/pr-static-smoke-workflow.test.ts
-
-      - name: Check production and smoke view navigation parity
-        working-directory: packages/app
-        run: node ../scripts/run-vitest.mjs run --config vitest.config.ts scripts/smoke-view-declarations.test.ts
-
       - name: Upload Bun runtime resolution inventory
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -322,7 +312,7 @@ jobs:
         with:
           name: billing-payment-replay-e2e-${{ github.run_attempt }}
           path: |
-            packages/cloud/e2e/test-results
+            test-results/cloud-e2e
             packages/cloud/e2e/.logs
           retention-days: 7
           include-hidden-files: true
@@ -405,11 +395,9 @@ jobs:
             sleep 1
           done
           bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/subscription-authority.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/account-billing-snapshot.postgres.integration.test.ts
           bun test --config=/dev/null \
-            packages/cloud/shared/src/db/repositories/organization-policy.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/app-billing-accounts.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \

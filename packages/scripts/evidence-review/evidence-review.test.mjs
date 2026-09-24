@@ -136,7 +136,7 @@ test("classifies supported evidence artifact types", () => {
 test("infers the standard evidence source directories", () => {
   const root = "/repo";
   assert.equal(
-    inferSource(root, "/repo/packages/app/aesthetic-audit-output/report.json"),
+    inferSource(root, "/repo/test-results/aesthetic-audit/report.json"),
     "app-audit",
   );
   assert.equal(

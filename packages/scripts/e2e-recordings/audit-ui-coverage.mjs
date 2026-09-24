@@ -19,7 +19,6 @@ import {
 const REQUIRED_STANDALONE_UI_DIRS = [
   "packages/app",
   "packages/cloud/e2e",
-  "packages/homepage",
   "packages/ui",
 ];
 

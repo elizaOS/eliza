@@ -455,7 +455,9 @@
       "version": "1.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-openai": "workspace:*",
+        "@elizaos/testing": "workspace:*",
       },
       "devDependencies": {
         "@types/node": "^25.0.0",
@@ -517,9 +519,10 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
+        "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-groq": "beta",
         "@elizaos/plugin-openai": "workspace:*",
-        "@elizaos/plugin-sql": "workspace:*",
+        "@elizaos/testing": "workspace:*",
       },
       "devDependencies": {
         "@types/node": "^25.0.3",
@@ -587,10 +590,13 @@
         "@elizaos/agent": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-agent-orchestrator": "workspace:*",
+        "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-calendar": "workspace:*",
         "@elizaos/plugin-groq": "beta",
         "@elizaos/plugin-local-inference": "workspace:*",
+        "@elizaos/plugin-openai": "workspace:*",
         "@elizaos/plugin-personal-assistant": "workspace:*",
+        "@elizaos/plugin-relationships": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "dotenv": "^17.2.3",
@@ -621,6 +627,7 @@
         "@elizaos/shared": "workspace:*",
         "@types/bun": "^1.2.0",
         "@types/node": "^24.0.0",
+        "@typescript/native": "npm:typescript@^7.0.2",
       },
     },
     "packages/benchmarks/suites/personality-bench": {
@@ -664,7 +671,9 @@
       "version": "0.1.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-groq": "beta",
+        "@elizaos/testing": "workspace:*",
       },
       "devDependencies": {
         "@types/node": "^25.0.3",
@@ -702,9 +711,11 @@
       "version": "0.1.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-elevenlabs": "beta",
         "@elizaos/plugin-groq": "beta",
         "@elizaos/plugin-local-inference": "workspace:*",
+        "@elizaos/testing": "workspace:*",
       },
     },
     "packages/cloud/api": {
@@ -1091,6 +1102,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "^1.3.12",
         "esbuild": "^0.28.0",
+        "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
         "vitest": "^4.1.10",
@@ -1134,6 +1146,7 @@
         "@elizaos/cloud-test-mocks": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-blocker": "workspace:*",
+        "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-coding-tools": "workspace:*",
         "@elizaos/plugin-github": "workspace:*",
         "@elizaos/plugin-health": "workspace:*",
@@ -1157,6 +1170,7 @@
         "@elizaos/cloud-test-mocks",
         "@elizaos/plugin-assistant",
         "@elizaos/plugin-blocker",
+        "@elizaos/plugin-browser",
         "@elizaos/plugin-coding-tools",
         "@elizaos/plugin-github",
         "@elizaos/plugin-health",

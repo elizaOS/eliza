@@ -2716,7 +2716,7 @@ export function runSelfTest() {
 
   {
     const retired = findRetiredRepoEvidenceFiles([
-      "packages/app/test-results/report.json",
+      "test-results/app/report.json",
       `${RETIRED_REPO_EVIDENCE_PATH}/13676-backend.txt`,
     ]);
     if (retired.length !== 1) {

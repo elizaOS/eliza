@@ -13,7 +13,7 @@ Python side calls `fetch_world_state()` to pull the post-scenario
 LifeWorld JSON.
 
 This adapter mirrors the canonical pattern in
-``eliza_adapter.woobench.build_eliza_bridge_agent_fn`` and re-uses
+the other suite bridge factories and re-uses
 ``ElizaClient`` for transport.
 """
 

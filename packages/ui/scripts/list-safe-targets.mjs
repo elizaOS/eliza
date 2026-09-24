@@ -1,14 +1,9 @@
 /**
- * Lists the audit-safe UI targets from the report JSON, for the regression-gate
- * tooling.
+ * Lists component-story candidates from the current source inventory.
  */
-import fs from "node:fs";
-import path from "node:path";
+import { buildStoryCoverage } from "./stories-coverage.mjs";
 
-const here = path.dirname(new URL(import.meta.url).pathname).replace(/^\//, "");
-const report = JSON.parse(
-  fs.readFileSync(path.join(here, "stories-coverage-report.json"), "utf8"),
-);
+const report = buildStoryCoverage();
 
 const safePrefixes = [
   "src/components/composites/",

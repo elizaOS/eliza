@@ -34,9 +34,9 @@ dashboard cannot overwrite the signed manifest or add unlisted files.
 | Producer | Canonical output | Bundle source / lane |
 | --- | --- | --- |
 | Recorded web and native E2E | `e2e-recordings/` | `e2e-recordings` / `e2e` |
-| App visual audit | `packages/app/aesthetic-audit-output/` | `aesthetic-audit` |
-| Device E2E bundles | `packages/app/device-e2e-output/` | `device-e2e` / `native` |
-| App Playwright and native results | `packages/app/test-results/` | `app-test-results` / `e2e` |
+| App visual audit | `test-results/aesthetic-audit/` | `aesthetic-audit` |
+| Device E2E bundles | `test-results/device-e2e/` | `device-e2e` / `native` |
+| App Playwright and native results | `test-results/app/` | `app-test-results` / `e2e` |
 | iOS boot captures and device logs | `packages/app/ios/build/{boot-capture,device-logs}/` | `ios-device-capture` / `native` |
 | Walkthrough capture | `reports/walkthrough/` | `walkthrough` |
 | Live-test artifact wrapper | `reports/live-test-runs/` | `live-test-runs` |

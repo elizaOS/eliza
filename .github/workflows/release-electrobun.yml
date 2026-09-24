@@ -1222,8 +1222,7 @@ jobs:
         with:
           name: electrobun-windows-ui-playwright-diagnostics
           # TODO: confirm packaged-app Playwright result location in eliza
-          # (was apps/app/test-results/** in eliza; might be packages/app/test-results/**).
-          path: packages/app/test-results/**
+          path: test-results/app/**
           if-no-files-found: warn
           retention-days: 14
 

@@ -47,7 +47,7 @@ const LOGO_SVG = path.join(
 );
 const RES_DIR = path.join(
   repoRoot,
-  "packages/app-core/platforms/android/app/src/main/res",
+  "packages/app/platforms/android/app/src/main/res",
 );
 
 // elizaOS blue — identical to the boot animation field and Linux greeter.

@@ -15,8 +15,6 @@
     "start": "bun run src/index.ts",
     "fixtures:derive": "node scripts/derive-fixtures.mjs",
     "fixtures:derive:dry-run": "node scripts/derive-fixtures.mjs --dry-run",
-    "test": "vitest run",
-    "test:watch": "vitest",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",

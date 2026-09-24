@@ -2,9 +2,11 @@
  * Playwright configuration for the Playwright Android app test lane, including
  * browser projects and app-server wiring.
  */
+
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
+import { testOutputPath } from "../scripts/lib/test-output.mjs";
 
 // Playwright config for the REAL on-device Android WebView e2e suite. Unlike
 // playwright.ui-smoke.config.ts (desktop Chromium + mocked /api), this drives
@@ -51,7 +53,7 @@ export default defineConfig({
   reporter: reporters,
   outputDir:
     process.env.ELIZA_ANDROID_PLAYWRIGHT_OUTPUT_DIR ??
-    "./test-results/android-playwright",
+    testOutputPath("app", "android-playwright"),
   globalSetup: path.join(appDir, "test/android/global-setup.ts"),
   use: {
     // Screenshots/trace over the Android CDP socket are slow; capture only on

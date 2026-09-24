@@ -1,7 +1,7 @@
 /** Supports Electrobun packaging and signing workflow for app desktop builds. */
 import fs from "node:fs";
 import path from "node:path";
-import { resolveChromeExtensionIdentity } from "../../../../browser-bridge-extension/scripts/chrome-identity.mjs";
+import { resolveChromeExtensionIdentity } from "../src/native/browser-bridge-extension-identity";
 import {
 	resolveAppleTeamId,
 	validateBrowserBridgeMacProvisioningProfile,
@@ -34,7 +34,7 @@ fs.mkdirSync(path.join("build", `${envName}-${osName}-${archName}`), {
 });
 
 const extensionIdentity = JSON.parse(
-	fs.readFileSync("../../../browser-bridge-extension/identity.json", "utf8"),
+	fs.readFileSync("src/native/browser-bridge-extension-identity.json", "utf8"),
 ) as {
 	chromeDevManifestKey: string;
 	chromeDevExtensionId: string;

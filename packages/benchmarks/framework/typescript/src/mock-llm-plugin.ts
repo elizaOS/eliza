@@ -28,9 +28,16 @@ const SHOULD_RESPOND_JSON = JSON.stringify({
 /** Response for main message handler (TEXT_LARGE / dynamicPromptExec) */
 const MESSAGE_HANDLER_JSON = JSON.stringify({
   thought: "Processing benchmark message. Will reply with a fixed response.",
-  actions: ["REPLY"],
-  providers: [],
-  text: "This is a fixed benchmark response from the mock LLM plugin.",
+  shouldRespond: "RESPOND",
+  contexts: ["simple"],
+  intents: [],
+  candidateActionNames: [],
+  replyText: "This is a fixed benchmark response from the mock LLM plugin.",
+  replyEffectStatus: "none",
+  facts: [],
+  relationships: [],
+  addressedTo: [],
+  topics: [],
 });
 
 /** Response for reply action (TEXT_LARGE direct calls) */
@@ -75,6 +82,9 @@ function detectAndRespondTextLarge(
   _runtime: IAgentRuntime,
   params: GenerateTextParams,
 ): string {
+  if (params.tools?.some((tool) => tool.name === "HANDLE_RESPONSE")) {
+    return MESSAGE_HANDLER_JSON;
+  }
   const prompt = String(params.prompt ?? "");
 
   // Multi-step decision template
@@ -114,6 +124,9 @@ function detectAndRespondTextSmall(
   _runtime: IAgentRuntime,
   params: GenerateTextParams,
 ): string {
+  if (params.tools?.some((tool) => tool.name === "HANDLE_RESPONSE")) {
+    return MESSAGE_HANDLER_JSON;
+  }
   const prompt = String(params.prompt ?? "");
 
   // ShouldRespond template

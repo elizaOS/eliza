@@ -6,7 +6,9 @@
 authorized execution, state composition, model dispatch, database interfaces,
 logging and lifecycle management. Hosts register an assistant, database adapter
 and model provider explicitly. The public package has one barrel and bundled
-declaration; it exports no HTTP routes or browser runtime.
+declaration; it exports no HTTP routes or browser runtime. View declaration
+types remain part of the plugin contract; host visibility and surface-policy
+helpers are exported by `@elizaos/shared/views/*`.
 
 The [flow atlas](../../docs/design/runtime-consolidation/FLOWS.md) maps inputs,
 outputs and current file owners. The [implementation status](../../docs/design/runtime-consolidation/STATUS.md)

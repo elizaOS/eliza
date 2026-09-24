@@ -1,59 +1,29 @@
-"""CI-lane coverage classification for every public benchmark (#9475, #10193).
+"""Classify benchmark execution requirements, independently of hosted coverage.
 
-The de-larp audit found that nearly every registered benchmark had zero
-scheduled real-model runs — the orchestrator was invoked by exactly one
-workflow. To keep the suite honest going forward, every registered benchmark
-and every public orchestrator adapter is explicitly classified into a CI lane
-here, and ``tests/test_ci_coverage.py`` asserts the classification stays
-complete: adding a benchmark to the registry or exposing a new adapter without
-giving it a lane (or an explicit manual-only marker) fails CI.
-
-The registry and adapter counts are derived by ``registry_benchmark_ids`` /
-``public_benchmark_ids`` and every public id carries a lane below. Do not
-hardcode a benchmark count in prose; the test gate owns the live count.
-
-Lanes
------
-``scheduled``
-    Runs on a schedule against a REAL model. Either the core orchestrator subset
-    in ``.github/workflows/benchmark-orchestrator-scheduled.yml`` or a benchmark
-    with its own dedicated scheduled/live lane.
-``smoke``
-    Has a no-key smoke / mock / sample path that can run cheaply in CI without
-    provider credentials (the benchmark's ``AGENTS.md`` documents it). Not a
-    real-model lane on its own, but it is exercisable in CI.
-``manual``
-    Explicit manual-only marker: live-gated, hardware/Docker/sandbox-backed, or
-    otherwise too expensive/credential-bound for an unattended CI lane. These are
-    run on demand (``workflow_dispatch`` / operator runbook), never silently.
+Smoke suites expose a credential-free diagnostic path. Manual suites require
+models, external datasets, hardware, or services. Root benchmarks.yml runs a
+selected offline harness lane and permits an explicit live framework run; no
+scheduled real-model coverage is claimed by this table.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-CI_LANES: tuple[str, ...] = ("scheduled", "smoke", "manual")
-
-# The core real-model subset wired into the scheduled orchestrator workflow.
-SCHEDULED_ORCHESTRATOR_SUBSET: frozenset[str] = frozenset(
-    {"bfcl", "action-calling", "agentbench", "tau_bench", "mint", "context_bench"}
-)
+CI_LANES: tuple[str, ...] = ("smoke", "manual")
 
 # Benchmark id -> CI lane. MUST stay in 1:1 sync with the public benchmark ids
 # (registry ids plus public orchestrator adapter ids; enforced by
 # tests/test_ci_coverage.py).
 CI_LANE_BY_BENCHMARK: dict[str, str] = {
-    # ── scheduled real-model lanes ───────────────────────────────────────────
-    # Core orchestrator subset (benchmark-orchestrator-scheduled.yml).
-    "bfcl": "scheduled",
-    "action-calling": "scheduled",
-    "agentbench": "scheduled",
-    "tau_bench": "scheduled",
-    "mint": "scheduled",
-    "context_bench": "scheduled",
-    # Own dedicated scheduled / live lanes.
-    "hyperliquid_bench": "scheduled",  # hyperliquid-bench-live.yml
-    "lifeops_bench": "scheduled",  # lifeops-bench-python.yml
+    # Live-model suites require explicit operator execution.
+    "bfcl": "manual",
+    "action-calling": "manual",
+    "agentbench": "manual",
+    "tau_bench": "manual",
+    "mint": "manual",
+    "context_bench": "manual",
+    "lifeops_bench": "manual",
     # ── smoke (no-key mock/sample path exercisable in CI) ────────────────────
     "abliteration-robustness": "smoke",
     "clawbench": "smoke",
@@ -67,13 +37,10 @@ CI_LANE_BY_BENCHMARK: dict[str, str] = {
     "multitask_bench": "smoke",  # hermetic perfect/wrong oracle lanes; live eliza/hermes/openclaw are key-gated
     "realm": "smoke",
     "recall_bench": "smoke",
-    "rlm_bench": "smoke",
-    "scambench": "smoke",
     "mind2web": "smoke",
     "visualwebbench": "smoke",
     "vision_language": "smoke",
     "webshop": "smoke",
-    "woobench": "smoke",
     "trajectory_replay": "smoke",
     "trust": "smoke",
     # Public orchestrator adapters that are not registry entries.
@@ -88,7 +55,6 @@ CI_LANE_BY_BENCHMARK: dict[str, str] = {
     "three_agent_dialogue": "smoke",
     # ── manual-only (live-gated / hardware / Docker / sandbox / audio) ────────
     "osworld": "manual",  # Docker desktop backend
-    "solana": "manual",  # surfpool backend
     "gauntlet": "manual",  # surfpool backend
     "terminal_bench": "manual",  # Docker backend
     "swe_bench": "manual",  # Docker backend

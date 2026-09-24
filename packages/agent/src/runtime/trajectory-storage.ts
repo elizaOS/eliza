@@ -1,8 +1,8 @@
 /**
- * Trajectory storage — write operations.
- *
- * Handles saving, updating, deleting trajectories, installing the database
- * logger, and the DatabaseTrajectoryLogger service class.
+ * Persists host trajectory captures and serves agent-scoped reads and archives.
+ * The bridge adapts a registered logger; the standalone service shares its
+ * read queries while retaining its public statistics shape. Recovery
+ * ownership, write settlement and late-capture admission remain host concerns.
  */
 
 import { randomUUID } from "node:crypto";
@@ -95,6 +95,163 @@ export type {
   CompleteStepOptions,
   StartStepOptions,
 } from "./trajectory-internals.ts";
+
+interface DatabaseTrajectoryStatistics {
+  totalTrajectories: number;
+  totalLlmCalls: number;
+  totalProviderAccesses: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  totalCacheReadInputTokens: number;
+  totalCacheCreationInputTokens: number;
+  averageDurationMs: number;
+  bySource: Record<string, number>;
+  byStatus: Record<string, number>;
+  byModel: Record<string, number>;
+}
+
+async function readTrajectoryBreakdown(
+  runtime: IAgentRuntime,
+  query: string,
+  requireStringType = false,
+): Promise<Record<string, number>> {
+  const result = await executeRawSql(runtime, query);
+  const entries = extractRequiredRows(result, {
+    operation: "trajectory breakdown",
+  }).map((value) => {
+    const row = asRecord(value);
+    const count = toOptionalNumber(row?.cnt);
+    if (
+      typeof row?.key !== "string" ||
+      !row.key.trim() ||
+      (requireStringType && row.key_type !== "string") ||
+      count === undefined ||
+      !Number.isSafeInteger(count) ||
+      count < 0
+    ) {
+      throw new ElizaError("Trajectory breakdown row is invalid", {
+        code: "TRAJECTORY_ROW_INVALID",
+        context: { agentId: runtime.agentId },
+      });
+    }
+    return [row.key, count] as const;
+  });
+  return Object.fromEntries(entries);
+}
+
+async function readDatabaseTrajectoryStatistics(
+  runtime: IAgentRuntime,
+): Promise<DatabaseTrajectoryStatistics> {
+  requireTrajectoryDatabase(runtime);
+  if (!(await ensureTrajectoriesTable(runtime))) {
+    throw new ElizaError("Trajectory schema is unavailable", {
+      code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
+    });
+  }
+  try {
+    const aggResult = await executeRawSql(
+      runtime,
+      `SELECT
+          count(*) AS total,
+          COALESCE(sum(llm_call_count), 0) AS total_llm_calls,
+          COALESCE(sum(provider_access_count), 0) AS total_provider_accesses,
+          COALESCE(sum(total_prompt_tokens), 0) AS total_prompt_tokens,
+          COALESCE(sum(total_completion_tokens), 0) AS total_completion_tokens,
+          COALESCE(sum(total_cache_read_input_tokens), 0) AS total_cache_read_input_tokens,
+          COALESCE(sum(total_cache_creation_input_tokens), 0) AS total_cache_creation_input_tokens,
+          COALESCE(avg(duration_ms), 0) AS avg_duration_ms
+        FROM trajectories
+        WHERE agent_id = ${sqlQuote(runtime.agentId)}`,
+    );
+    const row = asRecord(
+      extractRequiredRows(aggResult, {
+        operation: "trajectory statistics",
+        agentId: runtime.agentId,
+      })[0],
+    );
+
+    const bySource = await computeBySource(runtime);
+    const byStatus = await readTrajectoryBreakdown(
+      runtime,
+      `SELECT status AS key, count(*) AS cnt FROM trajectories
+         WHERE agent_id = ${sqlQuote(runtime.agentId)} GROUP BY status`,
+    );
+    // Select dedicated records first. A stale compatibility snapshot must
+    // never hide calls or double-count a promoted trajectory.
+    const byModel = await readTrajectoryBreakdown(
+      runtime,
+      `WITH owned AS (
+          SELECT id, steps_json FROM trajectories
+          WHERE agent_id = ${sqlQuote(runtime.agentId)}
+        ), steps AS (
+          SELECT s.payload::jsonb AS payload FROM trajectory_steps s
+          JOIN owned t ON t.id = s.trajectory_id
+          UNION ALL
+          SELECT legacy.payload FROM owned t
+          CROSS JOIN LATERAL jsonb_array_elements(t.steps_json::jsonb) legacy(payload)
+          WHERE NOT EXISTS (SELECT 1 FROM trajectory_steps s WHERE s.trajectory_id = t.id)
+        )
+        SELECT call->>'model' AS key, jsonb_typeof(call->'model') AS key_type, count(*) AS cnt
+        FROM steps CROSS JOIN LATERAL
+          jsonb_array_elements(COALESCE(payload->'llmCalls', 'null'::jsonb)) calls(call)
+        GROUP BY call->>'model', jsonb_typeof(call->'model')`,
+      true,
+    );
+    const statsContext = {
+      operation: "trajectory statistics",
+      agentId: runtime.agentId,
+    };
+
+    return {
+      totalTrajectories: readRequiredNonNegativeNumber(
+        row,
+        "total",
+        statsContext,
+      ),
+      totalLlmCalls: readRequiredNonNegativeNumber(
+        row,
+        "total_llm_calls",
+        statsContext,
+      ),
+      totalProviderAccesses: readRequiredNonNegativeNumber(
+        row,
+        "total_provider_accesses",
+        statsContext,
+      ),
+      totalPromptTokens: readRequiredNonNegativeNumber(
+        row,
+        "total_prompt_tokens",
+        statsContext,
+      ),
+      totalCompletionTokens: readRequiredNonNegativeNumber(
+        row,
+        "total_completion_tokens",
+        statsContext,
+      ),
+      totalCacheReadInputTokens: readRequiredNonNegativeNumber(
+        row,
+        "total_cache_read_input_tokens",
+        statsContext,
+      ),
+      totalCacheCreationInputTokens: readRequiredNonNegativeNumber(
+        row,
+        "total_cache_creation_input_tokens",
+        statsContext,
+      ),
+      averageDurationMs: readRequiredNonNegativeNumber(
+        row,
+        "avg_duration_ms",
+        statsContext,
+      ),
+      bySource,
+      byModel,
+      byStatus,
+    };
+  } catch (error) {
+    // error-policy:J2 failed aggregation is not a legitimate all-zero run.
+    throw trajectoryOperationError("statistics query", error);
+  }
+}
 
 function requireTrajectoryDatabase(runtime: IAgentRuntime): void {
   if (hasRuntimeDb(runtime)) return;
@@ -2007,6 +2164,71 @@ async function loadPersistedTrajectoriesForExport(
   }
 }
 
+/** Read contracts shared by the registered bridge and standalone host logger. */
+async function listDatabaseTrajectories(
+  runtime: IAgentRuntime,
+  options: TrajectoryListOptions,
+): Promise<TrajectoryListResult> {
+  requireTrajectoryDatabase(runtime);
+
+  const tableReady = await ensureTrajectoriesTable(runtime);
+  if (!tableReady) {
+    throw new ElizaError("Trajectory schema is unavailable", {
+      code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
+    });
+  }
+
+  const limit = Math.min(500, Math.max(1, options.limit ?? 50));
+  const offset = Math.max(0, options.offset ?? 0);
+
+  const whereClause = buildTrajectoryWhereClause(options, runtime.agentId);
+
+  try {
+    const countResult = await executeRawSql(
+      runtime,
+      `SELECT count(*) AS total FROM trajectories ${whereClause}`,
+    );
+    const total = readRequiredCount(countResult, "total");
+
+    const result = await executeRawSql(
+      runtime,
+      `SELECT * FROM trajectories ${whereClause} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`,
+    );
+
+    const rows = extractRequiredRows(result, {
+      operation: "list trajectories",
+      agentId: runtime.agentId,
+    });
+    const trajectories = rows.map((row) =>
+      trajectoryRowToListItem(row, runtime.agentId),
+    );
+
+    return { trajectories, total, offset, limit };
+  } catch (error) {
+    // error-policy:J2 an unavailable query is not an empty trajectory list.
+    throw trajectoryOperationError("list", error);
+  }
+}
+
+async function getDatabaseTrajectoryDetail(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+): Promise<Trajectory | null> {
+  requireTrajectoryDatabase(runtime);
+
+  const tableReady = await ensureTrajectoriesTable(runtime);
+  if (!tableReady) {
+    throw new ElizaError("Trajectory schema is unavailable", {
+      code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
+    });
+  }
+
+  const persisted = await loadTrajectoryById(runtime, trajectoryId);
+  if (!persisted) return null;
+
+  return persistedTrajectoryToDetailRecord(persisted, runtime.agentId);
+}
+
 // ---------------------------------------------------------------------------
 // Public write API
 // ---------------------------------------------------------------------------
@@ -2439,149 +2661,15 @@ export async function installDatabaseTrajectoryLogger(
   };
 
   // Add query methods for API endpoints
-  loggerAny.listTrajectories = async (
-    options: TrajectoryListOptions = {},
-  ): Promise<TrajectoryListResult> => {
-    requireTrajectoryDatabase(runtime);
-
-    const tableReady = await ensureTrajectoriesTable(runtime);
-    if (!tableReady) {
-      throw new ElizaError("Trajectory schema is unavailable", {
-        code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
-      });
-    }
-
-    const limit = Math.min(500, Math.max(1, options.limit ?? 50));
-    const offset = Math.max(0, options.offset ?? 0);
-
-    const whereClause = buildTrajectoryWhereClause(options, runtime.agentId);
-
-    try {
-      const countResult = await executeRawSql(
-        runtime,
-        `SELECT count(*) AS total FROM trajectories ${whereClause}`,
-      );
-      const total = readRequiredCount(countResult, "total");
-
-      const result = await executeRawSql(
-        runtime,
-        `SELECT * FROM trajectories ${whereClause} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`,
-      );
-
-      const rows = extractRequiredRows(result, {
-        operation: "list trajectories",
-        agentId: runtime.agentId,
-      });
-      const trajectories = rows.map((row) =>
-        trajectoryRowToListItem(row, runtime.agentId),
-      );
-
-      return { trajectories, total, offset, limit };
-    } catch (error) {
-      // error-policy:J2 an unavailable query is not an empty trajectory list.
-      throw trajectoryOperationError("list", error);
-    }
-  };
-
-  loggerAny.getTrajectoryDetail = async (
-    trajectoryId: string,
-  ): Promise<Trajectory | null> => {
-    requireTrajectoryDatabase(runtime);
-
-    const tableReady = await ensureTrajectoriesTable(runtime);
-    if (!tableReady) {
-      throw new ElizaError("Trajectory schema is unavailable", {
-        code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
-      });
-    }
-
-    const persisted = await loadTrajectoryById(runtime, trajectoryId);
-    if (!persisted) return null;
-
-    return persistedTrajectoryToDetailRecord(persisted, runtime.agentId);
-  };
+  loggerAny.listTrajectories = (options: TrajectoryListOptions = {}) =>
+    listDatabaseTrajectories(runtime, options);
+  loggerAny.getTrajectoryDetail = (trajectoryId: string) =>
+    getDatabaseTrajectoryDetail(runtime, trajectoryId);
 
   loggerAny.getStats = async (): Promise<unknown> => {
-    requireTrajectoryDatabase(runtime);
-
-    await ensureTrajectoriesTable(runtime);
-
-    try {
-      const aggResult = await executeRawSql(
-        runtime,
-        `SELECT
-          count(*) AS total,
-          COALESCE(sum(llm_call_count), 0) AS total_llm_calls,
-          COALESCE(sum(provider_access_count), 0) AS total_provider_accesses,
-          COALESCE(sum(total_prompt_tokens), 0) AS total_prompt_tokens,
-          COALESCE(sum(total_completion_tokens), 0) AS total_completion_tokens,
-          COALESCE(sum(total_cache_read_input_tokens), 0) AS total_cache_read_input_tokens,
-          COALESCE(sum(total_cache_creation_input_tokens), 0) AS total_cache_creation_input_tokens,
-          COALESCE(avg(duration_ms), 0) AS avg_duration_ms
-        FROM trajectories
-        WHERE agent_id = ${sqlQuote(runtime.agentId)}`,
-      );
-      const row = asRecord(
-        extractRequiredRows(aggResult, {
-          operation: "trajectory statistics",
-          agentId: runtime.agentId,
-        })[0],
-      );
-
-      const bySource = await computeBySource(runtime);
-      const statsContext = {
-        operation: "trajectory statistics",
-        agentId: runtime.agentId,
-      };
-
-      return {
-        totalTrajectories: readRequiredNonNegativeNumber(
-          row,
-          "total",
-          statsContext,
-        ),
-        totalLlmCalls: readRequiredNonNegativeNumber(
-          row,
-          "total_llm_calls",
-          statsContext,
-        ),
-        totalProviderAccesses: readRequiredNonNegativeNumber(
-          row,
-          "total_provider_accesses",
-          statsContext,
-        ),
-        totalPromptTokens: readRequiredNonNegativeNumber(
-          row,
-          "total_prompt_tokens",
-          statsContext,
-        ),
-        totalCompletionTokens: readRequiredNonNegativeNumber(
-          row,
-          "total_completion_tokens",
-          statsContext,
-        ),
-        totalCacheReadInputTokens: readRequiredNonNegativeNumber(
-          row,
-          "total_cache_read_input_tokens",
-          statsContext,
-        ),
-        totalCacheCreationInputTokens: readRequiredNonNegativeNumber(
-          row,
-          "total_cache_creation_input_tokens",
-          statsContext,
-        ),
-        averageDurationMs: readRequiredNonNegativeNumber(
-          row,
-          "avg_duration_ms",
-          statsContext,
-        ),
-        bySource,
-        byModel: {},
-      };
-    } catch (error) {
-      // error-policy:J2 failed aggregation is not a legitimate all-zero run.
-      throw trajectoryOperationError("statistics query", error);
-    }
+    const { byStatus: _byStatus, ...stats } =
+      await readDatabaseTrajectoryStatistics(runtime);
+    return stats;
   };
 
   // Add methods required by the trajectory-routes duck-type check
@@ -3010,12 +3098,12 @@ export async function flushTrajectoryWrites(
 }
 
 // ============================================================================
-// DatabaseTrajectoryLogger - Full implementation for trajectory-routes.ts
+// Standalone host trajectory service
 // ============================================================================
 
 /**
- * Database-backed trajectory logger service that implements the full API
- * expected by trajectory-routes.ts.
+ * Provides host-backed capture and queries to explicitly composed trajectory
+ * consumers.
  */
 export class DatabaseTrajectoryLogger extends Service {
   static serviceType = "trajectories";
@@ -3489,96 +3577,21 @@ export class DatabaseTrajectoryLogger extends Service {
   async listTrajectories(
     options: TrajectoryListOptions,
   ): Promise<TrajectoryListResult> {
-    requireTrajectoryDatabase(this.runtime);
-
-    const tableReady = await ensureTrajectoriesTable(this.runtime);
-    if (!tableReady) {
-      throw new ElizaError("Trajectory schema is unavailable", {
-        code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
-      });
-    }
-
-    const limit = Math.min(500, Math.max(1, options.limit ?? 50));
-    const offset = Math.max(0, options.offset ?? 0);
-
-    const whereClause = buildTrajectoryWhereClause(
-      options,
-      this.runtime.agentId,
-    );
-
-    try {
-      const countResult = await executeRawSql(
-        this.runtime,
-        `SELECT count(*) AS total FROM trajectories ${whereClause}`,
-      );
-      const total = readRequiredCount(countResult, "total");
-
-      const result = await executeRawSql(
-        this.runtime,
-        `SELECT * FROM trajectories ${whereClause} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`,
-      );
-
-      const rows = extractRequiredRows(result, {
-        operation: "list trajectories",
-        agentId: this.runtime.agentId,
-      });
-      const trajectories = rows.map((row) =>
-        trajectoryRowToListItem(row, this.runtime.agentId),
-      );
-
-      return { trajectories, total, offset, limit };
-    } catch (error) {
-      // error-policy:J2 transport consumers must receive a failed query rather
-      // than a healthy empty list.
-      throw trajectoryOperationError("list", error);
-    }
+    return listDatabaseTrajectories(this.runtime, options);
   }
 
   async getTrajectoryDetail(trajectoryId: string): Promise<Trajectory | null> {
-    requireTrajectoryDatabase(this.runtime);
-
-    const tableReady = await ensureTrajectoriesTable(this.runtime);
-    if (!tableReady) {
-      throw new ElizaError("Trajectory schema is unavailable", {
-        code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
-      });
-    }
-
-    const persisted = await loadTrajectoryById(this.runtime, trajectoryId);
-    if (!persisted) return null;
-
-    return persistedTrajectoryToDetailRecord(persisted, this.runtime.agentId);
+    return getDatabaseTrajectoryDetail(this.runtime, trajectoryId);
   }
 
   async getStats(): Promise<unknown> {
-    requireTrajectoryDatabase(this.runtime);
-
-    const tableReady = await ensureTrajectoriesTable(this.runtime);
-    if (!tableReady) {
-      throw new ElizaError("Trajectory schema is unavailable", {
-        code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
-      });
-    }
-
-    try {
-      const countResult = await executeRawSql(
-        this.runtime,
-        `SELECT count(*) AS total FROM trajectories WHERE agent_id = ${sqlQuote(this.runtime.agentId)}`,
-      );
-      const total = readRequiredCount(countResult, "total");
-
-      const bySource = await computeBySource(this.runtime);
-
-      return {
-        total,
-        enabled: this.enabled,
-        byStatus: {},
-        bySource,
-      };
-    } catch (error) {
-      // error-policy:J2 a failed statistics query is not an all-zero dataset.
-      throw trajectoryOperationError("statistics query", error);
-    }
+    const stats = await readDatabaseTrajectoryStatistics(this.runtime);
+    return {
+      total: stats.totalTrajectories,
+      enabled: this.enabled,
+      byStatus: stats.byStatus,
+      bySource: stats.bySource,
+    };
   }
 
   async deleteTrajectories(trajectoryIds: string[]): Promise<number> {

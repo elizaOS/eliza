@@ -107,8 +107,8 @@ bun run dev:rebuild  # request a full Vite reload for this worktree
 ```
 
 Reservations live in `~/.eliza/dev-server-registry.json` and may be redirected
-with `ELIZA_DEV_SERVER_REGISTRY`. See
-[`packages/docs/development/shared-dev-server.md`](packages/docs/development/shared-dev-server.md).
+with `ELIZA_DEV_SERVER_REGISTRY`. See the
+[app guide](packages/app/AGENTS.md) for platform tooling.
 
 ### Removed root command migrations
 
@@ -413,6 +413,13 @@ higher-level coverage does not own it.
 
 ### Evidence bundles and review
 
+Generated audit and test artifacts belong in the ignored repository-root
+`test-results/`, not under packages. Repository tooling uses
+`packages/scripts/lib/test-output.mjs` for paths independent of the working
+directory. Give each runner its own leaf so cleanup cannot erase another
+producer's evidence. Unit tests use temporary directories with teardown;
+durable evidence capture stays explicit.
+
 The normal evidence path is bundle-first. `bun run test:matrix:review` executes
 the named producers after hashing their pre-run inventory, creates one
 `evidence/runs/<run-id>/` bundle from only new or written/replaced artifacts, runs the
@@ -429,18 +436,26 @@ a coordinated command discover its run by recency.
 
 ### App visual review
 
-Any change in `packages/app`, or a shared UI change that reaches it, must run:
+Changes that affect rendered UI or interaction behavior need browser review of
+the affected desktop and mobile surfaces. Use the app audit when it helps:
 
 ```bash
 bun run --cwd packages/app audit:app
 ```
 
-Review every affected desktop and mobile capture, including rest and hover
-states. No touched view may retain a computed `needs-work` or `broken` verdict.
-Run at least five audit/inspection/iteration cycles for a meaningful redesign.
-Orange is the accent; do not introduce blue, and use darker orange—not black—
-for an orange resting control's hover state. The full visual contract lives in
-`packages/app/AGENTS.md`.
+Inspect relevant rest, hover, loading, empty, and error states. Fix observable
+layout, accessibility, interaction, and console errors, then repeat only the
+checks affected by the fix. There is no minimum number of audit cycles.
+Tooling, documentation, and package-wiring changes without rendered effects do
+not require screenshots. Use orange for app accents and darker orange for an
+orange control's hover state. See `packages/app/AGENTS.md` for platform details.
+
+Design inventories are advisory. Do not block lint or builds on component
+counts, minimum caller counts, exact inventory snapshots, story percentages,
+or expired design-review metadata. Reuse shared controls where they fit;
+independent applications and platform-specific controls may have their own
+presentation. Type safety, accessibility, functional tests, and real browser
+errors remain enforceable checks.
 
 ## GitHub workflow and definition of done
 
@@ -469,8 +484,7 @@ prove the observed behavior.
 Report suspected vulnerabilities privately through
 [GitHub Security Advisories](https://github.com/elizaOS/eliza/security/advisories/new).
 Do not place exploit details, secrets, or embargoed dependency information in a
-public issue, PR, log, or agent transcript. Product security documentation is
-in [`packages/docs/security.md`](packages/docs/security.md).
+public issue, PR, log, or agent transcript.
 
 The repository is MIT licensed. Contribution workflow and evidence policy live
 in [`CONTRIBUTING.md`](CONTRIBUTING.md).

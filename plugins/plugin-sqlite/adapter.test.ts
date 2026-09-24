@@ -293,6 +293,104 @@ describe("durable SQLite agent adapter", () => {
     ).toBe(20);
   });
 
+  it("settles hidden ingestion records with mutation authority across restart", async () => {
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const pending = memory("complete pending document");
+    const pendingMetadata = {
+      type: MemoryType.DOCUMENT,
+      scope: "owner-private" as const,
+      ingestionState: "pending",
+      ingestionAttemptId: id(),
+      documentRevision: 0,
+    };
+    pending.metadata = pendingMetadata;
+    await adapter.createMemories([{ memory: pending, tableName: "documents" }]);
+    const expected = readDocumentMutationSnapshot(pending);
+    if (!expected) throw new Error("Missing pending document snapshot");
+    const context = {
+      agentId,
+      requesterEntityId: agentId,
+      requesterRole: "OWNER" as const,
+      requesterRoomIds: [],
+      documentId: pending.id,
+    };
+    expect(await adapter.getDocument(context)).toBeNull();
+    const ready = {
+      ...pending,
+      metadata: { ...pendingMetadata, ingestionState: "ready" },
+    };
+    expect(
+      (
+        await adapter.compareAndSwapDocument({
+          ...context,
+          requesterEntityId: entityId,
+          requesterRole: "USER",
+          expected,
+          replacement: ready,
+        })
+      ).status,
+    ).not.toBe("updated");
+    expect(
+      (
+        await adapter.compareAndSwapDocument({
+          ...context,
+          expected,
+          replacement: ready,
+        })
+      ).status,
+    ).toBe("updated");
+    expect(
+      (
+        await adapter.compareAndSwapDocument({
+          ...context,
+          expected,
+          replacement: ready,
+        })
+      ).status,
+    ).toBe("conflict");
+    await adapter.close();
+    const reopened = await open();
+    expect((await reopened.getDocument(context))?.content.text).toBe(
+      pending.content.text,
+    );
+    const readySnapshot = readDocumentMutationSnapshot(ready);
+    if (!readySnapshot) throw new Error("Missing ready document snapshot");
+    const failed = {
+      ...ready,
+      metadata: { ...ready.metadata, ingestionState: "failed" },
+    };
+    expect(
+      (
+        await reopened.compareAndSwapDocument({
+          ...context,
+          expected: readySnapshot,
+          replacement: failed,
+        })
+      ).status,
+    ).toBe("updated");
+    expect(await reopened.getDocument(context)).toBeNull();
+    const failedSnapshot = readDocumentMutationSnapshot(failed);
+    if (!failedSnapshot) throw new Error("Missing failed document snapshot");
+    expect(
+      (
+        await reopened.deleteDocumentWithSnapshot({
+          ...context,
+          expected: readySnapshot,
+        })
+      ).status,
+    ).toBe("conflict");
+    expect(
+      (
+        await reopened.deleteDocumentWithSnapshot({
+          ...context,
+          expected: failedSnapshot,
+        })
+      ).status,
+    ).toBe("deleted");
+    expect(await reopened.getMemoriesByIds([pending.id])).toEqual([]);
+  });
+
   it("restores document permissions and commits only one concurrent revision", async () => {
     const adapter = await open();
     const document = memory("private original");

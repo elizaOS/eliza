@@ -1,9 +1,11 @@
 // Browser-level evidence for #10712: the shipped chat overlay consumes a
 // deterministic token stream, paints partial text before completion, and keeps
 // terminal-frame model reasoning out of the ambient overlay.
+
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -18,9 +20,8 @@ const TOKENS = ["Streaming ", "tokens ", "arrived."];
 const FINAL_TEXT = TOKENS.join("");
 const THOUGHT =
   "The mock provider emitted tokens first, then sent this compact reasoning on done.";
-const OUT_DIR = path.join(
-  process.cwd(),
-  "test-results",
+const OUT_DIR = testOutputPath(
+  "app",
   "ui-smoke-artifacts",
   "10712-chat-thinking-streaming",
 );

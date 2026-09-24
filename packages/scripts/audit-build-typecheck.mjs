@@ -33,10 +33,6 @@ const workspaceGlobs = rootPackage.workspaces;
 // resolve through the @typescript/native package alias.
 const CUSTOM_PLUGIN_BUILD_ALLOW = new Map([
   [
-    "plugins/plugin-app-manager/build.ts",
-    "custom declaration emit flags for allowImportingTsExtensions/rootDir",
-  ],
-  [
     "plugins/plugin-computeruse/build.ts",
     "multiple published entrypoints plus parallel declaration emit",
   ],

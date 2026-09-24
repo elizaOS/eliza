@@ -76,7 +76,7 @@ else
   echo "app-debug.apk not found at $APP_APK — build:android should have produced it"
   exit 1
 fi
-ASSISTANT_ARTIFACT_DIR="$GITHUB_WORKSPACE/packages/app/test-results/android-assistant-verify"
+ASSISTANT_ARTIFACT_DIR="$GITHUB_WORKSPACE/test-results/app/android-assistant-verify"
 mkdir -p "$ASSISTANT_ARTIFACT_DIR"
 VERIFY_STATUS=0
 node "$GITHUB_WORKSPACE/packages/app/scripts/android-assistant-verify.mjs" \

@@ -89,20 +89,14 @@ const BASE_URL = (
 ).replace(/\/$/, "");
 const BOOT_TIMEOUT_MS = Number(process.env.LOADPERF_BOOT_TIMEOUT_MS ?? 120_000);
 
-const DEV_SERVER = join(
-  "packages",
-  "app-core",
-  "src",
-  "runtime",
-  "dev-server.ts",
-);
+const DEV_SERVER = join("packages", "app", "src", "runtime", "dev-server.ts");
 // By DEFAULT measure the SHIPPED binary. The desktop/mobile app spawns the
 // pre-built `dist/entry.js start` via Bun (native/agent.ts), NOT the
 // tsx-transpiled dev-server — so the old default counted a ~2s on-the-fly tsx
 // transpile + dev-only orchestration that production never pays, and never the
 // real `start` blocking work (vault/keychain bootstrap, embedding warmup,
 // provider load). Pass --dev to measure the old tsx dev-server path instead.
-const PROD_ENTRY = join("packages", "app-core", "dist", "entry.js");
+const PROD_ENTRY = join("packages", "app", "dist", "entry.js");
 const USE_DEV = process.argv.includes("--dev");
 const BUN_BIN = process.env.BUN_PATH || "bun";
 
@@ -234,7 +228,7 @@ async function measureSpawned() {
   const REPO_ROOT = repoRoot();
   if (!USE_DEV && !existsSync(join(REPO_ROOT, PROD_ENTRY))) {
     throw new Error(
-      `built agent entry not found at ${PROD_ENTRY} — run \`bun run --cwd packages/app-core build\` first, or pass --dev to measure the tsx dev-server path`,
+      `built agent entry not found at ${PROD_ENTRY} — run \`bun run --cwd packages/app build\` first, or pass --dev to measure the tsx dev-server path`,
     );
   }
   const startMs = Date.now();

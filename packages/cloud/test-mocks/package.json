@@ -20,7 +20,6 @@
   "scripts": {
     "start:hetzner": "bun run ./bin/hetzner-mock.ts",
     "start:control-plane": "bun run ./bin/control-plane-mock.ts",
-    "test": "bun --conditions=eliza-source test",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint:check": "bunx @biomejs/biome check package.json src test bin",
     "format": "bunx @biomejs/biome format --write package.json src test bin",
@@ -39,10 +38,6 @@
     "bun-types": "*"
   },
   "elizaos": {
-    "scripts": {
-      "testLanes": [
-        "server"
-      ]
-    }
+    "scripts": {}
   }
 }

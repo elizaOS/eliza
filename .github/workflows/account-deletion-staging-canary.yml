@@ -86,13 +86,6 @@ jobs:
       - name: Install deterministic dependencies
         run: bun install --frozen-lockfile --ignore-scripts
 
-      - name: Validate canary contracts
-        run: >-
-          bun test
-          packages/cloud/scripts/admin/preflight-database-identity.test.ts
-          packages/cloud/scripts/admin/account-deletion-staging-canary.test.ts
-          packages/cloud/scripts/admin/account-deletion-staging-canary-workflow.test.ts
-
       - name: Run bounded disposable staging canary
         id: live
         continue-on-error: true

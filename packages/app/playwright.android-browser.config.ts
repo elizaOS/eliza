@@ -2,10 +2,12 @@
  * Playwright configuration for the Playwright Android Browser app test lane,
  * including browser projects and app-server wiring.
  */
+
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
+import { testOutputPath } from "../scripts/lib/test-output.mjs";
 import { KNOWN_PHRASE_WAV_DATA_URL } from "../ui/src/voice/voice-selftest/fixtures/known-phrase";
 import { resolvePlaywrightNodeRuntime } from "./scripts/lib/playwright-node-runtime.mjs";
 import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.mjs";
@@ -35,12 +37,7 @@ const uiSmokePort = resolvePlaywrightPortEnv(
 // invalid or no real Node.js 24+ executable can be found.
 const nodeExecutable = resolvePlaywrightNodeRuntime();
 
-const fakeAudioWav = path.join(
-  appDir,
-  "test-results",
-  ".voice",
-  "known-phrase.wav",
-);
+const fakeAudioWav = testOutputPath("app", ".voice", "known-phrase.wav");
 mkdirSync(path.dirname(fakeAudioWav), { recursive: true });
 writeFileSync(
   fakeAudioWav,
@@ -60,7 +57,7 @@ export default defineConfig({
   timeout: 180_000,
   expect: { timeout: 20_000 },
   reporter: "list",
-  outputDir: "./test-results/android-browser",
+  outputDir: testOutputPath("app", "android-browser"),
   use: {
     trace: "retain-on-failure",
     screenshot: "only-on-failure",

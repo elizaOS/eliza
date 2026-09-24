@@ -1,13 +1,5 @@
-// Video CLI argv contract and failure-path integrity. Drives runVideoCli with a
-// captured IO instead of spawning a process: asserts usage on no command,
-// unknown-arg / missing-required / bad-enum rejections surface as a structured
-// error line + non-zero exit, and the ingest command rejects a bad granularity
-// (all tool-free). Failure-path tests then prove a failed run cannot poison a
-// --bundle dir (removed when unfinalized; never created for a bad --def) and —
-// gated on real chromium — that a failed walkthrough preserves its scratch
-// recording as failure evidence while a retry into the same --bundle succeeds.
-// The happy paths' analysis details are covered by the driver and walkthroughs
-// suites, not here.
+/** Exercises video CLI validation and failure-artifact retention through its function boundary; browser cases use real Chromium. */
+
 import {
   existsSync,
   mkdtempSync,
@@ -20,27 +12,10 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { type CliIo, runVideoCli } from "./cli.ts";
 import { serveFixture } from "./fixture-server.ts";
+import { hasChromium } from "./test-browser.ts";
 
 const dir = mkdtempSync(join(os.tmpdir(), "evidence-video-cli-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
-
-/** Can we launch a real headless chromium? Gate the browser lane honestly. */
-async function chromiumLaunchable(): Promise<boolean> {
-  try {
-    const { chromium } = (await import("@playwright/test")) as {
-      chromium: { launch(o?: unknown): Promise<{ close(): Promise<void> }> };
-    };
-    const browser = await chromium.launch({ headless: true });
-    await browser.close();
-    return true;
-  } catch {
-    // error-policy:J4 test-capability gate — an absent browser download is a
-    // skipped lane with a reason, not a failed test.
-    return false;
-  }
-}
-
-const hasChromium = await chromiumLaunchable();
 
 function capture(): { io: CliIo; out: string[]; err: string[] } {
   const out: string[] = [];
