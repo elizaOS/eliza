@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, expect, setDefaultTimeout, test } from
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import type Stripe from "stripe";
+import Stripe from "stripe";
 import { installCancellationTestSchema } from "../subscription-cancellation-test-fixture";
 import { seedRenewalTestAccount } from "../subscription-renewal-test-fixture";
 
@@ -338,22 +338,29 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
                 "../../../lib/services/stripe-paid-renewal"
               );
               const eventId = `evt_${suffix}`;
+              // Keep the legacy invoice wire shape; the real SDK constructs the
+              // typed event from signed JSON without inventing newer API fields.
+              const webhooks = new Stripe("sk_test_renewal_signature_fixture").webhooks;
+              const secret = "whsec_renewal_signature_fixture";
+              const payload = JSON.stringify({
+                id: eventId,
+                object: "event",
+                api_version: "2025-08-27.basil",
+                created: boundary,
+                livemode: false,
+                pending_webhooks: 0,
+                request: null,
+                type: "invoice.paid",
+                data: { object: f.invoice },
+              });
+              const signature = await webhooks.generateTestHeaderStringAsync({ payload, secret });
+              const event = await webhooks.constructEventAsync(payload, signature, secret);
               await reconcileStripePaidRenewal({
                 kind: "stripe.event",
                 eventId,
                 eventType: "invoice.paid",
                 receivedAt: Date.now(),
-                event: {
-                  id: eventId,
-                  object: "event",
-                  api_version: "2025-08-27.basil",
-                  created: boundary,
-                  livemode: false,
-                  pending_webhooks: 0,
-                  request: null,
-                  type: "invoice.paid",
-                  data: { object: f.invoice },
-                } as Stripe.Event,
+                event,
               });
             }
           };
