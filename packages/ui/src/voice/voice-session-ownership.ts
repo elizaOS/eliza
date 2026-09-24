@@ -1,4 +1,18 @@
 /** Holds one realtime microphone session per origin, with synchronous same-realm exclusion when Web Locks are unavailable. */
+import { ElizaError } from "@elizaos/shared/browser-contracts";
+
+/** Admission failure that callers can distinguish from microphone or transport errors. */
+export class VoiceSessionOwnershipError extends ElizaError {
+  constructor(
+    message: string,
+    code: "VOICE_SESSION_BUSY" | "VOICE_SESSION_OWNERSHIP_UNAVAILABLE",
+    cause?: unknown,
+  ) {
+    super(message, { code, cause, severity: "ephemeral" });
+    this.name = "VoiceSessionOwnershipError";
+  }
+}
+
 export interface VoiceSessionLease {
   ready: Promise<void>;
   release(): Promise<void>;
@@ -14,8 +28,9 @@ export function claimVoiceSession(
     : window.navigator.locks,
 ): VoiceSessionLease {
   if (realmOwner)
-    throw new Error(
+    throw new VoiceSessionOwnershipError(
       "Voice is already active in another session or tab. Stop it there first.",
+      "VOICE_SESSION_BUSY",
     );
   signal.throwIfAborted();
   const owner = Symbol();
@@ -61,8 +76,9 @@ export function claimVoiceSession(
                 if (!lock) {
                   release();
                   reject(
-                    new Error(
+                    new VoiceSessionOwnershipError(
                       "Voice is already active in another tab. Stop it there first.",
+                      "VOICE_SESSION_BUSY",
                     ),
                   );
                   return;
@@ -76,7 +92,13 @@ export function claimVoiceSession(
           .catch((error) => {
             // error-policy:J1 Surface lock-manager failure to the voice start boundary.
             release();
-            reject(error);
+            reject(
+              new VoiceSessionOwnershipError(
+                "Voice ownership could not be checked. Try again after closing other voice sessions.",
+                "VOICE_SESSION_OWNERSHIP_UNAVAILABLE",
+                error,
+              ),
+            );
           });
       })
     : Promise.resolve();

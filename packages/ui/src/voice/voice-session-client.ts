@@ -1097,10 +1097,9 @@ export function createVoiceSessionClient(
         });
         const [createdPlayback] = await Promise.all([
           playbackPromise,
-          lease.ready.catch(async (error) => {
-            // error-policy:J6 Release the gesture-created sink when ownership is denied.
-            const sink = await playbackPromise;
-            await sink.stop();
+          lease.ready.catch((error) => {
+            // error-policy:J1 Surface admission denial without waiting for browser audio setup or close.
+            lifecycleController.abort();
             throw error;
           }),
         ]);

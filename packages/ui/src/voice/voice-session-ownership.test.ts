@@ -1,13 +1,18 @@
 /** Exercises real voice ownership and client lifecycle with browser lock/audio boundaries controlled deterministically. */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   FakeMicAudioContext,
   FakePlaybackAudioContext,
+  FakePlaybackWorkletAudioContext,
+  FakeVoiceAudioWorkletNode,
   fakeGetUserMedia,
   makeWsFactory,
 } from "./__tests__/voice-session-fakes";
 import { createVoiceSessionClient } from "./voice-session-client";
-import { claimVoiceSession } from "./voice-session-ownership";
+import {
+  claimVoiceSession,
+  VoiceSessionOwnershipError,
+} from "./voice-session-ownership";
 
 function locks(
   granted: boolean,
@@ -34,6 +39,76 @@ function locks(
 }
 
 describe("voice session ownership", () => {
+  it("surfaces native lock failures and releases admission for a later attempt", async () => {
+    const cause = new Error("lock service unavailable");
+    const manager = locks(true);
+    manager.request = () => {
+      throw cause;
+    };
+    const lease = claimVoiceSession(new AbortController().signal, manager);
+    await expect(lease.ready).rejects.toMatchObject({
+      code: "VOICE_SESSION_OWNERSHIP_UNAVAILABLE",
+      cause,
+    });
+    const next = claimVoiceSession(new AbortController().signal);
+    await next.ready;
+    await next.release();
+  });
+  it("reports cross-tab denial without waiting for worklet setup or audio close", async () => {
+    let finishModule!: () => void, finishClose!: () => void;
+    const moduleGate = new Promise<void>((resolve) => {
+      finishModule = resolve;
+    });
+    const closeGate = new Promise<void>((resolve) => {
+      finishClose = resolve;
+    });
+    let moduleStarted = false,
+      closeStarted = false,
+      minted = 0,
+      captured = 0;
+    const audio = new FakePlaybackWorkletAudioContext();
+    audio.audioWorklet.addModule = async () => {
+      moduleStarted = true;
+      await moduleGate;
+    };
+    audio.close = async () => {
+      closeStarted = true;
+      await closeGate;
+    };
+    const errors: Error[] = [];
+    vi.stubGlobal("window", { navigator: { locks: locks(false) } });
+    vi.stubGlobal("AudioWorkletNode", FakeVoiceAudioWorkletNode);
+    const client = createVoiceSessionClient({
+      agentId: "agent",
+      conversationId: "room",
+      getConsentNonce: async () => "nonce",
+      fetch: async () => {
+        minted++;
+        throw new Error("unexpected mint");
+      },
+      getUserMedia: async () => {
+        captured++;
+        return fakeGetUserMedia()({ audio: true });
+      },
+      createPlaybackAudioContext: () => audio,
+      onError: (error) => errors.push(error),
+    });
+    try {
+      await client.start();
+      expect(moduleStarted).toBe(true);
+      expect(closeStarted).toBe(true);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toBeInstanceOf(VoiceSessionOwnershipError);
+      expect(errors[0]).toMatchObject({ code: "VOICE_SESSION_BUSY" });
+      expect(minted).toBe(0);
+      expect(captured).toBe(0);
+    } finally {
+      finishModule();
+      finishClose();
+      await client.stop();
+      vi.unstubAllGlobals();
+    }
+  });
   it("excludes same-realm contenders without releasing the owner's lease", async () => {
     const owner = claimVoiceSession(new AbortController().signal, undefined);
     await owner.ready;
