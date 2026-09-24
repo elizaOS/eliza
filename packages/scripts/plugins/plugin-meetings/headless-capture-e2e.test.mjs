@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "..",
+  "../../../../plugins/plugin-meetings",
 );
 const entrypoint = path.join(
   packageRoot,

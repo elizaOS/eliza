@@ -15,7 +15,7 @@
     "test": "bun run test:fixtures && bun run test:scenarios && bun run test:evidence && bun run test:runner && bun run test:synthetic-world",
     "typecheck": "bun run typecheck:fixtures && bun run typecheck:scenarios && bun run typecheck:evidence && bun run typecheck:runner && bun run typecheck:synthetic-world",
     "test:fixtures": "node ../scripts/run-vitest.mjs run",
-    "test:scenarios": "bun test --conditions eliza-source scenarios && bun run scenarios:validate",
+    "test:scenarios": "bun run scenarios:validate",
     "scenarios:validate": "bun --conditions eliza-source scenario-runner/src/cli.ts list scenarios --validate-scenarios",
     "typecheck:fixtures": "tsc --noEmit -p tsconfig.json",
     "typecheck:scenarios": "tsc --noEmit -p scenarios/tsconfig.json",

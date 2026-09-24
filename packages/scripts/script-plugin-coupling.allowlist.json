@@ -199,5 +199,15 @@
     "file": "packages/scripts/portable-linux-fused-inference.mjs",
     "tokens": ["plugins/plugin-local-inference"],
     "reason": "the portable fused-inference builder is intentionally coupled to the local-inference native source tree and its tracked ABI verification files"
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-coding-tools/progressive-read-benchmark.ts",
+    "tokens": ["plugins/plugin-coding-tools"],
+    "reason": "Package-owned plugin-coding-tools tooling; relocation preserves its explicit source and test roots."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-workflow/run-isolated-tests.mjs",
+    "tokens": ["plugins/plugin-workflow"],
+    "reason": "Package-owned plugin-workflow tooling; relocation preserves its explicit source and test roots."
   }
 ]

@@ -7,8 +7,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
-import { setupEnv } from "../src/actions/_test-helpers.js";
-import { readFileHandler } from "../src/actions/read.js";
+import { setupEnv } from "../../../../plugins/plugin-coding-tools/src/actions/_test-helpers.js";
+import { readFileHandler } from "../../../../plugins/plugin-coding-tools/src/actions/read.js";
 
 type Args = {
   output: string;
@@ -270,11 +270,11 @@ async function main(): Promise<void> {
       !smallPage.projectionContainsPage && !largePage.projectionContainsPage,
   };
   const commit = Bun.spawnSync(["git", "rev-parse", "HEAD"], {
-    cwd: path.resolve(import.meta.dir, "../../.."),
+    cwd: path.resolve(import.meta.dir, "../../../.."),
   })
     .stdout.toString()
     .trim();
-  const repoRoot = path.resolve(import.meta.dir, "../../..");
+  const repoRoot = path.resolve(import.meta.dir, "../../../..");
   const status = Bun.spawnSync(["git", "status", "--porcelain=v1"], {
     cwd: repoRoot,
   }).stdout.toString();
@@ -282,7 +282,7 @@ async function main(): Promise<void> {
     path.join(repoRoot, "plugins/plugin-coding-tools/src/actions/read.ts"),
     path.join(
       repoRoot,
-      "plugins/plugin-coding-tools/scripts/progressive-read-benchmark.ts",
+      "packages/scripts/plugins/plugin-coding-tools/progressive-read-benchmark.ts",
     ),
   ];
   const report = {

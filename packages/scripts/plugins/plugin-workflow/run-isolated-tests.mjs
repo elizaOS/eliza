@@ -11,8 +11,8 @@ import { spawn } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -21,7 +21,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptPath = fileURLToPath(import.meta.url);
-const pluginRoot = path.resolve(path.dirname(scriptPath), "..");
+const pluginRoot = path.resolve(
+  path.dirname(scriptPath),
+  "../../../../plugins/plugin-workflow",
+);
 const defaultTestRoot = path.join(pluginRoot, "__tests__");
 const TEST_FILE_PATTERN = /\.(?:test|spec)\.(?:[cm]?[jt]sx?)$/;
 

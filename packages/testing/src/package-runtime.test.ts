@@ -1,4 +1,4 @@
-/** Exercises the public fixture entry in a real Node process with isolated native SQLite databases. */
+/** Exercises the package root in native Node with real SQLite storage and a local judge HTTP transport. */
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
@@ -32,6 +32,68 @@ it("loads fixtures through the package root and keeps temporary databases isolat
           assert.deepEqual(await second.adapter.getEntitiesByIds([entityId]), []);
         } finally {
           await Promise.all([first.adapter.close(), second.adapter.close()]);
+        }
+      `,
+    ],
+    {
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      env,
+      encoding: "utf8",
+      timeout: 30_000,
+    },
+  );
+  expect(result.error).toBeUndefined();
+  expect(result.status, result.stderr || result.stdout).toBe(0);
+});
+
+it("uses the public judge transport in native Node without truncating requests", () => {
+  const env = { ...process.env };
+  delete env.NODE_OPTIONS;
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `
+        import assert from "node:assert/strict";
+        import { createServer } from "node:http";
+        import { once } from "node:events";
+        import { CerebrasJudge } from "@elizaos/testing";
+
+        const requests = [];
+        const server = createServer(async (request, response) => {
+          const chunks = [];
+          for await (const chunk of request) chunks.push(chunk);
+          requests.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+          response.setHeader("Content-Type", "application/json");
+          response.end(JSON.stringify({
+            model: "local-judge",
+            choices: [{ finish_reason: "stop", message: {
+              content: JSON.stringify({ score: 0.9, reason: "complete response" }),
+            } }],
+          }));
+        });
+        server.listen(0, "127.0.0.1");
+        await once(server, "listening");
+        try {
+          const judge = new CerebrasJudge({
+            baseUrl: "http://127.0.0.1:" + server.address().port,
+            apiKey: "local-test",
+            maxRetries: 0,
+          });
+          const prompt = "complete input ".repeat(10000) + "final sentinel";
+          const result = await judge.judge(prompt, { systemPrompt: "judge the full input" });
+          assert.deepEqual(requests[0].messages, [
+            { role: "system", content: "judge the full input" },
+            { role: "user", content: prompt },
+          ]);
+          assert.equal(result.verdict, "PASS");
+          assert.equal(result.score, 0.9);
+          assert.equal(result.reason, "complete response");
+          assert.equal(result.identity.model, "local-judge");
+        } finally {
+          server.closeAllConnections();
+          await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
         }
       `,
     ],

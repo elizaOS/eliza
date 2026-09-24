@@ -856,7 +856,7 @@ function unwrapKnownBunTestSupervisors(command) {
 }
 
 function isSingleIsolatedBunTestWrapperCommand(command) {
-  return /^node\s+scripts\/run-isolated-tests\.mjs$/.test(
+  return /^node\s+(?:scripts|(?:\.\.\/)+packages\/scripts\/plugins\/plugin-workflow)\/run-isolated-tests\.mjs$/.test(
     unwrapKnownBunTestSupervisors(command),
   );
 }

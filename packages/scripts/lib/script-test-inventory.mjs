@@ -51,6 +51,10 @@ const SCRIPT_TEST_PATTERN = new RegExp(
 /** Exact exclusions only. Each entry must remain eligible and carry a reason. */
 export const SCRIPT_TEST_EXCLUSIONS = new Map([
   [
+    "packages/scripts/plugins/plugin-meetings/headless-capture-e2e.test.mjs",
+    "plugin-meetings test:e2e owns this Node browser/audio capture suite",
+  ],
+  [
     "packages/cloud/scripts/admin/run-integration-tests.test.mjs",
     "the root test:cloud:integration command owns this Node node:sqlite lifecycle suite",
   ],
