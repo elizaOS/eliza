@@ -1,5 +1,5 @@
 /** Claims a real pending host request; only renderer transport is simulated. */
-import type { IAgentRuntime, ViewType } from "@elizaos/core";
+import type { IAgentRuntime, RoleGateRole, ViewType } from "@elizaos/core";
 import { viewInteractionHost } from "../api/view-interaction-host.ts";
 import { getView } from "../api/views-registry.ts";
 import type { ViewsRouteContext } from "../api/views-routes.ts";
@@ -9,6 +9,7 @@ export function claimRendererReply(
   hostKey: object,
   clientId: string,
   frame: Record<string, unknown>,
+  roles: RoleGateRole[] = [],
 ) {
   const { requestId, viewId, viewType, installationId } = frame;
   if (
@@ -28,7 +29,7 @@ export function claimRendererReply(
   const claimId = viewInteractionHost(runtime, hostKey).claim(
     clientId,
     binding,
-    [],
+    roles,
   );
   if (!claimId)
     throw new Error("Renderer fixture could not claim this request");

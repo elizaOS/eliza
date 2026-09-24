@@ -10,7 +10,9 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  AgentRuntime,
   ChannelType,
+  createCharacter,
   type Memory,
   type RoleGateRole,
   resolveSurfaceManifest,
@@ -81,6 +83,11 @@ import { interact as interactPhone } from "../../../../plugins/plugin-phone/src/
 import { appPhonePlugin } from "../../../../plugins/plugin-phone/src/plugin.ts";
 import { brokerViewInteract } from "../../../ui/src/components/views/view-capability-broker";
 import {
+  closeRuntimeViewRegistry,
+  type ViewInstallation,
+} from "../api/view-installations.ts";
+import { closeViewInteractionHost } from "../api/view-interaction-host.ts";
+import {
   registerPluginViews,
   unregisterPluginViews,
 } from "../api/views-registry.ts";
@@ -88,6 +95,7 @@ import {
   handleViewsRoutes,
   resolveViewInteractResult,
 } from "../api/views-routes.ts";
+import { claimRendererReply } from "./view-renderer-test-utils.ts";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -109,6 +117,12 @@ interface DispatchedInteraction {
 }
 
 const dispatched: DispatchedInteraction[] = [];
+const runtime = new AgentRuntime({
+  character: createCharacter({ name: "Native view planner parity" }),
+  enableAutonomy: false,
+});
+const hostKey = {};
+const installations: ViewInstallation[] = [];
 let server: http.Server;
 let priorPort: string | undefined;
 let serverCallerRole: RoleGateRole = "OWNER";
@@ -128,6 +142,8 @@ function startViewsServer(): Promise<http.Server> {
     void (async () => {
       const url = new URL(request.url ?? "/", "http://127.0.0.1");
       const handled = await handleViewsRoutes({
+        runtime,
+        hostKey,
         req: request,
         res: response,
         method: request.method ?? "GET",
@@ -164,6 +180,13 @@ function startViewsServer(): Promise<http.Server> {
             VIEW_INTERACTORS[viewId],
             declaration.capabilities,
           );
+          const binding = claimRendererReply(
+            runtime,
+            hostKey,
+            clientId,
+            payload as Record<string, unknown>,
+            [serverCallerRole],
+          );
           void interact(frame.capability, frame.params).then(
             (result) => {
               dispatched.push({
@@ -172,15 +195,15 @@ function startViewsServer(): Promise<http.Server> {
                 params: frame.params,
                 result,
               });
-              resolveViewInteractResult({
-                requestId: frame.requestId as string,
+              resolveViewInteractResult(runtime, hostKey, clientId, {
+                ...binding,
                 success: true,
                 result,
               });
             },
             (error: unknown) => {
-              resolveViewInteractResult({
-                requestId: frame.requestId as string,
+              resolveViewInteractResult(runtime, hostKey, clientId, {
+                ...binding,
                 success: false,
                 error: error instanceof Error ? error.message : String(error),
               });
@@ -210,9 +233,9 @@ function startViewsServer(): Promise<http.Server> {
 
 function message(channelType: ChannelType, text: string): Memory {
   return {
-    entityId: "native-view-agent",
+    entityId: runtime.agentId,
     roomId: "native-view-room",
-    agentId: "native-view-agent",
+    agentId: runtime.agentId,
     content: {
       text,
       channelType,
@@ -229,7 +252,7 @@ async function invoke(
 ) {
   const action = createViewsAction({ hasOwnerAccess: async () => true });
   const result = await action.handler(
-    { agentId: "native-view-agent", actions: [] } as never,
+    runtime,
     message(channelType, `Use ${capability} on ${view}`),
     undefined,
     { action: "interact", view, capability, params },
@@ -241,9 +264,15 @@ async function invoke(
 beforeAll(async () => {
   priorPort = process.env.ELIZA_PORT;
   for (const plugin of PLUGINS) {
-    await registerPluginViews(
-      plugin,
-      path.join(repoRoot, "plugins", plugin.name.replace("@elizaos/", "")),
+    installations.push(
+      await registerPluginViews(runtime, plugin, {
+        pluginDir: path.join(
+          repoRoot,
+          "plugins",
+          plugin.name.replace("@elizaos/", ""),
+        ),
+        indexEmbeddings: false,
+      }),
     );
   }
   server = await startViewsServer();
@@ -310,7 +339,10 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
-  for (const plugin of PLUGINS) unregisterPluginViews(plugin.name);
+  for (const installation of installations)
+    unregisterPluginViews(runtime, installation);
+  closeRuntimeViewRegistry(runtime);
+  closeViewInteractionHost(hostKey);
   await new Promise<void>((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
   });
@@ -330,11 +362,10 @@ describe.each([ChannelType.DM, ChannelType.VOICE_DM])(
         number: "+1 (555) 0300",
       });
 
-      expect([contacts.success, messages.success, phone.success]).toEqual([
-        true,
-        true,
-        true,
-      ]);
+      expect(
+        [contacts.success, messages.success, phone.success],
+        JSON.stringify([contacts, messages, phone]),
+      ).toEqual([true, true, true]);
       expect(dispatched).toEqual([
         {
           viewId: "contacts",

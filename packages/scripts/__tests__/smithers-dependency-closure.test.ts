@@ -44,8 +44,9 @@ test("Smithers uses one peer-compatible Effect and React closure", () => {
   const dependencies = object(manifest.devDependencies, "devDependencies");
   const overrides = object(manifest.overrides, "overrides");
   const hostReact = String(dependencies.react);
-  expect(hostReact).toBe("19.2.7");
+  expect(hostReact).toBe("19.3.0");
   expect(dependencies["react-dom"]).toBe(hostReact);
+  expect(dependencies["react-test-renderer"]).toBe(hostReact);
   expect(overrides["@effect/platform-node-shared"]).toBe("4.0.0-beta.105");
 
   const lock = object(
